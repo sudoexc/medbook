@@ -1,0 +1,125 @@
+{
+  "nav": {
+    "howItWorks": "Qanday ishlaydi",
+    "specialties": "Mutaxassisliklar",
+    "forDoctors": "Shifokorlar uchun",
+    "faq": "Savollar",
+    "findDoctor": "Shifokor topish"
+  },
+  "hero": {
+    "title": "Toshkentning eng yaxshi shifokorlariga onlayn yoziling",
+    "subtitle": "Ishonchli mutaxassisni toping va 2 daqiqada yoziling. Qo'ng'iroqlarsiz va navbatlarsiz.",
+    "searchPlaceholder": "Mutaxassislik yoki shifokor",
+    "locationPlaceholder": "Tuman yoki metro",
+    "searchButton": "Qidirish",
+    "stats": {
+      "doctors": "500+ shifokor",
+      "appointments": "10 000+ yozuvlar",
+      "free": "Bepul"
+    }
+  },
+  "howItWorks": {
+    "title": "Qanday ishlaydi",
+    "subtitle": "Qabulga uch oddiy qadam",
+    "step1": {
+      "title": "Shifokor toping",
+      "description": "Mutaxassislik, tuman va qulay vaqtni tanlang"
+    },
+    "step2": {
+      "title": "Onlayn yoziling",
+      "description": "Bo'sh vaqtni tanlang. Qo'ng'iroqlarsiz."
+    },
+    "step3": {
+      "title": "Qabulga keling",
+      "description": "SMS-eslatma oling va belgilangan vaqtda keling"
+    }
+  },
+  "specialties": {
+    "title": "Mashhur mutaxassisliklar",
+    "subtitle": "Kerakli mutaxassisni tanlang"
+  },
+  "advantages": {
+    "title": "Nima uchun MedBook",
+    "subtitle": "Bemorlar uchun qulay xizmat",
+    "verified": {
+      "title": "Tasdiqlangan shifokorlar",
+      "description": "Har bir shifokor tekshiruvdan o'tadi. Faqat diplomli mutaxassislar."
+    },
+    "reviews": {
+      "title": "Haqiqiy sharhlar",
+      "description": "Qabulda bo'lgan bemorlarning sharhlarini o'qing."
+    },
+    "anytime": {
+      "title": "Qulay vaqt",
+      "description": "Kechayu kunduz, 24/7 yoziling."
+    },
+    "free": {
+      "title": "Bemorlar uchun bepul",
+      "description": "Qidirish va yozilish to'liq bepul. Yashirin komissiyalarsiz."
+    }
+  },
+  "forDoctors": {
+    "title": "Siz shifokor yoki klinikani boshqarasizmi?",
+    "subtitle": "MedBook'ga qo'shiling va yangi bemorlar oling",
+    "benefit1": "Yangi bemorlar oling",
+    "benefit2": "Jadvalni onlayn boshqaring",
+    "benefit3": "Bepul sinov davri",
+    "cta": "Klinikani ulash"
+  },
+  "appTeaser": {
+    "title": "Tez orada App Store va Google Play'da",
+    "subtitle": "Email qoldiring va biz ishga tushirish haqida xabar beramiz",
+    "placeholder": "Email yoki telefon raqamingiz",
+    "cta": "Menga xabar bering"
+  },
+  "faq": {
+    "title": "Ko'p beriladigan savollar",
+    "q1": {
+      "question": "Bu bepulmi?",
+      "answer": "Ha, shifokorlarni qidirish va qabulga yozilish bemorlar uchun to'liq bepul."
+    },
+    "q2": {
+      "question": "Shifokorga qanday yozilaman?",
+      "answer": "Mutaxassislikni tanlang, mos shifokorni toping, qulay vaqtni tanlang va yozuvni tasdiqlang. Hammasi onlayn, qo'ng'iroqlarsiz."
+    },
+    "q3": {
+      "question": "Yozuvni bekor qila olamanmi?",
+      "answer": "Ha, yozuvni istalgan vaqtda shaxsiy kabinet yoki SMS orqali bekor qilish yoki ko'chirish mumkin."
+    },
+    "q4": {
+      "question": "Hamkor qanday bo'laman?",
+      "answer": "«Klinikani ulash» tugmasini bosing va shaklni to'ldiring. 24 soat ichida siz bilan bog'lanamiz."
+    },
+    "q5": {
+      "question": "MedBook qaysi shaharlarda ishlaydi?",
+      "answer": "Hozirda biz Toshkentda ishlaymiz. Tez orada — Samarqand, Buxoro va O'zbekistonning boshqa shaharlari."
+    }
+  },
+  "footer": {
+    "description": "O'zbekistonda shifokorlarga onlayn yozilish xizmati",
+    "patients": "Bemorlar",
+    "doctors": "Shifokorlar",
+    "company": "Kompaniya",
+    "contacts": "Kontaktlar",
+    "findDoctor": "Shifokor topish",
+    "howItWorksLink": "Qanday ishlaydi",
+    "specialtiesLink": "Mutaxassisliklar",
+    "connectClinic": "Klinikani ulash",
+    "forDoctorsLink": "Shifokorlar uchun",
+    "aboutUs": "Biz haqimizda",
+    "privacy": "Maxfiylik",
+    "terms": "Shartlar",
+    "rights": "Barcha huquqlar himoyalangan"
+  },
+  "leadForm": {
+    "title": "So'rov qoldiring",
+    "subtitle": "Biz siz uchun eng yaxshi shifokorni tanlaymiz",
+    "name": "Ismingiz",
+    "phone": "Telefon",
+    "specialty": "Mutaxassislik",
+    "selectSpecialty": "Mutaxassislikni tanlang",
+    "submit": "So'rov yuborish",
+    "success": "Rahmat! Tez orada siz bilan bog'lanamiz.",
+    "phoneFormat": "+998 XX XXX XX XX"
+  }
+}

@@ -85,7 +85,7 @@ export function Reviews() {
             <div className="text-right">
               <div className="flex items-center gap-1">
                 <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
-                <span className="text-xl font-bold">5.0</span>
+                <span className="text-xl font-bold">4.9</span>
               </div>
               <p className="text-xs text-muted-foreground">250+ отзывов</p>
             </div>

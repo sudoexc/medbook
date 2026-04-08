@@ -1,125 +1,147 @@
 {
   "nav": {
-    "howItWorks": "Qanday ishlaydi",
-    "specialties": "Mutaxassisliklar",
-    "forDoctors": "Shifokorlar uchun",
+    "doctors": "Shifokorlar",
+    "services": "Xizmatlar",
+    "about": "Klinika haqida",
     "faq": "Savollar",
-    "findDoctor": "Shifokor topish"
+    "bookAppointment": "Yozilish"
   },
   "hero": {
-    "title": "Toshkentning eng yaxshi shifokorlariga onlayn yoziling",
-    "subtitle": "Ishonchli mutaxassisni toping va 2 daqiqada yoziling. Qo'ng'iroqlarsiz va navbatlarsiz.",
-    "searchPlaceholder": "Mutaxassislik yoki shifokor",
-    "locationPlaceholder": "Tuman yoki metro",
-    "searchButton": "Qidirish",
+    "badge": "Toshkentdagi nevrologik markaz",
+    "title": "NeuroFax nevrologik markazi",
+    "subtitle": "Nevrologiya, kardiologiya, UZI diagnostikasi. Tajribali mutaxassislar, aniq diagnostika va har bir bemorga individual yondashuv.",
+    "cta": "Qabulga yozilish",
+    "ctaSecondary": "Shifokorlarimiz",
     "stats": {
-      "doctors": "500+ shifokor",
-      "appointments": "10 000+ yozuvlar",
-      "free": "Bepul"
+      "clients": "10 000+ mamnun bemorlar",
+      "experience": "15+ yillik tajriba",
+      "doctors": "6 mutaxassis"
     }
   },
-  "howItWorks": {
-    "title": "Qanday ishlaydi",
-    "subtitle": "Qabulga uch oddiy qadam",
-    "step1": {
-      "title": "Shifokor toping",
-      "description": "Mutaxassislik, tuman va qulay vaqtni tanlang"
+  "doctors": {
+    "title": "Bizning mutaxassislar",
+    "subtitle": "Shifokorlar jamoasi",
+    "cabinet": "Xona",
+    "schedule": "Jadval",
+    "services": "Xizmatlar",
+    "sum": "so'm",
+    "bookWith": "Yozilish"
+  },
+  "services": {
+    "title": "Xizmatlar va narxlar",
+    "subtitle": "Shaffof narxlar",
+    "neurology": "Nevrologiya",
+    "cardiology": "Kardiologiya",
+    "diagnostics": "Diagnostika",
+    "pediatrics": "Bolalar qabuli"
+  },
+  "about": {
+    "title": "Nima uchun NeuroFax",
+    "subtitle": "Klinika haqida",
+    "experience": {
+      "title": "Tajribali shifokorlar",
+      "description": "Ko'p yillik tajribaga ega mutaxassislar."
     },
-    "step2": {
-      "title": "Onlayn yoziling",
-      "description": "Bo'sh vaqtni tanlang. Qo'ng'iroqlarsiz."
+    "equipment": {
+      "title": "Zamonaviy uskunalar",
+      "description": "EEG, EKG, UZI, ExoKG, dopplerografiya — hammasi bir markazda."
     },
-    "step3": {
-      "title": "Qabulga keling",
-      "description": "SMS-eslatma oling va belgilangan vaqtda keling"
+    "approach": {
+      "title": "Individual yondashuv",
+      "description": "Har bir bemor shaxsiy diagnostika va davolash rejasini oladi."
+    },
+    "price": {
+      "title": "Qulay narxlar",
+      "description": "Yashirin komissiyalarsiz shaffof narxlar. Protsedura uchun 40 000 so'mdan."
     }
-  },
-  "specialties": {
-    "title": "Mashhur mutaxassisliklar",
-    "subtitle": "Kerakli mutaxassisni tanlang"
-  },
-  "advantages": {
-    "title": "Nima uchun MedBook",
-    "subtitle": "Bemorlar uchun qulay xizmat",
-    "verified": {
-      "title": "Tasdiqlangan shifokorlar",
-      "description": "Har bir shifokor tekshiruvdan o'tadi. Faqat diplomli mutaxassislar."
-    },
-    "reviews": {
-      "title": "Haqiqiy sharhlar",
-      "description": "Qabulda bo'lgan bemorlarning sharhlarini o'qing."
-    },
-    "anytime": {
-      "title": "Qulay vaqt",
-      "description": "Kechayu kunduz, 24/7 yoziling."
-    },
-    "free": {
-      "title": "Bemorlar uchun bepul",
-      "description": "Qidirish va yozilish to'liq bepul. Yashirin komissiyalarsiz."
-    }
-  },
-  "forDoctors": {
-    "title": "Siz shifokor yoki klinikani boshqarasizmi?",
-    "subtitle": "MedBook'ga qo'shiling va yangi bemorlar oling",
-    "benefit1": "Yangi bemorlar oling",
-    "benefit2": "Jadvalni onlayn boshqaring",
-    "benefit3": "Bepul sinov davri",
-    "cta": "Klinikani ulash"
-  },
-  "appTeaser": {
-    "title": "Tez orada App Store va Google Play'da",
-    "subtitle": "Email qoldiring va biz ishga tushirish haqida xabar beramiz",
-    "placeholder": "Email yoki telefon raqamingiz",
-    "cta": "Menga xabar bering"
   },
   "faq": {
     "title": "Ko'p beriladigan savollar",
     "q1": {
-      "question": "Bu bepulmi?",
-      "answer": "Ha, shifokorlarni qidirish va qabulga yozilish bemorlar uchun to'liq bepul."
+      "question": "Qabulga qanday yozilaman?",
+      "answer": "Bizga qo'ng'iroq qiling, Telegramga yozing yoki saytda so'rov qoldiring — biz qo'ng'iroq qilib qulay vaqtni tanlaymiz."
     },
     "q2": {
-      "question": "Shifokorga qanday yozilaman?",
-      "answer": "Mutaxassislikni tanlang, mos shifokorni toping, qulay vaqtni tanlang va yozuvni tasdiqlang. Hammasi onlayn, qo'ng'iroqlarsiz."
+      "question": "EEG uchun tayyorgarlik kerakmi?",
+      "answer": "Sochlar toza, lak va gelsiz bo'lishi kerak. Tekshiruvdan oldin yaxshi uxlash tavsiya etiladi."
     },
     "q3": {
-      "question": "Yozuvni bekor qila olamanmi?",
-      "answer": "Ha, yozuvni istalgan vaqtda shaxsiy kabinet yoki SMS orqali bekor qilish yoki ko'chirish mumkin."
+      "question": "Bolalarni qabul qilasizlarmi?",
+      "answer": "Ha, 6-xonada bolalar nevropatologi va pediatr qabul qiladi. Dushanbadan shanbagacha yozilish mumkin."
     },
     "q4": {
-      "question": "Hamkor qanday bo'laman?",
-      "answer": "«Klinikani ulash» tugmasini bosing va shaklni to'ldiring. 24 soat ichida siz bilan bog'lanamiz."
+      "question": "Qanday to'lov usullarini qabul qilasiz?",
+      "answer": "Naqd pul, Uzcard, Humo, Payme, Click. Qabuldan keyin to'lov."
     },
     "q5": {
-      "question": "MedBook qaysi shaharlarda ishlaydi?",
-      "answer": "Hozirda biz Toshkentda ishlaymiz. Tez orada — Samarqand, Buxoro va O'zbekistonning boshqa shaharlari."
+      "question": "Qabul qancha davom etadi?",
+      "answer": "Konsultatsiya 20-30 daqiqa. EEG — tekshiruv turiga qarab 30 daqiqadan 1 soatgacha."
     }
   },
   "footer": {
-    "description": "O'zbekistonda shifokorlarga onlayn yozilish xizmati",
-    "patients": "Bemorlar",
-    "doctors": "Shifokorlar",
-    "company": "Kompaniya",
+    "description": "Toshkentdagi nevrologik diagnostika va davolash markazi.",
+    "navigation": "Navigatsiya",
     "contacts": "Kontaktlar",
-    "findDoctor": "Shifokor topish",
-    "howItWorksLink": "Qanday ishlaydi",
-    "specialtiesLink": "Mutaxassisliklar",
-    "connectClinic": "Klinikani ulash",
-    "forDoctorsLink": "Shifokorlar uchun",
-    "aboutUs": "Biz haqimizda",
+    "workingHours": "Ish tartibi",
+    "workingHoursValue": "Du – Sha: 08:00 – 17:00",
+    "rights": "Barcha huquqlar himoyalangan",
     "privacy": "Maxfiylik",
-    "terms": "Shartlar",
-    "rights": "Barcha huquqlar himoyalangan"
+    "terms": "Shartlar"
   },
   "leadForm": {
-    "title": "So'rov qoldiring",
-    "subtitle": "Biz siz uchun eng yaxshi shifokorni tanlaymiz",
+    "title": "Qabulga yozilish",
+    "subtitle": "So'rov qoldiring — biz qo'ng'iroq qilib qulay vaqtni tanlaymiz",
     "name": "Ismingiz",
     "phone": "Telefon",
-    "specialty": "Mutaxassislik",
-    "selectSpecialty": "Mutaxassislikni tanlang",
+    "doctor": "Shifokor",
+    "selectDoctor": "Shifokorni tanlang",
+    "service": "Xizmat",
+    "date": "Qulay sana",
+    "cabinet": "Xona",
+    "sum": "so'm",
     "submit": "So'rov yuborish",
-    "success": "Rahmat! Tez orada siz bilan bog'lanamiz.",
+    "error": "Xatolik yuz berdi. Qayta urinib ko'ring.",
+    "success": "Rahmat! Tez orada qo'ng'iroq qilamiz.",
     "phoneFormat": "+998 XX XXX XX XX"
+  },
+  "login": {
+    "title": "Shifokorlar uchun kirish",
+    "subtitle": "NeuroFax boshqaruv paneli",
+    "email": "Email",
+    "password": "Parol",
+    "submit": "Kirish",
+    "loading": "Kirish...",
+    "error": "Email yoki parol noto'g'ri",
+    "backToSite": "Saytga qaytish"
+  },
+  "dashboard": {
+    "overview": "Umumiy ko'rinish",
+    "schedule": "Jadval",
+    "queue": "Navbat",
+    "patients": "Bemorlar",
+    "leads": "So'rovlar",
+    "appointments": "Yozilishlar",
+    "analytics": "Tahlillar",
+    "payments": "Kassa",
+    "reviews": "Sharhlar",
+    "settings": "Sozlamalar",
+    "logout": "Chiqish"
+  },
+  "reviews": {
+    "title": "Bemorlar sharhlari",
+    "subtitle": "Biz haqimizda nima deyishadi",
+    "source": "Yandex Xaritalar",
+    "allReviews": "Barcha sharhlar"
+  },
+  "doctorPage": {
+    "backToAll": "Barcha mutaxassislar",
+    "cabinet": "Xona",
+    "schedule": "Ish jadvali",
+    "hours": "Qabul soatlari",
+    "services": "Xizmatlar va narxlar",
+    "sum": "so'm",
+    "bookAppointment": "Qabulga yozilish",
+    "metaTitle": "{name} — {specialty} | NeuroFax",
+    "metaDescription": "{name}, {specialty}. NeuroFax tibbiyot markazida qabulga yozilish."
   }
 }

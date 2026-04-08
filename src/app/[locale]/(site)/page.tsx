@@ -1,11 +1,11 @@
 import { Hero } from "@/components/sections/hero";
-import { HowItWorks } from "@/components/sections/how-it-works";
-import { Specialties } from "@/components/sections/specialties";
-import { Advantages } from "@/components/sections/advantages";
-import { ForDoctors } from "@/components/sections/for-doctors";
-import { AppTeaser } from "@/components/sections/app-teaser";
+import { Doctors } from "@/components/sections/doctors";
+import { Services } from "@/components/sections/services";
+import { About } from "@/components/sections/about";
+import { Reviews } from "@/components/sections/reviews";
+import { Cta } from "@/components/sections/cta";
 import { Faq } from "@/components/sections/faq";
-import { SITE_DOMAIN } from "@/lib/constants";
+import { getDoctors } from "@/lib/doctors";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
 
@@ -18,6 +18,7 @@ export default async function Home({
 }) {
   const { locale } = await params;
   const faq = msgs[locale]?.faq || msgs.ru.faq;
+  const doctors = await getDoctors();
 
   const faqJsonLd = {
     "@context": "https://schema.org",
@@ -41,11 +42,11 @@ export default async function Home({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <Hero />
-      <HowItWorks />
-      <Specialties />
-      <Advantages />
-      <ForDoctors />
-      <AppTeaser />
+      <Doctors doctors={doctors} />
+      <Services doctors={doctors} />
+      <About />
+      <Reviews />
+      <Cta />
       <Faq />
     </main>
   );

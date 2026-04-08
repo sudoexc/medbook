@@ -19,7 +19,7 @@ export function LanguageSwitcher() {
   return (
     <button
       onClick={handleSwitch}
-      className="flex items-center gap-2 rounded-xl border border-border/60 bg-foreground/[0.03] px-3.5 py-2 text-sm font-medium transition-all hover:bg-foreground/[0.06] hover:border-border"
+      className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
     >
       <Globe className="h-4 w-4 text-muted-foreground" />
       <span>{label}</span>

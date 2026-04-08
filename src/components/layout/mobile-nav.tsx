@@ -31,14 +31,14 @@ export function MobileNav() {
               onClick={() => setOpen(false)}
               className="text-lg font-medium text-foreground/80 hover:text-foreground transition-colors"
             >
-              {t(link.labelKey.replace("nav.", "") as "howItWorks" | "specialties" | "forDoctors" | "faq")}
+              {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "about" | "faq")}
             </a>
           ))}
           <div className="border-t border-border pt-6">
             <LanguageSwitcher />
           </div>
-          <Button size="lg" className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-            {t("findDoctor")}
+          <Button size="lg" className="w-full bg-primary text-primary-foreground font-semibold hover:bg-primary/85">
+            {t("bookAppointment")}
           </Button>
         </nav>
       </SheetContent>

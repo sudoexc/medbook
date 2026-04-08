@@ -2,10 +2,8 @@ import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { Inter } from "next/font/google";
-import { Header } from "@/components/layout/header";
-import { Footer } from "@/components/layout/footer";
 import type { Metadata } from "next";
-import { SITE_NAME, SITE_DOMAIN } from "@/lib/constants";
+import { SITE_NAME, SITE_DOMAIN, CONTACT } from "@/lib/constants";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -14,14 +12,14 @@ const inter = Inter({
 
 const meta: Record<string, { title: string; description: string }> = {
   ru: {
-    title: `${SITE_NAME} — Запись к врачу онлайн в Ташкенте`,
+    title: `${SITE_NAME} — Медицинский центр неврологии и кардиологии в Ташкенте`,
     description:
-      "Найдите проверенного врача и запишитесь на приём онлайн. Бесплатно для пациентов. 500+ врачей в Ташкенте.",
+      "Медицинский центр NeuroFax — неврология, кардиология, УЗИ-диагностика в Ташкенте. Опытные специалисты, современное оборудование.",
   },
   uz: {
-    title: `${SITE_NAME} — Toshkentda shifokorga onlayn yozilish`,
+    title: `${SITE_NAME} — Toshkentda nevrologiya va kardiologiya tibbiyot markazi`,
     description:
-      "Ishonchli shifokorni toping va onlayn qabulga yoziling. Bemorlar uchun bepul. Toshkentda 500+ shifokor.",
+      "NeuroFax tibbiyot markazi — nevrologiya, kardiologiya, UZI diagnostikasi Toshkentda. Tajribali mutaxassislar, zamonaviy uskunalar.",
   },
 };
 
@@ -82,9 +80,17 @@ export default async function LocaleLayout({
     name: SITE_NAME,
     url: `https://${SITE_DOMAIN}/${locale}`,
     description: meta[locale]?.description || meta.ru.description,
+    telephone: CONTACT.phone,
+    medicalSpecialty: ["Neurology", "Cardiology", "Diagnostic Imaging", "Pediatric Neurology"],
     areaServed: {
       "@type": "City",
       name: "Tashkent",
+    },
+    openingHoursSpecification: {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+      opens: "08:00",
+      closes: "17:00",
     },
     availableLanguage: [
       { "@type": "Language", name: "Russian" },
@@ -102,9 +108,7 @@ export default async function LocaleLayout({
       </head>
       <body className="min-h-full flex flex-col font-sans">
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Header />
           {children}
-          <Footer />
         </NextIntlClientProvider>
       </body>
     </html>

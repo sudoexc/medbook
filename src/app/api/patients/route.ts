@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { prisma } from "@/lib/prisma";
+import { normalizePhone, phoneSearchVariants } from "@/lib/phone";
 import { z } from "zod";
 
 // GET /api/patients?search=
@@ -16,11 +17,16 @@ export async function GET(request: Request) {
     return Response.json([]);
   }
 
+  // If the query looks like a phone, try normalized variants too so a
+  // user can find a patient by typing "901234567" or "+998 90 123-45-67".
+  const phoneVariants = /\d/.test(search) ? phoneSearchVariants(search) : [];
+
   const patients = await prisma.patient.findMany({
     where: {
       OR: [
         { fullName: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search } },
+        { phone: { contains: search.replace(/\D/g, "") || search } },
+        ...phoneVariants.map((v) => ({ phone: v })),
         { passport: { contains: search, mode: "insensitive" } },
       ],
     },
@@ -58,7 +64,11 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
 
-  const { fullName, phone, passport, birthDate } = parsed.data;
+  const { fullName, passport, birthDate } = parsed.data;
+  const phone = normalizePhone(parsed.data.phone);
+  if (!phone) {
+    return Response.json({ error: { phone: ["Invalid phone"] } }, { status: 400 });
+  }
 
   const patient = await prisma.patient.upsert({
     where: { phone },

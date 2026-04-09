@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { validateBookingSlot, toTashkentDate } from "@/lib/booking-validation";
 import { hasValidPin } from "@/lib/pin";
+import { normalizePhone } from "@/lib/phone";
 import { z } from "zod";
 
 const BookSchema = z.object({
@@ -56,11 +57,13 @@ export async function POST(
     );
   }
 
-  // Find or create patient by phone
+  // Find or create patient by normalized phone (defensive: legacy leads
+  // predating the normalization fix may still contain formatted strings).
+  const patientPhone = normalizePhone(lead.phone) || lead.phone;
   const patient = await prisma.patient.upsert({
-    where: { phone: lead.phone },
+    where: { phone: patientPhone },
     update: { fullName: lead.name },
-    create: { fullName: lead.name, phone: lead.phone },
+    create: { fullName: lead.name, phone: patientPhone },
   });
 
   // Reuse the existing-appointment lookup from above

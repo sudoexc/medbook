@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendNewLeadEmail } from "@/lib/email";
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
+import { normalizePhone } from "@/lib/phone";
 import { z } from "zod";
 
 const LeadSchema = z.object({
@@ -63,7 +64,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const lead = await prisma.lead.create({ data: parsed.data });
+    // Normalize phone at the write boundary so every downstream lookup
+    // (receptionist, kiosk check-in, patient upsert) matches.
+    const normalizedPhone = normalizePhone(parsed.data.phone);
+    if (!normalizedPhone) {
+      return Response.json({ error: { phone: ["Invalid phone"] } }, { status: 400 });
+    }
+
+    const lead = await prisma.lead.create({
+      data: { ...parsed.data, phone: normalizedPhone },
+    });
 
     // Send email notification to doctor (fire-and-forget)
     if (lead.doctorId) {

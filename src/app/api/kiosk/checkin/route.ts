@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { phoneSearchVariants } from "@/lib/phone";
 import { z } from "zod";
 
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone
@@ -10,18 +11,8 @@ export async function GET(request: Request) {
     return Response.json({ error: "phone required" }, { status: 400 });
   }
 
-  // Normalize phone
-  const normalized = phone.replace(/[\s\-()]/g, "");
-  const variants = [normalized];
-  if (normalized.startsWith("+998")) variants.push(normalized.slice(4));
-  if (normalized.startsWith("998")) variants.push(normalized.slice(3));
-  if (!normalized.startsWith("+")) variants.push("+" + normalized);
-  if (!normalized.startsWith("+998") && !normalized.startsWith("998") && normalized.length === 9) {
-    variants.push("+998" + normalized);
-    variants.push("998" + normalized);
-  }
-
-  // Find patient by phone
+  // Find patient by any known phone representation (shared helper)
+  const variants = phoneSearchVariants(phone);
   const patient = await prisma.patient.findFirst({
     where: { phone: { in: variants } },
   });

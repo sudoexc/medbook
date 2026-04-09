@@ -1,5 +1,6 @@
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { prisma } from "@/lib/prisma";
+import { normalizePhone } from "@/lib/phone";
 import { z } from "zod";
 
 const UpdateSchema = z.object({
@@ -32,11 +33,12 @@ export async function PATCH(
   if (parsed.data.status === "CONVERTED" && !parsed.data.skipAppointment && lead.doctorId) {
     const existing = await prisma.appointment.findUnique({ where: { leadId: id } });
     if (!existing) {
-      // Find or create patient by phone
+      // Find or create patient by normalized phone
+      const patientPhone = normalizePhone(lead.phone) || lead.phone;
       const patient = await prisma.patient.upsert({
-        where: { phone: lead.phone },
+        where: { phone: patientPhone },
         update: { fullName: lead.name },
-        create: { fullName: lead.name, phone: lead.phone },
+        create: { fullName: lead.name, phone: patientPhone },
       });
 
       // queueOrder is intentionally left null — it gets assigned on arrival

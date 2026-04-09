@@ -1,6 +1,22 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getServicePrice } from "@/lib/revenue";
+
+/**
+ * Escape a value for safe CSV output.
+ * - Wraps in double quotes
+ * - Doubles internal double quotes
+ * - Prefixes with "'" if it starts with a CSV-formula trigger char to defeat
+ *   formula injection in Excel/Google Sheets (=, +, -, @, tab, CR).
+ */
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return '""';
+  let s = String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+function csvRow(...cells: unknown[]): string {
+  return cells.map(csvCell).join(",") + "\n";
+}
 
 // GET /api/export?type=payments|patients|appointments&from=&to=&doctorId=
 export async function GET(request: Request) {
@@ -33,9 +49,18 @@ export async function GET(request: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    csv = "Дата,Пациент,Телефон,Врач,Услуга,Сумма,Способ,Статус\n";
+    csv = csvRow("Дата", "Пациент", "Телефон", "Врач", "Услуга", "Сумма", "Способ", "Статус");
     for (const p of payments) {
-      csv += `${p.appointment.date.toLocaleDateString("ru-RU")},"${p.appointment.patient.fullName}",${p.appointment.patient.phone},"${p.appointment.doctor.nameRu}","${p.appointment.service || ""}",${p.amount},${p.method},${p.status}\n`;
+      csv += csvRow(
+        p.appointment.date.toLocaleDateString("ru-RU"),
+        p.appointment.patient.fullName,
+        p.appointment.patient.phone,
+        p.appointment.doctor.nameRu,
+        p.appointment.service || "",
+        p.amount,
+        p.method,
+        p.status,
+      );
     }
   } else if (type === "patients") {
     const patients = await prisma.patient.findMany({
@@ -43,9 +68,15 @@ export async function GET(request: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    csv = "ФИО,Телефон,Паспорт,Визитов,Дата регистрации\n";
+    csv = csvRow("ФИО", "Телефон", "Паспорт", "Визитов", "Дата регистрации");
     for (const p of patients) {
-      csv += `"${p.fullName}",${p.phone},${p.passport || ""},${p._count.appointments},${p.createdAt.toLocaleDateString("ru-RU")}\n`;
+      csv += csvRow(
+        p.fullName,
+        p.phone,
+        p.passport || "",
+        p._count.appointments,
+        p.createdAt.toLocaleDateString("ru-RU"),
+      );
     }
   } else if (type === "appointments") {
     const appointments = await prisma.appointment.findMany({
@@ -57,10 +88,19 @@ export async function GET(request: Request) {
       orderBy: { date: "desc" },
     });
 
-    csv = "Дата,Время,Пациент,Телефон,Врач,Услуга,Статус,Длительность\n";
+    csv = csvRow("Дата", "Время", "Пациент", "Телефон", "Врач", "Услуга", "Статус", "Длительность");
     for (const a of appointments) {
       const time = a.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-      csv += `${a.date.toLocaleDateString("ru-RU")},${time},"${a.patient.fullName}",${a.patient.phone},"${a.doctor.nameRu}","${a.service || ""}",${a.queueStatus},${a.durationMin || ""}\n`;
+      csv += csvRow(
+        a.date.toLocaleDateString("ru-RU"),
+        time,
+        a.patient.fullName,
+        a.patient.phone,
+        a.doctor.nameRu,
+        a.service || "",
+        a.queueStatus,
+        a.durationMin ?? "",
+      );
     }
   }
 

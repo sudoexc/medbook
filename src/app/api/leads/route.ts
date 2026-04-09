@@ -26,7 +26,10 @@ export async function GET(request: Request) {
   }
 
   const status = url.searchParams.get("status");
-  const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+  const limitRaw = Number(url.searchParams.get("limit"));
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0
+    ? Math.min(Math.floor(limitRaw), 200)
+    : 50;
   const validStatuses = ["NEW", "CONTACTED", "CONVERTED", "CANCELLED"] as const;
   type LeadStatus = typeof validStatuses[number];
   const statusFilter = validStatuses.includes(status as LeadStatus)

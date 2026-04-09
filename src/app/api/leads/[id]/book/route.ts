@@ -1,9 +1,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { validateBookingSlot, toTashkentDate } from "@/lib/booking-validation";
+import { hasValidPin } from "@/lib/pin";
 import { z } from "zod";
-
-const RECEPTIONIST_PIN = process.env.RECEPTIONIST_PIN || "8868";
 
 const BookSchema = z.object({
   doctorId: z.string().min(1),
@@ -18,9 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // Allow: receptionist terminal (PIN) OR admin/receptionist session
-  const pin = request.headers.get("x-terminal-pin");
-  const viaPin = pin === RECEPTIONIST_PIN;
-  if (!viaPin) {
+  if (!hasValidPin(request)) {
     const session = await auth();
     if (!session?.user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -9,7 +9,12 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const days = Number(url.searchParams.get("period")) || 30;
+  const periodRaw = Number(url.searchParams.get("period"));
+  // Clamp to a sensible range — prevents accidental/malicious huge windows that
+  // would scan the entire appointments table.
+  const days = Number.isFinite(periodRaw) && periodRaw > 0
+    ? Math.min(Math.floor(periodRaw), 365)
+    : 30;
   const filterDoctorId = url.searchParams.get("doctorId");
 
   const since = new Date();

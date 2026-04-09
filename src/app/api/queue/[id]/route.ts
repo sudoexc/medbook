@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth";
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
-
-const RECEPTIONIST_PIN = process.env.RECEPTIONIST_PIN || "8868";
+import { hasValidPin } from "@/lib/pin";
 import { prisma } from "@/lib/prisma";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { z } from "zod";
@@ -46,8 +45,7 @@ export async function PATCH(
 
   // Ownership check: doctors can only modify their own appointments.
   // Admin/receptionist (PIN or session) can modify any.
-  const pin = request.headers.get("x-terminal-pin");
-  if (pin !== RECEPTIONIST_PIN) {
+  if (!hasValidPin(request)) {
     const session = await auth();
     if (session?.user?.role === "DOCTOR" && session.user.doctorId !== appointment.doctorId) {
       return Response.json({ error: "Forbidden" }, { status: 403 });

@@ -1,5 +1,20 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const ReviewCreateSchema = z.object({
+  authorName: z.string().min(1).max(120),
+  rating: z.number().int().min(1).max(5),
+  text: z.string().min(1).max(2000),
+  source: z.string().max(50).optional(),
+  sourceUrl: z.string().url().max(500).optional().nullable(),
+  publishedAt: z.string().datetime().optional(),
+  visible: z.boolean().optional(),
+});
+
+const ReviewUpdateSchema = ReviewCreateSchema.partial().extend({
+  id: z.string().min(1),
+});
 
 // GET /api/reviews — public: visible reviews; admin: all reviews
 export async function GET(request: Request) {
@@ -30,19 +45,30 @@ export async function POST(request: Request) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
-  const review = await prisma.review.create({
-    data: {
-      authorName: body.authorName,
-      rating: body.rating,
-      text: body.text,
-      source: body.source || "manual",
-      sourceUrl: body.sourceUrl || null,
-      publishedAt: body.publishedAt ? new Date(body.publishedAt) : new Date(),
-      visible: body.visible ?? true,
-    },
-  });
-  return Response.json(review);
+  const body = await request.json().catch(() => null);
+  const parsed = ReviewCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
+  }
+  const d = parsed.data;
+
+  try {
+    const review = await prisma.review.create({
+      data: {
+        authorName: d.authorName,
+        rating: d.rating,
+        text: d.text,
+        source: d.source || "manual",
+        sourceUrl: d.sourceUrl || null,
+        publishedAt: d.publishedAt ? new Date(d.publishedAt) : new Date(),
+        visible: d.visible ?? true,
+      },
+    });
+    return Response.json(review, { status: 201 });
+  } catch (err) {
+    console.error("[reviews] create failed", err);
+    return Response.json({ error: "Failed to create review" }, { status: 500 });
+  }
 }
 
 // PATCH /api/reviews — admin: update review
@@ -52,13 +78,26 @@ export async function PATCH(request: Request) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json();
-  const { id, ...data } = body;
+  const body = await request.json().catch(() => null);
+  const parsed = ReviewUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
+  }
+  const { id, publishedAt, ...rest } = parsed.data;
 
-  if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
-
-  const review = await prisma.review.update({ where: { id }, data });
-  return Response.json(review);
+  try {
+    const review = await prisma.review.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(publishedAt ? { publishedAt: new Date(publishedAt) } : {}),
+      },
+    });
+    return Response.json(review);
+  } catch (err) {
+    console.error("[reviews] update failed", err);
+    return Response.json({ error: "Failed to update review" }, { status: 500 });
+  }
 }
 
 // DELETE /api/reviews — admin: delete review

@@ -35,7 +35,9 @@ export async function GET(request: Request) {
       date: { gte: dayStart, lt: dayEnd },
       queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
     },
-    include: { patient: true },
+    include: {
+      patient: { select: { id: true, fullName: true, phone: true, passport: true } },
+    },
     orderBy: { queueOrder: "asc" },
   });
 
@@ -46,7 +48,9 @@ export async function GET(request: Request) {
       date: { gte: dayStart, lt: dayEnd },
       queueStatus: "COMPLETED",
     },
-    include: { patient: true },
+    include: {
+      patient: { select: { id: true, fullName: true, phone: true, passport: true } },
+    },
     orderBy: { completedAt: "desc" },
   });
 
@@ -94,7 +98,9 @@ export async function POST(request: Request) {
       queueOrder: (last?.queueOrder ?? 0) + 1,
       queueStatus: "WAITING",
     },
-    include: { patient: true },
+    include: {
+      patient: { select: { id: true, fullName: true, phone: true, passport: true } },
+    },
   });
 
   return Response.json(appointment, { status: 201 });

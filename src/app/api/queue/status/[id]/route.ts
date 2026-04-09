@@ -9,54 +9,70 @@ export async function GET(
 
   const appointment = await prisma.appointment.findUnique({
     where: { id },
-    include: { patient: true, doctor: true },
+    select: {
+      id: true,
+      doctorId: true,
+      service: true,
+      queueStatus: true,
+      queueOrder: true,
+      patient: { select: { fullName: true } },
+      doctor: { select: { id: true, nameRu: true, cabinet: true } },
+    },
   });
 
   if (!appointment) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Get today's queue for this doctor to calculate position
+  // Get today's queue for this doctor to calculate position & total
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const waiting = await prisma.appointment.findMany({
-    where: {
-      doctorId: appointment.doctorId,
-      date: { gte: today, lt: tomorrow },
-      queueStatus: "WAITING",
-    },
-    orderBy: { queueOrder: "asc" },
-  });
+  const [totalWaiting, ahead, completedDurations, hasCurrentPatient] = await Promise.all([
+    prisma.appointment.count({
+      where: {
+        doctorId: appointment.doctorId,
+        date: { gte: today, lt: tomorrow },
+        queueStatus: "WAITING",
+      },
+    }),
+    appointment.queueStatus === "WAITING" && appointment.queueOrder != null
+      ? prisma.appointment.count({
+          where: {
+            doctorId: appointment.doctorId,
+            date: { gte: today, lt: tomorrow },
+            queueStatus: "WAITING",
+            queueOrder: { lt: appointment.queueOrder },
+          },
+        })
+      : Promise.resolve(0),
+    prisma.appointment.findMany({
+      where: {
+        doctorId: appointment.doctorId,
+        date: { gte: today, lt: tomorrow },
+        queueStatus: "COMPLETED",
+        durationMin: { not: null },
+      },
+      select: { durationMin: true },
+    }),
+    prisma.appointment.count({
+      where: {
+        doctorId: appointment.doctorId,
+        date: { gte: today, lt: tomorrow },
+        queueStatus: "IN_PROGRESS",
+      },
+    }),
+  ]);
 
-  // Calculate average duration for ETA
-  const completedToday = await prisma.appointment.findMany({
-    where: {
-      doctorId: appointment.doctorId,
-      date: { gte: today, lt: tomorrow },
-      queueStatus: "COMPLETED",
-      durationMin: { not: null },
-    },
-    select: { durationMin: true },
-  });
-
-  const avgDuration = completedToday.length > 0
-    ? Math.round(completedToday.reduce((s, c) => s + c.durationMin!, 0) / completedToday.length)
+  const avgDuration = completedDurations.length > 0
+    ? Math.round(completedDurations.reduce((s, c) => s + (c.durationMin ?? 0), 0) / completedDurations.length)
     : 20;
 
   const position = appointment.queueStatus === "WAITING"
-    ? waiting.findIndex((w) => w.id === id) + 1
+    ? ahead + 1
     : appointment.queueStatus === "IN_PROGRESS" ? 0 : -1;
-
-  const hasCurrentPatient = await prisma.appointment.count({
-    where: {
-      doctorId: appointment.doctorId,
-      date: { gte: today, lt: tomorrow },
-      queueStatus: "IN_PROGRESS",
-    },
-  });
 
   const etaMinutes = position > 0
     ? (hasCurrentPatient ? avgDuration : 0) + (position - 1) * avgDuration
@@ -71,7 +87,7 @@ export async function GET(
     service: appointment.service,
     status: appointment.queueStatus,
     position: position > 0 ? position : 0,
-    totalWaiting: waiting.length,
+    totalWaiting,
     etaMinutes,
     ticketNumber,
   });

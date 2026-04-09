@@ -23,8 +23,24 @@ function normalizePhone(phone: string): string {
   return phone.replace(/[^\d+]/g, "").replace(/^(\d)/, "+$1");
 }
 
+// Telegram delivers `X-Telegram-Bot-Api-Secret-Token` on every update if you
+// set a `secret_token` when calling setWebhook. We require it in production.
+const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+
 export async function POST(request: Request) {
-  const update: TelegramUpdate = await request.json();
+  if (WEBHOOK_SECRET) {
+    const provided = request.headers.get("x-telegram-bot-api-secret-token");
+    if (provided !== WEBHOOK_SECRET) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
+  let update: TelegramUpdate;
+  try {
+    update = await request.json();
+  } catch {
+    return Response.json({ ok: true });
+  }
   const msg = update.message;
   if (!msg) return Response.json({ ok: true });
 

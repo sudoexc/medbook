@@ -44,10 +44,10 @@ export async function GET(request: Request) {
     };
   }
 
-  // Doctor filter
-  if (doctorId || !isAdmin) {
-    const dId = doctorId || session.user.doctorId;
-    where.appointment = { ...((where.appointment as object) || {}), doctorId: dId };
+  // Doctor filter: non-admins locked to their own doctorId regardless of query
+  const effectiveDoctorId = isAdmin ? doctorId : session.user.doctorId;
+  if (effectiveDoctorId) {
+    where.appointment = { ...((where.appointment as object) || {}), doctorId: effectiveDoctorId };
   }
 
   // Status filter

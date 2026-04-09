@@ -11,8 +11,12 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const doctorId = url.searchParams.get("doctorId") || session.user.doctorId;
+  const requestedDoctorId = url.searchParams.get("doctorId");
   const dateStr = url.searchParams.get("date");
+
+  // Non-admins can only see their own queue, regardless of ?doctorId=
+  const isAdmin = session.user.role === "ADMIN" || session.user.role === "RECEPTIONIST";
+  const doctorId = isAdmin ? (requestedDoctorId || session.user.doctorId) : session.user.doctorId;
 
   if (!doctorId) {
     return Response.json({ error: "doctorId required" }, { status: 400 });

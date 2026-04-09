@@ -23,6 +23,14 @@ export async function PATCH(
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }
 
+  // Ownership check — doctors can only modify their own appointments
+  if (session.user.role === "DOCTOR") {
+    const existing = await prisma.appointment.findUnique({ where: { id }, select: { doctorId: true } });
+    if (!existing || existing.doctorId !== session.user.doctorId) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   const appointment = await prisma.appointment.update({
     where: { id },
     data: { queueStatus: parsed.data.status },

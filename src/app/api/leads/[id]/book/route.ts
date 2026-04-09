@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { validateBookingSlot, toTashkentDate } from "@/lib/booking-validation";
 import { z } from "zod";
 
 const RECEPTIONIST_PIN = process.env.RECEPTIONIST_PIN || "8868";
@@ -7,7 +8,8 @@ const RECEPTIONIST_PIN = process.env.RECEPTIONIST_PIN || "8868";
 const BookSchema = z.object({
   doctorId: z.string().min(1),
   service: z.string().optional(),
-  date: z.string().min(10), // ISO datetime, e.g. "2026-04-15T09:00:00"
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "time must be HH:mm"),
 });
 
 // POST /api/leads/[id]/book — schedule an appointment from a lead and mark it CONVERTED
@@ -40,10 +42,22 @@ export async function POST(
     return Response.json({ error: "Lead not found" }, { status: 404 });
   }
 
-  const { doctorId, service, date } = parsed.data;
-  const appointmentDate = new Date(date);
-  if (isNaN(appointmentDate.getTime())) {
-    return Response.json({ error: "Invalid date" }, { status: 400 });
+  const { doctorId, service, date, time } = parsed.data;
+  const appointmentDate = toTashkentDate(date, time);
+
+  // Existing appointment (if re-booking) should be excluded from double-booking check
+  const existingForLead = await prisma.appointment.findUnique({ where: { leadId: id }, select: { id: true } });
+
+  const validation = await validateBookingSlot({
+    doctorId,
+    date: appointmentDate,
+    excludeAppointmentId: existingForLead?.id,
+  });
+  if (!validation.ok) {
+    return Response.json(
+      { error: validation.message, code: validation.code, messageUz: validation.messageUz },
+      { status: 400 }
+    );
   }
 
   // Find or create patient by phone

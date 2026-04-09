@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Check, Phone, X, ChevronDown, AlertCircle } from "lucide-react";
 import type { DoctorView } from "@/lib/doctors";
 import type { Locale } from "@/types";
+import { tashkentToday, isSlotPast } from "@/lib/tashkent-time";
 
 interface Lead {
   id: string;
@@ -209,10 +210,10 @@ function BookingDialog({
   const isRu = locale === "ru";
   const [doctorId, setDoctorId] = useState(lead.doctorId || "");
   const [date, setDate] = useState(() => {
-    if (lead.date && /^\d{4}-\d{2}-\d{2}$/.test(lead.date)) return lead.date;
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
+    if (lead.date && /^\d{4}-\d{2}-\d{2}$/.test(lead.date) && lead.date >= tashkentToday()) {
+      return lead.date;
+    }
+    return tashkentToday();
   });
   const [time, setTime] = useState("09:00");
   const [service, setService] = useState(lead.service || "");
@@ -237,7 +238,8 @@ function BookingDialog({
         body: JSON.stringify({
           doctorId,
           service: service || undefined,
-          date: `${date}T${time}:00`,
+          date,
+          time,
         }),
       });
       if (!res.ok) {
@@ -251,11 +253,17 @@ function BookingDialog({
     }
   }
 
-  const times: string[] = [];
+  const allTimes: string[] = [];
   for (let h = 8; h <= 16; h++) {
-    times.push(`${String(h).padStart(2, "0")}:00`);
-    times.push(`${String(h).padStart(2, "0")}:30`);
+    allTimes.push(`${String(h).padStart(2, "0")}:00`);
+    allTimes.push(`${String(h).padStart(2, "0")}:30`);
   }
+  const times = allTimes.filter((t) => !isSlotPast(date, t));
+  useEffect(() => {
+    if (times.length > 0 && !times.includes(time)) {
+      setTime(times[0]);
+    }
+  }, [date, time, times]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -296,7 +304,7 @@ function BookingDialog({
                 required
                 type="date"
                 value={date}
-                min={new Date().toISOString().split("T")[0]}
+                min={tashkentToday()}
                 onChange={(e) => setDate(e.target.value)}
                 className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 text-sm"
               />

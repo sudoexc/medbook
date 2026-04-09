@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Plus, X, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDoctors } from "@/components/providers/doctors-provider";
+import { tashkentToday, tashkentNowParts, isSlotPast } from "@/lib/tashkent-time";
 import type { Locale } from "@/types";
 
 interface Patient {
@@ -87,7 +88,7 @@ export default function SchedulePage() {
   const { data: session } = useSession();
   const doctors = useDoctors();
 
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => tashkentToday());
   const [viewMode, setViewMode] = useState<"day" | "week">("day");
   const [appointments, setAppointments] = useState<ScheduleItem[]>([]);
   const [addDialog, setAddDialog] = useState<{ doctorId: string; time: string; date?: string } | null>(null);
@@ -158,6 +159,8 @@ export default function SchedulePage() {
     const a = availability[doctorId];
     if (!a) return true; // no schedule data = assume available
     const targetDate = forDate || date;
+    // Past slot (Tashkent wall clock)
+    if (isSlotPast(targetDate, time)) return false;
     const d = new Date(targetDate + "T12:00:00");
     const dow = d.getDay();
     // Check day off
@@ -190,10 +193,11 @@ export default function SchedulePage() {
     });
   }
 
-  // Current time position
-  const now = new Date();
-  const isToday = date === now.toISOString().split("T")[0];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  // Current time position (Tashkent wall clock)
+  const tNow = tashkentNowParts();
+  const todayStr = tNow.date;
+  const isToday = date === todayStr;
+  const currentMinutes = tNow.minutes;
   const gridStart = 8 * 60; // 08:00
   const gridEnd = 17 * 60; // 17:00
   const timeLinePercent = isToday && currentMinutes >= gridStart && currentMinutes <= gridEnd
@@ -232,7 +236,7 @@ export default function SchedulePage() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <button
-            onClick={() => setDate(new Date().toISOString().split("T")[0])}
+            onClick={() => setDate(tashkentToday())}
             className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-secondary transition-colors"
           >
             {labels.today}
@@ -329,7 +333,7 @@ export default function SchedulePage() {
                       const wdObj = new Date(wd + "T12:00:00");
                       const dayName = wdObj.toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { weekday: "short" });
                       const dayNum = wdObj.getDate();
-                      const isWdToday = wd === now.toISOString().split("T")[0];
+                      const isWdToday = wd === todayStr;
                       return (
                         <div
                           key={wd}
@@ -350,7 +354,7 @@ export default function SchedulePage() {
                       </div>
                       {weekDates.map((wd) => {
                         const appt = getAppointmentAt(doc.id, time, wd);
-                        const isWdToday = wd === now.toISOString().split("T")[0];
+                        const isWdToday = wd === todayStr;
                         const available = isSlotAvailable(doc.id, time, wd);
                         return (
                           <div
@@ -446,12 +450,17 @@ function AddScheduleDialog({
     const patient = await patientRes.json();
 
     // Create scheduled appointment
-    const dateTime = `${date}T${time}:00`;
-    await fetch("/api/schedule", {
+    const res = await fetch("/api/schedule", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patientId: patient.id, doctorId, service: service || undefined, date: dateTime }),
+      body: JSON.stringify({ patientId: patient.id, doctorId, service: service || undefined, date, time }),
     });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Ошибка записи");
+      return;
+    }
 
     onClose();
   }

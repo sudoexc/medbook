@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
+import { validateBookingSlot, toTashkentDate, tashkentNow } from "@/lib/booking-validation";
+import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const BookingSchema = z.object({
@@ -7,7 +9,8 @@ const BookingSchema = z.object({
   phone: z.string().min(9).max(20),
   doctorId: z.string(),
   service: z.string().optional(),
-  date: z.string(), // ISO datetime
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "time must be HH:mm"),
 });
 
 // GET /api/booking/available?doctorId=&date=YYYY-MM-DD
@@ -74,16 +77,15 @@ export async function GET(request: Request) {
     })
   );
 
-  // Filter out past slots if date is today
-  const now = new Date();
-  const isToday = dateStr === now.toISOString().split("T")[0];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  // Filter out past slots if date is today (Tashkent wall clock)
+  const tNow = tashkentNow();
+  const isToday = dateStr === tNow.date;
 
   const availableSlots = allSlots.filter((slot) => {
     if (takenSlots.has(slot)) return false;
     if (isToday) {
       const [sh, sm] = slot.split(":").map(Number);
-      if (sh * 60 + sm <= currentMinutes) return false;
+      if (sh * 60 + sm <= tNow.minutes) return false;
     }
     return true;
   });
@@ -93,13 +95,28 @@ export async function GET(request: Request) {
 
 // POST /api/booking — create booking from landing page
 export async function POST(request: Request) {
+  // Rate limit: 10 submissions per minute per IP
+  const ip = request.headers.get("x-forwarded-for") || "unknown";
+  if (!rateLimit(ip)) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const body = await request.json();
   const parsed = BookingSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
 
-  const { name, phone, doctorId, service, date } = parsed.data;
+  const { name, phone, doctorId, service, date, time } = parsed.data;
+  const appointmentDate = toTashkentDate(date, time);
+
+  const validation = await validateBookingSlot({ doctorId, date: appointmentDate });
+  if (!validation.ok) {
+    return Response.json(
+      { error: validation.message, code: validation.code, messageUz: validation.messageUz },
+      { status: 400 }
+    );
+  }
 
   // Upsert patient
   let patient = await prisma.patient.findUnique({ where: { phone } });
@@ -115,7 +132,7 @@ export async function POST(request: Request) {
       patientId: patient.id,
       doctorId,
       service,
-      date: new Date(date),
+      date: appointmentDate,
       source: "ONLINE",
       queueStatus: "WAITING",
     },
@@ -124,12 +141,19 @@ export async function POST(request: Request) {
 
   // Notify via Telegram if patient has chat linked
   if (patient.telegramChatId) {
-    const dateObj = new Date(date);
-    const dateStr = dateObj.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
-    const timeStr = dateObj.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const dateStrRu = appointmentDate.toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "long",
+      timeZone: "Asia/Tashkent",
+    });
+    const timeStrRu = appointmentDate.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Tashkent",
+    });
     sendMessage(
       patient.telegramChatId,
-      `✅ <b>Запись подтверждена!</b>\n\n📅 ${dateStr} в ${timeStr}\n👨‍⚕️ ${escapeHtml(appointment.doctor.nameRu)}\nКабинет: ${appointment.doctor.cabinet}\n${service ? `Услуга: ${escapeHtml(service)}` : ""}`
+      `✅ <b>Запись подтверждена!</b>\n\n📅 ${dateStrRu} в ${timeStrRu}\n👨‍⚕️ ${escapeHtml(appointment.doctor.nameRu)}\nКабинет: ${appointment.doctor.cabinet}\n${service ? `Услуга: ${escapeHtml(service)}` : ""}`
     ).catch(() => {});
   }
 
@@ -140,7 +164,7 @@ export async function POST(request: Request) {
       phone,
       doctorId,
       service,
-      date: new Date(date).toISOString(),
+      date: appointmentDate.toISOString(),
       status: "CONVERTED",
     },
   });

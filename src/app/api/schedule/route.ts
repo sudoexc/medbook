@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { validateBookingSlot, toTashkentDate } from "@/lib/booking-validation";
 import { z } from "zod";
 
 // GET /api/schedule?date=2026-04-07&doctorId=optional
@@ -38,7 +39,8 @@ const CreateSchema = z.object({
   patientId: z.string(),
   doctorId: z.string(),
   service: z.string().optional(),
-  date: z.string(), // ISO datetime with specific time
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "time must be HH:mm"),
 });
 
 // POST /api/schedule — create appointment at specific time
@@ -54,14 +56,28 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
 
-  const { patientId, doctorId, service, date } = parsed.data;
+  const { patientId, doctorId, service, date, time } = parsed.data;
+
+  // Doctors may only create appointments on their own schedule
+  if (session.user.role === "DOCTOR" && session.user.doctorId !== doctorId) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const appointmentDate = toTashkentDate(date, time);
+  const validation = await validateBookingSlot({ doctorId, date: appointmentDate });
+  if (!validation.ok) {
+    return Response.json(
+      { error: validation.message, code: validation.code, messageUz: validation.messageUz },
+      { status: 400 }
+    );
+  }
 
   const appointment = await prisma.appointment.create({
     data: {
       patientId,
       doctorId,
       service,
-      date: new Date(date),
+      date: appointmentDate,
       source: "WALKIN",
       queueStatus: "WAITING",
     },

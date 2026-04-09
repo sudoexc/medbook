@@ -6,6 +6,7 @@ import {
   Users, Bell, QrCode, Printer, Volume2, X, CheckCircle, AlertCircle,
   Inbox, Calendar,
 } from "lucide-react";
+import { tashkentToday, isSlotPast } from "@/lib/tashkent-time";
 
 interface Patient {
   id: string;
@@ -188,14 +189,15 @@ export default function ReceptionistPage() {
     const res = await fetch(`/api/leads/${leadId}/book`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...PIN_HEADER },
-      body: JSON.stringify({ doctorId, service: service || undefined, date: `${date}T${time}:00` }),
+      body: JSON.stringify({ doctorId, service: service || undefined, date, time }),
     });
     if (res.ok) {
       showToast("Пациент записан");
       fetchLeads();
       fetchQueues();
     } else {
-      showToast("Ошибка записи", "error");
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || "Ошибка записи", "error");
     }
   }
 
@@ -795,21 +797,31 @@ function LeadsPanel({
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [form, setForm] = useState({ doctorId: "", service: "", date: "", time: "09:00" });
 
-  const times: string[] = [];
+  const allTimes: string[] = [];
   for (let h = 8; h <= 16; h++) {
-    times.push(`${String(h).padStart(2, "0")}:00`);
-    times.push(`${String(h).padStart(2, "0")}:30`);
+    allTimes.push(`${String(h).padStart(2, "0")}:00`);
+    allTimes.push(`${String(h).padStart(2, "0")}:30`);
   }
+  const times = allTimes.filter((t) => !isSlotPast(form.date || tashkentToday(), t));
+
+  useEffect(() => {
+    if (bookingId && times.length > 0 && !times.includes(form.time)) {
+      setForm((f) => ({ ...f, time: times[0] }));
+    }
+  }, [form.date, form.time, bookingId, times]);
 
   function startBooking(lead: LeadItem) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const today = tashkentToday();
+    const requested = lead.date && /^\d{4}-\d{2}-\d{2}$/.test(lead.date) && lead.date >= today
+      ? lead.date
+      : today;
+    const firstSlot = allTimes.find((t) => !isSlotPast(requested, t)) || "09:00";
     setBookingId(lead.id);
     setForm({
       doctorId: lead.doctorId || "",
       service: lead.service || "",
-      date: (lead.date && /^\d{4}-\d{2}-\d{2}$/.test(lead.date)) ? lead.date : tomorrow.toISOString().split("T")[0],
-      time: "09:00",
+      date: requested,
+      time: firstSlot,
     });
   }
 
@@ -911,7 +923,7 @@ function LeadsPanel({
                             <input
                               type="date"
                               value={form.date}
-                              min={new Date().toISOString().split("T")[0]}
+                              min={tashkentToday()}
                               onChange={(e) => setForm({ ...form, date: e.target.value })}
                               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white"
                             />

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { z } from "zod";
 
 // GET /api/queue?doctorId=&date=
@@ -22,12 +23,10 @@ export async function GET(request: Request) {
     return Response.json({ error: "doctorId required" }, { status: 400 });
   }
 
-  // Date range: today in Tashkent (UTC+5)
-  const now = dateStr ? new Date(dateStr) : new Date();
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  // Date range: that calendar day in Tashkent (UTC+5).
+  // setHours(0,0,0,0) on Vercel uses UTC midnight, which skews ±5h.
+  const at = dateStr ? new Date(dateStr) : new Date();
+  const { dayStart, dayEnd } = tashkentDayBounds(at);
 
   // Run both queries in parallel — they're independent.
   const [appointments, completed] = await Promise.all([
@@ -80,16 +79,13 @@ export async function POST(request: Request) {
 
   const { patientId, doctorId, service } = parsed.data;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { dayStart, dayEnd } = tashkentDayBounds();
 
   // Get next queue position (ignore not-yet-checked-in online bookings)
   const last = await prisma.appointment.findFirst({
     where: {
       doctorId,
-      date: { gte: today, lt: tomorrow },
+      date: { gte: dayStart, lt: dayEnd },
       queueOrder: { not: null },
     },
     orderBy: { queueOrder: "desc" },

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 
 // GET /api/queue/status/:id — public endpoint for patient queue status (QR code page)
 export async function GET(
@@ -25,10 +26,7 @@ export async function GET(
   }
 
   // Get today's queue for this doctor to calculate position & total
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { dayStart: today, dayEnd: tomorrow } = tashkentDayBounds();
 
   const [totalWaiting, ahead, completedDurations, hasCurrentPatient] = await Promise.all([
     prisma.appointment.count({

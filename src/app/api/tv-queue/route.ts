@@ -1,11 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 
 // GET /api/tv-queue — public, no auth needed. Returns queue data for TV display.
 export async function GET() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { dayStart: today, dayEnd: tomorrow } = tashkentDayBounds();
 
   // All three queries are independent — run in parallel.
   const [doctors, appointments, completedToday] = await Promise.all([

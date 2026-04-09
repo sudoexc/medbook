@@ -23,6 +23,20 @@ export function tashkentNow() {
 }
 
 /**
+ * Return UTC-backed Date bounds for "today" in Tashkent (or any given moment).
+ * `dayStart` is midnight Tashkent and `dayEnd` is the next midnight Tashkent.
+ *
+ * Use this instead of `new Date(); d.setHours(0,0,0,0)` — that pattern picks
+ * server-local midnight, which on Vercel is UTC and skews ±5h vs. Tashkent.
+ */
+export function tashkentDayBounds(at: Date = new Date()) {
+  const comp = tashkentComponents(at);
+  const dayStart = new Date(`${comp.date}T00:00:00+05:00`);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  return { dayStart, dayEnd };
+}
+
+/**
  * Convert any Date to Tashkent wall clock components.
  */
 export function tashkentComponents(date: Date) {

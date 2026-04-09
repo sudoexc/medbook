@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { phoneSearchVariants } from "@/lib/phone";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { z } from "zod";
 
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone
@@ -21,16 +22,15 @@ export async function GET(request: Request) {
     return Response.json({ patient: null, appointments: [] });
   }
 
-  // Find today's pre-booked appointments that are still WAITING
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Find today's pre-booked appointments that are still WAITING.
+  // Use Tashkent day bounds — server-local midnight is UTC on Vercel and
+  // skews ±5h, hiding early-morning or late-evening Tashkent appointments.
+  const { dayStart, dayEnd } = tashkentDayBounds();
 
   const appointments = await prisma.appointment.findMany({
     where: {
       patientId: patient.id,
-      date: { gte: today, lt: tomorrow },
+      date: { gte: dayStart, lt: dayEnd },
       queueStatus: "WAITING",
       source: "ONLINE", // only pre-booked
     },
@@ -73,10 +73,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { dayStart, dayEnd } = tashkentDayBounds();
 
   // Transaction: re-read + assign next queueOrder atomically so two concurrent
   // check-ins can't claim the same number.
@@ -97,7 +94,7 @@ export async function POST(request: Request) {
     if (appt.queueStatus !== "WAITING") {
       return { error: "Already processed", status: 409 as const };
     }
-    if (appt.date < today || appt.date >= tomorrow) {
+    if (appt.date < dayStart || appt.date >= dayEnd) {
       return { error: "Not scheduled for today", status: 400 as const };
     }
 
@@ -109,7 +106,7 @@ export async function POST(request: Request) {
     const last = await tx.appointment.findFirst({
       where: {
         doctorId: appt.doctorId,
-        date: { gte: today, lt: tomorrow },
+        date: { gte: dayStart, lt: dayEnd },
         queueOrder: { not: null },
       },
       orderBy: { queueOrder: "desc" },

@@ -16,14 +16,13 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Allow: receptionist terminal (PIN) OR admin/receptionist session
+  // Allow: receptionist terminal (PIN) OR any authenticated dashboard user.
+  // Page-level UI (`canBook`) already gates ADMIN/RECEPTIONIST visibility;
+  // DOCTORs can convert their own leads via direct API if needed.
   if (!hasValidPin(request)) {
     const session = await auth();
     if (!session?.user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (session.user.role !== "ADMIN" && session.user.role !== "RECEPTIONIST") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
   }
 

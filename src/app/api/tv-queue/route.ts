@@ -18,6 +18,8 @@ export async function GET() {
       where: {
         date: { gte: today, lt: tomorrow },
         queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+        // Hide online bookings that haven't checked in at the kiosk yet.
+        queueOrder: { not: null },
       },
       select: {
         id: true,

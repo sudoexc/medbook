@@ -104,7 +104,7 @@ interface PreBooked {
   cabinet: number;
   service: string | null;
   time: string;
-  ticketNumber: string;
+  ticketNumber: string | null;
 }
 
 type Step = "welcome" | "phone" | "checkin" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
@@ -224,11 +224,29 @@ export default function KioskPage() {
   }
 
   async function handleCheckin(appointment: PreBooked) {
-    setTicketId(appointment.id);
-    setTicketNumber(appointment.ticketNumber);
-    setSelectedDoctor({ id: "", nameRu: appointment.doctorName, cabinet: appointment.cabinet, waiting: 0, services: [] });
-    setStep("done");
-    setTimeout(() => window.open(`/ticket/${appointment.id}`, "_blank"), 500);
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/kiosk/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
+      if (!res.ok) {
+        setError(L.error);
+        return;
+      }
+      const data: { id: string; ticketNumber: string; doctorName: string; cabinet: number } = await res.json();
+      setTicketId(data.id);
+      setTicketNumber(data.ticketNumber);
+      setSelectedDoctor({ id: "", nameRu: data.doctorName, cabinet: data.cabinet, waiting: 0, services: [] });
+      setStep("done");
+      setTimeout(() => window.open(`/ticket/${data.id}`, "_blank"), 500);
+    } catch {
+      setError(L.error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleSelectDoctor(doc: Doctor) {
@@ -457,7 +475,7 @@ export default function KioskPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold font-mono text-green-300">{appt.ticketNumber}</p>
+                      <p className="text-2xl font-bold font-mono text-green-300">{appt.ticketNumber ?? "—"}</p>
                       <p className="text-xs text-green-400">{L.getTicket}</p>
                     </div>
                   </button>

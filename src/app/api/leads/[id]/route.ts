@@ -39,17 +39,9 @@ export async function PATCH(
         create: { fullName: lead.name, phone: lead.phone },
       });
 
-      // Get next queue position for this doctor today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const lastInQueue = await prisma.appointment.findFirst({
-        where: { doctorId: lead.doctorId, date: { gte: today, lt: tomorrow } },
-        orderBy: { queueOrder: "desc" },
-      });
-
+      // queueOrder is intentionally left null — it gets assigned on arrival
+      // at the kiosk (see /api/kiosk/checkin POST). Walk-ins reserve the
+      // order at creation time; online bookings claim it only after check-in.
       await prisma.appointment.create({
         data: {
           patientId: patient.id,
@@ -57,7 +49,7 @@ export async function PATCH(
           service: lead.service,
           date: lead.date ? new Date(lead.date) : new Date(),
           source: "ONLINE",
-          queueOrder: (lastInQueue?.queueOrder ?? 0) + 1,
+          queueStatus: "WAITING",
           leadId: id,
         },
       });

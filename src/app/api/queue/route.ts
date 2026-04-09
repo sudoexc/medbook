@@ -36,6 +36,8 @@ export async function GET(request: Request) {
         doctorId,
         date: { gte: dayStart, lt: dayEnd },
         queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+        // Hide online bookings that haven't checked in at the kiosk yet.
+        queueOrder: { not: null },
       },
       include: {
         patient: { select: { id: true, fullName: true, phone: true, passport: true } },
@@ -83,10 +85,15 @@ export async function POST(request: Request) {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  // Get next queue position
+  // Get next queue position (ignore not-yet-checked-in online bookings)
   const last = await prisma.appointment.findFirst({
-    where: { doctorId, date: { gte: today, lt: tomorrow } },
+    where: {
+      doctorId,
+      date: { gte: today, lt: tomorrow },
+      queueOrder: { not: null },
+    },
     orderBy: { queueOrder: "desc" },
+    select: { queueOrder: true },
   });
 
   const appointment = await prisma.appointment.create({

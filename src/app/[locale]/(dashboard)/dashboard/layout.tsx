@@ -13,7 +13,7 @@ const allNavItems = [
   { path: "dashboard/schedule", icon: Grid3X3, key: "schedule" as const, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
   { path: "dashboard/queue", icon: ListOrdered, key: "queue" as const, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
   { path: "dashboard/patients", icon: UserSearch, key: "patients" as const, roles: ["ADMIN", "DOCTOR", "RECEPTIONIST"] },
-  { path: "dashboard/leads", icon: Users, key: "leads" as const, roles: ["ADMIN"] },
+  { path: "dashboard/leads", icon: Users, key: "leads" as const, roles: ["ADMIN", "RECEPTIONIST"] },
   { path: "dashboard/appointments", icon: Calendar, key: "appointments" as const, roles: ["ADMIN", "DOCTOR"] },
   { path: "dashboard/analytics", icon: BarChart3, key: "analytics" as const, roles: ["ADMIN"] },
   { path: "dashboard/payments", icon: Banknote, key: "payments" as const, roles: ["ADMIN", "RECEPTIONIST"] },

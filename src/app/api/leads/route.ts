@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { sendNewLeadEmail } from "@/lib/email";
+import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { z } from "zod";
 
 const LeadSchema = z.object({
@@ -18,7 +19,27 @@ export async function GET(request: Request) {
     const count = await prisma.lead.count({ where: { status: "NEW" } });
     return Response.json({ count });
   }
-  return Response.json({ error: "Bad request" }, { status: 400 });
+
+  // List leads — requires auth or terminal PIN
+  if (!(await isAuthorizedOrPin(request))) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const status = url.searchParams.get("status");
+  const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
+  const validStatuses = ["NEW", "CONTACTED", "CONVERTED", "CANCELLED"] as const;
+  type LeadStatus = typeof validStatuses[number];
+  const statusFilter = validStatuses.includes(status as LeadStatus)
+    ? { status: status as LeadStatus }
+    : {};
+
+  const leads = await prisma.lead.findMany({
+    where: statusFilter,
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    take: limit,
+  });
+
+  return Response.json(leads);
 }
 
 export async function POST(request: Request) {

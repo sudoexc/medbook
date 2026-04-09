@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search, UserPlus, Play, SkipForward, Phone, Clock, MapPin,
   Users, Bell, QrCode, Printer, Volume2, X, CheckCircle, AlertCircle,
+  Inbox, Calendar,
 } from "lucide-react";
 
 interface Patient {
@@ -22,6 +23,17 @@ interface QueueItem {
   queueStatus: string;
   source: string;
   startedAt: string | null;
+}
+
+interface LeadItem {
+  id: string;
+  name: string;
+  phone: string;
+  doctorId: string | null;
+  service: string | null;
+  date: string | null;
+  status: string;
+  createdAt: string;
 }
 
 interface DoctorQueue {
@@ -120,6 +132,10 @@ export default function ReceptionistPage() {
   const [service, setService] = useState("");
   const [doctorServices, setDoctorServices] = useState<{ name: string; price: number }[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [newLeadsCount, setNewLeadsCount] = useState(0);
+  const [showLeadsPanel, setShowLeadsPanel] = useState(false);
+  const [leads, setLeads] = useState<LeadItem[]>([]);
+  const prevLeadsCountRef = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Fetch all queues
@@ -140,6 +156,57 @@ export default function ReceptionistPage() {
     const id = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Poll new leads + play sound on new arrivals
+  const fetchLeads = useCallback(async () => {
+    try {
+      const res = await fetch("/api/leads?status=NEW&limit=50", { headers: PIN_HEADER });
+      if (!res.ok) return;
+      const data: LeadItem[] = await res.json();
+      const count = data.length;
+
+      if (count > prevLeadsCountRef.current && prevLeadsCountRef.current > 0) {
+        // New lead arrived → play beep + toast
+        playLeadSound();
+        const latest = data[0];
+        showToast(`Новая заявка: ${latest.name}`, "success");
+      }
+      prevLeadsCountRef.current = count;
+      setNewLeadsCount(count);
+      setLeads(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    fetchLeads();
+    const id = setInterval(fetchLeads, 8000);
+    return () => clearInterval(id);
+  }, [unlocked, fetchLeads]);
+
+  async function handleBookLead(leadId: string, doctorId: string, service: string, date: string, time: string) {
+    const res = await fetch(`/api/leads/${leadId}/book`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PIN_HEADER },
+      body: JSON.stringify({ doctorId, service: service || undefined, date: `${date}T${time}:00` }),
+    });
+    if (res.ok) {
+      showToast("Пациент записан");
+      fetchLeads();
+      fetchQueues();
+    } else {
+      showToast("Ошибка записи", "error");
+    }
+  }
+
+  async function handleLeadStatus(leadId: string, status: string) {
+    await fetch(`/api/leads/${leadId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...PIN_HEADER },
+      body: JSON.stringify({ status, skipAppointment: true }),
+    });
+    fetchLeads();
+  }
 
   // Keyboard shortcut: F1 = focus search, F2 = add patient
   useEffect(() => {
@@ -181,6 +248,28 @@ export default function ReceptionistPage() {
   function showToast(msg: string, type: "success" | "error" = "success") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
+  }
+
+  function playLeadSound() {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      // Two-tone chime: C5 → E5
+      [523.25, 659.25].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const start = ctx.currentTime + i * 0.15;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.3, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
+        osc.start(start);
+        osc.stop(start + 0.4);
+      });
+    } catch {}
   }
 
   async function handleAddToQueue() {
@@ -345,6 +434,19 @@ export default function ReceptionistPage() {
           </div>
           <div className="h-6 w-px bg-gray-200" />
           <span className="text-lg font-mono font-bold text-gray-600 tabular-nums">{timeStr}</span>
+          <button
+            onClick={() => setShowLeadsPanel(true)}
+            className="relative flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            title="Заявки с сайта"
+          >
+            <Inbox className={`h-4 w-4 ${newLeadsCount > 0 ? "text-amber-600" : ""}`} />
+            Заявки
+            {newLeadsCount > 0 && (
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white animate-pulse">
+                {newLeadsCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setShowAddPanel(true)}
             className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
@@ -657,12 +759,207 @@ export default function ReceptionistPage() {
         </div>
       )}
 
+      {showLeadsPanel && (
+        <LeadsPanel
+          leads={leads}
+          doctors={doctors}
+          onClose={() => setShowLeadsPanel(false)}
+          onBook={handleBookLead}
+          onStatus={handleLeadStatus}
+        />
+      )}
+
       <style>{`
         @keyframes slide-in { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
         .animate-slide-in { animation: slide-in 0.3s ease-out; }
         .animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
       `}</style>
+    </div>
+  );
+}
+
+function LeadsPanel({
+  leads,
+  doctors,
+  onClose,
+  onBook,
+  onStatus,
+}: {
+  leads: LeadItem[];
+  doctors: DoctorQueue[];
+  onClose: () => void;
+  onBook: (leadId: string, doctorId: string, service: string, date: string, time: string) => void;
+  onStatus: (leadId: string, status: string) => void;
+}) {
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const [form, setForm] = useState({ doctorId: "", service: "", date: "", time: "09:00" });
+
+  const times: string[] = [];
+  for (let h = 8; h <= 16; h++) {
+    times.push(`${String(h).padStart(2, "0")}:00`);
+    times.push(`${String(h).padStart(2, "0")}:30`);
+  }
+
+  function startBooking(lead: LeadItem) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setBookingId(lead.id);
+    setForm({
+      doctorId: lead.doctorId || "",
+      service: lead.service || "",
+      date: (lead.date && /^\d{4}-\d{2}-\d{2}$/.test(lead.date)) ? lead.date : tomorrow.toISOString().split("T")[0],
+      time: "09:00",
+    });
+  }
+
+  function confirmBooking() {
+    if (!bookingId || !form.doctorId) return;
+    onBook(bookingId, form.doctorId, form.service, form.date, form.time);
+    setBookingId(null);
+  }
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-lg bg-white shadow-2xl flex flex-col animate-slide-in-right">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold">Заявки с сайта</h2>
+            <p className="text-xs text-gray-500">{leads.length} новых заявок</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {leads.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Inbox className="h-12 w-12 mb-3" />
+              <p className="text-sm">Нет новых заявок</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {leads.map((lead) => {
+                const doctor = doctors.find((d) => d.id === lead.doctorId);
+                const isBooking = bookingId === lead.id;
+                return (
+                  <div key={lead.id} className="px-6 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                          <p className="font-bold text-gray-900">{lead.name}</p>
+                        </div>
+                        <a href={`tel:${lead.phone}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline mt-1">
+                          <Phone className="h-3 w-3" />
+                          {lead.phone}
+                        </a>
+                        {doctor && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Врач: <span className="font-medium text-gray-700">{doctor.nameRu}</span>
+                          </p>
+                        )}
+                        {lead.service && (
+                          <p className="text-xs text-gray-500 mt-0.5">Услуга: {lead.service}</p>
+                        )}
+                        {lead.date && (
+                          <p className="text-xs text-gray-500 mt-0.5">Желаемая дата: {lead.date}</p>
+                        )}
+                        <p className="text-[10px] text-gray-400 mt-1.5">
+                          {new Date(lead.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      {!isBooking && (
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <button
+                            onClick={() => startBooking(lead)}
+                            className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                          >
+                            <Calendar className="h-3 w-3" />
+                            Записать
+                          </button>
+                          <button
+                            onClick={() => onStatus(lead.id, "CANCELLED")}
+                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                          >
+                            Отклонить
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {isBooking && (
+                      <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2">
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-600 uppercase">Врач</label>
+                          <select
+                            value={form.doctorId}
+                            onChange={(e) => setForm({ ...form, doctorId: e.target.value, service: "" })}
+                            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white"
+                          >
+                            <option value="">— выбрать —</option>
+                            {doctors.map((d) => (
+                              <option key={d.id} value={d.id}>{d.nameRu} (каб. {d.cabinet})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-semibold text-gray-600 uppercase">Дата</label>
+                            <input
+                              type="date"
+                              value={form.date}
+                              min={new Date().toISOString().split("T")[0]}
+                              onChange={(e) => setForm({ ...form, date: e.target.value })}
+                              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-semibold text-gray-600 uppercase">Время</label>
+                            <select
+                              value={form.time}
+                              onChange={(e) => setForm({ ...form, time: e.target.value })}
+                              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white"
+                            >
+                              {times.map((t) => (<option key={t} value={t}>{t}</option>))}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-600 uppercase">Услуга</label>
+                          <input
+                            value={form.service}
+                            onChange={(e) => setForm({ ...form, service: e.target.value })}
+                            placeholder="Консультация..."
+                            className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white"
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => setBookingId(null)}
+                            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-white"
+                          >
+                            Отмена
+                          </button>
+                          <button
+                            onClick={confirmBooking}
+                            disabled={!form.doctorId}
+                            className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Подтвердить
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

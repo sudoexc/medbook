@@ -1,17 +1,17 @@
-import { auth } from "@/lib/auth";
+import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const UpdateSchema = z.object({
   status: z.enum(["NEW", "CONTACTED", "CONVERTED", "CANCELLED"]),
+  skipAppointment: z.boolean().optional(),
 });
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  if (!(await isAuthorizedOrPin(request))) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,8 +28,8 @@ export async function PATCH(
     data: { status: parsed.data.status },
   });
 
-  // Auto-create patient + appointment when lead is converted
-  if (parsed.data.status === "CONVERTED" && lead.doctorId) {
+  // Auto-create patient + appointment when lead is converted (unless explicitly skipped)
+  if (parsed.data.status === "CONVERTED" && !parsed.data.skipAppointment && lead.doctorId) {
     const existing = await prisma.appointment.findUnique({ where: { leadId: id } });
     if (!existing) {
       // Find or create patient by phone

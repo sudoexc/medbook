@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDoctors } from "@/components/providers/doctors-provider";
-import { tashkentToday, tashkentNowParts, isSlotPast } from "@/lib/tashkent-time";
+import { tashkentToday, tashkentNowParts, isSlotPast, tashkentPartsOf, tashkentSlotKey } from "@/lib/tashkent-time";
 import type { Locale } from "@/types";
 
 interface Patient {
@@ -93,6 +93,7 @@ export default function SchedulePage() {
   const [viewMode, setViewMode] = useState<"day" | "week">("day");
   const [appointments, setAppointments] = useState<ScheduleItem[]>([]);
   const [addDialog, setAddDialog] = useState<{ doctorId: string; time: string; date?: string } | null>(null);
+  const [cancelDialog, setCancelDialog] = useState<ScheduleItem | null>(null);
   const [availability, setAvailability] = useState<Record<string, DoctorAvailability>>({});
 
   const isAdmin = session?.user?.role === "ADMIN";
@@ -174,6 +175,22 @@ export default function SchedulePage() {
     return true;
   }
 
+  async function cancelAppointment(appt: ScheduleItem) {
+    const res = await fetch(`/api/appointments/${appt.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "CANCELLED" }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || (locale === "ru" ? "Не удалось отменить" : "Bekor qilib bo'lmadi"));
+      return;
+    }
+    toast.success(locale === "ru" ? "Запись отменена" : "Yozuv bekor qilindi");
+    setCancelDialog(null);
+    fetchSchedule();
+  }
+
   function changeDate(offset: number) {
     const d = new Date(date);
     d.setDate(d.getDate() + offset);
@@ -184,13 +201,11 @@ export default function SchedulePage() {
     const targetDate = forDate || date;
     return appointments.find((a) => {
       if (a.doctor.id !== doctorId) return false;
-      const aDate = new Date(a.date);
-      const aDateStr = aDate.toISOString().split("T")[0];
-      if (aDateStr !== targetDate) return false;
-      const h = aDate.getHours();
-      const m = aDate.getMinutes();
-      const slotTime = `${String(h).padStart(2, "0")}:${m < 30 ? "00" : "30"}`;
-      return slotTime === time;
+      // Tashkent wall clock — toISOString()/getHours() use UTC/server-local
+      // and skew ±5h, hiding morning Tashkent appointments off the grid.
+      const parts = tashkentPartsOf(a.date);
+      if (parts.date !== targetDate) return false;
+      return tashkentSlotKey(a.date) === time;
     });
   }
 
@@ -298,10 +313,15 @@ export default function SchedulePage() {
                         className={`flex-1 min-w-[140px] px-1 py-1 border-l border-border/20 min-h-[48px] ${!available && !appt ? "bg-secondary/40" : ""}`}
                       >
                         {appt ? (
-                          <div className={`rounded-lg border px-2 py-1.5 text-xs h-full ${STATUS_COLORS[appt.queueStatus] || ""}`}>
+                          <button
+                            type="button"
+                            onClick={() => setCancelDialog(appt)}
+                            title={locale === "ru" ? "Нажмите чтобы отменить запись" : "Bekor qilish uchun bosing"}
+                            className={`w-full rounded-lg border px-2 py-1.5 text-xs h-full text-left hover:ring-2 hover:ring-red-300 transition-all ${STATUS_COLORS[appt.queueStatus] || ""}`}
+                          >
                             <p className="font-medium truncate">{appt.patient.fullName}</p>
                             <p className="text-[10px] opacity-70 truncate">{appt.service || ""}</p>
-                          </div>
+                          </button>
                         ) : available ? (
                           <button
                             onClick={() => setAddDialog({ doctorId: doc.id, time })}
@@ -363,9 +383,14 @@ export default function SchedulePage() {
                             className={`flex-1 min-w-[100px] px-0.5 py-0.5 border-l border-border/20 min-h-[40px] ${!available && !appt ? "bg-secondary/40" : isWdToday ? "bg-primary/[0.02]" : ""}`}
                           >
                             {appt ? (
-                              <div className={`rounded-md border px-1.5 py-1 text-[11px] h-full ${STATUS_COLORS[appt.queueStatus] || ""}`}>
+                              <button
+                                type="button"
+                                onClick={() => setCancelDialog(appt)}
+                                title={locale === "ru" ? "Нажмите чтобы отменить запись" : "Bekor qilish uchun bosing"}
+                                className={`w-full rounded-md border px-1.5 py-1 text-[11px] h-full text-left hover:ring-2 hover:ring-red-300 transition-all ${STATUS_COLORS[appt.queueStatus] || ""}`}
+                              >
                                 <p className="font-medium truncate">{appt.patient.fullName}</p>
-                              </div>
+                              </button>
                             ) : available ? (
                               <button
                                 onClick={() => setAddDialog({ doctorId: doc.id, time, date: wd })}
@@ -396,6 +421,48 @@ export default function SchedulePage() {
           labels={labels}
           onClose={() => { setAddDialog(null); fetchSchedule(); }}
         />
+      )}
+
+      {/* Cancel confirmation dialog */}
+      {cancelDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCancelDialog(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold mb-2">
+              {locale === "ru" ? "Отменить запись?" : "Yozuvni bekor qilasizmi?"}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-1">
+              <span className="font-medium text-foreground">{cancelDialog.patient.fullName}</span>
+              {" — "}
+              {cancelDialog.doctor.nameRu}
+            </p>
+            <p className="text-xs text-muted-foreground mb-4">
+              {tashkentPartsOf(cancelDialog.date).date} · {tashkentSlotKey(cancelDialog.date)}
+              {cancelDialog.service ? ` · ${cancelDialog.service}` : ""}
+            </p>
+            <p className="text-xs text-muted-foreground mb-5">
+              {locale === "ru"
+                ? "Слот освободится для новой записи. Запись помечается отменённой, не удаляется."
+                : "Slot bo'shaydi. Yozuv bekor qilingan deb belgilanadi, o'chirilmaydi."}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelDialog(null)}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-secondary"
+              >
+                {labels.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={() => cancelAppointment(cancelDialog)}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700"
+              >
+                {locale === "ru" ? "Отменить запись" : "Bekor qilish"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

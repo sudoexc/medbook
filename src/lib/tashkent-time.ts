@@ -30,3 +30,28 @@ export function isSlotPast(dateStr: string, timeStr: string): boolean {
   const [h, m] = timeStr.split(":").map(Number);
   return h * 60 + m <= now.minutes;
 }
+
+/**
+ * Convert any ISO string / Date to Tashkent wall clock parts.
+ * Use this instead of `new Date(iso).getHours()` — the latter uses server-local
+ * time and skews ±5h between dev/Vercel.
+ */
+export function tashkentPartsOf(iso: string | Date) {
+  const t = new Date(new Date(iso).getTime() + TASHKENT_OFFSET_MS);
+  const yyyy = t.getUTCFullYear();
+  const mm = String(t.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(t.getUTCDate()).padStart(2, "0");
+  return {
+    date: `${yyyy}-${mm}-${dd}`,
+    hours: t.getUTCHours(),
+    minutes: t.getUTCMinutes(),
+  };
+}
+
+/**
+ * Snap any ISO/Date to its 30-min slot key in Tashkent wall clock.
+ */
+export function tashkentSlotKey(iso: string | Date): string {
+  const p = tashkentPartsOf(iso);
+  return `${String(p.hours).padStart(2, "0")}:${p.minutes < 30 ? "00" : "30"}`;
+}

@@ -1,6 +1,11 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { validateBookingSlot, toTashkentDate } from "@/lib/booking-validation";
+import {
+  validateBookingSlot,
+  toTashkentDate,
+  tashkentDayBoundsForDateString,
+  tashkentNow,
+} from "@/lib/booking-validation";
 import { z } from "zod";
 
 // GET /api/schedule?date=2026-04-07&doctorId=optional
@@ -11,11 +16,11 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const dateStr = url.searchParams.get("date") || new Date().toISOString().split("T")[0];
+  const dateStr = url.searchParams.get("date") || tashkentNow().date;
   const filterDoctorId = url.searchParams.get("doctorId");
 
-  const dayStart = new Date(dateStr + "T00:00:00");
-  const dayEnd = new Date(dateStr + "T23:59:59");
+  // Tashkent-anchored day bounds — server-local midnight is UTC on Vercel.
+  const { dayStart, dayEnd } = tashkentDayBoundsForDateString(dateStr);
 
   const doctorFilter =
     session.user.role === "ADMIN"
@@ -25,7 +30,7 @@ export async function GET(request: Request) {
   const appointments = await prisma.appointment.findMany({
     where: {
       ...doctorFilter,
-      date: { gte: dayStart, lte: dayEnd },
+      date: { gte: dayStart, lt: dayEnd },
       queueStatus: { not: "CANCELLED" },
     },
     include: { patient: true, doctor: true },

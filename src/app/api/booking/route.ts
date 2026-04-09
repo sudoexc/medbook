@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
-import { validateBookingSlot, toTashkentDate, tashkentNow } from "@/lib/booking-validation";
+import {
+  validateBookingSlot,
+  toTashkentDate,
+  tashkentNow,
+  tashkentDayBoundsForDateString,
+  tashkentSlotKey,
+} from "@/lib/booking-validation";
+import { normalizePhone } from "@/lib/phone";
 import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
@@ -23,28 +30,33 @@ export async function GET(request: Request) {
     return Response.json({ error: "doctorId and date required" }, { status: 400 });
   }
 
-  // Get doctor schedule for this day
-  const d = new Date(dateStr + "T12:00:00");
-  const dow = d.getDay();
+  // Day-of-week from the date string itself (UTC noon avoids any local-tz skew).
+  const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+  const { dayStart, dayEnd } = tashkentDayBoundsForDateString(dateStr);
 
-  const schedule = await prisma.doctorSchedule.findUnique({
-    where: { doctorId_dayOfWeek: { doctorId, dayOfWeek: dow } },
-  });
+  const [schedule, dayOff, existing] = await Promise.all([
+    prisma.doctorSchedule.findUnique({
+      where: { doctorId_dayOfWeek: { doctorId, dayOfWeek: dow } },
+      select: { startTime: true, endTime: true, isActive: true },
+    }),
+    prisma.doctorDayOff.findFirst({
+      where: { doctorId, date: { gte: dayStart, lt: dayEnd } },
+      select: { id: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        doctorId,
+        date: { gte: dayStart, lt: dayEnd },
+        queueStatus: { not: "CANCELLED" },
+      },
+      select: { date: true },
+    }),
+  ]);
 
-  if (!schedule || !schedule.isActive) {
-    return Response.json({ slots: [] });
-  }
+  if (!schedule || !schedule.isActive) return Response.json({ slots: [] });
+  if (dayOff) return Response.json({ slots: [] });
 
-  // Check day off
-  const dayOff = await prisma.doctorDayOff.findUnique({
-    where: { doctorId_date: { doctorId, date: new Date(dateStr + "T00:00:00") } },
-  });
-
-  if (dayOff) {
-    return Response.json({ slots: [] });
-  }
-
-  // Generate 30-min slots
+  // Generate 30-min slots within working hours.
   const [startH, startM] = schedule.startTime.split(":").map(Number);
   const [endH, endM] = schedule.endTime.split(":").map(Number);
   const startMinutes = startH * 60 + startM;
@@ -57,25 +69,8 @@ export async function GET(request: Request) {
     allSlots.push(`${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`);
   }
 
-  // Get existing appointments for this date
-  const dayStart = new Date(dateStr + "T00:00:00");
-  const dayEnd = new Date(dateStr + "T23:59:59");
-
-  const existing = await prisma.appointment.findMany({
-    where: {
-      doctorId,
-      date: { gte: dayStart, lte: dayEnd },
-      queueStatus: { not: "CANCELLED" },
-    },
-  });
-
-  const takenSlots = new Set(
-    existing.map((a) => {
-      const h = a.date.getHours();
-      const m = a.date.getMinutes();
-      return `${String(h).padStart(2, "0")}:${m < 30 ? "00" : "30"}`;
-    })
-  );
+  // Snap each appointment to its Tashkent-wall-clock 30-min slot.
+  const takenSlots = new Set(existing.map((a) => tashkentSlotKey(a.date)));
 
   // Filter out past slots if date is today (Tashkent wall clock)
   const tNow = tashkentNow();
@@ -107,7 +102,11 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
 
-  const { name, phone, doctorId, service, date, time } = parsed.data;
+  const { name, doctorId, service, date, time } = parsed.data;
+  const phone = normalizePhone(parsed.data.phone);
+  if (!phone) {
+    return Response.json({ error: { phone: ["Invalid phone"] } }, { status: 400 });
+  }
   const appointmentDate = toTashkentDate(date, time);
 
   const validation = await validateBookingSlot({ doctorId, date: appointmentDate });
@@ -118,13 +117,11 @@ export async function POST(request: Request) {
     );
   }
 
-  // Upsert patient
-  let patient = await prisma.patient.findUnique({ where: { phone } });
-  if (!patient) {
-    patient = await prisma.patient.create({
-      data: { fullName: name, phone },
-    });
-  }
+  const patient = await prisma.patient.upsert({
+    where: { phone },
+    update: { fullName: name },
+    create: { fullName: name, phone },
+  });
 
   // Create appointment
   const appointment = await prisma.appointment.create({

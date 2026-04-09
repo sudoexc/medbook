@@ -37,6 +37,25 @@ export function tashkentDayBounds(at: Date = new Date()) {
 }
 
 /**
+ * Return [dayStart, dayEnd) for a YYYY-MM-DD string interpreted as Tashkent.
+ */
+export function tashkentDayBoundsForDateString(dateStr: string) {
+  const dayStart = new Date(`${dateStr}T00:00:00+05:00`);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  return { dayStart, dayEnd };
+}
+
+/**
+ * Snap a UTC Date to its 30-minute slot key in Tashkent wall clock ("HH:00" / "HH:30").
+ * Used to match appointments back to grid slots without server-local skew.
+ */
+export function tashkentSlotKey(date: Date): string {
+  const c = tashkentComponents(date);
+  const [hh, mi] = c.time.split(":").map(Number);
+  return `${String(hh).padStart(2, "0")}:${mi < 30 ? "00" : "30"}`;
+}
+
+/**
  * Convert any Date to Tashkent wall clock components.
  */
 export function tashkentComponents(date: Date) {

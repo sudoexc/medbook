@@ -6,7 +6,7 @@ import { Calendar, Check, Phone, X, ChevronDown, AlertCircle } from "lucide-reac
 import { toast } from "sonner";
 import type { DoctorView } from "@/lib/doctors";
 import type { Locale } from "@/types";
-import { tashkentToday, isSlotPast } from "@/lib/tashkent-time";
+import { tashkentToday } from "@/lib/tashkent-time";
 
 interface Lead {
   id: string;
@@ -225,12 +225,41 @@ function BookingDialog({
     }
     return tashkentToday();
   });
-  const [time, setTime] = useState("09:00");
+  const [time, setTime] = useState("");
   const [service, setService] = useState(lead.service || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [times, setTimes] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
 
   const selectedDoctor = doctors.find((d) => d.id === doctorId);
+
+  // Fetch available slots whenever doctor or date changes. The endpoint
+  // already excludes taken slots, day-offs, past times, and out-of-hours.
+  useEffect(() => {
+    if (!doctorId || !date) {
+      setTimes([]);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    setError("");
+    fetch(`/api/booking/available?doctorId=${doctorId}&date=${date}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const slots: string[] = Array.isArray(data?.slots) ? data.slots : [];
+        setTimes(slots);
+        setTime((prev) => (prev && slots.includes(prev) ? prev : slots[0] || ""));
+      })
+      .catch(() => {
+        if (!cancelled) setTimes([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [doctorId, date]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -262,18 +291,6 @@ function BookingDialog({
       setLoading(false);
     }
   }
-
-  const allTimes: string[] = [];
-  for (let h = 8; h <= 16; h++) {
-    allTimes.push(`${String(h).padStart(2, "0")}:00`);
-    allTimes.push(`${String(h).padStart(2, "0")}:30`);
-  }
-  const times = allTimes.filter((t) => !isSlotPast(date, t));
-  useEffect(() => {
-    if (times.length > 0 && !times.includes(time)) {
-      setTime(times[0]);
-    }
-  }, [date, time, times]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -325,12 +342,26 @@ function BookingDialog({
                 required
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 text-sm"
+                disabled={slotsLoading || times.length === 0}
+                className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {times.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+                {slotsLoading ? (
+                  <option value="">{isRu ? "Загрузка..." : "Yuklanmoqda..."}</option>
+                ) : times.length === 0 ? (
+                  <option value="">{isRu ? "— нет свободных —" : "— bo'sh joy yo'q —"}</option>
+                ) : (
+                  times.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))
+                )}
               </select>
+              {!slotsLoading && times.length === 0 && doctorId && (
+                <p className="text-[11px] text-amber-600 mt-1">
+                  {isRu
+                    ? "На эту дату все слоты заняты или врач не принимает. Выберите другой день."
+                    : "Bu sanada bo'sh joy yo'q. Boshqa kun tanlang."}
+                </p>
+              )}
             </div>
           </div>
 
@@ -369,8 +400,8 @@ function BookingDialog({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
+              disabled={loading || !time}
+              className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "..." : (isRu ? "Записать" : "Yozish")}
             </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -126,9 +126,6 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
   const [selectedDoctorId, setSelectedDoctorId] = useState(doctorId || "");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
-  const [selectedTime, setSelectedTime] = useState("");
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
   const t = useTranslations("leadForm");
   const locale = useLocale() as Locale;
   const doctors = useDoctors();
@@ -138,29 +135,12 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
     [selectedDoctorId, doctors]
   );
 
-  // Fetch available slots when doctor + date selected
-  useEffect(() => {
-    if (!selectedDoctorId || !selectedDate) {
-      setAvailableSlots([]);
-      return;
-    }
-    setSlotsLoading(true);
-    fetch(`/api/booking?doctorId=${selectedDoctorId}&date=${selectedDate}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setAvailableSlots(data.slots || []);
-        setSelectedTime("");
-      })
-      .finally(() => setSlotsLoading(false));
-  }, [selectedDoctorId, selectedDate]);
-
   function handleOpen(isOpen: boolean) {
     setOpen(isOpen);
     if (isOpen) {
       setSelectedDoctorId(doctorId || "");
       setSelectedServices([]);
       setSelectedDate("");
-      setSelectedTime("");
       setSubmitted(false);
       setError(false);
     }
@@ -182,36 +162,19 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
     const serviceStr = selectedServices.join(", ");
 
     try {
-      const dateTime = selectedTime ? `${selectedDate}T${selectedTime}:00` : undefined;
-
-      if (dateTime && selectedDoctorId) {
-        const res = await fetch("/api/booking", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formData.get("name"),
-            phone: formData.get("phone"),
-            doctorId: selectedDoctorId,
-            service: serviceStr || undefined,
-            date: dateTime,
-          }),
-        });
-        if (!res.ok) throw new Error();
-      } else {
-        const res = await fetch("/api/leads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formData.get("name"),
-            phone: formData.get("phone"),
-            doctorId: selectedDoctorId || undefined,
-            service: serviceStr || undefined,
-            date: selectedDate || undefined,
-            locale,
-          }),
-        });
-        if (!res.ok) throw new Error();
-      }
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.get("name"),
+          phone: formData.get("phone"),
+          doctorId: selectedDoctorId || undefined,
+          service: serviceStr || undefined,
+          date: selectedDate || undefined,
+          locale,
+        }),
+      });
+      if (!res.ok) throw new Error();
 
       setSubmitted(true);
       setTimeout(() => { setSubmitted(false); setOpen(false); }, 2500);
@@ -237,9 +200,9 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
               <CheckCircle className="h-6 w-6 text-primary" />
             </div>
             <p className="text-center font-medium">{t("success")}</p>
-            {selectedTime && (
+            {selectedDate && (
               <p className="text-sm text-muted-foreground text-center">
-                {locale === "ru" ? "Вы записаны на" : "Siz yozildingiz"} {selectedDate} {locale === "ru" ? "в" : ""} {selectedTime}
+                {locale === "ru" ? "Мы свяжемся с вами для подтверждения" : "Tasdiqlash uchun siz bilan bog'lanamiz"}
               </p>
             )}
           </div>
@@ -250,7 +213,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
               <select
                 required
                 value={selectedDoctorId}
-                onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedServices([]); setSelectedDate(""); setSelectedTime(""); }}
+                onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedServices([]); setSelectedDate(""); }}
                 className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="">{t("selectDoctor")}</option>
@@ -321,43 +284,10 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                 <MiniCalendar
                   locale={locale}
                   selectedDate={selectedDate}
-                  onSelect={(d) => { setSelectedDate(d); setSelectedTime(""); }}
+                  onSelect={(d) => setSelectedDate(d)}
                 />
               </div>
             </div>
-
-            {/* Time slots */}
-            {selectedDate && selectedDoctorId && (
-              <div>
-                <label className="text-sm font-medium">
-                  {locale === "ru" ? "Время" : "Vaqt"}
-                </label>
-                {slotsLoading ? (
-                  <p className="mt-1.5 text-sm text-muted-foreground">...</p>
-                ) : availableSlots.length === 0 ? (
-                  <p className="mt-1.5 text-sm text-muted-foreground">
-                    {locale === "ru" ? "Нет свободных слотов" : "Bo'sh vaqt yo'q"}
-                  </p>
-                ) : (
-                  <div className="mt-1.5 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-                    {availableSlots.map((slot) => (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => setSelectedTime(slot)}
-                        className={`rounded-lg border px-2 py-2 text-xs font-mono transition-colors ${
-                          selectedTime === slot
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border hover:bg-muted/50"
-                        }`}
-                      >
-                        {slot}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>

@@ -14,6 +14,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDoctors } from "@/components/providers/doctors-provider";
@@ -170,32 +171,52 @@ export default function QueuePage() {
     }
   }, [session, doctorId]);
 
+  const [loading, setLoading] = useState(true);
+  const [pollDelay, setPollDelay] = useState(5000);
+
   const fetchQueue = useCallback(async () => {
     if (!doctorId) return;
     try {
       const res = await fetch(`/api/queue?doctorId=${doctorId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setQueue(data.queue);
-        setCompleted(data.completed);
+      if (!res.ok) {
+        // Backoff on persistent failures, cap at 30s
+        setPollDelay((d) => Math.min(d * 2, 30000));
+        return;
       }
-    } catch {}
+      const data = await res.json();
+      setQueue(data.queue);
+      setCompleted(data.completed);
+      setPollDelay(5000);
+    } catch {
+      setPollDelay((d) => Math.min(d * 2, 30000));
+    } finally {
+      setLoading(false);
+    }
   }, [doctorId]);
 
-  // Poll every 5 seconds
+  // Poll with adaptive backoff
   useEffect(() => {
     fetchQueue();
-    const id = setInterval(fetchQueue, 5000);
+    const id = setInterval(fetchQueue, pollDelay);
     return () => clearInterval(id);
-  }, [fetchQueue]);
+  }, [fetchQueue, pollDelay]);
 
   async function handleAction(appointmentId: string, action: string, notes?: string) {
-    await fetch(`/api/queue/${appointmentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, notes }),
-    });
-    fetchQueue();
+    try {
+      const res = await fetch(`/api/queue/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, notes }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Не удалось обновить статус");
+        return;
+      }
+      fetchQueue();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   async function handleComplete(data: {
@@ -209,12 +230,22 @@ export default function QueuePage() {
     paymentMethod?: string;
     paymentStatus?: string;
   }) {
-    await fetch(`/api/queue/${data.appointmentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "complete", ...data }),
-    });
-    fetchQueue();
+    try {
+      const res = await fetch(`/api/queue/${data.appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete", ...data }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось завершить приём");
+        return;
+      }
+      toast.success("Приём завершён");
+      fetchQueue();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   const currentPatient = queue.find((q) => q.queueStatus === "IN_PROGRESS");
@@ -251,6 +282,12 @@ export default function QueuePage() {
           </Button>
         </div>
       </div>
+
+      {loading && (
+        <div className="rounded-xl border border-border/40 bg-white p-4 text-center text-sm text-muted-foreground">
+          {locale === "uz" ? "Yuklanmoqda..." : "Загрузка..."}
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -610,37 +647,60 @@ function AddWalkinDialog({
 
   async function searchPatient() {
     if (phone.length < 4) return;
-    const res = await fetch(`/api/patients?search=${encodeURIComponent(phone)}`);
-    const data = await res.json();
-    if (data.length > 0) {
-      setFoundPatient(data[0]);
-      setName(data[0].fullName);
-      setPassport(data[0].passport || "");
-    } else {
-      setFoundPatient(null);
+    try {
+      const res = await fetch(`/api/patients?search=${encodeURIComponent(phone)}`);
+      if (!res.ok) {
+        toast.error("Не удалось найти пациента");
+        return;
+      }
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setFoundPatient(data[0]);
+        setName(data[0].fullName);
+        setPassport(data[0].passport || "");
+      } else {
+        setFoundPatient(null);
+      }
+      setSearched(true);
+    } catch {
+      toast.error("Сетевая ошибка");
     }
-    setSearched(true);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Create or find patient
-    const patientRes = await fetch("/api/patients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName: name, phone, passport: passport || undefined }),
-    });
-    const patient = await patientRes.json();
+    try {
+      // Create or find patient
+      const patientRes = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: name, phone, passport: passport || undefined }),
+      });
+      if (!patientRes.ok) {
+        const err = await patientRes.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось сохранить пациента");
+        return;
+      }
+      const patient = await patientRes.json();
 
-    // Add to queue
-    await fetch("/api/queue", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patientId: patient.id, doctorId, service: service || undefined }),
-    });
+      // Add to queue
+      const queueRes = await fetch("/api/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId: patient.id, doctorId, service: service || undefined }),
+      });
+      if (!queueRes.ok) {
+        const err = await queueRes.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось добавить в очередь");
+        return;
+      }
 
-    onClose();
+      toast.success("Пациент добавлен в очередь");
+      onClose();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   return (

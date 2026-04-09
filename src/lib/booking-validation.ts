@@ -115,22 +115,38 @@ export async function validateBookingSlot(params: {
   if (date.getTime() < now - 5 * 60 * 1000) return fail("PAST_DATE");
 
   const comp = tashkentComponents(date);
-
-  const doctor = await prisma.doctor.findUnique({ where: { id: doctorId } });
-  if (!doctor) return fail("DOCTOR_NOT_FOUND");
-
-  // Day off?
   const dayStart = new Date(`${comp.date}T00:00:00+05:00`);
   const dayEnd = new Date(`${comp.date}T23:59:59+05:00`);
-  const dayOff = await prisma.doctorDayOff.findFirst({
-    where: { doctorId, date: { gte: dayStart, lte: dayEnd } },
-  });
-  if (dayOff) return fail("DAY_OFF");
+  const slotStart = new Date(date.getTime() - 60 * 1000);
+  const slotEnd = new Date(date.getTime() + 60 * 1000);
 
-  // Working day schedule
-  const schedule = await prisma.doctorSchedule.findUnique({
-    where: { doctorId_dayOfWeek: { doctorId, dayOfWeek: comp.dow } },
-  });
+  // Run all four checks in parallel — they're independent. ~4× faster.
+  const [doctor, dayOff, schedule, existing] = await Promise.all([
+    prisma.doctor.findUnique({
+      where: { id: doctorId },
+      select: { id: true },
+    }),
+    prisma.doctorDayOff.findFirst({
+      where: { doctorId, date: { gte: dayStart, lte: dayEnd } },
+      select: { id: true },
+    }),
+    prisma.doctorSchedule.findUnique({
+      where: { doctorId_dayOfWeek: { doctorId, dayOfWeek: comp.dow } },
+      select: { startTime: true, endTime: true, isActive: true },
+    }),
+    prisma.appointment.findFirst({
+      where: {
+        doctorId,
+        date: { gte: slotStart, lte: slotEnd },
+        queueStatus: { notIn: ["CANCELLED", "SKIPPED"] },
+        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!doctor) return fail("DOCTOR_NOT_FOUND");
+  if (dayOff) return fail("DAY_OFF");
   if (!schedule || !schedule.isActive) return fail("NOT_WORKING_DAY");
 
   const [startH, startM] = schedule.startTime.split(":").map(Number);
@@ -141,17 +157,6 @@ export async function validateBookingSlot(params: {
     return fail("OUT_OF_HOURS");
   }
 
-  // Double-booking (±1 minute window — slots are 30 min so this catches exact-match collisions)
-  const slotStart = new Date(date.getTime() - 60 * 1000);
-  const slotEnd = new Date(date.getTime() + 60 * 1000);
-  const existing = await prisma.appointment.findFirst({
-    where: {
-      doctorId,
-      date: { gte: slotStart, lte: slotEnd },
-      queueStatus: { notIn: ["CANCELLED", "SKIPPED"] },
-      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
-    },
-  });
   if (existing) return fail("SLOT_TAKEN");
 
   return { ok: true };

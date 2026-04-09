@@ -128,40 +128,35 @@ export default function KioskPage() {
 
   const L = t[lang];
 
-  // Fetch doctors with services
+  // Fetch doctors with services (parallelized)
   useEffect(() => {
-    fetch("/api/tv-queue")
-      .then((r) => r.json())
-      .then((data) => {
-        // Also fetch doctor details for services
-        fetch("/api/kiosk/doctors")
-          .then((r) => r.json())
-          .then((details: { id: string; nameRu: string; nameUz: string; cabinet: number; services: { nameRu: string; nameUz: string; price: number }[] }[]) => {
-            const map = new Map(details.map((d) => [d.id, d]));
-            setDoctors(
-              data.map((d: { id: string; nameRu: string; cabinet: number; waiting: { id: string }[] }) => ({
-                id: d.id,
-                nameRu: map.get(d.id)?.nameRu || d.nameRu,
-                nameUz: map.get(d.id)?.nameUz || d.nameRu,
-                cabinet: d.cabinet,
-                waiting: d.waiting.length,
-                services: map.get(d.id)?.services || [],
-              }))
-            );
-          })
-          .catch(() => {
-            setDoctors(
-              data.map((d: { id: string; nameRu: string; cabinet: number; waiting: { id: string }[] }) => ({
-                id: d.id,
-                nameRu: d.nameRu,
-                cabinet: d.cabinet,
-                waiting: d.waiting.length,
-                services: [],
-              }))
-            );
-          });
-      })
-      .catch(() => {});
+    let cancelled = false;
+    (async () => {
+      try {
+        const [queueRes, detailsRes] = await Promise.all([
+          fetch("/api/tv-queue"),
+          fetch("/api/kiosk/doctors"),
+        ]);
+        if (cancelled || !queueRes.ok) return;
+        const data: { id: string; nameRu: string; cabinet: number; waiting: { id: string }[] }[] = await queueRes.json();
+        const details: { id: string; nameRu: string; nameUz: string; cabinet: number; services: { nameRu: string; nameUz: string; price: number }[] }[] = detailsRes.ok ? await detailsRes.json() : [];
+        if (cancelled) return;
+        const map = new Map(details.map((d) => [d.id, d]));
+        setDoctors(
+          data.map((d) => ({
+            id: d.id,
+            nameRu: map.get(d.id)?.nameRu || d.nameRu,
+            nameUz: map.get(d.id)?.nameUz || d.nameRu,
+            cabinet: d.cabinet,
+            waiting: d.waiting.length,
+            services: map.get(d.id)?.services || [],
+          }))
+        );
+      } catch {
+        // Silent: kiosk auto-resets on idle
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Auto-reset after 30 seconds on done screen

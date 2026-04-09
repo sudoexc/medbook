@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { Save, Plus, Trash2, Clock, CalendarOff } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDoctors } from "@/components/providers/doctors-provider";
 import type { Locale } from "@/types";
@@ -87,8 +88,12 @@ export default function SettingsPage() {
 
   const fetchSchedule = useCallback(async () => {
     if (!doctorId) return;
-    const res = await fetch(`/api/doctor-schedule?doctorId=${doctorId}`);
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/doctor-schedule?doctorId=${doctorId}`);
+      if (!res.ok) {
+        toast.error("Не удалось загрузить расписание");
+        return;
+      }
       const data = await res.json();
       // Ensure all 7 days exist
       const allDays: ScheduleDay[] = [];
@@ -98,6 +103,8 @@ export default function SettingsPage() {
       }
       setSchedules(allDays);
       setDaysOff(data.daysOff);
+    } catch {
+      toast.error("Сетевая ошибка");
     }
   }, [doctorId]);
 
@@ -106,34 +113,61 @@ export default function SettingsPage() {
   }, [fetchSchedule]);
 
   async function handleSave() {
-    await fetch("/api/doctor-schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ doctorId, schedules }),
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const res = await fetch("/api/doctor-schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId, schedules }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось сохранить");
+        return;
+      }
+      setSaved(true);
+      toast.success("Расписание сохранено");
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   async function addDayOff() {
     if (!newDayOffDate) return;
-    await fetch("/api/doctor-schedule/days-off", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ doctorId, date: newDayOffDate, reason: newDayOffReason || undefined }),
-    });
-    setNewDayOffDate("");
-    setNewDayOffReason("");
-    fetchSchedule();
+    try {
+      const res = await fetch("/api/doctor-schedule/days-off", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId, date: newDayOffDate, reason: newDayOffReason || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось добавить выходной");
+        return;
+      }
+      setNewDayOffDate("");
+      setNewDayOffReason("");
+      fetchSchedule();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   async function removeDayOff(id: string) {
-    await fetch("/api/doctor-schedule/days-off", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    fetchSchedule();
+    try {
+      const res = await fetch("/api/doctor-schedule/days-off", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        toast.error("Не удалось удалить");
+        return;
+      }
+      fetchSchedule();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   function updateDay(dayOfWeek: number, field: keyof ScheduleDay, value: string | boolean) {

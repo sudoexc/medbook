@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { Users, Clock, Activity, Banknote } from "lucide-react";
+import { toast } from "sonner";
 import { useDoctors } from "@/components/providers/doctors-provider";
 import { PatientFlowChart } from "@/components/charts/patient-flow-chart";
 import { RevenueChart } from "@/components/charts/revenue-chart";
@@ -89,8 +90,16 @@ export default function AnalyticsClient() {
   const fetchData = useCallback(async () => {
     const params = new URLSearchParams({ period: String(period) });
     if (doctorId) params.set("doctorId", doctorId);
-    const res = await fetch(`/api/analytics?${params}`);
-    if (res.ok) setData(await res.json());
+    try {
+      const res = await fetch(`/api/analytics?${params}`);
+      if (!res.ok) {
+        toast.error("Не удалось загрузить аналитику");
+        return;
+      }
+      setData(await res.json());
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }, [period, doctorId]);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import Image from "next/image";
 import { NAV_LINKS } from "@/lib/constants";
 import { LanguageSwitcher } from "./language-switcher";
 import { MobileNav } from "./mobile-nav";
@@ -15,7 +16,14 @@ export function Header() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Logo */}
         <a href="/" className="flex items-center">
-          <img src="/logo.png" alt="NeuroFax-B" className="h-10" />
+          <Image
+            src="/logo.png"
+            alt="NeuroFax-B"
+            width={103}
+            height={40}
+            priority
+            className="h-10 w-auto"
+          />
         </a>
 
         {/* Desktop Nav */}

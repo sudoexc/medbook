@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocale } from "next-intl";
 import { Star, Plus, Trash2, Eye, EyeOff, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 interface Review {
@@ -68,8 +69,16 @@ export default function ReviewsPage() {
   const [form, setForm] = useState({ authorName: "", rating: 5, text: "", source: "yandex", publishedAt: new Date().toISOString().split("T")[0] });
 
   const fetchReviews = useCallback(async () => {
-    const res = await fetch("/api/reviews?all=true");
-    if (res.ok) setReviews(await res.json());
+    try {
+      const res = await fetch("/api/reviews?all=true");
+      if (!res.ok) {
+        toast.error("Не удалось загрузить отзывы");
+        return;
+      }
+      setReviews(await res.json());
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }, []);
 
   useEffect(() => { fetchReviews(); }, [fetchReviews]);
@@ -77,29 +86,57 @@ export default function ReviewsPage() {
   async function handleSave() {
     const method = editId ? "PATCH" : "POST";
     const body = editId ? { id: editId, ...form } : form;
-    await fetch("/api/reviews", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setShowForm(false);
-    setEditId(null);
-    setForm({ authorName: "", rating: 5, text: "", source: "yandex", publishedAt: new Date().toISOString().split("T")[0] });
-    fetchReviews();
+    try {
+      const res = await fetch("/api/reviews", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(typeof err.error === "string" ? err.error : "Не удалось сохранить отзыв");
+        return;
+      }
+      toast.success(editId ? "Отзыв обновлён" : "Отзыв добавлен");
+      setShowForm(false);
+      setEditId(null);
+      setForm({ authorName: "", rating: 5, text: "", source: "yandex", publishedAt: new Date().toISOString().split("T")[0] });
+      fetchReviews();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/reviews?id=${id}`, { method: "DELETE" });
-    fetchReviews();
+    if (!confirm(locale === "uz" ? "Sharhni o'chirishni tasdiqlaysizmi?" : "Удалить отзыв?")) return;
+    try {
+      const res = await fetch(`/api/reviews?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("Не удалось удалить");
+        return;
+      }
+      toast.success("Отзыв удалён");
+      fetchReviews();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   async function toggleVisibility(review: Review) {
-    await fetch("/api/reviews", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: review.id, visible: !review.visible }),
-    });
-    fetchReviews();
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: review.id, visible: !review.visible }),
+      });
+      if (!res.ok) {
+        toast.error("Не удалось обновить");
+        return;
+      }
+      fetchReviews();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   function startEdit(review: Review) {

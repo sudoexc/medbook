@@ -32,8 +32,18 @@ export async function GET(request: Request) {
       queueStatus: "COMPLETED",
       completedAt: { gte: since },
     },
-    include: { doctor: true },
+    select: {
+      startedAt: true,
+      completedAt: true,
+      date: true,
+      service: true,
+      durationMin: true,
+      patientId: true,
+      doctorId: true,
+      doctor: { select: { nameRu: true, services: true } },
+    },
     orderBy: { completedAt: "asc" },
+    take: 5000,
   });
 
   // Hourly flow

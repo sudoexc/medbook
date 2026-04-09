@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface AppointmentStatusUpdateProps {
   appointmentId: string;
@@ -19,12 +20,21 @@ export function AppointmentStatusUpdate({
 
   async function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newStatus = e.target.value;
-    await fetch(`/api/appointments/${appointmentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    router.refresh();
+    try {
+      const res = await fetch(`/api/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось обновить");
+        return;
+      }
+      router.refresh();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   const colors: Record<string, string> = {

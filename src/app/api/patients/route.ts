@@ -24,6 +24,13 @@ export async function GET(request: Request) {
         { passport: { contains: search, mode: "insensitive" } },
       ],
     },
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      passport: true,
+      birthDate: true,
+    },
     take: 20,
     orderBy: { updatedAt: "desc" },
   });
@@ -57,6 +64,7 @@ export async function POST(request: Request) {
     where: { phone },
     update: { fullName, passport: passport || undefined, birthDate: birthDate ? new Date(birthDate) : undefined },
     create: { fullName, phone, passport: passport || undefined, birthDate: birthDate ? new Date(birthDate) : undefined },
+    select: { id: true, fullName: true, phone: true, passport: true, birthDate: true },
   });
 
   return Response.json(patient, { status: 201 });

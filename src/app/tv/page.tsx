@@ -35,12 +35,21 @@ export default function TVQueuePage() {
   const lastCallRef = useRef<string>("");
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  const [pollDelay, setPollDelay] = useState(3000);
+
   const fetchData = useCallback(async () => {
     try {
       const [queueRes, callRes] = await Promise.all([
         fetch("/api/tv-queue"),
         fetch("/api/queue/call"),
       ]);
+      if (!queueRes.ok && !callRes.ok) {
+        // Both failed — back off, cap at 30s
+        setPollDelay((d) => Math.min(d * 2, 30000));
+        return;
+      }
+      // At least one succeeded — reset to base delay
+      setPollDelay(3000);
       if (queueRes.ok) setDoctors(await queueRes.json());
       if (callRes.ok) {
         const data = await callRes.json();
@@ -112,14 +121,16 @@ export default function TVQueuePage() {
           callTimeoutRef.current = setTimeout(() => setCallVisible(false), 15000);
         }
       }
-    } catch {}
+    } catch {
+      setPollDelay((d) => Math.min(d * 2, 30000));
+    }
   }, []);
 
   useEffect(() => {
     fetchData();
-    const id = setInterval(fetchData, 3000);
+    const id = setInterval(fetchData, pollDelay);
     return () => clearInterval(id);
-  }, [fetchData]);
+  }, [fetchData, pollDelay]);
 
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000);

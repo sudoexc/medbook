@@ -64,10 +64,9 @@ export async function POST(
     create: { fullName: lead.name, phone: lead.phone },
   });
 
-  // Check if an appointment already exists for this lead
-  const existing = await prisma.appointment.findUnique({ where: { leadId: id } });
+  // Reuse the existing-appointment lookup from above
   let appointment;
-  if (existing) {
+  if (existingForLead) {
     appointment = await prisma.appointment.update({
       where: { leadId: id },
       data: {
@@ -75,7 +74,10 @@ export async function POST(
         service: service || null,
         date: appointmentDate,
       },
-      include: { patient: true, doctor: true },
+      include: {
+        patient: { select: { id: true, fullName: true, phone: true } },
+        doctor: { select: { id: true, nameRu: true, cabinet: true } },
+      },
     });
   } else {
     appointment = await prisma.appointment.create({
@@ -88,7 +90,10 @@ export async function POST(
         leadId: id,
         queueStatus: "WAITING",
       },
-      include: { patient: true, doctor: true },
+      include: {
+        patient: { select: { id: true, fullName: true, phone: true } },
+        doctor: { select: { id: true, nameRu: true, cabinet: true } },
+      },
     });
   }
 

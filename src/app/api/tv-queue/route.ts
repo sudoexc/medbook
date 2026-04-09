@@ -7,29 +7,37 @@ export async function GET() {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const doctors = await prisma.doctor.findMany({
-    where: { active: true },
-    orderBy: { cabinet: "asc" },
-  });
-
-  const appointments = await prisma.appointment.findMany({
-    where: {
-      date: { gte: today, lt: tomorrow },
-      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
-    },
-    include: { patient: true },
-    orderBy: { queueOrder: "asc" },
-  });
-
-  // Get today's completed appointments for ETA calculation
-  const completedToday = await prisma.appointment.findMany({
-    where: {
-      date: { gte: today, lt: tomorrow },
-      queueStatus: "COMPLETED",
-      durationMin: { not: null },
-    },
-    select: { doctorId: true, durationMin: true },
-  });
+  // All three queries are independent — run in parallel.
+  const [doctors, appointments, completedToday] = await Promise.all([
+    prisma.doctor.findMany({
+      where: { active: true },
+      select: { id: true, nameRu: true, cabinet: true },
+      orderBy: { cabinet: "asc" },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: today, lt: tomorrow },
+        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+      },
+      select: {
+        id: true,
+        doctorId: true,
+        queueStatus: true,
+        queueOrder: true,
+        startedAt: true,
+        patient: { select: { fullName: true } },
+      },
+      orderBy: { queueOrder: "asc" },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: today, lt: tomorrow },
+        queueStatus: "COMPLETED",
+        durationMin: { not: null },
+      },
+      select: { doctorId: true, durationMin: true },
+    }),
+  ]);
 
   // Calculate average duration per doctor
   const avgByDoctor: Record<string, number> = {};
@@ -80,7 +88,10 @@ export async function POST(request: Request) {
 
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    include: { patient: true, doctor: true },
+    select: {
+      patient: { select: { fullName: true } },
+      doctor: { select: { nameRu: true, cabinet: true } },
+    },
   });
 
   if (!appointment) {

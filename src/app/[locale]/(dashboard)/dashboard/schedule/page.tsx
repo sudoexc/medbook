@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { ChevronLeft, ChevronRight, Plus, X, Search, User } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDoctors } from "@/components/providers/doctors-provider";
@@ -441,28 +442,38 @@ function AddScheduleDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Create/find patient
-    const patientRes = await fetch("/api/patients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName: name, phone, passport: passport || undefined }),
-    });
-    const patient = await patientRes.json();
+    try {
+      // Create/find patient
+      const patientRes = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: name, phone, passport: passport || undefined }),
+      });
+      if (!patientRes.ok) {
+        const data = await patientRes.json().catch(() => ({}));
+        toast.error(data.error || "Не удалось сохранить пациента");
+        return;
+      }
+      const patient = await patientRes.json();
 
-    // Create scheduled appointment
-    const res = await fetch("/api/schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patientId: patient.id, doctorId, service: service || undefined, date, time }),
-    });
+      // Create scheduled appointment
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId: patient.id, doctorId, service: service || undefined, date, time }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      alert(data.error || "Ошибка записи");
-      return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Ошибка записи");
+        return;
+      }
+
+      toast.success("Пациент записан");
+      onClose();
+    } catch {
+      toast.error("Сетевая ошибка. Проверьте подключение");
     }
-
-    onClose();
   }
 
   return (

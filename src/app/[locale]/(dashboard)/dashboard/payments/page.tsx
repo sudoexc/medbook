@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { Banknote, CheckCircle, AlertCircle, Filter, Download, Printer } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDoctors } from "@/components/providers/doctors-provider";
 import type { Locale } from "@/types";
@@ -102,6 +103,8 @@ export default function PaymentsPage() {
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
+  const [loading, setLoading] = useState(true);
+
   const fetchPayments = useCallback(async () => {
     const params = new URLSearchParams();
     if (dateFrom) params.set("from", dateFrom);
@@ -109,11 +112,19 @@ export default function PaymentsPage() {
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (doctorFilter) params.set("doctorId", doctorFilter);
 
-    const res = await fetch(`/api/payments?${params}`);
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/payments?${params}`);
+      if (!res.ok) {
+        toast.error("Не удалось загрузить платежи");
+        return;
+      }
       const data = await res.json();
       setPayments(data.payments);
       setSummary(data.summary);
+    } catch {
+      toast.error("Сетевая ошибка");
+    } finally {
+      setLoading(false);
     }
   }, [dateFrom, dateTo, statusFilter, doctorFilter]);
 
@@ -123,12 +134,21 @@ export default function PaymentsPage() {
 
   async function togglePaymentStatus(id: string, currentStatus: string) {
     const newStatus = currentStatus === "PAID" ? "UNPAID" : "PAID";
-    await fetch("/api/payments", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: newStatus }),
-    });
-    fetchPayments();
+    try {
+      const res = await fetch("/api/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: newStatus }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Не удалось изменить статус");
+        return;
+      }
+      fetchPayments();
+    } catch {
+      toast.error("Сетевая ошибка");
+    }
   }
 
   const methodLabels: Record<string, string> = {
@@ -245,7 +265,13 @@ export default function PaymentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
-              {payments.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={isAdmin ? 8 : 7} className="px-5 py-12 text-center text-muted-foreground">
+                    {locale === "uz" ? "Yuklanmoqda..." : "Загрузка..."}
+                  </td>
+                </tr>
+              ) : payments.length === 0 ? (
                 <tr>
                   <td colSpan={isAdmin ? 8 : 7} className="px-5 py-12 text-center text-muted-foreground">
                     {labels.noPayments}

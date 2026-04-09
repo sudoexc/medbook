@@ -29,30 +29,31 @@ export async function GET(request: Request) {
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
 
-  const appointments = await prisma.appointment.findMany({
-    where: {
-      doctorId,
-      date: { gte: dayStart, lt: dayEnd },
-      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
-    },
-    include: {
-      patient: { select: { id: true, fullName: true, phone: true, passport: true } },
-    },
-    orderBy: { queueOrder: "asc" },
-  });
-
-  // Also get completed today for stats
-  const completed = await prisma.appointment.findMany({
-    where: {
-      doctorId,
-      date: { gte: dayStart, lt: dayEnd },
-      queueStatus: "COMPLETED",
-    },
-    include: {
-      patient: { select: { id: true, fullName: true, phone: true, passport: true } },
-    },
-    orderBy: { completedAt: "desc" },
-  });
+  // Run both queries in parallel — they're independent.
+  const [appointments, completed] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        doctorId,
+        date: { gte: dayStart, lt: dayEnd },
+        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+      },
+      include: {
+        patient: { select: { id: true, fullName: true, phone: true, passport: true } },
+      },
+      orderBy: { queueOrder: "asc" },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        doctorId,
+        date: { gte: dayStart, lt: dayEnd },
+        queueStatus: "COMPLETED",
+      },
+      include: {
+        patient: { select: { id: true, fullName: true, phone: true, passport: true } },
+      },
+      orderBy: { completedAt: "desc" },
+    }),
+  ]);
 
   return Response.json({ queue: appointments, completed });
 }

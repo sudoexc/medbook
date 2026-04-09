@@ -45,8 +45,21 @@ export async function GET(request: Request) {
         ...(Object.keys(dateFilter).length > 0 ? { appointment: { date: dateFilter } } : {}),
         ...(doctorId ? { appointment: { doctorId } } : {}),
       },
-      include: { appointment: { include: { patient: true, doctor: true } } },
+      select: {
+        amount: true,
+        method: true,
+        status: true,
+        appointment: {
+          select: {
+            date: true,
+            service: true,
+            patient: { select: { fullName: true, phone: true } },
+            doctor: { select: { nameRu: true } },
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
+      take: 10000,
     });
 
     csv = csvRow("Дата", "Пациент", "Телефон", "Врач", "Услуга", "Сумма", "Способ", "Статус");
@@ -64,8 +77,15 @@ export async function GET(request: Request) {
     }
   } else if (type === "patients") {
     const patients = await prisma.patient.findMany({
-      include: { _count: { select: { appointments: true } } },
+      select: {
+        fullName: true,
+        phone: true,
+        passport: true,
+        createdAt: true,
+        _count: { select: { appointments: true } },
+      },
       orderBy: { createdAt: "desc" },
+      take: 10000,
     });
 
     csv = csvRow("ФИО", "Телефон", "Паспорт", "Визитов", "Дата регистрации");
@@ -84,8 +104,16 @@ export async function GET(request: Request) {
         ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
         ...(doctorId ? { doctorId } : {}),
       },
-      include: { patient: true, doctor: true },
+      select: {
+        date: true,
+        service: true,
+        queueStatus: true,
+        durationMin: true,
+        patient: { select: { fullName: true, phone: true } },
+        doctor: { select: { nameRu: true } },
+      },
       orderBy: { date: "desc" },
+      take: 10000,
     });
 
     csv = csvRow("Дата", "Время", "Пациент", "Телефон", "Врач", "Услуга", "Статус", "Длительность");

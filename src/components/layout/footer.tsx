@@ -1,4 +1,5 @@
 import { useTranslations } from "next-intl";
+import Image from "next/image";
 import { Send, Camera, Clock } from "lucide-react";
 import { CONTACT, SITE_NAME } from "@/lib/constants";
 
@@ -13,7 +14,13 @@ export function Footer() {
           {/* Brand */}
           <div className="space-y-3">
             <a href="/" className="block">
-              <img src="/logo.png" alt="NeuroFax-B" className="h-9" />
+              <Image
+                src="/logo.png"
+                alt="NeuroFax-B"
+                width={92}
+                height={36}
+                className="h-9 w-auto"
+              />
             </a>
             <p className="text-sm text-muted-foreground max-w-[240px]">
               {t("description")}

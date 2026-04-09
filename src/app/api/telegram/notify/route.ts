@@ -24,7 +24,12 @@ export async function GET(request: Request) {
       queueStatus: "WAITING",
       patient: { telegramChatId: { not: null } },
     },
-    include: { patient: true, doctor: true },
+    select: {
+      date: true,
+      service: true,
+      patient: { select: { fullName: true, telegramChatId: true } },
+      doctor: { select: { nameRu: true, cabinet: true } },
+    },
   });
 
   for (const appt of upcoming1h) {
@@ -56,7 +61,12 @@ export async function GET(request: Request) {
         queueStatus: "WAITING",
         patient: { telegramChatId: { not: null } },
       },
-      include: { patient: true, doctor: true },
+      select: {
+        date: true,
+        service: true,
+        patient: { select: { fullName: true, telegramChatId: true } },
+        doctor: { select: { nameRu: true, cabinet: true } },
+      },
     });
 
     for (const appt of upcoming24h) {

@@ -202,12 +202,20 @@ export default function ReceptionistPage() {
   }
 
   async function handleLeadStatus(leadId: string, status: string) {
-    await fetch(`/api/leads/${leadId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...PIN_HEADER },
-      body: JSON.stringify({ status, skipAppointment: true }),
-    });
-    fetchLeads();
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...PIN_HEADER },
+        body: JSON.stringify({ status, skipAppointment: true }),
+      });
+      if (!res.ok) {
+        showToast("Не удалось обновить статус", "error");
+        return;
+      }
+      fetchLeads();
+    } catch {
+      showToast("Сетевая ошибка", "error");
+    }
   }
 
   // Keyboard shortcut: F1 = focus search, F2 = add patient
@@ -221,18 +229,25 @@ export default function ReceptionistPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
-  // Search patients
+  // Search patients (debounced + abortable to prevent stale results)
   useEffect(() => {
     if (searchQuery.length < 2) { setSearchResults([]); return; }
+    const controller = new AbortController();
     const timeout = setTimeout(async () => {
       try {
         const res = await fetch(`/api/patients?search=${encodeURIComponent(searchQuery)}`, {
           headers: PIN_HEADER,
+          signal: controller.signal,
         });
         if (res.ok) setSearchResults(await res.json());
-      } catch {}
+      } catch {
+        // Ignore aborts and network errors — typing is still in progress.
+      }
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   // Fetch doctor services when selected

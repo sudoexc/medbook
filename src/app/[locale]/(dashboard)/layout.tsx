@@ -1,5 +1,6 @@
 import { SessionProvider } from "next-auth/react";
 import { redirect } from "next/navigation";
+import { Toaster } from "sonner";
 import { DoctorsProvider } from "@/components/providers/doctors-provider";
 import { getDoctors } from "@/lib/doctors";
 import { auth } from "@/lib/auth";
@@ -23,6 +24,7 @@ export default async function DashboardGroupLayout({
     <SessionProvider>
       <DoctorsProvider doctors={doctors}>
         {children}
+        <Toaster richColors position="top-right" closeButton />
       </DoctorsProvider>
     </SessionProvider>
   );

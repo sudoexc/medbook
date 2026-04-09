@@ -102,7 +102,14 @@
     "submit": "So'rov yuborish",
     "error": "Xatolik yuz berdi. Qayta urinib ko'ring.",
     "success": "Rahmat! Tez orada qo'ng'iroq qilamiz.",
+    "successConfirm": "Tasdiqlash uchun siz bilan bog'lanamiz",
+    "total": "Jami",
     "phoneFormat": "+998 XX XXX XX XX"
+  },
+  "notFound": {
+    "title": "Sahifa topilmadi",
+    "description": "So'ralgan sahifa mavjud emas yoki ko'chirilgan.",
+    "home": "Bosh sahifaga"
   },
   "login": {
     "title": "Shifokorlar uchun kirish",

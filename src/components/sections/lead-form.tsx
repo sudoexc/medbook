@@ -202,15 +202,16 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
             <p className="text-center font-medium">{t("success")}</p>
             {selectedDate && (
               <p className="text-sm text-muted-foreground text-center">
-                {locale === "ru" ? "Мы свяжемся с вами для подтверждения" : "Tasdiqlash uchun siz bilan bog'lanamiz"}
+                {t("successConfirm")}
               </p>
             )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-2 space-y-4">
             <div>
-              <label className="text-sm font-medium">{t("doctor")}</label>
+              <label htmlFor="lead-doctor" className="text-sm font-medium">{t("doctor")}</label>
               <select
+                id="lead-doctor"
                 required
                 value={selectedDoctorId}
                 onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedServices([]); setSelectedDate(""); }}
@@ -268,7 +269,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                 </div>
                 {selectedServices.length > 1 && (
                   <p className="mt-1.5 text-xs text-muted-foreground text-right">
-                    {locale === "ru" ? "Итого" : "Jami"}: {formatPrice(
+                    {t("total")}: {formatPrice(
                       selectedDoctor.services
                         .filter((s) => selectedServices.includes(s.name[locale]))
                         .reduce((sum, s) => sum + s.price, 0)
@@ -291,12 +292,12 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="text-sm font-medium">{t("name")}</label>
-                <Input required name="name" className="mt-1 h-10 rounded-lg" placeholder={t("name")} />
+                <label htmlFor="lead-name" className="text-sm font-medium">{t("name")}</label>
+                <Input id="lead-name" required name="name" className="mt-1 h-10 rounded-lg" placeholder={t("name")} />
               </div>
               <div>
-                <label className="text-sm font-medium">{t("phone")}</label>
-                <Input required name="phone" type="tel" className="mt-1 h-10 rounded-lg" placeholder={t("phoneFormat")} />
+                <label htmlFor="lead-phone" className="text-sm font-medium">{t("phone")}</label>
+                <Input id="lead-phone" required name="phone" type="tel" className="mt-1 h-10 rounded-lg" placeholder={t("phoneFormat")} />
               </div>
             </div>
 

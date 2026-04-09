@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Check, Phone, X, ChevronDown, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 import type { DoctorView } from "@/lib/doctors";
 import type { Locale } from "@/types";
 import { tashkentToday, isSlotPast } from "@/lib/tashkent-time";
@@ -49,12 +50,21 @@ export function LeadsTable({
   const isRu = locale === "ru";
 
   async function updateStatus(id: string, status: string) {
-    await fetch(`/api/leads/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, skipAppointment: true }),
-    });
-    router.refresh();
+    try {
+      const res = await fetch(`/api/leads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, skipAppointment: true }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || (isRu ? "Не удалось обновить" : "Yangilab bo'lmadi"));
+        return;
+      }
+      router.refresh();
+    } catch {
+      toast.error(isRu ? "Сетевая ошибка" : "Tarmoq xatosi");
+    }
   }
 
   const newCount = leads.filter((l) => l.status === "NEW").length;

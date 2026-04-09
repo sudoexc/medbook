@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useLocale, useTranslations } from "next-intl";
 import { Mail, Lock, LogIn } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -44,7 +45,14 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <a href={`/${locale}`} className="inline-block">
-            <img src="/logo.png" alt="NeuroFax-B" className="h-12 mx-auto" />
+            <Image
+              src="/logo.png"
+              alt="NeuroFax-B"
+              width={123}
+              height={48}
+              priority
+              className="h-12 w-auto mx-auto"
+            />
           </a>
           <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
         </div>

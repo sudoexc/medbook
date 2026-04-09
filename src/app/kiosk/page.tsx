@@ -16,6 +16,10 @@ const t = {
     getTicket: "Получить талон →",
     or: "или",
     bookOther: "Записаться к другому врачу",
+    upcomingFound: "У вас есть запись",
+    upcomingDesc: "На ваш номер уже оформлена запись",
+    onDate: "на",
+    notTodayBookWalkin: "Записаться сейчас (живая очередь)",
     firstVisit: "Вы у нас впервые! Введите ваше ФИО:",
     fioPlaceholder: "Фамилия Имя Отчество",
     selectDoctor: "Выберите врача",
@@ -56,6 +60,10 @@ const t = {
     getTicket: "Talon olish →",
     or: "yoki",
     bookOther: "Boshqa shifokorga yozilish",
+    upcomingFound: "Sizda yozilish bor",
+    upcomingDesc: "Raqamingizga yozilish rasmiylashtirilgan",
+    onDate: "sanasi",
+    notTodayBookWalkin: "Hozir yozilish (jonli navbat)",
     firstVisit: "Siz birinchi marta keldingiz! F.I.Sh. kiriting:",
     fioPlaceholder: "Familiya Ism Sharif",
     selectDoctor: "Shifokorni tanlang",
@@ -107,7 +115,16 @@ interface PreBooked {
   ticketNumber: string | null;
 }
 
-type Step = "welcome" | "phone" | "checkin" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
+interface UpcomingBooking {
+  id: string;
+  doctorName: string;
+  cabinet: number;
+  service: string | null;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+}
+
+type Step = "welcome" | "phone" | "checkin" | "upcoming" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
 
 export default function KioskPage() {
   const [lang, setLang] = useState<Lang>("ru");
@@ -116,6 +133,7 @@ export default function KioskPage() {
   const [patientName, setPatientName] = useState("");
   const [foundPatientId, setFoundPatientId] = useState<string | null>(null);
   const [preBooked, setPreBooked] = useState<PreBooked[]>([]);
+  const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [selectedService, setSelectedService] = useState<string | null>(null);
@@ -185,6 +203,7 @@ export default function KioskPage() {
     setPatientName("");
     setFoundPatientId(null);
     setPreBooked([]);
+    setUpcomingBookings([]);
     setSelectedDoctor(null);
     setSelectedService(null);
     setTicketId(null);
@@ -205,9 +224,19 @@ export default function KioskPage() {
         setFoundPatientId(checkinData.patient.id);
         setPatientName(checkinData.patient.fullName);
 
-        if (checkinData.appointments.length > 0) {
-          setPreBooked(checkinData.appointments);
+        const todayAppts: PreBooked[] = checkinData.appointments || [];
+        const upcoming: UpcomingBooking[] = checkinData.upcoming || [];
+
+        if (todayAppts.length > 0) {
+          setPreBooked(todayAppts);
+          setUpcomingBookings([]);
           setStep("checkin");
+        } else if (upcoming.length > 0) {
+          // Booked, but for a future day — show info instead of falling
+          // through to doctor selection.
+          setUpcomingBookings(upcoming);
+          setPreBooked([]);
+          setStep("upcoming");
         } else {
           setStep("select-doctor");
         }
@@ -498,6 +527,70 @@ export default function KioskPage() {
             </div>
           )}
 
+          {/* UPCOMING — patient has a booking but not for today */}
+          {step === "upcoming" && (
+            <div>
+              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+                <ArrowLeft className="h-5 w-5" /> {L.back}
+              </button>
+
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl px-5 py-4 mb-6 flex items-center gap-4">
+                <User className="h-8 w-8 text-blue-400" />
+                <div>
+                  <p className="font-bold text-lg">{patientName}</p>
+                  <p className="text-blue-300 text-sm">{L.upcomingDesc}</p>
+                </div>
+              </div>
+
+              <h2 className="text-2xl font-bold mb-4">{L.upcomingFound}</h2>
+
+              <div className="space-y-3 mb-6">
+                {upcomingBookings.map((appt) => {
+                  const [yyyy, mm, dd] = appt.date.split("-");
+                  const dateLabel = `${dd}.${mm}.${yyyy}`;
+                  return (
+                    <div
+                      key={appt.id}
+                      className="w-full flex items-center justify-between rounded-2xl border-2 border-blue-500/30 bg-blue-500/10 px-6 py-5"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/30 text-2xl font-bold">
+                          {appt.cabinet}
+                        </div>
+                        <div>
+                          <p className="text-lg font-bold">{appt.doctorName}</p>
+                          <div className="flex items-center gap-3 text-sm text-white/60 mt-0.5">
+                            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {appt.time}</span>
+                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {L.cabinet} {appt.cabinet}</span>
+                          </div>
+                          {appt.service && <p className="text-xs text-white/40 mt-0.5">{appt.service}</p>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-blue-300/70 uppercase tracking-wide">{L.onDate}</p>
+                        <p className="text-xl font-bold font-mono text-blue-200">{dateLabel}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-xs text-white/40">{L.or}</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+
+              <button
+                onClick={() => setStep("select-doctor")}
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/20 py-4 text-lg hover:bg-white/5 transition-colors"
+              >
+                <UserPlus className="h-5 w-5" />
+                {L.notTodayBookWalkin}
+              </button>
+            </div>
+          )}
+
           {/* ENTER NAME — new patient */}
           {step === "enter-name" && (
             <div className="text-center">
@@ -531,7 +624,12 @@ export default function KioskPage() {
           {/* SELECT DOCTOR */}
           {step === "select-doctor" && (
             <div>
-              <button onClick={() => foundPatientId ? setStep("checkin") : setStep(patientName ? "enter-name" : "phone")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              <button onClick={() => {
+                if (preBooked.length > 0) setStep("checkin");
+                else if (upcomingBookings.length > 0) setStep("upcoming");
+                else if (foundPatientId) setStep("phone");
+                else setStep(patientName ? "enter-name" : "phone");
+              }} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 

@@ -50,6 +50,13 @@ export function LeadsTable({
   const isRu = locale === "ru";
 
   async function updateStatus(id: string, status: string) {
+    // CONVERTED must go through the booking dialog so a real Appointment row
+    // is created — otherwise the kiosk can't find the patient by phone.
+    if (status === "CONVERTED") {
+      const lead = leads.find((l) => l.id === id);
+      if (lead) setBookingLead(lead);
+      return;
+    }
     try {
       const res = await fetch(`/api/leads/${id}`, {
         method: "PATCH",

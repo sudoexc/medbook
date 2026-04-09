@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { phoneSearchVariants } from "@/lib/phone";
-import { tashkentDayBounds } from "@/lib/booking-validation";
+import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
 import { z } from "zod";
 
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone
@@ -19,46 +19,73 @@ export async function GET(request: Request) {
   });
 
   if (!patient) {
-    return Response.json({ patient: null, appointments: [] });
+    return Response.json({ patient: null, appointments: [], upcoming: [] });
   }
 
-  // Find today's pre-booked appointments that are still WAITING.
-  // Use Tashkent day bounds — server-local midnight is UTC on Vercel and
-  // skews ±5h, hiding early-morning or late-evening Tashkent appointments.
+  // Pull all upcoming appointments for this patient in [today, today+7 days).
+  // Intentionally permissive:
+  //  - any source (ONLINE booking, WALKIN already at kiosk, etc.)
+  //  - WAITING or IN_PROGRESS (skip CANCELLED/SKIPPED/COMPLETED)
+  // The frontend splits these into "today" (check-in flow) vs "upcoming"
+  // (info-only) so the receptionist's confirmed lead is always visible
+  // even if it was booked for a different day than the kiosk visit.
   const { dayStart, dayEnd } = tashkentDayBounds();
+  const weekEnd = new Date(dayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const appointments = await prisma.appointment.findMany({
+  const all = await prisma.appointment.findMany({
     where: {
       patientId: patient.id,
-      date: { gte: dayStart, lt: dayEnd },
-      queueStatus: "WAITING",
-      source: "ONLINE", // only pre-booked
+      date: { gte: dayStart, lt: weekEnd },
+      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
     },
     select: {
       id: true,
       date: true,
       service: true,
       queueOrder: true,
+      queueStatus: true,
       doctor: { select: { id: true, nameRu: true, cabinet: true } },
     },
     orderBy: { date: "asc" },
   });
 
+  const today: typeof all = [];
+  const upcoming: typeof all = [];
+  for (const a of all) {
+    if (a.date < dayEnd) today.push(a);
+    else upcoming.push(a);
+  }
+
+  const formatTime = (d: Date) => {
+    const c = tashkentComponents(d);
+    return c.time; // "HH:mm" in Tashkent wall clock
+  };
+
   return Response.json({
     patient: { id: patient.id, fullName: patient.fullName, phone: patient.phone },
-    appointments: appointments.map((a) => ({
+    appointments: today.map((a) => ({
       id: a.id,
       doctorName: a.doctor.nameRu,
       cabinet: a.doctor.cabinet,
       service: a.service,
-      time: a.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+      time: formatTime(a.date),
       queueOrder: a.queueOrder,
-      // Show estimated ticket only once the patient has checked in at the kiosk.
-      // Before check-in, queueOrder is null and we render a placeholder.
+      queueStatus: a.queueStatus,
       ticketNumber: a.queueOrder
         ? `${a.doctor.id.charAt(0).toUpperCase()}-${String(a.queueOrder).padStart(3, "0")}`
         : null,
     })),
+    upcoming: upcoming.map((a) => {
+      const c = tashkentComponents(a.date);
+      return {
+        id: a.id,
+        doctorName: a.doctor.nameRu,
+        cabinet: a.doctor.cabinet,
+        service: a.service,
+        date: c.date, // YYYY-MM-DD Tashkent
+        time: c.time, // HH:mm Tashkent
+      };
+    }),
   });
 }
 

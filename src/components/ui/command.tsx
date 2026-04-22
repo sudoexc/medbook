@@ -5,6 +5,12 @@ import { Command as CommandPrimitive } from "cmdk"
 import { SearchIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 function Command({
   className,
@@ -124,8 +130,45 @@ function CommandShortcut({
   )
 }
 
+function CommandDialog({
+  title = "Command Palette",
+  description = "Search commands and entities",
+  open,
+  onOpenChange,
+  children,
+  className,
+}: {
+  title?: string
+  description?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+  className?: string
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          "overflow-hidden p-0 sm:max-w-xl",
+          className
+        )}
+      >
+        <DialogTitle className="sr-only">{title}</DialogTitle>
+        <DialogDescription className="sr-only">{description}</DialogDescription>
+        <Command
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+        >
+          {children}
+        </Command>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export {
   Command,
+  CommandDialog,
   CommandInput,
   CommandList,
   CommandEmpty,

@@ -23,6 +23,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
+import {
+  GlobalSearch,
+  useGlobalSearchShortcut,
+} from "@/components/layout/global-search"
 import { toast } from "@/components/ui/sonner"
 
 const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
@@ -33,6 +37,8 @@ const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
   doctors: { title: "Врачи", subtitle: "Аналитика врачей" },
   "call-center": { title: "Call Center", subtitle: "Входящие и исходящие звонки" },
   telegram: { title: "Telegram", subtitle: "Входящие сообщения" },
+  sms: { title: "SMS", subtitle: "Входящие и исходящие SMS" },
+  documents: { title: "Документы", subtitle: "Библиотека документов" },
   notifications: { title: "Уведомления", subtitle: "Центр уведомлений" },
   analytics: { title: "Аналитика", subtitle: "Сводные метрики" },
   settings: { title: "Настройки", subtitle: "Клиника и пользователи" },
@@ -77,6 +83,8 @@ export function CrmTopbar({
   const meta = SECTION_TITLE[segment] ?? SECTION_TITLE.reception
   const now = useClock()
   const { theme, setTheme } = useTheme()
+  const [searchOpen, setSearchOpen] = React.useState(false)
+  useGlobalSearchShortcut(React.useCallback(() => setSearchOpen(true), []))
 
   const timeStr =
     now == null
@@ -96,12 +104,12 @@ export function CrmTopbar({
         <div className="truncate text-xs text-muted-foreground">{meta.subtitle}</div>
       </div>
 
-      {/* Search (placeholder cmdk trigger) */}
+      {/* Global cmdk search — opens on click or ⌘K. */}
       <Button
         variant="outline"
         size="default"
         className="hidden h-9 w-[280px] justify-start gap-2 text-muted-foreground md:flex"
-        onClick={() => toast.message("TODO: global search (⌘K)")}
+        onClick={() => setSearchOpen(true)}
       >
         <SearchIcon />
         <span className="flex-1 text-left">Поиск по ФИО, телефону, ID…</span>
@@ -109,6 +117,7 @@ export function CrmTopbar({
           ⌘K
         </kbd>
       </Button>
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
 
       <Button
         size="default"

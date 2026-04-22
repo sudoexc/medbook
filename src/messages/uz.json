@@ -829,5 +829,172 @@
     "bookAppointment": "Qabulga yozilish",
     "metaTitle": "{name} — {specialty} | NeuroFax",
     "metaDescription": "{name}, {specialty}. NeuroFax tibbiyot markazida qabulga yozilish."
+  },
+  "crmDoctors": {
+    "title": "Shifokorlar",
+    "subtitle": "Tahlil va shifokorlar jadvali",
+    "count": "Jami {count}",
+    "new": "Yangi shifokor",
+    "newAppointment": "Yangi qabul",
+    "back": "Ro'yxatga qaytish",
+    "openProfile": "Profilni ochish",
+    "loading": "Yuklanmoqda…",
+    "filters": {
+      "search": "F.I.Sh. bo'yicha qidirish",
+      "specialization": "Mutaxassislik",
+      "specializationAll": "Barcha mutaxassisliklar",
+      "onlyActive": "Faqat faollar",
+      "inactive": "Nofaollar",
+      "sort": "Saralash",
+      "sortName": "Ism bo'yicha",
+      "sortRating": "Reyting bo'yicha",
+      "sortLoad": "Yuklama bo'yicha",
+      "sortRevenue": "Tushum bo'yicha",
+      "clear": "Tozalash"
+    },
+    "period": {
+      "today": "Bugun",
+      "week": "Hafta",
+      "month": "Oy",
+      "quarter": "Chorak"
+    },
+    "card": {
+      "specializations": "Mutaxassislik",
+      "rating": "{rating} ★ · {count} sharh",
+      "ratingEmpty": "Sharhlar yo'q",
+      "loadToday": "Bugun: {count}",
+      "revenuePeriod": "Tushum ({period})",
+      "loadPercent": "Yuklama",
+      "bonus": "Bonus",
+      "inactiveBadge": "Nofaol"
+    },
+    "empty": {
+      "title": "Hozircha shifokorlar yo'q",
+      "description": "Jadval va hisob yuritish uchun birinchi shifokorni qo'shing.",
+      "filteredTitle": "Hech kim topilmadi",
+      "filteredDescription": "Filtrlarni o'zgartiring yoki qidiruvni tozalang."
+    },
+    "rail": {
+      "title": "Xulosa",
+      "periodToggle": "Davr",
+      "topRevenue": "Tushum bo'yicha TOP",
+      "topRating": "Reyting bo'yicha TOP",
+      "topLoad": "Yuklama bo'yicha TOP",
+      "totalRevenue": "Umumiy tushum",
+      "avgLoad": "O'rtacha yuklama",
+      "avgCheck": "O'rtacha chek",
+      "visitsTotal": "Qabullar soni",
+      "noData": "Ma'lumot yo'q"
+    },
+    "profile": {
+      "notFoundTitle": "Shifokor topilmadi",
+      "notFoundDescription": "Havola eskirgan yoki yozuv o'chirilgan bo'lishi mumkin.",
+      "errorTitle": "Yuklashda xatolik",
+      "retry": "Qayta urinish",
+      "inactive": "Shifokor nofaol",
+      "specialization": "Mutaxassislik",
+      "bio": "Shifokor haqida",
+      "bioEmpty": "Biografiya to'ldirilmagan",
+      "reviewsShort": "{count} sharh"
+    },
+    "tabs": {
+      "overview": "Umumiy",
+      "schedule": "Jadval",
+      "patients": "Bemorlar",
+      "reviews": "Sharhlar"
+    },
+    "finance": {
+      "title": "Moliya",
+      "revenue": "Tushum",
+      "appointments": "Qabullar",
+      "avgCheck": "O'rtacha chek",
+      "noShow": "Kelmaganlar",
+      "bonus": "To'lovga bonus",
+      "noShowRate": "{rate}%",
+      "period": "Davr uchun",
+      "empty": "Bu davr uchun tushum ma'lumotlari yo'q"
+    },
+    "heatGrid": {
+      "title": "Soatlar bo'yicha yuklama",
+      "subtitle": "Hafta kunlari va soatlar bo'yicha qabullar soni.",
+      "legendLow": "kam",
+      "legendHigh": "ko'p",
+      "empty": "Tanlangan haftada qabullar yo'q",
+      "prev": "Oldingi hafta",
+      "next": "Keyingi hafta",
+      "currentWeek": "Shu hafta",
+      "weekLabel": "{from} – {to}",
+      "weekdays": {
+        "mon": "Du",
+        "tue": "Se",
+        "wed": "Cho",
+        "thu": "Pa",
+        "fri": "Ju",
+        "sat": "Sha",
+        "sun": "Ya"
+      }
+    },
+    "schedule": {
+      "title": "Jadval",
+      "subtitle": "Hafta kunlari bo'yicha ish jadvali. Xona ixtiyoriy.",
+      "emptyDay": "Slotlar yo'q",
+      "addSlot": "Slot qo'shish",
+      "removeSlot": "Slotni o'chirish",
+      "startTime": "Boshlanishi",
+      "endTime": "Tugashi",
+      "cabinet": "Xona",
+      "cabinetNone": "Xonasiz",
+      "save": "Jadvalni saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Jadval saqlandi",
+      "errorSave": "Jadvalni saqlab bo'lmadi",
+      "conflictSlot": "Yuqoridagi slot bilan kesishadi",
+      "invalidTime": "Tugash vaqti boshlanishidan keyin bo'lishi kerak",
+      "dirtyHint": "Saqlanmagan o'zgarishlar bor",
+      "reset": "Bekor qilish"
+    },
+    "timeOff": {
+      "title": "Ta'til va dam olish kunlari",
+      "subtitle": "Shifokor qabul qilmaydigan kunlar.",
+      "empty": "Rejalashtirilgan ta'til yo'q",
+      "add": "Davr qo'shish",
+      "startAt": "Dan",
+      "endAt": "Gacha",
+      "reason": "Sabab",
+      "reasonPlaceholder": "Ta'til, konferensiya, bemorxona…",
+      "save": "Saqlash",
+      "cancel": "Bekor qilish",
+      "saved": "Davr qo'shildi",
+      "errorSave": "Saqlab bo'lmadi",
+      "delete": "O'chirish",
+      "deleteConfirm": "Ushbu davrni o'chirilsinmi?"
+    },
+    "patients": {
+      "title": "Shifokor bemorlari",
+      "subtitle": "LTV va oxirgi tashriflar bo'yicha TOP.",
+      "columns": {
+        "name": "Bemor",
+        "lastVisit": "Oxirgi tashrif",
+        "visits": "Tashriflar",
+        "ltv": "LTV"
+      },
+      "empty": "Shifokorning hali bemorlari yo'q",
+      "openCard": "Kartani ochish"
+    },
+    "reviews": {
+      "title": "Sharhlar",
+      "subtitle": "Bemorlarning shifokor haqidagi sharhlari.",
+      "empty": "Hozircha sharhlar yo'q",
+      "todoHint": "Shifokor haqidagi sharhlar agregatsiyasi ommaviy sharhlar bo'limi bilan paydo bo'ladi."
+    },
+    "weekdays": {
+      "mon": "Dushanba",
+      "tue": "Seshanba",
+      "wed": "Chorshanba",
+      "thu": "Payshanba",
+      "fri": "Juma",
+      "sat": "Shanba",
+      "sun": "Yakshanba"
+    }
   }
 }

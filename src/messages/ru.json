@@ -674,8 +674,10 @@
     }
   },
   "reception": {
-    "title": "Рецепция",
-    "subtitle": "Сегодняшний день",
+    "title": "Ресепшн — Главный дашборд",
+    "subtitle": "Живой обзор сегодняшнего дня",
+    "newAppointment": "+ Новая запись",
+    "liveBadge": "Обновляется",
     "kpi": {
       "todayAppointments": "Записей сегодня",
       "checkedIn": "Пришли",
@@ -683,6 +685,89 @@
       "revenue": "Выручка",
       "waiting": "Ожидают",
       "inProgress": "На приёме"
+    },
+    "doctorQueue": {
+      "title": "Очередь по врачам",
+      "subtitle": "Ведут приём сегодня",
+      "showAll": "Показать всех",
+      "backlog": "Ещё в очереди",
+      "backlogCount": "Ещё {count}",
+      "current": "На приёме",
+      "next": "Следующий",
+      "waiting": "Ожидает",
+      "cabinet": "Каб.",
+      "noPatients": "Сегодня нет записей",
+      "noPatientsHint": "Свободное время. Можно принять walk-in.",
+      "statusFree": "Свободен",
+      "statusBusy": "Принимает",
+      "callNext": "Вызвать следующего",
+      "markArrived": "Пришёл",
+      "complete": "Завершить",
+      "noShow": "Не пришёл",
+      "actionsTitle": "Действия",
+      "bookedToday": "{count} записей сегодня",
+      "loadPct": "Загрузка {pct}%",
+      "showMore": "Показать всех →",
+      "emptyTitle": "Сегодня нет активных врачей",
+      "emptyHint": "Добавьте запись, чтобы активировать очередь.",
+      "rowArrived": "Пришёл",
+      "rowWaiting": "Ожидает",
+      "rowInProgress": "На приёме"
+    },
+    "calls": {
+      "title": "Call-центр",
+      "statusOnline": "онлайн",
+      "statusOffline": "оффлайн",
+      "openFull": "Перейти в Call-центр",
+      "empty": "Сейчас нет входящих звонков",
+      "emptyHint": "Новые звонки появятся здесь автоматически.",
+      "incomingLast": "Последние входящие",
+      "accept": "Принять",
+      "quickAppointment": "Быстрая запись",
+      "directionIN": "Входящий",
+      "directionOUT": "Исходящий",
+      "directionMISSED": "Пропущенный",
+      "durationSec": "{sec} сек",
+      "unknownCaller": "Неизвестный номер"
+    },
+    "tg": {
+      "title": "Telegram",
+      "openFull": "Все чаты",
+      "unread": "{count} новых",
+      "empty": "Нет непрочитанных сообщений",
+      "emptyHint": "Новые сообщения из Telegram и SMS появятся здесь.",
+      "voiceNote": "голосовое сообщение",
+      "photo": "фото",
+      "document": "документ"
+    },
+    "cabinets": {
+      "title": "Кабинеты",
+      "subtitle": "Загрузка сейчас",
+      "free": "Свободен",
+      "busy": "Занят",
+      "overbooked": "Перегружен",
+      "empty": "Кабинеты не заведены",
+      "emptyHint": "Добавьте кабинеты в разделе «Настройки».",
+      "occupiedBy": "{doctor}",
+      "untilTime": "до {time}"
+    },
+    "reminders": {
+      "title": "Напоминания",
+      "subtitle": "Ближайшие 2 часа без SMS",
+      "empty": "Все ближайшие пациенты уведомлены",
+      "emptyHint": "Система отправит SMS автоматически за час до приёма.",
+      "sendNow": "Отправить SMS",
+      "sent": "Отправлено",
+      "inMinutes": "через {min} мин",
+      "soon": "скоро",
+      "smsTemplate": "Здравствуйте, {name}. Напоминаем о приёме в NeuroFax в {time}. Ждём вас."
+    },
+    "empty": {
+      "noActiveDoctors": "Сегодня ни один врач ещё не ведёт приём"
+    },
+    "a11y": {
+      "doctorCardList": "Карточки врачей",
+      "rightRail": "Правая панель ресепшн"
     }
   },
   "hero": {
@@ -829,5 +914,172 @@
     "bookAppointment": "Записаться на приём",
     "metaTitle": "{name} — {specialty} | NeuroFax",
     "metaDescription": "{name}, {specialty}. Запись на приём в медицинском центре NeuroFax в Ташкенте."
+  },
+  "crmDoctors": {
+    "title": "Врачи",
+    "subtitle": "Аналитика и расписание врачей",
+    "count": "Всего {count}",
+    "new": "Новый врач",
+    "newAppointment": "Новая запись",
+    "back": "Назад к списку",
+    "openProfile": "Открыть профиль",
+    "loading": "Загрузка…",
+    "filters": {
+      "search": "Поиск по ФИО",
+      "specialization": "Специализация",
+      "specializationAll": "Все специализации",
+      "onlyActive": "Только активные",
+      "inactive": "Неактивные",
+      "sort": "Сортировка",
+      "sortName": "По имени",
+      "sortRating": "По рейтингу",
+      "sortLoad": "По загрузке",
+      "sortRevenue": "По выручке",
+      "clear": "Сбросить"
+    },
+    "period": {
+      "today": "Сегодня",
+      "week": "Неделя",
+      "month": "Месяц",
+      "quarter": "Квартал"
+    },
+    "card": {
+      "specializations": "Специализация",
+      "rating": "{rating} ★ · {count} отзывов",
+      "ratingEmpty": "Нет отзывов",
+      "loadToday": "Сегодня: {count}",
+      "revenuePeriod": "Выручка ({period})",
+      "loadPercent": "Загрузка",
+      "bonus": "Премия",
+      "inactiveBadge": "Неактивен"
+    },
+    "empty": {
+      "title": "Врачей пока нет",
+      "description": "Добавьте первого врача, чтобы строить расписание и учёт.",
+      "filteredTitle": "Никого не нашли",
+      "filteredDescription": "Измените фильтры или очистите поиск."
+    },
+    "rail": {
+      "title": "Сводка",
+      "periodToggle": "Период",
+      "topRevenue": "Топ по выручке",
+      "topRating": "Топ по рейтингу",
+      "topLoad": "Топ по загрузке",
+      "totalRevenue": "Общая выручка",
+      "avgLoad": "Средняя загрузка",
+      "avgCheck": "Средний чек",
+      "visitsTotal": "Приёмов всего",
+      "noData": "Нет данных"
+    },
+    "profile": {
+      "notFoundTitle": "Врач не найден",
+      "notFoundDescription": "Ссылка могла устареть или запись удалена.",
+      "errorTitle": "Ошибка загрузки",
+      "retry": "Повторить",
+      "inactive": "Врач деактивирован",
+      "specialization": "Специализация",
+      "bio": "О враче",
+      "bioEmpty": "Биография не заполнена",
+      "reviewsShort": "{count} отзывов"
+    },
+    "tabs": {
+      "overview": "Сводная",
+      "schedule": "Расписание",
+      "patients": "Пациенты",
+      "reviews": "Отзывы"
+    },
+    "finance": {
+      "title": "Финансы",
+      "revenue": "Выручка",
+      "appointments": "Приёмов",
+      "avgCheck": "Средний чек",
+      "noShow": "Пропуски",
+      "bonus": "Премия к выплате",
+      "noShowRate": "{rate}%",
+      "period": "За период",
+      "empty": "Нет данных о выручке за период"
+    },
+    "heatGrid": {
+      "title": "Загрузка по часам",
+      "subtitle": "Количество записей по дням недели и часам.",
+      "legendLow": "мало",
+      "legendHigh": "много",
+      "empty": "На выбранной неделе записей нет",
+      "prev": "Предыдущая неделя",
+      "next": "Следующая неделя",
+      "currentWeek": "Эта неделя",
+      "weekLabel": "{from} – {to}",
+      "weekdays": {
+        "mon": "Пн",
+        "tue": "Вт",
+        "wed": "Ср",
+        "thu": "Чт",
+        "fri": "Пт",
+        "sat": "Сб",
+        "sun": "Вс"
+      }
+    },
+    "schedule": {
+      "title": "Расписание",
+      "subtitle": "График работы по дням недели. Кабинет опционально.",
+      "emptyDay": "Нет слотов",
+      "addSlot": "Добавить слот",
+      "removeSlot": "Удалить слот",
+      "startTime": "Начало",
+      "endTime": "Окончание",
+      "cabinet": "Кабинет",
+      "cabinetNone": "Без кабинета",
+      "save": "Сохранить расписание",
+      "saving": "Сохраняем…",
+      "saved": "Расписание сохранено",
+      "errorSave": "Не удалось сохранить расписание",
+      "conflictSlot": "Пересечение со слотом выше",
+      "invalidTime": "Окончание должно быть позже начала",
+      "dirtyHint": "Есть несохранённые изменения",
+      "reset": "Отменить"
+    },
+    "timeOff": {
+      "title": "Отпуска и выходные",
+      "subtitle": "Дни, когда врач не принимает.",
+      "empty": "Отпусков не запланировано",
+      "add": "Добавить период",
+      "startAt": "С",
+      "endAt": "По",
+      "reason": "Причина",
+      "reasonPlaceholder": "Отпуск, конференция, больничный…",
+      "save": "Сохранить",
+      "cancel": "Отмена",
+      "saved": "Период добавлен",
+      "errorSave": "Не удалось сохранить",
+      "delete": "Удалить",
+      "deleteConfirm": "Удалить этот период?"
+    },
+    "patients": {
+      "title": "Пациенты врача",
+      "subtitle": "Топ по LTV и последним визитам.",
+      "columns": {
+        "name": "Пациент",
+        "lastVisit": "Последний визит",
+        "visits": "Визиты",
+        "ltv": "LTV"
+      },
+      "empty": "У врача пока нет пациентов",
+      "openCard": "Открыть карточку"
+    },
+    "reviews": {
+      "title": "Отзывы",
+      "subtitle": "Отзывы пациентов о враче.",
+      "empty": "Отзывов пока нет",
+      "todoHint": "Агрегация отзывов на врача появится вместе с публичным разделом отзывов."
+    },
+    "weekdays": {
+      "mon": "Понедельник",
+      "tue": "Вторник",
+      "wed": "Среда",
+      "thu": "Четверг",
+      "fri": "Пятница",
+      "sat": "Суббота",
+      "sun": "Воскресенье"
+    }
   }
 }

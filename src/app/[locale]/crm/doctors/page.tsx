@@ -1,21 +1,13 @@
-import { StethoscopeIcon } from "lucide-react"
+import { DoctorsPageClient } from "./_components/doctors-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/doctors — Phase 2d.
+ * Server component is a thin shell; all list state (filters, grid, right rail,
+ * period toggle) lives inside the client component backed by TanStack Query.
+ *
+ * See `docs/TZ.md` §6.6 and progress log Phase 2d for the end-to-end contract
+ * (list endpoint, appointment aggregation window, right-rail widgets).
+ */
 export default function DoctorsPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Врачи"
-        subtitle="Фаза 2d — TODO: аналитика и расписание врачей"
-      />
-      <EmptyState
-        icon={<StethoscopeIcon />}
-        title="Список врачей и KPI"
-        description="Занятость, выручка, NPS, свободные слоты."
-      />
-    </PageContainer>
-  )
+  return <DoctorsPageClient />;
 }

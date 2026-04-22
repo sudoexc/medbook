@@ -422,4 +422,46 @@
 
 ---
 
-## Phase 3d — TG Bot + Mini App — 🔄 планируется
+## Phase 3d — TG Bot + Mini App — ✅ готово
+
+**Scope.** Patient-facing Telegram Mini App under `/c/[slug]/my` + supporting `/api/miniapp/*` endpoints. Screens: home, book flow (service → doctor → slot → confirm → done с QR), appointments (upcoming/past + detail dialog с reschedule & cancel), documents, profile. Language picker + TG theme integration.
+
+**Что добавлено.**
+
+- **Shared handler (`src/server/miniapp/handler.ts`)** — `resolveMiniAppContext(req, {skipPatientUpsert?})` читает `x-telegram-init-data`, вытаскивает `clinicSlug` из query, загружает Clinic, верифицирует init-data через существующий `verifyMiniAppInitData(initData, tgBotToken)` (HMAC-SHA256 + WebAppData secret). Находит Patient по `{clinicId, telegramId}` (или 428 если не зарегистрирован). Возвращает `MiniAppContext` с `clinicId`/`patientId`/`patient`/`tgUser`. Wrappers `createMiniAppHandler` / `createMiniAppListHandler` оборачивают всё в `runWithTenant({kind:"SYSTEM"}, ...)` — PATIENT роли нет, фильтрация tenancy явная через `{clinicId, patientId}` в каждом запросе. Dev bypass через `x-miniapp-dev-bypass: 1` + `x-miniapp-dev-user` (не в prod).
+
+- **Auth route (`/api/miniapp/auth`)** — POST: upsert Patient by `telegramId`, fallback на `phoneNormalized` (merge существующего пациента с TG-аккаунтом), иначе создаёт нового с `source: "TELEGRAM"`. Идемпотентно — повторный вызов возвращает того же пациента. Respects `auth_date` freshness через `verifyMiniAppInitData`.
+
+- **Миниапп эндпоинты:** `GET /api/miniapp/clinic`, `GET /api/miniapp/services`, `GET /api/miniapp/doctors`, `GET /api/miniapp/slots` (по doctorId + date), `GET|POST /api/miniapp/appointments`, `GET|PATCH /api/miniapp/appointments/[id]` (reschedule/cancel — uses shared `detectConflicts` + `computeEndDate`, `channel: "TELEGRAM"`, `fireTrigger({kind:"appointment.created"})`), `GET /api/miniapp/documents`, `GET|PATCH /api/miniapp/profile`.
+
+- **Hook `useTelegramWebApp()`** (`src/hooks/use-telegram-webapp.ts`) — SSR-safe. Инжектит `telegram-web-app.js` если отсутствует, ждёт `window.Telegram.WebApp`, зовёт `ready()`+`expand()`. Экспонирует `setMainButton({text,active,progress,visible,onClick}) => cleanup`, `setBackButton(onClick) => cleanup`, `showAlert`, `showConfirm: Promise<boolean>`, `haptic.{impact,notification,selection}`, `themeParams`, `colorScheme`, `initData`, `user`.
+
+- **Layout + providers** — `src/app/c/[slug]/my/layout.tsx` использует Next 16 `LayoutProps<"/c/[slug]/my">`. `MiniAppAuthProvider` делает POST на `/api/miniapp/auth` при монтировании, хранит `{status: "loading"|"no_tg"|"error"|"ready", clinic, patient, tgUser}`. `MiniAppShell` применяет TG `themeParams` как CSS variables (`--tg-bg`, `--tg-text`, `--tg-hint`, `--tg-section-bg`, `--tg-accent`).
+
+- **Screens** — `miniapp-home.tsx` (greeting + upcoming card + 4 CTA tiles), book flow (4 steps + done с QR), `appointments-screen.tsx` + detail dialog (reschedule, cancel с `tg.showConfirm`), `documents-screen.tsx`, `profile-screen.tsx`, `language-picker-screen.tsx`, `open-in-telegram-fallback.tsx`. MainButton/BackButton привязан per-screen через `useEffect` + cleanup.
+
+- **Mini UI kit (`mini-ui.tsx`)** — MButton (variants primary/secondary/ghost/danger, block, min-h-[44px]), MCard, MListItem, MHint, MSpinner, MSection, MEmpty. Все тач-таргеты ≥44px.
+
+- **i18n (`mini-i18n.ts` + `_messages/ru.ts|uz.ts`)** — dict-based (не next-intl, т.к. Mini App вне `[locale]` дерева). ~100 ключей, полный ru/uz паритет. Язык читается из `Patient.preferredLang`.
+
+- **Booking draft** — sessionStorage-backed hook `use-booking-draft.ts` сохраняет выбор `serviceId|doctorId|slot` между шагами.
+
+- **QR на done** — `qrcode` npm пакет, payload `ticket:{clinicSlug}:{appointmentId}` (kiosk integration pending).
+
+- **Middleware** — `src/proxy.ts`: добавлено `c\\/|` в matcher exclusion, чтобы next-intl не переписывал `/c/[slug]/my` под `[locale]`.
+
+**Тесты.** +12 тестов → **130 passed** (14 файлов).
+- `tests/unit/miniapp-auth-route.test.ts` — 6 кейсов: missing init-data, missing slug, unknown clinic, bad hash, valid init-data + idempotent upsert, 503 без `tgBotToken`.
+- `tests/unit/miniapp-handler.test.ts` — 6 кейсов на `resolveMiniAppContext`: missing header/slug, 428 для unregistered, `skipPatientUpsert: true`, resolve by `telegramId`, 503 без токена.
+
+**Quality gates.** `npx tsc --noEmit` — clean. `npx vitest run` — 130/130 passed. `npm run build` — exit 0, все маршруты собраны, включая `/c/[slug]/my/{,book/{service,doctor,slot,confirm,done},appointments,documents,profile}` и `/api/miniapp/{auth,clinic,services,doctors,slots,appointments,appointments/[id],documents,profile}`.
+
+**Deviations / будущие TODO.**
+- **prisma-schema-owner:** в текущей схеме всё нужное уже есть (`Patient.telegramId`, `Patient.preferredLang`, `Clinic.tgBotToken/tgMiniAppUrl`, `LeadSource.TELEGRAM`, `AppointmentChannel.TELEGRAM`). Новых полей не требуется.
+- **admin-platform-builder (Phase 4):** UI для clinic settings → управление `tgBotToken`, `tgMiniAppUrl` (deep-link URL), `tgBotUsername`, `tgWebhookSecret`. После сохранения должен звать `setWebhook`.
+- **telegram-bot-builder:** FSM-ответы `service_select`/`slot_select` в боте сейчас stub — теперь могут deep-link`ить в `Clinic.tgMiniAppUrl?startapp=book`. Bot team должен обновить inline-keyboard handler.
+- **kiosk-builder:** QR payload `ticket:{slug}:{id}` пока не парсится kiosk'ом — нужен `POST /api/kiosk/checkin` по appointmentId.
+- **Кастомный mini-i18n** вместо next-intl — осознанное решение, Mini App вне `[locale]` дерева (язык от пациента, не URL). Если понадобится универсальный словарь, можно будет слить.
+- **SYSTEM tenant context** (не PATIENT role) — PATIENT роли в RBAC нет. Каждый запрос в Mini App endpoints явно скоупит `{clinicId, patientId}`.
+- **Language picker first-run** — сейчас запускается только если `preferredLang` не RU/UZ (маловероятно после auth). Полноценный picker по желанию можно триггерить по флагу `Patient.languagePickedAt` (требует миграции — не добавлено сейчас).
+

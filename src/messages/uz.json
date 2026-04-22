@@ -1644,5 +1644,140 @@
         "hasSecret": "Secret o'rnatilgan"
       }
     }
+  },
+  "adminPlatform": {
+    "title": "Platforma",
+    "subtitle": "Klinikalararo (SUPER_ADMIN)",
+    "forbidden": {
+      "title": "Ruxsat yo'q",
+      "hint": "Bu bo'lim faqat SUPER_ADMIN uchun."
+    },
+    "nav": {
+      "clinics": "Klinikalar",
+      "users": "Foydalanuvchilar",
+      "usage": "Foydalanish",
+      "audit": "Audit",
+      "health": "Holat",
+      "backToCrm": "CRMga qaytish"
+    },
+    "switcher": {
+      "placeholder": "Klinika tanlanmagan",
+      "heading": "Klinikani almashtirish",
+      "adminLink": "Admin platform",
+      "loading": "Yuklanmoqda…",
+      "empty": "Mavjud klinikalar yo'q",
+      "clear": "Override'ni tozalash"
+    },
+    "clinics": {
+      "title": "Klinikalar",
+      "new": "Yangi klinika",
+      "columns": {
+        "slug": "Slug",
+        "nameRu": "Nomi (ru)",
+        "nameUz": "Nomi (uz)",
+        "timezone": "TZ",
+        "currency": "Valyuta",
+        "users": "Foyd.",
+        "doctors": "Shifokorlar",
+        "active": "Faol"
+      },
+      "create": {
+        "title": "Yangi klinika",
+        "slug": "Slug",
+        "nameRu": "Nomi (ru)",
+        "nameUz": "Nomi (uz)",
+        "timezone": "Vaqt mintaqasi",
+        "currency": "Asosiy valyuta",
+        "secondaryCurrency": "Ikkinchi valyuta",
+        "submit": "Yaratish"
+      }
+    },
+    "integrations": {
+      "title": "Integratsiyalar",
+      "families": {
+        "SMS": "SMS",
+        "TG": "Telegram",
+        "PAYMENT": "To'lovlar",
+        "TELEPHONY": "Telefoniya"
+      },
+      "add": "Qo'shish",
+      "edit": "Tahrirlash",
+      "delete": "O'chirish",
+      "active": "Faol",
+      "secret": "Sir",
+      "secretMasked": "Sir (maskalangan)",
+      "secretReplace": "Sirni almashtirish",
+      "label": "Yorliq",
+      "config": "Konfig (JSON)",
+      "kind": "Turi"
+    },
+    "users": {
+      "title": "Foydalanuvchilar",
+      "search": "Ism yoki email bo'yicha qidirish",
+      "role": "Rol",
+      "clinic": "Klinika",
+      "reassign": "Qayta tayinlash",
+      "deactivate": "Deaktivatsiya",
+      "activate": "Aktivatsiya",
+      "columns": {
+        "name": "Ism",
+        "email": "Email",
+        "role": "Rol",
+        "clinic": "Klinika",
+        "active": "Faol",
+        "lastLogin": "Oxirgi kirish"
+      }
+    },
+    "usage": {
+      "title": "Foydalanish",
+      "period": {
+        "week": "Hafta",
+        "month": "Oy"
+      },
+      "kpi": {
+        "appointments": "Yozuvlar",
+        "sms": "SMS",
+        "tg": "TG xabarlar",
+        "calls": "Qo'ng'iroqlar",
+        "patients": "Yangi bemorlar"
+      }
+    },
+    "audit": {
+      "title": "Audit",
+      "filters": {
+        "clinic": "Barcha klinikalar",
+        "entityType": "entityType",
+        "action": "action (contains)",
+        "from": "Dan",
+        "to": "Gacha"
+      },
+      "columns": {
+        "time": "Vaqt",
+        "clinic": "Klinika",
+        "actor": "Actor",
+        "action": "Action",
+        "entity": "Entity",
+        "ip": "IP"
+      },
+      "empty": "Yozuvlar yo'q",
+      "loadMore": "Yana ko'rsatish"
+    },
+    "health": {
+      "title": "Holat",
+      "subtitle": "Instalyatsiya bog'liqliklari holati",
+      "refresh": "Yangilash",
+      "services": {
+        "postgres": "PostgreSQL",
+        "redis": "Redis",
+        "bullmq": "BullMQ",
+        "minio": "MinIO (S3)"
+      },
+      "status": {
+        "ok": "OK",
+        "down": "DOWN",
+        "not_configured": "NOT CONFIGURED"
+      },
+      "latency": "Kechikish"
+    }
   }
 }

@@ -13,10 +13,15 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
 
 import { prisma } from "./prisma";
 import { runWithTenant } from "./tenant-context";
 import type { Role } from "./tenant-context";
+import {
+  OVERRIDE_COOKIE_NAME,
+  verifyClinicOverride,
+} from "@/server/platform/clinic-override";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
   "SUPER_ADMIN",
@@ -86,6 +91,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = u.role;
         token.clinicId = u.clinicId ?? null;
         token.userId = u.id ?? token.sub;
+      }
+      // SUPER_ADMIN "impersonate clinic" cookie support. We re-read the
+      // cookie on every JWT refresh so changes take effect on the next
+      // request without requiring a fresh sign-in. Non-SUPER_ADMIN users
+      // are unaffected (role check enforced here and in API guards).
+      if (token.role === "SUPER_ADMIN") {
+        try {
+          const store = await cookies();
+          const overrideCookie = store.get(OVERRIDE_COOKIE_NAME);
+          const overridden = verifyClinicOverride(overrideCookie?.value ?? null);
+          token.clinicId = overridden;
+        } catch {
+          // Outside a request scope (e.g. during sign-in callback invoked
+          // from a non-request context). Ignore and keep the existing claim.
+        }
       }
       return token;
     },

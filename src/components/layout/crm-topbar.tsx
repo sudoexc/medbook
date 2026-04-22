@@ -121,6 +121,7 @@ export function CrmTopbar({
       {userRole === "SUPER_ADMIN" && (
         <ClinicSwitcher
           currentClinicId={currentClinicId ?? null}
+          userRole={userRole}
           className="hidden md:flex"
         />
       )}

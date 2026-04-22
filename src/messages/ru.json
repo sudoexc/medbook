@@ -1644,5 +1644,140 @@
         "hasSecret": "Secret установлен"
       }
     }
+  },
+  "adminPlatform": {
+    "title": "Платформа",
+    "subtitle": "Кросс-клиника (SUPER_ADMIN)",
+    "forbidden": {
+      "title": "Доступ запрещён",
+      "hint": "Этот раздел доступен только SUPER_ADMIN."
+    },
+    "nav": {
+      "clinics": "Клиники",
+      "users": "Пользователи",
+      "usage": "Использование",
+      "audit": "Аудит",
+      "health": "Здоровье",
+      "backToCrm": "Вернуться в CRM"
+    },
+    "switcher": {
+      "placeholder": "Клиника не выбрана",
+      "heading": "Переключение клиники",
+      "adminLink": "Admin platform",
+      "loading": "Загрузка…",
+      "empty": "Нет доступных клиник",
+      "clear": "Очистить override"
+    },
+    "clinics": {
+      "title": "Клиники",
+      "new": "Новая клиника",
+      "columns": {
+        "slug": "Slug",
+        "nameRu": "Название (ru)",
+        "nameUz": "Название (uz)",
+        "timezone": "TZ",
+        "currency": "Валюта",
+        "users": "Польз.",
+        "doctors": "Врачи",
+        "active": "Активна"
+      },
+      "create": {
+        "title": "Новая клиника",
+        "slug": "Slug",
+        "nameRu": "Название (ru)",
+        "nameUz": "Название (uz)",
+        "timezone": "Часовой пояс",
+        "currency": "Основная валюта",
+        "secondaryCurrency": "Вторая валюта",
+        "submit": "Создать"
+      }
+    },
+    "integrations": {
+      "title": "Интеграции",
+      "families": {
+        "SMS": "SMS",
+        "TG": "Telegram",
+        "PAYMENT": "Платежи",
+        "TELEPHONY": "Телефония"
+      },
+      "add": "Добавить",
+      "edit": "Изменить",
+      "delete": "Удалить",
+      "active": "Активна",
+      "secret": "Секрет",
+      "secretMasked": "Секрет (маскирован)",
+      "secretReplace": "Заменить секрет",
+      "label": "Ярлык",
+      "config": "Конфиг (JSON)",
+      "kind": "Тип"
+    },
+    "users": {
+      "title": "Пользователи",
+      "search": "Поиск по имени или email",
+      "role": "Роль",
+      "clinic": "Клиника",
+      "reassign": "Переназначить",
+      "deactivate": "Деактивировать",
+      "activate": "Активировать",
+      "columns": {
+        "name": "Имя",
+        "email": "Email",
+        "role": "Роль",
+        "clinic": "Клиника",
+        "active": "Активен",
+        "lastLogin": "Последний вход"
+      }
+    },
+    "usage": {
+      "title": "Использование",
+      "period": {
+        "week": "Неделя",
+        "month": "Месяц"
+      },
+      "kpi": {
+        "appointments": "Записи",
+        "sms": "SMS",
+        "tg": "TG сообщения",
+        "calls": "Звонки",
+        "patients": "Новые пациенты"
+      }
+    },
+    "audit": {
+      "title": "Аудит",
+      "filters": {
+        "clinic": "Все клиники",
+        "entityType": "entityType",
+        "action": "action (contains)",
+        "from": "С",
+        "to": "По"
+      },
+      "columns": {
+        "time": "Время",
+        "clinic": "Клиника",
+        "actor": "Actor",
+        "action": "Action",
+        "entity": "Entity",
+        "ip": "IP"
+      },
+      "empty": "Нет записей",
+      "loadMore": "Показать ещё"
+    },
+    "health": {
+      "title": "Здоровье",
+      "subtitle": "Статус зависимостей инсталляции",
+      "refresh": "Обновить",
+      "services": {
+        "postgres": "PostgreSQL",
+        "redis": "Redis",
+        "bullmq": "BullMQ",
+        "minio": "MinIO (S3)"
+      },
+      "status": {
+        "ok": "OK",
+        "down": "DOWN",
+        "not_configured": "NOT CONFIGURED"
+      },
+      "latency": "Задержка"
+    }
   }
 }

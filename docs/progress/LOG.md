@@ -276,4 +276,57 @@
 
 ---
 
-## Phase 3a — Уведомления — 🔄 планируется
+## Phase 3a — Уведомления — ✅ DONE 2026-04-22
+
+**Коммит:** `0d0770a` · тег `phase-3a-done`.
+
+### Что сделано (notifications-engineer)
+
+#### Сервер
+
+- **Template engine** `src/server/notifications/template.ts`: render / validate / extractPlaceholders + `ALLOWED_KEYS_BY_TRIGGER` whitelist. HTML-escape auto.
+- **Queue abstraction** `src/server/queue/index.ts`: `QueueAdapter` interface + `InMemoryQueueAdapter` (setTimeout/setInterval). BullMQ swap single line когда `REDIS_URL` появится.
+- **Adapters** `src/server/notifications/adapters/`: `SmsAdapter`+`TgAdapter` interfaces, `sms-log-only` / `tg-log-only` (дефолт, пишут `NotificationSend` без внешних вызовов), `sms-eskiz-stub` (throws `not configured`), factory выбирает по `ProviderConnection`.
+- **Rate-limit** `src/server/notifications/rate-limit.ts`: SMS 3/час, TG 10/мин per patient (in-memory sliding window).
+- **Triggers** `src/server/notifications/triggers.ts`: 7 триггеров (`appointment.{created,reminder-24h,reminder-2h,cancelled}`, `birthday`, `no-show`, `payment.due`) + `fireTrigger(kind, entity)` dispatcher. Идемпотентно (по appointmentId + triggerKey).
+- **Workers** `src/server/workers/{notifications-send,notifications-scheduler,start}.ts`: запуск через `npx tsx src/server/workers/start.ts`. Retry: 3 попытки, exp backoff 60/300/1800s.
+- **Trigger integration points:** `POST/PATCH/DELETE /api/crm/appointments/*`, `POST/PATCH /api/crm/payments/*` — fire-and-forget `fireTrigger()` в конце. Scheduler tick: birthday / reminder / payment.due.
+
+#### API
+
+- `GET /api/crm/notifications/stats` (today sent/failed + top templates).
+- `GET/POST /api/crm/notifications/triggers`.
+
+#### UI `/crm/notifications`
+
+- Тaбы: Templates / Queue / Campaigns / Triggers (URL-sync).
+- `template-tree` (left) + `template-editor` (right с placeholder-hint + sample preview + "Test send" dev-only button).
+- `queue-table`: virtualized, фильтры по status/channel/from/to, retry/cancel actions.
+- `campaigns-list` — stub (полный builder → Phase 5).
+- `triggers-panel`: 7 toggles + template select + delay editor (использует `NotificationTemplate.isActive`).
+- Right rail — stats.
+- i18n `notifications.*` ru/uz parity.
+
+### Build / тесты
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **68/68 passed** (+28 новых: template, rate-limit, queue, triggers).
+- `npm run build` — exit 0, все 5 notifications endpoints в route manifest.
+
+### Requests для следующих фаз
+
+- **infrastructure-engineer (Phase 6):** swap `InMemoryQueueAdapter` → BullMQ + Redis, процесс воркеров в docker-compose.
+- **prisma-schema-owner (опц.):** `TriggerConfig` model если потребуется per-trigger delay/config отдельно от `NotificationTemplate.key`.
+- **telegram-bot-developer (Phase 3b/3d):** заменить `tg-log-only` на реальный `tg-adapter` через `send.ts` бота.
+- **settings-pages-builder (Phase 4):** UI для `ProviderConnection` — клиника настраивает Eskiz/Playmobile API-ключ, токен-бот.
+
+### Deviations
+
+- Без `TriggerConfig` model — `NotificationTemplate.key` = trigger-key verbatim, `.isActive` = toggle.
+- LogOnly — default; реальный Eskiz stub throws пока не настроен.
+- Campaigns — stub, полный конструктор в Phase 5.
+- Queue теряется при рестарте (in-memory) — ок для dev, critical для прода (→ Phase 6).
+
+---
+
+## Phase 3b — Telegram inbox + бот — 🔄 планируется

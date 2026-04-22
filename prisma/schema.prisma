@@ -1,3 +1,8 @@
+// MedBook / NeuroFax — initial multi-tenant schema (Phase 1)
+// All operational entities carry clinicId + FK to Clinic.
+// Unique keys within a clinic are composite (clinicId, ...).
+// Money is stored as Int in minor units (tiyin for UZS, cents for USD).
+
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -7,42 +12,308 @@ datasource db {
   provider = "postgresql"
 }
 
-model Doctor {
-  id          String   @id // slug: "busakov", "tyncherova", etc.
-  nameRu      String
-  nameUz      String
-  specialtyRu String
-  specialtyUz String
-  cabinet     Int
-  scheduleRu  String
-  scheduleUz  String
-  hours       String
-  photo       String?
-  services    Json // [{ nameRu, nameUz, price }]
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
 
-  user         User?
-  leads        Lead[]
-  appointments Appointment[]
-  schedules    DoctorSchedule[]
-  daysOff      DoctorDayOff[]
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  DOCTOR
+  RECEPTIONIST
+  NURSE
+  CALL_OPERATOR
 }
 
-model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  hashedPassword String?
-  name           String?
-  role           Role     @default(DOCTOR)
-  doctorId       String?  @unique
-  doctor         Doctor?  @relation(fields: [doctorId], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+enum Currency {
+  UZS
+  USD
+}
 
-  accounts Account[]
-  sessions Session[]
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  PAYME
+  CLICK
+  UZUM
+  OTHER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  REFUNDED
+}
+
+enum AppointmentStatus {
+  BOOKED
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  CANCELLED
+  NO_SHOW
+}
+
+enum PatientSegment {
+  NEW
+  ACTIVE
+  DORMANT
+  VIP
+  CHURN
+}
+
+enum ChannelType {
+  WALKIN
+  PHONE
+  TELEGRAM
+  WEBSITE
+  KIOSK
+}
+
+enum CommunicationChannel {
+  SMS
+  TG
+  CALL
+  EMAIL
+  VISIT
+}
+
+enum CommunicationDirection {
+  IN
+  OUT
+}
+
+enum ConversationMode {
+  bot
+  takeover
+}
+
+enum TemplateCategory {
+  REMINDER
+  MARKETING
+  TRANSACTIONAL
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum Lang {
+  RU
+  UZ
+}
+
+enum ConversationStatus {
+  OPEN
+  SNOOZED
+  CLOSED
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+enum NotificationTrigger {
+  MANUAL
+  APPOINTMENT_CREATED
+  APPOINTMENT_BEFORE
+  APPOINTMENT_MISSED
+  APPOINTMENT_COMPLETED
+  PATIENT_BIRTHDAY
+  PATIENT_INACTIVE_DAYS
+  CRON
+}
+
+enum CallDirection {
+  IN
+  OUT
+  MISSED
+}
+
+enum DocumentType {
+  REFERRAL
+  PRESCRIPTION
+  RESULT
+  CONSENT
+  CONTRACT
+  RECEIPT
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  CANCELLED
+}
+
+enum LeadSource {
+  WEBSITE
+  TELEGRAM
+  INSTAGRAM
+  CALL
+  WALKIN
+  REFERRAL
+  ADS
+  OTHER
+}
+
+enum ProviderKind {
+  TELEGRAM
+  SMS
+  PAYME
+  CLICK
+  UZUM
+  OPENAI
+  OTHER
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tenancy
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Clinic {
+  id                String    @id @default(cuid())
+  slug              String    @unique
+  nameRu            String
+  nameUz            String
+  addressRu         String?
+  addressUz         String?
+  phone             String?
+  email             String?
+  logoUrl           String?
+  brandColor        String    @default("#3DD5C0")
+  timezone          String    @default("Asia/Tashkent")
+  currency          Currency  @default(UZS)
+  secondaryCurrency Currency?
+  exchangeRateToUsd Decimal?  @db.Decimal(12, 4)
+  workdayStart      String    @default("09:00")
+  workdayEnd        String    @default("19:00")
+  slotMin           Int       @default(30)
+  tgBotUsername     String?
+  tgBotToken        String?
+  tgWebhookSecret   String?
+  smsSenderName     String?
+  kioskPin          String?
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  users                 User[]
+  doctors               Doctor[]
+  patients              Patient[]
+  appointments          Appointment[]
+  cabinets              Cabinet[]
+  services              Service[]
+  payments              Payment[]
+  documents             Document[]
+  communications        Communication[]
+  conversations         Conversation[]
+  messages              Message[]
+  notificationTemplates NotificationTemplate[]
+  notificationSends     NotificationSend[]
+  campaigns             Campaign[]
+  calls                 Call[]
+  onlineRequests        OnlineRequest[]
+  reviews               Review[]
+  exchangeRates         ExchangeRate[]
+  providerConnections   ProviderConnection[]
+  leads                 Lead[]
+  auditLogs             AuditLog[]
+  doctorSchedules       DoctorSchedule[]
+  doctorTimeOffs        DoctorTimeOff[]
+  appointmentServices   AppointmentService[]
+}
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  date      DateTime
+  rateUsd   Decimal  @db.Decimal(12, 4)
+  source    String?
+  createdAt DateTime @default(now())
+
+  @@unique([clinicId, date])
+  @@index([clinicId, date])
+}
+
+// Encrypted per-tenant provider credentials (tg, sms, payme, etc).
+model ProviderConnection {
+  id           String       @id @default(cuid())
+  clinicId     String
+  clinic       Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  kind         ProviderKind
+  label        String?
+  // Encrypted payload (JSON) — cipher-text only; decryption is app-side.
+  secretCipher String
+  config       Json?
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([clinicId, kind, label])
+  @@index([clinicId, kind])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth (NextAuth) + Staff
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  // SUPER_ADMIN has clinicId = null; every other user is bound to a single clinic.
+  clinicId      String?
+  clinic        Clinic?   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  email         String
+  emailVerified DateTime?
+  passwordHash  String?
+  name          String
+  photoUrl      String?
+  phone         String?
+  telegramId    String?
+  role          Role      @default(DOCTOR)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  doctor              Doctor?
+  accounts            Account[]
+  sessions            Session[]
+  auditLogs           AuditLog[]
+  assignedConvs       Conversation[] @relation("ConversationAssignee")
+  calls               Call[]         @relation("CallOperator")
+  sentMessages        Message[]      @relation("MessageSender")
+  uploadedDocuments   Document[]     @relation("DocumentUploader")
+  createdAppointments Appointment[]  @relation("AppointmentCreator")
+  createdCampaigns    Campaign[]     @relation("CampaignCreator")
+
+  // Global uniqueness of email across the whole installation + per-clinic lookup.
+  @@unique([email])
+  @@index([clinicId, role])
+  @@index([clinicId, active])
 }
 
 model Account {
@@ -61,6 +332,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -69,6 +341,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -79,183 +353,602 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-model Lead {
-  id        String     @id @default(cuid())
-  name      String
-  phone     String
-  doctorId  String?
-  doctor    Doctor?    @relation(fields: [doctorId], references: [id])
-  service   String?
-  date      String?
-  locale    String     @default("ru")
-  status    LeadStatus @default(NEW)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+model Doctor {
+  id               String   @id @default(cuid())
+  clinicId         String
+  clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  userId           String?  @unique
+  user             User?    @relation(fields: [userId], references: [id])
+  slug             String
+  nameRu           String
+  nameUz           String
+  specializationRu String
+  specializationUz String
+  photoUrl         String?
+  bioRu            String?  @db.Text
+  bioUz            String?  @db.Text
+  rating           Decimal? @db.Decimal(3, 2)
+  reviewCount      Int      @default(0)
+  color            String   @default("#3DD5C0")
+  pricePerVisit    Int?
+  salaryPercent    Int      @default(40)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  appointment Appointment?
-}
-
-model Patient {
-  id             String    @id @default(cuid())
-  fullName       String
-  phone          String    @unique
-  passport       String?   @unique
-  birthDate      DateTime?
-  notes          String?   @db.Text
-  telegramChatId String?   @unique
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
+  services     ServiceOnDoctor[]
+  schedules    DoctorSchedule[]
+  timeOffs     DoctorTimeOff[]
   appointments Appointment[]
+  leads        Lead[]
+
+  @@unique([clinicId, slug])
+  @@index([clinicId, isActive])
+  @@index([clinicId, specializationRu])
 }
 
-model Appointment {
+// ─────────────────────────────────────────────────────────────────────────────
+// Catalog
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Service {
+  id          String   @id @default(cuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  code        String
+  nameRu      String
+  nameUz      String
+  category    String?
+  durationMin Int      @default(30)
+  priceBase   Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctors             ServiceOnDoctor[]
+  appointmentServices AppointmentService[]
+  primaryAppointments Appointment[]        @relation("AppointmentPrimaryService")
+
+  @@unique([clinicId, code])
+  @@index([clinicId, isActive])
+  @@index([clinicId, category])
+}
+
+model ServiceOnDoctor {
+  doctorId      String
+  serviceId     String
+  priceOverride Int?
+  doctor        Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  service       Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, serviceId])
+  @@index([serviceId])
+}
+
+model Cabinet {
   id        String   @id @default(cuid())
-  patientId String
-  patient   Patient  @relation(fields: [patientId], references: [id])
-  doctorId  String
-  doctor    Doctor   @relation(fields: [doctorId], references: [id])
-  service   String?
-  date      DateTime
-
-  // Queue
-  source      AppointmentSource @default(ONLINE)
-  queueOrder  Int?
-  queueStatus QueueStatus       @default(WAITING)
-
-  // Time tracking
-  calledAt    DateTime?
-  startedAt   DateTime?
-  completedAt DateTime?
-  durationMin Int?
-
-  notes     String?  @db.Text
-  leadId    String?  @unique
-  lead      Lead?    @relation(fields: [leadId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  medicalRecord MedicalRecord?
-  payment       Payment?
-
-  @@index([doctorId, date, queueStatus])
-}
-
-model MedicalRecord {
-  id              String      @id @default(cuid())
-  appointmentId   String      @unique
-  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  complaints      String?     @db.Text
-  diagnosis       String?     @db.Text
-  prescriptions   String?     @db.Text
-  recommendations String?     @db.Text
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-}
-
-model Payment {
-  id            String        @id @default(cuid())
-  appointmentId String        @unique
-  appointment   Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  amount        Int // in UZS
-  method        PaymentMethod @default(CASH)
-  status        PaymentStatus @default(UNPAID)
-  paidAt        DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  @@index([status])
-}
-
-model DoctorSchedule {
-  id        String   @id @default(cuid())
-  doctorId  String
-  doctor    Doctor   @relation(fields: [doctorId], references: [id])
-  dayOfWeek Int // 0=Sunday, 1=Monday ... 6=Saturday
-  startTime String // "09:00"
-  endTime   String // "17:00"
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  number    String
+  floor     Int?
+  nameRu    String?
+  nameUz    String?
+  equipment String[]
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([doctorId, dayOfWeek])
+  appointments Appointment[]
+
+  @@unique([clinicId, number])
+  @@index([clinicId, isActive])
 }
 
-model DoctorDayOff {
-  id        String   @id @default(cuid())
+model DoctorSchedule {
+  id        String    @id @default(cuid())
+  clinicId  String
+  clinic    Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   doctorId  String
-  doctor    Doctor   @relation(fields: [doctorId], references: [id])
-  date      DateTime
+  doctor    Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  weekday   Int
+  startTime String
+  endTime   String
+  cabinetId String?
+  validFrom DateTime?
+  validTo   DateTime?
+  isActive  Boolean   @default(true)
+
+  @@index([clinicId, doctorId, weekday])
+}
+
+model DoctorTimeOff {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  startAt   DateTime
+  endAt     DateTime
   reason    String?
   createdAt DateTime @default(now())
 
-  @@unique([doctorId, date])
+  @@index([clinicId, doctorId, startAt])
 }
 
-enum Role {
-  ADMIN
-  DOCTOR
-  RECEPTIONIST
+// ─────────────────────────────────────────────────────────────────────────────
+// Patients & Appointments
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Patient {
+  id               String               @id @default(cuid())
+  clinicId         String
+  clinic           Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  fullName         String
+  phone            String
+  phoneNormalized  String
+  birthDate        DateTime?
+  gender           Gender?
+  passport         String?
+  address          String?
+  photoUrl         String?
+  telegramId       String?
+  telegramUsername String?
+  preferredChannel CommunicationChannel @default(TG)
+  preferredLang    Lang                 @default(RU)
+  source           LeadSource?
+  segment          PatientSegment       @default(NEW)
+  tags             String[]
+  notes            String?              @db.Text
+  ltv              Int                  @default(0)
+  visitsCount      Int                  @default(0)
+  balance          Int                  @default(0)
+  discountPct      Int                  @default(0)
+  lastVisitAt      DateTime?
+  nextVisitAt      DateTime?
+  consentMarketing Boolean              @default(false)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  appointments   Appointment[]
+  payments       Payment[]
+  conversations  Conversation[]
+  calls          Call[]
+  notifications  NotificationSend[]
+  documents      Document[]
+  communications Communication[]
+  onlineRequests OnlineRequest[]
+  reviews        Review[]
+  leads          Lead[]
+
+  @@unique([clinicId, phoneNormalized])
+  @@index([clinicId, fullName])
+  @@index([clinicId, segment])
+  @@index([clinicId, lastVisitAt])
+  @@index([clinicId, createdAt])
+  @@index([clinicId, telegramId])
 }
 
-enum LeadStatus {
-  NEW
-  CONTACTED
-  CONVERTED
-  CANCELLED
+model Appointment {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id])
+  cabinetId String?
+  cabinet   Cabinet? @relation(fields: [cabinetId], references: [id])
+
+  // Primary service (denormalized for fast filters); additional services live in AppointmentService join.
+  serviceId      String?
+  primaryService Service? @relation("AppointmentPrimaryService", fields: [serviceId], references: [id])
+
+  date        DateTime
+  time        String?
+  durationMin Int      @default(30)
+  endDate     DateTime
+
+  status       AppointmentStatus @default(BOOKED)
+  queueStatus  AppointmentStatus @default(BOOKED)
+  queueOrder   Int?
+  calledAt     DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  channel ChannelType @default(WALKIN)
+  leadId  String?     @unique
+  lead    Lead?       @relation(fields: [leadId], references: [id])
+
+  priceService   Int?
+  priceBase      Int?
+  discountPct    Int  @default(0)
+  discountAmount Int  @default(0)
+  priceFinal     Int?
+
+  createdById String?
+  createdBy   User?   @relation("AppointmentCreator", fields: [createdById], references: [id])
+  comments    String? @db.Text
+  notes       String? @db.Text
+
+  services     AppointmentService[]
+  payments     Payment[]
+  documents    Document[]
+  conversation Conversation?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId, date])
+  @@index([clinicId, doctorId, date])
+  @@index([clinicId, patientId])
+  @@index([clinicId, status])
+  @@index([clinicId, queueStatus])
+  @@index([clinicId, endDate, cabinetId])
+  @@index([clinicId, createdAt])
 }
 
-enum AppointmentSource {
-  ONLINE
-  WALKIN
+model AppointmentService {
+  clinicId      String
+  clinic        Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  serviceId     String
+  service       Service     @relation(fields: [serviceId], references: [id])
+  priceSnap     Int
+  quantity      Int         @default(1)
+
+  @@id([appointmentId, serviceId])
+  @@index([clinicId, appointmentId])
+  @@index([serviceId])
 }
 
-enum QueueStatus {
-  WAITING
-  IN_PROGRESS
-  COMPLETED
-  SKIPPED
-  CANCELLED
+// ─────────────────────────────────────────────────────────────────────────────
+// Payments
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id            String       @id @default(cuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  patientId     String?
+  patient       Patient?     @relation(fields: [patientId], references: [id])
+
+  currency       Currency      @default(UZS)
+  amount         Int // minor units of `currency`
+  amountUsdSnap  Int? // snapshot in USD cents at payment time
+  fxRate         Decimal?      @db.Decimal(12, 4)
+  method         PaymentMethod
+  status         PaymentStatus @default(UNPAID)
+  receiptNumber  String?
+  receiptUrl     String?
+  refundedAmount Int           @default(0)
+  paidAt         DateTime?
+  externalRef    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId, status])
+  @@index([clinicId, paidAt])
+  @@index([clinicId, appointmentId])
+  @@index([clinicId, patientId])
+  @@index([clinicId, createdAt])
 }
 
-enum PaymentMethod {
-  CASH
-  CARD
-  TRANSFER
+// ─────────────────────────────────────────────────────────────────────────────
+// Documents
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Document {
+  id            String       @id @default(cuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  type          DocumentType
+  title         String
+  fileUrl       String
+  mimeType      String?
+  sizeBytes     Int?
+  uploadedById  String?
+  uploadedBy    User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, type])
 }
 
-enum PaymentStatus {
-  UNPAID
-  PAID
+// ─────────────────────────────────────────────────────────────────────────────
+// Communications — lightweight audit trail of all outbound/inbound touches.
+// (Chat threads live in Conversation/Message.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Communication {
+  id        String                 @id @default(cuid())
+  clinicId  String
+  clinic    Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId String?
+  patient   Patient?               @relation(fields: [patientId], references: [id])
+  channel   CommunicationChannel
+  direction CommunicationDirection
+  subject   String?
+  body      String?                @db.Text
+  meta      Json?
+  createdAt DateTime               @default(now())
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, channel, createdAt])
 }
 
-model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String? // User.id — null when action is performed via terminal PIN (no session)
-  actorRole  String? // snapshot of role at time of action
-  actorLabel String? // human label: email, "terminal" for PIN, etc.
-  action     String // e.g. "lead.status.update", "payment.update", "export.csv", "appointment.delete"
-  entityType String // e.g. "Lead", "Payment", "Appointment"
-  entityId   String? // nullable for bulk/export actions
-  meta       Json? // any extra context (before/after snapshot, filters used, row count, etc.)
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime @default(now())
+model Conversation {
+  id              String               @id @default(cuid())
+  clinicId        String
+  clinic          Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  channel         CommunicationChannel
+  mode            ConversationMode     @default(bot)
+  patientId       String?
+  patient         Patient?             @relation(fields: [patientId], references: [id])
+  appointmentId   String?              @unique
+  appointment     Appointment?         @relation(fields: [appointmentId], references: [id])
+  externalId      String?
+  status          ConversationStatus   @default(OPEN)
+  assignedToId    String?
+  assignedTo      User?                @relation("ConversationAssignee", fields: [assignedToId], references: [id])
+  tags            String[]
+  lastMessageAt   DateTime?
+  lastMessageText String?
+  unreadCount     Int                  @default(0)
+  snoozedUntil    DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
-  @@index([entityType, entityId])
-  @@index([actorId, createdAt])
-  @@index([action, createdAt])
+  messages Message[]
+
+  @@unique([clinicId, externalId])
+  @@index([clinicId, status, lastMessageAt])
+  @@index([clinicId, assignedToId, status])
+  @@index([clinicId, patientId])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  clinicId       String
+  clinic         Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      MessageDirection
+  body           String?          @db.Text
+  attachments    Json?
+  buttons        Json?
+  senderId       String?
+  sender         User?            @relation("MessageSender", fields: [senderId], references: [id])
+  status         MessageStatus    @default(SENT)
+  externalId     String?
+  replyToId      String?
+  createdAt      DateTime         @default(now())
+
+  @@unique([clinicId, externalId])
+  @@index([clinicId, conversationId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications & Campaigns
+// ─────────────────────────────────────────────────────────────────────────────
+
+model NotificationTemplate {
+  id            String               @id @default(cuid())
+  clinicId      String
+  clinic        Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  key           String
+  nameRu        String
+  nameUz        String
+  channel       CommunicationChannel
+  category      TemplateCategory
+  bodyRu        String               @db.Text
+  bodyUz        String               @db.Text
+  buttons       Json?
+  variables     String[]
+  trigger       NotificationTrigger  @default(MANUAL)
+  triggerConfig Json?
+  isActive      Boolean              @default(true)
+  createdById   String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  sends     NotificationSend[]
+  campaigns Campaign[]
+
+  @@unique([clinicId, key])
+  @@index([clinicId, category])
+  @@index([clinicId, isActive])
+}
+
+model NotificationSend {
+  id            String                @id @default(cuid())
+  clinicId      String
+  clinic        Clinic                @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  templateId    String?
+  template      NotificationTemplate? @relation(fields: [templateId], references: [id])
+  campaignId    String?
+  campaign      Campaign?             @relation(fields: [campaignId], references: [id])
+  patientId     String
+  patient       Patient               @relation(fields: [patientId], references: [id])
+  appointmentId String?
+  channel       CommunicationChannel
+  recipient     String
+  body          String                @db.Text
+  status        NotificationStatus    @default(QUEUED)
+  scheduledFor  DateTime
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  failedReason  String?
+  externalId    String?
+  retryCount    Int                   @default(0)
+  createdAt     DateTime              @default(now())
+
+  @@index([clinicId, status, scheduledFor])
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, campaignId])
+}
+
+model Campaign {
+  id           String                @id @default(cuid())
+  clinicId     String
+  clinic       Clinic                @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name         String
+  templateId   String?
+  template     NotificationTemplate? @relation(fields: [templateId], references: [id])
+  segment      Json? // filter definition
+  channel      CommunicationChannel
+  status       String                @default("DRAFT")
+  scheduledFor DateTime?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  totalCount   Int                   @default(0)
+  sentCount    Int                   @default(0)
+  failedCount  Int                   @default(0)
+  createdById  String?
+  createdBy    User?                 @relation("CampaignCreator", fields: [createdById], references: [id])
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  sends NotificationSend[]
+
+  @@index([clinicId, status, scheduledFor])
+  @@index([clinicId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Call center / Online requests / Reviews
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Call {
+  id            String        @id @default(cuid())
+  clinicId      String
+  clinic        Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  direction     CallDirection
+  fromNumber    String
+  toNumber      String
+  patientId     String?
+  patient       Patient?      @relation(fields: [patientId], references: [id])
+  operatorId    String?
+  operator      User?         @relation("CallOperator", fields: [operatorId], references: [id])
+  appointmentId String?
+  durationSec   Int?
+  recordingUrl  String?
+  summary       String?       @db.Text
+  tags          String[]
+  sipCallId     String?
+  createdAt     DateTime      @default(now())
+  endedAt       DateTime?
+
+  @@unique([clinicId, sipCallId])
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, operatorId, createdAt])
+  @@index([clinicId, direction, createdAt])
+}
+
+model OnlineRequest {
+  id          String      @id @default(cuid())
+  clinicId    String
+  clinic      Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name        String
+  phone       String
+  service     String?
+  doctorId    String?
+  preferredAt DateTime?
+  channel     ChannelType
+  status      LeadStatus  @default(NEW)
+  source      LeadSource  @default(WEBSITE)
+  utm         Json?
+  comment     String?     @db.Text
+  patientId   String?
+  patient     Patient?    @relation(fields: [patientId], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([clinicId, status, createdAt])
+  @@index([clinicId, phone])
+}
+
+// Legacy-compatible lead (form submissions converted into Appointments)
+model Lead {
+  id        String     @id @default(cuid())
+  clinicId  String
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String
+  service   String?
+  date      DateTime?
+  doctorId  String?
+  doctor    Doctor?    @relation(fields: [doctorId], references: [id])
+  patientId String?
+  patient   Patient?   @relation(fields: [patientId], references: [id])
+  status    LeadStatus @default(NEW)
+  source    LeadSource @default(WEBSITE)
+  utm       Json?
+  comment   String?    @db.Text
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  appointment Appointment?
+
+  @@index([clinicId, status, createdAt])
+  @@index([clinicId, phone])
 }
 
 model Review {
   id          String   @id @default(cuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId   String?
+  patient     Patient? @relation(fields: [patientId], references: [id])
   authorName  String
-  rating      Int // 1-5
+  rating      Int
   text        String   @db.Text
-  source      String   @default("yandex") // yandex, google, manual
+  source      String   @default("yandex")
   sourceUrl   String?
   publishedAt DateTime @default(now())
   visible     Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([clinicId, visible, publishedAt])
+  @@index([clinicId, rating])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit log
+// NOTE: AuditLog has clinicId for reporting/filtering, but is intentionally
+// EXCLUDED from the Prisma multi-tenant middleware allowlist so system actions
+// can always be recorded even in cross-tenant or SUPER_ADMIN contexts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  clinicId   String?
+  clinic     Clinic?  @relation(fields: [clinicId], references: [id])
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  actorRole  String?
+  actorLabel String?
+  action     String
+  entityType String
+  entityId   String?
+  meta       Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([clinicId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }

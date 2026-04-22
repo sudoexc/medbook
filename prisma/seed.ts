@@ -6,293 +6,473 @@ import bcrypt from "bcryptjs";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-// Day-of-week constants: 0=Sun, 1=Mon, ..., 6=Sat
-const MON = 1, TUE = 2, WED = 3, THU = 4, FRI = 5, SAT = 6;
+// ──────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────
 
-interface DoctorSeed {
-  id: string;
-  nameRu: string;
-  nameUz: string;
-  specialtyRu: string;
-  specialtyUz: string;
-  cabinet: number;
-  scheduleRu: string;
-  scheduleUz: string;
-  hours: string;
-  /** Days this doctor accepts patients (0=Sun). All other days are inactive. */
-  workDays: number[];
-  startTime: string;
-  endTime: string;
-  services: { nameRu: string; nameUz: string; price: number }[];
-  email: string;
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D+/g, "");
+  return digits.startsWith("998") ? `+${digits}` : `+998${digits}`;
 }
 
-const doctors: DoctorSeed[] = [
-  // ── Кабинет №1 — Взрослый невролог ──────────────────────────────
-  {
-    id: "busakov",
-    nameRu: "Бусаков Бахтияр Султанович",
-    nameUz: "Busakov Baxtiyor Sultonovich",
-    specialtyRu: "Взрослый невролог",
-    specialtyUz: "Kattalar nevropatologi",
-    cabinet: 1,
-    scheduleRu: "Пн – Сб",
-    scheduleUz: "Du – Sha",
-    hours: "08:00 – 17:00",
-    workDays: [MON, TUE, WED, THU, FRI, SAT],
-    startTime: "08:00",
-    endTime: "17:00",
-    services: [
-      { nameRu: "Консультация", nameUz: "Konsultatsiya", price: 250000 },
-      { nameRu: "ЭЭГ", nameUz: "EEG", price: 100000 },
-      { nameRu: "РеоЭГ", nameUz: "ReoEG", price: 60000 },
-      { nameRu: "ЭхоЭГ", nameUz: "ExoEG", price: 40000 },
-    ],
-    email: "busakov@neurofax.uz",
-  },
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
-  // ── Кабинет №2 — Кардиология (двое врачей, разные дни) ──────────
-  {
-    id: "tyncherova",
-    nameRu: "Тынчерова Найля Юсуфовна",
-    nameUz: "Tincherova Naylya Yusufovna",
-    specialtyRu: "Кардиолог",
-    specialtyUz: "Kardiolog",
-    cabinet: 2,
-    scheduleRu: "Пн, Ср, Пт, Сб",
-    scheduleUz: "Du, Chor, Ju, Sha",
-    hours: "09:00 – 15:00",
-    workDays: [MON, WED, FRI, SAT],
-    startTime: "09:00",
-    endTime: "15:00",
-    services: [
-      { nameRu: "Консультация", nameUz: "Konsultatsiya", price: 200000 },
-      { nameRu: "ЭКГ", nameUz: "EKG", price: 70000 },
-    ],
-    email: "tyncherova@neurofax.uz",
-  },
-  {
-    id: "mukhitdinova",
-    nameRu: "Мухитдинова Шахноза Салахитдиновна",
-    nameUz: "Muxitdinova Shaxnoza Salaxitdinovna",
-    specialtyRu: "Кардиолог",
-    specialtyUz: "Kardiolog",
-    cabinet: 2,
-    scheduleRu: "Вт, Чт",
-    scheduleUz: "Se, Pay",
-    hours: "09:30 – 15:00",
-    workDays: [TUE, THU],
-    startTime: "09:30",
-    endTime: "15:00",
-    services: [
-      { nameRu: "Консультация", nameUz: "Konsultatsiya", price: 200000 },
-      { nameRu: "Допплер БЦА", nameUz: "Dopler BTsA", price: 150000 },
-      { nameRu: "ЭхоКГ", nameUz: "ExoKG", price: 150000 },
-      { nameRu: "ЭКГ", nameUz: "EKG", price: 70000 },
-    ],
-    email: "mukhitdinova@neurofax.uz",
-  },
+function addDays(d: Date, days: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + days);
+  return r;
+}
 
-  // ── Кабинет №4 — УЗИ и диагностика ──────────────────────────────
-  {
-    id: "rakhmanova",
-    nameRu: "Рахманова Нигора Бахтияровна",
-    nameUz: "Raxmanova Nigora Baxtiyorovna",
-    specialtyRu: "УЗИ и диагностика",
-    specialtyUz: "UZI va diagnostika",
-    cabinet: 4,
-    scheduleRu: "Пн – Сб",
-    scheduleUz: "Du – Sha",
-    hours: "10:00 – 14:00",
-    workDays: [MON, TUE, WED, THU, FRI, SAT],
-    startTime: "10:00",
-    endTime: "14:00",
-    services: [
-      { nameRu: "УЗИ (1 орган)", nameUz: "UZI (1 organ)", price: 80000 },
-      { nameRu: "НСГ", nameUz: "NSG", price: 80000 },
-      { nameRu: "ЭЭГ (30 мин)", nameUz: "EEG (30 daq)", price: 150000 },
-      { nameRu: "ЭЭГ (1 час)", nameUz: "EEG (1 soat)", price: 250000 },
-    ],
-    email: "rakhmanova@neurofax.uz",
-  },
+function atHour(d: Date, h: number, m = 0): Date {
+  const r = new Date(d);
+  r.setHours(h, m, 0, 0);
+  return r;
+}
 
-  // ── Кабинет №5 — Взрослый невролог ──────────────────────────────
-  {
-    id: "sultanov",
-    nameRu: "Султанов Азиз Бахтиёр угли",
-    nameUz: "Sultonov Aziz Baxtiyor o'g'li",
-    specialtyRu: "Взрослый невролог",
-    specialtyUz: "Kattalar nevropatologi",
-    cabinet: 5,
-    scheduleRu: "Пн – Сб",
-    scheduleUz: "Du – Sha",
-    hours: "08:00 – 17:00",
-    workDays: [MON, TUE, WED, THU, FRI, SAT],
-    startTime: "08:00",
-    endTime: "17:00",
-    services: [
-      { nameRu: "Консультация", nameUz: "Konsultatsiya", price: 200000 },
-      { nameRu: "ЭЭГ", nameUz: "EEG", price: 100000 },
-      { nameRu: "РеоЭГ", nameUz: "ReoEG", price: 60000 },
-      { nameRu: "ЭхоЭГ", nameUz: "ExoEG", price: 40000 },
-    ],
-    email: "sultanov@neurofax.uz",
-  },
+// ──────────────────────────────────────────────────────────────────────────
+// Seed data defs
+// ──────────────────────────────────────────────────────────────────────────
 
-  // ── Кабинет №6 — Детский невролог и педиатр (двое врачей) ───────
+interface ClinicSeed {
+  slug: string;
+  nameRu: string;
+  nameUz: string;
+  addressRu: string;
+  addressUz: string;
+  phone: string;
+  email: string;
+  brandColor: string;
+}
+
+const clinicsToSeed: ClinicSeed[] = [
   {
-    id: "israilova",
-    nameRu: "Исраилова Феруза Камиловна",
-    nameUz: "Israilova Feruza Kamilovna",
-    specialtyRu: "Детский невролог и педиатр",
-    specialtyUz: "Bolalar nevropatologi va pediatr",
-    cabinet: 6,
-    scheduleRu: "Вт, Чт, Сб",
-    scheduleUz: "Se, Pay, Sha",
-    hours: "09:00 – 15:00",
-    workDays: [TUE, THU, SAT],
-    startTime: "09:00",
-    endTime: "15:00",
-    services: [
-      { nameRu: "Консультация", nameUz: "Konsultatsiya", price: 200000 },
-    ],
-    email: "israilova@neurofax.uz",
+    slug: "neurofax",
+    nameRu: "Диагностический центр NeuroFax",
+    nameUz: "NeuroFax diagnostika markazi",
+    addressRu: "г. Ташкент, ул. Пример, 1",
+    addressUz: "Toshkent sh., Namuna ko'ch., 1",
+    phone: "+998712000001",
+    email: "info@neurofax.uz",
+    brandColor: "#3DD5C0",
   },
   {
-    id: "vazirova",
-    nameRu: "Вазирова Юлдуз Нурматовна",
-    nameUz: "Vazirova Yulduz Nurmatovna",
-    specialtyRu: "Детский невролог и педиатр",
-    specialtyUz: "Bolalar nevropatologi va pediatr",
-    cabinet: 6,
-    scheduleRu: "Пн, Ср, Пт",
-    scheduleUz: "Du, Chor, Ju",
-    hours: "09:00 – 15:00",
-    workDays: [MON, WED, FRI],
-    startTime: "09:00",
-    endTime: "15:00",
-    services: [
-      { nameRu: "Консультация", nameUz: "Konsultatsiya", price: 200000 },
-    ],
-    email: "vazirova@neurofax.uz",
+    slug: "demo-clinic",
+    nameRu: "Демо-клиника",
+    nameUz: "Demo klinika",
+    addressRu: "г. Ташкент, ул. Демо, 42",
+    addressUz: "Toshkent sh., Demo ko'ch., 42",
+    phone: "+998712000002",
+    email: "info@demo-clinic.uz",
+    brandColor: "#6366F1",
   },
 ];
 
+const FIRST_NAMES_RU = [
+  "Азиза", "Иван", "Феруза", "Мухаммад", "Ойбек", "Сардор", "Камила", "Бобур",
+  "Нигора", "Алишер", "Мадина", "Улугбек", "Гулнора", "Фарход", "Дилшод",
+];
+const LAST_NAMES_RU = [
+  "Каримов", "Усманов", "Юлдашев", "Хасанов", "Турсунов", "Махмудов", "Рахимов",
+];
+
+const SERVICE_TEMPLATES = [
+  { code: "CONSULT", nameRu: "Консультация", nameUz: "Konsultatsiya", durationMin: 30, priceBase: 200_000 * 100, category: "Консультация" },
+  { code: "EEG", nameRu: "ЭЭГ", nameUz: "EEG", durationMin: 60, priceBase: 150_000 * 100, category: "Диагностика" },
+  { code: "ECG", nameRu: "ЭКГ", nameUz: "EKG", durationMin: 30, priceBase: 70_000 * 100, category: "Диагностика" },
+  { code: "UZI", nameRu: "УЗИ (1 орган)", nameUz: "UZI (1 organ)", durationMin: 30, priceBase: 80_000 * 100, category: "УЗИ" },
+  { code: "ECHO_KG", nameRu: "ЭхоКГ", nameUz: "ExoKG", durationMin: 45, priceBase: 150_000 * 100, category: "УЗИ" },
+];
+
+const TEMPLATE_SEEDS = [
+  // 5 reminders
+  { key: "reminder.24h", nameRu: "Напоминание за 24 часа", nameUz: "24 soat oldin eslatma", category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -1440 } },
+  { key: "reminder.2h",  nameRu: "Напоминание за 2 часа",  nameUz: "2 soat oldin eslatma",  category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -120 } },
+  { key: "reminder.confirm", nameRu: "Подтверждение записи", nameUz: "Yozuv tasdiqlash", category: "REMINDER" as const, trigger: "APPOINTMENT_CREATED" as const, triggerConfig: null },
+  { key: "reminder.missed", nameRu: "Не пришли на приём", nameUz: "Qabulga kelmadingiz", category: "REMINDER" as const, trigger: "APPOINTMENT_MISSED" as const, triggerConfig: { offsetMin: 30 } },
+  { key: "reminder.feedback", nameRu: "Оставьте отзыв", nameUz: "Fikr qoldiring", category: "REMINDER" as const, trigger: "APPOINTMENT_COMPLETED" as const, triggerConfig: { offsetMin: 60 } },
+  // 3 marketing
+  { key: "marketing.birthday", nameRu: "С днём рождения", nameUz: "Tug'ilgan kuningiz bilan", category: "MARKETING" as const, trigger: "PATIENT_BIRTHDAY" as const, triggerConfig: null },
+  { key: "marketing.dormant", nameRu: "Давно не были", nameUz: "Uzoqdan ko'rinmadingiz", category: "MARKETING" as const, trigger: "PATIENT_INACTIVE_DAYS" as const, triggerConfig: { days: 180 } },
+  { key: "marketing.promo", nameRu: "Акция месяца", nameUz: "Oy aksiyasi", category: "MARKETING" as const, trigger: "MANUAL" as const, triggerConfig: null },
+  // 2 transactional
+  { key: "transactional.payment", nameRu: "Чек об оплате", nameUz: "To'lov cheki", category: "TRANSACTIONAL" as const, trigger: "MANUAL" as const, triggerConfig: null },
+  { key: "transactional.document", nameRu: "Готов ваш документ", nameUz: "Hujjatingiz tayyor", category: "TRANSACTIONAL" as const, trigger: "MANUAL" as const, triggerConfig: null },
+];
+
+// ──────────────────────────────────────────────────────────────────────────
+// Main
+// ──────────────────────────────────────────────────────────────────────────
+
 async function main() {
-  const hashedPassword = await bcrypt.hash("neurofax2024", 10);
+  console.log("Seeding MedBook/NeuroFax phase-1 data…");
 
-  // ── Retire old pediatric stub (if present from earlier seeds) ──
-  // We keep it in DB (don't delete — appointments may FK to it) but mark inactive.
-  await prisma.doctor.updateMany({
-    where: { id: "pediatric" },
-    data: { active: false },
-  });
-  await prisma.doctorSchedule.updateMany({
-    where: { doctorId: "pediatric" },
-    data: { isActive: false },
-  });
+  const superPassHash = await bcrypt.hash("super", 10);
+  const adminPassHash = await bcrypt.hash("admin", 10);
+  const doctorPassHash = await bcrypt.hash("doctor", 10);
+  const receptPassHash = await bcrypt.hash("recept", 10);
 
-  // ── Upsert doctors + user accounts ─────────────────────────────
-  for (const doc of doctors) {
-    const { email, workDays, startTime, endTime, ...doctorFields } = doc;
-
-    // Force-update on re-seed so the landing/dashboard reflect current data.
-    await prisma.doctor.upsert({
-      where: { id: doc.id },
-      update: { ...doctorFields, active: true },
-      create: { ...doctorFields, active: true },
-    });
-
-    await prisma.user.upsert({
-      where: { email },
-      update: { name: doc.nameRu, role: "DOCTOR", doctorId: doc.id },
-      create: {
-        email,
-        name: doc.nameRu,
-        hashedPassword,
-        role: "DOCTOR",
-        doctorId: doc.id,
-      },
-    });
-
-    // ── Per-doctor weekly schedule ────────────────────────────────
-    // Each doctor works only on their declared workDays at their own hours.
-    // All other days must be explicitly marked isActive:false so leftover
-    // rows from old seeds don't keep stale days open for booking.
-    for (let dow = 0; dow <= 6; dow++) {
-      const isWorking = workDays.includes(dow);
-      await prisma.doctorSchedule.upsert({
-        where: { doctorId_dayOfWeek: { doctorId: doc.id, dayOfWeek: dow } },
-        update: {
-          startTime: isWorking ? startTime : "09:00",
-          endTime: isWorking ? endTime : "18:00",
-          isActive: isWorking,
-        },
-        create: {
-          doctorId: doc.id,
-          dayOfWeek: dow,
-          startTime: isWorking ? startTime : "09:00",
-          endTime: isWorking ? endTime : "18:00",
-          isActive: isWorking,
-        },
-      });
-    }
-  }
-
-  // ── Admin account ──────────────────────────────────────────────
+  // ── SUPER_ADMIN (no clinicId) ─────────────────────────────────────────
   await prisma.user.upsert({
-    where: { email: "admin@neurofax.uz" },
-    update: {},
+    where: { email: "super@neurofax.uz" },
+    update: {
+      role: "SUPER_ADMIN",
+      name: "Super Admin",
+      passwordHash: superPassHash,
+      active: true,
+    },
     create: {
-      email: "admin@neurofax.uz",
-      name: "Администратор",
-      hashedPassword,
-      role: "ADMIN",
+      email: "super@neurofax.uz",
+      role: "SUPER_ADMIN",
+      name: "Super Admin",
+      passwordHash: superPassHash,
     },
   });
 
-  // ── Reviews (best 4, all 5-star, from Yandex Maps) ─────────────
-  // Only seed reviews once — don't duplicate on re-seed.
-  const existingReviews = await prisma.review.count();
-  if (existingReviews === 0) {
-    const reviews = [
-      {
-        authorName: "Мадина К.",
-        rating: 5,
-        text: "Отличный диагностический центр! Доктор Бусаков очень внимательный и профессиональный. Сделали ЭЭГ быстро и качественно. Результаты объяснили понятным языком. Рекомендую всем!",
-        source: "yandex",
-        publishedAt: new Date("2026-03-10"),
+  for (const cs of clinicsToSeed) {
+    const clinic = await prisma.clinic.upsert({
+      where: { slug: cs.slug },
+      update: {
+        nameRu: cs.nameRu,
+        nameUz: cs.nameUz,
+        addressRu: cs.addressRu,
+        addressUz: cs.addressUz,
+        phone: cs.phone,
+        email: cs.email,
+        brandColor: cs.brandColor,
+        active: true,
       },
-      {
-        authorName: "Алишер Т.",
-        rating: 5,
-        text: "Привёл ребёнка к детскому неврологу. Врач нашёл подход к малышу, провёл тщательный осмотр. Назначил лечение, через месяц уже видны улучшения. Спасибо большое!",
-        source: "yandex",
-        publishedAt: new Date("2026-02-22"),
+      create: {
+        slug: cs.slug,
+        nameRu: cs.nameRu,
+        nameUz: cs.nameUz,
+        addressRu: cs.addressRu,
+        addressUz: cs.addressUz,
+        phone: cs.phone,
+        email: cs.email,
+        brandColor: cs.brandColor,
+        currency: "UZS",
+        secondaryCurrency: "USD",
       },
-      {
-        authorName: "Гулнора А.",
-        rating: 5,
-        text: "Кардиолог Тынчерова — замечательный врач! Внимательная, знающая. Сделали ЭКГ, всё объяснила. Наблюдаюсь у неё уже год. Очень довольна!",
-        source: "yandex",
-        publishedAt: new Date("2026-02-05"),
+    });
+
+    // ── Exchange rate today: 1 USD = 12700 UZS → store rate as UZS→USD (1/12700)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    await prisma.exchangeRate.upsert({
+      where: { clinicId_date: { clinicId: clinic.id, date: today } },
+      update: { rateUsd: 1 / 12700, source: "seed" },
+      create: { clinicId: clinic.id, date: today, rateUsd: 1 / 12700, source: "seed" },
+    });
+
+    // ── 1 ADMIN ───────────────────────────────────────────────────────
+    const adminEmail = `admin@${cs.slug === "neurofax" ? "neurofax.uz" : "demo-clinic.uz"}`;
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: {
+        name: `${cs.nameRu} — Администратор`,
+        passwordHash: adminPassHash,
+        role: "ADMIN",
+        clinicId: clinic.id,
+        active: true,
       },
-      {
-        authorName: "Фарход У.",
-        rating: 5,
-        text: "Лучший диагностический центр в районе! Все врачи профессионалы. Оборудование на уровне. Цены адекватные. Обращаюсь уже третий раз, всегда доволен.",
-        source: "yandex",
-        publishedAt: new Date("2026-01-18"),
+      create: {
+        email: adminEmail,
+        name: `${cs.nameRu} — Администратор`,
+        passwordHash: adminPassHash,
+        role: "ADMIN",
+        clinicId: clinic.id,
       },
+    });
+
+    // ── 1 RECEPTIONIST ────────────────────────────────────────────────
+    const receptEmail = `recept@${cs.slug === "neurofax" ? "neurofax.uz" : "demo-clinic.uz"}`;
+    await prisma.user.upsert({
+      where: { email: receptEmail },
+      update: {
+        name: `${cs.nameRu} — Ресепшн`,
+        passwordHash: receptPassHash,
+        role: "RECEPTIONIST",
+        clinicId: clinic.id,
+        active: true,
+      },
+      create: {
+        email: receptEmail,
+        name: `${cs.nameRu} — Ресепшн`,
+        passwordHash: receptPassHash,
+        role: "RECEPTIONIST",
+        clinicId: clinic.id,
+      },
+    });
+
+    // ── 2 DOCTORs ─────────────────────────────────────────────────────
+    const doctorDefs = [
+      { slug: "neurologist", nameRu: "Ахмедов Акмаль Ботирович", nameUz: "Ahmedov Akmal Botirovich", specializationRu: "Невролог", specializationUz: "Nevropatolog", color: "#3DD5C0" },
+      { slug: "cardiologist", nameRu: "Каримова Шахноза Алишеровна", nameUz: "Karimova Shaxnoza Alisherovna", specializationRu: "Кардиолог", specializationUz: "Kardiolog", color: "#F59E0B" },
     ];
 
-    for (const review of reviews) {
-      await prisma.review.create({ data: review });
+    const createdDoctors: { id: string; userId: string | null }[] = [];
+    for (const d of doctorDefs) {
+      const docEmail = `${d.slug}@${cs.slug}.uz`;
+      const user = await prisma.user.upsert({
+        where: { email: docEmail },
+        update: {
+          name: d.nameRu,
+          passwordHash: doctorPassHash,
+          role: "DOCTOR",
+          clinicId: clinic.id,
+          active: true,
+        },
+        create: {
+          email: docEmail,
+          name: d.nameRu,
+          passwordHash: doctorPassHash,
+          role: "DOCTOR",
+          clinicId: clinic.id,
+        },
+      });
+
+      // Upsert doctor via composite unique (clinicId, slug)
+      const doctor = await prisma.doctor.upsert({
+        where: { clinicId_slug: { clinicId: clinic.id, slug: d.slug } },
+        update: {
+          nameRu: d.nameRu,
+          nameUz: d.nameUz,
+          specializationRu: d.specializationRu,
+          specializationUz: d.specializationUz,
+          color: d.color,
+          userId: user.id,
+          isActive: true,
+        },
+        create: {
+          clinicId: clinic.id,
+          slug: d.slug,
+          nameRu: d.nameRu,
+          nameUz: d.nameUz,
+          specializationRu: d.specializationRu,
+          specializationUz: d.specializationUz,
+          color: d.color,
+          userId: user.id,
+        },
+      });
+
+      createdDoctors.push({ id: doctor.id, userId: user.id });
+
+      // Schedule Mon–Fri (weekday 1..5) 09:00-18:00
+      for (let weekday = 1; weekday <= 5; weekday++) {
+        const existing = await prisma.doctorSchedule.findFirst({
+          where: { clinicId: clinic.id, doctorId: doctor.id, weekday },
+        });
+        if (existing) {
+          await prisma.doctorSchedule.update({
+            where: { id: existing.id },
+            data: { startTime: "09:00", endTime: "18:00", isActive: true },
+          });
+        } else {
+          await prisma.doctorSchedule.create({
+            data: {
+              clinicId: clinic.id,
+              doctorId: doctor.id,
+              weekday,
+              startTime: "09:00",
+              endTime: "18:00",
+            },
+          });
+        }
+      }
     }
+
+    // ── 2 Cabinets ────────────────────────────────────────────────────
+    const cabs = [
+      { number: "101", floor: 1, nameRu: "Кабинет 101", nameUz: "101-xona" },
+      { number: "102", floor: 1, nameRu: "Кабинет 102", nameUz: "102-xona" },
+    ];
+    const createdCabinets: { id: string }[] = [];
+    for (const c of cabs) {
+      const cab = await prisma.cabinet.upsert({
+        where: { clinicId_number: { clinicId: clinic.id, number: c.number } },
+        update: { floor: c.floor, nameRu: c.nameRu, nameUz: c.nameUz, isActive: true },
+        create: { clinicId: clinic.id, ...c, equipment: [] },
+      });
+      createdCabinets.push({ id: cab.id });
+    }
+
+    // ── 5 Services ────────────────────────────────────────────────────
+    const createdServices: { id: string; priceBase: number }[] = [];
+    for (const s of SERVICE_TEMPLATES) {
+      const svc = await prisma.service.upsert({
+        where: { clinicId_code: { clinicId: clinic.id, code: s.code } },
+        update: {
+          nameRu: s.nameRu,
+          nameUz: s.nameUz,
+          durationMin: s.durationMin,
+          priceBase: s.priceBase,
+          category: s.category,
+          isActive: true,
+        },
+        create: {
+          clinicId: clinic.id,
+          code: s.code,
+          nameRu: s.nameRu,
+          nameUz: s.nameUz,
+          durationMin: s.durationMin,
+          priceBase: s.priceBase,
+          category: s.category,
+        },
+      });
+      createdServices.push({ id: svc.id, priceBase: s.priceBase });
+
+      // Link all services to all doctors (many-to-many via ServiceOnDoctor)
+      for (const d of createdDoctors) {
+        await prisma.serviceOnDoctor.upsert({
+          where: { doctorId_serviceId: { doctorId: d.id, serviceId: svc.id } },
+          update: {},
+          create: { doctorId: d.id, serviceId: svc.id },
+        });
+      }
+    }
+
+    // ── 10 Patients ───────────────────────────────────────────────────
+    const createdPatients: { id: string }[] = [];
+    for (let i = 0; i < 10; i++) {
+      const first = pick(FIRST_NAMES_RU);
+      const last = pick(LAST_NAMES_RU);
+      const rawPhone = `${900000000 + Math.floor(Math.random() * 99_999_999)}`;
+      const phone = rawPhone.slice(-9);
+      const normalized = normalizePhone(phone);
+
+      // Avoid duplicate phone normalization collisions per clinic
+      const existing = await prisma.patient.findUnique({
+        where: { clinicId_phoneNormalized: { clinicId: clinic.id, phoneNormalized: normalized } },
+      });
+      if (existing) {
+        createdPatients.push({ id: existing.id });
+        continue;
+      }
+
+      const p = await prisma.patient.create({
+        data: {
+          clinicId: clinic.id,
+          fullName: `${last} ${first}`,
+          phone,
+          phoneNormalized: normalized,
+          gender: Math.random() > 0.5 ? "MALE" : "FEMALE",
+          segment: pick(["NEW", "ACTIVE", "DORMANT", "VIP"] as const),
+          preferredChannel: "TG",
+          preferredLang: "RU",
+          consentMarketing: Math.random() > 0.3,
+        },
+      });
+      createdPatients.push({ id: p.id });
+    }
+
+    // ── 20 Appointments over the next 7 days ─────────────────────────
+    const now = new Date();
+    const statuses = ["BOOKED", "COMPLETED", "CANCELLED", "BOOKED", "BOOKED"] as const;
+    for (let i = 0; i < 20; i++) {
+      const dayOffset = Math.floor(Math.random() * 7);
+      const startHour = 9 + Math.floor(Math.random() * 8);
+      const date = atHour(addDays(now, dayOffset), startHour);
+      const duration = 30;
+      const endDate = new Date(date.getTime() + duration * 60_000);
+      const doctor = pick(createdDoctors);
+      const patient = pick(createdPatients);
+      const cabinet = pick(createdCabinets);
+      const service = pick(createdServices);
+      const status = pick(statuses);
+
+      const appt = await prisma.appointment.create({
+        data: {
+          clinicId: clinic.id,
+          patientId: patient.id,
+          doctorId: doctor.id,
+          cabinetId: cabinet.id,
+          serviceId: service.id,
+          date,
+          durationMin: duration,
+          endDate,
+          status,
+          queueStatus: status,
+          channel: pick(["WALKIN", "PHONE", "TELEGRAM", "WEBSITE"] as const),
+          priceService: service.priceBase,
+          priceBase: service.priceBase,
+          priceFinal: service.priceBase,
+          completedAt: status === "COMPLETED" ? new Date(endDate.getTime()) : null,
+          cancelledAt: status === "CANCELLED" ? new Date(date.getTime()) : null,
+        },
+      });
+
+      await prisma.appointmentService.create({
+        data: {
+          clinicId: clinic.id,
+          appointmentId: appt.id,
+          serviceId: service.id,
+          priceSnap: service.priceBase,
+          quantity: 1,
+        },
+      });
+
+      // Seed a PAID payment for completed appointments
+      if (status === "COMPLETED") {
+        await prisma.payment.create({
+          data: {
+            clinicId: clinic.id,
+            appointmentId: appt.id,
+            patientId: patient.id,
+            currency: "UZS",
+            amount: service.priceBase,
+            method: pick(["CASH", "CARD", "PAYME", "CLICK"] as const),
+            status: "PAID",
+            paidAt: new Date(endDate.getTime()),
+          },
+        });
+      }
+    }
+
+    // ── 10 NotificationTemplates ─────────────────────────────────────
+    for (const t of TEMPLATE_SEEDS) {
+      const bodyRu = `Здравствуйте, {{patient.fullName}}! ${t.nameRu}.`;
+      const bodyUz = `Assalomu alaykum, {{patient.fullName}}! ${t.nameUz}.`;
+      await prisma.notificationTemplate.upsert({
+        where: { clinicId_key: { clinicId: clinic.id, key: t.key } },
+        update: {
+          nameRu: t.nameRu,
+          nameUz: t.nameUz,
+          category: t.category,
+          trigger: t.trigger,
+          triggerConfig: t.triggerConfig as any,
+          bodyRu,
+          bodyUz,
+          isActive: true,
+        },
+        create: {
+          clinicId: clinic.id,
+          key: t.key,
+          nameRu: t.nameRu,
+          nameUz: t.nameUz,
+          channel: "TG",
+          category: t.category,
+          trigger: t.trigger,
+          triggerConfig: t.triggerConfig as any,
+          bodyRu,
+          bodyUz,
+          variables: ["patient.fullName", "appointment.date"],
+        },
+      });
+    }
+
+    console.log(`  ✔ ${cs.slug} seeded`);
   }
 
-  console.log(`Seeded ${doctors.length} doctors + user accounts + per-day schedules`);
-  console.log("Default password: neurofax2024");
+  console.log("Done.");
+  console.log("Accounts:");
+  console.log("  super@neurofax.uz / super         (SUPER_ADMIN)");
+  console.log("  admin@neurofax.uz / admin         (ADMIN neurofax)");
+  console.log("  admin@demo-clinic.uz / admin      (ADMIN demo-clinic)");
+  console.log("  recept@neurofax.uz / recept       (RECEPTIONIST neurofax)");
+  console.log("  recept@demo-clinic.uz / recept    (RECEPTIONIST demo-clinic)");
+  console.log("  <slug>@<clinic>.uz / doctor       (DOCTOR)");
 }
 
 main()

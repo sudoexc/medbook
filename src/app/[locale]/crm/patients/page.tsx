@@ -1,21 +1,12 @@
-import { UsersIcon } from "lucide-react"
+import { PatientsPageClient } from "./_components/patients-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/patients — Phase 2a.
+ * Server component is a thin shell; all interactive state (filters, table,
+ * right-rail widgets, new-patient dialog) lives in the client component.
+ * The initial list + stats are fetched on the client via TanStack Query so
+ * filter changes don't require a full server round-trip.
+ */
 export default function PatientsPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Пациенты"
-        subtitle="Фаза 2a — TODO: список пациентов"
-      />
-      <EmptyState
-        icon={<UsersIcon />}
-        title="База пациентов"
-        description="Поиск, фильтры по сегменту/тегам, быстрый переход в карточку пациента."
-      />
-    </PageContainer>
-  )
+  return <PatientsPageClient />;
 }

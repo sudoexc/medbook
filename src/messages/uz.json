@@ -98,6 +98,111 @@
       "partial": "Qisman"
     }
   },
+  "patients": {
+    "title": "Bemorlar",
+    "subtitle": "Klinika bemorlari bazasi",
+    "new": "Yangi bemor",
+    "export": "CSV eksport",
+    "count": "Jami {count}",
+    "columns": {
+      "name": "Bemor",
+      "age": "Yosh",
+      "phone": "Telefon",
+      "segment": "Segment",
+      "ltv": "LTV",
+      "lastVisit": "Oxirgi tashrif",
+      "tags": "Teglar",
+      "actions": "Amallar"
+    },
+    "filters": {
+      "search": "Qidirish: F.I.Sh., telefon, pasport, TG",
+      "segment": "Segment",
+      "segmentAll": "Barcha segmentlar",
+      "tags": "Teglar",
+      "tagsAll": "Barcha teglar",
+      "age": "Yosh",
+      "ageFrom": "dan",
+      "ageTo": "gacha",
+      "gender": "Jins",
+      "genderAll": "Har qanday",
+      "lastVisit": "Oxirgi tashrif",
+      "hasDebt": "Qarzdor",
+      "clear": "Tozalash"
+    },
+    "widgets": {
+      "demographics": "Demografiya",
+      "demographicsEmpty": "Jins ma'lumoti yo'q",
+      "sources": "Manbalar",
+      "sourcesEmpty": "Manba ma'lumoti yo'q",
+      "birthdays": "Tug'ilgan kunlar",
+      "birthdaysEmpty": "Bu haftada tug'ilgan kun yo'q",
+      "birthdaysTitle": "Bu haftaning tug'ilgan kunlari",
+      "topServices": "Ommabop teglar",
+      "topServicesEmpty": "Teglar ishlatilmagan",
+      "today": "bugun",
+      "inDays": "{days} kundan keyin",
+      "male": "Erkaklar",
+      "female": "Ayollar",
+      "unknown": "Ko'rsatilmagan",
+      "ageGroups": "Yosh guruhlari"
+    },
+    "segment": {
+      "new": "Yangi",
+      "active": "Faol",
+      "dormant": "Nofaol",
+      "vip": "VIP",
+      "churn": "Yo'qotilgan"
+    },
+    "gender": {
+      "male": "Erkak",
+      "female": "Ayol"
+    },
+    "source": {
+      "website": "Sayt",
+      "telegram": "Telegram",
+      "instagram": "Instagram",
+      "call": "Qo'ng'iroq",
+      "walkin": "Ko'chadan",
+      "referral": "Tavsiya",
+      "ads": "Reklama",
+      "other": "Boshqa"
+    },
+    "empty": {
+      "title": "Bemorlar yo'q",
+      "description": "Bazaga birinchi bemorni qo'shing",
+      "filteredTitle": "Hech narsa topilmadi",
+      "filteredDescription": "Filtrlarni o'zgartiring yoki tozalang",
+      "action": "Yangi bemor"
+    },
+    "loadMore": "Yana ko'rsatish",
+    "loading": "Yuklanmoqda…",
+    "newDialog": {
+      "title": "Yangi bemor",
+      "description": "Tez ro'yxatga olish. Qolganini kartochkada to'ldirasiz.",
+      "firstName": "Ism",
+      "lastName": "Familiya",
+      "patronymic": "Otasining ismi",
+      "fullName": "F.I.Sh.",
+      "phone": "Telefon",
+      "email": "Email",
+      "birthDate": "Tug'ilgan sana",
+      "gender": "Jins",
+      "genderPlaceholder": "Jinsini tanlang",
+      "source": "Manba",
+      "sourcePlaceholder": "Qayerdan keldi",
+      "tags": "Teglar (vergul bilan)",
+      "submit": "Yaratish",
+      "cancel": "Bekor qilish",
+      "createdToast": "Bemor yaratildi",
+      "errorToast": "Bemorni yaratib bo'lmadi",
+      "phoneExists": "Bu telefon raqamidagi bemor allaqachon mavjud"
+    },
+    "rowActions": {
+      "open": "Kartochkani ochish",
+      "call": "Qo'ng'iroq qilish",
+      "newAppointment": "Yangi yozilish"
+    }
+  },
   "reception": {
     "title": "Qabulxona",
     "subtitle": "Bugungi kun",

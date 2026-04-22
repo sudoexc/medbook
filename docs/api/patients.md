@@ -36,3 +36,13 @@ All endpoints require an authenticated session. See `src/lib/api-handler.ts`.
 
 ### `GET /api/crm/patients/export`
 - Streaming CSV (UTF-8 BOM). Accepts the same filters as the list endpoint.
+
+### `GET /api/crm/patients/stats`
+- **Roles:** ADMIN, RECEPTIONIST, DOCTOR.
+- **200:** `{ gender: [...], ageGroups: [...], sources: [...], birthdays: [...], topTags: [...] }`
+  - `gender`: `[{ gender: 'MALE'|'FEMALE'|null, count }]`
+  - `ageGroups`: `[{ group: '0-18'|'19-35'|'36-55'|'56+', count }]`
+  - `sources`: `[{ source: LeadSource|null, count }]`
+  - `birthdays`: up to 10 patients whose birthday falls in the next 7 days (`daysUntil` 0..7).
+  - `topTags`: top 5 tags by frequency across patients.
+- Used by the patients list right-rail widgets (Phase 2a). Single-clinic aggregates only; replaced by an analytics pipeline in Phase 4.

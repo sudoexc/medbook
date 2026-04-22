@@ -98,6 +98,111 @@
       "partial": "Частично"
     }
   },
+  "patients": {
+    "title": "Пациенты",
+    "subtitle": "База пациентов клиники",
+    "new": "Новый пациент",
+    "export": "Экспорт CSV",
+    "count": "Всего {count}",
+    "columns": {
+      "name": "Пациент",
+      "age": "Возраст",
+      "phone": "Телефон",
+      "segment": "Сегмент",
+      "ltv": "LTV",
+      "lastVisit": "Последний визит",
+      "tags": "Теги",
+      "actions": "Действия"
+    },
+    "filters": {
+      "search": "Поиск: ФИО, телефон, паспорт, TG",
+      "segment": "Сегмент",
+      "segmentAll": "Все сегменты",
+      "tags": "Теги",
+      "tagsAll": "Все теги",
+      "age": "Возраст",
+      "ageFrom": "от",
+      "ageTo": "до",
+      "gender": "Пол",
+      "genderAll": "Любой пол",
+      "lastVisit": "Последний визит",
+      "hasDebt": "С долгом",
+      "clear": "Сбросить"
+    },
+    "widgets": {
+      "demographics": "Демография",
+      "demographicsEmpty": "Нет данных о поле",
+      "sources": "Источники",
+      "sourcesEmpty": "Нет данных об источниках",
+      "birthdays": "Дни рождения",
+      "birthdaysEmpty": "На этой неделе никого",
+      "birthdaysTitle": "Дни рождения недели",
+      "topServices": "Популярные теги",
+      "topServicesEmpty": "Теги не используются",
+      "today": "сегодня",
+      "inDays": "через {days} дн.",
+      "male": "Мужчины",
+      "female": "Женщины",
+      "unknown": "Не указан",
+      "ageGroups": "Возрастные группы"
+    },
+    "segment": {
+      "new": "Новый",
+      "active": "Активный",
+      "dormant": "Спящий",
+      "vip": "VIP",
+      "churn": "Отток"
+    },
+    "gender": {
+      "male": "Мужской",
+      "female": "Женский"
+    },
+    "source": {
+      "website": "Сайт",
+      "telegram": "Telegram",
+      "instagram": "Instagram",
+      "call": "Звонок",
+      "walkin": "С улицы",
+      "referral": "По рекомендации",
+      "ads": "Реклама",
+      "other": "Другое"
+    },
+    "empty": {
+      "title": "Нет пациентов",
+      "description": "Добавьте первого пациента в базу",
+      "filteredTitle": "Ничего не найдено",
+      "filteredDescription": "Попробуйте изменить или сбросить фильтры",
+      "action": "Новый пациент"
+    },
+    "loadMore": "Показать ещё",
+    "loading": "Загрузка…",
+    "newDialog": {
+      "title": "Новый пациент",
+      "description": "Быстрая регистрация. Остальное можно заполнить в карточке.",
+      "firstName": "Имя",
+      "lastName": "Фамилия",
+      "patronymic": "Отчество",
+      "fullName": "ФИО",
+      "phone": "Телефон",
+      "email": "Email",
+      "birthDate": "Дата рождения",
+      "gender": "Пол",
+      "genderPlaceholder": "Выберите пол",
+      "source": "Источник",
+      "sourcePlaceholder": "Откуда пришёл",
+      "tags": "Теги (через запятую)",
+      "submit": "Создать",
+      "cancel": "Отмена",
+      "createdToast": "Пациент создан",
+      "errorToast": "Не удалось создать пациента",
+      "phoneExists": "Пациент с таким телефоном уже есть"
+    },
+    "rowActions": {
+      "open": "Открыть карточку",
+      "call": "Позвонить",
+      "newAppointment": "Новая запись"
+    }
+  },
   "reception": {
     "title": "Рецепция",
     "subtitle": "Сегодняшний день",

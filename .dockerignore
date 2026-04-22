@@ -1,0 +1,33 @@
+# Version control + IDE noise
+.git
+.github
+.vscode
+.idea
+
+# Dependencies / build output
+node_modules
+.next
+out
+build
+coverage
+
+# Env + secrets
+.env
+.env.*
+!.env.example
+
+# Local test + DB files
+tests/fixtures/tmp
+*.log
+
+# OS
+.DS_Store
+
+# Docs / CI that don't need to be in the image
+docs
+ops
+nginx
+Dockerfile
+Dockerfile.worker
+docker-compose.yml
+README.md

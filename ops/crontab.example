@@ -1,0 +1,11 @@
+# MedBook / NeuroFax — recommended host crontab.
+# Install with: `crontab ops/crontab.example` (on the deploy host, as the
+# user that owns the repo checkout).
+#
+# The docker-compose `certbot` sidecar handles renewal, so we only need
+# the nightly database backup here.
+
+MAILTO=""
+
+# Nightly Postgres backup → MinIO, 03:00 UTC.
+0 3 * * * cd /opt/medbook && ./ops/backup.sh >> /var/log/medbook-backup.log 2>&1

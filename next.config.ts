@@ -40,6 +40,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // `output: 'standalone'` makes `next build` emit a self-contained server
+  // bundle under `.next/standalone` that only needs Node.js at runtime. We
+  // deploy that via Docker (see Dockerfile) — no `node_modules/` in the
+  // final image. See `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`.
+  output: "standalone",
   async headers() {
     return [
       {

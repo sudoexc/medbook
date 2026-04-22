@@ -1,0 +1,146 @@
+# MedBook / NeuroFax — development + production docker-compose.
+#
+# Production:
+#   docker compose up -d --build
+#   docker compose exec app npx prisma migrate deploy
+#
+# Services:
+#   postgres  — primary Postgres database
+#   redis     — BullMQ queue + SSE fan-out pub/sub
+#   minio     — S3-compatible object storage (uploads + nightly backups)
+#   app       — Next.js standalone server
+#   worker    — background workers (notifications + scheduler + exports)
+#   nginx     — reverse proxy + TLS termination
+#   certbot   — Let's Encrypt renewal sidecar
+#
+# Named volumes persist data across `docker compose down`:
+#   pgdata, redisdata, miniodata, letsencrypt
+
+name: medbook
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-medbook}
+      POSTGRES_USER: ${POSTGRES_USER:-medbook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medbook}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medbook} -d ${POSTGRES_DB:-medbook}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No ports published in prod — app talks over the compose network.
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    expose:
+      - "6379"
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-medbook}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-medbook-secret-min-8}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    expose:
+      - "9000"
+      - "9001"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-medbook}:${POSTGRES_PASSWORD:-medbook}@postgres:5432/${POSTGRES_DB:-medbook}?schema=public
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-medbook}:${POSTGRES_PASSWORD:-medbook}@postgres:5432/${POSTGRES_DB:-medbook}?schema=public
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - letsencrypt:/etc/letsencrypt
+      - ./nginx/www:/var/www/certbot
+    depends_on:
+      - app
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - ./nginx/www:/var/www/certbot
+    # Renewal loop: try every 12h; reload nginx on success.
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM;
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet;
+          sleep 12h & wait $${!};
+        done'
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  letsencrypt:

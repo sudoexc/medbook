@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Dummy env so `prisma generate` + build don't complain about missing vars.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      AUTH_SECRET: ci-dummy-auth-secret-${{ github.run_id }}
+      AUTH_URL: http://localhost:3000
+      APP_SECRET: ci-dummy-app-secret-${{ github.run_id }}
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify standalone output
+        run: |
+          test -d .next/standalone || { echo "::error::missing .next/standalone"; exit 1; }
+          test -f .next/standalone/server.js || { echo "::error::missing .next/standalone/server.js"; exit 1; }
+          ls -la .next/standalone | head -20

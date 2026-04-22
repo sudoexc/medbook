@@ -1,0 +1,1 @@
+# Certbot webroot. Runtime-only — certbot writes ACME challenge files here.

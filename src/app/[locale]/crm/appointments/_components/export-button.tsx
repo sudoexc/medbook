@@ -1,38 +1,52 @@
 "use client";
 
 import * as React from "react";
-import { DownloadIcon } from "lucide-react";
+import { DownloadIcon, Loader2Icon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
+import { useAsyncExport } from "@/hooks/use-async-export";
 
 /**
- * Triggers CSV export at `/api/crm/appointments/export-csv` preserving the
- * current URL filters. The endpoint is expected to stream the same shape as
- * `/api/crm/patients/export` (RFC 4180 + UTF-8 BOM); creation is tracked in
- * the TODO list for api-builder (Phase 2b wrap-up).
+ * Appointment CSV export via the Phase 5 async worker. Poll → download.
  */
 export function ExportButton() {
   const t = useTranslations("appointments");
+  const tx = useTranslations("exportsUi");
   const searchParams = useSearchParams();
+  const { start, status } = useAsyncExport();
 
-  const href = React.useMemo(() => {
-    const qs = searchParams?.toString() ?? "";
-    return qs
-      ? `/api/crm/appointments/export-csv?${qs}`
-      : "/api/crm/appointments/export-csv";
-  }, [searchParams]);
+  const onClick = () => {
+    const filters: Record<string, unknown> = {};
+    const sp = searchParams;
+    if (sp) {
+      const doctorId = sp.get("doctorId") ?? sp.get("doctor");
+      const statusF = sp.get("status");
+      const dateFrom = sp.get("from");
+      const dateTo = sp.get("to");
+      if (doctorId) filters.doctorId = doctorId;
+      if (statusF) filters.status = statusF;
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+    }
+    void start({ kind: "appointments", filters });
+    toast.message(tx("enqueued"));
+  };
+
+  const running = status === "enqueued" || status === "running";
 
   return (
-    <a
-      href={href}
-      rel="noopener noreferrer"
-      className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={onClick}
+      disabled={running}
     >
-      <DownloadIcon className="size-4" />
+      {running ? <Loader2Icon className="size-4 animate-spin" /> : <DownloadIcon className="size-4" />}
       {t("export")}
-    </a>
+    </Button>
   );
 }

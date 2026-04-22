@@ -465,3 +465,53 @@
 - **SYSTEM tenant context** (не PATIENT role) — PATIENT роли в RBAC нет. Каждый запрос в Mini App endpoints явно скоупит `{clinicId, patientId}`.
 - **Language picker first-run** — сейчас запускается только если `preferredLang` не RU/UZ (маловероятно после auth). Полноценный picker по желанию можно триггерить по флагу `Patient.languagePickedAt` (требует миграции — не добавлено сейчас).
 
+
+---
+
+## Phase 4 — Админские разделы — ✅ DONE 2026-04-22
+
+**Коммиты:** `ff9371e` (CRM settings) · `01855c6` (SUPER_ADMIN platform) · тег `phase-4-done`.
+
+### Settings (settings-pages-builder, `ff9371e`)
+
+- **Layout** `src/app/[locale]/crm/settings/layout.tsx` — ADMIN/SUPER_ADMIN gate + sidebar (8 секций).
+- **Секции:** Clinic, Users (CRUD + reset-password + last-admin + self-deactivate guards), Services (inline-edit), Cabinets, Exchange rates, Roles (static matrix), Audit (infinite-scroll virtualized), Integrations (4 провайдерских карточки + SMS test + TG webhook-status/set).
+- **API:** `/api/crm/users/*` (new), `/api/crm/clinic/*` (new), `/api/crm/integrations/*` (new), `/api/crm/integrations/{verify-password,tg/webhook-status,tg/set-webhook,sms/test}`.
+- **Password re-entry dialog** для secret-changes (TG token, provider creds). Backend verify через bcrypt.
+- `ProviderConnection.secretCipher` — base64 placeholder (real AES в `01855c6`, см. ниже).
+- +22 новых schema-тестов → 157 passed.
+- i18n `settings.*` ru/uz parity (~200 keys).
+
+### SUPER_ADMIN platform (admin-platform-builder, `01855c6`)
+
+- **Encryption** `src/server/crypto/secrets.ts` — AES-256-GCM, scrypt KDF из `APP_SECRET` (fallback `AUTH_SECRET`), формат `v1:iv:tag:ct` base64. 17 юнит-тестов (round-trip, unicode, tamper, bad-key, bad-format, missing-secret, maskSecret, constantTimeEqual).
+- **Layout** `src/app/admin/layout.tsx` — SUPER_ADMIN gate (inline 403), sidebar (5 секций + "back to CRM").
+- **Секции:** Clinics (CRUD), Clinic Integrations (TELEPHONY→OTHER, PAYMENT→{PAYME,CLICK,UZUM}; masked + "Replace" toggle), Users global (filter + reassign + deactivate with self-guard), Usage (week/month KPI + per-clinic table), Audit global (cursor + filters), Health (Postgres live, Redis/BullMQ/MinIO stubs).
+- **API** `/api/platform/*` — 11 endpoints. Все требуют `SUPER_ADMIN` + `runWithTenant({kind:'SUPER_ADMIN'})`.
+- **ClinicSwitcher** (`src/components/layout/clinic-switcher.tsx`) — заменил Phase 0 stub. SUPER_ADMIN видит dropdown всех клиник + "Admin platform" link + "Clear override" footer. Non-SUPER_ADMIN — read-only label.
+- **Switch mechanism:** HMAC-подписанный cookie `admin_clinic_override=<clinicId>.<hmac>` читается в NextAuth `jwt` callback когда `role=SUPER_ADMIN`. Cross-tab safe, revocable. `router.refresh()` после switch.
+- +17 crypto-тестов → **174 passed (16 файлов)**.
+- i18n `adminPlatform.*` ru/uz parity.
+
+### Build / тесты
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **174/174 passed**.
+- `npm run build` — exit 0, все 63 страницы сгенерированы.
+
+### Deviations
+
+- Schema: `Clinic.{currency, secondaryCurrency}` (не `currencyPrimary/Secondary`).
+- `ProviderKind` enum: нет `SIP` / dedicated `PAYMENT` — family→kind маппинг `TELEPHONY→OTHER`, `PAYMENT→{PAYME,CLICK,UZUM}`.
+- `tgMiniAppUrl` в schema отсутствует на Clinic — skipped (запрос prisma-schema-owner).
+- Legacy `ProviderConnection.secretCipher` из Phase 4 settings (base64) → admin-platform GET ловит decrypt failure, возвращает `••••` чтобы UI не падал.
+
+### Requests для Phase 5+
+
+- **prisma-schema-owner:** `Clinic.tgMiniAppUrl`, `ProviderKind.SIP`, `ProviderKind.PAYMENT`.
+- **infrastructure-engineer (Phase 6):** real Redis/BullMQ/MinIO health probes. Re-wrap legacy base64 secrets через AES-GCM migration.
+- **Phase 5:** CRM layout сейчас передаёт hard-coded `userEmail="admin@neurofax.uz"` в `CrmTopbar` — wire real session data чтобы `userRole` прокидывался в `ClinicSwitcher`.
+
+---
+
+## Phase 5 — Глобальные фичи — 🔄 планируется

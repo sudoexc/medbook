@@ -423,6 +423,70 @@
       }
     }
   },
+  "calendar": {
+    "title": "Kalendar",
+    "subtitle": "Shifokorlar bo'yicha tashriflarni rejalashtirish",
+    "today": "Bugun",
+    "prev": "Oldingi",
+    "next": "Keyingi",
+    "loading": "Yuklanmoqda…",
+    "noEvents": "Bu davrda yozilishlar yo'q",
+    "newAppointment": "Yangi yozilish",
+    "desktopOnlyTitle": "Desktopda oching",
+    "desktopOnlyDescription": "Kalendar 1280 px va undan yuqori ekranlar uchun moslangan. Telefonda «Yozilishlar» bo'limidan foydalaning.",
+    "views": {
+      "day": "Kun",
+      "workWeek": "Ish haftasi",
+      "week": "Hafta"
+    },
+    "filters": {
+      "doctors": "Shifokorlar",
+      "doctorsAll": "Barcha shifokorlar",
+      "doctorsSelected": "{count, plural, one {# shifokor} other {# shifokor}}",
+      "cabinets": "Kabinetlar",
+      "cabinetsAll": "Barcha kabinetlar",
+      "cabinetsSelected": "{count, plural, one {# kabinet} other {# kabinet}}",
+      "services": "Xizmatlar",
+      "servicesAll": "Barcha xizmatlar",
+      "servicesSelected": "{count, plural, one {# xizmat} other {# xizmat}}",
+      "cabinetOverlay": "Kabinet bo'yicha rang",
+      "search": "Qidirish…",
+      "clear": "Tozalash",
+      "apply": "Qo'llash"
+    },
+    "conflict": {
+      "title": "Jadval nizosi",
+      "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
+      "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
+      "doctor_time_off": "Bu vaqtda shifokor ta'tilda",
+      "outside_schedule": "Ish vaqtidan tashqarida"
+    },
+    "toast": {
+      "moved": "Yozilish ko'chirildi",
+      "reverted": "O'zgarish bekor qilindi"
+    },
+    "event": {
+      "untitled": "Nomsiz",
+      "patient": "Bemor",
+      "duration": "Davomiyligi",
+      "minutesShort": "daq",
+      "clickToCreate": "Yozilish yaratish uchun bosing"
+    },
+    "legend": {
+      "title": "Legenda",
+      "byStatus": "Holat bo'yicha",
+      "byDoctor": "Shifokor bo'yicha",
+      "byCabinet": "Kabinet bo'yicha"
+    },
+    "rail": {
+      "stats": "Statistika",
+      "totalCount": "Jami yozilishlar",
+      "completedCount": "Tugatildi",
+      "revenueTotal": "Daromad",
+      "occupancy": "Shifokorlar yuklamasi",
+      "noData": "Ma'lumot yo'q"
+    }
+  },
   "patientCard": {
     "back": "Ro'yxatga qaytish",
     "newAppointmentTodo": "TODO: yozilish yaratish — 2b bosqichida",

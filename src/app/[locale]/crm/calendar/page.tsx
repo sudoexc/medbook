@@ -1,21 +1,18 @@
-import { CalendarDaysIcon } from "lucide-react"
+import { CalendarPageClient } from "./_components/calendar-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/calendar — Phase 2b.
+ *
+ * Thin server shell — FullCalendar is browser-only, so the real implementation
+ * lives in the client component (loaded with `dynamic(..., { ssr: false })`).
+ *
+ * Desktop-only by design (>= 1280 px). Smaller viewports see a gentle
+ * fallback pointing to the paginated `/crm/appointments` table instead.
+ */
 export default function CalendarPage() {
   return (
-    <PageContainer>
-      <SectionHeader
-        title="Календарь"
-        subtitle="Фаза 2b — TODO: календарь по врачам с drag-n-drop"
-      />
-      <EmptyState
-        icon={<CalendarDaysIcon />}
-        title="Календарь записей появится позже"
-        description="FullCalendar или react-big-calendar, день/неделя/месяц, ресурсы — врачи."
-      />
-    </PageContainer>
-  )
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <CalendarPageClient />
+    </div>
+  );
 }

@@ -423,6 +423,70 @@
       }
     }
   },
+  "calendar": {
+    "title": "Календарь",
+    "subtitle": "Планирование визитов по врачам",
+    "today": "Сегодня",
+    "prev": "Предыдущий",
+    "next": "Следующий",
+    "loading": "Загрузка…",
+    "noEvents": "Записей на этот период нет",
+    "newAppointment": "Новая запись",
+    "desktopOnlyTitle": "Откройте на десктопе",
+    "desktopOnlyDescription": "Календарь оптимизирован для экранов от 1280 px. На смартфоне используйте раздел «Записи».",
+    "views": {
+      "day": "День",
+      "workWeek": "Рабочая неделя",
+      "week": "Неделя"
+    },
+    "filters": {
+      "doctors": "Врачи",
+      "doctorsAll": "Все врачи",
+      "doctorsSelected": "{count, plural, one {# врач} few {# врача} other {# врачей}}",
+      "cabinets": "Кабинеты",
+      "cabinetsAll": "Все кабинеты",
+      "cabinetsSelected": "{count, plural, one {# кабинет} few {# кабинета} other {# кабинетов}}",
+      "services": "Услуги",
+      "servicesAll": "Все услуги",
+      "servicesSelected": "{count, plural, one {# услуга} few {# услуги} other {# услуг}}",
+      "cabinetOverlay": "Цвет по кабинетам",
+      "search": "Найти…",
+      "clear": "Очистить",
+      "apply": "Применить"
+    },
+    "conflict": {
+      "title": "Конфликт расписания",
+      "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
+      "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
+      "doctor_time_off": "Врач в отпуске в это время",
+      "outside_schedule": "Вне графика работы"
+    },
+    "toast": {
+      "moved": "Запись перенесена",
+      "reverted": "Изменение отменено"
+    },
+    "event": {
+      "untitled": "Без названия",
+      "patient": "Пациент",
+      "duration": "Длительность",
+      "minutesShort": "мин",
+      "clickToCreate": "Кликните, чтобы создать запись"
+    },
+    "legend": {
+      "title": "Легенда",
+      "byStatus": "По статусу",
+      "byDoctor": "По врачу",
+      "byCabinet": "По кабинету"
+    },
+    "rail": {
+      "stats": "Статистика",
+      "totalCount": "Всего записей",
+      "completedCount": "Завершено",
+      "revenueTotal": "Выручка",
+      "occupancy": "Загрузка по врачам",
+      "noData": "Нет данных"
+    }
+  },
   "patientCard": {
     "back": "Назад в список",
     "newAppointmentTodo": "TODO: создание записи — Фаза 2b",

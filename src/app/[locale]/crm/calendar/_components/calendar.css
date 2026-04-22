@@ -1,0 +1,69 @@
+/* Tailwind-token overrides for FullCalendar. Scoped to .mbk-calendar-host
+ * so the styles don't leak to the rest of the CRM. Keep the list short —
+ * rely on token hooks, not component-level overrides.
+ */
+
+.mbk-calendar-host {
+  --fc-border-color: var(--color-border);
+  --fc-page-bg-color: var(--color-background);
+  --fc-neutral-bg-color: color-mix(in oklab, var(--color-muted), transparent 40%);
+  --fc-today-bg-color: color-mix(in oklab, var(--color-primary), transparent 92%);
+  --fc-now-indicator-color: var(--color-primary);
+  --fc-event-border-color: var(--color-primary);
+  --fc-highlight-color: color-mix(in oklab, var(--color-primary), transparent 85%);
+  --fc-button-bg-color: var(--color-background);
+  --fc-button-text-color: var(--color-foreground);
+  --fc-button-border-color: var(--color-border);
+  --fc-button-hover-bg-color: var(--color-muted);
+  --fc-button-hover-border-color: var(--color-border);
+  --fc-button-active-bg-color: var(--color-muted);
+  --fc-button-active-border-color: var(--color-border);
+}
+
+.mbk-calendar-host .fc {
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.mbk-calendar-host .fc .fc-scrollgrid {
+  border-color: var(--color-border);
+}
+
+.mbk-calendar-host .fc-col-header-cell-cushion,
+.mbk-calendar-host .fc-timegrid-axis-cushion,
+.mbk-calendar-host .fc-timegrid-slot-label-cushion {
+  color: var(--color-muted-foreground);
+  font-weight: 500;
+}
+
+.mbk-calendar-host .fc .fc-col-header-cell {
+  background-color: color-mix(in oklab, var(--color-card), transparent 40%);
+  padding: 6px 0;
+}
+
+.mbk-calendar-host .fc-event {
+  border-radius: 6px;
+  border-left-width: 3px;
+  font-size: 11px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+.mbk-calendar-host .fc-event:hover {
+  filter: brightness(0.98);
+}
+
+.mbk-calendar-host .fc-event-dragging,
+.mbk-calendar-host .fc-event-resizing {
+  opacity: 0.85;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+}
+
+.mbk-calendar-host .fc-timegrid-slot {
+  height: 1.75rem;
+}
+
+.mbk-calendar-host .fc-highlight {
+  background-color: var(--fc-highlight-color);
+}

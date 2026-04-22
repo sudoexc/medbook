@@ -1204,5 +1204,89 @@
       "manual": "Ручная отправка",
       "devModeHint": "DEV MODE: включён LogOnly-адаптер — SMS/TG на самом деле не уходят."
     }
+  },
+  "tgInbox": {
+    "desktopOnly": {
+      "title": "Используйте десктоп",
+      "description": "Telegram-инбокс оптимизирован для широких экранов. Откройте страницу на компьютере."
+    },
+    "list": {
+      "ariaLabel": "Список диалогов",
+      "searchPlaceholder": "Поиск по имени или телефону",
+      "searchAria": "Поиск диалогов",
+      "mode": {
+        "all": "Все",
+        "bot": "Бот",
+        "takeover": "Оператор",
+        "takeoverBadge": "Оператор"
+      },
+      "unreadToggle": "Только непрочитанные",
+      "count": "{n, plural, =0 {нет диалогов} one {# диалог} few {# диалога} other {# диалогов}}",
+      "empty": "Нет диалогов",
+      "noMessages": "Нет сообщений",
+      "anonymous": "Без имени"
+    },
+    "chat": {
+      "ariaLabel": "Активный диалог",
+      "empty": {
+        "title": "Выберите диалог",
+        "description": "Кликните по строке слева, чтобы увидеть переписку."
+      },
+      "mode": {
+        "bot": "Бот",
+        "takeover": "Оператор"
+      },
+      "takeover": "Взять диалог",
+      "returnToBot": "Вернуть боту",
+      "noMessages": "История пуста"
+    },
+    "rail": {
+      "ariaLabel": "Карточка пациента",
+      "emptyTitle": "Нет данных",
+      "emptyDescription": "Выберите диалог, чтобы увидеть информацию о пациенте.",
+      "anonymous": "Без имени",
+      "newAppointment": "Записать",
+      "openPatient": "Открыть карточку",
+      "segment": "Сегмент",
+      "balance": "Баланс",
+      "lifetimeSpend": "LTV",
+      "lastVisit": "Последний визит",
+      "never": "Никогда",
+      "assignedTo": "Ответственный",
+      "tags": "Теги",
+      "appointmentCreated": "Приём создан",
+      "noPatientTitle": "Пациент не привязан",
+      "noPatientDescription": "Создайте пациента, чтобы быстро записать и вести карточку.",
+      "fullNameLabel": "ФИО",
+      "fullNamePlaceholder": "Иванов Иван",
+      "phoneLabel": "Телефон",
+      "createPatient": "Создать пациента",
+      "patientCreated": "Пациент создан и привязан"
+    },
+    "composer": {
+      "placeholder": "Написать сообщение…",
+      "send": "Отправить",
+      "sendAria": "Отправить сообщение",
+      "textareaAria": "Текст сообщения",
+      "template": {
+        "label": "Шаблон",
+        "title": "Выберите шаблон",
+        "empty": "Нет шаблонов"
+      },
+      "inlineButtons": {
+        "add": "Добавить inline-кнопки",
+        "label": "Кнопки",
+        "header": "Inline-кнопки",
+        "addRow": "Строка",
+        "clear": "Очистить",
+        "textPlaceholder": "Текст",
+        "dataPlaceholder": "callback_data",
+        "remove": "Удалить",
+        "addButton": "Кнопка"
+      }
+    },
+    "message": {
+      "noText": "Без текста"
+    }
   }
 }

@@ -21,6 +21,7 @@ export const UpdateConversationSchema = z.object({
 export const QueryConversationSchema = z.object({
   channel: ConversationChannelEnum.optional(),
   status: ConversationStatusEnum.optional(),
+  mode: ConversationModeEnum.optional(),
   assignedToId: z.string().optional(),
   unread: z.coerce.boolean().optional(),
   q: z.string().optional(),

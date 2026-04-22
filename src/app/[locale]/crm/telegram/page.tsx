@@ -1,21 +1,12 @@
-import { SendIcon } from "lucide-react"
+import { TelegramPageClient } from "./_components/telegram-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
-export default function TelegramPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Telegram Inbox"
-        subtitle="Фаза 3b — TODO: входящие чаты"
-      />
-      <EmptyState
-        icon={<SendIcon />}
-        title="Входящие сообщения"
-        description="Список чатов, активный чат, панель пациента. Real-time по SSE."
-      />
-    </PageContainer>
-  )
+/**
+ * /crm/telegram — Phase 3b.
+ *
+ * Thin server shell; the client owns 3-column layout, filter state (URL-sync),
+ * and TanStack Query. Desktop-only at ≥1280px — mobile shows a polite nudge.
+ * See `docs/TZ.md` §6.8 and progress/LOG.md Phase 3b for the full contract.
+ */
+export default function TelegramInboxPage() {
+  return <TelegramPageClient />;
 }

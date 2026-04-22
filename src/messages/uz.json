@@ -1204,5 +1204,89 @@
       "manual": "Qo'lda yuborish",
       "devModeHint": "DEV MODE: LogOnly-adapter yoqilgan — SMS/TG aslida yuborilmaydi."
     }
+  },
+  "tgInbox": {
+    "desktopOnly": {
+      "title": "Desktopda oching",
+      "description": "Telegram-inbox katta ekranlar uchun. Iltimos kompyuterdan kiring."
+    },
+    "list": {
+      "ariaLabel": "Suhbatlar ro'yxati",
+      "searchPlaceholder": "Ism yoki telefon bo'yicha qidirish",
+      "searchAria": "Suhbatlarni qidirish",
+      "mode": {
+        "all": "Hammasi",
+        "bot": "Bot",
+        "takeover": "Operator",
+        "takeoverBadge": "Operator"
+      },
+      "unreadToggle": "Faqat o'qilmagan",
+      "count": "{n, plural, =0 {suhbat yo'q} one {# suhbat} other {# ta suhbat}}",
+      "empty": "Suhbatlar yo'q",
+      "noMessages": "Xabarlar yo'q",
+      "anonymous": "Noma'lum"
+    },
+    "chat": {
+      "ariaLabel": "Faol suhbat",
+      "empty": {
+        "title": "Suhbatni tanlang",
+        "description": "Chapdagi qatorni bosing, xabarlarni ko'rasiz."
+      },
+      "mode": {
+        "bot": "Bot",
+        "takeover": "Operator"
+      },
+      "takeover": "Suhbatni olish",
+      "returnToBot": "Botga qaytarish",
+      "noMessages": "Tarix bo'sh"
+    },
+    "rail": {
+      "ariaLabel": "Bemor kartasi",
+      "emptyTitle": "Ma'lumot yo'q",
+      "emptyDescription": "Bemor haqidagi ma'lumotni ko'rish uchun suhbatni tanlang.",
+      "anonymous": "Noma'lum",
+      "newAppointment": "Yozib qo'yish",
+      "openPatient": "Kartani ochish",
+      "segment": "Segment",
+      "balance": "Balans",
+      "lifetimeSpend": "LTV",
+      "lastVisit": "Oxirgi tashrif",
+      "never": "Yo'q",
+      "assignedTo": "Mas'ul",
+      "tags": "Teglar",
+      "appointmentCreated": "Qabul yaratildi",
+      "noPatientTitle": "Bemor biriktirilmagan",
+      "noPatientDescription": "Tez yozib qo'yish uchun bemor yarating.",
+      "fullNameLabel": "F.I.Sh.",
+      "fullNamePlaceholder": "Karimov Karim",
+      "phoneLabel": "Telefon",
+      "createPatient": "Bemor yaratish",
+      "patientCreated": "Bemor yaratildi va biriktirildi"
+    },
+    "composer": {
+      "placeholder": "Xabar yozing…",
+      "send": "Yuborish",
+      "sendAria": "Xabarni yuborish",
+      "textareaAria": "Xabar matni",
+      "template": {
+        "label": "Shablon",
+        "title": "Shablonni tanlang",
+        "empty": "Shablonlar yo'q"
+      },
+      "inlineButtons": {
+        "add": "Inline-tugmalar qo'shish",
+        "label": "Tugmalar",
+        "header": "Inline-tugmalar",
+        "addRow": "Qator",
+        "clear": "Tozalash",
+        "textPlaceholder": "Matn",
+        "dataPlaceholder": "callback_data",
+        "remove": "O'chirish",
+        "addButton": "Tugma"
+      }
+    },
+    "message": {
+      "noText": "Matn yo'q"
+    }
   }
 }

@@ -14,6 +14,7 @@ import { LogOnlySmsAdapter } from "./sms-log-only";
 import { EskizSmsAdapter, type EskizConfig } from "./sms-eskiz-stub";
 import type { TgAdapter } from "./tg";
 import { LogOnlyTgAdapter } from "./tg-log-only";
+import { TelegramClinicAdapter } from "./tg-clinic";
 
 export type AdapterPair = {
   sms: SmsAdapter;
@@ -35,15 +36,22 @@ function pickSms(
 }
 
 function pickTg(
+  clinicId: string,
   providerLabel: string | null,
   _cfg: Record<string, unknown> | null,
+  hasBotToken: boolean,
 ): TgAdapter {
-  // Phase 3a: even when a clinic has a Telegram bot token, the real
-  // sendMessage flow is owned by `telegram-bot-developer` (Phase 3b).
-  // For now we stay on log-only until that adapter lands.
-  if (providerLabel === "telegram") {
-    // TODO(telegram-bot-developer): replace with TelegramBotAdapter.
-    return new LogOnlyTgAdapter();
+  // Phase 3b: real Telegram adapter is available. Selection rules:
+  //   1. Explicit ProviderConnection with label="telegram" and a bot token
+  //      configured on the Clinic row → real adapter.
+  //   2. No ProviderConnection but a bot token is set → real adapter (lets
+  //      a clinic onboard with just the token, no extra config).
+  //   3. Otherwise → log-only (dev / clinics without TG setup).
+  if (providerLabel === "telegram" && hasBotToken) {
+    return new TelegramClinicAdapter(clinicId);
+  }
+  if (hasBotToken) {
+    return new TelegramClinicAdapter(clinicId);
   }
   return new LogOnlyTgAdapter();
 }
@@ -55,11 +63,18 @@ function pickTg(
  * context), so we pin to the given clinic explicitly via runWithTenant.
  */
 export async function resolveAdapters(clinicId: string): Promise<AdapterPair> {
-  const rows = await runWithTenant({ kind: "SYSTEM" }, async () => {
-    return prisma.providerConnection.findMany({
-      where: { clinicId, active: true, kind: { in: ["SMS", "TELEGRAM"] } },
-      select: { kind: true, label: true, config: true },
-    });
+  const { rows, hasBotToken } = await runWithTenant({ kind: "SYSTEM" }, async () => {
+    const [rows, clinic] = await Promise.all([
+      prisma.providerConnection.findMany({
+        where: { clinicId, active: true, kind: { in: ["SMS", "TELEGRAM"] } },
+        select: { kind: true, label: true, config: true },
+      }),
+      prisma.clinic.findUnique({
+        where: { id: clinicId },
+        select: { tgBotToken: true },
+      }),
+    ]);
+    return { rows, hasBotToken: Boolean(clinic?.tgBotToken) };
   });
 
   let smsLabel: string | null = null;
@@ -77,7 +92,7 @@ export async function resolveAdapters(clinicId: string): Promise<AdapterPair> {
   }
 
   const sms = pickSms(smsLabel, smsCfg);
-  const tg = pickTg(tgLabel, tgCfg);
+  const tg = pickTg(clinicId, tgLabel, tgCfg, hasBotToken);
   return {
     sms,
     tg,
@@ -88,5 +103,5 @@ export async function resolveAdapters(clinicId: string): Promise<AdapterPair> {
   };
 }
 
-export { LogOnlySmsAdapter, LogOnlyTgAdapter, EskizSmsAdapter };
+export { LogOnlySmsAdapter, LogOnlyTgAdapter, EskizSmsAdapter, TelegramClinicAdapter };
 export type { SmsAdapter, TgAdapter };

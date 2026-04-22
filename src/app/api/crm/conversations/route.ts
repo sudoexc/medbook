@@ -17,6 +17,7 @@ export const GET = createApiListHandler(
     const where: Record<string, unknown> = {};
     if (q.channel) where.channel = q.channel;
     if (q.status) where.status = q.status;
+    if (q.mode) where.mode = q.mode;
     if (q.assignedToId) where.assignedToId = q.assignedToId;
     if (q.unread) where.unreadCount = { gt: 0 };
     if (q.q) {

@@ -674,8 +674,10 @@
     }
   },
   "reception": {
-    "title": "Qabulxona",
-    "subtitle": "Bugungi kun",
+    "title": "Qabulxona — Asosiy panel",
+    "subtitle": "Bugungi kunning jonli ko'rinishi",
+    "newAppointment": "+ Yangi yozilish",
+    "liveBadge": "Yangilanmoqda",
     "kpi": {
       "todayAppointments": "Bugungi yozilishlar",
       "checkedIn": "Kelganlar",
@@ -683,6 +685,89 @@
       "revenue": "Tushum",
       "waiting": "Kutmoqda",
       "inProgress": "Qabulda"
+    },
+    "doctorQueue": {
+      "title": "Shifokorlar navbati",
+      "subtitle": "Bugun qabul qilyaptilar",
+      "showAll": "Barchasini ko'rsatish",
+      "backlog": "Navbatda yana",
+      "backlogCount": "Yana {count}",
+      "current": "Qabulda",
+      "next": "Keyingi",
+      "waiting": "Kutmoqda",
+      "cabinet": "Kab.",
+      "noPatients": "Bugun yozilishlar yo'q",
+      "noPatientsHint": "Bo'sh vaqt. Walk-in qabul qilish mumkin.",
+      "statusFree": "Bo'sh",
+      "statusBusy": "Qabulda",
+      "callNext": "Keyingini chaqirish",
+      "markArrived": "Keldi",
+      "complete": "Yakunlash",
+      "noShow": "Kelmadi",
+      "actionsTitle": "Amallar",
+      "bookedToday": "Bugun {count} yozilish",
+      "loadPct": "Yuklama {pct}%",
+      "showMore": "Barchasini ko'rsatish →",
+      "emptyTitle": "Bugun faol shifokorlar yo'q",
+      "emptyHint": "Navbatni boshlash uchun yozilish qo'shing.",
+      "rowArrived": "Keldi",
+      "rowWaiting": "Kutmoqda",
+      "rowInProgress": "Qabulda"
+    },
+    "calls": {
+      "title": "Call-markaz",
+      "statusOnline": "onlayn",
+      "statusOffline": "oflayn",
+      "openFull": "Call-markazga o'tish",
+      "empty": "Hozirda kiruvchi qo'ng'iroqlar yo'q",
+      "emptyHint": "Yangi qo'ng'iroqlar shu yerda avtomatik paydo bo'ladi.",
+      "incomingLast": "So'nggi kiruvchilar",
+      "accept": "Qabul qilish",
+      "quickAppointment": "Tezkor yozilish",
+      "directionIN": "Kiruvchi",
+      "directionOUT": "Chiquvchi",
+      "directionMISSED": "O'tkazib yuborilgan",
+      "durationSec": "{sec} son",
+      "unknownCaller": "Noma'lum raqam"
+    },
+    "tg": {
+      "title": "Telegram",
+      "openFull": "Barcha chatlar",
+      "unread": "{count} yangi",
+      "empty": "O'qilmagan xabarlar yo'q",
+      "emptyHint": "Telegram va SMS'dan yangi xabarlar shu yerda paydo bo'ladi.",
+      "voiceNote": "ovozli xabar",
+      "photo": "rasm",
+      "document": "hujjat"
+    },
+    "cabinets": {
+      "title": "Kabinetlar",
+      "subtitle": "Hozirgi yuklama",
+      "free": "Bo'sh",
+      "busy": "Band",
+      "overbooked": "Ortiqcha",
+      "empty": "Kabinetlar qo'shilmagan",
+      "emptyHint": "«Sozlamalar» bo'limida kabinetlar qo'shing.",
+      "occupiedBy": "{doctor}",
+      "untilTime": "{time} gacha"
+    },
+    "reminders": {
+      "title": "Eslatmalar",
+      "subtitle": "Yaqin 2 soat ichida SMS'siz",
+      "empty": "Barcha yaqin bemorlar ogohlantirilgan",
+      "emptyHint": "Tizim qabuldan 1 soat oldin SMS avtomatik yuboradi.",
+      "sendNow": "SMS yuborish",
+      "sent": "Yuborildi",
+      "inMinutes": "{min} daq ichida",
+      "soon": "tez orada",
+      "smsTemplate": "Assalomu alaykum, {name}. NeuroFax'da soat {time} da qabulingizni eslatamiz. Kutamiz."
+    },
+    "empty": {
+      "noActiveDoctors": "Bugun hali birorta shifokor qabulda emas"
+    },
+    "a11y": {
+      "doctorCardList": "Shifokorlar kartochkalari",
+      "rightRail": "Qabulxonaning o'ng paneli"
     }
   },
   "hero": {

@@ -1,21 +1,12 @@
-import { LayoutDashboardIcon } from "lucide-react"
+import { ReceptionPageClient } from "./_components/reception-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * `/crm/reception` — Phase 2c live dashboard. TZ §6.1.
+ *
+ * Thin server shell. Initial data is hydrated by the client via TanStack
+ * Query so the reception screen can poll (30 s fallback) until the
+ * realtime-engineer wires up the SSE channel in Phase 3a.
+ */
 export default function ReceptionPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Ресепшн"
-        subtitle="Фаза 2c — TODO: живой дашборд рецепции"
-      />
-      <EmptyState
-        icon={<LayoutDashboardIcon />}
-        title="Дашборд рецепции появится позже"
-        description="Модуль отвечает за живые KPI, очередь, Call Center и превью Telegram."
-      />
-    </PageContainer>
-  )
+  return <ReceptionPageClient />;
 }

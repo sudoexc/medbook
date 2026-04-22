@@ -10,6 +10,7 @@ import {
   useConversations,
   useConversationsFilters,
   useSelectedConversationId,
+  useTgConversationsRealtime,
   flattenConversations,
 } from "../_hooks/use-conversations";
 import { ConversationList } from "./conversation-list";
@@ -26,6 +27,8 @@ import { ChatRightRail } from "./chat-right-rail";
  * When future phases need a mobile variant we swap this for a Sheet stack.
  */
 export function TelegramPageClient() {
+  useTgConversationsRealtime();
+
   const t = useTranslations("tgInbox");
   const { filters, setFilters } = useConversationsFilters();
   const [selectedId, setSelectedId] = useSelectedConversationId();

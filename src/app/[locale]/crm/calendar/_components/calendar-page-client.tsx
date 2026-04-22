@@ -14,6 +14,7 @@ import {
   useActiveDoctors,
   useCabinets,
   useCalendarAppointments,
+  useCalendarRealtime,
   useServicesRef,
 } from "../_hooks/use-calendar-data";
 import { useCalendarFilters } from "../_hooks/use-calendar-filters";
@@ -40,6 +41,8 @@ const CalendarView = dynamic(
 );
 
 export function CalendarPageClient() {
+  useCalendarRealtime();
+
   const t = useTranslations("calendar");
   const locale = useLocale();
   const { filters, setFilters } = useCalendarFilters();

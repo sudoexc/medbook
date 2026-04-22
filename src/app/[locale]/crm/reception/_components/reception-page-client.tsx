@@ -19,6 +19,7 @@ import {
   useIncomingCalls,
   useReceptionCabinets,
   useReceptionDashboard,
+  useReceptionRealtime,
   useTodayAppointments,
   useUnreadConversations,
 } from "../_hooks/use-reception-live";
@@ -41,6 +42,8 @@ import { RemindersWidget } from "./reminders-widget";
  * grid so the page stays usable on a tablet-sized receptionist screen.
  */
 export function ReceptionPageClient() {
+  useReceptionRealtime();
+
   const t = useTranslations("reception");
   const router = useRouter();
   const searchParams = useSearchParams();

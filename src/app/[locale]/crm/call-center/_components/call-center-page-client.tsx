@@ -6,7 +6,10 @@ import { PhoneCallIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 
-import { useIncomingCalls } from "../_hooks/use-incoming-calls";
+import {
+  useCallCenterRealtime,
+  useIncomingCalls,
+} from "../_hooks/use-incoming-calls";
 import { useActiveCall, useActiveCallId } from "../_hooks/use-active-call";
 import {
   flattenHistory,
@@ -40,6 +43,8 @@ export function CallCenterPageClient() {
   const incoming = incomingQuery.data ?? [];
 
   const [activeId, setActiveId] = useActiveCallId();
+  useCallCenterRealtime(activeId);
+
   const activeQuery = useActiveCall(activeId);
 
   const { filters, setFilters, reset } = useHistoryFilters();

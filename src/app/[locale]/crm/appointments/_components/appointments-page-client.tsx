@@ -16,6 +16,7 @@ import {
   flattenAppointments,
   tallyStatuses,
   useAppointmentsList,
+  useAppointmentsRealtime,
 } from "../_hooks/use-appointments-list";
 import { useAppointmentsFilters } from "../_hooks/use-appointments-filters";
 import { AppointmentsFilters } from "./appointments-filters";
@@ -36,6 +37,8 @@ import { ExportButton } from "./export-button";
  *  - Own transient UI state: current selection set, dialog prefill, open row.
  */
 export function AppointmentsPageClient() {
+  useAppointmentsRealtime();
+
   const t = useTranslations("appointments");
   const router = useRouter();
   const searchParams = useSearchParams();

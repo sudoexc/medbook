@@ -16,6 +16,7 @@ import {
 import {
   flattenDoctors,
   useDoctorsList,
+  useDoctorsListRealtime,
   type DoctorRow,
 } from "../_hooks/use-doctors-list";
 import {
@@ -44,6 +45,8 @@ function capacityForPeriod(period: "today" | "week" | "month" | "quarter"): numb
 }
 
 export function DoctorsPageClient() {
+  useDoctorsListRealtime();
+
   const t = useTranslations("crmDoctors");
   const locale = useLocale();
   const {

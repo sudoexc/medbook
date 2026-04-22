@@ -91,6 +91,15 @@ export interface NewAppointmentDialogProps {
   onOpenChange: (v: boolean) => void;
   /** Pre-fill patient when opened from a patient card. */
   patientId?: string | null;
+  /**
+   * Pre-fill via phone number (used by call-center / reception widgets).
+   *
+   * Behaviour when `patientId` is not provided but `initialPatientPhone` is:
+   *   1. Search `/api/crm/patients?q=<phone>` for a match.
+   *   2. If a single match is found, auto-select it.
+   *   3. Otherwise switch to "create new" mode with the phone prefilled.
+   */
+  initialPatientPhone?: string | null;
   /** Pre-fill doctor + time when opened from a slot click. */
   initialDoctorId?: string | null;
   initialDate?: Date | null;
@@ -152,6 +161,7 @@ export function NewAppointmentDialog({
   open,
   onOpenChange,
   patientId,
+  initialPatientPhone,
   initialDoctorId,
   initialDate,
   initialTime,
@@ -209,6 +219,66 @@ export function NewAppointmentDialog({
       setState((s) => ({ ...s, patient: preloadPatient.data }));
     }
   }, [preloadPatient.data, open]);
+
+  // Phone-based prefill: used by call-center/reception when we know the
+  // caller's number but haven't linked them to a Patient yet. We search by
+  // phone; if we hit exactly one match, auto-select. Otherwise flip the
+  // dialog into "create new patient" mode with the phone prefilled.
+  const phoneLookup = useQuery<PatientHit[], Error>({
+    queryKey: ["patient-preload-phone", initialPatientPhone],
+    enabled: Boolean(
+      open && initialPatientPhone && !patientId,
+    ),
+    queryFn: async () => {
+      if (!initialPatientPhone) return [];
+      const sp = new URLSearchParams({ q: initialPatientPhone, limit: "5" });
+      const res = await fetch(`/api/crm/patients?${sp.toString()}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      const j = (await res.json()) as { rows: PatientHit[] };
+      return j.rows;
+    },
+    staleTime: 30_000,
+  });
+
+  // Apply the phone lookup result once per open: we only auto-fill if the
+  // operator hasn't already picked a patient manually.
+  const phoneAppliedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!open) {
+      phoneAppliedRef.current = null;
+      return;
+    }
+    if (!initialPatientPhone || patientId) return;
+    if (phoneAppliedRef.current === initialPatientPhone) return;
+    if (phoneLookup.isLoading || !phoneLookup.data) return;
+
+    phoneAppliedRef.current = initialPatientPhone;
+    const hits = phoneLookup.data;
+    setState((s) => {
+      // Don't clobber operator's manual selection.
+      if (s.patient) return s;
+      if (hits.length === 1) {
+        return { ...s, patient: hits[0]!, newPatient: false };
+      }
+      return {
+        ...s,
+        newPatient: true,
+        patient: null,
+        newPatientForm: {
+          ...s.newPatientForm,
+          phone: s.newPatientForm.phone || initialPatientPhone,
+        },
+      };
+    });
+  }, [
+    open,
+    initialPatientPhone,
+    patientId,
+    phoneLookup.isLoading,
+    phoneLookup.data,
+  ]);
 
   const createMutation = useMutation<
     { id: string },

@@ -1288,5 +1288,88 @@
     "message": {
       "noText": "Matn yo'q"
     }
+  },
+  "callCenter": {
+    "desktopOnly": {
+      "title": "Desktop oching",
+      "description": "Operator ish joyi keng ekranlar uchun mo'ljallangan. Kompyuterda oching."
+    },
+    "queue": {
+      "ariaLabel": "Kiruvchi qo'ng'iroqlar navbati",
+      "title": "Kiruvchi",
+      "empty": "Hozircha faol qo'ng'iroq yo'q",
+      "loading": "Navbat yuklanmoqda…",
+      "unknownCaller": "Noma'lum raqam",
+      "newCallToast": "{name} dan qo'ng'iroq ({phone})",
+      "pollingHint": "Har 5 soniyada yangilanadi"
+    },
+    "active": {
+      "ariaLabel": "Faol qo'ng'iroq",
+      "empty": {
+        "title": "Faol qo'ng'iroq yo'q",
+        "description": "Chap tomondan qo'ng'iroqni tanlang yoki kiruvchini kuting."
+      },
+      "anonymous": "Noma'lum abonent",
+      "direction": {
+        "in": "Kiruvchi",
+        "out": "Chiquvchi"
+      },
+      "openPatient": "Bemor kartasini ochish",
+      "actions": {
+        "ariaLabel": "Tezkor harakatlar",
+        "book": "Yozish",
+        "createPatient": "Karta yaratish",
+        "markMissed": "O'tkazilgan deb belgilash",
+        "hangup": "Tugatish",
+        "hangupDone": "Qo'ng'iroq yakunlandi",
+        "markedMissed": "Qo'ng'iroq o'tkazilgan deb belgilandi",
+        "disclaimer": "Mute / Hold / Transfer SIP-provayder ulangach paydo bo'ladi."
+      },
+      "notes": {
+        "ariaLabel": "Izohlar",
+        "label": "Qo'ng'iroq izohi",
+        "placeholder": "Murojaat mohiyatini qisqacha yozing…",
+        "hint": "Pauza yoki fokus yo'qolganda avtomatik saqlanadi.",
+        "saving": "Saqlanmoqda…"
+      }
+    },
+    "history": {
+      "ariaLabel": "Qo'ng'iroqlar tarixi",
+      "title": "Tarix",
+      "empty": "Tanlangan filtrlar bo'yicha qo'ng'iroq yo'q",
+      "loading": "Tarix yuklanmoqda…",
+      "loadingMore": "Yuklanmoqda…",
+      "play": "Yozuvni tinglash",
+      "pollingHint": "Har 30 soniyada yangilanadi",
+      "filters": {
+        "searchPlaceholder": "Raqam yoki izoh bo'yicha qidirish",
+        "status": "Holat",
+        "statusAll": "Barchasi",
+        "statusRinging": "Kutmoqda",
+        "statusAnswered": "Suhbatda",
+        "statusEnded": "Yakunlangan",
+        "statusMissed": "O'tkazilgan",
+        "direction": "Yo'nalish",
+        "directionAll": "Barchasi",
+        "directionIn": "Kiruvchi",
+        "directionOut": "Chiquvchi",
+        "directionMissed": "O'tkazilgan",
+        "operator": "Operator",
+        "operatorAll": "Barcha operatorlar",
+        "from": "Dan",
+        "to": "Gacha",
+        "reset": "Qayta o'rnatish"
+      }
+    },
+    "status": {
+      "ringing": "Kutmoqda",
+      "answered": "Suhbatda",
+      "ended": "Yakunlangan",
+      "missed": "O'tkazilgan"
+    },
+    "bubble": {
+      "unknownCaller": "Noma'lum abonent",
+      "linked": "bemor"
+    }
   }
 }

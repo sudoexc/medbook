@@ -1,21 +1,14 @@
-import { PhoneCallIcon } from "lucide-react"
+import { CallCenterPageClient } from "./_components/call-center-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/call-center — Phase 3c.
+ *
+ * Thin server shell. The client owns the 3-column layout, polling
+ * (until realtime-engineer replaces it with SSE), and filter state sync.
+ * Desktop-only (≥1280px); below that we show the standard "use desktop" hint.
+ *
+ * See `docs/TZ.md` §6.7 and progress/LOG.md for the full contract.
+ */
 export default function CallCenterPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Call Center"
-        subtitle="Фаза 3c — TODO: входящие и исходящие звонки"
-      />
-      <EmptyState
-        icon={<PhoneCallIcon />}
-        title="Модуль звонков"
-        description="Очередь входящих, история, скрипты, ручной дайлер, интеграция с АТС."
-      />
-    </PageContainer>
-  )
+  return <CallCenterPageClient />;
 }

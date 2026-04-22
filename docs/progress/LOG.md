@@ -372,4 +372,54 @@
 
 ---
 
-## Phase 3c — Call Center — 🔄 планируется
+## Phase 3c — Call Center — ✅ DONE 2026-04-22
+
+**Коммит:** pending · тег: `phase-3c-done` (после commit).
+
+### Что сделано (call-center-developer)
+
+#### TelephonyAdapter + LogOnly
+
+- `src/server/telephony/adapter.ts` — `TelephonyAdapter` interface (`call`, `hangup`, `onEvent`), `TelephonyEvent` shape с `kind|callId|from|to|timestamp|meta`. Каналы на event-bus: `telephony.{ringing,answered,hangup,missed}` + `call.{incoming,answered,ended}`.
+- `src/server/telephony/log-only.ts` — `LogOnlyTelephonyAdapter`. `call()` создаёт Call row с fake `sipCallId='log-<uuid>'`, публикует synthetic ringing + `call.incoming`. `hangup()` idempotent — считает `durationSec = endedAt - createdAt`. `onEvent()` подписывается на все `telephony.*` каналы.
+- `src/server/telephony/index.ts` — factory. Сейчас `ProviderKind` не имеет SIP — используется label-based escape hatch (`kind=OTHER, label='sip'`) как forward-compat. Fallback — всегда LogOnly.
+
+#### Webhook `/api/calls/sip/event`
+
+- `src/app/api/calls/sip/event/route.ts` — POST only (GET/PUT/DELETE/PATCH → 405). Zod-схема `{kind, callId, from, to, timestamp, operatorId?, recordingUrl?, meta?}`. Resolves clinic by `?clinicSlug=` или `x-clinic-slug` header. Secret verify через `ProviderConnection.config.webhookSecret` (header `x-sip-secret`); в dev без secret — warn + accept; в prod без secret — 401.
+- События: `ringing` upsertит Call с `direction=IN`, линкует Patient по `phoneSearchVariants(from)`, публикует `call.incoming`; `answered` добавляет тег `answered` к Call (идемпотентно); `hangup` считает `endedAt/durationSec`; `missed` ставит `direction=MISSED + endedAt`. Все события публикуются и на `telephony.*`, и на `call.*`.
+- Runs under `runWithTenant({kind: "SYSTEM"})` с явным `clinicId`.
+
+#### UI `/crm/call-center`
+
+- `page.tsx` (server shell) + `_components/call-center-page-client.tsx` (3-col layout 320px/1fr/380px, desktop-only ≥1280px).
+- **Left — `incoming-queue.tsx`:** список ringing calls (filter из всех `direction=IN && !endedAt`), pop-up toast при новом звонке, click → active.
+- **Center — `active-call.tsx`:** live timer (ticks every 1s), заметки через `use-call-notes.ts` (debounce 800ms + PATCH `summary`), quick actions: «Записать пациента» (NewAppointmentDialog с `patientId` или `initialPatientPhone`), «Создать карточку» (Link на `/crm/patients?new=true&phone=...`), «Завершить» (PATCH `endedAt`), «Пропущен» (PATCH + tag). Disclaimer что mute/hold/transfer — после реального SIP.
+- **Right — `call-history.tsx` + `call-history-filters.tsx`:** infinite list + IntersectionObserver-based lazy load, `call-bubble.tsx` с status pill, filters: status/direction/operator/date-range/search — все URL-synced. Play-button открывает `recordingUrl` если есть.
+- Hooks: `use-incoming-calls.ts` (5s poll), `use-active-call.ts` (10s poll + URL-synced `?active=`), `use-call-history.ts` (30s poll + infinite + URL-synced filters), `use-call-notes.ts` (debounced PATCH + useCallPatch mutator).
+- NewAppointmentDialog extended: `initialPatientPhone` prop — search `/api/crm/patients?q=<phone>`, auto-select if 1 hit, else open "create new" with phone prefilled. Respects manual operator selection.
+- i18n `callCenter.*` — ru/uz parity (~80 ключей).
+
+### Build / тесты
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **118/118 passed** (+20 новых: `telephony-log-only` (7) + `telephony-webhook` (13)).
+- `npm run build` — routes `/[locale]/crm/call-center` + `/api/calls/sip/event` в manifest (Inter-font warning — pre-existing since Phase 1).
+
+### Requests для следующих фаз
+
+- **prisma-schema-owner:** расширить `ProviderKind` enum значением `SIP` (сейчас используется `kind=OTHER, label='sip'` как escape hatch). Добавить `status` enum + `startedAt/answeredAt` columns в `Call` модели — избавит UI от derive-логики (status = direction + tags + endedAt).
+- **realtime-engineer (Phase 5+):** SSE каналы `call.incoming`, `call.answered`, `call.ended`. Event-bus уже публикует. TODO-маркеры в `use-incoming-calls.ts`, `use-active-call.ts`, `use-call-history.ts`. Poll cadences (5/10/30s) станут fallback.
+- **admin-platform-builder (Phase 4):** UI для `ProviderConnection` с `kind='SIP' (будущее)` или label='sip': webhookSecret (encrypted), config JSON, active toggle, test-webhook кнопка.
+- **api-builder:** `GET /api/crm/users?role=CALL_OPERATOR` для operator-filter в history (сейчас endpoint не существует — select пустой).
+
+### Deviations
+
+- `Call` модель не содержит `status/startedAt/answeredAt/meta` — задокументировано как TODO. Derive-функция `deriveStatus(row)` на клиенте маппит `direction + tags.includes('answered') + endedAt` в `ringing|answered|ended|missed`.
+- SIP "mute/hold/transfer" — вне scope (§6.7.5 предусматривает их только с реальным SIP). В UI показан disclaimer.
+- Реальный SSE в браузер не подключён — polling fallback на всех трёх колонках (5s / 10s / 30s). Event-bus стабильно публикует для будущего SSE-handoff.
+- В dev без webhookSecret webhook принимает запросы с console.warn — чтобы ручное тестирование было удобным. В prod — 401.
+
+---
+
+## Phase 3d — TG Bot + Mini App — 🔄 планируется

@@ -1288,5 +1288,88 @@
     "message": {
       "noText": "Без текста"
     }
+  },
+  "callCenter": {
+    "desktopOnly": {
+      "title": "Используйте десктоп",
+      "description": "Рабочее место оператора оптимизировано для широких экранов. Откройте страницу на компьютере."
+    },
+    "queue": {
+      "ariaLabel": "Очередь входящих звонков",
+      "title": "Входящие",
+      "empty": "Пока нет активных звонков",
+      "loading": "Загрузка очереди…",
+      "unknownCaller": "Неизвестный номер",
+      "newCallToast": "Входящий от {name} ({phone})",
+      "pollingHint": "Обновляется каждые 5 секунд"
+    },
+    "active": {
+      "ariaLabel": "Активный звонок",
+      "empty": {
+        "title": "Нет активного звонка",
+        "description": "Выберите звонок слева или дождитесь входящего."
+      },
+      "anonymous": "Неизвестный абонент",
+      "direction": {
+        "in": "Входящий",
+        "out": "Исходящий"
+      },
+      "openPatient": "Открыть карточку пациента",
+      "actions": {
+        "ariaLabel": "Быстрые действия",
+        "book": "Записать",
+        "createPatient": "Создать карточку",
+        "markMissed": "Отметить пропуск",
+        "hangup": "Завершить",
+        "hangupDone": "Звонок завершён",
+        "markedMissed": "Звонок помечен как пропущенный",
+        "disclaimer": "Mute / Hold / Transfer появятся после подключения SIP-провайдера."
+      },
+      "notes": {
+        "ariaLabel": "Заметки",
+        "label": "Заметка к звонку",
+        "placeholder": "Коротко опишите суть обращения…",
+        "hint": "Сохраняется автоматически при паузе или потере фокуса.",
+        "saving": "Сохраняем…"
+      }
+    },
+    "history": {
+      "ariaLabel": "История звонков",
+      "title": "История",
+      "empty": "Нет звонков по выбранным фильтрам",
+      "loading": "Загрузка истории…",
+      "loadingMore": "Подгружаем…",
+      "play": "Прослушать запись",
+      "pollingHint": "Обновляется каждые 30 секунд",
+      "filters": {
+        "searchPlaceholder": "Поиск по номеру или заметке",
+        "status": "Статус",
+        "statusAll": "Все",
+        "statusRinging": "Ожидает",
+        "statusAnswered": "В разговоре",
+        "statusEnded": "Завершён",
+        "statusMissed": "Пропущен",
+        "direction": "Направление",
+        "directionAll": "Все",
+        "directionIn": "Входящие",
+        "directionOut": "Исходящие",
+        "directionMissed": "Пропущенные",
+        "operator": "Оператор",
+        "operatorAll": "Все операторы",
+        "from": "С",
+        "to": "По",
+        "reset": "Сбросить"
+      }
+    },
+    "status": {
+      "ringing": "Ожидает",
+      "answered": "В разговоре",
+      "ended": "Завершён",
+      "missed": "Пропущен"
+    },
+    "bubble": {
+      "unknownCaller": "Неизвестный абонент",
+      "linked": "пациент"
+    }
   }
 }

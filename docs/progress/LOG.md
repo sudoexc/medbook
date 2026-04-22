@@ -329,4 +329,47 @@
 
 ---
 
-## Phase 3b — Telegram inbox + бот — 🔄 планируется
+## Phase 3b — Telegram inbox + бот — ✅ DONE 2026-04-22
+
+**Коммит:** `bb066e2` · тег `phase-3b-done`.
+
+### Что сделано (telegram-bot-developer + telegram-inbox-specialist combined)
+
+#### Bot backend
+
+- **Webhook** `POST /api/telegram/webhook/[clinicSlug]`: X-Telegram-Bot-Api-Secret-Token verify, SYSTEM-context DB access, idempotent `(clinicId, externalId)` дедуп, routes через FSM когда `mode=bot`, публикует `tg.takeover.incoming` когда `mode=takeover`.
+- **FSM** `src/server/telegram/state.ts`: pure `step(prev, event, catalog)` — `start → lang_select → service_select → doctor_select → slot_select → name_input → confirm → done`. In-memory store с 30-min TTL, injectable для тестов.
+- **Messages** `src/server/telegram/messages.ts`: ru/uz dictionary + `t(lang, key)` helper (server-side без next-intl).
+- **Send** `src/server/telegram/send.ts`: sendMessage / sendPhoto / editMessageText / answerCallbackQuery с 429-backoff; no-op when `tgBotToken` null.
+- **Auth** `src/server/telegram/auth.ts`: `verifyLoginWidget` (sha256 botToken) + `verifyMiniAppInitData` (HMAC-SHA256("WebAppData", botToken)), constant-time compare.
+- **Adapter** `src/server/notifications/adapters/tg-clinic.ts`: real TgAdapter через `send.ts`, registered в factory.
+- **Event bus** `src/server/realtime/event-bus.ts`: process-local stub для SSE handoff (realtime-engineer заменит).
+
+#### Inbox UI `/crm/telegram`
+
+- 3-col layout: conversation-list (virtualized, search + filters bot/operator/all, unread badge) / chat-pane (infinite scroll up, takeover toggle) / chat-right-rail (patient preview + quick actions: "Записать" opens `NewAppointmentDialog` с `initialPatientId`, "Открыть карточку" → `/crm/patients/[id]`, "Создать пациента" mini form).
+- `message-composer`: Enter=send, template picker (`channel=TELEGRAM`), inline-buttons builder JSON.
+- Hooks: use-conversations (30s poll + URL sync), use-tg-messages (10s poll, scroll-preserve), use-send-message (optimistic), use-takeover (optimistic mode flip).
+- i18n `tgInbox.*` ru/uz parity.
+
+### Build / тесты
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **98/98 passed** (+30 новых: FSM + auth verifiers).
+- `npm run build` — exit 0.
+
+### Requests для следующих фаз
+
+- **realtime-engineer:** replace polling на SSE каналы `tg.message.new`, `tg.takeover.incoming`, `tg.conversation.updated`. Event-bus stub — drop-in point. TODO-маркеры в хуках.
+- **telegram-miniapp-builder (Phase 3d):** `verifyMiniAppInitData` готов. FSM states `service_select`/`slot_select` сейчас stub — должны deferить к Mini App URL когда `Clinic.tgMiniAppUrl` set.
+- **admin-platform-builder (Phase 4):** clinic token management UI — `Clinic.{tgBotToken, tgBotUsername, tgWebhookSecret}`. UI также должен вызывать `setWebhook` после save.
+- **prisma-schema-owner:** возможно нужен `Clinic.tgMiniAppUrl` field — сейчас отсутствует.
+
+### Deviations
+
+- Mini App deep-linking deferred до Phase 3d из-за отсутствующего `Clinic.tgMiniAppUrl`.
+- Right-rail create-patient form minimal (fullName + phone only).
+
+---
+
+## Phase 3c — Call Center — 🔄 планируется

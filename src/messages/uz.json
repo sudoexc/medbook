@@ -1779,5 +1779,96 @@
       },
       "latency": "Kechikish"
     }
+  },
+  "search": {
+    "title": "Global qidiruv",
+    "description": "Bemor, shifokor, qabul va chatlar bo‘yicha qidiruv",
+    "placeholder": "FIO, telefon yoki kalit so‘z kiriting…",
+    "typeToSearch": "Qidirish uchun yozing",
+    "noResults": "Hech narsa topilmadi",
+    "unknownPatient": "Bemor ko‘rsatilmagan",
+    "groups": {
+      "patients": "Bemorlar",
+      "doctors": "Shifokorlar",
+      "appointments": "Qabullar",
+      "conversations": "Chatlar"
+    }
+  },
+  "analyticsDashboard": {
+    "title": "Analitika",
+    "subtitle": "Klinika metrikalari",
+    "period": {
+      "week": "Hafta",
+      "month": "Oy",
+      "quarter": "Chorak",
+      "custom": "Davr"
+    },
+    "sections": {
+      "revenue": "Kunlik tushum",
+      "appointments": "Statuslar bo‘yicha qabullar",
+      "noShow": "Kelmagan bemorlar",
+      "topDoctors": "Tushum bo‘yicha top shifokorlar",
+      "topServices": "Soni bo‘yicha top xizmatlar",
+      "sources": "Bemor manbalari",
+      "ltv": "LTV taqsimoti"
+    },
+    "empty": "Tanlangan davr uchun ma’lumot yo‘q",
+    "loading": "Yuklanmoqda…",
+    "export": "PNG eksport",
+    "exportSoon": "PNG eksport Phase 7 da qo‘shiladi"
+  },
+  "docsLibrary": {
+    "title": "Hujjatlar",
+    "subtitle": "Klinika hujjatlari kutubxonasi",
+    "upload": "Yuklash",
+    "uploadTitle": "Hujjat yuklash",
+    "uploadHint": "Fayl saqlash Phase 6 da qo‘shiladi — hozir faqat metadata saqlanadi",
+    "pendingSignatures": "Imzolashni kutmoqda",
+    "empty": "Hujjatlar topilmadi",
+    "filters": {
+      "search": "Nom bo‘yicha qidirish",
+      "type": "Turi",
+      "typeAll": "Barcha turlar",
+      "patient": "Bemor",
+      "doctor": "Shifokor",
+      "from": "Dan",
+      "to": "Gacha",
+      "reset": "Tozalash"
+    },
+    "columns": {
+      "title": "Nomi",
+      "patient": "Bemor",
+      "doctor": "Shifokor",
+      "type": "Turi",
+      "uploadedAt": "Yuklangan",
+      "size": "Hajmi",
+      "actions": "Amallar"
+    },
+    "types": {
+      "CONSENT": "Rozilik",
+      "REFERRAL": "Yo‘llanma",
+      "ANALYSIS": "Tahlil",
+      "PRESCRIPTION": "Retsept",
+      "INVOICE": "Hisob",
+      "OTHER": "Boshqa"
+    },
+    "actions": {
+      "view": "Ochish",
+      "download": "Yuklab olish"
+    }
+  },
+  "exportsUi": {
+    "enqueued": "Eksport navbatga qo‘yildi",
+    "running": "CSV tayyorlanmoqda…",
+    "done": "Tayyor — fayl yuklab olinmoqda",
+    "failed": "Eksport xatolik",
+    "tryAgain": "Qayta urinish"
+  },
+  "smsInbox": {
+    "title": "SMS",
+    "subtitle": "Kiruvchi va chiquvchi SMS",
+    "empty": "SMS dialoglar yo‘q",
+    "mvpHint": "MVP versiyasi: suhbatlar ro‘yxati. To‘liq inbox — Phase 6.",
+    "openDetails": "Tafsilotlarni ochish"
   }
 }

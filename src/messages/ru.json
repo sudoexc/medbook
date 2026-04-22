@@ -1779,5 +1779,96 @@
       },
       "latency": "Задержка"
     }
+  },
+  "search": {
+    "title": "Глобальный поиск",
+    "description": "Поиск по пациентам, врачам, записям и чатам",
+    "placeholder": "Введите ФИО, телефон или ключевое слово…",
+    "typeToSearch": "Начните печатать для поиска",
+    "noResults": "Ничего не найдено",
+    "unknownPatient": "Без пациента",
+    "groups": {
+      "patients": "Пациенты",
+      "doctors": "Врачи",
+      "appointments": "Записи",
+      "conversations": "Чаты"
+    }
+  },
+  "analyticsDashboard": {
+    "title": "Аналитика",
+    "subtitle": "Сводные метрики клиники",
+    "period": {
+      "week": "Неделя",
+      "month": "Месяц",
+      "quarter": "Квартал",
+      "custom": "Период"
+    },
+    "sections": {
+      "revenue": "Выручка по дням",
+      "appointments": "Записи по статусам",
+      "noShow": "Неявки по дням",
+      "topDoctors": "Топ врачи по выручке",
+      "topServices": "Топ услуги по количеству",
+      "sources": "Источники пациентов",
+      "ltv": "Распределение LTV"
+    },
+    "empty": "Нет данных за выбранный период",
+    "loading": "Загрузка…",
+    "export": "Экспорт PNG",
+    "exportSoon": "Экспорт PNG будет добавлен в Phase 7"
+  },
+  "docsLibrary": {
+    "title": "Документы",
+    "subtitle": "Библиотека документов клиники",
+    "upload": "Загрузить",
+    "uploadTitle": "Загрузить документ",
+    "uploadHint": "Файловое хранилище появится в Phase 6 — сейчас сохраняется только метаданные",
+    "pendingSignatures": "Ожидают подписи",
+    "empty": "Документов не найдено",
+    "filters": {
+      "search": "Поиск по названию",
+      "type": "Тип",
+      "typeAll": "Все типы",
+      "patient": "Пациент",
+      "doctor": "Врач",
+      "from": "С",
+      "to": "До",
+      "reset": "Сбросить"
+    },
+    "columns": {
+      "title": "Название",
+      "patient": "Пациент",
+      "doctor": "Врач",
+      "type": "Тип",
+      "uploadedAt": "Загружен",
+      "size": "Размер",
+      "actions": "Действия"
+    },
+    "types": {
+      "CONSENT": "Согласие",
+      "REFERRAL": "Направление",
+      "ANALYSIS": "Анализ",
+      "PRESCRIPTION": "Рецепт",
+      "INVOICE": "Счёт",
+      "OTHER": "Другое"
+    },
+    "actions": {
+      "view": "Открыть",
+      "download": "Скачать"
+    }
+  },
+  "exportsUi": {
+    "enqueued": "Экспорт поставлен в очередь",
+    "running": "Готовим CSV…",
+    "done": "Готово — файл скачивается",
+    "failed": "Ошибка экспорта",
+    "tryAgain": "Повторить"
+  },
+  "smsInbox": {
+    "title": "SMS",
+    "subtitle": "Входящие и исходящие SMS",
+    "empty": "Нет SMS диалогов",
+    "mvpHint": "MVP-версия: список разговоров. Полный инбокс — Phase 6.",
+    "openDetails": "Открыть детали"
   }
 }

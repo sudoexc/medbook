@@ -555,4 +555,49 @@
 
 ---
 
+## Phase 5 — Глобальные фичи (composite agent) — ✅ DONE 2026-04-22
+
+**Тег:** `phase-5-done`.
+
+### Что сделано
+
+- **Realtime quick-mount (TODO от realtime-engineer).** Один лайнер `use*Realtime()` на каждой из 6 страниц:
+  - `src/app/[locale]/crm/reception/_components/reception-page-client.tsx` → `useReceptionRealtime()`
+  - `src/app/[locale]/crm/calendar/_components/calendar-page-client.tsx` → `useCalendarRealtime()`
+  - `src/app/[locale]/crm/telegram/_components/telegram-page-client.tsx` → `useTgConversationsRealtime()`
+  - `src/app/[locale]/crm/call-center/_components/call-center-page-client.tsx` → `useCallCenterRealtime(activeId)`
+  - `src/app/[locale]/crm/appointments/_components/appointments-page-client.tsx` → `useAppointmentsRealtime()`
+  - `src/app/[locale]/crm/doctors/_components/doctors-page-client.tsx` → `useDoctorsListRealtime()`
+- **Global cmdk search (TZ §6.0).** `src/components/layout/global-search.tsx` — `GlobalSearch` dialog + `useGlobalSearchShortcut` (⌘K / Ctrl+K). Группы: Пациенты / Врачи / Записи / Чаты, топ-5 каждой. Fetch `/api/crm/search?q=...` с debounce 200мс и AbortController. Экспортирует чистый `parseSearchResults(raw)` для юнит-тестов. Топбар (`src/components/layout/crm-topbar.tsx`) теперь открывает диалог по клику на иконку поиска; сайдбар получил пункты SMS + Документы. Добавлен `CommandDialog` в `src/components/ui/command.tsx` (отсутствовал в shadcn slice).
+- **Analytics dashboard `/crm/analytics`.** Агрегирующий endpoint `src/app/api/crm/analytics/route.ts` (роли ADMIN + DOCTOR; DOCTOR видит только свой срез). Параметры `?period=week|month|quarter` или явный `?from&to`. 7 секций: `revenueDaily`, `appointmentsByStatus`, `noShowDaily`, `topDoctors` (top-10), `topServices` (top-10), `sources`, `ltvBuckets`. UI-клиент `src/app/[locale]/crm/analytics/_components/analytics-page-client.tsx` на Recharts (LineChart / BarChart / PieChart) с PeriodTabs, формат UZS через `formatMoney`. Чистый хелпер окна вынесен в `src/server/analytics/range.ts` (`resolveAnalyticsRange`) — унит-тестируется без next-auth.
+- **Documents library `/crm/documents`.** Cross-patient страница с таблицей, поиском, фильтрами (тип / даты / doctor / `pendingSignature`), и заглушкой загрузки метаданных. Endpoint `src/app/api/crm/documents/route.ts` расширен новыми query-параметрами; схема — `src/server/schemas/document.ts`. Файлы: `src/app/[locale]/crm/documents/{page.tsx, _components/documents-page-client.tsx, _components/upload-dialog.tsx, _hooks/use-documents.ts}`.
+- **CSV export workers (Phase 5 async).** `src/server/workers/exports.ts` — `enqueueExport`, `getExport`, `__runExportForTests`, `__resetExportRegistry`. Работает через существующий `QueueAdapter` (InMemoryQueueAdapter сегодня, BullMQ позже). Cursor-paginate `take: 500`, UTF-8 BOM, RFC-4180 quoting. API: `POST /api/crm/exports` (ADMIN), `GET /api/crm/exports/[jobId]`, `GET /api/crm/exports/[jobId]/download`. Клиентский хук `src/hooks/use-async-export.ts` (poll 1.5s → triggered `<a>`-download). Кнопки экспорта пациентов и appointments переключены на него.
+- **SMS inbox `/crm/sms` (MVP).** UI `src/app/[locale]/crm/sms/_components/sms-page-client.tsx` — список SMS-разговоров через `/api/crm/conversations?channel=SMS` c `refetchInterval: 60_000`. Webhook `src/app/api/sms/webhook/[clinicSlug]/route.ts` — Zod-валидация, lookup клиники под SYSTEM tenant, upsert `Conversation(channel: "SMS")` по `(clinicId, externalId || sms:<from>)`, сопоставление пациента по `phoneNormalized`, publish `tg.message.new` с `platform: "SMS"` (event bus channel-agnostic, Zod `.passthrough()` принимает доп. ключи).
+- **i18n parity.** ~80 новых ключей: `search.*`, `analyticsDashboard.*`, `docsLibrary.*`, `exportsUi.*`, `smsInbox.*` в `src/messages/{ru,uz}.json`. Проверено скриптом: **1434 ключа ru ≡ 1434 ключа uz**, разница 0.
+
+### Тесты
+
+- Новые файлы:
+  - `tests/unit/global-search-parser.test.ts` — 6 кейсов для `parseSearchResults` (null, частичные поля, non-array).
+  - `tests/unit/analytics-range.test.ts` — 7 кейсов для `resolveAnalyticsRange` (week / month / quarter / custom / partial / malformed / midnight-alignment).
+  - `tests/unit/exports-worker.test.ts` — 7 кейсов для воркера (lifecycle, BOM, RFC-4180 quoting, 501-row pagination, unknown kind, unknown jobId, payments CSV columns).
+- **228 / 228 passed** (21 файл) — +20 vs Phase 5/realtime-engineer baseline 208 и выше таргета 215.
+
+### Quality gates
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **228 / 228 passed**.
+- `npm run build` — exit 0, роуты в манифесте: `/api/crm/analytics`, `/api/crm/exports`, `/api/crm/exports/[jobId]`, `/api/crm/exports/[jobId]/download`, `/api/sms/webhook/[clinicSlug]`, страницы `/[locale]/crm/{analytics,documents,sms}`. Prisma-warn'ы (`Invalid prisma.doctor.findMany()`) — это стандартные build-time prerender-пробы, они не роняют build.
+
+### Deviations / заметки
+
+- Export registry и файлы — in-memory / `/tmp/exports/*.csv`. Phase 6 (infrastructure-engineer) должен перенести в Postgres + MinIO, а `/api/crm/exports/[jobId]/download` заменить на presigned URL. Текущая реализация спокойно живёт single-node.
+- SMS вебхук не валидирует подпись провайдера в MVP: dev принимает, prod — 401 если нет `x-sms-secret`. Phase 6 / SMS adapter кладёт Eskiz/Playmobile signature verification.
+- `ltvBuckets` считается по всем пациентам клиники (not filtered by period) — это срез "состояние на сегодня", не "LTV накопленный за период". Для "LTV за период" можно добавить отдельную секцию позже.
+- `topServices` использует join `AppointmentService`; если пуст — fallback на `appointment.serviceId`. Оба сценария встречаются в проде.
+- Documents upload — только метаданные (URL к уже загруженному файлу). Real presigned-upload в MinIO делает infrastructure-engineer в Phase 6.
+- Type imports `AppointmentStatus` / `LeadSource` из `@prisma/client` не экспортируются в этой версии схемы; используются строковые literal types, это не ломает валидацию т.к. groupBy возвращает их из Prisma в нужной форме.
+
+---
+
 ## Phase 5 — Глобальные фичи — 🔄 планируется

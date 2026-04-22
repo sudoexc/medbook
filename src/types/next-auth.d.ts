@@ -1,12 +1,18 @@
 import "next-auth";
 import "next-auth/jwt";
 
-type AppRole = "ADMIN" | "DOCTOR" | "RECEPTIONIST";
+type AppRole =
+  | "SUPER_ADMIN"
+  | "ADMIN"
+  | "DOCTOR"
+  | "RECEPTIONIST"
+  | "NURSE"
+  | "CALL_OPERATOR";
 
 declare module "next-auth" {
   interface User {
     role?: AppRole;
-    doctorId?: string | null;
+    clinicId?: string | null;
   }
   interface Session {
     user: {
@@ -14,14 +20,15 @@ declare module "next-auth" {
       email: string;
       name?: string | null;
       role: AppRole;
-      doctorId: string | null;
+      clinicId: string | null;
     };
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
+    userId?: string;
     role?: AppRole;
-    doctorId?: string | null;
+    clinicId?: string | null;
   }
 }

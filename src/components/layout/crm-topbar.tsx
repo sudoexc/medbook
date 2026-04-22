@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
+import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
 import { toast } from "@/components/ui/sonner"
 
 const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
@@ -50,10 +51,25 @@ function useClock() {
 export interface CrmTopbarProps {
   userEmail?: string | null
   userName?: string | null
+  userRole?:
+    | "SUPER_ADMIN"
+    | "ADMIN"
+    | "DOCTOR"
+    | "RECEPTIONIST"
+    | "NURSE"
+    | "CALL_OPERATOR"
+    | null
+  currentClinicId?: string | null
   onSignOut?: () => void
 }
 
-export function CrmTopbar({ userEmail, userName, onSignOut }: CrmTopbarProps) {
+export function CrmTopbar({
+  userEmail,
+  userName,
+  userRole,
+  currentClinicId,
+  onSignOut,
+}: CrmTopbarProps) {
   const pathname = usePathname() ?? ""
   const params = useParams()
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
@@ -101,6 +117,13 @@ export function CrmTopbar({ userEmail, userName, onSignOut }: CrmTopbarProps) {
         <PlusIcon />
         Новая запись
       </Button>
+
+      {userRole === "SUPER_ADMIN" && (
+        <ClinicSwitcher
+          currentClinicId={currentClinicId ?? null}
+          className="hidden md:flex"
+        />
+      )}
 
       <div className="hidden items-center gap-1 rounded-md bg-muted px-2.5 py-1 text-sm font-medium tabular-nums text-foreground md:flex">
         {timeStr}

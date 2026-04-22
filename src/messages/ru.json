@@ -1,10 +1,114 @@
 {
+  "common": {
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "edit": "Изменить",
+    "create": "Создать",
+    "confirm": "Подтвердить",
+    "back": "Назад",
+    "next": "Далее",
+    "close": "Закрыть",
+    "search": "Поиск",
+    "loading": "Загрузка...",
+    "empty": "Нет данных",
+    "error": "Ошибка",
+    "retry": "Повторить",
+    "yes": "Да",
+    "no": "Нет",
+    "all": "Все",
+    "none": "Нет",
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "tomorrow": "Завтра"
+  },
   "nav": {
     "doctors": "Врачи",
     "services": "Услуги",
     "about": "О клинике",
     "faq": "Вопросы",
-    "bookAppointment": "Записаться"
+    "bookAppointment": "Записаться",
+    "reception": "Рецепция",
+    "appointments": "Записи",
+    "calendar": "Календарь",
+    "patients": "Пациенты",
+    "callCenter": "Call-центр",
+    "telegram": "Telegram",
+    "notifications": "Уведомления",
+    "analytics": "Аналитика",
+    "settings": "Настройки"
+  },
+  "auth": {
+    "signIn": "Войти",
+    "signOut": "Выйти",
+    "email": "Email",
+    "password": "Пароль",
+    "forgotPassword": "Забыли пароль?",
+    "signInError": "Неверный email или пароль",
+    "unauthorized": "Нет доступа"
+  },
+  "patient": {
+    "fullName": "ФИО",
+    "firstName": "Имя",
+    "lastName": "Фамилия",
+    "patronymic": "Отчество",
+    "phone": "Телефон",
+    "birthDate": "Дата рождения",
+    "gender": "Пол",
+    "male": "Мужской",
+    "female": "Женский",
+    "address": "Адрес",
+    "notes": "Заметки",
+    "segment": {
+      "new": "Новый",
+      "active": "Активный",
+      "dormant": "Спящий",
+      "vip": "VIP",
+      "churn": "Отток"
+    }
+  },
+  "appointment": {
+    "date": "Дата",
+    "time": "Время",
+    "duration": "Длительность",
+    "doctor": "Врач",
+    "service": "Услуга",
+    "cabinet": "Кабинет",
+    "comment": "Комментарий",
+    "status": {
+      "booked": "Записан",
+      "waiting": "Ожидает",
+      "inProgress": "На приёме",
+      "completed": "Завершён",
+      "skipped": "Пропущен",
+      "cancelled": "Отменён",
+      "noShow": "Не пришёл"
+    }
+  },
+  "payment": {
+    "amount": "Сумма",
+    "method": {
+      "cash": "Наличные",
+      "card": "Карта",
+      "transfer": "Перевод"
+    },
+    "status": {
+      "paid": "Оплачен",
+      "unpaid": "Не оплачен",
+      "partial": "Частично"
+    }
+  },
+  "reception": {
+    "title": "Рецепция",
+    "subtitle": "Сегодняшний день",
+    "kpi": {
+      "todayAppointments": "Записей сегодня",
+      "checkedIn": "Пришли",
+      "missed": "Пропустили",
+      "revenue": "Выручка",
+      "waiting": "Ожидают",
+      "inProgress": "На приёме"
+    }
   },
   "hero": {
     "badge": "Неврологический центр в Ташкенте",

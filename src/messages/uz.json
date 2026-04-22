@@ -1,10 +1,114 @@
 {
+  "common": {
+    "save": "Saqlash",
+    "cancel": "Bekor qilish",
+    "delete": "O'chirish",
+    "edit": "Tahrirlash",
+    "create": "Yaratish",
+    "confirm": "Tasdiqlash",
+    "back": "Orqaga",
+    "next": "Keyingi",
+    "close": "Yopish",
+    "search": "Qidirish",
+    "loading": "Yuklanmoqda...",
+    "empty": "Ma'lumot yo'q",
+    "error": "Xatolik",
+    "retry": "Qayta urinish",
+    "yes": "Ha",
+    "no": "Yo'q",
+    "all": "Barchasi",
+    "none": "Yo'q",
+    "today": "Bugun",
+    "yesterday": "Kecha",
+    "tomorrow": "Ertaga"
+  },
   "nav": {
     "doctors": "Shifokorlar",
     "services": "Xizmatlar",
     "about": "Klinika haqida",
     "faq": "Savollar",
-    "bookAppointment": "Yozilish"
+    "bookAppointment": "Yozilish",
+    "reception": "Qabulxona",
+    "appointments": "Yozilishlar",
+    "calendar": "Kalendar",
+    "patients": "Bemorlar",
+    "callCenter": "Call-markaz",
+    "telegram": "Telegram",
+    "notifications": "Bildirishnomalar",
+    "analytics": "Tahlillar",
+    "settings": "Sozlamalar"
+  },
+  "auth": {
+    "signIn": "Kirish",
+    "signOut": "Chiqish",
+    "email": "Email",
+    "password": "Parol",
+    "forgotPassword": "Parolni unutdingizmi?",
+    "signInError": "Email yoki parol noto'g'ri",
+    "unauthorized": "Ruxsat yo'q"
+  },
+  "patient": {
+    "fullName": "F.I.Sh.",
+    "firstName": "Ism",
+    "lastName": "Familiya",
+    "patronymic": "Otasining ismi",
+    "phone": "Telefon",
+    "birthDate": "Tug'ilgan sana",
+    "gender": "Jins",
+    "male": "Erkak",
+    "female": "Ayol",
+    "address": "Manzil",
+    "notes": "Izohlar",
+    "segment": {
+      "new": "Yangi",
+      "active": "Faol",
+      "dormant": "Nofaol",
+      "vip": "VIP",
+      "churn": "Yo'qotilgan"
+    }
+  },
+  "appointment": {
+    "date": "Sana",
+    "time": "Vaqt",
+    "duration": "Davomiyligi",
+    "doctor": "Shifokor",
+    "service": "Xizmat",
+    "cabinet": "Xona",
+    "comment": "Izoh",
+    "status": {
+      "booked": "Yozilgan",
+      "waiting": "Kutmoqda",
+      "inProgress": "Qabulda",
+      "completed": "Yakunlandi",
+      "skipped": "O'tkazib yuborilgan",
+      "cancelled": "Bekor qilingan",
+      "noShow": "Kelmagan"
+    }
+  },
+  "payment": {
+    "amount": "Summa",
+    "method": {
+      "cash": "Naqd",
+      "card": "Karta",
+      "transfer": "O'tkazma"
+    },
+    "status": {
+      "paid": "To'langan",
+      "unpaid": "To'lanmagan",
+      "partial": "Qisman"
+    }
+  },
+  "reception": {
+    "title": "Qabulxona",
+    "subtitle": "Bugungi kun",
+    "kpi": {
+      "todayAppointments": "Bugungi yozilishlar",
+      "checkedIn": "Kelganlar",
+      "missed": "Kelmaganlar",
+      "revenue": "Tushum",
+      "waiting": "Kutmoqda",
+      "inProgress": "Qabulda"
+    }
   },
   "hero": {
     "badge": "Toshkentdagi nevrologik markaz",

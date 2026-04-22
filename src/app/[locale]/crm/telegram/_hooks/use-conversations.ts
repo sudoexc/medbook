@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useLiveEvents } from "@/hooks/use-live-events";
 
 import type {
   ConversationListResponse,
@@ -109,9 +111,30 @@ export function useConversations(filters: ConversationFilters) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 10_000,
-    // TODO(realtime-engineer): replace with SSE invalidation on `tg.message.new`.
-    refetchInterval: 30_000,
+    // SSE invalidation (`useTgConversationsRealtime`) keeps this fresh on
+    // `tg.*` events. 60s polling stays as a safety net.
+    refetchInterval: 60_000,
   });
+}
+
+/**
+ * Invalidate the conversation list on every Telegram realtime event.
+ * Mount from the inbox page client.
+ */
+export function useTgConversationsRealtime(): void {
+  const qc = useQueryClient();
+  useLiveEvents(
+    () => {
+      void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
+    },
+    {
+      filter: [
+        "tg.message.new",
+        "tg.takeover.incoming",
+        "tg.conversation.updated",
+      ],
+    },
+  );
 }
 
 /** Flatten infinite-query pages. */

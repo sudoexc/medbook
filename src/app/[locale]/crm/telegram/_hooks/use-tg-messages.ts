@@ -6,6 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
+import { useLiveEvents } from "@/hooks/use-live-events";
+
 import type { InboxMessage, MessagesResponse } from "./types";
 
 /**
@@ -47,8 +49,26 @@ export function useTgMessages(conversationId: string | null) {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(conversationId),
     staleTime: 5_000,
-    refetchInterval: conversationId ? 10_000 : false,
+    refetchInterval: conversationId ? 60_000 : false,
   });
+}
+
+/**
+ * Invalidate the active chat on every `tg.message.new` whose payload
+ * matches the selected conversation id.
+ */
+export function useTgMessagesRealtime(conversationId: string | null): void {
+  const qc = useQueryClient();
+  useLiveEvents(
+    (event) => {
+      if (!conversationId) return;
+      if (event.type !== "tg.message.new") return;
+      const payloadConv = event.payload.conversationId;
+      if (payloadConv !== conversationId) return;
+      void qc.invalidateQueries({ queryKey: messagesKey(conversationId) });
+    },
+    { filter: ["tg.message.new"], enabled: Boolean(conversationId) },
+  );
 }
 
 /**

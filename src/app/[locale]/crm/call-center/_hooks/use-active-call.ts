@@ -48,6 +48,8 @@ export function useActiveCall(id: string | null) {
       if (!res.ok) throw new Error(`Active call load failed: ${res.status}`);
       return (await res.json()) as CallRow;
     },
-    refetchInterval: 10_000,
+    // SSE invalidation (see `useCallCenterRealtime`) drives live refreshes.
+    // Polling stays as a 60s safety net.
+    refetchInterval: 60_000,
   });
 }

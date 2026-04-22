@@ -14,6 +14,8 @@ import {
   QueryMessagesSchema,
   SendMessageSchema,
 } from "@/server/schemas/message";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 function conversationIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -99,6 +101,20 @@ export const POST = createApiHandler(
       entityId: msg.id,
       meta: { conversationId },
     });
+
+    const tenant = getTenant();
+    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+    if (clinicId) {
+      publishEventSafe(clinicId, {
+        type: "tg.message.new",
+        payload: {
+          conversationId,
+          messageId: msg.id,
+          direction: "OUT",
+          preview: body.body.slice(0, 200),
+        },
+      });
+    }
     return ok(msg, 201);
   }
 );

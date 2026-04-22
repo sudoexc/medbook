@@ -1,15 +1,28 @@
 /**
- * Process-local event bus — no-op stub for Phase 3b.
+ * Realtime event bus.
  *
- * The real SSE fan-out lands with `realtime-engineer` (see LOG.md). Until
- * then, callers publish events here; the bus simply forwards to in-process
- * subscribers. When SSE arrives, the bus will:
+ * Two layers:
  *
- *  1. Broadcast to per-clinic SSE channels.
- *  2. Back off onto Redis pub/sub when `REDIS_URL` is set.
+ *  1. **In-process pub/sub** — every process hosts a tiny `EventBus` that
+ *     SSE handlers subscribe to. Publishers always go through the local bus
+ *     so a single-node deployment needs no infrastructure.
  *
- * Keep the module footprint tiny so it can be replaced wholesale. Callers
- * depend only on `publish(channel, payload)`.
+ *  2. **Redis fan-out (optional)** — when `REDIS_URL` is set, `publishEvent`
+ *     (see `./publish.ts`) mirrors events to `events:<clinicId>` via
+ *     ioredis PUBLISH, and each process's bus subscribes via a dedicated
+ *     Redis SUBSCRIBE client so remote events reach local SSE subscribers.
+ *
+ * The bus deals in opaque channel strings + payloads; validation lives in
+ * `publish.ts` where the Zod schema is enforced. Keep this module tiny and
+ * dependency-free so it can be imported from workers, webhooks, and API
+ * handlers without pulling heavy deps eagerly.
+ *
+ * ## Backward compatibility
+ *
+ * Phase 3b publishers used `publish(channel, payload)` directly. Those
+ * string channels (e.g. `tg.message.new`, `call.incoming`, `telephony.*`)
+ * are still accepted — they just don't enjoy Zod validation or SSE fan-out.
+ * New code should use `publishEvent()` instead.
  */
 
 type Handler = (payload: unknown) => void;
@@ -20,7 +33,8 @@ class EventBus {
   publish(channel: string, payload: unknown): void {
     const set = this.subs.get(channel);
     if (!set) return;
-    for (const h of set) {
+    // Snapshot to guard against handlers that unsubscribe during dispatch.
+    for (const h of Array.from(set)) {
       try {
         h(payload);
       } catch (e) {
@@ -41,6 +55,11 @@ class EventBus {
       if (set && set.size === 0) this.subs.delete(channel);
     };
   }
+
+  /** Number of subscribers on a channel — useful for tests + diagnostics. */
+  size(channel: string): number {
+    return this.subs.get(channel)?.size ?? 0;
+  }
 }
 
 let singleton: EventBus | null = null;
@@ -53,4 +72,12 @@ export function getEventBus(): EventBus {
 /** Convenience: publish to the default bus. */
 export function publish(channel: string, payload: unknown): void {
   getEventBus().publish(channel, payload);
+}
+
+/** Convenience: subscribe on the default bus. */
+export function subscribe(
+  channel: string,
+  handler: (payload: unknown) => void,
+): () => void {
+  return getEventBus().subscribe(channel, handler);
 }

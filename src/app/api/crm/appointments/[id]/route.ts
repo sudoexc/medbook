@@ -13,6 +13,8 @@ import {
   detectConflicts,
 } from "@/server/services/appointments";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -168,6 +170,61 @@ export const PATCH = createApiHandler(
     } else if (timeChanged) {
       fireTrigger({ kind: "appointment.updated", appointmentId: id });
     }
+
+    // Realtime fan-out. Pick the event type that best reflects the change:
+    //   - status transition  → appointment.statusChanged
+    //   - time/doctor move   → appointment.moved
+    //   - cancelled          → appointment.cancelled
+    //   - otherwise          → appointment.updated
+    const tenant = getTenant();
+    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+    if (clinicId) {
+      const statusChanged =
+        body.status !== undefined && body.status !== before.status;
+      const basePayload = {
+        appointmentId: id,
+        doctorId: after.doctorId,
+        patientId: after.patientId,
+        cabinetId: after.cabinetId,
+        status: after.status,
+        previousStatus: before.status,
+        date: after.date.toISOString(),
+      };
+      if (body.status === "CANCELLED") {
+        publishEventSafe(clinicId, {
+          type: "appointment.cancelled",
+          payload: basePayload,
+        });
+      } else if (statusChanged) {
+        publishEventSafe(clinicId, {
+          type: "appointment.statusChanged",
+          payload: basePayload,
+        });
+      } else if (timeChanged) {
+        publishEventSafe(clinicId, {
+          type: "appointment.moved",
+          payload: basePayload,
+        });
+      } else {
+        publishEventSafe(clinicId, {
+          type: "appointment.updated",
+          payload: basePayload,
+        });
+      }
+      // Queue snapshot (shown on reception dashboard) typically shifts on
+      // any status change too.
+      if (statusChanged) {
+        publishEventSafe(clinicId, {
+          type: "queue.updated",
+          payload: {
+            appointmentId: id,
+            doctorId: after.doctorId,
+            queueStatus: after.queueStatus,
+            previousStatus: before.queueStatus,
+          },
+        });
+      }
+    }
     return ok(after);
   }
 );
@@ -192,6 +249,22 @@ export const DELETE = createApiHandler(
       meta: { before, after: cancelled },
     });
     fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
+
+    const tenant = getTenant();
+    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+    if (clinicId) {
+      publishEventSafe(clinicId, {
+        type: "appointment.cancelled",
+        payload: {
+          appointmentId: id,
+          doctorId: cancelled.doctorId,
+          patientId: cancelled.patientId,
+          cabinetId: cancelled.cabinetId,
+          status: cancelled.status,
+          date: cancelled.date.toISOString(),
+        },
+      });
+    }
     return ok({ id, cancelled: true });
   }
 );

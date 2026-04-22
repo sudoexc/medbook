@@ -15,6 +15,8 @@ import {
 } from "@/server/schemas/payment";
 import { recalcLtv } from "@/server/services/ltv";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"] },
@@ -128,6 +130,21 @@ export const POST = createApiHandler(
         kind: "payment.paid",
         appointmentId: created.appointmentId ?? null,
       });
+      const tenant = getTenant();
+      const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      if (clinicId) {
+        publishEventSafe(clinicId, {
+          type: "payment.paid",
+          payload: {
+            paymentId: created.id,
+            appointmentId: created.appointmentId ?? null,
+            patientId,
+            amount: created.amount,
+            currency: created.currency,
+            status: created.status,
+          },
+        });
+      }
     }
 
     await audit(request, {

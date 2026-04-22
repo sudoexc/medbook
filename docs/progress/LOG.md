@@ -514,4 +514,45 @@
 
 ---
 
+## Phase 5 — Глобальные фичи — 🔄 в работе
+
+### realtime-engineer (pending commit)
+
+**SSE transport `/api/events` + typed Zod event bus + client hooks + mutation wiring.**
+
+- **Typed event schema** `src/server/realtime/events.ts` — Zod discriminated union for 18 event types (TZ §4.6 + §8.8): `appointment.{created,updated,statusChanged,cancelled,moved}`, `queue.updated`, `call.{incoming,answered,ended,missed}`, `tg.{message.new,takeover.incoming,conversation.updated}`, `payment.{paid,due}`, `notification.{sent,failed}`, `cabinet.occupancy.changed`. Base envelope `{type, clinicId, at, payload}` — `at` ISO-8601 with offset, `clinicId` required per event. Per-type payload types exported (`AppointmentEventPayload`, `CallEventPayload`, …). `EVENT_TYPES` exhaustive literal list kept in sync with the schema options; `EventOf<T>`, `isAppEvent`, `parseEvent` helpers.
+- **Publish helper** `src/server/realtime/publish.ts` — `publishEvent(clinicId, {type, payload})` validates via `AppEventSchema.safeParse`, pushes to in-process `EventBus` on `clinic:<id>:events`, and (when `REDIS_URL` set) mirrors to Redis `events:<clinicId>`. `publishEventSafe` fire-and-forget variant swallows errors with `console.warn`. `clinicId` argument always wins over payload.
+- **Redis adapter** `src/server/realtime/redis-adapter.ts` — lazy `ioredis` clients, gated on `REDIS_URL`. `ensureRedisSubscriber` pSubscribes `events:*` and forwards inbound messages back into the local bus. `publishToRedis` best-effort; errors logged, never thrown. `__resetRedisForTests` cleanup hook. `ioredis@5` added to deps.
+- **Channels module** `src/server/realtime/channels.ts` — `clinicChannel(id)` naming convention shared between publisher / subscriber / SSE handler (avoids circular dep).
+- **Event bus** `src/server/realtime/event-bus.ts` — kept backward-compatible `publish(channel, payload)` + `subscribe`; added `size(channel)` diagnostic + snapshot iteration so handlers can unsubscribe during dispatch without Set mutation bugs.
+- **SSE endpoint** `src/app/api/events/route.ts` — `GET` returns `text/event-stream` ReadableStream. Authed via `auth()` (401 without session, 403 without clinicId). `session.user.clinicId` already reflects SUPER_ADMIN override cookie thanks to existing NextAuth `jwt` callback. Heartbeat `: ping\n\n` every 20s. First line `: ok\n\n` to flush proxy buffers. `request.signal.addEventListener('abort', ...)` unsubscribes + clears heartbeat. Process starts Redis subscriber once via `ensureRedisSubscriber`.
+- **Client hooks** `src/hooks/use-live-events.ts` + `src/hooks/use-live-query.ts`. `useLiveEvents(handler, {filter?, enabled?})` — one shared `EventSource` per tab (module-scoped singleton, ref-counted). Exponential backoff reconnect (1s → 32s cap). Zod-parse every payload; bad events ignored silently. SSR-safe (no-op when `typeof window === "undefined"` or `VITEST`/`NODE_ENV=test`). `useLiveQueryInvalidation({events, queryKey|queryKeys, shouldInvalidate?, enabled?})` wraps `useLiveEvents` + `queryClient.invalidateQueries`.
+- **Polling hooks updated** — reception / calendar / telegram / call-center / appointments / doctors hooks got companion `*Realtime()` hooks (mount once from page client) and polling intervals relaxed to 60s fallback. Files touched: `src/app/[locale]/crm/reception/_hooks/use-reception-live.ts` (new `useReceptionRealtime`), `src/app/[locale]/crm/calendar/_hooks/use-calendar-data.ts` (`useCalendarRealtime`), `src/app/[locale]/crm/telegram/_hooks/use-conversations.ts` (`useTgConversationsRealtime`), `src/app/[locale]/crm/telegram/_hooks/use-tg-messages.ts` (`useTgMessagesRealtime`, conv-id gated), `src/app/[locale]/crm/call-center/_hooks/use-incoming-calls.ts` (`useCallCenterRealtime` — invalidates incoming + history + active-call) + `use-active-call.ts` + `use-call-history.ts`, `src/app/[locale]/crm/appointments/_hooks/use-appointments-list.ts` (`useAppointmentsRealtime`), `src/app/[locale]/crm/doctors/_hooks/use-doctors-list.ts` (`useDoctorsListRealtime`). Page-level components still need to mount these hooks (one-line each) — short UX PR follow-up.
+- **Mutation handlers publishing** — `POST /api/crm/appointments` → `appointment.created` + `queue.updated`; `PATCH /api/crm/appointments/[id]` → picks between `appointment.cancelled` / `.statusChanged` / `.moved` / `.updated` based on the diff, plus `queue.updated` when status flipped; `DELETE` → `appointment.cancelled`; `PATCH /api/crm/appointments/[id]/queue-status` → `queue.updated` + `appointment.statusChanged`; `POST + PATCH /api/crm/payments` → `payment.paid` on PAID transition; `POST /api/crm/conversations/[id]/messages` → `tg.message.new` (OUT); `PATCH /api/crm/conversations/[id]` → `tg.conversation.updated`; `src/server/workers/notifications-send.ts` → `notification.sent` on success, `notification.failed` on final retry exhaustion.
+- **Existing webhook publishers routed through the typed helper** — `src/app/api/telegram/webhook/[clinicSlug]/route.ts` and `src/app/api/calls/sip/event/route.ts` now call `publishEventSafe` for the canonical events while keeping the legacy `publish(channel, payload)` calls for existing in-process listeners (telephony adapter). Phase 6 can deprecate the legacy channels after infra-engineer cuts over.
+- **Tests** — `tests/unit/realtime-events.test.ts` (24 cases: coverage, envelope, per-type positive/negative) + `tests/unit/realtime-publish.test.ts` (10 cases: dispatch, tenant isolation, clinicId override, Zod rejection, unsubscribe, `publishEventSafe` error swallowing). **208/208 passed** (+34 vs Phase 4 baseline of 174).
+- **Docs** — `docs/realtime.md`: architecture diagram, event registry table, "adding a new event type" playbook, Redis deployment note, WS-vs-SSE rationale, debugging tips.
+
+### Quality gates
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **208 / 208 passed** (18 files).
+- `npm run build` — exit 0, `/api/events` in route manifest (ƒ Dynamic).
+
+### TODOs handed to infrastructure-engineer (Phase 6)
+
+- Set `REDIS_URL` in docker-compose + prod env — in-memory bus loses events across node restarts; Redis pub/sub fan-out for horizontal scale.
+- Swap `InMemoryQueueAdapter` → BullMQ (notifications-send.ts already emits `notification.sent|failed` — BullMQ worker keeps emitting the same events).
+- Consider adding a sequence id to the envelope for at-least-once delivery (Redis pub/sub is at-most-once; the 60s polling fallback covers drops for now).
+- Deprecate the legacy `publish(channel, payload)` channels in `event-bus.ts` once the telephony adapter is refactored to use the typed helper too.
+
+### Deviations
+
+- `AppEventInput` intentionally loose on payload passthrough keys so publishers can enrich without schema churn (Zod `.passthrough()`). Breaking changes should still bump `EVENT_TYPES`.
+- Page-level components have the realtime hooks available but need a one-liner wiring (e.g. `useReceptionRealtime()` at the top of `reception-page-client.tsx`). Intentionally left to the page-owning agents/UX pass — this PR doesn't touch component files.
+- `tg.takeover.callback` legacy channel folded into `tg.takeover.incoming` with a passthrough `callbackData` field; operator UI already listens on takeover events.
+- No Prisma schema changes (per brief).
+
+---
+
 ## Phase 5 — Глобальные фичи — 🔄 планируется

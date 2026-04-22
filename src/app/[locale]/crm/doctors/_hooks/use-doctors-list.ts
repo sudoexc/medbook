@@ -1,6 +1,8 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useLiveEvents } from "@/hooks/use-live-events";
 
 /**
  * Doctor row shape returned by `GET /api/crm/doctors`.
@@ -89,4 +91,18 @@ export function flattenDoctors(
   const out: DoctorRow[] = [];
   for (const p of data.pages) out.push(...p.rows);
   return out;
+}
+
+/**
+ * Subscribe the doctors list to `queue.updated` events (per-doctor load
+ * changes on each new/moved appointment).
+ */
+export function useDoctorsListRealtime(): void {
+  const qc = useQueryClient();
+  useLiveEvents(
+    () => {
+      void qc.invalidateQueries({ queryKey: ["doctors", "list"] });
+    },
+    { filter: ["queue.updated"] },
+  );
 }

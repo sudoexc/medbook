@@ -11,6 +11,8 @@ import { ok, notFound, diff } from "@/server/http";
 import { UpdatePaymentSchema } from "@/server/schemas/payment";
 import { recalcLtv } from "@/server/services/ltv";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -64,6 +66,21 @@ export const PATCH = createApiHandler(
         kind: "payment.paid",
         appointmentId: after.appointmentId ?? null,
       });
+      const tenant = getTenant();
+      const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      if (clinicId) {
+        publishEventSafe(clinicId, {
+          type: "payment.paid",
+          payload: {
+            paymentId: after.id,
+            appointmentId: after.appointmentId ?? null,
+            patientId: after.patientId ?? null,
+            amount: after.amount,
+            currency: after.currency,
+            status: after.status,
+          },
+        });
+      }
     }
     return ok(after);
   }

@@ -122,8 +122,9 @@ export function useCallHistory(filters: HistoryFilters) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 15_000,
-    // TODO(realtime-engineer): invalidate on `call.ended` via SSE.
-    refetchInterval: 30_000,
+    // SSE invalidation (via `useCallCenterRealtime`) refreshes this list on
+    // every `call.*` event. Polling stays as a 60s safety net.
+    refetchInterval: 60_000,
   });
 }
 

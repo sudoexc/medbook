@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+
 import type {
   AppointmentRow,
   AppointmentsListResponse,
@@ -106,7 +108,10 @@ export type ConversationRow = {
   assignedTo: { id: string; name: string } | null;
 };
 
-const RECEPTION_POLL_MS = 30_000;
+// Polling becomes a fallback once SSE invalidation is in place. We keep a
+// 60s safety-net refetch so a dropped socket + failed reconnect eventually
+// catches up on its own.
+const RECEPTION_POLL_MS = 60_000;
 const RECEPTION_STALE_MS = 15_000;
 
 /** Today's date range [00:00, tomorrow 00:00). */
@@ -269,6 +274,40 @@ export type UpcomingReminder = {
   appointment: AppointmentRow;
   minutesUntil: number;
 };
+
+/**
+ * Subscribe the reception dashboard to realtime events. Call once from the
+ * page-level client component. Invalidates every live query on the relevant
+ * event types; TanStack Query then refetches as needed.
+ */
+export function useReceptionRealtime(): void {
+  useLiveQueryInvalidation({
+    events: [
+      "appointment.created",
+      "appointment.updated",
+      "appointment.statusChanged",
+      "appointment.cancelled",
+      "appointment.moved",
+      "queue.updated",
+    ],
+    queryKeys: [
+      ["reception", "dashboard"],
+      ["reception", "appointments", "today"],
+    ],
+  });
+  useLiveQueryInvalidation({
+    events: ["call.incoming", "call.answered", "call.ended", "call.missed"],
+    queryKey: ["reception", "calls"],
+  });
+  useLiveQueryInvalidation({
+    events: ["tg.message.new", "tg.conversation.updated"],
+    queryKey: ["reception", "conversations"],
+  });
+  useLiveQueryInvalidation({
+    events: ["cabinet.occupancy.changed"],
+    queryKey: ["reception", "cabinets"],
+  });
+}
 
 export function computeUpcomingReminders(
   rows: AppointmentRow[],

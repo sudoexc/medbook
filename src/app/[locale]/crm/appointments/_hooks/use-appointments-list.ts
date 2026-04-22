@@ -1,6 +1,8 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useLiveEvents } from "@/hooks/use-live-events";
 
 /**
  * Denormalised row returned by `GET /api/crm/appointments` — see §6.2.
@@ -169,6 +171,29 @@ export function useAppointmentsList(
     },
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
+}
+
+/**
+ * Subscribe the appointments list to SSE `appointment.*` events. Call once
+ * from the page-level client component. Every cached `["appointments","list",...]`
+ * key gets invalidated on any relevant event.
+ */
+export function useAppointmentsRealtime(): void {
+  const qc = useQueryClient();
+  useLiveEvents(
+    () => {
+      void qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+    },
+    {
+      filter: [
+        "appointment.created",
+        "appointment.updated",
+        "appointment.statusChanged",
+        "appointment.cancelled",
+        "appointment.moved",
+      ],
+    },
+  );
 }
 
 /**

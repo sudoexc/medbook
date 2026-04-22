@@ -27,6 +27,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { resolveAdapters } from "@/server/notifications/adapters";
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
+import { publishEventSafe } from "@/server/realtime/publish";
 
 export const QUEUE_NAME = "notifications:send";
 export const JOB_NAME = "deliver";
@@ -90,6 +91,15 @@ async function deliver(job: DeliverJob): Promise<void> {
       // Other channels (CALL/EMAIL/VISIT) not supported by adapters yet.
       throw new Error(`Channel ${send.channel} not yet implemented`);
     }
+    publishEventSafe(send.clinicId, {
+      type: "notification.sent",
+      payload: {
+        sendId: send.id,
+        channel: send.channel as "SMS" | "TG",
+        patientId: send.patientId ?? null,
+        templateKey: send.templateId ?? undefined,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     const nextAttempt = send.retryCount + 1;
@@ -104,6 +114,16 @@ async function deliver(job: DeliverJob): Promise<void> {
           },
         }),
       );
+      publishEventSafe(send.clinicId, {
+        type: "notification.failed",
+        payload: {
+          sendId: send.id,
+          channel: send.channel as "SMS" | "TG",
+          patientId: send.patientId ?? null,
+          templateKey: send.templateId ?? undefined,
+          failedReason: message.slice(0, 200),
+        },
+      });
       return;
     }
     const delay = BACKOFF_MS[Math.min(nextAttempt, BACKOFF_MS.length - 1)];

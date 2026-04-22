@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound, diff } from "@/server/http";
 import { UpdateConversationSchema } from "@/server/schemas/conversation";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -52,6 +54,20 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+
+    const tenant = getTenant();
+    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+    if (clinicId) {
+      publishEventSafe(clinicId, {
+        type: "tg.conversation.updated",
+        payload: {
+          conversationId: id,
+          mode: after.mode,
+          status: after.status,
+          assigneeId: after.assignedToId ?? null,
+        },
+      });
+    }
     return ok(after);
   }
 );

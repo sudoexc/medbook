@@ -1,6 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useLiveEvents } from "@/hooks/use-live-events";
 
 import type {
   AppointmentRow,
@@ -70,12 +72,36 @@ export function useCalendarAppointments(from: Date, to: Date) {
       }
       return out;
     },
-    // TODO(realtime-engineer): remove 30 s polling once SSE `appointment.*`
-    // events invalidate this key on push. Keep the fallback for offline / SSE
-    // failure scenarios.
-    refetchInterval: 30_000,
+    // SSE invalidation wires the `calendar` query keys on every
+    // `appointment.*` event (see `useCalendarRealtime`). Polling stays on
+    // as a 60-second fallback so a dropped socket still eventually catches
+    // up on its own.
+    refetchInterval: 60_000,
     staleTime: 15_000,
   });
+}
+
+/**
+ * Subscribe every `["calendar", "appointments", ...]` query to `appointment.*`
+ * events. The shape of the key ends with `[fromIso, toIso]`, so we use a
+ * prefix invalidation — TanStack Query handles sub-matching.
+ */
+export function useCalendarRealtime(): void {
+  const qc = useQueryClient();
+  useLiveEvents(
+    () => {
+      void qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+    },
+    {
+      filter: [
+        "appointment.created",
+        "appointment.updated",
+        "appointment.statusChanged",
+        "appointment.cancelled",
+        "appointment.moved",
+      ],
+    },
+  );
 }
 
 export function useActiveDoctors() {

@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
 import { QueueStatusUpdateSchema } from "@/server/schemas/appointment";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -43,6 +45,29 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: { before: before.queueStatus, after: after.queueStatus },
     });
+
+    const tenant = getTenant();
+    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+    if (clinicId) {
+      publishEventSafe(clinicId, {
+        type: "queue.updated",
+        payload: {
+          appointmentId: id,
+          doctorId: after.doctorId,
+          queueStatus: after.queueStatus,
+          previousStatus: before.queueStatus,
+        },
+      });
+      publishEventSafe(clinicId, {
+        type: "appointment.statusChanged",
+        payload: {
+          appointmentId: id,
+          doctorId: after.doctorId,
+          status: after.status,
+          previousStatus: before.status,
+        },
+      });
+    }
     return ok(after);
   }
 );

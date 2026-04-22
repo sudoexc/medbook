@@ -19,6 +19,8 @@ import {
   detectConflicts,
 } from "@/server/services/appointments";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { getTenant } from "@/lib/tenant-context";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -183,6 +185,32 @@ export const POST = createApiHandler(
     });
     // Phase 3a: fire notifications trigger (immediate + 24h/2h reminders).
     fireTrigger({ kind: "appointment.created", appointmentId: created.id });
+
+    // Realtime: fan out to reception/calendar/appointments lists.
+    const tenant = getTenant();
+    const clinicId =
+      tenant?.kind === "TENANT" ? tenant.clinicId : null;
+    if (clinicId) {
+      publishEventSafe(clinicId, {
+        type: "appointment.created",
+        payload: {
+          appointmentId: created.id,
+          doctorId: created.doctorId,
+          patientId: created.patientId,
+          cabinetId: created.cabinetId,
+          status: created.status,
+          date: created.date.toISOString(),
+        },
+      });
+      publishEventSafe(clinicId, {
+        type: "queue.updated",
+        payload: {
+          appointmentId: created.id,
+          doctorId: created.doctorId,
+          queueStatus: created.queueStatus,
+        },
+      });
+    }
     return ok(created, 201);
   }
 );

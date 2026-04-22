@@ -40,6 +40,7 @@ import { normalizePhone, phoneSearchVariants } from "@/lib/phone";
 import { runWithTenant } from "@/lib/tenant-context";
 import { CALL_CHANNELS, TELEPHONY_CHANNELS } from "@/server/telephony/adapter";
 import { publish } from "@/server/realtime/event-bus";
+import { publishEventSafe } from "@/server/realtime/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -329,6 +330,17 @@ export async function POST(request: NextRequest): Promise<Response> {
           patientId,
           dbId,
         });
+        publishEventSafe(clinic.id, {
+          type: "call.incoming",
+          payload: {
+            callId: evt.callId,
+            dbId,
+            direction: "IN",
+            from: evt.from,
+            to: evt.to,
+            patientId,
+          },
+        });
         break;
       }
       case "answered": {
@@ -345,6 +357,15 @@ export async function POST(request: NextRequest): Promise<Response> {
           callId: evt.callId,
           clinicId: clinic.id,
           operatorId: evt.operatorId ?? null,
+        });
+        publishEventSafe(clinic.id, {
+          type: "call.answered",
+          payload: {
+            callId: evt.callId,
+            operatorId: evt.operatorId ?? null,
+            from: evt.from,
+            to: evt.to,
+          },
         });
         break;
       }
@@ -363,6 +384,15 @@ export async function POST(request: NextRequest): Promise<Response> {
           clinicId: clinic.id,
           dbId: res?.dbId ?? null,
         });
+        publishEventSafe(clinic.id, {
+          type: "call.ended",
+          payload: {
+            callId: evt.callId,
+            dbId: res?.dbId ?? null,
+            from: evt.from,
+            to: evt.to,
+          },
+        });
         break;
       }
       case "missed": {
@@ -380,6 +410,15 @@ export async function POST(request: NextRequest): Promise<Response> {
           clinicId: clinic.id,
           dbId: res?.dbId ?? null,
           missed: true,
+        });
+        publishEventSafe(clinic.id, {
+          type: "call.missed",
+          payload: {
+            callId: evt.callId,
+            dbId: res?.dbId ?? null,
+            from: evt.from,
+            to: evt.to,
+          },
         });
         break;
       }

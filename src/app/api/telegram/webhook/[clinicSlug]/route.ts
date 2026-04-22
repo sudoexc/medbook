@@ -37,7 +37,7 @@ import {
   saveSnapshot,
   step,
 } from "@/server/telegram/state";
-import { publish } from "@/server/realtime/event-bus";
+import { publishEventSafe } from "@/server/realtime/publish";
 
 // Telegram may burst updates; the runtime must be Node (crypto + fetch).
 export const runtime = "nodejs";
@@ -294,19 +294,24 @@ export async function POST(
         chatId,
         msg,
       );
-      publish("tg.message.new", {
-        clinicId: clinic.id,
-        conversationId: recorded.conversationId,
-        chatId,
-        direction: "IN",
+      publishEventSafe(clinic.id, {
+        type: "tg.message.new",
+        payload: {
+          conversationId: recorded.conversationId,
+          chatId,
+          direction: "IN",
+          messageId: String(msg.message_id),
+        },
       });
 
       if (recorded.mode === "takeover") {
         // Do NOT run the FSM; operator will pick up.
-        publish("tg.takeover.incoming", {
-          clinicId: clinic.id,
-          conversationId: recorded.conversationId,
-          chatId,
+        publishEventSafe(clinic.id, {
+          type: "tg.takeover.incoming",
+          payload: {
+            conversationId: recorded.conversationId,
+            chatId,
+          },
         });
         return jsonResponse({ ok: true });
       }
@@ -351,11 +356,16 @@ export async function POST(
       );
 
       if (conv.mode === "takeover") {
-        publish("tg.takeover.callback", {
-          clinicId: clinic.id,
-          conversationId: conv.id,
-          chatId,
-          data: cq.data,
+        // Reuse the typed `tg.takeover.incoming` event; the callback data
+        // travels through the passthrough fields so operator UI can inspect.
+        publishEventSafe(clinic.id, {
+          type: "tg.takeover.incoming",
+          payload: {
+            conversationId: conv.id,
+            chatId,
+            // `AppEventSchema` payload allows passthrough keys.
+            callbackData: cq.data ?? null,
+          } as unknown as { conversationId: string; chatId: string },
         });
         return jsonResponse({ ok: true });
       }

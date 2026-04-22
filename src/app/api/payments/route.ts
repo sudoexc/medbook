@@ -1,3 +1,4 @@
+// LEGACY: will be rewritten in phase-1. Do not extend.
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";

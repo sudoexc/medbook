@@ -1,3 +1,4 @@
+// LEGACY: will be rewritten in phase-3a. Do not extend.
 import { prisma } from "@/lib/prisma";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 

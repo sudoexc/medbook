@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { SITE_DOMAIN } from "@/lib/constants";
-import { AutoPrint } from "@/components/auto-print";
+// TODO(phase-2c): re-introduce AutoPrint client component after dashboard rebuild.
 
 export default async function TicketPage({
   params,
@@ -133,7 +133,7 @@ export default async function TicketPage({
         <div style={{ fontSize: "8px", color: "#999", marginTop: "1mm" }}>+998 71 200 00 07 | neurofax.uz</div>
       </div>
 
-      <AutoPrint />
+      {/* TODO(phase-2c): auto-trigger window.print() via re-added AutoPrint client component. */}
     </div>
   );
 }

@@ -1371,5 +1371,278 @@
       "unknownCaller": "Неизвестный абонент",
       "linked": "пациент"
     }
+  },
+  "settings": {
+    "title": "Настройки",
+    "common": {
+      "save": "Сохранить",
+      "saving": "Сохраняем…",
+      "saved": "Сохранено",
+      "cancel": "Отмена",
+      "confirm": "Подтвердить",
+      "close": "Закрыть",
+      "delete": "Удалить",
+      "edit": "Изменить",
+      "create": "Создать",
+      "yes": "Да",
+      "no": "Нет",
+      "none": "Не выбрано",
+      "loading": "Загрузка…",
+      "error": "Ошибка"
+    },
+    "nav": {
+      "clinic": "Клиника",
+      "users": "Пользователи",
+      "services": "Услуги",
+      "cabinets": "Кабинеты",
+      "exchangeRates": "Курсы валют",
+      "roles": "Роли и права",
+      "audit": "Журнал аудита",
+      "integrations": "Интеграции"
+    },
+    "passwordReentry": {
+      "title": "Введите текущий пароль",
+      "description": "Для изменения секретов требуется подтвердить ваш текущий пароль.",
+      "label": "Пароль",
+      "required": "Введите пароль",
+      "wrong": "Неверный пароль"
+    },
+    "clinic": {
+      "title": "Информация о клинике",
+      "subtitle": "Название, адрес, часы работы, валюта и бренд.",
+      "sections": {
+        "info": "Основное",
+        "locale": "Локаль и рабочий день",
+        "secrets": "Секреты и токены"
+      },
+      "fields": {
+        "slug": "Slug (URL клиники)",
+        "slugHint": "Нельзя изменить — определяет публичный URL и webhook.",
+        "nameRu": "Название (RU)",
+        "nameUz": "Название (UZ)",
+        "addressRu": "Адрес (RU)",
+        "addressUz": "Адрес (UZ)",
+        "phone": "Телефон",
+        "email": "Email",
+        "timezone": "Часовой пояс",
+        "currencyPrimary": "Основная валюта",
+        "currencySecondary": "Дополнительная валюта",
+        "workdayStart": "Начало дня",
+        "workdayEnd": "Конец дня",
+        "slotMin": "Шаг сетки (мин)",
+        "brandColor": "Фирменный цвет",
+        "tgBotUsername": "TG бот (username)",
+        "tgBotToken": "TG Bot Token",
+        "tgWebhookSecret": "Webhook secret",
+        "smsSenderName": "SMS sender name",
+        "active": "Клиника активна",
+        "configured": "сохранено"
+      },
+      "secretsHint": "Изменения токенов и секретов требуют ввод текущего пароля. Пустое поле — не менять.",
+      "saveSecrets": "Сохранить секреты",
+      "confirmSecretTitle": "Подтвердите изменение секретов",
+      "confirmSecretDescription": "Введите свой текущий пароль, чтобы сохранить новые токены."
+    },
+    "users": {
+      "title": "Пользователи",
+      "subtitle": "Сотрудники клиники и их роли.",
+      "addUser": "Добавить сотрудника",
+      "editUser": "Редактировать сотрудника",
+      "searchPlaceholder": "Поиск по имени, email, телефону",
+      "allRoles": "Все роли",
+      "empty": "Нет сотрудников по фильтру.",
+      "createHint": "Пользователь получит доступ к CRM сразу после создания.",
+      "passwordHint": "Минимум 8 символов. Сообщите сотруднику лично.",
+      "created": "Пользователь создан",
+      "deactivated": "Пользователь деактивирован",
+      "deactivate": "Деактивировать",
+      "deleteTitle": "Деактивировать пользователя?",
+      "deleteDescription": "{name} больше не сможет войти. Это обратимо.",
+      "resetPassword": "Сбросить пароль",
+      "resetDescription": "Сбросить пароль для {name}. Если поле пустое — сгенерируем новый.",
+      "resetBlankHint": "Оставьте пустым, чтобы сгенерировать случайный.",
+      "resetConfirm": "Сбросить",
+      "passwordGenerated": "Новый пароль сгенерирован",
+      "passwordSet": "Пароль обновлён",
+      "passwordOnceWarning": "Пароль отображается один раз. Скопируйте и передайте сотруднику.",
+      "newPassword": "Новый пароль",
+      "copy": "Копировать",
+      "copied": "Скопировано",
+      "cols": {
+        "name": "Имя",
+        "email": "Email",
+        "role": "Роль",
+        "phone": "Телефон",
+        "status": "Статус",
+        "password": "Пароль"
+      },
+      "roles": {
+        "ADMIN": "Администратор",
+        "DOCTOR": "Врач",
+        "RECEPTIONIST": "Ресепшн",
+        "NURSE": "Медсестра",
+        "CALL_OPERATOR": "Call-оператор",
+        "SUPER_ADMIN": "Super Admin"
+      },
+      "status": {
+        "active": "Активен",
+        "inactive": "Заблокирован"
+      }
+    },
+    "services": {
+      "title": "Услуги",
+      "subtitle": "Каталог услуг с ценами и длительностью.",
+      "add": "Добавить услугу",
+      "empty": "Пока нет услуг — добавьте первую.",
+      "createHint": "Код должен быть уникальным в пределах клиники.",
+      "created": "Услуга создана",
+      "deactivated": "Услуга скрыта",
+      "min": "мин",
+      "cols": {
+        "code": "Код",
+        "name": "Название",
+        "nameRu": "Название (RU)",
+        "nameUz": "Название (UZ)",
+        "duration": "Длительность",
+        "priceBase": "Цена (UZS)",
+        "category": "Категория",
+        "active": "Активна"
+      }
+    },
+    "cabinets": {
+      "title": "Кабинеты",
+      "subtitle": "Помещения клиники и оборудование.",
+      "add": "Добавить кабинет",
+      "empty": "Пока нет кабинетов.",
+      "created": "Кабинет создан",
+      "deactivated": "Кабинет скрыт",
+      "number": "Кабинет",
+      "floor": "этаж",
+      "active": "Активен",
+      "inactive": "Скрыт",
+      "cols": {
+        "nameRu": "Название (RU)",
+        "nameUz": "Название (UZ)"
+      }
+    },
+    "exchangeRates": {
+      "title": "Курсы валют",
+      "subtitle": "USD → UZS на каждую дату. Используется для отображения цен.",
+      "addDaily": "Новый курс на дату",
+      "save": "Сохранить курс",
+      "saved": "Курс сохранён",
+      "empty": "Пока нет записей.",
+      "cols": {
+        "date": "Дата",
+        "rate": "Курс (UZS за 1 USD)",
+        "source": "Источник"
+      }
+    },
+    "roles": {
+      "title": "Роли и права",
+      "subtitle": "Матрица доступа по разделам.",
+      "readOnlyForAdmin": "Только чтение · редактирует SUPER_ADMIN",
+      "sectionCol": "Раздел",
+      "legendTitle": "Обозначения",
+      "legendBody": "R — чтение, W — создание, U — изменение, D — удаление, own — только свои, ltd — ограниченный скоуп, — нет доступа.",
+      "rows": {
+        "reception": "Ресепшн дашборд",
+        "appointmentsList": "Записи — просмотр",
+        "appointmentsCreate": "Записи — создать",
+        "appointmentsStatus": "Записи — статус",
+        "appointmentsDelete": "Записи — удалить",
+        "calendar": "Календарь",
+        "patientsList": "Пациенты — список",
+        "patientsCard": "Пациенты — карточка",
+        "patientsDelete": "Пациенты — удалить",
+        "doctorsAnalytics": "Врачи (аналитика)",
+        "doctorsEdit": "Врачи — редактировать",
+        "callCenter": "Call Center",
+        "telegram": "Telegram",
+        "sms": "SMS",
+        "notificationsTemplates": "Шаблоны уведомлений",
+        "notificationsSend": "Отправка уведомлений",
+        "payments": "Платежи",
+        "documents": "Документы пациента",
+        "settings": "Настройки",
+        "users": "Пользователи",
+        "audit": "Аудит",
+        "export": "Экспорт CSV"
+      }
+    },
+    "audit": {
+      "title": "Журнал аудита",
+      "subtitle": "Все изменения в клинике с фильтрами.",
+      "empty": "По фильтру ничего не найдено.",
+      "loadMore": "Загрузить ещё",
+      "filters": {
+        "entity": "Сущность",
+        "action": "Действие",
+        "actor": "Пользователь (id)",
+        "from": "От",
+        "to": "До"
+      }
+    },
+    "integrations": {
+      "title": "Интеграции",
+      "subtitle": "SMS, Telegram, платежи и телефония.",
+      "setup": "Настроить",
+      "active": "Включена",
+      "inactive": "Выключена",
+      "editTitle": "Интеграция: {kind}",
+      "editHint": "Секрет не отображается. Пустое поле — не менять.",
+      "state": {
+        "ok": "Подключено",
+        "incomplete": "Требует внимания",
+        "missing": "Не настроено"
+      },
+      "fields": {
+        "label": "Метка (опционально)",
+        "labelPlaceholder": "main, backup, eskiz…",
+        "secret": "Токен / ключ",
+        "secretKeepBlank": "Оставьте пустым, чтобы не менять",
+        "currentSecretIndicator": "Текущий: {mask}",
+        "config": "Конфигурация (JSON)",
+        "configHint": "Произвольный JSON; адаптеры прочитают нужные ключи."
+      },
+      "cards": {
+        "sms": {
+          "title": "SMS",
+          "description": "Eskiz, PlayMobile, log-only."
+        },
+        "tg": {
+          "title": "Telegram Bot",
+          "description": "Бот клиники: токен, webhook, Mini App."
+        },
+        "payment": {
+          "title": "Платежи",
+          "description": "Payme, Click, Uzum — онлайн-оплата."
+        },
+        "telephony": {
+          "title": "Телефония",
+          "description": "SIP-провайдер: входящие, запись звонков."
+        }
+      },
+      "smsTest": "Тестовая SMS",
+      "smsTestHint": "Отправит сообщение через текущий адаптер (log-only в dev).",
+      "smsTestDefault": "MedBook: это тестовое сообщение.",
+      "smsTestSent": "Тест поставлен в очередь",
+      "smsPhone": "Телефон",
+      "smsBody": "Текст",
+      "smsSend": "Отправить",
+      "tgCheck": "Проверить webhook",
+      "tgWebhook": "Telegram webhook",
+      "tgWebhookHint": "Статус подключения бота клиники к Telegram.",
+      "tgNotConfigured": "Бот не настроен: задайте токен в разделе «Клиника».",
+      "tgRefresh": "Обновить",
+      "tgSetWebhook": "Переустановить webhook",
+      "tgWebhookSaved": "Webhook установлен",
+      "tgFields": {
+        "url": "URL",
+        "pending": "В очереди",
+        "lastError": "Последняя ошибка",
+        "hasSecret": "Secret установлен"
+      }
+    }
   }
 }

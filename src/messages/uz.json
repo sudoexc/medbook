@@ -1371,5 +1371,278 @@
       "unknownCaller": "Noma'lum abonent",
       "linked": "bemor"
     }
+  },
+  "settings": {
+    "title": "Sozlamalar",
+    "common": {
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Saqlandi",
+      "cancel": "Bekor qilish",
+      "confirm": "Tasdiqlash",
+      "close": "Yopish",
+      "delete": "O'chirish",
+      "edit": "Tahrirlash",
+      "create": "Yaratish",
+      "yes": "Ha",
+      "no": "Yo'q",
+      "none": "Tanlanmagan",
+      "loading": "Yuklanmoqda…",
+      "error": "Xatolik"
+    },
+    "nav": {
+      "clinic": "Klinika",
+      "users": "Foydalanuvchilar",
+      "services": "Xizmatlar",
+      "cabinets": "Kabinetlar",
+      "exchangeRates": "Valyuta kurslari",
+      "roles": "Rollar va ruxsatlar",
+      "audit": "Audit jurnali",
+      "integrations": "Integratsiyalar"
+    },
+    "passwordReentry": {
+      "title": "Joriy parolni kiriting",
+      "description": "Maxfiy sozlamalarni o'zgartirish uchun joriy parolingizni tasdiqlashingiz kerak.",
+      "label": "Parol",
+      "required": "Parolni kiriting",
+      "wrong": "Parol noto'g'ri"
+    },
+    "clinic": {
+      "title": "Klinika haqida",
+      "subtitle": "Nomi, manzili, ish vaqti, valyuta va brending.",
+      "sections": {
+        "info": "Asosiy",
+        "locale": "Tilga va ish kuniga sozlash",
+        "secrets": "Tokenlar va maxfiy sozlamalar"
+      },
+      "fields": {
+        "slug": "Slug (klinika URLi)",
+        "slugHint": "O'zgartirib bo'lmaydi — ommaviy URL va webhookni belgilaydi.",
+        "nameRu": "Nomi (RU)",
+        "nameUz": "Nomi (UZ)",
+        "addressRu": "Manzil (RU)",
+        "addressUz": "Manzil (UZ)",
+        "phone": "Telefon",
+        "email": "Email",
+        "timezone": "Vaqt mintaqasi",
+        "currencyPrimary": "Asosiy valyuta",
+        "currencySecondary": "Qo'shimcha valyuta",
+        "workdayStart": "Ish kuni boshlanishi",
+        "workdayEnd": "Ish kuni tugashi",
+        "slotMin": "Slot uzunligi (daq.)",
+        "brandColor": "Brend rangi",
+        "tgBotUsername": "TG bot (username)",
+        "tgBotToken": "TG Bot Token",
+        "tgWebhookSecret": "Webhook secret",
+        "smsSenderName": "SMS yuboruvchi nomi",
+        "active": "Klinika faol",
+        "configured": "saqlangan"
+      },
+      "secretsHint": "Tokenlar va maxfiy sozlamalarni o'zgartirish uchun joriy parolni kiriting. Bo'sh maydon — o'zgarmaydi.",
+      "saveSecrets": "Maxfiy sozlamalarni saqlash",
+      "confirmSecretTitle": "Maxfiy sozlamalarni o'zgartirishni tasdiqlang",
+      "confirmSecretDescription": "Yangi tokenlarni saqlash uchun joriy parolingizni kiriting."
+    },
+    "users": {
+      "title": "Foydalanuvchilar",
+      "subtitle": "Klinika xodimlari va ularning rollari.",
+      "addUser": "Xodim qo'shish",
+      "editUser": "Xodimni tahrirlash",
+      "searchPlaceholder": "Ism, email yoki telefon bo'yicha qidirish",
+      "allRoles": "Barcha rollar",
+      "empty": "Filtrga mos xodimlar yo'q.",
+      "createHint": "Foydalanuvchi yaratilgandan so'ng darhol CRMga kiradi.",
+      "passwordHint": "Kamida 8 ta belgi. Xodimga shaxsan yetkazing.",
+      "created": "Foydalanuvchi yaratildi",
+      "deactivated": "Foydalanuvchi nofaol qilindi",
+      "deactivate": "Nofaol qilish",
+      "deleteTitle": "Foydalanuvchini nofaol qilish?",
+      "deleteDescription": "{name} endi kira olmaydi. Buni qaytarish mumkin.",
+      "resetPassword": "Parolni tiklash",
+      "resetDescription": "{name} uchun parolni tiklash. Maydon bo'sh bo'lsa — tasodifiy yaratamiz.",
+      "resetBlankHint": "Tasodifiy parol yaratish uchun bo'sh qoldiring.",
+      "resetConfirm": "Tiklash",
+      "passwordGenerated": "Yangi parol yaratildi",
+      "passwordSet": "Parol yangilandi",
+      "passwordOnceWarning": "Parol bir marta ko'rsatiladi. Nusxalang va xodimga yetkazing.",
+      "newPassword": "Yangi parol",
+      "copy": "Nusxalash",
+      "copied": "Nusxalandi",
+      "cols": {
+        "name": "Ism",
+        "email": "Email",
+        "role": "Rol",
+        "phone": "Telefon",
+        "status": "Holat",
+        "password": "Parol"
+      },
+      "roles": {
+        "ADMIN": "Administrator",
+        "DOCTOR": "Shifokor",
+        "RECEPTIONIST": "Reception",
+        "NURSE": "Hamshira",
+        "CALL_OPERATOR": "Call-operator",
+        "SUPER_ADMIN": "Super Admin"
+      },
+      "status": {
+        "active": "Faol",
+        "inactive": "Bloklangan"
+      }
+    },
+    "services": {
+      "title": "Xizmatlar",
+      "subtitle": "Narxlar va davomiyligi bilan xizmatlar katalogi.",
+      "add": "Xizmat qo'shish",
+      "empty": "Hozircha xizmatlar yo'q — birinchisini qo'shing.",
+      "createHint": "Kod klinika ichida noyob bo'lishi kerak.",
+      "created": "Xizmat yaratildi",
+      "deactivated": "Xizmat yashirildi",
+      "min": "daq",
+      "cols": {
+        "code": "Kod",
+        "name": "Nomi",
+        "nameRu": "Nomi (RU)",
+        "nameUz": "Nomi (UZ)",
+        "duration": "Davomiyligi",
+        "priceBase": "Narxi (UZS)",
+        "category": "Kategoriya",
+        "active": "Faol"
+      }
+    },
+    "cabinets": {
+      "title": "Kabinetlar",
+      "subtitle": "Klinika xonalari va jihozlari.",
+      "add": "Kabinet qo'shish",
+      "empty": "Hozircha kabinetlar yo'q.",
+      "created": "Kabinet yaratildi",
+      "deactivated": "Kabinet yashirildi",
+      "number": "Kabinet",
+      "floor": "qavat",
+      "active": "Faol",
+      "inactive": "Yashirin",
+      "cols": {
+        "nameRu": "Nomi (RU)",
+        "nameUz": "Nomi (UZ)"
+      }
+    },
+    "exchangeRates": {
+      "title": "Valyuta kurslari",
+      "subtitle": "Har bir sanaga USD → UZS. Narxlarni ko'rsatishda ishlatiladi.",
+      "addDaily": "Sanaga yangi kurs",
+      "save": "Kursni saqlash",
+      "saved": "Kurs saqlandi",
+      "empty": "Hozircha yozuvlar yo'q.",
+      "cols": {
+        "date": "Sana",
+        "rate": "Kurs (1 USD uchun UZS)",
+        "source": "Manba"
+      }
+    },
+    "roles": {
+      "title": "Rollar va ruxsatlar",
+      "subtitle": "Bo'limlar bo'yicha ruxsat matritsasi.",
+      "readOnlyForAdmin": "Faqat o'qish · SUPER_ADMIN tahrirlaydi",
+      "sectionCol": "Bo'lim",
+      "legendTitle": "Belgilar",
+      "legendBody": "R — o'qish, W — yaratish, U — tahrirlash, D — o'chirish, own — faqat o'ziniki, ltd — cheklangan skoup, — ruxsat yo'q.",
+      "rows": {
+        "reception": "Reception dashboard",
+        "appointmentsList": "Yozilishlar — ko'rish",
+        "appointmentsCreate": "Yozilishlar — yaratish",
+        "appointmentsStatus": "Yozilishlar — holat",
+        "appointmentsDelete": "Yozilishlar — o'chirish",
+        "calendar": "Kalendar",
+        "patientsList": "Bemorlar — ro'yxat",
+        "patientsCard": "Bemorlar — kartochka",
+        "patientsDelete": "Bemorlar — o'chirish",
+        "doctorsAnalytics": "Shifokorlar (tahlil)",
+        "doctorsEdit": "Shifokorlar — tahrirlash",
+        "callCenter": "Call Center",
+        "telegram": "Telegram",
+        "sms": "SMS",
+        "notificationsTemplates": "Bildirishnoma shablonlari",
+        "notificationsSend": "Bildirishnomalar yuborish",
+        "payments": "To'lovlar",
+        "documents": "Bemor hujjatlari",
+        "settings": "Sozlamalar",
+        "users": "Foydalanuvchilar",
+        "audit": "Audit",
+        "export": "CSV eksport"
+      }
+    },
+    "audit": {
+      "title": "Audit jurnali",
+      "subtitle": "Klinikadagi barcha o'zgarishlar filtrlar bilan.",
+      "empty": "Filtrga mos yozuvlar topilmadi.",
+      "loadMore": "Yana yuklash",
+      "filters": {
+        "entity": "Obyekt",
+        "action": "Harakat",
+        "actor": "Foydalanuvchi (id)",
+        "from": "Dan",
+        "to": "Gacha"
+      }
+    },
+    "integrations": {
+      "title": "Integratsiyalar",
+      "subtitle": "SMS, Telegram, to'lovlar va telefoniya.",
+      "setup": "Sozlash",
+      "active": "Yoqilgan",
+      "inactive": "O'chirilgan",
+      "editTitle": "Integratsiya: {kind}",
+      "editHint": "Maxfiy kalit ko'rsatilmaydi. Bo'sh maydon — o'zgarmaydi.",
+      "state": {
+        "ok": "Ulangan",
+        "incomplete": "E'tibor talab qiladi",
+        "missing": "Sozlanmagan"
+      },
+      "fields": {
+        "label": "Yorliq (ixtiyoriy)",
+        "labelPlaceholder": "main, backup, eskiz…",
+        "secret": "Token / kalit",
+        "secretKeepBlank": "O'zgartirmaslik uchun bo'sh qoldiring",
+        "currentSecretIndicator": "Joriy: {mask}",
+        "config": "Konfiguratsiya (JSON)",
+        "configHint": "Ixtiyoriy JSON; adapterlar kerakli kalitlarni o'qiydi."
+      },
+      "cards": {
+        "sms": {
+          "title": "SMS",
+          "description": "Eskiz, PlayMobile, log-only."
+        },
+        "tg": {
+          "title": "Telegram Bot",
+          "description": "Klinika boti: token, webhook, Mini App."
+        },
+        "payment": {
+          "title": "To'lovlar",
+          "description": "Payme, Click, Uzum — onlayn to'lov."
+        },
+        "telephony": {
+          "title": "Telefoniya",
+          "description": "SIP-provayder: kiruvchi qo'ng'iroqlar, yozish."
+        }
+      },
+      "smsTest": "Test SMS",
+      "smsTestHint": "Joriy adapter orqali xabar yuboradi (dev rejimida log-only).",
+      "smsTestDefault": "MedBook: bu test xabari.",
+      "smsTestSent": "Test navbatga qo'shildi",
+      "smsPhone": "Telefon",
+      "smsBody": "Matn",
+      "smsSend": "Yuborish",
+      "tgCheck": "Webhookni tekshirish",
+      "tgWebhook": "Telegram webhook",
+      "tgWebhookHint": "Klinika botining Telegramga ulanish holati.",
+      "tgNotConfigured": "Bot sozlanmagan: «Klinika» bo'limida tokenni kiriting.",
+      "tgRefresh": "Yangilash",
+      "tgSetWebhook": "Webhookni qayta o'rnatish",
+      "tgWebhookSaved": "Webhook o'rnatildi",
+      "tgFields": {
+        "url": "URL",
+        "pending": "Navbatda",
+        "lastError": "Oxirgi xato",
+        "hasSecret": "Secret o'rnatilgan"
+      }
+    }
   }
 }

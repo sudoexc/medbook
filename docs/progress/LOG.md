@@ -58,4 +58,57 @@
 
 ---
 
-## Phase 1 — Данные + API — 🔄 планируется
+## Phase 1 — Данные + API — ✅ DONE 2026-04-22
+
+**Коммит:** `d7da9b5` · тег `phase-1-done`.
+
+### Что сделано (api-builder)
+
+- **~50 endpoints** под `src/app/api/crm/*`:
+  - patients (list/create/[id]/communications-timeline/ltv/export-CSV/delete)
+  - doctors (CRUD + schedule PUT + time-off + finance)
+  - services, cabinets (CRUD с soft-delete)
+  - appointments (CRUD + 409 conflict-detection + queue-status PATCH + bulk-status + slots/available)
+  - payments (CRUD + sync recalcLtv при PAID)
+  - documents (metadata-only, upload stub — файлы Phase 4 MinIO)
+  - communications + communications/sms (log-only, dispatcher → 3a)
+  - conversations + messages (list + OUT send)
+  - calls (CRUD), notifications/templates + sends + retry
+  - dashboard (KPI today/week/month + queue snapshot)
+  - audit, exchange-rates, search (cross-entity top-5), online-requests
+- **Zod-схемы:** `src/server/schemas/{18 files}.ts`.
+- **Services:** `src/server/services/{appointments,ltv}.ts` — conflict-detection + LTV recalc.
+- **HTTP helpers:** `src/server/http.ts` — ok/err/notFound/forbidden/conflict/parseQuery/diff.
+- **Audit:** все мутации пишут AuditLog с before/after diff.
+- **RBAC:** через `createApiHandler({roles})`, DOCTOR self-scope через userId-check.
+- **Conflict-detection (POST/PATCH appointment):** doctor_busy / cabinet_busy / doctor_time_off / outside_schedule.
+- **OpenAPI markdown-фрагменты** в `docs/api/`.
+- **Легаси удалены:** `src/app/api/{analytics,appointments,doctor-schedule,medical-records,patients,payments,reviews,schedule,search}` → всё заменено на `/api/crm/*`.
+- **Сохранены** (публичные, с `@ts-nocheck` для последующих фаз): `booking`, `leads`, `kiosk`, `queue`, `tv-queue`, `telegram/{webhook,notify}`, `auth`.
+
+### Build / тесты
+
+- `npx tsc --noEmit` — 0 ошибок.
+- `npx vitest run` — **40/40 passed**.
+- `npm run build` — clean.
+
+### Known TODOs для следующих фаз
+
+- LTV recalc — сейчас синхронно в Payment handler. Phase 3a → BullMQ воркер.
+- Document upload — metadata only. Phase 4 → MinIO.
+- Full tenancy-isolation integration test — требует тестовую БД. Phase 7.
+- `next/font/google` warnings на Inter в Turbopack — не критично, на Phase 6 закрепим font resolver.
+- `createApiHandler` не получает Next `params` — id читается из URL через `idFromUrl()`. Если Next 16 даст typed params — рефактор.
+
+### Что готово для Phase 2 (UI)
+
+- **Все необходимые endpoints** для patient card, appointments table, calendar, reception dashboard, doctors page.
+- Timeline коммуникаций: `GET /api/crm/patients/[id]/communications` — возвращает mixed feed.
+- Slots: `GET /api/crm/appointments/slots/available?doctorId=&date=&serviceIds=...`.
+- Conflict response format: `409 { error: "conflict", reason: "doctor_busy|cabinet_busy|doctor_time_off|outside_schedule", until?: "HH:mm" }`.
+- Dashboard KPI: `GET /api/crm/dashboard?period=today|week|month`.
+- Global search: `GET /api/crm/search?q=...`.
+
+---
+
+## Phase 2a — Пациенты — 🔄 планируется

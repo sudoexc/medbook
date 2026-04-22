@@ -211,4 +211,69 @@
 
 ---
 
-## Phase 2c — Reception dashboard — 🔄 планируется
+## Phase 2c — Reception dashboard — ✅ DONE 2026-04-22
+
+**Коммит:** `536e6d5` · тег `phase-2c-done`.
+
+### Что сделано (reception-dashboard-specialist)
+
+- `src/app/[locale]/crm/reception/page.tsx` (server shell) + `_components/` (8 файлов) + `_hooks/use-reception-live.ts` (7 хуков: dashboard, today appts, incoming calls, unread conversations, cabinets, reminders + `computeUpcomingReminders`).
+- `kpi-strip`: 6 плашек (сегодня / пришли / no-show / выручка / ожидают / в работе). Клик → фильтр `/crm/appointments?status=...`.
+- `doctor-queue-grid` + `doctor-queue-card`: responsive 1/2/3/4 колонки. Live actions: call next, mark arrived, complete, no-show.
+- Виджеты правой колонки: calls-widget (incoming), tg-preview-widget (unread convos), cabinets-widget (client-side occupancy), reminders-widget (SMS sender).
+- Polling 15s stale / 30s refetch — TODO маркеры для SSE (realtime-engineer Phase 3a).
+- NO_SHOW идёт через main `PATCH /api/crm/appointments/[id]` — queue-status endpoint принимает только `WAITING|IN_PROGRESS|COMPLETED|SKIPPED`.
+- i18n `reception.*` — полный паритет ru/uz (ru добавлен в commit `513cb8c` из-за параллельного раннинга, uz — в `536e6d5`).
+
+### Requests для Phase 3a+
+
+- **api-builder:** `POST /api/crm/communications/sms/bulk` для reminders-widget, `GET /api/crm/cabinets/occupancy` (server-computed currentDoctor/nextFreeAt), `hasReminder` boolean на appointment rows.
+- **realtime-engineer:** SSE каналы `queue.updated`, `appointment.updated`, `call.incoming`, `tg.message` → инвалидация `["reception"]`, `["appointments","today"]`, `["calls","incoming"]`, `["conversations","unread"]`. Polling становится fallback.
+
+---
+
+## Phase 2d — Doctors — ✅ DONE 2026-04-22
+
+**Коммит:** `513cb8c` · тег `phase-2d-done`.
+
+### Что сделано (doctors-page-builder)
+
+#### `/crm/doctors` (список)
+
+- `page.tsx` + `_components/` (4 файла): doctors-page-client, doctor-card (avatar/rating/today load/revenue/load bar), doctors-filters (search + specialty + sort + onlyActive), doctors-right-rail (KPI + top-3 period toggle).
+- `_hooks/`: use-doctors-list (useInfiniteQuery), use-doctors-filters (URL-sync + `usePeriodRange`), use-doctors-stats (`aggregateByDoctor`).
+- Grid 4 кол на 1680+, адаптив до 1 на 1280.
+
+#### `/crm/doctors/[id]` (профиль)
+
+- Next 16 `params: Promise<{id}>`. Tabs: Overview / Schedule / Patients / Reviews.
+- `doctor-header` (xl avatar + rating + bio + "Новая запись" → shared `NewAppointmentDialog` с `initialDoctorId`).
+- `doctor-heat-grid`: 7×15 week grid (Mon-Sun × 08-22), 4 intensity bins, prev/next нав.
+- `doctor-finances`: 4 KPI (revenue, count, avg check, no-show %) через `MoneyText` dual UZS+USD, period toggle. `avgCheck` и `noShowRate` — client-derived из `/appointments` (TODO api-builder).
+- `schedule-editor`: per-day slots + cabinet + overlap detection + red highlight + optimistic PUT.
+- `doctor-time-off`: list + inline add/delete.
+- `doctor-patients-list`: top-30 by LTV (derived client-side).
+- `doctor-reviews`: stub empty state (endpoint ожидает api-builder).
+- DOCTOR role сам видит всё; RECEPTIONIST/CALL_OPERATOR не видят Patients tab (API также enforces).
+- i18n `crmDoctors.*` — полный паритет (~150 ключей).
+
+### Build / тесты (Phase 2c + 2d совместно)
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — 40/40 passed.
+- `npm run build` — exit 0. `/[locale]/crm/{reception,doctors,doctors/[id]}` в route manifest.
+
+### Requests для Phase 3a+
+
+- **api-builder:** `GET /api/crm/doctors/[id]/reviews` (сейчас stub), добавить `avgCheck`+`noShowRate` в `/finance`, `doctorId` filter в `/api/crm/patients`, specializations aggregation endpoint.
+- **realtime-engineer:** инвалидировать `["doctors","list"]` + `doctor:{id}` на `queue.updated`.
+
+### Phase 2 — ИТОГО
+
+- 2a/2b/2c/2d все в прод-состоянии. Все 10 CRM-разделов имеют рабочие страницы.
+- 40/40 vitest, tsc clean, build успешен.
+- Полный коммит-трейл: `5b773a7 → ecb9051 → b2c927c → 08668b4 → eb73394 → 71e4bbb → 513cb8c → 536e6d5`.
+
+---
+
+## Phase 3a — Уведомления — 🔄 планируется

@@ -111,4 +111,47 @@
 
 ---
 
-## Phase 2a — Пациенты — 🔄 планируется
+## Phase 2a — Пациенты — ✅ DONE 2026-04-22
+
+**Коммиты:** `5b773a7` (список) · `ecb9051` (карточка) · тег `phase-2a-done`.
+
+### Что сделано
+
+#### patients-page-builder → список (`5b773a7`)
+
+- `src/app/[locale]/crm/patients/page.tsx` + 9 `_components/`: patients-page-client, patients-table (TanStack Table + Virtual), patients-filters, patients-right-rail, 4 виджета (demographics, sources, birthdays, top-services), new-patient-dialog, export-button.
+- 3 hooks: `use-patients-list` (useInfiniteQuery + cursor), `use-patients-stats`, `use-patients-filters` (URL-sync).
+- Endpoint `GET /api/crm/patients/stats` — разбивка по gender / source / тегам / top services / дни рождения на неделю.
+- Фильтры в URL: `q, segment, source, gender, tag, balance, registeredFrom, registeredTo, sort, dir, ageMin, ageMax`. RBAC: DOCTOR видит только своих (по userId в AppointmentService.doctor.userId).
+
+#### patient-card-specialist → карточка (`ecb9051`)
+
+- `src/app/[locale]/crm/patients/[id]/page.tsx` (server component, Next 16 `params: Promise<{id}>`).
+- 10 client-компонентов: patient-card-client (обёртка + QueryClient), patient-card-skeleton, patient-header (ФИО + inline-edit через `InlineField` + `TagEditor` + статус блока), patient-quick-actions (6 действий), sms-dialog (fallback для WhatsApp/Telegram недоступности), delete-patient-dialog (soft-delete), patient-tabs (Radix Tabs).
+- 6 вкладок: `overview-tab` (5 KpiTiles + timeline 10), `visits-tab` (expandable rows со services + payment badges), `documents-tab` (drag-drop upload + stub подпись через canvas), `communications-tab` (mixed feed + фильтр по типу), `payments-tab` (3-KPI + add dialog), `medical-tab` (stub на `Patient.notes`).
+- 6 hooks: `use-patient` (optimistic PATCH + DELETE), `use-patient-communications`, `use-patient-appointments`, `use-patient-payments`, `use-patient-documents` (optimistic pending:// URL), `use-current-role`.
+- i18n `patientCard.*` — ~180 строк паритет ru/uz.
+- `Button asChild` не поддерживается (@base-ui/react) → через `buttonVariants()` на `<Link>`, `<a>`, `<label>`.
+
+### Build / тесты
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — 40/40 passed.
+- `npm run build` — clean (build прошёл на список, карточка доложена поверх).
+
+### Requests для следующих фаз
+
+- **prisma-schema-owner (при необходимости):** отдельные таблицы anamnesis / allergies / diagnoses (сейчас medical-tab живёт в `Patient.notes`). Shared `Tag` table вместо `string[]`. `Document.uploadState` enum (`PENDING | UPLOADED | FAILED`) — реальный MinIO в Phase 4.
+- **realtime-engineer (Phase 2c):** SSE-каналы `clinic:{id}:reception` + `clinic:{id}:queue` — нужны reception-dashboard.
+- **notifications-engineer (Phase 3a):** реальная отправка SMS/Telegram/WhatsApp (сейчас `log-only`, диспатчер stubbed) + ретраи с экспоненциальным бэкофом.
+
+### Известные минусы (Phase 2a)
+
+- Документы в карточке — только метадата + optimistic pending URL. Реальный upload → MinIO на Phase 4.
+- Signature pad (documents-tab) — локальный canvas без binding к Document. Phase 4 + TG-MiniApp.
+- `medical-tab` — единое `notes` поле. Разбиение — Phase 4 после решения prisma-schema-owner.
+- Export button вызывает `/api/crm/patients/export-csv` (готов в Phase 1), но стримит синхронно — Phase 5 wrap в BullMQ воркер.
+
+---
+
+## Phase 2b — Записи + Календарь — 🔄 планируется

@@ -79,7 +79,7 @@ export async function PATCH(
         sendMessage(
           appointment.patient.telegramChatId,
           `🟢 <b>Ваша очередь!</b>\n\nПроходите к врачу: ${escapeHtml(appointment.doctor.nameRu)}\nКабинет: ${appointment.doctor.cabinet}`
-        ).catch(() => {});
+        ).catch((err) => console.error("[telegram]", err));
       }
 
       return Response.json(updated);

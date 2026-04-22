@@ -1,6 +1,7 @@
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/phone";
+import { audit } from "@/lib/audit";
 import { z } from "zod";
 
 const UpdateSchema = z.object({
@@ -24,9 +25,16 @@ export async function PATCH(
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }
 
+  const before = await prisma.lead.findUnique({ where: { id }, select: { status: true } });
   const lead = await prisma.lead.update({
     where: { id },
     data: { status: parsed.data.status },
+  });
+  await audit(request, {
+    action: "lead.status.update",
+    entityType: "Lead",
+    entityId: id,
+    meta: { from: before?.status ?? null, to: parsed.data.status },
   });
 
   // Auto-create patient + appointment when lead is converted (unless explicitly skipped)

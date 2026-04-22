@@ -1,13 +1,29 @@
 import { prisma } from "@/lib/prisma";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 
-// GET /api/telegram/notify — send reminders for upcoming appointments
-// Called by Vercel Cron every 30 minutes
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+// GET /api/telegram/notify — send reminders for upcoming appointments.
+// Called by Vercel Cron (see vercel.json). Auth: `Authorization: Bearer <CRON_SECRET>`
+// only — query-string secrets end up in CDN / access logs, so we reject them.
 export async function GET(request: Request) {
-  // Simple auth via secret
-  const url = new URL(request.url);
-  const secret = url.searchParams.get("secret");
-  if (secret !== process.env.CRON_SECRET && request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    console.error("[cron] CRON_SECRET not configured");
+    return Response.json({ error: "Cron not configured" }, { status: 500 });
+  }
+  const authHeader = request.headers.get("authorization") ?? "";
+  const provided = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length)
+    : "";
+  if (!provided || !safeEqual(provided, secret)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,16 +1,32 @@
 import { prisma } from "@/lib/prisma";
 import { phoneSearchVariants } from "@/lib/phone";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
+import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
-// GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const phone = url.searchParams.get("phone");
+function clientIp(request: Request): string {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0]!.trim();
+  return request.headers.get("x-real-ip") ?? "unknown";
+}
 
-  if (!phone) {
-    return Response.json({ error: "phone required" }, { status: 400 });
+// GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone.
+// Rate limited to prevent scraping the patient base by enumerating phone numbers.
+// NOTE: `rateLimit` is in-memory and resets on cold start — switch to KV/Redis
+// before real scale. See audit finding MEDIUM #14.
+const PhoneQuery = z.string().regex(/^\+?\d{9,15}$/);
+export async function GET(request: Request) {
+  if (!rateLimit(clientIp(request))) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
   }
+
+  const url = new URL(request.url);
+  const phoneRaw = url.searchParams.get("phone");
+  const parsed = PhoneQuery.safeParse(phoneRaw);
+  if (!parsed.success) {
+    return Response.json({ error: "Invalid phone" }, { status: 400 });
+  }
+  const phone = parsed.data;
 
   // Find patient by any known phone representation (shared helper)
   const variants = phoneSearchVariants(phone);
@@ -94,6 +110,9 @@ export async function GET(request: Request) {
 const CheckinSchema = z.object({ appointmentId: z.string().min(1) });
 
 export async function POST(request: Request) {
+  if (!rateLimit(clientIp(request), 30)) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
+  }
   const body = await request.json().catch(() => null);
   const parsed = CheckinSchema.safeParse(body);
   if (!parsed.success) {

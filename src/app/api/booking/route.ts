@@ -151,7 +151,7 @@ export async function POST(request: Request) {
     sendMessage(
       patient.telegramChatId,
       `✅ <b>Запись подтверждена!</b>\n\n📅 ${dateStrRu} в ${timeStrRu}\n👨‍⚕️ ${escapeHtml(appointment.doctor.nameRu)}\nКабинет: ${appointment.doctor.cabinet}\n${service ? `Услуга: ${escapeHtml(service)}` : ""}`
-    ).catch(() => {});
+    ).catch((err) => console.error("[telegram]", err));
   }
 
   // Also create lead for tracking

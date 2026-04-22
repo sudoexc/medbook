@@ -51,7 +51,7 @@ export default function LoginPage() {
               width={123}
               height={48}
               priority
-              className="h-12 w-auto mx-auto"
+              className="mx-auto"
             />
           </a>
           <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>

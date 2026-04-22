@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { SITE_DOMAIN } from "@/lib/constants";
+import { AutoPrint } from "@/components/auto-print";
 
 export default async function TicketPage({
   params,
@@ -17,7 +19,8 @@ export default async function TicketPage({
   }
 
   const ticketNumber = `${appointment.doctor.id.charAt(0).toUpperCase()}-${String(appointment.queueOrder || 0).padStart(3, "0")}`;
-  const statusUrl = `https://medbook-uz.vercel.app/q/${id}`;
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
+  const statusUrl = `${baseUrl}/q/${id}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(statusUrl)}`;
   const dateStr = appointment.date.toLocaleDateString("ru-RU");
   const timeStr = appointment.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -130,7 +133,7 @@ export default async function TicketPage({
         <div style={{ fontSize: "8px", color: "#999", marginTop: "1mm" }}>+998 71 200 00 07 | neurofax.uz</div>
       </div>
 
-      <script dangerouslySetInnerHTML={{ __html: "window.print();" }} />
+      <AutoPrint />
     </div>
   );
 }

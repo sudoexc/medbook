@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
+import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
+import { initials } from "@/lib/format";
 
 // GET /api/tv-queue — public, no auth needed. Returns queue data for TV display.
+// PII minimization: patient names are reduced to initials before leaving the server.
 export async function GET() {
   const { dayStart: today, dayEnd: tomorrow } = tashkentDayBounds();
 
@@ -61,11 +64,11 @@ export async function GET() {
       cabinet: doc.cabinet,
       avgDuration: avgByDoctor[doc.id],
       current: current
-        ? { fullName: current.patient.fullName, startedAt: current.startedAt?.toISOString() || null }
+        ? { fullName: initials(current.patient.fullName), startedAt: current.startedAt?.toISOString() || null }
         : null,
       waiting: waiting.map((w, i) => ({
         id: w.id,
-        fullName: w.patient.fullName,
+        fullName: initials(w.patient.fullName),
         queueOrder: w.queueOrder || 0,
         ticketNumber: `${doc.id.charAt(0).toUpperCase()}-${String(w.queueOrder || 0).padStart(3, "0")}`,
         etaMinutes: (current ? 1 : 0) * avgByDoctor[doc.id] + i * avgByDoctor[doc.id],
@@ -77,8 +80,14 @@ export async function GET() {
   return Response.json(result);
 }
 
-// POST /api/tv-queue — call a patient (triggers TV announcement)
+// POST /api/tv-queue — call a patient (triggers TV announcement).
+// Requires staff auth (session or terminal PIN) since it can trigger
+// patient-call announcements and Telegram sends.
 export async function POST(request: Request) {
+  if (!(await isAuthorizedOrPin(request))) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
   const { appointmentId } = body;
 
@@ -98,9 +107,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Store the call event in a global variable (in production would use Redis/DB)
-  // For now we use a simple approach: store in DB as a temporary field
-  // We'll use the appointment's notes field with a special prefix
+  // Response is for the authorized caller (receptionist/doctor terminal),
+  // so the full patient name is fine here.
   const callData = {
     fullName: appointment.patient.fullName,
     cabinet: appointment.doctor.cabinet,
@@ -108,6 +116,5 @@ export async function POST(request: Request) {
     calledAt: new Date().toISOString(),
   };
 
-  // We'll serve this via a separate endpoint
   return Response.json(callData);
 }

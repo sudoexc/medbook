@@ -157,6 +157,20 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
     const form = e.currentTarget;
     const formData = new FormData(form);
     setError(false);
+
+    // Client-side phone validation: Uzbek mobile numbers. Matches with or
+    // without a leading "+998", grouping characters, and the 9-digit local
+    // part starting with 9. Final canonical form is produced server-side.
+    const phoneRaw = String(formData.get("phone") ?? "");
+    const phoneDigits = phoneRaw.replace(/\D/g, "");
+    const uzValid =
+      (phoneDigits.length === 9 && phoneDigits.startsWith("9")) ||
+      (phoneDigits.length === 12 && phoneDigits.startsWith("9989"));
+    if (!uzValid) {
+      setError(true);
+      return;
+    }
+
     setLoading(true);
 
     const serviceStr = selectedServices.join(", ");
@@ -297,7 +311,17 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
               </div>
               <div>
                 <label htmlFor="lead-phone" className="text-sm font-medium">{t("phone")}</label>
-                <Input id="lead-phone" required name="phone" type="tel" className="mt-1 h-10 rounded-lg" placeholder={t("phoneFormat")} />
+                <Input
+                  id="lead-phone"
+                  required
+                  name="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  pattern="[+0-9 ()-]{9,20}"
+                  className="mt-1 h-10 rounded-lg"
+                  placeholder={t("phoneFormat")}
+                />
               </div>
             </div>
 

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 import { z } from "zod";
 
 const CreateSchema = z.object({
@@ -109,6 +110,12 @@ export async function POST(request: Request) {
       ...(status ? { status, paidAt: status === "PAID" ? new Date() : null } : {}),
     },
   });
+  await audit(request, {
+    action: "payment.upsert",
+    entityType: "Payment",
+    entityId: payment.id,
+    meta: { appointmentId, amount, method, status },
+  });
 
   return Response.json(payment);
 }
@@ -128,6 +135,10 @@ export async function PATCH(request: Request) {
 
   const { id, status, method, amount } = parsed.data;
 
+  const before = await prisma.payment.findUnique({
+    where: { id },
+    select: { status: true, method: true, amount: true },
+  });
   const payment = await prisma.payment.update({
     where: { id },
     data: {
@@ -135,6 +146,12 @@ export async function PATCH(request: Request) {
       ...(method ? { method } : {}),
       ...(amount !== undefined ? { amount } : {}),
     },
+  });
+  await audit(request, {
+    action: "payment.update",
+    entityType: "Payment",
+    entityId: id,
+    meta: { before, after: { status, method, amount } },
   });
 
   return Response.json(payment);

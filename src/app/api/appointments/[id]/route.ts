@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 import { z } from "zod";
 
 const UpdateSchema = z.object({
@@ -31,9 +32,19 @@ export async function PATCH(
     }
   }
 
+  const before = await prisma.appointment.findUnique({
+    where: { id },
+    select: { queueStatus: true },
+  });
   const appointment = await prisma.appointment.update({
     where: { id },
     data: { queueStatus: parsed.data.status },
+  });
+  await audit(request, {
+    action: "appointment.status.update",
+    entityType: "Appointment",
+    entityId: id,
+    meta: { from: before?.queueStatus, to: parsed.data.status },
   });
 
   return Response.json(appointment);

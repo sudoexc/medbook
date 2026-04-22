@@ -47,11 +47,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.sub!;
-        session.user.role = token.role || "DOCTOR";
-        session.user.doctorId = token.doctorId || null;
+      if (!session.user) return session;
+      const role = token.role;
+      if (role !== "ADMIN" && role !== "DOCTOR" && role !== "RECEPTIONIST") {
+        throw new Error("Invalid session role");
       }
+      session.user.id = token.sub!;
+      session.user.role = role;
+      session.user.doctorId = token.doctorId ?? null;
       return session;
     },
   },

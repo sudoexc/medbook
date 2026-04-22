@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { formatRevenue } from "@/lib/revenue";
+import { AutoPrint } from "@/components/auto-print";
 
 export default async function PrintPage({
   params,
@@ -73,7 +74,7 @@ export default async function PrintPage({
           <p>+998 71 200 00 07 | neurofax.uz</p>
         </div>
 
-        <script dangerouslySetInnerHTML={{ __html: "window.print();" }} />
+        <AutoPrint />
       </div>
     );
   }
@@ -137,7 +138,7 @@ export default async function PrintPage({
           <p>{isRu ? "Печать" : "Muhr"}</p>
         </div>
 
-        <script dangerouslySetInnerHTML={{ __html: "window.print();" }} />
+        <AutoPrint />
       </div>
     );
   }

@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /$
+Allow: /ru
+Allow: /uz
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /kiosk
+Disallow: /tv
+Disallow: /receptionist
+Disallow: /ticket/
+Disallow: /q/
+Disallow: /login
+
+Sitemap: https://neurofax.uz/sitemap.xml

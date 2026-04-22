@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 
 /**
  * Escape a value for safe CSV output.
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
   };
 
   let csv = "";
+  let rowCount = 0;
   const fileName = `neurofax-${type}-${new Date().toISOString().split("T")[0]}.csv`;
 
   if (type === "payments") {
@@ -62,6 +64,7 @@ export async function GET(request: Request) {
       take: 10000,
     });
 
+    rowCount = payments.length;
     csv = csvRow("Дата", "Пациент", "Телефон", "Врач", "Услуга", "Сумма", "Способ", "Статус");
     for (const p of payments) {
       csv += csvRow(
@@ -88,6 +91,7 @@ export async function GET(request: Request) {
       take: 10000,
     });
 
+    rowCount = patients.length;
     csv = csvRow("ФИО", "Телефон", "Паспорт", "Визитов", "Дата регистрации");
     for (const p of patients) {
       csv += csvRow(
@@ -116,6 +120,7 @@ export async function GET(request: Request) {
       take: 10000,
     });
 
+    rowCount = appointments.length;
     csv = csvRow("Дата", "Время", "Пациент", "Телефон", "Врач", "Услуга", "Статус", "Длительность");
     for (const a of appointments) {
       const time = a.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -131,6 +136,14 @@ export async function GET(request: Request) {
       );
     }
   }
+
+  // Audit: record who exported what. PII leaves the system here — compliance
+  // requires knowing at minimum who pulled the file and how many rows it had.
+  await audit(request, {
+    action: "export.csv",
+    entityType: type,
+    meta: { rowCount, from, to, doctorId },
+  });
 
   // BOM for Excel UTF-8 compatibility
   const bom = "\uFEFF";

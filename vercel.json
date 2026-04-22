@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/telegram/notify?secret=${CRON_SECRET}",
+      "path": "/api/telegram/notify",
       "schedule": "0 3 * * *"
     }
   ]

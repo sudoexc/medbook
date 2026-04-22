@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
+import { initials } from "@/lib/format";
 
 // GET /api/queue/status/:id — public endpoint for patient queue status (QR code page)
 export async function GET(
@@ -78,8 +79,11 @@ export async function GET(
 
   const ticketNumber = `${appointment.doctor.id.charAt(0).toUpperCase()}${String(appointment.queueOrder || 0).padStart(3, "0")}`;
 
+  // Public endpoint (patients reach it via QR link). Strip PII — initials only,
+  // no phone / passport / notes / email. Doctor name and cabinet are public
+  // clinic info, safe to return.
   return Response.json({
-    patientName: appointment.patient.fullName,
+    patientName: initials(appointment.patient.fullName),
     doctorName: appointment.doctor.nameRu,
     cabinet: appointment.doctor.cabinet,
     service: appointment.service,

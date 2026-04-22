@@ -19,7 +19,6 @@ export function Footer() {
                 alt="NeuroFax-B"
                 width={92}
                 height={36}
-                className="h-9 w-auto"
               />
             </a>
             <p className="text-sm text-muted-foreground max-w-[240px]">

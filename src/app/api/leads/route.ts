@@ -5,25 +5,34 @@ import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { normalizePhone } from "@/lib/phone";
 import { z } from "zod";
 
+// Phone accepts Uzbek numbers, with or without leading "+" and typical grouping
+// characters. normalizePhone() downstream enforces the canonical form.
+const PhoneInput = z
+  .string()
+  .min(9)
+  .max(20)
+  .regex(/^[+\d\s()-]+$/, "Invalid phone");
+
 const LeadSchema = z.object({
   name: z.string().min(2).max(100),
-  phone: z.string().min(9).max(20),
+  phone: PhoneInput,
   doctorId: z.string().max(50).optional(),
-  service: z.string().max(100).optional(),
+  service: z.string().max(200).optional(),
   date: z.string().max(10).optional(),
   locale: z.enum(["ru", "uz"]).default("ru"),
 });
 
 export async function GET(request: Request) {
+  // All branches require auth — previously countNew bypassed this and leaked
+  // lead volume metrics (audit HIGH #6).
+  if (!(await isAuthorizedOrPin(request))) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   if (url.searchParams.get("countNew") === "true") {
     const count = await prisma.lead.count({ where: { status: "NEW" } });
     return Response.json({ count });
-  }
-
-  // List leads — requires auth or terminal PIN
-  if (!(await isAuthorizedOrPin(request))) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const status = url.searchParams.get("status");
@@ -89,7 +98,7 @@ export async function POST(request: Request) {
           patientPhone: lead.phone,
           service: lead.service || undefined,
           date: lead.date || undefined,
-        }).catch(() => {}); // don't fail the request if email fails
+        }).catch((err) => console.error("[email]", err));
       }
     }
 

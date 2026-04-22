@@ -24,15 +24,28 @@ function normalizePhone(phone: string): string {
 }
 
 // Telegram delivers `X-Telegram-Bot-Api-Secret-Token` on every update if you
-// set a `secret_token` when calling setWebhook. We require it in production.
+// set a `secret_token` when calling setWebhook. We require it — unsigned POSTs
+// are rejected outright. Set TELEGRAM_WEBHOOK_SECRET in the environment and
+// register the same value with Telegram via setWebhook.
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export async function POST(request: Request) {
-  if (WEBHOOK_SECRET) {
-    const provided = request.headers.get("x-telegram-bot-api-secret-token");
-    if (provided !== WEBHOOK_SECRET) {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
-    }
+  if (!WEBHOOK_SECRET) {
+    console.error("[telegram] TELEGRAM_WEBHOOK_SECRET not configured");
+    return Response.json({ error: "Webhook not configured" }, { status: 500 });
+  }
+  const provided = request.headers.get("x-telegram-bot-api-secret-token");
+  if (!provided || !safeEqual(provided, WEBHOOK_SECRET)) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let update: TelegramUpdate;

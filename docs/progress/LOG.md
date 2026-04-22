@@ -154,4 +154,61 @@
 
 ---
 
-## Phase 2b — Записи + Календарь — 🔄 планируется
+## Phase 2b — Записи + Календарь — ✅ DONE 2026-04-22
+
+**Коммиты:** `08668b4` (appointments) · `eb73394` (calendar) · тег `phase-2b-done`.
+
+### Что сделано
+
+#### appointments-page-builder (`08668b4`)
+
+- `src/app/[locale]/crm/appointments/page.tsx` + `_components/` (11 файлов) + `_hooks/` (3 файла).
+- TanStack Table + виртуализация >100 строк. Колонки: время, пациент, врач, услуги, статус, оплата, кабинет, канал, действия.
+- `appointments-filters`: dateMode (today/tomorrow/week/custom) + bucket, doctor, status, channel, service, cabinet, onlyUnpaid, q — URL-sync.
+- `appointments-bulk-bar`: mark arrived / not-arrived (bulk-status POST), SMS reminder (log-only), reschedule (stub до полного календарного диалога).
+- `appointment-drawer` (Sheet справа): details + inline edit + history + payments без дублирования карточки пациента.
+- `appointments-kpi-strip`: счётчики по статусам (client-side из загруженных страниц — не по всему фильтру).
+- `export-button`: стрим CSV через `/api/crm/appointments/export-csv` (endpoint ожидает api-builder).
+- `_hooks/use-appointment.ts`: `usePatchAppointment` (optimistic + `AppointmentConflictError`), `useBulkStatus`, `useSetQueueStatus`, `useDeleteAppointment`. Экспортируются calendar'ом.
+- **SHARED** `src/components/appointments/NewAppointmentDialog.tsx` + `SlotPicker.tsx` — single source of truth для создания записи. Patient autocomplete + "создать нового" inline. Channel enum из Prisma: `WALKIN|PHONE|TELEGRAM|WEBSITE|KIOSK` (не из ТЗ).
+- i18n `appointments.*` — полный паритет ru/uz.
+
+#### calendar-specialist (`eb73394`)
+
+- `src/app/[locale]/crm/calendar/page.tsx` + `_components/` (6 файлов) + `_hooks/` (3 файла).
+- FullCalendar 6.1.20 (`resource-timegrid`) с GPL open-source ключом — swim-lanes по врачам, Y=время.
+- Views: day / workWeek (5d) / week (7d). Месяц исключён явно.
+- Toolbar: date-nav + view-switcher + multi-filter врачи / кабинеты / услуги + overlay toggle + "Сегодня" + "Новая запись".
+- DnD + resize: при drop/resize → `usePatchAppointment`; на 409 — snap back + toast с переведённым `reason`.
+- Empty slot click → shared `NewAppointmentDialog` с `initialDoctorId/Date/Time`. Event click → reuse `AppointmentDrawer`.
+- Cabinet overlay: toggle красит события HSL-из-cabinetId.
+- `use-conflict-detector.ts`: обёртка вокруг optimistic PATCH + `lastConflict` state для баннера.
+- `use-calendar-data.ts`: 30s `refetchInterval` как fallback до SSE (Phase 3a realtime-engineer заменит на инвалидацию по `appointment.*` событиям).
+- Desktop-only (≥1280px) — "Use desktop" hint на меньших экранах.
+- i18n `calendar.*` — полный паритет ru/uz.
+
+### Build / тесты
+
+- `npx tsc --noEmit` — clean после обоих коммитов.
+- `npx vitest run` — 40/40 passed.
+- `npm run build` — exit 0.
+
+### Requests для следующих фаз
+
+- **api-builder:**
+  - `GET /api/crm/appointments/export-csv` (UTF-8 BOM + RFC-4180, как у patients/export).
+  - `serviceIds[]` в `/api/crm/doctors` для server-side фильтра в NewAppointmentDialog.
+  - `doctorId[]` / `cabinetId[]` / `serviceId[]` (множественные) в `/api/crm/appointments` для календаря.
+  - Status-tally endpoint для `/crm/appointments` — сейчас KPI считается по загруженным страницам.
+  - Bulk reminders endpoint — сейчас SMS reminder триггерит `/api/crm/communications/sms` по одному.
+- **realtime-engineer (Phase 3a):** SSE каналы `clinic:{id}:appointments` / `clinic:{id}:calendar` — инвалидировать `["calendar","appointments",...]` и `["appointments","list",...]` на `appointment.{created|updated|cancelled|moved}`. TODO-маркер уже в `use-calendar-data.ts`.
+
+### Известные минусы
+
+- Reschedule action в bulk-bar = toast-stub. Полная диалоговая форма переноса — после стабилизации календаря.
+- `schedulerLicenseKey = 'GPL-My-Project-Is-Open-Source'` — для продакшн-клиники без open-source обязательств нужна платная лицензия FullCalendar premium либо миграция на `resource-timeline` paid.
+- Export CSV кнопка ссылается на несуществующий endpoint — будет 404 до патча api-builder.
+
+---
+
+## Phase 2c — Reception dashboard — 🔄 планируется

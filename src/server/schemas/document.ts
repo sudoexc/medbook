@@ -23,7 +23,17 @@ export const CreateDocumentSchema = z.object({
 export const QueryDocumentSchema = z.object({
   patientId: z.string().optional(),
   appointmentId: z.string().optional(),
+  doctorId: z.string().optional(),
   type: DocumentTypeEnum.optional(),
+  q: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  pendingSignature: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .transform((v) =>
+      typeof v === "boolean" ? v : v === "true" ? true : false,
+    ),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });

@@ -25,6 +25,23 @@ export const GET = createApiListHandler(
     if (q.patientId) where.patientId = q.patientId;
     if (q.appointmentId) where.appointmentId = q.appointmentId;
     if (q.type) where.type = q.type;
+    if (q.q) where.title = { contains: q.q, mode: "insensitive" };
+    if (q.doctorId) {
+      where.OR = [
+        { appointment: { doctorId: q.doctorId } },
+        { patient: { appointments: { some: { doctorId: q.doctorId } } } },
+      ];
+    }
+    if (q.from || q.to) {
+      const range: Record<string, Date> = {};
+      if (q.from) range.gte = new Date(q.from);
+      if (q.to) range.lte = new Date(q.to);
+      where.createdAt = range;
+    }
+    if (q.pendingSignature === true) {
+      // Stub: treat CONSENT/CONTRACT docs without `fileUrl` meta token as pending.
+      where.type = { in: ["CONSENT", "CONTRACT"] };
+    }
 
     // DOCTOR sees only documents for their patients/appointments.
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
@@ -49,6 +66,12 @@ export const GET = createApiListHandler(
       include: {
         patient: { select: { id: true, fullName: true } },
         uploadedBy: { select: { id: true, name: true } },
+        appointment: {
+          select: {
+            id: true,
+            doctor: { select: { id: true, nameRu: true, nameUz: true } },
+          },
+        },
       },
     });
     let nextCursor: string | null = null;

@@ -600,4 +600,71 @@
 
 ---
 
-## Phase 5 — Глобальные фичи — 🔄 планируется
+## Phase 6 — Инфраструктура — ✅ DONE 2026-04-22
+
+**Тег:** `phase-6-done` (после commit).
+
+### Что сделано (infrastructure-engineer)
+
+#### Docker + deployment
+
+- **`Dockerfile`** — multi-stage, Node 20 bookworm-slim. Stage 1 `builder`: `npm ci` + `prisma generate` + `npm run build`. Stage 2 `runner`: копирует `.next/standalone` + `.next/static` + `public` + `prisma/` + generated Prisma client. Non-root `nextjs:1001`, `tini` init, HEALTHCHECK на `/api/health`, `CMD node server.js`.
+- **`Dockerfile.worker`** — тот же базовый image, но оставляет полный `src/` + `node_modules` (нужен `tsx`). `CMD npx tsx src/server/workers/start.ts`.
+- **`next.config.ts`** — добавлен `output: "standalone"` для Next.js standalone server bundle.
+- **`.dockerignore`** — exclude `.git`, `node_modules`, `.next`, `.env`.
+- **`docker-compose.yml`** — 7 сервисов: `postgres:16-alpine`, `redis:7-alpine` (appendonly + `maxmemory 256mb allkeys-lru`), `minio/minio:latest` (console :9001), `app`, `worker`, `nginx:alpine`, `certbot/certbot:latest` (12h renewal loop). Volumes: `pgdata`, `redisdata`, `miniodata`, `letsencrypt`. Healthchecks на pg/redis/minio/app. `env_file: .env`.
+- **`.env.example`** — все обязательные переменные: `DATABASE_URL`, `REDIS_URL`, `APP_SECRET`, `AUTH_SECRET`, `AUTH_URL`, `MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/PUBLIC_URL`, `SENTRY_DSN`, `TG_WEBHOOK_BASE_URL`, `LETSENCRYPT_EMAIL/DOMAIN`, `BACKUP_BUCKET/RETENTION_DAYS`, и т.д.
+- **`nginx/nginx.conf`** — HTTP/2, gzip, reverse-proxy на `app:3000`, security headers, certbot `/.well-known/acme-challenge`, **отдельный `location = /api/events` с `proxy_buffering off` и `proxy_read_timeout 1h`** для SSE, `location /api/ws` заготовка под WebSocket. TLS: TLSv1.2/1.3, modern ciphers.
+
+#### Ops scripts (`ops/`)
+
+- **`backup.sh`** — `docker compose exec postgres pg_dump | gzip` → MinIO через `minio/mc` container. Retention prune `BACKUP_RETENTION_DAYS` (default 30). Cron: `ops/crontab.example` (03:00 UTC daily).
+- **`restore.sh`** — интерактивный restore из MinIO backup (требует подтверждения "YES").
+- **`certbot-init.sh`** — first-run Let's Encrypt issuance через webroot. `LE_STAGING=1` для тестов.
+- **`deploy.sh`** — idempotent: `git fetch + reset --hard origin/main`, `docker compose build`, `docker compose up -d`, ждёт `/api/health`, `prisma migrate deploy`, reload nginx.
+- **`migrate-secrets.ts`** — one-shot: сканирует `ProviderConnection.secretCipher` rows, пробует decrypt как `v1:` — если падает, пробует base64 legacy → re-encrypts через AES-GCM `encrypt()`. Dry-run по умолчанию, `--apply` для записи.
+
+#### GitHub Actions
+
+- **`.github/workflows/ci.yml`** — on PR/push main: checkout, Node 20 + npm cache, `npm ci`, `prisma generate`, lint, `tsc --noEmit`, `vitest run`, `npm run build`, verify `.next/standalone/server.js` exists.
+- **`.github/workflows/deploy.yml`** — triggers after CI success on main (или manual dispatch), SSH через `appleboy/ssh-action` → `ops/deploy.sh`. Secrets: `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PORT`, `DEPLOY_DIR`.
+
+#### Application-level
+
+- **`src/app/api/health/route.ts`** — публичный endpoint (без auth). Проверки: `db` (prisma `$queryRawUnsafe("SELECT 1")`), `redis` (lazy `ioredis.ping`, если `REDIS_URL`), `minio` (`fetch .../minio/health/ready`, если `MINIO_ENDPOINT`), `workers` (метадата). 5-секундный timeout на каждую проверку через `Promise.race`. Возвращает `{status, version, uptime, checks, generatedAt}`, 200 если DB OK, 503 если DB down. `Cache-Control: no-store`, `dynamic = "force-dynamic"`, `runtime = "nodejs"`.
+- **`src/server/storage/minio.ts`** — MinIO adapter. `uploadObject/getSignedUrl/deleteObject/isStubMode/pingStorage`. S3-mode через лениво-подгружаемые `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` (dynamic import через `new Function("spec", "return import(spec)")` — TypeScript не проверяет compile-time, SDK опционален). Stub-mode (без `MINIO_ENDPOINT`) пишет в `${os.tmpdir()}/medbook-uploads/<bucket>/<key>` и возвращает `file://` URLs. Sanitize `../` в ключах, bucket дефолтится на `MINIO_BUCKET`.
+- **`src/app/api/crm/documents/upload-url/route.ts`** — `POST` issues presigned PUT URL (ADMIN/RECEPTIONIST/DOCTOR/NURSE). В stub-mode возвращает `{stub: true, uploadUrl: null}` — UI фоллбэчит на старый metadata-POST. Key convention: `clinics/<clinicId>/documents/<uuid>-<sanitizedName>`.
+- **`src/instrumentation.ts`** — Next 16 `register()` + `onRequestError()`. Если `SENTRY_DSN` set → lazy-import `@sentry/nextjs` (опц. runtime dep), init с `environment`, `tracesSampleRate`. `onRequestError` тегирует событие `clinicId`, `userId`, `role` из `TenantContext` (AsyncLocalStorage). No-op без DSN или без SDK (с warn).
+
+#### Tests
+
+- **`tests/unit/storage-minio.test.ts`** — 7 кейсов stub-mode: isStubMode, uploadObject writes + returns file:// URL, getSignedUrl, deleteObject remove + idempotent, path traversal containment, MINIO_BUCKET env fallback.
+- **`tests/unit/health-route.test.ts`** — 4 кейса: 200 + ok при живом DB, 503 + down при DB fail, no-store headers, все 4 checks в payload.
+
+### Quality gates
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **239 / 239 passed** (23 файла, +11 новых).
+- `npm run build` — exit 0, `.next/standalone/server.js` present, `/api/health` в route manifest.
+- `docker compose config` — valid, 7 сервисов.
+
+### Что осталось на Phase 7
+
+- Реальная интеграция MinIO test-коннекта с работающим контейнером — сейчас тесты покрывают только stub path (S3-mode требует live MinIO).
+- Sentry `@sentry/nextjs` — npm не добавлен в deps (адаптер работает через optional dynamic import). Установить `npm install @sentry/nextjs` на прод-деплое, если DSN задан.
+- `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` — аналогично, установить на прод-деплое при `MINIO_ENDPOINT`.
+- Миграция `ops/migrate-secrets.ts` — прогнать на прод-БД после апгрейда до Phase 6. Сейчас идемпотентна.
+- Валидация SMS webhook signature (Eskiz/Playmobile) — infrastructure-engineer оставил заметку.
+- LE cert renewal cron — проверить в течение 90 дней после первого деплоя.
+
+### Deviations
+
+- **Sentry + AWS SDK через `new Function("spec", "return import(spec)")`** — позволяет `tsc` не падать на отсутствующих опциональных deps. В рантайме dynamic import срабатывает штатно, ошибка с hint'ом при отсутствии пакета.
+- **Health endpoint не проверяет воркеров напрямую** — workers живут в отдельном контейнере с собственным `HEALTHCHECK` (inherited из `Dockerfile.worker`). `/api/health` возвращает статус "ok" с метадатой очередей; per-queue depth — задача Phase 7 / BullMQ dashboard.
+- **MinIO probe в `/api/health`** — HEAD `/minio/health/ready` вместо реального put. Избегает шума в audit-log и не требует creds на каждый health-hit.
+- **Prisma build-time warnings** (`Invalid prisma.doctor.findMany() invocation`) — остались с Phase 5, это prerender probes; build не падает.
+- **Legacy `.env` в context** — `docker-compose.yml` использует `env_file: .env`. Если `.env` отсутствует на деплое, compose падает явно.
+
+---
+
+## Phase 7 — Тесты + полировка — 🔄 планируется

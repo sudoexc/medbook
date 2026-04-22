@@ -203,6 +203,192 @@
       "newAppointment": "Yangi yozilish"
     }
   },
+  "patientCard": {
+    "back": "Ro'yxatga qaytish",
+    "newAppointmentTodo": "TODO: yozilish yaratish — 2b bosqichida",
+    "notFound": {
+      "title": "Bemor topilmadi",
+      "description": "Kartochka o'chirilgan bo'lishi mumkin yoki sizda ruxsat yo'q.",
+      "back": "Bemorlar ro'yxati"
+    },
+    "error": {
+      "title": "Kartochkani yuklab bo'lmadi",
+      "retry": "Qayta urinish"
+    },
+    "tabs": {
+      "overview": "Umumiy",
+      "visits": "Tashriflar",
+      "documents": "Hujjatlar",
+      "communications": "Aloqalar",
+      "payments": "To'lovlar",
+      "medical": "Tibbiyot"
+    },
+    "header": {
+      "fullName": "F.I.Sh.",
+      "age": "Yosh",
+      "ageShort": "yosh",
+      "phone": "Telefon",
+      "email": "Email",
+      "birthDate": "Tug'ilgan sana",
+      "gender": "Jins",
+      "source": "Manba",
+      "ltv": "LTV",
+      "visitsCount": "Tashriflar",
+      "balance": "Balans",
+      "tags": "Teglar",
+      "noTags": "Teglar yo'q"
+    },
+    "quickActions": {
+      "newAppointment": "Yozilish",
+      "call": "Qo'ng'iroq",
+      "sms": "SMS",
+      "telegram": "Telegram",
+      "inviteToBot": "Bemorda Telegram yo'q — taklif yuboramiz",
+      "more": "Yana",
+      "mergeDuplicates": "Dublikatlarni birlashtirish",
+      "delete": "Bemorni o'chirish"
+    },
+    "overview": {
+      "ltv": "LTV",
+      "visitsCount": "Tashriflar",
+      "lastVisit": "Oxirgi tashrif",
+      "nextVisit": "Keyingi tashrif",
+      "balance": "Balans",
+      "recentActivity": "So'nggi aloqalar",
+      "viewAll": "Barchasi",
+      "noActivity": "Hozircha hech qanday harakat yo'q."
+    },
+    "visits": {
+      "date": "Sana",
+      "doctor": "Shifokor",
+      "services": "Xizmatlar",
+      "status": "Status",
+      "payment": "To'lov",
+      "comment": "Izoh",
+      "empty": "Tashriflar yo'q",
+      "emptyDescription": "Bemorni yozing — bu yerda tarix paydo bo'ladi.",
+      "count": "Jami: {count}",
+      "add": "Yangi yozilish"
+    },
+    "documents": {
+      "upload": "Yuklash",
+      "dropzoneTitle": "Fayllarni shu yerga tashlang",
+      "dropzoneHint": "PDF, JPG, PNG, DOCX — 10 MB gacha",
+      "noFile": "Fayl yuklash 4-bosqichda (MinIO) qo'shiladi. Hozircha faqat meta saqlanadi.",
+      "uploadStub": "{count} ta fayl meta sifatida saqlandi",
+      "sign": "Imzolash",
+      "download": "Yuklab olish",
+      "delete": "O'chirish",
+      "empty": "Hujjatlar yo'q",
+      "emptyDescription": "Fayl yuklang yoki bemorda rozilikni imzolang.",
+      "types": {
+        "referral": "Yo'llanma",
+        "prescription": "Retsept",
+        "result": "Natija",
+        "consent": "Rozilik",
+        "contract": "Shartnoma",
+        "receipt": "Chek",
+        "other": "Boshqa",
+        "signature": "Imzo"
+      },
+      "signature": {
+        "title": "Bemor imzosi",
+        "hint": "Yuqoridagi maydonda imzo chizishni so'rang.",
+        "clear": "Tozalash",
+        "cancel": "Bekor qilish",
+        "save": "Saqlash",
+        "saving": "Saqlanmoqda…"
+      }
+    },
+    "communications": {
+      "filter": "Filter",
+      "total": "Voqealar: {count}",
+      "empty": "Aloqalar yo'q",
+      "types": {
+        "all": "Barchasi",
+        "sms": "SMS",
+        "tg": "Telegram",
+        "call": "Qo'ng'iroqlar",
+        "visit": "Tashriflar"
+      }
+    },
+    "payments": {
+      "date": "Sana",
+      "amount": "Summa",
+      "methodCol": "Usul",
+      "statusCol": "Status",
+      "appointment": "Yozilish",
+      "empty": "To'lovlar yo'q",
+      "emptyDescription": "Har bir to'lov bemorning LTV sini oshiradi.",
+      "add": "To'lov",
+      "total": "To'langan",
+      "ltv": "LTV",
+      "balance": "Balans",
+      "openInvoices": "Ochiq hisoblar",
+      "count": "To'lovlar: {count}",
+      "method": {
+        "cash": "Naqd",
+        "card": "Karta",
+        "transfer": "O'tkazma",
+        "payme": "Payme",
+        "click": "Click",
+        "uzum": "Uzum",
+        "other": "Boshqa"
+      },
+      "status": {
+        "paid": "To'langan",
+        "unpaid": "To'lanmagan",
+        "partial": "Qisman",
+        "refunded": "Qaytarilgan"
+      },
+      "dialog": {
+        "title": "Yangi to'lov",
+        "amount": "Summa (so'm)",
+        "hint": "Summani so'mda kiriting, tiyinlar avtomatik qo'shiladi.",
+        "method": "Usul",
+        "cancel": "Bekor qilish",
+        "submit": "Qo'shish",
+        "saving": "Saqlanmoqda…"
+      }
+    },
+    "medical": {
+      "stubNotice": "2a-bosqich: tibbiy maydonlar bitta Patient.notes matn blokida saqlanadi. Strukturalangan jadvallar (anamnez, allergiyalar, ICD-10) keyingi migratsiyadan so'ng.",
+      "anamnesis": "Anamnez",
+      "anamnesisHint": "Schema migratsiyasidan so'ng alohida tuzilmaga chiqariladi.",
+      "allergies": "Allergiyalar",
+      "allergiesHint": "Alohida Allergy jadvali kerak.",
+      "diagnoses": "Diagnozlar",
+      "diagnosesHint": "ICD-10 kodi bilan Diagnosis jadvali kerak.",
+      "notes": "Izohlar (erkin shakl)",
+      "placeholder": "Shikoyatlar, kuzatuvlar, davolash rejasi…",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "reset": "Tiklash",
+      "empty": "Yozuvlar yo'q"
+    },
+    "smsDialog": {
+      "title": "SMS yuborish",
+      "to": "Kimga",
+      "body": "Xabar matni",
+      "placeholder": "Assalomu alaykum, ertaga soat 14:30 dagi qabulni eslatamiz.",
+      "preview": "Oldindan ko'rish",
+      "cancel": "Bekor qilish",
+      "send": "Yuborish",
+      "sending": "Yuborilmoqda…",
+      "sent": "SMS navbatga qo'yildi"
+    },
+    "delete": {
+      "title": "Bemorni o'chirishmi?",
+      "warning": "Bu amalni ortga qaytarib bo'lmaydi. Bemorning tashriflari, to'lovlari va hujjatlari tarixi o'chiriladi.",
+      "confirmLabel": "Tasdiqlash uchun bemorning familiyasini ({surname}) kiriting",
+      "confirmPlaceholder": "Familiya",
+      "cancel": "Bekor qilish",
+      "delete": "O'chirish",
+      "deleting": "O'chirilmoqda…",
+      "success": "Bemor o'chirildi",
+      "error": "O'chirib bo'lmadi"
+    }
+  },
   "reception": {
     "title": "Qabulxona",
     "subtitle": "Bugungi kun",

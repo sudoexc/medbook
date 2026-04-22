@@ -203,6 +203,192 @@
       "newAppointment": "Новая запись"
     }
   },
+  "patientCard": {
+    "back": "Назад в список",
+    "newAppointmentTodo": "TODO: создание записи — Фаза 2b",
+    "notFound": {
+      "title": "Пациент не найден",
+      "description": "Карточка могла быть удалена или у вас нет доступа.",
+      "back": "К списку пациентов"
+    },
+    "error": {
+      "title": "Не удалось загрузить карточку",
+      "retry": "Повторить"
+    },
+    "tabs": {
+      "overview": "Обзор",
+      "visits": "Визиты",
+      "documents": "Документы",
+      "communications": "Коммуникации",
+      "payments": "Оплаты",
+      "medical": "Медицина"
+    },
+    "header": {
+      "fullName": "ФИО",
+      "age": "Возраст",
+      "ageShort": "лет",
+      "phone": "Телефон",
+      "email": "Email",
+      "birthDate": "Дата рождения",
+      "gender": "Пол",
+      "source": "Источник",
+      "ltv": "LTV",
+      "visitsCount": "Визитов",
+      "balance": "Баланс",
+      "tags": "Теги",
+      "noTags": "Тегов нет"
+    },
+    "quickActions": {
+      "newAppointment": "Записать",
+      "call": "Позвонить",
+      "sms": "SMS",
+      "telegram": "Telegram",
+      "inviteToBot": "У пациента нет Telegram — пришлём приглашение в бот",
+      "more": "Ещё",
+      "mergeDuplicates": "Объединить дубликаты",
+      "delete": "Удалить пациента"
+    },
+    "overview": {
+      "ltv": "LTV",
+      "visitsCount": "Визитов",
+      "lastVisit": "Последний визит",
+      "nextVisit": "Следующий визит",
+      "balance": "Баланс",
+      "recentActivity": "Последние касания",
+      "viewAll": "Открыть все",
+      "noActivity": "Пока ничего не происходило."
+    },
+    "visits": {
+      "date": "Дата",
+      "doctor": "Врач",
+      "services": "Услуги",
+      "status": "Статус",
+      "payment": "Оплата",
+      "comment": "Комментарий",
+      "empty": "Визитов пока нет",
+      "emptyDescription": "Запишите пациента на приём — здесь появится история.",
+      "count": "Всего: {count}",
+      "add": "Новая запись"
+    },
+    "documents": {
+      "upload": "Загрузить",
+      "dropzoneTitle": "Перетащите файлы сюда",
+      "dropzoneHint": "PDF, JPG, PNG, DOCX — до 10 МБ",
+      "noFile": "Загрузка файлов появится в Фазе 4 (MinIO). Сейчас сохраняется только мета.",
+      "uploadStub": "Сохранено {count} файл(ов) как метаданные",
+      "sign": "Подписать",
+      "download": "Скачать",
+      "delete": "Удалить",
+      "empty": "Нет документов",
+      "emptyDescription": "Загрузите файл или попросите пациента подписать согласие.",
+      "types": {
+        "referral": "Направление",
+        "prescription": "Рецепт",
+        "result": "Результат",
+        "consent": "Согласие",
+        "contract": "Договор",
+        "receipt": "Чек",
+        "other": "Прочее",
+        "signature": "Подпись"
+      },
+      "signature": {
+        "title": "Подпись пациента",
+        "hint": "Попросите пациента расписаться в поле выше.",
+        "clear": "Очистить",
+        "cancel": "Отмена",
+        "save": "Сохранить",
+        "saving": "Сохранение…"
+      }
+    },
+    "communications": {
+      "filter": "Фильтр",
+      "total": "Событий: {count}",
+      "empty": "Коммуникаций пока нет",
+      "types": {
+        "all": "Все",
+        "sms": "SMS",
+        "tg": "Telegram",
+        "call": "Звонки",
+        "visit": "Визиты"
+      }
+    },
+    "payments": {
+      "date": "Дата",
+      "amount": "Сумма",
+      "methodCol": "Метод",
+      "statusCol": "Статус",
+      "appointment": "Запись",
+      "empty": "Платежей нет",
+      "emptyDescription": "Каждый платёж увеличивает LTV пациента.",
+      "add": "Оплата",
+      "total": "Оплачено",
+      "ltv": "LTV",
+      "balance": "Баланс",
+      "openInvoices": "Открытые счета",
+      "count": "Платежей: {count}",
+      "method": {
+        "cash": "Наличные",
+        "card": "Карта",
+        "transfer": "Перевод",
+        "payme": "Payme",
+        "click": "Click",
+        "uzum": "Uzum",
+        "other": "Другое"
+      },
+      "status": {
+        "paid": "Оплачено",
+        "unpaid": "Не оплачено",
+        "partial": "Частично",
+        "refunded": "Возврат"
+      },
+      "dialog": {
+        "title": "Новый платёж",
+        "amount": "Сумма (сум)",
+        "hint": "Вводите сумму в сумах, тиыны будут добавлены автоматически.",
+        "method": "Способ",
+        "cancel": "Отмена",
+        "submit": "Добавить",
+        "saving": "Сохранение…"
+      }
+    },
+    "medical": {
+      "stubNotice": "Phase 2a: медицинские поля хранятся в едином текстовом блоке Patient.notes. Структурированные таблицы (анамнез, аллергии, диагнозы ICD-10) — после миграции Prisma.",
+      "anamnesis": "Анамнез",
+      "anamnesisHint": "Будет вынесен в отдельную структуру после миграции schema.",
+      "allergies": "Аллергии",
+      "allergiesHint": "Требуется отдельная таблица Allergy.",
+      "diagnoses": "Диагнозы",
+      "diagnosesHint": "Нужна таблица Diagnosis с кодом ICD-10.",
+      "notes": "Заметки (свободная форма)",
+      "placeholder": "Жалобы, наблюдения, план лечения…",
+      "save": "Сохранить",
+      "saving": "Сохранение…",
+      "reset": "Сбросить",
+      "empty": "Записей нет"
+    },
+    "smsDialog": {
+      "title": "Отправить SMS",
+      "to": "Кому",
+      "body": "Текст сообщения",
+      "placeholder": "Здравствуйте, напоминаем о приёме завтра в 14:30.",
+      "preview": "Превью",
+      "cancel": "Отмена",
+      "send": "Отправить",
+      "sending": "Отправка…",
+      "sent": "SMS поставлено в очередь"
+    },
+    "delete": {
+      "title": "Удалить пациента?",
+      "warning": "Это действие нельзя отменить. История визитов, платежей и документов пациента будет удалена.",
+      "confirmLabel": "Введите фамилию пациента ({surname}) для подтверждения",
+      "confirmPlaceholder": "Фамилия",
+      "cancel": "Отмена",
+      "delete": "Удалить",
+      "deleting": "Удаление…",
+      "success": "Пациент удалён",
+      "error": "Не удалось удалить"
+    }
+  },
   "reception": {
     "title": "Рецепция",
     "subtitle": "Сегодняшний день",

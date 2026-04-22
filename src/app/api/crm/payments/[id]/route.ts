@@ -1,0 +1,63 @@
+/**
+ * /api/crm/payments/[id] — patch (status/refund/etc).
+ * See docs/TZ.md §6.2 оплата.
+ *
+ * When status transitions to/from PAID we recompute the patient LTV.
+ */
+import { createApiHandler } from "@/lib/api-handler";
+import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
+import { ok, notFound, diff } from "@/server/http";
+import { UpdatePaymentSchema } from "@/server/schemas/payment";
+import { recalcLtv } from "@/server/services/ltv";
+
+function idFromUrl(request: Request): string {
+  const parts = new URL(request.url).pathname.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? "";
+}
+
+export const PATCH = createApiHandler(
+  { roles: ["ADMIN", "RECEPTIONIST"], bodySchema: UpdatePaymentSchema },
+  async ({ request, body }) => {
+    const id = idFromUrl(request);
+    const before = await prisma.payment.findUnique({ where: { id } });
+    if (!before) return notFound();
+
+    const data: Record<string, unknown> = { ...body };
+    if (
+      body.status === "PAID" &&
+      before.status !== "PAID" &&
+      body.paidAt === undefined
+    ) {
+      data.paidAt = new Date();
+    }
+
+    const after = await prisma.payment.update({
+      where: { id },
+      data: data as never,
+    });
+
+    const ltvShouldRecalc =
+      before.status !== after.status &&
+      (before.status === "PAID" || after.status === "PAID");
+    if (ltvShouldRecalc && after.patientId) {
+      try {
+        await recalcLtv(after.patientId);
+      } catch (e) {
+        console.error("[payments.PATCH] recalcLtv failed", e);
+      }
+    }
+
+    const d = diff(
+      before as unknown as Record<string, unknown>,
+      after as unknown as Record<string, unknown>
+    );
+    await audit(request, {
+      action: "payment.update",
+      entityType: "Payment",
+      entityId: id,
+      meta: d,
+    });
+    return ok(after);
+  }
+);

@@ -1,21 +1,14 @@
-import { BarChart3Icon } from "lucide-react"
+import { AnalyticsPageClient } from "./_components/analytics-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/analytics — aggregated metrics dashboard.
+ *
+ * Calls `GET /api/crm/analytics?period=...` in one round-trip and renders
+ * seven chart sections (TZ §6 analytics).
+ *
+ * RBAC: ADMIN sees everything; DOCTOR sees only their own slice (the API
+ * enforces that by filtering to `doctor.userId === session.user.id`).
+ */
 export default function AnalyticsPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Аналитика"
-        subtitle="Фаза 4 — TODO: сводные метрики"
-      />
-      <EmptyState
-        icon={<BarChart3Icon />}
-        title="Аналитика"
-        description="Выручка, конверсии, загрузка клиники, ретеншн пациентов."
-      />
-    </PageContainer>
-  )
+  return <AnalyticsPageClient />;
 }

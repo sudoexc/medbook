@@ -1,21 +1,12 @@
-import { ClipboardListIcon } from "lucide-react"
+import { AppointmentsPageClient } from "./_components/appointments-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/appointments — Phase 2b.
+ * Server component is a thin shell; all interactive state (filters, KPI
+ * strip, virtualised table, bulk actions, row drawer, right rail, create
+ * dialog) lives in the client component. Data is fetched on the client via
+ * TanStack Query so filter changes never require a full server round-trip.
+ */
 export default function AppointmentsPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Записи"
-        subtitle="Фаза 2b — TODO: таблица записей с фильтрами"
-      />
-      <EmptyState
-        icon={<ClipboardListIcon />}
-        title="Список записей будет здесь"
-        description="TanStack Table с фильтрами, сортировкой и быстрыми действиями."
-      />
-    </PageContainer>
-  )
+  return <AppointmentsPageClient />;
 }

@@ -203,6 +203,226 @@
       "newAppointment": "Новая запись"
     }
   },
+  "appointments": {
+    "title": "Записи",
+    "subtitle": "Управление визитами, очередью и оплатами",
+    "count": "Всего {count}",
+    "new": "Новая запись",
+    "export": "Экспорт CSV",
+    "loadMore": "Показать ещё",
+    "loading": "Загрузка…",
+    "columns": {
+      "select": "Выбрать",
+      "time": "Время",
+      "patient": "Пациент",
+      "doctor": "Врач",
+      "services": "Услуги",
+      "moreServices": "ещё",
+      "status": "Статус",
+      "payment": "Оплата",
+      "cabinet": "Каб.",
+      "channel": "Канал",
+      "actions": "Действия"
+    },
+    "status": {
+      "booked": "Записан",
+      "waiting": "Ожидает",
+      "in_progress": "На приёме",
+      "completed": "Завершён",
+      "skipped": "Пропущен",
+      "cancelled": "Отменён",
+      "no_show": "Не пришёл"
+    },
+    "payment": {
+      "paid": "Оплачен",
+      "partial": "Частично",
+      "unpaid": "Не оплачен",
+      "refunded": "Возврат"
+    },
+    "channel": {
+      "walkin": "С улицы",
+      "phone": "Звонок",
+      "telegram": "Telegram",
+      "website": "Сайт",
+      "kiosk": "Киоск"
+    },
+    "filters": {
+      "search": "Поиск: пациент, врач, телефон",
+      "from": "С",
+      "to": "По",
+      "doctor": "Врач",
+      "doctorAll": "Все врачи",
+      "service": "Услуга",
+      "serviceAll": "Все услуги",
+      "cabinet": "Кабинет",
+      "cabinetAll": "Все кабинеты",
+      "channel": "Канал",
+      "channelAll": "Все каналы",
+      "onlyUnpaid": "Только неоплаченные",
+      "clear": "Сбросить",
+      "dateMode": {
+        "today": "Сегодня",
+        "week": "7 дней",
+        "month": "30 дней",
+        "range": "Период"
+      }
+    },
+    "kpi": {
+      "label": "Быстрые статусы",
+      "all": "Все",
+      "waiting": "Ожидает",
+      "booked": "Записан",
+      "in_progress": "На приёме",
+      "completed": "Завершён",
+      "cancelled": "Отменён",
+      "no_show": "Не пришёл"
+    },
+    "bulk": {
+      "label": "Массовые действия",
+      "selected": "Выбрано: {count}",
+      "markArrived": "Пришёл",
+      "markNoShow": "Не пришёл",
+      "reschedule": "Перенести",
+      "rescheduleStub": "Перенос появится вместе с календарём",
+      "sendSms": "SMS напоминание",
+      "smsTemplate": "Напоминаем о записи в {time} к {doctor}",
+      "smsSent": "SMS отправлено: {count}",
+      "smsFailed": "Не отправлено: {count}",
+      "markedArrived": "Отмечено «пришёл»: {count}",
+      "markedNoShow": "Отмечено «не пришёл»: {count}",
+      "clear": "Снять",
+      "clearSelection": "Снять выбор"
+    },
+    "rowActions": {
+      "open": "Открыть запись",
+      "openPatient": "Карточка пациента",
+      "call": "Позвонить",
+      "more": "Ещё"
+    },
+    "empty": {
+      "title": "Пока нет записей",
+      "description": "Создайте первую запись, чтобы начать работу с очередью.",
+      "action": "Новая запись",
+      "filteredTitle": "Ничего не найдено",
+      "filteredDescription": "Измените или сбросьте фильтры."
+    },
+    "drawer": {
+      "title": "Запись",
+      "close": "Закрыть",
+      "loading": "Загрузка…",
+      "error": "Не удалось загрузить запись",
+      "openPatient": "Карточка пациента",
+      "call": "Позвонить",
+      "fields": {
+        "status": "Статус",
+        "time": "Время",
+        "duration": "Длительность",
+        "doctor": "Врач",
+        "cabinet": "Кабинет",
+        "channel": "Канал",
+        "services": "Услуги",
+        "total": "Итого",
+        "payments": "Платежи",
+        "notes": "Заметки",
+        "history": "История"
+      },
+      "minutes": "мин",
+      "noServices": "Без услуг",
+      "noPayments": "Нет платежей",
+      "noHistory": "История пуста",
+      "notesPlaceholder": "Служебные заметки о визите",
+      "notesSave": "Сохранить",
+      "notesReset": "Отменить",
+      "notesSaved": "Заметки сохранены",
+      "saving": "Сохраняем…",
+      "statusError": "Не удалось сменить статус",
+      "cancelAppt": "Отменить запись",
+      "cancelConfirm": "Отменить эту запись?",
+      "cancelled": "Запись отменена",
+      "conflict": {
+        "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
+        "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
+        "doctor_time_off": "Врач в отпуске в это время",
+        "outside_schedule": "Вне графика работы"
+      }
+    },
+    "rail": {
+      "quickActions": "Быстрые действия",
+      "sendReminders": "Напоминания всем",
+      "remindersStub": "Рассылка появится вместе с уведомлениями",
+      "exportCsv": "Экспорт CSV",
+      "freeSlots": "Свободные слоты сегодня",
+      "noDoctors": "Нет активных врачей",
+      "todaySummary": "Сводка за сегодня",
+      "count": "Записей",
+      "revenue": "Выручка",
+      "avgCheck": "Средний чек",
+      "conv": "Конверсия"
+    },
+    "slotPicker": {
+      "date": "Дата",
+      "loading": "Загрузка слотов…",
+      "noSlots": "Нет свободных слотов",
+      "pickDoctorFirst": "Выберите врача",
+      "slotMin": "Шаг: {min} мин"
+    },
+    "newDialog": {
+      "title": "Новая запись",
+      "description": "Выберите пациента, услуги, врача и время.",
+      "services": "Услуги",
+      "servicesEmpty": "Ни одной услуги не выбрано",
+      "serviceAddPlaceholder": "Добавить услугу",
+      "serviceAllPicked": "Все услуги уже выбраны",
+      "serviceRemove": "Убрать услугу",
+      "doctor": "Врач",
+      "doctorPlaceholder": "Выберите врача",
+      "doctorHint": "Список будет сужаться под выбранные услуги.",
+      "channel": "Канал",
+      "cabinet": "Кабинет",
+      "cabinetPlaceholder": "Не задан",
+      "cabinetNone": "Без кабинета",
+      "notes": "Комментарий",
+      "notesPlaceholder": "Пожелания, симптомы, заметки",
+      "submit": "Создать запись",
+      "saving": "Сохраняем…",
+      "cancel": "Отмена",
+      "createdToast": "Запись создана",
+      "total": "Всего: {duration} мин · {price}",
+      "minutes": "мин",
+      "patient": {
+        "label": "Пациент",
+        "searchPlaceholder": "Найти пациента по имени или телефону",
+        "loading": "Ищем…",
+        "noMatches": "Ничего не найдено",
+        "createNew": "Создать нового пациента",
+        "createNewShort": "Новый пациент"
+      },
+      "newPatient": {
+        "title": "Новый пациент",
+        "cancel": "Отмена",
+        "fullName": "ФИО",
+        "fullNamePlaceholder": "Иванов Иван Иванович",
+        "phone": "Телефон",
+        "gender": "Пол",
+        "genderPlaceholder": "Выберите пол",
+        "source": "Источник",
+        "sourcePlaceholder": "Откуда пришёл"
+      },
+      "conflict": {
+        "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
+        "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
+        "doctor_time_off": "Врач в отпуске в это время",
+        "outside_schedule": "Вне графика работы"
+      },
+      "err": {
+        "patient": "Выберите пациента",
+        "doctor": "Выберите врача",
+        "time": "Выберите время",
+        "patientName": "Укажите ФИО пациента",
+        "patientPhone": "Укажите телефон пациента"
+      }
+    }
+  },
   "patientCard": {
     "back": "Назад в список",
     "newAppointmentTodo": "TODO: создание записи — Фаза 2b",

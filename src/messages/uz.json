@@ -203,6 +203,226 @@
       "newAppointment": "Yangi yozilish"
     }
   },
+  "appointments": {
+    "title": "Yozilishlar",
+    "subtitle": "Tashriflar, navbat va to'lovlarni boshqarish",
+    "count": "Jami {count}",
+    "new": "Yangi yozilish",
+    "export": "CSV eksport",
+    "loadMore": "Yana ko'rsatish",
+    "loading": "Yuklanmoqda…",
+    "columns": {
+      "select": "Tanlash",
+      "time": "Vaqt",
+      "patient": "Bemor",
+      "doctor": "Shifokor",
+      "services": "Xizmatlar",
+      "moreServices": "yana",
+      "status": "Holat",
+      "payment": "To'lov",
+      "cabinet": "Kab.",
+      "channel": "Kanal",
+      "actions": "Amallar"
+    },
+    "status": {
+      "booked": "Yozilgan",
+      "waiting": "Kutmoqda",
+      "in_progress": "Qabulda",
+      "completed": "Tugatildi",
+      "skipped": "O'tkazib yuborildi",
+      "cancelled": "Bekor qilindi",
+      "no_show": "Kelmadi"
+    },
+    "payment": {
+      "paid": "To'landi",
+      "partial": "Qisman",
+      "unpaid": "To'lanmagan",
+      "refunded": "Qaytarildi"
+    },
+    "channel": {
+      "walkin": "Ko'chadan",
+      "phone": "Qo'ng'iroq",
+      "telegram": "Telegram",
+      "website": "Sayt",
+      "kiosk": "Kiosk"
+    },
+    "filters": {
+      "search": "Qidiruv: bemor, shifokor, telefon",
+      "from": "Dan",
+      "to": "Gacha",
+      "doctor": "Shifokor",
+      "doctorAll": "Barcha shifokorlar",
+      "service": "Xizmat",
+      "serviceAll": "Barcha xizmatlar",
+      "cabinet": "Kabinet",
+      "cabinetAll": "Barcha kabinetlar",
+      "channel": "Kanal",
+      "channelAll": "Barcha kanallar",
+      "onlyUnpaid": "Faqat to'lanmaganlar",
+      "clear": "Tozalash",
+      "dateMode": {
+        "today": "Bugun",
+        "week": "7 kun",
+        "month": "30 kun",
+        "range": "Davr"
+      }
+    },
+    "kpi": {
+      "label": "Tez holatlar",
+      "all": "Barchasi",
+      "waiting": "Kutmoqda",
+      "booked": "Yozilgan",
+      "in_progress": "Qabulda",
+      "completed": "Tugatildi",
+      "cancelled": "Bekor qilindi",
+      "no_show": "Kelmadi"
+    },
+    "bulk": {
+      "label": "Ommaviy amallar",
+      "selected": "Tanlangan: {count}",
+      "markArrived": "Keldi",
+      "markNoShow": "Kelmadi",
+      "reschedule": "Ko'chirish",
+      "rescheduleStub": "Ko'chirish kalendar bilan qo'shiladi",
+      "sendSms": "SMS eslatma",
+      "smsTemplate": "{time} da {doctor} qabulidagi yozilishingizni eslatamiz",
+      "smsSent": "SMS yuborildi: {count}",
+      "smsFailed": "Yuborilmadi: {count}",
+      "markedArrived": "«Keldi» deb belgilandi: {count}",
+      "markedNoShow": "«Kelmadi» deb belgilandi: {count}",
+      "clear": "Olib tashlash",
+      "clearSelection": "Tanlovni olib tashlash"
+    },
+    "rowActions": {
+      "open": "Yozilishni ochish",
+      "openPatient": "Bemor kartasi",
+      "call": "Qo'ng'iroq qilish",
+      "more": "Yana"
+    },
+    "empty": {
+      "title": "Hozircha yozilishlar yo'q",
+      "description": "Navbat bilan ishlashni boshlash uchun birinchi yozilishni yarating.",
+      "action": "Yangi yozilish",
+      "filteredTitle": "Hech narsa topilmadi",
+      "filteredDescription": "Filtrlarni o'zgartiring yoki tozalang."
+    },
+    "drawer": {
+      "title": "Yozilish",
+      "close": "Yopish",
+      "loading": "Yuklanmoqda…",
+      "error": "Yozilishni yuklab bo'lmadi",
+      "openPatient": "Bemor kartasi",
+      "call": "Qo'ng'iroq qilish",
+      "fields": {
+        "status": "Holat",
+        "time": "Vaqt",
+        "duration": "Davomiyligi",
+        "doctor": "Shifokor",
+        "cabinet": "Kabinet",
+        "channel": "Kanal",
+        "services": "Xizmatlar",
+        "total": "Jami",
+        "payments": "To'lovlar",
+        "notes": "Eslatmalar",
+        "history": "Tarix"
+      },
+      "minutes": "daqiqa",
+      "noServices": "Xizmatlar yo'q",
+      "noPayments": "To'lovlar yo'q",
+      "noHistory": "Tarix bo'sh",
+      "notesPlaceholder": "Tashrif haqida xizmat eslatmalari",
+      "notesSave": "Saqlash",
+      "notesReset": "Bekor qilish",
+      "notesSaved": "Eslatmalar saqlandi",
+      "saving": "Saqlanmoqda…",
+      "statusError": "Holatni o'zgartirib bo'lmadi",
+      "cancelAppt": "Yozilishni bekor qilish",
+      "cancelConfirm": "Ushbu yozilishni bekor qilasizmi?",
+      "cancelled": "Yozilish bekor qilindi",
+      "conflict": {
+        "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
+        "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
+        "doctor_time_off": "Shifokor ta'tilda",
+        "outside_schedule": "Ish vaqtidan tashqari"
+      }
+    },
+    "rail": {
+      "quickActions": "Tez amallar",
+      "sendReminders": "Barchaga eslatmalar",
+      "remindersStub": "Xabarnomalar modulida qo'shiladi",
+      "exportCsv": "CSV eksport",
+      "freeSlots": "Bugungi bo'sh slotlar",
+      "noDoctors": "Faol shifokorlar yo'q",
+      "todaySummary": "Bugungi umumiy",
+      "count": "Yozilishlar",
+      "revenue": "Tushum",
+      "avgCheck": "O'rtacha chek",
+      "conv": "Konversiya"
+    },
+    "slotPicker": {
+      "date": "Sana",
+      "loading": "Slotlar yuklanmoqda…",
+      "noSlots": "Bo'sh slotlar yo'q",
+      "pickDoctorFirst": "Shifokorni tanlang",
+      "slotMin": "Qadam: {min} daq."
+    },
+    "newDialog": {
+      "title": "Yangi yozilish",
+      "description": "Bemor, xizmatlar, shifokor va vaqtni tanlang.",
+      "services": "Xizmatlar",
+      "servicesEmpty": "Birorta xizmat tanlanmagan",
+      "serviceAddPlaceholder": "Xizmat qo'shish",
+      "serviceAllPicked": "Barcha xizmatlar tanlangan",
+      "serviceRemove": "Xizmatni olib tashlash",
+      "doctor": "Shifokor",
+      "doctorPlaceholder": "Shifokorni tanlang",
+      "doctorHint": "Ro'yxat tanlangan xizmatlar bo'yicha toraytiriladi.",
+      "channel": "Kanal",
+      "cabinet": "Kabinet",
+      "cabinetPlaceholder": "Tayinlanmagan",
+      "cabinetNone": "Kabinetsiz",
+      "notes": "Izoh",
+      "notesPlaceholder": "Istaklar, simptomlar, eslatmalar",
+      "submit": "Yozilishni yaratish",
+      "saving": "Saqlanmoqda…",
+      "cancel": "Bekor qilish",
+      "createdToast": "Yozilish yaratildi",
+      "total": "Jami: {duration} daq · {price}",
+      "minutes": "daq",
+      "patient": {
+        "label": "Bemor",
+        "searchPlaceholder": "Bemorni ism yoki telefon bo'yicha izlang",
+        "loading": "Qidirilmoqda…",
+        "noMatches": "Hech narsa topilmadi",
+        "createNew": "Yangi bemor yaratish",
+        "createNewShort": "Yangi bemor"
+      },
+      "newPatient": {
+        "title": "Yangi bemor",
+        "cancel": "Bekor qilish",
+        "fullName": "F.I.Sh.",
+        "fullNamePlaceholder": "Azizov Aziz Azizovich",
+        "phone": "Telefon",
+        "gender": "Jinsi",
+        "genderPlaceholder": "Jinsni tanlang",
+        "source": "Manba",
+        "sourcePlaceholder": "Qayerdan keldi"
+      },
+      "conflict": {
+        "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
+        "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
+        "doctor_time_off": "Shifokor ta'tilda",
+        "outside_schedule": "Ish vaqtidan tashqari"
+      },
+      "err": {
+        "patient": "Bemorni tanlang",
+        "doctor": "Shifokorni tanlang",
+        "time": "Vaqtni tanlang",
+        "patientName": "Bemor F.I.Sh. sini kiriting",
+        "patientPhone": "Bemor telefonini kiriting"
+      }
+    }
+  },
   "patientCard": {
     "back": "Ro'yxatga qaytish",
     "newAppointmentTodo": "TODO: yozilish yaratish — 2b bosqichida",

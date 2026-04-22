@@ -1081,5 +1081,128 @@
       "sat": "Shanba",
       "sun": "Yakshanba"
     }
+  },
+  "notifications": {
+    "title": "Bildirishnomalar",
+    "subtitle": "Shablonlar, navbat, triggerlar va ommaviy yuborish",
+    "tabs": {
+      "templates": "Shablonlar",
+      "queue": "Navbat",
+      "campaigns": "Yuborishlar",
+      "triggers": "Triggerlar"
+    },
+    "categories": {
+      "REMINDER": "Eslatmalar",
+      "MARKETING": "Marketing",
+      "TRANSACTIONAL": "Tranzaksion"
+    },
+    "tree": {
+      "title": "Shablonlar",
+      "new": "Yangi",
+      "empty": "Shablon yo'q",
+      "disabled": "o'chiq",
+      "customs": "Maxsus"
+    },
+    "editor": {
+      "newTitle": "Yangi shablon",
+      "editTitle": "Shablonni tahrirlash",
+      "active": "Faol",
+      "key": "Kalit",
+      "channel": "Kanal",
+      "category": "Kategoriya",
+      "nameRu": "Nomi (ru)",
+      "nameUz": "Nomi (uz)",
+      "bodyRu": "Matn (ru)",
+      "bodyUz": "Matn (uz)",
+      "bodyPlaceholder": "Assalomu alaykum, {{patient.firstName}}! {{appointment.date}} kuni {{appointment.time}} da qabulingiz bor…",
+      "placeholders": "Joylashtiruvchilar",
+      "preview": "Oldindan ko'rish",
+      "previewEmpty": "Shablon matnini kiriting",
+      "save": "Saqlash",
+      "saved": "Saqlandi",
+      "delete": "O'chirish",
+      "deleted": "O'chirildi",
+      "deleteConfirmTitle": "Shablonni o'chirish?",
+      "deleteConfirmBody": "Shablon nofaol qilinadi va yuborishlar to'xtatiladi.",
+      "cancel": "Bekor qilish",
+      "testSend": "Test yuborish",
+      "testSent": "Test vazifasi navbatga qo'shildi",
+      "saveBeforeTest": "Avval shablonni saqlang"
+    },
+    "queue": {
+      "tabs": {
+        "all": "Hammasi",
+        "pending": "Navbatda",
+        "sent": "Yuborilgan",
+        "failed": "Xatolar"
+      },
+      "filter": {
+        "channel": "Kanal",
+        "allChannels": "Barcha kanallar"
+      },
+      "refresh": "Yangilash",
+      "retry": "Qayta urinish",
+      "retried": "Qayta navbatga qo'yildi",
+      "cancel": "Bekor qilish",
+      "manual": "Qo'lda yuborish",
+      "col": {
+        "scheduled": "Reja",
+        "recipient": "Qabul qiluvchi",
+        "template": "Shablon",
+        "channel": "Kanal",
+        "status": "Holat",
+        "retries": "Urinishlar",
+        "actions": "Amallar"
+      },
+      "status": {
+        "QUEUED": "Navbatda",
+        "SENT": "Yuborildi",
+        "DELIVERED": "Yetkazildi",
+        "READ": "O'qildi",
+        "FAILED": "Xato",
+        "CANCELLED": "Bekor qilindi"
+      },
+      "empty": {
+        "title": "Navbat bo'sh",
+        "description": "Yangi bildirishnomalar rejaga ko'ra yoki qo'lda yuborilgandan keyin paydo bo'ladi."
+      }
+    },
+    "triggers": {
+      "title": "Triggerlar",
+      "hint": "CRM avtomatik tarzda bildirishnoma yaratadigan 7 hodisa. Har bir trigger mos kalitga ega shablonga bog'lanishi kerak.",
+      "on": "yoq",
+      "off": "o'chiq",
+      "needTemplate": "Shu kalitli shablon kerak",
+      "noTemplate": "Avval shu kalit bilan shablon yarating",
+      "empty": {
+        "title": "Triggerlar yo'q",
+        "description": "Avtomatikani yoqish uchun trigger kalitlari bilan shablonlar yarating."
+      }
+    },
+    "campaigns": {
+      "title": "Yuborishlar",
+      "subtitle": "Bemorlar segmentlari va ommaviy yuborish",
+      "new": "Yangi yuborish",
+      "empty": {
+        "title": "Yuborishlar yo'q",
+        "description": "To'liq segment konstruktori 5-bosqichda paydo bo'ladi."
+      }
+    },
+    "rail": {
+      "title": "Umumiy",
+      "today": "Bugun",
+      "sentToday": "Yuborildi",
+      "queued": "Navbatda",
+      "failedToday": "Xatolar",
+      "last30d": "30 kun",
+      "total": "Jami",
+      "delivered": "Yetkazildi",
+      "failed": "Xatolar",
+      "activeTemplates": "Faol shablonlar",
+      "topTemplates": "Eng ko'p ishlatiluvchilar",
+      "noTop": "Ma'lumot yo'q",
+      "manual": "Qo'lda yuborish",
+      "devModeHint": "DEV MODE: LogOnly-adapter yoqilgan — SMS/TG aslida yuborilmaydi."
+    }
   }
 }

@@ -18,6 +18,7 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -180,6 +181,8 @@ export const POST = createApiHandler(
       entityId: created.id,
       meta: { after: created },
     });
+    // Phase 3a: fire notifications trigger (immediate + 24h/2h reminders).
+    fireTrigger({ kind: "appointment.created", appointmentId: created.id });
     return ok(created, 201);
   }
 );

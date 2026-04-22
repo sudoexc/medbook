@@ -1,21 +1,12 @@
-import { BellIcon } from "lucide-react"
+import { NotificationsPageClient } from "./_components/notifications-page-client";
 
-import { PageContainer } from "@/components/molecules/page-container"
-import { SectionHeader } from "@/components/molecules/section-header"
-import { EmptyState } from "@/components/atoms/empty-state"
-
+/**
+ * /crm/notifications — Phase 3a.
+ *
+ * Thin server shell; client component owns filter state (URL-synced tab),
+ * data-fetching via TanStack Query and dialogs. See `docs/TZ.md` §6.9
+ * and progress log Phase 3a for the full contract.
+ */
 export default function NotificationsPage() {
-  return (
-    <PageContainer>
-      <SectionHeader
-        title="Уведомления"
-        subtitle="Фаза 3a — TODO: центр и шаблоны уведомлений"
-      />
-      <EmptyState
-        icon={<BellIcon />}
-        title="Центр уведомлений"
-        description="Шаблоны, история доставки, правила по событиям."
-      />
-    </PageContainer>
-  )
+  return <NotificationsPageClient />;
 }

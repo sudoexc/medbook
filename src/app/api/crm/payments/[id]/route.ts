@@ -10,6 +10,7 @@ import { audit } from "@/lib/audit";
 import { ok, notFound, diff } from "@/server/http";
 import { UpdatePaymentSchema } from "@/server/schemas/payment";
 import { recalcLtv } from "@/server/services/ltv";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -58,6 +59,12 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    if (before.status !== "PAID" && after.status === "PAID") {
+      fireTrigger({
+        kind: "payment.paid",
+        appointmentId: after.appointmentId ?? null,
+      });
+    }
     return ok(after);
   }
 );

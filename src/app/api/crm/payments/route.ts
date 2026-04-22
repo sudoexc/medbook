@@ -14,6 +14,7 @@ import {
   QueryPaymentSchema,
 } from "@/server/schemas/payment";
 import { recalcLtv } from "@/server/services/ltv";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"] },
@@ -121,6 +122,12 @@ export const POST = createApiHandler(
       } catch (e) {
         console.error("[payments.POST] recalcLtv failed", e);
       }
+      // Phase 3a: cancel any pending payment.due notifications for this
+      // appointment since the patient just paid.
+      fireTrigger({
+        kind: "payment.paid",
+        appointmentId: created.appointmentId ?? null,
+      });
     }
 
     await audit(request, {

@@ -12,6 +12,7 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -159,6 +160,14 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    // Phase 3a notification triggers.
+    if (body.status === "CANCELLED") {
+      fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
+    } else if (body.status === "NO_SHOW") {
+      fireTrigger({ kind: "appointment.noshow", appointmentId: id });
+    } else if (timeChanged) {
+      fireTrigger({ kind: "appointment.updated", appointmentId: id });
+    }
     return ok(after);
   }
 );
@@ -182,6 +191,7 @@ export const DELETE = createApiHandler(
       entityId: id,
       meta: { before, after: cancelled },
     });
+    fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
     return ok({ id, cancelled: true });
   }
 );

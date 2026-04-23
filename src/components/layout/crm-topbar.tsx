@@ -26,6 +26,7 @@ import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
 import { useGlobalSearchShortcut } from "@/components/layout/global-search"
 import { toast } from "@/components/ui/sonner"
+import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog"
 
 // The cmdk search dialog pulls in cmdk + @radix-ui/react-dialog + a slew
 // of icons (~50KB gzip combined). Only load it when the user opens the
@@ -92,6 +93,7 @@ export function CrmTopbar({
   const { theme, setTheme } = useTheme()
   const [searchMounted, setSearchMounted] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
+  const [newApptOpen, setNewApptOpen] = React.useState(false)
   const openSearch = React.useCallback(() => {
     setSearchMounted(true)
     setSearchOpen(true)
@@ -133,13 +135,12 @@ export function CrmTopbar({
         <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
       ) : null}
 
-      <Button
-        size="default"
-        onClick={() => toast.info("TODO: создание новой записи — Фаза 2b")}
-      >
+      <Button size="default" onClick={() => setNewApptOpen(true)}>
         <PlusIcon />
         Новая запись
       </Button>
+      <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
+
 
       {userRole === "SUPER_ADMIN" && (
         <ClinicSwitcher

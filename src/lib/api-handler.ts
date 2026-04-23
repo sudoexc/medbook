@@ -148,6 +148,17 @@ export function createApiHandler<TBody = unknown>(
       return json({ error: "Forbidden" }, { status });
     }
 
+    if (ctx.kind === "SUPER_ADMIN") {
+      return json(
+        {
+          error: "ClinicNotSelected",
+          message:
+            "SUPER_ADMIN must impersonate a clinic before mutating tenant-scoped data.",
+        },
+        { status: 400 }
+      );
+    }
+
     return runWithTenant(ctx, () =>
       handler({ request, body: parsed.body, ctx })
     );

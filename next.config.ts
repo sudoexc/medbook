@@ -10,9 +10,11 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 //  - Image sources include api.qrserver.com for the /ticket QR fallback.
 //  - Telegram API is allowed for server-side fetches (fine) and is listed under
 //    connect-src defensively in case client code ever needs it.
+const isDev = process.env.NODE_ENV !== "production";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://api.qrserver.com",
   "font-src 'self' data:",

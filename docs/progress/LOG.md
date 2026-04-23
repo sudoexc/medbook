@@ -667,4 +667,32 @@
 
 ---
 
-## Phase 7 — Тесты + полировка — 🔄 планируется
+## Phase 7 — Тесты + полировка — 🔄 в работе
+
+### ux-polisher (pending commit)
+
+**Polish pass по §9.6 + §10.Фаза 7.**
+
+- **Root-level error boundaries.** `src/app/[locale]/crm/error.tsx` + `src/app/admin/error.tsx` — ловят необработанные ошибки в `/crm/**` и `/admin/**`. Обе кнопки: «Повторить» (вызывает `reset()`) и «Вернуться» (`Link` через `buttonVariants()` — `Button.asChild` не поддерживается в @base-ui/react). В dev показывают `error.message + digest`, в prod скрыты. i18n через новые ключи `common.errorBoundaryTitle/Description/goHome` (ru/uz parity).
+- **Route-level skeletons.** Next 16 `loading.tsx` для каждого CRM-раздела: `patients`, `appointments`, `doctors`, `reception`, `call-center`, `telegram`, `notifications`, `analytics`, `documents`, `calendar` + generic fallback `/crm/loading.tsx`. Bespoke шаблоны для 3-колоночных layout'ов (`call-center`, `telegram`, `notifications`, `calendar`); остальные — через новую молекулу `src/components/molecules/page-skeleton.tsx` (конфигурируемая — `kpi|filters|body=table/grid|rows|rail`).
+- **Global search shortcut `/`.** `src/components/layout/global-search.tsx` → `useGlobalSearchShortcut` теперь ловит как `⌘K/Ctrl+K`, так и `/`, но только если активный элемент не input/textarea/contenteditable. Kbd hint в топбаре обновлён на «⌘K · /».
+- **Toasts / empty states / loading buttons — audit-only.** Все три паттерна уже полностью покрыты со времён Phase 2-5: 24 файла импортируют `EmptyState`, 35 файлов используют `toast.{success,error,info}` в consumer-компонентах, `isPending`/`isLoading` привязаны к `disabled` во всех формах. Полировать точечно нечего.
+
+### Файлы
+
+- **Added (14):** `src/app/[locale]/crm/error.tsx`, `src/app/admin/error.tsx`, `src/app/[locale]/crm/{loading,patients/loading,appointments/loading,doctors/loading,reception/loading,call-center/loading,telegram/loading,notifications/loading,analytics/loading,documents/loading,calendar/loading}.tsx`, `src/components/molecules/page-skeleton.tsx`, `docs/ux/phase-7.md`.
+- **Modified (4):** `src/components/layout/global-search.tsx`, `src/components/layout/crm-topbar.tsx`, `src/messages/ru.json`, `src/messages/uz.json`.
+- **Constraints соблюдены:** `src/app/api/*` не трогал, `prisma/schema.prisma` не трогал, ARIA-атрибуты не менял (a11y-engineer), dynamic imports / bundle не трогал (performance-optimizer).
+
+### Quality gates
+
+- `npx tsc --noEmit` — clean в пределах изменённых файлов. Pre-existing TS2345 в `src/app/api/auth/[...nextauth]/route.ts` пришёл от security-reviewer'а и находится вне UX scope.
+- `npx vitest run` — **239 / 239 passed** (baseline Phase 6 сохранён).
+- `npm run build` — exit 0. Новые `loading.tsx` + `error.tsx` попали в route manifest.
+
+### Known gaps / handoff
+
+- Inline blur-validation для email/phone — оставлено как есть (charter: "leave if already consistent"). Текущая валидация через Zod на submit согласована везде.
+- ARIA на новых skeleton/error — a11y-engineer в параллели.
+- Visual regression (Percy/Chromatic) — не настроено, решение test-engineer'а.
+- Sonner richColors / темы — дефолт; можно итерировать позже без code churn.

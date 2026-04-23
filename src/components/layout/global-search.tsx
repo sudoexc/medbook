@@ -171,15 +171,35 @@ export function parseSearchResults(raw: unknown): SearchResults {
 // ---------------------------------------------------------------------------
 
 /**
- * Registers the global ⌘K / Ctrl+K shortcut. Any other editable element
- * doesn't swallow the event — we check `e.target` to avoid toggling when
- * the user is typing in another input.
+ * Returns `true` if the event target is a form field or contenteditable
+ * surface — in which case we do NOT intercept `/` (the user is typing).
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
+/**
+ * Registers the global search hotkeys:
+ *   - ⌘K / Ctrl+K — always fires (standard command-palette convention).
+ *   - `/`         — fires only when the user is not typing in an input,
+ *                   matching Gmail/GitHub behaviour (TZ §9.6: "Esc закрывает
+ *                   модал, / фокусирует глобальный поиск").
  */
 export function useGlobalSearchShortcut(open: () => void) {
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
-      if (!isCmdK) return;
+      const isSlash =
+        e.key === "/" &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !isEditableTarget(e.target);
+      if (!isCmdK && !isSlash) return;
       e.preventDefault();
       open();
     };

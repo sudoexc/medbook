@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { useParams, usePathname } from "next/navigation"
 import {
   BellIcon,
@@ -23,11 +24,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
-import {
-  GlobalSearch,
-  useGlobalSearchShortcut,
-} from "@/components/layout/global-search"
+import { useGlobalSearchShortcut } from "@/components/layout/global-search"
 import { toast } from "@/components/ui/sonner"
+
+// The cmdk search dialog pulls in cmdk + @radix-ui/react-dialog + a slew
+// of icons (~50KB gzip combined). Only load it when the user opens the
+// dialog (via ⌘K or the topbar button); it lives in every CRM page layout.
+const GlobalSearch = dynamic(
+  () =>
+    import("@/components/layout/global-search").then((m) => m.GlobalSearch),
+  { ssr: false },
+)
 
 const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
   reception: { title: "Ресепшн", subtitle: "Главный дашборд" },
@@ -83,8 +90,13 @@ export function CrmTopbar({
   const meta = SECTION_TITLE[segment] ?? SECTION_TITLE.reception
   const now = useClock()
   const { theme, setTheme } = useTheme()
+  const [searchMounted, setSearchMounted] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
-  useGlobalSearchShortcut(React.useCallback(() => setSearchOpen(true), []))
+  const openSearch = React.useCallback(() => {
+    setSearchMounted(true)
+    setSearchOpen(true)
+  }, [])
+  useGlobalSearchShortcut(openSearch)
 
   const timeStr =
     now == null
@@ -104,20 +116,22 @@ export function CrmTopbar({
         <div className="truncate text-xs text-muted-foreground">{meta.subtitle}</div>
       </div>
 
-      {/* Global cmdk search — opens on click or ⌘K. */}
+      {/* Global cmdk search — opens on click, ⌘K, or `/`. */}
       <Button
         variant="outline"
         size="default"
         className="hidden h-9 w-[280px] justify-start gap-2 text-muted-foreground md:flex"
-        onClick={() => setSearchOpen(true)}
+        onClick={openSearch}
       >
         <SearchIcon />
         <span className="flex-1 text-left">Поиск по ФИО, телефону, ID…</span>
         <kbd className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          ⌘K
+          ⌘K · /
         </kbd>
       </Button>
-      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      {searchMounted ? (
+        <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+      ) : null}
 
       <Button
         size="default"

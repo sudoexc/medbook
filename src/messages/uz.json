@@ -20,7 +20,10 @@
     "none": "Yo'q",
     "today": "Bugun",
     "yesterday": "Kecha",
-    "tomorrow": "Ertaga"
+    "tomorrow": "Ertaga",
+    "goHome": "Qaytish",
+    "errorBoundaryTitle": "Nimadir noto'g'ri ketdi",
+    "errorBoundaryDescription": "Amalni qayta urinib ko'ring. Agar xatolik takrorlansa — bosh sahifaga qayting va administratorga murojaat qiling."
   },
   "nav": {
     "doctors": "Shifokorlar",

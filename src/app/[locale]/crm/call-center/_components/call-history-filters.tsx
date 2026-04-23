@@ -77,6 +77,7 @@ export function CallHistoryFilters({
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("searchPlaceholder")}
           className="pl-8"
+          aria-label={t("searchPlaceholder")}
         />
       </div>
 
@@ -157,6 +158,7 @@ export function CallHistoryFilters({
               setFilters({ from: e.target.value ? new Date(e.target.value).toISOString() : "" })
             }
             className="h-8"
+            aria-label={t("from")}
           />
         </div>
         <div className="grid gap-1">
@@ -170,6 +172,7 @@ export function CallHistoryFilters({
               setFilters({ to: e.target.value ? new Date(e.target.value).toISOString() : "" })
             }
             className="h-8"
+            aria-label={t("to")}
           />
         </div>
       </div>

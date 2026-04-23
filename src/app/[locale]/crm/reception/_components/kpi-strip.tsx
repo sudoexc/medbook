@@ -121,6 +121,9 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
         "grid-cols-2 md:grid-cols-3 xl:grid-cols-6",
         className,
       )}
+      aria-live="polite"
+      aria-atomic="false"
+      aria-label={t("todayAppointments")}
     >
       {tiles.map((tile) => (
         <Link

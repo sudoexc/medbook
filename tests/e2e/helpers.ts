@@ -19,6 +19,8 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import type { Result as AxeResult } from "axe-core";
 
 import {
   NEUROFAX,
@@ -241,6 +243,90 @@ export async function firstDoctorId(
   if (!res.ok()) return null;
   const body = (await res.json()) as { rows?: Array<{ id: string }> };
   return body.rows?.[0]?.id ?? null;
+}
+
+/**
+ * Whitelist of axe rule IDs whose violations are tolerated at the CRM-wide
+ * level for Phase 7. Each entry should point at a tracked issue or a design
+ * decision — do not expand this list silently.
+ *
+ * - `region` — Radix/BaseUI portals occasionally render overlays outside the
+ *   declared `<main>`/`<aside>` landmarks; we audit landmarks at page shell
+ *   level separately and accept portal overflow.
+ * - `color-contrast` — reported on `moderate`/`serious`; Phase 7 fixes the
+ *   critical pages but a few decorative muted-foreground-on-surface labels
+ *   currently hover at 4.4:1. Tracked as a palette follow-up.
+ */
+export const CRM_AXE_WHITELIST: readonly string[] = [
+  "region",
+  "color-contrast",
+] as const;
+
+/**
+ * Run axe-core against the current `page` and fail the test on any
+ * `critical` or `serious` violation that is not in the whitelist.
+ *
+ * Lower-severity findings (`moderate`, `minor`) are returned to the caller
+ * so specs can log them without failing; they are also skipped for any
+ * whitelisted rule IDs.
+ *
+ * Usage:
+ * ```ts
+ * const { violations } = await checkA11y(page);
+ * expect(violations).toEqual([]);
+ * ```
+ *
+ * Rules are restricted to WCAG 2.0/2.1/2.2 A + AA tags so we do not pick up
+ * AAA-only checks which are beyond the project's target (WCAG 2.2 AA).
+ */
+export async function checkA11y(
+  page: Page,
+  opts: {
+    excludeRules?: readonly string[];
+    includeRules?: readonly string[];
+    include?: string;
+  } = {},
+): Promise<{
+  violations: AxeResult[];
+  allViolations: AxeResult[];
+  summary: { critical: number; serious: number; moderate: number; minor: number };
+}> {
+  const exclude = new Set<string>([
+    ...CRM_AXE_WHITELIST,
+    ...(opts.excludeRules ?? []),
+  ]);
+
+  const builder = new AxeBuilder({ page }).withTags([
+    "wcag2a",
+    "wcag2aa",
+    "wcag21a",
+    "wcag21aa",
+    "wcag22aa",
+  ]);
+  if (opts.include) builder.include(opts.include);
+  if (opts.includeRules && opts.includeRules.length > 0) {
+    builder.withRules(opts.includeRules.slice());
+  }
+  if (exclude.size > 0) {
+    builder.disableRules([...exclude]);
+  }
+
+  const { violations: allViolations } = await builder.analyze();
+  const summary = {
+    critical: 0,
+    serious: 0,
+    moderate: 0,
+    minor: 0,
+  };
+  for (const v of allViolations) {
+    const key = (v.impact ?? "minor") as keyof typeof summary;
+    if (summary[key] !== undefined) summary[key] += 1;
+  }
+  // Only critical/serious cause a failure.
+  const blocking = allViolations.filter(
+    (v) => v.impact === "critical" || v.impact === "serious",
+  );
+  return { violations: blocking, allViolations, summary };
 }
 
 /**

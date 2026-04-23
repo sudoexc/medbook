@@ -116,8 +116,9 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
         >
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
-              <Label>{t("startAt")}</Label>
+              <Label htmlFor="to-start">{t("startAt")}</Label>
               <Input
+                id="to-start"
                 type="datetime-local"
                 value={form.startAt}
                 onChange={(e) =>
@@ -127,8 +128,9 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
               />
             </div>
             <div className="grid gap-1">
-              <Label>{t("endAt")}</Label>
+              <Label htmlFor="to-end">{t("endAt")}</Label>
               <Input
+                id="to-end"
                 type="datetime-local"
                 value={form.endAt}
                 onChange={(e) =>
@@ -139,8 +141,9 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
             </div>
           </div>
           <div className="grid gap-1">
-            <Label>{t("reason")}</Label>
+            <Label htmlFor="to-reason">{t("reason")}</Label>
             <Textarea
+              id="to-reason"
               rows={2}
               value={form.reason}
               onChange={(e) =>

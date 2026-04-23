@@ -120,6 +120,7 @@ export function CalendarToolbar({
               if (e.target.value) onChange({ date: e.target.value });
             }}
             className="h-9"
+            aria-label={t("today")}
           />
         </PopoverContent>
       </Popover>

@@ -121,7 +121,14 @@ export function ConversationList({
       </div>
 
       {/* List */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+        role="list"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-label={t("list.ariaLabel")}
+      >
         {isLoading && rows.length === 0 ? (
           <div className="space-y-0 p-2">
             {Array.from({ length: 6 }).map((_, i) => (

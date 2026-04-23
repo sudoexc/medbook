@@ -262,6 +262,7 @@ function InlineButtonsEditor({
                 onChange={(e) => updateBtn(ri, bi, { text: e.target.value })}
                 placeholder={t("textPlaceholder")}
                 className="h-7 w-[140px] text-xs"
+                aria-label={t("textPlaceholder")}
               />
               <Input
                 value={b.callback_data ?? ""}
@@ -270,6 +271,7 @@ function InlineButtonsEditor({
                 }
                 placeholder={t("dataPlaceholder")}
                 className="h-7 w-[120px] text-xs"
+                aria-label={t("dataPlaceholder")}
               />
               <Button
                 variant="ghost"

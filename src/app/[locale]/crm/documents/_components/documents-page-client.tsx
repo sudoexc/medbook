@@ -78,6 +78,7 @@ export function DocumentsPageClient() {
             value={filters.q}
             onChange={(e) => patch({ q: e.target.value })}
             placeholder={t("filters.search")}
+            aria-label={t("filters.search")}
           />
         </div>
         <Select
@@ -105,6 +106,7 @@ export function DocumentsPageClient() {
             onChange={(e) => patch({ from: e.target.value })}
             placeholder={t("filters.from")}
             className="w-[150px]"
+            aria-label={t("filters.from")}
           />
           <span className="text-xs text-muted-foreground">—</span>
           <Input
@@ -113,6 +115,7 @@ export function DocumentsPageClient() {
             onChange={(e) => patch({ to: e.target.value })}
             placeholder={t("filters.to")}
             className="w-[150px]"
+            aria-label={t("filters.to")}
           />
         </div>
         <label className="flex items-center gap-2 text-xs">

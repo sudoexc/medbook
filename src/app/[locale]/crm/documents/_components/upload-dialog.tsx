@@ -94,30 +94,35 @@ export function UploadDialog({
         <p className="mb-2 text-xs text-muted-foreground">{t("uploadHint")}</p>
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium">
+            <label htmlFor="up-patient" className="mb-1 block text-xs font-medium">
               {t("columns.patient")} (ID)
             </label>
             <Input
+              id="up-patient"
               value={patientId}
               onChange={(e) => setPatientId(e.target.value)}
               placeholder="cmXXX..."
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium">
+            <label htmlFor="up-title" className="mb-1 block text-xs font-medium">
               {t("columns.title")}
             </label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input
+              id="up-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium">
+            <label htmlFor="up-type" className="mb-1 block text-xs font-medium">
               {t("columns.type")}
             </label>
             <Select
               value={type}
               onValueChange={(v) => setType(v as DocumentType)}
             >
-              <SelectTrigger>
+              <SelectTrigger id="up-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -130,8 +135,11 @@ export function UploadDialog({
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium">File URL</label>
+            <label htmlFor="up-url" className="mb-1 block text-xs font-medium">
+              File URL
+            </label>
             <Input
+              id="up-url"
               value={fileUrl}
               onChange={(e) => setFileUrl(e.target.value)}
               placeholder="https://…"

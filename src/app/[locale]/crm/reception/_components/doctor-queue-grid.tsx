@@ -85,6 +85,8 @@ export function DoctorQueueGrid({
   return (
     <div
       aria-label={t("title")}
+      aria-live="polite"
+      aria-atomic="false"
       className={cn(
         "grid gap-3",
         "grid-cols-1 md:grid-cols-2 [@media(min-width:1440px)]:grid-cols-3 [@media(min-width:1680px)]:grid-cols-4",

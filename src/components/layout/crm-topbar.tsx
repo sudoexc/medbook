@@ -3,6 +3,7 @@
 import * as React from "react"
 import dynamic from "next/dynamic"
 import { useParams, usePathname } from "next/navigation"
+import { signOut } from "next-auth/react"
 import {
   BellIcon,
   MoonIcon,
@@ -206,7 +207,9 @@ export function CrmTopbar({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => (onSignOut ? onSignOut() : toast.message("TODO: sign out"))}
+            onClick={() =>
+              onSignOut ? onSignOut() : signOut({ callbackUrl: "/login" })
+            }
           >
             Выйти
           </DropdownMenuItem>

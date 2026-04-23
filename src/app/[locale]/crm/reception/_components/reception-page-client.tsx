@@ -2,13 +2,9 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { PlusIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { PageContainer } from "@/components/molecules/page-container";
-import { SectionHeader } from "@/components/molecules/section-header";
 import { StatusDot } from "@/components/atoms/status-dot";
 
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
@@ -30,16 +26,21 @@ import { KpiStrip } from "./kpi-strip";
 import { DoctorQueueGrid } from "./doctor-queue-grid";
 import { CallsWidget } from "./calls-widget";
 import { TgPreviewWidget } from "./tg-preview-widget";
-import { CabinetsWidget } from "./cabinets-widget";
-import { RemindersWidget } from "./reminders-widget";
+import { QueueColumn } from "./queue-column";
+import { BottomRow } from "./bottom-row";
 
 /**
- * Root client shell for `/crm/reception` (TZ §6.1).
+ * Root client shell for `/crm/reception` — matches docs/1 - Ресепшн (2).png.
  *
- * Layout: a full-bleed two-column layout (main queue + right rail) above
- * 1280px. The right rail hosts calls / TG / cabinets / reminders widgets
- * in a fixed, scrollable column. Below 1280px the rail drops beneath the
- * grid so the page stays usable on a tablet-sized receptionist screen.
+ * Layout (xl ≥ 1280px):
+ *   ┌────────────────────────────────────────────────────┐
+ *   │                KPI strip (6 cards)                 │
+ *   ├──────────┬───────────────────────┬─────────────────┤
+ *   │  ОБЩАЯ   │  КАБИНЕТЫ И ВРАЧИ     │  CALL CENTER    │
+ *   │  ОЧЕРЕДЬ │  (doctor cards grid)  │  TELEGRAM       │
+ *   ├──────────┴───────────────────────┴─────────────────┤
+ *   │ РЕКОМЕНДАЦИИ │ РАСПРЕДЕЛЕНИЕ │ ПРЕДУПРЕЖДЕНИЯ      │
+ *   └────────────────────────────────────────────────────┘
  */
 export function ReceptionPageClient() {
   useReceptionRealtime();
@@ -57,7 +58,6 @@ export function ReceptionPageClient() {
 
   const todayRows: AppointmentRow[] = today.data ?? [];
 
-  // Group today's appointments by doctor once so cards share a stable reference.
   const appointmentsByDoctor = React.useMemo(() => {
     const map = new Map<string, AppointmentRow[]>();
     for (const row of todayRows) {
@@ -78,7 +78,19 @@ export function ReceptionPageClient() {
     [todayRows],
   );
 
-  // Drawer state via `?ap=` search param (shared with /crm/appointments).
+  const warnings = React.useMemo(
+    () =>
+      upcomingReminders.map((r) => ({
+        id: r.appointment.id,
+        text: `Через ${r.minutesUntil} мин: ${r.appointment.patient.fullName} — ${r.appointment.doctor.nameRu}`,
+        tone: (r.minutesUntil <= 15 ? "danger" : "warning") as
+          | "danger"
+          | "warning",
+      })),
+    [upcomingReminders],
+  );
+
+  // Drawer state via `?ap=` search param.
   const openRowId = searchParams?.get("ap") ?? null;
   const openRow = React.useCallback(
     (id: string | null) => {
@@ -91,7 +103,6 @@ export function ReceptionPageClient() {
     [router, searchParams],
   );
 
-  // NewAppointmentDialog prefill.
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [dialogPrefill, setDialogPrefill] = React.useState<{
     patientId?: string | null;
@@ -109,66 +120,62 @@ export function ReceptionPageClient() {
     dashboard.isLoading || today.isLoading || doctors.isLoading;
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <PageContainer fullBleed className="flex-1 pb-0">
-          <SectionHeader
-            title={t("title")}
-            subtitle={t("subtitle")}
-            meta={
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-[color:var(--success)]">
-                <StatusDot status="online" size="xs" />
-                {t("liveBadge")}
-              </span>
-            }
-            actions={
-              <Button onClick={() => openCreate()}>
-                <PlusIcon className="size-4" />
-                {t("newAppointment")}
-              </Button>
-            }
-          />
+    <div className="flex min-w-0 flex-1 flex-col gap-4 p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-[color:var(--success)]">
+            <StatusDot status="online" size="xs" />
+            {t("liveBadge")}
+          </span>
+          <span className="hidden md:inline">
+            Обновляется автоматически
+          </span>
+        </div>
+      </div>
 
-          <KpiStrip dashboard={dashboard.data} todayRows={todayRows} />
+      <KpiStrip dashboard={dashboard.data} todayRows={todayRows} />
 
-          <SectionHeader
-            title={t("doctorQueue.title")}
-            subtitle={t("doctorQueue.subtitle")}
-          />
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+        <QueueColumn rows={todayRows} />
 
+        <section className="flex min-h-0 flex-col gap-3">
+          <div className="flex items-baseline justify-between px-1">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+              Кабинеты и врачи 101–305
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {doctors.data?.length ?? 0} активных
+            </span>
+          </div>
           <DoctorQueueGrid
             doctors={doctors.data ?? []}
             appointmentsByDoctor={appointmentsByDoctor}
             isLoading={isLoading}
             onRowClick={(id) => openRow(id)}
           />
-        </PageContainer>
+        </section>
+
+        <aside
+          aria-label={t("a11y.rightRail")}
+          className={cn(
+            "flex min-h-0 flex-col gap-3",
+          )}
+        >
+          <CallsWidget
+            rows={calls.data ?? []}
+            isLoading={calls.isLoading}
+            onQuickAppointment={({ patientId }) =>
+              openCreate({ patientId })
+            }
+          />
+          <TgPreviewWidget
+            rows={conversations.data ?? []}
+            isLoading={conversations.isLoading}
+          />
+        </aside>
       </div>
 
-      <aside
-        aria-label={t("a11y.rightRail")}
-        className={cn(
-          "hidden w-[340px] shrink-0 flex-col gap-3 border-l border-border bg-surface p-3 xl:flex",
-          "overflow-y-auto",
-        )}
-      >
-        <CallsWidget
-          rows={calls.data ?? []}
-          isLoading={calls.isLoading}
-          onQuickAppointment={({ patientId }) =>
-            openCreate({ patientId })
-          }
-        />
-        <TgPreviewWidget
-          rows={conversations.data ?? []}
-          isLoading={conversations.isLoading}
-        />
-        <CabinetsWidget
-          cabinets={cabinets.data ?? []}
-          todayRows={todayRows}
-        />
-        <RemindersWidget reminders={upcomingReminders} />
-      </aside>
+      <BottomRow todayRows={todayRows} warnings={warnings} />
 
       <AppointmentDrawer
         appointmentId={openRowId}
@@ -184,6 +191,10 @@ export function ReceptionPageClient() {
         patientId={dialogPrefill?.patientId ?? null}
         onCreated={(id) => openRow(id)}
       />
+      {/* cabinets data is exposed via DoctorQueueGrid cards; keep hook subscribed */}
+      <div className="sr-only">
+        {cabinets.data?.length ?? 0}
+      </div>
     </div>
   );
 }

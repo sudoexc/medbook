@@ -6,9 +6,12 @@ import { useParams, usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import {
   BellIcon,
+  ChevronDownIcon,
   MoonIcon,
+  PhoneIncomingIcon,
   PlusIcon,
   SearchIcon,
+  SendIcon,
   SunIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -38,18 +41,28 @@ const GlobalSearch = dynamic(
   { ssr: false },
 )
 
+const ROLE_LABEL: Record<string, string> = {
+  SUPER_ADMIN: "Супер-админ",
+  ADMIN: "Администратор",
+  DOCTOR: "Врач",
+  RECEPTIONIST: "Ресепшн",
+  NURSE: "Медсестра",
+  CALL_OPERATOR: "Call-оператор",
+}
+
 const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
   reception: { title: "Ресепшн", subtitle: "Главный дашборд" },
-  appointments: { title: "Записи", subtitle: "Все записи клиники" },
-  calendar: { title: "Календарь", subtitle: "Расписание по врачам" },
-  patients: { title: "Пациенты", subtitle: "База пациентов" },
-  doctors: { title: "Врачи", subtitle: "Аналитика врачей" },
+  appointments: { title: "Записи", subtitle: "Управление записями пациентов" },
+  calendar: { title: "Календарь записей", subtitle: "Планирование, сдвиги и подтверждения в реальном времени" },
+  patients: { title: "Пациенты", subtitle: "База пациентов и история визитов" },
+  doctors: { title: "Врачи", subtitle: "Расписание и результативность" },
+  rooms: { title: "Кабинеты", subtitle: "Загрузка помещений и оборудования" },
+  services: { title: "Услуги", subtitle: "Каталог услуг и цен" },
   "call-center": { title: "Call Center", subtitle: "Входящие и исходящие звонки" },
-  telegram: { title: "Telegram", subtitle: "Входящие сообщения" },
-  sms: { title: "SMS", subtitle: "Входящие и исходящие SMS" },
-  documents: { title: "Документы", subtitle: "Библиотека документов" },
+  telegram: { title: "Telegram", subtitle: "Чаты с пациентами" },
+  sms: { title: "SMS-Email", subtitle: "Входящие и исходящие сообщения" },
   notifications: { title: "Уведомления", subtitle: "Центр уведомлений" },
-  analytics: { title: "Аналитика", subtitle: "Сводные метрики" },
+  analytics: { title: "Аналитика", subtitle: "Сводные метрики клиники" },
   settings: { title: "Настройки", subtitle: "Клиника и пользователи" },
 }
 
@@ -85,8 +98,8 @@ export function CrmTopbar({
   currentClinicId,
   onSignOut,
 }: CrmTopbarProps) {
-  const pathname = usePathname() ?? ""
   const params = useParams()
+  const pathname = usePathname() ?? ""
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
   const segment = pathname.split("/").filter(Boolean)[2] ?? "reception"
   const meta = SECTION_TITLE[segment] ?? SECTION_TITLE.reception
@@ -110,111 +123,200 @@ export function CrmTopbar({
           hour12: false,
         }).format(now)
 
+  const dateStr =
+    now == null
+      ? ""
+      : new Intl.DateTimeFormat("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        }).format(now)
+
+  const roleLabel = userRole ? ROLE_LABEL[userRole] ?? userRole : "Пользователь"
+
+  // Keyboard shortcut: F2 → open "Новая запись".
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F2") {
+        e.preventDefault()
+        setNewApptOpen(true)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-semibold leading-tight text-foreground">
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-5">
+      <div className="hidden min-w-0 shrink-0 leading-tight md:block">
+        <div className="truncate text-base font-bold text-foreground">
           {meta.title}
         </div>
-        <div className="truncate text-xs text-muted-foreground">{meta.subtitle}</div>
+        <div className="truncate text-[11px] text-muted-foreground">
+          {meta.subtitle}
+        </div>
       </div>
-
-      {/* Global cmdk search — opens on click, ⌘K, or `/`. */}
-      <Button
-        variant="outline"
-        size="default"
-        className="hidden h-9 w-[280px] justify-start gap-2 text-muted-foreground md:flex"
+      <button
+        type="button"
         onClick={openSearch}
+        className="flex h-10 max-w-[360px] flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
       >
-        <SearchIcon />
-        <span className="flex-1 text-left">Поиск по ФИО, телефону, ID…</span>
-        <kbd className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          ⌘K · /
+        <SearchIcon className="size-4" />
+        <span className="flex-1 truncate text-left">
+          Поиск пациента, телефона, записи…
+        </span>
+        <kbd className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          ⌘K
         </kbd>
-      </Button>
+      </button>
       {searchMounted ? (
         <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
       ) : null}
 
-      <Button size="default" onClick={() => setNewApptOpen(true)}>
-        <PlusIcon />
-        Новая запись
-      </Button>
-      <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
+      <div className="ml-auto flex items-center gap-3">
+        <Button
+          size="lg"
+          className="h-10 gap-2 rounded-xl bg-primary px-4 text-sm font-semibold shadow-sm hover:bg-primary/90"
+          onClick={() => setNewApptOpen(true)}
+        >
+          <PlusIcon className="size-4" />
+          Новая запись
+          <kbd className="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide">
+            F2
+          </kbd>
+        </Button>
+        <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
 
+        {userRole === "SUPER_ADMIN" && (
+          <ClinicSwitcher
+            currentClinicId={currentClinicId ?? null}
+            userRole={userRole}
+            className="hidden md:flex"
+          />
+        )}
 
-      {userRole === "SUPER_ADMIN" && (
-        <ClinicSwitcher
-          currentClinicId={currentClinicId ?? null}
-          userRole={userRole}
-          className="hidden md:flex"
-        />
-      )}
+        <div className="hidden flex-col items-end leading-tight tabular-nums md:flex">
+          <div className="text-lg font-bold text-foreground">{timeStr}</div>
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            {dateStr}
+          </div>
+        </div>
 
-      <div className="hidden items-center gap-1 rounded-md bg-muted px-2.5 py-1 text-sm font-medium tabular-nums text-foreground md:flex">
-        {timeStr}
+        <div className="flex items-center gap-1">
+          <TopbarIconButton
+            label="Новые звонки"
+            icon={PhoneIncomingIcon}
+            badge={3}
+            tone="danger"
+          />
+          <TopbarIconButton
+            label="Telegram"
+            icon={SendIcon}
+            badge={8}
+            tone="info"
+          />
+          <TopbarIconButton
+            label="Уведомления"
+            icon={BellIcon}
+            badge={5}
+            tone="danger"
+          />
+        </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={cn(
+                "flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted",
+              )}
+              aria-label="User menu"
+            >
+              <AvatarWithStatus
+                name={userName ?? userEmail ?? "User"}
+                status="online"
+                size="sm"
+              />
+              <div className="hidden text-left leading-tight md:block">
+                <div className="text-xs font-semibold text-foreground">
+                  {roleLabel}
+                </div>
+                <div className="max-w-[120px] truncate text-[10px] text-muted-foreground">
+                  {userName ?? userEmail ?? "—"}
+                </div>
+              </div>
+              <ChevronDownIcon className="hidden size-3.5 text-muted-foreground md:block" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="text-xs normal-case">
+              <div className="font-semibold text-foreground">
+                {userName ?? "Пользователь"}
+              </div>
+              <div className="truncate text-muted-foreground">
+                {userEmail ?? "—"}
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+              {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                toast.message(`Текущий язык: ${locale.toUpperCase()}`)
+              }
+            >
+              Язык: {locale.toUpperCase()}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() =>
+                onSignOut ? onSignOut() : signOut({ callbackUrl: "/login" })
+              }
+            >
+              Выйти
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Notifications">
-            <span className="relative">
-              <BellIcon />
-              <span className="absolute -right-1 -top-1 inline-block size-2 rounded-full bg-destructive ring-2 ring-card" />
-            </span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel>Уведомления</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>Здесь появится лента событий</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className={cn(
-              "ml-1 flex items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-muted"
-            )}
-            aria-label="User menu"
-          >
-            <AvatarWithStatus
-              name={userName ?? userEmail ?? "User"}
-              status="online"
-              size="sm"
-            />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-xs normal-case">
-            <div className="font-semibold text-foreground">{userName ?? "Пользователь"}</div>
-            <div className="truncate text-muted-foreground">{userEmail ?? "—"}</div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-            {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() =>
-              toast.message(`Текущий язык: ${locale.toUpperCase()}`)
-            }
-          >
-            Язык: {locale.toUpperCase()}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() =>
-              onSignOut ? onSignOut() : signOut({ callbackUrl: "/login" })
-            }
-          >
-            Выйти
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </header>
+  )
+}
+
+function TopbarIconButton({
+  label,
+  icon: Icon,
+  badge,
+  tone,
+}: {
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  badge?: number
+  tone: "danger" | "info"
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "bg-destructive text-destructive-foreground"
+      : "bg-info text-info-foreground"
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="relative flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="size-4" />
+      {badge ? (
+        <span
+          className={cn(
+            "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ring-2 ring-card",
+            toneClass,
+          )}
+        >
+          {badge}
+        </span>
+      ) : null}
+    </button>
   )
 }

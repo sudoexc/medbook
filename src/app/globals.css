@@ -41,6 +41,7 @@
 
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
 
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
@@ -68,6 +69,7 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
@@ -87,84 +89,86 @@
 }
 
 /*
- * Light theme tokens (from TZ.md §4.1 — teal primary + CRM neutrals).
+ * Light theme tokens — matches mockups in docs/*.png.
  *
- * - Primary is the teal-brand color (#3DD5C0) that drives sidebar active,
- *   buttons, accent badges.
- * - `surface` is page background; `card` is raised card surface.
+ * - Primary: bright blue (#2b6cff) drives CTAs, links, focus ring.
+ * - Success: green (#16c784) drives "completed" badges, sidebar active state.
+ * - Sidebar: white surface with green-soft active cell + green left rail.
+ * - Page background is cool neutral (#f4f6fa); cards are pure white.
  */
 :root {
-  --background: #f5f7fa;
-  --foreground: #1a2333;
+  --background: #f4f6fa;
+  --foreground: #0f172a;
 
-  --surface: #f5f7fa;
+  --surface: #f4f6fa;
   --surface-muted: #eef2f6;
 
   --card: #ffffff;
-  --card-foreground: #1a2333;
+  --card-foreground: #0f172a;
 
   --popover: #ffffff;
-  --popover-foreground: #1a2333;
+  --popover-foreground: #0f172a;
 
-  --primary: #3dd5c0;
-  --primary-foreground: #0b2e29;
-  --primary-soft: #e8faf6;
+  --primary: #2b6cff;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e8efff;
 
-  --secondary: #eef2f6;
-  --secondary-foreground: #1a2333;
+  --secondary: #eff3f9;
+  --secondary-foreground: #0f172a;
 
-  --muted: #eef2f6;
-  --muted-foreground: #6b7589;
+  --muted: #eff3f9;
+  --muted-foreground: #64748b;
 
-  --accent: #e0f7f2;
-  --accent-foreground: #0b2e29;
+  --accent: #eef2ff;
+  --accent-foreground: #1e3a8a;
 
-  --destructive: #ff5c5c;
+  --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 
-  --warning: #ffb547;
-  --warning-foreground: #4a2f07;
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
 
-  --success: #3bd671;
-  --success-foreground: #05351a;
+  --success: #16c784;
+  --success-foreground: #ffffff;
+  --success-soft: #e7f5ee;
 
-  --info: #4fa3ff;
+  --info: #3b82f6;
   --info-foreground: #ffffff;
 
-  --violet: #8d7df8;
+  --violet: #8b5cf6;
   --violet-foreground: #ffffff;
 
-  --pink: #ff7ba1;
-  --pink-foreground: #4a0e23;
+  --pink: #ec4899;
+  --pink-foreground: #ffffff;
 
-  --yellow: #ffd560;
-  --yellow-foreground: #4a3a07;
+  --yellow: #eab308;
+  --yellow-foreground: #3f2e03;
 
-  --orange: #ffb547;
-  --orange-foreground: #4a2f07;
+  --orange: #f97316;
+  --orange-foreground: #ffffff;
 
   --border: #e5e9f0;
   --input: #e5e9f0;
-  --ring: #3dd5c0;
+  --ring: #2b6cff;
 
-  --chart-1: #3dd5c0;
-  --chart-2: #4fa3ff;
-  --chart-3: #8d7df8;
-  --chart-4: #ffb547;
-  --chart-5: #ff7ba1;
+  --chart-1: #2b6cff;
+  --chart-2: #16c784;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #ef4444;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 
-  /* Dark sidebar as seen in screenshots (navy/charcoal with teal active) */
-  --sidebar: #0f1a2e;
-  --sidebar-foreground: #cbd2dc;
-  --sidebar-primary: #3dd5c0;
-  --sidebar-primary-foreground: #0b2e29;
-  --sidebar-accent: #1a2745;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-active: #1e2d4d;
-  --sidebar-border: #1a2745;
-  --sidebar-ring: #3dd5c0;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #64748b;
+  --sidebar-primary: #16c784;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-active: #e7f5ee;
+  --sidebar-active-foreground: #0f7c4c;
+  --sidebar-border: #e5e9f0;
+  --sidebar-ring: #16c784;
 }
 
 .dark {
@@ -180,9 +184,9 @@
   --popover: #111b30;
   --popover-foreground: #e7ecf3;
 
-  --primary: #3dd5c0;
-  --primary-foreground: #0b2e29;
-  --primary-soft: #0e2f29;
+  --primary: #4f8bff;
+  --primary-foreground: #ffffff;
+  --primary-soft: #12204a;
 
   --secondary: #1a2440;
   --secondary-foreground: #e7ecf3;
@@ -190,52 +194,54 @@
   --muted: #1a2440;
   --muted-foreground: #9ba4b5;
 
-  --accent: #0e2f29;
+  --accent: #12204a;
   --accent-foreground: #e7ecf3;
 
-  --destructive: #ff5c5c;
-  --destructive-foreground: #2a0606;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
 
-  --warning: #ffb547;
-  --warning-foreground: #2a1a00;
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
 
-  --success: #3bd671;
-  --success-foreground: #02220f;
+  --success: #22d39a;
+  --success-foreground: #ffffff;
+  --success-soft: #0d2a1e;
 
-  --info: #4fa3ff;
-  --info-foreground: #021a30;
+  --info: #60a5fa;
+  --info-foreground: #ffffff;
 
-  --violet: #8d7df8;
-  --violet-foreground: #0e0830;
+  --violet: #a78bfa;
+  --violet-foreground: #ffffff;
 
-  --pink: #ff7ba1;
-  --pink-foreground: #2a0613;
+  --pink: #f472b6;
+  --pink-foreground: #ffffff;
 
-  --yellow: #ffd560;
-  --yellow-foreground: #2a1a00;
+  --yellow: #facc15;
+  --yellow-foreground: #3f2e03;
 
-  --orange: #ffb547;
-  --orange-foreground: #2a1a00;
+  --orange: #fb923c;
+  --orange-foreground: #ffffff;
 
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: #3dd5c0;
+  --ring: #4f8bff;
 
-  --chart-1: #3dd5c0;
-  --chart-2: #4fa3ff;
-  --chart-3: #8d7df8;
-  --chart-4: #ffb547;
-  --chart-5: #ff7ba1;
+  --chart-1: #4f8bff;
+  --chart-2: #22d39a;
+  --chart-3: #f59e0b;
+  --chart-4: #a78bfa;
+  --chart-5: #ef4444;
 
-  --sidebar: #070d1c;
-  --sidebar-foreground: #cbd2dc;
-  --sidebar-primary: #3dd5c0;
-  --sidebar-primary-foreground: #0b2e29;
-  --sidebar-accent: #141e36;
+  --sidebar: #0b1424;
+  --sidebar-foreground: #a3adbf;
+  --sidebar-primary: #22d39a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #111b30;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-active: #182648;
-  --sidebar-border: #141e36;
-  --sidebar-ring: #3dd5c0;
+  --sidebar-active: #0d2a1e;
+  --sidebar-active-foreground: #22d39a;
+  --sidebar-border: #1a2440;
+  --sidebar-ring: #22d39a;
 }
 
 @layer base {

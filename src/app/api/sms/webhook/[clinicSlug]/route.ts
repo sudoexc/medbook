@@ -1,21 +1,24 @@
 /**
- * Multi-tenant SMS inbound webhook (stub).
+ * Multi-tenant SMS inbound webhook.
  *
  * POST /api/sms/webhook/[clinicSlug]
  *
  * Body: { from, to, body, providerId?, externalId? }
  *
  * Responsibilities:
- *   1. Look up the clinic by slug (no session — provider secret would auth).
- *   2. Upsert a Conversation keyed by `(clinicId, externalId || from)` with
+ *   1. Look up the clinic by slug (no session).
+ *   2. Verify the `x-sms-secret` header against the clinic's active
+ *      `ProviderConnection` (`kind = SMS`, `config.webhookSecret`).
+ *      Constant-time compare, 401 on mismatch. In production the secret
+ *      MUST be configured — otherwise we reject.
+ *   3. Upsert a Conversation keyed by `(clinicId, externalId || from)` with
  *      `channel = SMS`.
- *   3. Append the incoming message.
- *   4. Publish `tg.message.new` (event bus is channel-agnostic; we attach
+ *   4. Append the incoming message.
+ *   5. Publish `tg.message.new` (event bus is channel-agnostic; we attach
  *      `platform: "SMS"` to the payload — Phase 6 can rename the event).
  *
- * Phase 5 is MVP: the real Eskiz/Playmobile signature validation lives in
- * the SMS adapter config. For now, we accept any payload in dev and log a
- * warning if `x-sms-secret` is missing in prod.
+ * Security model mirrors `/api/calls/sip/event` (§6.7.5): the shared pattern
+ * lives in `docs/security/checklist.md` (Authentication bullet 4).
  */
 import { z } from "zod";
 
@@ -41,10 +44,66 @@ function extractSlug(req: Request): string | null {
   return parts[idx + 1] ?? null;
 }
 
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+async function resolveClinicSecret(
+  clinicId: string,
+): Promise<string | null> {
+  return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const conn = await prisma.providerConnection.findFirst({
+      where: { clinicId, active: true, kind: "SMS" },
+      select: { config: true },
+    });
+    if (!conn?.config || typeof conn.config !== "object" || Array.isArray(conn.config)) {
+      return null;
+    }
+    const cfg = conn.config as Record<string, unknown>;
+    const raw = cfg.webhookSecret;
+    return typeof raw === "string" && raw.length > 0 ? raw : null;
+  });
+}
+
 export async function POST(request: Request): Promise<Response> {
   const slug = extractSlug(request);
   if (!slug) {
     return Response.json({ error: "Missing clinicSlug" }, { status: 400 });
+  }
+
+  const foundClinic = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findUnique({
+      where: { slug },
+      select: { id: true, slug: true },
+    }),
+  );
+  if (!foundClinic) {
+    return Response.json({ error: "UnknownClinic" }, { status: 404 });
+  }
+
+  // Signature verification (mirrors SIP webhook). In prod a secret MUST be
+  // configured — otherwise we reject. In dev we accept but log a warning so
+  // the omission shows up in logs.
+  const providedSecret = request.headers.get("x-sms-secret") ?? "";
+  const storedSecret = await resolveClinicSecret(foundClinic.id);
+  if (storedSecret) {
+    if (!safeEqual(providedSecret, storedSecret)) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    return Response.json(
+      { error: "Webhook secret not configured" },
+      { status: 401 },
+    );
+  } else {
+    console.warn(
+      `[sms:webhook clinic=${foundClinic.slug}] no webhookSecret configured — accepting in dev mode`,
+    );
   }
 
   let raw: unknown;
@@ -61,22 +120,6 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   const { from, to, body, externalId } = parsed.data;
-
-  const foundClinic = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.clinic.findUnique({
-      where: { slug },
-      select: { id: true },
-    }),
-  );
-  if (!foundClinic) {
-    return Response.json({ error: "UnknownClinic" }, { status: 404 });
-  }
-
-  // In prod, require `x-sms-secret`. Dev: warn + accept.
-  const secretHeader = request.headers.get("x-sms-secret");
-  if (!secretHeader && process.env.NODE_ENV === "production") {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const conversationId = await runWithTenant(
     { kind: "SYSTEM" },

@@ -37,6 +37,16 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: npm audit (prod deps, high+)
+        # Reports every advisory, fails only on `high` or worse so a transient
+        # moderate CVE does not block shipping. See docs/security/phase-7.md M4.
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Prisma generate
         run: npx prisma generate
 

@@ -40,7 +40,14 @@ function assertRole(value: unknown): Role {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: "jwt" },
+  // CRM session TTL is capped at 24h per TZ §9.2. `updateAge` rotates the
+  // JWT at most hourly while the user is active so the cookie stays fresh
+  // without re-issuing on every request.
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60 * 24, // 24h
+    updateAge: 60 * 60, // 1h
+  },
   pages: {
     signIn: "/login",
   },

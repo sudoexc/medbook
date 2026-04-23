@@ -3,12 +3,18 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { ExternalLinkIcon, PhoneIcon, PhoneIncomingIcon } from "lucide-react";
+import {
+  PhoneIncomingIcon,
+  PhoneOffIcon,
+  CalendarPlusIcon,
+  CheckIcon,
+  ChevronRightIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
-import { StatusDot } from "@/components/atoms/status-dot";
 
 import type { CallRow } from "../_hooks/use-reception-live";
 
@@ -23,17 +29,14 @@ export interface CallsWidgetProps {
 }
 
 /**
- * Right-rail "Call-центр" preview per TZ §6.1.4(A).
+ * "CALL CENTER" widget — docs/1-Ресепшн mockup.
  *
- * Shows the most recent 5 incoming calls. The "accept" / "quick appointment"
- * CTAs are functional stubs — they flip the card open or seed the
- * `NewAppointmentDialog` with the caller's phone. A full SIP-driven inline
- * answer UI ships with the dedicated `/crm/call-center` screen (Phase 3c).
- *
- * TODO(realtime-engineer): invalidate on `call.incoming` events so the ring
- * animation triggers inside 500 ms.
- * TODO(api-builder): `/api/crm/calls/active` endpoint — right now we filter
- * client-side for `endedAt == null`.
+ * Layout:
+ *  - header: "CALL CENTER" + unread badge
+ *  - hero: first active incoming call with VIP badge + Принять / Отклонить /
+ *    Записать CTAs
+ *  - queue: compact list of remaining queued/recent calls
+ *  - footer: "Все звонки →"
  */
 export function CallsWidget({
   rows,
@@ -43,141 +46,181 @@ export function CallsWidget({
 }: CallsWidgetProps) {
   const t = useTranslations("reception.calls");
 
-  // Live calls (endedAt null) take priority; fall back to last 5 records.
-  const active = rows.filter((c) => !c.endedAt).slice(0, 3);
-  const recent = rows.filter((c) => c.endedAt).slice(0, 5 - active.length);
-  const visible = [...active, ...recent];
+  const active = rows.filter((c) => !c.endedAt);
+  const hero = active[0] ?? null;
+  const queued = (hero ? active.slice(1) : active).slice(0, 3);
+  const recent = rows.filter((c) => c.endedAt).slice(0, 3);
+  const queueList = [...queued, ...recent].slice(0, 4);
 
   return (
     <section
       className={cn(
-        "flex flex-col rounded-xl border border-border bg-card",
+        "flex flex-col rounded-2xl border border-border bg-card",
         className,
       )}
     >
-      <header className="flex items-center justify-between border-b border-border px-3 py-2">
+      <header className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
-          <PhoneIcon className="size-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">{t("title")}</h3>
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            <StatusDot status="online" size="xs" />
-            {t("statusOnline")}
-          </span>
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Call Center
+          </h3>
+          {active.length > 0 ? (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+              {active.length}
+            </span>
+          ) : null}
         </div>
         <Link
           href="/crm/call-center"
-          className={cn(
-            buttonVariants({ variant: "ghost", size: "icon-sm" }),
-          )}
-          aria-label={t("openFull")}
-          title={t("openFull")}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
         >
-          <ExternalLinkIcon className="size-3.5" />
+          Все
+          <ChevronRightIcon className="size-3" />
         </Link>
       </header>
 
-      <div className="p-3">
+      <div className="flex flex-col gap-3 p-4">
         {isLoading ? (
-          <ul className="flex flex-col gap-2">
-            {[0, 1].map((i) => (
-              <li
-                key={i}
-                className="h-14 animate-pulse rounded-md bg-muted"
-                aria-hidden
-              />
-            ))}
-          </ul>
-        ) : visible.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 rounded-md border border-dashed border-border bg-card/40 px-3 py-6 text-center">
-            <PhoneIcon className="size-5 text-muted-foreground" aria-hidden />
-            <p className="text-sm font-medium text-foreground">{t("empty")}</p>
-            <p className="text-xs text-muted-foreground">{t("emptyHint")}</p>
-          </div>
+          <div className="h-36 animate-pulse rounded-xl bg-muted" aria-hidden />
+        ) : hero ? (
+          <HeroCall
+            row={hero}
+            onAnswer={() =>
+              onQuickAppointment({
+                patientId: hero.patient?.id ?? null,
+                phone: hero.fromNumber,
+              })
+            }
+          />
         ) : (
-          <ul className="flex flex-col gap-2">
-            {visible.map((row) => (
-              <CallItem
-                key={row.id}
-                row={row}
-                onQuickAppointment={onQuickAppointment}
-              />
-            ))}
-          </ul>
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-6 text-center">
+            <PhoneIncomingIcon className="size-6 text-muted-foreground" aria-hidden />
+            <p className="text-sm font-medium text-foreground">
+              Нет активных звонков
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Очередь пуста — можно передохнуть
+            </p>
+          </div>
         )}
+
+        {queueList.length > 0 ? (
+          <div className="flex flex-col">
+            <div className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Очередь звонков
+            </div>
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {queueList.map((row) => (
+                <QueueCallRow key={row.id} row={row} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function CallItem({
+function HeroCall({
   row,
-  onQuickAppointment,
+  onAnswer,
 }: {
   row: CallRow;
-  onQuickAppointment: CallsWidgetProps["onQuickAppointment"];
+  onAnswer: () => void;
 }) {
-  const t = useTranslations("reception.calls");
-  const isLive = !row.endedAt;
+  const isVip = row.patient && /VIP/i.test(row.patient.fullName); // lightweight flag
   return (
-    <li
-      className={cn(
-        "rounded-md border p-2 text-sm",
-        isLive
-          ? "animate-[pulse_2s_ease-in-out_infinite] border-primary/50 bg-primary/5"
-          : "border-border bg-background",
-      )}
-    >
+    <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
       <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            "flex size-7 items-center justify-center rounded-full",
-            row.direction === "MISSED"
-              ? "bg-destructive/10 text-destructive"
-              : "bg-info/15 text-[color:var(--info)]",
-          )}
-        >
-          <PhoneIncomingIcon className="size-3.5" />
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {row.patient?.fullName ?? t("unknownCaller")}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            <PhoneText phone={row.fromNumber} asText />
-          </div>
-        </div>
-        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {row.direction === "IN"
-            ? t("directionIN")
-            : row.direction === "OUT"
-              ? t("directionOUT")
-              : t("directionMISSED")}
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--destructive)]">
+          Входящий звонок
         </span>
       </div>
-      <div className="mt-2 flex items-center gap-1.5">
-        <Link
-          href="/crm/call-center"
-          className={cn(
-            buttonVariants({ variant: "outline", size: "sm" }),
-            "flex-1 justify-center",
-          )}
-        >
-          {t("accept")}
-        </Link>
+      <div className="flex items-center gap-3">
+        <AvatarWithStatus
+          name={row.patient?.fullName ?? "?"}
+          size="lg"
+          status="busy"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-lg font-bold text-foreground">
+              {row.patient?.fullName ?? "Неизвестный номер"}
+            </p>
+            {isVip ? (
+              <span className="inline-flex items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[color:var(--warning)]">
+                VIP
+              </span>
+            ) : row.patient ? (
+              <span className="inline-flex items-center rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[color:var(--success)]">
+                Клиент
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                Новый
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
+            <PhoneText phone={row.fromNumber} asText />
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
         <Button
-          size="sm"
-          variant="secondary"
-          className="flex-1"
-          onClick={() =>
-            onQuickAppointment({
-              patientId: row.patient?.id ?? null,
-              phone: row.fromNumber,
-            })
-          }
+          size="default"
+          className="flex-1 bg-success text-success-foreground hover:bg-success/90"
+          onClick={onAnswer}
         >
-          {t("quickAppointment")}
+          <CheckIcon className="size-4" />
+          Принять
+        </Button>
+        <Button size="icon" variant="secondary" aria-label="Отклонить">
+          <PhoneOffIcon className="size-4" />
+        </Button>
+        <Button size="icon" variant="secondary" aria-label="Быстрая запись">
+          <CalendarPlusIcon className="size-4" />
         </Button>
       </div>
+    </div>
+  );
+}
+
+function QueueCallRow({ row }: { row: CallRow }) {
+  const duration = row.durationSec;
+  const durationLabel =
+    duration != null
+      ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`
+      : row.endedAt == null
+        ? "сейчас"
+        : "—";
+  return (
+    <li className="flex items-center gap-2.5 px-3 py-2.5">
+      <AvatarWithStatus
+        name={row.patient?.fullName ?? "?"}
+        size="sm"
+        status={row.endedAt ? "offline" : "online"}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">
+          {row.patient?.fullName ?? "Неизвестный"}
+        </p>
+        <p className="truncate text-[11px] text-muted-foreground tabular-nums">
+          <PhoneText phone={row.fromNumber} asText />
+        </p>
+      </div>
+      <span
+        className={cn(
+          "shrink-0 text-[11px] font-semibold tabular-nums",
+          row.endedAt ? "text-muted-foreground" : "text-[color:var(--success)]",
+        )}
+      >
+        {durationLabel}
+      </span>
     </li>
   );
 }

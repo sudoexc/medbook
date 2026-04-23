@@ -119,13 +119,20 @@ export function CrmSidebar({
               <li key={item.href}>
                 <Link
                   href={full}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                     active
-                      ? "bg-sidebar-active text-sidebar-accent-foreground"
+                      ? "bg-primary/15 text-sidebar-accent-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   )}
                 >
+                  {active ? (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary"
+                    />
+                  ) : null}
                   <Icon
                     className={cn(
                       "size-4 shrink-0",

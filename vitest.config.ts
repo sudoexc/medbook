@@ -12,7 +12,24 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+    exclude: ["tests/e2e/**", "node_modules/**"],
     environment: "node",
     clearMocks: true,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "text-summary", "html", "json-summary"],
+      reportsDirectory: "./coverage",
+      include: [
+        "src/lib/**",
+        "src/server/**",
+        "src/hooks/**",
+      ],
+      exclude: [
+        "**/*.d.ts",
+        "**/node_modules/**",
+        "**/generated/**",
+        "**/__tests__/**",
+      ],
+    },
   },
 });

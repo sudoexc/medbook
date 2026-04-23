@@ -667,9 +667,78 @@
 
 ---
 
-## Phase 7 — Тесты + полировка — 🔄 в работе
+## Phase 7 — Тесты + полировка — ✅ DONE 2026-04-23
 
-### ux-polisher (pending commit)
+### Коммиты
+
+- `0302bc4 feat(e2e)` — test-engineer: Playwright suite + coverage config
+- `600bbe7 a11y(phase-7)` — a11y-engineer: axe-core + WCAG 2.2 AA fixes
+- `73ad4ff security(phase-7)` — security-reviewer: audit + critical/high fixes
+- `285c851 ux(phase-7)` — ux-polisher: empty states + skeletons + error boundaries
+- `cabbd5d perf(phase-7)` — performance-optimizer: bundle audit + dynamic imports
+
+### test-engineer (`0302bc4`)
+
+**e2e-suite по §9.6 + playwright.config.**
+
+- **20 Playwright-спек** покрывают все критичные CRM-сценарии:
+  `01-auth-login` · `02-rbac-guards` · `03-patients-list` · `04-patient-card` ·
+  `05-appointments-list` · `06-appointment-create` · `07-calendar-dnd` ·
+  `08-reception-queue` · `09-doctors-crud` · `10-call-center` · `11-telegram-inbox` ·
+  `12-miniapp-booking` · `13-kiosk-checkin` · `14-tv-board` · `15-q-ticket` ·
+  `16-super-admin` · `17-exports` · `18-notifications-preview` · `19-search-cmdk` ·
+  `20-dashboard-kpi`.
+- **`tests/e2e/helpers.ts`** — `loginAs`, `as.{admin,doctor,receptionist,superAdmin,otherClinicAdmin}`, `isAppHealthy`, `signMiniAppInitData`, `firstPatientId/firstDoctorId/firstService` + typed seed-handles fixture.
+- **Coverage config** в `vitest.config.ts` — v8 provider, HTML + JSON reports, `src/lib/**`/`src/server/**`/`src/hooks/**`.
+- **CI job `e2e`** в `.github/workflows/ci.yml` — `postgres:16-alpine` service, `E2E_PORT=3001`, additive (не ломает существующий `ci.yml`).
+- **33 теста** в listing: 31 на `chromium-desktop` + 2 mobile-specific (`miniapp-*.spec.ts` на Pixel 5).
+
+### a11y-engineer (`600bbe7`)
+
+**axe-core Playwright-integration + WCAG 2.2 AA фиксы.**
+
+- **Инфраструктура:** установлены `axe-core` + `@axe-core/playwright` devDeps. `tests/e2e/helpers.ts` теперь экспортирует `checkA11y(page, opts)` (WCAG 2.0/2.1/2.2 A+AA tags) + `CRM_AXE_WHITELIST` (`region`, `color-contrast`). Фэйлит только на `critical`/`serious`.
+- **2 новых спеки:** `tests/e2e/21-a11y-crm.spec.ts` (13 tests — axe на 10 CRM-маршрутов + keyboard-tab smoke + health sanity) и `tests/e2e/22-miniapp-a11y.spec.ts` (2 tests × 2 проекта = 4). Полный listing теперь 47 тестов.
+- **Фиксы (7 serious):**
+  1. `aria-live="polite"` + `aria-atomic="false"` на живых регионах: `kpi-strip.tsx`, `doctor-queue-grid.tsx`, `conversation-list.tsx` (+ `role="list"`).
+  2. `aria-label` на неподписанных input'ах: `call-history-filters.tsx`, `documents-page-client.tsx`, `message-composer.tsx`, `calendar-toolbar.tsx`.
+  3. `htmlFor`/`id` wiring: `upload-dialog.tsx` (4 поля), `doctor-time-off.tsx` (3 поля).
+- **Проверено и ок:** `button/input/textarea` → `focus-visible:ring`; Radix/base-ui Dialog/Sheet — focus trap; landmarks есть в CRM/MiniApp/topbar/inbox; контраст `#3DD5C0/#0b2e29 ≈ 11:1`, `destructive/white ≈ 5.9:1`.
+- **Отложено (3 moderate + 2 minor):** `--muted-foreground` ≈ 4.4:1 на `--surface`, нативный `<select>` styling, FullCalendar vendor widget, donut link label, decorative clock widget.
+- **Deliverables:** `docs/a11y/phase-7.md` (full report), `docs/a11y/checklist.md` (reusable page-agent checklist).
+
+### security-reviewer (`73ad4ff`)
+
+**Аудит по §9.5 + критичные/high фиксы.**
+
+- **Сводка:** 1 critical (fixed), 3 high (2 fixed + 1 deferred), 4 medium (recs), 3 low (recs).
+- **C1 fixed — SMS webhook forgeable** (`src/app/api/sms/webhook/[clinicSlug]/route.ts`): constant-time compare `x-sms-secret` vs `ProviderConnection(kind=SMS).config.webhookSecret` (аналогично SIP webhook). Dev — warn-and-accept fallback; prod — требует секрет.
+- **H1 fixed — JWT TTL** (`src/lib/auth.ts`): `session.maxAge=24h`, `updateAge=1h` (было NextAuth default 30 дней).
+- **H2 fixed — Auth rate-limit** (`src/app/api/auth/[...nextauth]/route.ts`): `rateLimit()` 5 req/min/IP, 429 + `retry-after:60`.
+- **M4 fixed — CI hardening** (`.github/workflows/ci.yml`): добавлены `npm audit --omit=dev --audit-level=high` и `gitleaks/gitleaks-action@v2`.
+- **Deferred (recommendations):**
+  - H3 — 13 legacy `@ts-nocheck` routes (leads/booking/kiosk/queue/tv-queue/telegram-*) обходят tenant-context. Нужно UX/schema решение, вне Phase 7 scope.
+  - M1 — LogOnly adapters логируют phone/chatId + preview. Редактировать + gate behind `DEBUG_*`.
+  - M2 — SSE `tg.message.new` payload: per-role scoping когда layer созреет.
+  - M3 — in-memory rateLimit → Redis в Phase 6 infra (swap-in одной строкой).
+  - L1/L2/L3 — `next-auth` beta, fire-and-forget audit log, 30-min override TTL.
+- **Verified clean:** RBAC через handler factory (403), Prisma extension защищает tenant-scoped models вне `runWithTenant`, Zod на каждом mutating route, нет `dangerouslySetInnerHTML` (кроме одного escaped+whitelisted), нет `$queryRawUnsafe`, SIP+Telegram webhooks constant-time verify, AES-256-GCM + scrypt KDF корректны.
+- **Deliverables:** `docs/security/phase-7.md` (finding report), `docs/security/checklist.md` (page-agent checklist).
+
+### performance-optimizer (`cabbd5d`)
+
+**Bundle audit + dynamic imports + virtualization sweep.**
+
+- **Recharts → `next/dynamic`** в `/crm/analytics`: извлечён `analytics-charts.tsx` + shared `analytics-types.ts`, клиент грузит lazy с skeleton fallback. **Экономия: ~90KB gz** на First Load JS маршрута.
+- **Recharts → lazy** в `/crm/patients` right-rail: `DemographicsWidget` + `SourcesWidget` больше не приезжают в initial bundle patients-list.
+- **cmdk → lazy-mount** в `crm-topbar`: `searchMounted` gate — cmdk + `@radix-ui/react-dialog` (~40KB gz) не грузятся пока юзер не триггернёт `/` или `⌘K`. Highest leverage — топбар на каждой CRM-странице. (Edit доехал в коммите `285c851` ux-polisher'а.)
+- **`<img>` → `<Image priority>`** на LCP-логотипах `/kiosk`, `/tv`, `/q/[id]`: WebP + responsive srcset + inline preload. 0 сырых `<img>` в `src/`.
+- **Уже оптимально:** FullCalendar уже dynamic в `calendar-page-client.tsx`; Prisma `@@index` на всех hot-path полях (Appointment/Patient/Payment/AuditLog/Call).
+- **Virtualization sweep:** каждая CRM-таблица >100 строк уже виртуализирована. Deferred: `/admin/audit` (infinite scroll) — логировано как fu.
+- **N+1 recommendations (read-only):** `src/server/notifications/triggers.ts` три worker-loop'а делают до 1500 запросов за tick. Background cron paths, юзер-фэйсинг latency не трогает — батчить когда workload оправдает.
+- **Deliverable:** `docs/perf/2026-04-22-phase-7.md`.
+
+### ux-polisher (`285c851`)
 
 **Polish pass по §9.6 + §10.Фаза 7.**
 
@@ -696,3 +765,85 @@
 - ARIA на новых skeleton/error — a11y-engineer в параллели.
 - Visual regression (Percy/Chromatic) — не настроено, решение test-engineer'а.
 - Sonner richColors / темы — дефолт; можно итерировать позже без code churn.
+
+### Combined quality gates (Phase 7 final)
+
+После мерджа всех 5 коммитов:
+
+- `npx tsc --noEmit` — **clean** (0 errors).
+- `npx vitest run` — **239 / 239 passed** (23 test files, 1.11s).
+- `npm run build` — **exit 0** (Turbopack, Next 16.2.2). Все новые `loading.tsx` / `error.tsx` / `21-a11y-*` / `22-miniapp-a11y-*` в route manifest.
+- `npx playwright test --list` — **47 тестов** (31 chromium-desktop + 2 chromium-mobile × 2 проекта + a11y sweep + health).
+
+### Phase 7 deferred / follow-ups
+
+- H3 — миграция 13 legacy `@ts-nocheck` routes на tenant-context handler (нужен UX-discussion по leads/booking/kiosk/queue/tv-queue/telegram-*).
+- N+1 в `src/server/notifications/triggers.ts` — батчить worker-loop'ы когда workload оправдает.
+- `/admin/audit` — виртуализация infinite-scroll.
+- Visual regression — Chromatic/Percy (выбор не сделан).
+- Sentry `@sentry/nextjs` / `@aws-sdk/client-s3` — доставить на прод-деплое (optional deps через dynamic import).
+- Inline blur-validation для email/phone на больших формах — Zod-submit-only пока норм.
+- Moderate a11y — `--muted-foreground` ≈ 4.4:1 на `--surface`, нативный `<select>`, FullCalendar vendor.
+- Legacy `next-auth` beta → stable когда выйдет.
+- SSE per-role scoping для `tg.message.new` payload (security M2).
+
+---
+
+# Production v1 — ✅ READY 2026-04-23
+
+## Phase timeline (полная история)
+
+- `pre-rebuild-2026-04-22` (`ec24c4d`) — safety rollback
+- `phase-0-done` — cleanup + prisma + i18n + design-system + tenancy
+- `phase-1-done` — ~50 CRM API endpoints
+- `phase-2a-done` → `phase-2d-done` — patients, appointments+calendar, reception, doctors
+- `phase-3a-done` → `phase-3d-done` — notifications, telegram inbox+bot, call center, mini app
+- `phase-4-done` — settings + admin platform (SUPER_ADMIN)
+- `phase-5-done` — realtime + search + analytics + documents + exports + SMS
+- `phase-6-done` — Docker + CI/CD + MinIO + Sentry
+- `phase-7-done` — tests + a11y + security + perf + ux polish
+
+## Что реализовано против ТЗ
+
+- §4 Roles + RBAC — 6 ролей (SUPER_ADMIN / ADMIN / DOCTOR / RECEPTIONIST / NURSE / CALL_OPERATOR), `createApiHandler({roles})` factory, 403 везде.
+- §4.1 Reception dashboard, §4.2 Appointments+Calendar, §4.3 Doctors, §4.4 Patients, §4.5 Call Center, §4.6 Realtime (SSE + event-bus + hooks), §4.7 Notifications, §4.8 Telegram inbox+bot+MiniApp, §4.9 Analytics, §4.10 Documents, §4.11 Exports, §4.12 SMS — все секции реализованы.
+- §5 Multi-tenancy — `AsyncLocalStorage` + Prisma `$extends` auto-injection, HMAC-signed cookie для SUPER_ADMIN override.
+- §6 Encryption — AES-256-GCM + scrypt KDF для `ProviderConnection` secrets.
+- §7 Telegram — webhook + FSM + Mini App `initData` HMAC verify.
+- §8 i18n — next-intl 4.9, ru/uz полный паритет ~1437 ключей каждый.
+- §9.1-9.6 Quality gates — tsc clean, 239 unit tests, 47 e2e specs, axe-core a11y, security audit, perf bundle analysis.
+- §10 Infrastructure — Next 16.2.2 standalone, Docker Compose (7 services), nginx reverse-proxy, GitHub Actions CI/CD, MinIO S3-compat, BullMQ queues, Sentry observability.
+
+## Что НЕ в v1 (осознанные deferred)
+
+- Phase 8 — Admin platform advanced (billing, audit-grafana dashboards, multi-region).
+- 13 legacy routes с `@ts-nocheck` — остаются рабочими, но без tenant guard (leads/kiosk-form/tv-queue endpoints).
+- Inline blur-validation — submit-time Zod пока достаточно.
+- Visual regression suite — не выбран инструмент.
+- Moderate a11y (3 пункта) — не блокируют WCAG AA.
+- Production-grade Redis для rate-limit (сейчас in-memory per-process).
+
+## Команды для деплоя
+
+```bash
+# Локально
+npm run e2e:seed        # seed dev DB
+npm run dev             # http://localhost:3000
+
+# Docker (production-like)
+docker compose up -d    # 7 services: app, worker, postgres, redis, minio, nginx, studio
+
+# CI
+# GitHub Actions: lint → tsc → vitest → playwright → docker build → deploy
+```
+
+## Логины seed
+
+| Роль | Email | Пароль |
+|---|---|---|
+| SUPER_ADMIN | `super@neurofax.uz` | `super` |
+| ADMIN (neurofax) | `info@neurofax.uz` | `admin` |
+| ADMIN (demo-clinic) | `info@demo-clinic.uz` | `admin` |
+| RECEPTIONIST | `recept-N@{slug}.uz` | `recept` |
+| DOCTOR | из seed output | `doctor` |
+

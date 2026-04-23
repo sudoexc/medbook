@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { Clock, MapPin, User, CheckCircle, Bell, Stethoscope } from "lucide-react";
 
 interface QueueStatus {
@@ -116,7 +117,14 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
     }`}>
       {/* Header */}
       <div className="pt-6 pb-3 px-4 text-center">
-        <img src="/logo.png" alt="NeuroFax-B" className="h-8 mx-auto mb-1" />
+        <Image
+          src="/logo.png"
+          alt="NeuroFax-B"
+          width={82}
+          height={32}
+          priority
+          className="h-8 w-auto mx-auto mb-1"
+        />
         <p className="text-[11px] text-gray-400 tracking-wider uppercase">Электронная очередь</p>
       </div>
 

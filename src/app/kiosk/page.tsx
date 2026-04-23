@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { Phone, ArrowRight, ArrowLeft, Check, Printer, MapPin, Clock, User, UserPlus, Globe, Stethoscope } from "lucide-react";
 
 // ─── Translations ────────────────────────────────────────────────
@@ -351,7 +352,14 @@ export default function KioskPage() {
       {/* Header */}
       <header className="px-8 py-5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="NeuroFax-B" className="h-12 brightness-0 invert" />
+          <Image
+            src="/logo.png"
+            alt="NeuroFax-B"
+            width={123}
+            height={48}
+            priority
+            className="h-12 w-auto brightness-0 invert"
+          />
         </div>
         <div className="flex items-center gap-4">
           {/* Language toggle */}

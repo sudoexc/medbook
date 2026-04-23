@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
 
 interface QueueDoctor {
   id: string;
@@ -159,7 +160,14 @@ export default function TVQueuePage() {
           try { const ctx = new AudioContext(); ctx.resume(); } catch {}
         }}
       >
-        <img src="/logo.png" alt="NeuroFax-B" className="h-16 brightness-0 invert mb-8" />
+        <Image
+          src="/logo.png"
+          alt="NeuroFax-B"
+          width={164}
+          height={64}
+          priority
+          className="h-16 w-auto brightness-0 invert mb-8"
+        />
         <div className="text-6xl font-bold mb-4">Электронная очередь</div>
         <p className="text-xl text-white/50 mb-12">Нажмите на экран для запуска</p>
         <div className="h-20 w-20 rounded-full border-4 border-white/30 flex items-center justify-center animate-pulse">
@@ -209,7 +217,14 @@ export default function TVQueuePage() {
       {/* Header bar */}
       <div className="shrink-0 bg-white/5 border-b border-white/10 px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-5">
-          <img src="/logo.png" alt="NeuroFax-B" className="h-11 brightness-0 invert" />
+          <Image
+            src="/logo.png"
+            alt="NeuroFax-B"
+            width={113}
+            height={44}
+            priority
+            className="h-11 w-auto brightness-0 invert"
+          />
           <div className="h-8 w-px bg-white/15" />
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">

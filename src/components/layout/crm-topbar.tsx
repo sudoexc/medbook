@@ -8,7 +8,7 @@ import {
   BellIcon,
   ChevronDownIcon,
   MoonIcon,
-  PhoneIncomingIcon,
+  PhoneIcon,
   PlusIcon,
   SearchIcon,
   SendIcon,
@@ -53,12 +53,18 @@ const ROLE_LABEL: Record<string, string> = {
 const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
   reception: { title: "Ресепшн", subtitle: "Главный дашборд" },
   appointments: { title: "Записи", subtitle: "Управление записями пациентов" },
-  calendar: { title: "Календарь записей", subtitle: "Планирование, сдвиги и подтверждения в реальном времени" },
+  calendar: {
+    title: "Календарь записей",
+    subtitle: "Планирование и подтверждения в реальном времени",
+  },
   patients: { title: "Пациенты", subtitle: "База пациентов и история визитов" },
   doctors: { title: "Врачи", subtitle: "Расписание и результативность" },
   rooms: { title: "Кабинеты", subtitle: "Загрузка помещений и оборудования" },
   services: { title: "Услуги", subtitle: "Каталог услуг и цен" },
-  "call-center": { title: "Call Center", subtitle: "Входящие и исходящие звонки" },
+  "call-center": {
+    title: "Call Center",
+    subtitle: "Входящие и исходящие звонки",
+  },
   telegram: { title: "Telegram", subtitle: "Чаты с пациентами" },
   sms: { title: "SMS-Email", subtitle: "Входящие и исходящие сообщения" },
   notifications: { title: "Уведомления", subtitle: "Центр уведомлений" },
@@ -123,14 +129,18 @@ export function CrmTopbar({
           hour12: false,
         }).format(now)
 
-  const dateStr =
-    now == null
-      ? ""
-      : new Intl.DateTimeFormat("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }).format(now)
+  // «21 апреля, понедельник» — long Russian date per mockup.
+  const dateStr = React.useMemo(() => {
+    if (now == null) return ""
+    const day = new Intl.DateTimeFormat("ru-RU", {
+      day: "numeric",
+      month: "long",
+    }).format(now)
+    const weekday = new Intl.DateTimeFormat("ru-RU", {
+      weekday: "long",
+    }).format(now)
+    return `${day}, ${weekday}`
+  }, [now])
 
   const roleLabel = userRole ? ROLE_LABEL[userRole] ?? userRole : "Пользователь"
 
@@ -147,44 +157,76 @@ export function CrmTopbar({
   }, [])
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-5">
+    <header className="flex h-[72px] shrink-0 items-center gap-4 border-b border-border bg-card px-6">
       <div className="hidden min-w-0 shrink-0 leading-tight md:block">
-        <div className="truncate text-base font-bold text-foreground">
+        <div className="truncate text-2xl font-extrabold tracking-tight text-foreground">
           {meta.title}
         </div>
-        <div className="truncate text-[11px] text-muted-foreground">
+        <div className="truncate text-xs text-muted-foreground">
           {meta.subtitle}
         </div>
       </div>
+
       <button
         type="button"
         onClick={openSearch}
-        className="flex h-10 max-w-[360px] flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        className="flex h-11 max-w-[440px] flex-1 items-center gap-2.5 rounded-2xl border border-border bg-background px-4 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
       >
         <SearchIcon className="size-4" />
         <span className="flex-1 truncate text-left">
-          Поиск пациента, телефона, записи…
+          Поиск пациента (телефон, ФИО, ID)
         </span>
-        <kbd className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          ⌘K
+        <kbd className="rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          ⌘ K
         </kbd>
       </button>
       {searchMounted ? (
         <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
       ) : null}
 
-      <div className="ml-auto flex items-center gap-3">
-        <Button
-          size="lg"
-          className="h-10 gap-2 rounded-xl bg-primary px-4 text-sm font-semibold shadow-sm hover:bg-primary/90"
-          onClick={() => setNewApptOpen(true)}
-        >
-          <PlusIcon className="size-4" />
-          Новая запись
-          <kbd className="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide">
-            F2
-          </kbd>
-        </Button>
+      <div className="ml-auto flex items-center gap-4">
+        {/* Split button: main + dropdown arrow */}
+        <div className="flex h-11 overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-sm">
+          <Button
+            size="lg"
+            onClick={() => setNewApptOpen(true)}
+            className={cn(
+              "h-full gap-2 rounded-none border-0 bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+            )}
+          >
+            <PlusIcon className="size-4" />
+            Новая запись
+            <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wide">
+              F2
+            </span>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Дополнительные действия"
+                className="flex h-full items-center border-l border-white/20 px-2 text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <ChevronDownIcon className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => setNewApptOpen(true)}>
+                Создать запись
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => toast.message("Скоро: быстрый пациент")}
+              >
+                Новый пациент
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => toast.message("Скоро: визит без записи")}
+              >
+                Визит без записи
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
 
         {userRole === "SUPER_ADMIN" && (
@@ -196,30 +238,35 @@ export function CrmTopbar({
         )}
 
         <div className="hidden flex-col items-end leading-tight tabular-nums md:flex">
-          <div className="text-lg font-bold text-foreground">{timeStr}</div>
-          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="text-xl font-extrabold tracking-tight text-foreground">
+            {timeStr}
+          </div>
+          <div className="text-[11px] font-medium text-muted-foreground">
             {dateStr}
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <TopbarIconButton
-            label="Новые звонки"
-            icon={PhoneIncomingIcon}
+        <div className="hidden items-center gap-4 md:flex">
+          <TopbarChannelIcon
+            label="Звонки"
+            icon={PhoneIcon}
             badge={3}
             tone="danger"
+            iconClass="text-foreground"
           />
-          <TopbarIconButton
+          <TopbarChannelIcon
             label="Telegram"
             icon={SendIcon}
             badge={8}
-            tone="info"
+            tone="success"
+            iconClass="text-[color:var(--primary)]"
           />
-          <TopbarIconButton
+          <TopbarChannelIcon
             label="Уведомления"
             icon={BellIcon}
             badge={5}
             tone="danger"
+            iconClass="text-foreground"
           />
         </div>
 
@@ -234,17 +281,17 @@ export function CrmTopbar({
               <AvatarWithStatus
                 name={userName ?? userEmail ?? "User"}
                 status="online"
-                size="sm"
+                size="md"
               />
               <div className="hidden text-left leading-tight md:block">
-                <div className="text-xs font-semibold text-foreground">
+                <div className="flex items-center gap-1 text-sm font-bold text-foreground">
                   {roleLabel}
+                  <ChevronDownIcon className="size-3.5 text-muted-foreground" />
                 </div>
-                <div className="max-w-[120px] truncate text-[10px] text-muted-foreground">
+                <div className="max-w-[160px] truncate text-[11px] text-muted-foreground">
                   {userName ?? userEmail ?? "—"}
                 </div>
               </div>
-              <ChevronDownIcon className="hidden size-3.5 text-muted-foreground md:block" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -285,38 +332,46 @@ export function CrmTopbar({
   )
 }
 
-function TopbarIconButton({
+function TopbarChannelIcon({
   label,
   icon: Icon,
   badge,
   tone,
+  iconClass,
 }: {
   label: string
   icon: React.ComponentType<{ className?: string }>
   badge?: number
-  tone: "danger" | "info"
+  tone: "danger" | "success" | "info"
+  iconClass?: string
 }) {
-  const toneClass =
-    tone === "danger"
-      ? "bg-destructive text-destructive-foreground"
-      : "bg-info text-info-foreground"
+  const toneClass = {
+    danger: "bg-destructive text-destructive-foreground",
+    success: "bg-success text-success-foreground",
+    info: "bg-info text-info-foreground",
+  }[tone]
   return (
     <button
       type="button"
       aria-label={label}
-      className="relative flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="group flex flex-col items-center gap-0.5"
     >
-      <Icon className="size-4" />
-      {badge ? (
-        <span
-          className={cn(
-            "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ring-2 ring-card",
-            toneClass,
-          )}
-        >
-          {badge}
-        </span>
-      ) : null}
+      <span className="relative flex size-7 items-center justify-center">
+        <Icon className={cn("size-[22px]", iconClass)} />
+        {badge ? (
+          <span
+            className={cn(
+              "absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums ring-[2px] ring-card",
+              toneClass,
+            )}
+          >
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-[10px] font-medium text-muted-foreground group-hover:text-foreground">
+        {label}
+      </span>
     </button>
   )
 }

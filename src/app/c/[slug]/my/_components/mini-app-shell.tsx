@@ -28,7 +28,10 @@ export function MiniAppShell({
   const sectionBg =
     themeParams.section_bg_color ??
     (colorScheme === "dark" ? "#232e3c" : "#ffffff");
-  const accent = themeParams.button_color ?? "#3DD5C0";
+  // NeuroFax brand blue — hard-coded so the Mini App stays on-brand even
+  // when Telegram's `button_color` theme param would otherwise paint the
+  // UI in the user's default client colour (teal by default).
+  const accent = "#2353FF";
 
   const lang =
     state.status === "ready"

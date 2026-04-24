@@ -30,7 +30,6 @@ export default function CrmError({
   const t = useTranslations("common");
 
   React.useEffect(() => {
-    // eslint-disable-next-line no-console
     console.error("[crm/error-boundary]", error);
   }, [error]);
 

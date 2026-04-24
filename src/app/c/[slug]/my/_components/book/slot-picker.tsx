@@ -7,24 +7,36 @@ import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
-import { MCard, MEmpty, MSpinner } from "../mini-ui";
+import { MEmpty, MSpinner } from "../mini-ui";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { WizardHeader } from "./wizard-header";
+import { WizardFooter } from "./wizard-footer";
+
+const DAYS_AHEAD = 14;
+const INITIAL_SLOTS = 9;
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function dayLabel(date: Date, lang: "RU" | "UZ", t: ReturnType<typeof useT>) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  const diff = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff === 0) return t.common.today;
-  if (diff === 1) return t.common.tomorrow;
-  return date.toLocaleDateString(lang === "UZ" ? "uz-Latn-UZ" : "ru-RU", {
-    weekday: "short",
-  });
+function formatIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function weekdayShort(d: Date, lang: "RU" | "UZ"): string {
+  const base = d.toLocaleDateString(
+    lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
+    { weekday: "short" },
+  );
+  return base.replace(".", "");
+}
+
+function monthShort(d: Date, lang: "RU" | "UZ"): string {
+  const base = d.toLocaleDateString(
+    lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
+    { month: "short" },
+  );
+  return base.replace(".", "");
 }
 
 export function SlotPicker() {
@@ -34,21 +46,23 @@ export function SlotPicker() {
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const { draft, setDraft, hydrated } = useBookingDraft(clinicSlug);
   const tg = useTelegramWebApp();
+  const [expanded, setExpanded] = React.useState(false);
 
   const days = React.useMemo(() => {
-    const arr: { iso: string; label: string; day: string }[] = [];
-    for (let i = 0; i < 7; i++) {
+    const arr: { iso: string; weekday: string; day: number; month: string }[] = [];
+    for (let i = 0; i < DAYS_AHEAD; i++) {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() + i);
       arr.push({
-        iso: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-        label: dayLabel(d, lang, t),
-        day: String(d.getDate()),
+        iso: formatIsoDate(d),
+        weekday: weekdayShort(d, lang),
+        day: d.getDate(),
+        month: monthShort(d, lang),
       });
     }
     return arr;
-  }, [lang, t]);
+  }, [lang]);
 
   const selectedDate = draft.date ?? days[0].iso;
   const slots = useSlots({
@@ -72,30 +86,35 @@ export function SlotPicker() {
 
   const canContinue = !!draft.date && !!draft.time;
 
+  const goNext = React.useCallback(() => {
+    if (!canContinue) return;
+    router.push(`/c/${clinicSlug}/my/book/confirm`);
+  }, [canContinue, router, clinicSlug]);
+
   React.useEffect(() => {
     const off = tg.setMainButton({
-      text: t.common.next,
+      text: t.book.continue,
       active: canContinue,
       visible: true,
-      onClick: () => {
-        if (!canContinue) return;
-        router.push(`/c/${clinicSlug}/my/book/confirm`);
-      },
+      onClick: goNext,
     });
     return off;
-  }, [tg, canContinue, router, clinicSlug, t.common.next]);
+  }, [tg, canContinue, goNext, t.book.continue]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
 
+  const allSlots = slots.data?.slots ?? [];
+  const visibleSlots = expanded ? allSlots : allSlots.slice(0, INITIAL_SLOTS);
+  const hasMore = allSlots.length > INITIAL_SLOTS;
+
   return (
     <div>
-      <div className="mb-4">
-        <div className="text-xs uppercase tracking-wide" style={{ color: "var(--tg-hint)" }}>
-          {t.book.stepSlot}
-        </div>
-        <h1 className="text-xl font-bold">{t.book.pickSlot}</h1>
-      </div>
-      <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-2">
+      <WizardHeader
+        step={3}
+        label={t.book.stepLabel.replace("{step}", "3").replace("{total}", "4")}
+        title={t.book.stepSlot}
+      />
+      <div className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-2">
         {days.map((d) => {
           const active = selectedDate === d.iso;
           return (
@@ -105,61 +124,98 @@ export function SlotPicker() {
               onClick={() => {
                 tg.haptic.selection();
                 setDraft({ date: d.iso, time: null });
+                setExpanded(false);
               }}
-              className={`flex min-h-[64px] min-w-[64px] shrink-0 flex-col items-center justify-center rounded-xl px-3 py-2 text-xs transition ${
-                active ? "ring-2" : ""
-              }`}
-              style={{
-                backgroundColor: "var(--tg-section-bg)",
-                color: "var(--tg-text)",
-                ...(active
-                  ? ({ "--tw-ring-color": "var(--tg-accent)" } as React.CSSProperties)
-                  : {}),
-              }}
+              className="flex min-h-[68px] min-w-[68px] shrink-0 flex-col items-center justify-center rounded-2xl px-3 py-2 text-xs transition active:scale-[0.98]"
+              style={
+                active
+                  ? {
+                      backgroundColor: "var(--tg-accent)",
+                      color: "#fff",
+                    }
+                  : {
+                      backgroundColor: "var(--tg-section-bg)",
+                      color: "var(--tg-text)",
+                    }
+              }
             >
-              <span style={{ color: "var(--tg-hint)" }}>{d.label}</span>
+              <span
+                style={{
+                  color: active
+                    ? "rgba(255,255,255,0.85)"
+                    : "var(--tg-hint)",
+                }}
+              >
+                {d.weekday}
+              </span>
               <span className="mt-1 text-lg font-semibold">{d.day}</span>
+              <span
+                className="text-[10px]"
+                style={{
+                  color: active
+                    ? "rgba(255,255,255,0.85)"
+                    : "var(--tg-hint)",
+                }}
+              >
+                {d.month}
+              </span>
             </button>
           );
         })}
       </div>
       {slots.isLoading ? (
         <MSpinner />
-      ) : slots.data && slots.data.slots.length > 0 ? (
-        <div className="grid grid-cols-4 gap-2">
-          {slots.data.slots.map((slot) => {
-            const active = draft.time === slot;
-            return (
-              <button
-                key={slot}
-                type="button"
-                onClick={() => {
-                  tg.haptic.selection();
-                  setDraft({ time: slot });
-                }}
-                className={`min-h-[44px] rounded-xl px-2 py-2 text-sm font-semibold transition ${
-                  active ? "text-white" : ""
-                }`}
-                style={
-                  active
-                    ? { backgroundColor: "var(--tg-accent)" }
-                    : {
-                        backgroundColor: "var(--tg-section-bg)",
-                        color: "var(--tg-text)",
-                      }
-                }
-              >
-                {slot}
-              </button>
-            );
-          })}
-        </div>
+      ) : allSlots.length > 0 ? (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            {visibleSlots.map((slot) => {
+              const active = draft.time === slot;
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => {
+                    tg.haptic.selection();
+                    setDraft({ time: slot });
+                  }}
+                  className="min-h-[48px] rounded-xl px-2 py-2 text-sm font-semibold transition active:scale-[0.98]"
+                  style={
+                    active
+                      ? { backgroundColor: "var(--tg-accent)", color: "#fff" }
+                      : {
+                          backgroundColor: "var(--tg-section-bg)",
+                          color: "var(--tg-text)",
+                        }
+                  }
+                >
+                  {slot}
+                </button>
+              );
+            })}
+          </div>
+          {hasMore ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold"
+              style={{
+                backgroundColor: "transparent",
+                color: "var(--tg-accent)",
+              }}
+            >
+              {expanded ? t.book.showLess : t.book.showMoreTime}
+            </button>
+          ) : null}
+        </>
       ) : (
         <MEmpty>{t.book.noSlots}</MEmpty>
       )}
-      <MCard className="mt-4 text-xs" style={{ color: "var(--tg-hint)" }}>
-        {slots.data ? `${slots.data.slotMin} ${t.common.min}` : null}
-      </MCard>
+      <WizardFooter
+        primaryLabel={t.book.continue}
+        onPrimary={goNext}
+        disabled={!canContinue}
+        tagline={t.book.clinicTagline}
+      />
     </div>
   );
 }

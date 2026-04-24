@@ -7,10 +7,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -32,59 +29,19 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 import { SlotPicker } from "./SlotPicker";
-
-const CHANNELS = [
-  "WALKIN",
-  "PHONE",
-  "TELEGRAM",
-  "WEBSITE",
-  "KIOSK",
-] as const;
-
-type ChannelType = (typeof CHANNELS)[number];
-
-const SOURCES = [
-  "WEBSITE",
-  "TELEGRAM",
-  "INSTAGRAM",
-  "CALL",
-  "WALKIN",
-  "REFERRAL",
-  "ADS",
-  "OTHER",
-] as const;
-
-type PatientHit = {
-  id: string;
-  fullName: string;
-  phone: string;
-  phoneNormalized: string;
-  photoUrl: string | null;
-  segment: string;
-};
-
-type ServiceHit = {
-  id: string;
-  nameRu: string;
-  nameUz: string;
-  priceBase: number;
-  durationMin: number;
-  category: string | null;
-};
-
-type DoctorHit = {
-  id: string;
-  nameRu: string;
-  nameUz: string;
-  photoUrl: string | null;
-  color: string | null;
-  isActive: boolean;
-};
-
-type CabinetHit = {
-  id: string;
-  number: string;
-};
+import { DoctorPicker } from "./new-appointment-dialog/doctor-picker";
+import { PatientPicker } from "./new-appointment-dialog/patient-picker";
+import { ServicesPicker } from "./new-appointment-dialog/services-picker";
+import {
+  CHANNELS,
+  EMPTY,
+  type CabinetHit,
+  type ChannelType,
+  type DoctorHit,
+  type FormState,
+  type PatientHit,
+  type ServiceHit,
+} from "./new-appointment-dialog/types";
 
 export interface NewAppointmentDialogProps {
   open: boolean;
@@ -107,42 +64,6 @@ export interface NewAppointmentDialogProps {
   /** Called after successful creation with the new appointment id. */
   onCreated?: (appointmentId: string) => void;
 }
-
-type FormState = {
-  patient: PatientHit | null;
-  newPatient: boolean;
-  newPatientForm: {
-    fullName: string;
-    phone: string;
-    gender: "MALE" | "FEMALE" | "";
-    source: (typeof SOURCES)[number] | "";
-  };
-  serviceIds: string[];
-  doctorId: string | null;
-  cabinetId: string | null;
-  date: Date;
-  time: string | null;
-  channel: ChannelType;
-  comments: string;
-};
-
-const EMPTY: FormState = {
-  patient: null,
-  newPatient: false,
-  newPatientForm: {
-    fullName: "",
-    phone: "",
-    gender: "",
-    source: "",
-  },
-  serviceIds: [],
-  doctorId: null,
-  cabinetId: null,
-  date: new Date(),
-  time: null,
-  channel: "WALKIN",
-  comments: "",
-};
 
 /**
  * Universal NewAppointmentDialog — single source of truth for creating an
@@ -182,7 +103,6 @@ export function NewAppointmentDialog({
     until?: string;
   } | null>(null);
 
-  // Reset / prefill on open.
   React.useEffect(() => {
     if (!open) return;
     setConflict(null);
@@ -200,7 +120,6 @@ export function NewAppointmentDialog({
     }));
   }, [open, initialDoctorId, initialDate, initialTime]);
 
-  // Resolve `patientId` prop (e.g. from patient card) into a Patient hit.
   const preloadPatient = useQuery<PatientHit | null, Error>({
     queryKey: ["patient-preload", patientId],
     enabled: Boolean(open && patientId),
@@ -257,7 +176,6 @@ export function NewAppointmentDialog({
     phoneAppliedRef.current = initialPatientPhone;
     const hits = phoneLookup.data;
     setState((s) => {
-      // Don't clobber operator's manual selection.
       if (s.patient) return s;
       if (hits.length === 1) {
         return { ...s, patient: hits[0]!, newPatient: false };
@@ -280,6 +198,48 @@ export function NewAppointmentDialog({
     phoneLookup.data,
   ]);
 
+  const doctorsQuery = useQuery<DoctorHit[], Error>({
+    queryKey: ["doctors", "dialog"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/doctors?isActive=true&limit=200`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = (await res.json()) as { rows: DoctorHit[] };
+      return j.rows;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const servicesQuery = useQuery<ServiceHit[], Error>({
+    queryKey: ["services", "dialog"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/services?isActive=true&limit=200`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = (await res.json()) as { rows: ServiceHit[] };
+      return j.rows;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const cabinetsQuery = useQuery<CabinetHit[], Error>({
+    queryKey: ["cabinets", "dialog"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = (await res.json()) as { rows: CabinetHit[] };
+      return j.rows;
+    },
+    staleTime: 5 * 60_000,
+  });
+
   const createMutation = useMutation<
     { id: string },
     Error,
@@ -287,7 +247,6 @@ export function NewAppointmentDialog({
     unknown
   >({
     mutationFn: async (values) => {
-      // Resolve patient: create new if requested.
       let resolvedPatientId: string | null = values.patient?.id ?? null;
       if (values.newPatient) {
         if (!values.newPatientForm.fullName.trim()) {
@@ -391,48 +350,6 @@ export function NewAppointmentDialog({
         toast.error(t("err.patientPhone"));
       else toast.error(err.message);
     },
-  });
-
-  const doctorsQuery = useQuery<DoctorHit[], Error>({
-    queryKey: ["doctors", "dialog"],
-    enabled: open,
-    queryFn: async () => {
-      const res = await fetch(`/api/crm/doctors?isActive=true&limit=200`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: DoctorHit[] };
-      return j.rows;
-    },
-    staleTime: 5 * 60_000,
-  });
-
-  const servicesQuery = useQuery<ServiceHit[], Error>({
-    queryKey: ["services", "dialog"],
-    enabled: open,
-    queryFn: async () => {
-      const res = await fetch(`/api/crm/services?isActive=true&limit=200`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: ServiceHit[] };
-      return j.rows;
-    },
-    staleTime: 5 * 60_000,
-  });
-
-  const cabinetsQuery = useQuery<CabinetHit[], Error>({
-    queryKey: ["cabinets", "dialog"],
-    enabled: open,
-    queryFn: async () => {
-      const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: CabinetHit[] };
-      return j.rows;
-    },
-    staleTime: 5 * 60_000,
   });
 
   const onSubmit = (e: React.FormEvent) => {
@@ -594,425 +511,3 @@ export function NewAppointmentDialog({
 }
 
 export default NewAppointmentDialog;
-
-// -----------------------------------------------------------------------------
-// PatientPicker
-// -----------------------------------------------------------------------------
-
-function PatientPicker({
-  value,
-  newPatient,
-  newPatientForm,
-  onChangePatient,
-  onToggleNew,
-  onChangeNewPatient,
-  disabled,
-}: {
-  value: PatientHit | null;
-  newPatient: boolean;
-  newPatientForm: FormState["newPatientForm"];
-  onChangePatient: (p: PatientHit | null) => void;
-  onToggleNew: (on: boolean) => void;
-  onChangeNewPatient: (next: FormState["newPatientForm"]) => void;
-  disabled?: boolean;
-}) {
-  const t = useTranslations("appointments.newDialog.patient");
-  const tSource = useTranslations("patients.source");
-  const tGender = useTranslations("patients.gender");
-
-  const [search, setSearch] = React.useState("");
-  const [searchDebounced, setSearchDebounced] = React.useState("");
-  const [open, setOpen] = React.useState(false);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    const id = window.setTimeout(() => setSearchDebounced(search), 250);
-    return () => window.clearTimeout(id);
-  }, [search]);
-
-  const hits = useQuery<PatientHit[], Error>({
-    queryKey: ["patient-autocomplete", searchDebounced],
-    enabled: open && searchDebounced.length >= 2,
-    queryFn: async () => {
-      const qs = new URLSearchParams({ q: searchDebounced, limit: "10" });
-      const res = await fetch(`/api/crm/patients?${qs.toString()}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: PatientHit[] };
-      return j.rows;
-    },
-    staleTime: 30_000,
-  });
-
-  // Close dropdown on outside click.
-  React.useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div className="grid gap-1.5">
-      <Label>{t("label")}</Label>
-
-      {value && !newPatient ? (
-        <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium">{value.fullName}</div>
-            <div className="text-xs text-muted-foreground">{value.phone}</div>
-          </div>
-          {!disabled ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => onChangePatient(null)}
-            >
-              <XIcon className="size-4" />
-            </Button>
-          ) : null}
-        </div>
-      ) : newPatient ? (
-        <NewPatientInline
-          values={newPatientForm}
-          onChange={onChangeNewPatient}
-          onCancel={() => onToggleNew(false)}
-          tSource={tSource}
-          tGender={tGender}
-        />
-      ) : (
-        <div ref={containerRef} className="relative">
-          <div className="relative">
-            <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setOpen(true);
-              }}
-              onFocus={() => setOpen(true)}
-              placeholder={t("searchPlaceholder")}
-              className="pl-8"
-              disabled={disabled}
-            />
-          </div>
-
-          {open && searchDebounced.length >= 2 ? (
-            <div className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-md">
-              {hits.isLoading ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  {t("loading")}
-                </div>
-              ) : (hits.data ?? []).length === 0 ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  {t("noMatches")}
-                </div>
-              ) : (
-                <ul>
-                  {(hits.data ?? []).map((p) => (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onChangePatient(p);
-                          setOpen(false);
-                          setSearch("");
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                      >
-                        <span className="min-w-0 flex-1 truncate">
-                          {p.fullName}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {p.phone}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  onToggleNew(true);
-                  setOpen(false);
-                }}
-                className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary hover:bg-primary/5"
-              >
-                <PlusIcon className="size-4" />
-                {t("createNew")}
-              </button>
-            </div>
-          ) : null}
-
-          {!disabled ? (
-            <button
-              type="button"
-              onClick={() => onToggleNew(true)}
-              className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <PlusIcon className="size-3.5" />
-              {t("createNewShort")}
-            </button>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NewPatientInline({
-  values,
-  onChange,
-  onCancel,
-  tSource,
-  tGender,
-}: {
-  values: FormState["newPatientForm"];
-  onChange: (next: FormState["newPatientForm"]) => void;
-  onCancel: () => void;
-  tSource: ReturnType<typeof useTranslations>;
-  tGender: ReturnType<typeof useTranslations>;
-}) {
-  const t = useTranslations("appointments.newDialog.newPatient");
-  return (
-    <div className="grid gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-primary">
-          {t("title")}
-        </span>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={onCancel}
-          aria-label={t("cancel")}
-        >
-          <XIcon className="size-4" />
-        </Button>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="grid gap-1">
-          <Label>{t("fullName")}</Label>
-          <Input
-            value={values.fullName}
-            onChange={(e) =>
-              onChange({ ...values, fullName: e.target.value })
-            }
-            placeholder={t("fullNamePlaceholder")}
-          />
-        </div>
-        <div className="grid gap-1">
-          <Label>{t("phone")}</Label>
-          <Input
-            type="tel"
-            value={values.phone}
-            onChange={(e) => onChange({ ...values, phone: e.target.value })}
-            placeholder="+998 90 123 45 67"
-          />
-        </div>
-        <div className="grid gap-1">
-          <Label>{t("gender")}</Label>
-          <Select
-            value={values.gender || ""}
-            onValueChange={(v) =>
-              onChange({
-                ...values,
-                gender: (v as "MALE" | "FEMALE") || "",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={t("genderPlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="MALE">{tGender("male")}</SelectItem>
-              <SelectItem value="FEMALE">{tGender("female")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-1">
-          <Label>{t("source")}</Label>
-          <Select
-            value={values.source || ""}
-            onValueChange={(v) =>
-              onChange({
-                ...values,
-                source: (v as (typeof SOURCES)[number]) || "",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={t("sourcePlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {SOURCES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {tSource(s.toLowerCase() as never)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// ServicesPicker — multi-select with inline list + add button.
-// -----------------------------------------------------------------------------
-
-function ServicesPicker({
-  services,
-  value,
-  onChange,
-}: {
-  services: ServiceHit[];
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const t = useTranslations("appointments.newDialog");
-  const [pick, setPick] = React.useState<string>("");
-
-  const selected = services.filter((s) => value.includes(s.id));
-  const available = services.filter((s) => !value.includes(s.id));
-
-  const totalDuration = selected.reduce((acc, s) => acc + s.durationMin, 0);
-  const totalPrice = selected.reduce((acc, s) => acc + s.priceBase, 0);
-
-  return (
-    <div className="grid gap-1.5">
-      <Label>{t("services")}</Label>
-      <div className="rounded-md border border-border bg-background">
-        {selected.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            {t("servicesEmpty")}
-          </p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {selected.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between gap-2 px-3 py-1.5"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{s.nameRu}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {s.durationMin} {t("minutes")} · {formatSum(s.priceBase)}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => onChange(value.filter((id) => id !== s.id))}
-                  aria-label={t("serviceRemove")}
-                >
-                  <XIcon className="size-4" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="flex items-center gap-1 border-t border-border p-2">
-          <Select
-            value={pick}
-            onValueChange={(v) => {
-              if (v) {
-                onChange([...value, v]);
-                setPick("");
-              }
-            }}
-          >
-            <SelectTrigger className="h-8 flex-1">
-              <SelectValue placeholder={t("serviceAddPlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {available.length === 0 ? (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                  {t("serviceAllPicked")}
-                </div>
-              ) : (
-                available.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.nameRu} · {s.durationMin} {t("minutes")} ·{" "}
-                    {formatSum(s.priceBase)}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {selected.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {t("total", {
-            duration: totalDuration,
-            price: formatSum(totalPrice),
-          })}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// DoctorPicker
-// -----------------------------------------------------------------------------
-
-function DoctorPicker({
-  doctors,
-  value,
-  onChange,
-}: {
-  doctors: DoctorHit[];
-  value: string | null;
-  onChange: (id: string | null) => void;
-}) {
-  const t = useTranslations("appointments.newDialog");
-  return (
-    <div className="grid gap-1">
-      <Label>{t("doctor")}</Label>
-      <Select
-        value={value ?? ""}
-        onValueChange={(v) => onChange(v || null)}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder={t("doctorPlaceholder")} />
-        </SelectTrigger>
-        <SelectContent>
-          {doctors.map((d) => (
-            <SelectItem key={d.id} value={d.id}>
-              <span className="flex items-center gap-2">
-                <span
-                  className="inline-block size-2.5 rounded-full"
-                  style={{ backgroundColor: d.color ?? "#3DD5C0" }}
-                />
-                {d.nameRu}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <p className="text-[10px] text-muted-foreground">
-        {t("doctorHint")}
-        {/* TODO(api): filter server-side by `services:{some:{serviceId:{in:...}}}` — tracked in report. */}
-      </p>
-    </div>
-  );
-}
-
-function formatSum(amount: number): string {
-  if (!Number.isFinite(amount) || amount === 0) return "0 сум";
-  const whole = Math.trunc(amount / 100);
-  const grouped = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${grouped} сум`;
-}
-

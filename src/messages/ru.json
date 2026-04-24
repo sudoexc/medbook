@@ -1,4 +1,7 @@
 {
+  "crmLayout": {
+    "adminFallbackName": "Администратор"
+  },
   "common": {
     "save": "Сохранить",
     "cancel": "Отмена",
@@ -65,9 +68,9 @@
     "segment": {
       "new": "Новый",
       "active": "Активный",
-      "dormant": "Спящий",
+      "dormant": "Остывает",
       "vip": "VIP",
-      "churn": "Отток"
+      "churn": "Потерян"
     }
   },
   "appointment": {
@@ -112,15 +115,31 @@
       "age": "Возраст",
       "phone": "Телефон",
       "segment": "Сегмент",
+      "status": "Статус",
+      "priority": "Приоритет",
+      "source": "Источник",
+      "nextVisit": "Следующая запись",
       "ltv": "LTV",
       "lastVisit": "Последний визит",
       "tags": "Теги",
       "actions": "Действия"
     },
+    "table": {
+      "selectAll": "Выбрать все",
+      "selectRow": "Выбрать",
+      "noAppointment": "Нет записи"
+    },
+    "ageYears": "{age, plural, one {# год} few {# года} other {# лет}}",
+    "priority": {
+      "high": "Высокий",
+      "medium": "Средний",
+      "low": "Низкий"
+    },
     "filters": {
       "search": "Поиск: ФИО, телефон, паспорт, TG",
       "segment": "Сегмент",
-      "segmentAll": "Все сегменты",
+      "segmentAll": "Все статусы",
+      "sourceAll": "Все источники",
       "tags": "Теги",
       "tagsAll": "Все теги",
       "age": "Возраст",
@@ -129,6 +148,8 @@
       "gender": "Пол",
       "genderAll": "Любой пол",
       "lastVisit": "Последний визит",
+      "lastVisitFrom": "Последний визит от",
+      "lastVisitTo": "Последний визит до",
       "hasDebt": "С долгом",
       "clear": "Сбросить"
     },
@@ -152,9 +173,9 @@
     "segment": {
       "new": "Новый",
       "active": "Активный",
-      "dormant": "Спящий",
+      "dormant": "Остывает",
       "vip": "VIP",
-      "churn": "Отток"
+      "churn": "Потерян"
     },
     "gender": {
       "male": "Мужской",
@@ -165,8 +186,8 @@
       "telegram": "Telegram",
       "instagram": "Instagram",
       "call": "Звонок",
-      "walkin": "С улицы",
-      "referral": "По рекомендации",
+      "walkin": "Ресепшн",
+      "referral": "Рекомендации",
       "ads": "Реклама",
       "other": "Другое"
     },
@@ -194,6 +215,7 @@
       "source": "Источник",
       "sourcePlaceholder": "Откуда пришёл",
       "tags": "Теги (через запятую)",
+      "tagsPlaceholder": "vip, пост-больной, детский",
       "submit": "Создать",
       "cancel": "Отмена",
       "createdToast": "Пациент создан",
@@ -203,7 +225,57 @@
     "rowActions": {
       "open": "Открыть карточку",
       "call": "Позвонить",
-      "newAppointment": "Новая запись"
+      "newAppointment": "Новая запись",
+      "more": "Ещё"
+    },
+    "rail": {
+      "actionsHeading": "Центр действий",
+      "actions": {
+        "callTitle": "Позвонить пациентам",
+        "callSubtitle": "Давно не были в клинике",
+        "telegramTitle": "Написать в Telegram",
+        "telegramSubtitle": "Не записаны после консультации",
+        "bookTitle": "Предложить запись",
+        "bookSubtitle": "Подходят по триггерам"
+      },
+      "viewAllActions": "Смотреть все действия",
+      "segmentsHeading": "Сегменты",
+      "segments": {
+        "vip": "VIP клиенты",
+        "dormant30": "Не были > 30 дней",
+        "newClients": "Новые клиенты",
+        "churn": "Потерянные"
+      },
+      "statsHeading": "Статистика",
+      "statsPeriod": "За месяц",
+      "stats": {
+        "newPatients": "Новые пациенты",
+        "returning": "Вернувшиеся",
+        "avgCheck": "Средний чек",
+        "totalRevenue": "Общий доход"
+      },
+      "sourcesHeading": "Источники пациентов"
+    },
+    "tiles": {
+      "totalPatients": "Всего пациентов",
+      "newWeekHint": "+{count, plural, one {# за неделю} few {# за неделю} other {# за неделю}}",
+      "newWeek": "Новые за неделю",
+      "active": "Активные пациенты",
+      "dormantGt30": "Не были > 30 дней",
+      "noShowRisk": "Риск no-show",
+      "avgCheck": "Средний чек"
+    },
+    "tabs": {
+      "ariaLabel": "Сегменты пациентов",
+      "all": "Все пациенты",
+      "vip": "VIP",
+      "new": "Новые",
+      "active": "Активные",
+      "dormant": "Остывают",
+      "churn": "Потерянные",
+      "filters": "Фильтры",
+      "segments": "Сегменты",
+      "configureTable": "Настроить таблицу"
     }
   },
   "appointments": {
@@ -222,10 +294,29 @@
       "services": "Услуги",
       "moreServices": "ещё",
       "status": "Статус",
+      "source": "Источник",
       "payment": "Оплата",
       "cabinet": "Каб.",
       "channel": "Канал",
+      "riskNoShow": "Риск no-show",
+      "amount": "Сумма",
       "actions": "Действия"
+    },
+    "risk": {
+      "high": "Высокий",
+      "medium": "Средний",
+      "low": "Низкий"
+    },
+    "cell": {
+      "firstVisit": "Первичный приём",
+      "extraServices": "+{count} услуги",
+      "appointment": "Приём",
+      "cabinetN": "Каб. {number}",
+      "noCabinet": "Без кабинета",
+      "lateMin": "+{min} мин",
+      "inMin": "Через {min} мин",
+      "callAria": "Позвонить",
+      "telegramAria": "Написать в Telegram"
     },
     "status": {
       "booked": "Записан",
@@ -270,15 +361,23 @@
         "range": "Период"
       }
     },
-    "kpi": {
-      "label": "Быстрые статусы",
-      "all": "Все",
-      "waiting": "Ожидает",
-      "booked": "Записан",
-      "in_progress": "На приёме",
-      "completed": "Завершён",
-      "cancelled": "Отменён",
-      "no_show": "Не пришёл"
+    "tiles": {
+      "all": "Все записи",
+      "needsAttention": "Сейчас важно",
+      "soon": "Скоро приём",
+      "unconfirmed": "Не подтверждены",
+      "late": "Опоздания",
+      "arrived": "Пришли"
+    },
+    "kpiStrip": {
+      "ariaLabel": "Быстрые фильтры",
+      "needsAttention": "Сейчас нужно внимание",
+      "needCall": "Нужно позвонить",
+      "riskNoShow": "Риск no-show",
+      "inProgress": "На приёме",
+      "arrived": "Пришли",
+      "all": "Все записи",
+      "configureView": "Настроить вид"
     },
     "bulk": {
       "label": "Массовые действия",
@@ -360,11 +459,24 @@
       "count": "Записей",
       "revenue": "Выручка",
       "avgCheck": "Средний чек",
-      "conv": "Конверсия"
+      "conv": "Конверсия",
+      "actionCenter": "Центр действий",
+      "todayStats": "Статистика за сегодня",
+      "actionRemindTitle": "Напомнить пациентам",
+      "actionRemindHint": "{count, plural, one {# запись без подтверждения} few {# записи без подтверждения} other {# записей без подтверждения}}",
+      "actionConfirmTitle": "Подтвердить приходы",
+      "actionConfirmHint": "{count, plural, one {# ожидает в холле} few {# ожидают в холле} other {# ожидают в холле}}",
+      "actionBroadcastTitle": "Рассылка в Telegram",
+      "actionBroadcastHint": "Массовое сообщение",
+      "actionExportTitle": "Экспорт CSV",
+      "actionExportHint": "Скачать текущий фильтр",
+      "slotsLoading": "Загрузка…",
+      "slotsNone": "Нет слотов"
     },
     "slotPicker": {
       "date": "Дата",
       "loading": "Загрузка слотов…",
+      "loadError": "Не удалось загрузить слоты. Попробуйте ещё раз.",
       "noSlots": "Нет свободных слотов",
       "pickDoctorFirst": "Выберите врача",
       "slotMin": "Шаг: {min} мин"
@@ -427,14 +539,13 @@
     }
   },
   "calendar": {
-    "title": "Календарь",
-    "subtitle": "Планирование визитов по врачам",
     "today": "Сегодня",
     "prev": "Предыдущий",
     "next": "Следующий",
     "loading": "Загрузка…",
-    "noEvents": "Записей на этот период нет",
     "newAppointment": "Новая запись",
+    "filtersLabel": "Фильтры",
+    "configureView": "Настроить вид",
     "desktopOnlyTitle": "Откройте на десктопе",
     "desktopOnlyDescription": "Календарь оптимизирован для экранов от 1280 px. На смартфоне используйте раздел «Записи».",
     "views": {
@@ -475,11 +586,50 @@
       "minutesShort": "мин",
       "clickToCreate": "Кликните, чтобы создать запись"
     },
+    "chip": {
+      "statusBooked": "Подтверждён",
+      "statusWaiting": "Ожидает",
+      "statusInProgress": "На приёме",
+      "statusCompleted": "Пришёл",
+      "statusNoShowRisk": "Высокий риск",
+      "statusCancelled": "Отменён",
+      "cabinetN": "Каб. {n}",
+      "lateMinutes": "+{min} мин",
+      "inSession": "На приёме",
+      "free": "Свободен"
+    },
     "legend": {
       "title": "Легенда",
       "byStatus": "По статусу",
       "byDoctor": "По врачу",
-      "byCabinet": "По кабинету"
+      "byCabinet": "По кабинету",
+      "status": {
+        "BOOKED": "Подтверждён",
+        "WAITING": "Ожидает",
+        "IN_PROGRESS": "На приёме",
+        "COMPLETED": "Пришёл",
+        "CANCELLED": "Отменён",
+        "NO_SHOW": "No-show",
+        "BREAK": "Перерыв",
+        "FREE": "Свободно"
+      },
+      "channels": {
+        "CALL": "Звонок",
+        "TELEGRAM": "Telegram",
+        "SITE": "С сайта",
+        "WALKIN": "Ресепшн",
+        "REPEAT": "Повторный"
+      }
+    },
+    "tiles": {
+      "total": "Записей на сегодня",
+      "totalHint": "Сравнение с вчера",
+      "confirmed": "Подтверждено",
+      "pending": "Ожидают подтверждения",
+      "risk": "Высокий риск no-show",
+      "riskDetails": "Подробнее",
+      "freeSlots": "Свободных слотов",
+      "freeSlotsHint": "30 мин"
     },
     "rail": {
       "stats": "Статистика",
@@ -487,7 +637,28 @@
       "completedCount": "Завершено",
       "revenueTotal": "Выручка",
       "occupancy": "Загрузка по врачам",
-      "noData": "Нет данных"
+      "noData": "Нет данных",
+      "aiTitle": "AI-рекомендации",
+      "recReschedule": "Перенести пациента",
+      "recRescheduleBody": "{count, plural, one {# запись с риском no-show — предложите другое время.} few {# записи с риском no-show — предложите другое время.} other {# записей с риском no-show — предложите другое время.}}",
+      "recRescheduleEmpty": "Нет срочных конфликтов.",
+      "recRescheduleCta": "Открыть",
+      "recFillSlot": "Заполнить свободное окно",
+      "recFillSlotBody": "Есть свободные слоты — предложите повторным пациентам.",
+      "recFillSlotCta": "Подобрать",
+      "recCallback": "Перезвонить пациентам",
+      "recCallbackBody": "{count, plural, one {# неподтверждённая запись ждёт звонка.} few {# неподтверждённых записи ждут звонка.} other {# неподтверждённых записей ждут звонка.}}",
+      "recCallbackEmpty": "Все записи подтверждены.",
+      "recCallbackCta": "Позвонить",
+      "unconfirmed": "Неподтверждённые",
+      "unconfirmedEmpty": "Все записи подтверждены.",
+      "freeSlotsToday": "Свободные слоты сегодня",
+      "noActiveDoctors": "Нет активных врачей.",
+      "slotsCount": "{count, plural, one {# окно} few {# окна} other {# окон}}",
+      "dailyStats": "Статистика на день",
+      "statAppointments": "Записей",
+      "statConversion": "Конверсия",
+      "statRevenue": "Выручка"
     }
   },
   "patientCard": {
@@ -525,6 +696,79 @@
       "tags": "Теги",
       "noTags": "Тегов нет"
     },
+    "infoPanel": {
+      "mainInfo": "Основная информация",
+      "phone": "Телефон",
+      "birthDate": "Дата рождения",
+      "ageSuffix": "{age} лет",
+      "gender": "Пол",
+      "address": "Адрес",
+      "source": "Источник",
+      "firstVisit": "Первый визит",
+      "manager": "Менеджер",
+      "preferredLang": "Язык общения",
+      "langUz": "Uz",
+      "langRu": "Русский",
+      "consentMarketing": "Согласие на рассылки",
+      "tags": "Теги",
+      "notes": "Заметки",
+      "notesEmpty": "Заметок пока нет",
+      "notesPlaceholder": "Заметки о пациенте…"
+    },
+    "rightRail": {
+      "quickActions": "Быстрые действия",
+      "callPatient": "Позвонить пациенту",
+      "writeTelegram": "Написать в Telegram",
+      "createAppointment": "Создать запись",
+      "patientStatus": "Статус пациента",
+      "statusLabel": "Статус",
+      "statusActive": "Активный",
+      "lastVisit": "Последний визит",
+      "daysAgo": "{days} дн. назад",
+      "visitFrequency": "Частота визитов",
+      "frequencyOften": "Часто",
+      "frequencyMonth": "Раз в месяц",
+      "frequencyQuarter": "Раз в 2–3 мес.",
+      "frequencyRare": "Редко",
+      "riskNoShow": "Риск no-show",
+      "riskLow": "Низкий",
+      "riskMedium": "Средний",
+      "riskHigh": "Высокий",
+      "communication": "Коммуникация",
+      "more": "Подробнее",
+      "calls": "Звонки",
+      "files": "Файлы",
+      "allFiles": "Все файлы",
+      "loading": "Загрузка…",
+      "noDocuments": "Пока нет документов"
+    },
+    "finance": {
+      "title": "Финансы",
+      "totalIncome": "Общий доход",
+      "paid": "Оплачено",
+      "debt": "Задолженность",
+      "zeroSum": "0 сум",
+      "editAppointment": "Изменить запись",
+      "donutPaid": "Оплачено"
+    },
+    "timeline": {
+      "title": "История взаимодействий",
+      "filter": "Фильтр",
+      "tabAll": "Все",
+      "tabVisits": "Визиты",
+      "tabCalls": "Звонки",
+      "tabTelegram": "Telegram",
+      "typeTabs": "Тип события",
+      "loading": "Загрузка…",
+      "empty": "Пока нет событий",
+      "showMore": "Показать ещё ({count})",
+      "statusCompleted": "Завершён",
+      "statusCancelled": "Отменён",
+      "callMissed": "Пропущен",
+      "callAnswered": "Успешный",
+      "incoming": "Входящее",
+      "outgoing": "Исходящее"
+    },
     "quickActions": {
       "newAppointment": "Записать",
       "call": "Позвонить",
@@ -533,7 +777,30 @@
       "inviteToBot": "У пациента нет Telegram — пришлём приглашение в бот",
       "more": "Ещё",
       "mergeDuplicates": "Объединить дубликаты",
+      "mergeDuplicatesSoon": "Объединение дубликатов появится в следующем обновлении",
       "delete": "Удалить пациента"
+    },
+    "hero": {
+      "years": "{age} лет",
+      "idLabel": "ID: {id}",
+      "copyPhoneAria": "Копировать номер",
+      "phoneCopied": "Номер скопирован",
+      "activeBadge": "Активный пациент",
+      "kpiLtv": "LTV",
+      "kpiVisits": "Визитов",
+      "kpiAvgCheck": "Средний чек",
+      "kpiLastVisit": "Последний визит",
+      "kpiRiskNoShow": "Риск no-show",
+      "visitsThisYear": "+{count} в этом году",
+      "riskHint": "На основе поведения",
+      "toneHigh": "Высокий",
+      "toneMedium": "Средний",
+      "toneLow": "Низкий",
+      "actionCall": "Позвонить",
+      "actionTelegram": "Telegram",
+      "actionNewAppointment": "Создать запись",
+      "actionSmsAria": "SMS",
+      "actionMoreAria": "Ещё"
     },
     "overview": {
       "ltv": "LTV",
@@ -545,6 +812,23 @@
       "viewAll": "Открыть все",
       "noActivity": "Пока ничего не происходило."
     },
+    "recs": {
+      "title": "Рекомендуемые действия",
+      "empty": "Рекомендаций пока нет",
+      "viewAll": "Показать все рекомендации",
+      "rebookTitle": "Записать на повторный визит",
+      "rebookDesc": "Рекомендуется через {days, plural, one {# день} few {# дня} other {# дней}}",
+      "reactivateTitle": "Реактивация: пациент не был более 2 месяцев",
+      "reactivateDesc": "Предложите акцию или консультацию",
+      "reminderTitle": "Напомнить о записи за 1 день",
+      "reminderDesc": "Отправить напоминание в Telegram",
+      "courseTitle": "Предложить курс лечения",
+      "courseDesc": "Повысить LTV пациента",
+      "upsellTitle": "Предложить комплексное обследование",
+      "upsellDesc": "Подходящий сегмент для апсейла",
+      "loyaltyTitle": "Добавить в программу лояльности",
+      "loyaltyDesc": "{count, plural, one {# завершённый визит} few {# завершённых визита} other {# завершённых визитов}}"
+    },
     "visits": {
       "date": "Дата",
       "doctor": "Врач",
@@ -552,6 +836,9 @@
       "status": "Статус",
       "payment": "Оплата",
       "comment": "Комментарий",
+      "doctorNote": "Заметка врача",
+      "noExtraData": "Нет дополнительных данных.",
+      "debt": "(долг)",
       "empty": "Визитов пока нет",
       "emptyDescription": "Запишите пациента на приём — здесь появится история.",
       "count": "Всего: {count}",
@@ -566,6 +853,7 @@
       "sign": "Подписать",
       "download": "Скачать",
       "delete": "Удалить",
+      "deleteSoon": "Удаление документов появится в следующем обновлении",
       "empty": "Нет документов",
       "emptyDescription": "Загрузите файл или попросите пациента подписать согласие.",
       "types": {
@@ -681,6 +969,33 @@
     "subtitle": "Живой обзор сегодняшнего дня",
     "newAppointment": "+ Новая запись",
     "liveBadge": "Обновляется",
+    "autoRefresh": "Обновляется автоматически",
+    "doctorsPanel": {
+      "title": "Кабинеты и врачи",
+      "day": "День",
+      "configure": "Настроить",
+      "viewGrid": "Сетка",
+      "viewList": "Список"
+    },
+    "warnings": {
+      "template": "Через {minutes} мин: {patient} — {doctor}"
+    },
+    "queueColumn": {
+      "title": "Общая очередь",
+      "empty": "Очередь пуста"
+    },
+    "bottomRow": {
+      "smartTitle": "Умные рекомендации",
+      "recInviteText": "Пригласить Akmala на свободный слот в 15:30 — кабинет 102",
+      "recInviteMeta": "Автопредложение ИИ",
+      "recConfirmText": "Подтвердить записи на завтра по SMS ({count} пациентов)",
+      "recConfirmMeta": "Ежедневная задача",
+      "recNoShowText": "Позвонить по no-show за последние 7 дней ({count} человек)",
+      "recNoShowMeta": "Рекомендация CRM",
+      "distributionTitle": "Распределение приёмов",
+      "warningsTitle": "Предупреждения",
+      "warningsEmpty": "Нет активных предупреждений."
+    },
     "kpi": {
       "todayAppointments": "Записей сегодня",
       "checkedIn": "Пришли",
@@ -715,7 +1030,17 @@
       "emptyHint": "Добавьте запись, чтобы активировать очередь.",
       "rowArrived": "Пришёл",
       "rowWaiting": "Ожидает",
-      "rowInProgress": "На приёме"
+      "rowInProgress": "На приёме",
+      "specialist": "Специалист",
+      "queue": "Очередь",
+      "queueCount": "Очередь ({count})",
+      "queueEmpty": "Очередь пуста",
+      "addAppointment": "Добавить запись",
+      "minPlan": "{min} мин план",
+      "remaining": "Осталось {min} мин",
+      "awaitingPatient": "Ожидает пациента",
+      "fallbackService": "Приём",
+      "nearestTime": "Ближайшее время"
     },
     "calls": {
       "title": "Call-центр",
@@ -731,7 +1056,20 @@
       "directionOUT": "Исходящий",
       "directionMISSED": "Пропущенный",
       "durationSec": "{sec} сек",
-      "unknownCaller": "Неизвестный номер"
+      "unknownCaller": "Неизвестный номер",
+      "brand": "Call Center",
+      "viewAll": "Все",
+      "emptyMain": "Нет активных звонков",
+      "emptyQueueHint": "Очередь пуста — можно передохнуть",
+      "queueHeader": "Очередь звонков",
+      "incomingLabel": "Входящий звонок",
+      "unknownShort": "Неизвестный",
+      "tagVip": "VIP",
+      "tagClient": "Клиент",
+      "tagNew": "Новый",
+      "rejectAria": "Отклонить",
+      "quickBookAria": "Быстрая запись",
+      "nowLabel": "сейчас"
     },
     "tg": {
       "title": "Telegram",
@@ -741,7 +1079,15 @@
       "emptyHint": "Новые сообщения из Telegram и SMS появятся здесь.",
       "voiceNote": "голосовое сообщение",
       "photo": "фото",
-      "document": "документ"
+      "document": "документ",
+      "viewAll": "Все",
+      "tabNew": "Новые",
+      "tabWaiting": "Ожидают",
+      "tabConfirmed": "Подтв.",
+      "tabAll": "Все",
+      "noMessages": "Сообщений нет",
+      "unknownName": "Неизвестный",
+      "voiceMessageFallback": "Голосовое сообщение"
     },
     "cabinets": {
       "title": "Кабинеты",
@@ -927,6 +1273,8 @@
     "back": "Назад к списку",
     "openProfile": "Открыть профиль",
     "loading": "Загрузка…",
+    "hourShort": "ч",
+    "minuteShort": "м",
     "filters": {
       "search": "Поиск по ФИО",
       "specialization": "Специализация",
@@ -954,13 +1302,47 @@
       "revenuePeriod": "Выручка ({period})",
       "loadPercent": "Загрузка",
       "bonus": "Премия",
-      "inactiveBadge": "Неактивен"
+      "inactiveBadge": "Неактивен",
+      "statusBusy": "На приёме",
+      "statusIdle": "Простаивает",
+      "statusFree": "Свободен",
+      "cabinetN": "Каб. {cabinet}",
+      "loadTodayLabel": "Загрузка сегодня",
+      "revenueToday": "Доход сегодня",
+      "appointmentsCount": "Записей",
+      "avgTime": "Ср. время приёма",
+      "minSuffix": "{min} мин",
+      "nearSlots": "Ближайшие окна",
+      "hasFreeSlots": "Есть свободные окна",
+      "now": "сейчас",
+      "noSlots": "Нет окон",
+      "fillSlots": "Заполнить слоты",
+      "schedule": "Расписание",
+      "redirect": "Перенаправить",
+      "book": "Записать"
     },
     "empty": {
       "title": "Врачей пока нет",
       "description": "Добавьте первого врача, чтобы строить расписание и учёт.",
       "filteredTitle": "Никого не нашли",
       "filteredDescription": "Измените фильтры или очистите поиск."
+    },
+    "ai": {
+      "title": "AI рекомендации",
+      "updated": "Обновлено 2 мин назад",
+      "emptyList": "Пока нет рекомендаций",
+      "redirectTitle": "Перенаправьте 3 пациента к {name} в 11:20",
+      "redirectDescription": "У неё есть свободное окно · От {from}",
+      "redirectAction": "Сделать",
+      "fillTitle": "У {name} простаивает",
+      "fillDescription": "с 12:00 до 14:00 · Постарайтесь заполнить эти окна",
+      "fillAction": "Заполнить",
+      "specialistTitle": "{name} перегружена после 14:00",
+      "specialistDescription": "Рекомендуем добавить ещё одного специалиста",
+      "specialistAction": "Подробнее",
+      "eveningTitle": "Добавьте вечерние слоты у {name}",
+      "eveningDescription": "Есть спрос после 18:00",
+      "eveningAction": "Настроить"
     },
     "rail": {
       "title": "Сводка",
@@ -973,6 +1355,63 @@
       "avgCheck": "Средний чек",
       "visitsTotal": "Приёмов всего",
       "noData": "Нет данных"
+    },
+    "tiles": {
+      "losses": "Потери сегодня",
+      "emptySlots": "{count, plural, one {# пустой слот} few {# пустых слота} other {# пустых слотов}}",
+      "noShow": "{count} no-show",
+      "thousandSuffix": "~{value}к",
+      "avgLoad": "Средняя загрузка",
+      "revenueToday": "Доход сегодня",
+      "appointmentsToday": "Записей сегодня",
+      "avgCheck": "Средний чек",
+      "conversion": "Конверсия в запись",
+      "deltaPercentPositive": "+{value}% к вчера",
+      "deltaCountPositive": "+{value} к вчера"
+    },
+    "quickBook": {
+      "title": "Быстрая запись к врачу",
+      "doctor": "Врач",
+      "doctorPlaceholder": "Выберите врача",
+      "doctorEmpty": "Нет врачей",
+      "service": "Услуга",
+      "servicePlaceholder": "Выберите услугу",
+      "date": "Дата",
+      "time": "Время",
+      "timePlaceholder": "Выберите время",
+      "submit": "Создать запись",
+      "serviceConsult": "Первичная консультация",
+      "serviceFollow": "Повторный приём",
+      "serviceProcedure": "Процедура",
+      "serviceDiagnostic": "Диагностика"
+    },
+    "topRevenue": {
+      "title": "Топ врачей по доходу",
+      "emptyPeriod": "Нет данных за период",
+      "statsTitle": "Статистика врачей",
+      "conversion": "Конверсия в запись",
+      "avgCheck": "Средний чек",
+      "noShow": "No-show",
+      "repeatVisits": "Повторные визиты"
+    },
+    "heatmap": {
+      "title": "Загрузка врачей по времени",
+      "empty": "Нет данных для отображения",
+      "timeHeader": "Время",
+      "cellTitle": "{count, plural, one {# запись} few {# записи} other {# записей}} · {pct}%",
+      "legendLow": "0–30% (низкая)",
+      "legendMedium": "30–60% (средняя)",
+      "legendGood": "60–80% (хорошая)",
+      "legendHigh": "80–100% (высокая)"
+    },
+    "tabs": {
+      "ariaLabel": "Фильтр врачей",
+      "all": "Все врачи",
+      "idle": "Простаивают",
+      "optimal": "Оптимальная загрузка",
+      "overloaded": "Перегружены",
+      "has-slots": "Есть окна сейчас",
+      "configureView": "Настроить вид"
     },
     "profile": {
       "notFoundTitle": "Врач не найден",
@@ -988,8 +1427,16 @@
     "tabs": {
       "overview": "Сводная",
       "schedule": "Расписание",
+      "services": "Услуги",
       "patients": "Пациенты",
-      "reviews": "Отзывы"
+      "reviews": "Отзывы",
+      "ariaLabel": "Фильтр врачей по загрузке",
+      "all": "Все",
+      "idle": "Простаивают",
+      "optimal": "Оптимально",
+      "overloaded": "Перегружены",
+      "has-slots": "Есть слоты",
+      "configureView": "Настроить"
     },
     "finance": {
       "title": "Финансы",
@@ -1075,6 +1522,21 @@
       "empty": "Отзывов пока нет",
       "todoHint": "Агрегация отзывов на врача появится вместе с публичным разделом отзывов."
     },
+    "services": {
+      "title": "Услуги",
+      "assign": "Назначить",
+      "priceOverride": "Особая цена",
+      "basePrice": "Базовая цена",
+      "saved": "Сохранено",
+      "saveFailed": "Ошибка сохранения",
+      "selectedCount": "Выбрано: {count}",
+      "save": "Сохранить",
+      "saving": "Сохраняем…",
+      "reset": "Отменить",
+      "empty": "В клинике пока нет активных услуг",
+      "loadError": "Не удалось загрузить услуги",
+      "currencySum": "сум"
+    },
     "weekdays": {
       "mon": "Понедельник",
       "tue": "Вторник",
@@ -1087,12 +1549,116 @@
   },
   "notifications": {
     "title": "Уведомления",
-    "subtitle": "Шаблоны, очередь, триггеры и рассылки",
+    "subtitle": "Активность, шаблоны, триггеры и рассылки",
+    "desktopOnly": {
+      "title": "Используйте десктоп",
+      "description": "Страница уведомлений оптимизирована для широких экранов. Откройте её на компьютере."
+    },
     "tabs": {
+      "ariaLabel": "Разделы уведомлений",
+      "activity": "Активность",
       "templates": "Шаблоны",
-      "queue": "Очередь",
       "campaigns": "Рассылки",
       "triggers": "Триггеры"
+    },
+    "templatesPage": {
+      "title": "Шаблоны уведомлений",
+      "subtitle": "Редактируйте тексты напоминаний и транзакционных сообщений."
+    },
+    "campaignsPage": {
+      "title": "Рассылки",
+      "subtitle": "Сегменты пациентов и массовая отправка."
+    },
+    "triggersPage": {
+      "title": "Триггеры",
+      "subtitle": "События CRM, которые автоматически запускают уведомления."
+    },
+    "types": {
+      "title": "Каналы",
+      "subtitle": "Фильтруйте активность по каналу доставки.",
+      "labels": {
+        "all": "Все каналы",
+        "SMS": "SMS",
+        "TG": "Telegram",
+        "EMAIL": "Email",
+        "CALL": "Звонки",
+        "VISIT": "Визит"
+      }
+    },
+    "kpiStrip": {
+      "sent": {
+        "label": "Отправлено",
+        "hint": "Сегодня"
+      },
+      "delivered": {
+        "label": "Доставлено",
+        "hint": "За 30 дней"
+      },
+      "queued": {
+        "label": "В очереди",
+        "hint": "Ждут отправки"
+      },
+      "failed": {
+        "label": "Ошибки",
+        "hint": "Сегодня"
+      }
+    },
+    "activity": {
+      "ariaLabel": "Активность уведомлений",
+      "status": {
+        "QUEUED": "В очереди",
+        "SENT": "Отправлено",
+        "DELIVERED": "Доставлено",
+        "READ": "Прочитано",
+        "FAILED": "Ошибка",
+        "CANCELLED": "Отменено"
+      },
+      "empty": {
+        "title": "Нет уведомлений",
+        "description": "Новые отправки появятся здесь по расписанию или после ручной отправки."
+      }
+    },
+    "details": {
+      "ariaLabel": "Детали уведомления",
+      "empty": {
+        "title": "Выберите уведомление",
+        "description": "Кликните по строке слева, чтобы увидеть детали отправки."
+      },
+      "status": {
+        "QUEUED": "В очереди",
+        "SENT": "Отправлено",
+        "DELIVERED": "Доставлено",
+        "READ": "Прочитано",
+        "FAILED": "Ошибка",
+        "CANCELLED": "Отменено"
+      },
+      "openPatient": "Открыть карточку",
+      "templateLabel": "Шаблон",
+      "actions": {
+        "title": "Действия",
+        "retry": "Повторить отправку",
+        "cancel": "Отменить",
+        "resend": "Отправить ещё раз"
+      },
+      "history": {
+        "title": "История",
+        "scheduled": "Запланировано",
+        "sent": "Отправлено",
+        "delivered": "Доставлено",
+        "read": "Прочитано",
+        "retriesLabel": "{count, plural, one {# попытка повтора} few {# попытки повтора} other {# попыток повтора}}"
+      },
+      "context": {
+        "title": "За 30 дней",
+        "total30d": "Всего",
+        "delivered30d": "Доставлено",
+        "failed30d": "Ошибок",
+        "activeTemplates": "Шаблонов"
+      },
+      "toasts": {
+        "retried": "Поставлено в очередь заново",
+        "stubAction": "Действие появится в следующем релизе"
+      }
     },
     "categories": {
       "REMINDER": "Напоминания",
@@ -1130,45 +1696,13 @@
       "cancel": "Отмена",
       "testSend": "Тестовая отправка",
       "testSent": "Тестовая задача поставлена в очередь",
-      "saveBeforeTest": "Сначала сохраните шаблон"
-    },
-    "queue": {
-      "tabs": {
-        "all": "Все",
-        "pending": "В очереди",
-        "sent": "Отправленные",
-        "failed": "Ошибки"
-      },
-      "filter": {
-        "channel": "Канал",
-        "allChannels": "Все каналы"
-      },
-      "refresh": "Обновить",
-      "retry": "Повтор",
-      "retried": "Поставлено в очередь заново",
-      "cancel": "Отменить",
-      "manual": "Ручная отправка",
-      "col": {
-        "scheduled": "План",
-        "recipient": "Получатель",
-        "template": "Шаблон",
-        "channel": "Канал",
-        "status": "Статус",
-        "retries": "Попытки",
-        "actions": "Действия"
-      },
-      "status": {
-        "QUEUED": "В очереди",
-        "SENT": "Отправлено",
-        "DELIVERED": "Доставлено",
-        "READ": "Прочитано",
-        "FAILED": "Ошибка",
-        "CANCELLED": "Отменено"
-      },
-      "empty": {
-        "title": "Очередь пуста",
-        "description": "Новые уведомления появятся здесь по расписанию или после ручной отправки."
-      }
+      "saveBeforeTest": "Сначала сохраните шаблон",
+      "samplePatientName": "Иван Иванов",
+      "samplePatientFirst": "Иван",
+      "sampleAppointmentDate": "25 апреля 2026",
+      "sampleDoctor": "Д-р Алиева",
+      "sampleService": "Консультация",
+      "sampleClinicAddress": "Ташкент"
     },
     "triggers": {
       "title": "Триггеры",
@@ -1190,22 +1724,6 @@
         "title": "Нет рассылок",
         "description": "Полный конструктор сегментов появится в Фазе 5."
       }
-    },
-    "rail": {
-      "title": "Сводка",
-      "today": "Сегодня",
-      "sentToday": "Отправлено",
-      "queued": "В очереди",
-      "failedToday": "Ошибок",
-      "last30d": "За 30 дней",
-      "total": "Всего",
-      "delivered": "Доставлено",
-      "failed": "Ошибок",
-      "activeTemplates": "Активных шаблонов",
-      "topTemplates": "Топ шаблонов",
-      "noTop": "Пока нет данных",
-      "manual": "Ручная отправка",
-      "devModeHint": "DEV MODE: включён LogOnly-адаптер — SMS/TG на самом деле не уходят."
     }
   },
   "tgInbox": {
@@ -1249,7 +1767,7 @@
       "emptyDescription": "Выберите диалог, чтобы увидеть информацию о пациенте.",
       "anonymous": "Без имени",
       "newAppointment": "Записать",
-      "openPatient": "Открыть карточку",
+      "openPatient": "Карточка",
       "segment": "Сегмент",
       "balance": "Баланс",
       "lifetimeSpend": "LTV",
@@ -1264,7 +1782,50 @@
       "fullNamePlaceholder": "Иванов Иван",
       "phoneLabel": "Телефон",
       "createPatient": "Создать пациента",
-      "patientCreated": "Пациент создан и привязан"
+      "patientCreated": "Пациент создан и привязан",
+      "actions": {
+        "ariaLabel": "Быстрые действия",
+        "title": "Действия",
+        "call": "Позвонить",
+        "sms": "SMS",
+        "copyPhone": "Копировать",
+        "attachment": "Файл",
+        "task": "Напомнить",
+        "export": "Экспорт",
+        "phoneCopied": "Номер скопирован",
+        "copyFailed": "Не удалось скопировать",
+        "stubs": {
+          "attachment": "Загрузка файлов появится в следующем релизе",
+          "task": "Напоминания появятся после запуска модуля задач",
+          "export": "Экспорт диалога появится в следующем релизе"
+        }
+      },
+      "ai": {
+        "ariaLabel": "AI-помощник",
+        "title": "AI-помощник",
+        "tip1": "Предложите подтвердить приём за сутки до визита.",
+        "tip2": "Напомните правила подготовки, если услуга требует.",
+        "tip3": "Если пациент молчит более 30 минут — уточните, остаются ли вопросы.",
+        "disclaimer": "Подсказки включатся автоматически после запуска AI-сервиса."
+      },
+      "history": {
+        "ariaLabel": "История общения",
+        "title": "История общения",
+        "loading": "Загрузка…",
+        "empty": "Ещё нет сообщений",
+        "noText": "Без текста",
+        "in": "Входящее",
+        "out": "Исходящее"
+      },
+      "stats": {
+        "ariaLabel": "Статистика Telegram",
+        "title": "Статистика Telegram",
+        "total": "Всего",
+        "unread": "Непрочитано",
+        "inbound": "Входящих",
+        "outbound": "Исходящих",
+        "lastActivity": "Последняя активность: {time}"
+      }
     },
     "composer": {
       "placeholder": "Написать сообщение…",
@@ -1318,15 +1879,30 @@
         "out": "Исходящий"
       },
       "openPatient": "Открыть карточку пациента",
-      "actions": {
-        "ariaLabel": "Быстрые действия",
-        "book": "Записать",
+      "patientFetchError": "Не удалось загрузить данные пациента",
+      "bookCta": "Записать пациента",
+      "anonymousCtas": {
+        "description": "Номер не привязан к карточке. Создайте нового пациента или запишите как гостя.",
         "createPatient": "Создать карточку",
-        "markMissed": "Отметить пропуск",
-        "hangup": "Завершить",
-        "hangupDone": "Звонок завершён",
-        "markedMissed": "Звонок помечен как пропущенный",
-        "disclaimer": "Mute / Hold / Transfer появятся после подключения SIP-провайдера."
+        "book": "Быстрая запись"
+      },
+      "kpi": {
+        "ariaLabel": "Ключевые показатели пациента",
+        "ltv": "LTV",
+        "visits": "Визитов",
+        "avgCheck": "Средний чек",
+        "balance": "Баланс"
+      },
+      "nextAppointment": {
+        "ariaLabel": "Следующая запись",
+        "title": "Следующая запись",
+        "empty": "Нет запланированных визитов",
+        "open": "Открыть"
+      },
+      "visitHistory": {
+        "ariaLabel": "История визитов",
+        "title": "История посещений",
+        "empty": "У пациента ещё не было визитов"
       },
       "notes": {
         "ariaLabel": "Заметки",
@@ -1336,32 +1912,42 @@
         "saving": "Сохраняем…"
       }
     },
-    "history": {
-      "ariaLabel": "История звонков",
-      "title": "История",
-      "empty": "Нет звонков по выбранным фильтрам",
-      "loading": "Загрузка истории…",
-      "loadingMore": "Подгружаем…",
-      "play": "Прослушать запись",
-      "pollingHint": "Обновляется каждые 30 секунд",
-      "filters": {
-        "searchPlaceholder": "Поиск по номеру или заметке",
-        "status": "Статус",
-        "statusAll": "Все",
-        "statusRinging": "Ожидает",
-        "statusAnswered": "В разговоре",
-        "statusEnded": "Завершён",
-        "statusMissed": "Пропущен",
-        "direction": "Направление",
-        "directionAll": "Все",
-        "directionIn": "Входящие",
-        "directionOut": "Исходящие",
-        "directionMissed": "Пропущенные",
-        "operator": "Оператор",
-        "operatorAll": "Все операторы",
-        "from": "С",
-        "to": "По",
-        "reset": "Сбросить"
+    "actionsRail": {
+      "ariaLabel": "Управление звонком",
+      "controls": {
+        "ariaLabel": "Управление звонком",
+        "title": "Управление",
+        "hangup": "Завершить",
+        "markMissed": "Пропуск",
+        "transfer": "Перевести",
+        "mute": "Микрофон",
+        "hold": "Удержание",
+        "sms": "SMS",
+        "disclaimer": "Mute / Hold / Transfer появятся после подключения SIP-провайдера."
+      },
+      "aiHints": {
+        "ariaLabel": "AI-подсказки",
+        "title": "AI-подсказки",
+        "tip1": "Уточните цель визита и предпочтительное время.",
+        "tip2": "Напомните о подготовке, если услуга требует.",
+        "tip3": "Предложите альтернативное время, если выбранный слот занят.",
+        "disclaimer": "Подсказки включатся автоматически после запуска AI-сервиса."
+      },
+      "scripts": {
+        "ariaLabel": "Скрипты разговора",
+        "title": "Скрипты разговора",
+        "copy": "Скопировать",
+        "greeting": "Здравствуйте! Клиника NeuroFax, чем могу помочь?",
+        "verify": "Позвольте уточнить: назовите, пожалуйста, ваше полное имя и дату рождения.",
+        "hold": "Одну минутку, оставайтесь на линии — уточню информацию.",
+        "goodbye": "Спасибо за обращение! Хорошего дня, мы ждём вас."
+      },
+      "toasts": {
+        "hangupDone": "Звонок завершён",
+        "markedMissed": "Звонок помечен как пропущенный",
+        "sipUnavailable": "Подключите SIP-провайдера, чтобы использовать это действие",
+        "scriptCopied": "Скрипт скопирован",
+        "copyFailed": "Не удалось скопировать"
       }
     },
     "status": {
@@ -1523,9 +2109,15 @@
       "floor": "этаж",
       "active": "Активен",
       "inactive": "Скрыт",
+      "equipmentTitle": "Оборудование",
+      "equipmentAdd": "Добавить оборудование",
+      "equipmentPlaceholder": "УЗИ, ЭКГ, …",
+      "equipmentEmpty": "Оборудование не указано",
       "cols": {
         "nameRu": "Название (RU)",
-        "nameUz": "Название (UZ)"
+        "nameUz": "Название (UZ)",
+        "floor": "Этаж",
+        "equipment": "Оборудование"
       }
     },
     "exchangeRates": {
@@ -1858,7 +2450,10 @@
     "actions": {
       "view": "Открыть",
       "download": "Скачать"
-    }
+    },
+    "cancel": "Отмена",
+    "toastMissingFields": "Заполните обязательные поля",
+    "toastUploadError": "Ошибка загрузки"
   },
   "exportsUi": {
     "enqueued": "Экспорт поставлен в очередь",

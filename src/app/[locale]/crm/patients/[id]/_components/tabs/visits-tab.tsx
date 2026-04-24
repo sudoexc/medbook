@@ -96,6 +96,7 @@ export function VisitsTab({ patient, onCreate }: VisitsTabProps) {
               key={row.id}
               row={row}
               locale={locale}
+              t={t}
               statusLabel={(s) => {
                 const key = s.toLowerCase() as
                   | "booked"
@@ -134,10 +135,12 @@ export function VisitsTab({ patient, onCreate }: VisitsTabProps) {
 function VisitRow({
   row,
   locale,
+  t,
   statusLabel,
 }: {
   row: PatientAppointment;
   locale: Locale;
+  t: (key: string) => string;
   statusLabel: (s: string) => string;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -193,7 +196,7 @@ function VisitRow({
             >
               <MoneyText amount={row.priceFinal} currency="UZS" />
               {hasPayment && !paid ? (
-                <span className="text-xs">(долг)</span>
+                <span className="text-xs">{t("debt")}</span>
               ) : null}
             </span>
           ) : (
@@ -206,8 +209,7 @@ function VisitRow({
           {row.comments ? (
             <div className="mb-2">
               <div className="text-xs font-medium text-muted-foreground">
-                {/* re-uses tVisits("comment") via prop would be overkill; inline */}
-                Комментарий
+                {t("comment")}
               </div>
               <div className="text-foreground">{row.comments}</div>
             </div>
@@ -215,13 +217,13 @@ function VisitRow({
           {row.notes ? (
             <div>
               <div className="text-xs font-medium text-muted-foreground">
-                Заметка врача
+                {t("doctorNote")}
               </div>
               <div className="text-foreground">{row.notes}</div>
             </div>
           ) : null}
           {!row.comments && !row.notes ? (
-            <div className="text-muted-foreground">Нет дополнительных данных.</div>
+            <div className="text-muted-foreground">{t("noExtraData")}</div>
           ) : null}
         </div>
       ) : null}

@@ -17,6 +17,7 @@ export interface DoctorQueueGridProps {
   appointmentsByDoctor: Map<string, AppointmentRow[]>;
   isLoading: boolean;
   onRowClick: (appointmentId: string) => void;
+  onAddAppointment?: (doctorId: string) => void;
   className?: string;
 }
 
@@ -36,6 +37,7 @@ export function DoctorQueueGrid({
   appointmentsByDoctor,
   isLoading,
   onRowClick,
+  onAddAppointment,
   className,
 }: DoctorQueueGridProps) {
   const t = useTranslations("reception.doctorQueue");
@@ -93,12 +95,14 @@ export function DoctorQueueGrid({
         className,
       )}
     >
-      {visible.map(({ doctor }) => (
+      {visible.map(({ doctor }, i) => (
         <DoctorQueueCard
           key={doctor.id}
+          index={i + 1}
           doctor={doctor}
           appointments={appointmentsByDoctor.get(doctor.id) ?? []}
           onRowClick={onRowClick}
+          onAddAppointment={onAddAppointment}
         />
       ))}
     </div>

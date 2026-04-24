@@ -43,6 +43,29 @@
   padding: 6px 0;
 }
 
+/* Resource-timegrid column header: force the custom label wrapper to respect
+ * the column width so long doctor names don't bleed into neighbors. */
+.mbk-calendar-host .fc .fc-col-header-cell .fc-col-header-cell-cushion,
+.mbk-calendar-host .fc .fc-col-header-cell .fc-datagrid-cell-cushion {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.mbk-calendar-host .fc .fc-col-header-cell a {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.mbk-calendar-host .mbk-resource-label {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .mbk-calendar-host .fc-event {
   border-radius: 6px;
   border-left-width: 3px;

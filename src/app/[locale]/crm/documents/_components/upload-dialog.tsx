@@ -55,7 +55,7 @@ export function UploadDialog({
 
   const submit = async () => {
     if (!patientId || !title || !fileUrl) {
-      toast.error("Заполните обязательные поля");
+      toast.error(t("toastMissingFields"));
       return;
     }
     setSaving(true);
@@ -72,7 +72,7 @@ export function UploadDialog({
         }),
       });
       if (!res.ok) {
-        toast.error("Ошибка загрузки");
+        toast.error(t("toastUploadError"));
         return;
       }
       setPatientId("");
@@ -152,7 +152,7 @@ export function UploadDialog({
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >
-            Отмена
+            {t("cancel")}
           </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "…" : t("upload")}

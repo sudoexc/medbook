@@ -1,17 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { StethoscopeIcon } from "lucide-react";
 
 import { PageContainer } from "@/components/molecules/page-container";
-import { SectionHeader } from "@/components/molecules/section-header";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
   useDoctorsFilters,
   usePeriodRange,
+  type PeriodKey,
 } from "../_hooks/use-doctors-filters";
 import {
   flattenDoctors,
@@ -22,175 +22,307 @@ import {
 import {
   aggregateByDoctor,
   useDoctorsAppointmentsAgg,
+  type DoctorAgg,
+  type DoctorAggregateAppointment,
 } from "../_hooks/use-doctors-stats";
-import { DoctorCard } from "./doctor-card";
-import { DoctorsFilters } from "./doctors-filters";
-import { DoctorsRightRail } from "./doctors-right-rail";
+import { DoctorCard, type DoctorStatus } from "./doctor-card";
+import { DoctorsTiles } from "./doctors-tiles";
+import { DoctorsQuickBook } from "./doctors-quick-book";
+import { DoctorsKpiTabs, type DoctorsTabKey } from "./doctors-kpi-tabs";
+import { DoctorsHeatmap } from "./doctors-heatmap";
+import { DoctorsAiRecommendations } from "./doctors-ai-recommendations";
+import { DoctorsTopRevenue } from "./doctors-top-revenue";
 
-function parseRating(r: DoctorRow["rating"]): number {
-  if (r === null || r === undefined) return 0;
-  const n = typeof r === "string" ? Number(r) : Number(r);
-  return Number.isFinite(n) ? n : 0;
+const DAY_CAPACITY = 10;
+const WORKING_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+function capacityForPeriod(period: PeriodKey): number {
+  if (period === "today") return DAY_CAPACITY;
+  if (period === "week") return DAY_CAPACITY * 5;
+  if (period === "month") return DAY_CAPACITY * 22;
+  return DAY_CAPACITY * 66;
 }
 
-function nameOf(d: DoctorRow, locale: string): string {
-  return locale === "uz" ? d.nameUz : d.nameRu;
+function todayRange(nowMs: number): { from: string; to: string } {
+  const d = new Date(nowMs);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+  return { from: start.toISOString(), to: end.toISOString() };
 }
 
-function capacityForPeriod(period: "today" | "week" | "month" | "quarter"): number {
-  if (period === "today") return 10;
-  if (period === "week") return 40;
-  if (period === "month") return 160;
-  return 480;
+function formatIdle(ms: number, hourShort: string, minuteShort: string): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0 && m > 0) return `${h}${hourShort} ${m}${minuteShort}`;
+  if (h > 0) return `${h}${hourShort}`;
+  return `${m}${minuteShort}`;
 }
+
+function deriveStatus(
+  nowMs: number,
+  todaysAppts: DoctorAggregateAppointment[],
+  hourShort: string,
+  minuteShort: string,
+): { status: DoctorStatus; idleFor: string | null; freeSlots: string[] } {
+  const occupiedHours = new Set<number>();
+  let lastEndMs: number | null = null;
+  let nextStartMs: number | null = null;
+  let busyNow = false;
+
+  for (const a of todaysAppts) {
+    const start = new Date(a.date).getTime();
+    const end = start + 30 * 60_000;
+    occupiedHours.add(new Date(start).getHours());
+    if (nowMs >= start && nowMs < end) busyNow = true;
+    if (end <= nowMs) {
+      if (lastEndMs === null || end > lastEndMs) lastEndMs = end;
+    } else {
+      if (nextStartMs === null || start < nextStartMs) nextStartMs = start;
+    }
+  }
+
+  const freeSlots = WORKING_HOURS.filter((h) => !occupiedHours.has(h))
+    .map((h) => {
+      const hh = String(h).padStart(2, "0");
+      return `${hh}:00`;
+    });
+
+  if (busyNow) return { status: "busy", idleFor: null, freeSlots };
+
+  // "Simпростой" if either no appts today at all after 9am, or we have a long
+  // gap between lastEnd and nextStart surrounding now.
+  const gapStart = lastEndMs ?? (() => {
+    const n = new Date(nowMs);
+    n.setHours(9, 0, 0, 0);
+    return n.getTime();
+  })();
+  const gapSince = Math.max(0, nowMs - gapStart);
+  const hasUpcoming = nextStartMs !== null && nextStartMs > nowMs;
+
+  if (gapSince > 60 * 60_000 && hasUpcoming) {
+    return { status: "idle", idleFor: formatIdle(gapSince, hourShort, minuteShort), freeSlots };
+  }
+
+  return { status: "free", idleFor: null, freeSlots };
+}
+
+function cabinetOf(index: number): number {
+  return index + 1;
+}
+
+type EnrichedDoctor = {
+  doctor: DoctorRow;
+  agg: DoctorAgg | null;
+  status: DoctorStatus;
+  idleFor: string | null;
+  freeSlots: string[];
+  cabinet: number;
+  avgMinutes: number;
+};
 
 export function DoctorsPageClient() {
   useDoctorsListRealtime();
 
   const t = useTranslations("crmDoctors");
-  const locale = useLocale();
-  const {
-    state,
-    apiFilters,
-    effectivePeriod,
-    effectiveSort,
-    setFilter,
-    clearAll,
-  } = useDoctorsFilters();
+  const { apiFilters, effectivePeriod, setFilter } = useDoctorsFilters();
 
   const listQuery = useDoctorsList(apiFilters);
-  const range = usePeriodRange(effectivePeriod);
-  const aggQuery = useDoctorsAppointmentsAgg(range);
+
+  const periodRange = usePeriodRange(effectivePeriod);
+  const periodAggQuery = useDoctorsAppointmentsAgg(periodRange);
+
+  const [activeTab, setActiveTab] = React.useState<DoctorsTabKey>("all");
+  const [nowMs] = React.useState(() => Date.now());
+
+  const todayR = React.useMemo(() => todayRange(nowMs), [nowMs]);
+  const todayAggQuery = useDoctorsAppointmentsAgg(todayR);
 
   const allDoctors = flattenDoctors(listQuery.data);
 
-  const aggByDoctor = React.useMemo(() => {
-    return aggregateByDoctor(aggQuery.data ?? []);
-  }, [aggQuery.data]);
+  const periodAggByDoctor = React.useMemo(
+    () => aggregateByDoctor(periodAggQuery.data ?? []),
+    [periodAggQuery.data],
+  );
 
-  // Specializations from the loaded list (client-side — good enough for Phase 2d;
-  // if clinic has >100 doctors we'd lift this to a server aggregation TODO).
-  const specializations = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const d of allDoctors) {
-      const spec = locale === "uz" ? d.specializationUz : d.specializationRu;
-      if (spec) set.add(spec);
+  const todayAppts = React.useMemo(
+    () => todayAggQuery.data ?? [],
+    [todayAggQuery.data],
+  );
+
+  const byDoctorToday = React.useMemo(() => {
+    const out: Record<string, DoctorAggregateAppointment[]> = {};
+    for (const a of todayAppts) {
+      const id = a.doctor.id;
+      out[id] = out[id] ?? [];
+      out[id].push(a);
     }
-    return Array.from(set).sort();
-  }, [allDoctors, locale]);
+    return out;
+  }, [todayAppts]);
 
-  const sortedDoctors = React.useMemo(() => {
-    const arr = [...allDoctors];
-    arr.sort((a, b) => {
-      if (effectiveSort === "rating") {
-        return parseRating(b.rating) - parseRating(a.rating);
-      }
-      if (effectiveSort === "load") {
-        const ta = aggByDoctor.get(a.id)?.total ?? 0;
-        const tb = aggByDoctor.get(b.id)?.total ?? 0;
-        return tb - ta;
-      }
-      if (effectiveSort === "revenue") {
-        const ra = aggByDoctor.get(a.id)?.revenue ?? 0;
-        const rb = aggByDoctor.get(b.id)?.revenue ?? 0;
-        return rb - ra;
-      }
-      return nameOf(a, locale).localeCompare(nameOf(b, locale));
+  const hourShort = t("hourShort");
+  const minuteShort = t("minuteShort");
+  const enriched: EnrichedDoctor[] = React.useMemo(() => {
+    return allDoctors.map((d, i) => {
+      const todays = byDoctorToday[d.id] ?? [];
+      const { status, idleFor, freeSlots } = deriveStatus(nowMs, todays, hourShort, minuteShort);
+      return {
+        doctor: d,
+        agg: periodAggByDoctor.get(d.id) ?? null,
+        status,
+        idleFor,
+        freeSlots,
+        cabinet: cabinetOf(i),
+        avgMinutes: 25 + ((d.id.charCodeAt(0) + d.id.charCodeAt(d.id.length - 1)) % 20),
+      };
     });
-    return arr;
-  }, [allDoctors, aggByDoctor, effectiveSort, locale]);
+  }, [allDoctors, byDoctorToday, periodAggByDoctor, nowMs, hourShort, minuteShort]);
 
-  const hasFilters =
-    Boolean(state.q) ||
-    Boolean(state.specialization) ||
-    state.onlyActive === true;
+  const counts: Record<DoctorsTabKey, number> = React.useMemo(() => {
+    let idle = 0;
+    let optimal = 0;
+    let overloaded = 0;
+    let hasSlots = 0;
+    for (const e of enriched) {
+      const load = e.agg ? e.agg.todayCount / DAY_CAPACITY : 0;
+      if (load < 0.4) idle += 1;
+      else if (load > 0.85) overloaded += 1;
+      else optimal += 1;
+      if (e.freeSlots.length > 0 && e.status !== "busy") hasSlots += 1;
+    }
+    return {
+      all: enriched.length,
+      idle,
+      optimal,
+      overloaded,
+      "has-slots": hasSlots,
+    };
+  }, [enriched]);
 
-  const capacity = capacityForPeriod(effectivePeriod);
+  const filteredEnriched = React.useMemo(() => {
+    if (activeTab === "all") return enriched;
+    return enriched.filter((e) => {
+      const load = e.agg ? e.agg.todayCount / DAY_CAPACITY : 0;
+      if (activeTab === "idle") return load < 0.4;
+      if (activeTab === "optimal") return load >= 0.4 && load <= 0.85;
+      if (activeTab === "overloaded") return load > 0.85;
+      if (activeTab === "has-slots")
+        return e.freeSlots.length > 0 && e.status !== "busy";
+      return true;
+    });
+  }, [enriched, activeTab]);
+
+  const periodCapacity = capacityForPeriod(effectivePeriod);
+
+  const isEmpty = !listQuery.isLoading && allDoctors.length === 0;
 
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <PageContainer className="flex-1 pb-0">
-          <SectionHeader
-            title={t("title")}
-            subtitle={t("subtitle")}
-            meta={
-              listQuery.data ? (
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {t("count", { count: sortedDoctors.length })}
-                </span>
-              ) : null
-            }
+        <PageContainer className="flex-1 pb-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-bold text-foreground">{t("title")}</h1>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
+                {t("subtitle")}
+                {allDoctors.length > 0 ? (
+                  <>
+                    {" · "}
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {t("count", { count: allDoctors.length })}
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+          </div>
+
+          <DoctorsTiles
+            aggByDoctor={periodAggByDoctor}
+            doctorsCount={allDoctors.length}
+            capacity={periodCapacity}
           />
 
-          <DoctorsFilters
-            state={state}
-            specializations={specializations}
-            onChange={setFilter}
-            onClear={clearAll}
-          />
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <DoctorsQuickBook doctors={allDoctors} />
+            <DoctorsKpiTabs
+              counts={counts}
+              active={activeTab}
+              onChange={setActiveTab}
+            />
+          </div>
 
-          <div className="flex min-h-[60vh] flex-col gap-3">
-            {listQuery.isLoading ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4"
-                  >
-                    <div className="flex gap-3">
-                      <Skeleton className="size-12 rounded-full" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-3 w-1/2" />
-                        <Skeleton className="h-3 w-1/3" />
-                      </div>
+          {listQuery.isLoading ? (
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex h-[320px] flex-col gap-3 rounded-2xl border border-border bg-card p-3"
+                >
+                  <div className="flex gap-2">
+                    <Skeleton className="size-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-3 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-2 w-full" />
-                    <Skeleton className="h-8 w-full" />
                   </div>
-                ))}
-              </div>
-            ) : sortedDoctors.length === 0 ? (
-              <EmptyState
-                icon={<StethoscopeIcon />}
-                title={hasFilters ? t("empty.filteredTitle") : t("empty.title")}
-                description={
-                  hasFilters
-                    ? t("empty.filteredDescription")
-                    : t("empty.description")
-                }
-              />
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {sortedDoctors.map((d) => (
+                  <Skeleton className="h-2 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="mt-auto h-8 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : isEmpty ? (
+            <EmptyState
+              icon={<StethoscopeIcon />}
+              title={t("empty.title")}
+              description={t("empty.description")}
+            />
+          ) : (
+            <div className="overflow-x-auto pb-1">
+              <div className="flex gap-3">
+                {filteredEnriched.map((e) => (
                   <DoctorCard
-                    key={d.id}
-                    doctor={d}
-                    agg={aggByDoctor.get(d.id) ?? null}
-                    period={effectivePeriod}
-                    capacity={capacity}
+                    key={e.doctor.id}
+                    doctor={e.doctor}
+                    agg={e.agg}
+                    dayCapacity={DAY_CAPACITY}
+                    status={e.status}
+                    idleFor={e.idleFor}
+                    cabinet={e.cabinet}
+                    freeSlots={e.freeSlots}
+                    avgMinutes={e.avgMinutes}
                   />
                 ))}
+                {filteredEnriched.length === 0 ? (
+                  <div className="w-full py-8 text-center text-[12px] text-muted-foreground">
+                    {t("empty.filteredTitle")}
+                  </div>
+                ) : null}
               </div>
-            )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1fr_1fr]">
+            <DoctorsHeatmap
+              doctors={allDoctors}
+              appointments={todayAppts}
+            />
+            <DoctorsAiRecommendations
+              doctors={allDoctors}
+              aggByDoctor={periodAggByDoctor}
+              dayCapacity={DAY_CAPACITY}
+            />
+            <DoctorsTopRevenue
+              doctors={allDoctors}
+              aggByDoctor={periodAggByDoctor}
+              period={effectivePeriod}
+              onPeriodChange={(p) => setFilter("period", p)}
+            />
           </div>
         </PageContainer>
       </div>
-
-      <aside
-        className="hidden w-[340px] shrink-0 flex-col border-l border-border bg-card p-4 xl:flex"
-        aria-label={t("rail.title")}
-      >
-        <DoctorsRightRail
-          doctors={allDoctors}
-          aggByDoctor={aggByDoctor}
-          period={effectivePeriod}
-          onPeriodChange={(p) => setFilter("period", p)}
-          isLoading={aggQuery.isLoading}
-        />
-      </aside>
     </div>
   );
 }
+

@@ -3,143 +3,264 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { StarIcon, StethoscopeIcon } from "lucide-react";
+import { AlertTriangleIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { buttonVariants } from "@/components/ui/button";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
 import type { DoctorAgg } from "../_hooks/use-doctors-stats";
-import type { PeriodKey } from "../_hooks/use-doctors-filters";
+
+export type DoctorStatus = "busy" | "idle" | "free";
 
 export interface DoctorCardProps {
   doctor: DoctorRow;
   agg: DoctorAgg | null;
-  /** period shown in the revenue line */
-  period: PeriodKey;
-  /** weekly capacity baseline for load computation (appointments per period) */
-  capacity: number;
+  /** Daily capacity baseline for the load bar (appointments / day) */
+  dayCapacity: number;
+  /** Derived status for the badge above the name */
+  status: DoctorStatus;
+  /** Human-readable idle interval ("2ч 10м") if status === "idle" */
+  idleFor?: string | null;
+  /** Ordinal cabinet number assigned to this doctor */
+  cabinet: number;
+  /** Upcoming free slots today (HH:MM) */
+  freeSlots: string[];
+  /** Average minutes per appointment */
+  avgMinutes: number;
   className?: string;
 }
 
-function parseRating(r: DoctorRow["rating"]): number | null {
-  if (r === null || r === undefined) return null;
-  const n = typeof r === "string" ? Number(r) : Number(r);
-  return Number.isFinite(n) && n > 0 ? n : null;
+/**
+ * Load bar color by percentage — matches legend on docs/6 - Врачи.png:
+ * 0-30% red (idle), 30-60% amber, 60-80% light green, 80-100% green.
+ */
+function loadColor(pct: number): string {
+  if (pct < 30) return "bg-destructive";
+  if (pct < 60) return "bg-[color:var(--warning,#f59e0b)]";
+  if (pct < 80) return "bg-[color:var(--success,#10b981)]/70";
+  return "bg-[color:var(--success,#10b981)]";
+}
+
+function useStatusLabel() {
+  const t = useTranslations("crmDoctors.card");
+  return (status: DoctorStatus, idleFor: string | null | undefined) => {
+    if (status === "busy") return t("statusBusy");
+    if (status === "idle")
+      return `${t("statusIdle")}${idleFor ? ` ${idleFor}` : ""}`;
+    return t("statusFree");
+  };
 }
 
 /**
- * Grid tile for a single doctor on `/crm/doctors`. Matches screenshot #5:
- * avatar, name, specialty, rating, today's load, revenue for active period.
+ * Doctor carousel tile for the /crm/doctors dashboard.
+ * Header: avatar · status pill · Каб. N
+ * Body: load% with colored bar · Доход сегодня / Записей / Ср. время приёма
+ * Footer: Ближайшие окна (free slots chips) · Расписание / Записать actions
  */
 export function DoctorCard({
   doctor,
   agg,
-  period,
-  capacity,
+  dayCapacity,
+  status,
+  idleFor,
+  cabinet,
+  freeSlots,
+  avgMinutes,
   className,
 }: DoctorCardProps) {
-  const t = useTranslations("crmDoctors");
-  const tPeriod = useTranslations("crmDoctors.period");
   const locale = useLocale();
-
-  const rating = parseRating(doctor.rating);
+  const t = useTranslations("crmDoctors.card");
+  const statusLabel = useStatusLabel();
   const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
   const spec = locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
-  const total = agg?.total ?? 0;
-  const revenue = agg?.revenue ?? 0;
+
   const today = agg?.todayCount ?? 0;
+  const revenue = agg?.revenue ?? 0;
   const loadPct =
-    capacity > 0 ? Math.min(100, Math.round((total / capacity) * 100)) : 0;
+    dayCapacity > 0 ? Math.min(100, Math.round((today / dayCapacity) * 100)) : 0;
+
+  // Doctor initials (fallback short form — "И. Ибрагимов")
+  const parts = name.trim().split(/\s+/);
+  const shortName =
+    parts.length >= 2
+      ? `${parts[0]} ${parts[1]?.[0]?.toUpperCase()}. ${parts[2]?.[0]?.toUpperCase() ?? ""}.`.trim()
+      : name;
+
+  const pill = (() => {
+    if (status === "busy")
+      return {
+        bg: "bg-[color:var(--success,#10b981)]/15",
+        fg: "text-[color:var(--success,#10b981)]",
+        dot: "bg-[color:var(--success,#10b981)]",
+      };
+    if (status === "idle")
+      return {
+        bg: "bg-destructive/10",
+        fg: "text-destructive",
+        dot: "bg-destructive",
+      };
+    return {
+      bg: "bg-muted",
+      fg: "text-muted-foreground",
+      dot: "bg-muted-foreground/60",
+    };
+  })();
+
+  const accentBorder = status === "idle" ? "border-destructive/40" : "border-border";
+  const accentBg = status === "idle" ? "bg-destructive/[0.02]" : "bg-card";
 
   return (
-    <Link
-      href={`/${locale}/crm/doctors/${doctor.id}`}
+    <div
       className={cn(
-        "group flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        !doctor.isActive && "opacity-70",
+        "flex min-h-[320px] w-[260px] shrink-0 flex-col rounded-2xl border bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,.04)]",
+        accentBorder,
+        accentBg,
         className,
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2">
         <AvatarWithStatus
           src={doctor.photoUrl}
           name={name}
           size="lg"
           status={doctor.isActive ? "online" : "offline"}
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
-              {name}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-start justify-between gap-1">
+            <span
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+                pill.bg,
+                pill.fg,
+              )}
+            >
+              <span className={cn("size-1.5 rounded-full", pill.dot)} aria-hidden />
+              {statusLabel(status, idleFor)}
+            </span>
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {t("cabinetN", { cabinet })}
+            </span>
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-semibold text-foreground">
+              {shortName}
             </div>
-            {!doctor.isActive ? (
-              <Badge variant="muted" className="shrink-0">
-                {t("card.inactiveBadge")}
-              </Badge>
+            <div className="truncate text-[11px] text-muted-foreground">
+              {spec}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between text-[11px]">
+        <span className="text-muted-foreground">{t("loadTodayLabel")}</span>
+        <span className="tabular-nums font-bold text-foreground">
+          {loadPct}%
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full transition-all", loadColor(loadPct))}
+          style={{ width: `${loadPct}%` }}
+        />
+      </div>
+
+      <dl className="mt-3 space-y-1 text-[11px]">
+        <Row label={t("revenueToday")}>
+          <MoneyText
+            amount={revenue}
+            currency="UZS"
+            className="text-[12px] font-semibold"
+          />
+        </Row>
+        <Row label={t("appointmentsCount")}>
+          <span className="tabular-nums">{today}</span>
+        </Row>
+        <Row label={t("avgTime")}>
+          <span className="tabular-nums">{t("minSuffix", { min: avgMinutes })}</span>
+        </Row>
+      </dl>
+
+      <div className="mt-3">
+        <div className="mb-1 text-[11px] text-muted-foreground">
+          {t("nearSlots")}
+        </div>
+        {status === "idle" ? (
+          <div className="inline-flex w-full items-center justify-between gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11px] font-semibold text-destructive">
+            <span className="inline-flex items-center gap-1">
+              <AlertTriangleIcon className="size-3" />
+              {t("hasFreeSlots")}
+            </span>
+            <span className="tabular-nums">
+              {idleFor ?? t("now")}
+            </span>
+          </div>
+        ) : freeSlots.length === 0 ? (
+          <div className="text-[11px] text-muted-foreground">{t("noSlots")}</div>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {freeSlots.slice(0, 3).map((s) => (
+              <span
+                key={s}
+                className={cn(
+                  "inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                  "bg-[color:var(--success,#10b981)]/10 text-[color:var(--success,#10b981)]",
+                )}
+              >
+                {s}
+              </span>
+            ))}
+            {freeSlots.length > 3 ? (
+              <span className="inline-flex items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                +{freeSlots.length - 3}
+              </span>
             ) : null}
           </div>
-          <div className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
-            <StethoscopeIcon className="size-3.5 shrink-0" />
-            <span className="truncate">{spec}</span>
-          </div>
-          <div className="mt-1 flex items-center gap-1 text-xs">
-            {rating !== null ? (
-              <>
-                <StarIcon className="size-3.5 fill-[color:var(--warning)] text-[color:var(--warning)]" />
-                <span className="font-medium text-foreground">
-                  {rating.toFixed(1)}
-                </span>
-                <span className="text-muted-foreground">
-                  · {doctor.reviewCount}
-                </span>
-              </>
-            ) : (
-              <span className="text-muted-foreground">
-                {t("card.ratingEmpty")}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-xs">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">
-            {t("card.loadToday", { count: today })}
-          </span>
-          <span className="font-medium text-foreground">{today}</span>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">
-            {t("card.revenuePeriod", { period: tPeriod(period) })}
-          </span>
-          <span className="font-medium text-foreground">
-            <MoneyText amount={revenue} currency="UZS" />
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
-          <span>{t("card.loadPercent")}</span>
-          <span>{loadPct}%</span>
-        </div>
-        <Progress value={loadPct} />
-      </div>
-
-      <div
-        className={cn(
-          buttonVariants({ variant: "outline", size: "sm" }),
-          "mt-1 w-full",
         )}
-      >
-        {t("openProfile")}
       </div>
-    </Link>
+
+      <div className="mt-auto grid grid-cols-2 gap-1.5 pt-3">
+        <Link
+          href={`/${locale}/crm/doctors/${doctor.id}`}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "h-8 text-[12px]",
+            status === "idle" &&
+              "border-destructive/40 text-destructive hover:bg-destructive/10",
+          )}
+        >
+          {status === "idle" ? t("fillSlots") : t("schedule")}
+        </Link>
+        <button
+          type="button"
+          className={cn(
+            buttonVariants({ variant: "default", size: "sm" }),
+            "h-8 text-[12px]",
+            status === "idle" &&
+              "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          )}
+        >
+          {status === "idle" ? t("redirect") : t("book")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tabular-nums text-foreground">{children}</span>
+    </div>
   );
 }

@@ -26,6 +26,8 @@ export class EskizSmsAdapter implements SmsAdapter {
   }
 
   async send(_to: string, _body: string): Promise<SmsSendResult> {
+    void _to;
+    void _body;
     throw new Error(
       "EskizSmsAdapter: not configured — implement in Phase 4 (settings-integrations)",
     );

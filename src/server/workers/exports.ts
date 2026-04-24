@@ -157,7 +157,6 @@ async function exportPatients(
   let count = 0;
   let cursor: string | undefined;
   const PAGE = 500;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const batch = await prisma.patient.findMany({
       where,
@@ -194,7 +193,6 @@ async function exportAppointments(
   let count = 0;
   let cursor: string | undefined;
   const PAGE = 500;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const batch = await prisma.appointment.findMany({
       where,
@@ -232,7 +230,6 @@ async function exportPayments(
   let count = 0;
   let cursor: string | undefined;
   const PAGE = 500;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const batch = await prisma.payment.findMany({
       where,

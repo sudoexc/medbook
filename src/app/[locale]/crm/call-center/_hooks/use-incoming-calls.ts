@@ -50,7 +50,7 @@ export function useIncomingCalls() {
 export function useCallCenterRealtime(activeCallId: string | null): void {
   const qc = useQueryClient();
   useLiveEvents(
-    (event) => {
+    () => {
       void qc.invalidateQueries({ queryKey: ["call-center", "incoming"] });
       void qc.invalidateQueries({ queryKey: ["call-center", "history"] });
       if (activeCallId) {

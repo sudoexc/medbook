@@ -97,6 +97,10 @@ export function SlotPicker({
         <p className="text-xs text-muted-foreground">{t("pickDoctorFirst")}</p>
       ) : query.isLoading ? (
         <p className="text-xs text-muted-foreground">{t("loading")}</p>
+      ) : query.isError ? (
+        <p className="text-xs text-destructive" role="alert">
+          {t("loadError")}
+        </p>
       ) : slots.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("noSlots")}</p>
       ) : (

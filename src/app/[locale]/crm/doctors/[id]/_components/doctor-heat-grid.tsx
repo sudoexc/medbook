@@ -124,7 +124,7 @@ export function DoctorHeatGrid({ doctorId, className }: DoctorHeatGridProps) {
   const range = React.useMemo(() => isoRange(anchor), [anchor]);
 
   const query = useDoctorAppointments(doctorId, range);
-  const rows = query.data?.rows ?? [];
+  const rows = React.useMemo(() => query.data?.rows ?? [], [query.data]);
 
   const { cells, max } = React.useMemo(
     () => buildGrid(rows, weekStart),

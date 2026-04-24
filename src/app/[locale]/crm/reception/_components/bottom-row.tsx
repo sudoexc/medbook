@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   AlertTriangleIcon,
   LightbulbIcon,
@@ -66,26 +67,27 @@ function SectionCard({
 }
 
 function SmartRecommendations() {
+  const t = useTranslations("reception.bottomRow");
   const items = [
     {
       id: "1",
-      text: "Пригласить Akmala на свободный слот в 15:30 — кабинет 102",
-      meta: "Автопредложение ИИ",
+      text: t("recInviteText"),
+      meta: t("recInviteMeta"),
     },
     {
       id: "2",
-      text: "Подтвердить записи на завтра по SMS (14 пациентов)",
-      meta: "Ежедневная задача",
+      text: t("recConfirmText", { count: 14 }),
+      meta: t("recConfirmMeta"),
     },
     {
       id: "3",
-      text: "Позвонить по no-show за последние 7 дней (6 человек)",
-      meta: "Рекомендация CRM",
+      text: t("recNoShowText", { count: 6 }),
+      meta: t("recNoShowMeta"),
     },
   ];
   return (
     <SectionCard
-      title="Умные рекомендации"
+      title={t("smartTitle")}
       icon={SparklesIcon}
       iconClass="bg-violet/15 text-[color:var(--violet)]"
     >
@@ -110,6 +112,7 @@ function SmartRecommendations() {
 }
 
 function DistributionChart({ todayRows }: { todayRows: AppointmentRow[] }) {
+  const t = useTranslations("reception.bottomRow");
   // Bucket today's appointments into 3-hour blocks (08-11, 11-14, 14-17, 17-20).
   const buckets = React.useMemo(() => {
     const counts = [0, 0, 0, 0];
@@ -127,7 +130,7 @@ function DistributionChart({ todayRows }: { todayRows: AppointmentRow[] }) {
 
   return (
     <SectionCard
-      title="Распределение приёмов"
+      title={t("distributionTitle")}
       icon={TrendingUpIcon}
       iconClass="bg-primary/15 text-primary"
     >
@@ -161,14 +164,15 @@ function WarningsCard({
 }: {
   warnings: { id: string; text: string; tone?: "warning" | "danger" }[];
 }) {
+  const t = useTranslations("reception.bottomRow");
   return (
     <SectionCard
-      title="Предупреждения"
+      title={t("warningsTitle")}
       icon={AlertTriangleIcon}
       iconClass="bg-destructive/15 text-[color:var(--destructive)]"
     >
       {warnings.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Нет активных предупреждений.</p>
+        <p className="text-xs text-muted-foreground">{t("warningsEmpty")}</p>
       ) : (
         <ul className="space-y-2">
           {warnings.slice(0, 4).map((w) => (

@@ -1,52 +1,64 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
-  BellRingIcon,
-  CheckIcon,
-  MoreHorizontalIcon,
-  PauseIcon,
+  ArmchairIcon,
+  ClockIcon,
+  HourglassIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 
 export interface DoctorQueueCardProps {
+  /** Positional index in the cabinets grid (1-based) — shown in the blue circle. */
+  index: number;
   doctor: DoctorRef;
   appointments: AppointmentRow[];
   onRowClick: (appointmentId: string) => void;
+  onAddAppointment?: (doctorId: string) => void;
   className?: string;
 }
 
-type CabinetState = "in_session" | "waiting" | "idle";
+type CabinetState = "in_session" | "awaiting" | "empty";
 
 /**
- * "Кабинет" card per docs/1-Ресепшн mockup — grid cell for a single room.
+ * Cabinet card per docs/1-Ресепшн (2).png.
  *
- * Layout:
- *  - header: "Каб [number]" + status pill (НА ПРИЁМЕ / ОЖИДАЕТ / СВОБОДЕН)
- *  - doctor row: avatar + name + spec + small progress "X/Y"
- *  - progress bar: current session elapsed / planned
- *  - "Сейчас у врача" — current patient row (if any)
- *  - "Следующие" — compact queue preview (up to 3)
- *  - footer: Позвать след. + Пауза/Завершить
+ *   ┌──────────────────────────────────────┐
+ *   │ ● Каб. 1                       [①]   │
+ *   │   Невролог                           │
+ *   ├──────────────────────────────────────┤
+ *   │  ┌──────────────────────────────┐    │
+ *   │  │ ● НА ПРИЁМЕ                  │    │
+ *   │  │ Muhammad                     │    │
+ *   │  │ 28 лет    ⓘ Осталось 6 мин  │    │
+ *   │  │ ▓▓▓▓▓░░░░                    │    │
+ *   │  └──────────────────────────────┘    │
+ *   │                                      │
+ *   │ ОЧЕРЕДЬ (2)                          │
+ *   │ 1 Aliyev Sanjar         0:20         │
+ *   │ 2 Karimova Malika       0:40         │
+ *   │                                      │
+ *   │ [  Вызвать следующего  ]             │
+ *   └──────────────────────────────────────┘
  */
 export function DoctorQueueCard({
+  index,
   doctor,
   appointments,
   onRowClick,
+  onAddAppointment,
   className,
 }: DoctorQueueCardProps) {
-  const t = useTranslations("reception.doctorQueue");
   const locale = useLocale();
+  const t = useTranslations("reception.doctorQueue");
   const qc = useQueryClient();
   const [pending, setPending] = React.useState(false);
 
@@ -57,59 +69,42 @@ export function DoctorQueueCard({
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
 
-  const totalToday = appointments.length;
-  const doneCount = appointments.filter(
-    (a) =>
-      a.queueStatus === "COMPLETED" ||
-      a.queueStatus === "NO_SHOW" ||
-      a.queueStatus === "SKIPPED",
-  ).length;
-
   const cabinetNumber =
     (current ?? upcoming[0])?.cabinet?.number ??
     appointments[0]?.cabinet?.number ??
-    "—";
+    null;
 
-  const cabinetState: CabinetState = current
+  const state: CabinetState = current
     ? "in_session"
     : upcoming.length > 0
-      ? "waiting"
-      : "idle";
+      ? "awaiting"
+      : "empty";
 
-  const doctorName = locale === "uz" ? doctor.nameUz : doctor.nameRu;
   const doctorSpec =
     locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
-
-  // Session progress — elapsed since startedAt vs planned duration.
-  const sessionProgress = React.useMemo(() => {
-    if (!current || !current.startedAt) return null;
-    const startedMs = new Date(current.startedAt).getTime();
-    const plannedMin = Math.max(15, current.durationMin || 30);
-    const elapsedMin = Math.max(
-      0,
-      Math.round((Date.now() - startedMs) / 60000),
-    );
-    const pct = Math.min(100, Math.round((elapsedMin / plannedMin) * 100));
-    return { elapsedMin, plannedMin, pct };
-  }, [current]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["reception"] });
     qc.invalidateQueries({ queryKey: ["appointments", "list"] });
   };
 
-  const setQueueStatus = async (
-    id: string,
-    queueStatus: "WAITING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED",
-  ) => {
+  const callNext = async () => {
+    const candidate = waiting[0] ?? booked[0];
+    if (!candidate) {
+      if (onAddAppointment) onAddAppointment(doctor.id);
+      return;
+    }
     setPending(true);
     try {
-      const res = await fetch(`/api/crm/appointments/${id}/queue-status`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ queueStatus }),
-      });
+      const res = await fetch(
+        `/api/crm/appointments/${candidate.id}/queue-status`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ queueStatus: "IN_PROGRESS" }),
+        },
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       invalidate();
     } catch (err) {
@@ -119,238 +114,231 @@ export function DoctorQueueCard({
     }
   };
 
-  const callNext = () => {
-    const candidate = waiting[0] ?? booked[0];
-    if (!candidate) return;
-    setQueueStatus(candidate.id, "IN_PROGRESS");
-  };
-
-  const canCallNext = !current && upcoming.length > 0;
-
   return (
     <article
       className={cn(
-        "flex flex-col overflow-hidden rounded-2xl border border-border bg-card",
+        "flex min-h-[320px] flex-col rounded-2xl border border-border bg-card p-4",
         "shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
         className,
       )}
     >
-      <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span
-            className="inline-block size-1.5 rounded-full"
-            style={{ backgroundColor: doctor.color ?? "#2b6cff" }}
-            aria-hidden
-          />
-          <span className="text-sm font-bold text-foreground">
-            Каб {cabinetNumber}
-          </span>
+      <header className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="inline-block size-1.5 shrink-0 rounded-full"
+              style={{ backgroundColor: doctor.color ?? "#2b6cff" }}
+              aria-hidden
+            />
+            <h3 className="truncate text-[15px] font-bold text-foreground">
+              {t("cabinet")} {cabinetNumber ?? index}
+            </h3>
+          </div>
+          <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+            {doctorSpec ?? t("specialist")}
+          </p>
         </div>
-        <CabinetStatePill state={cabinetState} />
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground tabular-nums">
+          {index}
+        </span>
       </header>
 
-      <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
-        <AvatarWithStatus
-          src={doctor.photoUrl}
-          name={doctorName}
-          size="md"
-          status={cabinetState === "in_session" ? "busy" : "online"}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {doctorName}
-          </p>
-          <p className="truncate text-[11px] text-muted-foreground">
-            {doctorSpec ?? t("cabinet")}
-          </p>
-        </div>
-        <div className="text-right leading-tight">
-          <div className="text-sm font-bold text-foreground tabular-nums">
-            {doneCount}/{totalToday}
-          </div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            за день
-          </div>
-        </div>
+      <div className="mt-3 flex-1">
+        {state === "in_session" && current ? (
+          <InSessionBlock appointment={current} onClick={() => onRowClick(current.id)} />
+        ) : state === "awaiting" ? (
+          <AwaitingBlock nextTime={upcoming[0] ? new Date(upcoming[0].date) : null} />
+        ) : (
+          <EmptyBlock />
+        )}
+
       </div>
 
-      {cabinetState === "in_session" && current ? (
-        <div className="space-y-2 border-b border-border/60 px-4 py-3">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>Текущий приём</span>
-            <span className="font-semibold text-foreground tabular-nums">
-              {sessionProgress
-                ? `${sessionProgress.elapsedMin} мин / ${sessionProgress.plannedMin} мин`
-                : `${current.durationMin} мин план`}
-            </span>
+      {upcoming.length > 0 ? (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <span>{t("queueCount", { count: upcoming.length })}</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-success to-success/80 transition-all"
-              style={{ width: `${sessionProgress?.pct ?? 20}%` }}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => onRowClick(current.id)}
-            className="flex w-full items-center gap-2 rounded-lg bg-success-soft p-2 text-left transition-colors hover:bg-success-soft/80"
-          >
-            <AvatarWithStatus
-              name={current.patient.fullName}
-              src={current.patient.photoUrl}
-              size="sm"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {current.patient.fullName}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {current.primaryService
-                  ? locale === "uz"
-                    ? current.primaryService.nameUz
-                    : current.primaryService.nameRu
-                  : "Приём"}
-              </p>
-            </div>
-            <span className="shrink-0 text-[11px] font-semibold text-[color:var(--success)] tabular-nums">
-              {fmtTime(new Date(current.date), locale)}
-            </span>
-          </button>
-        </div>
-      ) : (
-        <div className="border-b border-border/60 px-4 py-3">
-          <p className="text-xs text-muted-foreground">
-            {cabinetState === "waiting"
-              ? "Следующий пациент ожидает"
-              : "Кабинет свободен"}
-          </p>
-        </div>
-      )}
-
-      <div className="flex-1 px-4 py-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Следующие
-          </span>
-          <span className="text-[11px] font-semibold text-muted-foreground tabular-nums">
-            {upcoming.length}
-          </span>
-        </div>
-        {upcoming.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Очередь пуста</p>
-        ) : (
           <ul className="space-y-1.5">
-            {upcoming.slice(0, 3).map((a) => (
+            {upcoming.slice(0, 2).map((a, i) => (
               <li key={a.id}>
                 <button
                   type="button"
                   onClick={() => onRowClick(a.id)}
-                  className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-muted"
+                  className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
                 >
-                  <AvatarWithStatus
-                    name={a.patient.fullName}
-                    src={a.patient.photoUrl}
-                    size="sm"
-                  />
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground tabular-nums">
+                    {i + 1}
+                  </span>
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {a.patient.fullName}
                   </span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-                    {fmtTime(new Date(a.date), locale)}
+                  <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
+                    {formatRelative(new Date(a.date))}
                   </span>
+
                 </button>
               </li>
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      ) : state === "in_session" ? null : (
+        <div className="mt-4">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            {t("queueCount", { count: 0 })}
+          </div>
+          <p className="text-center text-sm text-muted-foreground">
+            {t("queueEmpty")}
+          </p>
+        </div>
+      )}
 
-      <footer className="flex items-center gap-2 border-t border-border px-3 py-2.5">
-        <Button
-          size="sm"
-          className="flex-1"
-          onClick={callNext}
-          disabled={!canCallNext || pending}
-        >
-          <BellRingIcon className="size-3.5" />
-          Позвать след.
-        </Button>
-        {current ? (
+      <div className="mt-4">
+        {state === "empty" ? (
           <Button
-            size="sm"
             variant="outline"
-            onClick={() => setQueueStatus(current.id, "COMPLETED")}
-            disabled={pending}
+            className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
+            onClick={() => onAddAppointment?.(doctor.id)}
           >
-            <CheckIcon className="size-3.5" />
-            Завершить
+            {t("addAppointment")}
           </Button>
         ) : (
           <Button
-            size="sm"
             variant="outline"
-            disabled
-            aria-label="Пауза (в разработке)"
+            className="w-full"
+            disabled={pending || upcoming.length === 0}
+            onClick={callNext}
           >
-            <PauseIcon className="size-3.5" />
+            {t("callNext")}
           </Button>
         )}
-        <Link
-          href={`/crm/appointments?doctorId=${doctor.id}&dateMode=today`}
-          aria-label="Подробнее"
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-        >
-          <MoreHorizontalIcon className="size-4" />
-        </Link>
-      </footer>
+      </div>
     </article>
   );
 }
 
-function CabinetStatePill({ state }: { state: CabinetState }) {
-  const config = {
-    in_session: {
-      label: "На приёме",
-      bg: "bg-success/15",
-      fg: "text-[color:var(--success)]",
-      dot: "bg-success",
-    },
-    waiting: {
-      label: "Ожидает",
-      bg: "bg-warning/15",
-      fg: "text-[color:var(--warning)]",
-      dot: "bg-warning",
-    },
-    idle: {
-      label: "Свободен",
-      bg: "bg-muted",
-      fg: "text-muted-foreground",
-      dot: "bg-muted-foreground/60",
-    },
-  }[state];
+function InSessionBlock({
+  appointment,
+  onClick,
+}: {
+  appointment: AppointmentRow;
+  onClick: () => void;
+}) {
+  const t = useTranslations("reception.doctorQueue");
+  const locale = useLocale();
+  const [nowMs] = React.useState(() => Date.now());
+  const remaining = React.useMemo(() => {
+    if (!appointment.startedAt) {
+      return {
+        label: t("minPlan", { min: appointment.durationMin }),
+        pct: 10,
+      };
+    }
+    const startedMs = new Date(appointment.startedAt).getTime();
+    const planned = Math.max(5, appointment.durationMin || 30);
+    const elapsed = Math.max(0, Math.round((nowMs - startedMs) / 60000));
+    const left = Math.max(0, planned - elapsed);
+    const pct = Math.min(100, Math.round((elapsed / planned) * 100));
+    return { label: t("remaining", { min: left }), pct };
+  }, [appointment, nowMs, t]);
+
+  const serviceName =
+    (locale === "uz"
+      ? appointment.primaryService?.nameUz
+      : appointment.primaryService?.nameRu) ?? t("fallbackService");
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-        config.bg,
-        config.fg,
-      )}
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-xl bg-success-soft p-3 text-left transition-colors hover:bg-success-soft/70"
     >
-      <span className={cn("size-1.5 rounded-full", config.dot)} aria-hidden />
-      {config.label}
-    </span>
+      <div className="flex items-center gap-1.5">
+        <span className="size-1.5 rounded-full bg-success" aria-hidden />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--success)]">
+          {t("current")}
+        </span>
+      </div>
+      <p className="mt-2 truncate text-lg font-bold text-foreground">
+        {appointment.patient.fullName}
+      </p>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>{serviceName}</span>
+        <span className="inline-flex items-center gap-1 font-semibold text-[color:var(--success)]">
+          <ClockIcon className="size-3" />
+          {remaining.label}
+        </span>
+      </div>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/60">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-success to-success/80 transition-all"
+          style={{ width: `${remaining.pct}%` }}
+        />
+      </div>
+    </button>
   );
 }
 
-function fmtTime(d: Date, locale: string): string {
-  try {
-    return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(d);
-  } catch {
-    return `${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes(),
-    ).padStart(2, "0")}`;
-  }
+function AwaitingBlock({ nextTime }: { nextTime: Date | null }) {
+  const t = useTranslations("reception.doctorQueue");
+  const locale = useLocale();
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
+      <div className="flex items-center justify-center gap-1.5">
+        <HourglassIcon className="size-3.5 text-[color:var(--warning)]" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--warning)]">
+          {t("awaitingPatient")}
+        </span>
+      </div>
+      <div className="mt-4 flex justify-center">
+        <ArmchairIcon className="size-10 text-muted-foreground/60" aria-hidden />
+      </div>
+      <p className="mt-3 text-sm font-semibold text-foreground">{t("statusFree")}</p>
+      {nextTime ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {t("nearestTime")}{" "}
+          <span className="font-bold text-foreground tabular-nums">
+            {formatTime(nextTime, locale)}
+          </span>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function EmptyBlock() {
+  const t = useTranslations("reception.doctorQueue");
+  return (
+    <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
+      <div className="flex items-center justify-center gap-1.5">
+        <HourglassIcon className="size-3.5 text-[color:var(--warning)]" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--warning)]">
+          {t("awaitingPatient")}
+        </span>
+      </div>
+      <div className="mt-4 flex justify-center">
+        <ArmchairIcon className="size-10 text-muted-foreground/60" aria-hidden />
+      </div>
+      <p className="mt-3 text-sm font-semibold text-foreground">{t("statusFree")}</p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {t("noPatients")}
+      </p>
+    </div>
+  );
+}
+
+/** "H:MM" — relative hours+minutes until `date`. "0:20" means "через 20 мин". */
+function formatRelative(date: Date, now = new Date()): string {
+  const diffMin = Math.max(0, Math.round((date.getTime() - now.getTime()) / 60000));
+  const h = Math.floor(diffMin / 60);
+  const m = diffMin % 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+function formatTime(d: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }

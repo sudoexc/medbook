@@ -89,7 +89,12 @@ export async function resolveMiniAppContext(
   opts: { skipPatientUpsert?: boolean } = {},
 ): Promise<{ ok: true; ctx: MiniAppContext } | { ok: false; response: Response }> {
   const initData = request.headers.get("x-telegram-init-data") ?? "";
-  if (!initData) {
+  const bypassRequested =
+    process.env.NODE_ENV !== "production" &&
+    request.headers.get("x-miniapp-dev-bypass") === "1";
+  // Empty initData is only acceptable in dev when the bypass header is set —
+  // otherwise Telegram must have signed us.
+  if (!initData && !bypassRequested) {
     return {
       ok: false,
       response: json(

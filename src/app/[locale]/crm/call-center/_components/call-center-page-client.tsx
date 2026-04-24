@@ -11,52 +11,44 @@ import {
   useIncomingCalls,
 } from "../_hooks/use-incoming-calls";
 import { useActiveCall, useActiveCallId } from "../_hooks/use-active-call";
-import {
-  flattenHistory,
-  useCallHistory,
-  useHistoryFilters,
-} from "../_hooks/use-call-history";
 
 import { IncomingQueue } from "./incoming-queue";
 import { ActiveCall } from "./active-call";
-import { CallHistory } from "./call-history";
+import { CallActionsRail } from "./call-actions-rail";
 
 /**
- * 3-column Call Center layout — see `docs/TZ.md` §6.7.
+ * 3-column Call Center layout — see `docs/6 - Call Center.png` and `docs/TZ.md` §6.7.
  *
- *   320px | 1fr | 380px
- *   queue | active | history
+ *   320px | 1fr      | 380px
+ *   queue | context  | controls + AI + scripts
  *
- * ≥1280px only. Below that we render a polite "use desktop" hint — same as
- * `/crm/telegram` and `/crm/calendar`.
+ * Left: ringing queue (polled). Center: linked patient context — LTV KPIs,
+ * next-appointment, booking CTA, visit history, notes. Right: operator
+ * controls (hangup / mark-missed / SIP stubs / SMS) plus AI hints and canned
+ * scripts the operator can copy while talking.
  *
- * State plumbing:
- *   - Ringing queue + history poll their own endpoints on separate cadences.
- *   - The middle column is driven by `?active=<callId>` URL param.
- *   - Auto-select: when no call is active but one is ringing, we pick the
- *     oldest so the operator never stares at an empty middle column.
+ * Auto-select: when no call is active but one is ringing, pick the oldest so
+ * the operator never stares at an empty middle column.
  */
 export function CallCenterPageClient() {
   const t = useTranslations("callCenter");
 
   const incomingQuery = useIncomingCalls();
-  const incoming = incomingQuery.data ?? [];
+  const incoming = React.useMemo(
+    () => incomingQuery.data ?? [],
+    [incomingQuery.data],
+  );
 
   const [activeId, setActiveId] = useActiveCallId();
   useCallCenterRealtime(activeId);
 
   const activeQuery = useActiveCall(activeId);
 
-  const { filters, setFilters, reset } = useHistoryFilters();
-  const historyQuery = useCallHistory(filters);
-  const historyRows = flattenHistory(historyQuery.data?.pages);
-
-  // Auto-select the oldest ringing call on first load if nothing is active.
   React.useEffect(() => {
     if (!activeId && incoming.length > 0) {
-      // "oldest" = lowest createdAt; server returns desc so take the tail.
       const oldest = [...incoming].sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       )[0];
       if (oldest) setActiveId(oldest.id);
     }
@@ -64,7 +56,6 @@ export function CallCenterPageClient() {
 
   return (
     <>
-      {/* Mobile fallback */}
       <div className="flex min-h-[60vh] items-center justify-center p-6 xl:hidden">
         <EmptyState
           icon={<PhoneCallIcon />}
@@ -73,7 +64,6 @@ export function CallCenterPageClient() {
         />
       </div>
 
-      {/* Desktop 3-column layout */}
       <div className="hidden min-h-0 flex-1 xl:flex">
         <aside
           className="flex w-[320px] shrink-0 flex-col border-r border-border bg-card"
@@ -96,23 +86,9 @@ export function CallCenterPageClient() {
 
         <aside
           className="flex w-[380px] shrink-0 flex-col border-l border-border bg-card"
-          aria-label={t("history.ariaLabel")}
+          aria-label={t("actionsRail.ariaLabel")}
         >
-          <CallHistory
-            rows={historyRows}
-            filters={filters}
-            setFilters={setFilters}
-            onReset={reset}
-            selectedId={activeId}
-            onSelect={setActiveId}
-            isLoading={historyQuery.isLoading}
-            hasNextPage={Boolean(historyQuery.hasNextPage)}
-            onFetchNext={() => {
-              if (historyQuery.hasNextPage && !historyQuery.isFetchingNextPage) {
-                void historyQuery.fetchNextPage();
-              }
-            }}
-          />
+          <CallActionsRail call={activeQuery.data ?? null} />
         </aside>
       </div>
     </>

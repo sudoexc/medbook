@@ -31,7 +31,6 @@ import {
 } from "@/server/telegram/send";
 import {
   type Catalog,
-  EMPTY_CATALOG,
   type FsmEvent,
   loadSnapshot,
   saveSnapshot,
@@ -114,7 +113,21 @@ async function loadClinicBySlug(slug: string): Promise<{
   });
 }
 
-async function loadBotCatalog(clinicId: string): Promise<Catalog> {
+async function loadBotCatalog(
+  clinicId: string,
+  miniAppUrl: string | null,
+): Promise<Catalog> {
+  // Short-circuit: when a Mini App URL is available, the FSM sends a single
+  // `web_app` button after lang pick — no in-chat service/doctor/slot walks.
+  // Skipping the catalog fetch saves a few round-trips per message.
+  if (miniAppUrl) {
+    return {
+      services: [],
+      doctorsByService: {},
+      slotsByDoctor: {},
+      miniAppUrl,
+    };
+  }
   return runWithTenant({ kind: "SYSTEM" }, async () => {
     const services = await prisma.service.findMany({
       where: { clinicId, isActive: true },
@@ -140,14 +153,14 @@ async function loadBotCatalog(clinicId: string): Promise<Catalog> {
         nameUz: r.doctor.nameUz,
       }));
     }
-    // Slots are intentionally empty here: the FSM handles the case, and the
-    // full slot pipeline lives in the Mini App (Phase 3d). Bot fallback
-    // simply tells the user to open the app or call.
+    // Legacy path (no Mini App configured) — slots remain empty; FSM tells
+    // user to call the clinic.
     const slotsByDoctor: Record<string, Array<{ iso: string; label: string }>> = {};
     return {
       services,
       doctorsByService,
       slotsByDoctor,
+      miniAppUrl: null,
     };
   });
 }
@@ -241,8 +254,9 @@ async function handleFsmMessage(
   chatId: string,
   conversationId: string,
   event: FsmEvent,
+  miniAppUrl: string | null,
 ): Promise<void> {
-  const catalog = await loadBotCatalog(clinic.id);
+  const catalog = await loadBotCatalog(clinic.id, miniAppUrl);
   const prev = await loadSnapshot(clinic.id, chatId);
   const { next, outgoing } = step(prev, event, catalog);
   await saveSnapshot(clinic.id, chatId, next);
@@ -252,6 +266,34 @@ async function handleFsmMessage(
     });
     await recordOutgoing(clinic.id, conversationId, outgoing.text, sent.message_id);
   }
+}
+
+/** Mini App URL served by this deployment for a given clinic, or null if
+ * the public origin couldn't be determined. Telegram requires HTTPS for
+ * `web_app` buttons, so we bail out on plain HTTP.
+ *
+ * Resolution order:
+ *   1. `PUBLIC_BASE_URL` env — explicit override (prod, staging).
+ *   2. `x-forwarded-proto` + `x-forwarded-host` — set by proxies (Cloudflare,
+ *      nginx, cloudflared tunnel). Without this the dev flow via tunnel
+ *      would see `request.url = http://localhost:3000` and never qualify.
+ *   3. `new URL(request.url).origin` — last resort.
+ */
+function resolveMiniAppUrl(request: NextRequest, slug: string): string | null {
+  const envBase = process.env.PUBLIC_BASE_URL;
+  if (envBase) {
+    return envBase.startsWith("https://") ? `${envBase}/c/${slug}/my` : null;
+  }
+  const fwdProto = request.headers.get("x-forwarded-proto");
+  const fwdHost =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (fwdProto && fwdHost) {
+    if (fwdProto !== "https") return null;
+    return `https://${fwdHost}/c/${slug}/my`;
+  }
+  const origin = new URL(request.url).origin;
+  if (!origin.startsWith("https://")) return null;
+  return `${origin}/c/${slug}/my`;
 }
 
 export async function POST(
@@ -283,6 +325,8 @@ export async function POST(
     tgBotToken: clinic.tgBotToken,
     tgBotUsername: clinic.tgBotUsername,
   };
+
+  const miniAppUrl = resolveMiniAppUrl(request, clinic.slug);
 
   try {
     // ─ message ───────────────────────────────────────────────────────────
@@ -321,7 +365,13 @@ export async function POST(
         typeof msg.text === "string"
           ? { kind: "text", text: msg.text }
           : { kind: "start" };
-      await handleFsmMessage(clinicMin, chatId, recorded.conversationId, event);
+      await handleFsmMessage(
+        clinicMin,
+        chatId,
+        recorded.conversationId,
+        event,
+        miniAppUrl,
+      );
       return jsonResponse({ ok: true });
     }
 
@@ -370,10 +420,13 @@ export async function POST(
         return jsonResponse({ ok: true });
       }
 
-      await handleFsmMessage(clinicMin, chatId, conv.id, {
-        kind: "callback",
-        data: cq.data ?? "",
-      });
+      await handleFsmMessage(
+        clinicMin,
+        chatId,
+        conv.id,
+        { kind: "callback", data: cq.data ?? "" },
+        miniAppUrl,
+      );
       return jsonResponse({ ok: true });
     }
 

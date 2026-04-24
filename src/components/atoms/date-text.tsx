@@ -17,7 +17,8 @@ export interface DateTextProps {
  * Locale-aware date text. Delegates to `formatDate` in `src/lib/format.ts`.
  */
 export function DateText({ date, style = "short", locale, className }: DateTextProps) {
-  const activeLocale = (locale ?? (useLocale() as Locale)) ?? "ru"
+  const contextLocale = useLocale() as Locale
+  const activeLocale = locale ?? contextLocale ?? "ru"
   const text = formatDate(date, activeLocale, style)
   if (!text) return null
   return <time className={cn(className)}>{text}</time>

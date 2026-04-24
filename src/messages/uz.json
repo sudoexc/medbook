@@ -1,4 +1,7 @@
 {
+  "crmLayout": {
+    "adminFallbackName": "Administrator"
+  },
   "common": {
     "save": "Saqlash",
     "cancel": "Bekor qilish",
@@ -65,9 +68,9 @@
     "segment": {
       "new": "Yangi",
       "active": "Faol",
-      "dormant": "Nofaol",
+      "dormant": "Sovimoqda",
       "vip": "VIP",
-      "churn": "Yo'qotilgan"
+      "churn": "Yo'qolgan"
     }
   },
   "appointment": {
@@ -112,15 +115,31 @@
       "age": "Yosh",
       "phone": "Telefon",
       "segment": "Segment",
+      "status": "Holat",
+      "priority": "Muhimligi",
+      "source": "Manba",
+      "nextVisit": "Keyingi yozilish",
       "ltv": "LTV",
       "lastVisit": "Oxirgi tashrif",
       "tags": "Teglar",
       "actions": "Amallar"
     },
+    "table": {
+      "selectAll": "Hammasini tanlash",
+      "selectRow": "Tanlash",
+      "noAppointment": "Yozilish yo'q"
+    },
+    "ageYears": "{age} yosh",
+    "priority": {
+      "high": "Yuqori",
+      "medium": "O'rta",
+      "low": "Past"
+    },
     "filters": {
       "search": "Qidirish: F.I.Sh., telefon, pasport, TG",
       "segment": "Segment",
-      "segmentAll": "Barcha segmentlar",
+      "segmentAll": "Barcha holatlar",
+      "sourceAll": "Barcha manbalar",
       "tags": "Teglar",
       "tagsAll": "Barcha teglar",
       "age": "Yosh",
@@ -129,6 +148,8 @@
       "gender": "Jins",
       "genderAll": "Har qanday",
       "lastVisit": "Oxirgi tashrif",
+      "lastVisitFrom": "Oxirgi tashrif (dan)",
+      "lastVisitTo": "Oxirgi tashrif (gacha)",
       "hasDebt": "Qarzdor",
       "clear": "Tozalash"
     },
@@ -152,9 +173,9 @@
     "segment": {
       "new": "Yangi",
       "active": "Faol",
-      "dormant": "Nofaol",
+      "dormant": "Sovimoqda",
       "vip": "VIP",
-      "churn": "Yo'qotilgan"
+      "churn": "Yo'qolgan"
     },
     "gender": {
       "male": "Erkak",
@@ -165,8 +186,8 @@
       "telegram": "Telegram",
       "instagram": "Instagram",
       "call": "Qo'ng'iroq",
-      "walkin": "Ko'chadan",
-      "referral": "Tavsiya",
+      "walkin": "Resepshn",
+      "referral": "Tavsiyalar",
       "ads": "Reklama",
       "other": "Boshqa"
     },
@@ -194,6 +215,7 @@
       "source": "Manba",
       "sourcePlaceholder": "Qayerdan keldi",
       "tags": "Teglar (vergul bilan)",
+      "tagsPlaceholder": "vip, surunkali-bemor, bolalar",
       "submit": "Yaratish",
       "cancel": "Bekor qilish",
       "createdToast": "Bemor yaratildi",
@@ -203,7 +225,57 @@
     "rowActions": {
       "open": "Kartochkani ochish",
       "call": "Qo'ng'iroq qilish",
-      "newAppointment": "Yangi yozilish"
+      "newAppointment": "Yangi yozilish",
+      "more": "Yana"
+    },
+    "rail": {
+      "actionsHeading": "Amallar markazi",
+      "actions": {
+        "callTitle": "Bemorlarga qo'ng'iroq qilish",
+        "callSubtitle": "Uzoq vaqtdan beri klinikada bo'lmagan",
+        "telegramTitle": "Telegramga yozish",
+        "telegramSubtitle": "Konsultatsiyadan keyin yozilmagan",
+        "bookTitle": "Yozilishni taklif qilish",
+        "bookSubtitle": "Triggerlarga mos"
+      },
+      "viewAllActions": "Barcha amallarni ko'rish",
+      "segmentsHeading": "Segmentlar",
+      "segments": {
+        "vip": "VIP mijozlar",
+        "dormant30": "30+ kundan beri kelmagan",
+        "newClients": "Yangi mijozlar",
+        "churn": "Yo'qolganlar"
+      },
+      "statsHeading": "Statistika",
+      "statsPeriod": "Oyiga",
+      "stats": {
+        "newPatients": "Yangi bemorlar",
+        "returning": "Qaytganlar",
+        "avgCheck": "O'rtacha chek",
+        "totalRevenue": "Umumiy daromad"
+      },
+      "sourcesHeading": "Bemorlar manbai"
+    },
+    "tiles": {
+      "totalPatients": "Jami bemorlar",
+      "newWeekHint": "+{count, plural, other {# haftada}}",
+      "newWeek": "Haftada yangi",
+      "active": "Faol bemorlar",
+      "dormantGt30": "> 30 kun kelmagan",
+      "noShowRisk": "No-show xavfi",
+      "avgCheck": "O'rtacha chek"
+    },
+    "tabs": {
+      "ariaLabel": "Bemorlar segmentlari",
+      "all": "Barcha bemorlar",
+      "vip": "VIP",
+      "new": "Yangilar",
+      "active": "Faollar",
+      "dormant": "Sovigan",
+      "churn": "Yo'qolgan",
+      "filters": "Filtrlar",
+      "segments": "Segmentlar",
+      "configureTable": "Jadvalni sozlash"
     }
   },
   "appointments": {
@@ -222,10 +294,29 @@
       "services": "Xizmatlar",
       "moreServices": "yana",
       "status": "Holat",
+      "source": "Manba",
       "payment": "To'lov",
       "cabinet": "Kab.",
       "channel": "Kanal",
+      "riskNoShow": "No-show xavfi",
+      "amount": "Summa",
       "actions": "Amallar"
+    },
+    "risk": {
+      "high": "Yuqori",
+      "medium": "O'rta",
+      "low": "Past"
+    },
+    "cell": {
+      "firstVisit": "Birlamchi qabul",
+      "extraServices": "+{count} xizmat",
+      "appointment": "Qabul",
+      "cabinetN": "Kab. {number}",
+      "noCabinet": "Kabinetsiz",
+      "lateMin": "+{min} daq.",
+      "inMin": "{min} daq. qoldi",
+      "callAria": "Qo'ng'iroq qilish",
+      "telegramAria": "Telegramga yozish"
     },
     "status": {
       "booked": "Yozilgan",
@@ -270,15 +361,23 @@
         "range": "Davr"
       }
     },
-    "kpi": {
-      "label": "Tez holatlar",
-      "all": "Barchasi",
-      "waiting": "Kutmoqda",
-      "booked": "Yozilgan",
-      "in_progress": "Qabulda",
-      "completed": "Tugatildi",
-      "cancelled": "Bekor qilindi",
-      "no_show": "Kelmadi"
+    "tiles": {
+      "all": "Barcha yozuvlar",
+      "needsAttention": "Hozir muhim",
+      "soon": "Yaqin qabul",
+      "unconfirmed": "Tasdiqlanmagan",
+      "late": "Kechikkanlar",
+      "arrived": "Kelganlar"
+    },
+    "kpiStrip": {
+      "ariaLabel": "Tez filtrlar",
+      "needsAttention": "Hozir e'tibor kerak",
+      "needCall": "Qo'ng'iroq qilish kerak",
+      "riskNoShow": "No-show xavfi",
+      "inProgress": "Qabulda",
+      "arrived": "Kelganlar",
+      "all": "Barcha yozuvlar",
+      "configureView": "Ko'rinishni sozlash"
     },
     "bulk": {
       "label": "Ommaviy amallar",
@@ -360,11 +459,24 @@
       "count": "Yozilishlar",
       "revenue": "Tushum",
       "avgCheck": "O'rtacha chek",
-      "conv": "Konversiya"
+      "conv": "Konversiya",
+      "actionCenter": "Amallar markazi",
+      "todayStats": "Bugungi statistika",
+      "actionRemindTitle": "Bemorlarga eslatish",
+      "actionRemindHint": "{count, plural, one {# tasdiqlanmagan yozilish} other {# tasdiqlanmagan yozilish}}",
+      "actionConfirmTitle": "Tashriflarni tasdiqlash",
+      "actionConfirmHint": "{count, plural, one {# kutmoqda holda} other {# kutmoqda holda}}",
+      "actionBroadcastTitle": "Telegram'ga tarqatish",
+      "actionBroadcastHint": "Ommaviy xabar",
+      "actionExportTitle": "CSV eksport",
+      "actionExportHint": "Joriy filtrni yuklab olish",
+      "slotsLoading": "Yuklanmoqda…",
+      "slotsNone": "Slotlar yo'q"
     },
     "slotPicker": {
       "date": "Sana",
       "loading": "Slotlar yuklanmoqda…",
+      "loadError": "Slotlarni yuklab bo'lmadi. Qayta urinib ko'ring.",
       "noSlots": "Bo'sh slotlar yo'q",
       "pickDoctorFirst": "Shifokorni tanlang",
       "slotMin": "Qadam: {min} daq."
@@ -427,14 +539,13 @@
     }
   },
   "calendar": {
-    "title": "Kalendar",
-    "subtitle": "Shifokorlar bo'yicha tashriflarni rejalashtirish",
     "today": "Bugun",
     "prev": "Oldingi",
     "next": "Keyingi",
     "loading": "Yuklanmoqda…",
-    "noEvents": "Bu davrda yozilishlar yo'q",
     "newAppointment": "Yangi yozilish",
+    "filtersLabel": "Filtrlar",
+    "configureView": "Ko'rinishni sozlash",
     "desktopOnlyTitle": "Desktopda oching",
     "desktopOnlyDescription": "Kalendar 1280 px va undan yuqori ekranlar uchun moslangan. Telefonda «Yozilishlar» bo'limidan foydalaning.",
     "views": {
@@ -475,11 +586,50 @@
       "minutesShort": "daq",
       "clickToCreate": "Yozilish yaratish uchun bosing"
     },
+    "chip": {
+      "statusBooked": "Tasdiqlangan",
+      "statusWaiting": "Kutmoqda",
+      "statusInProgress": "Qabulda",
+      "statusCompleted": "Keldi",
+      "statusNoShowRisk": "Yuqori xavf",
+      "statusCancelled": "Bekor qilingan",
+      "cabinetN": "Kab. {n}",
+      "lateMinutes": "+{min} daq",
+      "inSession": "Qabulda",
+      "free": "Bo'sh"
+    },
     "legend": {
       "title": "Legenda",
       "byStatus": "Holat bo'yicha",
       "byDoctor": "Shifokor bo'yicha",
-      "byCabinet": "Kabinet bo'yicha"
+      "byCabinet": "Kabinet bo'yicha",
+      "status": {
+        "BOOKED": "Tasdiqlangan",
+        "WAITING": "Kutmoqda",
+        "IN_PROGRESS": "Qabulda",
+        "COMPLETED": "Keldi",
+        "CANCELLED": "Bekor qilingan",
+        "NO_SHOW": "No-show",
+        "BREAK": "Tanaffus",
+        "FREE": "Bo'sh"
+      },
+      "channels": {
+        "CALL": "Qo'ng'iroq",
+        "TELEGRAM": "Telegram",
+        "SITE": "Saytdan",
+        "WALKIN": "Retsepshn",
+        "REPEAT": "Takroriy"
+      }
+    },
+    "tiles": {
+      "total": "Bugungi yozilishlar",
+      "totalHint": "Kecha bilan solishtirish",
+      "confirmed": "Tasdiqlangan",
+      "pending": "Tasdiqlash kutmoqda",
+      "risk": "No-show yuqori xavfi",
+      "riskDetails": "Batafsil",
+      "freeSlots": "Bo'sh slotlar",
+      "freeSlotsHint": "30 daq"
     },
     "rail": {
       "stats": "Statistika",
@@ -487,7 +637,28 @@
       "completedCount": "Tugatildi",
       "revenueTotal": "Daromad",
       "occupancy": "Shifokorlar yuklamasi",
-      "noData": "Ma'lumot yo'q"
+      "noData": "Ma'lumot yo'q",
+      "aiTitle": "AI-tavsiyalar",
+      "recReschedule": "Bemorni ko'chirish",
+      "recRescheduleBody": "{count, plural, one {# yozilish no-show xavfi ostida — boshqa vaqt taklif qiling.} other {# yozilish no-show xavfi ostida — boshqa vaqt taklif qiling.}}",
+      "recRescheduleEmpty": "Shoshilinch nizolar yo'q.",
+      "recRescheduleCta": "Ochish",
+      "recFillSlot": "Bo'sh oyna to'ldirish",
+      "recFillSlotBody": "Bo'sh slotlar bor — takroriy bemorlarga taklif qiling.",
+      "recFillSlotCta": "Tanlash",
+      "recCallback": "Bemorlarga qo'ng'iroq qilish",
+      "recCallbackBody": "{count, plural, one {# tasdiqlanmagan yozilish qo'ng'iroqni kutmoqda.} other {# tasdiqlanmagan yozilish qo'ng'iroqni kutmoqda.}}",
+      "recCallbackEmpty": "Barcha yozilishlar tasdiqlangan.",
+      "recCallbackCta": "Qo'ng'iroq qilish",
+      "unconfirmed": "Tasdiqlanmaganlar",
+      "unconfirmedEmpty": "Barcha yozilishlar tasdiqlangan.",
+      "freeSlotsToday": "Bugun bo'sh slotlar",
+      "noActiveDoctors": "Faol shifokorlar yo'q.",
+      "slotsCount": "{count, plural, one {# oyna} other {# oyna}}",
+      "dailyStats": "Kun statistikasi",
+      "statAppointments": "Yozilishlar",
+      "statConversion": "Konversiya",
+      "statRevenue": "Daromad"
     }
   },
   "patientCard": {
@@ -525,6 +696,79 @@
       "tags": "Teglar",
       "noTags": "Teglar yo'q"
     },
+    "infoPanel": {
+      "mainInfo": "Asosiy ma'lumot",
+      "phone": "Telefon",
+      "birthDate": "Tug'ilgan sana",
+      "ageSuffix": "{age} yosh",
+      "gender": "Jins",
+      "address": "Manzil",
+      "source": "Manba",
+      "firstVisit": "Birinchi tashrif",
+      "manager": "Menejer",
+      "preferredLang": "Muloqot tili",
+      "langUz": "O'zbekcha",
+      "langRu": "Ruscha",
+      "consentMarketing": "Reklama xabarlariga rozilik",
+      "tags": "Teglar",
+      "notes": "Izohlar",
+      "notesEmpty": "Izohlar hali yo'q",
+      "notesPlaceholder": "Bemor haqida izohlar…"
+    },
+    "rightRail": {
+      "quickActions": "Tez amallar",
+      "callPatient": "Bemorga qo'ng'iroq qilish",
+      "writeTelegram": "Telegramga yozish",
+      "createAppointment": "Yozilish yaratish",
+      "patientStatus": "Bemor holati",
+      "statusLabel": "Holat",
+      "statusActive": "Faol",
+      "lastVisit": "Oxirgi tashrif",
+      "daysAgo": "{days} kun oldin",
+      "visitFrequency": "Tashrif chastotasi",
+      "frequencyOften": "Tez-tez",
+      "frequencyMonth": "Oyiga bir marta",
+      "frequencyQuarter": "2–3 oyda bir",
+      "frequencyRare": "Kamdan-kam",
+      "riskNoShow": "No-show xavfi",
+      "riskLow": "Past",
+      "riskMedium": "O'rta",
+      "riskHigh": "Yuqori",
+      "communication": "Aloqa",
+      "more": "Batafsil",
+      "calls": "Qo'ng'iroqlar",
+      "files": "Fayllar",
+      "allFiles": "Barcha fayllar",
+      "loading": "Yuklanmoqda…",
+      "noDocuments": "Hozircha hujjatlar yo'q"
+    },
+    "finance": {
+      "title": "Moliya",
+      "totalIncome": "Umumiy daromad",
+      "paid": "To'langan",
+      "debt": "Qarz",
+      "zeroSum": "0 so'm",
+      "editAppointment": "Yozuvni tahrirlash",
+      "donutPaid": "To'langan"
+    },
+    "timeline": {
+      "title": "O'zaro aloqa tarixi",
+      "filter": "Filter",
+      "tabAll": "Barchasi",
+      "tabVisits": "Tashriflar",
+      "tabCalls": "Qo'ng'iroqlar",
+      "tabTelegram": "Telegram",
+      "typeTabs": "Voqea turi",
+      "loading": "Yuklanmoqda…",
+      "empty": "Hozircha voqealar yo'q",
+      "showMore": "Yana ko'rsatish ({count})",
+      "statusCompleted": "Tugatildi",
+      "statusCancelled": "Bekor qilindi",
+      "callMissed": "O'tkazib yuborildi",
+      "callAnswered": "Muvaffaqiyatli",
+      "incoming": "Kiruvchi",
+      "outgoing": "Chiquvchi"
+    },
     "quickActions": {
       "newAppointment": "Yozilish",
       "call": "Qo'ng'iroq",
@@ -533,7 +777,30 @@
       "inviteToBot": "Bemorda Telegram yo'q — taklif yuboramiz",
       "more": "Yana",
       "mergeDuplicates": "Dublikatlarni birlashtirish",
+      "mergeDuplicatesSoon": "Dublikatlarni birlashtirish keyingi yangilanishda qo'shiladi",
       "delete": "Bemorni o'chirish"
+    },
+    "hero": {
+      "years": "{age} yosh",
+      "idLabel": "ID: {id}",
+      "copyPhoneAria": "Raqamdan nusxa olish",
+      "phoneCopied": "Raqam nusxalandi",
+      "activeBadge": "Faol bemor",
+      "kpiLtv": "LTV",
+      "kpiVisits": "Tashriflar",
+      "kpiAvgCheck": "O'rtacha chek",
+      "kpiLastVisit": "Oxirgi tashrif",
+      "kpiRiskNoShow": "No-show xavfi",
+      "visitsThisYear": "+{count} shu yilda",
+      "riskHint": "Xulq asosida",
+      "toneHigh": "Yuqori",
+      "toneMedium": "O'rta",
+      "toneLow": "Past",
+      "actionCall": "Qo'ng'iroq",
+      "actionTelegram": "Telegram",
+      "actionNewAppointment": "Yozilish yaratish",
+      "actionSmsAria": "SMS",
+      "actionMoreAria": "Yana"
     },
     "overview": {
       "ltv": "LTV",
@@ -545,6 +812,23 @@
       "viewAll": "Barchasi",
       "noActivity": "Hozircha hech qanday harakat yo'q."
     },
+    "recs": {
+      "title": "Tavsiya etilgan amallar",
+      "empty": "Hozircha tavsiyalar yo'q",
+      "viewAll": "Barcha tavsiyalarni ko'rsatish",
+      "rebookTitle": "Takroriy tashrifga yozish",
+      "rebookDesc": "{days, plural, one {# kundan} other {# kundan}} keyin tavsiya etiladi",
+      "reactivateTitle": "Reaktivatsiya: bemor 2 oydan beri kelmagan",
+      "reactivateDesc": "Aksiya yoki konsultatsiya taklif qiling",
+      "reminderTitle": "Tashrifdan 1 kun oldin eslatish",
+      "reminderDesc": "Telegram orqali eslatma yuborish",
+      "courseTitle": "Davolash kursini taklif qilish",
+      "courseDesc": "Bemor LTV'sini oshirish",
+      "upsellTitle": "Kompleks tekshiruvni taklif qilish",
+      "upsellDesc": "Apsell uchun mos segment",
+      "loyaltyTitle": "Loyallik dasturiga qo'shish",
+      "loyaltyDesc": "{count, plural, one {# tugatilgan tashrif} other {# tugatilgan tashrif}}"
+    },
     "visits": {
       "date": "Sana",
       "doctor": "Shifokor",
@@ -552,6 +836,9 @@
       "status": "Status",
       "payment": "To'lov",
       "comment": "Izoh",
+      "doctorNote": "Shifokor izohi",
+      "noExtraData": "Qo'shimcha ma'lumot yo'q.",
+      "debt": "(qarz)",
       "empty": "Tashriflar yo'q",
       "emptyDescription": "Bemorni yozing — bu yerda tarix paydo bo'ladi.",
       "count": "Jami: {count}",
@@ -566,6 +853,7 @@
       "sign": "Imzolash",
       "download": "Yuklab olish",
       "delete": "O'chirish",
+      "deleteSoon": "Hujjatlarni o'chirish keyingi yangilanishda qo'shiladi",
       "empty": "Hujjatlar yo'q",
       "emptyDescription": "Fayl yuklang yoki bemorda rozilikni imzolang.",
       "types": {
@@ -681,6 +969,33 @@
     "subtitle": "Bugungi kunning jonli ko'rinishi",
     "newAppointment": "+ Yangi yozilish",
     "liveBadge": "Yangilanmoqda",
+    "autoRefresh": "Avtomatik yangilanadi",
+    "doctorsPanel": {
+      "title": "Kabinetlar va shifokorlar",
+      "day": "Kun",
+      "configure": "Sozlash",
+      "viewGrid": "To'r",
+      "viewList": "Ro'yxat"
+    },
+    "warnings": {
+      "template": "{minutes} daq. qoldi: {patient} — {doctor}"
+    },
+    "queueColumn": {
+      "title": "Umumiy navbat",
+      "empty": "Navbat bo'sh"
+    },
+    "bottomRow": {
+      "smartTitle": "Aqlli tavsiyalar",
+      "recInviteText": "Akmalani 15:30 bo'sh slotiga taklif qiling — 102-xona",
+      "recInviteMeta": "AI avtotavsiyasi",
+      "recConfirmText": "Ertangi yozuvlarni SMS orqali tasdiqlash ({count} bemor)",
+      "recConfirmMeta": "Kunlik vazifa",
+      "recNoShowText": "Oxirgi 7 kunlik no-show bo'yicha qo'ng'iroq qilish ({count} kishi)",
+      "recNoShowMeta": "CRM tavsiyasi",
+      "distributionTitle": "Qabullar taqsimoti",
+      "warningsTitle": "Ogohlantirishlar",
+      "warningsEmpty": "Faol ogohlantirishlar yo'q."
+    },
     "kpi": {
       "todayAppointments": "Bugungi yozilishlar",
       "checkedIn": "Kelganlar",
@@ -715,7 +1030,17 @@
       "emptyHint": "Navbatni boshlash uchun yozilish qo'shing.",
       "rowArrived": "Keldi",
       "rowWaiting": "Kutmoqda",
-      "rowInProgress": "Qabulda"
+      "rowInProgress": "Qabulda",
+      "specialist": "Mutaxassis",
+      "queue": "Navbat",
+      "queueCount": "Navbat ({count})",
+      "queueEmpty": "Navbat bo'sh",
+      "addAppointment": "Yozilish qo'shish",
+      "minPlan": "reja {min} daq.",
+      "remaining": "{min} daq. qoldi",
+      "awaitingPatient": "Bemorni kutmoqda",
+      "fallbackService": "Qabul",
+      "nearestTime": "Eng yaqin vaqt"
     },
     "calls": {
       "title": "Call-markaz",
@@ -731,7 +1056,20 @@
       "directionOUT": "Chiquvchi",
       "directionMISSED": "O'tkazib yuborilgan",
       "durationSec": "{sec} son",
-      "unknownCaller": "Noma'lum raqam"
+      "unknownCaller": "Noma'lum raqam",
+      "brand": "Call Center",
+      "viewAll": "Barchasi",
+      "emptyMain": "Faol qo'ng'iroqlar yo'q",
+      "emptyQueueHint": "Navbat bo'sh — dam olsangiz bo'ladi",
+      "queueHeader": "Qo'ng'iroqlar navbati",
+      "incomingLabel": "Kiruvchi qo'ng'iroq",
+      "unknownShort": "Noma'lum",
+      "tagVip": "VIP",
+      "tagClient": "Mijoz",
+      "tagNew": "Yangi",
+      "rejectAria": "Rad etish",
+      "quickBookAria": "Tezkor yozilish",
+      "nowLabel": "hozir"
     },
     "tg": {
       "title": "Telegram",
@@ -741,7 +1079,15 @@
       "emptyHint": "Telegram va SMS'dan yangi xabarlar shu yerda paydo bo'ladi.",
       "voiceNote": "ovozli xabar",
       "photo": "rasm",
-      "document": "hujjat"
+      "document": "hujjat",
+      "viewAll": "Hammasi",
+      "tabNew": "Yangilar",
+      "tabWaiting": "Kutmoqda",
+      "tabConfirmed": "Tasdiq.",
+      "tabAll": "Hammasi",
+      "noMessages": "Xabarlar yo'q",
+      "unknownName": "Noma'lum",
+      "voiceMessageFallback": "Ovozli xabar"
     },
     "cabinets": {
       "title": "Kabinetlar",
@@ -927,6 +1273,8 @@
     "back": "Ro'yxatga qaytish",
     "openProfile": "Profilni ochish",
     "loading": "Yuklanmoqda…",
+    "hourShort": "s",
+    "minuteShort": "d",
     "filters": {
       "search": "F.I.Sh. bo'yicha qidirish",
       "specialization": "Mutaxassislik",
@@ -954,13 +1302,47 @@
       "revenuePeriod": "Tushum ({period})",
       "loadPercent": "Yuklama",
       "bonus": "Bonus",
-      "inactiveBadge": "Nofaol"
+      "inactiveBadge": "Nofaol",
+      "statusBusy": "Qabulda",
+      "statusIdle": "Bo'sh",
+      "statusFree": "Bo'sh",
+      "cabinetN": "Kab. {cabinet}",
+      "loadTodayLabel": "Bugungi yuklama",
+      "revenueToday": "Bugungi daromad",
+      "appointmentsCount": "Yozilishlar",
+      "avgTime": "O'rtacha qabul vaqti",
+      "minSuffix": "{min} daq.",
+      "nearSlots": "Yaqin oynalar",
+      "hasFreeSlots": "Bo'sh oynalar bor",
+      "now": "hozir",
+      "noSlots": "Oynalar yo'q",
+      "fillSlots": "Slotlarni to'ldirish",
+      "schedule": "Jadval",
+      "redirect": "Yo'naltirish",
+      "book": "Yozilish"
     },
     "empty": {
       "title": "Hozircha shifokorlar yo'q",
       "description": "Jadval va hisob yuritish uchun birinchi shifokorni qo'shing.",
       "filteredTitle": "Hech kim topilmadi",
       "filteredDescription": "Filtrlarni o'zgartiring yoki qidiruvni tozalang."
+    },
+    "ai": {
+      "title": "AI tavsiyalar",
+      "updated": "2 daqiqa oldin yangilandi",
+      "emptyList": "Hozircha tavsiyalar yo'q",
+      "redirectTitle": "3 bemorni 11:20 da {name} ga yo'naltiring",
+      "redirectDescription": "Uning bo'sh slot'i bor · {from} dan",
+      "redirectAction": "Bajarish",
+      "fillTitle": "{name} da bo'sh vaqt bor",
+      "fillDescription": "12:00 dan 14:00 gacha · Bu slotlarni to'ldirishga harakat qiling",
+      "fillAction": "To'ldirish",
+      "specialistTitle": "{name} 14:00 dan keyin haddan tashqari yuklangan",
+      "specialistDescription": "Yana bir mutaxassis qo'shishni tavsiya qilamiz",
+      "specialistAction": "Batafsil",
+      "eveningTitle": "{name} uchun kechki slotlarni qo'shing",
+      "eveningDescription": "18:00 dan keyin talab bor",
+      "eveningAction": "Sozlash"
     },
     "rail": {
       "title": "Xulosa",
@@ -973,6 +1355,63 @@
       "avgCheck": "O'rtacha chek",
       "visitsTotal": "Qabullar soni",
       "noData": "Ma'lumot yo'q"
+    },
+    "tiles": {
+      "losses": "Bugungi yo'qotishlar",
+      "emptySlots": "{count, plural, one {# bo'sh slot} other {# bo'sh slot}}",
+      "noShow": "{count} no-show",
+      "thousandSuffix": "~{value}k",
+      "avgLoad": "O'rtacha yuklama",
+      "revenueToday": "Bugungi tushum",
+      "appointmentsToday": "Bugungi yozilishlar",
+      "avgCheck": "O'rtacha chek",
+      "conversion": "Yozilishga konversiya",
+      "deltaPercentPositive": "+{value}% kechagidan",
+      "deltaCountPositive": "+{value} kechagidan"
+    },
+    "quickBook": {
+      "title": "Shifokorga tezkor yozilish",
+      "doctor": "Shifokor",
+      "doctorPlaceholder": "Shifokorni tanlang",
+      "doctorEmpty": "Shifokorlar yo'q",
+      "service": "Xizmat",
+      "servicePlaceholder": "Xizmatni tanlang",
+      "date": "Sana",
+      "time": "Vaqt",
+      "timePlaceholder": "Vaqtni tanlang",
+      "submit": "Yozilish yaratish",
+      "serviceConsult": "Birlamchi konsultatsiya",
+      "serviceFollow": "Takroriy qabul",
+      "serviceProcedure": "Muolaja",
+      "serviceDiagnostic": "Diagnostika"
+    },
+    "topRevenue": {
+      "title": "Daromad bo'yicha TOP shifokorlar",
+      "emptyPeriod": "Davr uchun ma'lumot yo'q",
+      "statsTitle": "Shifokorlar statistikasi",
+      "conversion": "Yozilishga konversiya",
+      "avgCheck": "O'rtacha chek",
+      "noShow": "No-show",
+      "repeatVisits": "Takroriy tashriflar"
+    },
+    "heatmap": {
+      "title": "Shifokorlar yuklamasi vaqt bo'yicha",
+      "empty": "Ko'rsatish uchun ma'lumot yo'q",
+      "timeHeader": "Vaqt",
+      "cellTitle": "{count, plural, other {# yozuv}} · {pct}%",
+      "legendLow": "0–30% (past)",
+      "legendMedium": "30–60% (o'rta)",
+      "legendGood": "60–80% (yaxshi)",
+      "legendHigh": "80–100% (yuqori)"
+    },
+    "tabs": {
+      "ariaLabel": "Shifokorlar filtri",
+      "all": "Barcha shifokorlar",
+      "idle": "Bo'sh turibdi",
+      "optimal": "Optimal yuklama",
+      "overloaded": "Ortiqcha yuklama",
+      "has-slots": "Hozir slot bor",
+      "configureView": "Ko'rinishni sozlash"
     },
     "profile": {
       "notFoundTitle": "Shifokor topilmadi",
@@ -988,8 +1427,16 @@
     "tabs": {
       "overview": "Umumiy",
       "schedule": "Jadval",
+      "services": "Xizmatlar",
       "patients": "Bemorlar",
-      "reviews": "Sharhlar"
+      "reviews": "Sharhlar",
+      "ariaLabel": "Shifokorlarni yuklamasi bo'yicha filtrlash",
+      "all": "Barchasi",
+      "idle": "Bo'sh",
+      "optimal": "Maqbul",
+      "overloaded": "Yuklangan",
+      "has-slots": "Slotlar bor",
+      "configureView": "Sozlash"
     },
     "finance": {
       "title": "Moliya",
@@ -1075,6 +1522,21 @@
       "empty": "Hozircha sharhlar yo'q",
       "todoHint": "Shifokor haqidagi sharhlar agregatsiyasi ommaviy sharhlar bo'limi bilan paydo bo'ladi."
     },
+    "services": {
+      "title": "Xizmatlar",
+      "assign": "Tayinlash",
+      "priceOverride": "Maxsus narx",
+      "basePrice": "Asosiy narx",
+      "saved": "Saqlandi",
+      "saveFailed": "Saqlash xatosi",
+      "selectedCount": "Tanlangan: {count}",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "reset": "Bekor qilish",
+      "empty": "Klinikada aktiv xizmatlar yo'q",
+      "loadError": "Xizmatlarni yuklab bo'lmadi",
+      "currencySum": "so'm"
+    },
     "weekdays": {
       "mon": "Dushanba",
       "tue": "Seshanba",
@@ -1087,12 +1549,116 @@
   },
   "notifications": {
     "title": "Bildirishnomalar",
-    "subtitle": "Shablonlar, navbat, triggerlar va ommaviy yuborish",
+    "subtitle": "Faollik, shablonlar, triggerlar va ommaviy yuborishlar",
+    "desktopOnly": {
+      "title": "Desktopda oching",
+      "description": "Bildirishnomalar sahifasi katta ekranlar uchun. Iltimos kompyuterdan kiring."
+    },
     "tabs": {
+      "ariaLabel": "Bildirishnoma bo'limlari",
+      "activity": "Faollik",
       "templates": "Shablonlar",
-      "queue": "Navbat",
       "campaigns": "Yuborishlar",
       "triggers": "Triggerlar"
+    },
+    "templatesPage": {
+      "title": "Bildirishnoma shablonlari",
+      "subtitle": "Eslatma va tranzaksion xabarlar matnini tahrirlang."
+    },
+    "campaignsPage": {
+      "title": "Yuborishlar",
+      "subtitle": "Bemorlar segmentlari va ommaviy yuborish."
+    },
+    "triggersPage": {
+      "title": "Triggerlar",
+      "subtitle": "Bildirishnomalarni avtomatik ishga tushiruvchi CRM hodisalari."
+    },
+    "types": {
+      "title": "Kanallar",
+      "subtitle": "Faollikni yetkazish kanali bo'yicha filtrlang.",
+      "labels": {
+        "all": "Barcha kanallar",
+        "SMS": "SMS",
+        "TG": "Telegram",
+        "EMAIL": "Email",
+        "CALL": "Qo'ng'iroqlar",
+        "VISIT": "Tashrif"
+      }
+    },
+    "kpiStrip": {
+      "sent": {
+        "label": "Yuborildi",
+        "hint": "Bugun"
+      },
+      "delivered": {
+        "label": "Yetkazildi",
+        "hint": "30 kun"
+      },
+      "queued": {
+        "label": "Navbatda",
+        "hint": "Yuborilishni kutmoqda"
+      },
+      "failed": {
+        "label": "Xatolar",
+        "hint": "Bugun"
+      }
+    },
+    "activity": {
+      "ariaLabel": "Bildirishnomalar faolligi",
+      "status": {
+        "QUEUED": "Navbatda",
+        "SENT": "Yuborildi",
+        "DELIVERED": "Yetkazildi",
+        "READ": "O'qildi",
+        "FAILED": "Xato",
+        "CANCELLED": "Bekor qilindi"
+      },
+      "empty": {
+        "title": "Bildirishnomalar yo'q",
+        "description": "Yangi yuborishlar rejaga ko'ra yoki qo'lda yuborilgandan keyin paydo bo'ladi."
+      }
+    },
+    "details": {
+      "ariaLabel": "Bildirishnoma tafsilotlari",
+      "empty": {
+        "title": "Bildirishnomani tanlang",
+        "description": "Yuborish tafsilotlarini ko'rish uchun chapdagi qatorga bosing."
+      },
+      "status": {
+        "QUEUED": "Navbatda",
+        "SENT": "Yuborildi",
+        "DELIVERED": "Yetkazildi",
+        "READ": "O'qildi",
+        "FAILED": "Xato",
+        "CANCELLED": "Bekor qilindi"
+      },
+      "openPatient": "Kartani ochish",
+      "templateLabel": "Shablon",
+      "actions": {
+        "title": "Amallar",
+        "retry": "Qayta yuborish",
+        "cancel": "Bekor qilish",
+        "resend": "Yana yuborish"
+      },
+      "history": {
+        "title": "Tarix",
+        "scheduled": "Rejalashtirildi",
+        "sent": "Yuborildi",
+        "delivered": "Yetkazildi",
+        "read": "O'qildi",
+        "retriesLabel": "{count, plural, one {# qayta urinish} other {# qayta urinish}}"
+      },
+      "context": {
+        "title": "30 kun",
+        "total30d": "Jami",
+        "delivered30d": "Yetkazildi",
+        "failed30d": "Xatolar",
+        "activeTemplates": "Shablonlar"
+      },
+      "toasts": {
+        "retried": "Qayta navbatga qo'yildi",
+        "stubAction": "Amal keyingi relizda paydo bo'ladi"
+      }
     },
     "categories": {
       "REMINDER": "Eslatmalar",
@@ -1130,45 +1696,13 @@
       "cancel": "Bekor qilish",
       "testSend": "Test yuborish",
       "testSent": "Test vazifasi navbatga qo'shildi",
-      "saveBeforeTest": "Avval shablonni saqlang"
-    },
-    "queue": {
-      "tabs": {
-        "all": "Hammasi",
-        "pending": "Navbatda",
-        "sent": "Yuborilgan",
-        "failed": "Xatolar"
-      },
-      "filter": {
-        "channel": "Kanal",
-        "allChannels": "Barcha kanallar"
-      },
-      "refresh": "Yangilash",
-      "retry": "Qayta urinish",
-      "retried": "Qayta navbatga qo'yildi",
-      "cancel": "Bekor qilish",
-      "manual": "Qo'lda yuborish",
-      "col": {
-        "scheduled": "Reja",
-        "recipient": "Qabul qiluvchi",
-        "template": "Shablon",
-        "channel": "Kanal",
-        "status": "Holat",
-        "retries": "Urinishlar",
-        "actions": "Amallar"
-      },
-      "status": {
-        "QUEUED": "Navbatda",
-        "SENT": "Yuborildi",
-        "DELIVERED": "Yetkazildi",
-        "READ": "O'qildi",
-        "FAILED": "Xato",
-        "CANCELLED": "Bekor qilindi"
-      },
-      "empty": {
-        "title": "Navbat bo'sh",
-        "description": "Yangi bildirishnomalar rejaga ko'ra yoki qo'lda yuborilgandan keyin paydo bo'ladi."
-      }
+      "saveBeforeTest": "Avval shablonni saqlang",
+      "samplePatientName": "Ivan Ivanov",
+      "samplePatientFirst": "Ivan",
+      "sampleAppointmentDate": "2026-yil 25-aprel",
+      "sampleDoctor": "Dr. Aliyeva",
+      "sampleService": "Konsultatsiya",
+      "sampleClinicAddress": "Toshkent"
     },
     "triggers": {
       "title": "Triggerlar",
@@ -1190,22 +1724,6 @@
         "title": "Yuborishlar yo'q",
         "description": "To'liq segment konstruktori 5-bosqichda paydo bo'ladi."
       }
-    },
-    "rail": {
-      "title": "Umumiy",
-      "today": "Bugun",
-      "sentToday": "Yuborildi",
-      "queued": "Navbatda",
-      "failedToday": "Xatolar",
-      "last30d": "30 kun",
-      "total": "Jami",
-      "delivered": "Yetkazildi",
-      "failed": "Xatolar",
-      "activeTemplates": "Faol shablonlar",
-      "topTemplates": "Eng ko'p ishlatiluvchilar",
-      "noTop": "Ma'lumot yo'q",
-      "manual": "Qo'lda yuborish",
-      "devModeHint": "DEV MODE: LogOnly-adapter yoqilgan — SMS/TG aslida yuborilmaydi."
     }
   },
   "tgInbox": {
@@ -1249,7 +1767,7 @@
       "emptyDescription": "Bemor haqidagi ma'lumotni ko'rish uchun suhbatni tanlang.",
       "anonymous": "Noma'lum",
       "newAppointment": "Yozib qo'yish",
-      "openPatient": "Kartani ochish",
+      "openPatient": "Karta",
       "segment": "Segment",
       "balance": "Balans",
       "lifetimeSpend": "LTV",
@@ -1264,7 +1782,50 @@
       "fullNamePlaceholder": "Karimov Karim",
       "phoneLabel": "Telefon",
       "createPatient": "Bemor yaratish",
-      "patientCreated": "Bemor yaratildi va biriktirildi"
+      "patientCreated": "Bemor yaratildi va biriktirildi",
+      "actions": {
+        "ariaLabel": "Tezkor harakatlar",
+        "title": "Harakatlar",
+        "call": "Qo'ng'iroq",
+        "sms": "SMS",
+        "copyPhone": "Nusxa",
+        "attachment": "Fayl",
+        "task": "Eslatma",
+        "export": "Eksport",
+        "phoneCopied": "Raqam nusxalandi",
+        "copyFailed": "Nusxa olib bo'lmadi",
+        "stubs": {
+          "attachment": "Fayllarni yuklash keyingi relizda paydo bo'ladi",
+          "task": "Eslatmalar vazifalar moduli ishga tushgach paydo bo'ladi",
+          "export": "Suhbat eksporti keyingi relizda paydo bo'ladi"
+        }
+      },
+      "ai": {
+        "ariaLabel": "AI-yordamchi",
+        "title": "AI-yordamchi",
+        "tip1": "Tashrifdan bir kun oldin qabulni tasdiqlashni taklif qiling.",
+        "tip2": "Xizmat talab qilsa, tayyorgarlik qoidalarini eslating.",
+        "tip3": "Agar bemor 30 daqiqadan ko'p javob bermasa — savollar qoldimi, so'rang.",
+        "disclaimer": "AI-xizmat ishga tushgach maslahatlar avtomatik yoqiladi."
+      },
+      "history": {
+        "ariaLabel": "Muloqot tarixi",
+        "title": "Muloqot tarixi",
+        "loading": "Yuklanmoqda…",
+        "empty": "Hali xabar yo'q",
+        "noText": "Matnsiz",
+        "in": "Kiruvchi",
+        "out": "Chiquvchi"
+      },
+      "stats": {
+        "ariaLabel": "Telegram statistikasi",
+        "title": "Telegram statistikasi",
+        "total": "Jami",
+        "unread": "O'qilmagan",
+        "inbound": "Kiruvchi",
+        "outbound": "Chiquvchi",
+        "lastActivity": "Oxirgi faollik: {time}"
+      }
     },
     "composer": {
       "placeholder": "Xabar yozing…",
@@ -1318,15 +1879,30 @@
         "out": "Chiquvchi"
       },
       "openPatient": "Bemor kartasini ochish",
-      "actions": {
-        "ariaLabel": "Tezkor harakatlar",
-        "book": "Yozish",
+      "patientFetchError": "Bemor ma'lumotlarini yuklab bo'lmadi",
+      "bookCta": "Bemorni yozish",
+      "anonymousCtas": {
+        "description": "Raqam kartaga bog'lanmagan. Yangi bemor yarating yoki mehmon sifatida yozing.",
         "createPatient": "Karta yaratish",
-        "markMissed": "O'tkazilgan deb belgilash",
-        "hangup": "Tugatish",
-        "hangupDone": "Qo'ng'iroq yakunlandi",
-        "markedMissed": "Qo'ng'iroq o'tkazilgan deb belgilandi",
-        "disclaimer": "Mute / Hold / Transfer SIP-provayder ulangach paydo bo'ladi."
+        "book": "Tez yozish"
+      },
+      "kpi": {
+        "ariaLabel": "Bemor ko'rsatkichlari",
+        "ltv": "LTV",
+        "visits": "Tashriflar",
+        "avgCheck": "O'rtacha chek",
+        "balance": "Balans"
+      },
+      "nextAppointment": {
+        "ariaLabel": "Keyingi yozuv",
+        "title": "Keyingi yozuv",
+        "empty": "Rejalashtirilgan tashrif yo'q",
+        "open": "Ochish"
+      },
+      "visitHistory": {
+        "ariaLabel": "Tashriflar tarixi",
+        "title": "Tashriflar tarixi",
+        "empty": "Bemorning hali tashrifi yo'q"
       },
       "notes": {
         "ariaLabel": "Izohlar",
@@ -1336,32 +1912,42 @@
         "saving": "Saqlanmoqda…"
       }
     },
-    "history": {
-      "ariaLabel": "Qo'ng'iroqlar tarixi",
-      "title": "Tarix",
-      "empty": "Tanlangan filtrlar bo'yicha qo'ng'iroq yo'q",
-      "loading": "Tarix yuklanmoqda…",
-      "loadingMore": "Yuklanmoqda…",
-      "play": "Yozuvni tinglash",
-      "pollingHint": "Har 30 soniyada yangilanadi",
-      "filters": {
-        "searchPlaceholder": "Raqam yoki izoh bo'yicha qidirish",
-        "status": "Holat",
-        "statusAll": "Barchasi",
-        "statusRinging": "Kutmoqda",
-        "statusAnswered": "Suhbatda",
-        "statusEnded": "Yakunlangan",
-        "statusMissed": "O'tkazilgan",
-        "direction": "Yo'nalish",
-        "directionAll": "Barchasi",
-        "directionIn": "Kiruvchi",
-        "directionOut": "Chiquvchi",
-        "directionMissed": "O'tkazilgan",
-        "operator": "Operator",
-        "operatorAll": "Barcha operatorlar",
-        "from": "Dan",
-        "to": "Gacha",
-        "reset": "Qayta o'rnatish"
+    "actionsRail": {
+      "ariaLabel": "Qo'ng'iroq boshqaruvi",
+      "controls": {
+        "ariaLabel": "Qo'ng'iroq boshqaruvi",
+        "title": "Boshqaruv",
+        "hangup": "Tugatish",
+        "markMissed": "O'tkazilgan",
+        "transfer": "O'tkazish",
+        "mute": "Mikrofon",
+        "hold": "Ushlab turish",
+        "sms": "SMS",
+        "disclaimer": "Mute / Hold / Transfer SIP-provayder ulangach paydo bo'ladi."
+      },
+      "aiHints": {
+        "ariaLabel": "AI maslahatlar",
+        "title": "AI maslahatlar",
+        "tip1": "Tashrif maqsadi va qulay vaqtni aniqlang.",
+        "tip2": "Xizmat talab qilsa, tayyorgarlik haqida eslating.",
+        "tip3": "Tanlangan slot band bo'lsa, muqobil vaqt taklif qiling.",
+        "disclaimer": "AI-xizmat ishga tushirilgach maslahatlar avtomatik yoqiladi."
+      },
+      "scripts": {
+        "ariaLabel": "Suhbat skriptlari",
+        "title": "Suhbat skriptlari",
+        "copy": "Nusxa olish",
+        "greeting": "Assalomu alaykum! NeuroFax klinikasi, qanday yordam bera olaman?",
+        "verify": "Ism-sharifingiz va tug'ilgan sanangizni aytib bering, iltimos.",
+        "hold": "Bir daqiqa kuting, ma'lumotni aniqlab kelaman.",
+        "goodbye": "Murojaatingiz uchun rahmat! Xayrli kun, sizni kutamiz."
+      },
+      "toasts": {
+        "hangupDone": "Qo'ng'iroq yakunlandi",
+        "markedMissed": "Qo'ng'iroq o'tkazilgan deb belgilandi",
+        "sipUnavailable": "Ushbu harakatdan foydalanish uchun SIP-provayderni ulang",
+        "scriptCopied": "Skript nusxalandi",
+        "copyFailed": "Nusxa olib bo'lmadi"
       }
     },
     "status": {
@@ -1523,9 +2109,15 @@
       "floor": "qavat",
       "active": "Faol",
       "inactive": "Yashirin",
+      "equipmentTitle": "Jihozlar",
+      "equipmentAdd": "Jihoz qo'shish",
+      "equipmentPlaceholder": "UZI, EKG, …",
+      "equipmentEmpty": "Jihozlar ko'rsatilmagan",
       "cols": {
         "nameRu": "Nomi (RU)",
-        "nameUz": "Nomi (UZ)"
+        "nameUz": "Nomi (UZ)",
+        "floor": "Qavat",
+        "equipment": "Jihozlar"
       }
     },
     "exchangeRates": {
@@ -1858,7 +2450,10 @@
     "actions": {
       "view": "Ochish",
       "download": "Yuklab olish"
-    }
+    },
+    "cancel": "Bekor qilish",
+    "toastMissingFields": "Majburiy maydonlarni to'ldiring",
+    "toastUploadError": "Yuklashda xatolik"
   },
   "exportsUi": {
     "enqueued": "Eksport navbatga qo‘yildi",

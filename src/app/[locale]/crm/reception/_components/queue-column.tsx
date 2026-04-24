@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -14,11 +15,9 @@ export interface QueueColumnProps {
 
 const QUEUE_STATUSES = new Set(["BOOKED", "WAITING", "CONFIRMED"]);
 
-/**
- * "Общая очередь" — narrow left column listing today's waiting patients.
- * Matches the mockup 1 — Ресепшн: compact avatar + name + service + time.
- */
 export function QueueColumn({ rows, className }: QueueColumnProps) {
+  const t = useTranslations("reception.queueColumn");
+  const locale = useLocale();
   const queue = React.useMemo(
     () =>
       rows
@@ -39,7 +38,7 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
         <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-          Общая очередь
+          {t("title")}
         </h3>
         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
           {queue.length}
@@ -48,11 +47,11 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
       <ol className="flex-1 divide-y divide-border overflow-y-auto">
         {queue.length === 0 ? (
           <li className="px-4 py-8 text-center text-xs text-muted-foreground">
-            Очередь пуста
+            {t("empty")}
           </li>
         ) : (
           queue.map((row, i) => (
-            <QueueItem key={row.id} index={i + 1} row={row} />
+            <QueueItem key={row.id} index={i + 1} row={row} locale={locale} />
           ))
         )}
       </ol>
@@ -60,8 +59,8 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
   );
 }
 
-function QueueItem({ index, row }: { index: number; row: AppointmentRow }) {
-  const time = new Intl.DateTimeFormat("ru-RU", {
+function QueueItem({ index, row, locale }: { index: number; row: AppointmentRow; locale: string }) {
+  const time = new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -87,7 +86,9 @@ function QueueItem({ index, row }: { index: number; row: AppointmentRow }) {
             {row.patient.fullName}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {row.primaryService?.nameRu ?? row.doctor.nameRu}
+            {locale === "uz"
+              ? row.primaryService?.nameUz ?? row.doctor.nameUz
+              : row.primaryService?.nameRu ?? row.doctor.nameRu}
           </div>
         </div>
         <span className="text-xs font-semibold text-muted-foreground tabular-nums">

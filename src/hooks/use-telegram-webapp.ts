@@ -82,6 +82,9 @@ export type TgWebApp = {
   ready: () => void;
   expand: () => void;
   close: () => void;
+  // Bot API 8.0+ — true fullscreen (hides system status bar). No-op on
+  // older clients; we call it defensively and swallow errors.
+  requestFullscreen?: () => void;
   MainButton: TgMainButton;
   BackButton: TgBackButton;
   HapticFeedback: TgHapticFeedback;
@@ -145,23 +148,6 @@ export function useTelegramWebApp(): UseTelegramWebAppResult {
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
-    const poll = () => {
-      const w = getTg();
-      if (w) {
-        if (!cancelled) {
-          w.ready();
-          try {
-            w.expand();
-          } catch {
-            /* ignore */
-          }
-          setTg(w);
-          setReady(true);
-        }
-        return;
-      }
-      setTimeout(poll, 120);
-    };
     // Inject the SDK script if missing (e.g. dev preview in a browser),
     // then give it up to ~2.4s to initialize — beyond that we just render the
     // "Open in Telegram" fallback.
@@ -180,6 +166,11 @@ export function useTelegramWebApp(): UseTelegramWebAppResult {
           w.ready();
           try {
             w.expand();
+          } catch {
+            /* ignore */
+          }
+          try {
+            w.requestFullscreen?.();
           } catch {
             /* ignore */
           }

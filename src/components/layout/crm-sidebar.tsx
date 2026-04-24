@@ -11,6 +11,7 @@ import {
   ChevronsLeftIcon,
   ClipboardListIcon,
   DoorOpenIcon,
+  FileTextIcon,
   LayoutDashboardIcon,
   MailIcon,
   PhoneCallIcon,
@@ -46,6 +47,7 @@ const NAV: NavGroup[] = [
       { href: "doctors", label: "Врачи", icon: StethoscopeIcon },
       { href: "rooms", label: "Кабинеты", icon: DoorOpenIcon },
       { href: "services", label: "Услуги", icon: SparklesIcon },
+      { href: "documents", label: "Документы", icon: FileTextIcon },
     ],
   },
   {

@@ -32,6 +32,17 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       rating: true,
       reviewCount: true,
       color: true,
+      services: {
+        select: {
+          service: {
+            select: {
+              id: true,
+              category: true,
+              priceBase: true,
+            },
+          },
+        },
+      },
     },
     orderBy: [{ nameRu: "asc" }],
   });

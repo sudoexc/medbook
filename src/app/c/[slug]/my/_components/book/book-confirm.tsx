@@ -13,12 +13,13 @@ import {
   MCard,
   MEmpty,
   MHint,
-  MSection,
   MSpinner,
   formatDateISO,
   formatSum,
 } from "../mini-ui";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { WizardHeader } from "./wizard-header";
+import { WizardFooter } from "./wizard-footer";
 
 function applyTimeToDate(dateISO: string, time: string): string {
   const [y, m, d] = dateISO.split("-").map((v) => Number.parseInt(v, 10));
@@ -35,16 +36,27 @@ export function BookConfirm() {
   const lang = patient?.preferredLang ?? "RU";
   const { draft, reset, hydrated } = useBookingDraft(clinicSlug);
   const services = useServices();
-  const doctors = useDoctors(draft.serviceIds[0] ?? null);
+  const doctors = useDoctors(null);
   const book = useBookAppointment();
   const tg = useTelegramWebApp();
 
   const [name, setName] = React.useState<string>(patient?.fullName ?? "");
   const [phone, setPhone] = React.useState<string>(patient?.phone ?? "");
+  // Sync patient profile values into the form ONCE per patient load. Using
+  // `!name` as a guard re-populated the field every time the user cleared
+  // it, which made it impossible to edit out a seeded "Dev User".
+  const syncedRef = React.useRef({ name: false, phone: false });
   React.useEffect(() => {
-    if (patient?.fullName && !name) setName(patient.fullName);
-    if (patient?.phone && !phone) setPhone(patient.phone);
-  }, [patient, name, phone]);
+    if (!patient) return;
+    if (patient.fullName && !syncedRef.current.name) {
+      setName(patient.fullName);
+      syncedRef.current.name = true;
+    }
+    if (patient.phone && !syncedRef.current.phone) {
+      setPhone(patient.phone);
+      syncedRef.current.phone = true;
+    }
+  }, [patient]);
 
   const selectedServices =
     services.data?.filter((s) => draft.serviceIds.includes(s.id)) ?? [];
@@ -81,7 +93,20 @@ export function BookConfirm() {
       if (err.status === 409) tg.showAlert(t.book.errorConflict);
       else tg.showAlert(t.book.errorBooking.replace("{reason}", reason));
     }
-  }, [canSubmit, draft, name, phone, lang, book, reset, router, clinicSlug, tg, t.book.errorConflict, t.book.errorBooking]);
+  }, [
+    canSubmit,
+    draft,
+    name,
+    phone,
+    lang,
+    book,
+    reset,
+    router,
+    clinicSlug,
+    tg,
+    t.book.errorConflict,
+    t.book.errorBooking,
+  ]);
 
   React.useEffect(() => {
     const off = tg.setBackButton(() =>
@@ -102,7 +127,7 @@ export function BookConfirm() {
   }, [tg, canSubmit, book.isPending, submit, t.book.bookBtn, t.book.bookInProgress]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
-  if (draft.serviceIds.length === 0 || !draft.doctorId || !draft.date || !draft.time) {
+  if (!draft.doctorId || !draft.date || !draft.time) {
     return (
       <MEmpty>
         <div className="space-y-2">
@@ -121,15 +146,52 @@ export function BookConfirm() {
 
   return (
     <div>
-      <div className="mb-4">
-        <div className="text-xs uppercase tracking-wide" style={{ color: "var(--tg-hint)" }}>
-          {t.book.stepConfirm}
+      <WizardHeader
+        step={4}
+        label={t.book.stepLabel.replace("{step}", "4").replace("{total}", "4")}
+        title={t.book.stepConfirm}
+      />
+      <MCard className="mb-3">
+        <div className="flex items-start gap-3">
+          {doctor?.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={doctor.photoUrl}
+              alt=""
+              className="h-14 w-14 shrink-0 rounded-2xl object-cover"
+            />
+          ) : (
+            <div
+              className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-lg font-semibold text-white"
+              style={{ backgroundColor: doctor?.color ?? "var(--tg-accent)" }}
+            >
+              {(doctor ? (lang === "UZ" ? doctor.nameUz : doctor.nameRu) : "?").slice(0, 1)}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">
+              {doctor ? (lang === "UZ" ? doctor.nameUz : doctor.nameRu) : "—"}
+            </div>
+            <div
+              className="mt-0.5 truncate text-xs"
+              style={{ color: "var(--tg-hint)" }}
+            >
+              {doctor
+                ? lang === "UZ"
+                  ? doctor.specializationUz
+                  : doctor.specializationRu
+                : null}
+            </div>
+          </div>
         </div>
-        <h1 className="text-xl font-bold">{t.book.summary}</h1>
-      </div>
-      <MSection>
-        <MCard>
-          <div className="space-y-3 text-sm">
+      </MCard>
+      <MCard className="mb-3">
+        <div className="space-y-3 text-sm">
+          <Row label={t.book.summaryDate}>
+            {draft.date ? formatDateISO(draft.date + "T00:00:00", lang) : "—"}
+          </Row>
+          <Row label={t.book.summaryTime}>{draft.time ?? "—"}</Row>
+          {selectedServices.length > 0 ? (
             <Row label={t.book.summaryService}>
               <div className="space-y-1">
                 {selectedServices.map((s) => (
@@ -137,65 +199,69 @@ export function BookConfirm() {
                 ))}
               </div>
             </Row>
-            <Row label={t.book.summaryDoctor}>
-              {doctor ? (lang === "UZ" ? doctor.nameUz : doctor.nameRu) : "—"}
-            </Row>
-            <Row label={t.book.summaryDate}>
-              {draft.date ? formatDateISO(draft.date + "T00:00:00", lang) : "—"}
-            </Row>
-            <Row label={t.book.summaryTime}>{draft.time ?? "—"}</Row>
-            <Row label={t.book.summaryPrice}>
-              <strong>{formatSum(total, t.common.currency)}</strong>
-            </Row>
-          </div>
-        </MCard>
-      </MSection>
-      <MSection>
-        <MCard>
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
-                {t.book.nameLabel}
-              </div>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-xl border px-3 py-3 text-sm"
-                style={{
-                  backgroundColor: "var(--tg-bg)",
-                  borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
-                  color: "var(--tg-text)",
-                }}
-              />
-            </label>
-            <label className="block">
-              <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
-                {t.book.phoneLabel}
-              </div>
-              <input
-                type="tel"
-                inputMode="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+998 90 000 00 00"
-                className="w-full rounded-xl border px-3 py-3 text-sm"
-                style={{
-                  backgroundColor: "var(--tg-bg)",
-                  borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
-                  color: "var(--tg-text)",
-                }}
-              />
-              <div className="mt-1">
-                <MHint>{t.book.phoneHint}</MHint>
-              </div>
-            </label>
-          </div>
-        </MCard>
-      </MSection>
-      <MCard className="text-center text-xs" style={{ color: "var(--tg-hint)" }}>
-        {t.book.paymentNote}
+          ) : null}
+          <Row label={t.book.summaryPrice}>
+            <strong>{formatSum(total, t.common.currency)}</strong>
+          </Row>
+        </div>
       </MCard>
+      <MCard className="mb-3">
+        <div className="space-y-3 text-sm">
+          <label className="block">
+            <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
+              {t.book.nameLabel}
+            </div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-xl border px-3 py-3 text-sm"
+              style={{
+                backgroundColor: "var(--tg-bg)",
+                borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
+                color: "var(--tg-text)",
+              }}
+            />
+          </label>
+          <label className="block">
+            <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
+              {t.book.phoneLabel}
+            </div>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+998 90 000 00 00"
+              className="w-full rounded-xl border px-3 py-3 text-sm"
+              style={{
+                backgroundColor: "var(--tg-bg)",
+                borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
+                color: "var(--tg-text)",
+              }}
+            />
+            <div className="mt-1">
+              <MHint>{t.book.phoneHint}</MHint>
+            </div>
+          </label>
+        </div>
+      </MCard>
+      <div
+        className="rounded-2xl px-4 py-3 text-center text-xs"
+        style={{
+          backgroundColor: "color-mix(in oklch, var(--tg-accent) 8%, transparent)",
+          color: "var(--tg-hint)",
+        }}
+      >
+        {t.book.paymentNote}
+      </div>
+      <WizardFooter
+        primaryLabel={book.isPending ? t.book.bookInProgress : t.book.bookBtn}
+        onPrimary={submit}
+        disabled={!canSubmit}
+        loading={book.isPending}
+        tagline={t.book.clinicTagline}
+      />
     </div>
   );
 }

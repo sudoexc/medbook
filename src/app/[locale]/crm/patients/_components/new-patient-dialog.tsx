@@ -245,7 +245,7 @@ export function NewPatientDialog({
             <Input
               id="np-tags"
               {...form.register("tags")}
-              placeholder="vip, пост-больной, детский"
+              placeholder={t("tagsPlaceholder")}
             />
           </div>
 

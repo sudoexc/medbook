@@ -3,6 +3,17 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
+import {
+  AlertTriangleIcon,
+  BuildingIcon,
+  CheckCircle2Icon,
+  ClockIcon,
+  GlobeIcon,
+  PhoneIcon,
+  RotateCcwIcon,
+  SendIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 import FullCalendar from "@fullcalendar/react";
 import type {
@@ -12,12 +23,13 @@ import type {
   EventDropArg,
   EventInput,
 } from "@fullcalendar/core";
-import type { ResourceInput } from "@fullcalendar/resource";
+import type { ResourceInput, ResourceLabelContentArg } from "@fullcalendar/resource";
 import interactionPlugin from "@fullcalendar/interaction";
 import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
 import ruLocale from "@fullcalendar/core/locales/ru";
 import uzLocale from "@fullcalendar/core/locales/uz";
 
+import { cn } from "@/lib/utils";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type {
   CabinetRef,
@@ -53,7 +65,6 @@ export interface CalendarViewProps {
 export function CalendarViewInner({
   filters,
   doctors,
-  cabinets,
   appointments,
   onEventClick,
   onEmptySlotClick,
@@ -61,6 +72,7 @@ export function CalendarViewInner({
 }: CalendarViewProps) {
   const t = useTranslations("calendar");
   const tConflict = useTranslations("calendar.conflict");
+  const tChip = useTranslations("calendar.chip");
   const locale = useLocale();
 
   const calendarRef = React.useRef<FullCalendar | null>(null);
@@ -87,14 +99,48 @@ export function CalendarViewInner({
         id: d.id,
         title: locale === "uz" ? d.nameUz : d.nameRu,
         eventColor: d.color ?? "#3DD5C0",
+        extendedProps: { doctor: d },
       }));
   }, [doctors, filters.doctorIds, locale]);
 
-  const cabinetById = React.useMemo(() => {
-    const map = new Map<string, CabinetRef>();
-    for (const c of cabinets) map.set(c.id, c);
+  // Single timestamp so doctor-header "active now" and "late" stay stable.
+  const [nowMs] = React.useState(() => Date.now());
+  // Today's doctor-level stats to paint the column header pill.
+  const doctorStats = React.useMemo(() => {
+    const now = nowMs;
+    const map = new Map<
+      string,
+      {
+        total: number;
+        active: number;
+        lateMin: number;
+        nextStart: number | null;
+      }
+    >();
+    for (const a of appointments) {
+      const doctorId = a.doctor?.id;
+      if (!doctorId) continue;
+      const start = composeStart(a.date, a.time).getTime();
+      const end = start + (a.durationMin || 30) * 60_000;
+      const entry =
+        map.get(doctorId) ?? { total: 0, active: 0, lateMin: 0, nextStart: null };
+      entry.total += 1;
+      if (a.status === "IN_PROGRESS") {
+        entry.active += 1;
+        const late = Math.max(0, Math.round((now - end) / 60_000));
+        if (late > entry.lateMin) entry.lateMin = late;
+      }
+      if (
+        (a.status === "BOOKED" || a.status === "WAITING") &&
+        start > now &&
+        (entry.nextStart === null || start < entry.nextStart)
+      ) {
+        entry.nextStart = start;
+      }
+      map.set(doctorId, entry);
+    }
     return map;
-  }, [cabinets]);
+  }, [appointments, nowMs]);
 
   const events = React.useMemo<EventInput[]>(() => {
     const cabinetFilter = filters.cabinetIds.length
@@ -248,7 +294,8 @@ export function CalendarViewInner({
         locale={locale === "uz" ? "uz" : "ru"}
         resources={resources}
         events={events}
-        eventContent={renderEvent}
+        eventContent={(arg) => renderEvent(arg, tChip, locale)}
+        resourceLabelContent={(arg) => renderResourceLabel(arg, doctorStats, locale, tChip)}
         editable
         eventStartEditable
         eventDurationEditable
@@ -278,28 +325,183 @@ export function CalendarViewInner({
   );
 }
 
-function renderEvent(arg: EventContentArg) {
+const CHANNEL_ICON: Record<string, LucideIcon> = {
+  CALL: PhoneIcon,
+  PHONE: PhoneIcon,
+  TELEGRAM: SendIcon,
+  SITE: GlobeIcon,
+  WEB: GlobeIcon,
+  WALKIN: BuildingIcon,
+  REPEAT: RotateCcwIcon,
+};
+
+type ChipT = (key: string, values?: Record<string, string | number>) => string;
+
+function statusChip(status: string, tChip: ChipT): {
+  label: string;
+  className: string;
+  Icon: LucideIcon | null;
+} {
+  switch (status) {
+    case "BOOKED":
+      return {
+        label: tChip("statusBooked"),
+        className: "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#1e3a8a)]",
+        Icon: CheckCircle2Icon,
+      };
+    case "WAITING":
+      return {
+        label: tChip("statusWaiting"),
+        className: "bg-[color:var(--warning,#f59e0b)]/20 text-[color:var(--warning-foreground,#78350f)]",
+        Icon: ClockIcon,
+      };
+    case "IN_PROGRESS":
+      return {
+        label: tChip("statusInProgress"),
+        className: "bg-primary/15 text-primary",
+        Icon: ClockIcon,
+      };
+    case "COMPLETED":
+      return {
+        label: tChip("statusCompleted"),
+        className: "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]",
+        Icon: CheckCircle2Icon,
+      };
+    case "NO_SHOW":
+      return {
+        label: tChip("statusNoShowRisk"),
+        className: "bg-destructive/15 text-destructive",
+        Icon: AlertTriangleIcon,
+      };
+    case "CANCELLED":
+      return {
+        label: tChip("statusCancelled"),
+        className: "bg-destructive/15 text-destructive",
+        Icon: AlertTriangleIcon,
+      };
+    default:
+      return { label: status, className: "bg-muted text-muted-foreground", Icon: null };
+  }
+}
+
+function renderEvent(arg: EventContentArg, tChip: ChipT, locale: string) {
   const appt = (arg.event.extendedProps as { appointment?: AppointmentRow })
     .appointment;
   const cabinet = (arg.event.extendedProps as { cabinet?: { number: string } | null })
     .cabinet;
   const time = arg.timeText;
+  const status = appt?.status ?? "BOOKED";
+  const chip = statusChip(status, tChip);
+  const ChannelIcon = appt?.channel ? CHANNEL_ICON[appt.channel] : null;
+  const serviceName = appt?.primaryService
+    ? locale === "uz"
+      ? appt.primaryService.nameUz
+      : appt.primaryService.nameRu
+    : null;
   return (
-    <div className="flex h-full min-w-0 flex-col gap-0.5 overflow-hidden p-1 text-[11px] leading-tight">
-      <span className="truncate font-medium">
+    <div className="flex h-full min-w-0 flex-col gap-0.5 overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-tight">
+      <div className="flex items-start justify-between gap-1">
+        <span className="truncate tabular-nums text-[10px] font-semibold opacity-80">
+          {time}
+        </span>
+        {ChannelIcon ? (
+          <ChannelIcon className="size-3 shrink-0 opacity-70" aria-hidden />
+        ) : null}
+      </div>
+      <span className="truncate text-[12px] font-semibold">
         {arg.event.title || "—"}
       </span>
-      <span className="flex items-center gap-1 text-[10px] opacity-80">
-        <span className="tabular-nums">{time}</span>
-        {cabinet ? <span>· №{cabinet.number}</span> : null}
-      </span>
-      {appt?.primaryService ? (
-        <span className="truncate text-[10px] opacity-70">
-          {appt.primaryService.nameRu}
+      {serviceName ? (
+        <span className="truncate text-[10px] opacity-75">
+          {serviceName}
+          {cabinet ? ` · ${tChip("cabinetN", { n: cabinet.number })}` : ""}
+        </span>
+      ) : cabinet ? (
+        <span className="truncate text-[10px] opacity-75">
+          {tChip("cabinetN", { n: cabinet.number })}
         </span>
       ) : null}
+      <span
+        className={cn(
+          "mt-0.5 inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+          chip.className,
+        )}
+      >
+        {chip.Icon ? <chip.Icon className="size-3" aria-hidden /> : null}
+        {chip.label}
+      </span>
     </div>
   );
+}
+
+function renderResourceLabel(
+  arg: ResourceLabelContentArg,
+  stats: Map<
+    string,
+    { total: number; active: number; lateMin: number; nextStart: number | null }
+  >,
+  locale: string,
+  tChip: ChipT,
+) {
+  const doctor = (arg.resource.extendedProps as { doctor?: DoctorResource })
+    .doctor;
+  if (!doctor) {
+    return <span className="text-sm">{arg.resource.title}</span>;
+  }
+  const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
+  const initials = initialsOf(name);
+  const color = doctor.color ?? "#3DD5C0";
+  const s = stats.get(doctor.id);
+  const activeNow = s && s.active > 0;
+  const lateMin = s?.lateMin ?? 0;
+  const pillClass = activeNow
+    ? lateMin > 0
+      ? "bg-destructive/15 text-destructive"
+      : "bg-primary/15 text-primary"
+    : "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]";
+  const pillLabel = activeNow
+    ? lateMin > 0
+      ? tChip("lateMinutes", { min: lateMin })
+      : tChip("inSession")
+    : tChip("free");
+  return (
+    <div className="mbk-resource-label flex w-full min-w-0 max-w-full flex-col gap-1 overflow-hidden px-2 py-1.5 text-left">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+          style={{ backgroundColor: color }}
+          aria-hidden
+        >
+          {initials}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-foreground">
+          {name}
+        </span>
+      </div>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex max-w-full shrink truncate items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+            pillClass,
+          )}
+        >
+          {pillLabel}
+        </span>
+        {s && s.total > 0 ? (
+          <span className="truncate text-[10px] text-muted-foreground">
+            · {s.total}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
 }
 
 function toDateKey(d: Date): string {

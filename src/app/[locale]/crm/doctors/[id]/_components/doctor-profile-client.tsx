@@ -27,11 +27,18 @@ import { ScheduleEditor } from "./schedule-editor";
 import { DoctorTimeOff } from "./doctor-time-off";
 import { DoctorPatientsList } from "./doctor-patients-list";
 import { DoctorReviews } from "./doctor-reviews";
+import { DoctorServicesEditor } from "./doctor-services";
 import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
 
-type TabId = "overview" | "schedule" | "patients" | "reviews";
+type TabId = "overview" | "schedule" | "services" | "patients" | "reviews";
 
-const TAB_ORDER: TabId[] = ["overview", "schedule", "patients", "reviews"];
+const TAB_ORDER: TabId[] = [
+  "overview",
+  "schedule",
+  "services",
+  "patients",
+  "reviews",
+];
 
 function isTabId(v: string): v is TabId {
   return (TAB_ORDER as string[]).includes(v);
@@ -182,6 +189,7 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
         <TabsList>
           <TabsTrigger value="overview">{tTabs("overview")}</TabsTrigger>
           <TabsTrigger value="schedule">{tTabs("schedule")}</TabsTrigger>
+          <TabsTrigger value="services">{tTabs("services")}</TabsTrigger>
           {canSeePatients ? (
             <TabsTrigger value="patients">{tTabs("patients")}</TabsTrigger>
           ) : null}
@@ -196,6 +204,13 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
         <TabsContent value="schedule" className="flex flex-col gap-4">
           <ScheduleEditor doctor={doctor} />
           <DoctorTimeOff doctor={doctor} />
+        </TabsContent>
+
+        <TabsContent value="services" className="flex flex-col gap-4">
+          <DoctorServicesEditor
+            doctorId={doctor.id}
+            canEdit={role === "ADMIN"}
+          />
         </TabsContent>
 
         {canSeePatients ? (

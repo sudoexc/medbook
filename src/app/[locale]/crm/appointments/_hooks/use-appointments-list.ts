@@ -232,6 +232,78 @@ export function tallyStatuses(rows: AppointmentRow[]): Record<string, number> {
 }
 
 /**
+ * Business-focused counts for the top tiles / smart tabs on the Записи page.
+ *
+ * - `needsAttention` — rows that are WAITING **or** BOOKED with start time
+ *   already in the past (overdue).
+ * - `soon` — BOOKED rows starting within the next 15 minutes.
+ * - `unconfirmed` — BOOKED rows (until we have a dedicated confirmation
+ *   field, BOOKED is treated as "not yet confirmed").
+ * - `late` — BOOKED or WAITING rows more than 5 minutes past their start.
+ * - `arrived` — IN_PROGRESS or COMPLETED rows.
+ * - `needsCall` — BOOKED rows arriving via PHONE/TELEGRAM without any payment yet.
+ */
+export function tallyBuckets(
+  rows: AppointmentRow[],
+  now = new Date(),
+): {
+  all: number;
+  needsAttention: number;
+  soon: number;
+  unconfirmed: number;
+  late: number;
+  arrived: number;
+  needsCall: number;
+  riskNoShow: number;
+} {
+  const nowMs = now.getTime();
+  const fifteenMin = 15 * 60 * 1000;
+  const fiveMin = 5 * 60 * 1000;
+  let needsAttention = 0;
+  let soon = 0;
+  let unconfirmed = 0;
+  let late = 0;
+  let arrived = 0;
+  let needsCall = 0;
+  let riskNoShow = 0;
+  for (const r of rows) {
+    const startMs = new Date(r.date).getTime();
+    const isLate =
+      (r.status === "BOOKED" || r.status === "WAITING") &&
+      nowMs - startMs > fiveMin;
+    const isSoon =
+      r.status === "BOOKED" &&
+      startMs - nowMs >= 0 &&
+      startMs - nowMs <= fifteenMin;
+    if (r.status === "WAITING" || isLate) needsAttention += 1;
+    if (isSoon) soon += 1;
+    if (r.status === "BOOKED") unconfirmed += 1;
+    if (isLate) late += 1;
+    if (r.status === "IN_PROGRESS" || r.status === "COMPLETED") arrived += 1;
+    if (
+      r.status === "BOOKED" &&
+      (r.channel === "PHONE" || r.channel === "TELEGRAM") &&
+      r.payments.length === 0
+    ) {
+      needsCall += 1;
+    }
+    if (r.status === "NO_SHOW" || (isLate && r.channel !== "WALKIN")) {
+      riskNoShow += 1;
+    }
+  }
+  return {
+    all: rows.length,
+    needsAttention,
+    soon,
+    unconfirmed,
+    late,
+    arrived,
+    needsCall,
+    riskNoShow,
+  };
+}
+
+/**
  * Resolve the effective payment status for a row: PAID if any PAID payment
  * covers the final price, PARTIAL if partial payments exist, UNPAID otherwise.
  */

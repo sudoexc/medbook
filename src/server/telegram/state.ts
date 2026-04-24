@@ -34,6 +34,7 @@ import { type BotLang, t } from "./messages";
 export type FsmState =
   | "start"
   | "lang_select"
+  | "miniapp_offer"
   | "service_select"
   | "doctor_select"
   | "slot_select"
@@ -85,6 +86,14 @@ export type Catalog = {
     Array<{ id: string; nameRu: string; nameUz: string }>
   >;
   slotsByDoctor: Record<string, Array<{ iso: string; label: string }>>;
+  /**
+   * HTTPS URL of the clinic's Mini App. When set, the FSM short-circuits after
+   * `lang_select` into `miniapp_offer` — a single message with a `web_app`
+   * button. Booking itself happens inside the Mini App, which posts back to
+   * `/api/miniapp/appointments`. When `null`/absent, the FSM falls back to the
+   * legacy in-chat flow (service → doctor → slot → name → confirm).
+   */
+  miniAppUrl?: string | null;
 };
 
 export const EMPTY_CATALOG: Catalog = {
@@ -134,12 +143,31 @@ export function step(
       if (event.kind === "callback" && event.data.startsWith("lang:")) {
         const chosen = event.data.slice("lang:".length) as BotLang;
         const lang: BotLang = chosen === "uz" ? "uz" : "ru";
-        return enterServiceSelect({ ...prev.data, lang }, lang, catalog);
+        const data = { ...prev.data, lang };
+        if (catalog.miniAppUrl) {
+          return enterMiniAppOffer(data, lang, catalog.miniAppUrl);
+        }
+        return enterServiceSelect(data, lang, catalog);
       }
       // any other input re-prompts
       return {
         next: prev,
         outgoing: buildLangPrompt(),
+      };
+    }
+
+    case "miniapp_offer": {
+      // User got a web_app button and either tapped it (booking happens inside
+      // the Mini App — nothing to do here) or sent a regular message. Treat
+      // any incoming event as "they want to start over or ask again": re-emit
+      // the same prompt so the button stays reachable.
+      if (!catalog.miniAppUrl) {
+        // Config changed mid-flight; fall back to legacy flow.
+        return enterServiceSelect(prev.data, prev.data.lang, catalog);
+      }
+      return {
+        next: prev,
+        outgoing: buildMiniAppPrompt(prev.data.lang, catalog.miniAppUrl),
       };
     }
 
@@ -269,6 +297,17 @@ function startFlow(): FsmStep {
   };
 }
 
+function enterMiniAppOffer(
+  data: FsmData,
+  lang: BotLang | undefined,
+  miniAppUrl: string,
+): FsmStep {
+  return {
+    next: { state: "miniapp_offer", data, updatedAt: now() },
+    outgoing: buildMiniAppPrompt(lang, miniAppUrl),
+  };
+}
+
 function enterServiceSelect(
   data: FsmData,
   lang: BotLang | undefined,
@@ -317,6 +356,20 @@ function enterConfirm(data: FsmData, lang: BotLang | undefined): FsmStep {
 }
 
 // ─── Prompt builders ──────────────────────────────────────────────────────
+
+function buildMiniAppPrompt(
+  lang: BotLang | undefined,
+  url: string,
+): OutgoingMessage {
+  return {
+    text: t(lang, "miniapp.prompt"),
+    replyMarkup: {
+      inline_keyboard: [
+        [{ text: t(lang, "miniapp.openButton"), web_app: { url } }],
+      ],
+    },
+  };
+}
 
 function buildLangPrompt(): OutgoingMessage {
   return {

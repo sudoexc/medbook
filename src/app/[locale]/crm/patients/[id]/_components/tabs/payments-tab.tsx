@@ -66,7 +66,7 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
 
   const q = usePatientPayments(patient.id);
   const [addOpen, setAddOpen] = React.useState(false);
-  const rows = q.data?.rows ?? [];
+  const rows = React.useMemo(() => q.data?.rows ?? [], [q.data?.rows]);
 
   const totals = React.useMemo(() => {
     const paid = rows

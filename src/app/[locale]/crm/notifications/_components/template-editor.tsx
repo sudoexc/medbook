@@ -93,22 +93,35 @@ function previewRender(template: string, sample: Record<string, unknown>): strin
   });
 }
 
-const SAMPLE: Record<string, unknown> = {
-  patient: { name: "Иван Иванов", firstName: "Иван", phone: "+998 90 123-45-67" },
-  appointment: {
-    date: "25 апреля 2026",
-    time: "10:00",
-    doctor: "Д-р Алиева",
-    service: "Консультация",
-    cabinet: "12",
-  },
-  payment: { amount: "250 000", currency: "UZS" },
-  clinic: { name: "Neurofax", phone: "+998 71 123-45-67", address: "Ташкент" },
-};
+function buildSample(
+  t: (key: string) => string,
+): Record<string, unknown> {
+  return {
+    patient: {
+      name: t("editor.samplePatientName"),
+      firstName: t("editor.samplePatientFirst"),
+      phone: "+998 90 123-45-67",
+    },
+    appointment: {
+      date: t("editor.sampleAppointmentDate"),
+      time: "10:00",
+      doctor: t("editor.sampleDoctor"),
+      service: t("editor.sampleService"),
+      cabinet: "12",
+    },
+    payment: { amount: "250 000", currency: "UZS" },
+    clinic: {
+      name: "Neurofax",
+      phone: "+998 71 123-45-67",
+      address: t("editor.sampleClinicAddress"),
+    },
+  };
+}
 
 export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props) {
   const t = useTranslations("notifications");
-  const selected = selectedId ? templates.find((t) => t.id === selectedId) ?? null : null;
+  const sample = React.useMemo(() => buildSample(t), [t]);
+  const selected = selectedId ? templates.find((tpl) => tpl.id === selectedId) ?? null : null;
   const [form, setForm] = React.useState<FormState>(EMPTY);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
@@ -180,7 +193,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           patientId: "dev-fake-patient",
           channel: selected.channel,
           recipient: "+998000000000",
-          body: previewRender(selected.bodyRu, SAMPLE),
+          body: previewRender(selected.bodyRu, sample),
           scheduledFor: new Date().toISOString(),
         }),
       });
@@ -345,7 +358,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           <Badge variant="muted">{form.channel}</Badge>
         </div>
         <pre className="whitespace-pre-wrap font-sans text-sm text-foreground">
-          {previewRender(form.bodyRu, SAMPLE) || t("editor.previewEmpty")}
+          {previewRender(form.bodyRu, sample) || t("editor.previewEmpty")}
         </pre>
       </div>
 

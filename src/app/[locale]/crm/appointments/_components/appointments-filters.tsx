@@ -136,14 +136,14 @@ export function AppointmentsFilters({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2",
+        "flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2.5",
         className,
       )}
     >
       {/* Date mode pills */}
       <div
         role="radiogroup"
-        className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
+        className="inline-flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5"
       >
         {(["today", "week", "month", "range"] as const).map((m) => (
           <button
@@ -153,9 +153,9 @@ export function AppointmentsFilters({
             aria-checked={currentDateMode === m}
             onClick={() => onChange("dateMode", m)}
             className={cn(
-              "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
               currentDateMode === m
-                ? "bg-primary text-primary-foreground"
+                ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >

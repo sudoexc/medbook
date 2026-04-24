@@ -23,6 +23,8 @@ import {
   defaultRangeLabel,
 } from "./calendar-toolbar";
 import { CalendarRightRail } from "./calendar-right-rail";
+import { CalendarTiles } from "./calendar-tiles";
+import { CalendarLegend } from "./calendar-legend";
 import { rangeForView } from "./calendar-utils";
 import "./calendar.css";
 
@@ -75,6 +77,9 @@ export function CalendarPageClient() {
     <>
       {/* Desktop-only gate. */}
       <div className="hidden xl:flex xl:h-full xl:min-h-0 xl:flex-col">
+        <div className="shrink-0 border-b border-border bg-background px-4 pt-3 pb-2">
+          <CalendarTiles appointments={apptsQ.data ?? []} />
+        </div>
         <CalendarToolbar
           filters={filters}
           onChange={setFilters}
@@ -109,6 +114,7 @@ export function CalendarPageClient() {
                 }}
               />
             )}
+            <CalendarLegend />
           </div>
           <CalendarRightRail
             appointments={apptsQ.data ?? []}

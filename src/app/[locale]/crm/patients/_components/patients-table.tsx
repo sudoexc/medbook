@@ -11,14 +11,29 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownIcon, ArrowUpIcon, UsersIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BuildingIcon,
+  CameraIcon,
+  ClockIcon,
+  FlameIcon,
+  GlobeIcon,
+  MegaphoneIcon,
+  MessageCircleIcon,
+  MoreHorizontalIcon,
+  PhoneIcon,
+  SendIcon,
+  Share2Icon,
+  SignalIcon,
+  UsersIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, formatName, type Locale } from "@/lib/format";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
-import { PhoneText } from "@/components/atoms/phone-text";
-import { TagChip } from "@/components/atoms/tag-chip";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
@@ -28,23 +43,43 @@ import type {
   PatientsListFilters,
 } from "../_hooks/use-patients-list";
 
-type SegmentColor =
-  | "primary"
-  | "info"
-  | "warning"
-  | "success"
-  | "violet"
-  | "neutral";
-
 const SEGMENT_STYLE: Record<
   PatientRow["segment"],
-  { tone: SegmentColor; labelKey: string }
+  { tKey: string; className: string }
 > = {
-  NEW: { tone: "primary", labelKey: "segment.new" },
-  ACTIVE: { tone: "success", labelKey: "segment.active" },
-  VIP: { tone: "violet", labelKey: "segment.vip" },
-  DORMANT: { tone: "warning", labelKey: "segment.dormant" },
-  CHURN: { tone: "neutral", labelKey: "segment.churn" },
+  NEW: {
+    tKey: "segment.new",
+    className: "bg-primary/10 text-primary",
+  },
+  ACTIVE: {
+    tKey: "segment.active",
+    className:
+      "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]",
+  },
+  VIP: {
+    tKey: "segment.vip",
+    className: "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#3b82f6)]",
+  },
+  DORMANT: {
+    tKey: "segment.dormant",
+    className:
+      "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning-foreground,#78350f)]",
+  },
+  CHURN: {
+    tKey: "segment.churn",
+    className: "bg-destructive/10 text-destructive",
+  },
+};
+
+const SOURCE_ICON: Record<NonNullable<PatientRow["source"]>, LucideIcon> = {
+  WEBSITE: GlobeIcon,
+  TELEGRAM: SendIcon,
+  INSTAGRAM: CameraIcon,
+  CALL: PhoneIcon,
+  WALKIN: BuildingIcon,
+  REFERRAL: Share2Icon,
+  ADS: MegaphoneIcon,
+  OTHER: SignalIcon,
 };
 
 function ageFrom(birthDate: string | null): number | null {
@@ -57,6 +92,44 @@ function ageFrom(birthDate: string | null): number | null {
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
   return age;
 }
+
+function priorityFor(p: PatientRow): "high" | "medium" | "low" | "none" {
+  if (p.ltv >= 1_000_000) return "high";
+  if (p.ltv >= 300_000) return "medium";
+  if (p.ltv > 0) return "low";
+  return "none";
+}
+
+const PRIORITY_CFG: Record<
+  "high" | "medium" | "low" | "none",
+  { tKey: string | null; icon: LucideIcon | null; className: string }
+> = {
+  high: {
+    tKey: "priority.high",
+    icon: FlameIcon,
+    className: "bg-destructive/10 text-destructive",
+  },
+  medium: {
+    tKey: "priority.medium",
+    icon: ClockIcon,
+    className:
+      "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning-foreground,#78350f)]",
+  },
+  low: {
+    tKey: "priority.low",
+    icon: SignalIcon,
+    className:
+      "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]",
+  },
+  none: {
+    tKey: null,
+    icon: null,
+    className: "bg-muted text-muted-foreground",
+  },
+};
+
+const COLS_TEMPLATE =
+  "40px minmax(220px,1.6fr) minmax(150px,1.1fr) minmax(160px,1.1fr) minmax(160px,1.2fr) minmax(140px,1fr) 140px 150px 72px 90px";
 
 export interface PatientsTableProps {
   rows: PatientRow[];
@@ -110,6 +183,24 @@ export function PatientsTable({
   const columns = React.useMemo<ColumnDef<PatientRow>[]>(
     () => [
       {
+        id: "select",
+        header: () => (
+          <input
+            type="checkbox"
+            aria-label={t("table.selectAll")}
+            className="size-4 rounded border-border"
+          />
+        ),
+        cell: () => (
+          <input
+            type="checkbox"
+            aria-label={t("table.selectRow")}
+            className="size-4 rounded border-border"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+      },
+      {
         id: "fullName",
         header: () => t("columns.name"),
         cell: ({ row }) => {
@@ -117,25 +208,37 @@ export function PatientsTable({
           const age = ageFrom(p.birthDate);
           const parts = p.fullName.trim().split(/\s+/);
           const [last, first, patronymic] = parts;
-          const display = formatName(first, last, patronymic, "full") || p.fullName;
+          const display =
+            formatName(first, last, patronymic, "full") || p.fullName;
           return (
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
               <AvatarWithStatus
                 src={p.photoUrl ?? undefined}
                 name={p.fullName}
                 size="sm"
               />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-foreground">
-                  {display}
-                  {age !== null ? (
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      · {age}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-[13px] font-semibold text-foreground">
+                    {display}
+                  </span>
+                  {p.segment === "VIP" ? (
+                    <span className="inline-flex h-4 items-center rounded bg-[color:var(--info,#3b82f6)]/15 px-1 text-[9px] font-bold uppercase text-[color:var(--info,#3b82f6)]">
+                      VIP
                     </span>
                   ) : null}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  <PhoneText phone={p.phone} asText />
+                <div className="truncate text-[11px] text-muted-foreground">
+                  {age !== null ? (
+                    <>
+                      {t("ageYears", { age })}
+                      {p.birthDate ? (
+                        <> · {formatDate(p.birthDate, locale, "short")}</>
+                      ) : null}
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </div>
               </div>
             </div>
@@ -143,15 +246,65 @@ export function PatientsTable({
         },
       },
       {
-        id: "segment",
-        header: () => t("columns.segment"),
+        id: "phone",
+        header: () => t("columns.phone"),
         cell: ({ row }) => {
-          const cfg = SEGMENT_STYLE[row.original.segment];
+          const p = row.original;
+          const Icon = p.source ? SOURCE_ICON[p.source] : PhoneIcon;
           return (
-            <TagChip
-              color={cfg.tone}
-              label={t(cfg.labelKey as never)}
-            />
+            <div className="flex items-center gap-1.5 text-[13px] tabular-nums text-foreground">
+              <span className="truncate">{p.phone}</span>
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            </div>
+          );
+        },
+      },
+      {
+        id: "lastVisitAt",
+        header: () => t("columns.lastVisit"),
+        cell: ({ row }) => {
+          const v = row.original.lastVisitAt;
+          if (!v)
+            return <span className="text-[12px] text-muted-foreground">—</span>;
+          return (
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[13px] tabular-nums text-foreground">
+                {formatDate(v, locale, "short")}
+              </span>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {formatDate(v, locale, "relative")}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        id: "nextVisitAt",
+        header: () => t("columns.nextVisit"),
+        cell: ({ row }) => {
+          const v = row.original.nextVisitAt;
+          if (!v) {
+            return (
+              <div className="flex flex-col">
+                <span className="text-[12px] text-muted-foreground">—</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t("table.noAppointment")}
+                </span>
+              </div>
+            );
+          }
+          const d = new Date(v);
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mm = String(d.getMinutes()).padStart(2, "0");
+          return (
+            <div className="flex min-w-0 flex-col">
+              <span className="text-[13px] tabular-nums text-foreground">
+                {formatDate(v, locale, "short")}
+              </span>
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {hh}:{mm}
+              </span>
+            </div>
           );
         },
       },
@@ -162,43 +315,109 @@ export function PatientsTable({
           <MoneyText
             amount={row.original.ltv}
             currency="UZS"
-            className="text-sm font-medium"
+            className="text-[13px] font-semibold"
           />
         ),
       },
       {
-        id: "lastVisitAt",
-        header: () => t("columns.lastVisit"),
+        id: "segment",
+        header: () => t("columns.status"),
         cell: ({ row }) => {
-          const v = row.original.lastVisitAt;
-          if (!v)
-            return (
-              <span className="text-xs text-muted-foreground">—</span>
-            );
+          const cfg = SEGMENT_STYLE[row.original.segment];
           return (
-            <span className="text-sm text-foreground">
-              {formatDate(v, locale, "relative")}
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                cfg.className,
+              )}
+            >
+              {t(cfg.tKey as never)}
             </span>
           );
         },
       },
       {
-        id: "tags",
-        header: () => t("columns.tags"),
+        id: "priority",
+        header: () => t("columns.priority"),
         cell: ({ row }) => {
-          const tags = row.original.tags.slice(0, 3);
-          if (tags.length === 0)
-            return <span className="text-xs text-muted-foreground">—</span>;
+          const key = priorityFor(row.original);
+          const cfg = PRIORITY_CFG[key];
+          const Icon = cfg.icon;
+          if (key === "none" || !cfg.tKey)
+            return (
+              <span className="text-[12px] text-muted-foreground">—</span>
+            );
           return (
-            <div className="flex flex-wrap gap-1">
-              {tags.map((tag) => (
-                <TagChip key={tag} label={tag} color="info" />
-              ))}
-              {row.original.tags.length > 3 ? (
-                <span className="text-xs text-muted-foreground">
-                  +{row.original.tags.length - 3}
-                </span>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                cfg.className,
+              )}
+            >
+              {Icon ? <Icon className="size-3" aria-hidden /> : null}
+              {t(cfg.tKey as never)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "source",
+        header: () => t("columns.source"),
+        cell: ({ row }) => {
+          const src = row.original.source;
+          if (!src)
+            return <span className="text-[12px] text-muted-foreground">—</span>;
+          const Icon = SOURCE_ICON[src];
+          const label = t(`source.${src.toLowerCase()}` as never);
+          return (
+            <span
+              className="inline-flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
+              title={label}
+              aria-label={label}
+            >
+              <Icon className="size-3.5" />
+            </span>
+          );
+        },
+      },
+      {
+        id: "actions",
+        header: () => (
+          <span className="sr-only">{t("columns.actions")}</span>
+        ),
+        cell: ({ row }) => {
+          const p = row.original;
+          return (
+            <div
+              className="flex items-center justify-end gap-0.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <IconAction
+                icon={PhoneIcon}
+                label={t("rowActions.call")}
+                onClick={() => {
+                  if (typeof window !== "undefined")
+                    window.location.href = `tel:${p.phoneNormalized || p.phone}`;
+                }}
+              />
+              {p.telegramUsername ? (
+                <IconAction
+                  icon={MessageCircleIcon}
+                  label="Telegram"
+                  onClick={() => {
+                    if (typeof window !== "undefined")
+                      window.open(
+                        `https://t.me/${p.telegramUsername}`,
+                        "_blank",
+                      );
+                  }}
+                />
               ) : null}
+              <IconAction
+                icon={MoreHorizontalIcon}
+                label={t("rowActions.more")}
+                onClick={() => {}}
+              />
             </div>
           );
         },
@@ -215,12 +434,11 @@ export function PatientsTable({
     manualSorting: true,
   });
 
-  // Virtualisation parent ref
   const parentRef = React.useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 56,
+    estimateSize: () => 64,
     overscan: 10,
   });
 
@@ -231,22 +449,26 @@ export function PatientsTable({
     router.push(`/${locale}/crm/patients/${patientId}`);
   };
 
-  // Empty state
   const isTrulyEmpty = !isLoading && rows.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-card">
-      {/* Header row (table) — sortable columns */}
+    <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card">
       <div
         role="table"
         aria-label={t("title")}
         aria-rowcount={total ?? rows.length}
-        className="flex flex-col min-h-0 flex-1"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <div
           role="row"
-          className="sticky top-0 z-10 grid grid-cols-[minmax(240px,2fr)_140px_140px_160px_minmax(160px,1.2fr)] gap-4 border-b border-border bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground"
+          className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+          style={{ gridTemplateColumns: COLS_TEMPLATE }}
         >
+          <input
+            type="checkbox"
+            aria-label={t("table.selectAll")}
+            className="size-4 rounded border-border"
+          />
           <SortHeader
             id="fullName"
             label={t("columns.name")}
@@ -254,14 +476,7 @@ export function PatientsTable({
             dir={dir}
             onClick={handleSortChange}
           />
-          <div role="columnheader">{t("columns.segment")}</div>
-          <SortHeader
-            id="ltv"
-            label={t("columns.ltv")}
-            active={sort}
-            dir={dir}
-            onClick={handleSortChange}
-          />
+          <div role="columnheader">{t("columns.phone")}</div>
           <SortHeader
             id="lastVisitAt"
             label={t("columns.lastVisit")}
@@ -269,10 +484,22 @@ export function PatientsTable({
             dir={dir}
             onClick={handleSortChange}
           />
-          <div role="columnheader">{t("columns.tags")}</div>
+          <div role="columnheader">{t("columns.nextVisit")}</div>
+          <SortHeader
+            id="ltv"
+            label={t("columns.ltv")}
+            active={sort}
+            dir={dir}
+            onClick={handleSortChange}
+          />
+          <div role="columnheader">{t("columns.status")}</div>
+          <div role="columnheader">{t("columns.priority")}</div>
+          <div role="columnheader">{t("columns.source")}</div>
+          <div role="columnheader" className="text-right">
+            {t("columns.actions")}
+          </div>
         </div>
 
-        {/* Virtualized body */}
         <div
           ref={parentRef}
           className="min-h-0 flex-1 overflow-auto"
@@ -281,16 +508,14 @@ export function PatientsTable({
           {isLoading ? (
             <div className="p-3">
               {Array.from({ length: 10 }).map((_, i) => (
-                <SkeletonRow key={i} cols={5} />
+                <SkeletonRow key={i} cols={10} />
               ))}
             </div>
           ) : isTrulyEmpty ? (
             <div className="p-4">
               <EmptyState
                 icon={<UsersIcon />}
-                title={
-                  hasFilters ? t("empty.filteredTitle") : t("empty.title")
-                }
+                title={hasFilters ? t("empty.filteredTitle") : t("empty.title")}
                 description={
                   hasFilters
                     ? t("empty.filteredDescription")
@@ -333,10 +558,11 @@ export function PatientsTable({
                       left: 0,
                       width: "100%",
                       transform: `translateY(${virtualRow.start}px)`,
+                      gridTemplateColumns: COLS_TEMPLATE,
                     }}
                     className={cn(
-                      "grid grid-cols-[minmax(240px,2fr)_140px_140px_160px_minmax(160px,1.2fr)] gap-4 border-b border-border px-4 py-3 text-sm transition-colors",
-                      "cursor-pointer hover:bg-muted/40 focus:bg-muted/60 focus:outline-none",
+                      "grid items-center gap-3 border-b border-border px-4 py-3 text-sm transition-colors",
+                      "cursor-pointer hover:bg-muted/30 focus:bg-muted/60 focus:outline-none",
                     )}
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -410,6 +636,28 @@ function SortHeader({
           <ArrowDownIcon className="size-3" />
         )
       ) : null}
+    </button>
+  );
+}
+
+function IconAction({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="size-3.5" />
     </button>
   );
 }

@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronDownIcon, LayoutGridIcon, ListIcon, SettingsIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/atoms/status-dot";
 
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
@@ -46,6 +48,7 @@ export function ReceptionPageClient() {
   useReceptionRealtime();
 
   const t = useTranslations("reception");
+  const locale = useLocale();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -56,7 +59,10 @@ export function ReceptionPageClient() {
   const calls = useIncomingCalls();
   const conversations = useUnreadConversations();
 
-  const todayRows: AppointmentRow[] = today.data ?? [];
+  const todayRows = React.useMemo<AppointmentRow[]>(
+    () => today.data ?? [],
+    [today.data],
+  );
 
   const appointmentsByDoctor = React.useMemo(() => {
     const map = new Map<string, AppointmentRow[]>();
@@ -82,12 +88,19 @@ export function ReceptionPageClient() {
     () =>
       upcomingReminders.map((r) => ({
         id: r.appointment.id,
-        text: `Через ${r.minutesUntil} мин: ${r.appointment.patient.fullName} — ${r.appointment.doctor.nameRu}`,
+        text: t("warnings.template", {
+          minutes: r.minutesUntil,
+          patient: r.appointment.patient.fullName,
+          doctor:
+            locale === "uz"
+              ? r.appointment.doctor.nameUz
+              : r.appointment.doctor.nameRu,
+        }),
         tone: (r.minutesUntil <= 15 ? "danger" : "warning") as
           | "danger"
           | "warning",
       })),
-    [upcomingReminders],
+    [upcomingReminders, t, locale],
   );
 
   // Drawer state via `?ap=` search param.
@@ -106,15 +119,18 @@ export function ReceptionPageClient() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [dialogPrefill, setDialogPrefill] = React.useState<{
     patientId?: string | null;
+    doctorId?: string | null;
   } | null>(null);
 
   const openCreate = React.useCallback(
-    (prefill?: { patientId?: string | null }) => {
+    (prefill?: { patientId?: string | null; doctorId?: string | null }) => {
       setDialogPrefill(prefill ?? null);
       setDialogOpen(true);
     },
     [],
   );
+
+  const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
 
   const isLoading =
     dashboard.isLoading || today.isLoading || doctors.isLoading;
@@ -128,7 +144,7 @@ export function ReceptionPageClient() {
             {t("liveBadge")}
           </span>
           <span className="hidden md:inline">
-            Обновляется автоматически
+            {t("autoRefresh")}
           </span>
         </div>
       </div>
@@ -139,19 +155,65 @@ export function ReceptionPageClient() {
         <QueueColumn rows={todayRows} />
 
         <section className="flex min-h-0 flex-col gap-3">
-          <div className="flex items-baseline justify-between px-1">
+          <div className="flex items-center justify-between gap-2 px-1">
             <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              Кабинеты и врачи 101–305
+              {t("doctorsPanel.title")}
             </h2>
-            <span className="text-xs text-muted-foreground">
-              {doctors.data?.length ?? 0} активных
-            </span>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 text-xs"
+              >
+                {t("doctorsPanel.day")}
+                <ChevronDownIcon className="size-3.5" />
+              </Button>
+              <div className="inline-flex overflow-hidden rounded-md border border-border">
+                <button
+                  type="button"
+                  aria-pressed={viewMode === "grid"}
+                  onClick={() => setViewMode("grid")}
+                  className={cn(
+                    "inline-flex size-8 items-center justify-center transition-colors",
+                    viewMode === "grid"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
+                  )}
+                  aria-label={t("doctorsPanel.viewGrid")}
+                >
+                  <LayoutGridIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={viewMode === "list"}
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "inline-flex size-8 items-center justify-center border-l border-border transition-colors",
+                    viewMode === "list"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
+                  )}
+                  aria-label={t("doctorsPanel.viewList")}
+                >
+                  <ListIcon className="size-3.5" />
+                </button>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 text-xs"
+              >
+                <SettingsIcon className="size-3.5" />
+                {t("doctorsPanel.configure")}
+              </Button>
+            </div>
           </div>
           <DoctorQueueGrid
             doctors={doctors.data ?? []}
             appointmentsByDoctor={appointmentsByDoctor}
             isLoading={isLoading}
             onRowClick={(id) => openRow(id)}
+            onAddAppointment={(doctorId) => openCreate({ doctorId })}
           />
         </section>
 
@@ -189,6 +251,7 @@ export function ReceptionPageClient() {
           if (!v) setDialogPrefill(null);
         }}
         patientId={dialogPrefill?.patientId ?? null}
+        initialDoctorId={dialogPrefill?.doctorId ?? null}
         onCreated={(id) => openRow(id)}
       />
       {/* cabinets data is exposed via DoctorQueueGrid cards; keep hook subscribed */}

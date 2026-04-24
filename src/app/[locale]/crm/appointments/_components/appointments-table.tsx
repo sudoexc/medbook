@@ -60,15 +60,6 @@ const STATUS_VARIANT: Record<
   NO_SHOW: "muted",
 };
 
-const PAYMENT_VARIANT: Record<
-  "PAID" | "PARTIAL" | "UNPAID",
-  React.ComponentProps<typeof Badge>["variant"]
-> = {
-  PAID: "success",
-  PARTIAL: "warning",
-  UNPAID: "muted",
-};
-
 const CHANNEL_ICON: Record<AppointmentRow["channel"], React.ElementType> = {
   WALKIN: HomeIcon,
   PHONE: PhoneIcon,
@@ -99,7 +90,56 @@ export interface AppointmentsTableProps {
 }
 
 const COLS_TEMPLATE =
-  "40px 120px minmax(220px,2fr) minmax(180px,1.5fr) minmax(160px,1.5fr) 120px 140px 130px 80px 60px";
+  "40px minmax(220px,1.6fr) minmax(180px,1.3fr) minmax(180px,1.4fr) 150px minmax(160px,1.2fr) 110px 120px 120px";
+
+/**
+ * Compute the "row tone" — danger when overdue, warning when soon, none
+ * otherwise. Used to tint the row background.
+ */
+function rowTone(
+  row: AppointmentRow,
+  now: number,
+): "danger" | "warning" | null {
+  const startMs = new Date(row.date).getTime();
+  const fiveMin = 5 * 60 * 1000;
+  const fifteenMin = 15 * 60 * 1000;
+  const isLate =
+    (row.status === "BOOKED" || row.status === "WAITING") &&
+    now - startMs > fiveMin;
+  if (isLate) return "danger";
+  if (
+    row.status === "BOOKED" &&
+    startMs - now >= 0 &&
+    startMs - now <= fifteenMin
+  ) {
+    return "warning";
+  }
+  return null;
+}
+
+function formatTimeRange(row: AppointmentRow): string {
+  const start = new Date(row.date);
+  const end = new Date(row.endDate);
+  const fmt = (d: Date) =>
+    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function lateMinutes(row: AppointmentRow, now: number): number {
+  const startMs = new Date(row.date).getTime();
+  return Math.max(0, Math.round((now - startMs) / 60000));
+}
+
+function riskScore(row: AppointmentRow, now: number): "high" | "medium" | "low" {
+  if (row.status === "NO_SHOW") return "high";
+  const startMs = new Date(row.date).getTime();
+  const diffMin = (now - startMs) / 60000;
+  if ((row.status === "BOOKED" || row.status === "WAITING") && diffMin > 15) {
+    return "high";
+  }
+  if (row.channel === "PHONE" || row.channel === "WEBSITE") return "medium";
+  return "low";
+}
 
 export function AppointmentsTable({
   rows,
@@ -121,6 +161,13 @@ export function AppointmentsTable({
   const t = useTranslations("appointments");
   const locale = useLocale() as Locale;
   const router = useRouter();
+
+  // Single timestamp for the whole render so all row tone / delay calcs agree.
+  // Refreshes whenever the rows list changes (i.e. new server data arrived).
+  const [now, setNow] = React.useState<number>(() => Date.now());
+  React.useEffect(() => {
+    setNow(Date.now());
+  }, [rows]);
 
   const sorting: SortingState = React.useMemo(
     () => (sort ? [{ id: sort, desc: dir !== "asc" }] : []),
@@ -164,27 +211,11 @@ export function AppointmentsTable({
         ),
       },
       {
-        id: "date",
-        header: () => t("columns.time"),
-        cell: ({ row }) => {
-          const r = row.original;
-          return (
-            <div className="flex min-w-0 flex-col">
-              <span className="font-medium tabular-nums">
-                {r.time ?? formatDate(r.date, locale, "time")}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {formatDate(r.date, locale, "short")}
-              </span>
-            </div>
-          );
-        },
-      },
-      {
         id: "patient",
         header: () => t("columns.patient"),
         cell: ({ row }) => {
           const p = row.original.patient;
+          const isVip = /VIP/i.test(p.fullName);
           return (
             <div className="flex min-w-0 items-center gap-2.5">
               <AvatarWithStatus
@@ -193,10 +224,17 @@ export function AppointmentsTable({
                 size="sm"
               />
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-foreground">
-                  {p.fullName}
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {p.fullName}
+                  </span>
+                  {isVip ? (
+                    <span className="inline-flex items-center rounded-md bg-warning/15 px-1 py-px text-[9px] font-bold uppercase text-[color:var(--warning)]">
+                      VIP
+                    </span>
+                  ) : null}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
+                <div className="truncate text-xs text-muted-foreground tabular-nums">
                   <PhoneText phone={p.phone} asText />
                 </div>
               </div>
@@ -205,115 +243,164 @@ export function AppointmentsTable({
         },
       },
       {
-        id: "doctor",
-        header: () => t("columns.doctor"),
+        id: "service",
+        header: () => t("columns.services"),
         cell: ({ row }) => {
-          const d = row.original.doctor;
+          const primary = row.original.primaryService;
+          const lines = row.original.services;
+          const name =
+            primary
+              ? locale === "uz"
+                ? primary.nameUz
+                : primary.nameRu
+              : lines[0]
+                ? locale === "uz"
+                  ? lines[0].service.nameUz
+                  : lines[0].service.nameRu
+                : "—";
+          const extra = Math.max(0, lines.length - 1);
           return (
-            <div className="flex min-w-0 items-center gap-2">
-              <AvatarWithStatus
-                src={d.photoUrl ?? undefined}
-                name={d.nameRu}
-                size="sm"
-              />
-              <div className="min-w-0 truncate text-sm text-foreground">
-                {locale === "uz" ? d.nameUz : d.nameRu}
-              </div>
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-sm text-foreground">{name}</span>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {row.original.status === "BOOKED"
+                  ? t("cell.firstVisit")
+                  : extra > 0
+                    ? t("cell.extraServices", { count: extra })
+                    : row.original.comments
+                      ? row.original.comments
+                      : t("cell.appointment")}
+              </span>
             </div>
           );
         },
       },
       {
-        id: "services",
-        header: () => t("columns.services"),
+        id: "doctor",
+        header: () => `${t("columns.doctor")} / ${t("columns.cabinet")}`,
         cell: ({ row }) => {
-          const lines = row.original.services;
-          const primary = row.original.primaryService;
-          if (lines.length === 0 && !primary) {
-            return <span className="text-xs text-muted-foreground">—</span>;
-          }
-          if (lines.length === 0 && primary) {
-            return (
-              <span className="truncate text-sm">
-                {locale === "uz" ? primary.nameUz : primary.nameRu}
-              </span>
-            );
-          }
-          const head = lines[0]!.service;
-          const rest = lines.length - 1;
+          const d = row.original.doctor;
+          const c = row.original.cabinet;
           return (
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-sm">
-                {locale === "uz" ? head.nameUz : head.nameRu}
+              <span className="truncate text-sm font-medium text-foreground">
+                {locale === "uz" ? d.nameUz : d.nameRu}
               </span>
-              {rest > 0 ? (
-                <span className="text-xs text-muted-foreground">
-                  +{rest} {t("columns.moreServices")}
+              <span className="truncate text-[11px] text-muted-foreground tabular-nums">
+                {c ? t("cell.cabinetN", { number: c.number }) : t("cell.noCabinet")}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        id: "date",
+        header: () => t("columns.time"),
+        cell: ({ row }) => {
+          const r = row.original;
+          const tone = rowTone(r, now);
+          const late = tone === "danger" ? lateMinutes(r, now) : 0;
+          return (
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-foreground tabular-nums">
+                {formatTimeRange(r)}
+              </span>
+              {late > 0 ? (
+                <span className="mt-0.5 inline-flex w-fit items-center rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-bold text-destructive">
+                  {t("cell.lateMin", { min: late })}
                 </span>
-              ) : null}
+              ) : tone === "warning" ? (
+                <span className="mt-0.5 inline-flex w-fit items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-[color:var(--warning)]">
+                  {t("cell.inMin", {
+                    min: Math.max(
+                      0,
+                      Math.round(
+                        (new Date(r.date).getTime() - now) / 60000,
+                      ),
+                    ),
+                  })}
+                </span>
+              ) : (
+                <span className="mt-0.5 text-[11px] text-muted-foreground">
+                  {formatDate(r.date, locale, "short")}
+                </span>
+              )}
             </div>
           );
         },
       },
       {
         id: "status",
-        header: () => t("columns.status"),
-        cell: ({ row }) => {
-          const s = row.original.status;
-          return (
-            <Badge variant={STATUS_VARIANT[s]}>
-              {t(`status.${s.toLowerCase()}` as never)}
-            </Badge>
-          );
-        },
-      },
-      {
-        id: "payment",
-        header: () => t("columns.payment"),
+        header: () => `${t("columns.status")} / ${t("columns.source")}`,
         cell: ({ row }) => {
           const r = row.original;
-          const ps = paymentStatusFor(r);
+          const Icon = CHANNEL_ICON[r.channel];
           return (
-            <div className="flex flex-col items-start gap-0.5">
-              <Badge variant={PAYMENT_VARIANT[ps]}>
-                {t(`payment.${ps.toLowerCase()}` as never)}
+            <div className="flex flex-col gap-1">
+              <Badge variant={STATUS_VARIANT[r.status]} className="w-fit">
+                {t(`status.${r.status.toLowerCase()}` as never)}
               </Badge>
-              {r.priceFinal !== null ? (
-                <MoneyText
-                  amount={r.priceFinal}
-                  currency="UZS"
-                  className="text-xs text-muted-foreground"
-                />
-              ) : null}
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Icon className="size-3" />
+                {t(`channel.${r.channel.toLowerCase()}` as never)}
+              </span>
             </div>
           );
         },
       },
       {
-        id: "cabinet",
-        header: () => t("columns.cabinet"),
+        id: "risk",
+        header: () => t("columns.riskNoShow"),
         cell: ({ row }) => {
-          const c = row.original.cabinet;
-          return c ? (
-            <span className="text-sm tabular-nums">№{c.number}</span>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
+          const r = riskScore(row.original, now);
+          const label = t(`risk.${r}` as never);
+          const cls =
+            r === "high"
+              ? "bg-destructive/10 text-destructive"
+              : r === "medium"
+                ? "bg-warning/15 text-[color:var(--warning)]"
+                : "bg-success/15 text-[color:var(--success)]";
+          return (
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                cls,
+              )}
+            >
+              {label}
+            </span>
           );
         },
       },
       {
-        id: "channel",
-        header: () => t("columns.channel"),
+        id: "payment",
+        header: () => t("columns.amount"),
         cell: ({ row }) => {
-          const ch = row.original.channel;
-          const Icon = CHANNEL_ICON[ch];
+          const r = row.original;
+          const ps = paymentStatusFor(r);
           return (
-            <div
-              className="inline-flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
-              title={t(`channel.${ch.toLowerCase()}` as never)}
-              aria-label={t(`channel.${ch.toLowerCase()}` as never)}
-            >
-              <Icon className="size-3.5" />
+            <div className="flex flex-col items-start">
+              {r.priceFinal !== null ? (
+                <MoneyText
+                  amount={r.priceFinal}
+                  currency="UZS"
+                  className="text-sm font-semibold text-foreground tabular-nums"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+              <span
+                className={cn(
+                  "text-[11px] font-medium",
+                  ps === "PAID"
+                    ? "text-[color:var(--success)]"
+                    : ps === "PARTIAL"
+                      ? "text-[color:var(--warning)]"
+                      : "text-muted-foreground",
+                )}
+              >
+                {t(`payment.${ps.toLowerCase()}` as never)}
+              </span>
             </div>
           );
         },
@@ -321,20 +408,44 @@ export function AppointmentsTable({
       {
         id: "actions",
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
-        cell: ({ row }) => (
-          <RowMenu
-            onOpen={() => onRowSelect(row.original.id)}
-            onOpenPatient={() =>
-              router.push(
-                `/${locale}/crm/patients/${row.original.patient.id}`,
-              )
-            }
-            onCall={() => {
-              const tel = row.original.patient.phone.replace(/\s/g, "");
-              window.location.href = `tel:${tel}`;
-            }}
-          />
-        ),
+        cell: ({ row }) => {
+          const r = row.original;
+          const tel = r.patient.phone.replace(/\s/g, "");
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                aria-label={t("cell.callAria")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.location.href = `tel:${tel}`;
+                }}
+                className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+              >
+                <PhoneIcon className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={t("cell.telegramAria")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+              >
+                <SendIcon className="size-3.5" />
+              </button>
+              <RowMenu
+                onOpen={() => onRowSelect(r.id)}
+                onOpenPatient={() =>
+                  router.push(`/${locale}/crm/patients/${r.patient.id}`)
+                }
+                onCall={() => {
+                  window.location.href = `tel:${tel}`;
+                }}
+              />
+            </div>
+          );
+        },
       },
     ],
     [
@@ -347,6 +458,7 @@ export function AppointmentsTable({
       onToggleSelect,
       selectedIds,
       onRowSelect,
+      now,
     ],
   );
 
@@ -363,7 +475,7 @@ export function AppointmentsTable({
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 60,
+    estimateSize: () => 64,
     overscan: 12,
   });
 
@@ -373,7 +485,7 @@ export function AppointmentsTable({
   const isTrulyEmpty = !isLoading && rows.length === 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card">
       <div
         role="table"
         aria-label={t("title")}
@@ -382,7 +494,7 @@ export function AppointmentsTable({
       >
         <div
           role="row"
-          className="sticky top-0 z-10 grid items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground"
+          className="sticky top-0 z-10 grid items-center gap-2 border-b border-border bg-card px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
           style={{ gridTemplateColumns: COLS_TEMPLATE }}
         >
           <div role="columnheader" className="flex items-center">
@@ -394,6 +506,11 @@ export function AppointmentsTable({
               aria-label={t("columns.select")}
             />
           </div>
+          <div role="columnheader">{t("columns.patient")}</div>
+          <div role="columnheader">{t("columns.services")}</div>
+          <div role="columnheader">
+            {t("columns.doctor")} / {t("columns.cabinet")}
+          </div>
           <SortHeader
             id="date"
             label={t("columns.time")}
@@ -401,13 +518,9 @@ export function AppointmentsTable({
             dir={dir}
             onClick={handleSortChange}
           />
-          <div role="columnheader">{t("columns.patient")}</div>
-          <div role="columnheader">{t("columns.doctor")}</div>
-          <div role="columnheader">{t("columns.services")}</div>
-          <div role="columnheader">{t("columns.status")}</div>
-          <div role="columnheader">{t("columns.payment")}</div>
-          <div role="columnheader">{t("columns.cabinet")}</div>
-          <div role="columnheader">{t("columns.channel")}</div>
+          <div role="columnheader">{t("columns.status")} / {t("columns.source")}</div>
+          <div role="columnheader">{t("columns.riskNoShow")}</div>
+          <div role="columnheader">{t("columns.amount")}</div>
           <div role="columnheader" className="text-right">
             <span className="sr-only">{t("columns.actions")}</span>
           </div>
@@ -421,7 +534,7 @@ export function AppointmentsTable({
           {isLoading ? (
             <div className="p-3">
               {Array.from({ length: 10 }).map((_, i) => (
-                <SkeletonRow key={i} cols={9} />
+                <SkeletonRow key={i} cols={8} />
               ))}
             </div>
           ) : isTrulyEmpty ? (
@@ -456,6 +569,7 @@ export function AppointmentsTable({
                 if (!row) return null;
                 const a = row.original;
                 const checked = selectedIds.has(a.id);
+                const tone = rowTone(a, now);
                 return (
                   <div
                     key={a.id}
@@ -481,8 +595,11 @@ export function AppointmentsTable({
                     }}
                     className={cn(
                       "grid items-center gap-2 border-b border-border px-3 py-2.5 text-sm transition-colors",
-                      "cursor-pointer hover:bg-muted/40 focus:bg-muted/60 focus:outline-none",
-                      checked && "bg-primary/5",
+                      "cursor-pointer focus:outline-none",
+                      tone === "danger" && "bg-destructive/[0.04] hover:bg-destructive/[0.07]",
+                      tone === "warning" && "bg-warning/[0.06] hover:bg-warning/[0.1]",
+                      tone === null && "hover:bg-muted/40",
+                      checked && "ring-1 ring-inset ring-primary/40",
                     )}
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -541,7 +658,7 @@ function SortHeader({
       type="button"
       onClick={() => onClick(id)}
       className={cn(
-        "inline-flex items-center gap-1 text-left uppercase tracking-wide hover:text-foreground",
+        "inline-flex items-center gap-1 text-left hover:text-foreground",
         isActive && "text-foreground",
       )}
       aria-sort={

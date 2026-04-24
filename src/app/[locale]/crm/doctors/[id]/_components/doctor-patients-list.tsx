@@ -35,7 +35,7 @@ export function DoctorPatientsList({
   const range = usePeriodRange(period);
 
   const query = useDoctorAppointments(doctorId, range);
-  const rows = query.data?.rows ?? [];
+  const rows = React.useMemo(() => query.data?.rows ?? [], [query.data]);
 
   const patients = React.useMemo(() => {
     const list = aggregatePatientsFromAppointments(rows);

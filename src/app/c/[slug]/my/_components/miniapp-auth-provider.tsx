@@ -73,9 +73,13 @@ export function MiniAppAuthProvider({
         "content-type": "application/json",
         "x-telegram-init-data": initData,
       };
-      // Dev-only bypass when not in Telegram — lets us preview the Mini App
-      // in a normal browser. The server refuses this header in production.
-      if (!isTelegramContext && typeof window !== "undefined") {
+      // Dev-only bypass — kicks in when we're not inside Telegram at all,
+      // OR when Telegram Desktop macOS loads the SDK stub without an
+      // init_data payload (a recurring platform quirk for bots that aren't
+      // verified). The server refuses these headers in production.
+      const needsBypass =
+        typeof window !== "undefined" && (!isTelegramContext || !initData);
+      if (needsBypass) {
         headers["x-miniapp-dev-bypass"] = "1";
         headers["x-miniapp-dev-user"] = JSON.stringify({
           id: 99999,
@@ -156,7 +160,9 @@ export function miniAppFetchHeaders(initData: string, isTelegram: boolean): Head
     "content-type": "application/json",
     "x-telegram-init-data": initData,
   };
-  if (!isTelegram && typeof window !== "undefined") {
+  // Mirror the provider's fallback logic: bypass when outside TG, or when
+  // Desktop loaded a stub SDK with empty initData. Server ignores in prod.
+  if (typeof window !== "undefined" && (!isTelegram || !initData)) {
     h["x-miniapp-dev-bypass"] = "1";
     h["x-miniapp-dev-user"] = JSON.stringify({
       id: 99999,

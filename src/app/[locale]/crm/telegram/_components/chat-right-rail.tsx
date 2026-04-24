@@ -6,8 +6,16 @@ import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlusIcon,
+  ClockIcon,
+  CopyIcon,
+  DownloadIcon,
   ExternalLinkIcon,
+  FileUpIcon,
+  HistoryIcon,
   Loader2Icon,
+  MessageSquareIcon,
+  PhoneIcon,
+  SparklesIcon,
   UserIcon,
   UserPlusIcon,
 } from "lucide-react";
@@ -20,12 +28,12 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
-import { DateText } from "@/components/atoms/date-text";
 import { MoneyText } from "@/components/atoms/money-text";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
 import type { InboxConversation } from "../_hooks/types";
 import { conversationsKey } from "../_hooks/use-conversations";
+import { flattenMessages, useTgMessages } from "../_hooks/use-tg-messages";
 
 export interface ChatRightRailProps {
   conversation: InboxConversation | null;
@@ -40,26 +48,23 @@ type PatientDetails = {
   balance: number | bigint | null;
   lifetimeSpend: number | bigint | null;
   lastVisitAt: string | null;
-  appointments?: Array<{
-    id: string;
-    date: string;
-  }>;
 };
 
 /**
- * Right rail on the inbox. Three shapes:
- *  1. No conversation → empty-state.
- *  2. Conversation without linked patient → "Create patient" mini form.
- *  3. Linked patient → preview card + quick actions.
+ * Right rail on the Telegram inbox — see docs/7 - Telegram .png.
  *
- * The Create Patient form is intentionally minimal — fullName + phone.
- * Operators who need more fields can jump to the patient card after
- * creation. Once created, the conversation is attached via PATCH so the
- * next refetch shows the linked state.
+ * Five stacked cards when a linked patient is selected:
+ *  1. Patient mini (avatar + name + phone + primary CTAs)
+ *  2. Quick-action tile grid (call, SMS, book, task, file, note)
+ *  3. AI hints (placeholder until the AI service ships)
+ *  4. Conversation history preview (last 4 messages)
+ *  5. Telegram stats (in / out / unread / last activity)
+ *
+ * When the conversation lacks a `patientId` we render the compact "create
+ * patient" mini-form from earlier (operator flow is: attach → rail changes).
  */
 export function ChatRightRail({ conversation }: ChatRightRailProps) {
   const t = useTranslations("tgInbox.rail");
-  const locale = useLocale();
 
   if (!conversation) {
     return (
@@ -81,26 +86,12 @@ export function ChatRightRail({ conversation }: ChatRightRailProps) {
     );
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <LinkedPatientCard
-        conversation={conversation}
-        locale={locale}
-        t={t}
-      />
-    </div>
-  );
+  return <LinkedPatientRail conversation={conversation} />;
 }
 
-function LinkedPatientCard({
-  conversation,
-  locale,
-  t,
-}: {
-  conversation: InboxConversation;
-  locale: string;
-  t: ReturnType<typeof useTranslations>;
-}) {
+function LinkedPatientRail({ conversation }: { conversation: InboxConversation }) {
+  const t = useTranslations("tgInbox.rail");
+  const locale = useLocale();
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
   const detailsQuery = useQuery<PatientDetails>({
@@ -116,104 +107,57 @@ function LinkedPatientCard({
     staleTime: 30_000,
   });
 
+  const messagesQuery = useTgMessages(conversation.id);
+  const messages = React.useMemo(
+    () => flattenMessages(messagesQuery.data?.pages),
+    [messagesQuery.data],
+  );
+
   const p = detailsQuery.data;
   const displayName =
     p?.fullName ?? conversation.patient?.fullName ?? t("anonymous");
   const phone = p?.phone ?? conversation.patient?.phone ?? null;
   const photo = p?.photoUrl ?? conversation.patient?.photoUrl ?? null;
-  const lastVisit =
-    p?.lastVisitAt ??
-    p?.appointments?.find((a) => new Date(a.date) < new Date())?.date ??
-    null;
+  const patientId = conversation.patientId!;
 
   return (
-    <div className="flex flex-col">
-      {/* Header card */}
-      <div className="flex flex-col items-center gap-3 border-b border-border bg-muted/20 p-4 text-center">
-        <AvatarWithStatus name={displayName} src={photo} size="lg" />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{displayName}</div>
-          {phone ? (
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              <PhoneText phone={phone} />
-            </div>
-          ) : null}
-        </div>
-        <div className="flex w-full flex-col gap-2">
-          <Button
-            size="sm"
-            onClick={() => setDialogOpen(true)}
-            className="w-full"
-          >
-            <CalendarPlusIcon className="size-3" />
-            {t("newAppointment")}
-          </Button>
-          <Link
-            href={`/${locale}/crm/patients/${conversation.patientId}`}
-            className={cn(
-              buttonVariants({ size: "sm", variant: "outline" }),
-              "w-full",
-            )}
-          >
-            <ExternalLinkIcon className="size-3" />
-            {t("openPatient")}
-          </Link>
-        </div>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+      <PatientHeaderCard
+        name={displayName}
+        photoUrl={photo}
+        phone={phone}
+        segment={p?.segment ?? null}
+        balance={p?.balance ?? 0}
+        lifetimeSpend={p?.lifetimeSpend ?? 0}
+        isLoading={detailsQuery.isLoading}
+        onBook={() => setDialogOpen(true)}
+        openPatientHref={`/${locale}/crm/patients/${patientId}`}
+        openPatientLabel={t("openPatient")}
+        bookLabel={t("newAppointment")}
+        segmentLabel={t("segment")}
+        balanceLabel={t("balance")}
+        lifetimeSpendLabel={t("lifetimeSpend")}
+      />
 
-      {/* Metrics */}
-      <dl className="divide-y divide-border text-xs">
-        {detailsQuery.isLoading ? (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <Loader2Icon className="size-4 animate-spin" />
-          </div>
-        ) : (
-          <>
-            {p?.segment ? (
-              <RailRow label={t("segment")}>
-                <span className="font-medium">{p.segment}</span>
-              </RailRow>
-            ) : null}
-            <RailRow label={t("balance")}>
-              <MoneyText amount={p?.balance ?? 0} currency="UZS" />
-            </RailRow>
-            <RailRow label={t("lifetimeSpend")}>
-              <MoneyText amount={p?.lifetimeSpend ?? 0} currency="UZS" />
-            </RailRow>
-            <RailRow label={t("lastVisit")}>
-              {lastVisit ? (
-                <DateText date={lastVisit} style="short" />
-              ) : (
-                <span className="text-muted-foreground">{t("never")}</span>
-              )}
-            </RailRow>
-            {conversation.assignedTo ? (
-              <RailRow label={t("assignedTo")}>
-                <span>{conversation.assignedTo.name}</span>
-              </RailRow>
-            ) : null}
-            {conversation.tags.length > 0 ? (
-              <RailRow label={t("tags")}>
-                <div className="flex flex-wrap justify-end gap-1">
-                  {conversation.tags.map((tg) => (
-                    <span
-                      key={tg}
-                      className="rounded-full border border-border px-2 py-0.5 text-[10px]"
-                    >
-                      {tg}
-                    </span>
-                  ))}
-                </div>
-              </RailRow>
-            ) : null}
-          </>
-        )}
-      </dl>
+      <ActionTileGrid phone={phone} patientId={patientId} />
+
+      <AiHintsCard />
+
+      <ConversationHistoryCard
+        messages={messages}
+        isLoading={messagesQuery.isLoading}
+      />
+
+      <TelegramStatsCard
+        messages={messages}
+        unreadCount={conversation.unreadCount}
+        lastMessageAt={conversation.lastMessageAt}
+      />
 
       <NewAppointmentDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        patientId={conversation.patientId}
+        patientId={patientId}
         onCreated={() => {
           setDialogOpen(false);
           toast.success(t("appointmentCreated"));
@@ -223,7 +167,352 @@ function LinkedPatientCard({
   );
 }
 
-function RailRow({
+function PatientHeaderCard({
+  name,
+  photoUrl,
+  phone,
+  segment,
+  balance,
+  lifetimeSpend,
+  isLoading,
+  onBook,
+  openPatientHref,
+  openPatientLabel,
+  bookLabel,
+  segmentLabel,
+  balanceLabel,
+  lifetimeSpendLabel,
+}: {
+  name: string;
+  photoUrl: string | null;
+  phone: string | null;
+  segment: string | null;
+  balance: number | bigint;
+  lifetimeSpend: number | bigint;
+  isLoading: boolean;
+  onBook: () => void;
+  openPatientHref: string;
+  openPatientLabel: string;
+  bookLabel: string;
+  segmentLabel: string;
+  balanceLabel: string;
+  lifetimeSpendLabel: string;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-background p-3">
+      <div className="flex items-start gap-3">
+        <AvatarWithStatus name={name} src={photoUrl} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">{name}</div>
+          {phone ? (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              <PhoneText phone={phone} />
+            </div>
+          ) : null}
+          {segment ? (
+            <span className="mt-1 inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {segmentLabel}: {segment}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniStat label={lifetimeSpendLabel}>
+          {isLoading ? (
+            <Loader2Icon className="size-3 animate-spin" />
+          ) : (
+            <MoneyText amount={lifetimeSpend} currency="UZS" className="text-[13px] font-semibold" />
+          )}
+        </MiniStat>
+        <MiniStat label={balanceLabel}>
+          {isLoading ? (
+            <Loader2Icon className="size-3 animate-spin" />
+          ) : (
+            <MoneyText amount={balance} currency="UZS" className="text-[13px] font-semibold" />
+          )}
+        </MiniStat>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" onClick={onBook} className="flex-1">
+          <CalendarPlusIcon className="size-3" />
+          {bookLabel}
+        </Button>
+        <Link
+          href={openPatientHref}
+          className={cn(
+            buttonVariants({ size: "sm", variant: "outline" }),
+            "flex-1",
+          )}
+        >
+          <ExternalLinkIcon className="size-3" />
+          {openPatientLabel}
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function ActionTileGrid({
+  phone,
+  patientId,
+}: {
+  phone: string | null;
+  patientId: string;
+}) {
+  const t = useTranslations("tgInbox.rail.actions");
+
+  const copyPhone = async () => {
+    if (!phone || typeof navigator === "undefined") return;
+    try {
+      await navigator.clipboard.writeText(phone);
+      toast.success(t("phoneCopied"));
+    } catch {
+      toast.error(t("copyFailed"));
+    }
+  };
+
+  const onStub = (key: string) => () => toast.info(t(`stubs.${key}`));
+
+  const callHref = phone ? `tel:${phone.replace(/\s/g, "")}` : "#";
+  const smsHref = `/crm/patients/${patientId}?sms=true`;
+
+  return (
+    <section
+      aria-label={t("ariaLabel")}
+      className="rounded-xl border border-border bg-background p-3"
+    >
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {t("title")}
+      </h3>
+      <div className="grid grid-cols-3 gap-2">
+        <a
+          href={callHref}
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted",
+            !phone && "pointer-events-none opacity-50",
+          )}
+        >
+          <PhoneIcon className="size-4 text-primary" aria-hidden />
+          <span className="text-[11px] font-medium">{t("call")}</span>
+        </a>
+        <Link
+          href={smsHref}
+          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
+        >
+          <MessageSquareIcon className="size-4 text-primary" aria-hidden />
+          <span className="text-[11px] font-medium">{t("sms")}</span>
+        </Link>
+        <button
+          type="button"
+          onClick={copyPhone}
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted",
+            !phone && "pointer-events-none opacity-50",
+          )}
+        >
+          <CopyIcon className="size-4 text-muted-foreground" aria-hidden />
+          <span className="text-[11px] font-medium">{t("copyPhone")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onStub("attachment")}
+          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
+        >
+          <FileUpIcon className="size-4 text-muted-foreground" aria-hidden />
+          <span className="text-[11px] font-medium">{t("attachment")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onStub("task")}
+          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
+        >
+          <ClockIcon className="size-4 text-muted-foreground" aria-hidden />
+          <span className="text-[11px] font-medium">{t("task")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onStub("export")}
+          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
+        >
+          <DownloadIcon className="size-4 text-muted-foreground" aria-hidden />
+          <span className="text-[11px] font-medium">{t("export")}</span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function AiHintsCard() {
+  const t = useTranslations("tgInbox.rail.ai");
+  return (
+    <section
+      aria-label={t("ariaLabel")}
+      className="rounded-xl border border-border bg-background p-3"
+    >
+      <header className="mb-2 flex items-center gap-2">
+        <SparklesIcon
+          className="size-4 text-[color:var(--info,#3b82f6)]"
+          aria-hidden
+        />
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("title")}
+        </h3>
+      </header>
+      <ul className="space-y-1.5">
+        {[1, 2, 3].map((idx) => (
+          <li
+            key={idx}
+            className="rounded-md bg-muted/60 px-2.5 py-1.5 text-[12px] leading-snug text-foreground"
+          >
+            {t(`tip${idx}`)}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        {t("disclaimer")}
+      </p>
+    </section>
+  );
+}
+
+function ConversationHistoryCard({
+  messages,
+  isLoading,
+}: {
+  messages: { id: string; body: string | null; direction: "IN" | "OUT"; createdAt: string }[];
+  isLoading: boolean;
+}) {
+  const t = useTranslations("tgInbox.rail.history");
+  const locale = useLocale();
+
+  const recent = messages.slice(-4).reverse();
+
+  const fmtTime = (iso: string) => {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+    }).format(d);
+  };
+
+  return (
+    <section
+      aria-label={t("ariaLabel")}
+      className="rounded-xl border border-border bg-background p-3"
+    >
+      <header className="mb-2 flex items-center gap-2">
+        <HistoryIcon className="size-4 text-muted-foreground" aria-hidden />
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("title")}
+        </h3>
+      </header>
+      {isLoading && recent.length === 0 ? (
+        <p className="py-3 text-center text-[11px] text-muted-foreground">
+          {t("loading")}
+        </p>
+      ) : recent.length === 0 ? (
+        <p className="py-3 text-center text-[11px] text-muted-foreground">
+          {t("empty")}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {recent.map((m) => (
+            <li
+              key={m.id}
+              className="flex items-start gap-2 text-[12px] leading-snug"
+            >
+              <span
+                className={cn(
+                  "mt-1 size-1.5 shrink-0 rounded-full",
+                  m.direction === "IN" ? "bg-primary" : "bg-muted-foreground",
+                )}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-foreground">
+                  {m.body?.trim() || t("noText")}
+                </div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
+                  {fmtTime(m.createdAt)} ·{" "}
+                  {t(m.direction === "IN" ? "in" : "out")}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function TelegramStatsCard({
+  messages,
+  unreadCount,
+  lastMessageAt,
+}: {
+  messages: { direction: "IN" | "OUT" }[];
+  unreadCount: number;
+  lastMessageAt: string | null;
+}) {
+  const t = useTranslations("tgInbox.rail.stats");
+  const locale = useLocale();
+
+  const inbound = messages.filter((m) => m.direction === "IN").length;
+  const outbound = messages.filter((m) => m.direction === "OUT").length;
+  const total = messages.length;
+
+  const lastLabel = lastMessageAt
+    ? new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(lastMessageAt))
+    : null;
+
+  return (
+    <section
+      aria-label={t("ariaLabel")}
+      className="rounded-xl border border-border bg-background p-3"
+    >
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {t("title")}
+      </h3>
+      <div className="grid grid-cols-2 gap-2">
+        <MiniStat label={t("total")}>
+          <span className="text-[13px] font-semibold tabular-nums">{total}</span>
+        </MiniStat>
+        <MiniStat label={t("unread")}>
+          <span
+            className={cn(
+              "text-[13px] font-semibold tabular-nums",
+              unreadCount > 0 ? "text-primary" : undefined,
+            )}
+          >
+            {unreadCount}
+          </span>
+        </MiniStat>
+        <MiniStat label={t("inbound")}>
+          <span className="text-[13px] font-semibold tabular-nums">{inbound}</span>
+        </MiniStat>
+        <MiniStat label={t("outbound")}>
+          <span className="text-[13px] font-semibold tabular-nums">{outbound}</span>
+        </MiniStat>
+      </div>
+      {lastLabel ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {t("lastActivity", { time: lastLabel })}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function MiniStat({
   label,
   children,
 }: {
@@ -231,9 +520,11 @@ function RailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 px-4 py-2.5">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-medium">{children}</dd>
+    <div className="rounded-md border border-border bg-card p-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-0.5 text-foreground">{children}</div>
     </div>
   );
 }

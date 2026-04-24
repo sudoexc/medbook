@@ -45,7 +45,6 @@ export function CallsWidget({
   className,
 }: CallsWidgetProps) {
   const t = useTranslations("reception.calls");
-
   const active = rows.filter((c) => !c.endedAt);
   const hero = active[0] ?? null;
   const queued = (hero ? active.slice(1) : active).slice(0, 3);
@@ -62,7 +61,7 @@ export function CallsWidget({
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-            Call Center
+            {t("brand")}
           </h3>
           {active.length > 0 ? (
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
@@ -74,7 +73,7 @@ export function CallsWidget({
           href="/crm/call-center"
           className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
         >
-          Все
+          {t("viewAll")}
           <ChevronRightIcon className="size-3" />
         </Link>
       </header>
@@ -96,10 +95,10 @@ export function CallsWidget({
           <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-6 text-center">
             <PhoneIncomingIcon className="size-6 text-muted-foreground" aria-hidden />
             <p className="text-sm font-medium text-foreground">
-              Нет активных звонков
+              {t("emptyMain")}
             </p>
             <p className="text-xs text-muted-foreground">
-              Очередь пуста — можно передохнуть
+              {t("emptyQueueHint")}
             </p>
           </div>
         )}
@@ -107,7 +106,7 @@ export function CallsWidget({
         {queueList.length > 0 ? (
           <div className="flex flex-col">
             <div className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Очередь звонков
+              {t("queueHeader")}
             </div>
             <ul className="divide-y divide-border rounded-lg border border-border">
               {queueList.map((row) => (
@@ -128,6 +127,7 @@ function HeroCall({
   row: CallRow;
   onAnswer: () => void;
 }) {
+  const t = useTranslations("reception.calls");
   const isVip = row.patient && /VIP/i.test(row.patient.fullName); // lightweight flag
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
@@ -137,7 +137,7 @@ function HeroCall({
           <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
         </span>
         <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--destructive)]">
-          Входящий звонок
+          {t("incomingLabel")}
         </span>
       </div>
       <div className="flex items-center gap-3">
@@ -149,19 +149,19 @@ function HeroCall({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <p className="truncate text-lg font-bold text-foreground">
-              {row.patient?.fullName ?? "Неизвестный номер"}
+              {row.patient?.fullName ?? t("unknownCaller")}
             </p>
             {isVip ? (
               <span className="inline-flex items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[color:var(--warning)]">
-                VIP
+                {t("tagVip")}
               </span>
             ) : row.patient ? (
               <span className="inline-flex items-center rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[color:var(--success)]">
-                Клиент
+                {t("tagClient")}
               </span>
             ) : (
               <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
-                Новый
+                {t("tagNew")}
               </span>
             )}
           </div>
@@ -177,12 +177,12 @@ function HeroCall({
           onClick={onAnswer}
         >
           <CheckIcon className="size-4" />
-          Принять
+          {t("accept")}
         </Button>
-        <Button size="icon" variant="secondary" aria-label="Отклонить">
+        <Button size="icon" variant="secondary" aria-label={t("rejectAria")}>
           <PhoneOffIcon className="size-4" />
         </Button>
-        <Button size="icon" variant="secondary" aria-label="Быстрая запись">
+        <Button size="icon" variant="secondary" aria-label={t("quickBookAria")}>
           <CalendarPlusIcon className="size-4" />
         </Button>
       </div>
@@ -191,12 +191,13 @@ function HeroCall({
 }
 
 function QueueCallRow({ row }: { row: CallRow }) {
+  const t = useTranslations("reception.calls");
   const duration = row.durationSec;
   const durationLabel =
     duration != null
       ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`
       : row.endedAt == null
-        ? "сейчас"
+        ? t("nowLabel")
         : "—";
   return (
     <li className="flex items-center gap-2.5 px-3 py-2.5">
@@ -207,7 +208,7 @@ function QueueCallRow({ row }: { row: CallRow }) {
       />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
-          {row.patient?.fullName ?? "Неизвестный"}
+          {row.patient?.fullName ?? t("unknownShort")}
         </p>
         <p className="truncate text-[11px] text-muted-foreground tabular-nums">
           <PhoneText phone={row.fromNumber} asText />

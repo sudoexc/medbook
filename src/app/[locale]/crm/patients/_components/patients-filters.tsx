@@ -2,12 +2,11 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { SearchIcon, XIcon } from "lucide-react";
+import { CalendarIcon, SearchIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -29,12 +28,23 @@ export interface PatientsFiltersProps {
 }
 
 const SEGMENTS = ["NEW", "ACTIVE", "DORMANT", "VIP", "CHURN"] as const;
-const GENDERS = ["MALE", "FEMALE"] as const;
+const SOURCES = [
+  "WEBSITE",
+  "TELEGRAM",
+  "INSTAGRAM",
+  "CALL",
+  "WALKIN",
+  "REFERRAL",
+  "ADS",
+  "OTHER",
+] as const;
 
 /**
- * Filter bar for the patients list. Writes every change straight to URL
- * state via `onChange` (parent wires it to `useSearchParams` + `router.replace`).
- * Search input is debounced (300ms) locally before bubbling up.
+ * Compact filter row under the KPI tabs — docs/5 - Пациенты (2).png.
+ *
+ * Drops the age range + debt checkbox inline chips — those now live behind the
+ * "Фильтры" popover from the tab toolbar (future). Visible here: search,
+ * segment, source, last-visit range, clear.
  */
 export function PatientsFilters({
   state,
@@ -45,12 +55,10 @@ export function PatientsFilters({
   const t = useTranslations("patients");
   const [searchLocal, setSearchLocal] = React.useState(state.q ?? "");
 
-  // Keep the local input in sync if the URL is mutated externally (e.g. clear).
   React.useEffect(() => {
     setSearchLocal(state.q ?? "");
   }, [state.q]);
 
-  // Debounce search → URL state by 300ms.
   React.useEffect(() => {
     const current = state.q ?? "";
     if (searchLocal === current) return;
@@ -68,12 +76,14 @@ export function PatientsFilters({
     Boolean(state.tag) ||
     Boolean(state.ageMin) ||
     Boolean(state.ageMax) ||
+    Boolean(state.registeredFrom) ||
+    Boolean(state.registeredTo) ||
     state.balance === "debt";
 
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2",
+        "flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2",
         className,
       )}
     >
@@ -88,87 +98,48 @@ export function PatientsFilters({
         />
       </div>
 
-      <Select
-        value={state.segment ?? "__all"}
-        onValueChange={(v) => onChange("segment", v === "__all" ? undefined : v)}
-      >
-        <SelectTrigger className="w-[160px]" aria-label={t("filters.segment")}>
-          <SelectValue placeholder={t("filters.segmentAll")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all">{t("filters.segmentAll")}</SelectItem>
-          {SEGMENTS.map((s) => (
-            <SelectItem key={s} value={s}>
-              {t(`segment.${s.toLowerCase()}` as never)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <FilterSelect
+        value={state.segment}
+        onValueChange={(v) => onChange("segment", v)}
+        placeholder={t("filters.segmentAll")}
+        items={SEGMENTS.map((s) => ({
+          value: s,
+          label: t(`segment.${s.toLowerCase()}` as never),
+        }))}
+      />
 
-      <Select
-        value={state.gender ?? "__all"}
-        onValueChange={(v) => onChange("gender", v === "__all" ? undefined : v)}
-      >
-        <SelectTrigger className="w-[140px]" aria-label={t("filters.gender")}>
-          <SelectValue placeholder={t("filters.genderAll")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__all">{t("filters.genderAll")}</SelectItem>
-          {GENDERS.map((g) => (
-            <SelectItem key={g} value={g}>
-              {t(`gender.${g.toLowerCase()}` as never)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <FilterSelect
+        value={state.source}
+        onValueChange={(v) => onChange("source", v)}
+        placeholder={t("filters.sourceAll")}
+        items={SOURCES.map((s) => ({
+          value: s,
+          label: t(`source.${s.toLowerCase()}` as never),
+        }))}
+      />
 
-      <div className="flex items-center gap-1">
-        <label
-          className="text-xs text-muted-foreground"
-          htmlFor="patients-age-min"
-        >
-          {t("filters.age")}
-        </label>
+      <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm">
+        <CalendarIcon className="size-3.5 text-muted-foreground" />
         <Input
-          id="patients-age-min"
-          type="number"
-          min={0}
-          max={120}
-          className="h-9 w-16"
-          placeholder={t("filters.ageFrom")}
-          value={state.ageMin ?? ""}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            onChange("ageMin", Number.isFinite(n) && e.target.value ? n : undefined);
-          }}
-          aria-label={t("filters.ageFrom")}
+          type="date"
+          className="h-8 w-[140px] border-0 p-0 text-[12px] shadow-none focus-visible:ring-0"
+          value={state.registeredFrom ?? ""}
+          onChange={(e) =>
+            onChange("registeredFrom", e.target.value || undefined)
+          }
+          aria-label={t("filters.lastVisitFrom")}
         />
         <span className="text-muted-foreground">–</span>
         <Input
-          type="number"
-          min={0}
-          max={120}
-          className="h-9 w-16"
-          placeholder={t("filters.ageTo")}
-          value={state.ageMax ?? ""}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            onChange("ageMax", Number.isFinite(n) && e.target.value ? n : undefined);
-          }}
-          aria-label={t("filters.ageTo")}
+          type="date"
+          className="h-8 w-[140px] border-0 p-0 text-[12px] shadow-none focus-visible:ring-0"
+          value={state.registeredTo ?? ""}
+          onChange={(e) =>
+            onChange("registeredTo", e.target.value || undefined)
+          }
+          aria-label={t("filters.lastVisitTo")}
         />
       </div>
-
-      <label className="flex cursor-pointer items-center gap-2 pl-1 text-sm">
-        <Checkbox
-          checked={state.balance === "debt"}
-          onCheckedChange={(v) =>
-            onChange("balance", v === true ? "debt" : undefined)
-          }
-          aria-label={t("filters.hasDebt")}
-        />
-        <span>{t("filters.hasDebt")}</span>
-      </label>
 
       {hasAnyFilter ? (
         <Button variant="ghost" size="sm" onClick={onClear} className="ml-auto">
@@ -177,5 +148,36 @@ export function PatientsFilters({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+function FilterSelect({
+  value,
+  onValueChange,
+  placeholder,
+  items,
+}: {
+  value: string | undefined;
+  onValueChange: (next: string | undefined) => void;
+  placeholder: string;
+  items: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <Select
+      value={value ?? "__all"}
+      onValueChange={(v) => onValueChange(v === "__all" ? undefined : v)}
+    >
+      <SelectTrigger className="w-[160px]">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__all">{placeholder}</SelectItem>
+        {items.map((it) => (
+          <SelectItem key={it.value} value={it.value}>
+            {it.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

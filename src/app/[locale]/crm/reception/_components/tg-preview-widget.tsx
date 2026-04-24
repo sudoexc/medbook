@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import { ChevronRightIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -16,12 +17,13 @@ export interface TgPreviewWidgetProps {
 }
 
 type TabKey = "new" | "waiting" | "confirmed" | "all";
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "new", label: "Новые" },
-  { key: "waiting", label: "Ожидают" },
-  { key: "confirmed", label: "Подтв." },
-  { key: "all", label: "Все" },
-];
+const TAB_KEYS: TabKey[] = ["new", "waiting", "confirmed", "all"];
+const TAB_LABEL: Record<TabKey, string> = {
+  new: "tabNew",
+  waiting: "tabWaiting",
+  confirmed: "tabConfirmed",
+  all: "tabAll",
+};
 
 /**
  * "TELEGRAM" preview per docs/1-Ресепшн mockup.
@@ -33,6 +35,7 @@ export function TgPreviewWidget({
   isLoading,
   className,
 }: TgPreviewWidgetProps) {
+  const t = useTranslations("reception.tg");
   const [tab, setTab] = React.useState<TabKey>("new");
 
   const unreadTotal = rows.reduce((acc, r) => acc + (r.unreadCount ?? 0), 0);
@@ -82,20 +85,20 @@ export function TgPreviewWidget({
           href="/crm/telegram"
           className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
         >
-          Все
+          {t("viewAll")}
           <ChevronRightIcon className="size-3" />
         </Link>
       </header>
 
       <div className="flex gap-1 overflow-x-auto border-b border-border px-2 py-1.5">
-        {TABS.map((t) => {
-          const active = tab === t.key;
-          const count = counts[t.key];
+        {TAB_KEYS.map((key) => {
+          const active = tab === key;
+          const count = counts[key];
           return (
             <button
-              key={t.key}
+              key={key}
               type="button"
-              onClick={() => setTab(t.key)}
+              onClick={() => setTab(key)}
               className={cn(
                 "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors",
                 active
@@ -103,7 +106,7 @@ export function TgPreviewWidget({
                   : "text-muted-foreground hover:bg-muted",
               )}
             >
-              {t.label}
+              {t(TAB_LABEL[key] as never)}
               {count > 0 ? (
                 <span
                   className={cn(
@@ -132,7 +135,7 @@ export function TgPreviewWidget({
           </ul>
         ) : visible.length === 0 ? (
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-            Сообщений нет
+            {t("noMessages")}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -147,8 +150,10 @@ export function TgPreviewWidget({
 }
 
 function ConversationRowItem({ row }: { row: ConversationRow }) {
+  const t = useTranslations("reception.tg");
+  const locale = useLocale();
   const time = row.lastMessageAt
-    ? new Intl.DateTimeFormat("ru-RU", {
+    ? new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
@@ -169,7 +174,7 @@ function ConversationRowItem({ row }: { row: ConversationRow }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-sm font-semibold text-foreground">
-              {row.patient?.fullName ?? row.patient?.phone ?? "Неизвестный"}
+              {row.patient?.fullName ?? row.patient?.phone ?? t("unknownName")}
             </span>
             <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
               {time}
@@ -177,7 +182,7 @@ function ConversationRowItem({ row }: { row: ConversationRow }) {
           </div>
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-xs text-muted-foreground">
-              {row.lastMessageText ?? "Голосовое сообщение"}
+              {row.lastMessageText ?? t("voiceMessageFallback")}
             </p>
             {row.unreadCount > 0 ? (
               <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-info px-1 text-[10px] font-bold text-info-foreground tabular-nums">

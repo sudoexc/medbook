@@ -3,7 +3,7 @@
 import { useLocale } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { Globe, Check } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 type Lang = "ru" | "uz";
 
@@ -47,23 +47,25 @@ export function LanguageSwitcher() {
     };
   }, [open]);
 
-  function switchTo(next: Lang) {
-    if (next === locale) {
+  const switchTo = useCallback(
+    (next: Lang) => {
+      if (next === locale) {
+        setOpen(false);
+        return;
+      }
+      // Persist for future visits. next-intl also sets this cookie on navigation
+      // but we write it eagerly so the preference survives before the nav resolves.
+      document.cookie = `NEXT_LOCALE=${next}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+
+      // TODO(auth): once `/api/me` lands, PATCH { locale: next } so staff users'
+      // `User.locale` is updated server-side and notifications go out in the
+      // chosen language. For now we only persist via cookie.
+
+      router.replace(pathname, { locale: next });
       setOpen(false);
-      return;
-    }
-    // Persist for future visits. next-intl also sets this cookie on navigation
-    // but we write it eagerly so the preference survives before the nav resolves.
-    document.cookie = `NEXT_LOCALE=${next}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
-
-    // TODO(auth): once `/api/me` lands, PATCH { locale: next } so staff users'
-    // `User.locale` is updated server-side and notifications go out in the
-    // chosen language. For now we only persist via cookie.
-    // fetch("/api/me", { method: "PATCH", body: JSON.stringify({ locale: next }) });
-
-    router.replace(pathname, { locale: next });
-    setOpen(false);
-  }
+    },
+    [locale, router, pathname],
+  );
 
   return (
     <div ref={containerRef} className="relative">

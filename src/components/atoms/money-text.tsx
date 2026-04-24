@@ -39,7 +39,8 @@ export function MoneyText({
   className,
 }: MoneyTextProps) {
   // useLocale is safe in both server and client components under next-intl.
-  const activeLocale = (localeProp ?? (useLocale() as Locale)) ?? "ru";
+  const contextLocale = useLocale() as Locale;
+  const activeLocale = localeProp ?? contextLocale ?? "ru";
 
   if (showDual && currency === "UZS") {
     const { primary, secondary } = formatMoneyDual(amount, usdAmount, activeLocale);

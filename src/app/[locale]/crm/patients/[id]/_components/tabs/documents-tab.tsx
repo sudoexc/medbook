@@ -217,9 +217,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() =>
-                      toast.info("TODO: удаление документа — фаза 4")
-                    }
+                    onClick={() => toast.info(t("deleteSoon"))}
                   >
                     <Trash2Icon className="size-3" />
                   </Button>

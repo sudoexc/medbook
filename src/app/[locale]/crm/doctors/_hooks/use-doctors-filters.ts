@@ -15,15 +15,6 @@ export type DoctorsFilterState = DoctorsListFilters & {
   onlyActive?: boolean;
 };
 
-const KNOWN_KEYS: (keyof DoctorsFilterState)[] = [
-  "q",
-  "specialization",
-  "isActive",
-  "sort",
-  "period",
-  "onlyActive",
-];
-
 function parse(sp: URLSearchParams): DoctorsFilterState {
   const out: DoctorsFilterState = {};
   const q = sp.get("q");

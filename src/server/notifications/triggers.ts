@@ -39,11 +39,6 @@ export const TRIGGER_KEYS = [
 
 export type TriggerKey = (typeof TRIGGER_KEYS)[number];
 
-/** Template key convention in DB: matches trigger key verbatim. */
-function templateKeyFor(trigger: TriggerKey, lang: "ru" | "uz"): string {
-  return `${trigger}:${lang}`;
-}
-
 /** Shape of the context object fed to `render()`. Must stay in sync with
  *  `ALLOWED_KEYS_BY_TRIGGER` in template.ts. */
 type RenderCtx = {

@@ -23,6 +23,10 @@ const RU: Dict = {
 
   "lang.confirmed": "Продолжаем на русском.",
 
+  "miniapp.prompt":
+    "Нажмите кнопку ниже, чтобы выбрать услугу, врача и удобное время прямо в приложении.",
+  "miniapp.openButton": "📱 Записаться в приложении",
+
   "service.prompt": "Выберите специализацию:",
   "service.noneAvailable":
     "К сожалению, сейчас нет доступных услуг. Позвоните в клинику.",
@@ -61,6 +65,10 @@ const UZ: Dict = {
   "start.langButton.uz": "O'zbekcha",
 
   "lang.confirmed": "Davom etamiz o'zbek tilida.",
+
+  "miniapp.prompt":
+    "Xizmat, shifokor va qulay vaqtni ilovada tanlash uchun tugmani bosing.",
+  "miniapp.openButton": "📱 Ilovada yozilish",
 
   "service.prompt": "Yo'nalishni tanlang:",
   "service.noneAvailable":

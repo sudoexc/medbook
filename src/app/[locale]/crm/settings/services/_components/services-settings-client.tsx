@@ -91,6 +91,9 @@ export function ServicesSettingsClient() {
               <th className="px-3 py-2 font-medium">{t("services.cols.code")}</th>
               <th className="px-3 py-2 font-medium">{t("services.cols.name")}</th>
               <th className="px-3 py-2 font-medium">
+                {t("services.cols.category")}
+              </th>
+              <th className="px-3 py-2 font-medium">
                 {t("services.cols.duration")}
               </th>
               <th className="px-3 py-2 font-medium">
@@ -105,13 +108,13 @@ export function ServicesSettingsClient() {
           <tbody>
             {listQuery.isLoading ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
                   {t("common.loading")}
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <StethoscopeIcon className="size-5" />
                     {t("services.empty")}
@@ -169,6 +172,20 @@ function ServiceRowEditor({
       <td className="px-3 py-2">
         <div className="font-medium">{local.nameRu}</div>
         <div className="text-xs text-muted-foreground">{local.nameUz}</div>
+      </td>
+      <td className="px-3 py-2">
+        <input
+          type="text"
+          className="h-8 w-32 rounded border border-input bg-transparent px-2 text-sm"
+          value={local.category ?? ""}
+          onChange={(e) =>
+            setLocal({ ...local, category: e.target.value })
+          }
+          onBlur={() => {
+            const next = local.category?.trim() || null;
+            if (next !== row.category) commit({ category: next });
+          }}
+        />
       </td>
       <td className="px-3 py-2">
         <input

@@ -95,9 +95,7 @@ export function PatientQuickActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
-            onClick={() =>
-              toast.info("TODO: объединить дубликаты — фаза 4")
-            }
+            onClick={() => toast.info(t("mergeDuplicatesSoon"))}
           >
             {t("mergeDuplicates")}
           </DropdownMenuItem>

@@ -221,6 +221,50 @@ describe("fsm.step", () => {
     expect(next.state).toBe("lang_select");
   });
 
+  it("lang pick with miniAppUrl short-circuits to miniapp_offer (web_app button)", () => {
+    const catalogWithMiniApp: Catalog = {
+      ...CATALOG,
+      miniAppUrl: "https://neurofax.uz/c/neurofax/my",
+    };
+    const { next, outgoing } = step(
+      { state: "lang_select", data: {}, updatedAt: 0 },
+      { kind: "callback", data: "lang:ru" },
+      catalogWithMiniApp,
+    );
+    expect(next.state).toBe("miniapp_offer");
+    expect(next.data.lang).toBe("ru");
+    const btn = outgoing?.replyMarkup?.inline_keyboard?.[0]?.[0];
+    expect(btn?.web_app?.url).toBe("https://neurofax.uz/c/neurofax/my");
+    expect(outgoing?.text).toContain("приложении");
+  });
+
+  it("miniapp_offer re-emits the same prompt on any further event", () => {
+    const catalogWithMiniApp: Catalog = {
+      ...CATALOG,
+      miniAppUrl: "https://neurofax.uz/c/neurofax/my",
+    };
+    const { next, outgoing } = step(
+      { state: "miniapp_offer", data: { lang: "uz" }, updatedAt: 0 },
+      { kind: "text", text: "hello" },
+      catalogWithMiniApp,
+    );
+    expect(next.state).toBe("miniapp_offer");
+    // UZ prompt
+    expect(outgoing?.text).toContain("ilovada");
+    expect(
+      outgoing?.replyMarkup?.inline_keyboard?.[0]?.[0]?.web_app?.url,
+    ).toBe("https://neurofax.uz/c/neurofax/my");
+  });
+
+  it("miniapp_offer falls back to service_select if miniAppUrl disappears", () => {
+    const { next } = step(
+      { state: "miniapp_offer", data: { lang: "ru" }, updatedAt: 0 },
+      { kind: "text", text: "hi" },
+      CATALOG, // no miniAppUrl
+    );
+    expect(next.state).toBe("service_select");
+  });
+
   it("empty catalog in service_select shows noneAvailable", () => {
     const base: FsmSnapshot = {
       state: "service_select",

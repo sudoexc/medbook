@@ -9,6 +9,7 @@ import * as React from "react";
  * Shape: { serviceIds, doctorId, date (YYYY-MM-DD), time (HH:mm) }.
  */
 export type BookingDraft = {
+  specialization: string | null;
   serviceIds: string[];
   doctorId: string | null;
   date: string | null;
@@ -16,6 +17,7 @@ export type BookingDraft = {
 };
 
 const EMPTY: BookingDraft = {
+  specialization: null,
   serviceIds: [],
   doctorId: null,
   date: null,

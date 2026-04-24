@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { PageContainer } from "@/components/molecules/page-container";
-import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
 
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
@@ -20,6 +19,7 @@ import {
 } from "../_hooks/use-appointments-list";
 import { useAppointmentsFilters } from "../_hooks/use-appointments-filters";
 import { AppointmentsFilters } from "./appointments-filters";
+import { AppointmentsTiles } from "./appointments-tiles";
 import { AppointmentsKpiStrip } from "./appointments-kpi-strip";
 import { AppointmentsBulkBar } from "./appointments-bulk-bar";
 import { AppointmentsTable } from "./appointments-table";
@@ -128,26 +128,28 @@ export function AppointmentsPageClient() {
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <PageContainer className="flex-1 pb-0">
-          <SectionHeader
-            title={t("title")}
-            subtitle={t("subtitle")}
-            meta={
-              total !== null ? (
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {t("count", { count: total })}
-                </span>
-              ) : null
-            }
-            actions={
-              <>
-                <ExportButton />
-                <Button onClick={() => openCreateDialog()}>
-                  <PlusIcon className="size-4" />
-                  {t("new")}
-                </Button>
-              </>
-            }
-          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              {t("subtitle")}
+              {total !== null ? (
+                <>
+                  {" · "}
+                  <span className="font-semibold text-foreground tabular-nums">
+                    {t("count", { count: total })}
+                  </span>
+                </>
+              ) : null}
+            </p>
+            <div className="flex items-center gap-2">
+              <ExportButton />
+              <Button onClick={() => openCreateDialog()}>
+                <PlusIcon className="size-4" />
+                {t("new")}
+              </Button>
+            </div>
+          </div>
+
+          <AppointmentsTiles rows={rows} total={total} />
 
           <AppointmentsFilters
             state={state}

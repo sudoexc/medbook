@@ -89,7 +89,7 @@ function SmartRecommendations() {
     <SectionCard
       title={t("smartTitle")}
       icon={SparklesIcon}
-      iconClass="bg-violet/15 text-[color:var(--violet)]"
+      iconClass="bg-violet/15 text-violet"
     >
       <ul className="space-y-2.5">
         {items.map((item) => (
@@ -97,7 +97,7 @@ function SmartRecommendations() {
             key={item.id}
             className="flex items-start gap-2 rounded-lg border border-border/60 bg-background/40 p-2.5"
           >
-            <LightbulbIcon className="mt-0.5 size-4 shrink-0 text-[color:var(--violet)]" />
+            <LightbulbIcon className="mt-0.5 size-4 shrink-0 text-violet" />
             <div className="min-w-0 flex-1">
               <p className="text-sm text-foreground">{item.text}</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -169,7 +169,7 @@ function WarningsCard({
     <SectionCard
       title={t("warningsTitle")}
       icon={AlertTriangleIcon}
-      iconClass="bg-destructive/15 text-[color:var(--destructive)]"
+      iconClass="bg-destructive/15 text-destructive"
     >
       {warnings.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("warningsEmpty")}</p>
@@ -189,8 +189,8 @@ function WarningsCard({
                 className={cn(
                   "mt-0.5 size-4 shrink-0",
                   w.tone === "danger"
-                    ? "text-[color:var(--destructive)]"
-                    : "text-[color:var(--warning)]",
+                    ? "text-destructive"
+                    : "text-warning",
                 )}
               />
               <span className="min-w-0 flex-1">{w.text}</span>

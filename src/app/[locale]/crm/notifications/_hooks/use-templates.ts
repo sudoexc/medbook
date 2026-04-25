@@ -35,9 +35,10 @@ export function templatesKey() {
 export function useTemplates() {
   return useQuery<TemplateListResponse>({
     queryKey: templatesKey(),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/notifications/templates?limit=200", {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`Failed to load templates: ${res.status}`);
       return (await res.json()) as TemplateListResponse;

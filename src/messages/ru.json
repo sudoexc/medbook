@@ -2,6 +2,82 @@
   "crmLayout": {
     "adminFallbackName": "Администратор"
   },
+  "crmShell": {
+    "brand": {
+      "tagline": "умная клиника"
+    },
+    "sidebarNav": {
+      "reception": "Ресепшн",
+      "appointments": "Записи",
+      "calendar": "Расписание",
+      "patients": "Пациенты",
+      "doctors": "Врачи",
+      "rooms": "Кабинеты",
+      "services": "Услуги",
+      "documents": "Документы",
+      "communications": "Коммуникации",
+      "callCenter": "Call Center",
+      "telegram": "Telegram",
+      "smsEmail": "SMS-Email",
+      "notifications": "Уведомления",
+      "analytics": "Аналитика",
+      "settings": "Настройки"
+    },
+    "footer": {
+      "todayCount": "Записей сегодня",
+      "collapse": "Свернуть"
+    },
+    "topbar": {
+      "searchPlaceholder": "Поиск пациента (телефон, ФИО, ID)",
+      "newAppointment": "Новая запись",
+      "moreActions": "Дополнительные действия",
+      "userMenu": {
+        "fallbackName": "Пользователь",
+        "theme": "Тема",
+        "lang": "Язык",
+        "themeLight": "Светлая",
+        "themeDark": "Тёмная",
+        "signOut": "Выйти"
+      },
+      "channels": {
+        "calls": "Звонки",
+        "telegram": "Telegram",
+        "notifications": "Уведомления"
+      },
+      "create": {
+        "appointment": "Создать запись",
+        "patient": "Новый пациент",
+        "walkin": "Визит без записи",
+        "patientStub": "Скоро: быстрый пациент",
+        "walkinStub": "Скоро: визит без записи"
+      },
+      "roles": {
+        "SUPER_ADMIN": "Супер-админ",
+        "ADMIN": "Администратор",
+        "DOCTOR": "Врач",
+        "RECEPTIONIST": "Ресепшн",
+        "NURSE": "Медсестра",
+        "CALL_OPERATOR": "Call-оператор",
+        "fallback": "Пользователь"
+      },
+      "sections": {
+        "reception": { "title": "Ресепшн", "subtitle": "Главный дашборд" },
+        "appointments": { "title": "Записи", "subtitle": "Управление записями пациентов" },
+        "calendar": { "title": "Календарь записей", "subtitle": "Планирование и подтверждения в реальном времени" },
+        "patients": { "title": "Пациенты", "subtitle": "База пациентов и история визитов" },
+        "doctors": { "title": "Врачи", "subtitle": "Расписание и результативность" },
+        "rooms": { "title": "Кабинеты", "subtitle": "Загрузка помещений и оборудования" },
+        "services": { "title": "Услуги", "subtitle": "Каталог услуг и цен" },
+        "documents": { "title": "Документы", "subtitle": "Шаблоны и файлы пациентов" },
+        "callCenter": { "title": "Call Center", "subtitle": "Входящие и исходящие звонки" },
+        "telegram": { "title": "Telegram", "subtitle": "Чаты с пациентами" },
+        "sms": { "title": "SMS-Email", "subtitle": "Входящие и исходящие сообщения" },
+        "notifications": { "title": "Уведомления", "subtitle": "Центр уведомлений" },
+        "analytics": { "title": "Аналитика", "subtitle": "Сводные метрики клиники" },
+        "settings": { "title": "Настройки", "subtitle": "Клиника и пользователи" }
+      }
+    }
+  },
   "common": {
     "save": "Сохранить",
     "cancel": "Отмена",
@@ -392,8 +468,15 @@
       "smsFailed": "Не отправлено: {count}",
       "markedArrived": "Отмечено «пришёл»: {count}",
       "markedNoShow": "Отмечено «не пришёл»: {count}",
+      "error": "Не удалось обновить записи",
       "clear": "Снять",
-      "clearSelection": "Снять выбор"
+      "clearSelection": "Снять выбор",
+      "disabled": {
+        "markArrived": "Среди выбранных есть записи, в которых пациент уже на приёме или приём завершён",
+        "markNoShow": "Нельзя отметить «не пришёл» — приём уже идёт или завершён",
+        "reschedule": "Нельзя перенести завершённый приём",
+        "sendSms": "Среди выбранных есть пациенты, которым напоминание уже неактуально"
+      }
     },
     "rowActions": {
       "open": "Открыть запись",
@@ -445,7 +528,9 @@
         "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
         "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
         "doctor_time_off": "Врач в отпуске в это время",
-        "outside_schedule": "Вне графика работы"
+        "outside_schedule": "Вне графика работы",
+        "in_past": "Это время уже прошло",
+        "invalid_transition": "Такой переход статуса невозможен"
       }
     },
     "rail": {
@@ -527,7 +612,8 @@
         "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
         "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
         "doctor_time_off": "Врач в отпуске в это время",
-        "outside_schedule": "Вне графика работы"
+        "outside_schedule": "Вне графика работы",
+        "in_past": "Это время уже прошло"
       },
       "err": {
         "patient": "Выберите пациента",
@@ -573,7 +659,8 @@
       "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
       "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
       "doctor_time_off": "Врач в отпуске в это время",
-      "outside_schedule": "Вне графика работы"
+      "outside_schedule": "Вне графика работы",
+      "in_past": "Это время уже прошло"
     },
     "toast": {
       "moved": "Запись перенесена",

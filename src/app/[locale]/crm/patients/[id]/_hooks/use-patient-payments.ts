@@ -37,10 +37,10 @@ export type PaymentsListResponse = {
 export function usePatientPayments(patientId: string) {
   return useQuery<PaymentsListResponse, Error>({
     queryKey: ["patient", patientId, "payments"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/payments?patientId=${encodeURIComponent(patientId)}&limit=100`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as PaymentsListResponse;

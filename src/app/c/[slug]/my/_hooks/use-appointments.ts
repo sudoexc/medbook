@@ -41,7 +41,7 @@ export function useAppointments(scope: "upcoming" | "past") {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppAppointment[]>({
     queryKey: ["miniapp", "appointments", clinicSlug, scope],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const body = await request<{ appointments: MiniAppAppointment[] }>(
         "/api/miniapp/appointments",
         { searchParams: { scope } },

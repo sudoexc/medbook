@@ -91,10 +91,11 @@ export function usePatientsList(filters: PatientsListFilters, limit = 50) {
   >({
     queryKey: patientsListKey(filters),
     initialPageParam: undefined,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const qs = buildSearch(filters, pageParam, limit);
       const res = await fetch(`/api/crm/patients?${qs}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) {
         throw new Error(`Failed to load patients: ${res.status}`);

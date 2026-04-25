@@ -39,10 +39,11 @@ export function useActiveCall(id: string | null) {
   return useQuery<CallRow | null, Error>({
     queryKey: ["call-center", "active", id],
     enabled: Boolean(id),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!id) return null;
       const res = await fetch(`/api/crm/calls/${id}`, {
         credentials: "include",
+        signal,
       });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`Active call load failed: ${res.status}`);

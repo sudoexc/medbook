@@ -70,7 +70,7 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
             </span>
             {rating !== null ? (
               <span className="inline-flex items-center gap-1">
-                <StarIcon className="size-4 fill-[color:var(--warning)] text-[color:var(--warning)]" />
+                <StarIcon className="size-4 fill-warning text-warning" />
                 <span className="font-medium text-foreground">
                   {rating.toFixed(1)}
                 </span>

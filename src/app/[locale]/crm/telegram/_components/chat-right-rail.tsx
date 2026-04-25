@@ -96,9 +96,10 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
 
   const detailsQuery = useQuery<PatientDetails>({
     queryKey: ["patient-mini", conversation.patientId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/patients/${conversation.patientId}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`Load failed: ${res.status}`);
       return (await res.json()) as PatientDetails;
@@ -353,7 +354,7 @@ function AiHintsCard() {
     >
       <header className="mb-2 flex items-center gap-2">
         <SparklesIcon
-          className="size-4 text-[color:var(--info,#3b82f6)]"
+          className="size-4 text-info"
           aria-hidden
         />
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

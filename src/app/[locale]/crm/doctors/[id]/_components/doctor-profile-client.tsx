@@ -55,9 +55,10 @@ function isTabId(v: string): v is TabId {
 function useLatestUsdRate(): number | null {
   const q = useQuery<number | null, Error>({
     queryKey: ["exchange-rate", "latest"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/exchange-rates?limit=1`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) return null;
       const j = (await res.json()) as {

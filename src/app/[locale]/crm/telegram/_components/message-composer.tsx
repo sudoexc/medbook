@@ -139,10 +139,10 @@ function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
 
   const q = useQuery<{ rows: Template[] }>({
     queryKey: ["tg-templates-picker"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         "/api/crm/notifications/templates?channel=TG&limit=50",
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error("Load failed");
       return res.json();

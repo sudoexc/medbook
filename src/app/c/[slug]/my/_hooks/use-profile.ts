@@ -23,7 +23,7 @@ export function useProfile() {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppProfile>({
     queryKey: ["miniapp", "profile", clinicSlug],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const body = await request<{ patient: MiniAppProfile }>(
         "/api/miniapp/profile",
       );

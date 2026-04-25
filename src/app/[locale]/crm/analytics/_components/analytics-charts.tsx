@@ -24,20 +24,9 @@ import {
 } from "recharts";
 
 import { formatMoney } from "@/lib/format";
+import { useChartColors } from "@/hooks/use-chart-colors";
 
 import type { AnalyticsResponse } from "./analytics-types";
-
-const TEAL = "#3DD5C0";
-const PALETTE = [
-  "#3DD5C0",
-  "#6366f1",
-  "#ec4899",
-  "#f59e0b",
-  "#10b981",
-  "#ef4444",
-  "#8b5cf6",
-  "#0ea5e9",
-];
 
 function ChartCard({
   title,
@@ -69,6 +58,12 @@ export interface AnalyticsChartsProps {
 }
 
 export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) {
+  const c = useChartColors();
+  const palette = React.useMemo(
+    () => [c.chart1, c.chart2, c.chart3, c.chart4, c.chart5],
+    [c],
+  );
+
   const dayLabel = React.useCallback((ymd: string) => {
     const parts = ymd.split("-");
     if (parts.length !== 3) return ymd;
@@ -80,22 +75,22 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
     [locale],
   );
 
+  const axisProps = {
+    fontSize: 11,
+    stroke: c.mutedForeground,
+    tick: { fill: c.mutedForeground },
+  } as const;
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* Revenue daily */}
       <ChartCard title={labels.revenue}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data.revenueDaily}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis
-              dataKey="date"
-              tickFormatter={dayLabel}
-              fontSize={11}
-              stroke="#94a3b8"
-            />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
+            <XAxis dataKey="date" tickFormatter={dayLabel} {...axisProps} />
             <YAxis
-              fontSize={11}
-              stroke="#94a3b8"
+              {...axisProps}
               tickFormatter={(v: number) =>
                 v >= 1_000_000_00
                   ? `${Math.round(v / 1_000_000_00)}M`
@@ -111,7 +106,7 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
             <Line
               type="monotone"
               dataKey="amount"
-              stroke={TEAL}
+              stroke={c.chart1}
               strokeWidth={2}
               dot={false}
             />
@@ -123,11 +118,11 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
       <ChartCard title={labels.appointments}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data.appointmentsByStatus}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="status" fontSize={11} stroke="#94a3b8" />
-            <YAxis fontSize={11} stroke="#94a3b8" allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
+            <XAxis dataKey="status" {...axisProps} />
+            <YAxis {...axisProps} allowDecimals={false} />
             <Tooltip />
-            <Bar dataKey="count" fill={TEAL} />
+            <Bar dataKey="count" fill={c.chart1} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -136,16 +131,10 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
       <ChartCard title={labels.noShow}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data.noShowDaily}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis
-              dataKey="date"
-              tickFormatter={dayLabel}
-              fontSize={11}
-              stroke="#94a3b8"
-            />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
+            <XAxis dataKey="date" tickFormatter={dayLabel} {...axisProps} />
             <YAxis
-              fontSize={11}
-              stroke="#94a3b8"
+              {...axisProps}
               tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
               domain={[0, 1]}
             />
@@ -156,7 +145,7 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
             <Line
               type="monotone"
               dataKey="rate"
-              stroke="#ef4444"
+              stroke={c.warning}
               strokeWidth={2}
               dot={false}
             />
@@ -172,11 +161,10 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
             layout="vertical"
             margin={{ left: 40 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
             <XAxis
               type="number"
-              fontSize={11}
-              stroke="#94a3b8"
+              {...axisProps}
               tickFormatter={(v: number) =>
                 v >= 1_000_000_00
                   ? `${Math.round(v / 1_000_000_00)}M`
@@ -186,12 +174,11 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
             <YAxis
               type="category"
               dataKey="name"
-              fontSize={11}
-              stroke="#94a3b8"
+              {...axisProps}
               width={120}
             />
             <Tooltip formatter={(v) => money(Number(v))} />
-            <Bar dataKey="revenue" fill={TEAL} />
+            <Bar dataKey="revenue" fill={c.chart1} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -204,17 +191,16 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
             layout="vertical"
             margin={{ left: 40 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis type="number" fontSize={11} stroke="#94a3b8" allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
+            <XAxis type="number" {...axisProps} allowDecimals={false} />
             <YAxis
               type="category"
               dataKey="name"
-              fontSize={11}
-              stroke="#94a3b8"
+              {...axisProps}
               width={120}
             />
             <Tooltip />
-            <Bar dataKey="count" fill={PALETTE[1]} />
+            <Bar dataKey="count" fill={c.chart4} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
@@ -232,7 +218,7 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
               paddingAngle={2}
             >
               {data.sources.map((_, i) => (
-                <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                <Cell key={i} fill={palette[i % palette.length]} />
               ))}
             </Pie>
             <Tooltip />
@@ -244,11 +230,11 @@ export function AnalyticsCharts({ data, locale, labels }: AnalyticsChartsProps) 
       <ChartCard title={labels.ltv}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data.ltvBuckets}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="bucket" fontSize={11} stroke="#94a3b8" />
-            <YAxis fontSize={11} stroke="#94a3b8" allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={c.border} />
+            <XAxis dataKey="bucket" {...axisProps} />
+            <YAxis {...axisProps} allowDecimals={false} />
             <Tooltip />
-            <Bar dataKey="count" fill={PALETTE[3]} />
+            <Bar dataKey="count" fill={c.chart3} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>

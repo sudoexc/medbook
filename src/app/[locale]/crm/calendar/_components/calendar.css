@@ -20,8 +20,17 @@
   --fc-button-active-border-color: var(--color-border);
 }
 
+.mbk-calendar-host {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* `--mbk-cal-min-w` is set inline based on (resources × visible days × per-col).
+ * When there are too many columns to fit the viewport, the host scrolls
+ * horizontally instead of squeezing columns into unreadable slivers. */
 .mbk-calendar-host .fc {
   width: 100%;
+  min-width: var(--mbk-cal-min-w, 100%);
   height: 100%;
   font-family: inherit;
   font-size: 12px;

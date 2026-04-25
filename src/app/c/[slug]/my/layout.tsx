@@ -1,8 +1,17 @@
 import * as React from "react";
+import type { Viewport } from "next";
 
 import { QueryProvider } from "@/components/providers/query-provider";
 import { MiniAppAuthProvider } from "./_components/miniapp-auth-provider";
 import { MiniAppShell } from "./_components/mini-app-shell";
+
+// `viewport-fit=cover` is required so `env(safe-area-inset-top)` returns a
+// real value — Telegram fullscreen mode otherwise overlaps the notch/clock.
+export const viewport: Viewport = {
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+};
 
 /**
  * Telegram Mini App layout: a standalone shell with NO CRM sidebar/topbar.

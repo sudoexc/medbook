@@ -90,9 +90,10 @@ export const patientKey = (id: string) => ["patient", id] as const;
 export function usePatient(id: string) {
   return useQuery<Patient, Error>({
     queryKey: patientKey(id),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/patients/${id}`, {
         credentials: "include",
+        signal,
       });
       if (res.status === 404) throw new Error("NOT_FOUND");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

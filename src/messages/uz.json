@@ -2,6 +2,82 @@
   "crmLayout": {
     "adminFallbackName": "Administrator"
   },
+  "crmShell": {
+    "brand": {
+      "tagline": "aqlli klinika"
+    },
+    "sidebarNav": {
+      "reception": "Qabulxona",
+      "appointments": "Yozilishlar",
+      "calendar": "Jadval",
+      "patients": "Bemorlar",
+      "doctors": "Shifokorlar",
+      "rooms": "Kabinetlar",
+      "services": "Xizmatlar",
+      "documents": "Hujjatlar",
+      "communications": "Aloqalar",
+      "callCenter": "Call Center",
+      "telegram": "Telegram",
+      "smsEmail": "SMS-Email",
+      "notifications": "Bildirishnomalar",
+      "analytics": "Tahlillar",
+      "settings": "Sozlamalar"
+    },
+    "footer": {
+      "todayCount": "Bugungi yozuvlar",
+      "collapse": "Yig'ish"
+    },
+    "topbar": {
+      "searchPlaceholder": "Bemorni qidirish (telefon, FIO, ID)",
+      "newAppointment": "Yangi yozuv",
+      "moreActions": "Qo'shimcha amallar",
+      "userMenu": {
+        "fallbackName": "Foydalanuvchi",
+        "theme": "Mavzu",
+        "lang": "Til",
+        "themeLight": "Yorug'",
+        "themeDark": "Qorong'i",
+        "signOut": "Chiqish"
+      },
+      "channels": {
+        "calls": "Qo'ng'iroqlar",
+        "telegram": "Telegram",
+        "notifications": "Bildirishnomalar"
+      },
+      "create": {
+        "appointment": "Yozuv yaratish",
+        "patient": "Yangi bemor",
+        "walkin": "Yozuvsiz tashrif",
+        "patientStub": "Tez orada: tezkor bemor",
+        "walkinStub": "Tez orada: yozuvsiz tashrif"
+      },
+      "roles": {
+        "SUPER_ADMIN": "Super-admin",
+        "ADMIN": "Administrator",
+        "DOCTOR": "Shifokor",
+        "RECEPTIONIST": "Qabulxona",
+        "NURSE": "Hamshira",
+        "CALL_OPERATOR": "Call-operator",
+        "fallback": "Foydalanuvchi"
+      },
+      "sections": {
+        "reception": { "title": "Qabulxona", "subtitle": "Asosiy boshqaruv paneli" },
+        "appointments": { "title": "Yozilishlar", "subtitle": "Bemor yozilishlarini boshqarish" },
+        "calendar": { "title": "Yozuvlar jadvali", "subtitle": "Real vaqt rejalashtirish va tasdiqlash" },
+        "patients": { "title": "Bemorlar", "subtitle": "Bemorlar bazasi va tashrif tarixi" },
+        "doctors": { "title": "Shifokorlar", "subtitle": "Jadval va samaradorlik" },
+        "rooms": { "title": "Kabinetlar", "subtitle": "Xonalar va jihozlar yuklanishi" },
+        "services": { "title": "Xizmatlar", "subtitle": "Xizmatlar va narxlar katalogi" },
+        "documents": { "title": "Hujjatlar", "subtitle": "Shablonlar va bemor fayllari" },
+        "callCenter": { "title": "Call Center", "subtitle": "Kiruvchi va chiquvchi qo'ng'iroqlar" },
+        "telegram": { "title": "Telegram", "subtitle": "Bemorlar bilan chatlar" },
+        "sms": { "title": "SMS-Email", "subtitle": "Kiruvchi va chiquvchi xabarlar" },
+        "notifications": { "title": "Bildirishnomalar", "subtitle": "Bildirishnomalar markazi" },
+        "analytics": { "title": "Tahlillar", "subtitle": "Klinika umumiy ko'rsatkichlari" },
+        "settings": { "title": "Sozlamalar", "subtitle": "Klinika va foydalanuvchilar" }
+      }
+    }
+  },
   "common": {
     "save": "Saqlash",
     "cancel": "Bekor qilish",
@@ -392,8 +468,15 @@
       "smsFailed": "Yuborilmadi: {count}",
       "markedArrived": "«Keldi» deb belgilandi: {count}",
       "markedNoShow": "«Kelmadi» deb belgilandi: {count}",
+      "error": "Yozuvlarni yangilab bo'lmadi",
       "clear": "Olib tashlash",
-      "clearSelection": "Tanlovni olib tashlash"
+      "clearSelection": "Tanlovni olib tashlash",
+      "disabled": {
+        "markArrived": "Tanlanganlar orasida bemor allaqachon qabulda yoki qabul yakunlangan yozuvlar bor",
+        "markNoShow": "«Kelmadi» deb belgilab bo‘lmaydi — qabul boshlangan yoki yakunlangan",
+        "reschedule": "Yakunlangan qabulni ko‘chirib bo‘lmaydi",
+        "sendSms": "Tanlanganlar orasida eslatma kerak bo‘lmagan bemorlar bor"
+      }
     },
     "rowActions": {
       "open": "Yozilishni ochish",
@@ -445,7 +528,9 @@
         "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
         "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
         "doctor_time_off": "Shifokor ta'tilda",
-        "outside_schedule": "Ish vaqtidan tashqari"
+        "outside_schedule": "Ish vaqtidan tashqari",
+        "in_past": "Bu vaqt allaqachon o'tib ketgan",
+        "invalid_transition": "Bunday status o'zgarishi mumkin emas"
       }
     },
     "rail": {
@@ -527,7 +612,8 @@
         "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
         "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
         "doctor_time_off": "Shifokor ta'tilda",
-        "outside_schedule": "Ish vaqtidan tashqari"
+        "outside_schedule": "Ish vaqtidan tashqari",
+        "in_past": "Bu vaqt allaqachon o'tib ketgan"
       },
       "err": {
         "patient": "Bemorni tanlang",
@@ -573,7 +659,8 @@
       "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
       "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
       "doctor_time_off": "Bu vaqtda shifokor ta'tilda",
-      "outside_schedule": "Ish vaqtidan tashqarida"
+      "outside_schedule": "Ish vaqtidan tashqarida",
+      "in_past": "Bu vaqt allaqachon o'tib ketgan"
     },
     "toast": {
       "moved": "Yozilish ko'chirildi",

@@ -144,7 +144,7 @@ export function PatientHero({
               status="online"
             />
             {patient.segment === "VIP" ? (
-              <span className="absolute -top-1 -right-1 inline-flex h-4 items-center rounded bg-[color:var(--info,#3b82f6)] px-1 text-[9px] font-bold uppercase text-white shadow">
+              <span className="absolute -top-1 -right-1 inline-flex h-4 items-center rounded bg-info px-1 text-[9px] font-bold uppercase text-white shadow">
                 VIP
               </span>
             ) : null}
@@ -183,7 +183,7 @@ export function PatientHero({
                 </span>
               ) : null}
             </div>
-            <span className="mt-1 inline-flex items-center rounded-md bg-[color:var(--success,#10b981)]/15 px-2 py-0.5 text-[11px] font-semibold text-[color:var(--success,#10b981)]">
+            <span className="mt-1 inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
               {t("activeBadge")}
             </span>
           </div>
@@ -239,9 +239,9 @@ export function PatientHero({
                 className={cn(
                   "inline-flex items-center rounded-md px-2 py-0.5 text-[13px] font-bold",
                   risk.tone === "success"
-                    ? "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]"
+                    ? "bg-success/15 text-success"
                     : risk.tone === "warning"
-                      ? "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning,#f59e0b)]"
+                      ? "bg-warning/15 text-warning"
                       : "bg-destructive/10 text-destructive",
                 )}
               >
@@ -336,9 +336,9 @@ function KpiCell({
 }) {
   const chipClass = chip
     ? chip.tone === "success"
-      ? "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]"
+      ? "bg-success/15 text-success"
       : chip.tone === "warning"
-        ? "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning,#f59e0b)]"
+        ? "bg-warning/15 text-warning"
         : "bg-destructive/10 text-destructive"
     : "";
   return (

@@ -44,6 +44,11 @@ import {
   useSetQueueStatus,
 } from "../_hooks/use-appointment";
 import { paymentStatusFor } from "../_hooks/use-appointments-list";
+import {
+  actionsFor,
+  nextStatuses,
+  type AppointmentStatus,
+} from "@/lib/appointment-transitions";
 
 const STATUSES = [
   "BOOKED",
@@ -77,11 +82,11 @@ export interface AppointmentDrawerProps {
 
 type CommunicationRow = {
   id: string;
-  type: "communication" | "appointment";
+  kind: "communication" | "call" | "notification" | "visit" | "message";
   channel?: string;
   direction?: string;
-  summary?: string | null;
-  text?: string | null;
+  title: string;
+  body?: string | null;
   at: string;
 };
 
@@ -89,14 +94,14 @@ function usePatientTimeline(patientId: string | null) {
   return useQuery<CommunicationRow[], Error>({
     queryKey: ["appointment-drawer", "timeline", patientId],
     enabled: Boolean(patientId),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/patients/${patientId}/communications?limit=15`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: CommunicationRow[] };
-      return j.rows;
+      const j = (await res.json()) as { items: CommunicationRow[] };
+      return j.items ?? [];
     },
     staleTime: 30_000,
   });
@@ -317,11 +322,13 @@ export function AppointmentDrawer({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {STATUSES.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {tStatus(s.toLowerCase() as never)}
-                        </SelectItem>
-                      ))}
+                      {nextStatuses(appt.status as AppointmentStatus).map(
+                        (s) => (
+                          <SelectItem key={s} value={s}>
+                            {tStatus(s.toLowerCase() as never)}
+                          </SelectItem>
+                        ),
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -574,7 +581,12 @@ export function AppointmentDrawer({
                           {formatDate(row.at, locale, "relative")}
                         </span>
                         <span className="min-w-0 flex-1 text-foreground">
-                          {row.summary ?? row.text ?? row.type}
+                          {row.title}
+                          {row.body ? (
+                            <span className="ml-1 text-muted-foreground">
+                              · {row.body}
+                            </span>
+                          ) : null}
                         </span>
                       </li>
                     ))}
@@ -587,7 +599,10 @@ export function AppointmentDrawer({
                   variant="outline"
                   size="sm"
                   onClick={onCancel}
-                  disabled={del.isPending || appt.status === "CANCELLED"}
+                  disabled={
+                    del.isPending ||
+                    !actionsFor(appt.status as AppointmentStatus).canCancel
+                  }
                   className="text-destructive"
                 >
                   {t("cancelAppt")}

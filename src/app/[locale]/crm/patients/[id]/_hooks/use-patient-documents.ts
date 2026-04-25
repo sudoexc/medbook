@@ -35,10 +35,10 @@ export type DocumentsListResponse = {
 export function usePatientDocuments(patientId: string) {
   return useQuery<DocumentsListResponse, Error>({
     queryKey: ["patient", patientId, "documents"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/documents?patientId=${encodeURIComponent(patientId)}&limit=100`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as DocumentsListResponse;

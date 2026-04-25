@@ -168,8 +168,8 @@ export function UsersSettingsClient() {
                   </td>
                   <td className="px-3 py-2">
                     {u.active ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
-                        <span className="size-1.5 rounded-full bg-emerald-500" />
+                      <span className="inline-flex items-center gap-1 text-xs text-success">
+                        <span className="size-1.5 rounded-full bg-success" />
                         {t("users.status.active")}
                       </span>
                     ) : (

@@ -15,6 +15,10 @@ import {
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import {
+  canTransition,
+  type AppointmentStatus,
+} from "@/lib/appointment-transitions";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -76,6 +80,19 @@ export const PATCH = createApiHandler(
       before.doctor.userId !== ctx.userId
     ) {
       return forbidden();
+    }
+
+    if (
+      body.status !== undefined &&
+      !canTransition(
+        before.status as AppointmentStatus,
+        body.status as AppointmentStatus,
+      )
+    ) {
+      return conflict("invalid_transition", {
+        from: before.status,
+        to: body.status,
+      });
     }
 
     // If any time/doctor/cabinet changed, re-run conflict detection.

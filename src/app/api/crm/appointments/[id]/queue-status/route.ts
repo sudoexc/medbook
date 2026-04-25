@@ -5,10 +5,14 @@
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound } from "@/server/http";
+import { ok, notFound, conflict } from "@/server/http";
 import { QueueStatusUpdateSchema } from "@/server/schemas/appointment";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import {
+  canTransition,
+  type AppointmentStatus,
+} from "@/lib/appointment-transitions";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -25,6 +29,18 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.appointment.findUnique({ where: { id } });
     if (!before) return notFound();
+
+    if (
+      !canTransition(
+        before.status as AppointmentStatus,
+        body.queueStatus as AppointmentStatus,
+      )
+    ) {
+      return conflict("invalid_transition", {
+        from: before.status,
+        to: body.queueStatus,
+      });
+    }
 
     const data: Record<string, unknown> = {
       queueStatus: body.queueStatus,

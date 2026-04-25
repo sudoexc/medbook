@@ -22,9 +22,10 @@ export type TriggerRow = {
 export function useTriggers() {
   return useQuery<{ rows: TriggerRow[] }>({
     queryKey: ["notifications", "triggers"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/notifications/triggers", {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`Triggers load failed: ${res.status}`);
       return (await res.json()) as { rows: TriggerRow[] };

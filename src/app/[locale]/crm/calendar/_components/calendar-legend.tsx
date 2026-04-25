@@ -28,10 +28,10 @@ type StatusKey =
   | "FREE";
 
 const STATUS_SWATCHES: Array<{ key: StatusKey; dotClass: string }> = [
-  { key: "BOOKED", dotClass: "bg-[color:var(--info,#3b82f6)]" },
-  { key: "WAITING", dotClass: "bg-[color:var(--warning,#f59e0b)]" },
+  { key: "BOOKED", dotClass: "bg-info" },
+  { key: "WAITING", dotClass: "bg-warning" },
   { key: "IN_PROGRESS", dotClass: "bg-primary" },
-  { key: "COMPLETED", dotClass: "bg-[color:var(--success,#10b981)]" },
+  { key: "COMPLETED", dotClass: "bg-success" },
   { key: "CANCELLED", dotClass: "bg-destructive" },
   { key: "NO_SHOW", dotClass: "bg-muted-foreground" },
   { key: "BREAK", dotClass: "bg-muted" },

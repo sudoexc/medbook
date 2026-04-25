@@ -85,7 +85,7 @@ export function NotificationsTypesSidebar({
                     type="button"
                     onClick={() => onChange(channel)}
                     className={cn(
-                      "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition",
+                      "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition",
                       isActive
                         ? "border-primary bg-primary/5 text-foreground"
                         : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",

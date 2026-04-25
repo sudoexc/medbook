@@ -65,10 +65,10 @@ export function DoctorServicesEditor({
 
   const servicesQuery = useQuery<ServiceRow[], Error>({
     queryKey: servicesKey,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/services?isActive=true&limit=200`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: ServiceRow[] };
@@ -79,10 +79,10 @@ export function DoctorServicesEditor({
 
   const doctorServicesQuery = useQuery<DoctorServiceRow[], Error>({
     queryKey: doctorServicesKey(doctorId),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/doctors/${doctorId}/services`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: DoctorServiceRow[] };

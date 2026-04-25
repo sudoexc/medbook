@@ -77,6 +77,14 @@ export function SlotPicker() {
     }
   }, [hydrated, draft.doctorId, router, clinicSlug]);
 
+  // Seed `draft.date` with the first visible day so "Продолжить" activates
+  // after the user picks a time alone (without having to re-tap a date).
+  React.useEffect(() => {
+    if (hydrated && !draft.date) {
+      setDraft({ date: days[0].iso });
+    }
+  }, [hydrated, draft.date, days, setDraft]);
+
   React.useEffect(() => {
     const off = tg.setBackButton(() =>
       router.push(`/c/${clinicSlug}/my/book/doctor`),
@@ -108,7 +116,7 @@ export function SlotPicker() {
   const hasMore = allSlots.length > INITIAL_SLOTS;
 
   return (
-    <div>
+    <div className="ma-step-enter">
       <WizardHeader
         step={3}
         label={t.book.stepLabel.replace("{step}", "3").replace("{total}", "4")}

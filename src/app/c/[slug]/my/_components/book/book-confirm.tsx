@@ -40,20 +40,31 @@ export function BookConfirm() {
   const book = useBookAppointment();
   const tg = useTelegramWebApp();
 
-  const [name, setName] = React.useState<string>(patient?.fullName ?? "");
-  const [phone, setPhone] = React.useState<string>(patient?.phone ?? "");
+  // Treat placeholder/dev profile values as "no profile" so the form starts
+  // empty (with a UZ country-code seed for phone).
+  const isRealName = (v: string | null | undefined) =>
+    !!v && v.trim().length > 0 && !/^dev\s*user$/i.test(v.trim());
+  const isRealPhone = (v: string | null | undefined) =>
+    !!v && v.trim().length > 0;
+
+  const [name, setName] = React.useState<string>(
+    isRealName(patient?.fullName) ? patient!.fullName! : "",
+  );
+  const [phone, setPhone] = React.useState<string>(
+    isRealPhone(patient?.phone) ? patient!.phone! : "+998 ",
+  );
   // Sync patient profile values into the form ONCE per patient load. Using
   // `!name` as a guard re-populated the field every time the user cleared
   // it, which made it impossible to edit out a seeded "Dev User".
   const syncedRef = React.useRef({ name: false, phone: false });
   React.useEffect(() => {
     if (!patient) return;
-    if (patient.fullName && !syncedRef.current.name) {
-      setName(patient.fullName);
+    if (isRealName(patient.fullName) && !syncedRef.current.name) {
+      setName(patient.fullName!);
       syncedRef.current.name = true;
     }
-    if (patient.phone && !syncedRef.current.phone) {
-      setPhone(patient.phone);
+    if (isRealPhone(patient.phone) && !syncedRef.current.phone) {
+      setPhone(patient.phone!);
       syncedRef.current.phone = true;
     }
   }, [patient]);
@@ -145,7 +156,7 @@ export function BookConfirm() {
   }
 
   return (
-    <div>
+    <div className="ma-step-enter">
       <WizardHeader
         step={4}
         label={t.book.stepLabel.replace("{step}", "4").replace("{total}", "4")}
@@ -247,11 +258,8 @@ export function BookConfirm() {
         </div>
       </MCard>
       <div
-        className="rounded-2xl px-4 py-3 text-center text-xs"
-        style={{
-          backgroundColor: "color-mix(in oklch, var(--tg-accent) 8%, transparent)",
-          color: "var(--tg-hint)",
-        }}
+        className="px-2 py-3 text-center text-xs"
+        style={{ color: "var(--tg-hint)" }}
       >
         {t.book.paymentNote}
       </div>

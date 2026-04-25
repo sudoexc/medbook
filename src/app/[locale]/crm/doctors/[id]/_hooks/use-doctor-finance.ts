@@ -22,11 +22,11 @@ export function useDoctorFinance(
 ) {
   return useQuery<DoctorFinance, Error>({
     queryKey: ["doctor", doctorId, "finance", range],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams({ from: range.from, to: range.to });
       const res = await fetch(
         `/api/crm/doctors/${doctorId}/finance?${qs.toString()}`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as DoctorFinance;

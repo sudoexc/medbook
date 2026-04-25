@@ -172,7 +172,7 @@ function shiftDateKey(
   direction: 1 | -1,
 ): string {
   const d = parseYmd(key);
-  const step = view === "day" ? 1 : 7;
+  const step = view === "day" ? 1 : view === "workWeek" ? 5 : 7;
   d.setDate(d.getDate() + direction * step);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");

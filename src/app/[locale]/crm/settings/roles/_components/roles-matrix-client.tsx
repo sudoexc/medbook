@@ -207,10 +207,10 @@ function CellBadge({ value }: { value: Cell }) {
   }
   const colour =
     value.includes("D") || value.includes("UD")
-      ? "bg-emerald-500/15 text-emerald-700"
+      ? "bg-success/15 text-success"
       : value.startsWith("R")
         ? "bg-primary/15 text-primary"
-        : "bg-amber-500/15 text-amber-700";
+        : "bg-warning/15 text-warning";
   return (
     <span
       className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold ${colour}`}

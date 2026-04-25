@@ -24,8 +24,8 @@ type TileDef = {
 
 const TONE_CLASS: Record<Tone, string> = {
   success:
-    "bg-[color:var(--success,#10b981)]/10 text-[color:var(--success,#10b981)]",
-  warning: "bg-[color:var(--warning,#f59e0b)]/10 text-[color:var(--warning,#f59e0b)]",
+    "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
   info: "bg-primary/10 text-primary",
   destructive: "bg-destructive/10 text-destructive",
 };

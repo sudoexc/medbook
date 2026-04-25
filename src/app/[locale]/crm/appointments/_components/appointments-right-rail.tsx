@@ -26,9 +26,10 @@ type DoctorOption = {
 function useDoctors() {
   return useQuery<DoctorOption[], Error>({
     queryKey: ["doctors", "options"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/doctors?isActive=true&limit=50`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: DoctorOption[] };
@@ -42,11 +43,11 @@ function useSlotsForDoctor(doctorId: string, enabled: boolean) {
   return useQuery<string[], Error>({
     queryKey: ["appointments", "slots", doctorId, "today"],
     enabled,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const dateIso = new Date().toISOString();
       const res = await fetch(
         `/api/crm/appointments/slots/available?doctorId=${doctorId}&date=${encodeURIComponent(dateIso)}`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { slots: string[] };
@@ -76,9 +77,9 @@ type ActionItem = {
 
 const TONE_CLASS: Record<ActionTone, string> = {
   primary: "bg-primary/10 text-primary",
-  success: "bg-success/15 text-[color:var(--success)]",
-  warning: "bg-warning/15 text-[color:var(--warning)]",
-  info: "bg-info/10 text-[color:var(--info)]",
+  success: "bg-success/15 text-success",
+  warning: "bg-warning/15 text-warning",
+  info: "bg-info/10 text-info",
 };
 
 /**
@@ -252,7 +253,7 @@ function StatCell({
       <dd
         className={cn(
           "mt-0.5 text-lg font-bold tabular-nums",
-          tone === "success" ? "text-[color:var(--success)]" : "text-foreground",
+          tone === "success" ? "text-success" : "text-foreground",
         )}
       >
         {value}

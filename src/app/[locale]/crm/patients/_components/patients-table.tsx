@@ -54,16 +54,16 @@ const SEGMENT_STYLE: Record<
   ACTIVE: {
     tKey: "segment.active",
     className:
-      "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]",
+      "bg-success/15 text-success-foreground",
   },
   VIP: {
     tKey: "segment.vip",
-    className: "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#3b82f6)]",
+    className: "bg-info/15 text-info",
   },
   DORMANT: {
     tKey: "segment.dormant",
     className:
-      "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning-foreground,#78350f)]",
+      "bg-warning/15 text-warning-foreground",
   },
   CHURN: {
     tKey: "segment.churn",
@@ -113,13 +113,13 @@ const PRIORITY_CFG: Record<
     tKey: "priority.medium",
     icon: ClockIcon,
     className:
-      "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning-foreground,#78350f)]",
+      "bg-warning/15 text-warning-foreground",
   },
   low: {
     tKey: "priority.low",
     icon: SignalIcon,
     className:
-      "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]",
+      "bg-success/15 text-success-foreground",
   },
   none: {
     tKey: null,
@@ -223,7 +223,7 @@ export function PatientsTable({
                     {display}
                   </span>
                   {p.segment === "VIP" ? (
-                    <span className="inline-flex h-4 items-center rounded bg-[color:var(--info,#3b82f6)]/15 px-1 text-[9px] font-bold uppercase text-[color:var(--info,#3b82f6)]">
+                    <span className="inline-flex h-4 items-center rounded bg-info/15 px-1 text-[9px] font-bold uppercase text-info">
                       VIP
                     </span>
                   ) : null}

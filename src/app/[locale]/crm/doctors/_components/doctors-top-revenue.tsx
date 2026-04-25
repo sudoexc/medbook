@@ -151,7 +151,7 @@ export function DoctorsTopRevenue({
                     className={cn(
                       "ml-1 inline-flex shrink-0 items-center rounded-md px-1 text-[11px] font-bold tabular-nums",
                       positive
-                        ? "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]"
+                        ? "bg-success/15 text-success"
                         : "bg-destructive/10 text-destructive",
                     )}
                   >
@@ -218,7 +218,7 @@ function MiniRow({
           className={cn(
             "inline-flex items-center rounded-md px-1 text-[11px] font-bold tabular-nums",
             positive
-              ? "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]"
+              ? "bg-success/15 text-success"
               : "bg-destructive/10 text-destructive",
           )}
         >

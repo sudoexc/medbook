@@ -139,7 +139,7 @@ export function ReceptionPageClient() {
     <div className="flex min-w-0 flex-1 flex-col gap-4 p-5">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-[color:var(--success)]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
             <StatusDot status="online" size="xs" />
             {t("liveBadge")}
           </span>

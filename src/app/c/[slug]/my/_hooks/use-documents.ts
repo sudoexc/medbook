@@ -17,7 +17,7 @@ export function useDocuments() {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppDocument[]>({
     queryKey: ["miniapp", "documents", clinicSlug],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const body = await request<{ documents: MiniAppDocument[] }>(
         "/api/miniapp/documents",
       );

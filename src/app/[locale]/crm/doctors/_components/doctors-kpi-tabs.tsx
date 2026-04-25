@@ -29,9 +29,9 @@ type Tab = {
 const TABS: Tab[] = [
   { key: "all" },
   { key: "idle", dotClass: "bg-destructive" },
-  { key: "optimal", dotClass: "bg-[color:var(--warning,#f59e0b)]" },
+  { key: "optimal", dotClass: "bg-warning" },
   { key: "overloaded", dotClass: "bg-destructive" },
-  { key: "has-slots", dotClass: "bg-[color:var(--success,#10b981)]" },
+  { key: "has-slots", dotClass: "bg-success" },
 ];
 
 /**

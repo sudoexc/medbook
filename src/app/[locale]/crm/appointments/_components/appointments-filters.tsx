@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon, XIcon } from "lucide-react";
 
@@ -51,9 +51,10 @@ type CabinetOption = {
 function useDoctorOptions() {
   return useQuery<DoctorOption[], Error>({
     queryKey: ["doctors", "options"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/doctors?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: DoctorOption[] };
@@ -66,9 +67,10 @@ function useDoctorOptions() {
 function useServiceOptions() {
   return useQuery<ServiceOption[], Error>({
     queryKey: ["services", "options"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/services?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: ServiceOption[] };
@@ -81,9 +83,10 @@ function useServiceOptions() {
 function useCabinetOptions() {
   return useQuery<CabinetOption[], Error>({
     queryKey: ["cabinets", "options"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: CabinetOption[] };
@@ -100,6 +103,7 @@ export function AppointmentsFilters({
   className,
 }: AppointmentsFiltersProps) {
   const t = useTranslations("appointments");
+  const locale = useLocale();
   const [searchLocal, setSearchLocal] = React.useState(state.q ?? "");
 
   React.useEffect(() => {
@@ -226,7 +230,7 @@ export function AppointmentsFilters({
           <SelectItem value="__all">{t("filters.doctorAll")}</SelectItem>
           {(doctors.data ?? []).map((d) => (
             <SelectItem key={d.id} value={d.id}>
-              {d.nameRu}
+              {locale === "uz" ? d.nameUz : d.nameRu}
             </SelectItem>
           ))}
         </SelectContent>
@@ -248,7 +252,7 @@ export function AppointmentsFilters({
           <SelectItem value="__all">{t("filters.serviceAll")}</SelectItem>
           {(services.data ?? []).map((s) => (
             <SelectItem key={s.id} value={s.id}>
-              {s.nameRu}
+              {locale === "uz" ? s.nameUz : s.nameRu}
             </SelectItem>
           ))}
         </SelectContent>

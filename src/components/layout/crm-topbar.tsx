@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react"
 import {
   BellIcon,
   ChevronDownIcon,
+  LogOutIcon,
   MoonIcon,
   PhoneIcon,
   PlusIcon,
@@ -14,9 +15,15 @@ import {
   SendIcon,
   SunIcon,
 } from "lucide-react"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/providers/theme-provider"
+import { useTranslations } from "next-intl"
+import {
+  useRouter as useIntlRouter,
+  usePathname as useIntlPathname,
+} from "@/i18n/navigation"
 
 import { cn } from "@/lib/utils"
+import { useShellSummary } from "@/hooks/use-shell-summary"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -41,35 +48,25 @@ const GlobalSearch = dynamic(
   { ssr: false },
 )
 
-const ROLE_LABEL: Record<string, string> = {
-  SUPER_ADMIN: "Супер-админ",
-  ADMIN: "Администратор",
-  DOCTOR: "Врач",
-  RECEPTIONIST: "Ресепшн",
-  NURSE: "Медсестра",
-  CALL_OPERATOR: "Call-оператор",
-}
-
-const SECTION_TITLE: Record<string, { title: string; subtitle: string }> = {
-  reception: { title: "Ресепшн", subtitle: "Главный дашборд" },
-  appointments: { title: "Записи", subtitle: "Управление записями пациентов" },
-  calendar: {
-    title: "Календарь записей",
-    subtitle: "Планирование и подтверждения в реальном времени",
-  },
-  patients: { title: "Пациенты", subtitle: "База пациентов и история визитов" },
-  doctors: { title: "Врачи", subtitle: "Расписание и результативность" },
-  rooms: { title: "Кабинеты", subtitle: "Загрузка помещений и оборудования" },
-  services: { title: "Услуги", subtitle: "Каталог услуг и цен" },
-  "call-center": {
-    title: "Call Center",
-    subtitle: "Входящие и исходящие звонки",
-  },
-  telegram: { title: "Telegram", subtitle: "Чаты с пациентами" },
-  sms: { title: "SMS-Email", subtitle: "Входящие и исходящие сообщения" },
-  notifications: { title: "Уведомления", subtitle: "Центр уведомлений" },
-  analytics: { title: "Аналитика", subtitle: "Сводные метрики клиники" },
-  settings: { title: "Настройки", subtitle: "Клиника и пользователи" },
+/**
+ * URL segment → key under `crmShell.topbar.sections`. The two diverge for
+ * `call-center` (kebab-case path, camelCase translation key).
+ */
+const SECTION_KEY: Record<string, string> = {
+  reception: "reception",
+  appointments: "appointments",
+  calendar: "calendar",
+  patients: "patients",
+  doctors: "doctors",
+  rooms: "rooms",
+  services: "services",
+  documents: "documents",
+  "call-center": "callCenter",
+  telegram: "telegram",
+  sms: "sms",
+  notifications: "notifications",
+  analytics: "analytics",
+  settings: "settings",
 }
 
 function useClock() {
@@ -108,9 +105,22 @@ export function CrmTopbar({
   const pathname = usePathname() ?? ""
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
   const segment = pathname.split("/").filter(Boolean)[2] ?? "reception"
-  const meta = SECTION_TITLE[segment] ?? SECTION_TITLE.reception
+  const sectionKey = SECTION_KEY[segment] ?? "reception"
+  const tTopbar = useTranslations("crmShell.topbar")
+  const tSection = useTranslations(`crmShell.topbar.sections.${sectionKey}`)
+  const tRoles = useTranslations("crmShell.topbar.roles")
   const now = useClock()
   const { theme, setTheme } = useTheme()
+  const intlRouter = useIntlRouter()
+  const intlPathname = useIntlPathname()
+  const { data: summary } = useShellSummary()
+
+  const isDark = theme === "dark"
+  const switchLocale = (next: "ru" | "uz") => {
+    if (next === locale) return
+    document.cookie = `NEXT_LOCALE=${next}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`
+    intlRouter.replace(intlPathname, { locale: next })
+  }
   const [searchMounted, setSearchMounted] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [newApptOpen, setNewApptOpen] = React.useState(false)
@@ -130,19 +140,20 @@ export function CrmTopbar({
         }).format(now)
 
   // «21 апреля, понедельник» — long Russian date per mockup.
+  const dateLocale = locale === "uz" ? "uz-Latn-UZ" : "ru-RU"
   const dateStr = React.useMemo(() => {
     if (now == null) return ""
-    const day = new Intl.DateTimeFormat("ru-RU", {
+    const day = new Intl.DateTimeFormat(dateLocale, {
       day: "numeric",
       month: "long",
     }).format(now)
-    const weekday = new Intl.DateTimeFormat("ru-RU", {
+    const weekday = new Intl.DateTimeFormat(dateLocale, {
       weekday: "long",
     }).format(now)
     return `${day}, ${weekday}`
-  }, [now])
+  }, [now, dateLocale])
 
-  const roleLabel = userRole ? ROLE_LABEL[userRole] ?? userRole : "Пользователь"
+  const roleLabel = userRole ? tRoles(userRole) : tRoles("fallback")
 
   // Keyboard shortcut: F2 → open "Новая запись".
   React.useEffect(() => {
@@ -160,10 +171,10 @@ export function CrmTopbar({
     <header className="flex h-[72px] shrink-0 items-center gap-4 border-b border-border bg-card px-6">
       <div className="hidden min-w-0 shrink-0 leading-tight md:block">
         <div className="truncate text-2xl font-extrabold tracking-tight text-foreground">
-          {meta.title}
+          {tSection("title")}
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {meta.subtitle}
+          {tSection("subtitle")}
         </div>
       </div>
 
@@ -174,9 +185,9 @@ export function CrmTopbar({
       >
         <SearchIcon className="size-4" />
         <span className="flex-1 truncate text-left">
-          Поиск пациента (телефон, ФИО, ID)
+          {tTopbar("searchPlaceholder")}
         </span>
-        <kbd className="rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <kbd className="rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
           ⌘ K
         </kbd>
       </button>
@@ -195,8 +206,8 @@ export function CrmTopbar({
             )}
           >
             <PlusIcon className="size-4" />
-            Новая запись
-            <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wide">
+            {tTopbar("newAppointment")}
+            <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[11px] font-bold tracking-wide">
               F2
             </span>
           </Button>
@@ -204,25 +215,25 @@ export function CrmTopbar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label="Дополнительные действия"
-                className="flex h-full items-center border-l border-white/20 px-2 text-primary-foreground transition-colors hover:bg-primary/90"
+                aria-label={tTopbar("moreActions")}
+                className="flex h-full items-center border-l border-white/30 px-2 text-primary-foreground transition-colors hover:bg-primary/90"
               >
                 <ChevronDownIcon className="size-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => setNewApptOpen(true)}>
-                Создать запись
+                {tTopbar("create.appointment")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => toast.message("Скоро: быстрый пациент")}
+                onClick={() => toast.message(tTopbar("create.patientStub"))}
               >
-                Новый пациент
+                {tTopbar("create.patient")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => toast.message("Скоро: визит без записи")}
+                onClick={() => toast.message(tTopbar("create.walkinStub"))}
               >
-                Визит без записи
+                {tTopbar("create.walkin")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -248,23 +259,23 @@ export function CrmTopbar({
 
         <div className="hidden items-center gap-4 md:flex">
           <TopbarChannelIcon
-            label="Звонки"
+            label={tTopbar("channels.calls")}
             icon={PhoneIcon}
-            badge={3}
+            badge={summary?.unread.calls ?? 0}
             tone="danger"
             iconClass="text-foreground"
           />
           <TopbarChannelIcon
-            label="Telegram"
+            label={tTopbar("channels.telegram")}
             icon={SendIcon}
-            badge={8}
+            badge={summary?.unread.telegram ?? 0}
             tone="success"
-            iconClass="text-[color:var(--primary)]"
+            iconClass="text-primary"
           />
           <TopbarChannelIcon
-            label="Уведомления"
+            label={tTopbar("channels.notifications")}
             icon={BellIcon}
-            badge={5}
+            badge={summary?.unread.notifications ?? 0}
             tone="danger"
             iconClass="text-foreground"
           />
@@ -294,41 +305,108 @@ export function CrmTopbar({
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="text-xs normal-case">
+          <DropdownMenuContent align="end" className="w-72 p-2">
+            <DropdownMenuLabel className="px-2 py-1.5 text-xs normal-case">
               <div className="font-semibold text-foreground">
-                {userName ?? "Пользователь"}
+                {userName ?? tTopbar("userMenu.fallbackName")}
               </div>
               <div className="truncate text-muted-foreground">
                 {userEmail ?? "—"}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-              {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                toast.message(`Текущий язык: ${locale.toUpperCase()}`)
-              }
-            >
-              Язык: {locale.toUpperCase()}
-            </DropdownMenuItem>
+            <div className="space-y-2 px-2 py-2">
+              <SegmentedRow label={tTopbar("userMenu.theme")}>
+                <SegmentedButton
+                  active={!isDark}
+                  onClick={() => setTheme("light")}
+                  aria-label={tTopbar("userMenu.themeLight")}
+                >
+                  <SunIcon className="size-4" />
+                  {tTopbar("userMenu.themeLight")}
+                </SegmentedButton>
+                <SegmentedButton
+                  active={isDark}
+                  onClick={() => setTheme("dark")}
+                  aria-label={tTopbar("userMenu.themeDark")}
+                >
+                  <MoonIcon className="size-4" />
+                  {tTopbar("userMenu.themeDark")}
+                </SegmentedButton>
+              </SegmentedRow>
+              <SegmentedRow label={tTopbar("userMenu.lang")}>
+                <SegmentedButton
+                  active={locale === "ru"}
+                  onClick={() => switchLocale("ru")}
+                  aria-label="Русский"
+                >
+                  RU
+                </SegmentedButton>
+                <SegmentedButton
+                  active={locale === "uz"}
+                  onClick={() => switchLocale("uz")}
+                  aria-label="O'zbekcha"
+                >
+                  UZ
+                </SegmentedButton>
+              </SegmentedRow>
+            </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() =>
                 onSignOut ? onSignOut() : signOut({ callbackUrl: "/login" })
               }
+              className="text-destructive focus:text-destructive"
             >
-              Выйти
+              <LogOutIcon className="size-4" />
+              {tTopbar("userMenu.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </header>
+  )
+}
+
+function SegmentedRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-12 shrink-0 text-xs font-medium text-muted-foreground">
+        {label}
+      </div>
+      <div className="flex flex-1 items-center gap-1 rounded-lg border border-border bg-muted/40 p-0.5">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function SegmentedButton({
+  active,
+  children,
+  onClick,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+        active
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+      {...rest}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -354,7 +432,7 @@ function TopbarChannelIcon({
     <button
       type="button"
       aria-label={label}
-      className="group flex flex-col items-center gap-0.5"
+      className="group flex flex-col items-center gap-1"
     >
       <span className="relative flex size-7 items-center justify-center">
         <Icon className={cn("size-[22px]", iconClass)} />
@@ -369,7 +447,7 @@ function TopbarChannelIcon({
           </span>
         ) : null}
       </span>
-      <span className="text-[10px] font-medium text-muted-foreground group-hover:text-foreground">
+      <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground">
         {label}
       </span>
     </button>

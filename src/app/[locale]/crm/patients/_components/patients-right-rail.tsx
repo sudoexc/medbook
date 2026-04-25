@@ -35,19 +35,19 @@ const TONE_CLASS: Record<Tone, { icon: string; border: string; chip: string }> =
     chip: "bg-primary/10 text-primary",
   },
   info: {
-    icon: "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#3b82f6)]",
-    border: "border-l-[color:var(--info,#3b82f6)]",
-    chip: "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#3b82f6)]",
+    icon: "bg-info/15 text-info",
+    border: "border-l-info",
+    chip: "bg-info/15 text-info",
   },
   success: {
-    icon: "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]",
-    border: "border-l-[color:var(--success,#10b981)]",
-    chip: "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]",
+    icon: "bg-success/15 text-success",
+    border: "border-l-success",
+    chip: "bg-success/15 text-success",
   },
   warning: {
-    icon: "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning,#f59e0b)]",
-    border: "border-l-[color:var(--warning,#f59e0b)]",
-    chip: "bg-[color:var(--warning,#f59e0b)]/15 text-[color:var(--warning,#f59e0b)]",
+    icon: "bg-warning/15 text-warning",
+    border: "border-l-warning",
+    chip: "bg-warning/15 text-warning",
   },
   danger: {
     icon: "bg-destructive/10 text-destructive",

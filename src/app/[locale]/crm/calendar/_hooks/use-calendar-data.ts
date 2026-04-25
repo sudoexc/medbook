@@ -49,7 +49,7 @@ export function useCalendarAppointments(from: Date, to: Date) {
 
   return useQuery<AppointmentRow[], Error>({
     queryKey: calendarRangeKey(fromIso, toIso),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const out: AppointmentRow[] = [];
       let cursor: string | undefined;
       // Loop cursor pages — the API caps `limit` at 200.
@@ -63,6 +63,7 @@ export function useCalendarAppointments(from: Date, to: Date) {
         if (cursor) sp.set("cursor", cursor);
         const res = await fetch(`/api/crm/appointments?${sp.toString()}`, {
           credentials: "include",
+          signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const j = (await res.json()) as AppointmentsListResponse;
@@ -107,9 +108,10 @@ export function useCalendarRealtime(): void {
 export function useActiveDoctors() {
   return useQuery<DoctorResource[], Error>({
     queryKey: ["calendar", "doctors"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/doctors?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: DoctorResource[] };
@@ -122,9 +124,10 @@ export function useActiveDoctors() {
 export function useCabinets() {
   return useQuery<CabinetRef[], Error>({
     queryKey: ["calendar", "cabinets"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: CabinetRef[] };
@@ -137,9 +140,10 @@ export function useCabinets() {
 export function useServicesRef() {
   return useQuery<ServiceRef[], Error>({
     queryKey: ["calendar", "services"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/services?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: ServiceRef[] };

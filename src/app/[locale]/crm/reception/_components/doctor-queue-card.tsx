@@ -4,6 +4,7 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArmchairIcon,
+  CheckIcon,
   ClockIcon,
   HourglassIcon,
 } from "lucide-react";
@@ -145,7 +146,33 @@ export function DoctorQueueCard({
 
       <div className="mt-3 flex-1">
         {state === "in_session" && current ? (
-          <InSessionBlock appointment={current} onClick={() => onRowClick(current.id)} />
+          <InSessionBlock
+            appointment={current}
+            onClick={() => onRowClick(current.id)}
+            onComplete={async () => {
+              setPending(true);
+              try {
+                const res = await fetch(
+                  `/api/crm/appointments/${current.id}/queue-status`,
+                  {
+                    method: "PATCH",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ queueStatus: "COMPLETED" }),
+                  },
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                invalidate();
+                qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+                qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
+              } catch (err) {
+                toast.error((err as Error).message);
+              } finally {
+                setPending(false);
+              }
+            }}
+            pending={pending}
+          />
         ) : state === "awaiting" ? (
           <AwaitingBlock nextTime={upcoming[0] ? new Date(upcoming[0].date) : null} />
         ) : (
@@ -220,9 +247,13 @@ export function DoctorQueueCard({
 function InSessionBlock({
   appointment,
   onClick,
+  onComplete,
+  pending,
 }: {
   appointment: AppointmentRow;
   onClick: () => void;
+  onComplete: () => void;
+  pending: boolean;
 }) {
   const t = useTranslations("reception.doctorQueue");
   const locale = useLocale();
@@ -248,34 +279,45 @@ function InSessionBlock({
       : appointment.primaryService?.nameRu) ?? t("fallbackService");
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full rounded-xl bg-success-soft p-3 text-left transition-colors hover:bg-success-soft/70"
-    >
-      <div className="flex items-center gap-1.5">
-        <span className="size-1.5 rounded-full bg-success" aria-hidden />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--success)]">
-          {t("current")}
-        </span>
-      </div>
-      <p className="mt-2 truncate text-lg font-bold text-foreground">
-        {appointment.patient.fullName}
-      </p>
-      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>{serviceName}</span>
-        <span className="inline-flex items-center gap-1 font-semibold text-[color:var(--success)]">
-          <ClockIcon className="size-3" />
-          {remaining.label}
-        </span>
-      </div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/60">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-success to-success/80 transition-all"
-          style={{ width: `${remaining.pct}%` }}
-        />
-      </div>
-    </button>
+    <div className="rounded-xl bg-success-soft p-3">
+      <button
+        type="button"
+        onClick={onClick}
+        className="block w-full text-left transition-opacity hover:opacity-90"
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-success" aria-hidden />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-success">
+            {t("current")}
+          </span>
+        </div>
+        <p className="mt-2 truncate text-lg font-bold text-foreground">
+          {appointment.patient.fullName}
+        </p>
+        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span className="truncate">{serviceName}</span>
+          <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-success">
+            <ClockIcon className="size-3" />
+            {remaining.label}
+          </span>
+        </div>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/60">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-success to-success/80 transition-all"
+            style={{ width: `${remaining.pct}%` }}
+          />
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onComplete}
+        disabled={pending}
+        className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md bg-success px-2 py-1.5 text-[11px] font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50"
+      >
+        <CheckIcon className="size-3.5" />
+        {t("complete")}
+      </button>
+    </div>
   );
 }
 
@@ -285,8 +327,8 @@ function AwaitingBlock({ nextTime }: { nextTime: Date | null }) {
   return (
     <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
       <div className="flex items-center justify-center gap-1.5">
-        <HourglassIcon className="size-3.5 text-[color:var(--warning)]" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--warning)]">
+        <HourglassIcon className="size-3.5 text-warning" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-warning">
           {t("awaitingPatient")}
         </span>
       </div>
@@ -311,8 +353,8 @@ function EmptyBlock() {
   return (
     <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
       <div className="flex items-center justify-center gap-1.5">
-        <HourglassIcon className="size-3.5 text-[color:var(--warning)]" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--warning)]">
+        <HourglassIcon className="size-3.5 text-warning" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-warning">
           {t("awaitingPatient")}
         </span>
       </div>

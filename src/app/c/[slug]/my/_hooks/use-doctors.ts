@@ -16,30 +16,55 @@ export type MiniAppDoctor = {
   rating: number | string | null;
   reviewCount: number;
   color: string;
-  services: {
-    service: { id: string; category: string | null; priceBase: number };
-  }[];
+  // Accepts two API shapes so the client stays robust while the dev server
+  // is rebuilding after a route-handler change: the new nested shape with
+  // category + priceBase, and the legacy flat shape with just serviceId.
+  services: (
+    | { service: { id: string; category: string | null; priceBase: number } }
+    | { serviceId: string }
+  )[];
 };
+
+function linkServiceId(
+  link: MiniAppDoctor["services"][number],
+): string | null {
+  if ("service" in link && link.service?.id) return link.service.id;
+  if ("serviceId" in link && link.serviceId) return link.serviceId;
+  return null;
+}
 
 /**
  * Pick the default service for a doctor — the one we auto-assign to the
  * booking draft when the wizard advances past the doctor step (the API
  * still requires `serviceIds[]`, but the UX only asks the patient to pick
  * a specialty → doctor → slot). Prefers a consultation-category service,
- * then falls back to the cheapest one the doctor offers.
+ * then the cheapest one; if only flat IDs are available (legacy shape),
+ * returns the first one.
  */
 export function pickDefaultService(
   links: MiniAppDoctor["services"],
 ): string | null {
-  if (links.length === 0) return null;
-  const consult = links.find((l) =>
-    (l.service.category ?? "").toLowerCase().includes("консульт"),
+  if (!links || links.length === 0) return null;
+  const nested = links.filter(
+    (l): l is { service: { id: string; category: string | null; priceBase: number } } =>
+      "service" in l && !!l.service?.id,
   );
-  if (consult) return consult.service.id;
-  const cheapest = [...links].sort(
-    (a, b) => a.service.priceBase - b.service.priceBase,
-  )[0];
-  return cheapest?.service.id ?? null;
+  if (nested.length > 0) {
+    const consult = nested.find((l) =>
+      (l.service.category ?? "").toLowerCase().includes("консульт"),
+    );
+    if (consult) return consult.service.id;
+    const cheapest = [...nested].sort(
+      (a, b) => a.service.priceBase - b.service.priceBase,
+    )[0];
+    return cheapest.service.id;
+  }
+  // Legacy flat shape — pick first available serviceId.
+  for (const l of links) {
+    const id = linkServiceId(l);
+    if (id) return id;
+  }
+  return null;
 }
 
 /**
@@ -52,7 +77,7 @@ export function useDoctors(serviceId: string | null) {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppDoctor[]>({
     queryKey: ["miniapp", "doctors", clinicSlug, serviceId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const body = await request<{ doctors: MiniAppDoctor[] }>(
         "/api/miniapp/doctors",
         {

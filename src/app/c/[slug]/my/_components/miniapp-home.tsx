@@ -23,18 +23,22 @@ function CtaTile({
   href,
   label,
   icon: Icon,
+  delay,
 }: {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  delay?: number;
 }) {
   return (
     <Link
       href={href}
-      className="flex min-h-[112px] flex-col justify-between rounded-2xl p-4 text-left"
+      className="ma-fade-up flex min-h-[112px] flex-col justify-between rounded-2xl p-4 text-left transition active:scale-[0.98]"
       style={{
         backgroundColor: "var(--tg-section-bg)",
         color: "var(--tg-text)",
+        animationDelay: delay != null ? `${delay}ms` : undefined,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       <span style={{ color: "var(--tg-accent)" }}>
@@ -90,7 +94,7 @@ function HomeContent({ slug }: { slug: string }) {
 
   return (
     <>
-      <div className="mb-5">
+      <div className="ma-fade-up mb-5" style={{ animationDelay: "0ms" }}>
         <h1 className="text-2xl font-bold leading-tight">
           {t.home.greeting.replace("{name}", firstName)}
         </h1>
@@ -98,57 +102,67 @@ function HomeContent({ slug }: { slug: string }) {
           {t.home.subtitle}
         </p>
       </div>
-      <MSection title={t.home.upcomingHeader}>
-        {upcoming.isLoading ? (
-          <MSpinner />
-        ) : upcoming.data && upcoming.data.length > 0 ? (
-          <MCard>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-base font-semibold">
-                  {lang === "UZ"
-                    ? upcoming.data[0].doctor.nameUz
-                    : upcoming.data[0].doctor.nameRu}
+      <div className="ma-fade-up" style={{ animationDelay: "60ms" }}>
+        <MSection title={t.home.upcomingHeader}>
+          {upcoming.isLoading ? (
+            <MSpinner />
+          ) : upcoming.data && upcoming.data.length > 0 ? (
+            <MCard>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-base font-semibold">
+                    {lang === "UZ"
+                      ? upcoming.data[0].doctor.nameUz
+                      : upcoming.data[0].doctor.nameRu}
+                  </div>
+                  <div
+                    className="mt-0.5 text-xs"
+                    style={{ color: "var(--tg-hint)" }}
+                  >
+                    {lang === "UZ"
+                      ? upcoming.data[0].doctor.specializationUz
+                      : upcoming.data[0].doctor.specializationRu}
+                  </div>
                 </div>
-                <div
-                  className="mt-0.5 text-xs"
-                  style={{ color: "var(--tg-hint)" }}
-                >
-                  {lang === "UZ"
-                    ? upcoming.data[0].doctor.specializationUz
-                    : upcoming.data[0].doctor.specializationRu}
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-semibold">
+                    {formatDateISO(upcoming.data[0].date, lang)}
+                  </div>
+                  <div className="text-xs" style={{ color: "var(--tg-accent)" }}>
+                    {upcoming.data[0].time ?? formatTimeISO(upcoming.data[0].date)}
+                  </div>
                 </div>
               </div>
-              <div className="shrink-0 text-right">
-                <div className="text-sm font-semibold">
-                  {formatDateISO(upcoming.data[0].date, lang)}
-                </div>
-                <div className="text-xs" style={{ color: "var(--tg-accent)" }}>
-                  {upcoming.data[0].time ?? formatTimeISO(upcoming.data[0].date)}
-                </div>
-              </div>
-            </div>
-          </MCard>
-        ) : (
-          <MEmpty>{t.home.noUpcoming}</MEmpty>
-        )}
-      </MSection>
+            </MCard>
+          ) : (
+            <MEmpty>{t.home.noUpcoming}</MEmpty>
+          )}
+        </MSection>
+      </div>
       <div className="grid grid-cols-2 gap-3">
-        <CtaTile href={`/c/${slug}/my/book/service`} label={t.home.ctaBook} icon={Calendar} />
+        <CtaTile
+          href={`/c/${slug}/my/book/service`}
+          label={t.home.ctaBook}
+          icon={Calendar}
+          delay={120}
+        />
         <CtaTile
           href={`/c/${slug}/my/appointments`}
           label={t.home.ctaMyAppointments}
           icon={History}
+          delay={170}
         />
         <CtaTile
           href={`/c/${slug}/my/documents`}
           label={t.home.ctaDocuments}
           icon={FileText}
+          delay={220}
         />
         <CtaTile
           href={`/c/${slug}/my/profile`}
           label={t.home.ctaProfile}
           icon={User}
+          delay={270}
         />
       </div>
     </>

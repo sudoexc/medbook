@@ -78,30 +78,49 @@ export function CalendarViewInner({
   const calendarRef = React.useRef<FullCalendar | null>(null);
   const conflicts = useConflictDetector();
 
-  // Sync view / date with props.
+  // Sync view / date with props. FullCalendar's changeView/gotoDate trigger
+  // synchronous flushSync internally — calling them straight from an effect
+  // during React 19 commit phase throws. Defer to a microtask so the commit
+  // finishes first.
   React.useEffect(() => {
-    const api = calendarRef.current?.getApi();
-    if (!api) return;
-    const key = fcViewKey(filters.view);
-    if (api.view.type !== key) api.changeView(key);
-    const cur = api.getDate();
-    const curKey = toDateKey(cur);
-    if (curKey !== filters.date) api.gotoDate(filters.date);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const api = calendarRef.current?.getApi();
+      if (!api) return;
+      const key = fcViewKey(filters.view);
+      if (api.view.type !== key) api.changeView(key);
+      const cur = api.getDate();
+      const curKey = toDateKey(cur);
+      if (curKey !== filters.date) api.gotoDate(filters.date);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [filters.view, filters.date]);
 
   const resources = React.useMemo<ResourceInput[]>(() => {
     const selected = filters.doctorIds.length
       ? new Set(filters.doctorIds)
       : null;
-    return doctors
-      .filter((d) => (selected ? selected.has(d.id) : true))
-      .map((d) => ({
-        id: d.id,
-        title: locale === "uz" ? d.nameUz : d.nameRu,
-        eventColor: d.color ?? "#3DD5C0",
-        extendedProps: { doctor: d },
-      }));
-  }, [doctors, filters.doctorIds, locale]);
+    let visible = doctors.filter((d) => (selected ? selected.has(d.id) : true));
+    // Resource × day × time turns to mush past ~2 doctors: in a 5/7-day grid
+    // every column is ~30px and tiles become illegible. Industry-standard
+    // clinical calendars (Doctolib, NexHealth, Cliniko) all show ONE doctor's
+    // week at a time. Switch via the doctor tab strip in the toolbar.
+    if (filters.view !== "day" && visible.length > 1) {
+      visible = visible.slice(0, 1);
+    }
+    if (visible.length === 0 && filters.view !== "day" && doctors.length > 0) {
+      visible = [doctors[0]!];
+    }
+    return visible.map((d) => ({
+      id: d.id,
+      title: locale === "uz" ? d.nameUz : d.nameRu,
+      eventColor: d.color ?? "#3DD5C0",
+      extendedProps: { doctor: d },
+    }));
+  }, [doctors, filters.doctorIds, filters.view, locale]);
 
   // Single timestamp so doctor-header "active now" and "late" stay stable.
   const [nowMs] = React.useState(() => Date.now());
@@ -273,8 +292,23 @@ export function CalendarViewInner({
     onEventClick(arg.event.id);
   };
 
+  // Each (resource × day) = one time-grid column. Without a min-width per
+  // column, FullCalendar squeezes 35+ columns (7 doctors × 5 days) into the
+  // viewport and nothing is readable. Compute the minimum width here and let
+  // the host scroll horizontally when it overflows. 110px is the smallest
+  // width that keeps date + status chip + truncated patient name legible.
+  const visibleDays =
+    filters.view === "day" ? 1 : filters.view === "workWeek" ? 5 : 7;
+  const minColumnPx = 110;
+  const axisGutterPx = 60;
+  const minWidthPx =
+    Math.max(1, resources.length) * visibleDays * minColumnPx + axisGutterPx;
+
   return (
-    <div className="mbk-calendar-host flex min-h-0 flex-1 overflow-hidden">
+    <div
+      className="mbk-calendar-host flex min-h-0 flex-1"
+      style={{ ["--mbk-cal-min-w" as string]: `${minWidthPx}px` }}
+    >
       <FullCalendar
         ref={calendarRef}
         plugins={[resourceTimeGridPlugin, interactionPlugin]}
@@ -346,13 +380,13 @@ function statusChip(status: string, tChip: ChipT): {
     case "BOOKED":
       return {
         label: tChip("statusBooked"),
-        className: "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#1e3a8a)]",
+        className: "bg-info/15 text-info",
         Icon: CheckCircle2Icon,
       };
     case "WAITING":
       return {
         label: tChip("statusWaiting"),
-        className: "bg-[color:var(--warning,#f59e0b)]/20 text-[color:var(--warning-foreground,#78350f)]",
+        className: "bg-warning/20 text-warning-foreground",
         Icon: ClockIcon,
       };
     case "IN_PROGRESS":
@@ -364,7 +398,7 @@ function statusChip(status: string, tChip: ChipT): {
     case "COMPLETED":
       return {
         label: tChip("statusCompleted"),
-        className: "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]",
+        className: "bg-success/15 text-success-foreground",
         Icon: CheckCircle2Icon,
       };
     case "NO_SHOW":
@@ -454,16 +488,14 @@ function renderResourceLabel(
   const s = stats.get(doctor.id);
   const activeNow = s && s.active > 0;
   const lateMin = s?.lateMin ?? 0;
-  const pillClass = activeNow
+  // "Free" is the expected default — don't render a pill for it. A reception
+  // scanning the column should only see exception signals (in-session, late).
+  // Silence = available reads faster than a low-contrast soft-green chip.
+  const exceptionPill = activeNow
     ? lateMin > 0
-      ? "bg-destructive/15 text-destructive"
-      : "bg-primary/15 text-primary"
-    : "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success-foreground,#064e3b)]";
-  const pillLabel = activeNow
-    ? lateMin > 0
-      ? tChip("lateMinutes", { min: lateMin })
-      : tChip("inSession")
-    : tChip("free");
+      ? { label: tChip("lateMinutes", { min: lateMin }), cls: "bg-destructive text-destructive-foreground" }
+      : { label: tChip("inSession"), cls: "bg-primary text-primary-foreground" }
+    : null;
   return (
     <div className="mbk-resource-label flex w-full min-w-0 max-w-full flex-col gap-1 overflow-hidden px-2 py-1.5 text-left">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -478,21 +510,18 @@ function renderResourceLabel(
           {name}
         </span>
       </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span
-          className={cn(
-            "inline-flex max-w-full shrink truncate items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-            pillClass,
-          )}
-        >
-          {pillLabel}
-        </span>
-        {s && s.total > 0 ? (
-          <span className="truncate text-[10px] text-muted-foreground">
-            · {s.total}
+      {exceptionPill && (
+        <div className="flex min-w-0 items-center">
+          <span
+            className={cn(
+              "inline-flex max-w-full shrink truncate items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+              exceptionPill.cls,
+            )}
+          >
+            {exceptionPill.label}
           </span>
-        ) : null}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

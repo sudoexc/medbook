@@ -69,10 +69,11 @@ function buildQs(filters: DocumentFilters, cursor: string | null) {
 export function useDocumentsList(filters: DocumentFilters) {
   return useInfiniteQuery({
     queryKey: ["documents", "list", filters],
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const qs = buildQs(filters, pageParam ?? null);
       const res = await fetch(`/api/crm/documents?${qs}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`documents ${res.status}`);
       return (await res.json()) as ListResponse;

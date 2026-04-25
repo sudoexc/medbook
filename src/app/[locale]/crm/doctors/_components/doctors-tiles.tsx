@@ -30,10 +30,10 @@ export interface DoctorsTilesProps {
 type Tone = "info" | "success" | "primary" | "warning" | "danger" | "neutral";
 
 const TONE: Record<Tone, { bg: string; fg: string }> = {
-  info: { bg: "bg-[color:var(--info,#3b82f6)]/10", fg: "text-[color:var(--info,#3b82f6)]" },
-  success: { bg: "bg-[color:var(--success,#10b981)]/15", fg: "text-[color:var(--success,#10b981)]" },
+  info: { bg: "bg-info/10", fg: "text-info" },
+  success: { bg: "bg-success/15", fg: "text-success" },
   primary: { bg: "bg-primary/10", fg: "text-primary" },
-  warning: { bg: "bg-[color:var(--warning,#f59e0b)]/15", fg: "text-[color:var(--warning,#f59e0b)]" },
+  warning: { bg: "bg-warning/15", fg: "text-warning" },
   danger: { bg: "bg-destructive/10", fg: "text-destructive" },
   neutral: { bg: "bg-muted", fg: "text-muted-foreground" },
 };
@@ -253,7 +253,7 @@ export function DoctorsTiles({
                 className={cn(
                   "mt-1 text-[11px] font-semibold",
                   tile.hintTone === "positive"
-                    ? "text-[color:var(--success,#10b981)]"
+                    ? "text-success"
                     : tile.hintTone === "negative"
                       ? "text-destructive"
                       : "text-muted-foreground",

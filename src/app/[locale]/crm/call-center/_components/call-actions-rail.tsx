@@ -175,7 +175,7 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
       >
         <header className="mb-2 flex items-center gap-2">
           <SparklesIcon
-            className="size-4 text-[color:var(--info,#3b82f6)]"
+            className="size-4 text-info"
             aria-hidden
           />
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -249,7 +249,7 @@ function ControlTile({
     tone === "danger"
       ? "text-destructive"
       : tone === "warning"
-        ? "text-[color:var(--warning,#f59e0b)]"
+        ? "text-warning"
         : "text-foreground";
   return (
     <Button

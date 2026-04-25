@@ -99,9 +99,9 @@ export function PatientRightRail({
   const risk = t(riskKey as never);
   const riskTone =
     noShowPct === 0
-      ? "text-[color:var(--success,#10b981)]"
+      ? "text-success"
       : noShowPct < 15
-        ? "text-[color:var(--warning,#f59e0b)]"
+        ? "text-warning"
         : "text-destructive";
 
   const phoneHref = patient.phone
@@ -144,7 +144,7 @@ export function PatientRightRail({
         <StatusRow
           label={t("statusLabel")}
           value={
-            <span className="inline-flex items-center rounded-md bg-[color:var(--success,#10b981)]/15 px-2 py-0.5 text-[11px] font-semibold text-[color:var(--success,#10b981)]">
+            <span className="inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
               {t("statusActive")}
             </span>
           }

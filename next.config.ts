@@ -47,12 +47,22 @@ const nextConfig: NextConfig = {
   // deploy that via Docker (see Dockerfile) — no `node_modules/` in the
   // final image. See `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`.
   output: "standalone",
+  // Hide the Next.js dev tools indicator ("N" pill in the corner) — it
+  // overlaps the Telegram Mini App's FAB area and confuses clients testing
+  // the bot. Build/runtime errors still surface in the console.
+  devIndicators: false,
   // Allow dev-mode cross-origin loads from the public tunnel hosts we use
   // for Telegram bot/Mini-App testing (cloudflared quick tunnels, ngrok).
   // Without this, Next 16 dev blocks HMR + static chunks when the app is
   // opened via the tunnel URL.
   ...(isDev
-    ? { allowedDevOrigins: ["*.trycloudflare.com", "*.ngrok-free.app"] }
+    ? {
+        allowedDevOrigins: [
+          "*.trycloudflare.com",
+          "*.ngrok-free.app",
+          "*.lhr.life",
+        ],
+      }
     : {}),
   async headers() {
     return [

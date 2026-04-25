@@ -52,10 +52,11 @@ export function PatientPicker({
   const hits = useQuery<PatientHit[], Error>({
     queryKey: ["patient-autocomplete", searchDebounced],
     enabled: open && searchDebounced.length >= 2,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams({ q: searchDebounced, limit: "10" });
       const res = await fetch(`/api/crm/patients?${qs.toString()}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: PatientHit[] };

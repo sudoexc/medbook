@@ -34,9 +34,9 @@ type Tile = {
 const TONE: Record<Tone, { bg: string; fg: string }> = {
   neutral: { bg: "bg-muted", fg: "text-foreground" },
   danger: { bg: "bg-destructive/10", fg: "text-destructive" },
-  warning: { bg: "bg-warning/15", fg: "text-[color:var(--warning)]" },
-  purple: { bg: "bg-info/10", fg: "text-[color:var(--info)]" },
-  success: { bg: "bg-success/15", fg: "text-[color:var(--success)]" },
+  warning: { bg: "bg-warning/15", fg: "text-warning" },
+  purple: { bg: "bg-info/10", fg: "text-info" },
+  success: { bg: "bg-success/15", fg: "text-success" },
 };
 
 /**

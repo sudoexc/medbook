@@ -73,7 +73,7 @@ export function AuditPageClient() {
   const audit = useInfiniteQuery({
     queryKey: ["admin", "audit", clinicId, entityType, action, from, to],
     initialPageParam: "",
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const p = new URLSearchParams();
       if (clinicId) p.set("clinicId", clinicId);
       if (entityType) p.set("entityType", entityType);

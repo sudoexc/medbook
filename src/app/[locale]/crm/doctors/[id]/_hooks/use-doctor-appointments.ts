@@ -38,7 +38,7 @@ export function useDoctorAppointments(
   return useQuery<{ rows: DoctorAppointment[] }, Error>({
     queryKey: ["doctor", doctorId, "appointments", range],
     enabled: Boolean(range),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams({
         doctorId,
         limit: "500",
@@ -46,6 +46,7 @@ export function useDoctorAppointments(
       });
       const res = await fetch(`/api/crm/appointments?${qs.toString()}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { rows: DoctorAppointment[] };

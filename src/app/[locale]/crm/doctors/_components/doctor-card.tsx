@@ -39,9 +39,9 @@ export interface DoctorCardProps {
  */
 function loadColor(pct: number): string {
   if (pct < 30) return "bg-destructive";
-  if (pct < 60) return "bg-[color:var(--warning,#f59e0b)]";
-  if (pct < 80) return "bg-[color:var(--success,#10b981)]/70";
-  return "bg-[color:var(--success,#10b981)]";
+  if (pct < 60) return "bg-warning";
+  if (pct < 80) return "bg-success/70";
+  return "bg-success";
 }
 
 function useStatusLabel() {
@@ -92,9 +92,9 @@ export function DoctorCard({
   const pill = (() => {
     if (status === "busy")
       return {
-        bg: "bg-[color:var(--success,#10b981)]/15",
-        fg: "text-[color:var(--success,#10b981)]",
-        dot: "bg-[color:var(--success,#10b981)]",
+        bg: "bg-success/15",
+        fg: "text-success",
+        dot: "bg-success",
       };
     if (status === "idle")
       return {
@@ -115,7 +115,7 @@ export function DoctorCard({
   return (
     <div
       className={cn(
-        "flex min-h-[320px] w-[260px] shrink-0 flex-col rounded-2xl border bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,.04)]",
+        "flex min-h-[320px] w-[260px] shrink-0 flex-col rounded-2xl border bg-card p-3 shadow-sm",
         accentBorder,
         accentBg,
         className,
@@ -207,7 +207,7 @@ export function DoctorCard({
                 key={s}
                 className={cn(
                   "inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
-                  "bg-[color:var(--success,#10b981)]/10 text-[color:var(--success,#10b981)]",
+                  "bg-success/10 text-success",
                 )}
               >
                 {s}

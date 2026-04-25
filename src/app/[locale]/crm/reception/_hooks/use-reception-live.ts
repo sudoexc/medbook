@@ -127,9 +127,10 @@ export function todayRange(now = new Date()): { from: Date; to: Date } {
 export function useReceptionDashboard() {
   return useQuery<DashboardResponse, Error>({
     queryKey: ["reception", "dashboard"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/dashboard?period=today`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as DashboardResponse;
@@ -146,7 +147,7 @@ export function useTodayAppointments() {
   const toIso = to.toISOString();
   return useQuery<AppointmentRow[], Error>({
     queryKey: ["reception", "appointments", "today", fromIso, toIso],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const out: AppointmentRow[] = [];
       let cursor: string | undefined;
       for (let i = 0; i < 10; i += 1) {
@@ -159,6 +160,7 @@ export function useTodayAppointments() {
         if (cursor) sp.set("cursor", cursor);
         const res = await fetch(`/api/crm/appointments?${sp.toString()}`, {
           credentials: "include",
+          signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const j = (await res.json()) as AppointmentsListResponse;
@@ -176,9 +178,10 @@ export function useTodayAppointments() {
 export function useActiveDoctors() {
   return useQuery<DoctorRef[], Error>({
     queryKey: ["reception", "doctors"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/doctors?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: DoctorRef[] };
@@ -192,9 +195,10 @@ export function useActiveDoctors() {
 export function useReceptionCabinets() {
   return useQuery<CabinetRef[], Error>({
     queryKey: ["reception", "cabinets"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: CabinetRef[] };
@@ -215,12 +219,13 @@ export function useReceptionCabinets() {
 export function useIncomingCalls() {
   return useQuery<CallRow[], Error>({
     queryKey: ["reception", "calls"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const sp = new URLSearchParams();
       sp.set("direction", "IN");
       sp.set("limit", "20");
       const res = await fetch(`/api/crm/calls?${sp.toString()}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) {
         if (res.status === 404) return [];
@@ -241,13 +246,14 @@ export function useIncomingCalls() {
 export function useUnreadConversations() {
   return useQuery<ConversationRow[], Error>({
     queryKey: ["reception", "conversations"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const sp = new URLSearchParams();
       sp.set("unread", "true");
       sp.set("status", "OPEN");
       sp.set("limit", "20");
       const res = await fetch(`/api/crm/conversations?${sp.toString()}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) {
         if (res.status === 404) return [];

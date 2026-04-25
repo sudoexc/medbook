@@ -66,7 +66,7 @@ export function useDoctorsAppointmentsAgg(range: {
 }) {
   return useQuery<DoctorAggregateAppointment[], Error>({
     queryKey: ["doctors", "appointments-agg", range],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const qs = new URLSearchParams({
         from: range.from,
         to: range.to,
@@ -74,6 +74,7 @@ export function useDoctorsAppointmentsAgg(range: {
       });
       const res = await fetch(`/api/crm/appointments?${qs.toString()}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as {

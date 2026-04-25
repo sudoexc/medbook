@@ -106,7 +106,7 @@ export function TemplateTree({ templates, selectedId, onSelect, isLoading }: Pro
                               className={cn(
                                 "size-3.5 shrink-0",
                                 tpl.channel === "TG"
-                                  ? "text-[color:var(--info)]"
+                                  ? "text-info"
                                   : "text-muted-foreground",
                               )}
                             />

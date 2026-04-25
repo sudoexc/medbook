@@ -34,9 +34,10 @@ export const patientsStatsKey = ["patients", "stats"] as const;
 export function usePatientsStats() {
   return useQuery<PatientsStats, Error>({
     queryKey: patientsStatsKey,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/patients/stats", {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`Failed to load stats: ${res.status}`);
       return (await res.json()) as PatientsStats;
@@ -59,9 +60,10 @@ export type DashboardResponse = {
 export function usePatientsDashboard() {
   return useQuery<DashboardResponse, Error>({
     queryKey: ["crm", "dashboard"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/dashboard", {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`Failed to load dashboard: ${res.status}`);
       return (await res.json()) as DashboardResponse;

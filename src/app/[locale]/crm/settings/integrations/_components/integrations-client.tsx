@@ -193,12 +193,12 @@ function IntegrationCard({
           </div>
         </div>
         {state === "ok" ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">
             <CheckCircle2Icon className="size-3" />
             {t("integrations.state.ok")}
           </span>
         ) : state === "warning" ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
             <TriangleAlertIcon className="size-3" />
             {t("integrations.state.incomplete")}
           </span>

@@ -113,7 +113,7 @@ function FinanceRow({
         className={cn(
           "font-semibold tabular-nums",
           tone === "success"
-            ? "text-[color:var(--success,#10b981)]"
+            ? "text-success"
             : tone === "danger"
               ? "text-destructive"
               : "text-foreground",

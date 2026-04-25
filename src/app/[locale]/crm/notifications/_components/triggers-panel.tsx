@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { LinkIcon, ZapIcon } from "lucide-react";
 
@@ -25,6 +25,7 @@ const DELAY_LABEL: Record<string, string> = {
 
 export function TriggersPanel() {
   const t = useTranslations("notifications");
+  const locale = useLocale();
   const query = useTriggers();
   const toggleMut = useToggleTrigger();
 
@@ -43,7 +44,7 @@ export function TriggersPanel() {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-2">
-        <ZapIcon className="size-4 text-[color:var(--primary)]" />
+        <ZapIcon className="size-4 text-primary" />
         <h3 className="text-sm font-semibold">{t("triggers.title")}</h3>
       </div>
       <p className="text-xs text-muted-foreground">{t("triggers.hint")}</p>
@@ -84,7 +85,7 @@ export function TriggersPanel() {
                     {linked ? (
                       <span className="flex items-center gap-1">
                         <LinkIcon className="size-3.5" />
-                        {row.template?.nameRu}
+                        {locale === "uz" ? row.template?.nameUz : row.template?.nameRu}
                         <Badge variant="outline" className="ml-1">
                           {row.template?.channel}
                         </Badge>

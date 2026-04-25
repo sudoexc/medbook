@@ -38,13 +38,13 @@ export function queueKey(status: QueueStatus | null) {
 export function useQueue(status: QueueStatus | null) {
   return useQuery<QueueResponse>({
     queryKey: queueKey(status),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
       params.set("limit", "200");
       const res = await fetch(
         `/api/crm/notifications/sends?${params.toString()}`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`Failed to load queue: ${res.status}`);
       return (await res.json()) as QueueResponse;
@@ -91,9 +91,10 @@ export type StatsResponse = {
 export function useNotificationsStats() {
   return useQuery<StatsResponse>({
     queryKey: ["notifications", "stats"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch("/api/crm/notifications/stats", {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`Failed to load stats: ${res.status}`);
       return (await res.json()) as StatsResponse;

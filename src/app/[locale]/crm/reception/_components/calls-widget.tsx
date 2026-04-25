@@ -136,7 +136,7 @@ function HeroCall({
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
         </span>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--destructive)]">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
           {t("incomingLabel")}
         </span>
       </div>
@@ -152,11 +152,11 @@ function HeroCall({
               {row.patient?.fullName ?? t("unknownCaller")}
             </p>
             {isVip ? (
-              <span className="inline-flex items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[color:var(--warning)]">
+              <span className="inline-flex items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">
                 {t("tagVip")}
               </span>
             ) : row.patient ? (
-              <span className="inline-flex items-center rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[color:var(--success)]">
+              <span className="inline-flex items-center rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-success">
                 {t("tagClient")}
               </span>
             ) : (
@@ -217,7 +217,7 @@ function QueueCallRow({ row }: { row: CallRow }) {
       <span
         className={cn(
           "shrink-0 text-[11px] font-semibold tabular-nums",
-          row.endedAt ? "text-muted-foreground" : "text-[color:var(--success)]",
+          row.endedAt ? "text-muted-foreground" : "text-success",
         )}
       >
         {durationLabel}

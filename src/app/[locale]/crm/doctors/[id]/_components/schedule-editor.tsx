@@ -58,9 +58,10 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
 
   const cabinetsQuery = useQuery<CabinetOption[], Error>({
     queryKey: ["cabinets", "doctor-schedule"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: CabinetOption[] };
@@ -174,7 +175,7 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
         </div>
         <div className="flex items-center gap-2">
           {dirty ? (
-            <span className="text-xs text-[color:var(--warning-foreground)]">
+            <span className="text-xs text-warning-foreground">
               {t("dirtyHint")}
             </span>
           ) : null}

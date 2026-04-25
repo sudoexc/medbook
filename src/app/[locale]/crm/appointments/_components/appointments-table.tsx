@@ -229,7 +229,7 @@ export function AppointmentsTable({
                     {p.fullName}
                   </span>
                   {isVip ? (
-                    <span className="inline-flex items-center rounded-md bg-warning/15 px-1 py-px text-[9px] font-bold uppercase text-[color:var(--warning)]">
+                    <span className="inline-flex items-center rounded-md bg-warning/15 px-1 py-px text-[9px] font-bold uppercase text-warning">
                       VIP
                     </span>
                   ) : null}
@@ -310,7 +310,7 @@ export function AppointmentsTable({
                   {t("cell.lateMin", { min: late })}
                 </span>
               ) : tone === "warning" ? (
-                <span className="mt-0.5 inline-flex w-fit items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-[color:var(--warning)]">
+                <span className="mt-0.5 inline-flex w-fit items-center rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-warning">
                   {t("cell.inMin", {
                     min: Math.max(
                       0,
@@ -358,8 +358,8 @@ export function AppointmentsTable({
             r === "high"
               ? "bg-destructive/10 text-destructive"
               : r === "medium"
-                ? "bg-warning/15 text-[color:var(--warning)]"
-                : "bg-success/15 text-[color:var(--success)]";
+                ? "bg-warning/15 text-warning"
+                : "bg-success/15 text-success";
           return (
             <span
               className={cn(
@@ -393,9 +393,9 @@ export function AppointmentsTable({
                 className={cn(
                   "text-[11px] font-medium",
                   ps === "PAID"
-                    ? "text-[color:var(--success)]"
+                    ? "text-success"
                     : ps === "PARTIAL"
-                      ? "text-[color:var(--warning)]"
+                      ? "text-warning"
                       : "text-muted-foreground",
                 )}
               >

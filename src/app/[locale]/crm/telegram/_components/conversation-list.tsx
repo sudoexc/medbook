@@ -97,7 +97,7 @@ export function ConversationList({
               type="button"
               onClick={() => setFilters({ mode: m })}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                 filters.mode === m
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border text-muted-foreground hover:text-foreground",

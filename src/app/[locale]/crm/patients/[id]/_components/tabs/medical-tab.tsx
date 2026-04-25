@@ -58,7 +58,7 @@ export function MedicalTab({ patient, role }: MedicalTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-[color:var(--warning-foreground)]">
+      <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
         <AlertTriangleIcon className="size-4 shrink-0" />
         <p>{t("stubNotice")}</p>
       </div>

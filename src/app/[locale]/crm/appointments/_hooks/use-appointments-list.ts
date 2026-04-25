@@ -159,10 +159,11 @@ export function useAppointmentsList(
   >({
     queryKey: appointmentsListKey(filters),
     initialPageParam: undefined,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const qs = buildSearch(filters, pageParam, limit);
       const res = await fetch(`/api/crm/appointments?${qs}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) {
         throw new Error(`Failed to load appointments: ${res.status}`);

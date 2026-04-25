@@ -36,9 +36,10 @@ export function useAppointment(id: string | null | undefined) {
   return useQuery<AppointmentDetail, Error>({
     queryKey: appointmentKey(id ?? "__none"),
     enabled: Boolean(id),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/appointments/${id}`, {
         credentials: "include",
+        signal,
       });
       if (res.status === 404) throw new Error("NOT_FOUND");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -76,7 +77,9 @@ export type AppointmentConflict = {
     | "doctor_busy"
     | "cabinet_busy"
     | "doctor_time_off"
-    | "outside_schedule";
+    | "outside_schedule"
+    | "invalid_transition"
+    | "in_past";
   until?: string;
 };
 
@@ -150,6 +153,9 @@ export function usePatchAppointment(id: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: appointmentKey(id) });
       qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+      qc.invalidateQueries({ queryKey: ["reception"] });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
     },
   });
 }
@@ -167,6 +173,9 @@ export function useDeleteAppointment(id: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+      qc.invalidateQueries({ queryKey: ["reception"] });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
       qc.removeQueries({ queryKey: appointmentKey(id) });
     },
   });
@@ -190,6 +199,15 @@ export function useSetQueueStatus(id: string) {
           body: JSON.stringify({ queueStatus }),
         },
       );
+      if (res.status === 409) {
+        const j = (await res.json().catch(() => null)) as {
+          reason?: string;
+        } | null;
+        throw new AppointmentConflictError({
+          reason:
+            (j?.reason as AppointmentConflict["reason"]) ?? "invalid_transition",
+        });
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as AppointmentDetail;
     },
@@ -214,6 +232,9 @@ export function useSetQueueStatus(id: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: appointmentKey(id) });
       qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+      qc.invalidateQueries({ queryKey: ["reception"] });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
     },
   });
 }
@@ -232,11 +253,23 @@ export function useBulkStatus() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 409) {
+        const j = (await res.json().catch(() => null)) as {
+          reason?: string;
+        } | null;
+        throw new AppointmentConflictError({
+          reason:
+            (j?.reason as AppointmentConflict["reason"]) ?? "invalid_transition",
+        });
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { count: number };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+      qc.invalidateQueries({ queryKey: ["reception"] });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
     },
   });
 }

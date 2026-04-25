@@ -36,17 +36,17 @@ function cellColor(pct: number): { bg: string; fg: string } {
     };
   if (pct < 60)
     return {
-      bg: "bg-[color:var(--warning,#f59e0b)]/20",
-      fg: "text-[color:var(--warning,#f59e0b)]",
+      bg: "bg-warning/20",
+      fg: "text-warning",
     };
   if (pct < 80)
     return {
-      bg: "bg-[color:var(--success,#10b981)]/20",
-      fg: "text-[color:var(--success,#10b981)]",
+      bg: "bg-success/20",
+      fg: "text-success",
     };
   return {
-    bg: "bg-[color:var(--success,#10b981)]/35",
-    fg: "text-[color:var(--success,#10b981)]",
+    bg: "bg-success/35",
+    fg: "text-success",
   };
 }
 
@@ -165,15 +165,15 @@ export function DoctorsHeatmap({
       <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
         <LegendDot className="bg-destructive" label={t("legendLow")} />
         <LegendDot
-          className="bg-[color:var(--warning,#f59e0b)]"
+          className="bg-warning"
           label={t("legendMedium")}
         />
         <LegendDot
-          className="bg-[color:var(--success,#10b981)]/70"
+          className="bg-success/70"
           label={t("legendGood")}
         />
         <LegendDot
-          className="bg-[color:var(--success,#10b981)]"
+          className="bg-success"
           label={t("legendHigh")}
         />
       </div>

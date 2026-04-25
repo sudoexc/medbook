@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams, usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import {
   BarChart3Icon,
   BellIcon,
@@ -24,70 +25,82 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useShellSummary } from "@/hooks/use-shell-summary"
+
+type BadgeTone = "danger" | "info" | "warning" | "success"
+/** Keys into ShellSummary.unread — drives the live badge count for each nav item. */
+type BadgeKey = "calls" | "telegram" | "smsEmail" | "notifications"
 
 type NavItem = {
   href: string
-  label: string
+  /** key under crmShell.sidebarNav */
+  labelKey: string
   icon: LucideIcon
-  badge?: { count: number; tone: "danger" | "info" | "warning" | "success" }
+  badgeKey?: BadgeKey
+  badgeTone?: BadgeTone
 }
 
 type NavGroup = {
-  label?: string
+  /** key under crmShell.sidebarNav */
+  labelKey?: string
   items: NavItem[]
 }
 
 const NAV: NavGroup[] = [
   {
     items: [
-      { href: "reception", label: "Ресепшн", icon: LayoutDashboardIcon },
-      { href: "appointments", label: "Записи", icon: ClipboardListIcon },
-      { href: "calendar", label: "Расписание", icon: CalendarDaysIcon },
-      { href: "patients", label: "Пациенты", icon: UsersIcon },
-      { href: "doctors", label: "Врачи", icon: StethoscopeIcon },
-      { href: "rooms", label: "Кабинеты", icon: DoorOpenIcon },
-      { href: "services", label: "Услуги", icon: SparklesIcon },
-      { href: "documents", label: "Документы", icon: FileTextIcon },
+      { href: "reception", labelKey: "reception", icon: LayoutDashboardIcon },
+      { href: "appointments", labelKey: "appointments", icon: ClipboardListIcon },
+      { href: "calendar", labelKey: "calendar", icon: CalendarDaysIcon },
+      { href: "patients", labelKey: "patients", icon: UsersIcon },
+      { href: "doctors", labelKey: "doctors", icon: StethoscopeIcon },
+      { href: "rooms", labelKey: "rooms", icon: DoorOpenIcon },
+      { href: "services", labelKey: "services", icon: SparklesIcon },
+      { href: "documents", labelKey: "documents", icon: FileTextIcon },
     ],
   },
   {
-    label: "Коммуникации",
+    labelKey: "communications",
     items: [
       {
         href: "call-center",
-        label: "Call Center",
+        labelKey: "callCenter",
         icon: PhoneCallIcon,
-        badge: { count: 3, tone: "danger" },
+        badgeKey: "calls",
+        badgeTone: "danger",
       },
       {
         href: "telegram",
-        label: "Telegram",
+        labelKey: "telegram",
         icon: SendIcon,
-        badge: { count: 8, tone: "info" },
+        badgeKey: "telegram",
+        badgeTone: "info",
       },
       {
         href: "sms",
-        label: "SMS-Email",
+        labelKey: "smsEmail",
         icon: MailIcon,
-        badge: { count: 2, tone: "warning" },
+        badgeKey: "smsEmail",
+        badgeTone: "warning",
       },
       {
         href: "notifications",
-        label: "Уведомления",
+        labelKey: "notifications",
         icon: BellIcon,
-        badge: { count: 5, tone: "danger" },
+        badgeKey: "notifications",
+        badgeTone: "danger",
       },
     ],
   },
   {
     items: [
-      { href: "analytics", label: "Аналитика", icon: BarChart3Icon },
-      { href: "settings", label: "Настройки", icon: SettingsIcon },
+      { href: "analytics", labelKey: "analytics", icon: BarChart3Icon },
+      { href: "settings", labelKey: "settings", icon: SettingsIcon },
     ],
   },
 ]
 
-const BADGE_CLASS: Record<NonNullable<NavItem["badge"]>["tone"], string> = {
+const BADGE_CLASS: Record<BadgeTone, string> = {
   danger: "bg-destructive text-destructive-foreground",
   info: "bg-info text-info-foreground",
   warning: "bg-warning text-warning-foreground",
@@ -147,18 +160,17 @@ function DonutGauge({
 
 export interface CrmSidebarProps {
   brand?: string
-  loadPercent?: number
-  todayCount?: number
 }
 
-export function CrmSidebar({
-  brand = "Neurofax",
-  loadPercent = 83,
-  todayCount = 128,
-}: CrmSidebarProps) {
+export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
   const pathname = usePathname() ?? ""
   const params = useParams()
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
+  const tNav = useTranslations("crmShell.sidebarNav")
+  const tShell = useTranslations("crmShell")
+  const { data: summary } = useShellSummary()
+  const loadPercent = summary?.today.loadPercent ?? 0
+  const todayCount = summary?.today.appointmentsCount ?? 0
 
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -168,25 +180,27 @@ export function CrmSidebar({
         </div>
         <div className="leading-tight">
           <div className="text-sm font-semibold text-foreground">{brand}</div>
-          <div className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
-            умная клиника
+          <div className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+            {tShell("brand.tagline")}
           </div>
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-1">
         {NAV.map((group, gi) => (
           <div key={gi} className={cn(gi > 0 && "mt-4")}>
-            {group.label ? (
-              <div className="mb-1 px-3 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
-                {group.label}
+            {group.labelKey ? (
+              <div className="mb-1 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+                {tNav(group.labelKey)}
               </div>
             ) : null}
-            <ul className="space-y-0.5">
+            <ul className="space-y-1">
               {group.items.map((item) => {
                 const full = `/${locale}/crm/${item.href}`
                 const active =
                   pathname === full || pathname.startsWith(full + "/")
                 const Icon = item.icon
+                const badgeCount =
+                  item.badgeKey ? summary?.unread[item.badgeKey] ?? 0 : 0
                 return (
                   <li key={item.href}>
                     <Link
@@ -202,7 +216,7 @@ export function CrmSidebar({
                       {active ? (
                         <span
                           aria-hidden
-                          className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-success"
+                          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-success"
                         />
                       ) : null}
                       <Icon
@@ -211,15 +225,15 @@ export function CrmSidebar({
                           active ? "text-success" : "text-muted-foreground",
                         )}
                       />
-                      <span className="flex-1 truncate">{item.label}</span>
-                      {item.badge ? (
+                      <span className="flex-1 truncate">{tNav(item.labelKey)}</span>
+                      {item.badgeTone && badgeCount > 0 ? (
                         <span
                           className={cn(
                             "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold",
-                            BADGE_CLASS[item.badge.tone],
+                            BADGE_CLASS[item.badgeTone],
                           )}
                         >
-                          {item.badge.count}
+                          {badgeCount}
                         </span>
                       ) : null}
                     </Link>
@@ -241,7 +255,7 @@ export function CrmSidebar({
               {todayCount}
             </div>
             <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Записей сегодня
+              {tShell("footer.todayCount")}
             </div>
           </div>
         </Link>
@@ -250,7 +264,7 @@ export function CrmSidebar({
           className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
         >
           <ChevronsLeftIcon className="size-3.5" />
-          Свернуть
+          {tShell("footer.collapse")}
         </button>
       </div>
     </aside>

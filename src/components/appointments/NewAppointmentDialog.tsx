@@ -123,9 +123,10 @@ export function NewAppointmentDialog({
   const preloadPatient = useQuery<PatientHit | null, Error>({
     queryKey: ["patient-preload", patientId],
     enabled: Boolean(open && patientId),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/patients/${patientId}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) return null;
       const j = (await res.json()) as PatientHit;
@@ -148,11 +149,12 @@ export function NewAppointmentDialog({
     enabled: Boolean(
       open && initialPatientPhone && !patientId,
     ),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!initialPatientPhone) return [];
       const sp = new URLSearchParams({ q: initialPatientPhone, limit: "5" });
       const res = await fetch(`/api/crm/patients?${sp.toString()}`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) return [];
       const j = (await res.json()) as { rows: PatientHit[] };
@@ -201,9 +203,10 @@ export function NewAppointmentDialog({
   const doctorsQuery = useQuery<DoctorHit[], Error>({
     queryKey: ["doctors", "dialog"],
     enabled: open,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/doctors?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: DoctorHit[] };
@@ -215,9 +218,10 @@ export function NewAppointmentDialog({
   const servicesQuery = useQuery<ServiceHit[], Error>({
     queryKey: ["services", "dialog"],
     enabled: open,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/services?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: ServiceHit[] };
@@ -229,9 +233,10 @@ export function NewAppointmentDialog({
   const cabinetsQuery = useQuery<CabinetHit[], Error>({
     queryKey: ["cabinets", "dialog"],
     enabled: open,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
         credentials: "include",
+        signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = (await res.json()) as { rows: CabinetHit[] };
@@ -334,6 +339,9 @@ export function NewAppointmentDialog({
     },
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
+      qc.invalidateQueries({ queryKey: ["reception"] });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
       toast.success(t("createdToast"));
       onOpenChange(false);
       setState(EMPTY);

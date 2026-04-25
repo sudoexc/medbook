@@ -105,7 +105,7 @@ export function ServicePicker() {
   if (doctors.isError) return <MEmpty>{t.common.error}</MEmpty>;
 
   return (
-    <div>
+    <div className="ma-step-enter">
       <WizardHeader
         step={1}
         label={t.book.stepLabel.replace("{step}", "1").replace("{total}", "4")}

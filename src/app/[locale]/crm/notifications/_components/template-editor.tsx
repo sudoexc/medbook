@@ -331,7 +331,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
               key={k}
               type="button"
               onClick={() => insertPlaceholder(k)}
-              className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-mono text-[color:var(--primary)] hover:bg-primary/20"
+              className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-mono text-primary hover:bg-primary/20"
             >
               {"{{"}
               {k}

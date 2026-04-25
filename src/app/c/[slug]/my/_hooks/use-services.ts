@@ -17,7 +17,7 @@ export function useServices() {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppService[]>({
     queryKey: ["miniapp", "services", clinicSlug],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const body = await request<{ services: MiniAppService[] }>(
         "/api/miniapp/services",
       );

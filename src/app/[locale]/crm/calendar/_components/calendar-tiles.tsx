@@ -23,9 +23,9 @@ export interface CalendarTilesProps {
 type Tone = "info" | "success" | "warning" | "danger" | "neutral";
 
 const TONE: Record<Tone, { bg: string; fg: string }> = {
-  info: { bg: "bg-info/10", fg: "text-[color:var(--info)]" },
-  success: { bg: "bg-success/15", fg: "text-[color:var(--success)]" },
-  warning: { bg: "bg-warning/15", fg: "text-[color:var(--warning)]" },
+  info: { bg: "bg-info/10", fg: "text-info" },
+  success: { bg: "bg-success/15", fg: "text-success" },
+  warning: { bg: "bg-warning/15", fg: "text-warning" },
   danger: { bg: "bg-destructive/10", fg: "text-destructive" },
   neutral: { bg: "bg-muted", fg: "text-muted-foreground" },
 };

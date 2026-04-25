@@ -42,7 +42,7 @@ export function MiniAppShell({
 
   return (
     <div
-      className="min-h-dvh w-full antialiased"
+      className="relative min-h-dvh w-full antialiased"
       style={
         {
           backgroundColor: bg,
@@ -56,9 +56,20 @@ export function MiniAppShell({
         } as React.CSSProperties
       }
     >
+      <MiniAppStyles />
+      <MiniAppAurora />
       <header
-        className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3"
-        style={{ backgroundColor: sectionBg, borderBottom: `1px solid ${hint}22` }}
+        className="sticky top-0 z-20 flex items-center gap-3 px-4 pb-3"
+        style={{
+          backgroundColor: sectionBg,
+          borderBottom: `1px solid ${hint}22`,
+          // In Telegram fullscreen mode the system status bar + notch
+          // overlap the top of the webview. `env(safe-area-inset-top)` is 0
+          // on some clients (iMe, Desktop stub), so we `max()` it with a
+          // generous floor that clears the notch on iPhone 12+ reliably.
+          paddingTop:
+            "max(env(safe-area-inset-top), 2.75rem)",
+        }}
       >
         {clinic?.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -86,7 +97,96 @@ export function MiniAppShell({
           ) : null}
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[430px] px-4 pb-24 pt-4">{children}</main>
+      <main className="relative z-10 mx-auto w-full max-w-[430px] px-4 pb-24 pt-4">
+        {children}
+      </main>
     </div>
+  );
+}
+
+/**
+ * Ambient aurora gradient that drifts behind the content — purely decorative,
+ * modelled after the Telegram Premium / Wallet / Fragment screens. Absolutely
+ * positioned at the bottom so the scrolling content overlays it cleanly.
+ */
+function MiniAppAurora() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+    >
+      <div className="ma-aurora ma-aurora-a" />
+      <div className="ma-aurora ma-aurora-b" />
+      <div className="ma-aurora ma-aurora-c" />
+    </div>
+  );
+}
+
+/**
+ * Scoped keyframes + utilities for Mini App motion. Kept inline so the
+ * animations don't leak into the CRM bundle.
+ */
+function MiniAppStyles() {
+  return (
+    <style>{`
+      @keyframes ma-aurora-drift-a {
+        0%   { transform: translate3d(-12%, 8%, 0) scale(1); }
+        50%  { transform: translate3d(18%, -4%, 0) scale(1.15); }
+        100% { transform: translate3d(-12%, 8%, 0) scale(1); }
+      }
+      @keyframes ma-aurora-drift-b {
+        0%   { transform: translate3d(14%, 10%, 0) scale(1.05); }
+        50%  { transform: translate3d(-16%, -6%, 0) scale(0.95); }
+        100% { transform: translate3d(14%, 10%, 0) scale(1.05); }
+      }
+      @keyframes ma-aurora-drift-c {
+        0%   { transform: translate3d(0%, 14%, 0) scale(1); }
+        50%  { transform: translate3d(0%, -10%, 0) scale(1.1); }
+        100% { transform: translate3d(0%, 14%, 0) scale(1); }
+      }
+      @keyframes ma-fade-up {
+        from { opacity: 0; transform: translate3d(0, 14px, 0); }
+        to   { opacity: 1; transform: none; }
+      }
+      @keyframes ma-step-enter {
+        from { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.985); filter: blur(2px); }
+        to   { opacity: 1; transform: none; filter: none; }
+      }
+      .ma-aurora {
+        position: absolute;
+        border-radius: 9999px;
+        filter: blur(70px);
+        will-change: transform;
+      }
+      .ma-aurora-a {
+        left: -15%; bottom: -10%; width: 70vw; height: 55vh;
+        background: radial-gradient(circle at 30% 30%, color-mix(in oklch, var(--tg-accent) 55%, transparent), transparent 70%);
+        animation: ma-aurora-drift-a 18s ease-in-out infinite;
+      }
+      .ma-aurora-b {
+        right: -20%; bottom: -20%; width: 80vw; height: 60vh;
+        background: radial-gradient(circle at 60% 40%, color-mix(in oklch, var(--tg-accent) 35%, #7aa0ff), transparent 70%);
+        animation: ma-aurora-drift-b 22s ease-in-out infinite;
+        opacity: .7;
+      }
+      .ma-aurora-c {
+        left: 10%; bottom: 20%; width: 60vw; height: 40vh;
+        background: radial-gradient(circle at 50% 50%, color-mix(in oklch, var(--tg-accent) 20%, #c2a0ff), transparent 70%);
+        animation: ma-aurora-drift-c 26s ease-in-out infinite;
+        opacity: .45;
+      }
+      .ma-fade-up {
+        animation: ma-fade-up .55s cubic-bezier(.2,.8,.2,1) both;
+      }
+      .ma-step-enter {
+        animation: ma-step-enter .42s cubic-bezier(.2,.8,.2,1) both;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .ma-aurora-a, .ma-aurora-b, .ma-aurora-c,
+        .ma-fade-up, .ma-step-enter {
+          animation: none !important;
+        }
+      }
+    `}</style>
   );
 }

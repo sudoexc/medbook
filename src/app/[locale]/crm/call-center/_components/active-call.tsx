@@ -431,7 +431,7 @@ function StatusPill({ status, label }: { status: string; label: string }) {
     status === "ringing"
       ? "bg-primary/15 text-primary"
       : status === "answered"
-        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+        ? "bg-success/15 text-success"
         : status === "missed"
           ? "bg-destructive/15 text-destructive"
           : "bg-muted text-muted-foreground";

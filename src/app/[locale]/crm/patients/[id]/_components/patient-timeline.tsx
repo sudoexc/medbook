@@ -52,14 +52,14 @@ function iconFor(item: CommunicationItem): {
   if (item.channel === "TG" || item.kind === "message")
     return {
       icon: SendIcon,
-      bg: "bg-[color:var(--info,#3b82f6)]/15",
-      fg: "text-[color:var(--info,#3b82f6)]",
+      bg: "bg-info/15",
+      fg: "text-info",
     };
   if (item.channel === "CALL" || item.kind === "call")
     return {
       icon: PhoneIcon,
-      bg: "bg-[color:var(--warning,#f59e0b)]/15",
-      fg: "text-[color:var(--warning,#f59e0b)]",
+      bg: "bg-warning/15",
+      fg: "text-warning",
     };
   if (item.channel === "SMS")
     return {
@@ -193,7 +193,7 @@ export function PatientTimeline({ patientId, className }: PatientTimelineProps) 
                 className="grid grid-cols-[8px_40px_minmax(100px,1fr)_minmax(140px,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 rounded-lg px-1 py-1.5 text-[12px] hover:bg-muted/30"
               >
                 <span
-                  className="mt-1.5 inline-block size-2 rounded-full bg-[color:var(--success,#10b981)]"
+                  className="mt-1.5 inline-block size-2 rounded-full bg-success"
                   aria-hidden
                 />
                 <span
@@ -240,9 +240,9 @@ export function PatientTimeline({ patientId, className }: PatientTimelineProps) 
                       className={cn(
                         "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
                         info.status.tone === "success"
-                          ? "bg-[color:var(--success,#10b981)]/15 text-[color:var(--success,#10b981)]"
+                          ? "bg-success/15 text-success"
                           : info.status.tone === "info"
-                            ? "bg-[color:var(--info,#3b82f6)]/15 text-[color:var(--info,#3b82f6)]"
+                            ? "bg-info/15 text-info"
                             : "bg-muted text-muted-foreground",
                       )}
                     >

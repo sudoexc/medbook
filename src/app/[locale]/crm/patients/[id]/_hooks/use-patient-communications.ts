@@ -22,10 +22,10 @@ export type CommunicationFilter = "ALL" | "SMS" | "TG" | "CALL" | "VISIT";
 export function usePatientCommunications(patientId: string) {
   return useQuery<{ items: CommunicationItem[] }, Error>({
     queryKey: ["patient", patientId, "communications"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/patients/${patientId}/communications`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { items: CommunicationItem[] };

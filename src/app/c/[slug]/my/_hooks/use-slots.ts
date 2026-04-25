@@ -18,7 +18,7 @@ export function useSlots(args: {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppSlotsPayload>({
     queryKey: ["miniapp", "slots", clinicSlug, args.doctorId, args.date, args.serviceIds],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       return request<MiniAppSlotsPayload>("/api/miniapp/slots", {
         searchParams: {
           doctorId: args.doctorId ?? undefined,

@@ -42,6 +42,45 @@ const MiniAppAuthContext = React.createContext<MiniAppAuthContextValue | null>(
   null,
 );
 
+// Dev-only: each browser/device gets its own synthetic Telegram user id so
+// multiple testers don't share the same patient record (which leaks names +
+// phone numbers across devices). Stored in localStorage so repeat visits
+// from the same device land on the same patient.
+function getDevUser(): {
+  id: number;
+  first_name: string;
+  last_name: string;
+  username: string;
+  language_code: string;
+} {
+  const fallback = {
+    id: 99999,
+    first_name: "Dev",
+    last_name: "User",
+    username: "dev_miniapp",
+    language_code: "ru",
+  };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const KEY = "miniapp:devUserId";
+    let raw = window.localStorage.getItem(KEY);
+    if (!raw) {
+      raw = String(1_000_000 + Math.floor(Math.random() * 8_999_999));
+      window.localStorage.setItem(KEY, raw);
+    }
+    const id = Number.parseInt(raw, 10);
+    return {
+      id: Number.isFinite(id) ? id : fallback.id,
+      first_name: "Dev",
+      last_name: `#${raw.slice(-4)}`,
+      username: `dev_${raw}`,
+      language_code: "ru",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export function useMiniAppAuth(): MiniAppAuthContextValue {
   const ctx = React.useContext(MiniAppAuthContext);
   if (!ctx) {
@@ -81,13 +120,7 @@ export function MiniAppAuthProvider({
         typeof window !== "undefined" && (!isTelegramContext || !initData);
       if (needsBypass) {
         headers["x-miniapp-dev-bypass"] = "1";
-        headers["x-miniapp-dev-user"] = JSON.stringify({
-          id: 99999,
-          first_name: "Dev",
-          last_name: "User",
-          username: "dev_miniapp",
-          language_code: "ru",
-        });
+        headers["x-miniapp-dev-user"] = JSON.stringify(getDevUser());
       }
       const res = await fetch(
         `/api/miniapp/auth?clinicSlug=${encodeURIComponent(clinicSlug)}`,
@@ -164,13 +197,7 @@ export function miniAppFetchHeaders(initData: string, isTelegram: boolean): Head
   // Desktop loaded a stub SDK with empty initData. Server ignores in prod.
   if (typeof window !== "undefined" && (!isTelegram || !initData)) {
     h["x-miniapp-dev-bypass"] = "1";
-    h["x-miniapp-dev-user"] = JSON.stringify({
-      id: 99999,
-      first_name: "Dev",
-      last_name: "User",
-      username: "dev_miniapp",
-      language_code: "ru",
-    });
+    h["x-miniapp-dev-user"] = JSON.stringify(getDevUser());
   }
   return h;
 }

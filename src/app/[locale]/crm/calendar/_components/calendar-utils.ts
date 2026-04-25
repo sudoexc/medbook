@@ -53,33 +53,20 @@ export function fcViewKey(view: CalendarView): string {
 /**
  * Returns {from, to} range (inclusive start, exclusive end) for the given
  * anchor date + view — used to query the appointments endpoint.
+ *
+ * The window must match what FullCalendar actually renders. The view configs
+ * use `duration: { days: N }` with no `dateAlignment`, so FullCalendar spans
+ * N days *starting from the anchor* (not Mon-aligned). Mismatching this
+ * window means the query fetches one window while the user sees another and
+ * newly-created appointments appear to vanish.
  */
 export function rangeForView(anchor: Date, view: CalendarView): { from: Date; to: Date } {
   const d = new Date(anchor);
   d.setHours(0, 0, 0, 0);
-  if (view === "day") {
-    const end = new Date(d);
-    end.setDate(end.getDate() + 1);
-    return { from: d, to: end };
-  }
-  if (view === "workWeek") {
-    // Start on Monday, 5 days.
-    const day = d.getDay(); // 0 Sun..6 Sat
-    const diffToMon = (day + 6) % 7;
-    const start = new Date(d);
-    start.setDate(start.getDate() - diffToMon);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 5);
-    return { from: start, to: end };
-  }
-  // week — 7 days Mon..Sun
-  const day = d.getDay();
-  const diffToMon = (day + 6) % 7;
-  const start = new Date(d);
-  start.setDate(start.getDate() - diffToMon);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 7);
-  return { from: start, to: end };
+  const days = view === "day" ? 1 : view === "workWeek" ? 5 : 7;
+  const end = new Date(d);
+  end.setDate(end.getDate() + days);
+  return { from: d, to: end };
 }
 
 /**

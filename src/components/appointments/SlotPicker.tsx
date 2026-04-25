@@ -56,14 +56,14 @@ export function SlotPicker({
       serviceIds.slice().sort().join(","),
     ],
     enabled: Boolean(doctorId),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       params.set("doctorId", doctorId!);
       params.set("date", date.toISOString());
       for (const sid of serviceIds) params.append("serviceIds", sid);
       const res = await fetch(
         `/api/crm/appointments/slots/available?${params.toString()}`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as SlotsResponse;

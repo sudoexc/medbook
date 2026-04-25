@@ -101,7 +101,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         ) : null}
         <div
           className={cn(
-            "mt-1 flex items-center gap-1 text-[10px]",
+            "mt-1 flex items-center gap-1 text-[11px]",
             isOut ? "justify-end text-primary-foreground/75" : "justify-start text-muted-foreground",
           )}
         >
@@ -122,9 +122,9 @@ function DeliveryIcon({ status }: { status: InboxMessage["status"] }) {
     case "DELIVERED":
       return <CheckCheckIcon className="size-3" />;
     case "READ":
-      return <CheckCheckIcon className="size-3 text-sky-200" />;
+      return <CheckCheckIcon className="size-3 text-info" />;
     case "FAILED":
-      return <AlertCircleIcon className="size-3 text-red-300" />;
+      return <AlertCircleIcon className="size-3 text-destructive" />;
     default:
       return null;
   }

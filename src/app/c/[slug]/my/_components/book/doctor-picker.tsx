@@ -74,7 +74,7 @@ export function DoctorPicker() {
   if (!hydrated) return <MSpinner label={t.common.loading} />;
 
   return (
-    <div>
+    <div className="ma-step-enter">
       <WizardHeader
         step={2}
         label={t.book.stepLabel.replace("{step}", "2").replace("{total}", "4")}

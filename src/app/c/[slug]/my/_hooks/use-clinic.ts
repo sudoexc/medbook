@@ -18,10 +18,10 @@ export type ClinicInfo = {
 export function useClinic(slug: string) {
   return useQuery<ClinicInfo>({
     queryKey: ["miniapp", "clinic", slug],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/miniapp/clinic?clinicSlug=${encodeURIComponent(slug)}`,
-        { cache: "no-store" },
+        {  cache: "no-store", signal },
       );
       if (!res.ok) throw new Error("clinic_not_found");
       const body = await res.json();

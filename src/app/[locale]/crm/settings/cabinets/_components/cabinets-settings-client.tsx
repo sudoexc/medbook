@@ -262,7 +262,7 @@ function EquipmentEditor({
               <button
                 type="button"
                 onClick={() => remove(tag)}
-                className="rounded-full hover:bg-background/70"
+                className="rounded-full hover:bg-muted"
                 aria-label={`${t("common.delete")} ${tag}`}
               >
                 <XIcon className="size-3" />

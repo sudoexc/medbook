@@ -47,6 +47,14 @@ export async function detectConflicts(args: {
   endAt: Date;
   excludeId?: string;
 }): Promise<ConflictResult> {
+  // Reject bookings whose start has already passed — guards against stale
+  // slot lists on the client (Mini App or CRM dialog) submitting a past
+  // time. Only blocks new bookings; reschedules pass `excludeId` and may
+  // legitimately touch past appointments (e.g. mark NO_SHOW).
+  if (!args.excludeId && args.startAt.getTime() <= Date.now()) {
+    return { ok: false, reason: "in_past" };
+  }
+
   // Doctor overlap
   const doctorClash = await prisma.appointment.findFirst({
     where: {
@@ -159,6 +167,15 @@ export async function findAvailableSlots(args: {
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
 
+  // For today, hide slots whose start time has already passed — patients
+  // and receptionists shouldn't be able to book into the past. Future
+  // dates pass through unchanged.
+  const now = new Date();
+  const isToday =
+    now.getFullYear() === dayStart.getFullYear() &&
+    now.getMonth() === dayStart.getMonth() &&
+    now.getDate() === dayStart.getDate();
+
   const [appts, timeOffs] = await Promise.all([
     prisma.appointment.findMany({
       where: {
@@ -192,6 +209,7 @@ export async function findAvailableSlots(args: {
       t.getTime() + slot * 60_000 <= end.getTime();
       t = new Date(t.getTime() + slot * 60_000)
     ) {
+      if (isToday && t.getTime() <= now.getTime()) continue;
       const slotEnd = new Date(t.getTime() + slot * 60_000);
       const clashAppt = appts.some(
         (a) => a.date < slotEnd && a.endDate > t

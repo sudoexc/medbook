@@ -54,7 +54,7 @@ export function AuditLogClient() {
     queryKey: ["settings", "audit", appliedFilters],
     initialPageParam: null,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       const sp = new URLSearchParams();
       if (appliedFilters.entityType)
         sp.set("entityType", appliedFilters.entityType);

@@ -41,10 +41,10 @@ function channelIcon(item: CommunicationItem) {
 }
 
 function itemTone(item: CommunicationItem): string {
-  if (item.direction === "IN") return "bg-info/15 text-[color:var(--info)]";
+  if (item.direction === "IN") return "bg-info/15 text-info";
   if (item.direction === "OUT") return "bg-primary/15 text-primary";
   if (item.kind === "visit")
-    return "bg-success/15 text-[color:var(--success)]";
+    return "bg-success/15 text-success";
   return "bg-muted text-muted-foreground";
 }
 

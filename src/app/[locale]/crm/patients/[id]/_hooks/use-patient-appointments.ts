@@ -51,10 +51,10 @@ export type AppointmentsListResponse = {
 export function usePatientAppointments(patientId: string) {
   return useQuery<AppointmentsListResponse, Error>({
     queryKey: ["patient", patientId, "appointments"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/appointments?patientId=${encodeURIComponent(patientId)}&sort=date&dir=desc&limit=100`,
-        { credentials: "include" },
+        {  credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as AppointmentsListResponse;

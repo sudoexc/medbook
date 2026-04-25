@@ -272,7 +272,7 @@ export function PatientHeader({
                   className={cn(
                     patient.balance < 0
                       ? "text-destructive"
-                      : "text-[color:var(--success)]",
+                      : "text-success",
                   )}
                 >
                   {t("balance")}:{" "}

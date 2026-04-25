@@ -47,7 +47,7 @@ export function BookDone() {
   }, [tg, router, clinicSlug, t.done.goHome]);
 
   return (
-    <div>
+    <div className="ma-step-enter">
       <MCard className="mb-4">
         <div className="flex items-start gap-3">
           <div

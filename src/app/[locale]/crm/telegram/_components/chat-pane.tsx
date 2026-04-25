@@ -114,7 +114,7 @@ export function ChatPane({ conversation }: ChatPaneProps) {
         <div className="flex items-center gap-2">
           <Badge
             variant={isTakeover ? "default" : "secondary"}
-            className={cn(isTakeover ? "bg-orange-500 text-white" : "")}
+            className={cn(isTakeover ? "bg-warning text-white" : "")}
           >
             {isTakeover ? (
               <span className="flex items-center gap-1">

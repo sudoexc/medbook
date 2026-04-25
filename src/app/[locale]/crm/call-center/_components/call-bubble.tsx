@@ -107,14 +107,14 @@ export function CallBubble({
 function statusChipClass(status: DerivedCallStatus, solid: boolean): string {
   if (solid) {
     if (status === "ringing") return "bg-primary/15 text-primary";
-    if (status === "answered") return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
+    if (status === "answered") return "bg-success/15 text-success";
     if (status === "missed") return "bg-destructive/15 text-destructive";
     return "bg-muted text-muted-foreground";
   }
   if (status === "ringing")
     return "bg-primary/10 text-primary";
   if (status === "answered")
-    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+    return "bg-success/10 text-success";
   if (status === "missed") return "bg-destructive/10 text-destructive";
   return "bg-muted text-muted-foreground";
 }

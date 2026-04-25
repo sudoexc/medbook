@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
-import { useLiveEvents } from "@/hooks/use-live-events";
+import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 
 import type {
   AppointmentRow,
@@ -84,25 +84,21 @@ export function useCalendarAppointments(from: Date, to: Date) {
 
 /**
  * Subscribe every `["calendar", "appointments", ...]` query to `appointment.*`
- * events. The shape of the key ends with `[fromIso, toIso]`, so we use a
- * prefix invalidation — TanStack Query handles sub-matching.
+ * events. Routed through `useLiveQueryInvalidation` so it picks up the
+ * 400ms debounce + `refetchType: "active"` discipline shared by every
+ * realtime hook in the CRM.
  */
 export function useCalendarRealtime(): void {
-  const qc = useQueryClient();
-  useLiveEvents(
-    () => {
-      void qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
-    },
-    {
-      filter: [
-        "appointment.created",
-        "appointment.updated",
-        "appointment.statusChanged",
-        "appointment.cancelled",
-        "appointment.moved",
-      ],
-    },
-  );
+  useLiveQueryInvalidation({
+    events: [
+      "appointment.created",
+      "appointment.updated",
+      "appointment.statusChanged",
+      "appointment.cancelled",
+      "appointment.moved",
+    ],
+    queryKey: ["calendar", "appointments"],
+  });
 }
 
 export function useActiveDoctors() {

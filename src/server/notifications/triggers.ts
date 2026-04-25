@@ -300,6 +300,154 @@ async function createSend(params: {
   );
 }
 
+/**
+ * Bulk variant: materialise a batch of (appointmentId → scheduledFor) pairs
+ * for ONE trigger in 4 queries total (not 4×N). Used by the scheduler tick
+ * which previously did up to 1500 queries per minute on a busy clinic.
+ *
+ * Steps:
+ *   1. one `findMany` to load every appointment + relations
+ *   2. one `findMany` per unique clinicId for the template (parallel)
+ *   3. one `findMany` for existing NotificationSend idempotency check
+ *   4. one `createMany` to insert all queued rows
+ */
+async function materializeForAppointmentsBulk(
+  jobs: ReadonlyArray<{ appointmentId: string; scheduledFor: Date }>,
+  trigger: TriggerKey,
+): Promise<{ created: number; skipped: number }> {
+  if (jobs.length === 0) return { created: 0, skipped: 0 };
+  const apptIds = jobs.map((j) => j.appointmentId);
+  const lang = "ru";
+
+  const appts = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findMany({
+      where: { id: { in: apptIds } },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            telegramId: true,
+            preferredChannel: true,
+            birthDate: true,
+          },
+        },
+        doctor: { select: { nameRu: true, nameUz: true } },
+        primaryService: { select: { nameRu: true, nameUz: true } },
+        cabinet: { select: { number: true } },
+        clinic: {
+          select: {
+            id: true,
+            nameRu: true,
+            nameUz: true,
+            phone: true,
+            addressRu: true,
+            timezone: true,
+          },
+        },
+      },
+    }),
+  )) as AppointmentWithRefs[];
+  const apptMap = new Map(appts.map((a) => [a.id, a]));
+
+  const clinicIds = Array.from(new Set(appts.map((a) => a.clinicId)));
+  const tplEntries = await Promise.all(
+    clinicIds.map(async (cid) => {
+      const tpl = await findTemplateFor(cid, trigger, lang);
+      return [cid, tpl] as const;
+    }),
+  );
+  const templates = new Map(tplEntries);
+
+  // Idempotency: pull every (appointmentId, templateId) tuple already queued
+  // for this batch in one query, build a Set, check in memory.
+  const tplIds = Array.from(
+    new Set(
+      tplEntries
+        .map(([, t]) => t?.templateId)
+        .filter((x): x is string => Boolean(x)),
+    ),
+  );
+  const existing =
+    tplIds.length === 0
+      ? []
+      : await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.notificationSend.findMany({
+            where: {
+              appointmentId: { in: apptIds },
+              templateId: { in: tplIds },
+              status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
+            },
+            select: { appointmentId: true, templateId: true },
+          }),
+        );
+  const existingSet = new Set(
+    existing.map((e) => `${e.appointmentId}|${e.templateId}`),
+  );
+
+  const toInsert: Array<{
+    clinicId: string;
+    patientId: string;
+    appointmentId: string;
+    templateId: string;
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+    recipient: string;
+    body: string;
+    scheduledFor: Date;
+    status: "QUEUED";
+  }> = [];
+  let skipped = 0;
+
+  for (const job of jobs) {
+    const appt = apptMap.get(job.appointmentId);
+    if (!appt) {
+      skipped += 1;
+      continue;
+    }
+    const tpl = templates.get(appt.clinicId);
+    if (!tpl) {
+      skipped += 1;
+      continue;
+    }
+    if (existingSet.has(`${appt.id}|${tpl.templateId}`)) {
+      skipped += 1;
+      continue;
+    }
+    const recipient = pickRecipient(tpl.channel, appt.patient);
+    if (!recipient) {
+      skipped += 1;
+      continue;
+    }
+    const body = render(
+      tpl.body,
+      buildContext(appt, lang) as unknown as Record<string, unknown>,
+    );
+    toInsert.push({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      appointmentId: appt.id,
+      templateId: tpl.templateId,
+      channel: tpl.channel,
+      recipient,
+      body,
+      scheduledFor: job.scheduledFor,
+      status: "QUEUED",
+    });
+  }
+
+  if (toInsert.length > 0) {
+    await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.notificationSend.createMany({
+        data: toInsert as never,
+        skipDuplicates: true,
+      }),
+    );
+  }
+
+  return { created: toInsert.length, skipped };
+}
+
 async function materializeForAppointment(
   apptId: string,
   trigger: TriggerKey,
@@ -414,28 +562,32 @@ export async function runScheduledTriggers(): Promise<{
     }),
   );
 
-  let reminders24h = 0;
-  let reminders2h = 0;
+  // Two windows: appointments 23-24h out get 24h reminder, 1-2h out get 2h.
+  // Bucket once, then materialize each bucket in a single bulk pass.
+  const jobs24h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  const jobs2h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const start = r.date.getTime();
     const until = start - Date.now();
     if (until > 0 && until <= 24 * 60 * 60 * 1000 && until > 23 * 60 * 60 * 1000) {
-      const res = await materializeForAppointment(
-        r.id,
-        "appointment.reminder-24h",
-        new Date(start - 24 * 60 * 60 * 1000),
-      );
-      reminders24h += res.created;
+      jobs24h.push({
+        appointmentId: r.id,
+        scheduledFor: new Date(start - 24 * 60 * 60 * 1000),
+      });
     }
     if (until > 0 && until <= 2 * 60 * 60 * 1000 && until > 60 * 60 * 1000) {
-      const res = await materializeForAppointment(
-        r.id,
-        "appointment.reminder-2h",
-        new Date(start - 2 * 60 * 60 * 1000),
-      );
-      reminders2h += res.created;
+      jobs2h.push({
+        appointmentId: r.id,
+        scheduledFor: new Date(start - 2 * 60 * 60 * 1000),
+      });
     }
   }
+  const [res24, res2] = await Promise.all([
+    materializeForAppointmentsBulk(jobs24h, "appointment.reminder-24h"),
+    materializeForAppointmentsBulk(jobs2h, "appointment.reminder-2h"),
+  ]);
+  const reminders24h = res24.created;
+  const reminders2h = res2.created;
 
   const birthdays = await runBirthdays();
   const paymentsDue = await runPaymentsDue();
@@ -464,46 +616,101 @@ async function runBirthdays(): Promise<number> {
       take: 2000,
     }),
   );
-  let created = 0;
-  const templates = new Map<string, FindTemplateResult>();
-  for (const p of patients) {
-    if (!p.birthDate) continue;
+  // Filter to today's birthdays in memory, then bulk-materialize.
+  const matches = patients.filter((p) => {
+    if (!p.birthDate) return false;
     const bm = p.birthDate.getUTCMonth() + 1;
     const bd = p.birthDate.getUTCDate();
-    if (bm !== month || bd !== day) continue;
-    let tpl = templates.get(p.clinicId);
-    if (tpl === undefined) {
-      tpl = await findTemplateFor(p.clinicId, "birthday", "ru");
-      templates.set(p.clinicId, tpl);
-    }
+    return bm === month && bd === day;
+  });
+  if (matches.length === 0) return 0;
+
+  const clinicIds = Array.from(new Set(matches.map((p) => p.clinicId)));
+  const tplEntries = await Promise.all(
+    clinicIds.map(async (cid) => {
+      const tpl = await findTemplateFor(cid, "birthday", "ru");
+      return [cid, tpl] as const;
+    }),
+  );
+  const templates = new Map(tplEntries);
+
+  const tplIds = Array.from(
+    new Set(
+      tplEntries
+        .map(([, t]) => t?.templateId)
+        .filter((x): x is string => Boolean(x)),
+    ),
+  );
+  // Idempotency: birthday rows have no appointmentId, so the dedupe key is
+  // (patientId, templateId). One bulk query covers every match.
+  const existing =
+    tplIds.length === 0
+      ? []
+      : await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.notificationSend.findMany({
+            where: {
+              patientId: { in: matches.map((p) => p.id) },
+              templateId: { in: tplIds },
+              appointmentId: null,
+              status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
+            },
+            select: { patientId: true, templateId: true },
+          }),
+        );
+  const existingSet = new Set(
+    existing.map((e) => `${e.patientId}|${e.templateId}`),
+  );
+
+  const toInsert: Array<{
+    clinicId: string;
+    patientId: string;
+    appointmentId: null;
+    templateId: string;
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+    recipient: string;
+    body: string;
+    scheduledFor: Date;
+    status: "QUEUED";
+  }> = [];
+
+  for (const p of matches) {
+    const tpl = templates.get(p.clinicId);
     if (!tpl) continue;
-    const already = await alreadyScheduled({
-      clinicId: p.clinicId,
-      patientId: p.id,
-      templateId: tpl.templateId,
-    });
-    if (already) continue;
+    if (existingSet.has(`${p.id}|${tpl.templateId}`)) continue;
     const recipient = pickRecipient(tpl.channel, {
       phone: p.phone,
       telegramId: p.telegramId,
     });
     if (!recipient) continue;
     const body = render(tpl.body, {
-      patient: { name: p.fullName, firstName: firstName(p.fullName), phone: p.phone },
+      patient: {
+        name: p.fullName,
+        firstName: firstName(p.fullName),
+        phone: p.phone,
+      },
       clinic: { name: "", phone: "", address: "" },
     });
-    await createSend({
+    toInsert.push({
       clinicId: p.clinicId,
       patientId: p.id,
+      appointmentId: null,
       templateId: tpl.templateId,
       channel: tpl.channel,
       recipient,
       body,
       scheduledFor: new Date(),
+      status: "QUEUED",
     });
-    created += 1;
   }
-  return created;
+
+  if (toInsert.length === 0) return 0;
+  await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.createMany({
+      data: toInsert as never,
+      skipDuplicates: true,
+    }),
+  );
+  return toInsert.length;
 }
 
 async function runPaymentsDue(): Promise<number> {
@@ -527,21 +734,18 @@ async function runPaymentsDue(): Promise<number> {
       take: 500,
     }),
   );
-  let created = 0;
+  const now = new Date();
+  const jobs: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const paid = r.payments
       .filter((p) => p.status === "PAID")
       .reduce((s, p) => s + p.amount, 0);
     const due = (r.priceFinal ?? 0) - paid;
     if (due <= 0) continue;
-    const res = await materializeForAppointment(
-      r.id,
-      "payment.due",
-      new Date(),
-    );
-    created += res.created;
+    jobs.push({ appointmentId: r.id, scheduledFor: now });
   }
-  return created;
+  const res = await materializeForAppointmentsBulk(jobs, "payment.due");
+  return res.created;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -85,8 +85,9 @@ export function DoctorQueueCard({
     locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["reception"] });
-    qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+    const opts = { refetchType: "active" } as const;
+    qc.invalidateQueries({ queryKey: ["reception"], ...opts });
+    qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
   };
 
   const callNext = async () => {
@@ -163,8 +164,9 @@ export function DoctorQueueCard({
                 );
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 invalidate();
-                qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
-                qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
+                const opts = { refetchType: "active" } as const;
+                qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
+                qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
               } catch (err) {
                 toast.error((err as Error).message);
               } finally {

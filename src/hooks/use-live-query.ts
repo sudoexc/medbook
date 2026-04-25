@@ -72,15 +72,60 @@ function flattenKeys(value: unknown): QueryKey[] {
 }
 
 /**
+ * Window inside which incoming events coalesce into a single invalidation
+ * per unique query key. SSE events arrive in bursts during peak clinic
+ * hours (5+ receptionists × 50+ status changes/day); without coalescing,
+ * each event would trigger a refetch round-trip and a re-render across
+ * every connected screen.
+ *
+ * 400ms strikes a balance: too short (≤100ms) and bursts still hammer the
+ * API; too long (≥1s) and the UI feels stale to a receptionist who just
+ * clicked something.
+ */
+const SSE_INVALIDATION_DEBOUNCE_MS = 400;
+
+/**
+ * Stable JSON key for de-duping QueryKey arrays inside the debounce
+ * buffer. QueryKey is a tuple/array, never includes functions, so
+ * JSON.stringify is safe and fast.
+ */
+function stringifyKey(key: QueryKey): string {
+  return JSON.stringify(key);
+}
+
+/**
  * Subscribe to SSE events and invalidate the listed query keys on match.
- * The invalidation is async-fire-and-forget (we never block the event
- * loop). TanStack Query will refetch active queries automatically.
+ *
+ * Invalidations are debounced and de-duplicated: a burst of N events that
+ * map to the same query key produces ONE invalidation with ONE refetch.
+ * `refetchType: "active"` ensures only currently-mounted screens refetch —
+ * stale background queries stay marked but don't fire a network request
+ * until they remount.
  */
 export function useLiveQueryInvalidation(
   opts: UseLiveQueryInvalidationOptions,
 ): void {
   const { events, queryKey, queryKeys, shouldInvalidate, enabled = true } = opts;
   const qc = useQueryClient();
+
+  const pendingRef = React.useRef<Map<string, QueryKey>>(new Map());
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  const flush = React.useCallback(() => {
+    const keys = Array.from(pendingRef.current.values());
+    pendingRef.current.clear();
+    timerRef.current = null;
+    for (const k of keys) {
+      void qc.invalidateQueries({ queryKey: k, refetchType: "active" });
+    }
+  }, [qc]);
 
   const handler = React.useCallback(
     (event: AppEvent) => {
@@ -105,10 +150,14 @@ export function useLiveQueryInvalidation(
       }
 
       for (const k of keys) {
-        void qc.invalidateQueries({ queryKey: k });
+        pendingRef.current.set(stringifyKey(k), k);
+      }
+
+      if (timerRef.current === null) {
+        timerRef.current = setTimeout(flush, SSE_INVALIDATION_DEBOUNCE_MS);
       }
     },
-    [qc, queryKey, queryKeys, shouldInvalidate],
+    [flush, queryKey, queryKeys, shouldInvalidate],
   );
 
   useLiveEvents(handler, { filter: events, enabled });

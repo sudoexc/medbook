@@ -338,10 +338,11 @@ export function NewAppointmentDialog({
       return (await res.json()) as { id: string };
     },
     onSuccess: (created) => {
-      qc.invalidateQueries({ queryKey: ["appointments", "list"] });
-      qc.invalidateQueries({ queryKey: ["calendar", "appointments"] });
-      qc.invalidateQueries({ queryKey: ["reception"] });
-      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"] });
+      const opts = { refetchType: "active" } as const;
+      qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
+      qc.invalidateQueries({ queryKey: ["reception"], ...opts });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
       toast.success(t("createdToast"));
       onOpenChange(false);
       setState(EMPTY);

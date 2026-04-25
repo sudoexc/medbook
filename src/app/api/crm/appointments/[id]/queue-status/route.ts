@@ -30,14 +30,16 @@ export const PATCH = createApiHandler(
     const before = await prisma.appointment.findUnique({ where: { id } });
     if (!before) return notFound();
 
+    // This endpoint is the queue lifecycle: BOOKED → WAITING → IN_PROGRESS
+    // → COMPLETED. Source of truth is `queueStatus`, not `status` — they
+    // can drift out of sync if a row was edited through legacy paths or
+    // direct DB mutation. We then re-sync both in the update below.
+    const fromStatus = before.queueStatus as AppointmentStatus;
     if (
-      !canTransition(
-        before.status as AppointmentStatus,
-        body.queueStatus as AppointmentStatus,
-      )
+      !canTransition(fromStatus, body.queueStatus as AppointmentStatus)
     ) {
       return conflict("invalid_transition", {
-        from: before.status,
+        from: before.queueStatus,
         to: body.queueStatus,
       });
     }

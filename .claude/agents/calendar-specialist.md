@@ -17,7 +17,7 @@ model: opus
 
 ## Non-negotiable rules
 
-- Путь: `src/app/crm/calendar/page.tsx`.
+- Путь: `src/app/[locale]/crm/calendar/page.tsx`.
 - Views: day, work-week, week (без month — не для клиники).
 - Swim-lanes: ресурсы = врачи (FullCalendar resource-timeline).
 - Верх: фильтр врачей (multi), кабинетов, услуг; переключатель дней; «сегодня».

@@ -15,7 +15,7 @@ model: opus
 
 ## Non-negotiable rules
 
-- Путь: `src/app/crm/settings/[section]/page.tsx` + sidebar навигация внутри settings.
+- Путь: `src/app/[locale]/crm/settings/[section]/page.tsx` + sidebar навигация внутри settings.
 - Секции: **Клиника** (info, часы работы, валюта — read/write), **Пользователи** (CRUD с ролями, reset password, блокировка), **Услуги** (каталог, цены UZS+USD, длительность), **Кабинеты** (с этажом, типом), **Роли/Права** (только read для ADMIN, редактирует SUPER_ADMIN), **Аудит** (фильтры + список), **Интеграции** (виджеты состояния SMS/TG/payment/telephony + их настройки — токены, ключи).
 - Только `ADMIN` имеет доступ. Остальные → 403.
 - Изменения токенов/секретов — require re-entry текущего пароля.

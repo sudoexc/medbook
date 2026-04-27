@@ -16,7 +16,7 @@ model: opus
 
 ## Non-negotiable rules
 
-- Путь: `src/app/crm/patients/page.tsx`.
+- Путь: `src/app/[locale]/crm/patients/page.tsx`.
 - Таблица: avatar+ФИО, возраст, телефон, сегмент (chip), LTV (`MoneyText`), последний визит, активность (last seen), теги.
 - Фильтры: сегмент (NEW/ACTIVE/DORMANT/VIP/CHURN), тэги, диапазон возраста, пол, источник, последний визит «от-до», debt > 0.
 - Поиск: по имени, телефону, ID талона — debounced.

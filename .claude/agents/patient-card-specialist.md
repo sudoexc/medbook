@@ -16,7 +16,7 @@ model: opus
 
 ## Non-negotiable rules
 
-- Путь: `src/app/crm/patients/[id]/page.tsx` + `_components/`.
+- Путь: `src/app/[locale]/crm/patients/[id]/page.tsx` + `_components/`.
 - Layout: header (avatar, ФИО, возраст, телефон, сегмент, LTV, теги) + quick actions (запись, звонок, SMS, TG) + табы.
 - Табы: **Overview** (summary+timeline), **Visits** (prev appointments), **Documents** (files uploader), **Communications** (все контакты timeline), **Payments** (ledger + debt), **Medical** (anamnesis, allergies, diagnoses — доступ только DOCTOR+).
 - Inline-edit: клик на поле в header → edit mode → Enter сохраняет.

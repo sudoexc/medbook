@@ -21,7 +21,7 @@ model: opus
 - Никогда не хардкодь цвета — только `text-primary`, `bg-surface`, `border-muted` и т.п.
 - Все атомы живут в `src/components/ui/` (shadcn) и `src/components/atoms/` (кастомные).
 - Молекулы (`SectionHeader`, `FilterBar`, `KpiTile`, `EmptyState`, `BadgeStatus`) — в `src/components/molecules/`.
-- Layout-shell: `src/app/crm/layout.tsx` (sidebar + topbar + right-rail slot).
+- Layout-shell: `src/app/[locale]/crm/layout.tsx` (sidebar + topbar + right-rail slot).
 - **Не создавай страниц.** Страницы — это чужая зона. Ты делаешь «кирпичи».
 - Каждый атом должен иметь `*.stories.tsx` (если Storybook подключён) или хотя бы демо-страницу `/design` (только в dev).
 - Адаптив: по §9.5. Ничего не ломается от 1280px до 1920px.

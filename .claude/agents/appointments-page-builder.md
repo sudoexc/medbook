@@ -17,7 +17,7 @@ model: opus
 
 ## Non-negotiable rules
 
-- Путь: `src/app/crm/appointments/page.tsx`.
+- Путь: `src/app/[locale]/crm/appointments/page.tsx`.
 - Таблица: TanStack Table + виртуализация при > 100 строк.
 - Колонки: время, пациент, врач, услуги, статус, оплата, кабинет, канал записи, действия.
 - Фильтры (FilterBar): дата/диапазон, врач, статус, канал, услуга, кабинет, только неоплаченные, поиск.

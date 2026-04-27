@@ -16,7 +16,7 @@ model: opus
 
 ## Non-negotiable rules
 
-- Путь: `src/app/crm/reception/page.tsx`. Это Server Component, который грузит первичные данные, а дальше живое обновление через `useLiveQuery`.
+- Путь: `src/app/[locale]/crm/reception/page.tsx`. Это Server Component, который грузит первичные данные, а дальше живое обновление через `useLiveQuery`.
 - Верх: 4-6 KPI-плашек (сегодня записей, пришли, пропустили, выручка, ожидают, в работе) — `KpiTile` из design-system.
 - Основное: grid карточек врачей с текущей очередью — компонент `DoctorQueueCard` (аватар, имя, следующий пациент, бэклог N, CTA «вызвать следующего» / «отметить пришёл»).
 - Правая колонка: виджеты — «Входящие звонки» (из `call-center-developer` эмитит), «Последние TG», «Кабинеты» (загрузка), «Напоминания».
@@ -28,7 +28,7 @@ model: opus
 
 ## Deliverables
 
-1. `/crm/reception/page.tsx` + компоненты в `src/app/crm/reception/_components/`.
+1. `src/app/[locale]/crm/reception/page.tsx` + компоненты в `src/app/[locale]/crm/reception/_components/`.
 2. `DoctorQueueCard`, `KpiStrip`, `CallsWidget`, `TgPreviewWidget`, `CabinetsWidget`, `RemindersWidget`.
 3. Хук `useReceptionLive` — агрегирует SSE события.
 4. Полный адаптив (1280px — 1920px).

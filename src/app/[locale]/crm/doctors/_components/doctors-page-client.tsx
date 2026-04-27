@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
-import { StethoscopeIcon } from "lucide-react";
+import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
+import { PlusIcon, StethoscopeIcon } from "lucide-react";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { EmptyState } from "@/components/atoms/empty-state";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
@@ -125,6 +127,7 @@ export function DoctorsPageClient() {
   useDoctorsListRealtime();
 
   const t = useTranslations("crmDoctors");
+  const locale = useLocale();
   const { apiFilters, effectivePeriod, setFilter } = useDoctorsFilters();
 
   const listQuery = useDoctorsList(apiFilters);
@@ -277,6 +280,12 @@ export function DoctorsPageClient() {
               icon={<StethoscopeIcon />}
               title={t("empty.title")}
               description={t("empty.description")}
+              action={
+                <Button render={<Link href={`/${locale}/crm/settings/users`} />}>
+                  <PlusIcon className="size-4" />
+                  {t("empty.action")}
+                </Button>
+              }
             />
           ) : (
             <div className="overflow-x-auto pb-1">

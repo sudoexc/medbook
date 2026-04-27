@@ -25,6 +25,7 @@ import { AppointmentDrawer } from "../../appointments/_components/appointment-dr
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 
 import { KpiStrip } from "./kpi-strip";
+import { OnboardingChecklist } from "./onboarding-checklist";
 import { DoctorQueueGrid } from "./doctor-queue-grid";
 import { CallsWidget } from "./calls-widget";
 import { TgPreviewWidget } from "./tg-preview-widget";
@@ -148,6 +149,8 @@ export function ReceptionPageClient() {
           </span>
         </div>
       </div>
+
+      <OnboardingChecklist />
 
       <KpiStrip dashboard={dashboard.data} todayRows={todayRows} />
 

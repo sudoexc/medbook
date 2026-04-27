@@ -1057,6 +1057,31 @@
       "error": "O'chirib bo'lmadi"
     }
   },
+  "onboardingChecklist": {
+    "ariaLabel": "CRM sozlash ro'yxati",
+    "title": "CRM-ni 4 qadamda ishga tushiring",
+    "subtitle": "Asoslarni to'ldiring — bemorlarni yozib olish mumkin bo'ladi",
+    "progressLabel": "{total} dan {done} bajarildi",
+    "doneLabel": "Tayyor",
+    "steps": {
+      "clinic": {
+        "label": "Klinika ma'lumoti",
+        "hint": "Manzil va telefon"
+      },
+      "cabinets": {
+        "label": "Kabinetlar",
+        "hint": "Shifokorlar qabul qiladigan joy"
+      },
+      "services": {
+        "label": "Xizmatlar",
+        "hint": "Kategoriyalar bilan narxlar ro'yxati"
+      },
+      "doctors": {
+        "label": "Shifokorlar",
+        "hint": "Profillar va jadvallar"
+      }
+    }
+  },
   "reception": {
     "title": "Qabulxona — Asosiy panel",
     "subtitle": "Bugungi kunning jonli ko'rinishi",
@@ -1417,6 +1442,7 @@
     "empty": {
       "title": "Hozircha shifokorlar yo'q",
       "description": "Jadval va hisob yuritish uchun birinchi shifokorni qo'shing.",
+      "action": "Shifokor qo'shish",
       "filteredTitle": "Hech kim topilmadi",
       "filteredDescription": "Filtrlarni o'zgartiring yoki qidiruvni tozalang."
     },
@@ -2183,7 +2209,9 @@
       "title": "Xizmatlar",
       "subtitle": "Narxlar va davomiyligi bilan xizmatlar katalogi.",
       "add": "Xizmat qo'shish",
-      "empty": "Hozircha xizmatlar yo'q — birinchisini qo'shing.",
+      "empty": "Hozircha xizmatlar yo'q",
+      "emptyHint": "Narxlar va davomiylik bilan xizmatlar katalogini tuzing — u yozuv va hisob-kitoblarda ishlatiladi.",
+      "addFirst": "Birinchi xizmatni qo'shish",
       "createHint": "Kod klinika ichida noyob bo'lishi kerak.",
       "created": "Xizmat yaratildi",
       "deactivated": "Xizmat yashirildi",
@@ -2203,7 +2231,9 @@
       "title": "Kabinetlar",
       "subtitle": "Klinika xonalari va jihozlari.",
       "add": "Kabinet qo'shish",
-      "empty": "Hozircha kabinetlar yo'q.",
+      "empty": "Hozircha kabinetlar yo'q",
+      "emptyHint": "Kabinetlarni qo'shing — ular shifokorlarni taqsimlash va bemorlarni yozish uchun kerak.",
+      "addFirst": "Birinchi kabinetni qo'shish",
       "created": "Kabinet yaratildi",
       "deactivated": "Kabinet yashirildi",
       "number": "Kabinet",

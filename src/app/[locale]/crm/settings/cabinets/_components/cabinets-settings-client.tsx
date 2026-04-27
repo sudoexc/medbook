@@ -82,9 +82,22 @@ export function CabinetsSettingsClient() {
       {listQuery.isLoading ? (
         <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border p-8 text-sm text-muted-foreground">
-          <DoorOpenIcon className="size-5" />
-          {t("cabinets.empty")}
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card/40 p-10 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <DoorOpenIcon className="size-6" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              {t("cabinets.empty")}
+            </h3>
+            <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
+              {t("cabinets.emptyHint")}
+            </p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)} className="mt-1">
+            <PlusIcon className="size-4" />
+            {t("cabinets.addFirst")}
+          </Button>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -84,45 +84,50 @@ export function ServicesSettingsClient() {
         }
       />
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">{t("services.cols.code")}</th>
-              <th className="px-3 py-2 font-medium">{t("services.cols.name")}</th>
-              <th className="px-3 py-2 font-medium">
-                {t("services.cols.category")}
-              </th>
-              <th className="px-3 py-2 font-medium">
-                {t("services.cols.duration")}
-              </th>
-              <th className="px-3 py-2 font-medium">
-                {t("services.cols.priceBase")}
-              </th>
-              <th className="px-3 py-2 font-medium">
-                {t("services.cols.active")}
-              </th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {listQuery.isLoading ? (
+      {listQuery.isLoading ? (
+        <div className="text-sm text-muted-foreground">{t("common.loading")}</div>
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card/40 p-10 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <StethoscopeIcon className="size-6" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              {t("services.empty")}
+            </h3>
+            <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
+              {t("services.emptyHint")}
+            </p>
+          </div>
+          <Button onClick={() => setCreateOpen(true)} className="mt-1">
+            <PlusIcon className="size-4" />
+            {t("services.addFirst")}
+          </Button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
-                  {t("common.loading")}
-                </td>
+                <th className="px-3 py-2 font-medium">{t("services.cols.code")}</th>
+                <th className="px-3 py-2 font-medium">{t("services.cols.name")}</th>
+                <th className="px-3 py-2 font-medium">
+                  {t("services.cols.category")}
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  {t("services.cols.duration")}
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  {t("services.cols.priceBase")}
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  {t("services.cols.active")}
+                </th>
+                <th className="px-3 py-2" />
               </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
-                  <div className="flex flex-col items-center gap-2">
-                    <StethoscopeIcon className="size-5" />
-                    {t("services.empty")}
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              rows.map((s) => (
+            </thead>
+            <tbody>
+              {rows.map((s) => (
                 <ServiceRowEditor
                   key={s.id}
                   row={s}
@@ -131,11 +136,11 @@ export function ServicesSettingsClient() {
                   }
                   onDelete={() => deleteMutation.mutate(s.id)}
                 />
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <CreateServiceDialog
         open={createOpen}

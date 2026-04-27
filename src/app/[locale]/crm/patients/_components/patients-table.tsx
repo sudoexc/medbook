@@ -129,7 +129,7 @@ const PRIORITY_CFG: Record<
 };
 
 const COLS_TEMPLATE =
-  "40px minmax(220px,1.6fr) minmax(150px,1.1fr) minmax(160px,1.1fr) minmax(160px,1.2fr) minmax(140px,1fr) 140px 150px 72px 90px";
+  "minmax(220px,1.6fr) minmax(150px,1.1fr) minmax(160px,1.1fr) minmax(160px,1.2fr) minmax(140px,1fr) 140px 150px 72px 90px";
 
 export interface PatientsTableProps {
   rows: PatientRow[];
@@ -182,24 +182,6 @@ export function PatientsTable({
 
   const columns = React.useMemo<ColumnDef<PatientRow>[]>(
     () => [
-      {
-        id: "select",
-        header: () => (
-          <input
-            type="checkbox"
-            aria-label={t("table.selectAll")}
-            className="size-4 rounded border-border"
-          />
-        ),
-        cell: () => (
-          <input
-            type="checkbox"
-            aria-label={t("table.selectRow")}
-            className="size-4 rounded border-border"
-            onClick={(e) => e.stopPropagation()}
-          />
-        ),
-      },
       {
         id: "fullName",
         header: () => t("columns.name"),
@@ -445,6 +427,12 @@ export function PatientsTable({
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
 
+  const [animInitial, setAnimInitial] = React.useState(true);
+  React.useEffect(() => {
+    const id = window.setTimeout(() => setAnimInitial(false), 800);
+    return () => window.clearTimeout(id);
+  }, []);
+
   const onRowActivate = (patientId: string) => {
     router.push(`/${locale}/crm/patients/${patientId}`);
   };
@@ -464,11 +452,6 @@ export function PatientsTable({
           className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
           style={{ gridTemplateColumns: COLS_TEMPLATE }}
         >
-          <input
-            type="checkbox"
-            aria-label={t("table.selectAll")}
-            className="size-4 rounded border-border"
-          />
           <SortHeader
             id="fullName"
             label={t("columns.name")}
@@ -508,7 +491,7 @@ export function PatientsTable({
           {isLoading ? (
             <div className="p-3">
               {Array.from({ length: 10 }).map((_, i) => (
-                <SkeletonRow key={i} cols={10} />
+                <SkeletonRow key={i} cols={9} />
               ))}
             </div>
           ) : isTrulyEmpty ? (
@@ -540,6 +523,7 @@ export function PatientsTable({
                 const row = table.getRowModel().rows[virtualRow.index];
                 if (!row) return null;
                 const p = row.original;
+                const animate = animInitial && virtualRow.index < 12;
                 return (
                   <div
                     key={p.id}
@@ -559,10 +543,14 @@ export function PatientsTable({
                       width: "100%",
                       transform: `translateY(${virtualRow.start}px)`,
                       gridTemplateColumns: COLS_TEMPLATE,
+                      animationDelay: animate
+                        ? `${virtualRow.index * 35}ms`
+                        : undefined,
                     }}
                     className={cn(
                       "grid items-center gap-3 border-b border-border px-4 py-3 text-sm transition-colors",
                       "cursor-pointer hover:bg-muted/30 focus:bg-muted/60 focus:outline-none",
+                      animate && "table-row-fade-stagger",
                     )}
                   >
                     {row.getVisibleCells().map((cell) => (

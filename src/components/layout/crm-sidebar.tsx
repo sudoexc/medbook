@@ -216,13 +216,13 @@ export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
                       {active ? (
                         <span
                           aria-hidden
-                          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-success"
+                          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-success animate-in fade-in slide-in-from-left-1 duration-300"
                         />
                       ) : null}
                       <Icon
                         className={cn(
-                          "size-4 shrink-0",
-                          active ? "text-success" : "text-muted-foreground",
+                          "size-4 shrink-0 transition-colors",
+                          active ? "text-success" : "text-muted-foreground group-hover:text-foreground",
                         )}
                       />
                       <span className="flex-1 truncate">{tNav(item.labelKey)}</span>

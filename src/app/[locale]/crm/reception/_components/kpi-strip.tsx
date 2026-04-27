@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CountUp, useCountUp } from "@/components/atoms/count-up";
 import { KpiTile } from "@/components/atoms/kpi-tile";
 import { MoneyText } from "@/components/atoms/money-text";
 import type {
@@ -56,13 +57,14 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
   const completed = today?.completed ?? pickBucket(queue, "COMPLETED");
   const noShow = pickBucket(queue, "NO_SHOW");
   const revenue = today?.revenue ?? 0;
+  const animatedRevenue = useCountUp(Number(revenue));
 
   const tiles = [
     {
       key: "today",
       href: "/crm/appointments?dateMode=today",
       label: t("todayAppointments"),
-      value: <span className="tabular-nums">{totalToday}</span>,
+      value: <CountUp to={totalToday} className="tabular-nums" />,
       tone: "primary" as const,
       icon: <CalendarDaysIcon />,
     },
@@ -70,7 +72,7 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       key: "waiting",
       href: "/crm/appointments?dateMode=today&bucket=waiting",
       label: t("waiting"),
-      value: <span className="tabular-nums">{waiting}</span>,
+      value: <CountUp to={waiting} className="tabular-nums" />,
       tone: "warning" as const,
       icon: <HourglassIcon />,
     },
@@ -78,7 +80,7 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       key: "inProgress",
       href: "/crm/appointments?dateMode=today&bucket=in_progress",
       label: t("inProgress"),
-      value: <span className="tabular-nums">{inProgress}</span>,
+      value: <CountUp to={inProgress} className="tabular-nums" />,
       tone: "info" as const,
       icon: <ActivityIcon />,
     },
@@ -86,7 +88,7 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       key: "completed",
       href: "/crm/appointments?dateMode=today&bucket=completed",
       label: t("checkedIn"),
-      value: <span className="tabular-nums">{completed}</span>,
+      value: <CountUp to={completed} className="tabular-nums" />,
       tone: "success" as const,
       icon: <CheckCircle2Icon />,
     },
@@ -94,7 +96,7 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       key: "noShow",
       href: "/crm/appointments?dateMode=today&bucket=no_show",
       label: t("missed"),
-      value: <span className="tabular-nums">{noShow}</span>,
+      value: <CountUp to={noShow} className="tabular-nums" />,
       tone: "neutral" as const,
       icon: <XCircleIcon />,
     },
@@ -104,7 +106,7 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       label: t("revenue"),
       value: (
         <MoneyText
-          amount={revenue}
+          amount={Math.round(animatedRevenue)}
           currency="UZS"
           className="tabular-nums"
         />

@@ -13,6 +13,7 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { CountUp, useCountUp } from "@/components/atoms/count-up";
 import { MoneyText } from "@/components/atoms/money-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
@@ -184,6 +185,25 @@ function PatientBody({
   const t = useTranslations("callCenter.active");
   const query = usePatient(patientId);
 
+  const p = query.data;
+  const appointments = p?.appointments ?? [];
+  const past = appointments.filter(
+    (a) => a.status === "COMPLETED" || a.status === "NO_SHOW",
+  );
+  const upcoming = appointments.find(
+    (a) => a.status === "BOOKED" || a.status === "WAITING",
+  );
+  const avgCheck =
+    past.length > 0
+      ? Math.round(
+          past.reduce((acc, a) => acc + (a.priceFinal ?? 0), 0) / past.length,
+        )
+      : 0;
+
+  const animatedLtv = useCountUp(p?.ltv ?? 0);
+  const animatedAvgCheck = useCountUp(avgCheck);
+  const animatedBalance = useCountUp(p?.balance ?? 0);
+
   if (query.isLoading) {
     return (
       <div className="mt-4 space-y-3">
@@ -194,29 +214,13 @@ function PatientBody({
     );
   }
 
-  if (!query.data) {
+  if (!p) {
     return (
       <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
         {t("patientFetchError")}
       </div>
     );
   }
-
-  const p = query.data;
-  const appointments = p.appointments ?? [];
-  const past = appointments.filter(
-    (a) => a.status === "COMPLETED" || a.status === "NO_SHOW",
-  );
-  const upcoming = appointments.find(
-    (a) => a.status === "BOOKED" || a.status === "WAITING",
-  );
-
-  const avgCheck =
-    past.length > 0
-      ? Math.round(
-          past.reduce((acc, a) => acc + (a.priceFinal ?? 0), 0) / past.length,
-        )
-      : 0;
 
   return (
     <>
@@ -227,19 +231,32 @@ function PatientBody({
       >
         <KpiCard
           label={t("kpi.ltv")}
-          value={<MoneyText amount={p.ltv} currency="UZS" className="text-lg font-bold" />}
+          value={
+            <MoneyText
+              amount={Math.round(animatedLtv)}
+              currency="UZS"
+              className="text-lg font-bold"
+            />
+          }
         />
         <KpiCard
           label={t("kpi.visits")}
           value={
-            <span className="text-lg font-bold tabular-nums">{p.visitsCount}</span>
+            <CountUp
+              to={p.visitsCount}
+              className="text-lg font-bold tabular-nums"
+            />
           }
         />
         <KpiCard
           label={t("kpi.avgCheck")}
           value={
             avgCheck > 0 ? (
-              <MoneyText amount={avgCheck} currency="UZS" className="text-lg font-bold" />
+              <MoneyText
+                amount={Math.round(animatedAvgCheck)}
+                currency="UZS"
+                className="text-lg font-bold"
+              />
             ) : (
               <span className="text-lg font-bold">—</span>
             )
@@ -249,7 +266,7 @@ function PatientBody({
           label={t("kpi.balance")}
           value={
             <MoneyText
-              amount={p.balance}
+              amount={Math.round(animatedBalance)}
               currency="UZS"
               className={cn(
                 "text-lg font-bold",

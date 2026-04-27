@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CountUp, useCountUp } from "@/components/atoms/count-up";
 import { MoneyText } from "@/components/atoms/money-text";
 
 import type { DoctorAgg } from "../_hooks/use-doctors-stats";
@@ -110,13 +111,17 @@ export function DoctorsTiles({
     };
   }, [aggByDoctor, doctorsCount, capacity]);
 
+  const animatedLosses = useCountUp(stats.lossesToday);
+  const animatedRevenue = useCountUp(stats.totalRevenue);
+  const animatedAvgCheck = useCountUp(stats.avgCheck);
+
   const tiles: Tile[] = [
     {
       key: "losses",
       label: t("losses"),
       value: (
         <MoneyText
-          amount={stats.lossesToday}
+          amount={Math.round(animatedLosses)}
           currency="UZS"
           className="text-xl font-bold"
         />
@@ -153,7 +158,7 @@ export function DoctorsTiles({
     {
       key: "load",
       label: t("avgLoad"),
-      value: `${stats.loadPct}%`,
+      value: <CountUp to={stats.loadPct} format={(n) => `${Math.round(n)}%`} />,
       hint: t("deltaPercentPositive", { value: 8 }),
       hintTone: "positive",
       icon: ActivityIcon,
@@ -164,7 +169,7 @@ export function DoctorsTiles({
       label: t("revenueToday"),
       value: (
         <MoneyText
-          amount={stats.totalRevenue}
+          amount={Math.round(animatedRevenue)}
           currency="UZS"
           className="text-xl font-bold"
         />
@@ -177,7 +182,7 @@ export function DoctorsTiles({
     {
       key: "appointments",
       label: t("appointmentsToday"),
-      value: formatInt(stats.totalToday, locale),
+      value: <CountUp to={stats.totalToday} />,
       hint: t("deltaCountPositive", { value: 18 }),
       hintTone: "positive",
       icon: CalendarIcon,
@@ -189,7 +194,7 @@ export function DoctorsTiles({
       value:
         stats.avgCheck > 0 ? (
           <MoneyText
-            amount={stats.avgCheck}
+            amount={Math.round(animatedAvgCheck)}
             currency="UZS"
             className="text-xl font-bold"
           />
@@ -204,7 +209,7 @@ export function DoctorsTiles({
     {
       key: "conversion",
       label: t("conversion"),
-      value: `${stats.conversionPct}%`,
+      value: <CountUp to={stats.conversionPct} format={(n) => `${Math.round(n)}%`} />,
       hint: t("deltaPercentPositive", { value: 5 }),
       hintTone: "positive",
       icon: TargetIcon,

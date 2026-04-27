@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { CircleDollarSignIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useCountUp } from "@/components/atoms/count-up";
 import { MoneyText } from "@/components/atoms/money-text";
 import { Button } from "@/components/ui/button";
 
@@ -42,6 +43,11 @@ export function PatientFinanceCard({
     };
   }, [appointments, patient.ltv]);
 
+  const animatedTotal = useCountUp(stats.total);
+  const animatedPaid = useCountUp(stats.paid);
+  const animatedDebt = useCountUp(stats.debt);
+  const animatedPct = useCountUp(stats.paidPct);
+
   return (
     <section
       className={cn(
@@ -58,12 +64,12 @@ export function PatientFinanceCard({
           <FinanceRow
             icon={CircleDollarSignIcon}
             label={t("totalIncome")}
-            value={<MoneyText amount={stats.total} currency="UZS" />}
+            value={<MoneyText amount={Math.round(animatedTotal)} currency="UZS" />}
           />
           <FinanceRow
             icon={CreditCardIcon}
             label={t("paid")}
-            value={<MoneyText amount={stats.paid} currency="UZS" />}
+            value={<MoneyText amount={Math.round(animatedPaid)} currency="UZS" />}
             tone="success"
           />
           <FinanceRow
@@ -71,7 +77,7 @@ export function PatientFinanceCard({
             label={t("debt")}
             value={
               stats.debt > 0 ? (
-                <MoneyText amount={stats.debt} currency="UZS" />
+                <MoneyText amount={Math.round(animatedDebt)} currency="UZS" />
               ) : (
                 t("zeroSum")
               )
@@ -80,7 +86,7 @@ export function PatientFinanceCard({
           />
         </dl>
 
-        <Donut pct={stats.paidPct} label={t("donutPaid")} />
+        <Donut pct={animatedPct} label={t("donutPaid")} />
       </div>
 
       <div className="mt-3 flex">
@@ -130,7 +136,7 @@ function Donut({ pct, label }: { pct: number; label: string }) {
   const stroke = 12;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const dash = (pct / 100) * c;
+  const dash = (Math.max(0, Math.min(100, pct)) / 100) * c;
   return (
     <div className="relative flex shrink-0 items-center justify-center">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -158,7 +164,7 @@ function Donut({ pct, label }: { pct: number; label: string }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-lg font-bold tabular-nums text-foreground">
-          {pct}%
+          {Math.round(pct)}%
         </span>
         <span className="text-[10px] text-muted-foreground">{label}</span>
       </div>

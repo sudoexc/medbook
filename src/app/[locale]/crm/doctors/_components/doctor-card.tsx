@@ -115,7 +115,7 @@ export function DoctorCard({
   return (
     <div
       className={cn(
-        "flex min-h-[320px] w-[260px] shrink-0 flex-col rounded-2xl border bg-card p-3 shadow-sm",
+        "flex min-h-[320px] w-[260px] shrink-0 flex-col rounded-2xl border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         accentBorder,
         accentBg,
         className,

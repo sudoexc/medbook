@@ -36,6 +36,7 @@ import {
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
 import { useGlobalSearchShortcut } from "@/components/layout/global-search"
+import { HeaderAtmosphere } from "@/components/layout/header-atmosphere"
 import { toast } from "@/components/ui/sonner"
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog"
 
@@ -130,17 +131,18 @@ export function CrmTopbar({
   }, [])
   useGlobalSearchShortcut(openSearch)
 
+  const dateLocale = locale === "uz" ? "uz-Latn-UZ" : "ru-RU"
+
   const timeStr =
     now == null
       ? "—"
-      : new Intl.DateTimeFormat("ru-RU", {
+      : new Intl.DateTimeFormat(dateLocale, {
           hour: "2-digit",
           minute: "2-digit",
           hour12: false,
         }).format(now)
 
-  // «21 апреля, понедельник» — long Russian date per mockup.
-  const dateLocale = locale === "uz" ? "uz-Latn-UZ" : "ru-RU"
+  // «21 апреля, понедельник» — long localized date per mockup.
   const dateStr = React.useMemo(() => {
     if (now == null) return ""
     const day = new Intl.DateTimeFormat(dateLocale, {
@@ -168,8 +170,9 @@ export function CrmTopbar({
   }, [])
 
   return (
-    <header className="flex h-[72px] shrink-0 items-center gap-4 border-b border-border bg-card px-6">
-      <div className="hidden min-w-0 shrink-0 leading-tight md:block">
+    <header className="relative flex h-[72px] shrink-0 items-center gap-4 overflow-hidden border-b border-border bg-card px-6">
+      <HeaderAtmosphere />
+      <div className="relative z-[1] hidden min-w-0 shrink-0 leading-tight md:block">
         <div className="truncate text-2xl font-extrabold tracking-tight text-foreground">
           {tSection("title")}
         </div>
@@ -181,7 +184,7 @@ export function CrmTopbar({
       <button
         type="button"
         onClick={openSearch}
-        className="flex h-11 max-w-[440px] flex-1 items-center gap-2.5 rounded-2xl border border-border bg-background px-4 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        className="relative z-[1] flex h-11 max-w-[440px] flex-1 items-center gap-2.5 rounded-2xl border border-border bg-background px-4 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
       >
         <SearchIcon className="size-4" />
         <span className="flex-1 truncate text-left">
@@ -195,7 +198,7 @@ export function CrmTopbar({
         <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
       ) : null}
 
-      <div className="ml-auto flex items-center gap-4">
+      <div className="relative z-[1] ml-auto flex items-center gap-4">
         {/* Split button: main + dropdown arrow */}
         <div className="flex h-11 overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-sm">
           <Button
@@ -264,6 +267,7 @@ export function CrmTopbar({
             badge={summary?.unread.calls ?? 0}
             tone="danger"
             iconClass="text-foreground"
+            onClick={() => intlRouter.push("/crm/call-center")}
           />
           <TopbarChannelIcon
             label={tTopbar("channels.telegram")}
@@ -271,6 +275,7 @@ export function CrmTopbar({
             badge={summary?.unread.telegram ?? 0}
             tone="success"
             iconClass="text-primary"
+            onClick={() => intlRouter.push("/crm/notifications")}
           />
           <TopbarChannelIcon
             label={tTopbar("channels.notifications")}
@@ -278,6 +283,7 @@ export function CrmTopbar({
             badge={summary?.unread.notifications ?? 0}
             tone="danger"
             iconClass="text-foreground"
+            onClick={() => intlRouter.push("/crm/notifications")}
           />
         </div>
 
@@ -287,7 +293,7 @@ export function CrmTopbar({
               className={cn(
                 "flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted",
               )}
-              aria-label="User menu"
+              aria-label={tTopbar("userMenu.ariaLabel")}
             >
               <AvatarWithStatus
                 name={userName ?? userEmail ?? "User"}
@@ -416,12 +422,14 @@ function TopbarChannelIcon({
   badge,
   tone,
   iconClass,
+  onClick,
 }: {
   label: string
   icon: React.ComponentType<{ className?: string }>
   badge?: number
   tone: "danger" | "success" | "info"
   iconClass?: string
+  onClick?: () => void
 }) {
   const toneClass = {
     danger: "bg-destructive text-destructive-foreground",
@@ -432,6 +440,7 @@ function TopbarChannelIcon({
     <button
       type="button"
       aria-label={label}
+      onClick={onClick}
       className="group flex flex-col items-center gap-1"
     >
       <span className="relative flex size-7 items-center justify-center">

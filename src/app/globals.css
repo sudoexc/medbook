@@ -255,3 +255,95 @@
     @apply font-sans;
   }
 }
+
+/* Header atmosphere — falling petals inside the 72px CRM topbar.
+   Each petal drifts from just above the header to just below it with gentle
+   horizontal sway and rotation. The translateY values are pixel-based so the
+   petal travels the full header height regardless of its own size.
+   See `src/components/layout/header-atmosphere.tsx` for the param table. */
+@keyframes header-petal-fall {
+  0% {
+    transform: translate3d(0, -24px, 0) rotate(var(--petal-rotate, 0deg));
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  18% {
+    transform: translate3d(var(--petal-sway, 0px), 6px, 0)
+      rotate(calc(var(--petal-rotate, 0deg) + 70deg));
+  }
+  36% {
+    transform: translate3d(calc(var(--petal-sway, 0px) * -0.7), 22px, 0)
+      rotate(calc(var(--petal-rotate, 0deg) + 150deg));
+  }
+  56% {
+    transform: translate3d(calc(var(--petal-sway, 0px) * 0.85), 42px, 0)
+      rotate(calc(var(--petal-rotate, 0deg) + 240deg));
+  }
+  76% {
+    transform: translate3d(calc(var(--petal-sway, 0px) * -0.5), 62px, 0)
+      rotate(calc(var(--petal-rotate, 0deg) + 320deg));
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 96px, 0)
+      rotate(calc(var(--petal-rotate, 0deg) + 400deg));
+    opacity: 0;
+  }
+}
+
+.header-petal {
+  position: absolute;
+  top: 0;
+  border-radius: 50% 0 50% 0;
+  filter: blur(0.3px);
+  will-change: transform, opacity;
+  opacity: 0;
+  animation-name: header-petal-fall;
+  animation-timing-function: cubic-bezier(0.37, 0, 0.63, 1);
+  animation-iteration-count: infinite;
+  background: color-mix(in oklab, var(--primary) 50%, transparent);
+  box-shadow:
+    0 0 6px color-mix(in oklab, var(--primary) 32%, transparent),
+    inset 0 0 1px color-mix(in oklab, var(--primary) 60%, transparent);
+}
+
+.header-petal[data-hue="info"] {
+  background: color-mix(in oklab, var(--info) 50%, transparent);
+  box-shadow:
+    0 0 6px color-mix(in oklab, var(--info) 32%, transparent),
+    inset 0 0 1px color-mix(in oklab, var(--info) 60%, transparent);
+}
+
+.header-petal[data-hue="success"] {
+  background: color-mix(in oklab, var(--success) 45%, transparent);
+  box-shadow:
+    0 0 6px color-mix(in oklab, var(--success) 28%, transparent),
+    inset 0 0 1px color-mix(in oklab, var(--success) 60%, transparent);
+}
+
+/* Initial-load stagger fade-in for virtualized table rows.
+   Only opacity is animated — virtualizer owns `transform` for row positioning,
+   so we can't slide without touching its layout math. The 35ms-per-row stagger
+   is capped to the first ~12 rows; later indices skip animation in JSX. */
+@keyframes table-row-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.table-row-fade-stagger {
+  animation: table-row-fade-in 0.4s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-row-fade-stagger {
+    animation: none;
+  }
+}

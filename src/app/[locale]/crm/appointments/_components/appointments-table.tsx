@@ -482,6 +482,12 @@ export function AppointmentsTable({
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
 
+  const [animInitial, setAnimInitial] = React.useState(true);
+  React.useEffect(() => {
+    const id = window.setTimeout(() => setAnimInitial(false), 800);
+    return () => window.clearTimeout(id);
+  }, []);
+
   const isTrulyEmpty = !isLoading && rows.length === 0;
 
   return (
@@ -570,6 +576,7 @@ export function AppointmentsTable({
                 const a = row.original;
                 const checked = selectedIds.has(a.id);
                 const tone = rowTone(a, now);
+                const animate = animInitial && virtualRow.index < 12;
                 return (
                   <div
                     key={a.id}
@@ -592,6 +599,9 @@ export function AppointmentsTable({
                       width: "100%",
                       transform: `translateY(${virtualRow.start}px)`,
                       gridTemplateColumns: COLS_TEMPLATE,
+                      animationDelay: animate
+                        ? `${virtualRow.index * 35}ms`
+                        : undefined,
                     }}
                     className={cn(
                       "grid items-center gap-2 border-b border-border px-3 py-2.5 text-sm transition-colors",
@@ -600,6 +610,7 @@ export function AppointmentsTable({
                       tone === "warning" && "bg-warning/[0.06] hover:bg-warning/[0.1]",
                       tone === null && "hover:bg-muted/40",
                       checked && "ring-1 ring-inset ring-primary/40",
+                      animate && "table-row-fade-stagger",
                     )}
                   >
                     {row.getVisibleCells().map((cell) => (

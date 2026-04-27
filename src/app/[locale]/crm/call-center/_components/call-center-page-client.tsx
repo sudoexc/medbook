@@ -74,6 +74,7 @@ export function CallCenterPageClient() {
             selectedId={activeId}
             onSelect={setActiveId}
             isLoading={incomingQuery.isLoading}
+            isFetching={incomingQuery.isFetching}
           />
         </aside>
 

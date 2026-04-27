@@ -75,6 +75,24 @@ const EMPTY: FormState = {
   isActive: true,
 };
 
+// SMS sizing — UCS-2 (Cyrillic) caps a single segment at 70 chars,
+// concatenated parts at 67. We assume cyrillic to be conservative; mixed
+// strings will round up by at most one segment.
+function smsSegments(text: string): { chars: number; parts: number } {
+  const chars = text.length;
+  if (chars === 0) return { chars: 0, parts: 0 };
+  if (chars <= 70) return { chars, parts: 1 };
+  return { chars, parts: Math.ceil(chars / 67) };
+}
+
+function extractVars(template: string): string[] {
+  const out: string[] = [];
+  const re = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(template))) out.push(m[1]);
+  return out;
+}
+
 /** Simple handlebars-style preview. Keeps the client lean — no server round-trip. */
 function previewRender(template: string, sample: Record<string, unknown>): string {
   const get = (path: string): unknown => {
@@ -213,6 +231,16 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           ),
         );
 
+  const allowedSet = React.useMemo(
+    () => new Set(allowedForKey),
+    [allowedForKey],
+  );
+  const unknownVarsRu = React.useMemo(
+    () => extractVars(form.bodyRu).filter((v) => !allowedSet.has(v)),
+    [form.bodyRu, allowedSet],
+  );
+  const smsRu = smsSegments(form.bodyRu);
+
   const insertPlaceholder = (key: string) => {
     update("bodyRu", form.bodyRu + `{{${key}}}`);
   };
@@ -325,6 +353,23 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           rows={5}
           placeholder={t("editor.bodyPlaceholder")}
         />
+        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          {form.channel === "SMS" ? (
+            <span>
+              {t("editor.smsCounter", {
+                chars: smsRu.chars,
+                parts: smsRu.parts,
+              })}
+            </span>
+          ) : (
+            <span />
+          )}
+          {unknownVarsRu.length > 0 ? (
+            <span className="text-destructive">
+              {t("editor.unknownVar", { var: unknownVarsRu[0] })}
+            </span>
+          ) : null}
+        </div>
         <div className="flex flex-wrap gap-1">
           {allowedForKey.map((k) => (
             <button
@@ -366,7 +411,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
         <div className="flex items-center gap-2">
           <Button onClick={onSave} disabled={saving}>
             <SaveIcon className="size-4" />
-            {t("editor.save")}
+            {saving ? t("editor.saving") : t("editor.save")}
           </Button>
           {!isCreate ? (
             <Button
@@ -375,7 +420,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
               disabled={deleteMut.isPending}
             >
               <Trash2Icon className="size-4" />
-              {t("editor.delete")}
+              {deleteMut.isPending ? t("editor.deleting") : t("editor.delete")}
             </Button>
           ) : null}
         </div>

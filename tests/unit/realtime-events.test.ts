@@ -213,25 +213,6 @@ describe("notification.*", () => {
   });
 });
 
-describe("cabinet.occupancy.changed", () => {
-  it("accepts a minimal envelope", () => {
-    const parsed = parseEvent(
-      envelope("cabinet.occupancy.changed", {
-        cabinetId: "cab1",
-        occupied: true,
-      }),
-    );
-    expect(parsed.type).toBe("cabinet.occupancy.changed");
-  });
-
-  it("rejects envelope missing cabinetId", () => {
-    const res = AppEventSchema.safeParse(
-      envelope("cabinet.occupancy.changed", { occupied: false }),
-    );
-    expect(res.success).toBe(false);
-  });
-});
-
 describe("isAppEvent guard", () => {
   it("returns true for a valid envelope", () => {
     expect(

@@ -54,8 +54,6 @@ export const EVENT_TYPES = [
   // notifications
   "notification.sent",
   "notification.failed",
-  // cabinets
-  "cabinet.occupancy.changed",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -154,17 +152,6 @@ export const NotificationPayload = z
   .passthrough();
 export type NotificationEventPayload = z.infer<typeof NotificationPayload>;
 
-export const CabinetOccupancyPayload = z
-  .object({
-    cabinetId: z.string(),
-    occupied: z.boolean().optional(),
-    currentAppointmentId: z.string().nullable().optional(),
-  })
-  .passthrough();
-export type CabinetOccupancyEventPayload = z.infer<
-  typeof CabinetOccupancyPayload
->;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -202,7 +189,6 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("payment.due", PaymentPayload),
   makeEvent("notification.sent", NotificationPayload),
   makeEvent("notification.failed", NotificationPayload),
-  makeEvent("cabinet.occupancy.changed", CabinetOccupancyPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

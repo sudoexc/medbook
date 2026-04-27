@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
+import { CreateDocumentSchema } from "@/server/schemas/document";
 
 import type { DocumentType } from "../_hooks/use-documents";
 
@@ -36,6 +37,8 @@ const DOC_TYPES: DocumentType[] = [
   "RECEIPT",
   "OTHER",
 ];
+
+type FieldErrors = Partial<Record<"patientId" | "title" | "fileUrl", string>>;
 
 export function UploadDialog({
   open,
@@ -52,9 +55,28 @@ export function UploadDialog({
   const [type, setType] = React.useState<DocumentType>("OTHER");
   const [fileUrl, setFileUrl] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [errors, setErrors] = React.useState<FieldErrors>({});
 
   const submit = async () => {
-    if (!patientId || !title || !fileUrl) {
+    setErrors({});
+    // Client-side Zod validation mirrors the server's CreateDocumentSchema —
+    // catches empty fields, oversized title (>300), oversized URL (>1000) and
+    // surfaces them per-input instead of a generic toast.
+    const parsed = CreateDocumentSchema.safeParse({
+      patientId,
+      title,
+      type,
+      fileUrl,
+    });
+    if (!parsed.success) {
+      const fieldErrors: FieldErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0];
+        if (key === "patientId" || key === "title" || key === "fileUrl") {
+          fieldErrors[key] = issue.message;
+        }
+      }
+      setErrors(fieldErrors);
       toast.error(t("toastMissingFields"));
       return;
     }
@@ -64,12 +86,7 @@ export function UploadDialog({
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          patientId,
-          title,
-          type,
-          fileUrl,
-        }),
+        body: JSON.stringify(parsed.data),
       });
       if (!res.ok) {
         toast.error(t("toastUploadError"));
@@ -79,6 +96,7 @@ export function UploadDialog({
       setTitle("");
       setType("OTHER");
       setFileUrl("");
+      setErrors({});
       onUploaded();
     } finally {
       setSaving(false);
@@ -102,7 +120,11 @@ export function UploadDialog({
               value={patientId}
               onChange={(e) => setPatientId(e.target.value)}
               placeholder="cmXXX..."
+              aria-invalid={!!errors.patientId}
             />
+            {errors.patientId ? (
+              <p className="mt-1 text-xs text-destructive">{errors.patientId}</p>
+            ) : null}
           </div>
           <div>
             <label htmlFor="up-title" className="mb-1 block text-xs font-medium">
@@ -112,7 +134,11 @@ export function UploadDialog({
               id="up-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              aria-invalid={!!errors.title}
             />
+            {errors.title ? (
+              <p className="mt-1 text-xs text-destructive">{errors.title}</p>
+            ) : null}
           </div>
           <div>
             <label htmlFor="up-type" className="mb-1 block text-xs font-medium">
@@ -136,14 +162,18 @@ export function UploadDialog({
           </div>
           <div>
             <label htmlFor="up-url" className="mb-1 block text-xs font-medium">
-              File URL
+              {t("fileUrl")}
             </label>
             <Input
               id="up-url"
               value={fileUrl}
               onChange={(e) => setFileUrl(e.target.value)}
               placeholder="https://…"
+              aria-invalid={!!errors.fileUrl}
             />
+            {errors.fileUrl ? (
+              <p className="mt-1 text-xs text-destructive">{errors.fileUrl}</p>
+            ) : null}
           </div>
         </div>
         <DialogFooter>
@@ -155,7 +185,7 @@ export function UploadDialog({
             {t("cancel")}
           </Button>
           <Button onClick={submit} disabled={saving}>
-            {saving ? "…" : t("upload")}
+            {saving ? t("uploading") : t("upload")}
           </Button>
         </DialogFooter>
       </DialogContent>

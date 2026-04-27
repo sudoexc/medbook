@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations, useLocale } from "next-intl";
 
+import { EmptyState } from "@/components/atoms/empty-state";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
@@ -68,8 +69,18 @@ export function AnalyticsPageClient() {
             <Skeleton key={i} className="h-64 w-full" />
           ))}
         </div>
+      ) : q.isError ? (
+        <EmptyState
+          title={t("errorTitle")}
+          description={t("errorHint")}
+          action={
+            <Button size="sm" variant="outline" onClick={() => q.refetch()}>
+              {t("errorRetry")}
+            </Button>
+          }
+        />
       ) : !data ? (
-        <p className="text-sm text-muted-foreground">{t("empty")}</p>
+        <EmptyState title={t("empty")} description={t("emptyHint")} />
       ) : (
         <AnalyticsCharts
           data={data}

@@ -23,11 +23,13 @@ export function IncomingQueue({
   selectedId,
   onSelect,
   isLoading,
+  isFetching,
 }: {
   rows: CallRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   isLoading?: boolean;
+  isFetching?: boolean;
 }) {
   const t = useTranslations("callCenter.queue");
 
@@ -57,6 +59,12 @@ export function IncomingQueue({
         <div className="flex items-center gap-2">
           <PhoneIncomingIcon className="size-4 text-primary" aria-hidden />
           <h2 className="text-sm font-semibold">{t("title")}</h2>
+          {isFetching && !isLoading ? (
+            <span
+              className="size-1.5 animate-pulse rounded-full bg-primary"
+              aria-label={t("polling")}
+            />
+          ) : null}
         </div>
         <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
           {rows.length}

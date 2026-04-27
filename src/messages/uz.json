@@ -37,7 +37,8 @@
         "lang": "Til",
         "themeLight": "Yorug'",
         "themeDark": "Qorong'i",
-        "signOut": "Chiqish"
+        "signOut": "Chiqish",
+        "ariaLabel": "Foydalanuvchi menyusi"
       },
       "channels": {
         "calls": "Qo'ng'iroqlar",
@@ -296,7 +297,9 @@
       "cancel": "Bekor qilish",
       "createdToast": "Bemor yaratildi",
       "errorToast": "Bemorni yaratib bo'lmadi",
-      "phoneExists": "Bu telefon raqamidagi bemor allaqachon mavjud"
+      "phoneExists": "Bu telefon raqamidagi bemor allaqachon mavjud",
+      "errorRequired": "Majburiy maydon",
+      "errorPhoneFormat": "Telefon kiriting (3–40 belgi)"
     },
     "rowActions": {
       "open": "Kartochkani ochish",
@@ -523,6 +526,8 @@
       "statusError": "Holatni o'zgartirib bo'lmadi",
       "cancelAppt": "Yozilishni bekor qilish",
       "cancelConfirm": "Ushbu yozilishni bekor qilasizmi?",
+      "cancelConfirmDesc": "Yozilish bekor qilingan deb belgilanadi. Jadvaldagi slot bo'shatiladi.",
+      "cancelKeep": "Bekor qilmaslik",
       "cancelled": "Yozilish bekor qilindi",
       "conflict": {
         "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
@@ -1037,7 +1042,8 @@
       "cancel": "Bekor qilish",
       "send": "Yuborish",
       "sending": "Yuborilmoqda…",
-      "sent": "SMS navbatga qo'yildi"
+      "sent": "SMS navbatga qo'yildi",
+      "error": "SMS yuborib bo'lmadi"
     },
     "delete": {
       "title": "Bemorni o'chirishmi?",
@@ -1589,7 +1595,10 @@
       "saved": "Davr qo'shildi",
       "errorSave": "Saqlab bo'lmadi",
       "delete": "O'chirish",
-      "deleteConfirm": "Ushbu davrni o'chirilsinmi?"
+      "deleteConfirm": "Ushbu davrni o'chirilsinmi?",
+      "deleteConfirmTitle": "Davr o'chirilsinmi?",
+      "deleteConfirmDesc": "Ushbu ta'til davri qaytarib bo'lmaydigan tarzda o'chiriladi.",
+      "errorEndBeforeStart": "Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak"
     },
     "patients": {
       "title": "Shifokor bemorlari",
@@ -1775,8 +1784,10 @@
       "preview": "Oldindan ko'rish",
       "previewEmpty": "Shablon matnini kiriting",
       "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
       "saved": "Saqlandi",
       "delete": "O'chirish",
+      "deleting": "O'chirilmoqda…",
       "deleted": "O'chirildi",
       "deleteConfirmTitle": "Shablonni o'chirish?",
       "deleteConfirmBody": "Shablon nofaol qilinadi va yuborishlar to'xtatiladi.",
@@ -1789,7 +1800,9 @@
       "sampleAppointmentDate": "2026-yil 25-aprel",
       "sampleDoctor": "Dr. Aliyeva",
       "sampleService": "Konsultatsiya",
-      "sampleClinicAddress": "Toshkent"
+      "sampleClinicAddress": "Toshkent",
+      "smsCounter": "{chars} belgi · {parts} SMS",
+      "unknownVar": "Noma'lum o'zgaruvchi: {var}"
     },
     "triggers": {
       "title": "Triggerlar",
@@ -1952,7 +1965,8 @@
       "loading": "Navbat yuklanmoqda…",
       "unknownCaller": "Noma'lum raqam",
       "newCallToast": "{name} dan qo'ng'iroq ({phone})",
-      "pollingHint": "Har 5 soniyada yangilanadi"
+      "pollingHint": "Har 5 soniyada yangilanadi",
+      "polling": "Yangilanmoqda"
     },
     "active": {
       "ariaLabel": "Faol qo'ng'iroq",
@@ -2495,6 +2509,10 @@
       "ltv": "LTV taqsimoti"
     },
     "empty": "Tanlangan davr uchun ma’lumot yo‘q",
+    "emptyHint": "Ushbu davr uchun yozuvlar paydo bo‘lganda grafiklar avtomatik yangilanadi.",
+    "errorTitle": "Analitikani yuklab bo‘lmadi",
+    "errorHint": "Aloqani tekshiring va sahifani yangilab ko‘ring.",
+    "errorRetry": "Qayta urinish",
     "loading": "Yuklanmoqda…",
     "export": "PNG eksport",
     "exportSoon": "PNG eksport Phase 7 da qo‘shiladi"
@@ -2539,6 +2557,8 @@
       "download": "Yuklab olish"
     },
     "cancel": "Bekor qilish",
+    "fileUrl": "Fayl URL",
+    "uploading": "Yuklanmoqda…",
     "toastMissingFields": "Majburiy maydonlarni to'ldiring",
     "toastUploadError": "Yuklashda xatolik"
   },

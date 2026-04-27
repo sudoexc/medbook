@@ -24,7 +24,7 @@ import type {
  *       ["reception","reminders"]
  *   - `call.incoming` / `call.updated` → ["reception","calls"]
  *   - `tg.message.new` / `conversation.updated` → ["reception","conversations"]
- *   - `cabinet.occupancy.changed` → ["reception","cabinets"]
+ *   - cabinets — piggyback on appointment.* / queue.updated (derived view)
  */
 
 export type DashboardKpi = {
@@ -299,6 +299,11 @@ export function useReceptionRealtime(): void {
     queryKeys: [
       ["reception", "dashboard"],
       ["reception", "appointments", "today"],
+      // Cabinet occupancy is a derived view of appointment status — when a
+      // record enters IN_PROGRESS the cabinet is "busy", on COMPLETED/cancel
+      // it frees up. So we piggyback on the same event stream rather than a
+      // dedicated cabinet.occupancy.changed event (no publisher exists).
+      ["reception", "cabinets"],
     ],
   });
   useLiveQueryInvalidation({
@@ -308,10 +313,6 @@ export function useReceptionRealtime(): void {
   useLiveQueryInvalidation({
     events: ["tg.message.new", "tg.conversation.updated"],
     queryKey: ["reception", "conversations"],
-  });
-  useLiveQueryInvalidation({
-    events: ["cabinet.occupancy.changed"],
-    queryKey: ["reception", "cabinets"],
   });
 }
 

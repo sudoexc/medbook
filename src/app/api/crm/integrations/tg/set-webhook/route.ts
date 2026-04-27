@@ -75,7 +75,8 @@ export const POST = createApiHandler(
       }
       return ok({ ok: true, url: webhookUrl });
     } catch (e) {
-      return err("network_error", 502, { message: (e as Error).message });
+      console.error("[tg/set-webhook] fetch failed", e);
+      return err("network_error", 502);
     }
   }
 );

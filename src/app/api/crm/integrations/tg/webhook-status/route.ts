@@ -86,10 +86,11 @@ export const GET = createApiListHandler(
         hasSecret: Boolean(clinic.tgWebhookSecret),
       });
     } catch (e) {
+      console.error("[tg/webhook-status] fetch failed", e);
       return ok({
         notConfigured: false,
         botUsername: clinic.tgBotUsername ?? null,
-        error: (e as Error).message || "network_error",
+        error: "network_error",
       });
     }
   }

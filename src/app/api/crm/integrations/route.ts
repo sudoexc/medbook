@@ -6,8 +6,9 @@
  * ProviderConnection is in MODELS_TENANT_BYPASSABLE; Prisma still auto-scopes
  * under TENANT context but SYSTEM can bypass (out of scope here).
  *
- * Secrets are stored in `secretCipher` as base64 (placeholder for Phase 6 KMS).
- * `secret` is never returned — we only return a presence flag.
+ * Secrets are stored in `secretCipher` as AES-256-GCM ciphertext via
+ * `@/server/crypto/secrets`. `secret` plaintext is never returned — only a
+ * presence flag and a last-4 mask derived from the decrypted value.
  */
 import bcrypt from "bcryptjs";
 
@@ -16,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
 import { UpsertProviderSchema } from "@/server/schemas/settings";
+import { encrypt, decrypt, maskSecret } from "@/server/crypto/secrets";
 
 type ConnRow = {
   id: string;
@@ -30,23 +32,28 @@ type ConnRow = {
 };
 
 function redactConn(row: ConnRow) {
+  let secretMasked: string | null = null;
+  if (row.secretCipher) {
+    try {
+      secretMasked = maskSecret(decrypt(row.secretCipher));
+    } catch {
+      // Legacy base64 rows from before the AES-GCM migration, or tampered
+      // ciphertext. Fall back to an opaque placeholder rather than 500.
+      secretMasked = "••••";
+    }
+  }
   return {
     id: row.id,
     clinicId: row.clinicId,
     kind: row.kind,
     label: row.label,
     hasSecret: Boolean(row.secretCipher),
-    secretMasked: row.secretCipher ? "••••••••" : null,
+    secretMasked,
     config: row.config,
     active: row.active,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
-}
-
-/** Phase-4 placeholder cipher: base64. Real KMS wrapping added in Phase 6. */
-function encryptSecret(plain: string): string {
-  return Buffer.from(plain, "utf8").toString("base64");
 }
 
 export const GET = createApiListHandler(
@@ -95,7 +102,7 @@ export const POST = createApiHandler(
         data: {
           label,
           ...(body.secret !== undefined
-            ? { secretCipher: encryptSecret(body.secret) }
+            ? { secretCipher: encrypt(body.secret) }
             : {}),
           ...(body.config !== undefined ? { config: body.config as never } : {}),
           ...(body.active !== undefined ? { active: body.active } : {}),
@@ -107,7 +114,7 @@ export const POST = createApiHandler(
           clinicId: ctx.clinicId,
           kind: body.kind,
           label,
-          secretCipher: body.secret ? encryptSecret(body.secret) : "",
+          secretCipher: body.secret ? encrypt(body.secret) : "",
           config: (body.config ?? {}) as never,
           active: body.active ?? true,
         },

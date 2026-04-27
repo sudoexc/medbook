@@ -111,10 +111,9 @@ export function useReplaceDoctorSchedule(doctorId: string) {
         return { ...(prev as Record<string, unknown>), schedules: data.entries };
       });
       qc.invalidateQueries({ queryKey: doctorKey(doctorId) });
-      toast.success("");
     },
     onError: (err) => {
-      toast.error(err.message || "Не удалось сохранить расписание");
+      toast.error(err.message);
     },
   });
 }

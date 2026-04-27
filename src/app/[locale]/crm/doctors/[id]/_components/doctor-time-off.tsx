@@ -10,6 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DateText } from "@/components/atoms/date-text";
 
 import type { DoctorDetail } from "../_hooks/use-doctor";
@@ -53,12 +63,22 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
     endAt: defaultEnd(),
     reason: "",
   }));
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
 
   const createMut = useCreateTimeOff(doctor.id);
   const deleteMut = useDeleteTimeOff(doctor.id);
 
+  const endBeforeStart =
+    form.startAt && form.endAt && new Date(form.endAt) <= new Date(form.startAt);
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (endBeforeStart) {
+      toast.error(t("errorEndBeforeStart"));
+      return;
+    }
     createMut.mutate(
       {
         startAt: new Date(form.startAt).toISOString(),
@@ -80,9 +100,10 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
     );
   };
 
-  const onDelete = (id: string) => {
-    if (!confirm(t("deleteConfirm"))) return;
-    deleteMut.mutate(id);
+  const confirmDelete = () => {
+    if (!pendingDeleteId) return;
+    deleteMut.mutate(pendingDeleteId);
+    setPendingDeleteId(null);
   };
 
   return (
@@ -137,7 +158,13 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
                   setForm((s) => ({ ...s, endAt: e.target.value }))
                 }
                 required
+                aria-invalid={endBeforeStart || undefined}
               />
+              {endBeforeStart ? (
+                <p className="text-xs text-destructive">
+                  {t("errorEndBeforeStart")}
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="grid gap-1">
@@ -162,7 +189,11 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
             >
               {t("cancel")}
             </Button>
-            <Button type="submit" size="sm" disabled={createMut.isPending}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={createMut.isPending || !!endBeforeStart}
+            >
               {t("save")}
             </Button>
           </div>
@@ -194,7 +225,7 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
                 variant="ghost"
                 size="icon-sm"
                 aria-label={t("delete")}
-                onClick={() => onDelete(row.id)}
+                onClick={() => setPendingDeleteId(row.id)}
                 disabled={deleteMut.isPending}
               >
                 <Trash2Icon className="size-4" />
@@ -203,6 +234,26 @@ export function DoctorTimeOff({ doctor, className }: DoctorTimeOffProps) {
           ))}
         </ul>
       )}
+
+      <AlertDialog
+        open={!!pendingDeleteId}
+        onOpenChange={(o) => !o && setPendingDeleteId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("deleteConfirmDesc")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>
+              {t("delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

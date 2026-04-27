@@ -159,6 +159,11 @@ export function NewPatientDialog({
                 {...form.register("lastName")}
                 aria-invalid={!!form.formState.errors.lastName}
               />
+              {form.formState.errors.lastName ? (
+                <p className="text-xs text-destructive">
+                  {t("errorRequired")}
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-1">
               <Label htmlFor="np-first">{t("firstName")}</Label>
@@ -167,6 +172,11 @@ export function NewPatientDialog({
                 {...form.register("firstName")}
                 aria-invalid={!!form.formState.errors.firstName}
               />
+              {form.formState.errors.firstName ? (
+                <p className="text-xs text-destructive">
+                  {t("errorRequired")}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -185,6 +195,11 @@ export function NewPatientDialog({
                 {...form.register("phone")}
                 aria-invalid={!!form.formState.errors.phone}
               />
+              {form.formState.errors.phone ? (
+                <p className="text-xs text-destructive">
+                  {t("errorPhoneFormat")}
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-1">
               <Label htmlFor="np-email">{t("email")}</Label>

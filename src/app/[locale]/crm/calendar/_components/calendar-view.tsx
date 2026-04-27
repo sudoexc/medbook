@@ -216,6 +216,10 @@ export function CalendarViewInner({
   ]);
 
   const handleEventDrop = async (info: EventDropArg) => {
+    if (conflicts.isPending) {
+      info.revert();
+      return;
+    }
     const id = info.event.id;
     const newStart = info.event.start;
     const newResourceId = info.event.getResources()[0]?.id;
@@ -254,6 +258,10 @@ export function CalendarViewInner({
     event: { id: string; start: Date | null; end: Date | null };
     revert: () => void;
   }) => {
+    if (conflicts.isPending) {
+      info.revert();
+      return;
+    }
     const id = info.event.id;
     if (!info.event.start || !info.event.end) {
       info.revert();

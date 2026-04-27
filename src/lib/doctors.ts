@@ -1,6 +1,9 @@
-// @ts-nocheck
-// TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
-import { prisma } from "./prisma";
+// TODO(public-site-revamp): rewrite against the Phase 1 Doctor schema.
+// The legacy DoctorView shape (specialtyRu/specialtyUz, cabinet, scheduleRu,
+// hours, photo, services) doesn't map cleanly to the new Doctor model
+// (specializationRu/Uz, no per-doctor cabinet, no schedule string). Until the
+// public site is rewritten, both functions return empty so build/runtime stay
+// silent. Callers (sitemap, public site doctors page, layout) handle empty.
 import type { Locale } from "@/types";
 
 export interface DoctorView {
@@ -14,58 +17,10 @@ export interface DoctorView {
   services: { name: Record<Locale, string>; price: number }[];
 }
 
-function toView(doc: {
-  id: string;
-  nameRu: string;
-  nameUz: string;
-  specialtyRu: string;
-  specialtyUz: string;
-  cabinet: number;
-  scheduleRu: string;
-  scheduleUz: string;
-  hours: string;
-  photo: string | null;
-  services: unknown;
-}): DoctorView {
-  const services = (doc.services as { nameRu: string; nameUz: string; price: number }[]).map(
-    (s) => ({
-      name: { ru: s.nameRu, uz: s.nameUz },
-      price: s.price,
-    })
-  );
-
-  return {
-    id: doc.id,
-    name: { ru: doc.nameRu, uz: doc.nameUz },
-    specialty: { ru: doc.specialtyRu, uz: doc.specialtyUz },
-    cabinet: doc.cabinet,
-    schedule: { ru: doc.scheduleRu, uz: doc.scheduleUz },
-    hours: doc.hours,
-    photo: doc.photo,
-    services,
-  };
-}
-
 export async function getDoctors(): Promise<DoctorView[]> {
-  // TODO(phase-1): legacy schema mismatch — swallow to keep prod build working
-  // until api-builder rewrites this against the Phase 1 schema.
-  try {
-    const docs = await prisma.doctor.findMany({
-      where: { active: true },
-      orderBy: { cabinet: "asc" },
-    });
-    return docs.map(toView);
-  } catch {
-    return [];
-  }
+  return [];
 }
 
-export async function getDoctorById(id: string): Promise<DoctorView | null> {
-  try {
-    const doc = await prisma.doctor.findUnique({ where: { id } });
-    if (!doc || !doc.active) return null;
-    return toView(doc);
-  } catch {
-    return null;
-  }
+export async function getDoctorById(_id: string): Promise<DoctorView | null> {
+  return null;
 }

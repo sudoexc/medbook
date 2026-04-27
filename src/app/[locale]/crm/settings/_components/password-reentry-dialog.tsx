@@ -85,6 +85,7 @@ export function PasswordReentryDialog({
             id="pw-reentry"
             type="password"
             autoComplete="current-password"
+            autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {

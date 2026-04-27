@@ -24,6 +24,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -199,9 +209,13 @@ export function AppointmentDrawer({
     );
   };
 
+  const [cancelOpen, setCancelOpen] = React.useState(false);
   const onCancel = () => {
     if (!appt) return;
-    if (!confirm(t("cancelConfirm"))) return;
+    setCancelOpen(true);
+  };
+  const confirmCancel = () => {
+    setCancelOpen(false);
     del.mutate(undefined, {
       onSuccess: () => {
         toast.success(t("cancelled"));
@@ -211,6 +225,7 @@ export function AppointmentDrawer({
   };
 
   return (
+    <>
     <Sheet
       open={open}
       onOpenChange={(v) => {
@@ -613,5 +628,22 @@ export function AppointmentDrawer({
         </div>
       </SheetContent>
     </Sheet>
+    <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("cancelConfirm")}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("cancelConfirmDesc")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t("cancelKeep")}</AlertDialogCancel>
+          <AlertDialogAction onClick={confirmCancel}>
+            {t("cancelAppt")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

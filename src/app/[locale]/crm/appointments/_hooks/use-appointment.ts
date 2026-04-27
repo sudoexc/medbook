@@ -179,7 +179,12 @@ export function usePatchAppointment(id: string) {
 
 export function useDeleteAppointment(id: string) {
   const qc = useQueryClient();
-  return useMutation<{ id: string; cancelled: true }, Error, void>({
+  return useMutation<
+    { id: string; cancelled: true },
+    Error,
+    void,
+    { previous?: AppointmentDetail }
+  >({
     mutationFn: async () => {
       const res = await fetch(`/api/crm/appointments/${id}`, {
         method: "DELETE",
@@ -188,9 +193,29 @@ export function useDeleteAppointment(id: string) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { id: string; cancelled: true };
     },
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: appointmentKey(id) });
+      const previous = qc.getQueryData<AppointmentDetail>(appointmentKey(id));
+      if (previous) {
+        qc.setQueryData<AppointmentDetail>(appointmentKey(id), {
+          ...previous,
+          status: "CANCELLED",
+          queueStatus: "CANCELLED",
+        } as AppointmentDetail);
+      }
+      return { previous };
+    },
+    onError: (err, _v, context) => {
+      if (context?.previous) {
+        qc.setQueryData(appointmentKey(id), context.previous);
+      }
+      toast.error(err.message || "Ошибка отмены");
+    },
     onSuccess: () => {
-      invalidateAppointmentSurfaces(qc);
       qc.removeQueries({ queryKey: appointmentKey(id) });
+    },
+    onSettled: () => {
+      invalidateAppointmentSurfaces(qc);
     },
   });
 }
@@ -254,7 +279,8 @@ export function useBulkStatus() {
   return useMutation<
     { count: number },
     Error,
-    { ids: string[]; status: AppointmentRow["status"]; cancelReason?: string }
+    { ids: string[]; status: AppointmentRow["status"]; cancelReason?: string },
+    { snapshots: Map<string, AppointmentDetail> }
   >({
     mutationFn: async (body) => {
       const res = await fetch(`/api/crm/appointments/bulk-status`, {
@@ -275,7 +301,36 @@ export function useBulkStatus() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { count: number };
     },
-    onSuccess: () => {
+    onMutate: async ({ ids, status }) => {
+      // Snapshot every affected per-id query so onError can rollback.
+      // The list queries (`appointments/list`, calendar, reception) refetch
+      // on settled — only the single-record drawer needs eager update.
+      const snapshots = new Map<string, AppointmentDetail>();
+      for (const id of ids) {
+        await qc.cancelQueries({ queryKey: appointmentKey(id) });
+        const prev = qc.getQueryData<AppointmentDetail>(appointmentKey(id));
+        if (prev) {
+          snapshots.set(id, prev);
+          qc.setQueryData<AppointmentDetail>(appointmentKey(id), {
+            ...prev,
+            status,
+            queueStatus: status,
+          } as AppointmentDetail);
+        }
+      }
+      return { snapshots };
+    },
+    onError: (err, _v, context) => {
+      if (context?.snapshots) {
+        for (const [id, prev] of context.snapshots) {
+          qc.setQueryData(appointmentKey(id), prev);
+        }
+      }
+      if (!(err instanceof AppointmentConflictError)) {
+        toast.error(err.message || "Ошибка изменения статуса");
+      }
+    },
+    onSettled: () => {
       invalidateAppointmentSurfaces(qc);
     },
   });

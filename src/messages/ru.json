@@ -37,7 +37,8 @@
         "lang": "Язык",
         "themeLight": "Светлая",
         "themeDark": "Тёмная",
-        "signOut": "Выйти"
+        "signOut": "Выйти",
+        "ariaLabel": "Меню пользователя"
       },
       "channels": {
         "calls": "Звонки",
@@ -296,7 +297,9 @@
       "cancel": "Отмена",
       "createdToast": "Пациент создан",
       "errorToast": "Не удалось создать пациента",
-      "phoneExists": "Пациент с таким телефоном уже есть"
+      "phoneExists": "Пациент с таким телефоном уже есть",
+      "errorRequired": "Обязательное поле",
+      "errorPhoneFormat": "Введите телефон (3–40 символов)"
     },
     "rowActions": {
       "open": "Открыть карточку",
@@ -523,6 +526,8 @@
       "statusError": "Не удалось сменить статус",
       "cancelAppt": "Отменить запись",
       "cancelConfirm": "Отменить эту запись?",
+      "cancelConfirmDesc": "Запись будет помечена как отменённая. Слот в расписании освободится.",
+      "cancelKeep": "Не отменять",
       "cancelled": "Запись отменена",
       "conflict": {
         "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
@@ -1037,7 +1042,8 @@
       "cancel": "Отмена",
       "send": "Отправить",
       "sending": "Отправка…",
-      "sent": "SMS поставлено в очередь"
+      "sent": "SMS поставлено в очередь",
+      "error": "Не удалось отправить SMS"
     },
     "delete": {
       "title": "Удалить пациента?",
@@ -1589,7 +1595,10 @@
       "saved": "Период добавлен",
       "errorSave": "Не удалось сохранить",
       "delete": "Удалить",
-      "deleteConfirm": "Удалить этот период?"
+      "deleteConfirm": "Удалить этот период?",
+      "deleteConfirmTitle": "Удалить период?",
+      "deleteConfirmDesc": "Этот период отпуска будет удалён без возможности восстановления.",
+      "errorEndBeforeStart": "Дата окончания должна быть позже начала"
     },
     "patients": {
       "title": "Пациенты врача",
@@ -1775,8 +1784,10 @@
       "preview": "Предпросмотр",
       "previewEmpty": "Введите текст шаблона",
       "save": "Сохранить",
+      "saving": "Сохранение…",
       "saved": "Сохранено",
       "delete": "Удалить",
+      "deleting": "Удаление…",
       "deleted": "Удалено",
       "deleteConfirmTitle": "Удалить шаблон?",
       "deleteConfirmBody": "Шаблон будет деактивирован, отправки по нему остановятся.",
@@ -1789,7 +1800,9 @@
       "sampleAppointmentDate": "25 апреля 2026",
       "sampleDoctor": "Д-р Алиева",
       "sampleService": "Консультация",
-      "sampleClinicAddress": "Ташкент"
+      "sampleClinicAddress": "Ташкент",
+      "smsCounter": "{chars} симв. · {parts} SMS",
+      "unknownVar": "Неизвестная переменная: {var}"
     },
     "triggers": {
       "title": "Триггеры",
@@ -1952,7 +1965,8 @@
       "loading": "Загрузка очереди…",
       "unknownCaller": "Неизвестный номер",
       "newCallToast": "Входящий от {name} ({phone})",
-      "pollingHint": "Обновляется каждые 5 секунд"
+      "pollingHint": "Обновляется каждые 5 секунд",
+      "polling": "Идёт обновление"
     },
     "active": {
       "ariaLabel": "Активный звонок",
@@ -2495,6 +2509,10 @@
       "ltv": "Распределение LTV"
     },
     "empty": "Нет данных за выбранный период",
+    "emptyHint": "Когда появятся записи за этот период, графики обновятся автоматически.",
+    "errorTitle": "Не удалось загрузить аналитику",
+    "errorHint": "Проверьте соединение и попробуйте обновить страницу.",
+    "errorRetry": "Повторить",
     "loading": "Загрузка…",
     "export": "Экспорт PNG",
     "exportSoon": "Экспорт PNG будет добавлен в Phase 7"
@@ -2539,6 +2557,8 @@
       "download": "Скачать"
     },
     "cancel": "Отмена",
+    "fileUrl": "URL файла",
+    "uploading": "Загрузка…",
     "toastMissingFields": "Заполните обязательные поля",
     "toastUploadError": "Ошибка загрузки"
   },

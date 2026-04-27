@@ -58,7 +58,7 @@ export function SmsDialog({
       onOpenChange(false);
     },
     onError: (e) => {
-      toast.error(e.message || "SMS failed");
+      toast.error(e.message || t("error"));
     },
   });
 

@@ -174,7 +174,11 @@ export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
 
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-16 items-center gap-2.5 px-5">
+      <Link
+        href={`/${locale}/crm/reception`}
+        aria-label={tShell("brand.homeLink")}
+        className="flex h-16 items-center gap-2.5 px-5 outline-none transition-colors hover:bg-sidebar-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet text-white">
           <BrainIcon className="size-5" />
         </div>
@@ -184,7 +188,7 @@ export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
             {tShell("brand.tagline")}
           </div>
         </div>
-      </div>
+      </Link>
       <nav className="flex-1 overflow-y-auto px-3 py-1">
         {NAV.map((group, gi) => (
           <div key={gi} className={cn(gi > 0 && "mt-4")}>

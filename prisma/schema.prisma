@@ -697,6 +697,9 @@ model Conversation {
   appointmentId   String?              @unique
   appointment     Appointment?         @relation(fields: [appointmentId], references: [id])
   externalId      String?
+  contactFirstName String?
+  contactLastName  String?
+  contactUsername  String?
   status          ConversationStatus   @default(OPEN)
   assignedToId    String?
   assignedTo      User?                @relation("ConversationAssignee", fields: [assignedToId], references: [id])

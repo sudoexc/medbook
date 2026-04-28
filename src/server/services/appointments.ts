@@ -13,6 +13,9 @@
  *   - outside DoctorSchedule for the weekday
  */
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
+
+type PrismaLike = Prisma.TransactionClient | typeof prisma;
 
 export type ConflictResult =
   | { ok: true }
@@ -40,13 +43,16 @@ export function applyTime(date: Date, time: string | null | undefined): Date {
   return out;
 }
 
-export async function detectConflicts(args: {
-  doctorId: string;
-  cabinetId?: string | null;
-  startAt: Date;
-  endAt: Date;
-  excludeId?: string;
-}): Promise<ConflictResult> {
+export async function detectConflicts(
+  args: {
+    doctorId: string;
+    cabinetId?: string | null;
+    startAt: Date;
+    endAt: Date;
+    excludeId?: string;
+  },
+  client: PrismaLike = prisma,
+): Promise<ConflictResult> {
   // Reject bookings whose start has already passed — guards against stale
   // slot lists on the client (Mini App or CRM dialog) submitting a past
   // time. Only blocks new bookings; reschedules pass `excludeId` and may
@@ -56,7 +62,7 @@ export async function detectConflicts(args: {
   }
 
   // Doctor overlap
-  const doctorClash = await prisma.appointment.findFirst({
+  const doctorClash = await client.appointment.findFirst({
     where: {
       doctorId: args.doctorId,
       id: args.excludeId ? { not: args.excludeId } : undefined,
@@ -76,7 +82,7 @@ export async function detectConflicts(args: {
 
   // Cabinet overlap
   if (args.cabinetId) {
-    const cabinetClash = await prisma.appointment.findFirst({
+    const cabinetClash = await client.appointment.findFirst({
       where: {
         cabinetId: args.cabinetId,
         id: args.excludeId ? { not: args.excludeId } : undefined,
@@ -96,7 +102,7 @@ export async function detectConflicts(args: {
   }
 
   // Doctor time-off
-  const timeOff = await prisma.doctorTimeOff.findFirst({
+  const timeOff = await client.doctorTimeOff.findFirst({
     where: {
       doctorId: args.doctorId,
       startAt: { lt: args.endAt },
@@ -114,7 +120,7 @@ export async function detectConflicts(args: {
 
   // DoctorSchedule — ensure the slot falls inside a working window for that weekday
   const weekday = args.startAt.getDay();
-  const schedules = await prisma.doctorSchedule.findMany({
+  const schedules = await client.doctorSchedule.findMany({
     where: {
       doctorId: args.doctorId,
       weekday,

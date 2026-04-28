@@ -4,7 +4,8 @@
   },
   "crmShell": {
     "brand": {
-      "tagline": "умная клиника"
+      "tagline": "умная клиника",
+      "homeLink": "На ресепшн"
     },
     "sidebarNav": {
       "reception": "Ресепшн",
@@ -1093,7 +1094,43 @@
       "day": "День",
       "configure": "Настроить",
       "viewGrid": "Сетка",
-      "viewList": "Список"
+      "viewList": "Список",
+      "dayPicker": {
+        "today": "Сегодня",
+        "yesterday": "Вчера",
+        "tomorrow": "Завтра",
+        "pickDate": "Выбрать дату",
+        "labelToday": "Сегодня",
+        "labelYesterday": "Вчера",
+        "labelTomorrow": "Завтра"
+      },
+      "settings": {
+        "title": "Настройка панели",
+        "description": "Эти настройки запоминаются на этом устройстве",
+        "hideIdle": "Скрывать врачей без записей",
+        "hideIdleHint": "Не показывать врачей, у которых сегодня нет приёмов",
+        "sortBy": "Сортировка",
+        "sortByLoad": "По загрузке",
+        "sortByName": "По имени",
+        "sortByNext": "По ближайшему слоту",
+        "density": "Плотность",
+        "densityComfortable": "Комфортная",
+        "densityCompact": "Компактная",
+        "showCabinet": "Показывать кабинет",
+        "showNextSlot": "Показывать ближайший слот",
+        "close": "Готово",
+        "reset": "Сбросить"
+      },
+      "list": {
+        "doctor": "Врач",
+        "cabinet": "Кабинет",
+        "queue": "В очереди",
+        "next": "Ближайший",
+        "status": "Статус",
+        "actions": "",
+        "noNext": "—",
+        "addAppointment": "Записать"
+      }
     },
     "warnings": {
       "template": "Через {minutes} мин: {patient} — {doctor}"
@@ -1136,6 +1173,9 @@
       "noPatientsHint": "Свободное время. Можно принять walk-in.",
       "statusFree": "Свободен",
       "statusBusy": "Принимает",
+      "statusInSession": "На приёме",
+      "statusAwaiting": "Ожидает",
+      "statusEmpty": "Свободен",
       "callNext": "Вызвать следующего",
       "markArrived": "Пришёл",
       "complete": "Завершить",

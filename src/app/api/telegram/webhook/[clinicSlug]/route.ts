@@ -173,6 +173,11 @@ async function recordIncoming(
 ): Promise<{ conversationId: string; mode: "bot" | "takeover" }> {
   const body = message.text ?? (message.contact ? message.contact.phone_number : "");
   const now = new Date();
+  const contact = {
+    contactFirstName: message.from?.first_name ?? null,
+    contactLastName: message.from?.last_name ?? null,
+    contactUsername: message.from?.username ?? null,
+  };
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
     const conv = await prisma.conversation.upsert({
@@ -188,12 +193,14 @@ async function recordIncoming(
         lastMessageAt: now,
         lastMessageText: previewOf(body),
         unreadCount: 1,
+        ...contact,
       },
       update: {
         lastMessageAt: now,
         lastMessageText: previewOf(body),
         unreadCount: { increment: 1 },
         status: "OPEN",
+        ...contact,
       },
       select: { id: true, mode: true },
     });
@@ -348,7 +355,8 @@ export async function POST(
         },
       });
 
-      if (recorded.mode === "takeover") {
+      const autoReplyEnabled = process.env.TG_BOT_AUTOREPLY === "1";
+      if (recorded.mode === "takeover" || !autoReplyEnabled) {
         // Do NOT run the FSM; operator will pick up.
         publishEventSafe(clinic.id, {
           type: "tg.takeover.incoming",
@@ -386,6 +394,11 @@ export async function POST(
 
       // Upsert a conversation for the chat (rare case: callback without
       // a prior message on our side).
+      const cqContact = {
+        contactFirstName: cq.from.first_name ?? null,
+        contactLastName: cq.from.last_name ?? null,
+        contactUsername: cq.from.username ?? null,
+      };
       const conv = await runWithTenant({ kind: "SYSTEM" }, async () =>
         prisma.conversation.upsert({
           where: {
@@ -399,13 +412,15 @@ export async function POST(
             externalId: chatId,
             lastMessageAt: new Date(),
             lastMessageText: "",
+            ...cqContact,
           },
-          update: { status: "OPEN" },
+          update: { status: "OPEN", ...cqContact },
           select: { id: true, mode: true },
         }),
       );
 
-      if (conv.mode === "takeover") {
+      const autoReplyEnabled = process.env.TG_BOT_AUTOREPLY === "1";
+      if (conv.mode === "takeover" || !autoReplyEnabled) {
         // Reuse the typed `tg.takeover.incoming` event; the callback data
         // travels through the passthrough fields so operator UI can inspect.
         publishEventSafe(clinic.id, {

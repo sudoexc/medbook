@@ -108,16 +108,6 @@ export const POST = createMiniAppHandler(
     if (Number.isNaN(startAt.getTime())) return err("bad_start_at", 400);
     const endAt = computeEndDate(startAt, durationMin);
 
-    const c = await detectConflicts({
-      doctorId: body.doctorId,
-      cabinetId: null,
-      startAt,
-      endAt,
-    });
-    if (!c.ok) {
-      return conflict(c.reason, c.until ? { until: c.until } : undefined);
-    }
-
     // Optional profile update: sync name/phone/lang from the booking form.
     const patientUpdate: Record<string, unknown> = {};
     if (body.patientName && body.patientName !== ctx.patient.fullName) {
@@ -148,37 +138,88 @@ export const POST = createMiniAppHandler(
       startAt.getMinutes(),
     ).padStart(2, "0")}`;
 
-    const created = await prisma.$transaction(async (tx) => {
-      const appt = await tx.appointment.create({
-        data: {
-          clinicId: ctx.clinicId,
-          patientId: ctx.patientId,
+    let txResult:
+      | { kind: "ok"; appt: Awaited<ReturnType<typeof prisma.appointment.create>> }
+      | { kind: "conflict"; reason: string; until?: string };
+    try {
+      txResult = await prisma.$transaction(
+        async (tx) => {
+          const c = await detectConflicts(
+            {
+              doctorId: body.doctorId,
+              cabinetId: null,
+              startAt,
+              endAt,
+            },
+            tx,
+          );
+          if (!c.ok) {
+            return { kind: "conflict" as const, reason: c.reason, until: c.until };
+          }
+          const appt = await tx.appointment.create({
+            data: {
+              clinicId: ctx.clinicId,
+              patientId: ctx.patientId,
+              doctorId: body.doctorId,
+              serviceId: primaryServiceId,
+              date: startAt,
+              time,
+              durationMin,
+              endDate: endAt,
+              status: "BOOKED",
+              queueStatus: "BOOKED",
+              channel: "TELEGRAM",
+              priceService: priceBase,
+              priceBase,
+              priceFinal: priceBase,
+              comments: body.comments ?? null,
+            } as never,
+          });
+          await tx.appointmentService.createMany({
+            data: body.serviceIds.map((sid) => ({
+              clinicId: ctx.clinicId,
+              appointmentId: appt.id,
+              serviceId: sid,
+              priceSnap: services.find((s) => s.id === sid)?.priceBase ?? 0,
+              quantity: 1,
+            })) as never,
+          });
+          return { kind: "ok" as const, appt };
+        },
+        { isolationLevel: "Serializable" },
+      );
+    } catch (e: unknown) {
+      const err = e as {
+        code?: string;
+        originalCode?: string;
+        kind?: string;
+      } | null;
+      const isWriteConflict =
+        err?.code === "P2034" ||
+        err?.code === "40001" ||
+        err?.originalCode === "40001" ||
+        err?.kind === "TransactionWriteConflict";
+      if (isWriteConflict) {
+        const c = await detectConflicts({
           doctorId: body.doctorId,
-          serviceId: primaryServiceId,
-          date: startAt,
-          time,
-          durationMin,
-          endDate: endAt,
-          status: "BOOKED",
-          queueStatus: "BOOKED",
-          channel: "TELEGRAM",
-          priceService: priceBase,
-          priceBase,
-          priceFinal: priceBase,
-          comments: body.comments ?? null,
-        } as never,
-      });
-      await tx.appointmentService.createMany({
-        data: body.serviceIds.map((sid) => ({
-          clinicId: ctx.clinicId,
-          appointmentId: appt.id,
-          serviceId: sid,
-          priceSnap: services.find((s) => s.id === sid)?.priceBase ?? 0,
-          quantity: 1,
-        })) as never,
-      });
-      return appt;
-    });
+          cabinetId: null,
+          startAt,
+          endAt,
+        });
+        if (!c.ok) {
+          return conflict(c.reason, c.until ? { until: c.until } : undefined);
+        }
+        return conflict("doctor_busy");
+      }
+      throw e;
+    }
+    if (txResult.kind === "conflict") {
+      return conflict(
+        txResult.reason,
+        txResult.until ? { until: txResult.until } : undefined,
+      );
+    }
+    const created = txResult.appt;
 
     fireTrigger({ kind: "appointment.created", appointmentId: created.id });
 

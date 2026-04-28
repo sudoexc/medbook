@@ -40,9 +40,12 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.conversation.findUnique({ where: { id } });
     if (!before) return notFound();
+    const { markRead, ...rest } = body;
+    const data: Record<string, unknown> = { ...rest };
+    if (markRead) data.unreadCount = 0;
     const after = await prisma.conversation.update({
       where: { id },
-      data: body as never,
+      data: data as never,
     });
     const d = diff(
       before as unknown as Record<string, unknown>,
@@ -65,6 +68,7 @@ export const PATCH = createApiHandler(
           mode: after.mode,
           status: after.status,
           assigneeId: after.assignedToId ?? null,
+          unreadCount: after.unreadCount,
         },
       });
     }

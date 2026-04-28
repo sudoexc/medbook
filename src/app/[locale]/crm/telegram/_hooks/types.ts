@@ -25,6 +25,9 @@ export type InboxConversation = {
   mode: ConversationMode;
   status: ConversationStatus;
   externalId: string | null;
+  contactFirstName: string | null;
+  contactLastName: string | null;
+  contactUsername: string | null;
   patientId: string | null;
   patient: InboxPatientMini | null;
   assignedToId: string | null;

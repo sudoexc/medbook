@@ -25,6 +25,10 @@ export const GET = createApiListHandler(
         { lastMessageText: { contains: q.q, mode: "insensitive" } },
         { patient: { fullName: { contains: q.q, mode: "insensitive" } } },
         { patient: { phone: { contains: q.q } } },
+        { contactFirstName: { contains: q.q, mode: "insensitive" } },
+        { contactLastName: { contains: q.q, mode: "insensitive" } },
+        { contactUsername: { contains: q.q, mode: "insensitive" } },
+        { externalId: { contains: q.q } },
       ];
     }
 

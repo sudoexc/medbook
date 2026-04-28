@@ -123,6 +123,15 @@ export function todayRange(now = new Date()): { from: Date; to: Date } {
   return { from, to };
 }
 
+/** Range for a specific calendar day [00:00, next day 00:00). */
+export function dayRange(date: Date): { from: Date; to: Date } {
+  const from = new Date(date);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  return { from, to };
+}
+
 /** KPI counters for today. */
 export function useReceptionDashboard() {
   return useQuery<DashboardResponse, Error>({
@@ -140,9 +149,12 @@ export function useReceptionDashboard() {
   });
 }
 
-/** All of today's appointments — used to compute per-doctor queues. */
-export function useTodayAppointments() {
-  const { from, to } = todayRange();
+/**
+ * All appointments for a given calendar day. Defaults to today (preserving
+ * the existing call-sites). Pass a `Date` to fetch a different day.
+ */
+export function useTodayAppointments(forDate?: Date) {
+  const { from, to } = forDate ? dayRange(forDate) : todayRange();
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
   return useQuery<AppointmentRow[], Error>({

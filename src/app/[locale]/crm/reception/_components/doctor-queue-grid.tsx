@@ -42,17 +42,12 @@ export function DoctorQueueGrid({
 }: DoctorQueueGridProps) {
   const t = useTranslations("reception.doctorQueue");
 
-  const sorted = React.useMemo(() => {
-    const withCount = doctors.map((d) => ({
-      doctor: d,
-      count: appointmentsByDoctor.get(d.id)?.length ?? 0,
-    }));
-    withCount.sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.doctor.nameRu.localeCompare(b.doctor.nameRu);
-    });
-    return withCount;
-  }, [doctors, appointmentsByDoctor]);
+  // Trust the order the parent provides — sorting/filtering happens upstream
+  // so the panel's "Настроить" preferences apply consistently to grid + list.
+  const visible = React.useMemo(
+    () => doctors.map((doctor) => ({ doctor })),
+    [doctors],
+  );
 
   if (isLoading && doctors.length === 0) {
     return (
@@ -69,10 +64,6 @@ export function DoctorQueueGrid({
       </div>
     );
   }
-
-  const visible = sorted.filter(
-    ({ count, doctor }) => count > 0 || doctor.isActive,
-  );
 
   if (visible.length === 0) {
     return (

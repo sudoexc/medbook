@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDownIcon, LayoutGridIcon, ListIcon, SettingsIcon } from "lucide-react";
+import { LayoutGridIcon, ListIcon, SettingsIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,16 @@ import {
   useTodayAppointments,
   useUnreadConversations,
 } from "../_hooks/use-reception-live";
+import { useDoctorPanelPrefs } from "../_hooks/use-panel-prefs";
 import { AppointmentDrawer } from "../../appointments/_components/appointment-drawer";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 
 import { KpiStrip } from "./kpi-strip";
 import { OnboardingChecklist } from "./onboarding-checklist";
 import { DoctorQueueGrid } from "./doctor-queue-grid";
+import { DoctorQueueList } from "./doctor-queue-list";
+import { DayPickerDropdown } from "./day-picker-dropdown";
+import { DoctorPanelSettings } from "./doctor-panel-settings";
 import { CallsWidget } from "./calls-widget";
 import { TgPreviewWidget } from "./tg-preview-widget";
 import { QueueColumn } from "./queue-column";
@@ -53,8 +57,16 @@ export function ReceptionPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const { prefs, setPrefs, reset: resetPrefs } = useDoctorPanelPrefs();
+  const [selectedDate, setSelectedDate] = React.useState<Date>(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+
   const dashboard = useReceptionDashboard();
-  const today = useTodayAppointments();
+  const today = useTodayAppointments(selectedDate);
   const doctors = useActiveDoctors();
   const cabinets = useReceptionCabinets();
   const calls = useIncomingCalls();
@@ -131,10 +143,44 @@ export function ReceptionPageClient() {
     [],
   );
 
-  const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
-
   const isLoading =
     dashboard.isLoading || today.isLoading || doctors.isLoading;
+
+  const sortedDoctors = React.useMemo(() => {
+    const list = (doctors.data ?? []).slice();
+    if (prefs.hideIdle) {
+      const visible = list.filter((d) => {
+        const items = appointmentsByDoctor.get(d.id) ?? [];
+        return items.length > 0;
+      });
+      // Keep sorted base for predictable rendering when hideIdle removes some.
+      list.length = 0;
+      list.push(...visible);
+    }
+    if (prefs.sortBy === "name") {
+      list.sort((a, b) => a.nameRu.localeCompare(b.nameRu));
+    } else if (prefs.sortBy === "next") {
+      const nextTime = (id: string): number => {
+        const items = appointmentsByDoctor.get(id) ?? [];
+        const upcoming = items
+          .filter(
+            (a) => a.queueStatus === "WAITING" || a.queueStatus === "BOOKED",
+          )
+          .map((a) => new Date(a.date).getTime());
+        return upcoming.length ? Math.min(...upcoming) : Number.POSITIVE_INFINITY;
+      };
+      list.sort((a, b) => nextTime(a.id) - nextTime(b.id));
+    } else {
+      // load (default): most appointments first, name as tiebreak
+      list.sort((a, b) => {
+        const ca = appointmentsByDoctor.get(a.id)?.length ?? 0;
+        const cb = appointmentsByDoctor.get(b.id)?.length ?? 0;
+        if (cb !== ca) return cb - ca;
+        return a.nameRu.localeCompare(b.nameRu);
+      });
+    }
+    return list;
+  }, [doctors.data, appointmentsByDoctor, prefs.hideIdle, prefs.sortBy]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-4 p-5">
@@ -163,22 +209,18 @@ export function ReceptionPageClient() {
               {t("doctorsPanel.title")}
             </h2>
             <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1 text-xs"
-              >
-                {t("doctorsPanel.day")}
-                <ChevronDownIcon className="size-3.5" />
-              </Button>
+              <DayPickerDropdown
+                selected={selectedDate}
+                onChange={setSelectedDate}
+              />
               <div className="inline-flex overflow-hidden rounded-md border border-border">
                 <button
                   type="button"
-                  aria-pressed={viewMode === "grid"}
-                  onClick={() => setViewMode("grid")}
+                  aria-pressed={prefs.view === "grid"}
+                  onClick={() => setPrefs({ view: "grid" })}
                   className={cn(
                     "inline-flex size-8 items-center justify-center transition-colors",
-                    viewMode === "grid"
+                    prefs.view === "grid"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted",
                   )}
@@ -188,11 +230,11 @@ export function ReceptionPageClient() {
                 </button>
                 <button
                   type="button"
-                  aria-pressed={viewMode === "list"}
-                  onClick={() => setViewMode("list")}
+                  aria-pressed={prefs.view === "list"}
+                  onClick={() => setPrefs({ view: "list" })}
                   className={cn(
                     "inline-flex size-8 items-center justify-center border-l border-border transition-colors",
-                    viewMode === "list"
+                    prefs.view === "list"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted",
                   )}
@@ -205,19 +247,33 @@ export function ReceptionPageClient() {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1 text-xs"
+                onClick={() => setSettingsOpen(true)}
               >
                 <SettingsIcon className="size-3.5" />
                 {t("doctorsPanel.configure")}
               </Button>
             </div>
           </div>
-          <DoctorQueueGrid
-            doctors={doctors.data ?? []}
-            appointmentsByDoctor={appointmentsByDoctor}
-            isLoading={isLoading}
-            onRowClick={(id) => openRow(id)}
-            onAddAppointment={(doctorId) => openCreate({ doctorId })}
-          />
+          {prefs.view === "grid" ? (
+            <DoctorQueueGrid
+              doctors={sortedDoctors}
+              appointmentsByDoctor={appointmentsByDoctor}
+              isLoading={isLoading}
+              onRowClick={(id) => openRow(id)}
+              onAddAppointment={(doctorId) => openCreate({ doctorId })}
+            />
+          ) : (
+            <DoctorQueueList
+              doctors={sortedDoctors}
+              appointmentsByDoctor={appointmentsByDoctor}
+              isLoading={isLoading}
+              onRowClick={(id) => openRow(id)}
+              onAddAppointment={(doctorId) => openCreate({ doctorId })}
+              density={prefs.density}
+              showCabinet={prefs.showCabinet}
+              showNextSlot={prefs.showNextSlot}
+            />
+          )}
         </section>
 
         <aside
@@ -256,6 +312,14 @@ export function ReceptionPageClient() {
         patientId={dialogPrefill?.patientId ?? null}
         initialDoctorId={dialogPrefill?.doctorId ?? null}
         onCreated={(id) => openRow(id)}
+      />
+
+      <DoctorPanelSettings
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        prefs={prefs}
+        setPrefs={setPrefs}
+        reset={resetPrefs}
       />
       {/* cabinets data is exposed via DoctorQueueGrid cards; keep hook subscribed */}
       <div className="sr-only">

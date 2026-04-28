@@ -47,7 +47,7 @@ export function TelegramPageClient() {
   }, [selectedId, rows, setSelectedId]);
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Mobile fallback */}
       <div className="flex min-h-[60vh] items-center justify-center p-6 xl:hidden">
         <EmptyState
@@ -93,6 +93,6 @@ export function TelegramPageClient() {
           <ChatRightRail conversation={selected} />
         </aside>
       </div>
-    </>
+    </div>
   );
 }

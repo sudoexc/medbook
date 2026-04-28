@@ -16,6 +16,7 @@ export const UpdateConversationSchema = z.object({
   assignedToId: z.string().nullable().optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   snoozedUntil: z.coerce.date().nullable().optional(),
+  markRead: z.boolean().optional(),
 });
 
 export const QueryConversationSchema = z.object({

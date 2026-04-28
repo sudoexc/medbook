@@ -4,7 +4,8 @@
   },
   "crmShell": {
     "brand": {
-      "tagline": "aqlli klinika"
+      "tagline": "aqlli klinika",
+      "homeLink": "Qabulxonaga"
     },
     "sidebarNav": {
       "reception": "Qabulxona",
@@ -1093,7 +1094,43 @@
       "day": "Kun",
       "configure": "Sozlash",
       "viewGrid": "To'r",
-      "viewList": "Ro'yxat"
+      "viewList": "Ro'yxat",
+      "dayPicker": {
+        "today": "Bugun",
+        "yesterday": "Kecha",
+        "tomorrow": "Ertaga",
+        "pickDate": "Sanani tanlash",
+        "labelToday": "Bugun",
+        "labelYesterday": "Kecha",
+        "labelTomorrow": "Ertaga"
+      },
+      "settings": {
+        "title": "Panel sozlamalari",
+        "description": "Sozlamalar shu qurilmada saqlanadi",
+        "hideIdle": "Yozuvsiz shifokorlarni yashirish",
+        "hideIdleHint": "Bugun qabuli yo'q shifokorlarni ko'rsatmaslik",
+        "sortBy": "Saralash",
+        "sortByLoad": "Yuklamasi bo'yicha",
+        "sortByName": "Ismi bo'yicha",
+        "sortByNext": "Yaqin slot bo'yicha",
+        "density": "Zichlik",
+        "densityComfortable": "Erkin",
+        "densityCompact": "Zich",
+        "showCabinet": "Kabinetni ko'rsatish",
+        "showNextSlot": "Yaqin slotni ko'rsatish",
+        "close": "Tayyor",
+        "reset": "Tiklash"
+      },
+      "list": {
+        "doctor": "Shifokor",
+        "cabinet": "Kabinet",
+        "queue": "Navbatda",
+        "next": "Yaqin",
+        "status": "Holat",
+        "actions": "",
+        "noNext": "—",
+        "addAppointment": "Yozish"
+      }
     },
     "warnings": {
       "template": "{minutes} daq. qoldi: {patient} — {doctor}"
@@ -1136,6 +1173,9 @@
       "noPatientsHint": "Bo'sh vaqt. Walk-in qabul qilish mumkin.",
       "statusFree": "Bo'sh",
       "statusBusy": "Qabulda",
+      "statusInSession": "Qabulda",
+      "statusAwaiting": "Kutmoqda",
+      "statusEmpty": "Bo'sh",
       "callNext": "Keyingini chaqirish",
       "markArrived": "Keldi",
       "complete": "Yakunlash",

@@ -46,6 +46,15 @@ export const GET = createApiListHandler(
         none: { status: "PAID" },
       };
     }
+    if (q.q && q.q.trim().length > 0) {
+      const term = q.q.trim();
+      where.OR = [
+        { patient: { fullName: { contains: term, mode: "insensitive" } } },
+        { patient: { phone: { contains: term } } },
+        { doctor: { nameRu: { contains: term, mode: "insensitive" } } },
+        { doctor: { nameUz: { contains: term, mode: "insensitive" } } },
+      ];
+    }
 
     // DOCTOR sees only their own records
     if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
@@ -101,16 +110,6 @@ export const POST = createApiHandler(
     const startAt = applyTime(body.date, body.time);
     const endAt = computeEndDate(startAt, body.durationMin);
 
-    const c = await detectConflicts({
-      doctorId: body.doctorId,
-      cabinetId: body.cabinetId ?? null,
-      startAt,
-      endAt,
-    });
-    if (!c.ok) {
-      return conflict(c.reason, c.until ? { until: c.until } : undefined);
-    }
-
     // Compute base price from primary service if not provided.
     let priceBase: number | null = null;
     let priceService: number | null = null;
@@ -134,48 +133,107 @@ export const POST = createApiHandler(
 
     const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
 
-    const created = await prisma.$transaction(async (tx) => {
-      const appt = await tx.appointment.create({
-        data: {
-          patientId: body.patientId,
+    // Conflict check + create run in one Serializable transaction so that
+    // concurrent bookings on the same slot can't both pass the overlap check.
+    // PostgreSQL raises a serialization error (P2034) on the loser; we
+    // surface that as a doctor_busy/cabinet_busy 409 just like a normal clash.
+    let txResult:
+      | { kind: "ok"; appt: { id: string; doctorId: string; patientId: string; cabinetId: string | null; status: string; date: Date; queueStatus: string } }
+      | { kind: "conflict"; reason: string; until?: string };
+    try {
+      txResult = await prisma.$transaction(
+        async (tx) => {
+        const c = await detectConflicts(
+          {
+            doctorId: body.doctorId,
+            cabinetId: body.cabinetId ?? null,
+            startAt,
+            endAt,
+          },
+          tx,
+        );
+        if (!c.ok) {
+          return { kind: "conflict" as const, reason: c.reason, until: c.until };
+        }
+        const appt = await tx.appointment.create({
+          data: {
+            patientId: body.patientId,
+            doctorId: body.doctorId,
+            cabinetId: body.cabinetId ?? null,
+            serviceId: body.serviceId ?? null,
+            date: startAt,
+            time: body.time ?? null,
+            durationMin: body.durationMin,
+            endDate: endAt,
+            status: "BOOKED",
+            queueStatus: "BOOKED",
+            channel: body.channel,
+            leadId: body.leadId ?? null,
+            priceService,
+            priceBase,
+            discountPct: body.discountPct ?? 0,
+            discountAmount: body.discountAmount ?? 0,
+            priceFinal,
+            createdById,
+            comments: body.comments ?? null,
+            notes: body.notes ?? null,
+          } as never,
+        });
+        if (body.services && body.services.length > 0) {
+          const svcRows = await tx.service.findMany({
+            where: { id: { in: body.services.map((s) => s.serviceId) } },
+            select: { id: true, priceBase: true },
+          });
+          const priceMap = new Map(svcRows.map((s) => [s.id, s.priceBase]));
+          await tx.appointmentService.createMany({
+            data: body.services.map((s) => ({
+              appointmentId: appt.id,
+              serviceId: s.serviceId,
+              priceSnap: s.priceOverride ?? priceMap.get(s.serviceId) ?? 0,
+              quantity: s.quantity ?? 1,
+            })) as never,
+          });
+        }
+        return { kind: "ok" as const, appt };
+        },
+        { isolationLevel: "Serializable" },
+      );
+    } catch (e: unknown) {
+      // Postgres serialization / write conflict — Prisma 7 surfaces this as a
+      // DriverAdapterError with kind=TransactionWriteConflict / originalCode
+      // 40001 (or as P2034). Re-run the conflict check (now that the winner
+      // has committed) and return a 409 with the real reason.
+      const err = e as {
+        code?: string;
+        originalCode?: string;
+        kind?: string;
+      } | null;
+      const isWriteConflict =
+        err?.code === "P2034" ||
+        err?.code === "40001" ||
+        err?.originalCode === "40001" ||
+        err?.kind === "TransactionWriteConflict";
+      if (isWriteConflict) {
+        const c = await detectConflicts({
           doctorId: body.doctorId,
           cabinetId: body.cabinetId ?? null,
-          serviceId: body.serviceId ?? null,
-          date: startAt,
-          time: body.time ?? null,
-          durationMin: body.durationMin,
-          endDate: endAt,
-          status: "BOOKED",
-          queueStatus: "BOOKED",
-          channel: body.channel,
-          leadId: body.leadId ?? null,
-          priceService,
-          priceBase,
-          discountPct: body.discountPct ?? 0,
-          discountAmount: body.discountAmount ?? 0,
-          priceFinal,
-          createdById,
-          comments: body.comments ?? null,
-          notes: body.notes ?? null,
-        } as never,
-      });
-      if (body.services && body.services.length > 0) {
-        const svcRows = await tx.service.findMany({
-          where: { id: { in: body.services.map((s) => s.serviceId) } },
-          select: { id: true, priceBase: true },
+          startAt,
+          endAt,
         });
-        const priceMap = new Map(svcRows.map((s) => [s.id, s.priceBase]));
-        await tx.appointmentService.createMany({
-          data: body.services.map((s) => ({
-            appointmentId: appt.id,
-            serviceId: s.serviceId,
-            priceSnap: s.priceOverride ?? priceMap.get(s.serviceId) ?? 0,
-            quantity: s.quantity ?? 1,
-          })) as never,
-        });
+        if (!c.ok) {
+          return conflict(c.reason, c.until ? { until: c.until } : undefined);
+        }
+        return conflict("doctor_busy");
       }
-      return appt;
-    });
+      throw e;
+    }
+    if (txResult.kind === "conflict") {
+      return conflict(
+        txResult.reason,
+        txResult.until ? { until: txResult.until } : undefined,
+      );
+    }
+    const created = txResult.appt;
 
     await audit(request, {
       action: "appointment.create",

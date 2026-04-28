@@ -17,6 +17,7 @@ import {
   useTgMessages,
 } from "../_hooks/use-tg-messages";
 import { useTakeover } from "../_hooks/use-takeover";
+import { useMarkConversationRead } from "../_hooks/use-mark-read";
 import { MessageBubble } from "./message-bubble";
 import { MessageComposer } from "./message-composer";
 
@@ -30,6 +31,17 @@ export function ChatPane({ conversation }: ChatPaneProps) {
   const messagesQuery = useTgMessages(conversation?.id ?? null);
   const messages = flattenMessages(messagesQuery.data?.pages);
   const takeover = useTakeover();
+  const markRead = useMarkConversationRead();
+
+  const conversationId = conversation?.id ?? null;
+  const unread = conversation?.unreadCount ?? 0;
+  const lastMarkedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!conversationId || unread <= 0) return;
+    if (lastMarkedRef.current === conversationId) return;
+    lastMarkedRef.current = conversationId;
+    markRead.mutate(conversationId);
+  }, [conversationId, unread, markRead]);
 
   // Stick-to-bottom on new messages; preserve scroll when loading older.
   const messageCountRef = React.useRef(messages.length);
@@ -94,19 +106,36 @@ export function ChatPane({ conversation }: ChatPaneProps) {
       <header className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
           <AvatarWithStatus
-            name={conversation.patient?.fullName ?? conversation.externalId ?? ""}
+            name={
+              conversation.patient?.fullName ??
+              [conversation.contactFirstName, conversation.contactLastName]
+                .filter(Boolean)
+                .join(" ") ??
+              conversation.externalId ??
+              ""
+            }
             src={conversation.patient?.photoUrl ?? null}
             size="md"
           />
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">
-              {conversation.patient?.fullName ?? t("list.anonymous")}
+              {conversation.patient?.fullName ??
+                [conversation.contactFirstName, conversation.contactLastName]
+                  .filter(Boolean)
+                  .join(" ")
+                  .trim() ??
+                (conversation.contactUsername
+                  ? `@${conversation.contactUsername}`
+                  : null) ??
+                t("list.anonymous")}
             </div>
             <div className="truncate text-xs text-muted-foreground">
               {conversation.patient?.phone ? (
                 <PhoneText phone={conversation.patient.phone} />
+              ) : conversation.contactUsername ? (
+                <>@{conversation.contactUsername}{conversation.externalId ? ` · id ${conversation.externalId}` : null}</>
               ) : conversation.externalId ? (
-                `chat_id ${conversation.externalId}`
+                `id ${conversation.externalId}`
               ) : null}
             </div>
           </div>

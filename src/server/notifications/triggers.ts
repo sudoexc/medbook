@@ -208,17 +208,58 @@ type FindTemplateResult = {
   channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
 } | null;
 
+/**
+ * Map an internal TriggerKey to a Prisma where-clause that matches the
+ * `trigger` enum + `triggerConfig.offsetMin` set by the seed/admin UI.
+ *
+ * NotificationTemplate.key is a human-readable slug (e.g. "reminder.confirm")
+ * and is NOT the same as TriggerKey ("appointment.created"). The contract is
+ * the `trigger` enum + offsetMin.
+ */
+function whereForTrigger(
+  trigger: TriggerKey,
+): Record<string, unknown> | null {
+  switch (trigger) {
+    case "appointment.created":
+      return { trigger: "APPOINTMENT_CREATED" };
+    case "appointment.reminder-24h":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -1440 },
+      };
+    case "appointment.reminder-2h":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -120 },
+      };
+    case "appointment.cancelled":
+      // No dedicated enum value — fall back to slug match.
+      return { key: "appointment.cancelled" };
+    case "birthday":
+      return { trigger: "PATIENT_BIRTHDAY" };
+    case "no-show":
+      return { trigger: "APPOINTMENT_MISSED" };
+    case "payment.due":
+      // No dedicated enum — fall back to slug match.
+      return { key: "payment.due" };
+    default:
+      return null;
+  }
+}
+
 async function findTemplateFor(
   clinicId: string,
   trigger: TriggerKey,
   lang: "ru" | "uz",
 ): Promise<FindTemplateResult> {
+  const where = whereForTrigger(trigger);
+  if (!where) return null;
   const row = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationTemplate.findFirst({
       where: {
         clinicId,
-        key: trigger,
         isActive: true,
+        ...where,
       },
       select: {
         id: true,
@@ -775,6 +816,20 @@ export function fireTrigger(payload: FireTriggerPayload): void {
           return;
         }
         case "appointment.cancelled": {
+          // Cancel any pending reminders for this appointment so we don't
+          // send 24h/2h reminders for an appointment that's been cancelled.
+          await runWithTenant({ kind: "SYSTEM" }, () =>
+            prisma.notificationSend.updateMany({
+              where: {
+                appointmentId: payload.appointmentId,
+                status: "QUEUED",
+                template: {
+                  trigger: { in: ["APPOINTMENT_BEFORE", "APPOINTMENT_CREATED"] },
+                },
+              },
+              data: { status: "CANCELLED" },
+            }),
+          );
           await onAppointmentCancelled(payload.appointmentId);
           return;
         }

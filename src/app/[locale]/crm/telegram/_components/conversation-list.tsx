@@ -183,7 +183,22 @@ function ConversationRow({
 }) {
   const t = useTranslations("tgInbox");
   const previewText = row.lastMessageText ?? "";
-  const name = row.patient?.fullName ?? row.externalId ?? t("list.anonymous");
+  const tgFullName = [row.contactFirstName, row.contactLastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const name =
+    row.patient?.fullName ||
+    tgFullName ||
+    (row.contactUsername ? `@${row.contactUsername}` : null) ||
+    row.externalId ||
+    t("list.anonymous");
+  const subline =
+    row.contactUsername && (row.patient?.fullName || tgFullName)
+      ? `@${row.contactUsername}`
+      : row.externalId && (row.patient?.fullName || tgFullName || row.contactUsername)
+        ? `id ${row.externalId}`
+        : null;
   return (
     <button
       type="button"
@@ -201,8 +216,15 @@ function ConversationRow({
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <div className="truncate text-sm font-medium text-foreground">
-            {name}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-foreground">
+              {name}
+            </div>
+            {subline ? (
+              <div className="truncate text-[11px] text-muted-foreground">
+                {subline}
+              </div>
+            ) : null}
           </div>
           {row.lastMessageAt ? (
             <DateText

@@ -281,7 +281,10 @@ export function DoctorsPageClient() {
               title={t("empty.title")}
               description={t("empty.description")}
               action={
-                <Button render={<Link href={`/${locale}/crm/settings/users`} />}>
+                <Button
+                  nativeButton={false}
+                  render={<Link href={`/${locale}/crm/settings/users`} />}
+                >
                   <PlusIcon className="size-4" />
                   {t("empty.action")}
                 </Button>

@@ -36,7 +36,6 @@ import {
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
 import { useGlobalSearchShortcut } from "@/components/layout/global-search"
-import { HeaderAtmosphere } from "@/components/layout/header-atmosphere"
 import { toast } from "@/components/ui/sonner"
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog"
 
@@ -171,7 +170,6 @@ export function CrmTopbar({
 
   return (
     <header className="relative flex h-[72px] shrink-0 items-center gap-4 overflow-hidden border-b border-border bg-card px-6">
-      <HeaderAtmosphere />
       <div className="relative z-[1] hidden min-w-0 shrink-0 leading-tight md:block">
         <div className="truncate text-2xl font-extrabold tracking-tight text-foreground">
           {tSection("title")}

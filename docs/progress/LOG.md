@@ -789,6 +789,46 @@
 
 ---
 
+## Post-Phase-7 hardening — booking robustness — ✅ DONE 2026-04-29
+
+### Коммит
+
+- `781682c feat(appointments)` — no-overlap migration + early-completion shrink + stress spec.
+
+### Что починено
+
+- **DB-level overlap backstop** (`prisma/migrations/20260429_appointment_no_overlap/migration.sql`): два Postgres `EXCLUDE USING gist` constraint'а — `Appointment_doctor_no_overlap` и `Appointment_cabinet_no_overlap` — на `tsrange("date","endDate",'[)')`. Срабатывают как страховочный слой, когда Serializable retry в POST `/api/crm/appointments` не успевает поймать гонку. Требует `btree_gist` extension.
+- **Early-completion endDate shrink** (`src/app/api/crm/appointments/[id]/queue-status/route.ts`, `src/app/api/crm/appointments/[id]/route.ts`): когда визит помечается COMPLETED раньше забронированного `endDate`, слот ужимается до `now` (с floor'ом `start + 5 min`), `durationMin` пересчитывается. Освобождённый хвост сразу бронируется. Публикуется `appointment.updated` event.
+- **DriverAdapterError catch widening** (`src/app/api/crm/appointments/route.ts`): Prisma 7 + pg adapter под нагрузкой surface'ит EXCLUDE/serialization ошибки как `DriverAdapterError` без `originalCode`/SQLSTATE — только в `message`. Catch теперь матчит по подстроке (`exclusion constraint`, `Appointment_*_no_overlap`, `write conflict or a deadlock`, `could not serialize access`) в дополнение к code/originalCode/kind. Concurrent-booking гонки больше не утекают как 500.
+- **`isAppHealthy()` race fix** (`tests/e2e/helpers.ts`): `ctx.dispose()` переехал в `finally` — раньше abort'ил request до чтения тела, отчего все 12 тестов в стресс-спеке скипались с "DB health check failed".
+
+### Стресс-спек (`tests/e2e/21-appointment-booking-stress.spec.ts`)
+
+12 тестов в `describe.serial`, **все зелёные за 4.8s**:
+
+1. setup + self-cleaning beforeAll (отменяет все non-cancelled будущие записи на тестовом докторе через API)
+2. CRM POST first booking → 201
+3. дубль того же слота → 409 doctor_busy
+4. touching boundary (`[N+30, N+60]` сразу после `[N, N+30]`) → 201, `[)`-семантика OK
+5. cabinet collision (другой доктор, тот же кабинет) → 409 cabinet_busy
+6. PATCH reschedule +2h → 200, оригинальный слот свободен
+7. POST в освобождённый слот → 201
+8. **5 параллельных POST в один слот → ровно 1×201 + 4×409** (Serializable retry + EXCLUDE backstop)
+9. DELETE (soft cancel) → re-book → 201 (CANCELLED не блокирует EXCLUDE)
+10. **lifecycle BOOKED → IN_PROGRESS → COMPLETED early** → endDate сжат, durationMin меньше, освобождённый хвост бронируется
+11. NO_SHOW → re-book → 201 (NO_SHOW тоже не блокирует)
+12. cleanup
+
+Single shared `BrowserContext`/`APIRequestContext` (login один раз в `beforeAll`) — обходит NextAuth per-IP rate-limit (5 attempts/window). `RUN_MINUTE_OFFSET = 5..55 step 5` рандомизирует слоты между прогонами.
+
+### Quality gates
+
+- Стресс-спек: **12/12 passed** на полном прогоне.
+- `tsc --noEmit` clean.
+- Working tree чистый, тег `phase-7-done` (`3ce45a7`) не двигаем — этот блок post-v1 hardening, не часть Phase 7.
+
+---
+
 # Production v1 — ✅ READY 2026-04-23
 
 ## Phase timeline (полная история)

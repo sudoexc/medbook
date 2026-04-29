@@ -20,10 +20,12 @@ export function ServicesPicker({
   services,
   value,
   onChange,
+  doctorPicked,
 }: {
   services: ServiceHit[];
   value: string[];
   onChange: (next: string[]) => void;
+  doctorPicked: boolean;
 }) {
   const t = useTranslations("appointments.newDialog");
   const [pick, setPick] = React.useState<string>("");
@@ -37,10 +39,16 @@ export function ServicesPicker({
   return (
     <div className="grid gap-1.5">
       <Label>{t("services")}</Label>
-      <div className="rounded-md border border-border bg-background">
+      <div
+        className={
+          "rounded-md border border-border bg-background" +
+          (doctorPicked ? "" : " opacity-60")
+        }
+        aria-disabled={!doctorPicked}
+      >
         {selected.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">
-            {t("servicesEmpty")}
+            {doctorPicked ? t("servicesEmpty") : t("servicesPickDoctor")}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -72,6 +80,7 @@ export function ServicesPicker({
         <div className="flex items-center gap-1 border-t border-border p-2">
           <Select
             value={pick}
+            disabled={!doctorPicked}
             onValueChange={(v) => {
               if (v) {
                 onChange([...value, v]);

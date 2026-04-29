@@ -102,10 +102,15 @@ export function NewAppointmentDialog({
       | "outside_schedule";
     until?: string;
   } | null>(null);
+  // Tracks which doctor we've already auto-applied (services filter +
+  // default cabinet) for, so we don't re-run on every render. Reset whenever
+  // the dialog opens.
+  const lastDoctorRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
     setConflict(null);
+    lastDoctorRef.current = null;
     setState((prev) => ({
       ...EMPTY,
       ...prev,
@@ -113,6 +118,7 @@ export function NewAppointmentDialog({
       newPatient: false,
       serviceIds: [],
       doctorId: initialDoctorId ?? null,
+      cabinetId: null,
       date: initialDate ?? new Date(),
       time: initialTime ?? null,
       channel: "WALKIN",
@@ -244,6 +250,74 @@ export function NewAppointmentDialog({
     },
     staleTime: 5 * 60_000,
   });
+
+  // When the user picks a doctor we look up that doctor's services + schedule
+  // — services drive what's offered in the picker below, and the most-frequent
+  // cabinetId across the doctor's active weekly schedule becomes the default
+  // cabinet (each doctor is "anchored" to one room).
+  type DoctorDetail = {
+    id: string;
+    services: { serviceId: string }[];
+    schedules: { cabinetId: string | null; isActive: boolean }[];
+  };
+  const doctorDetailQuery = useQuery<DoctorDetail | null, Error>({
+    queryKey: ["doctor", "detail", state.doctorId],
+    enabled: open && !!state.doctorId,
+    queryFn: async ({ signal }) => {
+      if (!state.doctorId) return null;
+      const res = await fetch(`/api/crm/doctors/${state.doctorId}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as DoctorDetail;
+    },
+    staleTime: 60_000,
+  });
+
+  const allowedServiceIds = React.useMemo(() => {
+    const d = doctorDetailQuery.data;
+    if (!d) return null;
+    return new Set(d.services.map((s) => s.serviceId));
+  }, [doctorDetailQuery.data]);
+
+  const filteredServices = React.useMemo(() => {
+    const all = servicesQuery.data ?? [];
+    if (!allowedServiceIds) return [];
+    return all.filter((s) => allowedServiceIds.has(s.id));
+  }, [servicesQuery.data, allowedServiceIds]);
+
+  // Auto-fill cabinet from doctor's schedule (most common cabinetId across
+  // active entries). Drop selected services that the new doctor doesn't
+  // offer. Runs once per doctor change.
+  React.useEffect(() => {
+    const detail = doctorDetailQuery.data;
+    if (!detail) return;
+    if (lastDoctorRef.current === detail.id) return;
+    lastDoctorRef.current = detail.id;
+
+    const counts = new Map<string, number>();
+    for (const sch of detail.schedules) {
+      if (!sch.isActive || !sch.cabinetId) continue;
+      counts.set(sch.cabinetId, (counts.get(sch.cabinetId) ?? 0) + 1);
+    }
+    let topCabinetId: string | null = null;
+    let topCount = 0;
+    for (const [id, n] of counts) {
+      if (n > topCount) {
+        topCabinetId = id;
+        topCount = n;
+      }
+    }
+    const allowed = new Set(detail.services.map((s) => s.serviceId));
+    setState((s) => ({
+      ...s,
+      // Always reflect the new doctor's anchor cabinet — null wipes any
+      // stale cabinet from a previously-selected doctor.
+      cabinetId: topCabinetId,
+      serviceIds: s.serviceIds.filter((id) => allowed.has(id)),
+    }));
+  }, [doctorDetailQuery.data]);
 
   const createMutation = useMutation<
     { id: string },
@@ -396,19 +470,28 @@ export function NewAppointmentDialog({
             disabled={Boolean(patientId)}
           />
 
-          <ServicesPicker
-            services={servicesQuery.data ?? []}
-            value={state.serviceIds}
-            onChange={(ids) =>
-              setState((s) => ({ ...s, serviceIds: ids }))
-            }
-          />
-
           <DoctorPicker
             doctors={doctorsQuery.data ?? []}
             value={state.doctorId}
             onChange={(id) =>
-              setState((s) => ({ ...s, doctorId: id, time: null }))
+              setState((s) => ({
+                ...s,
+                doctorId: id,
+                time: null,
+                // Cabinet + services are reapplied by the effect above once
+                // the doctor's detail loads; clear stale values until then.
+                cabinetId: id ? s.cabinetId : null,
+                serviceIds: id ? s.serviceIds : [],
+              }))
+            }
+          />
+
+          <ServicesPicker
+            services={filteredServices}
+            value={state.serviceIds}
+            doctorPicked={Boolean(state.doctorId)}
+            onChange={(ids) =>
+              setState((s) => ({ ...s, serviceIds: ids }))
             }
           />
 

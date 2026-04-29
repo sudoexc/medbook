@@ -83,6 +83,7 @@ export function DoctorQueueCard({
 
   const doctorSpec =
     locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
+  const doctorName = locale === "uz" ? doctor.nameUz : doctor.nameRu;
 
   const invalidate = () => {
     const opts = { refetchType: "active" } as const;
@@ -136,7 +137,10 @@ export function DoctorQueueCard({
               {t("cabinet")} {cabinetNumber ?? index}
             </h3>
           </div>
-          <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+          <p className="mt-0.5 truncate text-[13px] font-semibold text-foreground">
+            {doctorName}
+          </p>
+          <p className="truncate text-[12px] text-muted-foreground">
             {doctorSpec ?? t("specialist")}
           </p>
         </div>
@@ -188,8 +192,8 @@ export function DoctorQueueCard({
           <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
             <span>{t("queueCount", { count: upcoming.length })}</span>
           </div>
-          <ul className="space-y-1.5">
-            {upcoming.slice(0, 2).map((a, i) => (
+          <ul className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+            {upcoming.map((a, i) => (
               <li key={a.id}>
                 <button
                   type="button"

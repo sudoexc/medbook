@@ -1119,7 +1119,6 @@ async function rebuildTodayStoryline(args: {
         startTime: true,
         endTime: true,
         doctor: { select: { id: true, nameRu: true } },
-        cabinet: { select: { id: true, number: true } },
       },
     });
   }

@@ -522,19 +522,15 @@ async function main() {
   const stressDeleted = await cleanupStressLeftovers(clinicId);
 
   // ── Today's storyline ───────────────────────────────────────────
-  // Make the reception dashboard look "in full swing": top up to 10
-  // cabinets, then each cabinet runs morning + afternoon doctor shifts
-  // with varied service durations and a realistic status mix.
-  const fullCabinets = await ensureCabinets(clinicId, 10);
-  const realCabinets = fullCabinets.filter((c) => !c.number.startsWith("STRESS"));
+  // Drive off real DoctorSchedule + ServiceOnDoctor: each anchored
+  // doctor fills their cabinet within their working window, picking
+  // only services they actually perform.
   const demoPatients = await prisma.patient.findMany({
     where: { clinicId, tags: { has: TAG } },
     select: { id: true, fullName: true },
   });
   const story = await rebuildTodayStoryline({
     clinicId,
-    cabinets: realCabinets,
-    doctors,
     services,
     patients: demoPatients,
     receptId: recept?.id ?? null,
@@ -1007,47 +1003,6 @@ async function cleanupStressLeftovers(clinicId: string): Promise<number> {
  * Re-runnable: deletes today's appointments tied to demo patients before
  * inserting fresh ones, so the dashboard stays in sync with `now`.
  */
-/**
- * Top up the clinic to TARGET_CABINETS active cabinets so the storyline
- * has enough physical rooms to absorb 200+ daily visits without artificial
- * conflicts. Idempotent: only creates rooms that don't already exist.
- */
-async function ensureCabinets(
-  clinicId: string,
-  target = 10,
-): Promise<{ id: string; number: string }[]> {
-  const existing = await prisma.cabinet.findMany({
-    where: { clinicId, isActive: true },
-    select: { id: true, number: true },
-  });
-  const used = new Set(existing.map((c) => c.number));
-  const labels: { number: string; nameRu: string; floor: number }[] = [
-    { number: "3", nameRu: "Процедурный кабинет", floor: 1 },
-    { number: "7", nameRu: "ЭЭГ / ЭКГ", floor: 2 },
-    { number: "8", nameRu: "УЗИ-диагностика", floor: 2 },
-    { number: "9", nameRu: "МРТ-кабинет", floor: 0 },
-    { number: "10", nameRu: "Дневной стационар", floor: 1 },
-  ];
-  for (const lbl of labels) {
-    if (existing.length + 0 >= target) break;
-    if (used.has(lbl.number)) continue;
-    const created = await prisma.cabinet.create({
-      data: {
-        clinicId,
-        number: lbl.number,
-        floor: lbl.floor,
-        nameRu: lbl.nameRu,
-        isActive: true,
-        equipment: [],
-      },
-      select: { id: true, number: true },
-    });
-    existing.push(created);
-    used.add(lbl.number);
-  }
-  return existing.sort((a, b) => Number(a.number) - Number(b.number));
-}
-
 const APPT_NOTES_POOL = [
   "Аллергия на пенициллин — отметили в карте",
   "Опаздывает, предупредил по телефону",
@@ -1089,17 +1044,16 @@ function pickServiceByDuration(
 }
 
 /**
- * Realistic full-day storyline: 15-min grid 08:00→20:00, 10+ cabinets,
- * varied service durations (15/30/45/60), morning + afternoon doctor
- * shifts, status mix (COMPLETED 88% / NO_SHOW 8% / CANCELLED 4% in the
- * past, IN_PROGRESS now, WAITING for next-25min, BOOKED ahead), payment
- * mix (paid full / paid with discount / unpaid), notes on ~15%, walk-in
- * extras without a cabinet. Targets ≥200 appointments per day.
+ * Realistic full-day storyline driven by DoctorSchedule + ServiceOnDoctor:
+ * each anchored (cabinetId set) doctor fills their cabinet within their
+ * actual working window, picking only services they perform. Status mix
+ * (COMPLETED 86% / NO_SHOW 8% / CANCELLED 6% in the past, IN_PROGRESS now,
+ * WAITING for next-25min, BOOKED ahead), payment mix (paid full / discount /
+ * unpaid), walk-in extras without a cabinet. Targets ≥200 appointments per
+ * day for the real NEUROFAX-B lineup.
  */
 async function rebuildTodayStoryline(args: {
   clinicId: string;
-  cabinets: { id: string; number: string }[];
-  doctors: { id: string; nameRu: string }[];
   services: { id: string; nameRu: string; durationMin: number; priceBase: number }[];
   patients: { id: string; fullName: string }[];
   receptId: string | null;
@@ -1114,7 +1068,7 @@ async function rebuildTodayStoryline(args: {
   unpaid: number;
   discounted: number;
 }> {
-  const { clinicId, cabinets, doctors, services, patients, receptId } = args;
+  const { clinicId, services, patients, receptId } = args;
   const empty = {
     created: 0,
     completed: 0,
@@ -1126,9 +1080,79 @@ async function rebuildTodayStoryline(args: {
     unpaid: 0,
     discounted: 0,
   };
-  if (cabinets.length === 0 || doctors.length === 0 || patients.length === 0) {
+  if (services.length === 0 || patients.length === 0) {
     return empty;
   }
+
+  // Today's weekday (0=Sun..6=Sat). If today is Sunday and no schedule
+  // exists, fall back to Monday so the boss-demo always has data.
+  const todayWeekday = new Date().getDay();
+  let schedules = await prisma.doctorSchedule.findMany({
+    where: {
+      clinicId,
+      isActive: true,
+      weekday: todayWeekday,
+      cabinetId: { not: null },
+      doctor: { isActive: true },
+    },
+    select: {
+      doctorId: true,
+      cabinetId: true,
+      startTime: true,
+      endTime: true,
+      doctor: { select: { id: true, nameRu: true } },
+    },
+  });
+  if (schedules.length === 0) {
+    // Mon fallback so demo always has data even if run on Sunday.
+    schedules = await prisma.doctorSchedule.findMany({
+      where: {
+        clinicId,
+        isActive: true,
+        weekday: 1,
+        cabinetId: { not: null },
+        doctor: { isActive: true },
+      },
+      select: {
+        doctorId: true,
+        cabinetId: true,
+        startTime: true,
+        endTime: true,
+        doctor: { select: { id: true, nameRu: true } },
+        cabinet: { select: { id: true, number: true } },
+      },
+    });
+  }
+  if (schedules.length === 0) return empty;
+
+  // Cabinet lookup (DoctorSchedule has no relation to Cabinet, only cabinetId).
+  const cabinetIds = Array.from(
+    new Set(schedules.map((s) => s.cabinetId).filter((x): x is string => !!x)),
+  );
+  const cabinetRows = await prisma.cabinet.findMany({
+    where: { id: { in: cabinetIds }, isActive: true },
+    select: { id: true, number: true },
+  });
+  const cabinetById = new Map(cabinetRows.map((c) => [c.id, c]));
+
+  // Per-doctor allowed services + price overrides.
+  const doctorIds = Array.from(new Set(schedules.map((s) => s.doctorId)));
+  const links = await prisma.serviceOnDoctor.findMany({
+    where: { doctorId: { in: doctorIds } },
+    select: { doctorId: true, serviceId: true, priceOverride: true },
+  });
+  const allowedByDoctor = new Map<string, Set<string>>();
+  const overrideByPair = new Map<string, number>(); // `${doctorId}|${serviceId}` → price
+  for (const l of links) {
+    if (!allowedByDoctor.has(l.doctorId)) {
+      allowedByDoctor.set(l.doctorId, new Set());
+    }
+    allowedByDoctor.get(l.doctorId)!.add(l.serviceId);
+    if (l.priceOverride != null) {
+      overrideByPair.set(`${l.doctorId}|${l.serviceId}`, l.priceOverride);
+    }
+  }
+  const servicesById = new Map(services.map((s) => [s.id, s]));
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(dayStart);
@@ -1193,36 +1217,48 @@ async function rebuildTodayStoryline(args: {
     return durationPool.find((p) => r < p.cum)!.d;
   };
 
-  // Shuffle doctors per cabinet so morning/afternoon shifts vary.
-  const shifts: { morning: typeof doctors[number]; afternoon: typeof doctors[number] }[] = [];
-  for (let i = 0; i < cabinets.length; i++) {
-    shifts.push({
-      morning: doctors[i % doctors.length]!,
-      afternoon: doctors[(i + 3) % doctors.length]!,
-    });
-  }
+  // Each schedule entry = one doctor anchored to one cabinet for a
+  // contiguous time window. Fill the window respecting that doctor's
+  // ServiceOnDoctor list; pricing falls back from priceOverride to base.
+  const parseHHMM = (s: string): number => {
+    const [h, m] = s.split(":").map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
 
-  // Day window: 08:00 → 20:00 in 15-min grid (48 grid positions).
-  const dayStartMin = 8 * 60;
-  const dayEndMin = 20 * 60;
+  for (let sIdx = 0; sIdx < schedules.length; sIdx++) {
+    const sch = schedules[sIdx]!;
+    if (!sch.cabinetId) continue;
+    const cab = cabinetById.get(sch.cabinetId);
+    if (!cab) continue;
+    const doctor = sch.doctor;
+    const allowed = allowedByDoctor.get(doctor.id);
+    if (!allowed || allowed.size === 0) continue;
+    const doctorServices = services.filter((s) => allowed.has(s.id));
+    if (doctorServices.length === 0) continue;
 
-  for (let cIdx = 0; cIdx < cabinets.length; cIdx++) {
-    const cab = cabinets[cIdx]!;
-    const shift = shifts[cIdx]!;
-    let cursorMin = dayStartMin + (cIdx % 4) * 15; // stagger start by cab
+    const winStart = parseHHMM(sch.startTime);
+    const winEnd = parseHHMM(sch.endTime);
+    let cursorMin = winStart;
     let lunchTaken = false;
-    while (cursorMin + 15 <= dayEndMin) {
-      // Lunch break (approx 13:00-14:00) — once per cabinet, ~80% of cabinets.
-      if (!lunchTaken && cursorMin >= 13 * 60 && cursorMin < 14 * 60 && (cIdx % 5) !== 0) {
+    while (cursorMin + 15 <= winEnd) {
+      // Lunch break (approx 13:00-14:00) — once per schedule, ~80% of cabs,
+      // only if the window crosses lunch.
+      if (
+        !lunchTaken &&
+        cursorMin >= 13 * 60 &&
+        cursorMin < 14 * 60 &&
+        winEnd > 14 * 60 &&
+        (sIdx % 5) !== 0
+      ) {
         cursorMin = 14 * 60;
         lunchTaken = true;
         continue;
       }
-      const seed = cIdx * 1000 + cursorMin;
-      const targetDur = pickDuration(seed * 7 + cIdx);
-      const svc = pickServiceByDuration(services, targetDur, seed);
+      const seed = sIdx * 1000 + cursorMin;
+      const targetDur = pickDuration(seed * 7 + sIdx);
+      const svc = pickServiceByDuration(doctorServices, targetDur, seed);
       const dur = svc.durationMin;
-      if (cursorMin + dur > dayEndMin) break;
+      if (cursorMin + dur > winEnd) break;
 
       // 6% gap: clinic is between patients (administrative).
       if (seed % 17 === 0) {
@@ -1233,7 +1269,8 @@ async function rebuildTodayStoryline(args: {
       const startAt = new Date(dayStart);
       startAt.setMinutes(cursorMin);
       const endAt = new Date(startAt.getTime() + dur * 60_000);
-      const doctor = startAt.getHours() < 14 ? shift.morning : shift.afternoon;
+      const priceBase =
+        overrideByPair.get(`${doctor.id}|${svc.id}`) ?? svc.priceBase;
 
       // Status assignment based on time + realistic mix for past slots.
       let status: "COMPLETED" | "IN_PROGRESS" | "WAITING" | "BOOKED" | "NO_SHOW" | "CANCELLED";
@@ -1264,8 +1301,8 @@ async function rebuildTodayStoryline(args: {
         status === "COMPLETED" && seed % 8 === 0
           ? 5 + ((seed * 13) % 21) // 5..25
           : 0;
-      const discountAmount = Math.round((svc.priceBase * discountPct) / 100);
-      const priceFinal = svc.priceBase - discountAmount;
+      const discountAmount = Math.round((priceBase * discountPct) / 100);
+      const priceFinal = priceBase - discountAmount;
 
       const note = seed % 7 === 0 ? APPT_NOTES_POOL[seed % APPT_NOTES_POOL.length]! : null;
       const cancelReason =
@@ -1284,8 +1321,8 @@ async function rebuildTodayStoryline(args: {
         status,
         queueStatus: status,
         channel,
-        priceService: svc.priceBase,
-        priceBase: svc.priceBase,
+        priceService: priceBase,
+        priceBase,
         discountPct,
         discountAmount,
         priceFinal,
@@ -1348,16 +1385,25 @@ async function rebuildTodayStoryline(args: {
   // ── Walk-ins & home visits without a cabinet (telemed / outreach) ──
   // Add ~10 future appointments without cabinetId — these show up in
   // appointments list and doctor view but not in the cabinet queue.
-  const walkInCount = Math.min(10, doctors.length * 2);
+  const uniqueDoctors = Array.from(
+    new Map(schedules.map((s) => [s.doctor.id, s.doctor])).values(),
+  );
+  const walkInCount = Math.min(10, uniqueDoctors.length * 2);
   for (let w = 0; w < walkInCount; w++) {
     const m = 10 * 60 + (w * 23) % (8 * 60); // spread across the day
     const startAt = new Date(dayStart);
     startAt.setMinutes(m);
     if (startAt < now) continue; // only future
+    const doctor = uniqueDoctors[w % uniqueDoctors.length]!;
+    const allowed = allowedByDoctor.get(doctor.id);
+    if (!allowed || allowed.size === 0) continue;
+    const doctorServices = services.filter((s) => allowed.has(s.id));
+    if (doctorServices.length === 0) continue;
     const dur = pickDuration(w * 31);
-    const endAt = new Date(startAt.getTime() + dur * 60_000);
-    const svc = pickServiceByDuration(services, dur, w);
-    const doctor = doctors[w % doctors.length]!;
+    const svc = pickServiceByDuration(doctorServices, dur, w);
+    const endAt = new Date(startAt.getTime() + svc.durationMin * 60_000);
+    const priceBase =
+      overrideByPair.get(`${doctor.id}|${svc.id}`) ?? svc.priceBase;
     const patient = patients[(patientCursor + w) % patients.length]!;
     try {
       await prisma.appointment.create({
@@ -1369,14 +1415,14 @@ async function rebuildTodayStoryline(args: {
           serviceId: svc.id,
           date: startAt,
           time: `${pad(startAt.getHours())}:${pad(startAt.getMinutes())}`,
-          durationMin: dur,
+          durationMin: svc.durationMin,
           endDate: endAt,
           status: "BOOKED",
           queueStatus: "BOOKED",
           channel: w % 2 === 0 ? "TELEGRAM" : "PHONE",
-          priceService: svc.priceBase,
-          priceBase: svc.priceBase,
-          priceFinal: svc.priceBase,
+          priceService: priceBase,
+          priceBase,
+          priceFinal: priceBase,
           createdById: receptId,
           notes: w % 3 === 0 ? "Выезд на дом" : "Телемедицина",
         } as never,

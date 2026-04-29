@@ -81,6 +81,9 @@ export function PatientsPageClient() {
   }, [allRows, state.ageMin, state.ageMax, nowMs]);
 
   const total = query.data?.pages?.[0]?.total ?? null;
+  const segmentCounts = query.data?.pages?.[0]?.segmentCounts ?? null;
+  const totalAcrossSegments =
+    query.data?.pages?.[0]?.totalAcrossSegments ?? null;
 
   const hasFilters =
     Boolean(state.q) ||
@@ -137,6 +140,8 @@ export function PatientsPageClient() {
           <PatientsKpiTabs
             rows={rows}
             total={total}
+            segmentCounts={segmentCounts}
+            totalAcrossSegments={totalAcrossSegments}
             active={activeTab}
             onChange={handleTabChange}
           />

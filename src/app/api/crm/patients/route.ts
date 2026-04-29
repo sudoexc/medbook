@@ -59,7 +59,35 @@ export const GET = createApiListHandler(
     }
 
     const total = await prisma.patient.count({ where });
-    return ok({ rows, nextCursor, total });
+
+    // Segment-tab badge counts: respect every other filter except segment,
+    // so switching tabs doesn't zero out the others. groupBy returns rows
+    // for segments that have ≥1 match — fill missing buckets with 0.
+    const { segment: _omit, ...whereWithoutSegment } = where;
+    const grouped = await prisma.patient.groupBy({
+      by: ["segment"],
+      where: whereWithoutSegment,
+      _count: { _all: true },
+    });
+    const segmentCounts: Record<
+      "VIP" | "NEW" | "ACTIVE" | "DORMANT" | "CHURN",
+      number
+    > = { VIP: 0, NEW: 0, ACTIVE: 0, DORMANT: 0, CHURN: 0 };
+    let totalAcrossSegments = 0;
+    for (const row of grouped) {
+      const seg = row.segment as keyof typeof segmentCounts;
+      const c = row._count?._all ?? 0;
+      if (seg in segmentCounts) segmentCounts[seg] = c;
+      totalAcrossSegments += c;
+    }
+
+    return ok({
+      rows,
+      nextCursor,
+      total,
+      segmentCounts,
+      totalAcrossSegments,
+    });
   }
 );
 

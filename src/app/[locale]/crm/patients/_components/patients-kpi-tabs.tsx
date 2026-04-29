@@ -6,7 +6,10 @@ import { FilterIcon, LayoutGridIcon, SettingsIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-import type { PatientRow } from "../_hooks/use-patients-list";
+import type {
+  PatientRow,
+  PatientSegmentCounts,
+} from "../_hooks/use-patients-list";
 
 export type PatientsTabKey =
   | "all"
@@ -19,6 +22,10 @@ export type PatientsTabKey =
 export interface PatientsKpiTabsProps {
   rows: PatientRow[];
   total: number | null;
+  /** Server-side counts per segment that ignore the segment filter. */
+  segmentCounts: PatientSegmentCounts | null;
+  /** Sum of segmentCounts (a.k.a. "all" tab badge). */
+  totalAcrossSegments: number | null;
   active: PatientsTabKey;
   onChange: (next: PatientsTabKey) => void;
   onOpenFilters?: () => void;
@@ -47,6 +54,8 @@ const TABS: Tab[] = [
 export function PatientsKpiTabs({
   rows,
   total,
+  segmentCounts,
+  totalAcrossSegments,
   active,
   onChange,
   onOpenFilters,
@@ -57,6 +66,19 @@ export function PatientsKpiTabs({
   const t = useTranslations("patients.tabs");
   const locale = useLocale();
   const counts = React.useMemo(() => {
+    // Prefer server-computed counts (independent of the segment filter) so
+    // switching tabs doesn't zero out the badges of the inactive ones.
+    if (segmentCounts) {
+      return {
+        all: totalAcrossSegments ?? 0,
+        vip: segmentCounts.VIP,
+        new: segmentCounts.NEW,
+        active: segmentCounts.ACTIVE,
+        dormant: segmentCounts.DORMANT,
+        churn: segmentCounts.CHURN,
+      } satisfies Record<PatientsTabKey, number>;
+    }
+    // First-render fallback before the query resolves.
     const out: Record<PatientsTabKey, number> = {
       all: total ?? rows.length,
       vip: 0,
@@ -73,7 +95,7 @@ export function PatientsKpiTabs({
       if (p.segment === "CHURN") out.churn += 1;
     }
     return out;
-  }, [rows, total]);
+  }, [rows, total, segmentCounts, totalAcrossSegments]);
 
   return (
     <div

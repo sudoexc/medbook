@@ -37,10 +37,20 @@ export type PatientRow = {
   createdAt: string;
 };
 
+export type PatientSegmentCounts = {
+  VIP: number;
+  NEW: number;
+  ACTIVE: number;
+  DORMANT: number;
+  CHURN: number;
+};
+
 export type PatientsListResponse = {
   rows: PatientRow[];
   nextCursor: string | null;
   total: number;
+  segmentCounts: PatientSegmentCounts;
+  totalAcrossSegments: number;
 };
 
 export type PatientsListFilters = {

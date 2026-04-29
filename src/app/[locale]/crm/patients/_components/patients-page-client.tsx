@@ -80,10 +80,10 @@ export function PatientsPageClient() {
     });
   }, [allRows, state.ageMin, state.ageMax, nowMs]);
 
-  const total = query.data?.pages?.[0]?.total ?? null;
-  const segmentCounts = query.data?.pages?.[0]?.segmentCounts ?? null;
-  const totalAcrossSegments =
-    query.data?.pages?.[0]?.totalAcrossSegments ?? null;
+  const firstPage = query.data?.pages?.[0];
+  const total = firstPage?.total ?? null;
+  const segmentCounts = firstPage?.segmentCounts ?? null;
+  const totalAcrossSegments = firstPage?.totalAcrossSegments ?? null;
 
   const hasFilters =
     Boolean(state.q) ||

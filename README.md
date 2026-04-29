@@ -41,6 +41,11 @@ The in-memory queue, SSE fallback, and `/tmp` upload stub kick in automatically 
 - `npx tsc --noEmit` — type-check.
 - `npx vitest run` — unit tests.
 - `npx tsx src/server/workers/start.ts` — run background workers locally.
+- `npx tsx scripts/seed-demo-data.ts` — populate the `neurofax` clinic with a
+  realistic demo load: ~150 patients, today's storyline of ~270 appointments
+  (mix of completed / in-chair / waiting / no-show / cancelled), payments,
+  documents (placeholder PDFs in `public/uploads/demo/`), conversations, calls,
+  and leads. Idempotent — tagged via `demo:` markers, safe to re-run.
 
 ## Deployment
 

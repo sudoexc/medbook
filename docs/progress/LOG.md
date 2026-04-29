@@ -842,8 +842,8 @@ docker compose up -d    # 7 services: app, worker, postgres, redis, minio, nginx
 | Роль | Email | Пароль |
 |---|---|---|
 | SUPER_ADMIN | `super@neurofax.uz` | `super` |
-| ADMIN (neurofax) | `info@neurofax.uz` | `admin` |
-| ADMIN (demo-clinic) | `info@demo-clinic.uz` | `admin` |
-| RECEPTIONIST | `recept-N@{slug}.uz` | `recept` |
-| DOCTOR | из seed output | `doctor` |
+| ADMIN (neurofax) | `admin@neurofax.uz` | `admin` |
+| ADMIN (demo-clinic) | `admin@demo-clinic.uz` | `admin` |
+| RECEPTIONIST | `recept@neurofax.uz` | `recept` |
+| DOCTOR | `neurologist@neurofax.uz`, `cardiologist@neurofax.uz` | `doctor` |
 

@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# stress / scratch reports
+/tmp/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

@@ -135,7 +135,23 @@ export const PATCH = createApiHandler(
       data.cancelledAt = new Date();
     }
     if (body.status === "COMPLETED" && !before.completedAt) {
-      data.completedAt = new Date();
+      const now = new Date();
+      data.completedAt = now;
+      // Mirror the queue-status route: when the visit completes ahead of the
+      // booked end, shrink the slot so the freed tail is bookable. Skip if
+      // the caller is also moving the time in this same PATCH (timeChanged
+      // path already recomputed endDate).
+      if (!timeChanged) {
+        const minEnd = new Date(before.date.getTime() + 5 * 60_000);
+        const newEnd = now < minEnd ? minEnd : now;
+        if (newEnd < before.endDate) {
+          data.endDate = newEnd;
+          data.durationMin = Math.max(
+            5,
+            Math.round((newEnd.getTime() - before.date.getTime()) / 60_000),
+          );
+        }
+      }
     }
     if (body.status === "IN_PROGRESS" && !before.startedAt) {
       data.startedAt = new Date();

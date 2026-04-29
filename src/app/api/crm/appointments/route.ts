@@ -201,18 +201,41 @@ export const POST = createApiHandler(
     } catch (e: unknown) {
       // Postgres serialization / write conflict — Prisma 7 surfaces this as a
       // DriverAdapterError with kind=TransactionWriteConflict / originalCode
-      // 40001 (or as P2034). Re-run the conflict check (now that the winner
-      // has committed) and return a 409 with the real reason.
+      // 40001 (or as P2034). The DB-level EXCLUDE constraint added in
+      // 20260429_appointment_no_overlap surfaces as SQLSTATE 23P01
+      // (exclusion_violation) — same outcome, just a different SQLSTATE.
       const err = e as {
         code?: string;
         originalCode?: string;
         kind?: string;
+        name?: string;
+        message?: string;
       } | null;
+      // Prisma 7 + pg adapter surfaces concurrent-booking failures in three
+      // shapes that all mean "lost the race, retry would race again":
+      //   1. DriverAdapterError with originalCode/code "23P01" (EXCLUDE
+      //      constraint Appointment_doctor_no_overlap fired)
+      //   2. P2034 or originalCode "40001" — Serializable retry budget hit
+      //   3. DriverAdapterError whose message string carries either of the
+      //      above (Prisma sometimes wraps the original PG error and drops
+      //      the SQLSTATE — only the human message survives)
+      const msg = err?.message ?? "";
+      const isAdapterErr = err?.name === "DriverAdapterError";
+      const msgIndicatesConflict =
+        msg.includes("exclusion constraint") ||
+        msg.includes("Appointment_doctor_no_overlap") ||
+        msg.includes("Appointment_cabinet_no_overlap") ||
+        msg.includes("write conflict or a deadlock") ||
+        msg.includes("could not serialize access");
       const isWriteConflict =
         err?.code === "P2034" ||
         err?.code === "40001" ||
+        err?.code === "23P01" ||
         err?.originalCode === "40001" ||
-        err?.kind === "TransactionWriteConflict";
+        err?.originalCode === "23P01" ||
+        err?.kind === "TransactionWriteConflict" ||
+        (isAdapterErr && msgIndicatesConflict) ||
+        msgIndicatesConflict;
       if (isWriteConflict) {
         const c = await detectConflicts({
           doctorId: body.doctorId,
@@ -225,6 +248,17 @@ export const POST = createApiHandler(
         }
         return conflict("doctor_busy");
       }
+      // Diagnostic: surface the exact shape of unhandled errors so the catch
+      // can be widened next time. Cheap noise — happens only on real 500s.
+      // eslint-disable-next-line no-console
+      console.error("[POST /appointments] uncaught error shape:", {
+        name: err?.name,
+        code: err?.code,
+        originalCode: err?.originalCode,
+        kind: err?.kind,
+        message: err?.message?.slice(0, 200),
+        ctorName: (e as { constructor?: { name?: string } } | null)?.constructor?.name,
+      });
       throw e;
     }
     if (txResult.kind === "conflict") {

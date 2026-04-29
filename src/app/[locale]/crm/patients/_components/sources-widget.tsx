@@ -6,6 +6,7 @@ import {
   Bar,
   BarChart,
   Cell,
+  LabelList,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -42,12 +43,14 @@ export function SourcesWidget({ stats, isLoading }: SourcesWidgetProps) {
         key: s.source ?? "null",
         label:
           s.source === null
-            ? "—"
+            ? t("sourceUnknown")
             : tSource(s.source.toLowerCase() as never),
         value: s.count,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [stats, tSource]);
+  }, [stats, t, tSource]);
+
+  const chartHeight = Math.max(140, data.length * 26);
 
   return (
     <section className="rounded-lg border border-border bg-background p-3">
@@ -61,12 +64,13 @@ export function SourcesWidget({ stats, isLoading }: SourcesWidgetProps) {
       ) : data.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("sourcesEmpty")}</p>
       ) : (
-        <div className="h-[140px]">
+        <div style={{ height: chartHeight }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={data}
               layout="vertical"
-              margin={{ left: 0, right: 12, top: 4, bottom: 4 }}
+              margin={{ left: 0, right: 28, top: 4, bottom: 4 }}
+              barCategoryGap={4}
             >
               <XAxis type="number" hide />
               <YAxis
@@ -75,7 +79,8 @@ export function SourcesWidget({ stats, isLoading }: SourcesWidgetProps) {
                 tick={{ fontSize: 11, fill: "currentColor" }}
                 axisLine={false}
                 tickLine={false}
-                width={80}
+                width={92}
+                interval={0}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                 {data.map((d) => (
@@ -84,6 +89,15 @@ export function SourcesWidget({ stats, isLoading }: SourcesWidgetProps) {
                     fill={SOURCE_COLORS[d.key] ?? "#94a3b8"}
                   />
                 ))}
+                <LabelList
+                  dataKey="value"
+                  position="right"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    fill: "currentColor",
+                  }}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

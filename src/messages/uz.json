@@ -236,6 +236,7 @@
       "demographicsEmpty": "Jins ma'lumoti yo'q",
       "sources": "Manbalar",
       "sourcesEmpty": "Manba ma'lumoti yo'q",
+      "sourceUnknown": "Ko'rsatilmagan",
       "birthdays": "Tug'ilgan kunlar",
       "birthdaysEmpty": "Bu haftada tug'ilgan kun yo'q",
       "birthdaysTitle": "Bu haftaning tug'ilgan kunlari",
@@ -843,7 +844,9 @@
       "debt": "Qarz",
       "zeroSum": "0 so'm",
       "editAppointment": "Yozuvni tahrirlash",
-      "donutPaid": "To'langan"
+      "donutAttendance": "Davomat",
+      "attendanceHint": "{count} ta tashrifdan",
+      "attendanceEmpty": "Yakunlangan tashrif yo'q"
     },
     "timeline": {
       "title": "O'zaro aloqa tarixi",

@@ -189,6 +189,9 @@ export const POST = createMiniAppHandler(
         { isolationLevel: "Serializable" },
       );
     } catch (e: unknown) {
+      // Match the CRM POST: P2034 / 40001 (serialization) and 23P01
+      // (exclusion_violation from the DB-level EXCLUDE constraint) all map
+      // to a clean 409 instead of a generic 500.
       const err = e as {
         code?: string;
         originalCode?: string;
@@ -197,7 +200,9 @@ export const POST = createMiniAppHandler(
       const isWriteConflict =
         err?.code === "P2034" ||
         err?.code === "40001" ||
+        err?.code === "23P01" ||
         err?.originalCode === "40001" ||
+        err?.originalCode === "23P01" ||
         err?.kind === "TransactionWriteConflict";
       if (isWriteConflict) {
         const c = await detectConflicts({

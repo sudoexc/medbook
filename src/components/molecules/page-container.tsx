@@ -22,7 +22,7 @@ export function PageContainer({
     <div
       className={cn(
         "flex flex-col gap-5 p-4 sm:p-6",
-        !fullBleed && "mx-auto w-full max-w-[1400px]",
+        !fullBleed && "mx-auto w-full max-w-[1800px]",
         className
       )}
     >

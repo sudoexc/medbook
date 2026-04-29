@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ChevronDownIcon,
   ClockIcon,
   ExternalLinkIcon,
   PhoneIcon,
@@ -42,9 +43,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { MoneyText } from "@/components/atoms/money-text";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { SlotPicker } from "@/components/appointments/SlotPicker";
 
 import {
   AppointmentConflictError,
@@ -184,10 +191,16 @@ export function AppointmentDrawer({
     );
   };
 
-  const onTimeChange = (nextTime: string) => {
+  const onSlotChange = (next: { date: Date; time: string }) => {
     if (!appt) return;
+    const currentDateYmd = appt.date.slice(0, 10);
+    const nextDateYmd = `${next.date.getFullYear()}-${String(next.date.getMonth() + 1).padStart(2, "0")}-${String(next.date.getDate()).padStart(2, "0")}`;
+    const dateChanged = currentDateYmd !== nextDateYmd;
     patch.mutate(
-      { time: nextTime || null },
+      {
+        time: next.time,
+        ...(dateChanged ? { date: nextDateYmd } : {}),
+      },
       {
         onError: (err) => {
           if (err instanceof AppointmentConflictError) {
@@ -282,20 +295,16 @@ export function AppointmentDrawer({
                     <div className="truncate text-sm font-medium text-foreground">
                       {appt.patient.fullName}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      <PhoneText phone={appt.patient.phone} asText />
-                    </div>
+                    <PhoneText
+                      phone={appt.patient.phone}
+                      asText
+                      className="block truncate text-xs text-muted-foreground"
+                    />
                   </div>
-                  <Link
-                    href={`/${locale}/crm/patients/${appt.patient.id}`}
-                    className={cn(
-                      buttonVariants({ variant: "outline", size: "sm" }),
-                    )}
-                    aria-label={t("openPatient")}
-                  >
-                    <ExternalLinkIcon className="size-3.5" />
-                    {t("openPatient")}
-                  </Link>
+                  <Badge variant="muted" className="shrink-0">
+                    <UserIcon className="size-3" />
+                    {appt.patient.segment}
+                  </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <a
@@ -307,121 +316,29 @@ export function AppointmentDrawer({
                     <PhoneIcon className="size-3.5" />
                     {t("call")}
                   </a>
-                  <Badge variant="muted">
-                    <UserIcon className="size-3" />
-                    {appt.patient.segment}
-                  </Badge>
+                  <Link
+                    href={`/${locale}/crm/patients/${appt.patient.id}`}
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                    )}
+                  >
+                    <ExternalLinkIcon className="size-3.5" />
+                    {t("openPatient")}
+                  </Link>
                 </div>
               </section>
 
-              {/* Status + time */}
-              <section className="grid gap-3 rounded-lg border border-border bg-card/40 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t("fields.status")}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={STATUS_VARIANT[appt.status]}>
-                        {tStatus(appt.status.toLowerCase() as never)}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Select
-                    value={appt.status}
-                    onValueChange={(v) =>
-                      onStatusChange(v as (typeof STATUSES)[number])
-                    }
-                  >
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {nextStatuses(appt.status as AppointmentStatus).map(
-                        (s) => (
-                          <SelectItem key={s} value={s}>
-                            {tStatus(s.toLowerCase() as never)}
-                          </SelectItem>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t("fields.time")}
-                    </span>
-                    <input
-                      type="time"
-                      value={appt.time ?? ""}
-                      onBlur={(e) => {
-                        if ((e.target.value || null) !== (appt.time || null)) {
-                          onTimeChange(e.target.value);
-                        }
-                      }}
-                      onChange={() => {
-                        /* committed on blur */
-                      }}
-                      className="h-9 rounded-md border border-input bg-transparent px-2 text-sm shadow-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t("fields.duration")}
-                    </span>
-                    <div className="flex items-center gap-1 text-sm">
-                      <ClockIcon className="size-3.5 text-muted-foreground" />
-                      {appt.durationMin} {t("minutes")}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t("fields.doctor")}
-                    </span>
-                    <span className="text-sm">
-                      {locale === "uz"
-                        ? appt.doctor.nameUz
-                        : appt.doctor.nameRu}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t("fields.cabinet")}
-                    </span>
-                    <span className="text-sm">
-                      {appt.cabinet ? `№${appt.cabinet.number}` : "—"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {t("fields.channel")}
-                  </span>
-                  <Select
-                    value={appt.channel}
-                    onValueChange={(v) =>
-                      onChannelChange(v as (typeof CHANNELS)[number])
-                    }
-                  >
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CHANNELS.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {tChannel(c.toLowerCase() as never)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </section>
+              {/* Schedule + status — single tidy key/value list */}
+              <ScheduleSection
+                appt={appt}
+                locale={locale}
+                t={t}
+                tStatus={tStatus}
+                tChannel={tChannel}
+                onStatusChange={onStatusChange}
+                onChannelChange={onChannelChange}
+                onSlotChange={onSlotChange}
+              />
 
               {/* Services */}
               <section className="rounded-lg border border-border bg-card/40 p-3">
@@ -485,9 +402,11 @@ export function AppointmentDrawer({
                   <h4 className="text-sm font-medium text-foreground">
                     {t("fields.payments")}
                   </h4>
-                  <Badge variant="muted">
-                    {tPayment(paymentStatusFor(appt).toLowerCase() as never)}
-                  </Badge>
+                  {appt.payments.length === 0 ? (
+                    <Badge variant="destructive">
+                      {tPayment(paymentStatusFor(appt).toLowerCase() as never)}
+                    </Badge>
+                  ) : null}
                 </div>
                 {appt.payments.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
@@ -646,4 +565,185 @@ export function AppointmentDrawer({
     </AlertDialog>
     </>
   );
+}
+
+/**
+ * Compact key/value list rendering Status, Time + Duration, Doctor, Cabinet,
+ * Channel. The Time row is a Popover trigger that embeds `SlotPicker` so the
+ * receptionist can pick from real available slots instead of poking a native
+ * <input type="time">. For terminal statuses (COMPLETED/CANCELLED/NO_SHOW)
+ * the Time row degrades to a read-only range and the Status row to a Badge.
+ */
+function ScheduleSection(props: {
+  appt: NonNullable<ReturnType<typeof useAppointment>["data"]>;
+  locale: Locale;
+  t: ReturnType<typeof useTranslations>;
+  tStatus: ReturnType<typeof useTranslations>;
+  tChannel: ReturnType<typeof useTranslations>;
+  onStatusChange: (next: (typeof STATUSES)[number]) => void;
+  onChannelChange: (next: (typeof CHANNELS)[number]) => void;
+  onSlotChange: (next: { date: Date; time: string }) => void;
+}) {
+  const {
+    appt,
+    locale,
+    t,
+    tStatus,
+    tChannel,
+    onStatusChange,
+    onChannelChange,
+    onSlotChange,
+  } = props;
+
+  const status = appt.status as AppointmentStatus;
+  const transitions = nextStatuses(status);
+  const canEditTime = actionsFor(status).canReschedule;
+
+  const startStr = appt.time ?? formatHHMM(new Date(appt.date));
+  const endStr = formatHHMM(new Date(appt.endDate));
+  const apptDate = React.useMemo(() => new Date(appt.date), [appt.date]);
+  const [pickerDate, setPickerDate] = React.useState(apptDate);
+  React.useEffect(() => {
+    setPickerDate(apptDate);
+  }, [apptDate]);
+  const serviceIds = React.useMemo(() => {
+    if (appt.services.length > 0) {
+      return appt.services.map((s) => s.serviceId);
+    }
+    return appt.primaryService ? [appt.primaryService.id] : [];
+  }, [appt.services, appt.primaryService]);
+
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card/40">
+      <DrawerRow label={t("fields.status")}>
+        {transitions.length > 0 ? (
+          <Select
+            value={appt.status}
+            onValueChange={(v) => onStatusChange(v as (typeof STATUSES)[number])}
+          >
+            <SelectTrigger className="h-8 w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {transitions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {tStatus(s.toLowerCase() as never)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant={STATUS_VARIANT[appt.status]}>
+            {tStatus(appt.status.toLowerCase() as never)}
+          </Badge>
+        )}
+      </DrawerRow>
+
+      <DrawerRow label={t("fields.time")}>
+        {canEditTime ? (
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-sm tabular-nums shadow-sm transition-colors hover:bg-muted"
+              >
+                <ClockIcon className="size-3.5 text-muted-foreground" />
+                {startStr}
+                <span className="text-muted-foreground">→</span>
+                {endStr}
+                <ChevronDownIcon className="ml-0.5 size-3.5 text-muted-foreground" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[320px] p-3">
+              <SlotPicker
+                doctorId={appt.doctor.id}
+                date={pickerDate}
+                serviceIds={serviceIds}
+                value={appt.time}
+                compact
+                onDateChange={(d) => setPickerDate(d)}
+                onChange={(next) => {
+                  setPickerOpen(false);
+                  onSlotChange(next);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-sm tabular-nums">
+            <ClockIcon className="size-3.5 text-muted-foreground" />
+            {startStr}
+            <span className="text-muted-foreground">→</span>
+            {endStr}
+          </span>
+        )}
+      </DrawerRow>
+
+      <DrawerRow label={t("fields.duration")}>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {appt.durationMin} {t("minutes")}
+        </span>
+      </DrawerRow>
+
+      <DrawerRow label={t("fields.doctor")}>
+        <span className="text-right text-sm">
+          {locale === "uz" ? appt.doctor.nameUz : appt.doctor.nameRu}
+        </span>
+      </DrawerRow>
+
+      <DrawerRow label={t("fields.cabinet")}>
+        <span className="text-sm tabular-nums">
+          {appt.cabinet ? `№${appt.cabinet.number}` : "—"}
+        </span>
+      </DrawerRow>
+
+      <DrawerRow label={t("fields.channel")} last>
+        <Select
+          value={appt.channel}
+          onValueChange={(v) => onChannelChange(v as (typeof CHANNELS)[number])}
+        >
+          <SelectTrigger className="h-8 w-[160px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CHANNELS.map((c) => (
+              <SelectItem key={c} value={c}>
+                {tChannel(c.toLowerCase() as never)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </DrawerRow>
+    </section>
+  );
+}
+
+function DrawerRow({
+  label,
+  children,
+  last,
+}: {
+  label: string;
+  children: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-12 items-center justify-between gap-3 px-3 py-2",
+        !last && "border-b border-border",
+      )}
+    >
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function formatHHMM(d: Date): string {
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
 }

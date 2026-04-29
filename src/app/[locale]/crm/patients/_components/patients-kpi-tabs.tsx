@@ -2,9 +2,23 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { FilterIcon, LayoutGridIcon, SettingsIcon } from "lucide-react";
+import {
+  CheckIcon,
+  FilterIcon,
+  LayoutGridIcon,
+  SettingsIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import type {
   PatientRow,
@@ -19,6 +33,13 @@ export type PatientsTabKey =
   | "dormant"
   | "churn";
 
+export type OptionalColumnId =
+  | "lastVisitAt"
+  | "nextVisitAt"
+  | "ltv"
+  | "priority"
+  | "source";
+
 export interface PatientsKpiTabsProps {
   rows: PatientRow[];
   total: number | null;
@@ -29,10 +50,19 @@ export interface PatientsKpiTabsProps {
   active: PatientsTabKey;
   onChange: (next: PatientsTabKey) => void;
   onOpenFilters?: () => void;
-  onOpenSegments?: () => void;
-  onConfigureTable?: () => void;
+  onSelectSegment?: (segment: PatientRow["segment"] | undefined) => void;
+  visibleColumns?: Record<OptionalColumnId, boolean>;
+  onToggleColumn?: (id: OptionalColumnId, next: boolean) => void;
   className?: string;
 }
+
+const SEGMENT_TO_TAB: Record<PatientRow["segment"], PatientsTabKey> = {
+  VIP: "vip",
+  NEW: "new",
+  ACTIVE: "active",
+  DORMANT: "dormant",
+  CHURN: "churn",
+};
 
 type Tab = { key: PatientsTabKey; segment?: PatientRow["segment"] };
 
@@ -59,8 +89,9 @@ export function PatientsKpiTabs({
   active,
   onChange,
   onOpenFilters,
-  onOpenSegments,
-  onConfigureTable,
+  onSelectSegment,
+  visibleColumns,
+  onToggleColumn,
   className,
 }: PatientsKpiTabsProps) {
   const t = useTranslations("patients.tabs");
@@ -141,14 +172,144 @@ export function PatientsKpiTabs({
       })}
       <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
         <ToolbarButton icon={FilterIcon} label={t("filters")} onClick={onOpenFilters} />
-        <ToolbarButton icon={LayoutGridIcon} label={t("segments")} onClick={onOpenSegments} />
-        <ToolbarButton
-          icon={SettingsIcon}
-          label={t("configureTable")}
-          onClick={onConfigureTable}
+        <SegmentsMenu
+          active={active}
+          counts={counts}
+          onSelect={(seg) => {
+            const next = onSelectSegment;
+            if (!next) return;
+            // Toggle off if same segment is picked again.
+            const currentSeg = active === "all" ? undefined : (Object.entries(SEGMENT_TO_TAB).find(([, tab]) => tab === active)?.[0] as PatientRow["segment"] | undefined);
+            next(currentSeg === seg ? undefined : seg);
+          }}
+        />
+        <TableConfigMenu
+          visibleColumns={visibleColumns}
+          onToggleColumn={onToggleColumn}
         />
       </div>
     </div>
+  );
+}
+
+const SEGMENT_OPTIONS: Array<{
+  segment: PatientRow["segment"];
+  tabKey: PatientsTabKey;
+}> = [
+  { segment: "VIP", tabKey: "vip" },
+  { segment: "NEW", tabKey: "new" },
+  { segment: "ACTIVE", tabKey: "active" },
+  { segment: "DORMANT", tabKey: "dormant" },
+  { segment: "CHURN", tabKey: "churn" },
+];
+
+function SegmentsMenu({
+  active,
+  counts,
+  onSelect,
+}: {
+  active: PatientsTabKey;
+  counts: Record<PatientsTabKey, number>;
+  onSelect: (segment: PatientRow["segment"]) => void;
+}) {
+  const t = useTranslations("patients.tabs");
+  const locale = useLocale();
+  const fmt = (n: number) =>
+    new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <LayoutGridIcon className="size-3.5" />
+          {t("segments")}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          {t("segments")}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {SEGMENT_OPTIONS.map(({ segment, tabKey }) => {
+          const isActive = active === tabKey;
+          return (
+            <DropdownMenuItem
+              key={segment}
+              onSelect={() => onSelect(segment)}
+              className="flex items-center justify-between gap-3 text-[13px]"
+            >
+              <span className="inline-flex items-center gap-2">
+                {isActive ? (
+                  <CheckIcon className="size-3.5 text-primary" />
+                ) : (
+                  <span className="size-3.5" aria-hidden />
+                )}
+                {t(tabKey)}
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {fmt(counts[tabKey])}
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const COLUMN_LABEL_KEY: Record<OptionalColumnId, string> = {
+  lastVisitAt: "columns.lastVisit",
+  nextVisitAt: "columns.nextVisit",
+  ltv: "columns.ltv",
+  priority: "columns.priority",
+  source: "columns.source",
+};
+
+function TableConfigMenu({
+  visibleColumns,
+  onToggleColumn,
+}: {
+  visibleColumns?: Record<OptionalColumnId, boolean>;
+  onToggleColumn?: (id: OptionalColumnId, next: boolean) => void;
+}) {
+  const t = useTranslations("patients");
+  const tt = useTranslations("patients.tabs");
+  const disabled = !visibleColumns || !onToggleColumn;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <SettingsIcon className="size-3.5" />
+          {tt("configureTable")}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          {tt("configureTable")}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {(Object.keys(COLUMN_LABEL_KEY) as OptionalColumnId[]).map((id) => {
+          const isOn = visibleColumns?.[id] ?? true;
+          return (
+            <DropdownMenuCheckboxItem
+              key={id}
+              checked={isOn}
+              disabled={disabled}
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={(next) => onToggleColumn?.(id, Boolean(next))}
+              className="text-[13px]"
+            >
+              {t(COLUMN_LABEL_KEY[id] as never)}
+            </DropdownMenuCheckboxItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

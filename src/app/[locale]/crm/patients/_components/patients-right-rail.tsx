@@ -20,10 +20,16 @@ import { MoneyText } from "@/components/atoms/money-text";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { usePatientsStats } from "../_hooks/use-patients-stats";
-import type { PatientRow } from "../_hooks/use-patients-list";
+import type {
+  PatientRow,
+  PatientSegmentCounts,
+} from "../_hooks/use-patients-list";
 
 export interface PatientsRightRailProps {
   rows: PatientRow[];
+  segmentCounts: PatientSegmentCounts | null;
+  activeSegment?: PatientRow["segment"];
+  onSelectSegment: (segment: PatientRow["segment"] | undefined) => void;
 }
 
 type Tone = "primary" | "info" | "success" | "warning" | "danger";
@@ -77,18 +83,26 @@ const SourcesWidget = dynamic(
  *  - Статистика за месяц (Новые / Вернувшиеся / Средний чек / Общий доход)
  *  - Источники пациентов (donut)
  */
-export function PatientsRightRail({ rows }: PatientsRightRailProps) {
+export function PatientsRightRail({
+  rows,
+  segmentCounts,
+  activeSegment,
+  onSelectSegment,
+}: PatientsRightRailProps) {
   const t = useTranslations("patients.rail");
   const locale = useLocale();
   const { data: stats, isLoading } = usePatientsStats();
 
   const segments = React.useMemo(() => {
-    const count = {
-      VIP: 0,
-      DORMANT: 0,
-      NEW: 0,
-      CHURN: 0,
-    };
+    if (segmentCounts) {
+      return {
+        VIP: segmentCounts.VIP,
+        DORMANT: segmentCounts.DORMANT,
+        NEW: segmentCounts.NEW,
+        CHURN: segmentCounts.CHURN,
+      };
+    }
+    const count = { VIP: 0, DORMANT: 0, NEW: 0, CHURN: 0 };
     for (const p of rows) {
       if (p.segment === "VIP") count.VIP += 1;
       if (p.segment === "DORMANT") count.DORMANT += 1;
@@ -96,7 +110,7 @@ export function PatientsRightRail({ rows }: PatientsRightRailProps) {
       if (p.segment === "CHURN") count.CHURN += 1;
     }
     return count;
-  }, [rows]);
+  }, [rows, segmentCounts]);
 
   const actions: Array<{
     tone: Tone;
@@ -218,6 +232,10 @@ export function PatientsRightRail({ rows }: PatientsRightRailProps) {
             count={segments.VIP}
             tone="info"
             locale={locale}
+            isActive={activeSegment === "VIP"}
+            onClick={() =>
+              onSelectSegment(activeSegment === "VIP" ? undefined : "VIP")
+            }
           />
           <SegmentRow
             icon={ClockIcon}
@@ -225,6 +243,10 @@ export function PatientsRightRail({ rows }: PatientsRightRailProps) {
             count={segments.DORMANT}
             tone="warning"
             locale={locale}
+            isActive={activeSegment === "DORMANT"}
+            onClick={() =>
+              onSelectSegment(activeSegment === "DORMANT" ? undefined : "DORMANT")
+            }
           />
           <SegmentRow
             icon={UsersIcon}
@@ -232,6 +254,10 @@ export function PatientsRightRail({ rows }: PatientsRightRailProps) {
             count={segments.NEW}
             tone="success"
             locale={locale}
+            isActive={activeSegment === "NEW"}
+            onClick={() =>
+              onSelectSegment(activeSegment === "NEW" ? undefined : "NEW")
+            }
           />
           <SegmentRow
             icon={ClockIcon}
@@ -239,6 +265,10 @@ export function PatientsRightRail({ rows }: PatientsRightRailProps) {
             count={segments.CHURN}
             tone="danger"
             locale={locale}
+            isActive={activeSegment === "CHURN"}
+            onClick={() =>
+              onSelectSegment(activeSegment === "CHURN" ? undefined : "CHURN")
+            }
           />
         </ul>
       </section>
@@ -296,29 +326,45 @@ function SegmentRow({
   count,
   tone,
   locale,
+  isActive,
+  onClick,
 }: {
   icon: LucideIcon;
   label: string;
   count: number;
   tone: Tone;
   locale: string;
+  isActive?: boolean;
+  onClick?: () => void;
 }) {
   const toneClass = TONE_CLASS[tone];
   return (
-    <li className="flex items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12px]">
-      <span
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={isActive}
         className={cn(
-          "inline-flex size-6 shrink-0 items-center justify-center rounded-md",
-          toneClass.icon,
+          "flex w-full items-center gap-2 rounded-xl border bg-card px-2.5 py-1.5 text-[12px] text-left transition-colors hover:bg-muted/40",
+          isActive
+            ? "border-primary ring-1 ring-primary/40"
+            : "border-border",
         )}
-        aria-hidden
       >
-        <Icon className="size-3.5" />
-      </span>
-      <span className="truncate text-foreground">{label}</span>
-      <span className="ml-auto tabular-nums font-semibold text-foreground">
-        {new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(count)}
-      </span>
+        <span
+          className={cn(
+            "inline-flex size-6 shrink-0 items-center justify-center rounded-md",
+            toneClass.icon,
+          )}
+          aria-hidden
+        >
+          <Icon className="size-3.5" />
+        </span>
+        <span className="truncate text-foreground">{label}</span>
+        <span className="ml-auto tabular-nums font-semibold text-foreground">
+          {new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(count)}
+        </span>
+      </button>
     </li>
   );
 }

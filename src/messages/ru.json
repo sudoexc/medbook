@@ -236,6 +236,7 @@
       "demographicsEmpty": "Нет данных о поле",
       "sources": "Источники",
       "sourcesEmpty": "Нет данных об источниках",
+      "sourceUnknown": "Не указан",
       "birthdays": "Дни рождения",
       "birthdaysEmpty": "На этой неделе никого",
       "birthdaysTitle": "Дни рождения недели",
@@ -843,7 +844,9 @@
       "debt": "Задолженность",
       "zeroSum": "0 сум",
       "editAppointment": "Изменить запись",
-      "donutPaid": "Оплачено"
+      "donutAttendance": "Посещаемость",
+      "attendanceHint": "из {count} визитов",
+      "attendanceEmpty": "Нет завершённых визитов"
     },
     "timeline": {
       "title": "История взаимодействий",

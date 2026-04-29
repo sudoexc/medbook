@@ -46,10 +46,9 @@ export const HAS_TG_BOT_TOKEN = Boolean(process.env.TG_BOT_TOKEN_TEST);
  * where only the Next dev server starts (no Postgres container).
  */
 export async function isAppHealthy(): Promise<boolean> {
+  const ctx = await apiRequest.newContext({ baseURL: BASE_URL });
   try {
-    const ctx = await apiRequest.newContext({ baseURL: BASE_URL });
     const res = await ctx.get("/api/health", { timeout: 5_000 });
-    await ctx.dispose();
     if (!res.ok()) return false;
     const body = (await res.json()) as {
       checks?: { db?: { status?: string } };
@@ -57,6 +56,8 @@ export async function isAppHealthy(): Promise<boolean> {
     return body.checks?.db?.status === "ok";
   } catch {
     return false;
+  } finally {
+    await ctx.dispose();
   }
 }
 

@@ -27,26 +27,33 @@ export function PatientFinanceCard({
   const stats = React.useMemo(() => {
     let billed = 0;
     let paid = 0;
+    let completed = 0;
+    let missed = 0;
     for (const a of appointments) {
       billed += a.priceFinal ?? 0;
       for (const p of a.payments) {
         if (p.status === "PAID") paid += p.amount;
       }
+      if (a.status === "COMPLETED") completed += 1;
+      else if (a.status === "NO_SHOW" || a.status === "SKIPPED") missed += 1;
     }
     const debt = Math.max(0, billed - paid);
-    const paidPct = billed > 0 ? Math.min(100, Math.round((paid / billed) * 100)) : 0;
+    const closedVisits = completed + missed;
+    const attendancePct =
+      closedVisits > 0 ? Math.round((completed / closedVisits) * 100) : 100;
     return {
       total: Math.max(billed, patient.ltv),
       paid,
       debt,
-      paidPct,
+      attendancePct,
+      closedVisits,
     };
   }, [appointments, patient.ltv]);
 
   const animatedTotal = useCountUp(stats.total);
   const animatedPaid = useCountUp(stats.paid);
   const animatedDebt = useCountUp(stats.debt);
-  const animatedPct = useCountUp(stats.paidPct);
+  const animatedPct = useCountUp(stats.attendancePct);
 
   return (
     <section
@@ -86,7 +93,15 @@ export function PatientFinanceCard({
           />
         </dl>
 
-        <Donut pct={animatedPct} label={t("donutPaid")} />
+        <Donut
+          pct={animatedPct}
+          label={t("donutAttendance")}
+          hint={
+            stats.closedVisits > 0
+              ? t("attendanceHint", { count: stats.closedVisits })
+              : t("attendanceEmpty")
+          }
+        />
       </div>
 
       <div className="mt-3 flex">
@@ -131,43 +146,60 @@ function FinanceRow({
   );
 }
 
-function Donut({ pct, label }: { pct: number; label: string }) {
+function Donut({
+  pct,
+  label,
+  hint,
+}: {
+  pct: number;
+  label: string;
+  hint: string;
+}) {
   const size = 112;
   const stroke = 12;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const dash = (Math.max(0, Math.min(100, pct)) / 100) * c;
+  const ringTone =
+    pct >= 90
+      ? "text-success"
+      : pct >= 70
+        ? "text-primary"
+        : "text-destructive";
   return (
-    <div className="relative flex shrink-0 items-center justify-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          className="text-muted"
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${c - dash}`}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          className="text-primary transition-[stroke-dasharray]"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-lg font-bold tabular-nums text-foreground">
-          {Math.round(pct)}%
-        </span>
-        <span className="text-[10px] text-muted-foreground">{label}</span>
+    <div className="flex shrink-0 flex-col items-center gap-1">
+      <div className="relative flex items-center justify-center">
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={stroke}
+            className="text-muted"
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c - dash}`}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            className={cn("transition-[stroke-dasharray]", ringTone)}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-bold tabular-nums text-foreground">
+            {Math.round(pct)}%
+          </span>
+          <span className="text-[10px] text-muted-foreground">{label}</span>
+        </div>
       </div>
+      <span className="text-[10px] text-muted-foreground">{hint}</span>
     </div>
   );
 }

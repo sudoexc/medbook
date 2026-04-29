@@ -141,6 +141,38 @@ function normalizePhone(p: string): string {
 }
 
 /**
+ * True if a non-cancelled appointment for the given doctor (or cabinet) already
+ * overlaps the requested [startAt, endAt) slot. Mirrors the live API check in
+ * `src/server/services/appointments.ts#detectConflicts` but inlined here so the
+ * seed can run standalone without server module aliases.
+ */
+async function slotIsTaken(args: {
+  doctorId: string;
+  cabinetId: string | null;
+  startAt: Date;
+  endAt: Date;
+}): Promise<boolean> {
+  const where = {
+    status: { notIn: ["CANCELLED", "NO_SHOW"] as ("CANCELLED" | "NO_SHOW")[] },
+    date: { lt: args.endAt },
+    endDate: { gt: args.startAt },
+  };
+  const doctorClash = await prisma.appointment.findFirst({
+    where: { ...where, doctorId: args.doctorId },
+    select: { id: true },
+  });
+  if (doctorClash) return true;
+  if (args.cabinetId) {
+    const cabClash = await prisma.appointment.findFirst({
+      where: { ...where, cabinetId: args.cabinetId },
+      select: { id: true },
+    });
+    if (cabClash) return true;
+  }
+  return false;
+}
+
+/**
  * Generates a tiny valid PDF (~600B) with a single line of Latin text. We use
  * the built-in Helvetica core font so no font embedding is needed — that lets
  * the file open in any browser PDF viewer for the demo. One file per
@@ -408,60 +440,69 @@ async function main() {
       const doc = pick(doctors, i + p);
       const cab = cabinets.length > 0 ? pick(cabinets, i + p) : null;
       const completed = Math.random() < 0.85;
-      try {
-        const appt = await prisma.appointment.create({
-          data: {
-            clinicId,
-            patientId: patient.id,
-            doctorId: doc.id,
-            cabinetId: cab?.id ?? null,
-            serviceId: svc.id,
-            date,
-            time: `${pad(hour)}:${pad(min)}`,
-            durationMin: svc.durationMin,
-            endDate,
-            status: completed ? "COMPLETED" : "NO_SHOW",
-            queueStatus: completed ? "COMPLETED" : "NO_SHOW",
-            channel: pick(["WALKIN", "PHONE", "TELEGRAM", "WEBSITE"], i + p) as
-              | "WALKIN"
-              | "PHONE"
-              | "TELEGRAM"
-              | "WEBSITE",
-            priceService: svc.priceBase,
-            priceBase: svc.priceBase,
-            priceFinal: svc.priceBase,
-            completedAt: completed ? date : null,
-            createdById: recept?.id ?? null,
-          },
-        });
-        createdA++;
-        if (completed) {
-          totalLtv += svc.priceBase;
-          if (!lastVisit || date > lastVisit) lastVisit = date;
-          // Payment in 90% of completed visits.
-          if (Math.random() < 0.9) {
-            await prisma.payment.create({
-              data: {
-                clinicId,
-                appointmentId: appt.id,
-                patientId: patient.id,
-                currency: "UZS",
-                amount: svc.priceBase,
-                method: pick(["CASH", "CARD", "PAYME", "CLICK", "UZUM"], i + p) as
-                  | "CASH"
-                  | "CARD"
-                  | "PAYME"
-                  | "CLICK"
-                  | "UZUM",
-                status: "PAID",
-                paidAt: date,
-              },
-            });
-            createdPay++;
-          }
+      // Status NO_SHOW is treated as a freed slot by the overlap check, but
+      // we still want to avoid stacking two real visits on one cabinet/doctor.
+      if (
+        completed &&
+        (await slotIsTaken({
+          doctorId: doc.id,
+          cabinetId: cab?.id ?? null,
+          startAt: date,
+          endAt: endDate,
+        }))
+      ) {
+        continue;
+      }
+      const appt = await prisma.appointment.create({
+        data: {
+          clinicId,
+          patientId: patient.id,
+          doctorId: doc.id,
+          cabinetId: cab?.id ?? null,
+          serviceId: svc.id,
+          date,
+          time: `${pad(hour)}:${pad(min)}`,
+          durationMin: svc.durationMin,
+          endDate,
+          status: completed ? "COMPLETED" : "NO_SHOW",
+          queueStatus: completed ? "COMPLETED" : "NO_SHOW",
+          channel: pick(["WALKIN", "PHONE", "TELEGRAM", "WEBSITE"], i + p) as
+            | "WALKIN"
+            | "PHONE"
+            | "TELEGRAM"
+            | "WEBSITE",
+          priceService: svc.priceBase,
+          priceBase: svc.priceBase,
+          priceFinal: svc.priceBase,
+          completedAt: completed ? date : null,
+          createdById: recept?.id ?? null,
+        },
+      });
+      createdA++;
+      if (completed) {
+        totalLtv += svc.priceBase;
+        if (!lastVisit || date > lastVisit) lastVisit = date;
+        // Payment in 90% of completed visits.
+        if (Math.random() < 0.9) {
+          await prisma.payment.create({
+            data: {
+              clinicId,
+              appointmentId: appt.id,
+              patientId: patient.id,
+              currency: "UZS",
+              amount: svc.priceBase,
+              method: pick(["CASH", "CARD", "PAYME", "CLICK", "UZUM"], i + p) as
+                | "CASH"
+                | "CARD"
+                | "PAYME"
+                | "CLICK"
+                | "UZUM",
+              status: "PAID",
+              paidAt: date,
+            },
+          });
+          createdPay++;
         }
-      } catch {
-        // Conflict — skip this slot, no big deal for demo data.
       }
     }
     // Future booking — try 1-3 times to find a free slot.
@@ -475,33 +516,39 @@ async function main() {
       const endDate = new Date(date.getTime() + 30 * 60_000);
       const svc = pick(services, i + f + 5);
       const doc = pick(doctors, i + f + 5);
-      try {
-        await prisma.appointment.create({
-          data: {
-            clinicId,
-            patientId: patient.id,
-            doctorId: doc.id,
-            serviceId: svc.id,
-            date,
-            time: `${pad(hour)}:${pad(min)}`,
-            durationMin: svc.durationMin,
-            endDate,
-            status: "BOOKED",
-            queueStatus: "BOOKED",
-            channel: pick(["WALKIN", "PHONE", "TELEGRAM"], i + f) as
-              | "WALKIN"
-              | "PHONE"
-              | "TELEGRAM",
-            priceService: svc.priceBase,
-            priceBase: svc.priceBase,
-            priceFinal: svc.priceBase,
-            createdById: recept?.id ?? null,
-          },
-        });
-        createdA++;
-      } catch {
-        /* slot conflict, skip */
+      if (
+        await slotIsTaken({
+          doctorId: doc.id,
+          cabinetId: null,
+          startAt: date,
+          endAt: endDate,
+        })
+      ) {
+        continue;
       }
+      await prisma.appointment.create({
+        data: {
+          clinicId,
+          patientId: patient.id,
+          doctorId: doc.id,
+          serviceId: svc.id,
+          date,
+          time: `${pad(hour)}:${pad(min)}`,
+          durationMin: svc.durationMin,
+          endDate,
+          status: "BOOKED",
+          queueStatus: "BOOKED",
+          channel: pick(["WALKIN", "PHONE", "TELEGRAM"], i + f) as
+            | "WALKIN"
+            | "PHONE"
+            | "TELEGRAM",
+          priceService: svc.priceBase,
+          priceBase: svc.priceBase,
+          priceFinal: svc.priceBase,
+          createdById: recept?.id ?? null,
+        },
+      });
+      createdA++;
     }
 
     if (totalLtv > 0 || lastVisit) {
@@ -1344,6 +1391,20 @@ async function rebuildTodayStoryline(args: {
         data.cancelledAt = new Date(startAt.getTime() - 30 * 60_000);
       }
 
+      // Skip if a previous schedule (or earlier iteration) already booked
+      // the same doctor/cabinet across this slot. Without this the calendar
+      // shows visible overbookings on overlapping doctor schedules.
+      if (
+        await slotIsTaken({
+          doctorId: doctor.id,
+          cabinetId: cab.id,
+          startAt,
+          endAt,
+        })
+      ) {
+        cursorMin += dur;
+        continue;
+      }
       try {
         const appt = await prisma.appointment.create({ data: data as never });
         stats.created++;
@@ -1404,33 +1465,42 @@ async function rebuildTodayStoryline(args: {
     const priceBase =
       overrideByPair.get(`${doctor.id}|${svc.id}`) ?? svc.priceBase;
     const patient = patients[(patientCursor + w) % patients.length]!;
-    try {
-      await prisma.appointment.create({
-        data: {
-          clinicId,
-          patientId: patient.id,
-          doctorId: doctor.id,
-          cabinetId: null,
-          serviceId: svc.id,
-          date: startAt,
-          time: `${pad(startAt.getHours())}:${pad(startAt.getMinutes())}`,
-          durationMin: svc.durationMin,
-          endDate: endAt,
-          status: "BOOKED",
-          queueStatus: "BOOKED",
-          channel: w % 2 === 0 ? "TELEGRAM" : "PHONE",
-          priceService: priceBase,
-          priceBase,
-          priceFinal: priceBase,
-          createdById: receptId,
-          notes: w % 3 === 0 ? "Выезд на дом" : "Телемедицина",
-        } as never,
-      });
-      stats.created++;
-      stats.booked++;
-    } catch {
-      /* skip */
+    // Walk-ins/telemed share the doctor with the storyline schedule, so we
+    // *must* check overlap or two appointments stack on the same slot
+    // (visible as a double booking in the calendar).
+    if (
+      await slotIsTaken({
+        doctorId: doctor.id,
+        cabinetId: null,
+        startAt,
+        endAt,
+      })
+    ) {
+      continue;
     }
+    await prisma.appointment.create({
+      data: {
+        clinicId,
+        patientId: patient.id,
+        doctorId: doctor.id,
+        cabinetId: null,
+        serviceId: svc.id,
+        date: startAt,
+        time: `${pad(startAt.getHours())}:${pad(startAt.getMinutes())}`,
+        durationMin: svc.durationMin,
+        endDate: endAt,
+        status: "BOOKED",
+        queueStatus: "BOOKED",
+        channel: w % 2 === 0 ? "TELEGRAM" : "PHONE",
+        priceService: priceBase,
+        priceBase,
+        priceFinal: priceBase,
+        createdById: receptId,
+        notes: w % 3 === 0 ? "Выезд на дом" : "Телемедицина",
+      } as never,
+    });
+    stats.created++;
+    stats.booked++;
   }
 
   return stats;

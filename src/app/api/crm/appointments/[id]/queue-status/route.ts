@@ -54,6 +54,20 @@ export const PATCH = createApiHandler(
     }
     if (body.queueStatus === "COMPLETED" && !before.completedAt) {
       data.completedAt = now;
+      // Shrink the slot if the visit ended before the originally booked end —
+      // this releases the tail of the slot for walk-ins and re-bookings, and
+      // makes the calendar block reflect actual occupancy. Floor at start +
+      // 5 min so we never end up with a zero/negative-duration row that
+      // would surprise the EXCLUDE constraint or downstream UI.
+      const minEnd = new Date(before.date.getTime() + 5 * 60_000);
+      const newEnd = now < minEnd ? minEnd : now;
+      if (newEnd < before.endDate) {
+        data.endDate = newEnd;
+        data.durationMin = Math.max(
+          5,
+          Math.round((newEnd.getTime() - before.date.getTime()) / 60_000),
+        );
+      }
     }
 
     const after = await prisma.appointment.update({ where: { id }, data });
@@ -85,6 +99,18 @@ export const PATCH = createApiHandler(
           previousStatus: before.status,
         },
       });
+      if (after.endDate.getTime() !== before.endDate.getTime()) {
+        publishEventSafe(clinicId, {
+          type: "appointment.updated",
+          payload: {
+            appointmentId: id,
+            doctorId: after.doctorId,
+            status: after.status,
+            date: after.date.toISOString(),
+            endDate: after.endDate.toISOString(),
+          },
+        });
+      }
     }
     return ok(after);
   }

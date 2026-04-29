@@ -19,6 +19,7 @@ import { PatientsTable } from "./patients-table";
 import { PatientsTiles } from "./patients-tiles";
 import {
   PatientsKpiTabs,
+  type OptionalColumnId,
   type PatientsTabKey,
 } from "./patients-kpi-tabs";
 import { PatientsRightRail } from "./patients-right-rail";
@@ -65,6 +66,30 @@ export function PatientsPageClient() {
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
+  const filtersRef = React.useRef<HTMLDivElement | null>(null);
+  const [filtersFlash, setFiltersFlash] = React.useState(false);
+  const handleOpenFilters = React.useCallback(() => {
+    filtersRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFiltersFlash(true);
+    window.setTimeout(() => setFiltersFlash(false), 1200);
+  }, []);
+
+  const [visibleColumns, setVisibleColumns] = React.useState<
+    Record<OptionalColumnId, boolean>
+  >({
+    lastVisitAt: true,
+    nextVisitAt: true,
+    ltv: true,
+    priority: true,
+    source: true,
+  });
+  const handleToggleColumn = React.useCallback(
+    (id: OptionalColumnId, next: boolean) => {
+      setVisibleColumns((prev) => ({ ...prev, [id]: next }));
+    },
+    [],
+  );
+
   const query = usePatientsList(apiFilters);
 
   const allRows = flattenPatients(query.data);
@@ -110,7 +135,7 @@ export function PatientsPageClient() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <PageContainer className="flex-1 pb-0">
+        <PageContainer fullBleed className="flex-1 pb-0">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold text-foreground">{t("title")}</h1>
@@ -144,13 +169,26 @@ export function PatientsPageClient() {
             totalAcrossSegments={totalAcrossSegments}
             active={activeTab}
             onChange={handleTabChange}
+            onOpenFilters={handleOpenFilters}
+            onSelectSegment={(seg) => setFilter("segment", seg)}
+            visibleColumns={visibleColumns}
+            onToggleColumn={handleToggleColumn}
           />
 
-          <PatientsFilters
-            state={state}
-            onChange={setFilter}
-            onClear={clearAll}
-          />
+          <div
+            ref={filtersRef}
+            className={
+              filtersFlash
+                ? "rounded-2xl ring-2 ring-primary/60 ring-offset-2 transition-shadow"
+                : "transition-shadow"
+            }
+          >
+            <PatientsFilters
+              state={state}
+              onChange={setFilter}
+              onClear={clearAll}
+            />
+          </div>
 
           <div className="flex min-h-[60vh] flex-1 flex-col">
             <PatientsTable
@@ -168,6 +206,7 @@ export function PatientsPageClient() {
                 setFilter("dir", dir);
               }}
               total={total}
+              visibleColumns={visibleColumns}
             />
           </div>
         </PageContainer>
@@ -177,7 +216,12 @@ export function PatientsPageClient() {
         className="hidden w-[320px] shrink-0 flex-col border-l border-border bg-card p-3 xl:flex"
         aria-label={t("widgets.demographics")}
       >
-        <PatientsRightRail rows={rows} />
+        <PatientsRightRail
+          rows={rows}
+          segmentCounts={segmentCounts}
+          activeSegment={state.segment as PatientRow["segment"] | undefined}
+          onSelectSegment={(seg) => setFilter("segment", seg)}
+        />
       </aside>
 
       <NewPatientDialog

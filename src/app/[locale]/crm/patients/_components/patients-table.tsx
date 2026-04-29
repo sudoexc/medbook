@@ -42,6 +42,7 @@ import type {
   PatientRow,
   PatientsListFilters,
 } from "../_hooks/use-patients-list";
+import type { OptionalColumnId } from "./patients-kpi-tabs";
 
 const SEGMENT_STYLE: Record<
   PatientRow["segment"],
@@ -128,8 +129,62 @@ const PRIORITY_CFG: Record<
   },
 };
 
-const COLS_TEMPLATE =
-  "minmax(220px,1.6fr) minmax(150px,1.1fr) minmax(160px,1.1fr) minmax(160px,1.2fr) minmax(140px,1fr) 140px 150px 72px 90px";
+type ColMeta = {
+  id: string;
+  labelKey: string;
+  gridSpan: string;
+  sortable?: PatientsListFilters["sort"];
+  alwaysVisible?: boolean;
+  align?: "right";
+};
+
+const COL_META: ColMeta[] = [
+  {
+    id: "fullName",
+    labelKey: "columns.name",
+    gridSpan: "minmax(220px,1.6fr)",
+    sortable: "fullName",
+    alwaysVisible: true,
+  },
+  {
+    id: "phone",
+    labelKey: "columns.phone",
+    gridSpan: "minmax(150px,1.1fr)",
+    alwaysVisible: true,
+  },
+  {
+    id: "lastVisitAt",
+    labelKey: "columns.lastVisit",
+    gridSpan: "minmax(160px,1.1fr)",
+    sortable: "lastVisitAt",
+  },
+  {
+    id: "nextVisitAt",
+    labelKey: "columns.nextVisit",
+    gridSpan: "minmax(160px,1.2fr)",
+  },
+  {
+    id: "ltv",
+    labelKey: "columns.ltv",
+    gridSpan: "minmax(140px,1fr)",
+    sortable: "ltv",
+  },
+  {
+    id: "segment",
+    labelKey: "columns.status",
+    gridSpan: "140px",
+    alwaysVisible: true,
+  },
+  { id: "priority", labelKey: "columns.priority", gridSpan: "150px" },
+  { id: "source", labelKey: "columns.source", gridSpan: "72px" },
+  {
+    id: "actions",
+    labelKey: "columns.actions",
+    gridSpan: "90px",
+    alwaysVisible: true,
+    align: "right",
+  },
+];
 
 export interface PatientsTableProps {
   rows: PatientRow[];
@@ -146,6 +201,7 @@ export interface PatientsTableProps {
     dir: PatientsListFilters["dir"],
   ) => void;
   total: number | null;
+  visibleColumns?: Record<OptionalColumnId, boolean>;
 }
 
 export function PatientsTable({
@@ -160,10 +216,29 @@ export function PatientsTable({
   dir,
   onSortChange,
   total,
+  visibleColumns,
 }: PatientsTableProps) {
   const t = useTranslations("patients");
   const locale = useLocale() as Locale;
   const router = useRouter();
+
+  const visibleColMeta = React.useMemo(
+    () =>
+      COL_META.filter(
+        (c) =>
+          c.alwaysVisible ||
+          visibleColumns?.[c.id as OptionalColumnId] !== false,
+      ),
+    [visibleColumns],
+  );
+  const visibleIds = React.useMemo(
+    () => new Set(visibleColMeta.map((c) => c.id)),
+    [visibleColMeta],
+  );
+  const colsTemplate = React.useMemo(
+    () => visibleColMeta.map((c) => c.gridSpan).join(" "),
+    [visibleColMeta],
+  );
 
   const sorting: SortingState = React.useMemo(
     () => (sort ? [{ id: sort, desc: dir !== "asc" }] : []),
@@ -408,9 +483,14 @@ export function PatientsTable({
     [t, locale],
   );
 
+  const filteredColumns = React.useMemo(
+    () => columns.filter((c) => visibleIds.has(c.id ?? "")),
+    [columns, visibleIds],
+  );
+
   const table = useReactTable({
     data: rows,
-    columns,
+    columns: filteredColumns,
     state: { sorting },
     getCoreRowModel: getCoreRowModel(),
     manualSorting: true,
@@ -450,37 +530,36 @@ export function PatientsTable({
         <div
           role="row"
           className="sticky top-0 z-10 grid items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
-          style={{ gridTemplateColumns: COLS_TEMPLATE }}
+          style={{ gridTemplateColumns: colsTemplate }}
         >
-          <SortHeader
-            id="fullName"
-            label={t("columns.name")}
-            active={sort}
-            dir={dir}
-            onClick={handleSortChange}
-          />
-          <div role="columnheader">{t("columns.phone")}</div>
-          <SortHeader
-            id="lastVisitAt"
-            label={t("columns.lastVisit")}
-            active={sort}
-            dir={dir}
-            onClick={handleSortChange}
-          />
-          <div role="columnheader">{t("columns.nextVisit")}</div>
-          <SortHeader
-            id="ltv"
-            label={t("columns.ltv")}
-            active={sort}
-            dir={dir}
-            onClick={handleSortChange}
-          />
-          <div role="columnheader">{t("columns.status")}</div>
-          <div role="columnheader">{t("columns.priority")}</div>
-          <div role="columnheader">{t("columns.source")}</div>
-          <div role="columnheader" className="text-right">
-            {t("columns.actions")}
-          </div>
+          {visibleColMeta.map((c) => {
+            if (c.sortable) {
+              return (
+                <SortHeader
+                  key={c.id}
+                  id={c.sortable}
+                  label={t(c.labelKey as never)}
+                  active={sort}
+                  dir={dir}
+                  onClick={handleSortChange}
+                />
+              );
+            }
+            const isActions = c.id === "actions";
+            return (
+              <div
+                key={c.id}
+                role="columnheader"
+                className={cn(c.align === "right" && "text-right")}
+              >
+                {isActions ? (
+                  <span className="sr-only">{t(c.labelKey as never)}</span>
+                ) : (
+                  t(c.labelKey as never)
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div
@@ -542,7 +621,7 @@ export function PatientsTable({
                       left: 0,
                       width: "100%",
                       transform: `translateY(${virtualRow.start}px)`,
-                      gridTemplateColumns: COLS_TEMPLATE,
+                      gridTemplateColumns: colsTemplate,
                       animationDelay: animate
                         ? `${virtualRow.index * 35}ms`
                         : undefined,

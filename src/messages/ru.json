@@ -2188,7 +2188,8 @@
       "exchangeRates": "Курсы валют",
       "roles": "Роли и права",
       "audit": "Журнал аудита",
-      "integrations": "Интеграции"
+      "integrations": "Интеграции",
+      "notifications": "Уведомления"
     },
     "passwordReentry": {
       "title": "Введите текущий пароль",
@@ -2442,6 +2443,52 @@
         "pending": "В очереди",
         "lastError": "Последняя ошибка",
         "hasSecret": "Secret установлен"
+      }
+    },
+    "notifications": {
+      "title": "Шаблоны и расписание уведомлений",
+      "subtitle": "Тексты сообщений, переменные и тайминг автотриггеров.",
+      "listTitle": "Шаблоны",
+      "empty": "Нет шаблонов в этой клинике.",
+      "categories": {
+        "TRANSACTIONAL": "Транзакционные",
+        "REMINDER": "Напоминания",
+        "MARKETING": "Маркетинг"
+      },
+      "tabs": {
+        "body": "Текст",
+        "rules": "Расписание"
+      },
+      "langs": {
+        "ru": "Русский",
+        "uz": "O'zbek"
+      },
+      "previewTitle": "Превью",
+      "varsTitle": "Доступные переменные",
+      "varsHint": "Кликните чип, чтобы вставить в текст в позицию курсора.",
+      "errors": {
+        "empty": "Тело шаблона не может быть пустым.",
+        "unknown": "Неизвестные переменные: {keys}"
+      },
+      "rules": {
+        "enabledTitle": "Активен",
+        "enabledHint": "Выключенный шаблон не отправляется.",
+        "offsetTitle": "За сколько часов до записи",
+        "offsetHint": "Шаг 0.5 часа, диапазон 1–72 часа.",
+        "offsetMinLabel": "(offsetMin = {minutes})",
+        "hourSuffix": "ч",
+        "channelsTitle": "Каналы",
+        "channelsHint": "Если выбраны оба — отправим первым доступным каналом.",
+        "channelsDefault": "По умолчанию: TG если есть telegramId пациента, иначе SMS.",
+        "channelsDefaultShort": "По умолчанию",
+        "channelsSelected": "Порядок: {list}",
+        "summaryTitle": "Текущая конфигурация",
+        "triggerLabel": "Триггер",
+        "fireAt": "Срабатывание",
+        "channelsLabel": "Каналы",
+        "statusLabel": "Статус",
+        "statusOn": "Включён",
+        "statusOff": "Выключен"
       }
     }
   },

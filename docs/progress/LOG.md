@@ -962,6 +962,62 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - 3 pre-existing tsc-ошибки в `doctor-queue-list.tsx`, `appointments/route.ts:205`, `miniapp/appointments/route.ts:154` — **не вносены этой фазой**. Это Prisma 7 extended-client typing на `tx` параметре; вылезли после `781682c` (post-Phase-7 hardening) при апгрейде driver adapter. Переезжают в hotfix-блок.
 - Working tree чистый, `phase-8-done` тег на merge-коммите `41ad7e5`.
 
+---
+
+## Phase 9 — Branches + Plans + Feature flags — 🔄 IN PROGRESS (старт 2026-05-01)
+
+### Контекст
+
+Этап 2 SaaS roadmap (Pilot SaaS, 3-5 клиник): «Multi-clinic + филиалы + тарифы». Сейчас `Clinic ≡ одно место`. Чтобы продавать клинике с несколькими филиалами как **один** SaaS-аккаунт с пакетом тарификации (Basic/Pro/Enterprise), нужны:
+
+1. Модель `Branch` (Clinic 1→N Branch). Doctor / Cabinet / Appointment / DoctorSchedule / DoctorTimeOff получают `branchId`.
+2. Модели `Plan` (каталог тарифов) и `Subscription` (подписка клиники). Feature flags вшиты в Plan (`hasTelegramInbox`, `hasCallCenter`, `hasAnalyticsPro`, `maxBranches`, `maxUsers`).
+3. UI: `BranchSwitcher` рядом с `ClinicSwitcher`; страница `/crm/settings/branches`; страница `/admin/clinics/[id]/billing`.
+4. Feature gates в UI: пункты меню скрываются если у плана нет фичи.
+
+### Riskpoints
+
+- **Миграция схемы трогает 5+ таблиц**. Поэтому делается в worktree, не в main. Тег `phase-9-done` ставим только когда ВСЕ существующие тесты (47 e2e, 239+ unit) продолжают проходить.
+- Backfill: каждой существующей клинике автоматически создаётся `Branch (slug='hq', name='Главный')` и все её Doctor/Cabinet/Appointment получают `branchId = hq.id`. Без backfill миграция оставит null'ы и сломает foreign keys.
+- **Не параллелизуем** — schema migration + 5 таблиц = один агент сводит фазу целиком, чтобы не было гонок по `prisma/schema.prisma` и `prisma/migrations/`.
+
+### Подфазы (последовательные)
+
+#### 9a — Branch model + миграция + backfill — атомарная порция «данные»
+
+- Schema: `Branch` (id, clinicId, slug, nameRu, nameUz, address, phone, timezone, isDefault, isActive). `@@unique([clinicId, slug])`.
+- `branchId` (nullable initially) на: Doctor, Cabinet, Appointment, DoctorSchedule, DoctorTimeOff. Опционально на Call.
+- Миграция в две стадии: ADD nullable → backfill SQL (создать `hq` branch, проставить branchId всем строкам) → ALTER NOT NULL.
+- `seed.ts`: создаёт `hq` branch при создании клиники, проставляет `branchId` всему демо-контенту.
+- Tenant context: добавить optional `branchId` в `runWithTenant`. Если не задан — клиника-wide query (как сейчас). Если задан — фильтр по branchId. Никаких breaking changes для существующих роутов.
+- **Никакого нового UI** — только данные. `phase-9a-done` тег.
+
+#### 9b — Plan + Subscription модели + feature gates helper
+
+- Schema: `Plan` (slug, nameRu/Uz, priceMonth, currency, features Json: `{hasTelegramInbox, hasCallCenter, hasAnalyticsPro, maxBranches, maxUsers}`). `Subscription` (clinicId, planId, status: TRIAL/ACTIVE/PAST_DUE/CANCELLED, trialEndsAt, currentPeriodEndsAt).
+- Seed 3 плана: Basic / Pro / Enterprise.
+- Helper `getFeatureFlags(clinicId)` → возвращает effective flags из активной подписки (или Basic как дефолт).
+- **Никакого нового UI** — только helper. `phase-9b-done` тег.
+
+#### 9c — UI: BranchSwitcher + /crm/settings/branches + /admin/clinics/[id]/billing
+
+- `BranchSwitcher` в топбаре под `ClinicSwitcher`.
+- `/crm/settings/branches` — CRUD филиалов (ADMIN). Доктор/кабинет получают селектор branch на форме создания.
+- `/admin/clinics/[id]/billing` — SUPER_ADMIN видит подписку клиники, может менять план/статус.
+- `phase-9c-done` тег.
+
+#### 9d — Feature gates в навигации
+
+- В `src/components/layout/crm-sidebar.tsx` (или эквивалент) скрывать пункты меню если у клиники нет фичи: «Telegram» если `!hasTelegramInbox`, «Call Center» если `!hasCallCenter`, «Аналитика Pro»-секция если `!hasAnalyticsPro`.
+- `phase-9d-done` тег.
+
+### Quality gates Phase 9
+
+- `npx prisma migrate dev` без ошибок.
+- `npx prisma generate` без ошибок.
+- Все 239+ старых unit + 47+ e2e продолжают проходить (с backfill дефолтного branch).
+- Новые тесты ≥10 unit (Branch CRUD, Subscription effective flags, getFeatureFlags) + ≥2 e2e (создание branch, переключение, скрытие меню по плану).
+
 ## Команды для деплоя
 
 ```bash

@@ -2155,7 +2155,8 @@
       "exchangeRates": "Valyuta kurslari",
       "roles": "Rollar va ruxsatlar",
       "audit": "Audit jurnali",
-      "integrations": "Integratsiyalar"
+      "integrations": "Integratsiyalar",
+      "notifications": "Bildirishnomalar"
     },
     "passwordReentry": {
       "title": "Joriy parolni kiriting",
@@ -2409,6 +2410,52 @@
         "pending": "Navbatda",
         "lastError": "Oxirgi xato",
         "hasSecret": "Secret o'rnatilgan"
+      }
+    },
+    "notifications": {
+      "title": "Bildirishnoma shablonlari va tartibi",
+      "subtitle": "Xabar matnlari, o'zgaruvchilar va avtomatik triggerlar.",
+      "listTitle": "Shablonlar",
+      "empty": "Bu klinikada shablonlar yo'q.",
+      "categories": {
+        "TRANSACTIONAL": "Tranzaksion",
+        "REMINDER": "Eslatmalar",
+        "MARKETING": "Marketing"
+      },
+      "tabs": {
+        "body": "Matn",
+        "rules": "Tartib"
+      },
+      "langs": {
+        "ru": "Ruscha",
+        "uz": "O'zbekcha"
+      },
+      "previewTitle": "Ko'rinish",
+      "varsTitle": "Mavjud o'zgaruvchilar",
+      "varsHint": "Kursor joyiga qo'yish uchun chipni bosing.",
+      "errors": {
+        "empty": "Shablon matni bo'sh bo'lishi mumkin emas.",
+        "unknown": "Noma'lum o'zgaruvchilar: {keys}"
+      },
+      "rules": {
+        "enabledTitle": "Faol",
+        "enabledHint": "O'chirilgan shablon yuborilmaydi.",
+        "offsetTitle": "Yozuvdan necha soat oldin",
+        "offsetHint": "Qadam 0.5 soat, oraliq 1–72 soat.",
+        "offsetMinLabel": "(offsetMin = {minutes})",
+        "hourSuffix": "soat",
+        "channelsTitle": "Kanallar",
+        "channelsHint": "Ikkalasi tanlansa — birinchi mavjudi orqali yuboramiz.",
+        "channelsDefault": "Sukut: bemorda telegramId bo'lsa TG, aks holda SMS.",
+        "channelsDefaultShort": "Sukut",
+        "channelsSelected": "Tartib: {list}",
+        "summaryTitle": "Joriy konfiguratsiya",
+        "triggerLabel": "Trigger",
+        "fireAt": "Ishga tushishi",
+        "channelsLabel": "Kanallar",
+        "statusLabel": "Holat",
+        "statusOn": "Yoqilgan",
+        "statusOff": "O'chirilgan"
       }
     }
   },

@@ -6,6 +6,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   BadgeCheckIcon,
+  BellRingIcon,
   BuildingIcon,
   CoinsIcon,
   DoorOpenIcon,
@@ -28,7 +29,8 @@ interface NavItem {
     | "exchangeRates"
     | "roles"
     | "audit"
-    | "integrations";
+    | "integrations"
+    | "notifications";
   href: string;
   icon: LucideIcon;
 }
@@ -42,6 +44,7 @@ const NAV: NavItem[] = [
   { key: "roles", href: "roles", icon: BadgeCheckIcon },
   { key: "audit", href: "audit", icon: ScrollIcon },
   { key: "integrations", href: "integrations", icon: PlugZapIcon },
+  { key: "notifications", href: "notifications", icon: BellRingIcon },
 ];
 
 export function SettingsSidebar() {

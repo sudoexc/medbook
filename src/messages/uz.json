@@ -2766,5 +2766,65 @@
     "empty": "SMS dialoglar yo‘q",
     "mvpHint": "MVP versiyasi: suhbatlar ro‘yxati. To‘liq inbox — Phase 6.",
     "openDetails": "Tafsilotlarni ochish"
+  },
+  "admin": {
+    "nav": {
+      "billing": "Tariflash",
+      "integrations": "Integratsiyalar"
+    },
+    "clinics": {
+      "billing": {
+        "title": "Tariflash",
+        "subtitle": "Klinika obunasi va tarifini boshqarish. Amallar SUPER_ADMIN nomidan bajariladi va audit-jurnaliga yoziladi.",
+        "currentPlan": "Joriy tarif",
+        "perMonth": "/ oy",
+        "trialUntil": "Sinov muddati",
+        "trialDaysLeft": "Qolgan kunlar",
+        "periodUntil": "Davr muddati",
+        "cancelledAt": "Bekor qilingan",
+        "actions": {
+          "title": "SUPER_ADMIN amallari",
+          "subtitle": "Barcha amallar qo‘lda bajariladi (Stripe / Payme yo‘q). Obuna hech qachon o‘chirilmaydi — bekor qilish satrni CANCELLED deb belgilaydi.",
+          "changePlan": "Rejani o‘zgartirish",
+          "changeStatus": "Holatni o‘zgartirish (admin override)",
+          "extendTrial": "Sinovni 30 kunga uzaytirish",
+          "extendingTrial": "Uzaytirilmoqda…",
+          "cancel": "Obunani bekor qilish",
+          "cancelling": "Bekor qilinmoqda…",
+          "refresh": "Yangilash",
+          "confirmCancel": "Obunani bekor qilasizmi? Ma’lumotlar saqlanadi (soft-cancel)."
+        },
+        "status": {
+          "TRIAL": "Sinov",
+          "ACTIVE": "Faol",
+          "PAST_DUE": "Muddati o‘tgan",
+          "CANCELLED": "Bekor qilingan"
+        },
+        "features": {
+          "telegramInbox": "Telegram-inbox",
+          "callCenter": "Call-markaz",
+          "analyticsPro": "Pro-analitika",
+          "maxBranches": "Maks. filiallar",
+          "maxUsers": "Maks. foydalanuvchilar"
+        },
+        "catalog": {
+          "title": "Rejalar katalogi",
+          "subtitle": "Rejalarni alohida obyekt sifatida boshqarish — keyingi vazifa (Phase 9d+).",
+          "current": "Joriy"
+        },
+        "toasts": {
+          "planUpdated": "Reja yangilandi",
+          "statusUpdated": "Holat yangilandi",
+          "trialExtended": "Sinov 30 kunga uzaytirildi",
+          "subscriptionCancelled": "Obuna bekor qilindi",
+          "networkError": "Tarmoq xatosi"
+        },
+        "errors": {
+          "noPlans": "Klinikada faol obuna yo‘q va rejalar katalogi bo‘sh. Plan katalogini yaratish uchun prisma migrate ishga tushiring.",
+          "invalidPlan": "Noto‘g‘ri reja ko‘rsatildi"
+        },
+        "back": "Barcha klinikalar"
+      }
+    }
   }
 }

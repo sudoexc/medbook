@@ -2766,5 +2766,65 @@
     "empty": "Нет SMS диалогов",
     "mvpHint": "MVP-версия: список разговоров. Полный инбокс — Phase 6.",
     "openDetails": "Открыть детали"
+  },
+  "admin": {
+    "nav": {
+      "billing": "Тарификация",
+      "integrations": "Интеграции"
+    },
+    "clinics": {
+      "billing": {
+        "title": "Тарификация",
+        "subtitle": "Управление подпиской и тарифом клиники. Действия выполняются от имени SUPER_ADMIN и записываются в аудит-лог.",
+        "currentPlan": "Текущий тариф",
+        "perMonth": "/ мес.",
+        "trialUntil": "Триал до",
+        "trialDaysLeft": "Осталось дней",
+        "periodUntil": "Период до",
+        "cancelledAt": "Отменена",
+        "actions": {
+          "title": "Действия SUPER_ADMIN",
+          "subtitle": "Все действия выполняются вручную (без Stripe / Payme). Подписка никогда не удаляется — отмена помечает строку как CANCELLED.",
+          "changePlan": "Сменить план",
+          "changeStatus": "Сменить статус (admin override)",
+          "extendTrial": "Продлить триал на 30 дней",
+          "extendingTrial": "Продление…",
+          "cancel": "Отменить подписку",
+          "cancelling": "Отмена…",
+          "refresh": "Обновить",
+          "confirmCancel": "Отменить подписку? Данные сохранятся (soft-cancel)."
+        },
+        "status": {
+          "TRIAL": "Trial",
+          "ACTIVE": "Активна",
+          "PAST_DUE": "Просрочена",
+          "CANCELLED": "Отменена"
+        },
+        "features": {
+          "telegramInbox": "Telegram-инбокс",
+          "callCenter": "Колл-центр",
+          "analyticsPro": "Pro-аналитика",
+          "maxBranches": "Макс. филиалов",
+          "maxUsers": "Макс. пользователей"
+        },
+        "catalog": {
+          "title": "Каталог планов",
+          "subtitle": "Управление планами как сущностями — отдельная задача (Phase 9d+).",
+          "current": "Текущий"
+        },
+        "toasts": {
+          "planUpdated": "План обновлён",
+          "statusUpdated": "Статус обновлён",
+          "trialExtended": "Триал продлён на 30 дней",
+          "subscriptionCancelled": "Подписка отменена",
+          "networkError": "Ошибка сети"
+        },
+        "errors": {
+          "noPlans": "У клиники нет активной подписки и каталог планов пуст. Запустите prisma migrate, чтобы засеять Plan-каталог.",
+          "invalidPlan": "Указан недопустимый план"
+        },
+        "back": "Все клиники"
+      }
+    }
   }
 }

@@ -146,6 +146,30 @@ export const SwitchClinicSchema = z.object({
 export type SwitchClinic = z.infer<typeof SwitchClinicSchema>;
 
 /**
+ * Phase 9c — Subscription PATCH body for `/api/admin/clinics/[id]/subscription`.
+ *
+ * Every key is optional — handlers apply only the fields that were sent. Dates
+ * arrive as ISO strings (or `null` to clear) and are coerced via `z.coerce.date()`.
+ * `cancelledAt` is normally written by the dedicated `/cancel` endpoint, but is
+ * exposed here so a SUPER_ADMIN can revert a soft-cancellation by clearing it.
+ */
+const SubscriptionStatusEnum = z.enum([
+  "TRIAL",
+  "ACTIVE",
+  "PAST_DUE",
+  "CANCELLED",
+]);
+
+export const PatchSubscriptionSchema = z.object({
+  planId: z.string().min(1).max(100).optional(),
+  status: SubscriptionStatusEnum.optional(),
+  trialEndsAt: z.coerce.date().nullish(),
+  currentPeriodEndsAt: z.coerce.date().nullish(),
+  cancelledAt: z.coerce.date().nullish(),
+});
+export type PatchSubscription = z.infer<typeof PatchSubscriptionSchema>;
+
+/**
  * Maps each UI "family" to the set of Prisma ProviderKind values it can store.
  * Used by the integrations page to group rows.
  */

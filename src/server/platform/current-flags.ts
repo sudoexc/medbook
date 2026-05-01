@@ -20,9 +20,9 @@ import { auth } from "@/lib/auth";
 import {
   DEFAULT_FLAGS,
   ENTERPRISE_FLAGS,
-  getFeatureFlags,
   type FeatureFlags,
 } from "@/lib/feature-flags";
+import { getFeatureFlags } from "@/server/platform/get-feature-flags";
 
 /**
  * Resolve the feature flags for the currently signed-in user.

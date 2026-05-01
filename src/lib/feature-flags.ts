@@ -1,31 +1,12 @@
 /**
- * Phase 9b — Feature flag helper.
- * Phase 9d — adds session-aware fetch + pure nav-filter helper used by the
- *           CRM sidebar render path and the route-level guards.
+ * Phase 9b — Feature flag types + pure helpers.
+ * Phase 9d — adds pure nav-filter helper used by the CRM sidebar.
  *
- * Each clinic carries (at most) one `Subscription` pointing at a `Plan`. The
- * plan stores a `features` JSON blob that gates Telegram inbox, call center,
- * pro analytics, and per-tier maximums (branches, users). This helper resolves
- * those flags into a strongly-typed shape callers can consume.
- *
- * Behaviour matrix (Stripe-style — PAST_DUE keeps access during a grace
- * period; the billing UI in Phase 9c surfaces the warning to the admin):
- *
- *   TRIAL / ACTIVE / PAST_DUE → flags from the linked plan
- *   CANCELLED                  → DEFAULT_FLAGS (Basic-equivalent)
- *   no subscription            → DEFAULT_FLAGS
- *
- * Defensive parsing: if `plan.features` is missing a key or has the wrong
- * type, that single key falls back to its `DEFAULT_FLAGS` value rather than
- * throwing — billing data should never crash a render path.
- *
- * Tenant scoping note: this is an admin/billing read keyed on a known
- * `clinicId`. The query passes `clinicId` explicitly, so the tenant-scope
- * extension is a no-op; the helper works correctly under TENANT, SUPER_ADMIN,
- * and SYSTEM contexts without modification.
+ * This module is intentionally **prisma-free** so client components can import
+ * `ENTERPRISE_FLAGS`, `computeVisibleNav`, and the type from here without
+ * dragging the database client into the browser bundle. The DB-bound resolver
+ * `getFeatureFlags(clinicId)` lives in `@/server/platform/get-feature-flags`.
  */
-
-import { prisma } from "./prisma";
 
 export type FeatureFlags = {
   hasTelegramInbox: boolean;
@@ -70,38 +51,6 @@ export function parsePlanFeatures(raw: unknown): FeatureFlags {
     maxBranches: pickInt("maxBranches"),
     maxUsers: pickInt("maxUsers"),
   };
-}
-
-/**
- * Resolve the effective feature flags for a clinic.
- *
- * - TRIAL / ACTIVE / PAST_DUE → flags from the linked Plan
- * - CANCELLED or no subscription → DEFAULT_FLAGS
- *
- * The `clinicId` is passed explicitly to `where`, so the tenant-scope Prisma
- * extension treats the call as already-scoped and does not duplicate the
- * column — making this helper safe to call from TENANT, SUPER_ADMIN, and
- * SYSTEM contexts.
- */
-export async function getFeatureFlags(
-  clinicId: string
-): Promise<FeatureFlags> {
-  const sub = await prisma.subscription.findUnique({
-    where: { clinicId },
-    include: { plan: true },
-  });
-
-  if (!sub) return { ...DEFAULT_FLAGS };
-
-  switch (sub.status) {
-    case "TRIAL":
-    case "ACTIVE":
-    case "PAST_DUE":
-      return parsePlanFeatures(sub.plan.features);
-    case "CANCELLED":
-    default:
-      return { ...DEFAULT_FLAGS };
-  }
 }
 
 /**

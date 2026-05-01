@@ -1,7 +1,7 @@
 /**
  * Phase 9d — `ensureFeature` route-level guard.
  *
- * DB-less. Mocks `@/lib/feature-flags.getFeatureFlags` so the test runs
+ * DB-less. Mocks `@/server/platform/get-feature-flags.getFeatureFlags` so the test runs
  * without a Postgres connection. Asserts that:
  *
  *   1. TENANT with the flag on → null (request proceeds)
@@ -19,15 +19,9 @@ const mockState = vi.hoisted(() => ({
   getFeatureFlags: vi.fn(),
 }));
 
-vi.mock("@/lib/feature-flags", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/feature-flags")>(
-    "@/lib/feature-flags"
-  );
-  return {
-    ...actual,
-    getFeatureFlags: mockState.getFeatureFlags,
-  };
-});
+vi.mock("@/server/platform/get-feature-flags", () => ({
+  getFeatureFlags: mockState.getFeatureFlags,
+}));
 
 import { ensureFeature } from "@/server/platform/feature-guard";
 import type { TenantContext } from "@/lib/tenant-context";

@@ -24,11 +24,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import {
-  getFeatureFlags,
-  parsePlanFeatures,
-  DEFAULT_FLAGS,
-} from "@/lib/feature-flags";
+import { parsePlanFeatures, DEFAULT_FLAGS } from "@/lib/feature-flags";
+import { getFeatureFlags } from "@/server/platform/get-feature-flags";
 
 const PRO_FEATURES = {
   hasTelegramInbox: true,

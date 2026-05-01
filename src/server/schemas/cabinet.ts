@@ -7,6 +7,12 @@ export const CreateCabinetSchema = z.object({
   nameUz: z.string().max(200).optional().nullable(),
   equipment: z.array(z.string().max(100)).max(50).optional(),
   isActive: z.boolean().optional(),
+  /**
+   * Phase 9c — optional branch assignment. When omitted the route falls
+   * back to the active branch from the cookie, then to the clinic's default
+   * branch, so legacy clients keep working without changes.
+   */
+  branchId: z.string().min(1).optional().nullable(),
 });
 
 export const UpdateCabinetSchema = CreateCabinetSchema.partial();

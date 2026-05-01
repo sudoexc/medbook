@@ -21,6 +21,12 @@ export const CreateDoctorSchema = z.object({
   pricePerVisit: z.number().int().min(0).optional().nullable(),
   salaryPercent: z.number().int().min(0).max(100).optional(),
   isActive: z.boolean().optional(),
+  /**
+   * Phase 9c — optional branch assignment. When omitted the route falls
+   * back to the active branch from the cookie (if any), then to the
+   * clinic's default branch, so legacy callers stay backwards compatible.
+   */
+  branchId: z.string().min(1).optional().nullable(),
 });
 
 export const UpdateDoctorSchema = CreateDoctorSchema.partial();

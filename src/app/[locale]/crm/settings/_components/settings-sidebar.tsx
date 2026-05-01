@@ -10,6 +10,7 @@ import {
   BuildingIcon,
   CoinsIcon,
   DoorOpenIcon,
+  GitBranchIcon,
   HistoryIcon,
   PlugZapIcon,
   ScrollIcon,
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 interface NavItem {
   key:
     | "clinic"
+    | "branches"
     | "users"
     | "services"
     | "cabinets"
@@ -37,6 +39,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { key: "clinic", href: "clinic", icon: BuildingIcon },
+  { key: "branches", href: "branches", icon: GitBranchIcon },
   { key: "users", href: "users", icon: UsersIcon },
   { key: "services", href: "services", icon: StethoscopeIcon },
   { key: "cabinets", href: "cabinets", icon: DoorOpenIcon },

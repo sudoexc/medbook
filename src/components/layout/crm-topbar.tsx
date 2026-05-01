@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status"
 import { ClinicSwitcher } from "@/components/layout/clinic-switcher"
+import { BranchSwitcher } from "@/components/layout/branch-switcher"
 import { useGlobalSearchShortcut } from "@/components/layout/global-search"
 import { toast } from "@/components/ui/sonner"
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog"
@@ -91,6 +92,8 @@ export interface CrmTopbarProps {
     | "CALL_OPERATOR"
     | null
   currentClinicId?: string | null
+  /** Phase 9c — current active branch from the cookie (server-rendered). */
+  currentBranchId?: string | null
   onSignOut?: () => void
 }
 
@@ -99,6 +102,7 @@ export function CrmTopbar({
   userName,
   userRole,
   currentClinicId,
+  currentBranchId,
   onSignOut,
 }: CrmTopbarProps) {
   const params = useParams()
@@ -245,6 +249,22 @@ export function CrmTopbar({
           <ClinicSwitcher
             currentClinicId={currentClinicId ?? null}
             userRole={userRole}
+            className="hidden md:flex"
+          />
+        )}
+
+        {/* Phase 9c — branch picker. Hides itself when only one branch. */}
+        {userRole && userRole !== "SUPER_ADMIN" && (
+          <BranchSwitcher
+            currentBranchId={currentBranchId ?? null}
+            hasClinic={Boolean(currentClinicId)}
+            className="hidden md:flex"
+          />
+        )}
+        {userRole === "SUPER_ADMIN" && currentClinicId && (
+          <BranchSwitcher
+            currentBranchId={currentBranchId ?? null}
+            hasClinic
             className="hidden md:flex"
           />
         )}

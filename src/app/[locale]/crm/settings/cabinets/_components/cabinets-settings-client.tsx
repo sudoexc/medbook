@@ -331,13 +331,27 @@ function CreateCabinetDialog({
     nameRu: string;
     nameUz: string;
     equipment: string[];
+    branchId: string;
   }>({
     number: "",
     floor: "",
     nameRu: "",
     nameUz: "",
     equipment: [],
+    branchId: "",
   });
+  // Branches load lazily for the optional selector. We deliberately don't
+  // require it — Phase 9c keeps branchId optional so legacy single-branch
+  // clinics don't see a forced choice.
+  const branchesQuery = useQuery({
+    queryKey: ["settings", "branches", "active"],
+    queryFn: () =>
+      settingsFetch<{
+        rows: Array<{ id: string; nameRu: string; nameUz: string; isDefault: boolean }>;
+      }>("/api/crm/branches?isActive=true&limit=200"),
+    enabled: open,
+  });
+  const branches = branchesQuery.data?.rows ?? [];
   const mut = useMutation({
     mutationFn: () =>
       settingsFetch("/api/crm/cabinets", {
@@ -348,12 +362,20 @@ function CreateCabinetDialog({
           nameRu: form.nameRu || null,
           nameUz: form.nameUz || null,
           equipment: form.equipment,
+          branchId: form.branchId || null,
         }),
       }),
     onSuccess: () => {
       toast.success(t("cabinets.created"));
       onCreated();
-      setForm({ number: "", floor: "", nameRu: "", nameUz: "", equipment: [] });
+      setForm({
+        number: "",
+        floor: "",
+        nameRu: "",
+        nameUz: "",
+        equipment: [],
+        branchId: "",
+      });
       onOpenChange(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -400,6 +422,26 @@ function CreateCabinetDialog({
             value={form.equipment}
             onChange={(next) => setForm({ ...form, equipment: next })}
           />
+          {branches.length > 1 && (
+            <div>
+              <Label>{t("cabinets.cols.branch")}</Label>
+              <select
+                value={form.branchId}
+                onChange={(e) =>
+                  setForm({ ...form, branchId: e.target.value })
+                }
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs"
+              >
+                <option value="">{t("cabinets.branchAuto")}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.nameRu}
+                    {b.isDefault ? ` · ${t("branches.defaultBadge")}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

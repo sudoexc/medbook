@@ -17,6 +17,7 @@ import type { ZodSchema } from "zod";
 import { auth } from "./auth";
 import { runWithTenant } from "./tenant-context";
 import type { Role, TenantContext } from "./tenant-context";
+import { readActiveBranchFromCookieHeader } from "@/server/platform/branch-cookie";
 
 export type ApiHandlerArgs<TBody> = {
   request: Request;
@@ -40,11 +41,14 @@ export type ApiHandlerOptions<TBody> = {
 
 type Handler<TBody> = (args: ApiHandlerArgs<TBody>) => Promise<Response>;
 
-function buildContext(user: {
-  id: string;
-  role: Role;
-  clinicId: string | null;
-}): TenantContext {
+function buildContext(
+  user: {
+    id: string;
+    role: Role;
+    clinicId: string | null;
+  },
+  branchId?: string | null,
+): TenantContext {
   if (user.role === "SUPER_ADMIN") {
     return { kind: "SUPER_ADMIN", userId: user.id };
   }
@@ -53,12 +57,24 @@ function buildContext(user: {
     // Treat as unauthorized to fail safe.
     throw Object.assign(new Error("User has no clinicId"), { status: 403 });
   }
-  return {
+  const ctx: TenantContext = {
     kind: "TENANT",
     clinicId: user.clinicId,
     userId: user.id,
     role: user.role,
   };
+  if (branchId) {
+    ctx.branchId = branchId;
+  }
+  return ctx;
+}
+
+/**
+ * Read the active-branch cookie from the request. Returns `null` for missing
+ * / empty cookie (= "All branches", clinic-wide queries).
+ */
+function readBranchIdFromRequest(request: Request): string | null {
+  return readActiveBranchFromCookieHeader(request.headers.get("cookie"));
 }
 
 async function readSession() {
@@ -138,11 +154,14 @@ export function createApiHandler<TBody = unknown>(
 
     let ctx: TenantContext;
     try {
-      ctx = buildContext({
-        id: user.id,
-        role: user.role,
-        clinicId: user.clinicId,
-      });
+      ctx = buildContext(
+        {
+          id: user.id,
+          role: user.role,
+          clinicId: user.clinicId,
+        },
+        readBranchIdFromRequest(request),
+      );
     } catch (e) {
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });
@@ -186,11 +205,14 @@ export function createApiListHandler(
 
     let ctx: TenantContext;
     try {
-      ctx = buildContext({
-        id: user.id,
-        role: user.role,
-        clinicId: user.clinicId,
-      });
+      ctx = buildContext(
+        {
+          id: user.id,
+          role: user.role,
+          clinicId: user.clinicId,
+        },
+        readBranchIdFromRequest(request),
+      );
     } catch (e) {
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });

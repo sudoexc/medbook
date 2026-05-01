@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, parseQuery } from "@/server/http";
 import { CreateDoctorSchema, QueryDoctorSchema } from "@/server/schemas/doctor";
+import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -47,8 +48,15 @@ export const GET = createApiListHandler(
 
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: CreateDoctorSchema },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     try {
+      let branchId: string | null = null;
+      try {
+        branchId = await resolveEffectiveBranchId(ctx, body.branchId);
+      } catch (e) {
+        const reason = (e as { reason?: string }).reason ?? "branch_invalid";
+        return err("BranchInvalid", 422, { reason });
+      }
       const created = await prisma.doctor.create({
         data: {
           slug: body.slug,
@@ -64,6 +72,7 @@ export const POST = createApiHandler(
           pricePerVisit: body.pricePerVisit ?? null,
           salaryPercent: body.salaryPercent ?? 40,
           isActive: body.isActive ?? true,
+          branchId,
         } as never,
       });
       await audit(request, {

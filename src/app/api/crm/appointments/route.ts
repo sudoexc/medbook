@@ -9,6 +9,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, conflict, parseQuery } from "@/server/http";
+import { normalizePhone } from "@/lib/phone";
 import {
   CreateAppointmentSchema,
   QueryAppointmentSchema,
@@ -48,12 +49,21 @@ export const GET = createApiListHandler(
     }
     if (q.q && q.q.trim().length > 0) {
       const term = q.q.trim();
-      where.OR = [
+      const phoneDigits = term.replace(/\D/g, "");
+      const phoneNorm = normalizePhone(term);
+      const or: Array<Record<string, unknown>> = [
         { patient: { fullName: { contains: term, mode: "insensitive" } } },
         { patient: { phone: { contains: term } } },
         { doctor: { nameRu: { contains: term, mode: "insensitive" } } },
         { doctor: { nameUz: { contains: term, mode: "insensitive" } } },
       ];
+      if (phoneDigits.length >= 3) {
+        or.push({ patient: { phoneNormalized: { contains: phoneDigits } } });
+        if (phoneNorm) {
+          or.push({ patient: { phoneNormalized: { contains: phoneNorm } } });
+        }
+      }
+      where.OR = or;
     }
 
     // DOCTOR sees only their own records
@@ -62,7 +72,23 @@ export const GET = createApiListHandler(
         where: { userId: ctx.userId },
         select: { id: true },
       });
-      if (!doctor) return ok({ rows: [], total: 0, nextCursor: null });
+      if (!doctor) {
+        return ok({
+          rows: [],
+          total: 0,
+          nextCursor: null,
+          tally: {
+            all: 0,
+            BOOKED: 0,
+            WAITING: 0,
+            IN_PROGRESS: 0,
+            COMPLETED: 0,
+            CANCELLED: 0,
+            NO_SHOW: 0,
+            SKIPPED: 0,
+          },
+        });
+      }
       where.doctorId = doctor.id;
     }
 
@@ -97,7 +123,33 @@ export const GET = createApiListHandler(
       nextCursor = next?.id ?? null;
     }
     const total = await prisma.appointment.count({ where });
-    return ok({ rows, nextCursor, total });
+
+    // KPI-strip badge counts: respect every other filter except status,
+    // so switching tabs doesn't zero out the others. Mirrors the segment-tab
+    // pattern in /api/crm/patients.
+    const { status: _omit, ...whereWithoutStatus } = where;
+    const grouped = await prisma.appointment.groupBy({
+      by: ["status"],
+      where: whereWithoutStatus,
+      _count: { _all: true },
+    });
+    const tally: Record<string, number> = {
+      all: 0,
+      BOOKED: 0,
+      WAITING: 0,
+      IN_PROGRESS: 0,
+      COMPLETED: 0,
+      CANCELLED: 0,
+      NO_SHOW: 0,
+      SKIPPED: 0,
+    };
+    for (const g of grouped) {
+      const c = g._count?._all ?? 0;
+      tally[g.status] = c;
+      tally.all += c;
+    }
+
+    return ok({ rows, nextCursor, total, tally });
   }
 );
 

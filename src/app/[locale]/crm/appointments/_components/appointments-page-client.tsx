@@ -13,7 +13,6 @@ import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDi
 
 import {
   flattenAppointments,
-  tallyStatuses,
   useAppointmentsList,
   useAppointmentsRealtime,
 } from "../_hooks/use-appointments-list";
@@ -93,7 +92,9 @@ export function AppointmentsPageClient() {
     () => flattenAppointments(query.data),
     [query.data],
   );
-  const tally = React.useMemo(() => tallyStatuses(rows), [rows]);
+  // Server-side tally — counts across the whole filter set (ignoring the
+  // active status bucket), so switching tabs doesn't zero out the others.
+  const tally = query.data?.pages?.[0]?.tally ?? {};
   const total = query.data?.pages?.[0]?.total ?? null;
 
   const toggleSelectAll = (on: boolean) => {

@@ -35,14 +35,20 @@ export const GET = createApiListHandler(
       };
     }
     if (q.q) {
-      const norm = normalizePhone(q.q);
-      where.OR = [
-        { fullName: { contains: q.q, mode: "insensitive" } },
-        { phone: { contains: q.q } },
-        { phoneNormalized: { contains: norm } },
-        { passport: { contains: q.q, mode: "insensitive" } },
-        { telegramUsername: { contains: q.q, mode: "insensitive" } },
+      const term = q.q.trim();
+      const phoneDigits = term.replace(/\D/g, "");
+      const phoneNorm = normalizePhone(term);
+      const or: Array<Record<string, unknown>> = [
+        { fullName: { contains: term, mode: "insensitive" } },
+        { passport: { contains: term, mode: "insensitive" } },
+        { telegramUsername: { contains: term, mode: "insensitive" } },
       ];
+      if (phoneDigits.length >= 3) {
+        or.push({ phone: { contains: term } });
+        or.push({ phoneNormalized: { contains: phoneDigits } });
+        if (phoneNorm) or.push({ phoneNormalized: { contains: phoneNorm } });
+      }
+      where.OR = or;
     }
 
     const take = q.limit + 1;

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { DownloadIcon, EyeIcon, UploadIcon } from "lucide-react";
 
 import { PageContainer } from "@/components/molecules/page-container";
@@ -48,8 +49,13 @@ function formatSize(bytes: number | null): string {
 export function DocumentsPageClient() {
   const t = useTranslations("docsLibrary");
   const locale = useLocale();
+  const searchParams = useSearchParams();
 
-  const [filters, setFilters] = React.useState<DocumentFilters>(DEFAULT_FILTERS);
+  const initialPatientId = searchParams?.get("patientId") ?? "";
+  const [filters, setFilters] = React.useState<DocumentFilters>(() => ({
+    ...DEFAULT_FILTERS,
+    patientId: initialPatientId,
+  }));
   const [uploadOpen, setUploadOpen] = React.useState(false);
 
   const q = useDocumentsList(filters);

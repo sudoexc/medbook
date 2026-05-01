@@ -189,7 +189,7 @@ export function PatientRightRail({
         title={t("files")}
         action={
           <Link
-            href={`/${locale}/crm/patients/${patient.id}?tab=documents`}
+            href={`/${locale}/crm/documents?patientId=${encodeURIComponent(patient.id)}`}
             className="text-[11px] font-medium text-primary hover:underline"
           >
             {t("allFiles")}
@@ -208,11 +208,13 @@ export function PatientRightRail({
               const Icon = DOC_ICON[d.type] ?? FileIcon;
               return (
                 <li key={d.id}>
-                  <a
-                    href={d.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5 text-[12px] hover:bg-muted/30"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!d.fileUrl) return;
+                      window.open(d.fileUrl, "_blank", "noopener,noreferrer");
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                       <Icon className="size-3.5" />
@@ -226,7 +228,7 @@ export function PatientRightRail({
                         {d.sizeBytes ? ` · ${formatBytes(d.sizeBytes)}` : ""}
                       </span>
                     </span>
-                  </a>
+                  </button>
                 </li>
               );
             })}

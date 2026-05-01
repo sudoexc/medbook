@@ -5,6 +5,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { normalizePhone } from "@/lib/phone";
 import { ok } from "@/server/http";
 
 export const GET = createApiListHandler(
@@ -21,13 +22,35 @@ export const GET = createApiListHandler(
       });
     }
 
+    const phoneDigits = q.replace(/\D/g, "");
+    const phoneNorm = normalizePhone(q);
+    const patientPhoneOr: Array<Record<string, unknown>> = [
+      { phone: { contains: q } },
+    ];
+    if (phoneDigits.length >= 3) {
+      patientPhoneOr.push({ phoneNormalized: { contains: phoneDigits } });
+      if (phoneNorm) patientPhoneOr.push({ phoneNormalized: { contains: phoneNorm } });
+    }
+    const apptPatientPhoneOr: Array<Record<string, unknown>> = [
+      { patient: { phone: { contains: q } } },
+    ];
+    if (phoneDigits.length >= 3) {
+      apptPatientPhoneOr.push({
+        patient: { phoneNormalized: { contains: phoneDigits } },
+      });
+      if (phoneNorm) {
+        apptPatientPhoneOr.push({
+          patient: { phoneNormalized: { contains: phoneNorm } },
+        });
+      }
+    }
+
     const [patients, doctors, appointments, conversations] = await Promise.all([
       prisma.patient.findMany({
         where: {
           OR: [
             { fullName: { contains: q, mode: "insensitive" } },
-            { phone: { contains: q } },
-            { phoneNormalized: { contains: q.replace(/\D/g, "") } },
+            ...patientPhoneOr,
           ],
         },
         select: {
@@ -62,7 +85,7 @@ export const GET = createApiListHandler(
         where: {
           OR: [
             { patient: { fullName: { contains: q, mode: "insensitive" } } },
-            { patient: { phone: { contains: q } } },
+            ...apptPatientPhoneOr,
             { notes: { contains: q, mode: "insensitive" } },
             { comments: { contains: q, mode: "insensitive" } },
           ],
@@ -82,7 +105,7 @@ export const GET = createApiListHandler(
           OR: [
             { lastMessageText: { contains: q, mode: "insensitive" } },
             { patient: { fullName: { contains: q, mode: "insensitive" } } },
-            { patient: { phone: { contains: q } } },
+            ...apptPatientPhoneOr,
           ],
         },
         orderBy: { lastMessageAt: "desc" },

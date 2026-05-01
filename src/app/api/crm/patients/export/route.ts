@@ -51,11 +51,17 @@ export const GET = createApiListHandler(
     if (q.gender) where.gender = q.gender;
     if (q.tag) where.tags = { has: q.tag };
     if (q.q) {
-      const norm = normalizePhone(q.q);
-      where.OR = [
-        { fullName: { contains: q.q, mode: "insensitive" } },
-        { phoneNormalized: { contains: norm } },
+      const term = q.q.trim();
+      const phoneDigits = term.replace(/\D/g, "");
+      const phoneNorm = normalizePhone(term);
+      const or: Array<Record<string, unknown>> = [
+        { fullName: { contains: term, mode: "insensitive" } },
       ];
+      if (phoneDigits.length >= 3) {
+        or.push({ phoneNormalized: { contains: phoneDigits } });
+        if (phoneNorm) or.push({ phoneNormalized: { contains: phoneNorm } });
+      }
+      where.OR = or;
     }
 
     const encoder = new TextEncoder();

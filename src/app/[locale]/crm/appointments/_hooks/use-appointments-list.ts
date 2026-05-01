@@ -102,6 +102,7 @@ export type AppointmentsListResponse = {
   rows: AppointmentRow[];
   nextCursor: string | null;
   total: number;
+  tally: Record<string, number>;
 };
 
 export type AppointmentsListFilters = {
@@ -208,28 +209,6 @@ export function flattenAppointments(
   const out: AppointmentRow[] = [];
   for (const p of data.pages) out.push(...p.rows);
   return out;
-}
-
-/**
- * Tally row statuses client-side so the KPI strip doesn't need its own endpoint.
- * Pragmatic: only covers the rows already loaded. Page-level KPI that counts
- * across the whole filter set is a TODO for api-builder (Phase 2b wrap-up).
- */
-export function tallyStatuses(rows: AppointmentRow[]): Record<string, number> {
-  const t: Record<string, number> = {
-    all: rows.length,
-    WAITING: 0,
-    BOOKED: 0,
-    IN_PROGRESS: 0,
-    COMPLETED: 0,
-    CANCELLED: 0,
-    NO_SHOW: 0,
-    SKIPPED: 0,
-  };
-  for (const r of rows) {
-    t[r.status] = (t[r.status] ?? 0) + 1;
-  }
-  return t;
 }
 
 /**

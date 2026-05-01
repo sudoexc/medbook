@@ -9,6 +9,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, parseQuery } from "@/server/http";
+import { normalizePhone } from "@/lib/phone";
 import {
   CreateDocumentSchema,
   QueryDocumentSchema,
@@ -22,15 +23,34 @@ export const GET = createApiListHandler(
     const q = parsed.value;
 
     const where: Record<string, unknown> = {};
+    const andClauses: Array<Record<string, unknown>> = [];
     if (q.patientId) where.patientId = q.patientId;
     if (q.appointmentId) where.appointmentId = q.appointmentId;
     if (q.type) where.type = q.type;
-    if (q.q) where.title = { contains: q.q, mode: "insensitive" };
-    if (q.doctorId) {
-      where.OR = [
-        { appointment: { doctorId: q.doctorId } },
-        { patient: { appointments: { some: { doctorId: q.doctorId } } } },
+    if (q.q) {
+      const term = q.q.trim();
+      const phoneDigits = term.replace(/\D/g, "");
+      const phoneNorm = normalizePhone(term);
+      const or: Array<Record<string, unknown>> = [
+        { title: { contains: term, mode: "insensitive" } },
+        { patient: { fullName: { contains: term, mode: "insensitive" } } },
+        { patient: { phone: { contains: term } } },
       ];
+      if (phoneDigits.length >= 3) {
+        or.push({ patient: { phoneNormalized: { contains: phoneDigits } } });
+        if (phoneNorm) {
+          or.push({ patient: { phoneNormalized: { contains: phoneNorm } } });
+        }
+      }
+      andClauses.push({ OR: or });
+    }
+    if (q.doctorId) {
+      andClauses.push({
+        OR: [
+          { appointment: { doctorId: q.doctorId } },
+          { patient: { appointments: { some: { doctorId: q.doctorId } } } },
+        ],
+      });
     }
     if (q.from || q.to) {
       const range: Record<string, Date> = {};
@@ -50,12 +70,15 @@ export const GET = createApiListHandler(
         select: { id: true },
       });
       if (doc) {
-        where.OR = [
-          { appointment: { doctorId: doc.id } },
-          { patient: { appointments: { some: { doctorId: doc.id } } } },
-        ];
+        andClauses.push({
+          OR: [
+            { appointment: { doctorId: doc.id } },
+            { patient: { appointments: { some: { doctorId: doc.id } } } },
+          ],
+        });
       }
     }
+    if (andClauses.length > 0) where.AND = andClauses;
 
     const take = q.limit + 1;
     const rows = await prisma.document.findMany({

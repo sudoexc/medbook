@@ -16,8 +16,6 @@
  *   - The matching API routes — to return 404 instead of leaking pro-feature
  *     existence to a basic-tier admin.
  */
-import "server-only";
-
 import { auth } from "@/lib/auth";
 import {
   DEFAULT_FLAGS,

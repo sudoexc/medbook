@@ -11,8 +11,6 @@
  * has no tenant plan to honour; the API handlers that mutate tenant data
  * already block SUPER_ADMIN with `ClinicNotSelected` upstream.
  */
-import "server-only";
-
 import { getFeatureFlags, type FeatureFlags } from "@/lib/feature-flags";
 import type { TenantContext } from "@/lib/tenant-context";
 

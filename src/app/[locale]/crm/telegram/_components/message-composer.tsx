@@ -3,8 +3,19 @@
 import * as React from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { SendIcon, PlusIcon, MinusIcon, Loader2Icon, FileTextIcon } from "lucide-react";
+import {
+  SendIcon,
+  PlusIcon,
+  MinusIcon,
+  Loader2Icon,
+  FileTextIcon,
+  PaperclipIcon,
+  XIcon,
+  ImageIcon,
+} from "lucide-react";
+import { toast } from "sonner";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,7 +27,10 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import type { InboxConversation } from "../_hooks/types";
-import { useSendMessage } from "../_hooks/use-send-message";
+import {
+  useSendMessage,
+  type ChatAttachment,
+} from "../_hooks/use-send-message";
 
 export interface MessageComposerProps {
   conversation: InboxConversation;
@@ -34,38 +48,185 @@ type Template = {
 
 type InlineBtn = { text: string; callback_data?: string; url?: string };
 
-/**
- * Bottom composer for the active chat.
- *
- * Features:
- *  - Text input with Enter=send, Shift+Enter=newline.
- *  - Template picker — loads `/api/crm/notifications/templates?channel=TG`.
- *  - Inline-buttons builder — JSON rows of `[{ text, callback_data|url }]`.
- *    Sent as `buttons` in the POST body; backend persists as Message.buttons
- *    (Telegram's `inline_keyboard` shape).
- *
- * Sending is always through our CRM POST — the bot webhook flushes to
- * Telegram via `send.ts`. Operators never talk to the Telegram API directly.
- */
+type LocalAttachment = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: "uploading" | "ready" | "error";
+  remote?: ChatAttachment;
+  errorMessage?: string;
+};
+
+const ALLOWED_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS = 10;
+
 export function MessageComposer({ conversation }: MessageComposerProps) {
   const t = useTranslations("tgInbox.composer");
   const locale = useLocale();
   const [text, setText] = React.useState("");
   const [buttonRows, setButtonRows] = React.useState<InlineBtn[][]>([]);
+  const [attachments, setAttachments] = React.useState<LocalAttachment[]>([]);
+  const [isDragOver, setIsDragOver] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const dragCounterRef = React.useRef(0);
   const send = useSendMessage();
 
+  React.useEffect(() => {
+    return () => {
+      attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
+    };
+    // intentionally only on unmount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const uploadingCount = attachments.filter(
+    (a) => a.status === "uploading",
+  ).length;
+  const readyAttachments = attachments
+    .filter((a) => a.status === "ready" && a.remote)
+    .map((a) => a.remote!) as ChatAttachment[];
+
+  const canSend =
+    !send.isPending &&
+    uploadingCount === 0 &&
+    (text.trim().length > 0 || readyAttachments.length > 0);
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const removed = prev.find((a) => a.id === id);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
+  const uploadOne = React.useCallback(
+    async (id: string, file: File) => {
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(
+          `/api/crm/conversations/${conversation.id}/attachments`,
+          {
+            method: "POST",
+            credentials: "include",
+            body: form,
+          },
+        );
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || `Upload failed: ${res.status}`);
+        }
+        const data = (await res.json()) as {
+          url: string;
+          mimeType: string;
+          sizeBytes: number;
+          name: string;
+        };
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  status: "ready",
+                  remote: {
+                    kind: "image",
+                    url: data.url,
+                    mimeType: data.mimeType,
+                    sizeBytes: data.sizeBytes,
+                    name: data.name,
+                  },
+                }
+              : a,
+          ),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Upload failed";
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.id === id ? { ...a, status: "error", errorMessage: msg } : a,
+          ),
+        );
+        toast.error(msg);
+      }
+    },
+    [conversation.id],
+  );
+
+  const addFiles = React.useCallback(
+    (files: FileList | File[]) => {
+      const list = Array.from(files);
+      if (list.length === 0) return;
+      const accepted: { id: string; file: File; previewUrl: string }[] = [];
+      let rejected = 0;
+      for (const file of list) {
+        if (!ALLOWED_MIME.has(file.type)) {
+          rejected += 1;
+          continue;
+        }
+        if (file.size > MAX_BYTES) {
+          rejected += 1;
+          continue;
+        }
+        const id =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        accepted.push({ id, file, previewUrl: URL.createObjectURL(file) });
+      }
+      if (rejected > 0) {
+        toast.error(t("upload.rejectedSome", { count: rejected }));
+      }
+      if (accepted.length === 0) return;
+      setAttachments((prev) => {
+        const remaining = MAX_ATTACHMENTS - prev.length;
+        if (remaining <= 0) {
+          toast.error(t("upload.tooMany", { max: MAX_ATTACHMENTS }));
+          return prev;
+        }
+        const slice = accepted.slice(0, remaining);
+        if (accepted.length > remaining) {
+          toast.error(t("upload.tooMany", { max: MAX_ATTACHMENTS }));
+        }
+        const next: LocalAttachment[] = [
+          ...prev,
+          ...slice.map((s) => ({
+            id: s.id,
+            file: s.file,
+            previewUrl: s.previewUrl,
+            status: "uploading" as const,
+          })),
+        ];
+        slice.forEach((s) => void uploadOne(s.id, s.file));
+        return next;
+      });
+    },
+    [t, uploadOne],
+  );
+
   const onSend = async () => {
+    if (!canSend) return;
     const body = text.trim();
-    if (!body) return;
     const payload = {
       conversationId: conversation.id,
       body,
       buttons: buttonRows.length > 0 ? buttonRows : undefined,
+      attachments:
+        readyAttachments.length > 0 ? readyAttachments : undefined,
     };
     try {
       await send.mutateAsync(payload);
       setText("");
       setButtonRows([]);
+      setAttachments((prev) => {
+        prev.forEach((a) => URL.revokeObjectURL(a.previewUrl));
+        return [];
+      });
     } catch {
       // toast handled in hook
     }
@@ -83,14 +244,123 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     setText((prev) => (prev ? `${prev}\n${body}` : body));
   };
 
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      addFiles(files);
+    }
+  };
+
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    dragCounterRef.current += 1;
+    setIsDragOver(true);
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+  };
+  const onDragLeave = () => {
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDragOver(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files);
+    }
+  };
+
   return (
-    <div className="border-t border-border bg-card">
+    <div
+      className={cn(
+        "relative border-t border-border bg-card",
+        isDragOver && "outline outline-2 outline-offset-[-2px] outline-primary/60",
+      )}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {isDragOver ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-card px-3 py-2 text-sm font-medium text-primary shadow-sm">
+            <ImageIcon className="size-4" />
+            {t("upload.dropHere")}
+          </div>
+        </div>
+      ) : null}
+
       {buttonRows.length > 0 ? (
         <InlineButtonsEditor rows={buttonRows} onChange={setButtonRows} />
       ) : null}
+
+      {attachments.length > 0 ? (
+        <div className="flex flex-wrap gap-2 border-b border-border bg-muted/20 p-3">
+          {attachments.map((a) => (
+            <div
+              key={a.id}
+              className="relative size-20 overflow-hidden rounded-md border border-border bg-background"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={a.previewUrl}
+                alt={a.file.name}
+                className={cn(
+                  "size-full object-cover",
+                  a.status !== "ready" && "opacity-60",
+                )}
+              />
+              {a.status === "uploading" ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/40">
+                  <Loader2Icon className="size-5 animate-spin text-foreground" />
+                </div>
+              ) : null}
+              {a.status === "error" ? (
+                <div
+                  className="absolute inset-0 flex items-center justify-center bg-destructive/30 text-[10px] font-semibold text-destructive-foreground"
+                  title={a.errorMessage}
+                >
+                  !
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => removeAttachment(a.id)}
+                className="absolute right-0.5 top-0.5 inline-flex size-5 items-center justify-center rounded-full bg-foreground/70 text-background transition-colors hover:bg-foreground"
+                aria-label={t("upload.remove")}
+              >
+                <XIcon className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex items-end gap-2 p-3">
         <div className="flex shrink-0 flex-col gap-1">
           <TemplatePicker onPick={onPickTemplate} />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label={t("upload.attach")}
+            title={t("upload.attach")}
+          >
+            <PaperclipIcon className="size-3" /> {t("upload.label")}
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -110,6 +380,7 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           placeholder={t("placeholder")}
           className="min-h-[52px] max-h-[220px] flex-1 resize-y"
           aria-label={t("textareaAria")}
@@ -117,10 +388,10 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
         <Button
           type="button"
           onClick={onSend}
-          disabled={send.isPending || text.trim().length === 0}
+          disabled={!canSend}
           aria-label={t("sendAria")}
         >
-          {send.isPending ? (
+          {send.isPending || uploadingCount > 0 ? (
             <Loader2Icon className="size-3 animate-spin" />
           ) : (
             <SendIcon className="size-3" />
@@ -128,6 +399,18 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
           {t("send")}
         </Button>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

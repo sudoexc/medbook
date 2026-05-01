@@ -207,7 +207,7 @@ export function DoctorQueueCard({
                     {a.patient.fullName}
                   </span>
                   <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
-                    {formatRelative(new Date(a.date))}
+                    {formatQueueTime(new Date(a.date), locale)}
                   </span>
 
                 </button>
@@ -375,18 +375,18 @@ function EmptyBlock() {
   );
 }
 
-/** "H:MM" — relative hours+minutes until `date`. "0:20" means "через 20 мин". */
-function formatRelative(date: Date, now = new Date()): string {
-  const diffMin = Math.max(0, Math.round((date.getTime() - now.getTime()) / 60000));
-  const h = Math.floor(diffMin / 60);
-  const m = diffMin % 60;
-  return `${h}:${String(m).padStart(2, "0")}`;
-}
-
 function formatTime(d: Date, locale: string): string {
   return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(d);
+}
+
+function formatQueueTime(date: Date, locale: string, now = new Date()): string {
+  const diffMin = Math.round((date.getTime() - now.getTime()) / 60000);
+  if (diffMin > 0 && diffMin < 60) {
+    return `+${diffMin}m`;
+  }
+  return formatTime(date, locale);
 }

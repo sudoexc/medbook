@@ -41,6 +41,25 @@ function mdLite(body: string): string {
   return out;
 }
 
+type ImageAttachment = {
+  kind: "image";
+  url: string;
+  mimeType?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+};
+
+function isImageAttachment(x: unknown): x is ImageAttachment {
+  if (!x || typeof x !== "object") return false;
+  const obj = x as Record<string, unknown>;
+  return (
+    obj.kind === "image" &&
+    typeof obj.url === "string" &&
+    obj.url.length > 0
+  );
+}
+
 export interface MessageBubbleProps {
   message: InboxMessage;
 }
@@ -59,6 +78,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       >)
     : null;
 
+  const images = Array.isArray(message.attachments)
+    ? (message.attachments as unknown[]).filter(isImageAttachment)
+    : [];
+
   return (
     <div className={cn("flex", isOut ? "justify-end" : "justify-start")}>
       <div
@@ -69,15 +92,41 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : "rounded-bl-sm bg-muted text-foreground",
         )}
       >
+        {images.length > 0 ? (
+          <div
+            className={cn(
+              "mb-1 grid gap-1 overflow-hidden rounded-lg",
+              images.length === 1 ? "grid-cols-1" : "grid-cols-2",
+            )}
+          >
+            {images.map((img, i) => (
+              <a
+                key={i}
+                href={img.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.url}
+                  alt={img.name ?? ""}
+                  className="block max-h-72 w-full rounded-md object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        ) : null}
         {body ? (
           <div
             className="whitespace-pre-wrap break-words"
             // Safe: escaped + limited tags.
             dangerouslySetInnerHTML={{ __html: html }}
           />
-        ) : (
+        ) : images.length === 0 ? (
           <div className="italic opacity-70">{t("message.noText")}</div>
-        )}
+        ) : null}
         {buttons && buttons.length > 0 ? (
           <div className="mt-2 space-y-1">
             {buttons.map((row, ri) => (

@@ -2017,6 +2017,14 @@
         "dataPlaceholder": "callback_data",
         "remove": "O'chirish",
         "addButton": "Tugma"
+      },
+      "upload": {
+        "label": "Rasm",
+        "attach": "Rasm biriktirish",
+        "remove": "Olib tashlash",
+        "dropHere": "Biriktirish uchun qo'yvoring",
+        "rejectedSome": "Tashlab yuborilgan fayllar: {count} (faqat JPG/PNG/WEBP/GIF, 10 MB gacha)",
+        "tooMany": "Bir martada {max} fayldan ko'p emas"
       }
     },
     "message": {
@@ -2600,7 +2608,7 @@
     "pendingSignatures": "Imzolashni kutmoqda",
     "empty": "Hujjatlar topilmadi",
     "filters": {
-      "search": "Nom bo‘yicha qidirish",
+      "search": "Qidirish: nom, bemor, telefon",
       "type": "Turi",
       "typeAll": "Barcha turlar",
       "patient": "Bemor",

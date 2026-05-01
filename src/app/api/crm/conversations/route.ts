@@ -5,6 +5,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, parseQuery } from "@/server/http";
+import { normalizePhone } from "@/lib/phone";
 import { QueryConversationSchema } from "@/server/schemas/conversation";
 
 export const GET = createApiListHandler(
@@ -21,15 +22,25 @@ export const GET = createApiListHandler(
     if (q.assignedToId) where.assignedToId = q.assignedToId;
     if (q.unread) where.unreadCount = { gt: 0 };
     if (q.q) {
-      where.OR = [
-        { lastMessageText: { contains: q.q, mode: "insensitive" } },
-        { patient: { fullName: { contains: q.q, mode: "insensitive" } } },
-        { patient: { phone: { contains: q.q } } },
-        { contactFirstName: { contains: q.q, mode: "insensitive" } },
-        { contactLastName: { contains: q.q, mode: "insensitive" } },
-        { contactUsername: { contains: q.q, mode: "insensitive" } },
-        { externalId: { contains: q.q } },
+      const term = q.q;
+      const phoneDigits = term.replace(/\D/g, "");
+      const phoneNorm = normalizePhone(term);
+      const or: Array<Record<string, unknown>> = [
+        { lastMessageText: { contains: term, mode: "insensitive" } },
+        { patient: { fullName: { contains: term, mode: "insensitive" } } },
+        { patient: { phone: { contains: term } } },
+        { contactFirstName: { contains: term, mode: "insensitive" } },
+        { contactLastName: { contains: term, mode: "insensitive" } },
+        { contactUsername: { contains: term, mode: "insensitive" } },
+        { externalId: { contains: term } },
       ];
+      if (phoneDigits.length >= 3) {
+        or.push({ patient: { phoneNormalized: { contains: phoneDigits } } });
+        if (phoneNorm) {
+          or.push({ patient: { phoneNormalized: { contains: phoneNorm } } });
+        }
+      }
+      where.OR = or;
     }
 
     const take = q.limit + 1;

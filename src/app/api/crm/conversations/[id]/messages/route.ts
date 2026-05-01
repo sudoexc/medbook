@@ -16,7 +16,7 @@ import {
 } from "@/server/schemas/message";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
-import { sendMessage } from "@/server/telegram/send";
+import { sendMessage, sendPhoto } from "@/server/telegram/send";
 
 function conversationIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -85,13 +85,21 @@ export const POST = createApiHandler(
 
     const senderId = ctx.kind === "TENANT" ? ctx.userId : null;
 
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    const previewText =
+      body.body && body.body.length > 0
+        ? body.body
+        : attachments.length > 0
+          ? `📷 ${attachments.length === 1 ? "Фото" : `${attachments.length} фото`}`
+          : "";
+
     const msg = await prisma.$transaction(async (tx) => {
       const created = await tx.message.create({
         data: {
           conversationId,
           direction: "OUT",
           body: body.body,
-          attachments: body.attachments ?? null,
+          attachments: attachments.length > 0 ? attachments : null,
           buttons: body.buttons ?? null,
           senderId,
           replyToId: body.replyToId ?? null,
@@ -102,7 +110,7 @@ export const POST = createApiHandler(
         where: { id: conversationId },
         data: {
           lastMessageAt: new Date(),
-          lastMessageText: body.body.slice(0, 500),
+          lastMessageText: previewText.slice(0, 500),
         },
       });
       return created;
@@ -116,19 +124,60 @@ export const POST = createApiHandler(
               Array<{ text: string; callback_data?: string; url?: string }>
             >)
           : null;
-        const sent = await sendMessage(
-          conv.clinic,
-          conv.externalId,
-          body.body,
-          inlineKeyboard
-            ? { reply_markup: { inline_keyboard: inlineKeyboard } }
-            : {},
-        );
+        const replyMarkup = inlineKeyboard
+          ? { reply_markup: { inline_keyboard: inlineKeyboard } }
+          : {};
+
+        // Telegram fetches photos by URL — must be reachable from the public
+        // internet. Prefer `TG_WEBHOOK_BASE_URL` (already used for the bot
+        // webhook, e.g. an ngrok tunnel in dev) and fall back to the request
+        // origin (which is localhost in dev → Telegram returns "wrong file").
+        const publicBase =
+          process.env.TG_WEBHOOK_BASE_URL?.replace(/\/$/, "") ||
+          new URL(request.url).origin;
+        const absolute = (u: string) =>
+          /^https?:\/\//i.test(u)
+            ? u
+            : `${publicBase}${u.startsWith("/") ? u : `/${u}`}`;
+
+        const imageAttachments = attachments.filter((a) => a.kind === "image");
+
+        let lastResult: { message_id: number } | null = null;
+        if (imageAttachments.length > 0) {
+          for (let i = 0; i < imageAttachments.length; i++) {
+            const att = imageAttachments[i];
+            const isLast = i === imageAttachments.length - 1;
+            const caption =
+              i === 0 && body.body && body.body.length > 0 ? body.body : undefined;
+            const opts = isLast ? replyMarkup : {};
+            const r = await sendPhoto(
+              conv.clinic,
+              conv.externalId,
+              absolute(att.url),
+              caption,
+              opts,
+            );
+            if (r && typeof r === "object" && "message_id" in r) {
+              lastResult = r as { message_id: number };
+            }
+          }
+        } else {
+          const sent = await sendMessage(
+            conv.clinic,
+            conv.externalId,
+            body.body,
+            replyMarkup,
+          );
+          if (sent && typeof sent === "object" && "message_id" in sent) {
+            lastResult = sent as { message_id: number };
+          }
+        }
+
         dispatched = await prisma.message.update({
           where: { id: msg.id },
           data: {
             status: "SENT",
-            externalId: String(sent.message_id),
+            externalId: lastResult ? String(lastResult.message_id) : null,
           },
         });
       } catch (e) {
@@ -159,7 +208,7 @@ export const POST = createApiHandler(
           conversationId,
           messageId: dispatched.id,
           direction: "OUT",
-          preview: body.body.slice(0, 200),
+          preview: previewText.slice(0, 200),
         },
       });
     }

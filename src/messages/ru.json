@@ -2017,6 +2017,14 @@
         "dataPlaceholder": "callback_data",
         "remove": "Удалить",
         "addButton": "Кнопка"
+      },
+      "upload": {
+        "label": "Фото",
+        "attach": "Прикрепить изображение",
+        "remove": "Убрать",
+        "dropHere": "Отпустите, чтобы прикрепить",
+        "rejectedSome": "Пропущено файлов: {count} (только JPG/PNG/WEBP/GIF до 10 МБ)",
+        "tooMany": "Не больше {max} файлов за раз"
       }
     },
     "message": {
@@ -2600,7 +2608,7 @@
     "pendingSignatures": "Ожидают подписи",
     "empty": "Документов не найдено",
     "filters": {
-      "search": "Поиск по названию",
+      "search": "Поиск: название, пациент, телефон",
       "type": "Тип",
       "typeAll": "Все типы",
       "patient": "Пациент",

@@ -7,11 +7,22 @@ import { toast } from "sonner";
 import type { InboxMessage, MessagesResponse } from "./types";
 import { messagesKey } from "./use-tg-messages";
 
+export type ChatAttachment = {
+  kind: "image";
+  url: string;
+  mimeType: string;
+  sizeBytes?: number;
+  name?: string;
+  width?: number;
+  height?: number;
+};
+
 export type SendPayload = {
   conversationId: string;
   body: string;
   buttons?: Array<Array<{ text: string; callback_data?: string; url?: string }>>;
   replyToId?: string | null;
+  attachments?: ChatAttachment[];
 };
 
 /**
@@ -33,6 +44,10 @@ export function useSendMessage() {
             body: payload.body,
             buttons: payload.buttons ?? undefined,
             replyToId: payload.replyToId ?? undefined,
+            attachments:
+              payload.attachments && payload.attachments.length > 0
+                ? payload.attachments
+                : undefined,
           }),
         },
       );
@@ -52,7 +67,10 @@ export function useSendMessage() {
         conversationId: payload.conversationId,
         direction: "OUT",
         body: payload.body,
-        attachments: null,
+        attachments:
+          payload.attachments && payload.attachments.length > 0
+            ? payload.attachments
+            : null,
         buttons: payload.buttons ?? null,
         senderId: null,
         sender: null,

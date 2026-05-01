@@ -51,3 +51,6 @@ next-env.d.ts
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# runtime user uploads (chat attachments in dev stub-storage mode)
+/public/uploads

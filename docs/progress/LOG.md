@@ -1011,6 +1011,17 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - В `src/components/layout/crm-sidebar.tsx` (или эквивалент) скрывать пункты меню если у клиники нет фичи: «Telegram» если `!hasTelegramInbox`, «Call Center» если `!hasCallCenter`, «Аналитика Pro»-секция если `!hasAnalyticsPro`.
 - `phase-9d-done` тег.
 
+### Результаты — 9a (✅ DONE 2026-05-01)
+
+- 3 коммита на main: `dd3e7ee feat(prisma): add Branch model + branchId backfill migration` → `8449a48 feat(tenant): branch-aware filtering` → `e4475ed test(tenant): branch-scope unit tests`. Тег `phase-9a-done` на `e4475ed`.
+- Миграция `20260501084339_add_branches`: 2 стадии — Stage A (DDL: Branch + branchId на 5 таблицах + FK + индексы), Stage B (backfill: `gen_random_uuid()::text` для default `hq` branch на каждую клинику + 5 UPDATE для backfill `branchId`). Колонка осталась NULLABLE — `NOT NULL` придёт в 9b после прод-верификации.
+- `prisma migrate dev` чистый, `prisma migrate status` → "Database schema is up to date". Backfill проверен: 0 NULL'ов в `Doctor=21, Cabinet=30, Appointment=2854, DoctorSchedule=91, DoctorTimeOff=0`.
+- `runWithTenant` принимает optional `branchId`. Если не задан → query клинично-wide (legacy behavior). Если задан → фильтр на 5 branch-scoped моделей. `Patient`, `Service`, `Payment` и пр. остались clinic-wide.
+- `src/lib/tenant-allowlist.ts` теперь экспортирует `MODELS_BRANCH_SCOPED` (Doctor/Cabinet/Appointment/DoctorSchedule/DoctorTimeOff) — Phase 9b/c будут использовать.
+- Прод-роутов читающих `ctx.branchId` пока нет — это Phase 9b. До тех пор все routes ведут себя байт-в-байт как до 9a.
+- Тесты: **291/291 passing** (28 файлов). +7 новых в `tests/unit/prisma-branch-scope.test.ts` (vi.hoisted $extends capture, без DB). 0 новых tsc/lint ошибок.
+- E2E suite не запускалась (Next dev server timed out под dual-lockfile warning); код e2e не трогали — fixtures и логика идентичны.
+
 ### Quality gates Phase 9
 
 - `npx prisma migrate dev` без ошибок.

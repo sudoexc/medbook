@@ -26,11 +26,21 @@ import {
 
 import { cn } from "@/lib/utils"
 import { useShellSummary } from "@/hooks/use-shell-summary"
+import {
+  ENTERPRISE_FLAGS,
+  computeVisibleNav,
+  type FeatureFlags,
+} from "@/lib/feature-flags"
 
 type BadgeTone = "danger" | "info" | "warning" | "success"
 /** Keys into ShellSummary.unread — drives the live badge count for each nav item. */
 type BadgeKey = "calls" | "telegram" | "smsEmail" | "notifications"
 
+/**
+ * `feature` is the gate consumed by `computeVisibleNav` (Phase 9d). When set,
+ * the item only renders if the clinic's plan has that boolean flag = true.
+ * Items without `feature` are unconditional (Basic-tier baseline).
+ */
 type NavItem = {
   href: string
   /** key under crmShell.sidebarNav */
@@ -38,6 +48,7 @@ type NavItem = {
   icon: LucideIcon
   badgeKey?: BadgeKey
   badgeTone?: BadgeTone
+  feature?: "hasTelegramInbox" | "hasCallCenter" | "hasAnalyticsPro"
 }
 
 type NavGroup = {
@@ -46,7 +57,7 @@ type NavGroup = {
   items: NavItem[]
 }
 
-const NAV: NavGroup[] = [
+export const CRM_NAV: NavGroup[] = [
   {
     items: [
       { href: "reception", labelKey: "reception", icon: LayoutDashboardIcon },
@@ -68,6 +79,7 @@ const NAV: NavGroup[] = [
         icon: PhoneCallIcon,
         badgeKey: "calls",
         badgeTone: "danger",
+        feature: "hasCallCenter",
       },
       {
         href: "telegram",
@@ -75,6 +87,7 @@ const NAV: NavGroup[] = [
         icon: SendIcon,
         badgeKey: "telegram",
         badgeTone: "info",
+        feature: "hasTelegramInbox",
       },
       {
         href: "sms",
@@ -99,6 +112,11 @@ const NAV: NavGroup[] = [
     ],
   },
 ]
+
+/** Filter the static nav by the clinic's plan flags. Pure / DB-less. */
+export function getVisibleCrmNav(flags: FeatureFlags): NavGroup[] {
+  return computeVisibleNav(CRM_NAV, flags) as NavGroup[]
+}
 
 const BADGE_CLASS: Record<BadgeTone, string> = {
   danger: "bg-destructive text-destructive-foreground",
@@ -160,9 +178,20 @@ function DonutGauge({
 
 export interface CrmSidebarProps {
   brand?: string
+  /**
+   * Effective feature flags for the current clinic. Drives plan-aware nav
+   * filtering (Phase 9d). Defaults to ENTERPRISE_FLAGS so the component still
+   * renders sensibly when used outside a server-rendered layout (Storybook,
+   * a test harness without a session). Production callers — i.e. the CRM
+   * layout — pass the resolved flags from `getFeatureFlagsForCurrentSession`.
+   */
+  flags?: FeatureFlags
 }
 
-export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
+export function CrmSidebar({
+  brand = "Neurofax",
+  flags = ENTERPRISE_FLAGS,
+}: CrmSidebarProps) {
   const pathname = usePathname() ?? ""
   const params = useParams()
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
@@ -171,6 +200,7 @@ export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
   const { data: summary } = useShellSummary()
   const loadPercent = summary?.today.loadPercent ?? 0
   const todayCount = summary?.today.appointmentsCount ?? 0
+  const visibleNav = React.useMemo(() => getVisibleCrmNav(flags), [flags])
 
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -190,7 +220,7 @@ export function CrmSidebar({ brand = "Neurofax" }: CrmSidebarProps) {
         </div>
       </Link>
       <nav className="flex-1 overflow-y-auto px-3 py-1">
-        {NAV.map((group, gi) => (
+        {visibleNav.map((group, gi) => (
           <div key={gi} className={cn(gi > 0 && "mt-4")}>
             {group.labelKey ? (
               <div className="mb-1 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">

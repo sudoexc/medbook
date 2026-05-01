@@ -20,15 +20,20 @@
  */
 import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
+import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
 
 async function main() {
   console.info("[workers] starting…");
   startNotificationsSendWorker();
   const scheduler = startNotificationsSchedulerWorker(60_000);
+  // Phase 9e — flip TRIAL→PAST_DUE for clinics whose 30-day trial elapsed.
+  // Same 60s cadence as the notifications scheduler: cheap query, idempotent.
+  const trialExpiry = startTrialExpirySchedulerWorker(60_000);
 
   const shutdown = (signal: NodeJS.Signals) => {
     console.info(`[workers] received ${signal} — shutting down`);
     scheduler.stop();
+    trialExpiry.stop();
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

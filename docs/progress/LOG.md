@@ -1048,6 +1048,27 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - Тесты: **366/366 passing** (+16 новых: `feature-nav.test.ts` 10 + `feature-guard.test.ts` 6) + 1 e2e `25-feature-flags-gating.spec.ts` (downgrade NeuroFax → Basic, проверка 404 на 3 роутах, restore Pro). 0 новых tsc/eslint.
 - Намеренно НЕ закрыто: `/api/crm/conversations` (мульти-канальный — SMS legitimate на basic), Notifications/Documents/Roles (нет соответствующих ключей в `FeatureFlags` — не выдумывал), BranchSwitcher (уже само скрывается при ≤1 branch). `analytics-page-client` получает 404 на funnels и тихо прячет компонент через существующий `qFunnels.isError ? null` — без новой клиент/сервер-разводки.
 
+### Результаты — 9e (✅ DONE 2026-05-01)
+
+- 4 коммита в worktree, смерджены `--no-ff` коммитом (через `worktree-agent-ac866fc4`): `660b7d6 feat(workers): trial-expiry scheduler` → `e3a2098 feat(crm): trial countdown banner in layout` → `f226ce8 i18n: trial banner keys (ru+uz)` → `2274554 test: trial-expiry + banner state`. Тег `phase-9e-done` на merge-коммите. 10 файлов, +841/−1. **Worktree-изоляция держалась до конца** (агент проверял `pwd` + `git rev-parse --show-toplevel` перед каждым коммитом — урок 9c-B/9d пройден).
+- `src/server/workers/trial-expiry-scheduler.ts` (159 LoC) — `repeat("trial-expiry", "scan", {}, 60_000)` каждую минуту, ищет TRIAL с `trialEndsAt < now()`, переводит в **PAST_DUE** (не CANCELLED — Stripe-style grace по матрице 9b: премиум-фичи продолжают работать, просто banner становится красным "оплатите"). Зарегистрирован в `start.ts` рядом с `notifications-scheduler`.
+- `src/server/platform/current-subscription.ts` — `getCurrentSubscription()` через `auth() → clinicId → prisma.subscription.findUnique({ include: { plan: true } })`, считает `daysLeft` для TRIAL. SUPER_ADMIN-без-clinic → null.
+- `src/components/layout/trial-banner.tsx` (server component, 132 LoC) + `trial-banner-state.ts` (91 LoC pure helper). Pure helper отделён потому что vitest падал на `next-auth/lib/env.js → next/server` resolution при импорте через серверные модули — leaf держит type+state machine, server-обёртка делает DB+auth, рендер импортит leaf. Пороги: `>7` hidden, `7..3` info (yellow), `2..0` warning (red), PAST_DUE expired (red). SUPER_ADMIN видит deep-link на `/admin/clinics/[id]/billing`, обычный ADMIN — без линка.
+- В `crm/layout.tsx` `Promise.all([getFeatureFlagsForCurrentSession(), getCurrentSubscription()])` — параллельный запрос, 0 latency-cost vs sequential.
+- Тесты: **400/400 passing** (+34 новых: `trial-expiry.test.ts` 15 + `trial-banner.test.ts` 19). 0 новых tsc/eslint (3 baseline tsc остаются — `doctor-queue-list.tsx` + 2 prisma `$extends` typing в appointments routes).
+- Известное ограничение: `currentPeriodEndsAt: null` у всех seeded subs (seed выставляет только `trialEndsAt`), поэтому `expired.bodyWithDate` вариант banner-а не сработает до Phase 10 (Stripe). Banner gracefully fallback на `expired.body` без даты.
+
+### Phase 9 ИТОГ (✅ DONE 2026-05-01)
+
+Multi-tenant SaaS billing+features stack полностью на main. 5 фаз последовательно:
+- **9a** Branch schema + миграция + backfill (тег `phase-9a-done`)
+- **9b** Plan/Subscription модели + `getFeatureFlags()` (тег `phase-9b-done`)
+- **9c** BranchSwitcher CRM UI + админский billing UI (тег `phase-9c-done`)
+- **9d** Feature gates в CRM меню + 404-гарды (тег `phase-9d-done`)
+- **9e** Trial-expiry cron + countdown banner (тег `phase-9e-done`)
+
+Финальные метрики на main: **400/400 unit tests**, **3 baseline tsc errors** (не регрессировали с Phase 8), 0 новых eslint. Готовность к Phase 10 (Stripe) — высокая: `Subscription.currentPeriodEndsAt` уже в схеме и пайплайне, осталось только подключить webhook-source-of-truth.
+
 ### Quality gates Phase 9
 
 - `npx prisma migrate dev` без ошибок.

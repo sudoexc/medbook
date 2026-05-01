@@ -190,6 +190,13 @@ enum ProviderKind {
   OTHER
 }
 
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,6 +253,7 @@ model Clinic {
   doctorTimeOffs        DoctorTimeOff[]
   appointmentServices   AppointmentService[]
   branches              Branch[]
+  subscription          Subscription?
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -316,6 +324,56 @@ model ProviderConnection {
 
   @@unique([clinicId, kind, label])
   @@index([clinicId, kind])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plans + Subscriptions (Phase 9b)
+//
+// `Plan` is a small catalog of SaaS tiers (basic / pro / enterprise). Feature
+// gates live in `features` (Json) so we can extend them without touching the
+// schema. `Subscription` ties exactly one plan to one clinic — there is at
+// most one active row per clinic (`@unique` on clinicId).
+//
+// The migration that introduces these tables also seeds the canonical three
+// plans and gives every existing clinic a TRIAL on `pro` so prod rollouts
+// don't leave anyone behind. Phase 9c builds the admin UI; Phase 9d wires
+// feature flags into navigation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Plan {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  nameRu     String
+  nameUz     String
+  priceMonth Decimal  @db.Decimal(12, 2)
+  currency   Currency @default(UZS)
+  // {hasTelegramInbox, hasCallCenter, hasAnalyticsPro, maxBranches, maxUsers}
+  features   Json
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([isActive, sortOrder])
+}
+
+model Subscription {
+  id                  String             @id @default(cuid())
+  clinicId            String             @unique
+  clinic              Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  planId              String
+  plan                Plan               @relation(fields: [planId], references: [id])
+  status              SubscriptionStatus @default(TRIAL)
+  trialEndsAt         DateTime?
+  currentPeriodEndsAt DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([status])
+  @@index([currentPeriodEndsAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

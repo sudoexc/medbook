@@ -23,12 +23,19 @@ const prisma = new PrismaClient({
 const SLUG = "neurofax";
 
 // ─── Cabinets ────────────────────────────────────────────────────────
+// Phase 11: every doctor occupies their own cabinet (Doctor.cabinetId is
+// NOT NULL UNIQUE), so the previous "two doctors share cabinet 2/6 on
+// alternate shifts" model is gone. Cabinets 2-Б and 6-Б are siblings of
+// 2 and 6 — same room conceptually, but separate scheduling units so each
+// doctor has a stable home.
 const CABINETS = [
   { number: "1", floor: 1, nameRu: "Взрослый невролог", nameUz: "Katta nevrolog" },
   { number: "2", floor: 1, nameRu: "Кардиология", nameUz: "Kardiologiya" },
+  { number: "2-Б", floor: 1, nameRu: "Кардиология (доп.)", nameUz: "Kardiologiya (qo'sh.)" },
   { number: "4", floor: 1, nameRu: "УЗИ и диагностика", nameUz: "UZI va diagnostika" },
   { number: "5", floor: 1, nameRu: "Взрослый невролог", nameUz: "Katta nevrolog" },
   { number: "6", floor: 1, nameRu: "Детский невролог / педиатр", nameUz: "Bolalar nevrologi / pediatr" },
+  { number: "6-Б", floor: 1, nameRu: "Детский невролог (доп.)", nameUz: "Bolalar nevrologi (qo'sh.)" },
 ] as const;
 
 // ─── Services (prices stored in тийины: сум × 100) ──────────────────
@@ -129,7 +136,7 @@ const DOCTORS: DoctorSpec[] = [
     specializationUz: "Kardiolog",
     email: "muhitdinova@neurofax.uz",
     color: "#EF4444",
-    cabinetNumber: "2",
+    cabinetNumber: "2-Б",
     schedule: [
       { weekday: 2, start: "09:30", end: "15:00" },
       { weekday: 4, start: "09:30", end: "15:00" },
@@ -213,7 +220,7 @@ const DOCTORS: DoctorSpec[] = [
     specializationUz: "Bolalar nevrologi / pediatr",
     email: "vazirova@neurofax.uz",
     color: "#EC4899",
-    cabinetNumber: "6",
+    cabinetNumber: "6-Б",
     schedule: [
       { weekday: 1, start: "09:00", end: "15:00" },
       { weekday: 3, start: "09:00", end: "15:00" },
@@ -336,6 +343,7 @@ async function main() {
         specializationUz: d.specializationUz,
         color: d.color,
         userId: user.id,
+        cabinetId: cabId,
         isActive: true,
       },
       create: {
@@ -347,6 +355,7 @@ async function main() {
         specializationUz: d.specializationUz,
         color: d.color,
         userId: user.id,
+        cabinetId: cabId,
         isActive: true,
       },
     });
@@ -365,7 +374,8 @@ async function main() {
       });
     }
 
-    // Replace DoctorSchedule with real weekly grid + cabinet anchor.
+    // Replace DoctorSchedule with the real weekly grid. Cabinet is now bound
+    // to the doctor (Doctor.cabinetId), so no per-shift cabinet column.
     await prisma.doctorSchedule.deleteMany({ where: { doctorId: doctor.id } });
     for (const sch of d.schedule) {
       await prisma.doctorSchedule.create({
@@ -375,7 +385,6 @@ async function main() {
           weekday: sch.weekday,
           startTime: sch.start,
           endTime: sch.end,
-          cabinetId: cabId,
           isActive: true,
         },
       });

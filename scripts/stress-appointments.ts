@@ -1811,7 +1811,16 @@ async function main() {
         name: `service create → ${svc.id.slice(0, 8)}…`,
         pass: !!svc.id,
       });
-      // Doctor + schedule
+      // Doctor + schedule. Phase 11: doctor must occupy a cabinet, so we
+      // mint a fresh stress cabinet per run and bind the new doctor to it.
+      const stressCab = await prisma.cabinet.create({
+        data: {
+          clinicId,
+          number: `stress-${Date.now()}`,
+          isActive: true,
+          equipment: [],
+        },
+      });
       const doc = await prisma.doctor.create({
         data: {
           clinicId,
@@ -1822,6 +1831,7 @@ async function main() {
           specializationUz: "Stress",
           color: "#FF00FF",
           salaryPercent: 40,
+          cabinetId: stressCab.id,
           isActive: true,
         },
       });

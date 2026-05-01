@@ -1134,52 +1134,63 @@ async function rebuildTodayStoryline(args: {
   // Today's weekday (0=Sun..6=Sat). If today is Sunday and no schedule
   // exists, fall back to Monday so the boss-demo always has data.
   const todayWeekday = new Date().getDay();
-  let schedules = await prisma.doctorSchedule.findMany({
-    where: {
-      clinicId,
-      isActive: true,
-      weekday: todayWeekday,
-      cabinetId: { not: null },
-      doctor: { isActive: true },
-    },
-    select: {
-      doctorId: true,
-      cabinetId: true,
-      startTime: true,
-      endTime: true,
-      doctor: { select: { id: true, nameRu: true } },
-    },
-  });
-  if (schedules.length === 0) {
-    // Mon fallback so demo always has data even if run on Sunday.
-    schedules = await prisma.doctorSchedule.findMany({
+  // Cabinet is bound to doctor (Phase 11); pull it via doctor.cabinet rather
+  // than DoctorSchedule.cabinetId (which no longer exists).
+  type DemoSchedule = {
+    doctorId: string;
+    cabinetId: string;
+    startTime: string;
+    endTime: string;
+    doctor: { id: string; nameRu: string };
+    cabinet: { id: string; number: string } | null;
+  };
+  const fetchSchedules = async (weekday: number): Promise<DemoSchedule[]> => {
+    const rows = await prisma.doctorSchedule.findMany({
       where: {
         clinicId,
         isActive: true,
-        weekday: 1,
-        cabinetId: { not: null },
-        doctor: { isActive: true },
+        weekday,
+        doctor: { isActive: true, cabinet: { isActive: true } },
       },
       select: {
         doctorId: true,
-        cabinetId: true,
         startTime: true,
         endTime: true,
-        doctor: { select: { id: true, nameRu: true } },
+        doctor: {
+          select: {
+            id: true,
+            nameRu: true,
+            cabinetId: true,
+            cabinet: { select: { id: true, number: true, isActive: true } },
+          },
+        },
       },
     });
+    return rows.map((r) => ({
+      doctorId: r.doctorId,
+      cabinetId: r.doctor.cabinetId,
+      startTime: r.startTime,
+      endTime: r.endTime,
+      doctor: { id: r.doctor.id, nameRu: r.doctor.nameRu },
+      cabinet: r.doctor.cabinet
+        ? { id: r.doctor.cabinet.id, number: r.doctor.cabinet.number }
+        : null,
+    }));
+  };
+
+  let schedules = await fetchSchedules(todayWeekday);
+  if (schedules.length === 0) {
+    // Mon fallback so demo always has data even if run on Sunday.
+    schedules = await fetchSchedules(1);
   }
   if (schedules.length === 0) return empty;
 
-  // Cabinet lookup (DoctorSchedule has no relation to Cabinet, only cabinetId).
-  const cabinetIds = Array.from(
-    new Set(schedules.map((s) => s.cabinetId).filter((x): x is string => !!x)),
+  const cabinetById = new Map(
+    schedules
+      .map((s) => s.cabinet)
+      .filter((c): c is { id: string; number: string } => !!c)
+      .map((c) => [c.id, c]),
   );
-  const cabinetRows = await prisma.cabinet.findMany({
-    where: { id: { in: cabinetIds }, isActive: true },
-    select: { id: true, number: true },
-  });
-  const cabinetById = new Map(cabinetRows.map((c) => [c.id, c]));
 
   // Per-doctor allowed services + price overrides.
   const doctorIds = Array.from(new Set(schedules.map((s) => s.doctorId)));
@@ -1442,9 +1453,12 @@ async function rebuildTodayStoryline(args: {
     }
   }
 
-  // ── Walk-ins & home visits without a cabinet (telemed / outreach) ──
-  // Add ~10 future appointments without cabinetId — these show up in
-  // appointments list and doctor view but not in the cabinet queue.
+  // ── Walk-ins & home visits ──
+  // Add ~10 future appointments. Phase 11: cabinet is bound to doctor, so
+  // even outreach/telemed bookings land in the doctor's room (the receptionist
+  // can move the time later). The slot-overlap check uses the same cabinet.
+  const cabinetByDoctor = new Map<string, string>();
+  for (const s of schedules) cabinetByDoctor.set(s.doctor.id, s.cabinetId);
   const uniqueDoctors = Array.from(
     new Map(schedules.map((s) => [s.doctor.id, s.doctor])).values(),
   );
@@ -1468,10 +1482,11 @@ async function rebuildTodayStoryline(args: {
     // Walk-ins/telemed share the doctor with the storyline schedule, so we
     // *must* check overlap or two appointments stack on the same slot
     // (visible as a double booking in the calendar).
+    const docCabinetId = cabinetByDoctor.get(doctor.id) ?? null;
     if (
       await slotIsTaken({
         doctorId: doctor.id,
-        cabinetId: null,
+        cabinetId: docCabinetId,
         startAt,
         endAt,
       })
@@ -1483,7 +1498,7 @@ async function rebuildTodayStoryline(args: {
         clinicId,
         patientId: patient.id,
         doctorId: doctor.id,
-        cabinetId: null,
+        cabinetId: docCabinetId,
         serviceId: svc.id,
         date: startAt,
         time: `${pad(startAt.getHours())}:${pad(startAt.getMinutes())}`,

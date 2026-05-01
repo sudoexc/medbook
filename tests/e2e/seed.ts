@@ -208,9 +208,24 @@ async function main() {
       create: { email: receptEmail, name: `${cs.nameRu} — Ресепшн`, passwordHash: receptHash, role: "RECEPTIONIST", clinicId: clinic.id },
     });
 
-    // DOCTORs
+    // 10 Cabinets — created before doctors so each doctor can be bound to
+    // their own cabinet at upsert time (Phase 11: Doctor.cabinetId NOT NULL).
+    const createdCabinets: { id: string }[] = [];
+    for (let i = 1; i <= 10; i++) {
+      const number = `10${i}`;
+      const cab = await prisma.cabinet.upsert({
+        where: { clinicId_number: { clinicId: clinic.id, number } },
+        update: { floor: 1, nameRu: `Кабинет ${number}`, nameUz: `${number}-xona`, isActive: true, branchId: defaultBranch.id },
+        create: { clinicId: clinic.id, branchId: defaultBranch.id, number, floor: 1, nameRu: `Кабинет ${number}`, nameUz: `${number}-xona`, equipment: [] },
+      });
+      createdCabinets.push({ id: cab.id });
+    }
+
+    // DOCTORs — bind doctor i to cabinet i (1:1).
     const createdDoctors: { id: string; userId: string | null }[] = [];
-    for (const d of DOCTOR_DEFS) {
+    for (let i = 0; i < DOCTOR_DEFS.length; i++) {
+      const d = DOCTOR_DEFS[i]!;
+      const cabinetId = createdCabinets[i]!.id;
       const docEmail = `${d.slug}@${cs.slug}.uz`;
       const user = await prisma.user.upsert({
         where: { email: docEmail },
@@ -222,13 +237,14 @@ async function main() {
         update: {
           nameRu: d.nameRu, nameUz: d.nameUz,
           specializationRu: d.specializationRu, specializationUz: d.specializationUz,
-          color: d.color, userId: user.id, branchId: defaultBranch.id, isActive: true,
+          color: d.color, userId: user.id, branchId: defaultBranch.id,
+          cabinetId, isActive: true,
         },
         create: {
           clinicId: clinic.id, branchId: defaultBranch.id, slug: d.slug,
           nameRu: d.nameRu, nameUz: d.nameUz,
           specializationRu: d.specializationRu, specializationUz: d.specializationUz,
-          color: d.color, userId: user.id,
+          color: d.color, userId: user.id, cabinetId,
         },
       });
       createdDoctors.push({ id: doctor.id, userId: user.id });
@@ -249,18 +265,6 @@ async function main() {
           });
         }
       }
-    }
-
-    // 10 Cabinets
-    const createdCabinets: { id: string }[] = [];
-    for (let i = 1; i <= 10; i++) {
-      const number = `10${i}`;
-      const cab = await prisma.cabinet.upsert({
-        where: { clinicId_number: { clinicId: clinic.id, number } },
-        update: { floor: 1, nameRu: `Кабинет ${number}`, nameUz: `${number}-xona`, isActive: true, branchId: defaultBranch.id },
-        create: { clinicId: clinic.id, branchId: defaultBranch.id, number, floor: 1, nameRu: `Кабинет ${number}`, nameUz: `${number}-xona`, equipment: [] },
-      });
-      createdCabinets.push({ id: cab.id });
     }
 
     // 10 Services + link to all doctors

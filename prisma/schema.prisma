@@ -476,6 +476,13 @@ model Doctor {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  // Doctor↔Cabinet 1:1 binding. NOT NULL — every doctor must occupy a
+  // cabinet (no headless doctors). UNIQUE — one doctor per cabinet, no
+  // shared shifts. onDelete: Restrict prevents deleting a cabinet while
+  // it's still occupied; admin must reassign first.
+  cabinetId String  @unique
+  cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
+
   services     ServiceOnDoctor[]
   schedules    DoctorSchedule[]
   timeOffs     DoctorTimeOff[]
@@ -516,11 +523,14 @@ model Service {
 }
 
 model ServiceOnDoctor {
-  doctorId      String
-  serviceId     String
-  priceOverride Int?
-  doctor        Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  service       Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  doctorId            String
+  serviceId           String
+  priceOverride       Int?
+  // Per-doctor duration override. null = use Service.durationMin. Lets a
+  // senior doctor book longer slots for the same nominal service.
+  durationMinOverride Int?
+  doctor              Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  service             Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@id([doctorId, serviceId])
   @@index([serviceId])
@@ -541,6 +551,10 @@ model Cabinet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Back-reference to the doctor occupying this cabinet, if any. Optional
+  // because there's a brief window during onboarding/reassignment when a
+  // cabinet exists with no doctor yet attached.
+  doctor       Doctor?
   appointments Appointment[]
 
   @@unique([clinicId, number])
@@ -559,7 +573,6 @@ model DoctorSchedule {
   weekday   Int
   startTime String
   endTime   String
-  cabinetId String?
   validFrom DateTime?
   validTo   DateTime?
   isActive  Boolean   @default(true)

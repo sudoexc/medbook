@@ -13,7 +13,7 @@
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, err, notFound } from "@/server/http";
+import { err, notFound } from "@/server/http";
 import { SetActiveBranchSchema } from "@/server/schemas/branch";
 import { buildActiveBranchSetCookie } from "@/server/platform/branch-cookie";
 

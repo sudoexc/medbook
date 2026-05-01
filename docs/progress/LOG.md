@@ -882,7 +882,7 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 
 ---
 
-## Phase 8 — Conversion KPIs + Notification Settings UI — 🔄 IN PROGRESS (старт 2026-05-01)
+## Phase 8 — Conversion KPIs + Notification Settings UI — ✅ DONE 2026-05-01
 
 ### Контекст
 
@@ -938,6 +938,29 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - `agent-B` — Phase 8b+c (notification settings UI) — изолированная ветка
 
 Они не пересекаются по файлам (разные роуты, разные UI-страницы, разные тесты), поэтому merge conflict минимален. Главный сводит обратно в `main` и тегает `phase-8-done`.
+
+### Что сделано (фактический результат)
+
+**8a — Analytics funnels** (commits `ae92e1f`..`503afce`):
+- `src/server/analytics/funnels.ts` — 4 чистых аггрегатора: `computeTgFunnel` (TG→запись с lookahead 7 дней), `computeCallFunnel` (звонок→запись), `computeNoShowRanks` (топ-10 врачей + услуг по no-show%), `computeAverageWaitTime` (среднее `WAITING→IN_PROGRESS` per doctor).
+- `GET /api/crm/analytics/funnels` — роут с RBAC `[ADMIN, DOCTOR]`, scope для DOCTOR применяется только к no-show + wait, TG/Call funnels — clinic-wide acquisition metrics.
+- UI: `FunnelCards` подключён через `next/dynamic` к `analytics-page-client.tsx`.
+- 11 unit-тестов в `tests/unit/analytics/funnels.test.ts`, 1 e2e в `tests/e2e/23-analytics-funnels.spec.ts`.
+- **Decision:** Mini App drop-off пропущен — нужна `MiniAppEvent` таблица для воронки слотов; вернёмся в Phase 11+. На wire `miniAppFunnel: null` — расширяемо без breaking change.
+
+**8b+c — Notification template & rules editor** (commits `2c45045`..`c3e3da7`, merge `41ad7e5`):
+- `/crm/settings/notifications` page с двумя вкладками: тело сообщения (RU/UZ + chip-list переменных + live preview) и расписание (toggle, offsetMin 1..72ч, channel TG/SMS/both).
+- `GET /api/crm/settings/notifications/templates` + `PATCH .../[id]` (ADMIN, per-clinic, audited).
+- Helpers: `src/server/notifications/rules.ts` — `resolveChannels`, `resolveOffsetMin`, `sanitizeTriggerConfig`.
+- Scheduler: `runDynamicReminders()` в `notifications-scheduler.ts:50-245` обрабатывает кастомные `triggerConfig.offsetMin`. Legacy -1440/-120 остаются за `runScheduledTriggers`.
+- `triggers.ts` **не изменён** (стабильность сохранена).
+- 32 unit-теста (rules-validation/rules-config/preview-render) + 2 e2e в `23-settings-notifications-edit.spec.ts`.
+
+### Quality gates Phase 8 (фактические)
+
+- **72 unit-тестов зелёные** на сводном прогоне `vitest run tests/unit/analytics/funnels.test.ts tests/unit/notifications`.
+- 3 pre-existing tsc-ошибки в `doctor-queue-list.tsx`, `appointments/route.ts:205`, `miniapp/appointments/route.ts:154` — **не вносены этой фазой**. Это Prisma 7 extended-client typing на `tx` параметре; вылезли после `781682c` (post-Phase-7 hardening) при апгрейде driver adapter. Переезжают в hotfix-блок.
+- Working tree чистый, `phase-8-done` тег на merge-коммите `41ad7e5`.
 
 ## Команды для деплоя
 

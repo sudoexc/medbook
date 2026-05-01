@@ -1,6 +1,10 @@
 /**
  * /api/crm/doctors/[id]/schedule — list + replace weekly schedule.
- * See docs/TZ.md §6.6. Body for PUT: { entries: [{weekday, startTime, endTime, cabinetId?}] }.
+ * See docs/TZ.md §6.6. Body for PUT: { entries: [{weekday, startTime, endTime}] }.
+ *
+ * Cabinet binding (Phase 11): the cabinet is no longer per-shift; it is bound
+ * to the doctor (Doctor.cabinetId). Older clients that still send `cabinetId`
+ * on schedule entries had it stripped by the schema upstream.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -52,7 +56,6 @@ export const PUT = createApiHandler(
           weekday: e.weekday,
           startTime: e.startTime,
           endTime: e.endTime,
-          cabinetId: e.cabinetId ?? null,
           validFrom: e.validFrom ?? null,
           validTo: e.validTo ?? null,
           isActive: e.isActive ?? true,

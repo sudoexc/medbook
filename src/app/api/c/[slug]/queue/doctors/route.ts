@@ -33,11 +33,7 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
       photoUrl: true,
       color: true,
       pricePerVisit: true,
-      schedules: {
-        where: { weekday, isActive: true },
-        select: { cabinetId: true, startTime: true, endTime: true },
-        take: 1,
-      },
+      cabinet: { select: { number: true } },
     },
     orderBy: { nameRu: "asc" },
   });
@@ -46,33 +42,19 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
     return ok({ doctors: [] });
   }
 
-  const cabinetIds = doctors
-    .map((d) => d.schedules[0]?.cabinetId)
-    .filter((c): c is string => !!c);
-
-  const [waiting, cabinets] = await Promise.all([
-    prisma.appointment.groupBy({
-      by: ["doctorId"],
-      where: {
-        clinicId: ctx.clinicId,
-        doctorId: { in: doctors.map((d) => d.id) },
-        date: { gte: dayStart, lt: dayEnd },
-        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
-      },
-      _count: { _all: true },
-    }),
-    cabinetIds.length > 0
-      ? prisma.cabinet.findMany({
-          where: { clinicId: ctx.clinicId, id: { in: cabinetIds } },
-          select: { id: true, number: true },
-        })
-      : Promise.resolve([] as { id: string; number: string }[]),
-  ]);
+  const waiting = await prisma.appointment.groupBy({
+    by: ["doctorId"],
+    where: {
+      clinicId: ctx.clinicId,
+      doctorId: { in: doctors.map((d) => d.id) },
+      date: { gte: dayStart, lt: dayEnd },
+      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+    },
+    _count: { _all: true },
+  });
 
   const out = doctors.map((d) => {
     const w = waiting.find((x) => x.doctorId === d.id)?._count._all ?? 0;
-    const cabId = d.schedules[0]?.cabinetId;
-    const cab = cabId ? cabinets.find((c) => c.id === cabId) : null;
     return {
       id: d.id,
       nameRu: d.nameRu,
@@ -81,7 +63,7 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
       specializationUz: d.specializationUz,
       photoUrl: d.photoUrl,
       color: d.color,
-      cabinet: cab?.number ?? null,
+      cabinet: d.cabinet?.number ?? null,
       pricePerVisit: d.pricePerVisit,
       waitingCount: w,
       etaMinutes: w * 30,

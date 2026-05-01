@@ -17,8 +17,34 @@ export const GET = createApiListHandler(
       where,
       orderBy: { number: "asc" },
       take: q.limit,
+      include: {
+        // Surface the occupant so the UI can display "Свободен / Занят: <name>"
+        // and the doctor-edit form can disable cabinets bound to other doctors.
+        // Doctor.cabinetId is UNIQUE so this is at most one row.
+        doctor: {
+          select: {
+            id: true,
+            nameRu: true,
+            nameUz: true,
+            isActive: true,
+          },
+        },
+      },
     });
-    return ok({ rows });
+    return ok({
+      rows: rows.map((c) => ({
+        ...c,
+        occupant: c.doctor
+          ? {
+              id: c.doctor.id,
+              nameRu: c.doctor.nameRu,
+              nameUz: c.doctor.nameUz,
+              isActive: c.doctor.isActive,
+            }
+          : null,
+        doctor: undefined,
+      })),
+    });
   }
 );
 

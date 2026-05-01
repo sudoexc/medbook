@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+/**
+ * One ServiceOnDoctor row in the create/update doctor payload.
+ * `priceOverride` and `durationMinOverride` are nullable: omitting them
+ * (or sending null) means "fall back to Service.priceBase / durationMin".
+ */
+export const DoctorServiceLinkSchema = z.object({
+  serviceId: z.string().min(1),
+  priceOverride: z.number().int().min(0).optional().nullable(),
+  durationMinOverride: z.number().int().min(5).max(480).optional().nullable(),
+});
+
 export const CreateDoctorSchema = z.object({
   slug: z
     .string()
@@ -27,6 +38,18 @@ export const CreateDoctorSchema = z.object({
    * clinic's default branch, so legacy callers stay backwards compatible.
    */
   branchId: z.string().min(1).optional().nullable(),
+  /**
+   * Required cabinet binding. The route validates that the cabinet is in
+   * the same clinic and not already occupied by another doctor.
+   */
+  cabinetId: z.string().min(1),
+  /**
+   * Optional service catalog for this doctor. When omitted on create the
+   * doctor is created with no services and must have them added later
+   * (the doctor is "scheduleable" only after both a cabinet and at least
+   * one service exist).
+   */
+  services: z.array(DoctorServiceLinkSchema).optional(),
 });
 
 export const UpdateDoctorSchema = CreateDoctorSchema.partial();
@@ -41,11 +64,13 @@ export const QueryDoctorSchema = z.object({
 
 // --- Schedule ----------------------------------------------------------------
 
+// `cabinetId` is no longer accepted on schedule entries — the cabinet is
+// derived from `doctor.cabinetId` and is the same for every shift. Older
+// clients that still send the field are ignored (we strip it server-side).
 export const ScheduleEntrySchema = z.object({
   weekday: z.number().int().min(0).max(6),
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
-  cabinetId: z.string().optional().nullable(),
   validFrom: z.coerce.date().optional().nullable(),
   validTo: z.coerce.date().optional().nullable(),
   isActive: z.boolean().optional().default(true),

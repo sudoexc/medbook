@@ -24,10 +24,14 @@ const ServiceLine = z.object({
   priceOverride: z.number().int().min(0).optional(),
 });
 
+// `cabinetId` is no longer a field on appointment payloads — Phase 11 binds
+// each doctor to exactly one cabinet, so the route derives it from
+// `doctor.cabinetId` and ignores anything the client sends. We keep the key
+// out of the schema so the contract is unambiguous (and so unit tests fail
+// loudly if anyone tries to set a cabinet on an appointment again).
 export const CreateAppointmentSchema = z.object({
   patientId: z.string(),
   doctorId: z.string(),
-  cabinetId: z.string().optional().nullable(),
   serviceId: z.string().optional().nullable(),
   services: z.array(ServiceLine).max(10).optional(),
   date: z.coerce.date(),
@@ -45,7 +49,7 @@ export const CreateAppointmentSchema = z.object({
 export const UpdateAppointmentSchema = z.object({
   patientId: z.string().optional(),
   doctorId: z.string().optional(),
-  cabinetId: z.string().nullable().optional(),
+  // cabinetId removed — derived from doctor in the route (Phase 11).
   serviceId: z.string().nullable().optional(),
   services: z.array(ServiceLine).max(10).optional(),
   date: z.coerce.date().optional(),

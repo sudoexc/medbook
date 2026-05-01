@@ -95,16 +95,29 @@ export const PATCH = createApiHandler(
       });
     }
 
-    // If any time/doctor/cabinet changed, re-run conflict detection.
+    // If any time/doctor change, re-run conflict detection. Cabinet is no
+    // longer client-controlled (Phase 11 binding) — when doctorId changes we
+    // re-derive cabinet from the new doctor, otherwise keep before.cabinetId.
     const timeChanged =
       body.date !== undefined ||
       body.time !== undefined ||
       body.durationMin !== undefined ||
-      body.doctorId !== undefined ||
-      body.cabinetId !== undefined;
+      body.doctorId !== undefined;
 
     let startAt = before.date;
     let endAt = before.endDate;
+    let nextCabinetId: string | null = before.cabinetId;
+    if (body.doctorId !== undefined && body.doctorId !== before.doctorId) {
+      const newDoc = await prisma.doctor.findUnique({
+        where: { id: body.doctorId },
+        select: { cabinetId: true, isActive: true },
+      });
+      if (!newDoc || !newDoc.isActive) {
+        return conflict("doctor_not_found");
+      }
+      nextCabinetId = newDoc.cabinetId;
+    }
+
     if (timeChanged) {
       const date = body.date ?? before.date;
       const time = body.time === undefined ? before.time : body.time;
@@ -112,11 +125,9 @@ export const PATCH = createApiHandler(
       startAt = applyTime(date, time);
       endAt = computeEndDate(startAt, dur);
       const doctorId = body.doctorId ?? before.doctorId;
-      const cabinetId =
-        body.cabinetId === undefined ? before.cabinetId : body.cabinetId;
       const c = await detectConflicts({
         doctorId,
-        cabinetId,
+        cabinetId: nextCabinetId,
         startAt,
         endAt,
         excludeId: id,
@@ -130,6 +141,9 @@ export const PATCH = createApiHandler(
     if (timeChanged) {
       data.date = startAt;
       data.endDate = endAt;
+    }
+    if (body.doctorId !== undefined && body.doctorId !== before.doctorId) {
+      data.cabinetId = nextCabinetId;
     }
     if (body.status === "CANCELLED" && !before.cancelledAt) {
       data.cancelledAt = new Date();

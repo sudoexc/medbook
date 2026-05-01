@@ -162,6 +162,19 @@ export const POST = createApiHandler(
     const startAt = applyTime(body.date, body.time);
     const endAt = computeEndDate(startAt, body.durationMin);
 
+    // Cabinet is derived from doctor.cabinetId — Phase 11 enforces a 1:1
+    // doctor↔cabinet binding, so the appointment always lands in the doctor's
+    // own room. The client can no longer choose; older callers that still
+    // send `cabinetId` had it stripped by the schema above.
+    const doctorRow = await prisma.doctor.findUnique({
+      where: { id: body.doctorId },
+      select: { id: true, cabinetId: true, isActive: true },
+    });
+    if (!doctorRow || !doctorRow.isActive) {
+      return err("DoctorInvalid", 422, { reason: "doctor_not_found" });
+    }
+    const cabinetId: string = doctorRow.cabinetId;
+
     // Compute base price from primary service if not provided.
     let priceBase: number | null = null;
     let priceService: number | null = null;
@@ -198,7 +211,7 @@ export const POST = createApiHandler(
         const c = await detectConflicts(
           {
             doctorId: body.doctorId,
-            cabinetId: body.cabinetId ?? null,
+            cabinetId,
             startAt,
             endAt,
           },
@@ -211,7 +224,7 @@ export const POST = createApiHandler(
           data: {
             patientId: body.patientId,
             doctorId: body.doctorId,
-            cabinetId: body.cabinetId ?? null,
+            cabinetId,
             serviceId: body.serviceId ?? null,
             date: startAt,
             time: body.time ?? null,
@@ -291,7 +304,7 @@ export const POST = createApiHandler(
       if (isWriteConflict) {
         const c = await detectConflicts({
           doctorId: body.doctorId,
-          cabinetId: body.cabinetId ?? null,
+          cabinetId,
           startAt,
           endAt,
         });

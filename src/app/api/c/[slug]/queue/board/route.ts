@@ -32,6 +32,8 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
 
   const weekday = dayStart.getDay();
 
+  // Cabinet is now bound to the doctor (Phase 11) — pull it via the relation
+  // instead of going through DoctorSchedule.cabinetId, which no longer exists.
   const doctors = await prisma.doctor.findMany({
     where: {
       clinicId: ctx.clinicId,
@@ -46,11 +48,7 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
       specializationUz: true,
       photoUrl: true,
       color: true,
-      schedules: {
-        where: { weekday, isActive: true },
-        select: { cabinetId: true, startTime: true, endTime: true },
-        take: 1,
-      },
+      cabinet: { select: { number: true } },
     },
     orderBy: { nameRu: "asc" },
   });
@@ -64,42 +62,29 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
   }
 
   const doctorIds = doctors.map((d) => d.id);
-  const cabinetIds = doctors
-    .map((d) => d.schedules[0]?.cabinetId)
-    .filter((c): c is string => !!c);
 
-  const [appts, cabinets] = await Promise.all([
-    prisma.appointment.findMany({
-      where: {
-        clinicId: ctx.clinicId,
-        doctorId: { in: doctorIds },
-        date: { gte: dayStart, lt: dayEnd },
-        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
-      },
-      select: {
-        id: true,
-        doctorId: true,
-        queueStatus: true,
-        queueOrder: true,
-        startedAt: true,
-        durationMin: true,
-        patient: { select: { fullName: true } },
-      },
-      orderBy: [{ queueStatus: "asc" }, { queueOrder: "asc" }],
-    }),
-    cabinetIds.length > 0
-      ? prisma.cabinet.findMany({
-          where: { clinicId: ctx.clinicId, id: { in: cabinetIds } },
-          select: { id: true, number: true },
-        })
-      : Promise.resolve([] as { id: string; number: string }[]),
-  ]);
+  const appts = await prisma.appointment.findMany({
+    where: {
+      clinicId: ctx.clinicId,
+      doctorId: { in: doctorIds },
+      date: { gte: dayStart, lt: dayEnd },
+      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+    },
+    select: {
+      id: true,
+      doctorId: true,
+      queueStatus: true,
+      queueOrder: true,
+      startedAt: true,
+      durationMin: true,
+      patient: { select: { fullName: true } },
+    },
+    orderBy: [{ queueStatus: "asc" }, { queueOrder: "asc" }],
+  });
 
   const cabinetByDoc = new Map<string, string | null>();
   for (const d of doctors) {
-    const cabId = d.schedules[0]?.cabinetId;
-    const cab = cabId ? cabinets.find((c) => c.id === cabId) : null;
-    cabinetByDoc.set(d.id, cab?.number ?? null);
+    cabinetByDoc.set(d.id, d.cabinet?.number ?? null);
   }
 
   const out = doctors.map((d) => {

@@ -50,11 +50,8 @@ export async function POST(request: Request) {
         nameUz: true,
         color: true,
         pricePerVisit: true,
-        schedules: {
-          where: { weekday: new Date().getDay(), isActive: true },
-          select: { cabinetId: true },
-          take: 1,
-        },
+        cabinetId: true,
+        cabinet: { select: { number: true } },
       },
     });
     if (!doctor) return err("doctor_not_found", 404);
@@ -109,7 +106,7 @@ export async function POST(request: Request) {
         clinicId: ctx.clinicId,
         patientId: patient.id,
         doctorId: doctor.id,
-        cabinetId: doctor.schedules[0]?.cabinetId ?? null,
+        cabinetId: doctor.cabinetId,
         date: start,
         time,
         durationMin,
@@ -142,15 +139,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const cabinetId = doctor.schedules[0]?.cabinetId ?? null;
-    let cabinetNumber: string | null = null;
-    if (cabinetId) {
-      const cab = await prisma.cabinet.findFirst({
-        where: { clinicId: ctx.clinicId, id: cabinetId },
-        select: { number: true },
-      });
-      cabinetNumber = cab?.number ?? null;
-    }
+    const cabinetNumber = doctor.cabinet?.number ?? null;
 
     return ok(
       {

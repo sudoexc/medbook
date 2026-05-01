@@ -12,6 +12,14 @@ export const CreateServiceSchema = z.object({
   durationMin: z.number().int().min(5).max(480).default(30),
   priceBase: z.number().int().min(0),
   isActive: z.boolean().optional(),
+  /**
+   * Doctors who will offer this service. Required, non-empty: every service
+   * in the clinic must be performed by at least one doctor (no nurse-only
+   * or self-serve services in this product). The route creates one
+   * ServiceOnDoctor row per id, all with null overrides — admins can edit
+   * per-doctor price/duration after creation from the doctor's own page.
+   */
+  doctorIds: z.array(z.string().min(1)).min(1),
 });
 
 export const UpdateServiceSchema = CreateServiceSchema.partial();

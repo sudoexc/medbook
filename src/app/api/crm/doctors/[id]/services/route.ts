@@ -52,6 +52,7 @@ export const GET = createApiListHandler(
         serviceId: r.serviceId,
         service: r.service,
         priceOverride: r.priceOverride,
+        durationMinOverride: r.durationMinOverride,
       })),
     });
   }
@@ -67,10 +68,18 @@ export const PUT = createApiHandler(
     });
     if (!doctor) return notFound();
 
-    // De-dup by serviceId in case the client sends duplicates.
-    const dedup = new Map<string, number | null>();
+    type Assignment = {
+      priceOverride: number | null;
+      durationMinOverride: number | null;
+    };
+    // De-dup by serviceId in case the client sends duplicates; later
+    // entries win.
+    const dedup = new Map<string, Assignment>();
     for (const a of body.assignments) {
-      dedup.set(a.serviceId, a.priceOverride ?? null);
+      dedup.set(a.serviceId, {
+        priceOverride: a.priceOverride ?? null,
+        durationMinOverride: a.durationMinOverride ?? null,
+      });
     }
 
     // Validate all referenced services belong to this clinic and exist.
@@ -90,10 +99,11 @@ export const PUT = createApiHandler(
     await prisma.$transaction([
       prisma.serviceOnDoctor.deleteMany({ where: { doctorId } }),
       prisma.serviceOnDoctor.createMany({
-        data: [...dedup.entries()].map(([serviceId, priceOverride]) => ({
+        data: [...dedup.entries()].map(([serviceId, ov]) => ({
           doctorId,
           serviceId,
-          priceOverride,
+          priceOverride: ov.priceOverride,
+          durationMinOverride: ov.durationMinOverride,
         })) as never,
       }),
     ]);
@@ -128,6 +138,7 @@ export const PUT = createApiHandler(
         serviceId: r.serviceId,
         service: r.service,
         priceOverride: r.priceOverride,
+        durationMinOverride: r.durationMinOverride,
       })),
     });
   }

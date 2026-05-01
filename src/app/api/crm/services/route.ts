@@ -1,5 +1,16 @@
 /**
  * /api/crm/services — list + create. See docs/TZ.md §6.*.settings.
+ *
+ * Service-doctor invariant (Phase 11):
+ *   Every service MUST be performed by at least one doctor — there are no
+ *   nurse-only or self-serve services in this product. POST therefore
+ *   requires a non-empty doctorIds array, validates each id resolves to an
+ *   existing (clinic-scoped) doctor, and creates the Service + one
+ *   ServiceOnDoctor row per doctor in a single transaction.
+ *
+ *   Per-doctor price/duration overrides are NOT set here — they default to
+ *   null so the link falls back to Service.priceBase / Service.durationMin.
+ *   Admins can edit overrides afterwards from the doctor's own page.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -42,23 +53,50 @@ export const GET = createApiListHandler(
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: CreateServiceSchema },
   async ({ request, body }) => {
+    // The Prisma extension scopes findMany by clinicId for tenant contexts,
+    // so a doctor id from another clinic simply doesn't appear and gets
+    // caught by the count mismatch below.
+    const ids = Array.from(new Set(body.doctorIds));
+    const doctors = await prisma.doctor.findMany({
+      where: { id: { in: ids }, isActive: true },
+      select: { id: true },
+    });
+    if (doctors.length !== ids.length) {
+      const found = new Set(doctors.map((d) => d.id));
+      return err("DoctorInvalid", 422, {
+        reason: "doctor_not_found",
+        missingDoctorIds: ids.filter((id) => !found.has(id)),
+      });
+    }
+
     try {
-      const created = await prisma.service.create({
-        data: {
-          code: body.code,
-          nameRu: body.nameRu,
-          nameUz: body.nameUz,
-          category: body.category ?? null,
-          durationMin: body.durationMin,
-          priceBase: body.priceBase,
-          isActive: body.isActive ?? true,
-        } as never,
+      const created = await prisma.$transaction(async (tx) => {
+        const svc = await tx.service.create({
+          data: {
+            code: body.code,
+            nameRu: body.nameRu,
+            nameUz: body.nameUz,
+            category: body.category ?? null,
+            durationMin: body.durationMin,
+            priceBase: body.priceBase,
+            isActive: body.isActive ?? true,
+          } as never,
+        });
+        await tx.serviceOnDoctor.createMany({
+          data: ids.map((doctorId) => ({
+            doctorId,
+            serviceId: svc.id,
+            priceOverride: null,
+            durationMinOverride: null,
+          })),
+        });
+        return svc;
       });
       await audit(request, {
         action: "service.create",
         entityType: "Service",
         entityId: created.id,
-        meta: { after: created },
+        meta: { after: created, doctorIds: ids },
       });
       return ok(created, 201);
     } catch (e) {

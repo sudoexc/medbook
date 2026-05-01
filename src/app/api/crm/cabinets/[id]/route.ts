@@ -1,7 +1,16 @@
+/**
+ * /api/crm/cabinets/[id] — get/patch/delete.
+ *
+ * Cabinet binding (Phase 11):
+ *   A cabinet is bound 1:1 to a doctor (Doctor.cabinetId NOT NULL UNIQUE).
+ *   DELETE refuses (409) when the cabinet is currently occupied — the admin
+ *   must move the doctor to a different cabinet first, or deactivate the
+ *   doctor (which itself fans out to a service-orphan check).
+ */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, diff } from "@/server/http";
+import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateCabinetSchema } from "@/server/schemas/cabinet";
 
 function idFromUrl(request: Request): string {
@@ -46,6 +55,17 @@ export const DELETE = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.cabinet.findUnique({ where: { id } });
     if (!before) return notFound();
+    const occupant = await prisma.doctor.findUnique({
+      where: { cabinetId: id },
+      select: { id: true, nameRu: true },
+    });
+    if (occupant) {
+      return err("CabinetOccupied", 409, {
+        reason: "cabinet_occupied",
+        doctorId: occupant.id,
+        doctorName: occupant.nameRu,
+      });
+    }
     await prisma.cabinet.update({ where: { id }, data: { isActive: false } });
     await audit(request, {
       action: "cabinet.deactivate",

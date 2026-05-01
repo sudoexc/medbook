@@ -48,11 +48,7 @@ export async function POST(request: Request) {
             nameRu: true,
             nameUz: true,
             color: true,
-            schedules: {
-              where: { weekday: new Date().getDay(), isActive: true },
-              select: { cabinetId: true },
-              take: 1,
-            },
+            cabinet: { select: { number: true } },
           },
         },
       },
@@ -110,15 +106,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const cabinetId = appt.doctor.schedules[0]?.cabinetId ?? null;
-    let cabinetNumber: string | null = null;
-    if (cabinetId) {
-      const cab = await prisma.cabinet.findFirst({
-        where: { clinicId: ctx.clinicId, id: cabinetId },
-        select: { number: true },
-      });
-      cabinetNumber = cab?.number ?? null;
-    }
+    const cabinetNumber = appt.doctor.cabinet?.number ?? null;
 
     return ok({
       appointmentId: appt.id,

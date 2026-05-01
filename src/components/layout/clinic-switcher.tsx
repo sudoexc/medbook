@@ -1,32 +1,30 @@
 "use client"
 
 /**
- * SUPER_ADMIN clinic switcher + entry point to the /admin/* control plane.
+ * SUPER_ADMIN clinic switcher (CRM topbar variant).
  *
- * Switching mechanism (Phase 4 decision):
- *   The `/api/platform/session/switch-clinic` endpoint sets a signed HttpOnly
- *   cookie `admin_clinic_override=<clinicId>.<hmac>`. The NextAuth `jwt`
- *   callback in `src/lib/auth.ts` reads this cookie on every request when the
- *   user's role is SUPER_ADMIN and overrides `token.clinicId`. This keeps the
- *   JWT signing pipeline intact, is cross-tab safe, revocable (clear the
- *   cookie by POSTing `{clinicId: null}`), and requires no DB state.
- *
- *   After the POST succeeds we call `router.refresh()` so React Server
- *   Components re-fetch with the new session scope. `router.refresh()`
- *   revalidates server data without a hard reload, which preserves scroll
- *   state and client component state.
+ * UX model:
+ *   - The dropdown lists every clinic; clicking one impersonates that clinic
+ *     (sets the `admin_clinic_override` cookie via /api/platform/session/
+ *     switch-clinic) and reloads the page. Hard-reload — not router.refresh
+ *     — guarantees that NextAuth re-issues the JWT with the new clinic claim.
+ *   - The bottom item «← Платформа» clears the override AND navigates to
+ *     /admin/clinics. We bundle both because clearing the override while
+ *     remaining on /crm/* leaves the user on a clinic-scoped page with no
+ *     clinic — every list goes empty. Going to /admin makes intent explicit.
+ *   - No "Admin platform" link or "clear override" button: those were leaky
+ *     engineering jargon that confused users. The banner above the topbar
+ *     handles the visual reminder that we're in impersonation mode.
  *
  * Non-SUPER_ADMIN users see a read-only clinic name (their tenant lock).
  */
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
 import {
+  ArrowLeftIcon,
   BuildingIcon,
   CheckIcon,
   ChevronDownIcon,
-  ShieldIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -48,9 +46,7 @@ type ClinicOption = {
 }
 
 export interface ClinicSwitcherProps {
-  /** Current active clinicId (from session). `null` when no clinic is pinned. */
   currentClinicId?: string | null
-  /** Current user role — controls dropdown vs read-only render. */
   userRole?:
     | "SUPER_ADMIN"
     | "ADMIN"
@@ -59,9 +55,7 @@ export interface ClinicSwitcherProps {
     | "NURSE"
     | "CALL_OPERATOR"
     | null
-  /** Optional: label shown in trigger if list not yet loaded. */
   fallbackLabel?: string
-  /** Optional: name of the user's own clinic (for non-SUPER_ADMIN render). */
   clinicName?: string | null
   className?: string
 }
@@ -73,7 +67,6 @@ export function ClinicSwitcher({
   clinicName,
   className,
 }: ClinicSwitcherProps) {
-  const router = useRouter()
   const [clinics, setClinics] = React.useState<ClinicOption[] | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [switching, setSwitching] = React.useState<string | null>(null)
@@ -87,9 +80,7 @@ export function ClinicSwitcher({
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/platform/clinics", {
-        cache: "no-store",
-      })
+      const res = await fetch("/api/platform/clinics", { cache: "no-store" })
       if (!res.ok) {
         setError(`HTTP ${res.status}`)
         setClinics([])
@@ -105,37 +96,51 @@ export function ClinicSwitcher({
     }
   }, [clinics, loading, isSuperAdmin])
 
-  // Eagerly load on mount so the trigger shows the active clinic name without
-  // requiring the user to open the dropdown first.
   React.useEffect(() => {
     if (isSuperAdmin) void loadClinics()
   }, [isSuperAdmin, loadClinics])
 
-  const switchTo = React.useCallback(
-    async (clinicId: string | null) => {
-      setSwitching(clinicId ?? "__clear__")
-      setError(null)
-      try {
-        const res = await fetch("/api/platform/session/switch-clinic", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ clinicId }),
-        })
-        if (!res.ok) {
-          setError(`Switch failed: HTTP ${res.status}`)
-          return
-        }
-        // `router.refresh()` re-runs RSC data fetching with the new session.
-        // The jwt callback will pick up the new cookie on the next request.
-        router.refresh()
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Network error")
-      } finally {
+  const switchTo = React.useCallback(async (clinicId: string) => {
+    setSwitching(clinicId)
+    setError(null)
+    try {
+      const res = await fetch("/api/platform/session/switch-clinic", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clinicId }),
+      })
+      if (!res.ok) {
+        setError(`Switch failed: HTTP ${res.status}`)
         setSwitching(null)
+        return
       }
-    },
-    [router],
-  )
+      // Hard reload so NextAuth re-issues the JWT with the new clinic claim.
+      // router.refresh() is not enough — the layout re-renders against the
+      // already-decoded token, and inconsistent caches can leave the topbar
+      // showing the previous clinic until the next full navigation.
+      window.location.reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error")
+      setSwitching(null)
+    }
+  }, [])
+
+  const exitToPlatform = React.useCallback(async () => {
+    setSwitching("__exit__")
+    setError(null)
+    try {
+      await fetch("/api/platform/session/switch-clinic", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clinicId: null }),
+      })
+    } catch {
+      // best-effort: even if the clear fails, navigating to /admin is
+      // strictly less harmful than staying on a stale /crm view.
+    } finally {
+      window.location.href = "/admin/clinics"
+    }
+  }, [])
 
   // Non-SUPER_ADMIN: read-only clinic label, no dropdown.
   if (!isSuperAdmin) {
@@ -175,18 +180,8 @@ export function ClinicSwitcher({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem asChild>
-          <Link
-            href="/admin/clinics"
-            className="flex items-center gap-2 text-sm font-medium text-foreground"
-          >
-            <ShieldIcon className="size-4 text-primary" />
-            <span>Admin platform</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Переключение клиники
+          Войти в клинику
         </DropdownMenuLabel>
 
         {loading && <DropdownMenuItem disabled>Загрузка…</DropdownMenuItem>}
@@ -231,20 +226,20 @@ export function ClinicSwitcher({
             )
           })}
 
-        {!loading && !error && currentClinicId && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                void switchTo(null)
-              }}
-              className="text-xs text-muted-foreground"
-            >
-              Очистить override
-            </DropdownMenuItem>
-          </>
-        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault()
+            void exitToPlatform()
+          }}
+          className="flex items-center gap-2 text-sm font-medium text-foreground"
+        >
+          <ArrowLeftIcon className="size-4 text-muted-foreground" />
+          <span>Платформа</span>
+          {switching === "__exit__" && (
+            <span className="ml-auto text-xs text-muted-foreground">…</span>
+          )}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

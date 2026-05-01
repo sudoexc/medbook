@@ -50,6 +50,22 @@ function buildContext(
   branchId?: string | null,
 ): TenantContext {
   if (user.role === "SUPER_ADMIN") {
+    // When a SUPER_ADMIN has the clinic-impersonation cookie set, the auth
+    // callback populates session.user.clinicId with the impersonated clinic.
+    // Produce a TENANT context so all the standard scoping (Prisma extension,
+    // /api/crm/* role gates, branch picker) treats them like a clinic admin
+    // for the duration of the impersonation. Without an active impersonation,
+    // fall through to the platform-wide SUPER_ADMIN context.
+    if (user.clinicId) {
+      const ctx: TenantContext = {
+        kind: "TENANT",
+        clinicId: user.clinicId,
+        userId: user.id,
+        role: user.role,
+      };
+      if (branchId) ctx.branchId = branchId;
+      return ctx;
+    }
     return { kind: "SUPER_ADMIN", userId: user.id };
   }
   if (!user.clinicId) {

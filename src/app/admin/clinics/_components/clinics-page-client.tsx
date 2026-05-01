@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, PencilIcon, CreditCardIcon } from "lucide-react";
+import { PlusIcon, PencilIcon, CreditCardIcon, LogInIcon } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +84,21 @@ async function patchClinic(
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
 }
 
+async function impersonateClinic(clinicId: string): Promise<void> {
+  // POST sets the signed `admin_clinic_override` cookie; the JWT callback
+  // picks it up on the next request, so we hard-navigate to /ru/crm so the
+  // CRM layout renders against the new claim. Hard-nav (not router.push)
+  // because router.refresh() doesn't always flush the layout cache cleanly
+  // when the underlying session token changes.
+  const r = await fetch("/api/platform/session/switch-clinic", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ clinicId }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  window.location.href = "/ru/crm";
+}
+
 export function ClinicsPageClient() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
@@ -95,6 +110,11 @@ export function ClinicsPageClient() {
   const toggleActive = useMutation({
     mutationFn: (row: ClinicRow) => patchClinic(row.id, { active: !row.active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "clinics"] }),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+  });
+
+  const enterClinic = useMutation({
+    mutationFn: (clinicId: string) => impersonateClinic(clinicId),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
@@ -167,6 +187,19 @@ export function ClinicsPageClient() {
                   </td>
                   <td className="p-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => enterClinic.mutate(c.id)}
+                        disabled={
+                          !c.active ||
+                          (enterClinic.isPending &&
+                            enterClinic.variables === c.id)
+                        }
+                      >
+                        <LogInIcon />
+                        Войти
+                      </Button>
                       <Link
                         href={`/admin/clinics/${c.id}/billing`}
                         className={cn(

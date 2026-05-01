@@ -5,8 +5,11 @@ import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
 import { CrmTopbar } from "@/components/layout/crm-topbar"
+import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
 import { TrialBanner } from "@/components/layout/trial-banner"
 import { QueryProvider } from "@/components/providers/query-provider"
+import { prisma } from "@/lib/prisma"
+import { runWithTenant } from "@/lib/tenant-context"
 import { ACTIVE_BRANCH_COOKIE_NAME } from "@/server/platform/branch-cookie"
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags"
 import { getCurrentSubscription } from "@/server/platform/current-subscription"
@@ -30,11 +33,36 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
     getFeatureFlagsForCurrentSession(),
     getCurrentSubscription(),
   ])
+  // Phase 4 — when a SUPER_ADMIN is browsing CRM with an active clinic
+  // override, surface a yellow banner above the topbar with «Выйти» that
+  // clears the cookie and returns to /admin/clinics. The banner is
+  // intentionally sticky on every CRM page so impersonation can never be
+  // forgotten while clicking around.
+  let impersonatedClinic: { nameRu: string; slug: string } | null = null
+  if (
+    session?.user?.role === "SUPER_ADMIN" &&
+    session.user.clinicId
+  ) {
+    impersonatedClinic = await runWithTenant(
+      { kind: "SUPER_ADMIN", userId: session.user.id },
+      () =>
+        prisma.clinic.findUnique({
+          where: { id: session.user.clinicId as string },
+          select: { nameRu: true, slug: true },
+        }),
+    )
+  }
   return (
     <QueryProvider>
       <div className="flex h-screen min-h-0 w-full bg-background">
         <CrmSidebar flags={flags} />
         <div className="flex min-w-0 flex-1 flex-col">
+          {impersonatedClinic && (
+            <ImpersonationBanner
+              clinicName={impersonatedClinic.nameRu}
+              clinicSlug={impersonatedClinic.slug}
+            />
+          )}
           <TrialBanner subscription={subscription} />
           <CrmTopbar
             userEmail={session?.user?.email ?? "admin@neurofax.uz"}

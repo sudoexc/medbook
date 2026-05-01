@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, PencilIcon } from "lucide-react";
+import { PlusIcon, PencilIcon, CreditCardIcon } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -166,15 +166,26 @@ export function ClinicsPageClient() {
                     />
                   </td>
                   <td className="p-3 text-right">
-                    <Link
-                      href={`/admin/clinics/${c.id}/integrations`}
-                      className={cn(
-                        buttonVariants({ variant: "outline", size: "sm" }),
-                      )}
-                    >
-                      <PencilIcon />
-                      Интеграции
-                    </Link>
+                    <div className="flex items-center justify-end gap-2">
+                      <Link
+                        href={`/admin/clinics/${c.id}/billing`}
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "sm" }),
+                        )}
+                      >
+                        <CreditCardIcon />
+                        Тарификация
+                      </Link>
+                      <Link
+                        href={`/admin/clinics/${c.id}/integrations`}
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "sm" }),
+                        )}
+                      >
+                        <PencilIcon />
+                        Интеграции
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

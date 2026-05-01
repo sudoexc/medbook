@@ -34,6 +34,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { ClinicTabs } from "../../_components/clinic-tabs";
 
 type Family = "SMS" | "TG" | "PAYMENT" | "TELEPHONY";
 
@@ -163,6 +164,8 @@ export function IntegrationsPageClient({ clinicId }: { clinicId: string }) {
           </p>
         </div>
       </div>
+
+      <ClinicTabs clinicId={clinicId} />
 
       {isLoading && (
         <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">

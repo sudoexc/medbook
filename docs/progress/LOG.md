@@ -1031,6 +1031,14 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - Тесты: **306/306 passing** (29 файлов). +15 новых в `tests/unit/feature-flags.test.ts`. 0 новых tsc/lint.
 - E2E suite не запускалась (та же причина что в 9a — Next dev server timeout под dual-lockfile).
 
+### Результаты — 9c (✅ DONE 2026-05-01)
+
+- Параллельно собрано двумя Opus-агентами в worktrees: 9c-A (BranchSwitcher + CRM /settings/branches) и 9c-B (admin /clinics/[id]/billing). 9c-A смерджен через `--no-ff` коммитом `24c67a8`; 9c-B приехал в main как 3 follow-up коммита `b7b0af7 feat(api): admin plans list + subscription CRUD routes` → `945948d feat(admin): /admin/clinics/[id]/billing page + clinic-tabs nav` → `1dbe684 i18n+test: admin billing keys (ru+uz) + handler/e2e coverage`. Тег `phase-9c-done` на `1dbe684`.
+- 9c-A — 7 коммитов: API (`/api/crm/branches` CRUD + `/active` cookie), `BranchSwitcher` topbar + middleware, `/crm/settings/branches` страница, branchId на формы Doctor/Cabinet, i18n, +28 тестов (3 unit-файла + 1 e2e). Cookie `crm.activeBranch` пишется через `branch-cookie.ts`, читается middleware и инжектится в `tenant-context` через `resolve-branch.ts`. ADMIN/SUPER видит все branches клиники, RECEPTIONIST/DOCTOR — только активный.
+- 9c-B — 3 коммита: `/api/admin/plans` (GET) + `/api/admin/clinics/[id]/subscription` (GET/PATCH) + `/extend-trial` + `/cancel`, страница `/admin/clinics/[id]/billing` (план, статус, даты, история действий), `clinic-tabs.tsx` шапка-навигация (Интеграции / Тарификация), кнопка "Тарификация" в clinics-list, `PatchSubscriptionSchema` в `platform.ts`, +16 unit + 1 e2e.
+- Quality gates: **350/350 unit passing** (306 baseline + 28 9c-A + 16 9c-B), tsc 3 ошибки = baseline (4 → 3, layout.tsx починилось апстримом), eslint clean на 9c-B файлах. `npx prisma generate` потребовался на main после мерджа (Plan/Subscription модели из 9b не были в client до этого).
+- Прод-кода `getFeatureFlags()` всё ещё не вызывают — это Phase 9d (gating меню/роутов).
+
 ### Quality gates Phase 9
 
 - `npx prisma migrate dev` без ошибок.

@@ -1039,6 +1039,15 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - Quality gates: **350/350 unit passing** (306 baseline + 28 9c-A + 16 9c-B), tsc 3 ошибки = baseline (4 → 3, layout.tsx починилось апстримом), eslint clean на 9c-B файлах. `npx prisma generate` потребовался на main после мерджа (Plan/Subscription модели из 9b не были в client до этого).
 - Прод-кода `getFeatureFlags()` всё ещё не вызывают — это Phase 9d (gating меню/роутов).
 
+### Результаты — 9d (✅ DONE 2026-05-01)
+
+- 3 коммита на main (агент сломал worktree-изоляцию и писал прямо в main, как 9c-B; работа корректна и зачекинена): `ff508a3 feat(crm): plan-aware sidebar nav rendering` → `7bc6ad1 feat(crm): 404 guards on paid CRM routes` → `d4593e5 test: nav filtering + route guards by plan`. Тег `phase-9d-done` на `d4593e5`. 13 файлов, +627/−14.
+- Pure helpers: `computeVisibleNav<T>(groups, flags)` в `feature-flags.ts` — generic, не мутирует, выкидывает скрытые айтемы и пустые группы. Server entry `src/server/platform/current-flags.ts` → `getFeatureFlagsForCurrentSession()`: SUPER_ADMIN-без-clinic → ENTERPRISE_FLAGS, unauthenticated → DEFAULT_FLAGS, иначе `getFeatureFlags(clinicId)`. API guard `src/server/platform/feature-guard.ts` → `ensureFeature(ctx, flag)` возвращает `null` или 404 `{error:"NotFound"}` (без раскрытия ключа фичи); SUPER_ADMIN/SYSTEM пропускают без DB-вызова.
+- Sidebar: `CRM_NAV` экспортируется с `feature` тегами на `call-center` (`hasCallCenter`) и `telegram` (`hasTelegramInbox`). `<CrmSidebar flags={...} />` мемоизирует `visibleNav`. Server-side: `app/[locale]/crm/layout.tsx` дёргает `getFeatureFlagsForCurrentSession()` и пробрасывает.
+- Guards: `/crm/call-center/page.tsx` + `/crm/telegram/page.tsx` стали async server components с `notFound()` при выключенной фиче. API: `ensureFeature` подключён в `/api/crm/calls/route.ts` (GET+POST), `/api/crm/calls/[id]/route.ts` (GET+PATCH), `/api/crm/analytics/funnels/route.ts` (GET, gated на `hasAnalyticsPro`).
+- Тесты: **366/366 passing** (+16 новых: `feature-nav.test.ts` 10 + `feature-guard.test.ts` 6) + 1 e2e `25-feature-flags-gating.spec.ts` (downgrade NeuroFax → Basic, проверка 404 на 3 роутах, restore Pro). 0 новых tsc/eslint.
+- Намеренно НЕ закрыто: `/api/crm/conversations` (мульти-канальный — SMS legitimate на basic), Notifications/Documents/Roles (нет соответствующих ключей в `FeatureFlags` — не выдумывал), BranchSwitcher (уже само скрывается при ≤1 branch). `analytics-page-client` получает 404 на funnels и тихо прячет компонент через существующий `qFunnels.isError ? null` — без новой клиент/сервер-разводки.
+
 ### Quality gates Phase 9
 
 - `npx prisma migrate dev` без ошибок.

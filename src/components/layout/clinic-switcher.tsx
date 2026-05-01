@@ -105,6 +105,12 @@ export function ClinicSwitcher({
     }
   }, [clinics, loading, isSuperAdmin])
 
+  // Eagerly load on mount so the trigger shows the active clinic name without
+  // requiring the user to open the dropdown first.
+  React.useEffect(() => {
+    if (isSuperAdmin) void loadClinics()
+  }, [isSuperAdmin, loadClinics])
+
   const switchTo = React.useCallback(
     async (clinicId: string | null) => {
       setSwitching(clinicId ?? "__clear__")

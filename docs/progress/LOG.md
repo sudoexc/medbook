@@ -856,12 +856,88 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 
 ## Что НЕ в v1 (осознанные deferred)
 
-- Phase 8 — Admin platform advanced (billing, audit-grafana dashboards, multi-region).
+- Расширенная админ-платформа (billing UI, audit-grafana dashboards, multi-region) — переехало в Phase 9 SaaS roadmap.
 - 13 legacy routes с `@ts-nocheck` — остаются рабочими, но без tenant guard (leads/kiosk-form/tv-queue endpoints).
 - Inline blur-validation — submit-time Zod пока достаточно.
 - Visual regression suite — не выбран инструмент.
 - Moderate a11y (3 пункта) — не блокируют WCAG AA.
 - Production-grade Redis для rate-limit (сейчас in-memory per-process).
+
+---
+
+## Roadmap to $1M SaaS — фазовый план post-v1
+
+После Production v1 продукт развивается **аддитивно**: каждая фаза не ломает существующие флоу, имеет конкретный selling point и тегается отдельно. Очерёдность согласована с фидбеком от 2026-05-01 (Этап 1 MVP → Этап 4 Scale).
+
+| Фаза | Цель | Selling point | Риск | Тег |
+|---|---|---|---|---|
+| **8** | Conversion KPIs + Notification Settings UI | «Клиника видит свою воронку и сама рулит автоматизацией» (Pro tier) | Низкий — поверх готовой БД | `phase-8-done` |
+| **9** | Branches + Plans + Feature flags | Multi-clinic SaaS с тарифами Basic/Pro/Enterprise | Высокий — миграция схемы | `phase-9-done` |
+| **10** | Real integrations (Eskiz SMS / Payme / Click / onboarding wizard) | «Всё реально шлёт и принимает деньги» | Средний | `phase-10-done` |
+| **11** | SIP телефония (отдельный VPS, Asterisk + WebRTC) | Enterprise add-on | Средний | `phase-11-done` |
+| **12** | Queue Engine v2 — score / ETA / reassign recommendations | Enterprise (≥10 одновременных пациентов) | Низкий — слой поверх | `phase-12-done` |
+| **13** | Reactivation + segmentation campaigns | Cross-sell повторных визитов | Низкий | `phase-13-done` |
+
+Подробности по каждой фазе ниже по документу.
+
+---
+
+## Phase 8 — Conversion KPIs + Notification Settings UI — 🔄 IN PROGRESS (старт 2026-05-01)
+
+### Контекст
+
+Фидбек шефа: «Главные KPI — no-show %, конверсия Telegram → запись, конверсия звонок → запись». В существующем `/crm/analytics` этих воронок **нет** — есть только cross-tab по статусам и доход. И `NotificationTemplate` лежат в БД, но менять их без миграции нельзя — UI редактора отсутствует. Без этих двух вещей нельзя продавать продукт как «увеличиваем загрузку и снижаем no-show», потому что нечем замерить «до/после».
+
+### Подфазы
+
+#### 8a — Conversion funnel KPIs в /crm/analytics
+
+- TG → запись %: отношение Conversation'ов (хотя бы 1 IN-сообщение за период) к Appointment'ам с `source = TELEGRAM` за тот же период.
+- Звонок → запись %: отношение Call'ов (direction IN/OUT с completed) к Appointment'ам с `source = CALL`.
+- No-show по врачу/услуге (топ-список с %).
+- Mini App booking funnel: viewed slots → confirm step → booked (drop-off на каждом шаге).
+- Время ожидания: среднее `WAITING → IN_PROGRESS` интервал per doctor.
+- API: расширение `/api/crm/analytics` или новый `/api/crm/analytics/funnels`.
+- UI: 4 новых карточки на Analytics page, time-window фильтр (week/month/quarter — есть готовый control).
+
+#### 8b — Notification Template editor
+
+- Страница `/crm/settings/notifications`.
+- Список из 7 триггеров (`appointment.created`, `appointment.reminder-24h`, `appointment.reminder-2h`, `appointment.cancelled`, `birthday`, `no-show`, `payment.due`).
+- Редактор тела сообщения для RU и UZ с подсказкой переменных (`{{patient.name}}`, `{{appointment.time}}` и т.д.).
+- Live preview с тестовыми данными.
+- Сохранение через `PATCH /api/crm/settings/notifications/templates/[id]`.
+
+#### 8c — Notification Rules editor (тайминг + канал)
+
+- Тайминг триггеров (offsetMin) — для `*.reminder-*` редактируется (24h → 23h, 2h → 1.5h и т.д.).
+- Выбор канала per trigger: TG / SMS / both. По умолчанию TG если patient.telegramId есть, fallback SMS.
+- Tumbler enabled/disabled per trigger.
+- Сохранение в `NotificationTemplate.triggerConfig` (Json column уже есть).
+
+### Архитектурные ограничения
+
+- **Не трогаем** триггер-функции в `src/server/notifications/triggers.ts` — они уже стабильны и идемпотентны.
+- **Не трогаем** sender-адаптеры (`src/server/notifications/adapters/`).
+- Меняется **только**: добавление UI + расширение API (read/update `NotificationTemplate` rows) + чтение `triggerConfig` в материализаторе расписания.
+- Все изменения per-clinic — никаких cross-tenant утечек.
+
+### Quality gates Phase 8
+
+- `tsc --noEmit` clean
+- Новые unit-тесты: ≥6 для template render с переменными, ≥3 для funnel-агрегатов
+- Новые e2e: ≥2 (создание/редактирование template; просмотр funnel)
+- Все 239+ старых unit и 47+ e2e продолжают проходить
+- Lighthouse на `/crm/analytics` не упал ниже 85 PWA / 95 a11y
+
+### Параллелизация
+
+Запускаются **два независимых worktree-агента** на Opus:
+
+- `agent-A` — Phase 8a (analytics funnels) — изолированная ветка
+- `agent-B` — Phase 8b+c (notification settings UI) — изолированная ветка
+
+Они не пересекаются по файлам (разные роуты, разные UI-страницы, разные тесты), поэтому merge conflict минимален. Главный сводит обратно в `main` и тегает `phase-8-done`.
 
 ## Команды для деплоя
 

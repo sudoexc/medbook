@@ -2182,6 +2182,7 @@
     },
     "nav": {
       "clinic": "Klinika",
+      "branches": "Filiallar",
       "users": "Foydalanuvchilar",
       "services": "Xizmatlar",
       "cabinets": "Kabinetlar",
@@ -2302,6 +2303,36 @@
         "active": "Faol"
       }
     },
+    "branches": {
+      "title": "Filiallar",
+      "subtitle": "Manzillar va vaqt mintaqalari. Bitta filial asosiy deb belgilanadi.",
+      "add": "Filial qo'shish",
+      "addFirst": "Birinchi filialni qo'shish",
+      "empty": "Hozircha bitta filial",
+      "emptyHint": "Klinikada turli manzil va jadvalli bir nechta filial bo'lishi mumkin.",
+      "created": "Filial yaratildi",
+      "deactivated": "Filial o'chirildi",
+      "defaultBadge": "Asosiy",
+      "fields": {
+        "slug": "Slug (URL)",
+        "slugHint": "Faqat lotincha harflar, raqamlar va chiziqcha. Klinika ichida noyob.",
+        "nameRu": "Nomi (RU)",
+        "nameUz": "Nomi (UZ)",
+        "address": "Manzil",
+        "phone": "Telefon",
+        "timezone": "Vaqt mintaqasi",
+        "isDefault": "Asosiy filial",
+        "isActive": "Faol",
+        "isInactive": "O'chirilgan"
+      },
+      "errors": {
+        "slugTaken": "Bu slug allaqachon ushbu klinikada ishlatilgan",
+        "lastActive": "Oxirgi faol filialni o'chirib bo'lmaydi"
+      },
+      "hints": {
+        "flipDefault": "Avval boshqa filialni asosiy deb belgilang, keyin buni o'chiring."
+      }
+    },
     "cabinets": {
       "title": "Kabinetlar",
       "subtitle": "Klinika xonalari va jihozlari.",
@@ -2315,6 +2346,7 @@
       "floor": "qavat",
       "active": "Faol",
       "inactive": "Yashirin",
+      "branchAuto": "Avto (asosiy filial)",
       "equipmentTitle": "Jihozlar",
       "equipmentAdd": "Jihoz qo'shish",
       "equipmentPlaceholder": "UZI, EKG, …",
@@ -2323,7 +2355,8 @@
         "nameRu": "Nomi (RU)",
         "nameUz": "Nomi (UZ)",
         "floor": "Qavat",
-        "equipment": "Jihozlar"
+        "equipment": "Jihozlar",
+        "branch": "Filial"
       }
     },
     "exchangeRates": {
@@ -2712,6 +2745,13 @@
     "uploading": "Yuklanmoqda…",
     "toastMissingFields": "Majburiy maydonlarni to'ldiring",
     "toastUploadError": "Yuklashda xatolik"
+  },
+  "branchSwitcher": {
+    "label": "Filial",
+    "allBranches": "Barcha filiallar",
+    "loading": "Yuklanmoqda…",
+    "empty": "Faol filiallar yo'q",
+    "defaultBadge": "Asosiy"
   },
   "exportsUi": {
     "enqueued": "Eksport navbatga qo‘yildi",

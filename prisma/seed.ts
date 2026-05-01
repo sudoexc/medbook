@@ -157,6 +157,31 @@ async function main() {
       },
     });
 
+    // ── Subscription (Phase 9b) — every seeded clinic gets a TRIAL on `pro`.
+    //    The migration seeds the three canonical plans + backfills production
+    //    clinics; here we keep the dev seed idempotent on its own. The `pro`
+    //    plan is created by the migration; we just look it up.
+    const proPlan = await prisma.plan.findUnique({ where: { slug: "pro" } });
+    if (!proPlan) {
+      throw new Error(
+        "[seed] `pro` plan missing — run `npx prisma migrate dev` first."
+      );
+    }
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await prisma.subscription.upsert({
+      where: { clinicId: clinic.id },
+      update: {
+        // Don't clobber an existing live subscription's status during reseed.
+        planId: proPlan.id,
+      },
+      create: {
+        clinicId: clinic.id,
+        planId: proPlan.id,
+        status: "TRIAL",
+        trialEndsAt,
+      },
+    });
+
     // ── Default Branch (slug='hq') — Phase 9a. Doctor / Cabinet / Appointment /
     //    DoctorSchedule / DoctorTimeOff get pinned to this branch so demo
     //    flows have a non-null branchId end-to-end. Idempotent via the unique

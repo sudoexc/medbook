@@ -142,6 +142,27 @@ async function main() {
       },
     });
 
+    // Subscription (Phase 9b) — every seeded clinic gets a TRIAL on `pro`.
+    // The `pro` plan is seeded by the migration; we look it up and upsert a
+    // subscription keyed on clinicId (UNIQUE so re-runs are idempotent).
+    const proPlan = await prisma.plan.findUnique({ where: { slug: "pro" } });
+    if (!proPlan) {
+      throw new Error(
+        "[e2e-seed] `pro` plan missing — run `npx prisma migrate dev` first."
+      );
+    }
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await prisma.subscription.upsert({
+      where: { clinicId: clinic.id },
+      update: { planId: proPlan.id },
+      create: {
+        clinicId: clinic.id,
+        planId: proPlan.id,
+        status: "TRIAL",
+        trialEndsAt,
+      },
+    });
+
     // Default Branch (slug='hq') — Phase 9a. Doctors / Cabinets / Appointments
     // / DoctorSchedules get pinned to it so e2e flows have non-null branchId.
     const defaultBranch = await prisma.branch.upsert({

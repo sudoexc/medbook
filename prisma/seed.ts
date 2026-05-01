@@ -157,6 +157,28 @@ async function main() {
       },
     });
 
+    // ── Default Branch (slug='hq') — Phase 9a. Doctor / Cabinet / Appointment /
+    //    DoctorSchedule / DoctorTimeOff get pinned to this branch so demo
+    //    flows have a non-null branchId end-to-end. Idempotent via the unique
+    //    (clinicId, slug) index.
+    const defaultBranch = await prisma.branch.upsert({
+      where: { clinicId_slug: { clinicId: clinic.id, slug: "hq" } },
+      update: {
+        nameRu: "Главный филиал",
+        nameUz: "Asosiy filial",
+        isDefault: true,
+        isActive: true,
+      },
+      create: {
+        clinicId: clinic.id,
+        slug: "hq",
+        nameRu: "Главный филиал",
+        nameUz: "Asosiy filial",
+        isDefault: true,
+        isActive: true,
+      },
+    });
+
     // ── Exchange rate today: 1 USD = 12700 UZS → store rate as UZS→USD (1/12700)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -243,10 +265,12 @@ async function main() {
           specializationUz: d.specializationUz,
           color: d.color,
           userId: user.id,
+          branchId: defaultBranch.id,
           isActive: true,
         },
         create: {
           clinicId: clinic.id,
+          branchId: defaultBranch.id,
           slug: d.slug,
           nameRu: d.nameRu,
           nameUz: d.nameUz,
@@ -267,12 +291,18 @@ async function main() {
         if (existing) {
           await prisma.doctorSchedule.update({
             where: { id: existing.id },
-            data: { startTime: "09:00", endTime: "18:00", isActive: true },
+            data: {
+              startTime: "09:00",
+              endTime: "18:00",
+              isActive: true,
+              branchId: defaultBranch.id,
+            },
           });
         } else {
           await prisma.doctorSchedule.create({
             data: {
               clinicId: clinic.id,
+              branchId: defaultBranch.id,
               doctorId: doctor.id,
               weekday,
               startTime: "09:00",
@@ -292,8 +322,19 @@ async function main() {
     for (const c of cabs) {
       const cab = await prisma.cabinet.upsert({
         where: { clinicId_number: { clinicId: clinic.id, number: c.number } },
-        update: { floor: c.floor, nameRu: c.nameRu, nameUz: c.nameUz, isActive: true },
-        create: { clinicId: clinic.id, ...c, equipment: [] },
+        update: {
+          floor: c.floor,
+          nameRu: c.nameRu,
+          nameUz: c.nameUz,
+          isActive: true,
+          branchId: defaultBranch.id,
+        },
+        create: {
+          clinicId: clinic.id,
+          branchId: defaultBranch.id,
+          ...c,
+          equipment: [],
+        },
       });
       createdCabinets.push({ id: cab.id });
     }
@@ -385,6 +426,7 @@ async function main() {
       const appt = await prisma.appointment.create({
         data: {
           clinicId: clinic.id,
+          branchId: defaultBranch.id,
           patientId: patient.id,
           doctorId: doctor.id,
           cabinetId: cabinet.id,

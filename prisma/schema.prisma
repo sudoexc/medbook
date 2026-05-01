@@ -245,6 +245,46 @@ model Clinic {
   doctorSchedules       DoctorSchedule[]
   doctorTimeOffs        DoctorTimeOff[]
   appointmentServices   AppointmentService[]
+  branches              Branch[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Branches (Phase 9a)
+//
+// A clinic may operate from multiple physical sites. The default per-clinic
+// branch is created by migration backfill (slug='hq', isDefault=true) and the
+// seed script attaches all generated demo content to it. Application code
+// continues to query clinic-wide unless `runWithTenant` carries an explicit
+// `branchId` — see `src/lib/tenant-context.ts` and `src/lib/prisma.ts`.
+//
+// Branch-scoped models keep `branchId` NULLABLE in this migration so prod
+// rollouts can backfill at their own pace. Phase 9b tightens to NOT NULL
+// after every existing row is reconciled.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Branch {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  slug      String
+  nameRu    String
+  nameUz    String
+  address   String?
+  phone     String?
+  timezone  String?
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctors         Doctor[]
+  cabinets        Cabinet[]
+  appointments    Appointment[]
+  doctorSchedules DoctorSchedule[]
+  doctorTimeOffs  DoctorTimeOff[]
+
+  @@unique([clinicId, slug])
+  @@index([clinicId, isActive])
 }
 
 model ExchangeRate {
@@ -357,6 +397,8 @@ model Doctor {
   id               String   @id @default(cuid())
   clinicId         String
   clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId         String?
+  branch           Branch?  @relation(fields: [branchId], references: [id])
   userId           String?  @unique
   user             User?    @relation(fields: [userId], references: [id])
   slug             String
@@ -385,6 +427,7 @@ model Doctor {
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
   @@index([clinicId, specializationRu])
+  @@index([clinicId, branchId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -429,6 +472,8 @@ model Cabinet {
   id        String   @id @default(cuid())
   clinicId  String
   clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
   number    String
   floor     Int?
   nameRu    String?
@@ -442,12 +487,15 @@ model Cabinet {
 
   @@unique([clinicId, number])
   @@index([clinicId, isActive])
+  @@index([clinicId, branchId])
 }
 
 model DoctorSchedule {
   id        String    @id @default(cuid())
   clinicId  String
   clinic    Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId  String?
+  branch    Branch?   @relation(fields: [branchId], references: [id])
   doctorId  String
   doctor    Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   weekday   Int
@@ -459,12 +507,15 @@ model DoctorSchedule {
   isActive  Boolean   @default(true)
 
   @@index([clinicId, doctorId, weekday])
+  @@index([clinicId, branchId])
 }
 
 model DoctorTimeOff {
   id        String   @id @default(cuid())
   clinicId  String
   clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
   doctorId  String
   doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   startAt   DateTime
@@ -473,6 +524,7 @@ model DoctorTimeOff {
   createdAt DateTime @default(now())
 
   @@index([clinicId, doctorId, startAt])
+  @@index([clinicId, branchId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -532,6 +584,8 @@ model Appointment {
   id        String   @id @default(cuid())
   clinicId  String
   clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
   patientId String
   patient   Patient  @relation(fields: [patientId], references: [id])
   doctorId  String
@@ -587,6 +641,7 @@ model Appointment {
   @@index([clinicId, queueStatus])
   @@index([clinicId, endDate, cabinetId])
   @@index([clinicId, createdAt])
+  @@index([clinicId, branchId])
 }
 
 model AppointmentService {

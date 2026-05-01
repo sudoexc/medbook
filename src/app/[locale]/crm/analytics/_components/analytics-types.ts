@@ -35,3 +35,59 @@ export interface AnalyticsResponse {
   sources: Array<{ source: string; count: number }>;
   ltvBuckets: Array<{ bucket: string; count: number }>;
 }
+
+// ── Phase 8a — conversion funnel KPIs ────────────────────────────────────────
+
+export interface FunnelDailyPoint {
+  date: string;
+  total: number;
+  converted: number;
+  rate: number;
+}
+
+export interface FunnelSummary {
+  total: number;
+  converted: number;
+  rate: number;
+  daily: FunnelDailyPoint[];
+}
+
+export interface NoShowRankRow {
+  rate: number;
+  noShow: number;
+  completed: number;
+  total: number;
+  name: string;
+  nameUz: string | null;
+}
+
+export interface DoctorNoShowRow extends NoShowRankRow {
+  doctorId: string;
+}
+
+export interface ServiceNoShowRow extends NoShowRankRow {
+  serviceId: string;
+}
+
+export interface WaitTimeRow {
+  doctorId: string;
+  name: string;
+  nameUz: string | null;
+  avgWaitSec: number;
+  samples: number;
+}
+
+export interface FunnelsResponse {
+  period: Period | "custom";
+  from: string;
+  to: string;
+  doctorOnly: boolean;
+  windowDays: number;
+  tg: FunnelSummary;
+  call: FunnelSummary;
+  noShowByDoctor: DoctorNoShowRow[];
+  noShowByService: ServiceNoShowRow[];
+  waitTime: WaitTimeRow[];
+  /** Always null until we add a MiniAppEvent table — see funnels.ts header. */
+  miniAppFunnel: null;
+}

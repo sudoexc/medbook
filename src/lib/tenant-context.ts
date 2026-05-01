@@ -9,6 +9,12 @@
  *                  the `/admin` area must explicitly select clinics.
  *   SYSTEM       — cron / workers / onboarding seeding; bypasses tenant scope.
  *
+ * Phase 9a — TENANT contexts MAY additionally carry a `branchId`. When
+ * present, the Prisma extension layers a second filter on top of `clinicId`
+ * for the branch-scoped models (Doctor, Cabinet, Appointment, DoctorSchedule,
+ * DoctorTimeOff). Absence of `branchId` keeps the historical clinic-wide
+ * behavior — no breaking changes for routes that have not yet been updated.
+ *
  * The context is read by the Prisma `$extends` query hook in `src/lib/prisma.ts`.
  */
 
@@ -23,7 +29,18 @@ export type Role =
   | "CALL_OPERATOR";
 
 export type TenantContext =
-  | { kind: "TENANT"; clinicId: string; userId: string; role: Role }
+  | {
+      kind: "TENANT";
+      clinicId: string;
+      userId: string;
+      role: Role;
+      /**
+       * Optional branch scope (Phase 9a). When set, the Prisma extension
+       * also filters branch-scoped models by `branchId`. When absent, queries
+       * stay clinic-wide as before.
+       */
+      branchId?: string;
+    }
   | { kind: "SUPER_ADMIN"; userId: string }
   | { kind: "SYSTEM" };
 
@@ -70,6 +87,18 @@ export function getClinicId(): string | null {
   if (!ctx) return null;
   if (ctx.kind === "TENANT") return ctx.clinicId;
   return null;
+}
+
+/**
+ * Phase 9a: return the optional `branchId` for TENANT contexts.
+ * Returns `null` when no context, when the context is not TENANT, or when
+ * the TENANT context has no branch scope (i.e. clinic-wide mode).
+ */
+export function getBranchId(): string | null {
+  const ctx = getTenant();
+  if (!ctx) return null;
+  if (ctx.kind !== "TENANT") return null;
+  return ctx.branchId ?? null;
 }
 
 /** True iff the current context is a regular tenant user. */

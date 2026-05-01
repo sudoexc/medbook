@@ -20,6 +20,15 @@
  * `{ skipTenantScope: true }` alongside normal Prisma args — the extension
  * strips that flag before forwarding. This is allowed only for models listed
  * in `MODELS_TENANT_BYPASSABLE`.
+ *
+ * Phase 9a — Branch scoping
+ *   When the TENANT context carries `branchId`, the extension layers a second
+ *   filter (`branchId = ctx.branchId`) on top of the clinicId injection, but
+ *   only for branch-scoped models (`MODELS_BRANCH_SCOPED`). For every other
+ *   model, including clinic-wide ones like Patient and Payment, behaviour is
+ *   exactly as before. When `branchId` is absent from the context, the
+ *   extension behaves identically to pre-Phase-9a code — so existing routes
+ *   keep working without modification.
  */
 
 import { PrismaClient } from "@/generated/prisma/client";
@@ -29,6 +38,7 @@ import { getTenant } from "./tenant-context";
 import {
   COMPOSITE_TENANT_UNIQUES,
   CREATE_OPERATIONS,
+  MODELS_BRANCH_SCOPED,
   MODELS_TENANT_BYPASSABLE,
   MODELS_WITHOUT_TENANT,
   MUTATE_BY_WHERE_OPERATIONS,
@@ -75,35 +85,57 @@ function extractSkipFlag(args: UnknownRecord | undefined): boolean {
 }
 
 /**
- * Inject clinicId into a `where` clause. Mutates a shallow copy; returns
- * the new clause so the caller can assign it back.
+ * Inject clinicId (and optionally branchId) into a `where` clause. Returns
+ * a shallow copy with the keys merged — never mutates the original.
+ *
+ * `branchId` is only injected when the caller passes a non-null value
+ * (i.e. the active TenantContext has `branchId` set AND the target model
+ * is in `MODELS_BRANCH_SCOPED`).
  */
 function injectWhere(
   existing: UnknownRecord | undefined,
-  clinicId: string
+  clinicId: string,
+  branchId: string | null
 ): UnknownRecord {
-  return { ...(existing ?? {}), clinicId };
+  const next: UnknownRecord = { ...(existing ?? {}), clinicId };
+  if (branchId !== null && typeof next.branchId === "undefined") {
+    next.branchId = branchId;
+  }
+  return next;
 }
 
 /**
- * Inject clinicId into `data`. Supports both single-object and array forms
- * (`createMany({ data: [...] })`).
+ * Inject clinicId (and optionally branchId) into `data`. Supports both
+ * single-object and array forms (`createMany({ data: [...] })`).
+ *
+ * `branchId` is preserved when the caller already specified one — we never
+ * overwrite an explicit value.
  */
 function injectData(
   existing: unknown,
-  clinicId: string
+  clinicId: string,
+  branchId: string | null
 ): unknown {
   if (Array.isArray(existing)) {
-    return existing.map((row) =>
-      row && typeof row === "object" && !("clinicId" in row)
-        ? { ...row, clinicId }
-        : row
-    );
+    return existing.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const rec = row as UnknownRecord;
+      const patched: UnknownRecord = { ...rec };
+      if (!("clinicId" in patched)) patched.clinicId = clinicId;
+      if (branchId !== null && !("branchId" in patched)) {
+        patched.branchId = branchId;
+      }
+      return patched;
+    });
   }
   if (existing && typeof existing === "object") {
     const rec = existing as UnknownRecord;
-    if ("clinicId" in rec) return rec;
-    return { ...rec, clinicId };
+    const patched: UnknownRecord = { ...rec };
+    if (!("clinicId" in patched)) patched.clinicId = clinicId;
+    if (branchId !== null && !("branchId" in patched)) {
+      patched.branchId = branchId;
+    }
+    return patched;
   }
   return existing;
 }
@@ -158,6 +190,14 @@ export const prisma = prismaBase.$extends({
 
         const clinicId = ctx.clinicId;
 
+        // Branch scoping (Phase 9a): only when the context carries branchId
+        // AND the target model is branch-scoped. For every other call this
+        // value stays null, and behaviour is byte-identical to pre-Phase-9a.
+        const branchId =
+          ctx.branchId && model && MODELS_BRANCH_SCOPED.has(model)
+            ? ctx.branchId
+            : null;
+
         // READ + filter-mutate: inject into where unless already present.
         if (
           READ_OPERATIONS.has(operation) ||
@@ -165,13 +205,25 @@ export const prisma = prismaBase.$extends({
         ) {
           const where = mutableArgs.where as UnknownRecord | undefined;
           if (!whereAlreadyPinsClinic(model, where)) {
-            mutableArgs.where = injectWhere(where, clinicId);
+            mutableArgs.where = injectWhere(where, clinicId, branchId);
+          } else if (branchId !== null) {
+            // Composite-clinic `where` is used (e.g. clinicId_slug). We must
+            // not duplicate clinicId, but we still want to additionally pin
+            // branchId when the model is branch-scoped.
+            const w = (where ?? {}) as UnknownRecord;
+            if (typeof w.branchId === "undefined") {
+              mutableArgs.where = { ...w, branchId };
+            }
           }
 
           // `upsert` also carries `create` and `update` payloads that must
           // be scoped in case Prisma inserts a new row.
           if (operation === "upsert") {
-            mutableArgs.create = injectData(mutableArgs.create, clinicId);
+            mutableArgs.create = injectData(
+              mutableArgs.create,
+              clinicId,
+              branchId
+            );
             // `update` stays untouched — it's a partial patch; we just
             // filtered via `where` above.
           }
@@ -180,7 +232,7 @@ export const prisma = prismaBase.$extends({
 
         // CREATE: inject into data.
         if (CREATE_OPERATIONS.has(operation)) {
-          mutableArgs.data = injectData(mutableArgs.data, clinicId);
+          mutableArgs.data = injectData(mutableArgs.data, clinicId, branchId);
           return query(mutableArgs as typeof args);
         }
 

@@ -52,6 +52,28 @@ export const COMPOSITE_TENANT_UNIQUES: ReadonlySet<string> = new Set([
   "Conversation.clinicId_externalId",
   "Message.clinicId_externalId",
   "Call.clinicId_sipCallId",
+  "Branch.clinicId_slug",
+]);
+
+/**
+ * Branch-scoped models (Phase 9a). When the active TenantContext carries an
+ * explicit `branchId`, the Prisma extension layers a second filter
+ * (`branchId = …`) on top of the existing `clinicId` injection — but only
+ * for these models. All other clinic-scoped models (Patient, Service,
+ * Payment, Document, Communication, Conversation, Message, Notification…)
+ * stay clinic-wide regardless of branch.
+ *
+ * The `Branch` model itself is intentionally NOT in this set: the canonical
+ * way to look up a branch is by clinic + slug or clinic + isDefault.
+ *
+ * Keep in sync with the `branchId String?` columns in `prisma/schema.prisma`.
+ */
+export const MODELS_BRANCH_SCOPED: ReadonlySet<string> = new Set([
+  "Doctor",
+  "Cabinet",
+  "Appointment",
+  "DoctorSchedule",
+  "DoctorTimeOff",
 ]);
 
 /** Operations that read data — we inject `clinicId` into `where`. */

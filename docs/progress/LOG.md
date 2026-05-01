@@ -1100,3 +1100,36 @@ docker compose up -d    # 7 services: app, worker, postgres, redis, minio, nginx
 | RECEPTIONIST | `recept@neurofax.uz` | `recept` |
 | DOCTOR | `neurologist@neurofax.uz`, `cardiologist@neurofax.uz` | `doctor` |
 
+## Phase 10 — AI Engine (✅ DONE 2026-05-01)
+
+Replaced the static "AI" heuristics on `/crm/doctors` with a real engine.
+Four pure scoring primitives + three Prisma-backed resolvers + three GET
+endpoints + a minimal UI rewire that prepends live engine candidates to
+the doctors-AI panel.
+
+- **Pure libs** (`src/lib/ai/`, zero imports — client-safe):
+  - `queue-score.ts` — wait + urgency + VIP + (-no-show) + late + overdue,
+    bands `low/normal/high/critical`.
+  - `eta-predictor.ts` — median of (doctor, service) history with sample-size
+    bands (`high` ≥10, `med` 4..9 blended 0.7/0.3, `low` fallback), clamp
+    [5,240], round to 5.
+  - `no-show-risk.ts` — Laplace-smoothed base + first-visit / unconfirmed /
+    far-future bumps; bands `low/med/high`.
+  - `reassign-engine.ts` — overdue (≥20) OR overload (≥15 + wait≥10) →
+    lightest eligible doctor by `remainingTodayMin`, capacity ≥30 floor.
+- **Server resolvers** (`src/server/ai/*.ts`) — auto-scoped via existing
+  Prisma tenant extension (clinic + optional branch).
+- **API routes** (`/api/crm/ai/{queue,eta,reassign}`) — all `createApiList
+  Handler` with roles `ADMIN/RECEPTIONIST/NURSE/DOCTOR`. TENANT-only.
+- **UI rewire** — `doctors-ai-recommendations.tsx` adds a react-query hook
+  (the codebase has no SWR dep — uses `@tanstack/react-query` everywhere)
+  and merges up to 2 live candidates ahead of the heuristic recs, capped at
+  4 total. Layout/copy unchanged.
+- **Tests** — 33 new unit cases across the four pure modules (8/9/8/8). One
+  e2e happy-path on the queue/reassign/eta endpoints. Final tally:
+  **433 unit / 433 passing**, **4 baseline tsc errors** (unchanged from
+  main).
+- **Out of scope** — schema migrations, Stripe, demo-mode, reminders/no-show
+  worker integration. The pure `computeNoShowRisk` is exported and ready
+  for the worker to consume in a follow-up.
+

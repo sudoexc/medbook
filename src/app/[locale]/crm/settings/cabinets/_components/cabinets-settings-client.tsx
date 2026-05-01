@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DoorOpenIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -30,6 +30,15 @@ type CabinetRow = {
   nameUz: string | null;
   equipment: string[];
   isActive: boolean;
+  // Phase 11: Doctor↔Cabinet 1:1 binding. `occupant` is the doctor bound to
+  // this cabinet (or null when the cabinet is free). The settings UI surfaces
+  // it so admins know which rooms are still available.
+  occupant: {
+    id: string;
+    nameRu: string;
+    nameUz: string;
+    isActive: boolean;
+  } | null;
 };
 
 export function CabinetsSettingsClient() {
@@ -61,6 +70,15 @@ export function CabinetsSettingsClient() {
     onSuccess: () => {
       toast.success(t("cabinets.deactivated"));
       qc.invalidateQueries({ queryKey: ["settings", "cabinets"] });
+    },
+    onError: (e: Error) => {
+      // Server returns 409 cabinet_occupied when a doctor is still bound;
+      // surface that as a clear toast instead of a raw HTTP code.
+      if (/cabinet_occupied/i.test(e.message)) {
+        toast.error(t("cabinets.occupiedError"));
+      } else {
+        toast.error(e.message);
+      }
     },
   });
 
@@ -133,6 +151,7 @@ function CabinetCard({
   onDelete: () => void;
 }) {
   const t = useTranslations("settings");
+  const locale = useLocale();
   const [local, setLocal] = React.useState(row);
   const [floorDraft, setFloorDraft] = React.useState<string>(
     row.floor != null ? String(row.floor) : "",
@@ -141,6 +160,12 @@ function CabinetCard({
     setLocal(row);
     setFloorDraft(row.floor != null ? String(row.floor) : "");
   }, [row]);
+
+  const occupantName = row.occupant
+    ? locale === "uz"
+      ? row.occupant.nameUz
+      : row.occupant.nameRu
+    : null;
 
   const commitFloor = () => {
     const trimmed = floorDraft.trim();
@@ -174,9 +199,26 @@ function CabinetCard({
           size="icon-sm"
           onClick={onDelete}
           aria-label={t("common.delete")}
+          disabled={Boolean(row.occupant)}
+          title={row.occupant ? t("cabinets.occupiedError") : undefined}
         >
           <Trash2Icon className="size-4 text-destructive" />
         </Button>
+      </div>
+      <div
+        className={
+          row.occupant
+            ? "inline-flex w-fit items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-warning-foreground"
+            : "inline-flex w-fit items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs text-success-foreground"
+        }
+      >
+        {row.occupant ? (
+          <span>
+            {t("cabinets.occupiedBy", { name: occupantName ?? "" })}
+          </span>
+        ) : (
+          <span>{t("cabinets.free")}</span>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>

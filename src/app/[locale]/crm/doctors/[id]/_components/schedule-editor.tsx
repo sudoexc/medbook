@@ -2,20 +2,12 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
 import { PlusIcon, Trash2Icon, RotateCcwIcon, SaveIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import type { DoctorDetail, DoctorScheduleEntry } from "../_hooks/use-doctor";
 import {
@@ -28,15 +20,12 @@ const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 // DoctorSchedule.weekday: 0=Sunday..6=Saturday (Prisma convention).
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 
-type CabinetOption = { id: string; number: string };
-
 function scheduleToSlots(entries: DoctorScheduleEntry[]): ScheduleSlotInput[] {
   return entries
     .map((e) => ({
       weekday: e.weekday,
       startTime: e.startTime,
       endTime: e.endTime,
-      cabinetId: e.cabinetId,
     }))
     .sort((a, b) => {
       const dayA = WEEKDAY_ORDER.indexOf(a.weekday as (typeof WEEKDAY_ORDER)[number]);
@@ -55,21 +44,6 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
   const t = useTranslations("crmDoctors.schedule");
   const tDays = useTranslations("crmDoctors.weekdays");
   const save = useReplaceDoctorSchedule(doctor.id);
-
-  const cabinetsQuery = useQuery<CabinetOption[], Error>({
-    queryKey: ["cabinets", "doctor-schedule"],
-    queryFn: async ({ signal }) => {
-      const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: CabinetOption[] };
-      return j.rows;
-    },
-    staleTime: 5 * 60_000,
-  });
-  const cabinets = cabinetsQuery.data ?? [];
 
   const baseline = React.useMemo(
     () => scheduleToSlots(doctor.schedules),
@@ -100,8 +74,7 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
       if (
         a.weekday !== b.weekday ||
         a.startTime !== b.startTime ||
-        a.endTime !== b.endTime ||
-        (a.cabinetId ?? null) !== (b.cabinetId ?? null)
+        a.endTime !== b.endTime
       )
         return true;
     }
@@ -115,7 +88,6 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
         weekday,
         startTime: "09:00",
         endTime: "13:00",
-        cabinetId: null,
       },
     ]);
   };
@@ -244,31 +216,6 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
                           className="h-8 w-[110px]"
                           aria-label={t("endTime")}
                         />
-                        <Select
-                          value={slot.cabinetId ?? "__none"}
-                          onValueChange={(v) =>
-                            updateSlot(idx, {
-                              cabinetId: v === "__none" ? null : v,
-                            })
-                          }
-                        >
-                          <SelectTrigger
-                            className="h-8 w-[160px]"
-                            aria-label={t("cabinet")}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none">
-                              {t("cabinetNone")}
-                            </SelectItem>
-                            {cabinets.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>
-                                №{c.number}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
                         <Button
                           variant="ghost"
                           size="icon-sm"

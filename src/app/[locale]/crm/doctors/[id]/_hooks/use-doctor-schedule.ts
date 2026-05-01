@@ -5,11 +5,13 @@ import { toast } from "sonner";
 
 import { doctorKey, type DoctorScheduleEntry } from "./use-doctor";
 
+// Phase 11: cabinet is bound to the doctor (Doctor.cabinetId), not per-shift.
+// `cabinetId` is no longer part of a slot — the editor used to surface it but
+// every entry would just mirror Doctor.cabinetId, so it's gone now.
 export type ScheduleSlotInput = {
   weekday: number;
   startTime: string;
   endTime: string;
-  cabinetId: string | null;
 };
 
 /**
@@ -93,7 +95,6 @@ export function useReplaceDoctorSchedule(doctorId: string) {
             weekday: s.weekday,
             startTime: s.startTime,
             endTime: s.endTime,
-            cabinetId: s.cabinetId ?? undefined,
           })),
         }),
       });

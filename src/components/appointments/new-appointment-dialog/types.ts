@@ -46,11 +46,15 @@ export type DoctorHit = {
   photoUrl: string | null;
   color: string | null;
   isActive: boolean;
-};
-
-export type CabinetHit = {
-  id: string;
-  number: string;
+  // Phase 11: each doctor is bound 1:1 to a cabinet. Surface it here so the
+  // dialog can render the room read-only after the user picks a doctor.
+  cabinetId: string;
+  cabinet: {
+    id: string;
+    number: string;
+    nameRu: string | null;
+    nameUz: string | null;
+  } | null;
 };
 
 export type NewPatientForm = {
@@ -66,7 +70,6 @@ export type FormState = {
   newPatientForm: NewPatientForm;
   serviceIds: string[];
   doctorId: string | null;
-  cabinetId: string | null;
   date: Date;
   time: string | null;
   channel: ChannelType;
@@ -84,7 +87,6 @@ export const EMPTY: FormState = {
   },
   serviceIds: [],
   doctorId: null,
-  cabinetId: null,
   date: new Date(),
   time: null,
   channel: "WALKIN",

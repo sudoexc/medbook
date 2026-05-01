@@ -32,12 +32,14 @@ type DoctorServiceRow = {
   serviceId: string;
   service: ServiceRow;
   priceOverride: number | null;
+  durationMinOverride: number | null;
 };
 
 type AssignmentState = {
   assigned: boolean;
-  /** User-facing string so empty input is distinguishable from 0. */
-  overrideInput: string;
+  /** User-facing strings so empty input is distinguishable from 0. */
+  priceInput: string;
+  durationInput: string;
 };
 
 const fmtUzs = (n: number, locale: string, sumLabel: string): string =>
@@ -107,8 +109,12 @@ export function DoctorServicesEditor({
       const row = currentMap.get(s.id);
       next[s.id] = {
         assigned: Boolean(row),
-        overrideInput:
+        priceInput:
           row?.priceOverride != null ? String(row.priceOverride) : "",
+        durationInput:
+          row?.durationMinOverride != null
+            ? String(row.durationMinOverride)
+            : "",
       };
     }
     // Preserve any inactive-but-still-assigned services so user can unassign.
@@ -116,8 +122,12 @@ export function DoctorServicesEditor({
       if (!next[r.serviceId]) {
         next[r.serviceId] = {
           assigned: true,
-          overrideInput:
+          priceInput:
             r.priceOverride != null ? String(r.priceOverride) : "",
+          durationInput:
+            r.durationMinOverride != null
+              ? String(r.durationMinOverride)
+              : "",
         };
       }
     }
@@ -138,7 +148,10 @@ export function DoctorServicesEditor({
       const b = baseline[k];
       if (!a || !b) return true;
       if (a.assigned !== b.assigned) return true;
-      if (a.assigned && a.overrideInput !== b.overrideInput) return true;
+      if (a.assigned) {
+        if (a.priceInput !== b.priceInput) return true;
+        if (a.durationInput !== b.durationInput) return true;
+      }
     }
     return false;
   }, [state, baseline]);
@@ -151,7 +164,11 @@ export function DoctorServicesEditor({
   const saveMutation = useMutation<
     void,
     Error,
-    Array<{ serviceId: string; priceOverride: number | null }>
+    Array<{
+      serviceId: string;
+      priceOverride: number | null;
+      durationMinOverride: number | null;
+    }>
   >({
     mutationFn: async (assignments) => {
       const res = await fetch(`/api/crm/doctors/${doctorId}/services`, {
@@ -182,19 +199,32 @@ export function DoctorServicesEditor({
       ...prev,
       [serviceId]: {
         assigned: checked,
-        overrideInput: prev[serviceId]?.overrideInput ?? "",
+        priceInput: prev[serviceId]?.priceInput ?? "",
+        durationInput: prev[serviceId]?.durationInput ?? "",
       },
     }));
   };
 
-  const handleOverrideChange = (serviceId: string, value: string) => {
-    // Allow empty or non-negative integer.
+  const handlePriceChange = (serviceId: string, value: string) => {
     if (value !== "" && !/^\d+$/.test(value)) return;
     setState((prev) => ({
       ...prev,
       [serviceId]: {
         assigned: prev[serviceId]?.assigned ?? true,
-        overrideInput: value,
+        priceInput: value,
+        durationInput: prev[serviceId]?.durationInput ?? "",
+      },
+    }));
+  };
+
+  const handleDurationChange = (serviceId: string, value: string) => {
+    if (value !== "" && !/^\d+$/.test(value)) return;
+    setState((prev) => ({
+      ...prev,
+      [serviceId]: {
+        assigned: prev[serviceId]?.assigned ?? true,
+        priceInput: prev[serviceId]?.priceInput ?? "",
+        durationInput: value,
       },
     }));
   };
@@ -205,13 +235,24 @@ export function DoctorServicesEditor({
     const assignments: Array<{
       serviceId: string;
       priceOverride: number | null;
+      durationMinOverride: number | null;
     }> = [];
     for (const [serviceId, s] of Object.entries(state)) {
       if (!s.assigned) continue;
-      const override =
-        s.overrideInput === "" ? null : Number(s.overrideInput);
-      if (override !== null && !Number.isFinite(override)) continue;
-      assignments.push({ serviceId, priceOverride: override });
+      const price =
+        s.priceInput === "" ? null : Number(s.priceInput);
+      if (price !== null && !Number.isFinite(price)) continue;
+      const duration =
+        s.durationInput === "" ? null : Number(s.durationInput);
+      if (duration !== null && !Number.isFinite(duration)) continue;
+      // Server enforces 5..600. Skip silently if user typed something
+      // pathological — they'll see no diff and re-edit.
+      if (duration !== null && (duration < 5 || duration > 600)) continue;
+      assignments.push({
+        serviceId,
+        priceOverride: price,
+        durationMinOverride: duration,
+      });
     }
     saveMutation.mutate(assignments);
   };
@@ -279,9 +320,11 @@ export function DoctorServicesEditor({
           {services.map((s) => {
             const row = state[s.id];
             const checked = Boolean(row?.assigned);
-            const overrideInput = row?.overrideInput ?? "";
+            const priceInput = row?.priceInput ?? "";
+            const durationInput = row?.durationInput ?? "";
             const inputId = `svc-${s.id}`;
             const priceId = `price-${s.id}`;
+            const durationId = `dur-${s.id}`;
             return (
               <li
                 key={s.id}
@@ -310,27 +353,51 @@ export function DoctorServicesEditor({
                     {t("basePrice")}: {fmtUzs(s.priceBase, locale, t("currencySum"))}
                   </span>
                 </Label>
-                <div className="flex items-center gap-2">
-                  <Label
-                    htmlFor={priceId}
-                    className="text-xs text-muted-foreground"
-                  >
-                    {t("priceOverride")}
-                  </Label>
-                  <Input
-                    id={priceId}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder={String(s.priceBase)}
-                    value={overrideInput}
-                    onChange={(e) =>
-                      handleOverrideChange(s.id, e.target.value)
-                    }
-                    disabled={
-                      !canEdit || !checked || saveMutation.isPending
-                    }
-                    className="h-8 w-[140px]"
-                  />
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor={priceId}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {t("priceOverride")}
+                    </Label>
+                    <Input
+                      id={priceId}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder={String(s.priceBase)}
+                      value={priceInput}
+                      onChange={(e) =>
+                        handlePriceChange(s.id, e.target.value)
+                      }
+                      disabled={
+                        !canEdit || !checked || saveMutation.isPending
+                      }
+                      className="h-8 w-[120px]"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor={durationId}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {t("durationOverride")}
+                    </Label>
+                    <Input
+                      id={durationId}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder={String(s.durationMin)}
+                      value={durationInput}
+                      onChange={(e) =>
+                        handleDurationChange(s.id, e.target.value)
+                      }
+                      disabled={
+                        !canEdit || !checked || saveMutation.isPending
+                      }
+                      className="h-8 w-[80px]"
+                    />
+                  </div>
                 </div>
               </li>
             );

@@ -35,7 +35,6 @@ import { ServicesPicker } from "./new-appointment-dialog/services-picker";
 import {
   CHANNELS,
   EMPTY,
-  type CabinetHit,
   type ChannelType,
   type DoctorHit,
   type FormState,
@@ -76,7 +75,12 @@ export interface NewAppointmentDialogProps {
  *  3. Doctor — options narrowed to those offering any of the selected
  *     services (via `serviceOnDoctor` include on the list endpoint).
  *  4. Slot — `<SlotPicker>` calls `/api/crm/appointments/slots/available`.
- *  5. Channel + cabinet + notes → submit. 409 conflicts render inline.
+ *  5. Channel + notes → submit. 409 conflicts render inline.
+ *
+ * Phase 11 — cabinet is bound 1:1 to the doctor (`Doctor.cabinetId`), so
+ * there is no cabinet picker in this dialog. The bound cabinet is shown
+ * read-only as confirmation; the API derives the canonical value from the
+ * doctor and ignores any client-provided cabinetId.
  */
 export function NewAppointmentDialog({
   open,
@@ -102,9 +106,8 @@ export function NewAppointmentDialog({
       | "outside_schedule";
     until?: string;
   } | null>(null);
-  // Tracks which doctor we've already auto-applied (services filter +
-  // default cabinet) for, so we don't re-run on every render. Reset whenever
-  // the dialog opens.
+  // Tracks which doctor we've already auto-applied the services filter for
+  // so we don't re-run on every render. Reset whenever the dialog opens.
   const lastDoctorRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -118,7 +121,6 @@ export function NewAppointmentDialog({
       newPatient: false,
       serviceIds: [],
       doctorId: initialDoctorId ?? null,
-      cabinetId: null,
       date: initialDate ?? new Date(),
       time: initialTime ?? null,
       channel: "WALKIN",
@@ -236,29 +238,12 @@ export function NewAppointmentDialog({
     staleTime: 5 * 60_000,
   });
 
-  const cabinetsQuery = useQuery<CabinetHit[], Error>({
-    queryKey: ["cabinets", "dialog"],
-    enabled: open,
-    queryFn: async ({ signal }) => {
-      const res = await fetch(`/api/crm/cabinets?isActive=true&limit=200`, {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { rows: CabinetHit[] };
-      return j.rows;
-    },
-    staleTime: 5 * 60_000,
-  });
-
-  // When the user picks a doctor we look up that doctor's services + schedule
-  // — services drive what's offered in the picker below, and the most-frequent
-  // cabinetId across the doctor's active weekly schedule becomes the default
-  // cabinet (each doctor is "anchored" to one room).
+  // When the user picks a doctor we look up that doctor's services so the
+  // services picker can be narrowed to what this doctor actually offers.
+  // Cabinet is bound to the doctor model — read it off the picked DoctorHit.
   type DoctorDetail = {
     id: string;
     services: { serviceId: string }[];
-    schedules: { cabinetId: string | null; isActive: boolean }[];
   };
   const doctorDetailQuery = useQuery<DoctorDetail | null, Error>({
     queryKey: ["doctor", "detail", state.doctorId],
@@ -287,34 +272,24 @@ export function NewAppointmentDialog({
     return all.filter((s) => allowedServiceIds.has(s.id));
   }, [servicesQuery.data, allowedServiceIds]);
 
-  // Auto-fill cabinet from doctor's schedule (most common cabinetId across
-  // active entries). Drop selected services that the new doctor doesn't
-  // offer. Runs once per doctor change.
+  const selectedDoctor = React.useMemo<DoctorHit | null>(() => {
+    if (!state.doctorId) return null;
+    return (
+      (doctorsQuery.data ?? []).find((d) => d.id === state.doctorId) ?? null
+    );
+  }, [state.doctorId, doctorsQuery.data]);
+
+  // Drop selected services the picked doctor doesn't offer. Runs once per
+  // doctor change.
   React.useEffect(() => {
     const detail = doctorDetailQuery.data;
     if (!detail) return;
     if (lastDoctorRef.current === detail.id) return;
     lastDoctorRef.current = detail.id;
 
-    const counts = new Map<string, number>();
-    for (const sch of detail.schedules) {
-      if (!sch.isActive || !sch.cabinetId) continue;
-      counts.set(sch.cabinetId, (counts.get(sch.cabinetId) ?? 0) + 1);
-    }
-    let topCabinetId: string | null = null;
-    let topCount = 0;
-    for (const [id, n] of counts) {
-      if (n > topCount) {
-        topCabinetId = id;
-        topCount = n;
-      }
-    }
     const allowed = new Set(detail.services.map((s) => s.serviceId));
     setState((s) => ({
       ...s,
-      // Always reflect the new doctor's anchor cabinet — null wipes any
-      // stale cabinet from a previously-selected doctor.
-      cabinetId: topCabinetId,
       serviceIds: s.serviceIds.filter((id) => allowed.has(id)),
     }));
   }, [doctorDetailQuery.data]);
@@ -366,10 +341,12 @@ export function NewAppointmentDialog({
         }, 0) || 30,
       );
 
+      // Phase 11: cabinet is derived server-side from doctorId and ignored
+      // here. We don't ship a cabinetId at all so old clients that mistakenly
+      // include one don't drift from the server's source of truth.
       const body = {
         patientId: resolvedPatientId,
         doctorId: values.doctorId,
-        cabinetId: values.cabinetId ?? undefined,
         services: values.serviceIds.map((sid) => ({
           serviceId: sid,
           quantity: 1,
@@ -478,9 +455,8 @@ export function NewAppointmentDialog({
                 ...s,
                 doctorId: id,
                 time: null,
-                // Cabinet + services are reapplied by the effect above once
-                // the doctor's detail loads; clear stale values until then.
-                cabinetId: id ? s.cabinetId : null,
+                // Services are reapplied by the effect above once the
+                // doctor's detail loads; clear stale values until then.
                 serviceIds: id ? s.serviceIds : [],
               }))
             }
@@ -531,27 +507,11 @@ export function NewAppointmentDialog({
             </div>
             <div className="grid gap-1">
               <Label>{t("cabinet")}</Label>
-              <Select
-                value={state.cabinetId ?? "__none"}
-                onValueChange={(v) =>
-                  setState((s) => ({
-                    ...s,
-                    cabinetId: v === "__none" ? null : v,
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t("cabinetPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">{t("cabinetNone")}</SelectItem>
-                  {(cabinetsQuery.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      №{c.number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3 text-sm text-muted-foreground">
+                {selectedDoctor?.cabinet
+                  ? `№ ${selectedDoctor.cabinet.number}`
+                  : t("cabinetPlaceholder")}
+              </div>
             </div>
           </div>
 

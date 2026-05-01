@@ -11,6 +11,7 @@ export type DoctorServiceLink = {
   doctorId: string;
   serviceId: string;
   priceOverride: number | null;
+  durationMinOverride: number | null;
   service: {
     id: string;
     nameRu: string;
@@ -27,10 +28,16 @@ export type DoctorScheduleEntry = {
   weekday: number;
   startTime: string;
   endTime: string;
-  cabinetId: string | null;
   validFrom: string | null;
   validTo: string | null;
   isActive: boolean;
+};
+
+export type DoctorCabinet = {
+  id: string;
+  number: string;
+  nameRu?: string | null;
+  nameUz?: string | null;
 };
 
 export type DoctorTimeOffEntry = {
@@ -59,11 +66,19 @@ export type DoctorDetail = {
   pricePerVisit: number | null;
   salaryPercent: number;
   isActive: boolean;
+  cabinetId: string;
+  cabinet: DoctorCabinet | null;
   createdAt: string;
   updatedAt: string;
   services: DoctorServiceLink[];
   schedules: DoctorScheduleEntry[];
   timeOffs: DoctorTimeOffEntry[];
+};
+
+export type DoctorServicePatch = {
+  serviceId: string;
+  priceOverride?: number | null;
+  durationMinOverride?: number | null;
 };
 
 export type DoctorUpdateInput = Partial<{
@@ -78,6 +93,8 @@ export type DoctorUpdateInput = Partial<{
   pricePerVisit: number | null;
   salaryPercent: number;
   isActive: boolean;
+  cabinetId: string;
+  services: DoctorServicePatch[];
 }>;
 
 export const doctorKey = (id: string) => ["doctor", id] as const;

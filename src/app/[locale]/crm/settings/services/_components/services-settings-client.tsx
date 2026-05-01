@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlusIcon, StethoscopeIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -257,14 +258,51 @@ function CreateServiceDialog({
   onCreated: () => void;
 }) {
   const t = useTranslations("settings");
-  const [form, setForm] = React.useState({
+  const locale = useLocale();
+  type DoctorOption = {
+    id: string;
+    nameRu: string;
+    nameUz: string;
+    isActive: boolean;
+  };
+  const [form, setForm] = React.useState<{
+    code: string;
+    nameRu: string;
+    nameUz: string;
+    durationMin: number;
+    priceBase: number;
+    category: string;
+    doctorIds: string[];
+  }>({
     code: "",
     nameRu: "",
     nameUz: "",
     durationMin: 30,
     priceBase: 0,
     category: "",
+    doctorIds: [],
   });
+  // Phase 11 invariant: a service must have ≥1 doctor at creation time.
+  // Load active doctors so the dialog can present a multi-select.
+  const doctorsQuery = useQuery<DoctorOption[], Error>({
+    queryKey: ["settings", "service-doctor-picker"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await settingsFetch<{ rows: DoctorOption[] }>(
+        "/api/crm/doctors?isActive=true&limit=200",
+      );
+      return res.rows;
+    },
+    staleTime: 60_000,
+  });
+  const toggleDoctor = (id: string) => {
+    setForm((s) => ({
+      ...s,
+      doctorIds: s.doctorIds.includes(id)
+        ? s.doctorIds.filter((x) => x !== id)
+        : [...s.doctorIds, id],
+    }));
+  };
   const mut = useMutation({
     mutationFn: () =>
       settingsFetch("/api/crm/services", {
@@ -276,6 +314,7 @@ function CreateServiceDialog({
           category: form.category || null,
           durationMin: form.durationMin,
           priceBase: form.priceBase,
+          doctorIds: form.doctorIds,
         }),
       }),
     onSuccess: () => {
@@ -288,6 +327,7 @@ function CreateServiceDialog({
         durationMin: 30,
         priceBase: 0,
         category: "",
+        doctorIds: [],
       });
       onOpenChange(false);
     },
@@ -378,6 +418,55 @@ function CreateServiceDialog({
               />
             </div>
           </div>
+          <div>
+            <div className="mb-1 flex items-baseline justify-between">
+              <Label>
+                {t("services.doctorsRequired")}{" "}
+                <span className="text-destructive">*</span>
+              </Label>
+              <span className="text-xs text-muted-foreground">
+                {t("services.doctorsSelected", {
+                  count: form.doctorIds.length,
+                })}
+              </span>
+            </div>
+            {doctorsQuery.isLoading ? (
+              <div className="text-xs text-muted-foreground">
+                {t("common.loading")}
+              </div>
+            ) : (doctorsQuery.data ?? []).length === 0 ? (
+              <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
+                {t("services.doctorsEmpty")}
+              </div>
+            ) : (
+              <div className="grid max-h-44 gap-1 overflow-y-auto rounded-md border border-border p-2 sm:grid-cols-2">
+                {(doctorsQuery.data ?? []).map((d) => {
+                  const checked = form.doctorIds.includes(d.id);
+                  const id = `svc-doc-${d.id}`;
+                  const name = locale === "uz" ? d.nameUz : d.nameRu;
+                  return (
+                    <label
+                      key={d.id}
+                      htmlFor={id}
+                      className="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted/40"
+                    >
+                      <Checkbox
+                        id={id}
+                        checked={checked}
+                        onCheckedChange={() => toggleDoctor(d.id)}
+                      />
+                      <span className="truncate">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {form.doctorIds.length === 0 ? (
+              <p className="mt-1 text-xs text-destructive">
+                {t("services.doctorsRequiredHint")}
+              </p>
+            ) : null}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -389,7 +478,8 @@ function CreateServiceDialog({
               mut.isPending ||
               !form.code ||
               !form.nameRu ||
-              !form.nameUz
+              !form.nameUz ||
+              form.doctorIds.length === 0
             }
           >
             {mut.isPending ? t("common.saving") : t("common.create")}

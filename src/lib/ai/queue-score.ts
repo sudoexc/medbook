@@ -54,7 +54,10 @@ export function computeQueueScore(input: QueueScoreInput): QueueScoreOutput {
   const wait = input.waitMin * 1.0;
   const urgency = input.urgencyLevel * 25;
   const vip = input.isVip ? 30 : 0;
-  const noShowPenalty = input.noShowRisk * -20;
+  // Normalize `-0` (from `0 * -20`) to `+0` so deep-equality consumers see a
+  // canonical zero.
+  const noShowPenaltyRaw = input.noShowRisk * -20;
+  const noShowPenalty = noShowPenaltyRaw === 0 ? 0 : noShowPenaltyRaw;
   const latePenalty = input.isLate ? 15 : 0;
   const overdueBoost = input.hasOverdue ? 10 : 0;
 

@@ -1,16 +1,23 @@
 /**
  * /api/crm/calls — list + create.
  * See docs/TZ.md §6.4 call-center.
+ *
+ * Phase 9d — gated behind `flags.hasCallCenter`. Basic-plan tenants get
+ * 404 (matches the `/crm/call-center` page guard) so we don't leak the
+ * pro-feature surface.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, parseQuery } from "@/server/http";
 import { CreateCallSchema, QueryCallSchema } from "@/server/schemas/call";
+import { ensureFeature } from "@/server/platform/feature-guard";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
+    const block = await ensureFeature(ctx, "hasCallCenter");
+    if (block) return block;
     const parsed = parseQuery(request, QueryCallSchema);
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
@@ -55,7 +62,9 @@ export const GET = createApiListHandler(
 
 export const POST = createApiHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"], bodySchema: CreateCallSchema },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
+    const block = await ensureFeature(ctx, "hasCallCenter");
+    if (block) return block;
     const created = await prisma.call.create({
       data: {
         direction: body.direction,

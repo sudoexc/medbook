@@ -30,12 +30,19 @@ import {
   computeNoShowRanks,
   computeTgFunnel,
 } from "@/server/analytics/funnels";
+import { ensureFeature } from "@/server/platform/feature-guard";
 
 const FUNNEL_LOOKAHEAD_DAYS = 7;
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR"] },
-  async ({ request }) => {
+  async ({ request, ctx: tenantCtx }) => {
+    // Phase 9d — funnels are part of the Pro-аналитика bundle. Basic / Pro
+    // tiers do not expose them; respond 404 to mirror the page-level guard
+    // and the Stripe-style "feature dark-launch" pattern.
+    const block = await ensureFeature(tenantCtx, "hasAnalyticsPro");
+    if (block) return block;
+
     const url = new URL(request.url);
     const { from, to, period } = resolveAnalyticsRange(url);
 

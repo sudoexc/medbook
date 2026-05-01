@@ -1022,6 +1022,15 @@ Single shared `BrowserContext`/`APIRequestContext` (login один раз в `be
 - Тесты: **291/291 passing** (28 файлов). +7 новых в `tests/unit/prisma-branch-scope.test.ts` (vi.hoisted $extends capture, без DB). 0 новых tsc/lint ошибок.
 - E2E suite не запускалась (Next dev server timed out под dual-lockfile warning); код e2e не трогали — fixtures и логика идентичны.
 
+### Результаты — 9b (✅ DONE 2026-05-01)
+
+- 3 коммита на main: `66c0031 feat(prisma): add Plan + Subscription models with seed migration` → `ad224f1 feat(billing): getFeatureFlags helper + unit tests` → `767b596 chore(seed): ensure every seeded clinic has a Pro TRIAL subscription`. Тег `phase-9b-done` на `767b596`.
+- Миграция `20260501091536_add_plans_and_subscriptions`: enum `SubscriptionStatus` (TRIAL/ACTIVE/PAST_DUE/CANCELLED), модели `Plan` (slug @unique, nameRu/Uz, priceMonth Decimal, currency, features Json, isActive, sortOrder) + `Subscription` (clinicId @unique → 1 active sub per clinic, planId, status, trialEndsAt, currentPeriodEndsAt, cancelledAt). Stage B: 3 канонических плана (basic 0 / pro 1.5M UZS / enterprise 5M UZS) + TRIAL на Pro 30 дней для всех существующих клиник.
+- `src/lib/feature-flags.ts` — `getFeatureFlags(clinicId): Promise<FeatureFlags>`. TRIAL/ACTIVE → flags плана; PAST_DUE → flags плана (Stripe-style grace); CANCELLED / no-sub → `DEFAULT_FLAGS` (Basic-equivalent). Defensive parsing: каждый missing/wrong-typed key падает обратно на DEFAULT_FLAGS independently; `Number.isFinite` для maxBranches/maxUsers.
+- Прод-кода `getFeatureFlags()` пока не вызывает — это Phase 9c (UI feature gates).
+- Тесты: **306/306 passing** (29 файлов). +15 новых в `tests/unit/feature-flags.test.ts`. 0 новых tsc/lint.
+- E2E suite не запускалась (та же причина что в 9a — Next dev server timeout под dual-lockfile).
+
 ### Quality gates Phase 9
 
 - `npx prisma migrate dev` без ошибок.

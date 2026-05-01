@@ -100,6 +100,20 @@
         "analytics": { "title": "Tahlillar", "subtitle": "Klinika umumiy ko'rsatkichlari" },
         "settings": { "title": "Sozlamalar", "subtitle": "Klinika va foydalanuvchilar" }
       }
+    },
+    "trialBanner": {
+      "daysLeft": {
+        "title": "Sinov muddati",
+        "body": "{count, plural, one {# kun qoldi} other {# kun qoldi}}"
+      },
+      "expired": {
+        "title": "Sinov muddati tugadi",
+        "body": "Premium-funksiyalar imtiyozli muddatda ishlamoqda — obunani to'lab, kirishni saqlab qoling.",
+        "bodyWithDate": "Premium-funksiyalar {date} gacha imtiyozli muddatda ishlamoqda — obunani to'lab, kirishni saqlab qoling."
+      },
+      "cta": {
+        "openBilling": "Tarifikatsiya"
+      }
     }
   },
   "common": {

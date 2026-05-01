@@ -5,9 +5,11 @@ import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
 import { CrmTopbar } from "@/components/layout/crm-topbar"
+import { TrialBanner } from "@/components/layout/trial-banner"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { ACTIVE_BRANCH_COOKIE_NAME } from "@/server/platform/branch-cookie"
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags"
+import { getCurrentSubscription } from "@/server/platform/current-subscription"
 
 export default async function CrmLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("crmLayout")
@@ -21,12 +23,19 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
   // Phase 9d — resolve plan-aware nav flags once on the server. The sidebar
   // uses this to hide pro-only menu items; the gated `page.tsx` files run
   // their own `notFound()` guards as defense-in-depth.
-  const flags = await getFeatureFlagsForCurrentSession()
+  // Phase 9e — also resolve the current subscription so the trial / past-due
+  // banner can render above the topbar. Both calls hit Postgres so we run
+  // them in parallel to keep the layout fast on every CRM page.
+  const [flags, subscription] = await Promise.all([
+    getFeatureFlagsForCurrentSession(),
+    getCurrentSubscription(),
+  ])
   return (
     <QueryProvider>
       <div className="flex h-screen min-h-0 w-full bg-background">
         <CrmSidebar flags={flags} />
         <div className="flex min-w-0 flex-1 flex-col">
+          <TrialBanner subscription={subscription} />
           <CrmTopbar
             userEmail={session?.user?.email ?? "admin@neurofax.uz"}
             userName={session?.user?.name ?? t("adminFallbackName")}

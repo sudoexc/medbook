@@ -1,4 +1,26 @@
 {
+  "analytics": {
+    "funnels": {
+      "tgTitle": "Telegram → yozuv",
+      "callTitle": "Qo‘ng‘iroq → yozuv",
+      "noShowTitle": "No-show: top-10",
+      "waitTimeTitle": "O‘rtacha kutish",
+      "rate": "Konversiya",
+      "converted": "Konvertatsiya qilindi",
+      "of": "/",
+      "sparkTooltipDate": "Sana",
+      "sparkTooltipRate": "Konversiya",
+      "noShowDoctorsTab": "Shifokorlar",
+      "noShowServicesTab": "Xizmatlar",
+      "noShowEmpty": "Tanlangan davrda yakunlangan yoki kelmagan qabullar yo‘q",
+      "waitTimeEmpty": "Tanlangan davr uchun kutish vaqti ma’lumoti yo‘q",
+      "waitColumnDoctor": "Shifokor",
+      "waitColumnAvg": "O‘rtacha",
+      "waitColumnSamples": "Namuna",
+      "seconds": "soniya",
+      "minutes": "daqiqa"
+    }
+  },
   "crmLayout": {
     "adminFallbackName": "Administrator"
   },

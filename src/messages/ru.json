@@ -1,4 +1,26 @@
 {
+  "analytics": {
+    "funnels": {
+      "tgTitle": "Telegram → запись",
+      "callTitle": "Звонок → запись",
+      "noShowTitle": "No-show: топ-10",
+      "waitTimeTitle": "Среднее ожидание",
+      "rate": "Конверсия",
+      "converted": "Конвертировано",
+      "of": "из",
+      "sparkTooltipDate": "День",
+      "sparkTooltipRate": "Конверсия",
+      "noShowDoctorsTab": "Врачи",
+      "noShowServicesTab": "Услуги",
+      "noShowEmpty": "Нет завершённых или пропущенных приёмов за период",
+      "waitTimeEmpty": "Нет данных о времени ожидания за период",
+      "waitColumnDoctor": "Врач",
+      "waitColumnAvg": "Среднее",
+      "waitColumnSamples": "Выборка",
+      "seconds": "сек",
+      "minutes": "мин"
+    }
+  },
   "crmLayout": {
     "adminFallbackName": "Администратор"
   },

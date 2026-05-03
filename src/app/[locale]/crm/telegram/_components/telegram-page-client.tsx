@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 
 import { EmptyState } from "@/components/atoms/empty-state";
-import { SendIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SendIcon, SettingsIcon } from "lucide-react";
 
 import {
   useConversations,
@@ -26,7 +28,11 @@ import { ChatRightRail } from "./chat-right-rail";
  * Works only at ≥1280px; smaller widths get a "use desktop" hint.
  * When future phases need a mobile variant we swap this for a Sheet stack.
  */
-export function TelegramPageClient() {
+export function TelegramPageClient({
+  botConfigured,
+}: {
+  botConfigured: boolean;
+}) {
   useTgConversationsRealtime();
 
   const t = useTranslations("tgInbox");
@@ -45,6 +51,31 @@ export function TelegramPageClient() {
       setSelectedId(rows[0]!.id);
     }
   }, [selectedId, rows, setSelectedId]);
+
+  if (!botConfigured) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center p-6">
+        <div className="flex max-w-lg flex-col items-center gap-4 rounded-lg border border-dashed border-border bg-card p-8 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+            <SendIcon className="size-6" aria-hidden />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">{t("notConfigured.title")}</h2>
+            <p className="text-sm text-muted-foreground">
+              {t("notConfigured.description")}
+            </p>
+          </div>
+          <Button
+            nativeButton={false}
+            render={<Link href="/crm/settings/integrations" />}
+          >
+            <SettingsIcon className="size-4" aria-hidden />
+            {t("notConfigured.cta")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

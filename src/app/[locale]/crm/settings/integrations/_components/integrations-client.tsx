@@ -32,6 +32,7 @@ import { Switch } from "@/components/ui/switch";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
 import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
+import { TgConnectWizard } from "./tg-connect-wizard";
 
 type ProviderKind =
   | "TELEGRAM"
@@ -81,6 +82,16 @@ export function IntegrationsClient() {
   });
 
   const [editKind, setEditKind] = React.useState<ProviderKind | null>(null);
+  const [tgWizardOpen, setTgWizardOpen] = React.useState(false);
+
+  const tgStatusQuery = useQuery({
+    queryKey: ["settings", "tg-webhook-status"],
+    queryFn: () =>
+      settingsFetch<TgStatus>("/api/crm/integrations/tg/webhook-status"),
+  });
+  const tgConfigured = tgStatusQuery.data
+    ? !tgStatusQuery.data.notConfigured
+    : false;
 
   const connsByKind = React.useMemo(() => {
     const byKind: Partial<Record<ProviderKind, ProviderConn>> = {};
@@ -115,8 +126,29 @@ export function IntegrationsClient() {
           title={t("integrations.cards.tg.title")}
           description={t("integrations.cards.tg.description")}
           conn={connsByKind.TELEGRAM ?? null}
-          onSetup={() => setEditKind("TELEGRAM")}
-          extra={<TgWebhookPanel />}
+          configured={tgConfigured}
+          onSetup={() => {
+            if (tgConfigured) setEditKind("TELEGRAM");
+            else setTgWizardOpen(true);
+          }}
+          ctaKey={tgConfigured ? "setup" : "tgConnect"}
+          extra={
+            tgConfigured ? (
+              <>
+                <TgWebhookPanel />
+                <TgDisconnectButton
+                  onDisconnected={() => {
+                    qc.invalidateQueries({
+                      queryKey: ["settings", "tg-webhook-status"],
+                    });
+                    qc.invalidateQueries({
+                      queryKey: ["settings", "integrations"],
+                    });
+                  }}
+                />
+              </>
+            ) : null
+          }
         />
 
         <IntegrationCard
@@ -154,6 +186,17 @@ export function IntegrationsClient() {
           }}
         />
       ) : null}
+
+      <TgConnectWizard
+        open={tgWizardOpen}
+        onOpenChange={setTgWizardOpen}
+        onConnected={() => {
+          qc.invalidateQueries({
+            queryKey: ["settings", "tg-webhook-status"],
+          });
+          qc.invalidateQueries({ queryKey: ["settings", "integrations"] });
+        }}
+      />
     </PageContainer>
   );
 }
@@ -163,7 +206,9 @@ function IntegrationCard({
   title,
   description,
   conn,
+  configured,
   onSetup,
+  ctaKey,
   extra,
 }: {
   kind: ProviderKind;
@@ -171,15 +216,20 @@ function IntegrationCard({
   title: string;
   description: string;
   conn: ProviderConn | null;
+  /** Optional override: if true, the card shows "ok" state regardless of `conn`. */
+  configured?: boolean;
   onSetup: () => void;
+  ctaKey?: "setup" | "tgConnect";
   extra?: React.ReactNode;
 }) {
   const t = useTranslations("settings");
-  const state = !conn
-    ? "missing"
-    : conn.active && conn.hasSecret
-      ? "ok"
-      : "warning";
+  const state = configured
+    ? "ok"
+    : !conn
+      ? "missing"
+      : conn.active && conn.hasSecret
+        ? "ok"
+        : "warning";
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -212,11 +262,72 @@ function IntegrationCard({
       <div className="flex flex-wrap gap-2">
         <Button onClick={onSetup} variant="outline" size="sm">
           <PlugZapIcon className="size-4" />
-          {t("integrations.setup")}
+          {ctaKey === "tgConnect"
+            ? t("integrations.tgConnect")
+            : t("integrations.setup")}
         </Button>
         {extra}
       </div>
     </section>
+  );
+}
+
+function TgDisconnectButton({
+  onDisconnected,
+}: {
+  onDisconnected: () => void;
+}) {
+  const t = useTranslations("settings");
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const mut = useMutation({
+    mutationFn: () =>
+      settingsFetch("/api/crm/integrations/tg/disconnect", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      toast.success(t("integrations.tgDisconnected"));
+      setConfirmOpen(false);
+      onDisconnected();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setConfirmOpen(true)}
+        className="text-destructive hover:text-destructive"
+      >
+        {t("integrations.tgDisconnect")}
+      </Button>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("integrations.tgDisconnectTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("integrations.tgDisconnectHint")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => mut.mutate()}
+              disabled={mut.isPending}
+            >
+              {mut.isPending
+                ? t("common.saving")
+                : t("integrations.tgDisconnect")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

@@ -40,14 +40,20 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
         currentPassword: forced ? undefined : current,
         newPassword: next,
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Пароль обновлён");
-      // Hard navigation forces a fresh document load, which re-issues the
-      // JWT with mustChangePassword=false (the API endpoint clears it
-      // server-side). next-auth's useSession().update() would do this
-      // in-place, but we don't ship a SessionProvider, so the hard reload
-      // is the simplest way to refresh both the cookie claim and the
-      // middleware decision in one shot.
+      // Force the JWT to refresh: POST /api/auth/session triggers the
+      // `jwt` callback with trigger='update', which re-reads the user
+      // from the DB and rewrites the cookie. Without this, the proxy
+      // still sees the stale mustChangePassword=true claim on the next
+      // navigation and bounces us right back here. (next-auth's
+      // `useSession().update()` does the same thing, but we don't ship
+      // a SessionProvider so we issue the request directly.)
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {});
       window.location.assign("/crm");
     },
     onError: (e) => {

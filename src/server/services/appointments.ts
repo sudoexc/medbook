@@ -13,9 +13,10 @@
  *   - outside DoctorSchedule for the weekday
  */
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma/client";
 
-type PrismaLike = Prisma.TransactionClient | typeof prisma;
+type PrismaLike =
+  | typeof prisma
+  | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export type ConflictResult =
   | { ok: true }

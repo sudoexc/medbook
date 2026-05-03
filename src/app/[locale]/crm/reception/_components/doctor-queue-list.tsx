@@ -183,7 +183,7 @@ export function DoctorQueueList({
                     state === "in_session"
                       ? "online"
                       : state === "awaiting"
-                        ? "away"
+                        ? "waiting"
                         : null
                   }
                 />

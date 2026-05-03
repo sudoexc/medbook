@@ -57,10 +57,16 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public          ./public
 
-# Prisma schema + generated client are needed at runtime for migrate/deploy + $queryRaw.
-COPY --from=builder --chown=nextjs:nodejs /app/prisma         ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma        ./node_modules/.prisma
+# Prisma schema + CLI are needed at runtime for `migrate deploy` on startup.
+# Prisma 7's `prisma-client` provider emits to src/generated/prisma — Next.js
+# standalone tracing carries that and @prisma/client along, so we don't COPY
+# the generated client here. We *do* need the prisma CLI + its @prisma/* deps
+# (engines, fetch-engine, etc.) for `npx prisma migrate deploy` to work.
+COPY --from=builder --chown=nextjs:nodejs /app/prisma                    ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma      ./node_modules/@prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma       ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma  ./node_modules/.bin/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts          ./prisma.config.ts
 
 USER nextjs
 EXPOSE 3000

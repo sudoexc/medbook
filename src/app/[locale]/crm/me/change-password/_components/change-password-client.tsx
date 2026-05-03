@@ -1,8 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { useMutation } from "@tanstack/react-query";
 import { KeyRoundIcon } from "lucide-react";
 
@@ -31,8 +29,6 @@ async function postPassword(body: PostBody): Promise<void> {
 }
 
 export function ChangePasswordClient({ forced }: { forced: boolean }) {
-  const router = useRouter();
-  const { update } = useSession();
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
@@ -44,12 +40,15 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
         currentPassword: forced ? undefined : current,
         newPassword: next,
       }),
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success("Пароль обновлён");
-      // Refresh the session so the middleware sees mustChangePassword=false.
-      await update();
-      router.replace("/crm");
-      router.refresh();
+      // Hard navigation forces a fresh document load, which re-issues the
+      // JWT with mustChangePassword=false (the API endpoint clears it
+      // server-side). next-auth's useSession().update() would do this
+      // in-place, but we don't ship a SessionProvider, so the hard reload
+      // is the simplest way to refresh both the cookie claim and the
+      // middleware decision in one shot.
+      window.location.assign("/crm");
     },
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Error";

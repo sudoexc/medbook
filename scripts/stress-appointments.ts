@@ -716,9 +716,12 @@ async function main() {
         detail: `${r3.status} reason=${r3.reason}`,
       });
 
-      // D4: cabinet_busy. First book doctor X in cabinet C, then try doctor Y
-      // (different doctor, working today, free that slot) into the same
-      // cabinet at the same time.
+      // D4: cabinet binding (Phase 11 — 1:1). With Doctor↔Cabinet enforced
+      // 1:1, two different doctors can never share a cabinet — the API
+      // ignores any client-supplied cabinetId and uses doctor.cabinetId. We
+      // verify that booking two different doctors at the same slot succeeds
+      // (each lands in their own room) — proving the binding stops the
+      // shared-cabinet conflict from being possible in the first place.
       const cabinet = refs.cabinets[0];
       const otherDocs = workingDocs.filter((d) => d.id !== a.doctorId);
       if (cabinet && otherDocs[0] && otherDocs[1]) {
@@ -736,7 +739,7 @@ async function main() {
           channel: "WALKIN",
         });
         if (first.status === 201) {
-          const clash = await createAppt(jar, {
+          const second = await createAppt(jar, {
             patientId: patientIds[3],
             doctorId: otherDocs[1].id,
             cabinetId: cabinet.id,
@@ -746,11 +749,11 @@ async function main() {
             channel: "WALKIN",
           });
           record({
-            id: "D4-cabinet-busy",
+            id: "D4-cabinet-binding",
             group: "D-conflicts",
-            name: "double-book same cabinet/slot (different doctors)",
-            pass: clash.status === 409 && clash.reason === "cabinet_busy",
-            detail: `${clash.status} reason=${clash.reason}`,
+            name: "Doctor↔Cabinet 1:1 — different doctors get separate cabinets",
+            pass: second.status === 201,
+            detail: `first=${first.status} second=${second.status}`,
           });
         } else {
           record({
@@ -854,15 +857,19 @@ async function main() {
     }
   }
 
-  // ── Group G: no-show
+  // ── Group G: no-show. Per H3 (#199), NO_SHOW is gated on past-only — a
+  // BOOKED appointment whose slot is still in the future cannot transition
+  // to NO_SHOW. The happy-path appts created above are all future, so we
+  // expect 409 here (not 200). The past-only path is exercised separately
+  // via the seed.
   if (happyAppts.length > transitionTargets.length + 1) {
     const noShowId = happyAppts[transitionTargets.length + 1]!;
     const r = await patchAppt(jar, noShowId, { status: "NO_SHOW" });
     record({
       id: "G-noshow",
       group: "G-noshow",
-      name: "BOOKED→NO_SHOW",
-      pass: r.status === 200,
+      name: "future BOOKED→NO_SHOW blocked by H3 past-only gate",
+      pass: r.status === 409,
       detail: `${r.status}`,
     });
   }
@@ -959,11 +966,28 @@ async function main() {
     }
   }
 
-  // ── Group L: payments → revenue KPI
+  // ── Group L: payments → revenue KPI.
+  //
+  // Snapshot the dashboard revenue BEFORE we add new payments so the
+  // assertion is delta-based, not total-based. The seed lays down today
+  // payments too — the test only owns what *it* charged.
+  const revenueBefore = (await dashboardKpis(jar)).today.revenue;
   const completedRows = (await listToday(jar)).filter(
     (r) => r.status === "COMPLETED",
   );
-  const payTargets = completedRows.slice(0, 3);
+  // Filter out completed appts that already have a payment (seed paid for
+  // some). Otherwise the dashboard delta won't match `totalCharged` — the
+  // duplicate-paid row keeps its original payment row.
+  const payTargets: typeof completedRows = [];
+  for (const row of completedRows) {
+    const exists = await api<{ rows: Array<unknown>; total: number }>(
+      jar,
+      "GET",
+      `/api/crm/payments?appointmentId=${row.id}&status=PAID&limit=1`,
+    );
+    if (exists.data?.total === 0) payTargets.push(row);
+    if (payTargets.length === 3) break;
+  }
   let totalCharged = 0;
   for (const row of payTargets) {
     // Re-fetch to get priceFinal (list endpoint omits it).
@@ -992,13 +1016,14 @@ async function main() {
   }
   if (payTargets.length > 0) {
     const k = await dashboardKpis(jar);
+    const delta = k.today.revenue - revenueBefore;
     record({
       id: "L-revenue",
       group: "L-payments",
-      name: "dashboard.today.revenue == sum(payments.amount)",
-      pass: k.today.revenue === totalCharged,
+      name: "dashboard.today.revenue delta == sum(payments.amount) charged by test",
+      pass: delta === totalCharged,
       expected: totalCharged,
-      actual: k.today.revenue,
+      actual: delta,
     });
   }
 

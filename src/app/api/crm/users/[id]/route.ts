@@ -47,8 +47,12 @@ export const PATCH = createApiHandler(
     if (body.role === "SUPER_ADMIN") {
       return err("Forbidden", 403, { reason: "cannot_elevate_super_admin" });
     }
-    // Block demoting the last ADMIN on a clinic.
-    if (before.role === "ADMIN" && body.role && body.role !== "ADMIN") {
+    // Last-ADMIN guard: any change that would shrink the active-ADMIN set on
+    // this clinic to zero is rejected. Covers role demotion and active=false.
+    const isAdminBefore = before.role === "ADMIN" && before.active;
+    const willDemote = body.role !== undefined && body.role !== "ADMIN";
+    const willDeactivate = body.active === false;
+    if (isAdminBefore && (willDemote || willDeactivate)) {
       const adminsLeft = await prisma.user.count({
         where: { clinicId: ctx.clinicId, role: "ADMIN", active: true, id: { not: id } },
       });
@@ -57,21 +61,41 @@ export const PATCH = createApiHandler(
       }
     }
 
+    // Promotion into DOCTOR requires binding to an existing orphan Doctor.
+    const promotingToDoctor = body.role === "DOCTOR" && before.role !== "DOCTOR";
+    if (promotingToDoctor) {
+      if (!body.doctorId) {
+        return err("validation", 422, { reason: "doctor_id_required" });
+      }
+      const doctor = await prisma.doctor.findUnique({ where: { id: body.doctorId } });
+      if (!doctor) return err("conflict", 422, { reason: "doctor_not_found" });
+      if (doctor.userId) return err("conflict", 409, { reason: "doctor_taken" });
+    }
+
     // Password change must go through reset-password endpoint.
     const { password: _pw, ...rest } = body;
     void _pw;
 
-    const after = await prisma.user.update({
-      where: { id },
-      data: {
-        ...(rest.email !== undefined ? { email: rest.email } : {}),
-        ...(rest.name !== undefined ? { name: rest.name } : {}),
-        ...(rest.role !== undefined ? { role: rest.role } : {}),
-        ...(rest.phone !== undefined ? { phone: rest.phone } : {}),
-        ...(rest.photoUrl !== undefined ? { photoUrl: rest.photoUrl } : {}),
-        ...(rest.telegramId !== undefined ? { telegramId: rest.telegramId } : {}),
-        ...(rest.active !== undefined ? { active: rest.active } : {}),
-      },
+    const after = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: {
+          ...(rest.email !== undefined ? { email: rest.email } : {}),
+          ...(rest.name !== undefined ? { name: rest.name } : {}),
+          ...(rest.role !== undefined ? { role: rest.role } : {}),
+          ...(rest.phone !== undefined ? { phone: rest.phone } : {}),
+          ...(rest.photoUrl !== undefined ? { photoUrl: rest.photoUrl } : {}),
+          ...(rest.telegramId !== undefined ? { telegramId: rest.telegramId } : {}),
+          ...(rest.active !== undefined ? { active: rest.active } : {}),
+        },
+      });
+      if (promotingToDoctor && rest.doctorId) {
+        await tx.doctor.update({
+          where: { id: rest.doctorId },
+          data: { userId: id },
+        });
+      }
+      return updated;
     });
 
     const d = diff(
@@ -112,9 +136,19 @@ export const DELETE = createApiHandler(
       return err("conflict", 409, { reason: "cannot_deactivate_self" });
     }
 
-    await prisma.user.update({
-      where: { id },
-      data: { active: false },
+    // If this user is bound to a Doctor card (Doctor.userId UNIQUE), free
+    // that binding so the doctor card becomes orphan and can be re-bound to
+    // a new user account. Without this the Doctor row is permanently
+    // unbindable until manual DB cleanup.
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id },
+        data: { active: false },
+      });
+      await tx.doctor.updateMany({
+        where: { userId: id },
+        data: { userId: null },
+      });
     });
     await audit(request, {
       action: "user.deactivate",

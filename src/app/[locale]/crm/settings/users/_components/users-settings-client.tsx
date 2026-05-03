@@ -72,17 +72,20 @@ export function UsersSettingsClient() {
 
   const [q, setQ] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<Role | "">("");
+  const [pageLimit, setPageLimit] = React.useState(200);
 
   const listQuery = useQuery({
-    queryKey: ["settings", "users", q, roleFilter],
+    queryKey: ["settings", "users", q, roleFilter, pageLimit],
     queryFn: () => {
       const sp = new URLSearchParams();
       if (q) sp.set("q", q);
       if (roleFilter) sp.set("role", roleFilter);
-      sp.set("limit", "200");
-      return settingsFetch<{ rows: UserRow[]; nextCursor: string | null }>(
-        `/api/crm/users?${sp.toString()}`,
-      );
+      sp.set("limit", String(pageLimit));
+      return settingsFetch<{
+        rows: UserRow[];
+        nextCursor: string | null;
+        total?: number;
+      }>(`/api/crm/users?${sp.toString()}`);
     },
   });
 
@@ -92,6 +95,8 @@ export function UsersSettingsClient() {
   const [resetRow, setResetRow] = React.useState<UserRow | null>(null);
 
   const rows = listQuery.data?.rows ?? [];
+  const total = listQuery.data?.total ?? rows.length;
+  const hasMore = total > rows.length;
 
   return (
     <PageContainer>
@@ -212,6 +217,19 @@ export function UsersSettingsClient() {
             )}
           </tbody>
         </table>
+        {hasMore ? (
+          <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            <span>{t("common.shown", { shown: rows.length, total })}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPageLimit((n) => Math.min(n + 200, 1000))}
+              disabled={pageLimit >= 1000}
+            >
+              {t("common.loadMore")}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <CreateUserDialog
@@ -254,6 +272,29 @@ export function UsersSettingsClient() {
   );
 }
 
+// Browser-side temp password generator. Mirrors the safe-alphabet rule used
+// on the server (no 0/O/1/l/I) so a manually-shared password is just as
+// readable as one returned from /api/platform/clinics.
+function clientGenerateTempPassword(length = 12): string {
+  const alphabet =
+    "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const arr = new Uint32Array(length);
+  crypto.getRandomValues(arr);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += alphabet.charAt(arr[i]! % alphabet.length);
+  }
+  return out;
+}
+
+type DoctorRow = {
+  id: string;
+  nameRu: string;
+  nameUz: string;
+  userId: string | null;
+  isActive: boolean;
+};
+
 function CreateUserDialog({
   open,
   onOpenChange,
@@ -270,13 +311,43 @@ function CreateUserDialog({
     role: Role;
     phone: string;
     password: string;
+    doctorId: string;
   }>({
     email: "",
     name: "",
     role: "RECEPTIONIST",
     phone: "",
     password: "",
+    doctorId: "",
   });
+  const [reveal, setReveal] = React.useState<{
+    login: string;
+    password: string;
+  } | null>(null);
+
+  const doctorsQuery = useQuery({
+    queryKey: ["settings", "users", "orphan-doctors"],
+    queryFn: () =>
+      settingsFetch<{ rows: DoctorRow[]; nextCursor: string | null }>(
+        `/api/crm/doctors?limit=200`,
+      ),
+    enabled: open && form.role === "DOCTOR",
+  });
+  const orphanDoctors = (doctorsQuery.data?.rows ?? []).filter(
+    (d) => d.userId === null && d.isActive,
+  );
+
+  const reset = () => {
+    setForm({
+      email: "",
+      name: "",
+      role: "RECEPTIONIST",
+      phone: "",
+      password: "",
+      doctorId: "",
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: () =>
       settingsFetch<UserRow>("/api/crm/users", {
@@ -287,104 +358,233 @@ function CreateUserDialog({
           role: form.role,
           phone: form.phone || null,
           password: form.password,
+          ...(form.role === "DOCTOR" ? { doctorId: form.doctorId } : {}),
         }),
       }),
     onSuccess: () => {
       toast.success(t("users.created"));
       onCreated();
-      setForm({ email: "", name: "", role: "RECEPTIONIST", phone: "", password: "" });
+      // Show the password we just set, one-shot. The user must hand it to
+      // the new operator — there's no other way to retrieve it.
+      setReveal({ login: form.email, password: form.password });
+      reset();
       onOpenChange(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserCogIcon className="size-4 text-primary" />
-            {t("users.addUser")}
-          </DialogTitle>
-          <DialogDescription>{t("users.createHint")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div>
-            <Label htmlFor="u-name">{t("users.cols.name")}</Label>
-            <Input
-              id="u-name"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor="u-email">{t("users.cols.email")}</Label>
-            <Input
-              id="u-email"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCogIcon className="size-4 text-primary" />
+              {t("users.addUser")}
+            </DialogTitle>
+            <DialogDescription>{t("users.createHint")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
             <div>
-              <Label htmlFor="u-role">{t("users.cols.role")}</Label>
-              <select
-                id="u-role"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                value={form.role}
-                onChange={(e) =>
-                  setForm({ ...form, role: e.target.value as Role })
-                }
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {t(`users.roles.${r}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="u-phone">{t("users.cols.phone")}</Label>
+              <Label htmlFor="u-name">{t("users.cols.name")}</Label>
               <Input
-                id="u-phone"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                id="u-name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </div>
+            <div>
+              <Label htmlFor="u-email">{t("users.cols.email")}</Label>
+              <Input
+                id="u-email"
+                type="email"
+                value={form.email}
+                onChange={(e) =>
+                  setForm({ ...form, email: e.target.value.toLowerCase() })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="u-role">{t("users.cols.role")}</Label>
+                <select
+                  id="u-role"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                  value={form.role}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      role: e.target.value as Role,
+                      doctorId: "",
+                    })
+                  }
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`users.roles.${r}`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="u-phone">{t("users.cols.phone")}</Label>
+                <Input
+                  id="u-phone"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
+              </div>
+            </div>
+            {form.role === "DOCTOR" ? (
+              <div>
+                <Label htmlFor="u-doctor">{t("users.doctorBinding")}</Label>
+                {orphanDoctors.length === 0 && !doctorsQuery.isLoading ? (
+                  <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+                    {t("users.noOrphanDoctors")}
+                  </p>
+                ) : (
+                  <>
+                    <select
+                      id="u-doctor"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                      value={form.doctorId}
+                      onChange={(e) =>
+                        setForm({ ...form, doctorId: e.target.value })
+                      }
+                    >
+                      <option value="">
+                        {t("users.doctorBindingPlaceholder")}
+                      </option>
+                      {orphanDoctors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.nameRu}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("users.doctorBindingHint")}
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : null}
+            <div>
+              <Label htmlFor="u-pw">{t("users.cols.password")}</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="u-pw"
+                  type="text"
+                  value={form.password}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
+                  className="font-mono"
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setForm({ ...form, password: clientGenerateTempPassword(12) })
+                  }
+                >
+                  {t("users.generate")}
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("users.passwordHint")}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() => createMutation.mutate()}
+              disabled={
+                createMutation.isPending ||
+                !form.email ||
+                !form.name ||
+                form.password.length < 8 ||
+                (form.role === "DOCTOR" && !form.doctorId)
+              }
+            >
+              {createMutation.isPending
+                ? t("common.saving")
+                : t("common.create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {reveal ? (
+        <CredentialsRevealDialog
+          login={reveal.login}
+          password={reveal.password}
+          onClose={() => setReveal(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function CredentialsRevealDialog({
+  login,
+  password,
+  onClose,
+}: {
+  login: string;
+  password: string;
+  onClose: () => void;
+}) {
+  const t = useTranslations("settings");
+  const [copied, setCopied] = React.useState(false);
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(`${login}\n${password}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error(t("users.copyFailed"));
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{t("users.revealTitle")}</DialogTitle>
+          <DialogDescription>{t("users.revealDescription")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div>
+            <Label className="text-xs text-muted-foreground">
+              {t("users.cols.email")}
+            </Label>
+            <Input
+              value={login}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+            />
           </div>
           <div>
-            <Label htmlFor="u-pw">{t("users.cols.password")}</Label>
+            <Label className="text-xs text-muted-foreground">
+              {t("users.tempPassword")}
+            </Label>
             <Input
-              id="u-pw"
-              type="password"
-              value={form.password}
-              onChange={(e) =>
-                setForm({ ...form, password: e.target.value })
-              }
+              value={password}
+              readOnly
+              className="font-mono"
+              onFocus={(e) => e.currentTarget.select()}
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("users.passwordHint")}
-            </p>
           </div>
+          <Button variant="outline" className="w-full" onClick={copyAll}>
+            <CopyIcon className="size-4" />
+            {copied ? t("users.copied") : t("users.copyBoth")}
+          </Button>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            onClick={() => createMutation.mutate()}
-            disabled={
-              createMutation.isPending ||
-              !form.email ||
-              !form.name ||
-              form.password.length < 8
-            }
-          >
-            {createMutation.isPending
-              ? t("common.saving")
-              : t("common.create")}
-          </Button>
+          <Button onClick={onClose}>{t("users.savedClose")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -453,7 +653,9 @@ function EditUserDialog({
                   setForm({ ...form, role: e.target.value as Role })
                 }
               >
-                {ROLES.map((r) => (
+                {ROLES.filter(
+                  (r) => r !== "DOCTOR" || row.role === "DOCTOR",
+                ).map((r) => (
                   <option key={r} value={r}>
                     {t(`users.roles.${r}`)}
                   </option>

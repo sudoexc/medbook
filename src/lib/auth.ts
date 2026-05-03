@@ -82,22 +82,50 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           role: user.role as Role,
           clinicId: user.clinicId ?? null,
+          mustChangePassword: user.mustChangePassword,
         };
       },
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.sub = user.id ?? token.sub;
         const u = user as {
           role?: Role;
           clinicId?: string | null;
           id?: string;
+          mustChangePassword?: boolean;
         };
         token.role = u.role;
         token.clinicId = u.clinicId ?? null;
         token.userId = u.id ?? token.sub;
+        token.mustChangePassword = Boolean(u.mustChangePassword);
+      }
+      // Refresh `mustChangePassword` and `active` from the DB on session
+      // update so the middleware redirect releases the moment the user
+      // finishes the change form, and a deactivated user is kicked out
+      // as soon as their session re-validates. Without this we'd have to
+      // wait for the JWT to refresh on its own (up to `updateAge`).
+      // Note: full real-time deactivation across passive sessions still
+      // has up to `updateAge` (1h) of drift; that is documented elsewhere.
+      if (trigger === "update" && token.userId) {
+        try {
+          const fresh = await runWithTenant({ kind: "SYSTEM" }, () =>
+            prisma.user.findUnique({
+              where: { id: token.userId as string },
+              select: { mustChangePassword: true, active: true },
+            }),
+          );
+          if (fresh) {
+            token.mustChangePassword = fresh.mustChangePassword;
+            // Returning null invalidates the session, kicking the user
+            // out on their next request.
+            if (!fresh.active) return null;
+          }
+        } catch {
+          // Ignore — stale claim is recoverable on the next refresh tick.
+        }
       }
       // SUPER_ADMIN "impersonate clinic" cookie support. We re-read the
       // cookie on every JWT refresh so changes take effect on the next
@@ -123,6 +151,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.role = role;
       session.user.clinicId =
         (token.clinicId as string | null | undefined) ?? null;
+      session.user.mustChangePassword = Boolean(token.mustChangePassword);
       return session;
     },
   },

@@ -46,7 +46,7 @@ export const POST = createApiHandler(
 
     await prisma.user.update({
       where: { id },
-      data: { passwordHash: hash },
+      data: { passwordHash: hash, mustChangePassword: true },
     });
 
     await audit(request, {

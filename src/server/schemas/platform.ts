@@ -56,6 +56,10 @@ export const CreateClinicSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/)
     .default("#3DD5C0"),
   active: z.boolean().default(true),
+  // Owner ADMIN account created together with the clinic. The temp password is
+  // generated server-side and returned exactly once — see POST handler.
+  ownerName: z.string().min(1).max(200),
+  ownerEmail: z.string().email().max(200),
 });
 export type CreateClinic = z.infer<typeof CreateClinicSchema>;
 

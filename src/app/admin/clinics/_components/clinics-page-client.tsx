@@ -3,7 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, PencilIcon, CreditCardIcon, LogInIcon } from "lucide-react";
+import {
+  PlusIcon,
+  PencilIcon,
+  CreditCardIcon,
+  LogInIcon,
+  KeyRoundIcon,
+  CopyIcon,
+  CheckIcon,
+} from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +53,11 @@ interface ClinicRow {
   _count?: { users: number; patients: number; appointments: number };
 }
 
+interface CreatedClinicResponse extends ClinicRow {
+  ownerLogin: string;
+  ownerTempPassword: string;
+}
+
 async function fetchClinics(): Promise<ClinicRow[]> {
   const r = await fetch("/api/platform/clinics", { cache: "no-store" });
   if (!r.ok) throw new Error("Failed to load clinics");
@@ -57,10 +70,11 @@ async function createClinic(input: {
   nameRu: string;
   nameUz: string;
   timezone: string;
-  currency: "UZS" | "USD";
-  secondaryCurrency?: "UZS" | "USD" | null;
+  currency: "UZS";
+  ownerName: string;
+  ownerEmail: string;
   active: boolean;
-}): Promise<void> {
+}): Promise<CreatedClinicResponse> {
   const r = await fetch("/api/platform/clinics", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -70,6 +84,7 @@ async function createClinic(input: {
     const body = (await r.json().catch(() => null)) as { reason?: string } | null;
     throw new Error(body?.reason ?? `HTTP ${r.status}`);
   }
+  return (await r.json()) as CreatedClinicResponse;
 }
 
 async function patchClinic(
@@ -82,6 +97,20 @@ async function patchClinic(
     body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
+}
+
+async function resetOwnerPassword(
+  clinicId: string,
+): Promise<{ ownerLogin: string; ownerTempPassword: string }> {
+  const r = await fetch(
+    `/api/platform/clinics/${clinicId}/reset-owner-password`,
+    { method: "POST" },
+  );
+  if (!r.ok) {
+    const body = (await r.json().catch(() => null)) as { reason?: string } | null;
+    throw new Error(body?.reason ?? `HTTP ${r.status}`);
+  }
+  return (await r.json()) as { ownerLogin: string; ownerTempPassword: string };
 }
 
 async function impersonateClinic(clinicId: string): Promise<void> {
@@ -106,6 +135,11 @@ export function ClinicsPageClient() {
     queryFn: fetchClinics,
   });
   const [creating, setCreating] = React.useState(false);
+  const [credsModal, setCredsModal] = React.useState<{
+    title: string;
+    login: string;
+    password: string;
+  } | null>(null);
 
   const toggleActive = useMutation({
     mutationFn: (row: ClinicRow) => patchClinic(row.id, { active: !row.active }),
@@ -115,6 +149,17 @@ export function ClinicsPageClient() {
 
   const enterClinic = useMutation({
     mutationFn: (clinicId: string) => impersonateClinic(clinicId),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+  });
+
+  const resetPwd = useMutation({
+    mutationFn: (clinicId: string) => resetOwnerPassword(clinicId),
+    onSuccess: (res) =>
+      setCredsModal({
+        title: "Пароль сброшен",
+        login: res.ownerLogin,
+        password: res.ownerTempPassword,
+      }),
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
@@ -169,10 +214,7 @@ export function ClinicsPageClient() {
                   <td className="p-3 text-muted-foreground">{c.nameUz}</td>
                   <td className="p-3 text-muted-foreground">{c.timezone}</td>
                   <td className="p-3">
-                    <Badge variant="secondary">
-                      {c.currency}
-                      {c.secondaryCurrency ? ` + ${c.secondaryCurrency}` : ""}
-                    </Badge>
+                    <Badge variant="secondary">{c.currency}</Badge>
                   </td>
                   <td className="p-3 text-xs text-muted-foreground">
                     users {c._count?.users ?? 0} · patients{" "}
@@ -199,6 +241,25 @@ export function ClinicsPageClient() {
                       >
                         <LogInIcon />
                         Войти
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Сбросить пароль владельца клиники «${c.nameRu}»? Текущий пароль перестанет работать.`,
+                            )
+                          ) {
+                            resetPwd.mutate(c.id);
+                          }
+                        }}
+                        disabled={
+                          resetPwd.isPending && resetPwd.variables === c.id
+                        }
+                      >
+                        <KeyRoundIcon />
+                        Пароль владельца
                       </Button>
                       <Link
                         href={`/admin/clinics/${c.id}/billing`}
@@ -237,9 +298,19 @@ export function ClinicsPageClient() {
       <CreateClinicDialog
         open={creating}
         onOpenChange={setCreating}
-        onCreated={() =>
-          qc.invalidateQueries({ queryKey: ["admin", "clinics"] })
-        }
+        onCreated={(res) => {
+          qc.invalidateQueries({ queryKey: ["admin", "clinics"] });
+          setCredsModal({
+            title: "Клиника создана",
+            login: res.ownerLogin,
+            password: res.ownerTempPassword,
+          });
+        }}
+      />
+
+      <CredentialsModal
+        creds={credsModal}
+        onClose={() => setCredsModal(null)}
       />
     </div>
   );
@@ -252,16 +323,24 @@ function CreateClinicDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onCreated: () => void;
+  onCreated: (res: CreatedClinicResponse) => void;
 }) {
   const [slug, setSlug] = React.useState("");
   const [nameRu, setNameRu] = React.useState("");
   const [nameUz, setNameUz] = React.useState("");
   const [timezone, setTimezone] = React.useState("Asia/Tashkent");
-  const [currency, setCurrency] = React.useState<"UZS" | "USD">("UZS");
-  const [secondary, setSecondary] = React.useState<"NONE" | "UZS" | "USD">(
-    "NONE",
-  );
+  const [ownerName, setOwnerName] = React.useState("");
+  const [ownerEmail, setOwnerEmail] = React.useState("");
+  const [emailError, setEmailError] = React.useState<string | null>(null);
+
+  const reset = () => {
+    setSlug("");
+    setNameRu("");
+    setNameUz("");
+    setOwnerName("");
+    setOwnerEmail("");
+    setEmailError(null);
+  };
 
   const mut = useMutation({
     mutationFn: () =>
@@ -270,28 +349,43 @@ function CreateClinicDialog({
         nameRu: nameRu.trim(),
         nameUz: nameUz.trim(),
         timezone,
-        currency,
-        secondaryCurrency: secondary === "NONE" ? null : secondary,
+        currency: "UZS",
+        ownerName: ownerName.trim(),
+        ownerEmail: ownerEmail.trim().toLowerCase(),
         active: true,
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success("Клиника создана");
-      onCreated();
+      onCreated(res);
       onOpenChange(false);
-      setSlug("");
-      setNameRu("");
-      setNameUz("");
+      reset();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "Error";
+      if (msg === "email_taken") {
+        setEmailError("Email уже используется другим аккаунтом");
+      } else if (msg === "slug_taken") {
+        toast.error("Слаг уже занят");
+      } else {
+        toast.error(msg);
+      }
+    },
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) reset();
+      }}
+    >
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Новая клиника</DialogTitle>
           <DialogDescription>
-            Слаг нельзя изменить после создания. Разрешены: a-z, 0-9, дефис.
+            Будет создана клиника и аккаунт владельца с ролью ADMIN. Временный
+            пароль покажем один раз — сохраните его сразу.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 py-2">
@@ -303,6 +397,9 @@ function CreateClinicDialog({
               onChange={(e) => setSlug(e.target.value.toLowerCase())}
               placeholder="neurofax"
             />
+            <p className="text-xs text-muted-foreground">
+              Нельзя изменить позже. a-z, 0-9, дефис.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
@@ -324,7 +421,7 @@ function CreateClinicDialog({
               />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="tz">Timezone</Label>
               <Input
@@ -335,31 +432,44 @@ function CreateClinicDialog({
             </div>
             <div className="grid gap-1.5">
               <Label>Валюта</Label>
-              <Select value={currency} onValueChange={(v) => setCurrency(v as "UZS" | "USD")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="UZS">UZS</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input value="UZS" readOnly className="text-muted-foreground" />
             </div>
-            <div className="grid gap-1.5">
-              <Label>Вторая валюта</Label>
-              <Select
-                value={secondary}
-                onValueChange={(v) => setSecondary(v as typeof secondary)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="NONE">—</SelectItem>
-                  <SelectItem value="UZS">UZS</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
-                </SelectContent>
-              </Select>
+          </div>
+
+          <div className="mt-2 rounded-md border border-border bg-muted/30 p-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium">Владелец клиники (ADMIN)</p>
+              <p className="text-xs text-muted-foreground">
+                Сможет настраивать клинику и приглашать остальной персонал.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="ownerName">ФИО</Label>
+                <Input
+                  id="ownerName"
+                  value={ownerName}
+                  onChange={(e) => setOwnerName(e.target.value)}
+                  placeholder="Иван Петров"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="ownerEmail">Email</Label>
+                <Input
+                  id="ownerEmail"
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(e) => {
+                    setOwnerEmail(e.target.value);
+                    if (emailError) setEmailError(null);
+                  }}
+                  placeholder="ivan@example.com"
+                  aria-invalid={emailError ? true : undefined}
+                />
+                {emailError && (
+                  <p className="text-xs text-destructive">{emailError}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -373,7 +483,10 @@ function CreateClinicDialog({
               mut.isPending ||
               !slug.trim() ||
               !nameRu.trim() ||
-              !nameUz.trim()
+              !nameUz.trim() ||
+              !ownerName.trim() ||
+              !ownerEmail.trim() ||
+              !ownerEmail.includes("@")
             }
           >
             {mut.isPending ? "Создание…" : "Создать"}
@@ -381,5 +494,116 @@ function CreateClinicDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CredentialsModal({
+  creds,
+  onClose,
+}: {
+  creds: { title: string; login: string; password: string } | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = React.useState<"login" | "password" | "both" | null>(
+    null,
+  );
+
+  React.useEffect(() => {
+    if (!creds) setCopied(null);
+  }, [creds]);
+
+  if (!creds) return null;
+
+  const copy = async (
+    text: string,
+    kind: "login" | "password" | "both",
+  ): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      window.setTimeout(() => setCopied(null), 1500);
+    } catch {
+      toast.error("Скопировать не удалось");
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      // Force-close only via the explicit button so the operator does not
+      // dismiss this by tapping outside before saving the password.
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{creds.title}</DialogTitle>
+          <DialogDescription>
+            Это единственный раз, когда вы видите временный пароль. Передайте
+            его владельцу — при первом входе он сменит пароль на свой.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <CredRow
+            label="Логин"
+            value={creds.login}
+            copied={copied === "login"}
+            onCopy={() => copy(creds.login, "login")}
+          />
+          <CredRow
+            label="Временный пароль"
+            value={creds.password}
+            mono
+            copied={copied === "password"}
+            onCopy={() => copy(creds.password, "password")}
+          />
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() =>
+              copy(`${creds.login}\n${creds.password}`, "both")
+            }
+          >
+            {copied === "both" ? <CheckIcon /> : <CopyIcon />}
+            Скопировать оба
+          </Button>
+        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Я сохранил, закрыть</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CredRow({
+  label,
+  value,
+  copied,
+  mono,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  copied: boolean;
+  mono?: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          value={value}
+          readOnly
+          className={mono ? "font-mono" : undefined}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        <Button variant="outline" size="icon" onClick={onCopy} aria-label="Скопировать">
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -48,12 +48,15 @@ export const GET = createApiListHandler(
     }
 
     const take = q.limit + 1;
-    const rows = await prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take,
-      ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
-    });
+    const [rows, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take,
+        ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
+      }),
+      prisma.user.count({ where }),
+    ]);
     let nextCursor: string | null = null;
     if (rows.length > q.limit) {
       const next = rows.pop();
@@ -62,6 +65,7 @@ export const GET = createApiListHandler(
     return ok({
       rows: rows.map(redactUser),
       nextCursor,
+      total,
     });
   }
 );
@@ -84,23 +88,55 @@ export const POST = createApiHandler(
       return err("conflict", 409, { reason: "email_taken" });
     }
 
+    if (body.role === "DOCTOR") {
+      const doctor = await prisma.doctor.findUnique({
+        where: { id: body.doctorId! },
+      });
+      if (!doctor) {
+        return err("conflict", 422, { reason: "doctor_not_found" });
+      }
+      if (doctor.userId) {
+        return err("conflict", 409, { reason: "doctor_taken" });
+      }
+    }
+
     const passwordHash = body.password
       ? await bcrypt.hash(body.password, 10)
       : null;
 
-    const created = await prisma.user.create({
-      data: {
-        clinicId: ctx.clinicId,
-        email: body.email,
-        name: body.name,
-        role: body.role,
-        phone: body.phone ?? null,
-        photoUrl: body.photoUrl ?? null,
-        telegramId: body.telegramId ?? null,
-        active: body.active ?? true,
-        passwordHash,
-      },
-    });
+    let created;
+    try {
+      created = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            clinicId: ctx.clinicId,
+            email: body.email,
+            name: body.name,
+            role: body.role,
+            phone: body.phone ?? null,
+            photoUrl: body.photoUrl ?? null,
+            telegramId: body.telegramId ?? null,
+            active: body.active ?? true,
+            passwordHash,
+            mustChangePassword: Boolean(passwordHash),
+            invitedById: ctx.userId,
+          },
+        });
+        if (body.role === "DOCTOR" && body.doctorId) {
+          await tx.doctor.update({
+            where: { id: body.doctorId },
+            data: { userId: user.id },
+          });
+        }
+        return user;
+      });
+    } catch (e) {
+      const msg = (e as Error).message || "";
+      if (msg.includes("Unique") && msg.includes("userId")) {
+        return err("conflict", 409, { reason: "doctor_taken" });
+      }
+      throw e;
+    }
 
     await audit(request, {
       action: "user.create",

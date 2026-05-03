@@ -13,6 +13,7 @@ declare module "next-auth" {
   interface User {
     role?: AppRole;
     clinicId?: string | null;
+    mustChangePassword?: boolean;
   }
   interface Session {
     user: {
@@ -21,6 +22,7 @@ declare module "next-auth" {
       name?: string | null;
       role: AppRole;
       clinicId: string | null;
+      mustChangePassword: boolean;
     };
   }
 }
@@ -30,5 +32,6 @@ declare module "next-auth/jwt" {
     userId?: string;
     role?: AppRole;
     clinicId?: string | null;
+    mustChangePassword?: boolean;
   }
 }

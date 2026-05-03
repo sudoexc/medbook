@@ -81,8 +81,16 @@ async function createClinic(input: {
     body: JSON.stringify(input),
   });
   if (!r.ok) {
-    const body = (await r.json().catch(() => null)) as { reason?: string } | null;
-    throw new Error(body?.reason ?? `HTTP ${r.status}`);
+    const body = (await r.json().catch(() => null)) as
+      | { reason?: string; error?: string; issues?: { path: (string | number)[]; message: string }[] }
+      | null;
+    if (body?.reason) throw new Error(body.reason);
+    if (body?.issues?.length) {
+      const first = body.issues[0];
+      const field = first?.path?.join(".") || "";
+      throw new Error(field ? `${field}: ${first?.message}` : (first?.message ?? "ValidationError"));
+    }
+    throw new Error(body?.error ?? `HTTP ${r.status}`);
   }
   return (await r.json()) as CreatedClinicResponse;
 }

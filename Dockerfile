@@ -65,8 +65,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/public          ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma                    ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma      ./node_modules/@prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma       ./node_modules/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma  ./node_modules/.bin/prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts          ./prisma.config.ts
+# Recreate the .bin/prisma symlink — Docker COPY would deref the symlink and
+# place the target file at .bin/prisma, breaking prisma's __dirname-relative
+# wasm/engine lookups. Do it here so it points back at the real script.
+RUN mkdir -p ./node_modules/.bin \
+ && ln -sf ../prisma/build/index.js ./node_modules/.bin/prisma \
+ && chown -h nextjs:nodejs ./node_modules/.bin/prisma
 
 USER nextjs
 EXPOSE 3000

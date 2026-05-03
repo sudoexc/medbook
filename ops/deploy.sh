@@ -35,8 +35,11 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-log "reloading nginx (refresh upstream IPs after app recreate)"
-docker compose exec -T nginx nginx -s reload || true
+log "restarting nginx (refresh upstream IPs after app recreate)"
+# `nginx -s reload` re-reads config but doesn't re-resolve upstream
+# hostnames cached by the Docker resolver at process startup, so a fresh
+# app container with a new IP keeps 502'ing. Full restart re-resolves.
+docker compose restart nginx || true
 
 log "running migrations (via fresh worker container — full node_modules tree)"
 # The app image is the Next.js standalone bundle: it doesn't carry every

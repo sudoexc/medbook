@@ -9,18 +9,11 @@
  *      back the connection — they're surfaced as warnings):
  *        a. setMyCommands (RU + UZ + default)
  *        b. setMyDescription / setMyShortDescription
- *        c. setChatMenuButton with the Mini App URL — only when we have an
- *           HTTPS public origin.
- *   3. Webhook registration. In `webhook` mode we POST setWebhook; in
- *      `polling` mode we explicitly deleteWebhook so the polling dev script
- *      can read updates via getUpdates without conflict.
+ *        c. setChatMenuButton with the Mini App URL.
+ *   3. Webhook registration via setWebhook (production-only — the public
+ *      origin comes from $NEXT_PUBLIC_APP_URL and must be HTTPS).
  *   4. Persist tgBotToken / tgBotUsername / tgWebhookSecret to Clinic.
  *   5. Audit log.
- *
- * Mode selection:
- *   - body.mode = "polling" | "webhook" | undefined
- *   - undefined → polling if env TG_DEV_MODE=polling or public origin is
- *     not HTTPS, else webhook.
  *
  * ADMIN only.
  */
@@ -33,7 +26,6 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
 import {
-  deleteWebhook,
   getMe,
   getWebhookInfo,
   setChatMenuButton,
@@ -52,10 +44,6 @@ const Schema = z.object({
     .regex(/^\d+:[A-Za-z0-9_-]+$/, "format"),
   /** Username confirmed by the user in step 3 of the wizard. */
   expectedUsername: z.string().min(3),
-  /** Optional override of the public origin (ngrok / cloudflared during dev). */
-  tunnelUrl: z.string().url().optional(),
-  /** Force webhook or polling mode; otherwise auto-detected. */
-  mode: z.enum(["webhook", "polling"]).optional(),
   /** Toggles for the optional auxiliary setup steps. */
   setupCommands: z.boolean().default(true),
   setupDescription: z.boolean().default(true),
@@ -84,23 +72,10 @@ const DESCRIPTION_UZ =
   "Klinika boti — qabulga yozilish, eslatmalar va ro'yxatxona bilan bog'lanish.";
 const SHORT_DESCRIPTION_UZ = "Qabulga yozilish va klinika bilan aloqa";
 
-function pickPublicOrigin(
-  request: Request,
-  tunnelUrl: string | undefined,
-): string {
-  if (tunnelUrl) return tunnelUrl.replace(/\/+$/, "");
+function publicOrigin(request: Request): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (envUrl) return envUrl.replace(/\/+$/, "");
   return new URL(request.url).origin;
-}
-
-function pickMode(
-  bodyMode: "webhook" | "polling" | undefined,
-  origin: string,
-): "webhook" | "polling" {
-  if (bodyMode) return bodyMode;
-  if (process.env.TG_DEV_MODE === "polling") return "polling";
-  return origin.startsWith("https://") ? "webhook" : "polling";
 }
 
 export const POST = createApiHandler(
@@ -138,8 +113,12 @@ export const POST = createApiHandler(
       return err("bot_in_use", 409, { otherClinicSlug: collision.slug });
     }
 
-    const origin = pickPublicOrigin(request, body.tunnelUrl);
-    const mode = pickMode(body.mode, origin);
+    const origin = publicOrigin(request);
+    if (!origin.startsWith("https://")) {
+      // Webhook + Mini-App both require HTTPS — refuse rather than silently
+      // produce a bot that can't be reached.
+      return err("https_required", 400, { origin });
+    }
     const webhookSecret = randomBytes(32).toString("hex");
 
     // Step 2 — auxiliary setup. Each call is best-effort; we accumulate
@@ -181,8 +160,7 @@ export const POST = createApiHandler(
       if (!s2 || !s2.ok) warnings.push("setMyShortDescription(uz)");
     }
 
-    // Step 2c — Mini App menu button. Telegram requires HTTPS for web_app
-    // URLs; on a dev http:// origin we degrade to a "commands" menu.
+    // Step 2c — Mini App menu button.
     const clinic = await prisma.clinic.findUnique({
       where: { id: ctx.clinicId },
       select: { slug: true },
@@ -191,51 +169,37 @@ export const POST = createApiHandler(
 
     const miniAppUrl = `${origin}/c/${clinic.slug}/my`;
     if (body.setupMenuButton) {
-      const isHttps = origin.startsWith("https://");
-      const r = await setChatMenuButton(
-        body.token,
-        isHttps
-          ? {
-              type: "web_app",
-              text: "📅",
-              web_app: { url: miniAppUrl },
-            }
-          : { type: "commands" },
-      ).catch(() => null);
+      const r = await setChatMenuButton(body.token, {
+        type: "web_app",
+        text: "📅",
+        web_app: { url: miniAppUrl },
+      }).catch(() => null);
       if (!r || !r.ok) warnings.push("setChatMenuButton");
     }
 
-    // Step 3 — webhook setup or explicit polling.
-    let webhookUrl: string | null = null;
-    if (mode === "webhook") {
-      webhookUrl = `${origin}/api/telegram/webhook/${clinic.slug}`;
-      const w = await setWebhook(body.token, {
-        url: webhookUrl,
-        secret_token: webhookSecret,
-        allowed_updates: ["message", "callback_query", "my_chat_member"],
-        drop_pending_updates: true,
-      }).catch(() => null);
-      if (!w) return err("network_error", 502);
-      if (!w.ok) {
-        return err("webhook_failed", 502, { description: w.description });
+    // Step 3 — webhook setup.
+    const webhookUrl = `${origin}/api/telegram/webhook/${clinic.slug}`;
+    const w = await setWebhook(body.token, {
+      url: webhookUrl,
+      secret_token: webhookSecret,
+      allowed_updates: ["message", "callback_query", "my_chat_member"],
+      drop_pending_updates: true,
+    }).catch(() => null);
+    if (!w) return err("network_error", 502);
+    if (!w.ok) {
+      return err("webhook_failed", 502, { description: w.description });
+    }
+    // Verify the webhook came up clean.
+    const info = await getWebhookInfo(body.token).catch(() => null);
+    if (info && info.ok) {
+      const last = info.result.last_error_date;
+      if (last && Date.now() / 1000 - last < 60) {
+        // Telegram already tried to reach us and failed — the user needs
+        // to fix their public URL before we save anything.
+        return err("webhook_unreachable", 502, {
+          description: info.result.last_error_message ?? "unknown",
+        });
       }
-      // Verify the webhook came up clean.
-      const info = await getWebhookInfo(body.token).catch(() => null);
-      if (info && info.ok) {
-        const last = info.result.last_error_date;
-        if (last && Date.now() / 1000 - last < 60) {
-          // Telegram already tried to reach us and failed — the user needs
-          // to fix their public URL before we save anything.
-          return err("webhook_unreachable", 502, {
-            description: info.result.last_error_message ?? "unknown",
-          });
-        }
-      }
-    } else {
-      // Polling mode: actively delete any existing webhook so getUpdates
-      // works for the dev script.
-      const d = await deleteWebhook(body.token, true).catch(() => null);
-      if (!d || !d.ok) warnings.push("deleteWebhook");
     }
 
     // Step 4 — persist.
@@ -256,7 +220,6 @@ export const POST = createApiHandler(
       meta: {
         botUsername: me.username,
         botId: me.id,
-        mode,
         webhookUrl,
         warnings,
       },
@@ -268,7 +231,6 @@ export const POST = createApiHandler(
         username: me.username,
         firstName: me.first_name,
       },
-      mode,
       webhookUrl,
       miniAppUrl,
       warnings,

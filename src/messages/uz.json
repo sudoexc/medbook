@@ -2620,17 +2620,6 @@
         },
         "step4": {
           "subtitle": "Yakuniy sozlash",
-          "modeLabel": "Ishlash rejimi",
-          "modePolling": {
-            "title": "Lokal (polling)",
-            "hint": "Ochiq domenisiz noutbukda test uchun. getUpdates skriptini ishlatamiz."
-          },
-          "modeWebhook": {
-            "title": "Webhook (prod)",
-            "hint": "Telegram serveringizga voqealarni yuboradi. Ochiq HTTPS kerak."
-          },
-          "tunnelLabel": "Ochiq URL (ixtiyoriy)",
-          "tunnelHint": "Lokal ishlayotgan bo'lsangiz — ngrok / cloudflared URL'ini joylashtiring. Aks holda $NEXT_PUBLIC_APP_URL ishlatiladi.",
           "autoSetup": "Botning avtomatik sozlanishi",
           "checkCommands": "Bot buyruqlari",
           "checkCommandsHint": "/start, /booking, /cancel, /help — ru va uz tillarida.",
@@ -2644,15 +2633,7 @@
           "subtitle": "Tayyor",
           "title": "Bot ulandi",
           "openBot": "Botni ochish",
-          "mode": {
-            "polling": "polling rejimi — lokal ishlash uchun",
-            "webhook": "webhook rejimi — prod"
-          },
-          "warnings": "Ogohlantirishlar: {list}",
-          "pollingNote": {
-            "title": "Lokalda xabar olish uchun",
-            "body": "Quyidagi buyruqni alohida terminalda ishga tushiring — u yangilanishlarni o'qib CRM'ga uzatadi."
-          }
+          "warnings": "Ogohlantirishlar: {list}"
         },
         "err": {
           "tokenFormat": "Token formati noto'g'ri. Raqam, ikki nuqta va uzun qator bo'lishi kerak.",

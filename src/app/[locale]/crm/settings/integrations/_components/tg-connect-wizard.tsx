@@ -10,9 +10,9 @@
  *           hits POST /validate-token (Telegram getMe).
  *   Step 3: Show the bot preview returned by getMe (avatar emoji, name,
  *           username, ID) and ask "is this your bot?".
- *   Step 4: Auto-config checklist (commands, description, menu button) and
- *           webhook/polling mode picker. The "Connect" button triggers
- *           POST /connect which performs everything in one shot.
+ *   Step 4: Auto-config checklist (commands, description, menu button). The
+ *           "Connect" button triggers POST /connect which sets up the bot and
+ *           registers a webhook against $NEXT_PUBLIC_APP_URL.
  *   Step 5: Success screen with quick links.
  *
  * The dialog manages all wizard state locally; on success it calls the
@@ -67,8 +67,7 @@ type ValidateResponse = {
 
 type ConnectResponse = {
   bot: { id: number; username: string; firstName: string };
-  mode: "webhook" | "polling";
-  webhookUrl: string | null;
+  webhookUrl: string;
   miniAppUrl: string;
   warnings: string[];
 };
@@ -87,8 +86,6 @@ export function TgConnectWizard({ open, onOpenChange, onConnected }: Props) {
   const [token, setToken] = React.useState("");
   const [bot, setBot] = React.useState<BotPreview | null>(null);
   const [collisionSlug, setCollisionSlug] = React.useState<string | null>(null);
-  const [tunnelUrl, setTunnelUrl] = React.useState("");
-  const [mode, setMode] = React.useState<"webhook" | "polling">("polling");
   const [setupCommands, setSetupCommands] = React.useState(true);
   const [setupDescription, setSetupDescription] = React.useState(true);
   const [setupMenuButton, setSetupMenuButton] = React.useState(true);
@@ -105,8 +102,6 @@ export function TgConnectWizard({ open, onOpenChange, onConnected }: Props) {
       setToken("");
       setBot(null);
       setCollisionSlug(null);
-      setTunnelUrl("");
-      setMode("polling");
       setSetupCommands(true);
       setSetupDescription(true);
       setSetupMenuButton(true);
@@ -146,22 +141,17 @@ export function TgConnectWizard({ open, onOpenChange, onConnected }: Props) {
 
   const connectMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, unknown> = {
-        token,
-        expectedUsername: bot?.username,
-        mode,
-        setupCommands,
-        setupDescription,
-        setupMenuButton,
-      };
-      if (mode === "webhook" && tunnelUrl.trim()) {
-        body.tunnelUrl = tunnelUrl.trim();
-      }
       return settingsFetch<ConnectResponse>(
         "/api/crm/integrations/tg/connect",
         {
           method: "POST",
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            token,
+            expectedUsername: bot?.username,
+            setupCommands,
+            setupDescription,
+            setupMenuButton,
+          }),
         },
       );
     },
@@ -232,16 +222,12 @@ export function TgConnectWizard({ open, onOpenChange, onConnected }: Props) {
           ) : step === 4 ? (
             <Step4
               t={t}
-              mode={mode}
-              setMode={setMode}
               setupCommands={setupCommands}
               setSetupCommands={setSetupCommands}
               setupDescription={setupDescription}
               setSetupDescription={setSetupDescription}
               setupMenuButton={setupMenuButton}
               setSetupMenuButton={setSetupMenuButton}
-              tunnelUrl={tunnelUrl}
-              setTunnelUrl={setTunnelUrl}
               connectError={connectError}
             />
           ) : step === 5 && connectResult ? (
@@ -492,88 +478,25 @@ function Step3({
 
 function Step4({
   t,
-  mode,
-  setMode,
   setupCommands,
   setSetupCommands,
   setupDescription,
   setSetupDescription,
   setupMenuButton,
   setSetupMenuButton,
-  tunnelUrl,
-  setTunnelUrl,
   connectError,
 }: {
   t: ReturnType<typeof useTranslations>;
-  mode: "webhook" | "polling";
-  setMode: (m: "webhook" | "polling") => void;
   setupCommands: boolean;
   setSetupCommands: (v: boolean) => void;
   setupDescription: boolean;
   setSetupDescription: (v: boolean) => void;
   setupMenuButton: boolean;
   setSetupMenuButton: (v: boolean) => void;
-  tunnelUrl: string;
-  setTunnelUrl: (v: string) => void;
   connectError: string | null;
 }) {
   return (
     <div className="space-y-4 text-sm">
-      <div>
-        <Label className="mb-2 block">{t("step4.modeLabel")}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setMode("polling")}
-            className={`flex flex-col gap-1 rounded-md border p-3 text-left ${
-              mode === "polling"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50"
-            }`}
-          >
-            <div className="text-sm font-medium">
-              {t("step4.modePolling.title")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("step4.modePolling.hint")}
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("webhook")}
-            className={`flex flex-col gap-1 rounded-md border p-3 text-left ${
-              mode === "webhook"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50"
-            }`}
-          >
-            <div className="text-sm font-medium">
-              {t("step4.modeWebhook.title")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("step4.modeWebhook.hint")}
-            </div>
-          </button>
-        </div>
-        {mode === "webhook" ? (
-          <div className="mt-3">
-            <Label htmlFor="tunnel-url" className="text-xs">
-              {t("step4.tunnelLabel")}
-            </Label>
-            <Input
-              id="tunnel-url"
-              value={tunnelUrl}
-              onChange={(e) => setTunnelUrl(e.target.value)}
-              placeholder="https://example.trycloudflare.com"
-              autoComplete="off"
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {t("step4.tunnelHint")}
-            </p>
-          </div>
-        ) : null}
-      </div>
-
       <div>
         <Label className="mb-2 block">{t("step4.autoSetup")}</Label>
         <div className="space-y-1.5">
@@ -650,9 +573,7 @@ function Step5({
           <div className="text-base font-semibold text-success">
             {t("step5.title")}
           </div>
-          <div className="text-sm">
-            @{result.bot.username} · {t(`step5.mode.${result.mode}`)}
-          </div>
+          <div className="text-sm">@{result.bot.username}</div>
           {result.warnings.length > 0 ? (
             <div className="mt-1 text-[11px] text-muted-foreground">
               {t("step5.warnings", { list: result.warnings.join(", ") })}
@@ -672,18 +593,6 @@ function Step5({
           {t("step5.openBot")}
         </a>
       </div>
-
-      {result.mode === "polling" ? (
-        <div className="rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
-          <div className="mb-1 font-medium text-foreground">
-            {t("step5.pollingNote.title")}
-          </div>
-          <p>{t("step5.pollingNote.body")}</p>
-          <code className="mt-2 inline-block rounded bg-card px-2 py-1 font-mono text-[10px]">
-            npm run tg:poll
-          </code>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -2620,17 +2620,6 @@
         },
         "step4": {
           "subtitle": "Финальная настройка",
-          "modeLabel": "Режим работы",
-          "modePolling": {
-            "title": "Локально (polling)",
-            "hint": "Для теста на ноуте без публичного домена. Запустим скрипт getUpdates."
-          },
-          "modeWebhook": {
-            "title": "Webhook (продакшн)",
-            "hint": "Telegram отправляет события на ваш сервер. Нужен публичный HTTPS."
-          },
-          "tunnelLabel": "Публичный URL (опционально)",
-          "tunnelHint": "Если разрабатываете локально — вставьте URL от ngrok / cloudflared. Иначе используется $NEXT_PUBLIC_APP_URL.",
           "autoSetup": "Автоматическая настройка бота",
           "checkCommands": "Команды бота",
           "checkCommandsHint": "/start, /booking, /cancel, /help — на ru и uz.",
@@ -2644,15 +2633,7 @@
           "subtitle": "Готово",
           "title": "Бот подключён",
           "openBot": "Открыть бота",
-          "mode": {
-            "polling": "режим polling — для локальной разработки",
-            "webhook": "режим webhook — продакшн"
-          },
-          "warnings": "Предупреждения: {list}",
-          "pollingNote": {
-            "title": "Чтобы получать сообщения локально",
-            "body": "Запустите в отдельном терминале команду ниже — она будет читать обновления и отдавать их в CRM."
-          }
+          "warnings": "Предупреждения: {list}"
         },
         "err": {
           "tokenFormat": "Формат токена неверный. Должно быть число, двоеточие и длинная строка.",

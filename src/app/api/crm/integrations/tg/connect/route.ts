@@ -184,10 +184,23 @@ export const POST = createApiHandler(
       secret_token: webhookSecret,
       allowed_updates: ["message", "callback_query", "my_chat_member"],
       drop_pending_updates: true,
-    }).catch(() => null);
+    }).catch((e: unknown) => {
+      console.error("[tg.connect] setWebhook threw:", e);
+      return null;
+    });
     if (!w) return err("network_error", 502);
     if (!w.ok) {
-      return err("webhook_failed", 502, { description: w.description });
+      console.error("[tg.connect] setWebhook returned ok=false", {
+        webhookUrl,
+        error_code: w.error_code,
+        description: w.description,
+        parameters: w.parameters,
+      });
+      return err("webhook_failed", 502, {
+        description: w.description ?? null,
+        error_code: w.error_code ?? null,
+        webhookUrl,
+      });
     }
     // Verify the webhook came up clean.
     const info = await getWebhookInfo(body.token).catch(() => null);
@@ -196,8 +209,14 @@ export const POST = createApiHandler(
       if (last && Date.now() / 1000 - last < 60) {
         // Telegram already tried to reach us and failed — the user needs
         // to fix their public URL before we save anything.
+        console.error("[tg.connect] webhook unreachable from Telegram side", {
+          webhookUrl,
+          last_error_message: info.result.last_error_message,
+          last_error_date: info.result.last_error_date,
+        });
         return err("webhook_unreachable", 502, {
           description: info.result.last_error_message ?? "unknown",
+          webhookUrl,
         });
       }
     }

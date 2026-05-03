@@ -163,12 +163,27 @@ export function TgConnectWizard({ open, onOpenChange, onConnected }: Props) {
     },
     onError: (e: Error) => {
       if (e instanceof SettingsApiError) {
+        const details = (e.details ?? {}) as {
+          description?: string | null;
+          error_code?: number | null;
+          webhookUrl?: string;
+        };
+        const tgDesc = details.description?.trim();
+        const tgCode = details.error_code;
+        const tgSuffix =
+          tgDesc || tgCode
+            ? ` — ${[tgCode ? `${tgCode}` : null, tgDesc].filter(Boolean).join(": ")}`
+            : "";
         if (e.message === "bot_in_use") setConnectError(t("err.botInUse"));
         else if (e.message === "username_mismatch")
           setConnectError(t("err.usernameMismatch"));
         else if (e.message === "webhook_unreachable")
-          setConnectError(t("err.webhookUnreachable"));
-        else setConnectError(e.message);
+          setConnectError(`${t("err.webhookUnreachable")}${tgSuffix}`);
+        else if (e.message === "webhook_failed")
+          setConnectError(`${t("err.webhookFailed")}${tgSuffix}`);
+        else if (e.message === "network_error")
+          setConnectError(t("err.network"));
+        else setConnectError(`${e.message}${tgSuffix}`);
       } else {
         setConnectError(e.message);
       }

@@ -2644,7 +2644,8 @@
           "botInUse": "Bu bot tizimda boshqa klinikaga ulangan.",
           "botInUseDetail": "Klinika: {slug}. Avval u yerda botni uzing.",
           "usernameMismatch": "Token tasdiqlangan botga to'g'ri kelmaydi. Boshidan boshlang.",
-          "webhookUnreachable": "Telegram serverga ulana olmadi. Ochiq URL'ni tekshirib qayta urinib ko'ring."
+          "webhookUnreachable": "Telegram serverga ulana olmadi. Ochiq URL'ni tekshirib qayta urinib ko'ring.",
+          "webhookFailed": "Telegram webhook ro'yxatdan o'tkazishni rad etdi"
         }
       }
     },

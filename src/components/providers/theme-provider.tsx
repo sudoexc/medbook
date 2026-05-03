@@ -25,7 +25,7 @@ function readStored(): Theme {
     const v = localStorage.getItem(STORAGE_KEY);
     if (v === "light" || v === "dark" || v === "system") return v;
   } catch {}
-  return "system";
+  return "light";
 }
 
 function applyClass(resolved: ResolvedTheme) {
@@ -46,7 +46,7 @@ function applyClass(resolved: ResolvedTheme) {
  * system preference changes, and re-applies the resolved class on toggle.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = React.useState<Theme>("system");
+  const [theme, setThemeState] = React.useState<Theme>("light");
   const [systemTheme, setSystemTheme] = React.useState<ResolvedTheme>("light");
 
   // Hydrate from localStorage + matchMedia after mount. SSR renders with

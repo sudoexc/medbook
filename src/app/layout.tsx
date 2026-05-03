@@ -10,7 +10,8 @@ const inter = Inter({
 
 // Inline FOUC-prevention: must run before paint via dangerouslySetInnerHTML
 // (React 19 warns when scripts are rendered as React children).
-const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark'||((!t||t==='system')&&matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;if(d){r.classList.add('dark');r.style.colorScheme='dark'}else{r.style.colorScheme='light'}}catch(e){}})();`;
+// Default to light unless the user explicitly chose dark or system+OS-dark.
+const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;if(d){r.classList.add('dark');r.style.colorScheme='dark'}else{r.style.colorScheme='light'}}catch(e){}})();`;
 
 export default function RootLayout({
   children,

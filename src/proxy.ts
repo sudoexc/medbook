@@ -1,12 +1,14 @@
 /**
  * Next 16 proxy (formerly `middleware`).
  *
- * Two responsibilities, in order:
- *   1. Force users with `mustChangePassword=true` to /crm/me/change-password
- *      until they pick a new password. This applies to every CRM page; the
- *      change-password page itself and /api/* are exempted so the form can
- *      submit successfully.
- *   2. Defer locale handling to next-intl.
+ * Three responsibilities, in order:
+ *   1. Redirect anonymous visits to any /crm path to /login?callbackUrl=…
+ *      so we never render the CRM shell without a session (the layout itself
+ *      is intentionally permissive — gating belongs here).
+ *   2. Force users with `mustChangePassword=true` to /crm/me/change-password
+ *      until they pick a new password. The change-password page itself is
+ *      exempted so the form can submit successfully.
+ *   3. Defer locale handling to next-intl.
  *
  * Auth gating runs BEFORE next-intl so we don't pay for a locale rewrite on
  * a request we're about to redirect anyway.
@@ -29,18 +31,27 @@ export default async function proxy(request: NextRequest) {
   const crm = CRM_PATH.exec(pathname);
   if (crm) {
     const subpath = crm[2] ?? "";
-    if (!subpath.startsWith("me/change-password")) {
-      const session = await auth();
-      if (session?.user?.mustChangePassword) {
-        const locale = crm[1] ?? "ru";
-        const url = request.nextUrl.clone();
-        url.pathname =
-          locale === "ru"
-            ? "/crm/me/change-password"
-            : `/${locale}/crm/me/change-password`;
-        url.search = "";
-        return NextResponse.redirect(url);
-      }
+    const session = await auth();
+    if (!session?.user) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.search = `?callbackUrl=${encodeURIComponent(
+        pathname + request.nextUrl.search,
+      )}`;
+      return NextResponse.redirect(url);
+    }
+    if (
+      session.user.mustChangePassword &&
+      !subpath.startsWith("me/change-password")
+    ) {
+      const locale = crm[1] ?? "ru";
+      const url = request.nextUrl.clone();
+      url.pathname =
+        locale === "ru"
+          ? "/crm/me/change-password"
+          : `/${locale}/crm/me/change-password`;
+      url.search = "";
+      return NextResponse.redirect(url);
     }
   }
   return intlMiddleware(request);

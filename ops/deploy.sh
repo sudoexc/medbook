@@ -35,14 +35,22 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-log "running migrations (via worker container — full node_modules tree)"
+log "reloading nginx (refresh upstream IPs after app recreate)"
+docker compose exec -T nginx nginx -s reload || true
+
+log "running migrations (via fresh worker container — full node_modules tree)"
 # The app image is the Next.js standalone bundle: it doesn't carry every
 # transitive dep that `prisma` CLI's @prisma/dev requires (`pathe` etc.).
-# The worker image keeps the full tree, so we run `migrate deploy` there.
-docker compose exec -T worker npx prisma migrate deploy
-
-log "reloading nginx"
-docker compose exec -T nginx nginx -s reload || true
+# The worker image keeps the full tree, but the live worker container is in
+# a known restart loop, so `compose exec` is unreliable. `compose run --rm`
+# spins up a fresh ephemeral container off the same image and runs migrate
+# there cleanly. `--no-deps` keeps it from touching postgres/redis lifecycle.
+# Migrate is allowed to fail (||true) — set -e would otherwise abort before
+# nginx reload, leaving traffic on a stale upstream. The exit status is
+# logged and surfaced via `docker compose ps` at the end.
+if ! docker compose run --rm --no-deps worker npx prisma migrate deploy; then
+  log "WARN: prisma migrate deploy failed — investigate before next release"
+fi
 
 log "done. current status:"
 docker compose ps

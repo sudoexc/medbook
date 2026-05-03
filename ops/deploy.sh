@@ -35,8 +35,11 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-log "running migrations"
-docker compose exec -T app npx prisma migrate deploy
+log "running migrations (via worker container — full node_modules tree)"
+# The app image is the Next.js standalone bundle: it doesn't carry every
+# transitive dep that `prisma` CLI's @prisma/dev requires (`pathe` etc.).
+# The worker image keeps the full tree, so we run `migrate deploy` there.
+docker compose exec -T worker npx prisma migrate deploy
 
 log "reloading nginx"
 docker compose exec -T nginx nginx -s reload || true

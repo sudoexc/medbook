@@ -5,11 +5,16 @@
  * covers the "bot setup" surface — getMe, setMyCommands, setMyDescription,
  * setChatMenuButton, setWebhook, getWebhookInfo, deleteWebhook.
  *
- * No retry on 429 here — these are setup calls, the wizard surfaces errors
- * directly to the user instead of silently waiting.
+ * Retries: egress from some VPS networks to api.telegram.org is intermittent
+ * (TLS handshake completes but the H2/H1 response never arrives). We retry up
+ * to TG_API_RETRIES times with a per-attempt timeout, and only fail if every
+ * attempt times out. Successful HTTP responses (including 401/400 from
+ * Telegram) short-circuit immediately — no retry on a real Telegram error.
  */
 
 const API_ROOT = "https://api.telegram.org";
+const PER_ATTEMPT_TIMEOUT_MS = 5000;
+const TG_API_RETRIES = 7;
 
 export type TgApiOk<T> = { ok: true; result: T };
 export type TgApiErr = {
@@ -49,12 +54,31 @@ async function call<T>(
   method: string,
   payload?: Record<string, unknown>,
 ): Promise<TgApiResponse<T>> {
-  const res = await fetch(`${API_ROOT}/bot${token}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: payload ? JSON.stringify(payload) : "{}",
-  });
-  return (await res.json()) as TgApiResponse<T>;
+  const url = `${API_ROOT}/bot${token}/${method}`;
+  const body = payload ? JSON.stringify(payload) : "{}";
+
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= TG_API_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
+      });
+      return (await res.json()) as TgApiResponse<T>;
+    } catch (e) {
+      lastErr = e;
+      // Only timeouts/abort/network errors are worth retrying. Anything that
+      // came back as an HTTP response (even 4xx) already returned above.
+      if (attempt < TG_API_RETRIES) {
+        await new Promise((r) => setTimeout(r, 250 * attempt));
+      }
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("telegram_unreachable");
 }
 
 export async function getMe(token: string): Promise<TgApiResponse<TgBotInfo>> {

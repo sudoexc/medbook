@@ -394,6 +394,13 @@ model User {
   telegramId    String?
   role          Role      @default(DOCTOR)
   active        Boolean   @default(true)
+  // Set true when an admin issues a temp password; cleared on first self-set.
+  // Middleware redirects users with this flag to /crm/me/change-password.
+  mustChangePassword Boolean @default(false)
+  // The user (SUPER_ADMIN or ADMIN) who created/invited this account.
+  // No back-relation needed — surfaced only in audit views.
+  invitedById   String?
+  lastLoginAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -754,10 +761,15 @@ model Payment {
   refundedAmount Int           @default(0)
   paidAt         DateTime?
   externalRef    String?
+  /// Client-supplied idempotency key. Null = retries can dedupe themselves
+  /// however they want; non-null = unique per clinic so a network retry with
+  /// the same key returns the original row instead of creating a duplicate.
+  idempotencyKey String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([clinicId, idempotencyKey], map: "Payment_clinicId_idempotencyKey_key")
   @@index([clinicId, status])
   @@index([clinicId, paidAt])
   @@index([clinicId, appointmentId])

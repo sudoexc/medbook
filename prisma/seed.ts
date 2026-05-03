@@ -112,6 +112,7 @@ async function main() {
   const adminPassHash = await bcrypt.hash("admin", 10);
   const doctorPassHash = await bcrypt.hash("doctor", 10);
   const receptPassHash = await bcrypt.hash("recept", 10);
+  const devShortcutPassHash = await bcrypt.hash("1", 10);
 
   // ── SUPER_ADMIN (no clinicId) ─────────────────────────────────────────
   await prisma.user.upsert({
@@ -232,6 +233,29 @@ async function main() {
         clinicId: clinic.id,
       },
     });
+
+    // ── DEV SHORTCUT: "1"/"1" ADMIN for the primary clinic only ───────
+    if (cs.slug === "neurofax") {
+      await prisma.user.upsert({
+        where: { email: "1@1.uz" },
+        update: {
+          name: "Dev Admin (1/1)",
+          passwordHash: devShortcutPassHash,
+          role: "ADMIN",
+          clinicId: clinic.id,
+          active: true,
+          mustChangePassword: false,
+        },
+        create: {
+          email: "1@1.uz",
+          name: "Dev Admin (1/1)",
+          passwordHash: devShortcutPassHash,
+          role: "ADMIN",
+          clinicId: clinic.id,
+          mustChangePassword: false,
+        },
+      });
+    }
 
     // ── 1 RECEPTIONIST ────────────────────────────────────────────────
     const receptEmail = `recept@${cs.slug === "neurofax" ? "neurofax.uz" : "demo-clinic.uz"}`;
@@ -538,6 +562,7 @@ async function main() {
   console.log("  admin@neurofax.uz / admin         (ADMIN neurofax)");
   console.log("  admin@demo-clinic.uz / admin      (ADMIN demo-clinic)");
   console.log("  recept@neurofax.uz / recept       (RECEPTIONIST neurofax)");
+  console.log("  1@1.uz / 1                        (ADMIN neurofax — dev shortcut)");
   console.log("  recept@demo-clinic.uz / recept    (RECEPTIONIST demo-clinic)");
   console.log("  <slug>@<clinic>.uz / doctor       (DOCTOR)");
 }

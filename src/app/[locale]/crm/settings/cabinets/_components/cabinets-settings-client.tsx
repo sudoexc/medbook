@@ -45,10 +45,13 @@ export function CabinetsSettingsClient() {
   const t = useTranslations("settings");
   const qc = useQueryClient();
 
+  const [pageLimit, setPageLimit] = React.useState(200);
   const listQuery = useQuery({
-    queryKey: ["settings", "cabinets"],
+    queryKey: ["settings", "cabinets", pageLimit],
     queryFn: () =>
-      settingsFetch<{ rows: CabinetRow[] }>("/api/crm/cabinets?limit=200"),
+      settingsFetch<{ rows: CabinetRow[]; total?: number }>(
+        `/api/crm/cabinets?limit=${pageLimit}`,
+      ),
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -83,6 +86,8 @@ export function CabinetsSettingsClient() {
   });
 
   const rows = listQuery.data?.rows ?? [];
+  const total = listQuery.data?.total ?? rows.length;
+  const hasMore = total > rows.length;
 
   return (
     <PageContainer>
@@ -118,16 +123,33 @@ export function CabinetsSettingsClient() {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((c) => (
-            <CabinetCard
-              key={c.id}
-              row={c}
-              onPatch={(data) => patchMutation.mutate({ id: c.id, data })}
-              onDelete={() => deleteMutation.mutate(c.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {rows.map((c) => (
+              <CabinetCard
+                key={c.id}
+                row={c}
+                onPatch={(data) => patchMutation.mutate({ id: c.id, data })}
+                onDelete={() => deleteMutation.mutate(c.id)}
+              />
+            ))}
+          </div>
+          {hasMore ? (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+              <span>
+                {t("common.shown", { shown: rows.length, total })}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPageLimit((n) => Math.min(n + 200, 1000))}
+                disabled={pageLimit >= 1000}
+              >
+                {t("common.loadMore")}
+              </Button>
+            </div>
+          ) : null}
+        </>
       )}
 
       <CreateCabinetDialog

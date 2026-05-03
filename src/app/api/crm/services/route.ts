@@ -35,18 +35,21 @@ export const GET = createApiListHandler(
         { nameUz: { contains: q.q, mode: "insensitive" } },
       ];
     }
-    const rows = await prisma.service.findMany({
-      where,
-      orderBy: { nameRu: "asc" },
-      take: q.limit + 1,
-      ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
-    });
+    const [rows, total] = await Promise.all([
+      prisma.service.findMany({
+        where,
+        orderBy: { nameRu: "asc" },
+        take: q.limit + 1,
+        ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
+      }),
+      prisma.service.count({ where }),
+    ]);
     let nextCursor: string | null = null;
     if (rows.length > q.limit) {
       const next = rows.pop();
       nextCursor = next?.id ?? null;
     }
-    return ok({ rows, nextCursor });
+    return ok({ rows, nextCursor, total });
   }
 );
 

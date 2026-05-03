@@ -39,6 +39,34 @@ export function canTransition(
   return TRANSITIONS[from].has(to);
 }
 
+/**
+ * Time-aware extension of `canTransition`. NO_SHOW only makes sense once the
+ * scheduled start time has passed — until then the patient is not yet "late".
+ * `graceMinutes` lets the caller decide how soon after the start a no-show
+ * call is allowed (default: 0, i.e., the moment the visit was supposed to
+ * begin).
+ */
+export function canTransitionAt(
+  from: AppointmentStatus,
+  to: AppointmentStatus,
+  appointmentDate: Date,
+  now: Date = new Date(),
+  graceMinutes = 0,
+): { ok: true } | { ok: false; reason: "invalid_transition" | "too_early_for_no_show" } {
+  if (!canTransition(from, to)) {
+    return { ok: false, reason: "invalid_transition" };
+  }
+  if (to === "NO_SHOW" && from !== "NO_SHOW") {
+    const threshold = new Date(
+      appointmentDate.getTime() + graceMinutes * 60_000,
+    );
+    if (now < threshold) {
+      return { ok: false, reason: "too_early_for_no_show" };
+    }
+  }
+  return { ok: true };
+}
+
 /** Statuses that the user is allowed to set next, including the current one. */
 export function nextStatuses(from: AppointmentStatus): AppointmentStatus[] {
   return [from, ...Array.from(TRANSITIONS[from])];

@@ -19,7 +19,7 @@ export const UpdateCabinetSchema = CreateCabinetSchema.partial();
 
 export const QueryCabinetSchema = z.object({
   isActive: z.coerce.boolean().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 
 export type CreateCabinet = z.infer<typeof CreateCabinetSchema>;

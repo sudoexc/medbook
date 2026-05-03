@@ -45,9 +45,20 @@ describe("CreateUserSchema", () => {
         email: `x+${role}@clinic.test`,
         name: role,
         role,
+        // role=DOCTOR requires a Doctor card to bind to (see #193).
+        ...(role === "DOCTOR" ? { doctorId: "doc_test_123" } : {}),
       });
       expect(r.success, `role=${role}`).toBe(true);
     }
+  });
+
+  it("rejects role=DOCTOR without doctorId", () => {
+    const r = CreateUserSchema.safeParse({
+      email: "doc@clinic.test",
+      name: "Doc",
+      role: "DOCTOR",
+    });
+    expect(r.success).toBe(false);
   });
 
   it("rejects an invalid role", () => {
@@ -114,9 +125,15 @@ describe("QueryUserSchema", () => {
     if (r.success) expect(r.data.limit).toBe(25);
   });
 
-  it("caps limit at 200", () => {
-    const r = QueryUserSchema.safeParse({ limit: "500" });
+  it("caps limit at 1000", () => {
+    const r = QueryUserSchema.safeParse({ limit: "1500" });
     expect(r.success).toBe(false);
+  });
+
+  it("accepts limit up to 1000", () => {
+    const r = QueryUserSchema.safeParse({ limit: "1000" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.limit).toBe(1000);
   });
 
   it("defaults limit to 50 when omitted", () => {

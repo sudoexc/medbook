@@ -28,6 +28,13 @@ export const CreatePaymentSchema = z.object({
   receiptUrl: z.string().url().optional().nullable(),
   paidAt: z.coerce.date().optional().nullable(),
   externalRef: z.string().max(200).optional().nullable(),
+  /**
+   * Optional client-supplied idempotency key. When the same key is replayed
+   * (e.g., after a network retry), the route returns the original payment
+   * rather than creating a duplicate. Falls back to the `Idempotency-Key`
+   * HTTP header if absent from the body.
+   */
+  idempotencyKey: z.string().min(1).max(200).optional().nullable(),
 });
 
 export const UpdatePaymentSchema = z.object({

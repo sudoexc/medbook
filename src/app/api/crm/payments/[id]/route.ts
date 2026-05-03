@@ -7,7 +7,7 @@
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, diff } from "@/server/http";
+import { ok, err, notFound, diff } from "@/server/http";
 import { UpdatePaymentSchema } from "@/server/schemas/payment";
 import { recalcLtv } from "@/server/services/ltv";
 import { fireTrigger } from "@/server/notifications/triggers";
@@ -25,6 +25,20 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.payment.findUnique({ where: { id } });
     if (!before) return notFound();
+
+    // Cap refund at the payment amount. Prisma stores amount as Int (minor
+    // units) so a direct compare is safe.
+    if (typeof body.refundedAmount === "number") {
+      const targetAmount =
+        typeof body.amount === "number" ? body.amount : before.amount;
+      if (body.refundedAmount > targetAmount) {
+        return err("ValidationError", 422, {
+          reason: "refund_exceeds_amount",
+          amount: targetAmount,
+          refundedAmount: body.refundedAmount,
+        });
+      }
+    }
 
     const data: Record<string, unknown> = { ...body };
     if (

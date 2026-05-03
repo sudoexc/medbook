@@ -13,6 +13,8 @@ interface QueueStatus {
   position: number;
   totalWaiting: number;
   etaMinutes: number;
+  etaConfidence?: "high" | "med" | "low";
+  etaSource?: "history" | "blended" | "fallback";
   ticketNumber: string;
 }
 

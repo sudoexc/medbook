@@ -39,12 +39,15 @@ export function ServicesSettingsClient() {
   const t = useTranslations("settings");
   const qc = useQueryClient();
 
+  const [pageLimit, setPageLimit] = React.useState(200);
   const listQuery = useQuery({
-    queryKey: ["settings", "services"],
+    queryKey: ["settings", "services", pageLimit],
     queryFn: () =>
-      settingsFetch<{ rows: ServiceRow[]; nextCursor: string | null }>(
-        "/api/crm/services?limit=200",
-      ),
+      settingsFetch<{
+        rows: ServiceRow[];
+        nextCursor: string | null;
+        total?: number;
+      }>(`/api/crm/services?limit=${pageLimit}`),
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -71,6 +74,8 @@ export function ServicesSettingsClient() {
   });
 
   const rows = listQuery.data?.rows ?? [];
+  const total = listQuery.data?.total ?? rows.length;
+  const hasMore = total > rows.length;
 
   return (
     <PageContainer>
@@ -140,6 +145,19 @@ export function ServicesSettingsClient() {
               ))}
             </tbody>
           </table>
+          {hasMore ? (
+            <div className="flex items-center justify-between gap-3 border-t border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+              <span>{t("common.shown", { shown: rows.length, total })}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPageLimit((n) => Math.min(n + 200, 1000))}
+                disabled={pageLimit >= 1000}
+              >
+                {t("common.loadMore")}
+              </Button>
+            </div>
+          ) : null}
         </div>
       )}
 

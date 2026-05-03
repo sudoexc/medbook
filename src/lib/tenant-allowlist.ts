@@ -19,6 +19,10 @@ export const MODELS_WITHOUT_TENANT: ReadonlySet<string> = new Set([
   "Session",
   "VerificationToken",
   "AuditLog",
+  // Phase 11 join model: tenancy is implied by both `doctor` and `service`,
+  // and the table itself has no `clinicId` column. Without this entry the
+  // extension would inject `clinicId` and Prisma rejects the call.
+  "ServiceOnDoctor",
 ]);
 
 /**

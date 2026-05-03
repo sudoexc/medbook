@@ -88,7 +88,11 @@ export const POST = createMiniAppHandler(
     const [doctor, services] = await Promise.all([
       prisma.doctor.findFirst({
         where: { id: body.doctorId, clinicId: ctx.clinicId, isActive: true },
-        select: { id: true },
+        select: {
+          id: true,
+          cabinetId: true,
+          cabinet: { select: { isActive: true } },
+        },
       }),
       prisma.service.findMany({
         where: {
@@ -100,6 +104,7 @@ export const POST = createMiniAppHandler(
       }),
     ]);
     if (!doctor) return err("doctor_not_found", 404);
+    if (!doctor.cabinet?.isActive) return err("cabinet_inactive", 422);
     if (services.length !== body.serviceIds.length) {
       return err("service_not_found", 404);
     }
@@ -147,7 +152,7 @@ export const POST = createMiniAppHandler(
           const c = await detectConflicts(
             {
               doctorId: body.doctorId,
-              cabinetId: null,
+              cabinetId: doctor.cabinetId,
               startAt,
               endAt,
             },
@@ -161,6 +166,7 @@ export const POST = createMiniAppHandler(
               clinicId: ctx.clinicId,
               patientId: ctx.patientId,
               doctorId: body.doctorId,
+              cabinetId: doctor.cabinetId,
               serviceId: primaryServiceId,
               date: startAt,
               time,
@@ -207,7 +213,7 @@ export const POST = createMiniAppHandler(
       if (isWriteConflict) {
         const c = await detectConflicts({
           doctorId: body.doctorId,
-          cabinetId: null,
+          cabinetId: doctor.cabinetId,
           startAt,
           endAt,
         });

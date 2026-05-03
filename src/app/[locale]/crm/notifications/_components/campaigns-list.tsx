@@ -5,6 +5,12 @@ import { useTranslations } from "next-intl";
 import { MegaphoneIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/atoms/empty-state";
 
 import type { Template } from "../_hooks/use-templates";
@@ -30,10 +36,19 @@ export function CampaignsList({ templates }: Props) {
             {t("campaigns.subtitle")}
           </p>
         </div>
-        <Button disabled>
-          <PlusIcon className="size-4" />
-          {t("campaigns.new")}
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button disabled>
+                  <PlusIcon className="size-4" />
+                  {t("campaigns.new")}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{t("campaigns.empty.description")}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       <EmptyState
         icon={<MegaphoneIcon />}

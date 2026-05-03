@@ -16,7 +16,7 @@ import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import {
-  canTransition,
+  canTransitionAt,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 
@@ -82,17 +82,18 @@ export const PATCH = createApiHandler(
       return forbidden();
     }
 
-    if (
-      body.status !== undefined &&
-      !canTransition(
+    if (body.status !== undefined) {
+      const check = canTransitionAt(
         before.status as AppointmentStatus,
         body.status as AppointmentStatus,
-      )
-    ) {
-      return conflict("invalid_transition", {
-        from: before.status,
-        to: body.status,
-      });
+        before.date,
+      );
+      if (!check.ok) {
+        return conflict(check.reason, {
+          from: before.status,
+          to: body.status,
+        });
+      }
     }
 
     // If any time/doctor change, re-run conflict detection. Cabinet is no
@@ -144,6 +145,21 @@ export const PATCH = createApiHandler(
     }
     if (body.doctorId !== undefined && body.doctorId !== before.doctorId) {
       data.cabinetId = nextCabinetId;
+    }
+
+    // When the discount changes and the caller hasn't pinned `priceFinal`
+    // explicitly in the same PATCH, recompute priceFinal from the stored
+    // priceBase snapshot. Without this, doctor commission and patient LTV
+    // (both derived from priceFinal) drift after retroactive discount edits.
+    const discountChanged =
+      body.discountPct !== undefined || body.discountAmount !== undefined;
+    if (discountChanged && body.priceFinal === undefined && before.priceBase !== null) {
+      const pct = body.discountPct ?? before.discountPct ?? 0;
+      const amt = body.discountAmount ?? before.discountAmount ?? 0;
+      data.priceFinal = Math.max(
+        0,
+        before.priceBase - amt - Math.round((pct * before.priceBase) / 100),
+      );
     }
     if (body.status === "CANCELLED" && !before.cancelledAt) {
       data.cancelledAt = new Date();
@@ -282,18 +298,63 @@ export const DELETE = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.appointment.findUnique({ where: { id } });
     if (!before) return notFound();
+
+    // DELETE means "soft-cancel". Reject if the appointment is already in a
+    // terminal state — re-cancelling COMPLETED/CANCELLED/NO_SHOW is a UI bug.
+    const transition = canTransitionAt(
+      before.status as AppointmentStatus,
+      "CANCELLED",
+      before.date,
+    );
+    if (!transition.ok) {
+      return conflict(transition.reason, {
+        from: before.status,
+        to: "CANCELLED",
+      });
+    }
+
+    // Optional cancellation reason — DELETE bodies are unusual but supported.
+    // Accept either { cancelReason } or { reason }; ignore parse errors.
+    let cancelReason: string | null = null;
+    try {
+      const text = await request.text();
+      if (text) {
+        const parsed = JSON.parse(text) as {
+          cancelReason?: unknown;
+          reason?: unknown;
+        };
+        const raw =
+          typeof parsed.cancelReason === "string"
+            ? parsed.cancelReason
+            : typeof parsed.reason === "string"
+              ? parsed.reason
+              : null;
+        if (raw) cancelReason = raw.slice(0, 500).trim() || null;
+      }
+    } catch {
+      // Body absent or not JSON — fine, cancelReason stays null.
+    }
+
+    // Late-cancel signal — flagged in audit so reports can surface it. We do
+    // not block here because clinic policy varies; the data is what matters.
+    const lateCancelMinutes = Math.max(
+      0,
+      Math.round((before.date.getTime() - Date.now()) / 60_000),
+    );
+
     const cancelled = await prisma.appointment.update({
       where: { id },
       data: {
         status: "CANCELLED",
         cancelledAt: new Date(),
+        cancelReason: cancelReason,
       },
     });
     await audit(request, {
       action: "appointment.cancel",
       entityType: "Appointment",
       entityId: id,
-      meta: { before, after: cancelled },
+      meta: { before, after: cancelled, lateCancelMinutes },
     });
     fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
 

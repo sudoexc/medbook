@@ -21,7 +21,6 @@ import {
   GlobeIcon,
   MegaphoneIcon,
   MessageCircleIcon,
-  MoreHorizontalIcon,
   PhoneIcon,
   SendIcon,
   Share2Icon,
@@ -470,11 +469,6 @@ export function PatientsTable({
                   }}
                 />
               ) : null}
-              <IconAction
-                icon={MoreHorizontalIcon}
-                label={t("rowActions.more")}
-                onClick={() => {}}
-              />
             </div>
           );
         },

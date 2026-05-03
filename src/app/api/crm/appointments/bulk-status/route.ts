@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 import { ok, conflict } from "@/server/http";
 import { BulkStatusSchema } from "@/server/schemas/appointment";
 import {
-  canTransition,
+  canTransitionAt,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 
@@ -26,15 +26,24 @@ export const POST = createApiHandler(
     // the source of truth — kiosks, scripts, or stale tabs may still try.
     const existing = await prisma.appointment.findMany({
       where: { id: { in: body.ids } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, date: true },
     });
-    const blocked = existing.filter(
-      (a) => !canTransition(a.status as AppointmentStatus, target),
-    );
+    const blocked = existing
+      .map((a) => ({
+        a,
+        check: canTransitionAt(
+          a.status as AppointmentStatus,
+          target,
+          a.date,
+          now,
+        ),
+      }))
+      .filter((x) => !x.check.ok);
     if (blocked.length > 0) {
-      return conflict("invalid_transition", {
+      const reason = blocked[0]?.check.ok === false ? blocked[0].check.reason : "invalid_transition";
+      return conflict(reason, {
         to: target,
-        blocked: blocked.map((a) => ({ id: a.id, from: a.status })),
+        blocked: blocked.map((x) => ({ id: x.a.id, from: x.a.status })),
       });
     }
 

@@ -13,24 +13,27 @@ export const GET = createApiListHandler(
     const q = parsed.value;
     const where: Record<string, unknown> = {};
     if (typeof q.isActive === "boolean") where.isActive = q.isActive;
-    const rows = await prisma.cabinet.findMany({
-      where,
-      orderBy: { number: "asc" },
-      take: q.limit,
-      include: {
-        // Surface the occupant so the UI can display "Свободен / Занят: <name>"
-        // and the doctor-edit form can disable cabinets bound to other doctors.
-        // Doctor.cabinetId is UNIQUE so this is at most one row.
-        doctor: {
-          select: {
-            id: true,
-            nameRu: true,
-            nameUz: true,
-            isActive: true,
+    const [rows, total] = await Promise.all([
+      prisma.cabinet.findMany({
+        where,
+        orderBy: { number: "asc" },
+        take: q.limit,
+        include: {
+          // Surface the occupant so the UI can display "Свободен / Занят: <name>"
+          // and the doctor-edit form can disable cabinets bound to other doctors.
+          // Doctor.cabinetId is UNIQUE so this is at most one row.
+          doctor: {
+            select: {
+              id: true,
+              nameRu: true,
+              nameUz: true,
+              isActive: true,
+            },
           },
         },
-      },
-    });
+      }),
+      prisma.cabinet.count({ where }),
+    ]);
     return ok({
       rows: rows.map((c) => ({
         ...c,
@@ -44,6 +47,7 @@ export const GET = createApiListHandler(
           : null,
         doctor: undefined,
       })),
+      total,
     });
   }
 );

@@ -162,8 +162,7 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
                 <MoneyText
                   amount={row.amount}
                   currency={row.currency}
-                  showDual={row.currency === "UZS"}
-                  usdAmount={row.amountUsdSnap ?? null}
+                  showDual={false}
                 />
               </span>
               <span className="text-muted-foreground">

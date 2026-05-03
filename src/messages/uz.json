@@ -1177,7 +1177,8 @@
     },
     "queueColumn": {
       "title": "Umumiy navbat",
-      "empty": "Navbat bo'sh"
+      "empty": "Navbat bo'sh",
+      "aiTooltip": "Navbat AI tomonidan tartiblanadi: kutish, shoshilinchlik, VIP, kelmaslik xavfi"
     },
     "bottomRow": {
       "smartTitle": "Aqlli tavsiyalar",
@@ -1526,6 +1527,47 @@
       "filteredTitle": "Hech kim topilmadi",
       "filteredDescription": "Filtrlarni o'zgartiring yoki qidiruvni tozalang."
     },
+    "newDialog": {
+      "title": "Yangi shifokor",
+      "description": "Shifokor kartasini yarating: ism, mutaxassislik, kabinet va xizmatlar. Kabinet 1:1 biriktiriladi — bandlari mavjud emas.",
+      "sectionPersonal": "Shaxsiy ma'lumotlar",
+      "sectionCabinet": "Kabinet",
+      "sectionPricing": "Moliya",
+      "sectionServices": "Xizmatlar",
+      "sectionAdvanced": "Qo'shimcha",
+      "nameRu": "F.I.Sh. (rus.)",
+      "nameUz": "F.I.Sh. (o'zb.)",
+      "namePlaceholderRu": "Иванов Иван Иванович",
+      "namePlaceholderUz": "Ivanov Ivan Ivanovich",
+      "specRu": "Mutaxassislik (rus.)",
+      "specUz": "Mutaxassislik (o'zb.)",
+      "specPlaceholderRu": "Терапевт",
+      "specPlaceholderUz": "Terapevt",
+      "slug": "Slug",
+      "slugHint": "Lotin harflari, raqamlar va defislar. F.I.Sh. dan avtomatik to'ldiriladi — o'zgartirish mumkin.",
+      "color": "Rang",
+      "cabinetHint": "Bir kabinet — bir shifokor",
+      "cabinetCreate": "Kabinet yaratish",
+      "pricePerVisit": "Qabul narxi (UZS)",
+      "pricePerVisitPlaceholder": "Belgilanmagan",
+      "pricePerVisitHint": "Aniq xizmat tanlanmagan bo'lsa, qabulning bazaviy narxi sifatida ishlatiladi.",
+      "salaryPercent": "Ish haqi foizi",
+      "salaryPercentHint": "Qabullardan tushgan tushumdan shifokor ulushi (0–100).",
+      "servicesEmpty": "Xizmatlar hali yo'q — shifokorni xizmatlarsiz yaratib, keyin uning kartasidan biriktirish mumkin.",
+      "servicesSelected": "{total} dan {count} ta tanlandi",
+      "servicesHint": "O'ngdagi maydonlar — narx va davomiylikni o'zgartirish uchun (UZS / daqiqalar). Xizmatning bazaviy qiymatlarini ishlatish uchun bo'sh qoldiring.",
+      "photoUrl": "Foto (URL)",
+      "bioRu": "Shifokor haqida (rus.)",
+      "bioUz": "Shifokor haqida (o'zb.)",
+      "submit": "Yaratish",
+      "submitting": "Yaratilmoqda…",
+      "cancel": "Bekor qilish",
+      "createdToast": "Shifokor yaratildi",
+      "errCabinetTaken": "Bu kabinetni endigina egallashdi — boshqasini tanlang.",
+      "errCabinetMissing": "Kabinet mavjud emas — boshqasini tanlang.",
+      "errSlugTaken": "Bunday slug allaqachon ishlatilmoqda — o'zgartiring.",
+      "errGeneric": "Shifokor yaratilmadi"
+    },
     "ai": {
       "title": "AI tavsiyalar",
       "updated": "2 daqiqa oldin yangilandi",
@@ -1751,7 +1793,8 @@
       "reset": "Bekor qilish",
       "empty": "Klinikada aktiv xizmatlar yo'q",
       "loadError": "Xizmatlarni yuklab bo'lmadi",
-      "currencySum": "so'm"
+      "currencySum": "so'm",
+      "minShort": "daq"
     },
     "weekdays": {
       "mon": "Dushanba",
@@ -1947,6 +1990,11 @@
     }
   },
   "tgInbox": {
+    "notConfigured": {
+      "title": "Telegram-bot hali ulanmagan",
+      "description": "Bemorlardan xabarlar olish uchun klinika botini integratsiyalar bo‘limidan ulang. 2–3 daqiqa kifoya — sehrgar bosqichma-bosqich yordam beradi.",
+      "cta": "Telegram-botni ulash"
+    },
     "desktopOnly": {
       "title": "Desktopda oching",
       "description": "Telegram-inbox katta ekranlar uchun. Iltimos kompyuterdan kiring."
@@ -2206,7 +2254,9 @@
       "no": "Yo'q",
       "none": "Tanlanmagan",
       "loading": "Yuklanmoqda…",
-      "error": "Xatolik"
+      "error": "Xatolik",
+      "loadMore": "Yana yuklash",
+      "shown": "{shown} dan {total} ko'rsatildi"
     },
     "nav": {
       "clinic": "Klinika",
@@ -2288,6 +2338,19 @@
       "newPassword": "Yangi parol",
       "copy": "Nusxalash",
       "copied": "Nusxalandi",
+      "copyBoth": "Hammasini nusxalash",
+      "copyFailed": "Nusxalab bo'lmadi",
+      "generate": "Yaratish",
+      "tempPassword": "Vaqtinchalik parol",
+      "revealTitle": "Xodim yaratildi",
+      "revealDescription": "Loginni va vaqtinchalik parolni xodimga bering. Birinchi kirishda u o'z parolini belgilaydi.",
+      "savedClose": "Saqladim, yopish",
+      "doctorBinding": "Shifokor kartasi",
+      "doctorBindingHint": "Ushbu hisob bog'lanadigan shifokor kartasini tanlang.",
+      "doctorBindingPlaceholder": "— Shifokorni tanlang —",
+      "noOrphanDoctors": "Bo'sh shifokor kartalari yo'q. Avval «Shifokorlar» bo'limida shifokor yarating, so'ng hisobni bog'lang.",
+      "doctorTakenError": "Ushbu shifokor kartasi allaqachon boshqa hisobga bog'langan.",
+      "doctorRequiredError": "«Shifokor» roli uchun shifokor kartasini tanlash kerak.",
       "cols": {
         "name": "Ism",
         "email": "Email",
@@ -2511,6 +2574,97 @@
         "pending": "Navbatda",
         "lastError": "Oxirgi xato",
         "hasSecret": "Secret o'rnatilgan"
+      },
+      "tgConnect": "Botni ulash",
+      "tgDisconnect": "Uzish",
+      "tgDisconnected": "Bot uzildi",
+      "tgDisconnectTitle": "Telegram-botni uzasizmi?",
+      "tgDisconnectHint": "Telegram-webhook o'chiriladi. Botning o'zi @BotFather'da qoladi — uni qayta ulash yoki o'sha yerda o'chirish mumkin.",
+      "tgWizard": {
+        "title": "Telegram-botni ulash",
+        "stepIndicator": "{total} dan {step}-qadam",
+        "back": "Orqaga",
+        "cancel": "Bekor qilish",
+        "close": "Yopish",
+        "copy": "Nusxa olish",
+        "copied": "Nusxa olindi: {key}",
+        "step1": {
+          "subtitle": "Nimalar kerak",
+          "intro": "Bemorlar bilan muloqot uchun Telegram-bot yaratamiz. U orqali bemorlar klinikaga yozadi, qabulga yoziladi va eslatmalar oladi.",
+          "bullet1": "Bot — Telegram'dagi alohida hisob, @BotFather orqali yaratiladi.",
+          "bullet2": "3 daqiqa va Telegram'ga kirish kerak bo'ladi.",
+          "bullet3": "Oxirida tizim webhook'ni va buyruqlarni o'zi sozlaydi.",
+          "cta": "Boshladik"
+        },
+        "step2": {
+          "subtitle": "@BotFather orqali bot yarating",
+          "heading": "Telegram'dagi qadamlar",
+          "openBotFather": "Telegram'da @BotFather'ni ochish",
+          "cmd1Title": "BotFather'ga yozing:",
+          "cmd2Title": "Bot nomi",
+          "cmd2Hint": "Chatda bemorlar ko'radi. Istalgan tilda bo'lishi mumkin.",
+          "cmd2Sample": "NeuroFax — yozilish",
+          "cmd3Title": "Bot username'i",
+          "cmd3Hint": "Noyob bo'lishi va «bot» bilan tugashi kerak.",
+          "cmd3Sample": "neurofax_clinic_bot",
+          "cmd4Title": "Tokenni nusxalang",
+          "cmd4Hint": "BotFather 123456789:AAH... ko'rinishidagi qatorni yuboradi — bu token.",
+          "tokenLabel": "Bot tokeni",
+          "tokenHint": "Token yashirilgan. Telegram getMe orqali tekshiramiz va tasdiqlanmaguncha saqlamaymiz.",
+          "cta": "Tekshirish"
+        },
+        "step3": {
+          "subtitle": "Bu sizning botingizmi?",
+          "askConfirm": "Hammasi to'g'ri bo'lsa — sozlashga o'tamiz. Noto'g'ri bo'lsa — orqaga qaytib tokenni qayta tekshiring.",
+          "cta": "Ha, bu mening botim"
+        },
+        "step4": {
+          "subtitle": "Yakuniy sozlash",
+          "modeLabel": "Ishlash rejimi",
+          "modePolling": {
+            "title": "Lokal (polling)",
+            "hint": "Ochiq domenisiz noutbukda test uchun. getUpdates skriptini ishlatamiz."
+          },
+          "modeWebhook": {
+            "title": "Webhook (prod)",
+            "hint": "Telegram serveringizga voqealarni yuboradi. Ochiq HTTPS kerak."
+          },
+          "tunnelLabel": "Ochiq URL (ixtiyoriy)",
+          "tunnelHint": "Lokal ishlayotgan bo'lsangiz — ngrok / cloudflared URL'ini joylashtiring. Aks holda $NEXT_PUBLIC_APP_URL ishlatiladi.",
+          "autoSetup": "Botning avtomatik sozlanishi",
+          "checkCommands": "Bot buyruqlari",
+          "checkCommandsHint": "/start, /booking, /cancel, /help — ru va uz tillarida.",
+          "checkDescription": "To'liq va qisqa tavsif",
+          "checkDescriptionHint": "Telegram'dagi bot profilida ko'rinadi.",
+          "checkMenu": "Mini App tugmasi",
+          "checkMenuHint": "Kiritish maydoni yonidagi «📅» tugmasi — yozilish miniapp'ini ochadi. Faqat HTTPS uchun.",
+          "cta": "Ulash"
+        },
+        "step5": {
+          "subtitle": "Tayyor",
+          "title": "Bot ulandi",
+          "openBot": "Botni ochish",
+          "mode": {
+            "polling": "polling rejimi — lokal ishlash uchun",
+            "webhook": "webhook rejimi — prod"
+          },
+          "warnings": "Ogohlantirishlar: {list}",
+          "pollingNote": {
+            "title": "Lokalda xabar olish uchun",
+            "body": "Quyidagi buyruqni alohida terminalda ishga tushiring — u yangilanishlarni o'qib CRM'ga uzatadi."
+          }
+        },
+        "err": {
+          "tokenFormat": "Token formati noto'g'ri. Raqam, ikki nuqta va uzun qator bo'lishi kerak.",
+          "invalidToken": "Telegram tokenni rad qildi. BotFather'dan to'liq nusxalang.",
+          "network": "Telegram'ga ulanib bo'lmadi. Internetni tekshirib qayta urinib ko'ring.",
+          "tg": "Telegram xatosi: {msg}",
+          "copyFailed": "Nusxa olib bo'lmadi. Qo'lda nusxalang.",
+          "botInUse": "Bu bot tizimda boshqa klinikaga ulangan.",
+          "botInUseDetail": "Klinika: {slug}. Avval u yerda botni uzing.",
+          "usernameMismatch": "Token tasdiqlangan botga to'g'ri kelmaydi. Boshidan boshlang.",
+          "webhookUnreachable": "Telegram serverga ulana olmadi. Ochiq URL'ni tekshirib qayta urinib ko'ring."
+        }
       }
     },
     "notifications": {

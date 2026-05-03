@@ -294,6 +294,61 @@ export type UpcomingReminder = {
 };
 
 /**
+ * AI queue ranking for today (Phase 10). Mirrors the `ScoredAppointment`
+ * shape from `resolveQueueScores` but kept local so this client hook never
+ * pulls server-only types. The receptionist UI uses this to override the
+ * default time-sort with AI priority.
+ */
+export type AiQueueItem = {
+  appointmentId: string;
+  doctorId: string;
+  patientId: string;
+  patientName: string;
+  serviceCode: string | null;
+  serviceName: string | null;
+  scheduledAt: string;
+  calledAt: string | null;
+  startedAt: string | null;
+  queueStatus: string;
+  waitMin: number;
+  isVip: boolean;
+  noShowRisk: number;
+  score: {
+    score: number;
+    band: "low" | "normal" | "high" | "critical";
+    components: {
+      wait: number;
+      urgency: number;
+      vip: number;
+      noShowPenalty: number;
+      latePenalty: number;
+      overdueBoost: number;
+    };
+  };
+};
+
+export function useAiQueueScores() {
+  return useQuery<AiQueueItem[], Error>({
+    queryKey: ["reception", "ai", "queue"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/crm/ai/queue`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) {
+        if (res.status === 404) return [];
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const j = (await res.json()) as { items: AiQueueItem[] };
+      return j.items ?? [];
+    },
+    staleTime: RECEPTION_STALE_MS,
+    refetchInterval: RECEPTION_POLL_MS,
+    retry: false,
+  });
+}
+
+/**
  * Subscribe the reception dashboard to realtime events. Call once from the
  * page-level client component. Invalidates every live query on the relevant
  * event types; TanStack Query then refetches as needed.

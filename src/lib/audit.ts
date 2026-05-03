@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { auth } from "./auth";
 import { hasValidPin } from "./pin";
+import { getTenant } from "./tenant-context";
 
 /**
  * Fire-and-forget audit log. Failures are logged to console but never throw —
@@ -25,8 +26,18 @@ export async function audit(request: Request, input: AuditInput): Promise<void> 
   try {
     const session = await auth();
     const viaPin = !session?.user && hasValidPin(request);
+    // AuditLog isn't scoped by the tenant extension (it's in
+    // MODELS_WITHOUT_TENANT) so we must set clinicId explicitly. Tenant ctx
+    // wins; fall back to the session user's clinicId for cases where the
+    // call is made before runWithTenant (e.g. login flows).
+    const ctx = getTenant();
+    const clinicId =
+      ctx?.kind === "TENANT"
+        ? ctx.clinicId
+        : session?.user?.clinicId ?? null;
     await prisma.auditLog.create({
       data: {
+        clinicId,
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId ?? null,

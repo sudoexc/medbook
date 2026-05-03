@@ -34,6 +34,22 @@ export const PATCH = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.cabinet.findUnique({ where: { id } });
     if (!before) return notFound();
+    // Same invariant as DELETE: a cabinet that still has a doctor bound to it
+    // cannot be deactivated, since Doctor.cabinetId is NOT NULL and would
+    // leave the doctor pointing at a disabled room.
+    if (body.isActive === false && before.isActive) {
+      const occupant = await prisma.doctor.findUnique({
+        where: { cabinetId: id },
+        select: { id: true, nameRu: true },
+      });
+      if (occupant) {
+        return err("CabinetOccupied", 409, {
+          reason: "cabinet_occupied",
+          doctorId: occupant.id,
+          doctorName: occupant.nameRu,
+        });
+      }
+    }
     const after = await prisma.cabinet.update({ where: { id }, data: body as never });
     const d = diff(
       before as unknown as Record<string, unknown>,

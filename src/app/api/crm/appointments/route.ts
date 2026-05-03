@@ -168,10 +168,18 @@ export const POST = createApiHandler(
     // send `cabinetId` had it stripped by the schema above.
     const doctorRow = await prisma.doctor.findUnique({
       where: { id: body.doctorId },
-      select: { id: true, cabinetId: true, isActive: true },
+      select: {
+        id: true,
+        cabinetId: true,
+        isActive: true,
+        cabinet: { select: { isActive: true } },
+      },
     });
     if (!doctorRow || !doctorRow.isActive) {
       return err("DoctorInvalid", 422, { reason: "doctor_not_found" });
+    }
+    if (!doctorRow.cabinet?.isActive) {
+      return err("CabinetInactive", 422, { reason: "cabinet_inactive" });
     }
     const cabinetId: string = doctorRow.cabinetId;
 

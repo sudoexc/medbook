@@ -124,8 +124,6 @@ export function ClinicSettingsClient() {
       "email",
       "brandColor",
       "timezone",
-      "currency",
-      "secondaryCurrency",
       "workdayStart",
       "workdayEnd",
       "slotMin",
@@ -135,6 +133,10 @@ export function ClinicSettingsClient() {
       const v = form[k];
       if (v !== undefined) payload[k] = v;
     }
+    // Currency is UZS-only for now — pin both fields so any stale USD value
+    // gets cleared on the next save without touching the schema.
+    payload.currency = "UZS";
+    payload.secondaryCurrency = null;
     saveMutation.mutate(payload);
   };
 
@@ -264,49 +266,16 @@ export function ClinicSettingsClient() {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="currency">
-                  {t("clinic.fields.currencyPrimary")}
-                </Label>
-                <select
-                  id="currency"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                  value={form.currency ?? "UZS"}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      currency: e.target.value as "UZS" | "USD",
-                    })
-                  }
-                >
-                  <option value="UZS">UZS</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="secondaryCurrency">
-                  {t("clinic.fields.currencySecondary")}
-                </Label>
-                <select
-                  id="secondaryCurrency"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                  value={form.secondaryCurrency ?? ""}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      secondaryCurrency: (e.target.value || null) as
-                        | "UZS"
-                        | "USD"
-                        | null,
-                    })
-                  }
-                >
-                  <option value="">{t("common.none")}</option>
-                  <option value="UZS">UZS</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
+            <div>
+              <Label htmlFor="currency">
+                {t("clinic.fields.currencyPrimary")}
+              </Label>
+              <Input
+                id="currency"
+                value="UZS"
+                readOnly
+                className="text-muted-foreground"
+              />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>

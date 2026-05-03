@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
+import { predictETA } from "@/lib/ai/eta-predictor";
 
 // GET /api/queue/status/:id — public endpoint for patient queue status (QR code page)
 export async function GET(
@@ -16,11 +17,14 @@ export async function GET(
     select: {
       id: true,
       doctorId: true,
+      serviceId: true,
       service: true,
+      durationMin: true,
       queueStatus: true,
       queueOrder: true,
       patient: { select: { fullName: true } },
       doctor: { select: { id: true, nameRu: true, cabinet: true } },
+      primaryService: { select: { durationMin: true } },
     },
   });
 
@@ -28,10 +32,11 @@ export async function GET(
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Get today's queue for this doctor to calculate position & total
   const { dayStart: today, dayEnd: tomorrow } = tashkentDayBounds();
+  const fallbackMin =
+    appointment.primaryService?.durationMin ?? appointment.durationMin ?? 30;
 
-  const [totalWaiting, ahead, completedDurations, hasCurrentPatient] = await Promise.all([
+  const [totalWaiting, ahead, history, hasCurrentPatient] = await Promise.all([
     prisma.appointment.count({
       where: {
         doctorId: appointment.doctorId,
@@ -49,15 +54,20 @@ export async function GET(
           },
         })
       : Promise.resolve(0),
-    prisma.appointment.findMany({
-      where: {
-        doctorId: appointment.doctorId,
-        date: { gte: today, lt: tomorrow },
-        queueStatus: "COMPLETED",
-        durationMin: { not: null },
-      },
-      select: { durationMin: true },
-    }),
+    appointment.serviceId
+      ? prisma.appointment.findMany({
+          where: {
+            doctorId: appointment.doctorId,
+            serviceId: appointment.serviceId,
+            status: "COMPLETED",
+            startedAt: { not: null },
+            completedAt: { not: null },
+          },
+          select: { startedAt: true, completedAt: true },
+          orderBy: { completedAt: "desc" },
+          take: 30,
+        })
+      : Promise.resolve([] as Array<{ startedAt: Date; completedAt: Date }>),
     prisma.appointment.count({
       where: {
         doctorId: appointment.doctorId,
@@ -67,16 +77,21 @@ export async function GET(
     }),
   ]);
 
-  const avgDuration = completedDurations.length > 0
-    ? Math.round(completedDurations.reduce((s, c) => s + (c.durationMin ?? 0), 0) / completedDurations.length)
-    : 20;
+  const samples = (history as Array<{ startedAt: Date | null; completedAt: Date | null }>)
+    .filter(
+      (c): c is { startedAt: Date; completedAt: Date } =>
+        c.startedAt !== null && c.completedAt !== null,
+    )
+    .map((c) => ({ startedAt: c.startedAt, completedAt: c.completedAt }));
+  const prediction = predictETA({ history: samples, fallbackMin });
+  const perVisitMin = prediction.etaMin;
 
   const position = appointment.queueStatus === "WAITING"
     ? ahead + 1
     : appointment.queueStatus === "IN_PROGRESS" ? 0 : -1;
 
   const etaMinutes = position > 0
-    ? (hasCurrentPatient ? avgDuration : 0) + (position - 1) * avgDuration
+    ? (hasCurrentPatient ? perVisitMin : 0) + (position - 1) * perVisitMin
     : 0;
 
   const ticketNumber = `${appointment.doctor.id.charAt(0).toUpperCase()}${String(appointment.queueOrder || 0).padStart(3, "0")}`;
@@ -93,6 +108,8 @@ export async function GET(
     position: position > 0 ? position : 0,
     totalWaiting,
     etaMinutes,
+    etaConfidence: prediction.confidence,
+    etaSource: prediction.source,
     ticketNumber,
   });
 }

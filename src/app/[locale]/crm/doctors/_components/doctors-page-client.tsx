@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { PlusIcon, StethoscopeIcon } from "lucide-react";
 
 import { PageContainer } from "@/components/molecules/page-container";
@@ -34,6 +33,7 @@ import { DoctorsKpiTabs, type DoctorsTabKey } from "./doctors-kpi-tabs";
 import { DoctorsHeatmap } from "./doctors-heatmap";
 import { DoctorsAiRecommendations } from "./doctors-ai-recommendations";
 import { DoctorsTopRevenue } from "./doctors-top-revenue";
+import { NewDoctorDialog } from "./new-doctor-dialog";
 
 const DAY_CAPACITY = 10;
 const WORKING_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
@@ -127,7 +127,6 @@ export function DoctorsPageClient() {
   useDoctorsListRealtime();
 
   const t = useTranslations("crmDoctors");
-  const locale = useLocale();
   const { apiFilters, effectivePeriod, setFilter } = useDoctorsFilters();
 
   const listQuery = useDoctorsList(apiFilters);
@@ -137,6 +136,7 @@ export function DoctorsPageClient() {
 
   const [activeTab, setActiveTab] = React.useState<DoctorsTabKey>("all");
   const [nowMs] = React.useState(() => Date.now());
+  const [newDoctorOpen, setNewDoctorOpen] = React.useState(false);
 
   const todayR = React.useMemo(() => todayRange(nowMs), [nowMs]);
   const todayAggQuery = useDoctorsAppointmentsAgg(todayR);
@@ -238,6 +238,10 @@ export function DoctorsPageClient() {
                 ) : null}
               </p>
             </div>
+            <Button onClick={() => setNewDoctorOpen(true)}>
+              <PlusIcon className="size-4" />
+              {t("new")}
+            </Button>
           </div>
 
           <DoctorsTiles
@@ -281,12 +285,9 @@ export function DoctorsPageClient() {
               title={t("empty.title")}
               description={t("empty.description")}
               action={
-                <Button
-                  nativeButton={false}
-                  render={<Link href={`/${locale}/crm/settings/users`} />}
-                >
+                <Button onClick={() => setNewDoctorOpen(true)}>
                   <PlusIcon className="size-4" />
-                  {t("empty.action")}
+                  {t("new")}
                 </Button>
               }
             />
@@ -334,6 +335,11 @@ export function DoctorsPageClient() {
           </div>
         </PageContainer>
       </div>
+
+      <NewDoctorDialog
+        open={newDoctorOpen}
+        onOpenChange={setNewDoctorOpen}
+      />
     </div>
   );
 }

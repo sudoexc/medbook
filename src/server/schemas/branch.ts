@@ -27,7 +27,7 @@ export const UpdateBranchSchema = CreateBranchSchema.partial();
 
 export const QueryBranchSchema = z.object({
   isActive: z.coerce.boolean().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 
 export const SetActiveBranchSchema = z.object({

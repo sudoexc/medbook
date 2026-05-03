@@ -112,12 +112,7 @@ export function DoctorFinances({
           tone="primary"
           icon={<TrendingUpIcon className="size-4" />}
           value={
-            <MoneyText
-              amount={revenue}
-              currency="UZS"
-              showDual={usdRate !== null}
-              usdAmount={computeUsd(revenue, usdRate)}
-            />
+            <MoneyText amount={revenue} currency="UZS" showDual={false} />
           }
         />
         <KpiTile
@@ -134,8 +129,7 @@ export function DoctorFinances({
             <MoneyText
               amount={extra.avgCheck}
               currency="UZS"
-              showDual={usdRate !== null}
-              usdAmount={computeUsd(extra.avgCheck, usdRate)}
+              showDual={false}
             />
           }
         />

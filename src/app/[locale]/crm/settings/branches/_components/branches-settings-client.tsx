@@ -41,10 +41,13 @@ export function BranchesSettingsClient() {
   const t = useTranslations("settings");
   const qc = useQueryClient();
 
+  const [pageLimit, setPageLimit] = React.useState(200);
   const listQuery = useQuery({
-    queryKey: ["settings", "branches"],
+    queryKey: ["settings", "branches", pageLimit],
     queryFn: () =>
-      settingsFetch<{ rows: BranchRow[] }>("/api/crm/branches?limit=200"),
+      settingsFetch<{ rows: BranchRow[]; total?: number }>(
+        `/api/crm/branches?limit=${pageLimit}`,
+      ),
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -85,6 +88,8 @@ export function BranchesSettingsClient() {
   });
 
   const rows = listQuery.data?.rows ?? [];
+  const total = listQuery.data?.total ?? rows.length;
+  const hasMore = total > rows.length;
 
   return (
     <PageContainer>
@@ -122,16 +127,31 @@ export function BranchesSettingsClient() {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((b) => (
-            <BranchCard
-              key={b.id}
-              row={b}
-              onPatch={(data) => patchMutation.mutate({ id: b.id, data })}
-              onDelete={() => deleteMutation.mutate(b.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {rows.map((b) => (
+              <BranchCard
+                key={b.id}
+                row={b}
+                onPatch={(data) => patchMutation.mutate({ id: b.id, data })}
+                onDelete={() => deleteMutation.mutate(b.id)}
+              />
+            ))}
+          </div>
+          {hasMore ? (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+              <span>{t("common.shown", { shown: rows.length, total })}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPageLimit((n) => Math.min(n + 200, 1000))}
+                disabled={pageLimit >= 1000}
+              >
+                {t("common.loadMore")}
+              </Button>
+            </div>
+          ) : null}
+        </>
       )}
 
       <CreateBranchDialog

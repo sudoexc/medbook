@@ -26,14 +26,17 @@ export const GET = createApiListHandler(
     const where: Record<string, unknown> = {};
     if (typeof q.isActive === "boolean") where.isActive = q.isActive;
 
-    const rows = await prisma.branch.findMany({
-      where,
-      // Default branch first, then alphabetically by RU name for predictable
-      // dropdown ordering. Clients rely on the first row being the default.
-      orderBy: [{ isDefault: "desc" }, { nameRu: "asc" }],
-      take: q.limit,
-    });
-    return ok({ rows });
+    const [rows, total] = await Promise.all([
+      prisma.branch.findMany({
+        where,
+        // Default branch first, then alphabetically by RU name for predictable
+        // dropdown ordering. Clients rely on the first row being the default.
+        orderBy: [{ isDefault: "desc" }, { nameRu: "asc" }],
+        take: q.limit,
+      }),
+      prisma.branch.count({ where }),
+    ]);
+    return ok({ rows, total });
   },
 );
 

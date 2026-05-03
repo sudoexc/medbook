@@ -64,6 +64,26 @@ export const POST = createApiHandler(
     bodySchema: CreatePaymentSchema,
   },
   async ({ request, body }) => {
+    // Resolve the idempotency key. Body wins; otherwise fall back to the
+    // standard `Idempotency-Key` HTTP header so well-behaved clients don't
+    // need a payload change. Trim + cap length defensively.
+    const headerKey = request.headers.get("idempotency-key");
+    const rawKey =
+      (typeof body.idempotencyKey === "string" && body.idempotencyKey) ||
+      (headerKey && headerKey.trim()) ||
+      null;
+    const idempotencyKey = rawKey ? rawKey.trim().slice(0, 200) : null;
+
+    // If the caller supplied a key and we already have a payment for it in
+    // this clinic, return the original row. Mirrors how POST acts when the
+    // unique index fires below — but cheaper, with no failed insert.
+    if (idempotencyKey) {
+      const existing = await prisma.payment.findFirst({
+        where: { idempotencyKey },
+      });
+      if (existing) return ok(existing, 200);
+    }
+
     const data: Record<string, unknown> = {
       currency: body.currency,
       amount: body.amount,
@@ -74,6 +94,7 @@ export const POST = createApiHandler(
       receiptNumber: body.receiptNumber ?? null,
       receiptUrl: body.receiptUrl ?? null,
       externalRef: body.externalRef ?? null,
+      idempotencyKey,
       paidAt: body.status === "PAID" ? (body.paidAt ?? new Date()) : body.paidAt ?? null,
     };
 
@@ -100,7 +121,21 @@ export const POST = createApiHandler(
       }
     }
 
-    const created = await prisma.payment.create({ data: data as never });
+    let created;
+    try {
+      created = await prisma.payment.create({ data: data as never });
+    } catch (e: unknown) {
+      // Unique-constraint race: another concurrent request already inserted
+      // a payment for this same (clinicId, idempotencyKey). Return that row.
+      const code = (e as { code?: string } | null)?.code;
+      if (code === "P2002" && idempotencyKey) {
+        const existing = await prisma.payment.findFirst({
+          where: { idempotencyKey },
+        });
+        if (existing) return ok(existing, 200);
+      }
+      throw e;
+    }
 
     // Fallback: derive patientId from the appointment if not provided directly.
     let patientId = created.patientId;

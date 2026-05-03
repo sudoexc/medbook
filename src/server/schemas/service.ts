@@ -29,7 +29,7 @@ export const QueryServiceSchema = z.object({
   category: z.string().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 
 export type CreateService = z.infer<typeof CreateServiceSchema>;

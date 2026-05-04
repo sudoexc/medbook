@@ -58,25 +58,28 @@ async function call<T>(
   token: string,
   method: string,
   payload?: Record<string, unknown>,
+  opts?: { perAttemptTimeoutMs?: number; retries?: number },
 ): Promise<TgApiResponse<T>> {
   const url = `${API_ROOT}/bot${token}/${method}`;
   const body = payload ? JSON.stringify(payload) : "{}";
+  const perAttemptTimeout = opts?.perAttemptTimeoutMs ?? PER_ATTEMPT_TIMEOUT_MS;
+  const retries = opts?.retries ?? TG_API_RETRIES;
 
   let lastErr: unknown = null;
-  for (let attempt = 1; attempt <= TG_API_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-        signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
+        signal: AbortSignal.timeout(perAttemptTimeout),
       });
       return (await res.json()) as TgApiResponse<T>;
     } catch (e) {
       lastErr = e;
       // Only timeouts/abort/network errors are worth retrying. Anything that
       // came back as an HTTP response (even 4xx) already returned above.
-      if (attempt < TG_API_RETRIES) {
+      if (attempt < retries) {
         const wait = Math.min(BACKOFF_BASE_MS * attempt, BACKOFF_CAP_MS);
         await new Promise((r) => setTimeout(r, wait));
       }
@@ -85,6 +88,48 @@ async function call<T>(
   throw lastErr instanceof Error
     ? lastErr
     : new Error("telegram_unreachable");
+}
+
+export type TgUpdate = {
+  update_id: number;
+  message?: unknown;
+  edited_message?: unknown;
+  callback_query?: unknown;
+  my_chat_member?: unknown;
+};
+
+/**
+ * Long-poll getUpdates. Used by the polling worker on RU VPS where Telegram
+ * cannot reliably push webhooks to us.
+ *
+ * `timeoutSec` is the long-poll wait — Telegram holds the connection open up
+ * to that long if there are no updates. Our per-attempt timeout must be a few
+ * seconds longer so we don't abort an idle long-poll prematurely.
+ */
+export async function getUpdates(
+  token: string,
+  params: {
+    offset?: number;
+    timeoutSec?: number;
+    allowedUpdates?: string[];
+  } = {},
+): Promise<TgApiResponse<TgUpdate[]>> {
+  const timeoutSec = params.timeoutSec ?? 25;
+  return call<TgUpdate[]>(
+    token,
+    "getUpdates",
+    {
+      ...(params.offset !== undefined ? { offset: params.offset } : {}),
+      timeout: timeoutSec,
+      ...(params.allowedUpdates ? { allowed_updates: params.allowedUpdates } : {}),
+    },
+    {
+      // Hold the socket open through the full long-poll, plus headroom for
+      // network latency back. Fewer retries because each attempt is heavy.
+      perAttemptTimeoutMs: (timeoutSec + 10) * 1000,
+      retries: 3,
+    },
+  );
 }
 
 export async function getMe(token: string): Promise<TgApiResponse<TgBotInfo>> {

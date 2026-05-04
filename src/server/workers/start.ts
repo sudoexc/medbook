@@ -18,6 +18,8 @@
  *   3. Starts the `notifications-scheduler` every minute.
  *   4. Logs + keeps the process alive.
  */
+import { startTgPollingWorkers } from "@/server/telegram/poll";
+
 import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
@@ -29,6 +31,13 @@ async function main() {
   // Phase 9e — flip TRIAL→PAST_DUE for clinics whose 30-day trial elapsed.
   // Same 60s cadence as the notifications scheduler: cheap query, idempotent.
   const trialExpiry = startTrialExpirySchedulerWorker(60_000);
+
+  // Phase 3c — Telegram long-poll worker.
+  // Webhook delivery from TG to RU VPS times out (Amsterdam→RU edge blocked),
+  // so we pull updates ourselves and re-POST them to the local webhook route.
+  // This also keeps the worker process alive (continuous network I/O), which
+  // the unref'd schedulers above could not on their own.
+  await startTgPollingWorkers();
 
   const shutdown = (signal: NodeJS.Signals) => {
     console.info(`[workers] received ${signal} — shutting down`);

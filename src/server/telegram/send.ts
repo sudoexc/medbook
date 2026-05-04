@@ -7,7 +7,12 @@
  * without touching the network — that keeps the rest of the stack working.
  *
  * Error handling:
- *  - 429 → respect `retry_after`, exponential backoff, up to 3 attempts.
+ *  - Network-level (fetch reject / abort / timeout) → retry up to
+ *    MAX_ATTEMPTS with capped backoff. Necessary on the RU VPS where
+ *    egress to api.telegram.org succeeds against ~30% of TG's IP pool per
+ *    DNS pick.
+ *  - 429 → respect `retry_after`.
+ *  - 5xx → exponential backoff.
  *  - Other non-2xx → throw with a readable message so the worker / caller
  *    can mark the message FAILED.
  *
@@ -66,11 +71,15 @@ export type TgMessageResult = {
 };
 
 const API_ROOT = "https://api.telegram.org";
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 12;
+const PER_ATTEMPT_TIMEOUT_MS = 8000;
+const BACKOFF_BASE_MS = 250;
+const BACKOFF_CAP_MS = 2000;
 
 /**
  * Low-level POST to the Telegram Bot API. Returns parsed body; throws if
- * the network call fails. Does NOT retry — callers wrap for backoff.
+ * the network call fails or times out. Does NOT retry — callers wrap for
+ * backoff.
  */
 async function tgCall<T>(
   token: string,
@@ -81,6 +90,7 @@ async function tgCall<T>(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
   });
   // Telegram always returns JSON, even for errors.
   return (await res.json()) as TgApiResponse<T>;
@@ -90,19 +100,42 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function backoffMs(attempt: number): number {
+  return Math.min(BACKOFF_BASE_MS * (attempt + 1), BACKOFF_CAP_MS);
+}
+
 /**
- * Call Telegram with retry on 429 (rate-limited) using `retry_after` seconds.
+ * Call Telegram with retries.
  *
- * Also retries on 5xx (`error_code >= 500`) with exponential backoff.
+ *  - Network-level errors (fetch reject / abort / timeout) → retry with capped
+ *    linear backoff. Required on the RU VPS where egress reaches only ~30% of
+ *    Telegram's IP pool per DNS pick.
+ *  - 429 → respect `retry_after`.
+ *  - 5xx (`error_code >= 500`) → capped backoff retry.
+ *  - Other non-2xx → throw immediately so the caller can mark the message as
+ *    failed.
  */
 async function tgCallWithBackoff<T>(
   token: string,
   method: string,
   payload: Record<string, unknown>,
 ): Promise<T> {
-  let lastErr = "";
+  let lastErrDesc = "";
+  let lastNetworkErr: unknown = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const resp = await tgCall<T>(token, method, payload);
+    let resp: TgApiResponse<T>;
+    try {
+      resp = await tgCall<T>(token, method, payload);
+    } catch (e) {
+      lastNetworkErr = e;
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await sleep(backoffMs(attempt));
+        continue;
+      }
+      throw new Error(
+        `Telegram ${method} network failure after ${MAX_ATTEMPTS} attempts: ${(e as Error).message}`,
+      );
+    }
     if (resp.ok) return resp.result;
     if (resp.error_code === 429) {
       const wait = Math.max(1, resp.parameters?.retry_after ?? 1);
@@ -110,15 +143,20 @@ async function tgCallWithBackoff<T>(
       continue;
     }
     if (resp.error_code >= 500 && attempt < MAX_ATTEMPTS - 1) {
-      await sleep(500 * (attempt + 1) * (attempt + 1));
-      lastErr = resp.description;
+      lastErrDesc = resp.description;
+      await sleep(backoffMs(attempt));
       continue;
     }
     throw new Error(
       `Telegram ${method} failed: ${resp.error_code} ${resp.description}`,
     );
   }
-  throw new Error(`Telegram ${method} exhausted retries: ${lastErr}`);
+  if (lastNetworkErr) {
+    throw new Error(
+      `Telegram ${method} exhausted retries (network): ${(lastNetworkErr as Error).message}`,
+    );
+  }
+  throw new Error(`Telegram ${method} exhausted retries: ${lastErrDesc}`);
 }
 
 function logNoop(

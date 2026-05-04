@@ -13,8 +13,13 @@
  */
 
 const API_ROOT = "https://api.telegram.org";
-const PER_ATTEMPT_TIMEOUT_MS = 5000;
-const TG_API_RETRIES = 7;
+// RU VPS → api.telegram.org reachability is partial (≈30% of TG IPs answer).
+// We keep a generous wall budget so the wizard doesn't fail on the first
+// unlucky DNS pick. 12 attempts × 8s ≈ 96s worst case, plus capped backoff.
+const PER_ATTEMPT_TIMEOUT_MS = 8000;
+const TG_API_RETRIES = 12;
+const BACKOFF_BASE_MS = 250;
+const BACKOFF_CAP_MS = 2000;
 
 export type TgApiOk<T> = { ok: true; result: T };
 export type TgApiErr = {
@@ -72,7 +77,8 @@ async function call<T>(
       // Only timeouts/abort/network errors are worth retrying. Anything that
       // came back as an HTTP response (even 4xx) already returned above.
       if (attempt < TG_API_RETRIES) {
-        await new Promise((r) => setTimeout(r, 250 * attempt));
+        const wait = Math.min(BACKOFF_BASE_MS * attempt, BACKOFF_CAP_MS);
+        await new Promise((r) => setTimeout(r, wait));
       }
     }
   }

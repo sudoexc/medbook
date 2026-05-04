@@ -113,56 +113,11 @@ async function loadClinicBySlug(slug: string): Promise<{
   });
 }
 
-async function loadBotCatalog(
-  clinicId: string,
-  miniAppUrl: string | null,
-): Promise<Catalog> {
-  // Short-circuit: when a Mini App URL is available, the FSM sends a single
-  // `web_app` button after lang pick — no in-chat service/doctor/slot walks.
-  // Skipping the catalog fetch saves a few round-trips per message.
-  if (miniAppUrl) {
-    return {
-      services: [],
-      doctorsByService: {},
-      slotsByDoctor: {},
-      miniAppUrl,
-    };
-  }
-  return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const services = await prisma.service.findMany({
-      where: { clinicId, isActive: true },
-      select: { id: true, nameRu: true, nameUz: true },
-      take: 20,
-      orderBy: { nameRu: "asc" },
-    });
-    const doctorsByService: Record<
-      string,
-      Array<{ id: string; nameRu: string; nameUz: string }>
-    > = {};
-    for (const svc of services) {
-      const rows = await prisma.serviceOnDoctor.findMany({
-        where: { serviceId: svc.id, doctor: { isActive: true } },
-        include: {
-          doctor: { select: { id: true, nameRu: true, nameUz: true } },
-        },
-        take: 10,
-      });
-      doctorsByService[svc.id] = rows.map((r) => ({
-        id: r.doctor.id,
-        nameRu: r.doctor.nameRu,
-        nameUz: r.doctor.nameUz,
-      }));
-    }
-    // Legacy path (no Mini App configured) — slots remain empty; FSM tells
-    // user to call the clinic.
-    const slotsByDoctor: Record<string, Array<{ iso: string; label: string }>> = {};
-    return {
-      services,
-      doctorsByService,
-      slotsByDoctor,
-      miniAppUrl: null,
-    };
-  });
+function loadBotCatalog(miniAppUrl: string | null): Catalog {
+  // Simplified FSM only needs the Mini App URL to decide whether to attach a
+  // `web_app` button to the welcome message. No services / doctors / slots
+  // are walked in chat anymore — booking happens inside the Mini App.
+  return { miniAppUrl };
 }
 
 /** Upsert Conversation + append incoming Message. */
@@ -263,7 +218,7 @@ async function handleFsmMessage(
   event: FsmEvent,
   miniAppUrl: string | null,
 ): Promise<void> {
-  const catalog = await loadBotCatalog(clinic.id, miniAppUrl);
+  const catalog = loadBotCatalog(miniAppUrl);
   const prev = await loadSnapshot(clinic.id, chatId);
   const { next, outgoing } = step(prev, event, catalog);
   await saveSnapshot(clinic.id, chatId, next);
@@ -345,6 +300,16 @@ export async function POST(
         chatId,
         msg,
       );
+      const previewBody = msg.text ?? msg.contact?.phone_number ?? "";
+      const contactDisplayName = (() => {
+        const full = [msg.from?.first_name, msg.from?.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        if (full) return full;
+        if (msg.from?.username) return `@${msg.from.username}`;
+        return null;
+      })();
       publishEventSafe(clinic.id, {
         type: "tg.message.new",
         payload: {
@@ -352,6 +317,8 @@ export async function POST(
           chatId,
           direction: "IN",
           messageId: String(msg.message_id),
+          preview: previewOf(previewBody),
+          contactName: contactDisplayName,
         },
       });
 

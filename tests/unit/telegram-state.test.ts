@@ -1,8 +1,10 @@
 /**
- * Tests for the Telegram bot FSM (`src/server/telegram/state.ts`).
+ * Tests for the simplified Telegram bot FSM (`src/server/telegram/state.ts`).
  *
- * Coverage: lang → service → doctor → slot → name → confirm → done, plus
- * restart, back, unknown-input behaviours, TTL on the memory store.
+ * The FSM now has only two states (start → welcomed). On `/start` or the
+ * very first chat event the bot replies with a single bilingual welcome and
+ * an optional `web_app` button; afterwards it stays silent until the
+ * snapshot expires (30-min TTL).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -17,262 +19,78 @@ import {
   type FsmSnapshot,
 } from "@/server/telegram/state";
 
-const CATALOG: Catalog = {
-  services: [
-    { id: "svc-neurology", nameRu: "Неврология", nameUz: "Nevrologiya" },
-    { id: "svc-therapy", nameRu: "Терапия", nameUz: "Terapiya" },
-  ],
-  doctorsByService: {
-    "svc-neurology": [
-      { id: "doc-1", nameRu: "Иванов", nameUz: "Ivanov" },
-      { id: "doc-2", nameRu: "Петров", nameUz: "Petrov" },
-    ],
-    "svc-therapy": [],
-  },
-  slotsByDoctor: {
-    "doc-1": [
-      { iso: "2026-05-01T10:00", label: "10:00" },
-      { iso: "2026-05-01T10:30", label: "10:30" },
-    ],
-    "doc-2": [],
-  },
-};
+const MINI_APP_URL = "https://neurofax.uz/c/neurofax/my";
+const CATALOG_WITH_MINIAPP: Catalog = { miniAppUrl: MINI_APP_URL };
 
 function fresh(): FsmSnapshot {
   return { state: "start", data: {}, updatedAt: Date.now() };
 }
 
-describe("fsm.step", () => {
-  it("emits welcome + lang buttons from start", () => {
-    const { next, outgoing } = step(fresh(), { kind: "start" }, CATALOG);
-    expect(next.state).toBe("lang_select");
+function welcomed(): FsmSnapshot {
+  return { state: "welcomed", data: {}, updatedAt: Date.now() };
+}
+
+describe("fsm.step (simplified welcome flow)", () => {
+  it("greets on the first event with a web_app button when miniAppUrl is set", () => {
+    const { next, outgoing } = step(
+      fresh(),
+      { kind: "start" },
+      CATALOG_WITH_MINIAPP,
+    );
+    expect(next.state).toBe("welcomed");
     expect(outgoing?.text).toContain("Neurofax");
-    const btns = outgoing?.replyMarkup?.inline_keyboard?.[0] ?? [];
-    expect(btns.map((b) => b.callback_data)).toEqual(["lang:ru", "lang:uz"]);
-  });
-
-  it("picks ru → moves to service_select with prompts in ru", () => {
-    const { next, outgoing } = step(
-      { state: "lang_select", data: {}, updatedAt: 0 },
-      { kind: "callback", data: "lang:ru" },
-      CATALOG,
-    );
-    expect(next.state).toBe("service_select");
-    expect(next.data.lang).toBe("ru");
-    expect(outgoing?.text).toBe("Выберите специализацию:");
-    expect(outgoing?.replyMarkup?.inline_keyboard.length).toBe(2);
-  });
-
-  it("picks uz → prompts in uz", () => {
-    const { next, outgoing } = step(
-      { state: "lang_select", data: {}, updatedAt: 0 },
-      { kind: "callback", data: "lang:uz" },
-      CATALOG,
-    );
-    expect(next.data.lang).toBe("uz");
-    expect(outgoing?.text).toBe("Yo'nalishni tanlang:");
-  });
-
-  it("picks service → doctor_select with the chosen service's doctors", () => {
-    const start: FsmSnapshot = {
-      state: "service_select",
-      data: { lang: "ru" },
-      updatedAt: 0,
-    };
-    const { next, outgoing } = step(
-      start,
-      { kind: "callback", data: "svc:svc-neurology" },
-      CATALOG,
-    );
-    expect(next.state).toBe("doctor_select");
-    expect(next.data.serviceId).toBe("svc-neurology");
-    expect(next.data.serviceName).toBe("Неврология");
-    const rows = outgoing?.replyMarkup?.inline_keyboard ?? [];
-    // 2 doctors + 1 "back" row.
-    expect(rows.length).toBe(3);
-    expect(rows[0]?.[0]?.callback_data).toBe("doc:doc-1");
-  });
-
-  it("service with no doctors shows noneAvailable and stays", () => {
-    const start: FsmSnapshot = {
-      state: "service_select",
-      data: { lang: "ru" },
-      updatedAt: 0,
-    };
-    const { next, outgoing } = step(
-      start,
-      { kind: "callback", data: "svc:svc-therapy" },
-      CATALOG,
-    );
-    expect(next.state).toBe("doctor_select");
-    expect(outgoing?.text).toContain("Нет врачей");
-  });
-
-  it("picks doctor → slot_select", () => {
-    const start: FsmSnapshot = {
-      state: "doctor_select",
-      data: { lang: "ru", serviceId: "svc-neurology", serviceName: "Неврология" },
-      updatedAt: 0,
-    };
-    const { next, outgoing } = step(
-      start,
-      { kind: "callback", data: "doc:doc-1" },
-      CATALOG,
-    );
-    expect(next.state).toBe("slot_select");
-    expect(next.data.doctorId).toBe("doc-1");
-    expect(outgoing?.text).toContain("время");
-  });
-
-  it("'back' in doctor_select returns to service_select", () => {
-    const start: FsmSnapshot = {
-      state: "doctor_select",
-      data: { lang: "ru", serviceId: "svc-neurology" },
-      updatedAt: 0,
-    };
-    const { next } = step(start, { kind: "callback", data: "back" }, CATALOG);
-    expect(next.state).toBe("service_select");
-  });
-
-  it("picks slot → name_input prompt", () => {
-    const start: FsmSnapshot = {
-      state: "slot_select",
-      data: { lang: "ru", serviceId: "svc-neurology", doctorId: "doc-1" },
-      updatedAt: 0,
-    };
-    const { next, outgoing } = step(
-      start,
-      { kind: "callback", data: "slot:2026-05-01T10:00" },
-      CATALOG,
-    );
-    expect(next.state).toBe("name_input");
-    expect(next.data.slotIso).toBe("2026-05-01T10:00");
-    expect(next.data.slotLabel).toBe("10:00");
-    expect(outgoing?.text).toContain("Укажите");
-  });
-
-  it("rejects short name, stays in name_input", () => {
-    const start: FsmSnapshot = {
-      state: "name_input",
-      data: { lang: "ru" },
-      updatedAt: 0,
-    };
-    const { next, outgoing } = step(start, { kind: "text", text: "I" }, CATALOG);
-    expect(next.state).toBe("name_input");
-    expect(outgoing?.text).toContain("короткое");
-  });
-
-  it("accepts name → confirm with summary", () => {
-    const start: FsmSnapshot = {
-      state: "name_input",
-      data: {
-        lang: "ru",
-        serviceName: "Неврология",
-        doctorName: "Иванов",
-        slotLabel: "10:00",
-      },
-      updatedAt: 0,
-    };
-    const { next, outgoing } = step(
-      start,
-      { kind: "text", text: "Ivan Ivanov" },
-      CATALOG,
-    );
-    expect(next.state).toBe("confirm");
-    expect(next.data.name).toBe("Ivan Ivanov");
-    expect(outgoing?.text).toContain("Ivan Ivanov");
-    expect(outgoing?.text).toContain("Неврология");
-  });
-
-  it("confirm:yes → done success; confirm:no → done cancelled", () => {
-    const base: FsmSnapshot = {
-      state: "confirm",
-      data: {
-        lang: "ru",
-        serviceName: "X",
-        doctorName: "Y",
-        slotLabel: "Z",
-        name: "Test",
-      },
-      updatedAt: 0,
-    };
-    const yes = step(base, { kind: "callback", data: "confirm" }, CATALOG);
-    expect(yes.next.state).toBe("done");
-    expect(yes.outgoing?.text).toContain("записаны");
-
-    const no = step(base, { kind: "callback", data: "cancel" }, CATALOG);
-    expect(no.next.state).toBe("done");
-    expect(no.outgoing?.text).toContain("отменена");
-  });
-
-  it("'/start' always restarts, even from confirm", () => {
-    const base: FsmSnapshot = {
-      state: "confirm",
-      data: { lang: "ru" },
-      updatedAt: 0,
-    };
-    const { next } = step(base, { kind: "text", text: "/start" }, CATALOG);
-    expect(next.state).toBe("lang_select");
-  });
-
-  it("done restarts on any further event", () => {
-    const base: FsmSnapshot = { state: "done", data: {}, updatedAt: 0 };
-    const { next } = step(base, { kind: "text", text: "hello" }, CATALOG);
-    expect(next.state).toBe("lang_select");
-  });
-
-  it("lang pick with miniAppUrl short-circuits to miniapp_offer (web_app button)", () => {
-    const catalogWithMiniApp: Catalog = {
-      ...CATALOG,
-      miniAppUrl: "https://neurofax.uz/c/neurofax/my",
-    };
-    const { next, outgoing } = step(
-      { state: "lang_select", data: {}, updatedAt: 0 },
-      { kind: "callback", data: "lang:ru" },
-      catalogWithMiniApp,
-    );
-    expect(next.state).toBe("miniapp_offer");
-    expect(next.data.lang).toBe("ru");
+    // Bilingual: both RU and UZ greetings in the same message.
+    expect(outgoing?.text).toContain("Здравствуйте");
+    expect(outgoing?.text).toContain("Assalomu alaykum");
     const btn = outgoing?.replyMarkup?.inline_keyboard?.[0]?.[0];
-    expect(btn?.web_app?.url).toBe("https://neurofax.uz/c/neurofax/my");
-    expect(outgoing?.text).toContain("приложении");
+    expect(btn?.web_app?.url).toBe(MINI_APP_URL);
   });
 
-  it("miniapp_offer re-emits the same prompt on any further event", () => {
-    const catalogWithMiniApp: Catalog = {
-      ...CATALOG,
-      miniAppUrl: "https://neurofax.uz/c/neurofax/my",
-    };
+  it("greets on /start text from any state", () => {
     const { next, outgoing } = step(
-      { state: "miniapp_offer", data: { lang: "uz" }, updatedAt: 0 },
-      { kind: "text", text: "hello" },
-      catalogWithMiniApp,
+      welcomed(),
+      { kind: "text", text: "/start" },
+      CATALOG_WITH_MINIAPP,
     );
-    expect(next.state).toBe("miniapp_offer");
-    // UZ prompt
-    expect(outgoing?.text).toContain("ilovada");
-    expect(
-      outgoing?.replyMarkup?.inline_keyboard?.[0]?.[0]?.web_app?.url,
-    ).toBe("https://neurofax.uz/c/neurofax/my");
+    expect(next.state).toBe("welcomed");
+    expect(outgoing?.text).toContain("Neurofax");
   });
 
-  it("miniapp_offer falls back to service_select if miniAppUrl disappears", () => {
-    const { next } = step(
-      { state: "miniapp_offer", data: { lang: "ru" }, updatedAt: 0 },
+  it("greets on first ever text even without /start", () => {
+    const { next, outgoing } = step(
+      fresh(),
       { kind: "text", text: "hi" },
-      CATALOG, // no miniAppUrl
+      CATALOG_WITH_MINIAPP,
     );
-    expect(next.state).toBe("service_select");
+    expect(next.state).toBe("welcomed");
+    expect(outgoing?.text).toContain("Neurofax");
   });
 
-  it("empty catalog in service_select shows noneAvailable", () => {
-    const base: FsmSnapshot = {
-      state: "service_select",
-      data: { lang: "ru" },
-      updatedAt: 0,
-    };
-    const { outgoing } = step(base, { kind: "text", text: "hi" }, EMPTY_CATALOG);
-    expect(outgoing?.text).toContain("нет доступных");
+  it("stays silent after welcoming on subsequent plain text", () => {
+    const { next, outgoing } = step(
+      welcomed(),
+      { kind: "text", text: "у меня болит голова" },
+      CATALOG_WITH_MINIAPP,
+    );
+    expect(next.state).toBe("welcomed");
+    expect(outgoing).toBeNull();
+  });
+
+  it("stays silent on stray callback queries after welcoming", () => {
+    const { next, outgoing } = step(
+      welcomed(),
+      { kind: "callback", data: "noop" },
+      CATALOG_WITH_MINIAPP,
+    );
+    expect(next.state).toBe("welcomed");
+    expect(outgoing).toBeNull();
+  });
+
+  it("welcome without miniAppUrl is text-only (no inline keyboard)", () => {
+    const { next, outgoing } = step(fresh(), { kind: "start" }, EMPTY_CATALOG);
+    expect(next.state).toBe("welcomed");
+    expect(outgoing?.text).toContain("Neurofax");
+    expect(outgoing?.replyMarkup).toBeUndefined();
   });
 });
 
@@ -286,23 +104,17 @@ describe("store (in-memory)", () => {
 
   it("saves and loads snapshots", async () => {
     const snap: FsmSnapshot = {
-      state: "confirm",
-      data: { lang: "uz", name: "A" },
+      state: "welcomed",
+      data: {},
       updatedAt: Date.now(),
     };
     await saveSnapshot("clinic-1", 42, snap);
     const loaded = await loadSnapshot("clinic-1", 42);
-    expect(loaded.state).toBe("confirm");
-    expect(loaded.data.lang).toBe("uz");
+    expect(loaded.state).toBe("welcomed");
   });
 
-  it("'done' drops the snapshot so next load returns start", async () => {
-    await saveSnapshot("clinic-1", 42, {
-      state: "done",
-      data: {},
-      updatedAt: Date.now(),
-    });
-    const loaded = await loadSnapshot("clinic-1", 42);
+  it("returns a fresh `start` snapshot when nothing is stored", async () => {
+    const loaded = await loadSnapshot("clinic-empty", 999);
     expect(loaded.state).toBe("start");
   });
 

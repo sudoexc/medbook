@@ -105,6 +105,8 @@ export const TgMessagePayload = z
     messageId: z.string().optional(),
     direction: z.enum(["IN", "OUT"]).optional(),
     preview: z.string().optional(),
+    /** Display name of the chat contact (first/last/@username) for UI alerts. */
+    contactName: z.string().nullable().optional(),
   })
   .passthrough();
 export type TgMessageEventPayload = z.infer<typeof TgMessagePayload>;

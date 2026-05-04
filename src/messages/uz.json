@@ -2015,6 +2015,11 @@
       "noMessages": "Xabarlar yo'q",
       "anonymous": "Noma'lum"
     },
+    "alerts": {
+      "newMessage": "Telegramda yangi xabar",
+      "fallbackName": "Bemor",
+      "open": "Ochish"
+    },
     "chat": {
       "ariaLabel": "Faol suhbat",
       "empty": {

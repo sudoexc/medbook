@@ -27,6 +27,8 @@ export interface ConversationListProps {
   isLoading: boolean;
   hasNextPage: boolean;
   onFetchNext: () => void;
+  /** Conversation ids that just received a realtime event — pulse the row. */
+  pulsedIds?: ReadonlySet<string>;
 }
 
 const MODE_OPTIONS: ModeFilter[] = ["all", "bot", "takeover"];
@@ -40,6 +42,7 @@ export function ConversationList({
   isLoading,
   hasNextPage,
   onFetchNext,
+  pulsedIds,
 }: ConversationListProps) {
   const t = useTranslations("tgInbox");
   const [search, setSearch] = React.useState(filters.q);
@@ -161,6 +164,7 @@ export function ConversationList({
                     row={row}
                     active={row.id === selectedId}
                     onSelect={onSelect}
+                    pulse={pulsedIds?.has(row.id) ?? false}
                   />
                 </div>
               );
@@ -176,10 +180,12 @@ function ConversationRow({
   row,
   active,
   onSelect,
+  pulse,
 }: {
   row: InboxConversation;
   active: boolean;
   onSelect: (id: string) => void;
+  pulse: boolean;
 }) {
   const t = useTranslations("tgInbox");
   const previewText = row.lastMessageText ?? "";
@@ -203,9 +209,11 @@ function ConversationRow({
     <button
       type="button"
       onClick={() => onSelect(row.id)}
+      key={pulse ? "pulse" : "idle"}
       className={cn(
         "flex w-full items-start gap-3 border-b border-border px-3 py-2.5 text-left transition-colors",
         active ? "bg-primary/10" : "hover:bg-muted/40",
+        pulse && "tg-row-pulse",
       )}
     >
       <AvatarWithStatus

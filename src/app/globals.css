@@ -278,3 +278,29 @@
     animation: none;
   }
 }
+
+/* TG inbox: brief highlight on a conversation row that just received a new
+   message. The animation runs once for ~2.5s, fading the primary tint in and
+   back out so the operator's eye catches it without lingering after they
+   look. Triggered by the `tg-row-pulse` class set in `ConversationList`. */
+@keyframes tg-row-pulse {
+  0% {
+    background-color: hsl(var(--primary) / 0);
+  }
+  20% {
+    background-color: hsl(var(--primary) / 0.18);
+  }
+  100% {
+    background-color: hsl(var(--primary) / 0);
+  }
+}
+
+.tg-row-pulse {
+  animation: tg-row-pulse 2.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-row-pulse {
+    animation: none;
+  }
+}

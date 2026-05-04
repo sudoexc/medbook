@@ -2015,6 +2015,11 @@
       "noMessages": "Нет сообщений",
       "anonymous": "Без имени"
     },
+    "alerts": {
+      "newMessage": "Новое сообщение в Telegram",
+      "fallbackName": "Пациент",
+      "open": "Открыть"
+    },
     "chat": {
       "ariaLabel": "Активный диалог",
       "empty": {

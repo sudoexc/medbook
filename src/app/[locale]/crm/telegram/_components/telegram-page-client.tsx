@@ -12,9 +12,9 @@ import {
   useConversations,
   useConversationsFilters,
   useSelectedConversationId,
-  useTgConversationsRealtime,
   flattenConversations,
 } from "../_hooks/use-conversations";
+import { useTgInboxAlerts } from "../_hooks/use-tg-inbox-alerts";
 import { ConversationList } from "./conversation-list";
 import { ChatPane } from "./chat-pane";
 import { ChatRightRail } from "./chat-right-rail";
@@ -33,11 +33,13 @@ export function TelegramPageClient({
 }: {
   botConfigured: boolean;
 }) {
-  useTgConversationsRealtime();
-
   const t = useTranslations("tgInbox");
   const { filters, setFilters } = useConversationsFilters();
   const [selectedId, setSelectedId] = useSelectedConversationId();
+  const { pulsedIds } = useTgInboxAlerts({
+    activeId: selectedId,
+    onSelect: setSelectedId,
+  });
 
   const listQuery = useConversations(filters);
   const rows = flattenConversations(listQuery.data?.pages);
@@ -107,6 +109,7 @@ export function TelegramPageClient({
                 void listQuery.fetchNextPage();
               }
             }}
+            pulsedIds={pulsedIds}
           />
         </aside>
 

@@ -19,6 +19,24 @@
       "waitColumnSamples": "Выборка",
       "seconds": "сек",
       "minutes": "мин"
+    },
+    "cases": {
+      "sectionTitle": "Случаи (MedicalCase)",
+      "kpiOpen": "Открытых случаев: всего",
+      "kpiRepeat": "Конверсия: первичный → повтор",
+      "kpiDuration": "Средняя длительность случая, дней",
+      "kpiAvgRevenue": "Средний чек на случай",
+      "topComplaintsTitle": "Топ жалоб",
+      "durationTitle": "Распределение длительности кейса",
+      "complaintsEmpty": "Нет жалоб за выбранный период",
+      "pct": "{value}%",
+      "days": "{value} дн.",
+      "bucket": {
+        "1-7": "1–7 дн.",
+        "8-14": "8–14 дн.",
+        "15-30": "15–30 дн.",
+        ">30": ">30 дн."
+      }
     }
   },
   "crmLayout": {
@@ -1202,7 +1220,29 @@
       "openPatientCard": "Открыть карточку пациента",
       "notFound": "Случай не найден",
       "notFoundBackToPatients": "К списку пациентов",
-      "retry": "Повторить"
+      "retry": "Повторить",
+      "downloadPdf": "Скачать карту случая"
+    }
+  },
+  "documents": {
+    "casePdf": {
+      "title": "Карта случая",
+      "patient": "Пациент",
+      "phone": "Телефон",
+      "primaryDoctor": "Ведущий врач",
+      "opened": "Открыт",
+      "closed": "Закрыт",
+      "complaint": "Жалоба",
+      "diagnosis": "Диагноз",
+      "diagnosisCode": "Код по МКБ-10",
+      "notes": "Заметки",
+      "visits": "Визиты",
+      "firstVisit": "Первичный",
+      "repeatVisit": "Повторный ({n}-я)",
+      "totalBilled": "Итого начислено",
+      "generated": "Сформировано",
+      "print": "Печать / PDF",
+      "noVisits": "В этом случае пока нет визитов."
     }
   },
   "onboardingChecklist": {
@@ -1809,6 +1849,16 @@
       "noShowRate": "{rate}%",
       "period": "За период",
       "empty": "Нет данных о выручке за период"
+    },
+    "cases": {
+      "title": "Случаи",
+      "subtitle": "Метрики MedicalCase",
+      "open": "Открытых случаев",
+      "resolved30": "Завершено за 30 дней",
+      "repeatRate": "% повторных визитов",
+      "avgDuration": "Средняя длительность случая",
+      "pct": "{value}%",
+      "days": "{value} дн."
     },
     "heatGrid": {
       "title": "Загрузка по часам",

@@ -9,6 +9,7 @@ import {
   ArrowLeftIcon,
   ChevronRightIcon,
   ClipboardListIcon,
+  DownloadIcon,
   PlusIcon,
   RefreshCwIcon,
   StethoscopeIcon,
@@ -275,6 +276,20 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                {/* Download printable Карта случая. Opens in a new tab —
+                    the route returns HTML the user prints to PDF (Cmd+P).
+                    No PDF library is installed; this is the dependency-free
+                    fallback. */}
+                <a
+                  href={`/api/crm/cases/${data.id}/pdf?lang=${locale}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(buttonVariants({ variant: "outline" }))}
+                >
+                  <DownloadIcon className="size-4" />
+                  {t("downloadPdf")}
+                </a>
+
                 {/* Change primary doctor dropdown */}
                 <ChangeDoctorMenu
                   open={doctorMenuOpen}

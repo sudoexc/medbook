@@ -51,6 +51,27 @@ export function useAppointments(scope: "upcoming" | "past") {
   });
 }
 
+export type CaseAttachChoice = {
+  id: string;
+  title: string;
+  primaryDoctorName: string | null;
+  lastVisitAt: string | null;
+  visitCount: number;
+};
+
+export type CaseAttachResult =
+  | { kind: "auto"; caseId: string }
+  | { kind: "created"; caseId: string }
+  | { kind: "needs_choice"; choices: CaseAttachChoice[] }
+  | { kind: "skipped"; reason: string }
+  | null;
+
+export type BookAppointmentResult = {
+  id: string;
+  date: string;
+  caseAttach: CaseAttachResult;
+};
+
 export function useBookAppointment() {
   const qc = useQueryClient();
   const { request, clinicSlug } = useMiniAppFetch();
@@ -63,12 +84,54 @@ export function useBookAppointment() {
       patientPhone?: string;
       lang?: "RU" | "UZ";
       comments?: string;
+    }): Promise<BookAppointmentResult> => {
+      const res = await request<{
+        appointment: { id: string; date: string };
+        caseAttach: CaseAttachResult;
+      }>("/api/miniapp/appointments", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return {
+        id: res.appointment.id,
+        date: res.appointment.date,
+        caseAttach: res.caseAttach ?? null,
+      };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "appointments", clinicSlug],
+      });
+    },
+  });
+}
+
+export function useAttachCase() {
+  const qc = useQueryClient();
+  const { request, clinicSlug } = useMiniAppFetch();
+  return useMutation({
+    mutationFn: async (args: {
+      appointmentId: string;
+      // Mutually exclusive: either pick an existing case, or create a new one.
+      caseId?: string;
+      create?: boolean;
+      title?: string;
+      primaryComplaint?: string;
     }) => {
-      const res = await request<{ appointment: { id: string; date: string } }>(
-        "/api/miniapp/appointments",
-        { method: "POST", body: JSON.stringify(body) },
-      );
-      return res.appointment;
+      const res = await request<{
+        caseId: string;
+        kind: "created" | "attached";
+        title: string;
+      }>(`/api/miniapp/appointments/${args.appointmentId}/attach-case`, {
+        method: "POST",
+        body: JSON.stringify({
+          caseId: args.caseId,
+          create: args.create,
+          title: args.title,
+          primaryComplaint: args.primaryComplaint,
+        }),
+      });
+      return res;
     },
     onSuccess: () => {
       qc.invalidateQueries({

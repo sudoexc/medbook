@@ -124,6 +124,15 @@ export const uzDict = {
       OTHER: "Hujjat",
     },
   },
+  cases: {
+    questionTitle: "Bu yangi shikoyatmi yoki davolanishni davom ettirishmi?",
+    questionSubtitle:
+      "Davom etayotgan bo'lsa, mos murojaatni tanlang — shifokor butun tarixni bir joyda ko'radi.",
+    optionNew: "Yangi shikoyat",
+    lastVisit: "Oxirgi tashrif: {date}",
+    noVisits: "Hozircha tashrif yo'q",
+    skip: "O'tkazib yuborish",
+  },
   profile: {
     title: "Profil",
     nameLabel: "F.I.Sh",

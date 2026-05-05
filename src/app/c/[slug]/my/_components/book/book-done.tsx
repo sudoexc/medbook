@@ -5,11 +5,38 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 
-import { useAppointments } from "../../_hooks/use-appointments";
+import {
+  useAppointments,
+  useAttachCase,
+  type CaseAttachChoice,
+} from "../../_hooks/use-appointments";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MButton, MCard, MSpinner, formatDateISO } from "../mini-ui";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+
+function readCaseChoices(appointmentId: string): CaseAttachChoice[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(
+      `miniapp:caseChoice:${appointmentId}`,
+    );
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CaseAttachChoice[];
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearCaseChoices(appointmentId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(`miniapp:caseChoice:${appointmentId}`);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function BookDone() {
   const t = useT();
@@ -23,6 +50,19 @@ export function BookDone() {
 
   const appointment = upcoming.data?.find((a) => a.id === id) ?? null;
   const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+
+  // Case-attach prompt — only shown when the booking POST returned 2+ open
+  // cases. The choices live in sessionStorage so a refresh of /done preserves
+  // them; once the patient picks (or dismisses), we clear them.
+  const [caseChoices, setCaseChoices] = React.useState<
+    CaseAttachChoice[] | null
+  >(null);
+  const [caseDismissed, setCaseDismissed] = React.useState(false);
+  React.useEffect(() => {
+    if (!id) return;
+    setCaseChoices(readCaseChoices(id));
+  }, [id]);
+  const attachCase = useAttachCase();
 
   React.useEffect(() => {
     if (!id) return;
@@ -134,6 +174,98 @@ export function BookDone() {
           </div>
         ) : null}
       </MCard>
+      {id && caseChoices && !caseDismissed ? (
+        <MCard className="mb-4">
+          <div className="text-sm font-semibold">{t.cases.questionTitle}</div>
+          <div
+            className="mt-1 text-xs"
+            style={{ color: "var(--tg-hint)" }}
+          >
+            {t.cases.questionSubtitle}
+          </div>
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={attachCase.isPending}
+              onClick={async () => {
+                try {
+                  await attachCase.mutateAsync({
+                    appointmentId: id,
+                    create: true,
+                  });
+                  tg.haptic.notification("success");
+                  clearCaseChoices(id);
+                  setCaseDismissed(true);
+                } catch {
+                  tg.haptic.notification("error");
+                  // Non-blocking: hide the prompt so the user can move on.
+                  clearCaseChoices(id);
+                  setCaseDismissed(true);
+                }
+              }}
+              className="rounded-xl px-3 py-3 text-sm font-semibold"
+              style={{
+                backgroundColor: "var(--tg-accent)",
+                color: "white",
+              }}
+            >
+              {t.cases.optionNew}
+            </button>
+            {caseChoices.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                disabled={attachCase.isPending}
+                onClick={async () => {
+                  try {
+                    await attachCase.mutateAsync({
+                      appointmentId: id,
+                      caseId: c.id,
+                    });
+                    tg.haptic.notification("success");
+                    clearCaseChoices(id);
+                    setCaseDismissed(true);
+                  } catch {
+                    tg.haptic.notification("error");
+                    clearCaseChoices(id);
+                    setCaseDismissed(true);
+                  }
+                }}
+                className="rounded-xl border px-3 py-3 text-left text-sm"
+                style={{
+                  borderColor:
+                    "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
+                }}
+              >
+                <div className="font-semibold">{c.title}</div>
+                <div
+                  className="mt-0.5 text-xs"
+                  style={{ color: "var(--tg-hint)" }}
+                >
+                  {c.primaryDoctorName ? `${c.primaryDoctorName} · ` : ""}
+                  {c.lastVisitAt
+                    ? t.cases.lastVisit.replace(
+                        "{date}",
+                        formatDateISO(c.lastVisitAt, lang),
+                      )
+                    : t.cases.noVisits}
+                </div>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                if (id) clearCaseChoices(id);
+                setCaseDismissed(true);
+              }}
+              className="text-xs"
+              style={{ color: "var(--tg-hint)" }}
+            >
+              {t.cases.skip}
+            </button>
+          </div>
+        </MCard>
+      ) : null}
       <div className="mt-4 grid grid-cols-1 gap-2">
         <Link href={`/c/${clinicSlug}/my/appointments`}>
           <MButton block variant="secondary">

@@ -77,6 +77,25 @@ export interface WaitTimeRow {
   samples: number;
 }
 
+// ── MedicalCase analytics ────────────────────────────────────────────────────
+
+export type CaseDurationBucket = "1-7" | "8-14" | "15-30" | ">30";
+
+export interface CasesAnalyticsResponse {
+  period: Period | "custom";
+  from: string;
+  to: string;
+  doctorOnly: boolean;
+  kpis: {
+    openCasesTotal: number;
+    repeatConvPct: number;
+    avgDurationDays: number;
+    avgRevenuePerCase: number;
+  };
+  topComplaints: Array<{ complaint: string; count: number }>;
+  durationBuckets: Array<{ bucket: CaseDurationBucket; count: number }>;
+}
+
 export interface FunnelsResponse {
   period: Period | "custom";
   from: string;

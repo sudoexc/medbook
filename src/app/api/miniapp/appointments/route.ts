@@ -234,6 +234,121 @@ export const POST = createMiniAppHandler(
 
     fireTrigger({ kind: "appointment.created", appointmentId: created.id });
 
+    // ─── MedicalCase auto-attach ────────────────────────────────────────────
+    //
+    // Patient-facing UX (per task brief): never mention "Случай" / "Davolanish"
+    // — the patient sees this as a "новая жалоба" / "продолжение лечения"
+    // ("yangi shikoyat" / "davolanishni davom ettirish") choice.
+    //
+    // Logic:
+    //   0 open cases  → silently auto-create one and attach.
+    //   1 open case   → silently auto-attach.
+    //   2+ open cases → return `caseAttach.choices` and let the client ask.
+    //
+    // Failures here MUST NOT block the booking — the appointment is already
+    // committed. We log + continue, leaving the appointment without a case
+    // (the receptionist can attach later from CRM).
+    //
+    // Heuristic for auto-create:
+    //   title           = "Новая жалоба, <date>" / "Yangi shikoyat, <sana>"
+    //   primaryDoctorId = the booked doctor
+    //   primaryComplaint = `body.comments` if the patient typed something
+    let caseAttach:
+      | { kind: "auto"; caseId: string }
+      | { kind: "created"; caseId: string }
+      | {
+          kind: "needs_choice";
+          choices: Array<{
+            id: string;
+            title: string;
+            primaryDoctorName: string | null;
+            lastVisitAt: string | null;
+            visitCount: number;
+          }>;
+        }
+      | { kind: "skipped"; reason: string }
+      | null = null;
+    try {
+      const openCases = await prisma.medicalCase.findMany({
+        where: {
+          clinicId: ctx.clinicId,
+          patientId: ctx.patientId,
+          status: "OPEN",
+        },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          primaryDoctor: { select: { nameRu: true, nameUz: true } },
+          appointments: {
+            orderBy: { date: "desc" },
+            take: 1,
+            select: { date: true },
+          },
+          _count: { select: { appointments: true } },
+        },
+      });
+
+      if (openCases.length === 0) {
+        // Auto-create + attach.
+        const isUz = (body.lang ?? ctx.patient.preferredLang) === "UZ";
+        const dStr = startAt.toLocaleDateString(
+          isUz ? "uz-Latn-UZ" : "ru-RU",
+          { day: "2-digit", month: "2-digit", year: "numeric" },
+        );
+        const newTitle = isUz
+          ? `Yangi shikoyat, ${dStr}`
+          : `Новая жалоба, ${dStr}`;
+        const newCase = await prisma.medicalCase.create({
+          data: {
+            clinicId: ctx.clinicId,
+            patientId: ctx.patientId,
+            title: newTitle,
+            primaryDoctorId: body.doctorId,
+            primaryComplaint: body.comments?.trim() || null,
+            status: "OPEN",
+          } as never,
+          select: { id: true },
+        });
+        await prisma.appointment.update({
+          where: { id: created.id },
+          data: { medicalCaseId: newCase.id } as never,
+        });
+        caseAttach = { kind: "created", caseId: newCase.id };
+      } else if (openCases.length === 1) {
+        // Auto-attach.
+        const target = openCases[0]!;
+        await prisma.appointment.update({
+          where: { id: created.id },
+          data: { medicalCaseId: target.id } as never,
+        });
+        caseAttach = { kind: "auto", caseId: target.id };
+      } else {
+        // 2+: ask the patient. The client will call
+        // POST /api/miniapp/appointments/[id]/attach-case with their choice.
+        const lang = body.lang ?? ctx.patient.preferredLang;
+        caseAttach = {
+          kind: "needs_choice",
+          choices: openCases.map((c) => ({
+            id: c.id,
+            title: c.title,
+            primaryDoctorName: c.primaryDoctor
+              ? lang === "UZ"
+                ? c.primaryDoctor.nameUz
+                : c.primaryDoctor.nameRu
+              : null,
+            lastVisitAt: c.appointments[0]?.date.toISOString() ?? null,
+            visitCount: c._count.appointments,
+          })),
+        };
+      }
+    } catch (caseErr) {
+      console.error("[miniapp.appointments.case_attach]", caseErr);
+      caseAttach = {
+        kind: "skipped",
+        reason:
+          caseErr instanceof Error ? caseErr.message : "case_attach_failed",
+      };
+    }
+
     return ok(
       {
         appointment: {
@@ -245,6 +360,7 @@ export const POST = createMiniAppHandler(
           priceFinal: created.priceFinal,
           status: created.status,
         },
+        caseAttach,
       },
       201,
     );

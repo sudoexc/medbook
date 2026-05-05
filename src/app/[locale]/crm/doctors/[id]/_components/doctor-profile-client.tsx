@@ -23,6 +23,7 @@ import { useDoctor } from "../_hooks/use-doctor";
 import { DoctorHeader } from "./doctor-header";
 import { DoctorHeatGrid } from "./doctor-heat-grid";
 import { DoctorFinances } from "./doctor-finances";
+import { DoctorCases } from "./doctor-cases";
 import { ScheduleEditor } from "./schedule-editor";
 import { DoctorTimeOff } from "./doctor-time-off";
 import { DoctorPatientsList } from "./doctor-patients-list";
@@ -200,6 +201,7 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
         <TabsContent value="overview" className="flex flex-col gap-4">
           <DoctorHeatGrid doctorId={doctor.id} />
           <DoctorFinances doctorId={doctor.id} usdRate={usdRate} />
+          <DoctorCases doctorId={doctor.id} />
         </TabsContent>
 
         <TabsContent value="schedule" className="flex flex-col gap-4">

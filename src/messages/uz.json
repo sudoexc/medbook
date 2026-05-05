@@ -19,6 +19,24 @@
       "waitColumnSamples": "Namuna",
       "seconds": "soniya",
       "minutes": "daqiqa"
+    },
+    "cases": {
+      "sectionTitle": "Holatlar (MedicalCase)",
+      "kpiOpen": "Ochiq holatlar: jami",
+      "kpiRepeat": "Konversiya: birlamchi → takroriy",
+      "kpiDuration": "O‘rtacha holat davomiyligi, kun",
+      "kpiAvgRevenue": "Holat uchun o‘rtacha tushum",
+      "topComplaintsTitle": "Top shikoyatlar",
+      "durationTitle": "Holat davomiyligi taqsimoti",
+      "complaintsEmpty": "Tanlangan davr uchun shikoyatlar yo‘q",
+      "pct": "{value}%",
+      "days": "{value} kun",
+      "bucket": {
+        "1-7": "1–7 kun",
+        "8-14": "8–14 kun",
+        "15-30": "15–30 kun",
+        ">30": ">30 kun"
+      }
     }
   },
   "crmLayout": {
@@ -1202,7 +1220,29 @@
       "openPatientCard": "Bemor kartasini ochish",
       "notFound": "Holat topilmadi",
       "notFoundBackToPatients": "Bemorlar ro'yxatiga",
-      "retry": "Qayta urinish"
+      "retry": "Qayta urinish",
+      "downloadPdf": "Davolanish kartasini yuklab olish"
+    }
+  },
+  "documents": {
+    "casePdf": {
+      "title": "Davolanish kartasi",
+      "patient": "Bemor",
+      "phone": "Telefon",
+      "primaryDoctor": "Asosiy shifokor",
+      "opened": "Ochilgan",
+      "closed": "Yopilgan",
+      "complaint": "Shikoyat",
+      "diagnosis": "Tashxis",
+      "diagnosisCode": "ICD-10",
+      "notes": "Eslatmalar",
+      "visits": "Tashriflar",
+      "firstVisit": "Birlamchi",
+      "repeatVisit": "Takroriy ({n}-tashrif)",
+      "totalBilled": "Jami hisoblangan",
+      "generated": "Yaratildi",
+      "print": "Chop etish / PDF",
+      "noVisits": "Ushbu kartaga tegishli tashriflar yo'q."
     }
   },
   "onboardingChecklist": {
@@ -1809,6 +1849,16 @@
       "noShowRate": "{rate}%",
       "period": "Davr uchun",
       "empty": "Bu davr uchun tushum ma'lumotlari yo'q"
+    },
+    "cases": {
+      "title": "Holatlar",
+      "subtitle": "MedicalCase metrikalari",
+      "open": "Ochiq holatlar",
+      "resolved30": "30 kunda yakunlangan",
+      "repeatRate": "% takroriy tashriflar",
+      "avgDuration": "O‘rtacha holat davomiyligi",
+      "pct": "{value}%",
+      "days": "{value} kun"
     },
     "heatGrid": {
       "title": "Soatlar bo'yicha yuklama",

@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type {
   AnalyticsResponse,
+  CasesAnalyticsResponse,
   FunnelsResponse,
   Period,
 } from "./analytics-types";
@@ -49,6 +50,30 @@ const FunnelCards = dynamic(
   },
 );
 
+// MedicalCase metrics — KPIs + complaint bar + duration histogram. Same
+// dynamic boundary so recharts stays out of the base bundle.
+const CasesSection = dynamic(
+  () => import("./cases-section").then((m) => m.CasesSection),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-6 w-40" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {[0, 1].map((i) => (
+            <Skeleton key={i} className="h-64 w-full" />
+          ))}
+        </div>
+      </div>
+    ),
+  },
+);
+
 function fetchAnalytics(period: Period): Promise<AnalyticsResponse> {
   return fetch(`/api/crm/analytics?period=${period}`, {
     credentials: "include",
@@ -67,9 +92,19 @@ function fetchFunnels(period: Period): Promise<FunnelsResponse> {
   });
 }
 
+function fetchCases(period: Period): Promise<CasesAnalyticsResponse> {
+  return fetch(`/api/crm/analytics/cases?period=${period}`, {
+    credentials: "include",
+  }).then((r) => {
+    if (!r.ok) throw new Error(`cases ${r.status}`);
+    return r.json() as Promise<CasesAnalyticsResponse>;
+  });
+}
+
 export function AnalyticsPageClient() {
   const t = useTranslations("analyticsDashboard");
   const tFunnels = useTranslations("analytics.funnels");
+  const tCases = useTranslations("analytics.cases");
   const locale = useLocale();
   const [period, setPeriod] = React.useState<Period>("month");
 
@@ -87,8 +122,17 @@ export function AnalyticsPageClient() {
     staleTime: 60_000,
   });
 
+  // MedicalCase metrics — also a separate endpoint to keep this dashboard's
+  // round trips parallelizable.
+  const qCases = useQuery({
+    queryKey: ["analytics-cases", period],
+    queryFn: () => fetchCases(period),
+    staleTime: 60_000,
+  });
+
   const data = q.data;
   const funnels = qFunnels.data;
+  const cases = qCases.data;
 
   return (
     <PageContainer>
@@ -135,6 +179,40 @@ export function AnalyticsPageClient() {
               ltv: t("sections.ltv"),
             }}
           />
+
+          {qCases.isError ? null : !cases ? (
+            <div className="flex flex-col gap-4">
+              <Skeleton className="h-6 w-40" />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-24 w-full" />
+                ))}
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {[0, 1].map((i) => (
+                  <Skeleton key={i} className="h-64 w-full" />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <CasesSection
+              data={cases}
+              locale={locale === "uz" ? "uz" : "ru"}
+              labels={{
+                sectionTitle: tCases("sectionTitle"),
+                kpiOpen: tCases("kpiOpen"),
+                kpiRepeat: tCases("kpiRepeat"),
+                kpiDuration: tCases("kpiDuration"),
+                kpiAvgRevenue: tCases("kpiAvgRevenue"),
+                pct: (v) => tCases("pct", { value: v }),
+                days: (v) => tCases("days", { value: v }),
+                topComplaintsTitle: tCases("topComplaintsTitle"),
+                durationTitle: tCases("durationTitle"),
+                durationBucketLabel: (b) => tCases(`bucket.${b}`),
+                complaintsEmpty: tCases("complaintsEmpty"),
+              }}
+            />
+          )}
 
           {qFunnels.isError ? null : !funnels ? (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

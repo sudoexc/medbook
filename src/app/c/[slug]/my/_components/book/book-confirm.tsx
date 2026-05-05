@@ -95,6 +95,19 @@ export function BookConfirm() {
         lang,
       });
       tg.haptic.notification("success");
+      // Persist case-attach choices (if any) so the done page can render
+      // the "Это новая жалоба или продолжение лечения?" chooser. Auto/
+      // skipped/created outcomes are silent — patient sees just the QR.
+      if (appt.caseAttach && appt.caseAttach.kind === "needs_choice") {
+        try {
+          sessionStorage.setItem(
+            `miniapp:caseChoice:${appt.id}`,
+            JSON.stringify(appt.caseAttach.choices),
+          );
+        } catch {
+          /* ignore — fall back to no chooser */
+        }
+      }
       reset();
       router.push(`/c/${clinicSlug}/my/book/done?id=${appt.id}`);
     } catch (e) {

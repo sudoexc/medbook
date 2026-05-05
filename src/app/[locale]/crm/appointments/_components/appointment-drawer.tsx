@@ -817,10 +817,10 @@ function CaseBadge({
     visit > 1
       ? tt("repeatVisit", { n: visit, total })
       : tt("firstVisit");
-  // Forward-compatible link: /crm/cases/[id] page lands later (#220).
-  // Until then, jump to the patient card with a hash so the Cases tab can
-  // scroll the matching card into view.
-  const href = `/${locale}/crm/patients/${appt.patient.id}#case-${appt.medicalCase.id}`;
+  // Canonical destination — the standalone case detail page (shipped in
+  // #220). It mirrors the patient card shell with a visit timeline + close
+  // dialog. Breadcrumbs there link back to the patient card.
+  const href = `/${locale}/crm/cases/${appt.medicalCase.id}`;
   return (
     <section className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/40 px-3 py-2">
       <Link

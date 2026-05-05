@@ -450,6 +450,10 @@
       "unpaid": "To'lanmagan",
       "refunded": "Qaytarildi"
     },
+    "pricing": {
+      "freeRepeatApplied": "Bepul takror",
+      "freeRepeatNote": "{days} kun ichida bepul takroriy tashrif, ish {caseId}"
+    },
     "channel": {
       "walkin": "Ko'chadan",
       "phone": "Qo'ng'iroq",
@@ -1149,6 +1153,56 @@
       "deleting": "O'chirilmoqda…",
       "success": "Bemor o'chirildi",
       "error": "O'chirib bo'lmadi"
+    }
+  },
+  "cases": {
+    "detail": {
+      "breadcrumbsRoot": "Bemorlar",
+      "titlePlaceholder": "Holat nomi",
+      "closeCase": "Holatni yopish",
+      "reopenCase": "Qayta ochish",
+      "changeDoctor": "Davolovchi shifokorni almashtirish",
+      "noDoctorOption": "Shifokorsiz",
+      "doctorChanged": "Davolovchi shifokor yangilandi",
+      "reopened": "Holat qayta ochildi",
+      "closedSuccess": "Holat yopildi",
+      "closeDialogTitle": "Holatni yopish",
+      "closeDialogDescription": "Sababni tanlang va kerak bo'lsa izoh qoldiring — u jurnalda saqlanadi.",
+      "closeDialogReasonResolved": "Davolanish yakunlandi",
+      "closeDialogReasonAbandoned": "Bemor yo'qoldi",
+      "closeDialogReasonTransferred": "Boshqa shifokorga o'tkazildi",
+      "closeDialogReasonOther": "Boshqa sabab",
+      "closeDialogReasonLabel": "Izoh",
+      "closeDialogReasonPlaceholder": "Qo'shimcha tafsilotlar (ixtiyoriy)",
+      "closeSubmit": "Yopish",
+      "closeCancel": "Bekor qilish",
+      "metaPrimaryDoctor": "Davolovchi shifokor",
+      "metaOpenedAt": "Boshlandi",
+      "metaClosedAt": "Yopildi",
+      "metaComplaint": "Shikoyat",
+      "metaComplaintPlaceholder": "Bemorning shikoyati",
+      "metaDiagnosis": "Tashxis",
+      "metaDiagnosisPlaceholder": "Tashxis va davolash rejasi",
+      "metaDiagnosisCode": "MKB-10 kodi",
+      "metaNotes": "Eslatmalar",
+      "metaNotesPlaceholder": "Erkin eslatmalar",
+      "timelineTitle": "Tashriflar tarixi",
+      "timelineEmpty": "Bu holatda hali tashriflar yo'q",
+      "timelineAddVisit": "Tashrif qo'shish",
+      "timelineDetach": "Uzish",
+      "detached": "Yozuv holatdan uzildi",
+      "openVisit": "Yozuvni ochish",
+      "firstVisit": "Birlamchi",
+      "repeatVisit": "Takroriy",
+      "daysAfterFirst": "{n, plural, one {birinchidan keyin # kun} other {birinchidan keyin # kun}}",
+      "statsTitle": "Xulosa",
+      "statsTotalVisits": "Jami tashriflar",
+      "statsTotalPaid": "To'langan",
+      "statsFreeRepeats": "Bepul takrorlar",
+      "openPatientCard": "Bemor kartasini ochish",
+      "notFound": "Holat topilmadi",
+      "notFoundBackToPatients": "Bemorlar ro'yxatiga",
+      "retry": "Qayta urinish"
     }
   },
   "onboardingChecklist": {
@@ -2454,6 +2508,10 @@
         "priceBase": "Narxi (UZS)",
         "category": "Kategoriya",
         "active": "Faol"
+      },
+      "fields": {
+        "freeRepeatDays": "Bepul takror, kun",
+        "freeRepeatDaysHint": "Agar bemor N kun ichida xuddi shu davolanish ishiga qaytsa, ushbu xizmatning takroriy tashrifi bepul bo'ladi. O'chirish uchun bo'sh qoldiring."
       }
     },
     "branches": {

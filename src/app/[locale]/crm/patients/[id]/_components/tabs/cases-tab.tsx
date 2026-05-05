@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -85,6 +86,25 @@ export function CasesTab({ patient }: CasesTabProps) {
   const locale = useLocale() as Locale;
   const [filter, setFilter] = React.useState<FilterKey>("all");
   const [createOpen, setCreateOpen] = React.useState(false);
+  // Hash deep-link target — set when the URL is `#case-<id>`. The Cases tab
+  // only mounts when the user is on it (lazy-loaded), so an effect here is
+  // enough to scroll-into-view + briefly highlight on first paint and on
+  // subsequent hashchanges without polluting the parent.
+  const [highlightId, setHighlightId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apply = () => {
+      const h =
+        typeof window !== "undefined" ? window.location.hash : "";
+      const match = h.match(/^#case-(.+)$/);
+      setHighlightId(match ? match[1]! : null);
+    };
+    apply();
+    if (typeof window !== "undefined") {
+      window.addEventListener("hashchange", apply);
+      return () => window.removeEventListener("hashchange", apply);
+    }
+  }, []);
 
   const q = usePatientCases(patient.id, { status: filter });
   const rows = q.data?.rows ?? [];
@@ -176,7 +196,13 @@ export function CasesTab({ patient }: CasesTabProps) {
       ) : (
         <ul className="flex flex-col gap-2">
           {ordered.map((row) => (
-            <CaseCard key={row.id} row={row} locale={locale} t={t} />
+            <CaseCard
+              key={row.id}
+              row={row}
+              locale={locale}
+              t={t}
+              highlight={highlightId === row.id}
+            />
           ))}
         </ul>
       )}
@@ -196,10 +222,12 @@ function CaseCard({
   row,
   locale,
   t,
+  highlight,
 }: {
   row: PatientCase;
   locale: Locale;
   t: CasesT;
+  highlight: boolean;
 }) {
   const isOpen = row.status === "OPEN";
   const variant = STATUS_VARIANT[row.status];
@@ -212,19 +240,35 @@ function CaseCard({
     : null;
   const visits = row._count?.appointments ?? 0;
 
-  // Detail page does not yet exist — render the card as a non-link static
-  // surface; the chevron is decorative until the page ships.
-  // (Spec §3 explicitly says: "Do not build the case detail page.")
+  // Scroll the matched card into view + briefly pulse the border so the
+  // user can see which card the deep-link landed on. The effect runs on
+  // every `highlight` flip so consecutive `#case-X` → `#case-Y` jumps both
+  // animate.
+  const ref = React.useRef<HTMLLIElement | null>(null);
+  React.useEffect(() => {
+    if (highlight && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlight]);
+
+  // Card is now a Link to the standalone detail page (#220). The whole row
+  // is wrapped so chevron + body share the same hit-target.
   return (
     <li
+      ref={ref}
+      id={`case-${row.id}`}
       className={cn(
-        "group rounded-xl border bg-card p-3 transition-colors",
+        "group rounded-xl border bg-card p-3 transition-all",
         isOpen
           ? "border-border shadow-sm hover:border-primary/40 hover:shadow"
           : "border-border/60 bg-muted/20 opacity-90",
+        highlight && "ring-2 ring-primary/60 ring-offset-2 ring-offset-background",
       )}
     >
-      <div className="flex items-start gap-3">
+      <Link
+        href={`/${locale}/crm/cases/${row.id}`}
+        className="flex items-start gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-md"
+      >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3
@@ -291,7 +335,7 @@ function CaseCard({
           )}
           aria-hidden
         />
-      </div>
+      </Link>
     </li>
   );
 }

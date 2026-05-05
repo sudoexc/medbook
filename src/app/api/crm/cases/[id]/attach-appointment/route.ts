@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { AttachAppointmentSchema } from "@/server/schemas/medical-case";
+import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
 
 function caseIdFromUrl(request: Request): string {
   // /api/crm/cases/[id]/attach-appointment → [id] is segment[-2].
@@ -56,9 +57,44 @@ export const POST = createApiHandler(
       return err("ValidationError", 400, { reason: "patient_mismatch" });
     }
 
-    const updated = await prisma.appointment.update({
+    // Attach + reprice every visit whose "first vs repeat" position can flip
+    // from this single move:
+    //   - the appointment itself (now potentially a repeat in the new case)
+    //   - every sibling already in the destination case (its first-visit
+    //     status may shift if the new attachment becomes the new earliest)
+    //   - if the appointment was previously in another case, every sibling
+    //     in that prior case (the old first-visit may now be a repeat-of-
+    //     nothing, or vice versa)
+    const recomputed = await prisma.$transaction(async (tx) => {
+      await tx.appointment.update({
+        where: { id: appt.id },
+        data: { medicalCaseId: caseId } as never,
+      });
+
+      // Collect all appointment ids we need to re-price.
+      const affected = new Set<string>([appt.id]);
+      const targetSiblings = await tx.appointment.findMany({
+        where: { medicalCaseId: caseId },
+        select: { id: true },
+      });
+      for (const s of targetSiblings) affected.add(s.id);
+      if (appt.medicalCaseId && appt.medicalCaseId !== caseId) {
+        const prevSiblings = await tx.appointment.findMany({
+          where: { medicalCaseId: appt.medicalCaseId },
+          select: { id: true },
+        });
+        for (const s of prevSiblings) affected.add(s.id);
+      }
+
+      const results = [];
+      for (const id of affected) {
+        results.push(await recomputeAppointmentPrice(tx, id));
+      }
+      return results;
+    });
+
+    const updated = await prisma.appointment.findUniqueOrThrow({
       where: { id: appt.id },
-      data: { medicalCaseId: caseId } as never,
       select: {
         id: true,
         date: true,
@@ -87,6 +123,22 @@ export const POST = createApiHandler(
         previousCaseId: appt.medicalCaseId,
       },
     });
+    for (const r of recomputed) {
+      if (r.reason === "free_repeat") {
+        await audit(request, {
+          action: "appointment.free_repeat_applied",
+          entityType: "Appointment",
+          entityId: r.appointmentId,
+          meta: {
+            caseId,
+            daysFromFirst: r.daysFromFirst,
+            savedAmount: r.savedAmount,
+            trace: r.trace,
+            triggeredBy: "attach",
+          },
+        });
+      }
+    }
 
     return ok(updated);
   }

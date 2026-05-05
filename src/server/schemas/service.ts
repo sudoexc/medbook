@@ -11,6 +11,13 @@ export const CreateServiceSchema = z.object({
   category: z.string().max(100).optional().nullable(),
   durationMin: z.number().int().min(5).max(480).default(30),
   priceBase: z.number().int().min(0),
+  /**
+   * Free-repeat policy: when set, a non-first visit in the same MedicalCase
+   * within N days of the case's first visit is priced at 0 for this service.
+   * `null` (or omitted) = no policy. Range 1–365 keeps the UI sane; long
+   * windows defeat the purpose.
+   */
+  freeRepeatDays: z.number().int().min(1).max(365).nullable().optional(),
   isActive: z.boolean().optional(),
   /**
    * Doctors who will offer this service. Required, non-empty: every service

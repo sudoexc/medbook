@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { AttachAppointmentSchema } from "@/server/schemas/medical-case";
+import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
 
 function caseIdFromUrl(request: Request): string {
   // /api/crm/cases/[id]/detach-appointment → [id] is segment[-2].
@@ -50,9 +51,30 @@ export const POST = createApiHandler(
       return err("ValidationError", 400, { reason: "not_attached_to_case" });
     }
 
-    const updated = await prisma.appointment.update({
+    // Detach + reprice the appointment itself (now case-less, so any prior
+    // free-repeat discount unwinds back to full price) plus every sibling
+    // remaining in the case (if the detached visit was the chronological
+    // first, the next-earliest sibling becomes the new "first" and its
+    // own pricing flips back to full).
+    const recomputed = await prisma.$transaction(async (tx) => {
+      await tx.appointment.update({
+        where: { id: appt.id },
+        data: { medicalCaseId: null } as never,
+      });
+      const remaining = await tx.appointment.findMany({
+        where: { medicalCaseId: caseId },
+        select: { id: true },
+      });
+      const ids = new Set<string>([appt.id, ...remaining.map((r) => r.id)]);
+      const results = [];
+      for (const id of ids) {
+        results.push(await recomputeAppointmentPrice(tx, id));
+      }
+      return results;
+    });
+
+    const updated = await prisma.appointment.findUniqueOrThrow({
       where: { id: appt.id },
-      data: { medicalCaseId: null } as never,
       select: {
         id: true,
         date: true,
@@ -78,6 +100,22 @@ export const POST = createApiHandler(
       entityId: caseId,
       meta: { appointmentId: appt.id },
     });
+    for (const r of recomputed) {
+      if (r.reason === "free_repeat") {
+        await audit(request, {
+          action: "appointment.free_repeat_applied",
+          entityType: "Appointment",
+          entityId: r.appointmentId,
+          meta: {
+            caseId,
+            daysFromFirst: r.daysFromFirst,
+            savedAmount: r.savedAmount,
+            trace: r.trace,
+            triggeredBy: "detach",
+          },
+        });
+      }
+    }
 
     return ok(updated);
   }

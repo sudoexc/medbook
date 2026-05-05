@@ -78,6 +78,23 @@ export function PatientCardClient({ id }: { id: string }) {
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
 
+  // Hash deep-link: when arriving with `#case-<id>`, switch to the Cases tab
+  // so the Cases-tab effect can scroll the matching card into view. Listens
+  // for hashchange so navigations within the page (drawer pill back to
+  // patient card with a different case anchor) also re-trigger the switch.
+  React.useEffect(() => {
+    const apply = () => {
+      const h =
+        typeof window !== "undefined" ? window.location.hash : "";
+      if (h.startsWith("#case-")) setTab("cases");
+    };
+    apply();
+    if (typeof window !== "undefined") {
+      window.addEventListener("hashchange", apply);
+      return () => window.removeEventListener("hashchange", apply);
+    }
+  }, []);
+
   const openNewAppointmentStub = React.useCallback(() => {
     toast.info(t("newAppointmentTodo"));
   }, [t]);

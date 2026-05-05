@@ -44,6 +44,9 @@ export const CreateAppointmentSchema = z.object({
   comments: z.string().max(5000).optional().nullable(),
   notes: z.string().max(5000).optional().nullable(),
   leadId: z.string().optional().nullable(),
+  // Optional MedicalCase link at create time. When present, pricing kicks
+  // in the free-repeat policy on follow-up visits.
+  medicalCaseId: z.string().optional().nullable(),
 });
 
 export const UpdateAppointmentSchema = z.object({
@@ -64,6 +67,7 @@ export const UpdateAppointmentSchema = z.object({
   comments: z.string().max(5000).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   cancelReason: z.string().max(500).nullable().optional(),
+  medicalCaseId: z.string().nullable().optional(),
 });
 
 export const QueryAppointmentSchema = z.object({

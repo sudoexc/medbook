@@ -19,6 +19,7 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
@@ -211,7 +212,19 @@ export const POST = createApiHandler(
     // PostgreSQL raises a serialization error (P2034) on the loser; we
     // surface that as a doctor_busy/cabinet_busy 409 just like a normal clash.
     let txResult:
-      | { kind: "ok"; appt: { id: string; doctorId: string; patientId: string; cabinetId: string | null; status: string; date: Date; queueStatus: string } }
+      | {
+          kind: "ok";
+          appt: {
+            id: string;
+            doctorId: string;
+            patientId: string;
+            cabinetId: string | null;
+            status: string;
+            date: Date;
+            queueStatus: string;
+          };
+          recomputed: Awaited<ReturnType<typeof recomputeAppointmentPrice>> | null;
+        }
       | { kind: "conflict"; reason: string; until?: string };
     try {
       txResult = await prisma.$transaction(
@@ -234,6 +247,7 @@ export const POST = createApiHandler(
             doctorId: body.doctorId,
             cabinetId,
             serviceId: body.serviceId ?? null,
+            medicalCaseId: body.medicalCaseId ?? null,
             date: startAt,
             time: body.time ?? null,
             durationMin: body.durationMin,
@@ -267,7 +281,14 @@ export const POST = createApiHandler(
             })) as never,
           });
         }
-        return { kind: "ok" as const, appt };
+        // Free-repeat pricing engine. Runs inside the same tx so a follow-up
+        // visit attached to a case at create time prices to 0 atomically with
+        // its row insert. The caller pinned `priceFinal` only for the
+        // case-less path; once a case is involved the policy decides.
+        const recomputed = body.medicalCaseId
+          ? await recomputeAppointmentPrice(tx, appt.id)
+          : null;
+        return { kind: "ok" as const, appt, recomputed };
         },
         { isolationLevel: "Serializable" },
       );
@@ -348,6 +369,19 @@ export const POST = createApiHandler(
       entityId: created.id,
       meta: { after: created },
     });
+    if (txResult.recomputed?.reason === "free_repeat") {
+      await audit(request, {
+        action: "appointment.free_repeat_applied",
+        entityType: "Appointment",
+        entityId: created.id,
+        meta: {
+          caseId: body.medicalCaseId,
+          daysFromFirst: txResult.recomputed.daysFromFirst,
+          savedAmount: txResult.recomputed.savedAmount,
+          trace: txResult.recomputed.trace,
+        },
+      });
+    }
     // Phase 3a: fire notifications trigger (immediate + 24h/2h reminders).
     fireTrigger({ kind: "appointment.created", appointmentId: created.id });
 

@@ -450,6 +450,10 @@
       "unpaid": "Не оплачен",
       "refunded": "Возврат"
     },
+    "pricing": {
+      "freeRepeatApplied": "Бесплатный повтор",
+      "freeRepeatNote": "Бесплатный повторный визит в течение {days} дн., случай {caseId}"
+    },
     "channel": {
       "walkin": "С улицы",
       "phone": "Звонок",
@@ -1149,6 +1153,56 @@
       "deleting": "Удаление…",
       "success": "Пациент удалён",
       "error": "Не удалось удалить"
+    }
+  },
+  "cases": {
+    "detail": {
+      "breadcrumbsRoot": "Пациенты",
+      "titlePlaceholder": "Название случая",
+      "closeCase": "Закрыть случай",
+      "reopenCase": "Открыть заново",
+      "changeDoctor": "Сменить ведущего врача",
+      "noDoctorOption": "Без врача",
+      "doctorChanged": "Лечащий врач изменён",
+      "reopened": "Случай открыт заново",
+      "closedSuccess": "Случай закрыт",
+      "closeDialogTitle": "Закрыть случай",
+      "closeDialogDescription": "Выберите причину и при необходимости добавьте комментарий — он сохранится в журнале.",
+      "closeDialogReasonResolved": "Лечение завершено",
+      "closeDialogReasonAbandoned": "Пациент потерян",
+      "closeDialogReasonTransferred": "Передан другому врачу",
+      "closeDialogReasonOther": "Другая причина",
+      "closeDialogReasonLabel": "Комментарий",
+      "closeDialogReasonPlaceholder": "Дополнительные детали (необязательно)",
+      "closeSubmit": "Закрыть",
+      "closeCancel": "Отмена",
+      "metaPrimaryDoctor": "Ведущий врач",
+      "metaOpenedAt": "Открыт",
+      "metaClosedAt": "Закрыт",
+      "metaComplaint": "Жалоба",
+      "metaComplaintPlaceholder": "Жалоба пациента",
+      "metaDiagnosis": "Диагноз",
+      "metaDiagnosisPlaceholder": "Диагноз и план лечения",
+      "metaDiagnosisCode": "Код по МКБ-10",
+      "metaNotes": "Заметки",
+      "metaNotesPlaceholder": "Произвольные заметки",
+      "timelineTitle": "Хронология визитов",
+      "timelineEmpty": "В этом случае пока нет визитов",
+      "timelineAddVisit": "Добавить визит",
+      "timelineDetach": "Отвязать",
+      "detached": "Запись отвязана от случая",
+      "openVisit": "Открыть запись",
+      "firstVisit": "Первичный",
+      "repeatVisit": "Повторный",
+      "daysAfterFirst": "{n, plural, one {# день после первого} few {# дня после первого} other {# дней после первого}}",
+      "statsTitle": "Сводка",
+      "statsTotalVisits": "Всего визитов",
+      "statsTotalPaid": "Оплачено",
+      "statsFreeRepeats": "Бесплатных повторов",
+      "openPatientCard": "Открыть карточку пациента",
+      "notFound": "Случай не найден",
+      "notFoundBackToPatients": "К списку пациентов",
+      "retry": "Повторить"
     }
   },
   "onboardingChecklist": {
@@ -2454,6 +2508,10 @@
         "priceBase": "Цена (UZS)",
         "category": "Категория",
         "active": "Активна"
+      },
+      "fields": {
+        "freeRepeatDays": "Бесплатный повтор в течение, дней",
+        "freeRepeatDaysHint": "Если в течение N дней пациент возвращается к этому же случаю лечения, повторный визит этой услуги бесплатен. Оставьте пустым, чтобы отключить."
       }
     },
     "branches": {

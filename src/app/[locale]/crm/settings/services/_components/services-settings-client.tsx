@@ -32,6 +32,7 @@ type ServiceRow = {
   category: string | null;
   durationMin: number;
   priceBase: number;
+  freeRepeatDays: number | null;
   isActive: boolean;
 };
 
@@ -125,6 +126,12 @@ export function ServicesSettingsClient() {
                 </th>
                 <th className="px-3 py-2 font-medium">
                   {t("services.cols.priceBase")}
+                </th>
+                <th
+                  className="px-3 py-2 font-medium"
+                  title={t("services.fields.freeRepeatDaysHint")}
+                >
+                  {t("services.fields.freeRepeatDays")}
                 </th>
                 <th className="px-3 py-2 font-medium">
                   {t("services.cols.active")}
@@ -247,6 +254,32 @@ function ServiceRowEditor({
         />
       </td>
       <td className="px-3 py-2">
+        <input
+          type="number"
+          className="h-8 w-20 rounded border border-input bg-transparent px-2 text-sm"
+          value={local.freeRepeatDays ?? ""}
+          min={1}
+          max={365}
+          placeholder="—"
+          title={t("services.fields.freeRepeatDaysHint")}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setLocal({
+              ...local,
+              freeRepeatDays: raw === "" ? null : Number(raw),
+            });
+          }}
+          onBlur={() => {
+            const next =
+              local.freeRepeatDays === null ||
+              Number.isNaN(local.freeRepeatDays)
+                ? null
+                : local.freeRepeatDays;
+            if (next !== row.freeRepeatDays) commit({ freeRepeatDays: next });
+          }}
+        />
+      </td>
+      <td className="px-3 py-2">
         <Switch
           checked={local.isActive}
           onCheckedChange={(v: boolean) => commit({ isActive: v })}
@@ -289,6 +322,7 @@ function CreateServiceDialog({
     nameUz: string;
     durationMin: number;
     priceBase: number;
+    freeRepeatDays: number | null;
     category: string;
     doctorIds: string[];
   }>({
@@ -297,6 +331,7 @@ function CreateServiceDialog({
     nameUz: "",
     durationMin: 30,
     priceBase: 0,
+    freeRepeatDays: null,
     category: "",
     doctorIds: [],
   });
@@ -332,6 +367,7 @@ function CreateServiceDialog({
           category: form.category || null,
           durationMin: form.durationMin,
           priceBase: form.priceBase,
+          freeRepeatDays: form.freeRepeatDays,
           doctorIds: form.doctorIds,
         }),
       }),
@@ -344,6 +380,7 @@ function CreateServiceDialog({
         nameUz: "",
         durationMin: 30,
         priceBase: 0,
+        freeRepeatDays: null,
         category: "",
         doctorIds: [],
       });
@@ -435,6 +472,29 @@ function CreateServiceDialog({
                 }
               />
             </div>
+          </div>
+          <div>
+            <Label htmlFor="s-frd">
+              {t("services.fields.freeRepeatDays")}
+            </Label>
+            <Input
+              id="s-frd"
+              type="number"
+              min={1}
+              max={365}
+              value={form.freeRepeatDays ?? ""}
+              placeholder="—"
+              onChange={(e) => {
+                const raw = e.target.value;
+                setForm({
+                  ...form,
+                  freeRepeatDays: raw === "" ? null : Number(raw),
+                });
+              }}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("services.fields.freeRepeatDaysHint")}
+            </p>
           </div>
           <div>
             <div className="mb-1 flex items-baseline justify-between">

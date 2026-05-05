@@ -12,6 +12,7 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
@@ -219,7 +220,19 @@ export const PATCH = createApiHandler(
     const services = body.services;
     delete (data as { services?: unknown }).services;
 
-    const after = await prisma.$transaction(async (tx) => {
+    // Recompute pricing whenever any input that could affect free-repeat
+    // changed: date moved, the service set was edited, the medical-case
+    // attachment shifted, or visit-level discount fields were touched. We
+    // call the helper inside the same tx so the row never observes a
+    // transient inconsistent state.
+    const recomputeNeeded =
+      timeChanged ||
+      services !== undefined ||
+      body.medicalCaseId !== undefined ||
+      body.serviceId !== undefined ||
+      discountChanged;
+
+    const txOut = await prisma.$transaction(async (tx) => {
       if (services !== undefined) {
         await tx.appointmentService.deleteMany({
           where: { appointmentId: id },
@@ -240,8 +253,21 @@ export const PATCH = createApiHandler(
           });
         }
       }
-      return tx.appointment.update({ where: { id }, data: data as never });
+      const updated = await tx.appointment.update({
+        where: { id },
+        data: data as never,
+      });
+      const recomputed = recomputeNeeded
+        ? await recomputeAppointmentPrice(tx, id)
+        : null;
+      // Re-read so the response reflects price fields that recompute may
+      // have rewritten.
+      const fresh = recomputed
+        ? await tx.appointment.findUniqueOrThrow({ where: { id } })
+        : updated;
+      return { after: fresh, recomputed };
     });
+    const after = txOut.after;
 
     const d = diff(
       before as unknown as Record<string, unknown>,
@@ -253,6 +279,19 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    if (txOut.recomputed?.reason === "free_repeat") {
+      await audit(request, {
+        action: "appointment.free_repeat_applied",
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          caseId: after.medicalCaseId,
+          daysFromFirst: txOut.recomputed.daysFromFirst,
+          savedAmount: txOut.recomputed.savedAmount,
+          trace: txOut.recomputed.trace,
+        },
+      });
+    }
     // Phase 3a notification triggers.
     if (body.status === "CANCELLED") {
       fireTrigger({ kind: "appointment.cancelled", appointmentId: id });

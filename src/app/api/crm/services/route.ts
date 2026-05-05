@@ -82,6 +82,7 @@ export const POST = createApiHandler(
             category: body.category ?? null,
             durationMin: body.durationMin,
             priceBase: body.priceBase,
+            freeRepeatDays: body.freeRepeatDays ?? null,
             isActive: body.isActive ?? true,
           } as never,
         });

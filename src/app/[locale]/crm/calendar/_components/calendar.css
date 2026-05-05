@@ -4,7 +4,14 @@
  */
 
 .mbk-calendar-host {
-  --fc-border-color: var(--color-border);
+  /* Stronger grid border than the default token — the calendar grid needs
+   * to read at a glance. Layered on top of the design token so dark mode
+   * still tracks the underlying foreground. */
+  --mbk-grid-strong: color-mix(in oklab, var(--color-foreground), transparent 80%);
+  --mbk-grid-soft: color-mix(in oklab, var(--color-foreground), transparent 90%);
+  --mbk-grid-zebra: color-mix(in oklab, var(--color-muted), transparent 70%);
+
+  --fc-border-color: var(--mbk-grid-strong);
   --fc-page-bg-color: var(--color-background);
   --fc-neutral-bg-color: color-mix(in oklab, var(--color-muted), transparent 40%);
   --fc-today-bg-color: color-mix(in oklab, var(--color-primary), transparent 92%);
@@ -94,6 +101,75 @@
 
 .mbk-calendar-host .fc-timegrid-slot {
   height: 1.75rem;
+}
+
+/* Hour lines: solid + stronger contrast. Half-hour lines: lighter dashed
+ * so the eye groups time in 60-min blocks instead of seeing equal stripes. */
+.mbk-calendar-host .fc-timegrid-slot-lane {
+  border-top-color: var(--mbk-grid-strong);
+}
+.mbk-calendar-host .fc-timegrid-slot-lane.fc-timegrid-slot-minor {
+  border-top-style: dashed;
+  border-top-color: var(--mbk-grid-soft);
+}
+
+/* Zebra: tint every odd hour band so rows are easier to track horizontally
+ * across many resource columns. Pair: minor row directly under a major row. */
+.mbk-calendar-host .fc-timegrid-slot-lane:not(.fc-timegrid-slot-minor):nth-of-type(4n+1),
+.mbk-calendar-host .fc-timegrid-slot-lane.fc-timegrid-slot-minor:nth-of-type(4n+2) {
+  background-color: var(--mbk-grid-zebra);
+}
+
+/* Time axis: 3-tier hierarchy (hour > half-hour > quarter) so the eye
+ * lands on hour numbers first but can still read 15/45 marks for precise
+ * appointment placement. Slots render at 15-min granularity, so we need
+ * the labels to differentiate themselves visually rather than hide. */
+.mbk-calendar-host .fc-timegrid-slot-label {
+  vertical-align: top;
+  border-top: none;  /* default FC border collides with our zebra/major lines */
+}
+.mbk-calendar-host .fc-timegrid-slot-label-cushion {
+  padding: 0 6px 0 2px;
+  line-height: 1;
+}
+.mbk-calendar-host .mbk-slot-hour {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-foreground);
+  letter-spacing: 0.01em;
+}
+.mbk-calendar-host .mbk-slot-min {
+  font-weight: 400;
+  font-size: 9px;
+  color: color-mix(in oklab, var(--color-muted-foreground), transparent 30%);
+  font-variant-numeric: tabular-nums;
+}
+.mbk-calendar-host .mbk-slot-min-half {
+  font-size: 10px;
+  color: var(--color-muted-foreground);
+}
+
+/* Vertical resource/day separators: bump from token to grid-strong so the
+ * column borders match the row borders. */
+.mbk-calendar-host .fc-timegrid-col,
+.mbk-calendar-host .fc-col-header-cell,
+.mbk-calendar-host .fc-resource-timegrid-divider,
+.mbk-calendar-host .fc-scrollgrid-section > * {
+  border-color: var(--mbk-grid-strong) !important;
+}
+
+/* Now-indicator: thicker + arrow tip more visible. */
+.mbk-calendar-host .fc-timegrid-now-indicator-line {
+  border-top-width: 2px;
+}
+.mbk-calendar-host .fc-timegrid-now-indicator-arrow {
+  border-width: 6px;
+}
+
+/* Today column: slightly stronger tint so the current day reads from the
+ * far edge of the grid even under heavy zebra. */
+.mbk-calendar-host .fc .fc-day-today {
+  background-color: color-mix(in oklab, var(--color-primary), transparent 88%);
 }
 
 .mbk-calendar-host .fc-highlight {

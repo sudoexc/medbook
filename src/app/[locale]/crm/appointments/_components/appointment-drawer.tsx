@@ -8,6 +8,7 @@ import {
   ChevronDownIcon,
   ClockIcon,
   ExternalLinkIcon,
+  FolderOpenIcon,
   PhoneIcon,
   UserIcon,
   XIcon,
@@ -53,6 +54,7 @@ import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { SlotPicker } from "@/components/appointments/SlotPicker";
 
+import { CaseSelectorDialog } from "./case-selector-dialog";
 import {
   AppointmentConflictError,
   useAppointment,
@@ -129,10 +131,12 @@ export function AppointmentDrawer({
   onClose,
 }: AppointmentDrawerProps) {
   const t = useTranslations("appointments.drawer");
+  const tCase = useTranslations("appointments.case");
   const tStatus = useTranslations("appointments.status");
   const tChannel = useTranslations("appointments.channel");
   const tPayment = useTranslations("appointments.payment");
   const locale = useLocale() as Locale;
+  const [caseSelectorOpen, setCaseSelectorOpen] = React.useState(false);
 
   const open = Boolean(appointmentId);
 
@@ -327,6 +331,14 @@ export function AppointmentDrawer({
                   </Link>
                 </div>
               </section>
+
+              {/* Case badge — links visit to a MedicalCase ("episode of care"). */}
+              <CaseBadge
+                appt={appt}
+                tCase={tCase}
+                locale={locale}
+                onAttach={() => setCaseSelectorOpen(true)}
+              />
 
               {/* Schedule + status — single tidy key/value list */}
               <ScheduleSection
@@ -547,6 +559,20 @@ export function AppointmentDrawer({
         </div>
       </SheetContent>
     </Sheet>
+    {appt ? (
+      <CaseSelectorDialog
+        open={caseSelectorOpen}
+        onOpenChange={setCaseSelectorOpen}
+        patientId={appt.patient.id}
+        doctorId={appt.doctor.id}
+        currentCaseId={appt.medicalCase?.id ?? null}
+        attachAppointmentId={appt.id}
+        onSelect={() => {
+          // The selector already invalidated relevant queries; the drawer's
+          // useAppointment hook will refetch automatically.
+        }}
+      />
+    ) : null}
     <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -739,6 +765,85 @@ function DrawerRow({
       <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
       <div className="min-w-0">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Renders a single pill summarising the medical-case attachment.
+ * - Linked: "Repeat · 3 of 5 · Back pain" (or "First visit · Back pain"),
+ *   click → patient card hashed with the case id (forward-compatible:
+ *   /crm/cases/[id] is not yet built; we route to the patient's card so the
+ *   Cases tab can scroll into view via the hash).
+ * - Unlinked: ghost pill "No case" + "Attach" button.
+ */
+function CaseBadge({
+  appt,
+  tCase,
+  locale,
+  onAttach,
+}: {
+  appt: NonNullable<ReturnType<typeof useAppointment>["data"]>;
+  tCase: ReturnType<typeof useTranslations>;
+  locale: Locale;
+  onAttach: () => void;
+}) {
+  const tt = tCase as unknown as (
+    k: string,
+    v?: Record<string, string | number>,
+  ) => string;
+  if (!appt.medicalCase) {
+    return (
+      <section className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border bg-card/30 px-3 py-2">
+        <Badge variant="muted" className="gap-1">
+          <FolderOpenIcon className="size-3" />
+          {tt("noCase")}
+        </Badge>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={onAttach}
+        >
+          {tt("attach")}
+        </Button>
+      </section>
+    );
+  }
+
+  const visit = appt.visitNumberInCase ?? 1;
+  const total = appt.totalVisitsInCase ?? 1;
+  const visitLabel =
+    visit > 1
+      ? tt("repeatVisit", { n: visit, total })
+      : tt("firstVisit");
+  // Forward-compatible link: /crm/cases/[id] page lands later (#220).
+  // Until then, jump to the patient card with a hash so the Cases tab can
+  // scroll the matching card into view.
+  const href = `/${locale}/crm/patients/${appt.patient.id}#case-${appt.medicalCase.id}`;
+  return (
+    <section className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/40 px-3 py-2">
+      <Link
+        href={href}
+        className="inline-flex items-center gap-2 rounded-md px-1.5 py-0.5 text-sm font-medium text-foreground hover:underline"
+      >
+        <FolderOpenIcon className="size-3.5 text-primary" aria-hidden />
+        <span>
+          {visitLabel}
+          <span className="mx-1 text-muted-foreground">·</span>
+          <span className="text-foreground/90">{appt.medicalCase.title}</span>
+        </span>
+      </Link>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="ml-auto text-muted-foreground"
+        onClick={onAttach}
+      >
+        {tt("change")}
+      </Button>
+    </section>
   );
 }
 

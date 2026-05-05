@@ -666,6 +666,33 @@
         "patientName": "Укажите ФИО пациента",
         "patientPhone": "Укажите телефон пациента"
       }
+    },
+    "case": {
+      "loading": "Загрузка…",
+      "saving": "Сохраняем…",
+      "caseLabel": "Случай",
+      "firstVisit": "Первичный",
+      "repeatVisit": "Повторный · {n}-й из {total}",
+      "noCase": "Без случая",
+      "attach": "Привязать",
+      "detach": "Отвязать",
+      "change": "Сменить",
+      "selectorTitle": "Выберите случай",
+      "selectorAutoSuggest": "Рекомендуем: продолжение лечения у этого врача",
+      "selectorRecommended": "Рекомендуется",
+      "selectorCurrent": "Текущий",
+      "selectorEmpty": "У пациента пока нет открытых случаев",
+      "selectorCreateNew": "Создать новый случай",
+      "selectorVisits": "{n, plural, one {# визит} few {# визита} other {# визитов}}",
+      "createTitleLabel": "Название случая",
+      "createTitlePlaceholder": "Например: Боль в спине",
+      "createComplaintLabel": "Жалоба (необязательно)",
+      "createComplaintPlaceholder": "Опишите основную жалобу пациента",
+      "createSubmit": "Создать и привязать",
+      "createCancel": "Отмена",
+      "autoCreatedTitle": "Случай от {date}",
+      "attachSuccess": "Случай привязан",
+      "attachFailed": "Не удалось привязать случай"
     }
   },
   "calendar": {
@@ -807,6 +834,7 @@
     "tabs": {
       "overview": "Обзор",
       "visits": "Визиты",
+      "cases": "Случаи",
       "documents": "Документы",
       "communications": "Коммуникации",
       "payments": "Оплаты",
@@ -976,6 +1004,31 @@
       "emptyDescription": "Запишите пациента на приём — здесь появится история.",
       "count": "Всего: {count}",
       "add": "Новая запись"
+    },
+    "cases": {
+      "tabTitle": "Случаи лечения",
+      "newCase": "Новый случай",
+      "filterAll": "Все",
+      "filterOpen": "Открытые",
+      "filterClosed": "Закрытые",
+      "counts": "{open, plural, one {# открытый} few {# открытых} other {# открытых}} · {closed, plural, one {# закрытый} few {# закрытых} other {# закрытых}}",
+      "opened": "Открыт",
+      "closed": "Закрыт",
+      "visits": "{count, plural, one {# визит} few {# визита} other {# визитов}}",
+      "noPrimaryDoctor": "Лечащий врач не назначен",
+      "empty": "У этого пациента пока нет случаев лечения",
+      "emptyCta": "Создать первый случай",
+      "statusOpen": "Открыт",
+      "statusResolved": "Закрыт",
+      "statusAbandoned": "Прерван",
+      "statusTransferred": "Передан",
+      "createDialogTitle": "Новый случай лечения",
+      "createTitleLabel": "Название случая",
+      "createDoctorLabel": "Лечащий врач",
+      "createComplaintLabel": "Жалоба",
+      "createSubmit": "Создать",
+      "createCancel": "Отмена",
+      "created": "Случай создан"
     },
     "documents": {
       "upload": "Загрузить",

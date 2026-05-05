@@ -666,6 +666,33 @@
         "patientName": "Bemor F.I.Sh. sini kiriting",
         "patientPhone": "Bemor telefonini kiriting"
       }
+    },
+    "case": {
+      "loading": "Yuklanmoqda…",
+      "saving": "Saqlanmoqda…",
+      "caseLabel": "Holat",
+      "firstVisit": "Birlamchi",
+      "repeatVisit": "Takroriy · {total} dan {n}-tashrif",
+      "noCase": "Holatsiz",
+      "attach": "Bog'lash",
+      "detach": "Uzish",
+      "change": "O'zgartirish",
+      "selectorTitle": "Holatni tanlang",
+      "selectorAutoSuggest": "Tavsiya: shu shifokor bilan davolanishning davomi",
+      "selectorRecommended": "Tavsiya etiladi",
+      "selectorCurrent": "Joriy",
+      "selectorEmpty": "Bemorda hali ochiq holatlar yo'q",
+      "selectorCreateNew": "Yangi holat yaratish",
+      "selectorVisits": "{n, plural, one {# tashrif} other {# tashrif}}",
+      "createTitleLabel": "Holat nomi",
+      "createTitlePlaceholder": "Masalan: Bel og'rig'i",
+      "createComplaintLabel": "Shikoyat (ixtiyoriy)",
+      "createComplaintPlaceholder": "Bemorning asosiy shikoyatini yozing",
+      "createSubmit": "Yaratish va bog'lash",
+      "createCancel": "Bekor qilish",
+      "autoCreatedTitle": "{date} dan boshlangan holat",
+      "attachSuccess": "Holat bog'landi",
+      "attachFailed": "Holatni bog'lab bo'lmadi"
     }
   },
   "calendar": {
@@ -807,6 +834,7 @@
     "tabs": {
       "overview": "Umumiy",
       "visits": "Tashriflar",
+      "cases": "Davolanish",
       "documents": "Hujjatlar",
       "communications": "Aloqalar",
       "payments": "To'lovlar",
@@ -976,6 +1004,31 @@
       "emptyDescription": "Bemorni yozing — bu yerda tarix paydo bo'ladi.",
       "count": "Jami: {count}",
       "add": "Yangi yozilish"
+    },
+    "cases": {
+      "tabTitle": "Davolanish",
+      "newCase": "Yangi davolanish",
+      "filterAll": "Barchasi",
+      "filterOpen": "Ochiq",
+      "filterClosed": "Yopiq",
+      "counts": "{open, plural, one {# ochiq} other {# ochiq}} · {closed, plural, one {# yopiq} other {# yopiq}}",
+      "opened": "Boshlangan",
+      "closed": "Yopilgan",
+      "visits": "{count, plural, one {# ta tashrif} other {# ta tashrif}}",
+      "noPrimaryDoctor": "Davolovchi shifokor tayinlanmagan",
+      "empty": "Bu bemorda hali davolanish holatlari yo'q",
+      "emptyCta": "Birinchi holatni yaratish",
+      "statusOpen": "Ochiq",
+      "statusResolved": "Yopilgan",
+      "statusAbandoned": "To'xtatilgan",
+      "statusTransferred": "O'tkazilgan",
+      "createDialogTitle": "Yangi davolanish",
+      "createTitleLabel": "Holat nomi",
+      "createDoctorLabel": "Davolovchi shifokor",
+      "createComplaintLabel": "Shikoyat",
+      "createSubmit": "Yaratish",
+      "createCancel": "Bekor qilish",
+      "created": "Holat yaratildi"
     },
     "documents": {
       "upload": "Yuklash",

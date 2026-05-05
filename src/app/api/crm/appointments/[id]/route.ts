@@ -47,6 +47,15 @@ export const GET = createApiListHandler(
         primaryService: true,
         services: { include: { service: true } },
         payments: true,
+        medicalCase: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            primaryDoctorId: true,
+            openedAt: true,
+          },
+        },
       },
     });
     if (!row) return notFound();
@@ -57,7 +66,26 @@ export const GET = createApiListHandler(
     ) {
       return forbidden();
     }
-    return ok(row);
+
+    // Compute visit ordinal within the case using a single query. Ordering by
+    // (date asc, createdAt asc) keeps ties stable across reschedules — the
+    // appointment's slot in the case timeline doesn't shuffle when an unrelated
+    // sibling moves around. Only one query regardless of case size, so the
+    // overhead is constant; null-safe when the appointment isn't in any case.
+    let visitNumberInCase: number | null = null;
+    let totalVisitsInCase: number | null = null;
+    if (row.medicalCaseId) {
+      const siblings = await prisma.appointment.findMany({
+        where: { medicalCaseId: row.medicalCaseId },
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+        select: { id: true },
+      });
+      totalVisitsInCase = siblings.length;
+      const idx = siblings.findIndex((s) => s.id === row.id);
+      visitNumberInCase = idx >= 0 ? idx + 1 : null;
+    }
+
+    return ok({ ...row, visitNumberInCase, totalVisitsInCase });
   }
 );
 

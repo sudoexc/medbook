@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+import { CaseSelectorDialog } from "@/app/[locale]/crm/appointments/_components/case-selector-dialog";
+
 import { SlotPicker } from "./SlotPicker";
 import { DoctorPicker } from "./new-appointment-dialog/doctor-picker";
 import { PatientPicker } from "./new-appointment-dialog/patient-picker";
@@ -93,9 +95,19 @@ export function NewAppointmentDialog({
   onCreated,
 }: NewAppointmentDialogProps) {
   const t = useTranslations("appointments.newDialog");
+  const tCase = useTranslations("appointments.case");
   const tChannel = useTranslations("appointments.channel");
   const tConflict = useTranslations("appointments.newDialog.conflict");
   const qc = useQueryClient();
+
+  // Post-creation flow: when there are multiple open cases for this patient,
+  // pop the selector with the freshly-created appointment id so the user can
+  // pick which one to attach. Auto-create / auto-attach paths skip this.
+  const [pendingAttach, setPendingAttach] = React.useState<{
+    appointmentId: string;
+    patientId: string;
+    doctorId: string;
+  } | null>(null);
 
   const [state, setState] = React.useState<FormState>(EMPTY);
   const [conflict, setConflict] = React.useState<{
@@ -295,7 +307,7 @@ export function NewAppointmentDialog({
   }, [doctorDetailQuery.data]);
 
   const createMutation = useMutation<
-    { id: string },
+    { id: string; patientId: string; doctorId: string },
     Error,
     FormState,
     unknown
@@ -386,15 +398,44 @@ export function NewAppointmentDialog({
         } | null;
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as { id: string };
+      const j = (await res.json()) as { id: string };
+      return {
+        id: j.id,
+        patientId: resolvedPatientId,
+        doctorId: values.doctorId,
+      };
     },
-    onSuccess: (created) => {
+    onSuccess: async (created) => {
       const opts = { refetchType: "active" } as const;
       qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
       qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
       qc.invalidateQueries({ queryKey: ["reception"], ...opts });
       qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
       toast.success(t("createdToast"));
+
+      // Resolve which MedicalCase this booking belongs to. Failures are
+      // soft — we never block the appointment creation. See spec §4.
+      try {
+        await resolveCaseForNewAppointment({
+          appointmentId: created.id,
+          patientId: created.patientId,
+          doctorId: created.doctorId,
+          tCase,
+          openSelector: () =>
+            setPendingAttach({
+              appointmentId: created.id,
+              patientId: created.patientId,
+              doctorId: created.doctorId,
+            }),
+        });
+        qc.invalidateQueries({ queryKey: ["cases"], ...opts });
+        qc.invalidateQueries({ queryKey: ["appointment", created.id], ...opts });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("case attach failed", e);
+        toast.warning(tCase("attachFailed"));
+      }
+
       onOpenChange(false);
       setState(EMPTY);
       if (onCreated) onCreated(created.id);
@@ -419,6 +460,7 @@ export function NewAppointmentDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl md:max-w-2xl">
         <DialogHeader>
@@ -559,7 +601,105 @@ export function NewAppointmentDialog({
         </form>
       </DialogContent>
     </Dialog>
+    {pendingAttach ? (
+      <CaseSelectorDialog
+        open={Boolean(pendingAttach)}
+        onOpenChange={(v) => {
+          if (!v) setPendingAttach(null);
+        }}
+        patientId={pendingAttach.patientId}
+        doctorId={pendingAttach.doctorId}
+        attachAppointmentId={pendingAttach.appointmentId}
+        onSelect={() => {
+          setPendingAttach(null);
+          qc.invalidateQueries({ queryKey: ["appointments", "list"] });
+          qc.invalidateQueries({ queryKey: ["appointment", pendingAttach.appointmentId] });
+        }}
+      />
+    ) : null}
+    </>
   );
+}
+
+/**
+ * Resolves which MedicalCase a brand-new appointment should belong to.
+ *
+ * Strategy (from spec §4):
+ *   - 0 open cases for the patient → silently create one and attach.
+ *   - 1 open case AND its primaryDoctor matches the booking's doctor → attach.
+ *   - Otherwise → defer to UI by calling `openSelector`.
+ *
+ * Errors are surfaced to the caller's catch — never block the appointment.
+ */
+async function resolveCaseForNewAppointment(args: {
+  appointmentId: string;
+  patientId: string;
+  doctorId: string;
+  tCase: (k: string, v?: Record<string, string | number>) => string;
+  openSelector: () => void;
+}) {
+  const { appointmentId, patientId, doctorId, tCase, openSelector } = args;
+
+  // Fetch all OPEN cases for this patient. Cheap query — patients rarely have
+  // more than a handful of open episodes.
+  const sp = new URLSearchParams({
+    patientId,
+    status: "OPEN",
+    limit: "50",
+  });
+  const res = await fetch(`/api/crm/cases?${sp.toString()}`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const { rows } = (await res.json()) as {
+    rows: { id: string; primaryDoctorId: string | null }[];
+  };
+
+  // Branch 1: zero open cases → create one and attach.
+  if (rows.length === 0) {
+    const today = new Date();
+    const ymd = today.toISOString().slice(0, 10);
+    const cRes = await fetch(`/api/crm/cases`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        patientId,
+        title: tCase("autoCreatedTitle", { date: ymd }),
+        primaryDoctorId: doctorId,
+      }),
+    });
+    if (!cRes.ok) throw new Error(`HTTP ${cRes.status}`);
+    const created = (await cRes.json()) as { id: string };
+    await attachAppointmentToCase(created.id, appointmentId);
+    return;
+  }
+
+  // Branch 2: exactly one match for this doctor → attach.
+  const sameDoctor = rows.filter((r) => r.primaryDoctorId === doctorId);
+  if (sameDoctor.length === 1) {
+    await attachAppointmentToCase(sameDoctor[0]!.id, appointmentId);
+    return;
+  }
+
+  // Branch 3: ambiguous → defer to user via selector dialog.
+  openSelector();
+}
+
+async function attachAppointmentToCase(
+  caseId: string,
+  appointmentId: string,
+) {
+  const res = await fetch(
+    `/api/crm/cases/${caseId}/attach-appointment`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointmentId }),
+    },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 export default NewAppointmentDialog;

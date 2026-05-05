@@ -330,7 +330,19 @@ export function CalendarViewInner({
         slotMinTime="08:00:00"
         slotMaxTime="21:00:00"
         slotDuration="00:15:00"
-        slotLabelInterval="01:00:00"
+        slotLabelInterval="00:15:00"
+        slotLabelContent={(arg) => {
+          const h = String(arg.date.getHours()).padStart(2, "0");
+          const m = arg.date.getMinutes();
+          if (m === 0) {
+            return <span className="mbk-slot-hour">{h}</span>;
+          }
+          return (
+            <span className={cn("mbk-slot-min", m === 30 && "mbk-slot-min-half")}>
+              :{String(m).padStart(2, "0")}
+            </span>
+          );
+        }}
         firstDay={1}
         locales={LOCALES}
         locale={locale === "uz" ? "uz" : "ru"}

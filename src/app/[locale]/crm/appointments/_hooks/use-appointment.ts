@@ -17,6 +17,14 @@ import type {
  * Shape returned by `GET /api/crm/appointments/[id]` — slightly richer than a
  * list row: patient object is the full record, not the short variant.
  */
+export type AppointmentCaseShort = {
+  id: string;
+  title: string;
+  status: "OPEN" | "RESOLVED" | "ABANDONED" | "TRANSFERRED";
+  primaryDoctorId: string | null;
+  openedAt: string;
+};
+
 export type AppointmentDetail = Omit<AppointmentRow, "patient"> & {
   patient: AppointmentPatientShort & {
     birthDate: string | null;
@@ -28,6 +36,10 @@ export type AppointmentDetail = Omit<AppointmentRow, "patient"> & {
   primaryService: AppointmentServiceShort | null;
   services: AppointmentServiceLineShort[];
   payments: AppointmentPaymentShort[];
+  medicalCaseId: string | null;
+  medicalCase: AppointmentCaseShort | null;
+  visitNumberInCase: number | null;
+  totalVisitsInCase: number | null;
 };
 
 export const appointmentKey = (id: string) => ["appointment", id] as const;

@@ -19,7 +19,10 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
-import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
+import {
+  recomputeAppointmentPrice,
+  recomputeCaseAppointments,
+} from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
@@ -285,9 +288,18 @@ export const POST = createApiHandler(
         // visit attached to a case at create time prices to 0 atomically with
         // its row insert. The caller pinned `priceFinal` only for the
         // case-less path; once a case is involved the policy decides.
+        //
+        // We reprice the WHOLE case (not just the new row) because a
+        // backdated insert can flip the chronological-first answer for an
+        // existing sibling. Without this, a previously-priced "first" stays
+        // at full price even though the newly inserted earlier appointment
+        // takes its place.
         const recomputed = body.medicalCaseId
           ? await recomputeAppointmentPrice(tx, appt.id)
           : null;
+        if (body.medicalCaseId) {
+          await recomputeCaseAppointments(tx, body.medicalCaseId);
+        }
         return { kind: "ok" as const, appt, recomputed };
         },
         { isolationLevel: "Serializable" },

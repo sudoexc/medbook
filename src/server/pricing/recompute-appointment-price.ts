@@ -202,12 +202,27 @@ export async function recomputeAppointmentPrice(
   // appointment-detail visitNumberInCase logic (date asc, createdAt asc) —
   // we use id asc here as a final tiebreaker because two appointments with
   // identical date+createdAt are technically possible after reschedules.
+  //
+  // CANCELLED / NO_SHOW siblings are excluded: they represent visits that
+  // never happened (no clinical work, no money changed hands), so they
+  // cannot serve as the free-repeat "first visit" anchor. If we counted
+  // them, cancelling a no-show first visit would silently keep all later
+  // visits at the discounted free-repeat price even though the patient is
+  // now paying for what is effectively their first real consultation.
+  // The appointment being repriced itself is exempted from that filter so
+  // it can still see itself as a candidate for "first".
   let isFirstInCase = true;
   let firstDate: Date | null = null;
   let daysFromFirst: number | null = null;
   if (appt.medicalCaseId) {
     const siblings = await client.appointment.findMany({
-      where: { medicalCaseId: appt.medicalCaseId },
+      where: {
+        medicalCaseId: appt.medicalCaseId,
+        OR: [
+          { id: appt.id },
+          { status: { notIn: ["CANCELLED", "NO_SHOW"] } },
+        ],
+      },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       select: { id: true, date: true },
     });
@@ -281,3 +296,38 @@ export async function recomputeAppointmentPrice(
     trace,
   };
 }
+
+/**
+ * Reprice every appointment in a case. The "first vs repeat" answer is
+ * derived from sibling state, so any change that can shift that answer for
+ * one appointment can shift it for every other appointment in the same
+ * case — and the rule is global to the case. Callers:
+ *
+ *   - POST /api/crm/appointments       — when the new appointment lands
+ *                                        in an existing case (it might be
+ *                                        chronologically earlier than the
+ *                                        previous first).
+ *   - PATCH /api/crm/appointments/[id] — when date or status changes shift
+ *                                        which sibling is first.
+ *   - DELETE /api/crm/appointments/[id]— cancellation removes a candidate
+ *                                        for first; remaining siblings may
+ *                                        now flip back to full price.
+ *
+ * Returns the per-appointment results so the caller can audit free_repeat
+ * decisions individually.
+ */
+export async function recomputeCaseAppointments(
+  client: PrismaLike,
+  caseId: string,
+): Promise<RecomputeResult[]> {
+  const ids = await client.appointment.findMany({
+    where: { medicalCaseId: caseId },
+    select: { id: true },
+  });
+  const results: RecomputeResult[] = [];
+  for (const { id } of ids) {
+    results.push(await recomputeAppointmentPrice(client, id));
+  }
+  return results;
+}
+

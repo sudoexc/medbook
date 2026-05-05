@@ -12,7 +12,10 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
-import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
+import {
+  recomputeAppointmentPrice,
+  recomputeCaseAppointments,
+} from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
@@ -232,6 +235,26 @@ export const PATCH = createApiHandler(
       body.serviceId !== undefined ||
       discountChanged;
 
+    // Status transitions that "destroy" a visit (CANCELLED / NO_SHOW) must
+    // re-evaluate every sibling in the same case: the row being killed can
+    // no longer serve as the free-repeat anchor, so the next-earliest active
+    // sibling becomes the new "first" and flips back to full price.
+    const statusKillsVisit =
+      body.status !== undefined &&
+      (body.status === "CANCELLED" || body.status === "NO_SHOW") &&
+      before.status !== body.status;
+    // Date changes can flip the chronological order of the case, so every
+    // sibling needs re-pricing too. Same for moving an appointment between
+    // cases via PATCH (the dedicated attach/detach routes handle that case
+    // for themselves; this branch covers callers who use PATCH directly).
+    const caseChanged =
+      body.medicalCaseId !== undefined &&
+      body.medicalCaseId !== before.medicalCaseId;
+    const siblingRepriceNeeded =
+      statusKillsVisit ||
+      (timeChanged && before.medicalCaseId !== null) ||
+      caseChanged;
+
     const txOut = await prisma.$transaction(async (tx) => {
       if (services !== undefined) {
         await tx.appointmentService.deleteMany({
@@ -257,14 +280,30 @@ export const PATCH = createApiHandler(
         where: { id },
         data: data as never,
       });
+      // Reprice the row itself first (idempotent — recomputeCaseAppointments
+      // below covers it again, but this keeps the audit-meta path simple).
       const recomputed = recomputeNeeded
         ? await recomputeAppointmentPrice(tx, id)
         : null;
+      // Now repropagate to every sibling whose "first vs repeat" answer
+      // could have flipped from this single change. Cover both old and new
+      // cases when the appointment moved between cases.
+      if (siblingRepriceNeeded) {
+        const targetCases = new Set<string>();
+        if (updated.medicalCaseId) targetCases.add(updated.medicalCaseId);
+        if (caseChanged && before.medicalCaseId) {
+          targetCases.add(before.medicalCaseId);
+        }
+        for (const cid of targetCases) {
+          await recomputeCaseAppointments(tx, cid);
+        }
+      }
       // Re-read so the response reflects price fields that recompute may
       // have rewritten.
-      const fresh = recomputed
-        ? await tx.appointment.findUniqueOrThrow({ where: { id } })
-        : updated;
+      const fresh =
+        recomputed || siblingRepriceNeeded
+          ? await tx.appointment.findUniqueOrThrow({ where: { id } })
+          : updated;
       return { after: fresh, recomputed };
     });
     const after = txOut.after;
@@ -409,13 +448,23 @@ export const DELETE = createApiHandler(
       Math.round((before.date.getTime() - Date.now()) / 60_000),
     );
 
-    const cancelled = await prisma.appointment.update({
-      where: { id },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-        cancelReason: cancelReason,
-      },
+    const cancelled = await prisma.$transaction(async (tx) => {
+      const row = await tx.appointment.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          cancelReason: cancelReason,
+        },
+      });
+      // Cancellation removes this visit as a candidate for the case's
+      // "first visit" anchor. Reprice every sibling so the next-earliest
+      // active visit flips back to full price (free-repeat now anchors on
+      // the new first).
+      if (row.medicalCaseId) {
+        await recomputeCaseAppointments(tx, row.medicalCaseId);
+      }
+      return row;
     });
     await audit(request, {
       action: "appointment.cancel",

@@ -170,7 +170,7 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
     patientId: string;
     appointmentId: string;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;
@@ -230,6 +230,26 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
         scheduledFor,
         status: "QUEUED",
       });
+      // Parallel INAPP mirror for TG-using patients — same rationale as
+      // the legacy 24h/5h/2h pass: free secondary touch in the Mini App.
+      if (
+        appt.patient.telegramId &&
+        channel !== "INAPP" &&
+        channel !== "VISIT" &&
+        channel !== "CALL"
+      ) {
+        toInsert.push({
+          clinicId: appt.clinicId,
+          patientId: appt.patientId,
+          appointmentId: appt.id,
+          templateId: tpl.id,
+          channel: "INAPP",
+          recipient: appt.patientId,
+          body,
+          scheduledFor,
+          status: "QUEUED",
+        });
+      }
     }
   }
 

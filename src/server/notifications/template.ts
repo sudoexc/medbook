@@ -153,6 +153,17 @@ export const ALLOWED_KEYS_BY_TRIGGER: Record<string, string[]> = {
     "clinic.phone",
     "clinic.address",
   ],
+  "appointment.reminder-5h": [
+    "patient.name",
+    "patient.firstName",
+    "appointment.date",
+    "appointment.time",
+    "appointment.doctor",
+    "appointment.service",
+    "clinic.name",
+    "clinic.phone",
+    "clinic.address",
+  ],
   "appointment.reminder-2h": [
     "patient.name",
     "patient.firstName",
@@ -195,6 +206,15 @@ export const ALLOWED_KEYS_BY_TRIGGER: Record<string, string[]> = {
     "appointment.doctor",
     "clinic.name",
     "clinic.phone",
+  ],
+  "case.repeat-due": [
+    "patient.name",
+    "patient.firstName",
+    "case.daysLeft",
+    "case.deadline",
+    "clinic.name",
+    "clinic.phone",
+    "clinic.address",
   ],
 };
 

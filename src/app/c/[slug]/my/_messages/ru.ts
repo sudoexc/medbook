@@ -27,6 +27,12 @@ export const ruDict = {
     upcomingHeader: "Ближайшая запись",
     noUpcoming: "Нет запланированных записей",
   },
+  inbox: {
+    header: "Уведомления",
+    markRead: "Прочитано",
+    dismiss: "Скрыть",
+    empty: "Нет новых уведомлений",
+  },
   lang: {
     picker: "Выберите язык",
     ru: "Русский",

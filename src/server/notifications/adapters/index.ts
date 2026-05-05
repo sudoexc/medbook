@@ -9,6 +9,8 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
+import type { InAppAdapter } from "./inapp";
+import { LocalInAppAdapter } from "./inapp";
 import type { SmsAdapter } from "./sms";
 import { LogOnlySmsAdapter } from "./sms-log-only";
 import { EskizSmsAdapter, type EskizConfig } from "./sms-eskiz-stub";
@@ -19,8 +21,9 @@ import { TelegramClinicAdapter } from "./tg-clinic";
 export type AdapterPair = {
   sms: SmsAdapter;
   tg: TgAdapter;
+  inapp: InAppAdapter;
   /** True if at least one real provider was picked. */
-  real: { sms: boolean; tg: boolean };
+  real: { sms: boolean; tg: boolean; inapp: boolean };
 };
 
 function pickSms(
@@ -93,15 +96,24 @@ export async function resolveAdapters(clinicId: string): Promise<AdapterPair> {
 
   const sms = pickSms(smsLabel, smsCfg);
   const tg = pickTg(clinicId, tgLabel, tgCfg, hasBotToken);
+  const inapp: InAppAdapter = new LocalInAppAdapter();
   return {
     sms,
     tg,
+    inapp,
     real: {
       sms: sms.name !== "log-only",
       tg: tg.name !== "log-only",
+      inapp: true,
     },
   };
 }
 
-export { LogOnlySmsAdapter, LogOnlyTgAdapter, EskizSmsAdapter, TelegramClinicAdapter };
-export type { SmsAdapter, TgAdapter };
+export {
+  LogOnlySmsAdapter,
+  LogOnlyTgAdapter,
+  EskizSmsAdapter,
+  TelegramClinicAdapter,
+  LocalInAppAdapter,
+};
+export type { SmsAdapter, TgAdapter, InAppAdapter };

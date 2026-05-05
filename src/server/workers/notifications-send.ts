@@ -50,6 +50,51 @@ async function deliver(job: DeliverJob): Promise<void> {
   if (send.status !== "QUEUED") return;
 
   const adapters = await resolveAdapters(send.clinicId);
+
+  // INAPP is a local DB write — no rate limit, no external cost. Skip the
+  // limiter check and inline the "send" so the row flips straight to
+  // DELIVERED. The Mini App polls these rows from the inbox endpoint.
+  if (send.channel === "INAPP") {
+    try {
+      const res = await adapters.inapp.send(send.id, send.body);
+      const now = new Date();
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.update({
+          where: { id: send.id },
+          data: {
+            status: "DELIVERED",
+            sentAt: now,
+            deliveredAt: now,
+            externalId: res.inboxId,
+            retryCount: { increment: 1 },
+          },
+        }),
+      );
+      publishEventSafe(send.clinicId, {
+        type: "notification.sent",
+        payload: {
+          sendId: send.id,
+          channel: "INAPP" as unknown as "SMS" | "TG",
+          patientId: send.patientId ?? null,
+          templateKey: send.templateId ?? undefined,
+        },
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.update({
+          where: { id: send.id },
+          data: {
+            status: "FAILED",
+            failedReason: message.slice(0, 500),
+            retryCount: { increment: 1 },
+          },
+        }),
+      );
+    }
+    return;
+  }
+
   const limiter = getRateLimiter();
   const ok = await limiter.check(send.patientId, send.channel as "SMS" | "TG");
   if (!ok) {

@@ -79,6 +79,7 @@ enum CommunicationChannel {
   CALL
   EMAIL
   VISIT
+  INAPP
 }
 
 enum CommunicationDirection {
@@ -143,6 +144,7 @@ enum NotificationTrigger {
   APPOINTMENT_COMPLETED
   PATIENT_BIRTHDAY
   PATIENT_INACTIVE_DAYS
+  CASE_REPEAT_DUE
   CRON
 }
 
@@ -790,7 +792,8 @@ model MedicalCase {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  appointments Appointment[]
+  appointments      Appointment[]
+  notificationSends NotificationSend[]
 
   @@index([clinicId, patientId, status])
   @@index([clinicId, status, openedAt])
@@ -981,6 +984,8 @@ model NotificationSend {
   patientId     String
   patient       Patient               @relation(fields: [patientId], references: [id])
   appointmentId String?
+  caseId        String?
+  case          MedicalCase?          @relation(fields: [caseId], references: [id], onDelete: SetNull)
   channel       CommunicationChannel
   recipient     String
   body          String                @db.Text
@@ -997,6 +1002,8 @@ model NotificationSend {
   @@index([clinicId, status, scheduledFor])
   @@index([clinicId, patientId, createdAt])
   @@index([clinicId, campaignId])
+  @@index([clinicId, caseId, templateId])
+  @@index([patientId, channel, status, readAt])
 }
 
 model Campaign {

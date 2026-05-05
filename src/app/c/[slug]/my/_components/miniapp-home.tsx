@@ -15,6 +15,7 @@ import {
   formatDateISO,
   formatTimeISO,
 } from "./mini-ui";
+import { InboxBanner } from "./inbox-banner";
 import { LanguagePickerScreen } from "./language-picker-screen";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { OpenInTelegramFallback } from "./open-in-telegram-fallback";
@@ -102,6 +103,7 @@ function HomeContent({ slug }: { slug: string }) {
           {t.home.subtitle}
         </p>
       </div>
+      <InboxBanner />
       <div className="ma-fade-up" style={{ animationDelay: "60ms" }}>
         <MSection title={t.home.upcomingHeader}>
           {upcoming.isLoading ? (

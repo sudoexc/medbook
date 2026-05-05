@@ -27,6 +27,12 @@ export const uzDict = {
     upcomingHeader: "Yaqinlashayotgan yozuv",
     noUpcoming: "Hozircha rejalashtirilgan yozuvlar yo‘q",
   },
+  inbox: {
+    header: "Bildirishnomalar",
+    markRead: "O‘qildi",
+    dismiss: "Yashirish",
+    empty: "Yangi bildirishnomalar yo‘q",
+  },
   lang: {
     picker: "Tilni tanlang",
     ru: "Rus tili",

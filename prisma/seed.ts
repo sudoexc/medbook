@@ -86,12 +86,20 @@ const SERVICE_TEMPLATES = [
 ];
 
 const TEMPLATE_SEEDS = [
-  // 5 reminders
+  // 6 reminders (24h / 5h / 2h cascade per shef Z. spec — see docs/TZ.md §6.9)
   { key: "reminder.24h", nameRu: "Напоминание за 24 часа", nameUz: "24 soat oldin eslatma", category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -1440 } },
+  { key: "reminder.5h",  nameRu: "Напоминание за 5 часов", nameUz: "5 soat oldin eslatma",  category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -300 },
+    bodyRu: "Здравствуйте, {{patient.firstName}}! Напоминаем: сегодня в {{appointment.time}} у вас приём — {{appointment.doctor}}. Адрес: {{clinic.address}}. Тел: {{clinic.phone}}.",
+    bodyUz: "Assalomu alaykum, {{patient.firstName}}! Eslatma: bugun soat {{appointment.time}} da qabulga yoziluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tel: {{clinic.phone}}." },
   { key: "reminder.2h",  nameRu: "Напоминание за 2 часа",  nameUz: "2 soat oldin eslatma",  category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -120 } },
   { key: "reminder.confirm", nameRu: "Подтверждение записи", nameUz: "Yozuv tasdiqlash", category: "REMINDER" as const, trigger: "APPOINTMENT_CREATED" as const, triggerConfig: null },
   { key: "reminder.missed", nameRu: "Не пришли на приём", nameUz: "Qabulga kelmadingiz", category: "REMINDER" as const, trigger: "APPOINTMENT_MISSED" as const, triggerConfig: { offsetMin: 30 } },
   { key: "reminder.feedback", nameRu: "Оставьте отзыв", nameUz: "Fikr qoldiring", category: "REMINDER" as const, trigger: "APPOINTMENT_COMPLETED" as const, triggerConfig: { offsetMin: 60 } },
+  // Repeat-visit reminder (MedicalCase free-repeat window) — fires N days
+  // before the free-repeat policy expires for the case's primary service.
+  { key: "case.repeat-due", nameRu: "Бесплатный повторный визит", nameUz: "Bepul takroriy qabul", category: "REMINDER" as const, trigger: "CASE_REPEAT_DUE" as const, triggerConfig: { daysBefore: 2 },
+    bodyRu: "Здравствуйте, {{patient.firstName}}! У вас осталось {{case.daysLeft}} дн. на бесплатный повторный приём в {{clinic.name}}. Запишитесь до {{case.deadline}}. Тел: {{clinic.phone}}.",
+    bodyUz: "Assalomu alaykum, {{patient.firstName}}! {{clinic.name}}da bepul takroriy qabulga {{case.daysLeft}} kun qoldi. {{case.deadline}} gacha yozilib oling. Tel: {{clinic.phone}}." },
   // 3 marketing
   { key: "marketing.birthday", nameRu: "С днём рождения", nameUz: "Tug'ilgan kuningiz bilan", category: "MARKETING" as const, trigger: "PATIENT_BIRTHDAY" as const, triggerConfig: null },
   { key: "marketing.dormant", nameRu: "Давно не были", nameUz: "Uzoqdan ko'rinmadingiz", category: "MARKETING" as const, trigger: "PATIENT_INACTIVE_DAYS" as const, triggerConfig: { days: 180 } },
@@ -523,8 +531,9 @@ async function main() {
 
     // ── 10 NotificationTemplates ─────────────────────────────────────
     for (const t of TEMPLATE_SEEDS) {
-      const bodyRu = `Здравствуйте, {{patient.fullName}}! ${t.nameRu}.`;
-      const bodyUz = `Assalomu alaykum, {{patient.fullName}}! ${t.nameUz}.`;
+      const tWithBody = t as typeof t & { bodyRu?: string; bodyUz?: string };
+      const bodyRu = tWithBody.bodyRu ?? `Здравствуйте, {{patient.fullName}}! ${t.nameRu}.`;
+      const bodyUz = tWithBody.bodyUz ?? `Assalomu alaykum, {{patient.fullName}}! ${t.nameUz}.`;
       await prisma.notificationTemplate.upsert({
         where: { clinicId_key: { clinicId: clinic.id, key: t.key } },
         update: {

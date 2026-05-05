@@ -30,11 +30,13 @@ import { render } from "./template";
 export const TRIGGER_KEYS = [
   "appointment.created",
   "appointment.reminder-24h",
+  "appointment.reminder-5h",
   "appointment.reminder-2h",
   "appointment.cancelled",
   "birthday",
   "no-show",
   "payment.due",
+  "case.repeat-due",
 ] as const;
 
 export type TriggerKey = (typeof TRIGGER_KEYS)[number];
@@ -205,7 +207,7 @@ function buildContext(
 type FindTemplateResult = {
   templateId: string;
   body: string;
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 } | null;
 
 /**
@@ -227,6 +229,11 @@ function whereForTrigger(
         trigger: "APPOINTMENT_BEFORE",
         triggerConfig: { path: ["offsetMin"], equals: -1440 },
       };
+    case "appointment.reminder-5h":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -300 },
+      };
     case "appointment.reminder-2h":
       return {
         trigger: "APPOINTMENT_BEFORE",
@@ -242,6 +249,8 @@ function whereForTrigger(
     case "payment.due":
       // No dedicated enum — fall back to slug match.
       return { key: "payment.due" };
+    case "case.repeat-due":
+      return { trigger: "CASE_REPEAT_DUE" };
     default:
       return null;
   }
@@ -275,7 +284,7 @@ async function findTemplateFor(
     body: lang === "uz" ? row.bodyUz : row.bodyRu,
     channel: row.channel as FindTemplateResult extends null
       ? never
-      : "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT",
+      : "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
   };
 }
 
@@ -305,7 +314,7 @@ async function alreadyScheduled(params: {
 }
 
 function pickRecipient(
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT",
+  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
   patient: { phone: string; telegramId: string | null },
 ): string | null {
   if (channel === "SMS") return patient.phone;
@@ -319,7 +328,7 @@ async function createSend(params: {
   patientId: string;
   appointmentId?: string | null;
   templateId: string;
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   recipient: string;
   body: string;
   scheduledFor: Date;
@@ -432,7 +441,7 @@ async function materializeForAppointmentsBulk(
     patientId: string;
     appointmentId: string;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;
@@ -475,6 +484,29 @@ async function materializeForAppointmentsBulk(
       scheduledFor: job.scheduledFor,
       status: "QUEUED",
     });
+    // Mirror to INAPP channel for TG-using patients. The Mini App banner
+    // is a "second touch" that costs nothing (local DB write only) and
+    // ensures the reminder is visible even if the patient missed the TG
+    // message. Non-TG patients can't authenticate to the Mini App, so
+    // an INAPP row would be invisible — we skip them.
+    if (
+      appt.patient.telegramId &&
+      tpl.channel !== "INAPP" &&
+      tpl.channel !== "VISIT" &&
+      tpl.channel !== "CALL"
+    ) {
+      toInsert.push({
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        appointmentId: appt.id,
+        templateId: tpl.templateId,
+        channel: "INAPP",
+        recipient: appt.patientId,
+        body,
+        scheduledFor: job.scheduledFor,
+        status: "QUEUED",
+      });
+    }
   }
 
   if (toInsert.length > 0) {
@@ -519,6 +551,24 @@ async function materializeForAppointment(
     body,
     scheduledFor,
   });
+  // Mirror to INAPP for TG-using patients. See bulk path for rationale.
+  if (
+    appt.patient.telegramId &&
+    tpl.channel !== "INAPP" &&
+    tpl.channel !== "VISIT" &&
+    tpl.channel !== "CALL"
+  ) {
+    await createSend({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      appointmentId: appt.id,
+      templateId: tpl.templateId,
+      channel: "INAPP",
+      recipient: appt.patientId,
+      body,
+      scheduledFor,
+    });
+  }
   return { created: 1, skipped: 0 };
 }
 
@@ -552,7 +602,7 @@ export async function onAppointmentNoShow(
   await materializeForAppointment(appointmentId, "no-show", new Date());
 }
 
-/** Schedule 24h and 2h reminders for a just-created/updated appointment. */
+/** Schedule the 24h / 5h / 2h reminder cascade for an appointment. */
 export async function scheduleAppointmentReminders(
   appointmentId: string,
 ): Promise<void> {
@@ -565,6 +615,13 @@ export async function scheduleAppointmentReminders(
       appointmentId,
       "appointment.reminder-24h",
       new Date(start - 24 * 60 * 60 * 1000),
+    );
+  }
+  if (start - 5 * 60 * 60 * 1000 > now) {
+    await materializeForAppointment(
+      appointmentId,
+      "appointment.reminder-5h",
+      new Date(start - 5 * 60 * 60 * 1000),
     );
   }
   if (start - 2 * 60 * 60 * 1000 > now) {
@@ -582,9 +639,11 @@ export async function scheduleAppointmentReminders(
  */
 export async function runScheduledTriggers(): Promise<{
   reminders24h: number;
+  reminders5h: number;
   reminders2h: number;
   birthdays: number;
   paymentsDue: number;
+  caseRepeats: number;
 }> {
   const now = new Date();
   // Select appointments in [now, now+25h] that are still BOOKED and lack
@@ -603,9 +662,19 @@ export async function runScheduledTriggers(): Promise<{
     }),
   );
 
-  // Two windows: appointments 23-24h out get 24h reminder, 1-2h out get 2h.
-  // Bucket once, then materialize each bucket in a single bulk pass.
+  // Three windows of the reminder cascade. Each appointment whose distance
+  // to start falls inside a band gets exactly one materialization for that
+  // band per tick. Idempotency is enforced via (appointmentId, templateId)
+  // in materializeForAppointmentsBulk, so a second tick that lands in the
+  // same band is a no-op.
+  //
+  // Bands are chosen so a typical 60-second tick comfortably covers each
+  // one without missing or duplicating:
+  //   - 23–24h before  → 24h reminder
+  //   -  4–5h  before  → 5h  reminder
+  //   -  1–2h  before  → 2h  reminder
   const jobs24h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  const jobs5h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   const jobs2h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const start = r.date.getTime();
@@ -616,6 +685,12 @@ export async function runScheduledTriggers(): Promise<{
         scheduledFor: new Date(start - 24 * 60 * 60 * 1000),
       });
     }
+    if (until > 0 && until <= 5 * 60 * 60 * 1000 && until > 4 * 60 * 60 * 1000) {
+      jobs5h.push({
+        appointmentId: r.id,
+        scheduledFor: new Date(start - 5 * 60 * 60 * 1000),
+      });
+    }
     if (until > 0 && until <= 2 * 60 * 60 * 1000 && until > 60 * 60 * 1000) {
       jobs2h.push({
         appointmentId: r.id,
@@ -623,16 +698,26 @@ export async function runScheduledTriggers(): Promise<{
       });
     }
   }
-  const [res24, res2] = await Promise.all([
+  const [res24, res5, res2] = await Promise.all([
     materializeForAppointmentsBulk(jobs24h, "appointment.reminder-24h"),
+    materializeForAppointmentsBulk(jobs5h, "appointment.reminder-5h"),
     materializeForAppointmentsBulk(jobs2h, "appointment.reminder-2h"),
   ]);
   const reminders24h = res24.created;
+  const reminders5h = res5.created;
   const reminders2h = res2.created;
 
   const birthdays = await runBirthdays();
   const paymentsDue = await runPaymentsDue();
-  return { reminders24h, reminders2h, birthdays, paymentsDue };
+  const caseRepeats = await runCaseRepeatReminders();
+  return {
+    reminders24h,
+    reminders5h,
+    reminders2h,
+    birthdays,
+    paymentsDue,
+    caseRepeats,
+  };
 }
 
 async function runBirthdays(): Promise<number> {
@@ -707,7 +792,7 @@ async function runBirthdays(): Promise<number> {
     patientId: string;
     appointmentId: null;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;
@@ -787,6 +872,248 @@ async function runPaymentsDue(): Promise<number> {
   }
   const res = await materializeForAppointmentsBulk(jobs, "payment.due");
   return res.created;
+}
+
+/**
+ * Case-repeat reminder — for every OPEN MedicalCase whose first appointment
+ * was on a service with `freeRepeatDays > 0`, fire a reminder ~daysBefore
+ * days before the free-repeat window closes, IF the patient hasn't already
+ * booked a follow-up.
+ *
+ * Algorithm per tick:
+ *   1. Load every OPEN case with at least one non-CANCELLED/NO_SHOW visit.
+ *   2. For each case, find the chronological first visit (date asc) and
+ *      pull its primary service's `freeRepeatDays`. If null → skip.
+ *   3. Compute deadline = firstVisit.date + freeRepeatDays * 24h.
+ *      Reminder fires when `now` is inside
+ *      `[deadline - daysBefore * 24h, deadline)`.
+ *   4. Skip if the case has any future BOOKED/WAITING appointment after
+ *      the first visit — the patient is already coming back.
+ *   5. Skip if a NotificationSend with this (caseId, templateId) already
+ *      exists in any non-FAILED status (idempotency).
+ *   6. Materialize the row (TG/SMS via channel resolver + parallel INAPP
+ *      for TG-using patients).
+ *
+ * `daysBefore` defaults to 2; admins can override via the template's
+ * `triggerConfig.daysBefore` in /crm/settings/notifications.
+ */
+async function runCaseRepeatReminders(): Promise<number> {
+  type TplRow = {
+    id: string;
+    clinicId: string;
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    bodyRu: string;
+    bodyUz: string;
+    triggerConfig: unknown;
+  };
+  const templates = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationTemplate.findMany({
+      where: { trigger: "CASE_REPEAT_DUE", isActive: true },
+      select: {
+        id: true,
+        clinicId: true,
+        channel: true,
+        bodyRu: true,
+        bodyUz: true,
+        triggerConfig: true,
+      },
+    }),
+  )) as TplRow[];
+  if (templates.length === 0) return 0;
+
+  const tplByClinic = new Map<string, TplRow>();
+  for (const t of templates) {
+    if (!tplByClinic.has(t.clinicId)) tplByClinic.set(t.clinicId, t);
+  }
+  const clinicIds = Array.from(tplByClinic.keys());
+
+  // Load every OPEN case in those clinics. We'll filter further in JS — the
+  // population is small (cases per clinic ~ patient count) and we save a
+  // multi-hop join on `Service.freeRepeatDays`.
+  type CaseRow = {
+    id: string;
+    clinicId: string;
+    patientId: string;
+    patient: {
+      fullName: string;
+      phone: string;
+      telegramId: string | null;
+      preferredChannel: string;
+    };
+    appointments: Array<{
+      id: string;
+      date: Date;
+      status: string;
+      primaryService: { freeRepeatDays: number | null } | null;
+    }>;
+  };
+  const cases = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.medicalCase.findMany({
+      where: { clinicId: { in: clinicIds }, status: "OPEN" },
+      select: {
+        id: true,
+        clinicId: true,
+        patientId: true,
+        patient: {
+          select: {
+            fullName: true,
+            phone: true,
+            telegramId: true,
+            preferredChannel: true,
+          },
+        },
+        appointments: {
+          orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            primaryService: { select: { freeRepeatDays: true } },
+          },
+        },
+      },
+      take: 2000,
+    }),
+  )) as CaseRow[];
+
+  if (cases.length === 0) return 0;
+
+  // Idempotency: pull every (caseId, templateId) pair already on file in
+  // one query. The new (clinicId, caseId, templateId) index makes this an
+  // ix-only scan.
+  const tplIds = templates.map((t) => t.id);
+  const caseIds = cases.map((c) => c.id);
+  const existing = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.findMany({
+      where: {
+        caseId: { in: caseIds },
+        templateId: { in: tplIds },
+        status: { in: ["QUEUED", "SENT", "DELIVERED", "READ"] },
+      },
+      select: { caseId: true, templateId: true },
+    }),
+  )) as Array<{ caseId: string | null; templateId: string | null }>;
+  const existingSet = new Set(
+    existing.map((e) => `${e.caseId}|${e.templateId}`),
+  );
+
+  const now = new Date();
+  type Insert = {
+    clinicId: string;
+    patientId: string;
+    appointmentId: string | null;
+    caseId: string;
+    templateId: string;
+    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    recipient: string;
+    body: string;
+    scheduledFor: Date;
+    status: "QUEUED";
+  };
+  const toInsert: Insert[] = [];
+
+  for (const kase of cases) {
+    const tpl = tplByClinic.get(kase.clinicId);
+    if (!tpl) continue;
+    if (existingSet.has(`${kase.id}|${tpl.id}`)) continue;
+
+    // First non-cancelled/no-show appointment determines the window anchor.
+    const firstVisit = kase.appointments.find(
+      (a) => a.status !== "CANCELLED" && a.status !== "NO_SHOW",
+    );
+    if (!firstVisit) continue;
+    const days = firstVisit.primaryService?.freeRepeatDays ?? null;
+    if (!days || days <= 0) continue;
+
+    // Skip if patient already has a future appointment in this case (BOOKED
+    // or WAITING) — they're coming back, no nudge needed.
+    const hasFutureBooked = kase.appointments.some(
+      (a) =>
+        a.id !== firstVisit.id &&
+        (a.status === "BOOKED" || a.status === "WAITING") &&
+        a.date.getTime() > firstVisit.date.getTime(),
+    );
+    if (hasFutureBooked) continue;
+
+    const cfg =
+      tpl.triggerConfig && typeof tpl.triggerConfig === "object"
+        ? (tpl.triggerConfig as { daysBefore?: number })
+        : {};
+    const daysBefore =
+      typeof cfg.daysBefore === "number" && cfg.daysBefore > 0
+        ? cfg.daysBefore
+        : 2;
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const deadline = firstVisit.date.getTime() + days * dayMs;
+    const fireFrom = deadline - daysBefore * dayMs;
+    if (now.getTime() < fireFrom) continue;
+    if (now.getTime() >= deadline) continue; // window already closed
+
+    const recipient = pickRecipient(tpl.channel, kase.patient);
+    if (!recipient) continue;
+
+    const daysLeft = Math.max(
+      1,
+      Math.ceil((deadline - now.getTime()) / dayMs),
+    );
+    const body = render(tpl.bodyRu, {
+      patient: {
+        name: kase.patient.fullName,
+        firstName: firstName(kase.patient.fullName),
+        phone: kase.patient.phone,
+      },
+      case: {
+        daysLeft: String(daysLeft),
+        deadline: formatDate(new Date(deadline)),
+      },
+      clinic: { name: "", phone: "", address: "" },
+    } as unknown as Record<string, unknown>);
+
+    toInsert.push({
+      clinicId: kase.clinicId,
+      patientId: kase.patientId,
+      appointmentId: firstVisit.id,
+      caseId: kase.id,
+      templateId: tpl.id,
+      channel: tpl.channel,
+      recipient,
+      body,
+      scheduledFor: now,
+      status: "QUEUED",
+    });
+
+    // Mirror to INAPP for TG-using patients (same rationale as appointment
+    // reminders — banner is a free secondary touch).
+    if (
+      kase.patient.telegramId &&
+      tpl.channel !== "INAPP" &&
+      tpl.channel !== "VISIT" &&
+      tpl.channel !== "CALL"
+    ) {
+      toInsert.push({
+        clinicId: kase.clinicId,
+        patientId: kase.patientId,
+        appointmentId: firstVisit.id,
+        caseId: kase.id,
+        templateId: tpl.id,
+        channel: "INAPP",
+        recipient: kase.patientId,
+        body,
+        scheduledFor: now,
+        status: "QUEUED",
+      });
+    }
+  }
+
+  if (toInsert.length === 0) return 0;
+  await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.createMany({
+      data: toInsert as never,
+      skipDuplicates: true,
+    }),
+  );
+  return toInsert.length;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

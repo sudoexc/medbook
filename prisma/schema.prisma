@@ -197,6 +197,13 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum CaseStatus {
+  OPEN
+  RESOLVED
+  ABANDONED
+  TRANSFERRED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,6 +261,7 @@ model Clinic {
   appointmentServices   AppointmentService[]
   branches              Branch[]
   subscription          Subscription?
+  medicalCases          MedicalCase[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -495,6 +503,7 @@ model Doctor {
   timeOffs     DoctorTimeOff[]
   appointments Appointment[]
   leads        Lead[]
+  primaryCases MedicalCase[]
 
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
@@ -516,6 +525,10 @@ model Service {
   category    String?
   durationMin Int      @default(30)
   priceBase   Int
+  // Free-repeat policy: when set, the N-th appointment in the same MedicalCase
+  // within `freeRepeatDays` of the case's first appointment is priced at 0.
+  // null = no free-repeat policy. Doctor-level overrides may be added later.
+  freeRepeatDays Int?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -649,6 +662,7 @@ model Patient {
   onlineRequests OnlineRequest[]
   reviews        Review[]
   leads          Lead[]
+  cases          MedicalCase[]
 
   @@unique([clinicId, phoneNormalized])
   @@index([clinicId, fullName])
@@ -689,6 +703,12 @@ model Appointment {
   cancelledAt  DateTime?
   cancelReason String?
 
+  // Optional grouping into a MedicalCase (episode of care). Nullable —
+  // appointments may be one-off without a case. onDelete: SetNull keeps
+  // the appointment row alive if its case is deleted.
+  medicalCaseId String?
+  medicalCase   MedicalCase? @relation(fields: [medicalCaseId], references: [id], onDelete: SetNull)
+
   channel ChannelType @default(WALKIN)
   leadId  String?     @unique
   lead    Lead?       @relation(fields: [leadId], references: [id])
@@ -720,6 +740,7 @@ model Appointment {
   @@index([clinicId, endDate, cabinetId])
   @@index([clinicId, createdAt])
   @@index([clinicId, branchId])
+  @@index([clinicId, medicalCaseId])
 }
 
 model AppointmentService {
@@ -735,6 +756,45 @@ model AppointmentService {
   @@id([appointmentId, serviceId])
   @@index([clinicId, appointmentId])
   @@index([serviceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MedicalCase — an episode of care that groups 1..N appointments around a
+// single complaint/issue. Multiple parallel cases per patient are normal
+// (e.g., back pain + pregnancy = two separate cases). Visit number within a
+// case is implicit by ORDER BY appointment.startAt. Appointments may exist
+// without a case (one-off visits) — Appointment.medicalCaseId is nullable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MedicalCase {
+  id               String     @id @default(cuid())
+  clinicId         String
+  clinic           Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId        String
+  patient          Patient    @relation(fields: [patientId], references: [id])
+  // Primary doctor responsible for the case. Nullable — a case may be
+  // multi-doctor or unassigned at creation. SetNull on doctor delete so
+  // the case is preserved.
+  primaryDoctorId  String?
+  primaryDoctor    Doctor?    @relation(fields: [primaryDoctorId], references: [id], onDelete: SetNull)
+  title            String
+  status           CaseStatus @default(OPEN)
+  primaryComplaint String?    @db.Text
+  diagnosisText    String?    @db.Text
+  // Reserved for ICD-10 (or local ICD-equivalent) — schema-only, no UI yet.
+  diagnosisCode    String?
+  notes            String?    @db.Text
+  openedAt         DateTime   @default(now())
+  closedAt         DateTime?
+  closedReason     String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  appointments Appointment[]
+
+  @@index([clinicId, patientId, status])
+  @@index([clinicId, status, openedAt])
+  @@index([clinicId, primaryDoctorId, status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -328,30 +328,46 @@ async function main() {
       patientsNew++;
     }
 
-    // Idempotent: only create appointments if this demo patient has none yet.
-    const existingAppts = await prisma.appointment.count({
-      where: { clinicId: clinic.id, patientId: patient.id },
-    });
-    if (existingAppts > 0) continue;
+    // Idempotent per-kind: each demo patient should end up with ≥1 past
+    // COMPLETED + ≥1 future BOOKED. Re-runs backfill whichever side is missing.
+    const [existingPast, existingFuture] = await Promise.all([
+      prisma.appointment.count({
+        where: { clinicId: clinic.id, patientId: patient.id, date: { lt: now } },
+      }),
+      prisma.appointment.count({
+        where: { clinicId: clinic.id, patientId: patient.id, date: { gte: now } },
+      }),
+    ]);
 
-    const doctor = doctors[i % doctors.length];
-    const cabinet = cabinets[i % cabinets.length];
-    const service = services[i % services.length];
-
-    const slots: Array<{
-      dayOffset: number;
-      hour: number;
+    const targets: Array<{
+      kind: "past" | "future";
       status: "COMPLETED" | "BOOKED";
-    }> = [
-      { dayOffset: -((i % 14) + 1), hour: 9 + (i % 8), status: "COMPLETED" },
-      { dayOffset: (i % 7) + 1, hour: 10 + (i % 7), status: "BOOKED" },
-    ];
+    }> = [];
+    if (existingPast === 0)
+      targets.push({ kind: "past", status: "COMPLETED" });
+    if (existingFuture === 0)
+      targets.push({ kind: "future", status: "BOOKED" });
+    if (targets.length === 0) continue;
 
-    for (const slot of slots) {
-      const date = atHour(addDays(now, slot.dayOffset), slot.hour);
-      const duration = service.durationMin;
-      const endDate = new Date(date.getTime() + duration * 60_000);
-      try {
+    for (const target of targets) {
+      const MAX_RETRIES = 12;
+      let placed = false;
+      for (let attempt = 0; attempt < MAX_RETRIES && !placed; attempt++) {
+        const doctor = pick(doctors);
+        const cabinet = pick(cabinets);
+        const service = pick(services);
+        // Past: -30..-1 days; Future: +1..+30 days. Hour 9..17, minute 0/15/30/45.
+        const dayOffset =
+          target.kind === "past"
+            ? -1 - Math.floor(Math.random() * 30)
+            : 1 + Math.floor(Math.random() * 30);
+        const hour = 9 + Math.floor(Math.random() * 9);
+        const minute = pick([0, 15, 30, 45]);
+        const date = atHour(addDays(now, dayOffset), hour, minute);
+        const duration = service.durationMin;
+        const endDate = new Date(date.getTime() + duration * 60_000);
+        const slot = { status: target.status };
+        try {
         const appt = await prisma.appointment.create({
           data: {
             clinicId: clinic.id,
@@ -398,10 +414,16 @@ async function main() {
           });
           paymentsNew++;
         }
-      } catch (e: any) {
-        console.warn(
-          `  [skip appt] patient=${patient.id} slot=${slot.dayOffset}d/${slot.hour}h: ${e.message}`,
-        );
+        placed = true;
+        } catch (e: any) {
+          // Slot collision (Appointment_doctor_no_overlap) — try a different
+          // random slot. Log only on final failure.
+          if (attempt === MAX_RETRIES - 1) {
+            console.warn(
+              `  [skip ${target.kind}] patient=${patient.id}: ${e.message}`,
+            );
+          }
+        }
       }
     }
   }

@@ -294,7 +294,7 @@ async function main() {
     `  found ${doctors.length} doctors / ${services.length} services / ${cabinets.length} cabinets`,
   );
 
-  const DEMO_COUNT = 30;
+  const DEMO_COUNT = 90;
   let patientsNew = 0;
   let apptsNew = 0;
   let paymentsNew = 0;

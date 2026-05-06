@@ -270,10 +270,11 @@ async function main() {
   console.log(`✔ templates: +${tplCreated} created, ${tplRefreshed} refreshed\n`);
 
   // ── Phase 2: Demo patients + appointments ───────────────────────────────
+  // Branch is optional on prod — existing 448 appts have branchId=null, so
+  // we follow the same pattern. If a default branch happens to exist, use it.
   const branch = await prisma.branch.findFirst({
     where: { clinicId: clinic.id, isDefault: true, isActive: true },
   });
-  if (!branch) throw new Error("[seed] no default active branch");
 
   const doctors = await prisma.doctor.findMany({
     where: { clinicId: clinic.id, isActive: true },
@@ -354,7 +355,7 @@ async function main() {
         const appt = await prisma.appointment.create({
           data: {
             clinicId: clinic.id,
-            branchId: branch.id,
+            branchId: branch?.id ?? null,
             patientId: patient.id,
             doctorId: doctor.id,
             cabinetId: cabinet.id,

@@ -294,7 +294,7 @@ async function main() {
     `  found ${doctors.length} doctors / ${services.length} services / ${cabinets.length} cabinets`,
   );
 
-  const DEMO_COUNT = 270;
+  const DEMO_COUNT = 540;
   let patientsNew = 0;
   let apptsNew = 0;
   let paymentsNew = 0;
@@ -356,11 +356,12 @@ async function main() {
         const doctor = pick(doctors);
         const cabinet = pick(cabinets);
         const service = pick(services);
-        // Past: -30..-1 days; Future: +1..+30 days. Hour 9..17, minute 0/15/30/45.
+        // Past: -30..-1 days; Future: 0..+7 days (today included, denser dashboards).
+        // Past hour 9..17, future hour biased to current/upcoming hours of today.
         const dayOffset =
           target.kind === "past"
             ? -1 - Math.floor(Math.random() * 30)
-            : 1 + Math.floor(Math.random() * 30);
+            : Math.floor(Math.random() * 8);
         const hour = 9 + Math.floor(Math.random() * 9);
         const minute = pick([0, 15, 30, 45]);
         const date = atHour(addDays(now, dayOffset), hour, minute);

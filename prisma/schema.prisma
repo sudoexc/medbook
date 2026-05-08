@@ -605,6 +605,13 @@ model User {
   totpEnabledAt        DateTime?
   recoveryCodesHash    String[]
   lastSessionRotatedAt DateTime?
+  // Phase 17 Wave 2 hardening — server-side pinning of an in-flight TOTP
+  // enrolment. /enroll writes (pendingTotpSecret, pendingTotpExpiresAt);
+  // /verify must match against this row instead of trusting the client to
+  // echo back the secret. TTL is short (10 min) and the fields are wiped on
+  // successful verify or by the next /enroll call.
+  pendingTotpSecret      String?
+  pendingTotpExpiresAt   DateTime?
 
   doctor              Doctor?
   accounts            Account[]

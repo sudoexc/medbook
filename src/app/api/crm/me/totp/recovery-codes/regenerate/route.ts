@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rate-limit";
 import { runWithTenant } from "@/lib/tenant-context";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
@@ -29,6 +30,10 @@ const Schema = z.object({
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
+
+  if (!rateLimit(`totp-regen:${session.user.id}`, 5, 15 * 60 * 1000)) {
+    return err("RateLimited", 429);
+  }
 
   let parsed;
   try {

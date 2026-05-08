@@ -13,10 +13,12 @@ import { z } from "zod";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rate-limit";
 import { runWithTenant } from "@/lib/tenant-context";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err } from "@/server/http";
+import { isMandatory2faRole } from "@/server/auth/security-policy";
 
 const Schema = z.object({
   password: z.string().min(1).max(200),
@@ -25,6 +27,18 @@ const Schema = z.object({
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
   if (!session?.user) return err("Unauthorized", 401);
+
+  if (!rateLimit(`totp-disable:${session.user.id}`, 5, 15 * 60 * 1000)) {
+    return err("RateLimited", 429);
+  }
+
+  // Defense in depth: the proxy already redirects mandatory-2FA users
+  // back to /crm/me/security after disable, but blocking here means a
+  // narrow window without 2FA never opens for those roles in the first
+  // place. UI hides the button; this stops a hand-crafted POST.
+  if (isMandatory2faRole(session.user.role)) {
+    return err("mandatory_role", 403);
+  }
 
   let parsed;
   try {

@@ -97,15 +97,22 @@ describe("validate", () => {
 });
 
 describe("ALLOWED_KEYS_BY_TRIGGER", () => {
-  it("covers all 7 required triggers", () => {
+  it("covers all 14 triggers (incl. Phase 16 Wave 3 medication + referral)", () => {
     const expected = [
       "appointment.created",
       "appointment.reminder-24h",
+      "appointment.reminder-5h",
       "appointment.reminder-2h",
       "appointment.cancelled",
       "birthday",
       "no-show",
       "payment.due",
+      "case.repeat-due",
+      "patient.reactivation",
+      "appointment.pre-visit-questionnaire",
+      "appointment.nps-request",
+      "medication.reminder",
+      "referral.reward-earned",
     ].sort();
     expect(Object.keys(ALLOWED_KEYS_BY_TRIGGER).sort()).toEqual(expected);
   });

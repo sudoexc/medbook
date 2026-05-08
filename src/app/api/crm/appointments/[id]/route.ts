@@ -5,6 +5,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, notFound, conflict, forbidden, diff } from "@/server/http";
 import { UpdateAppointmentSchema } from "@/server/schemas/appointment";
 import {
@@ -17,8 +18,10 @@ import {
   recomputeCaseAppointments,
 } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import { recordPatientView } from "@/server/audit/patient-view";
 import {
   canTransitionAt,
   type AppointmentStatus,
@@ -87,6 +90,23 @@ export const GET = createApiListHandler(
       totalVisitsInCase = siblings.length;
       const idx = siblings.findIndex((s) => s.id === row.id);
       visitNumberInCase = idx >= 0 ? idx + 1 : null;
+    }
+
+    // Phase 17 Wave 1 — opening the appointment drawer is PHI access; the
+    // associated patient is in `row.patientId`. Throttled inside the helper.
+    if (ctx.kind === "TENANT") {
+      void recordPatientView({
+        prisma,
+        clinicId: ctx.clinicId,
+        viewerUserId: ctx.userId,
+        viewerRole: ctx.role,
+        patientId: row.patientId,
+        context: "appointment.drawer",
+        contextRef: row.id,
+        ip:
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        userAgent: request.headers.get("user-agent"),
+      });
     }
 
     return ok({ ...row, visitNumberInCase, totalVisitsInCase });
@@ -318,6 +338,34 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: d,
     });
+    // Phase 11 — high-signal reschedule audit. Emit a dedicated
+    // APPOINTMENT_RESCHEDULED row whenever any of the slot-defining fields
+    // (start time, end time, doctor, cabinet) actually changed. Status-only
+    // PATCHes don't qualify; no-op updates (same values) don't qualify
+    // either. The same emit will fire for the calendar drag/drop endpoint
+    // in Phase 12 since drag/drop dispatches PATCH here.
+    const rescheduled =
+      before.date.getTime() !== after.date.getTime() ||
+      before.endDate.getTime() !== after.endDate.getTime() ||
+      before.doctorId !== after.doctorId ||
+      before.cabinetId !== after.cabinetId;
+    if (rescheduled) {
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_RESCHEDULED,
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          oldStartTime: before.date,
+          newStartTime: after.date,
+          oldEndTime: before.endDate,
+          newEndTime: after.endDate,
+          oldDoctorId: before.doctorId,
+          newDoctorId: after.doctorId,
+          oldCabinetId: before.cabinetId,
+          newCabinetId: after.cabinetId,
+        },
+      });
+    }
     if (txOut.recomputed?.reason === "free_repeat") {
       await audit(request, {
         action: "appointment.free_repeat_applied",
@@ -338,6 +386,25 @@ export const PATCH = createApiHandler(
       fireTrigger({ kind: "appointment.noshow", appointmentId: id });
     } else if (timeChanged) {
       fireTrigger({ kind: "appointment.updated", appointmentId: id });
+    }
+
+    // Phase 16 Wave 3 — mint a referral reward when this is the patient's
+    // very first COMPLETED visit AND the lead was tagged with a referrer
+    // at sign-up. Idempotent + best-effort: a duplicate (referrer, referred)
+    // pair silently no-ops and any throw is logged but never rolls back the
+    // appointment status change.
+    if (body.status === "COMPLETED" && !before.completedAt) {
+      try {
+        await mintReferralRewardOnCompletion({
+          tx: prisma,
+          request,
+          clinicId: after.clinicId,
+          appointmentId: id,
+          patientId: after.patientId,
+        });
+      } catch (e) {
+        console.error("[referral-mint] failed for appointment", id, e);
+      }
     }
 
     // Realtime fan-out. Pick the event type that best reflects the change:

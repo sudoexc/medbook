@@ -37,6 +37,17 @@ type ClinicRow = {
   tgWebhookSecret: string | null; // "***" when set
   smsSenderName: string | null;
   active: boolean;
+  // Phase 16 Patient Experience surface — exposed in the "Опыт пациента"
+  // section. Stored as flat clinic columns; the API accepts each as an
+  // independent optional in `UpdateClinicSettingsSchema`.
+  npsAlertThreshold: number;
+  referralRewardPercent: number;
+  medicationRemindersEnabled: boolean;
+  // Phase 17 Wave 2 — Security toggles. `planSlug` is appended by the GET
+  // handler so the UI can disable `require2faForAll` on Basic.
+  require2faForAll: boolean;
+  sessionIdleTimeoutMinutes: number;
+  planSlug: "basic" | "pro" | "enterprise" | string;
 };
 
 const TIMEZONES = [
@@ -48,6 +59,7 @@ const TIMEZONES = [
 
 export function ClinicSettingsClient() {
   const t = useTranslations("settings");
+  const tSec = useTranslations("clinicSecurity");
   const qc = useQueryClient();
 
   const clinicQuery = useQuery({
@@ -128,6 +140,13 @@ export function ClinicSettingsClient() {
       "workdayEnd",
       "slotMin",
       "active",
+      // Phase 16 Patient Experience.
+      "npsAlertThreshold",
+      "referralRewardPercent",
+      "medicationRemindersEnabled",
+      // Phase 17 Wave 2 — Security.
+      "require2faForAll",
+      "sessionIdleTimeoutMinutes",
     ] as const;
     for (const k of keys) {
       const v = form[k];
@@ -333,6 +352,159 @@ export function ClinicSettingsClient() {
                   setForm({ ...form, brandColor: e.target.value })
                 }
               />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-border bg-card p-5 lg:col-span-2">
+          <h3 className="text-sm font-semibold">
+            {t("clinic.sections.patientExperience")}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {t("clinic.patientExperienceHint")}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <Label htmlFor="npsAlertThreshold">
+                {t("clinic.fields.npsAlertThreshold")}
+              </Label>
+              <Input
+                id="npsAlertThreshold"
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={form.npsAlertThreshold ?? 7}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    npsAlertThreshold: Math.min(
+                      10,
+                      Math.max(1, Number(e.target.value) || 7),
+                    ),
+                  })
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("clinic.fields.npsAlertThresholdHint")}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="referralRewardPercent">
+                {t("clinic.fields.referralRewardPercent")}
+              </Label>
+              <Input
+                id="referralRewardPercent"
+                type="number"
+                min={0}
+                max={50}
+                step={1}
+                value={form.referralRewardPercent ?? 15}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    referralRewardPercent: Math.min(
+                      50,
+                      Math.max(0, Number(e.target.value) || 0),
+                    ),
+                  })
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("clinic.fields.referralRewardPercentHint")}
+              </p>
+            </div>
+            <div className="flex flex-col">
+              <Label htmlFor="medicationRemindersEnabled">
+                {t("clinic.fields.medicationRemindersEnabled")}
+              </Label>
+              <div className="mt-2 flex items-center gap-2">
+                <Switch
+                  id="medicationRemindersEnabled"
+                  checked={form.medicationRemindersEnabled ?? true}
+                  onCheckedChange={(v: boolean) =>
+                    setForm({ ...form, medicationRemindersEnabled: v })
+                  }
+                />
+                <span className="text-xs text-muted-foreground">
+                  {form.medicationRemindersEnabled
+                    ? t("common.on")
+                    : t("common.off")}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("clinic.fields.medicationRemindersEnabledHint")}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-border bg-card p-5 lg:col-span-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheckIcon className="size-4 text-primary" />
+            <h3 className="text-sm font-semibold">
+              {tSec("sectionTitle")}
+            </h3>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col">
+              <Label htmlFor="require2faForAll">
+                {tSec("require2faTitle")}
+              </Label>
+              <div className="mt-2 flex items-center gap-2">
+                <Switch
+                  id="require2faForAll"
+                  // Plan-gate the toggle in the UI: Basic plans cannot enable
+                  // it (the API also rejects, but the UI signal is clearer).
+                  // We still allow flipping OFF on any plan so a downgraded
+                  // clinic can disable an inherited requirement.
+                  disabled={
+                    form.planSlug !== "pro" &&
+                    form.planSlug !== "enterprise" &&
+                    !form.require2faForAll
+                  }
+                  checked={form.require2faForAll ?? false}
+                  onCheckedChange={(v: boolean) =>
+                    setForm({ ...form, require2faForAll: v })
+                  }
+                />
+                <span className="text-xs text-muted-foreground">
+                  {form.require2faForAll ? t("common.on") : t("common.off")}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {tSec("require2faHint")}
+              </p>
+              {form.planSlug !== "pro" && form.planSlug !== "enterprise" ? (
+                <p className="mt-1 text-xs text-amber-600">
+                  {tSec("require2faPlanLock")}
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <Label htmlFor="sessionIdleTimeoutMinutes">
+                {tSec("idleTimeoutTitle")}
+              </Label>
+              <Input
+                id="sessionIdleTimeoutMinutes"
+                type="number"
+                min={5}
+                max={240}
+                step={5}
+                value={form.sessionIdleTimeoutMinutes ?? 30}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    sessionIdleTimeoutMinutes: Math.min(
+                      240,
+                      Math.max(5, Number(e.target.value) || 30),
+                    ),
+                  })
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {tSec("idleTimeoutHint")}
+              </p>
             </div>
           </div>
         </section>

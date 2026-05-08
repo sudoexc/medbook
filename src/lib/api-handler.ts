@@ -16,8 +16,14 @@ import type { ZodSchema } from "zod";
 
 import { auth } from "./auth";
 import { runWithTenant } from "./tenant-context";
-import type { Role, TenantContext } from "./tenant-context";
+import type { ImpersonationStamp, Role, TenantContext } from "./tenant-context";
 import { readActiveBranchFromCookieHeader } from "@/server/platform/branch-cookie";
+import { AUDIT_ACTION } from "./audit-actions";
+import { isViewOnlySafe, viewOnlyBlockResponse } from "./view-only";
+
+// Re-export the pure helper so existing imports `from "@/lib/api-handler"`
+// still resolve (the unit tests import it directly from `./view-only`).
+export { isViewOnlySafe } from "./view-only";
 
 export type ApiHandlerArgs<TBody> = {
   request: Request;
@@ -46,6 +52,7 @@ function buildContext(
     id: string;
     role: Role;
     clinicId: string | null;
+    impersonation?: { grantId: string; mode: "WRITE" | "VIEW_ONLY" } | null;
   },
   branchId?: string | null,
 ): TenantContext {
@@ -57,11 +64,19 @@ function buildContext(
     // for the duration of the impersonation. Without an active impersonation,
     // fall through to the platform-wide SUPER_ADMIN context.
     if (user.clinicId) {
+      const stamp: ImpersonationStamp | null = user.impersonation
+        ? {
+            grantId: user.impersonation.grantId,
+            mode: user.impersonation.mode,
+            superAdminId: user.id,
+          }
+        : null;
       const ctx: TenantContext = {
         kind: "TENANT",
         clinicId: user.clinicId,
         userId: user.id,
         role: user.role,
+        impersonation: stamp,
       };
       if (branchId) ctx.branchId = branchId;
       return ctx;
@@ -83,6 +98,45 @@ function buildContext(
     ctx.branchId = branchId;
   }
   return ctx;
+}
+
+/**
+ * Phase 19 Wave 4 — VIEW_ONLY write-block. Best-effort audit emit when a
+ * mutating method gets blocked. Audit failure must not turn 403 → 500, so
+ * we swallow exceptions and just log.
+ */
+async function emitViewAsBlocked(
+  request: Request,
+  ctx: TenantContext,
+): Promise<void> {
+  if (ctx.kind !== "TENANT" || !ctx.impersonation) return;
+  try {
+    const { prisma } = await import("./prisma");
+    const url = new URL(request.url);
+    await prisma.auditLog.create({
+      data: {
+        clinicId: ctx.clinicId,
+        actorId: ctx.userId,
+        actorRole: "SUPER_ADMIN",
+        actorLabel: "platform",
+        action: AUDIT_ACTION.SUPER_ADMIN_VIEW_AS_BLOCKED,
+        entityType: "ImpersonationGrant",
+        entityId: ctx.impersonation.grantId,
+        meta: {
+          method: request.method,
+          path: url.pathname,
+          clinicId: ctx.clinicId,
+        } as never,
+        ip:
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+          request.headers.get("x-real-ip") ??
+          null,
+        userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
+      },
+    });
+  } catch (e) {
+    console.error("[api-handler] SUPER_ADMIN_VIEW_AS_BLOCKED audit failed", e);
+  }
 }
 
 /**
@@ -175,6 +229,7 @@ export function createApiHandler<TBody = unknown>(
           id: user.id,
           role: user.role,
           clinicId: user.clinicId,
+          impersonation: user.impersonation ?? null,
         },
         readBranchIdFromRequest(request),
       );
@@ -192,6 +247,18 @@ export function createApiHandler<TBody = unknown>(
         },
         { status: 400 }
       );
+    }
+
+    // Phase 19 W4 — VIEW_ONLY write-block. Reject every mutating method when
+    // the SUPER_ADMIN entered with mode=VIEW_ONLY. Audit one row per blocked
+    // attempt so support can see the full trail without opening telemetry.
+    if (
+      ctx.kind === "TENANT" &&
+      ctx.impersonation?.mode === "VIEW_ONLY" &&
+      !isViewOnlySafe(request)
+    ) {
+      await emitViewAsBlocked(request, ctx);
+      return viewOnlyBlockResponse(ctx.impersonation.grantId);
     }
 
     return runWithTenant(ctx, () =>
@@ -226,12 +293,25 @@ export function createApiListHandler(
           id: user.id,
           role: user.role,
           clinicId: user.clinicId,
+          impersonation: user.impersonation ?? null,
         },
         readBranchIdFromRequest(request),
       );
     } catch (e) {
       const status = (e as Error & { status?: number }).status ?? 403;
       return json({ error: "Forbidden" }, { status });
+    }
+
+    // GET-only handler — VIEW_ONLY does not need to block here (every method
+    // routed through this wrapper is read-only by construction), but we still
+    // gate on isViewOnlySafe so a future non-GET caller doesn't slip through.
+    if (
+      ctx.kind === "TENANT" &&
+      ctx.impersonation?.mode === "VIEW_ONLY" &&
+      !isViewOnlySafe(request)
+    ) {
+      await emitViewAsBlocked(request, ctx);
+      return viewOnlyBlockResponse(ctx.impersonation.grantId);
     }
 
     return runWithTenant(ctx, () => handler({ request, ctx }));

@@ -2,9 +2,13 @@ import { useTranslations, useLocale } from "next-intl";
 import { Brain, HeartPulse, Monitor, Baby } from "lucide-react";
 import type { Locale } from "@/types";
 import type { DoctorView } from "@/lib/doctors";
+import { formatMoney } from "@/lib/format";
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("ru-RU").replace(/,/g, " ");
+// Public-site DoctorView stores price as whole UZS (legacy shape).
+// formatMoney expects tiins; multiply by 100 then strip the trailing unit so
+// the JSX template can render the localized "сум"/"so'm" via t("sum").
+function formatPrice(price: number, locale: Locale): string {
+  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
 }
 
 interface ServiceGroup {
@@ -74,7 +78,7 @@ export function Services({ doctors }: { doctors: DoctorView[] }) {
                   <div key={si} className="flex items-center justify-between px-5 py-3">
                     <span className="text-sm text-foreground">{svc.name[locale]}</span>
                     <span className="text-sm font-medium tabular-nums whitespace-nowrap ml-4">
-                      {formatPrice(svc.price)} <span className="text-muted-foreground font-normal">{tDoc("sum")}</span>
+                      {formatPrice(svc.price, locale)} <span className="text-muted-foreground font-normal">{tDoc("sum")}</span>
                     </span>
                   </div>
                 ))}

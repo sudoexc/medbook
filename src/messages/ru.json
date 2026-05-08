@@ -37,6 +37,12 @@
         "15-30": "15–30 дн.",
         ">30": ">30 дн."
       }
+    },
+    "refresh": {
+      "button": "Обновить отчёты",
+      "running": "Обновление…",
+      "successToast": "Аналитические витрины обновлены",
+      "failureToast": "Не удалось обновить отчёты"
     }
   },
   "crmLayout": {
@@ -49,6 +55,7 @@
     },
     "sidebarNav": {
       "reception": "Ресепшн",
+      "actionCenter": "Центр действий",
       "appointments": "Записи",
       "calendar": "Расписание",
       "patients": "Пациенты",
@@ -62,6 +69,11 @@
       "smsEmail": "SMS-Email",
       "notifications": "Уведомления",
       "analytics": "Аналитика",
+      "analyticsCohorts": "Когорты",
+      "analyticsDoctors": "Врачи (KPI)",
+      "analyticsFinancial": "Финансы",
+      "analyticsScheduleHeatmap": "Heatmap расписания",
+      "analyticsReports": "Отчёты",
       "settings": "Настройки"
     },
     "footer": {
@@ -116,7 +128,8 @@
         "sms": { "title": "SMS-Email", "subtitle": "Входящие и исходящие сообщения" },
         "notifications": { "title": "Уведомления", "subtitle": "Центр уведомлений" },
         "analytics": { "title": "Аналитика", "subtitle": "Сводные метрики клиники" },
-        "settings": { "title": "Настройки", "subtitle": "Клиника и пользователи" }
+        "settings": { "title": "Настройки", "subtitle": "Клиника и пользователи" },
+        "actionCenter": { "title": "Центр действий", "subtitle": "Очередь приоритетных задач клиники" }
       }
     },
     "trialBanner": {
@@ -596,6 +609,20 @@
         "outside_schedule": "Вне графика работы",
         "in_past": "Это время уже прошло",
         "invalid_transition": "Такой переход статуса невозможен"
+      },
+      "preVisit": {
+        "title": "Анкета перед визитом",
+        "filled": "Анкета заполнена",
+        "notFilled": "Анкета не заполнена",
+        "submittedAt": "Отправлена {at}",
+        "complaints": "Жалобы",
+        "allergies": "Аллергии",
+        "medications": "Принимаемые лекарства",
+        "notes": "Дополнительно",
+        "noAllergies": "не указаны",
+        "noMedications": "не указаны",
+        "expand": "Показать ответы",
+        "collapse": "Свернуть"
       }
     },
     "rail": {
@@ -759,6 +786,19 @@
       "moved": "Запись перенесена",
       "reverted": "Изменение отменено"
     },
+    "reschedule": {
+      "confirmTitle": "Перенести запись?",
+      "confirmBody": "Перенести запись пациента {patient} на {time}, доктор {doctor}?",
+      "cancel": "Отмена",
+      "confirm": "Перенести",
+      "success": "Запись перенесена",
+      "errorPast": "Нельзя перенести запись в прошлое",
+      "errorConflict": "Этот слот уже занят"
+    },
+    "emptyRange": {
+      "title": "На этот период записей пока нет.",
+      "description": "Кликните по свободному слоту, чтобы создать запись."
+    },
     "event": {
       "untitled": "Без названия",
       "patient": "Пациент",
@@ -921,7 +961,16 @@
       "files": "Файлы",
       "allFiles": "Все файлы",
       "loading": "Загрузка…",
-      "noDocuments": "Пока нет документов"
+      "noDocuments": "Пока нет документов",
+      "family": "Семья",
+      "familyEmpty": "Семейные связи отсутствуют",
+      "familyOwnerOf": "Действует от имени",
+      "familyLinkedFrom": "Связан через семью",
+      "familyChild": "Ребёнок",
+      "familySpouse": "Супруг(а)",
+      "familyParent": "Родитель",
+      "familyOther": "Другое",
+      "linkedFromCrm": "Семейная связь создана из Mini App"
     },
     "finance": {
       "title": "Финансы",
@@ -961,7 +1010,13 @@
       "more": "Ещё",
       "mergeDuplicates": "Объединить дубликаты",
       "mergeDuplicatesSoon": "Объединение дубликатов появится в следующем обновлении",
-      "delete": "Удалить пациента"
+      "delete": "Удалить пациента",
+      "exportDataToPatient": "Экспорт данных → пациенту",
+      "exportDataToAdmin": "Экспорт данных → мне",
+      "exportSuccess": "Экспорт поставлен в очередь — Telegram-бот пришлёт архив и пароль.",
+      "exportAlreadyRequested": "Активный экспорт уже выполняется.",
+      "exportNoTelegramChat": "Нет привязанного Telegram-чата для доставки.",
+      "exportError": "Не удалось создать экспорт. Попробуйте позже."
     },
     "hero": {
       "years": "{age} лет",
@@ -1171,6 +1226,49 @@
       "deleting": "Удаление…",
       "success": "Пациент удалён",
       "error": "Не удалось удалить"
+    },
+    "referral": {
+      "title": "Реферальная программа",
+      "loading": "Загрузка…",
+      "error": "Не удалось загрузить",
+      "useCount": "Использовано: {n}",
+      "noCode": "Код ещё не сгенерирован — пациент не открывал экран приглашения друга.",
+      "pendingLabel": "Ожидают",
+      "appliedLabel": "Применены",
+      "expiredLabel": "Истекли",
+      "referredBy": "Пришёл по приглашению от {name}"
+    }
+  },
+  "patientTimeline": {
+    "title": "Хронология пациента",
+    "typeTabs": "Тип события",
+    "tabs": {
+      "ALL": "Все",
+      "VISIT": "Визиты",
+      "PAYMENT": "Оплаты",
+      "COMM": "Коммуникации",
+      "DOC": "Документы"
+    },
+    "kinds": {
+      "VISIT": { "title": "Визит" },
+      "PAYMENT": { "title": "Оплата" },
+      "DOCUMENT": { "title": "Документ" },
+      "NOTIFICATION": { "title": "Уведомление" },
+      "CALL": { "title": "Звонок" },
+      "TG": { "title": "Сообщение" },
+      "CASE": { "title": "Случай" },
+      "RESCHEDULE": { "title": "Перенос записи" }
+    },
+    "dayHeader": {
+      "today": "Сегодня",
+      "yesterday": "Вчера"
+    },
+    "empty": {
+      "ALL": "Пока нет событий",
+      "VISIT": "Визитов пока нет",
+      "PAYMENT": "Оплат пока нет",
+      "COMM": "Коммуникаций пока нет",
+      "DOC": "Документов пока нет"
     }
   },
   "cases": {
@@ -1221,7 +1319,50 @@
       "notFound": "Случай не найден",
       "notFoundBackToPatients": "К списку пациентов",
       "retry": "Повторить",
-      "downloadPdf": "Скачать карту случая"
+      "downloadPdf": "Скачать карту случая",
+      "prescriptions": {
+        "title": "Назначения",
+        "add": "Добавить",
+        "empty": "Пока нет назначений",
+        "created": "Назначение создано",
+        "updated": "Назначение обновлено",
+        "deleted": "Назначение удалено",
+        "edit": "Изменить",
+        "delete": "Удалить",
+        "save": "Сохранить",
+        "cancel": "Отмена",
+        "createCta": "Создать",
+        "confirmDelete": "Удалить это назначение?",
+        "remindersOn": "Напоминания",
+        "daysShort": "{n, plural, one {# день} few {# дня} other {# дней}}",
+        "openEnded": "без срока",
+        "validation": {
+          "drugRequired": "Укажите название препарата",
+          "dosageRequired": "Укажите дозировку",
+          "timesRequired": "Добавьте хотя бы одно время приёма (формат HH:mm)",
+          "doctorRequired": "Выберите врача"
+        },
+        "status": {
+          "ACTIVE": "Активно",
+          "PAUSED": "На паузе",
+          "COMPLETED": "Завершено",
+          "CANCELLED": "Отменено"
+        },
+        "fields": {
+          "drug": "Препарат",
+          "dosage": "Дозировка",
+          "dosagePlaceholder": "Напр. 1 таб., 5 мл",
+          "times": "Время приёма",
+          "timesHint": "HH:mm через запятую — например, 09:00, 21:00",
+          "days": "Курс, дней",
+          "daysPlaceholder": "30",
+          "doctor": "Врач",
+          "doctorPlaceholder": "Выберите врача…",
+          "status": "Статус",
+          "notes": "Комментарий",
+          "remindersEnabled": "Напоминать пациенту в Telegram"
+        }
+      }
     }
   },
   "documents": {
@@ -1247,7 +1388,7 @@
   },
   "onboardingChecklist": {
     "ariaLabel": "Чеклист настройки CRM",
-    "title": "Запустите CRM за 4 шага",
+    "title": "Запустите CRM пошагово",
     "subtitle": "Заполните основу — и можно записывать пациентов",
     "progressLabel": "Готово {done} из {total}",
     "doneLabel": "Готово",
@@ -1267,6 +1408,26 @@
       "doctors": {
         "label": "Врачи",
         "hint": "Профили и расписания"
+      },
+      "doctorSchedule": {
+        "label": "Расписание врачей",
+        "hint": "Добавьте смены в календаре"
+      },
+      "templates": {
+        "label": "Шаблоны уведомлений",
+        "hint": "Создайте хотя бы один шаблон"
+      },
+      "firstPatient": {
+        "label": "Первый пациент",
+        "hint": "Заведите карточку пациента"
+      },
+      "firstAppointment": {
+        "label": "Первая запись",
+        "hint": "Создайте первую запись на приём"
+      },
+      "tgBotConnected": {
+        "label": "Telegram-бот",
+        "hint": "Подключите бота клиники"
       }
     }
   },
@@ -1463,6 +1624,52 @@
     "a11y": {
       "doctorCardList": "Карточки врачей",
       "rightRail": "Правая панель ресепшн"
+    },
+    "quickStatus": {
+      "arrived": "Пришёл",
+      "start": "Начать приём",
+      "complete": "Завершить",
+      "noShow": "Не пришёл",
+      "noShowConfirm": "Не пришёл?",
+      "noShowYes": "Подтвердить",
+      "noShowNo": "Отмена",
+      "toast": {
+        "arrived": "Пациент отмечен как пришедший",
+        "started": "Приём начат",
+        "completed": "Приём завершён",
+        "noShow": "Отмечено «не пришёл»"
+      }
+    },
+    "briefing": {
+      "title": "Что сделать сейчас",
+      "viewAll": "Все задачи"
+    }
+  },
+  "appointmentLifecycle": {
+    "title": "Жизненный цикл записи",
+    "ariaLabel": "Жизненный цикл записи",
+    "saving": "Сохраняем…",
+    "noShowTooEarly": "Время приёма ещё не наступило",
+    "offpath": {
+      "NO_SHOW": "Не пришёл",
+      "CANCELLED": "Отменена",
+      "SKIPPED": "Пропущена"
+    },
+    "confirm": {
+      "cancel": "Отмена",
+      "proceed": "Подтвердить",
+      "NO_SHOW": {
+        "title": "Отметить «не пришёл»?",
+        "description": "Запись будет помечена как пропущенная пациентом. Слот освободится."
+      },
+      "CANCELLED": {
+        "title": "Отменить запись?",
+        "description": "Запись будет отменена. Слот в расписании освободится."
+      },
+      "SKIPPED": {
+        "title": "Пропустить запись?",
+        "description": "Пациент не вызван — слот будет помечен как пропущенный."
+      }
     }
   },
   "hero": {
@@ -2124,6 +2331,37 @@
       "smsCounter": "{chars} симв. · {parts} SMS",
       "unknownVar": "Неизвестная переменная: {var}"
     },
+    "marketingCopy": {
+      "title": "AI помощник копирайтинга",
+      "button": "AI suggest",
+      "channelLabel": "Канал",
+      "audienceLabel": "Целевая аудитория",
+      "audience": {
+        "reactivation": "Реактивация спящих",
+        "birthday": "День рождения",
+        "reminder": "Напоминание о визите",
+        "no-show": "После пропуска",
+        "general": "Общее сообщение"
+      },
+      "toneLabel": "Тон",
+      "tone": {
+        "friendly": "Дружелюбный",
+        "professional": "Профессиональный",
+        "urgent": "Срочный"
+      },
+      "maxCharsLabel": "Лимит символов",
+      "promoLabel": "Акция / промокод (опционально)",
+      "notesLabel": "Дополнительно (опционально)",
+      "generate": "Сгенерировать 3 варианта",
+      "loading": "AI генерирует копию…",
+      "use": "Использовать",
+      "copy": "Скопировать",
+      "copied": "Скопировано",
+      "charCount": "{n} символов",
+      "overLimit": "превышает лимит",
+      "error": "Не удалось сгенерировать варианты",
+      "retry": "Попробовать ещё раз"
+    },
     "triggers": {
       "title": "Триггеры",
       "hint": "7 событий, по которым CRM создаёт уведомления автоматически. Каждый триггер должен быть привязан к шаблону с соответствующим ключом.",
@@ -2300,6 +2538,8 @@
       "ariaLabel": "Очередь входящих звонков",
       "title": "Входящие",
       "empty": "Пока нет активных звонков",
+      "emptyTitle": "Сейчас тихо",
+      "emptyDescription": "Новые звонки появятся здесь автоматически.",
       "loading": "Загрузка очереди…",
       "unknownCaller": "Неизвестный номер",
       "newCallToast": "Входящий от {name} ({phone})",
@@ -2414,6 +2654,8 @@
       "create": "Создать",
       "yes": "Да",
       "no": "Нет",
+      "on": "вкл",
+      "off": "выкл",
       "none": "Не выбрано",
       "loading": "Загрузка…",
       "error": "Ошибка",
@@ -2430,7 +2672,10 @@
       "roles": "Роли и права",
       "audit": "Журнал аудита",
       "integrations": "Интеграции",
-      "notifications": "Уведомления"
+      "notifications": "Уведомления",
+      "dsar": "Запросы DSAR",
+      "billing": "Тариф и счета",
+      "branding": "Брендинг"
     },
     "passwordReentry": {
       "title": "Введите текущий пароль",
@@ -2445,8 +2690,10 @@
       "sections": {
         "info": "Основное",
         "locale": "Локаль и рабочий день",
+        "patientExperience": "Опыт пациента",
         "secrets": "Секреты и токены"
       },
+      "patientExperienceHint": "Управление NPS-порогом, реферальной программой и напоминаниями о приёме лекарств.",
       "fields": {
         "slug": "Slug (URL клиники)",
         "slugHint": "Нельзя изменить — определяет публичный URL и webhook.",
@@ -2468,7 +2715,13 @@
         "tgWebhookSecret": "Webhook secret",
         "smsSenderName": "SMS sender name",
         "active": "Клиника активна",
-        "configured": "сохранено"
+        "configured": "сохранено",
+        "npsAlertThreshold": "Порог NPS-алерта",
+        "npsAlertThresholdHint": "Оценка ниже порога создаёт срочный Action для администратора. По умолчанию 7.",
+        "referralRewardPercent": "Скидка для реферера, %",
+        "referralRewardPercentHint": "Скидка применяется к следующему визиту реферера после первого визита приведённого друга. 0 — отключено.",
+        "medicationRemindersEnabled": "Напоминания о лекарствах",
+        "medicationRemindersEnabledHint": "Включает почасовой воркер: рассылает push-уведомления по графику приёма из карточки случая."
       },
       "secretsHint": "Изменения токенов и секретов требуют ввод текущего пароля. Пустое поле — не менять.",
       "saveSecrets": "Сохранить секреты",
@@ -2637,35 +2890,100 @@
       }
     },
     "roles": {
-      "title": "Роли и права",
-      "subtitle": "Матрица доступа по разделам.",
-      "readOnlyForAdmin": "Только чтение · редактирует SUPER_ADMIN",
-      "sectionCol": "Раздел",
+      "title": "Матрица прав / Permission Matrix",
+      "subtitle": "Источник: код. Эта таблица отражает текущую реализацию.",
+      "readOnlyForAdmin": "Только чтение · правка — Phase 17+",
+      "resourceCol": "Ресурс",
       "legendTitle": "Обозначения",
-      "legendBody": "R — чтение, W — создание, U — изменение, D — удаление, own — только свои, ltd — ограниченный скоуп, — нет доступа.",
-      "rows": {
-        "reception": "Ресепшн дашборд",
-        "appointmentsList": "Записи — просмотр",
-        "appointmentsCreate": "Записи — создать",
-        "appointmentsStatus": "Записи — статус",
-        "appointmentsDelete": "Записи — удалить",
-        "calendar": "Календарь",
-        "patientsList": "Пациенты — список",
-        "patientsCard": "Пациенты — карточка",
-        "patientsDelete": "Пациенты — удалить",
-        "doctorsAnalytics": "Врачи (аналитика)",
-        "doctorsEdit": "Врачи — редактировать",
-        "callCenter": "Call Center",
-        "telegram": "Telegram",
-        "sms": "SMS",
-        "notificationsTemplates": "Шаблоны уведомлений",
-        "notificationsSend": "Отправка уведомлений",
-        "payments": "Платежи",
-        "documents": "Документы пациента",
-        "settings": "Настройки",
-        "users": "Пользователи",
-        "audit": "Аудит",
-        "export": "Экспорт CSV"
+      "legendBody": "R — чтение, W — создание, U — изменение, D — удаление. Скоуп: all — все строки клиники, own — только свои, today — только сегодняшние.",
+      "legendChipsTitle": "Легенда:",
+      "sourceNote": "Источник: жёстко зашитые роли в `src/lib/api-handler.ts` и guards в /api/crm/*. Изменение прав требует ревью кода.",
+      "actions": {
+        "r": "R",
+        "w": "W",
+        "u": "U",
+        "d": "D"
+      },
+      "scope": {
+        "all": "all",
+        "own": "own",
+        "today": "today"
+      },
+      "resources": {
+        "Patient": "Пациенты",
+        "Appointment": "Записи",
+        "Doctor": "Врачи",
+        "Cabinet": "Кабинеты",
+        "Service": "Услуги",
+        "Payment": "Платежи",
+        "MedicalCase": "Случай лечения",
+        "NotificationTemplate": "Шаблоны уведомлений",
+        "Lead": "Заявки / лиды",
+        "Call": "Звонки",
+        "AuditLog": "Журнал аудита",
+        "Settings": "Настройки клиники"
+      }
+    },
+    "index": {
+      "title": "Настройки",
+      "subtitle": "Управление клиникой, пользователями и интеграциями.",
+      "clinicManagement": "Управление клиникой",
+      "clinicManagementHint": "Кабинеты, услуги, документы и SMS — раньше жили в основном меню, теперь собраны здесь.",
+      "coreSettings": "Базовые настройки",
+      "coreSettingsHint": "Профиль клиники, пользователи и интеграции."
+    },
+    "cards": {
+      "roles": {
+        "title": "Роли и доступ",
+        "description": "Матрица прав по 6 ролям и 12 ресурсам."
+      },
+      "cabinets": {
+        "title": "Кабинеты",
+        "description": "Помещения и оборудование клиники."
+      },
+      "services": {
+        "title": "Каталог услуг",
+        "description": "Услуги, цены и длительности."
+      },
+      "documents": {
+        "title": "Библиотека документов",
+        "description": "Шаблоны и файлы пациентов."
+      },
+      "smsEmail": {
+        "title": "SMS / Email",
+        "description": "История исходящих сообщений и тестовые отправки."
+      },
+      "clinic": {
+        "title": "Профиль клиники",
+        "description": "Название, адрес, часы работы и бренд."
+      },
+      "branches": {
+        "title": "Филиалы",
+        "description": "Адреса и часовые пояса филиалов."
+      },
+      "users": {
+        "title": "Пользователи",
+        "description": "Сотрудники клиники и их роли."
+      },
+      "exchangeRates": {
+        "title": "Курсы валют",
+        "description": "Источник UZS↔USD для платежей."
+      },
+      "integrations": {
+        "title": "Интеграции",
+        "description": "SMS, Telegram, платежи и телефония."
+      },
+      "notifications": {
+        "title": "Шаблоны уведомлений",
+        "description": "Триггеры и тексты SMS / Telegram / In-App."
+      },
+      "audit": {
+        "title": "Журнал аудита",
+        "description": "Все изменения в клинике с фильтрами."
+      },
+      "dsar": {
+        "title": "Запросы DSAR",
+        "description": "Экспорты и заявки на удаление данных пациентов."
       }
     },
     "audit": {
@@ -2679,7 +2997,79 @@
         "actor": "Пользователь (id)",
         "from": "От",
         "to": "До"
+      },
+      "tabs": {
+        "events": "События",
+        "patientViews": "Просмотры карточек"
+      },
+      "patientView": {
+        "viewer": "Кто",
+        "patient": "Пациент",
+        "context": "Где",
+        "contextRef": "Объект",
+        "filterPatient": "ID пациента",
+        "filterViewer": "ID сотрудника",
+        "filterContext": "Контекст",
+        "empty": "Просмотров не зарегистрировано",
+        "contextPatientDetail": "Карточка пациента",
+        "contextAppointmentDrawer": "Запись",
+        "contextCaseDetail": "Случай",
+        "contextExport": "Экспорт"
       }
+    },
+    "dsar": {
+      "title": "Запросы DSAR",
+      "subtitle": "Экспорты данных и заявки на удаление аккаунтов.",
+      "tabs": {
+        "exports": "Экспорты",
+        "deletions": "Удаления"
+      },
+      "empty": "Запросов пока нет.",
+      "loadMore": "Загрузить ещё",
+      "patient": "Пациент",
+      "patientUnknown": "(пациент удалён)",
+      "createdAt": "Создан",
+      "scheduledFor": "Запланировано на",
+      "executedAt": "Выполнено",
+      "cancelledAt": "Отменено",
+      "expiresAt": "Истекает",
+      "downloadCount": "Скачиваний: {n}",
+      "fileSize": "Размер: {size}",
+      "errorMessage": "Ошибка",
+      "reason": "Причина",
+      "notes": "Заметки",
+      "exportStatus": {
+        "PENDING": "Ожидает",
+        "PROCESSING": "Готовится",
+        "READY": "Готов",
+        "DELIVERED": "Доставлен",
+        "FAILED": "Ошибка",
+        "EXPIRED": "Истёк"
+      },
+      "deletionStatus": {
+        "PENDING_REVIEW": "На проверке",
+        "APPROVED": "Утверждено",
+        "CANCELLED": "Отменено",
+        "EXECUTED": "Выполнено",
+        "ANONYMIZED": "Обезличено"
+      },
+      "mode": {
+        "ANONYMIZE": "Обезличить",
+        "HARD_DELETE": "Полное удаление"
+      },
+      "actions": {
+        "download": "Скачать архив",
+        "approve": "Утвердить",
+        "cancel": "Отменить",
+        "confirmCancel": "Отменить заявку на удаление?",
+        "approving": "Утверждаем…",
+        "cancelling": "Отменяем…"
+      },
+      "approveSuccess": "Заявка утверждена.",
+      "cancelSuccess": "Заявка отменена.",
+      "approveError": "Не удалось утвердить заявку.",
+      "cancelError": "Не удалось отменить заявку.",
+      "downloadError": "Не удалось получить ссылку для скачивания."
     },
     "integrations": {
       "title": "Интеграции",
@@ -3038,6 +3428,372 @@
     "export": "Экспорт PNG",
     "exportSoon": "Экспорт PNG будет добавлен в Phase 7"
   },
+  "analyticsNav": {
+    "overview": "Обзор",
+    "loss": "Потери",
+    "forecast": "Прогноз"
+  },
+  "analyticsHub": {
+    "sectionTitle": "Дашборды Pro",
+    "sectionHint": "Глубокие отчёты для администратора клиники.",
+    "cohorts": {
+      "title": "Когорты пациентов",
+      "description": "Удержание по месяцу первого визита (тепловая карта)"
+    },
+    "doctors": {
+      "title": "KPI врачей",
+      "description": "Выручка, неявки и NPS — с разбивкой по врачам"
+    },
+    "financial": {
+      "title": "Финансовый дашборд",
+      "description": "Сегодня · MTD · прогноз конца месяца, с автообновлением"
+    },
+    "scheduleHeatmap": {
+      "title": "Heatmap расписания",
+      "description": "Загрузка по дням недели и часам за последние 90 дней"
+    }
+  },
+  "analyticsCohorts": {
+    "title": "Когорты пациентов",
+    "subtitle": "Удержание по месяцу первого визита",
+    "empty": "Нет данных по когортам",
+    "emptyHint": "Когортная таблица заполнится после первой витрины обновления.",
+    "axis": {
+      "cohort": "Когорта",
+      "monthOffsetTooltip": "Активность через {offset} мес. после первого визита"
+    },
+    "cellTooltip": "{cohort} · M+{offset} — {active} из {cohortSize} ({pct}%)",
+    "metaHint": "Обновлено {generatedAt} · источник {source}",
+    "toolbar": {
+      "from": "С",
+      "to": "По",
+      "allTime": "Всё время"
+    }
+  },
+  "analyticsDoctors": {
+    "title": "KPI врачей",
+    "subtitle": "Сводный рейтинг по выручке, неявкам и NPS",
+    "empty": "Нет данных за выбранный период",
+    "emptyHint": "Когда появятся записи, рейтинг обновится автоматически.",
+    "metaHint": "Обновлено {generatedAt}",
+    "sparkAria": "Динамика выручки врача {name}",
+    "col": {
+      "name": "Врач",
+      "visits": "Визиты",
+      "revenue": "Выручка",
+      "avgTicket": "Средний чек",
+      "noShow": "Неявки %",
+      "repeat": "Повторные %",
+      "newShare": "Новые %",
+      "nps": "NPS",
+      "npsResp": "Ответов NPS",
+      "trend": "Тренд"
+    },
+    "range": {
+      "30d": "30 дней",
+      "90d": "90 дней",
+      "ytd": "С начала года",
+      "custom": "Период"
+    },
+    "drawer": {
+      "subtitle": "Детали по врачу",
+      "visits": "Визиты",
+      "revenue": "Выручка",
+      "avgTicket": "Средний чек",
+      "noShow": "Неявки",
+      "repeat": "Повторные",
+      "newShare": "Новые пациенты",
+      "trendTitle": "Помесячная выручка",
+      "trendEmpty": "Недостаточно данных для тренда"
+    }
+  },
+  "analyticsFinancial": {
+    "title": "Финансовый дашборд",
+    "subtitle": "Сегодня, MTD и линейный прогноз конца месяца",
+    "lastUpdated": "Обновлено {time}",
+    "kpi": {
+      "todayCollected": "Получено сегодня",
+      "todayCollectedHint": "Оплачено клиникой за сегодня",
+      "todayScheduled": "Запланировано сегодня",
+      "todayScheduledHint": "Сумма по записям на сегодня",
+      "todayNoShow": "Потери от неявок",
+      "todayNoShowHint": "NO_SHOW визиты сегодня",
+      "mtdProjected": "MTD · прогноз",
+      "mtdProjectedHint": "День {day} из {total} — линейная экстраполяция",
+      "mtdProjectedSuffix": "Прогноз:"
+    },
+    "trend": {
+      "title": "Динамика выручки за 90 дней",
+      "subtitle": "Сумма, фактически полученная клиникой за день",
+      "empty": "Недостаточно данных для построения графика",
+      "ariaLabel": "График дневной выручки за последние 90 дней"
+    },
+    "metaHint": "Обновлено {generatedAt} · источник {source}"
+  },
+  "analyticsScheduleHeatmap": {
+    "title": "Heatmap расписания",
+    "subtitle": "Загруженность по дню недели и часу",
+    "windowHint": "Загрузка по последним 90 дням",
+    "empty": "Нет данных",
+    "emptyHint": "Витрина заполнится после первой записи в расписание.",
+    "allDoctors": "Все врачи",
+    "axis": {
+      "day": "День",
+      "hourTooltip": "{hour}:00–{hour}:59"
+    },
+    "days": {
+      "mon": "Пн",
+      "tue": "Вт",
+      "wed": "Ср",
+      "thu": "Чт",
+      "fri": "Пт",
+      "sat": "Сб",
+      "sun": "Вс"
+    },
+    "cellTooltip": "{day} в {hour}:00 — {appts} запис. (свободно {slots})",
+    "metaHint": "Обновлено {generatedAt} · источник {source}"
+  },
+  "analyticsReports": {
+    "dimensions": {
+      "date": "Дата",
+      "doctor": "Врач",
+      "branch": "Филиал",
+      "specialty": "Специальность",
+      "patient_segment": "Сегмент пациента",
+      "source": "Источник"
+    },
+    "measures": {
+      "count_visits": "Визиты",
+      "revenue_tiins": "Выручка",
+      "no_show_rate": "Доля неявок",
+      "avg_ticket_tiins": "Средний чек",
+      "ltv_tiins": "LTV пациентов"
+    },
+    "status": {
+      "BOOKED": "Забронировано",
+      "WAITING": "Ожидание",
+      "IN_PROGRESS": "В процессе",
+      "COMPLETED": "Завершено",
+      "SKIPPED": "Пропущено",
+      "CANCELLED": "Отменено",
+      "NO_SHOW": "Неявка"
+    },
+    "builder": {
+      "titleNew": "Конструктор отчёта",
+      "titleEdit": "Редактирование отчёта",
+      "subtitle": "Соберите свой отчёт из измерений и метрик и сохраните его для повторного использования.",
+      "nameLabel": "Название",
+      "namePlaceholder": "Например: Выручка по неврологам за апрель",
+      "descriptionLabel": "Описание",
+      "descriptionPlaceholder": "Короткая заметка для команды (необязательно)",
+      "dimensionsTitle": "Измерения (срезы)",
+      "dimensionsHint": "Выбрано {current} из {max}",
+      "measuresTitle": "Метрики",
+      "measuresHint": "Выбрано {current} из {max}",
+      "filtersTitle": "Фильтры",
+      "filterDateFrom": "С даты",
+      "filterDateTo": "По дату",
+      "filterBranches": "Филиалы",
+      "filterDoctors": "Врачи",
+      "filterStatuses": "Статусы визитов",
+      "noBranches": "Нет активных филиалов",
+      "noDoctors": "Нет активных врачей",
+      "runButton": "Запустить",
+      "runRunning": "Считаем…",
+      "runHint": "Запуск возможен после выбора хотя бы одного измерения и одной метрики.",
+      "exportCsv": "Экспорт в CSV",
+      "saveButton": "Сохранить отчёт",
+      "saveButtonEdit": "Сохранить изменения",
+      "saveSaving": "Сохранение…",
+      "saveHint": "Сохранение доступно после успешного запуска отчёта.",
+      "dimMoveUp": "Выше",
+      "dimMoveDown": "Ниже",
+      "dimRemove": "Убрать измерение",
+      "measureRemove": "Убрать метрику",
+      "resultRowCount": "Найдено строк: {count}",
+      "resultTruncated": "результат обрезан до лимита",
+      "resultGeneratedAt": "Получено {ts}",
+      "resultEmpty": "Нет данных под выбранные фильтры",
+      "toastRunFailed": "Не удалось запустить отчёт. Попробуйте позже.",
+      "toastRunTimeout": "Отчёт превысил 30 секунд — сузьте фильтры или измерения.",
+      "toastSaved": "Отчёт сохранён",
+      "toastSaveFailed": "Не удалось сохранить отчёт",
+      "toastNameTaken": "Отчёт с таким именем уже существует",
+      "toastInvalidConfig": "Конфигурация отчёта некорректна",
+      "toastExportFailed": "Не удалось экспортировать CSV"
+    },
+    "list": {
+      "title": "Сохранённые отчёты",
+      "subtitle": "Конструктор отчётов и сохранённые конфигурации",
+      "newButton": "Создать отчёт",
+      "emptyTitle": "Сохранённых отчётов пока нет",
+      "emptyDescription": "Создайте первый отчёт в конструкторе и он появится здесь.",
+      "colName": "Название",
+      "colDescription": "Описание",
+      "colShape": "Состав",
+      "colCreatedBy": "Создал",
+      "colLastRun": "Последний запуск",
+      "colActions": "Действия",
+      "shape": "{dims} измер. · {measures} метр.",
+      "neverRun": "Не запускался",
+      "actView": "Открыть",
+      "actEdit": "Редактировать",
+      "actDelete": "Удалить",
+      "confirmDelete": "Удалить этот отчёт?",
+      "toastDeleted": "Отчёт удалён",
+      "toastDeleteFailed": "Не удалось удалить отчёт",
+      "pageMeta": "Страница {page} из {total}",
+      "prev": "Назад",
+      "next": "Вперёд"
+    },
+    "view": {
+      "rerun": "Запустить ещё раз",
+      "rerunning": "Считаем…",
+      "exportCsv": "Экспорт в CSV",
+      "exportPdf": "Экспорт в PDF",
+      "edit": "Редактировать",
+      "delete": "Удалить",
+      "loading": "Запускаем отчёт…",
+      "rowCount": "Строк: {count}",
+      "truncated": "обрезано до лимита",
+      "generatedAt": "Получено {ts}",
+      "empty": "Нет данных под текущие фильтры",
+      "confirmDelete": "Удалить этот отчёт?",
+      "toastRunFailed": "Не удалось запустить отчёт",
+      "toastRunTimeout": "Отчёт превысил 30 секунд — отредактируйте фильтры.",
+      "toastExportFailed": "Не удалось экспортировать CSV",
+      "toastExportPdfFailed": "Не удалось экспортировать PDF",
+      "toastDeleted": "Отчёт удалён",
+      "toastDeleteFailed": "Не удалось удалить отчёт"
+    },
+    "schedules": {
+      "sectionTitle": "Расписания",
+      "sectionSubtitle": "Регулярная отправка отчёта на email или в Telegram",
+      "newButton": "Создать расписание",
+      "loading": "Загружаем расписания…",
+      "empty": "Расписаний пока нет — создайте первое",
+      "statusEnabled": "Активно",
+      "statusDisabled": "Отключено",
+      "statusDisabledFailures": "Отключено после ошибок",
+      "channelEmail": "Email",
+      "channelTelegram": "Telegram",
+      "formatPdf": "PDF",
+      "formatCsv": "CSV",
+      "nextRunAt": "Следующая отправка: {ts}",
+      "lastDeliveredAt": "Последняя отправка: {ts}",
+      "lastFailureReason": "Последняя ошибка: {reason}",
+      "pause": "Поставить на паузу",
+      "resume": "Возобновить",
+      "edit": "Редактировать",
+      "delete": "Удалить",
+      "confirmDelete": "Удалить это расписание?",
+      "dialogTitleCreate": "Создать расписание",
+      "dialogTitleEdit": "Редактировать расписание",
+      "dialogDescription": "Отчёт будет отправляться по выбранному графику в Asia/Tashkent в 09:00",
+      "cadenceLabel": "Периодичность",
+      "channelLabel": "Канал доставки",
+      "targetEmailLabel": "Email-получатель",
+      "targetTelegramLabel": "Telegram chat ID",
+      "targetEmailHint": "Укажите один email — отчёт будет приложен файлом",
+      "targetTelegramHint": "Числовой ID чата или канала бота NeuroFax",
+      "targetInvalidEmail": "Введите корректный email",
+      "targetInvalidTelegram": "Telegram chat ID должен быть числом",
+      "formatLabel": "Формат файла",
+      "enabledLabel": "Расписание активно",
+      "createDisabledHint": "Новые расписания создаются в выключенном состоянии — включите его после создания",
+      "submitCreate": "Создать",
+      "submitEdit": "Сохранить",
+      "cancel": "Отмена",
+      "toastListFailed": "Не удалось загрузить расписания",
+      "toastCreated": "Расписание создано",
+      "toastCreateFailed": "Не удалось создать расписание",
+      "toastUpdated": "Расписание обновлено",
+      "toastUpdateFailed": "Не удалось обновить расписание",
+      "toastDeleted": "Расписание удалено",
+      "toastDeleteFailed": "Не удалось удалить расписание",
+      "toastValidationFailed": "Проверьте корректность канала и адреса"
+    }
+  },
+  "lossAnalytics": {
+    "title": "Анализ потерь выручки",
+    "subtitle": "Куда уходит потенциальная выручка клиники",
+    "totalLabel": "Итого потерь",
+    "trendTitle": "Динамика потерь по дням",
+    "topDoctorsTitle": "Топ врачи по упущенной выручке",
+    "topDoctorsEmpty": "Нет данных по врачам за выбранный период",
+    "dormantSegmentsTitle": "Спящие пациенты по сегментам",
+    "dormantSegmentsEmpty": "Нет спящих пациентов в этой когорте",
+    "avgVisitValueHint": "Средняя стоимость визита: {amount}",
+    "noSnapshotsTitle": "Нет снимков пустых слотов",
+    "noSnapshotsHint": "Снимки накапливаются ежедневно. Данные появятся после первого запуска движка.",
+    "errorTitle": "Не удалось загрузить отчёт",
+    "errorHint": "Проверьте соединение и попробуйте обновить страницу.",
+    "errorRetry": "Повторить",
+    "empty": "Нет данных за выбранный период",
+    "emptyHint": "Когда появятся записи за этот период, отчёт обновится автоматически.",
+    "sources": {
+      "emptySlot": "Пустые слоты",
+      "noShow": "Неявки",
+      "cancellation": "Поздние отмены",
+      "dormant": "Спящие пациенты"
+    },
+    "segments": {
+      "recent_lapse": "Недавно ушли (60–120 дней)",
+      "mid_lapse": "Средний период (120–270 дней)",
+      "deep_lapse": "Давно не были (270+ дней)"
+    },
+    "col": {
+      "doctor": "Врач",
+      "total": "Сумма",
+      "segment": "Сегмент",
+      "patients": "Пациентов",
+      "estimated": "Оценка выручки"
+    }
+  },
+  "revenueForecast": {
+    "title": "Прогноз выручки",
+    "subtitle": "30-дневный прогноз с доверительным интервалом и сценариями",
+    "chartTitle": "Прогнозная выручка по дням",
+    "slidersTitle": "Сценарий «что, если»",
+    "errorTitle": "Не удалось построить прогноз",
+    "errorHint": "Проверьте соединение и попробуйте обновить страницу.",
+    "errorRetry": "Повторить",
+    "empty": "Недостаточно данных для прогноза",
+    "emptyHint": "Прогноз появится, когда в расписании будут записи на ближайшие 30 дней.",
+    "metaHint": "Историческая ставка неявок: {noShowRate}. Заполнение пустых слотов: {upliftRate}.",
+    "kpi": {
+      "baseline": "Базовый прогноз",
+      "adjusted": "Скорректированный",
+      "delta": "Изменение",
+      "ceiling": "Потолок выручки"
+    },
+    "band": {
+      "low": "Минимум",
+      "baseline": "Базовый",
+      "high": "Максимум"
+    },
+    "slider": {
+      "reduceNoShow": "Снижение неявок",
+      "reduceNoShowHint": "Насколько эффективнее напоминания и подтверждения сократят неявки.",
+      "fillEmpty": "Заполнение пустых слотов",
+      "fillEmptyHint": "Доля пустых слотов, которые удастся занять с помощью списка ожидания.",
+      "priceUplift": "Рост среднего чека",
+      "priceUpliftHint": "Изменение средней стоимости визита (например, после индексации цен)."
+    }
+  },
+  "noShowFactors": {
+    "historyRisk": "История пациента",
+    "firstVisitBump": "Первый визит",
+    "unconfirmedBump": "Не подтверждено",
+    "farFutureBump": "Запись далеко вперёд",
+    "dayOfWeekBump": "День недели",
+    "confidenceLabel": "Уверенность",
+    "confidence": {
+      "low": "низкая",
+      "medium": "средняя",
+      "high": "высокая"
+    }
+  },
   "docsLibrary": {
     "title": "Документы",
     "subtitle": "Библиотека документов клиники",
@@ -3071,6 +3827,9 @@
       "ANALYSIS": "Анализ",
       "PRESCRIPTION": "Рецепт",
       "INVOICE": "Счёт",
+      "RESULT": "Результат",
+      "CONTRACT": "Договор",
+      "RECEIPT": "Квитанция",
       "OTHER": "Другое"
     },
     "actions": {
@@ -3162,6 +3921,409 @@
         },
         "back": "Все клиники"
       }
+    }
+  },
+  "actionCenter": {
+    "title": "Центр действий",
+    "subtitle": "Что сделать сейчас, чтобы клиника работала ровно",
+    "recomputeNow": "Пересчитать сейчас",
+    "recomputeSuccess": "Готово: создано {created}, обновлено {updated}",
+    "recomputeError": "Не удалось пересчитать: {reason}",
+    "loadMore": "Показать ещё",
+    "tabs": {
+      "OPEN": "Открытые",
+      "SNOOZED": "Отложенные",
+      "DISMISSED": "Отклонённые",
+      "DONE": "Сделано"
+    },
+    "severity": {
+      "critical": "Критично",
+      "high": "Высокий",
+      "medium": "Средний",
+      "low": "Низкий"
+    },
+    "filters": {
+      "typeAll": "Все типы",
+      "assigneeAll": "Все исполнители",
+      "assigneeAdmin": "Администратор",
+      "assigneeReceptionist": "Ресепшн"
+    },
+    "actions": {
+      "open": "Открыть",
+      "snooze": "Отложить",
+      "dismiss": "Отклонить",
+      "done": "Готово",
+      "reopen": "Вернуть в работу",
+      "doneSuccess": "Задача отмечена как выполненная",
+      "doneError": "Не удалось отметить: {reason}",
+      "reopenSuccess": "Задача снова в работе",
+      "reopenError": "Не удалось вернуть: {reason}"
+    },
+    "snooze": {
+      "title": "Отложить до",
+      "oneHour": "1 час",
+      "fourHours": "4 часа",
+      "tomorrow": "Завтра",
+      "nextWeek": "Через неделю",
+      "custom": "Другое время…",
+      "untilLabel": "До",
+      "confirm": "Отложить",
+      "success": "Отложено до {until}",
+      "error": "Не удалось отложить: {reason}"
+    },
+    "dismiss": {
+      "title": "Отклонить задачу?",
+      "description": "Задача исчезнет из списка открытых. Администратор сможет вернуть её при необходимости.",
+      "reasonLabel": "Причина (необязательно)",
+      "reasonPlaceholder": "Например: пациент уже подтвердил по телефону",
+      "confirm": "Отклонить",
+      "cancel": "Отмена",
+      "success": "Задача отклонена",
+      "error": "Не удалось отклонить: {reason}"
+    },
+    "attribution": {
+      "dismissedAt": "Отклонено {when}",
+      "doneAt": "Сделано {when}",
+      "snoozedUntil": "Отложено до {when}"
+    },
+    "empty": {
+      "OPEN": {
+        "title": "Сейчас всё под контролем",
+        "description": "Новые задачи появятся, как только система их обнаружит."
+      },
+      "SNOOZED": {
+        "title": "Отложенных задач нет",
+        "description": "Когда отложите задачу, она появится здесь до выбранного времени."
+      },
+      "DISMISSED": {
+        "title": "Отклонённых задач нет",
+        "description": "История отклонений пуста."
+      },
+      "DONE": {
+        "title": "Завершённых задач пока нет",
+        "description": "Закрывайте задачи кнопкой «Готово» — они переедут сюда."
+      }
+    },
+    "types": {
+      "EMPTY_SLOT_TOMORROW": {
+        "label": "Свободный слот завтра",
+        "title": "Свободный слот завтра в {slotTime} — {doctorName}",
+        "body": "{specialty}. Возможные потери: {revenueLoss}. Предложите слот пациентам из реактивации."
+      },
+      "DORMANT_BATCH": {
+        "label": "Спящие пациенты",
+        "title": "{patientCount} спящих пациентов в сегменте «{segment}»",
+        "body": "Запустите рассылку в Telegram, чтобы вернуть их в клинику."
+      },
+      "UNCONFIRMED_24H": {
+        "label": "Не подтверждено за 24ч",
+        "title": "{patientName} — запись завтра в {slotTime} не подтверждена",
+        "body": "Врач: {doctorName}. Позвоните или отправьте подтверждение."
+      },
+      "NO_SHOW_RISK_HIGH": {
+        "label": "Высокий риск no-show",
+        "title": "Высокий риск no-show: {patientName} ({riskPct}%)",
+        "body": "Приём в {slotTime}. Свяжитесь с пациентом заранее."
+      },
+      "CASE_REPEAT_DUE": {
+        "label": "Повторный визит",
+        "title": "Повторный визит для {patientName} до {dueDate}",
+        "body": "Откройте случай и предложите ближайший подходящий слот."
+      },
+      "OVERDUE_FOLLOW_UP": {
+        "label": "Просроченный follow-up",
+        "title": "Follow-up не выполнен {daysSinceVisit} дней",
+        "body": "Передайте задачу врачу или закройте, если контакт не нужен."
+      },
+      "DOCTOR_OVERLOAD": {
+        "label": "Перегруз врача",
+        "title": "{doctorName}: очередь {queueLength} пациентов",
+        "body": "Свободны коллег: {alternativeCount}. Предложите перенос."
+      },
+      "IDLE_ROOM": {
+        "label": "Простой кабинета",
+        "title": "Кабинет {cabinetName} простаивает {idleMinutes} мин",
+        "body": "В очереди {queueLength} пациентов — переназначьте кабинет."
+      },
+      "PAYMENT_OVERDUE": {
+        "label": "Просроченная оплата",
+        "title": "{patientName}: задолженность {amount}",
+        "body": "Просрочено {daysOverdue} дней. Свяжитесь и закройте оплату."
+      },
+      "LOW_DOCTOR_SCHEDULE": {
+        "label": "Мало слотов у врача",
+        "title": "{doctorName}: {slotsNext7Days} слотов на ближайшую неделю",
+        "body": "Откройте расписание и добавьте смены."
+      },
+      "LOW_NPS_RECEIVED": {
+        "label": "Низкая оценка визита",
+        "title": "{patientName}: оценка {score}/10 ({doctorName})",
+        "body": "{commentPreview, select, , {Свяжитесь с пациентом и узнайте подробности.} other{«{commentPreview}»}}"
+      }
+    }
+  },
+  "patientSummary": {
+    "title": "AI summary",
+    "loading": "AI суммаризирует визит…",
+    "empty": "Нет данных для резюме",
+    "refresh": "Обновить",
+    "updatedAt": "обновлено {time}",
+    "aiTag": "AI · Авто",
+    "error": "Не удалось загрузить резюме",
+    "refreshing": "обновляется…"
+  },
+  "soapDraft": {
+    "title": "AI SOAP draft",
+    "empty": "Отправьте голосовое сообщение боту во время визита, чтобы получить SOAP-черновик",
+    "edit": "Редактировать",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "refreshing": "Обновляется…",
+    "section": {
+      "subjective": "Жалобы",
+      "objective": "Осмотр",
+      "assessment": "Диагноз",
+      "plan": "План"
+    }
+  },
+  "ai": {
+    "ask": {
+      "placeholder": "Спросите AI: найди свободное окно…",
+      "send": "Спросить",
+      "loading": "AI думает…",
+      "empty": "Введите вопрос на естественном языке",
+      "error": "Не удалось получить ответ. Попробуйте ещё раз.",
+      "attribution": "AI · {model}",
+      "tabs": {
+        "commands": "Команды",
+        "ai": "Спросить AI"
+      },
+      "disclaimer": "AI только смотрит данные — изменения нужно делать вручную"
+    },
+    "chip": {
+      "openSlot": "Открыть в календаре",
+      "openPatient": "Открыть карточку",
+      "openAction": "Открыть в Action Center",
+      "openAppointment": "Открыть приём"
+    }
+  },
+  "crmSecurity": {
+    "title": "Безопасность аккаунта",
+    "subtitle": "Двухфакторная аутентификация и резервные коды",
+    "twoFaTitle": "Двухфакторная аутентификация",
+    "twoFaEnabled": "Включена",
+    "twoFaDisabled": "Не включена",
+    "twoFaEnableCta": "Включить",
+    "twoFaDisableCta": "Отключить",
+    "twoFaForcedHint": "Ваша роль обязывает использовать 2FA. Завершите настройку, чтобы продолжить работу.",
+    "enrollStepScan": "1. Отсканируйте QR-код приложением (Google Authenticator, 1Password, Authy).",
+    "enrollStepManual": "Не получается отсканировать? Введите ключ вручную:",
+    "enrollStepCode": "2. Введите 6-значный код из приложения, чтобы подтвердить настройку.",
+    "codeLabel": "Код подтверждения",
+    "codePlaceholder": "123 456",
+    "verifyCta": "Подтвердить",
+    "cancelCta": "Отмена",
+    "recoveryTitle": "Резервные коды",
+    "recoveryHint": "Сохраните эти 10 одноразовых кодов в безопасном месте. Они показываются один раз.",
+    "recoveryDownload": "Скачать .txt",
+    "recoveryDone": "Я сохранил коды",
+    "recoveryRegenerateCta": "Сгенерировать новые коды",
+    "recoveryReprompt": "Введите ваш пароль, чтобы продолжить.",
+    "passwordLabel": "Текущий пароль",
+    "errorInvalidCode": "Неверный код",
+    "errorInvalidPassword": "Неверный пароль",
+    "errorAlreadyEnrolled": "2FA уже включена",
+    "errorNotEnrolled": "2FA не включена",
+    "errorGeneric": "Не удалось выполнить операцию",
+    "successEnrolled": "2FA включена",
+    "successDisabled": "2FA отключена",
+    "successRegenerated": "Резервные коды обновлены"
+  },
+  "login2fa": {
+    "title": "Подтвердите вход",
+    "subtitle": "Введите 6-значный код из приложения-аутентификатора",
+    "codeLabel": "Код",
+    "codePlaceholder": "123 456",
+    "submit": "Войти",
+    "loading": "Проверяем…",
+    "useRecovery": "Использовать резервный код",
+    "useTotp": "Использовать код приложения",
+    "recoveryLabel": "Резервный код",
+    "recoveryPlaceholder": "XXXX-XXXX-XXXX",
+    "errorInvalid": "Неверный код. Попробуйте ещё раз.",
+    "backToLogin": "Вернуться к входу"
+  },
+  "sessionExpired": {
+    "title": "Сессия истекла",
+    "idleSubtitle": "Вы были неактивны слишком долго. Войдите снова, чтобы продолжить.",
+    "forcedSubtitle": "Вышло время сессии (8 часов). Войдите снова.",
+    "kickedSubtitle": "Вы вошли в систему на другом устройстве.",
+    "loginCta": "Войти снова"
+  },
+  "clinicSecurity": {
+    "sectionTitle": "Безопасность",
+    "require2faTitle": "Требовать 2FA для всего персонала",
+    "require2faHint": "При включении все сотрудники должны настроить 2FA при следующем входе.",
+    "require2faPlanLock": "Доступно на тарифах Pro и Enterprise.",
+    "idleTimeoutTitle": "Время неактивности до выхода (мин)",
+    "idleTimeoutHint": "От 5 до 240 минут. По умолчанию 30."
+  },
+  "signup": {
+    "title": "Зарегистрировать клинику",
+    "subtitle": "Бесплатный пробный период — 14 дней. Без карты, без обязательств.",
+    "clinicNameLabel": "Название клиники",
+    "clinicNamePlaceholder": "Например: NeuroFax Tashkent",
+    "emailLabel": "Email администратора",
+    "emailPlaceholder": "you@clinic.uz",
+    "phoneLabel": "Телефон (опционально)",
+    "phonePlaceholder": "+998 90 123 45 67",
+    "planLabel": "Тариф",
+    "planBasic": "Basic — старт",
+    "planPro": "Pro — развитие",
+    "playbookLabel": "Подбор шаблона",
+    "playbookBlank": "Начать с пустого",
+    "playbookGeneral": "Многопрофильная клиника",
+    "playbookDental": "Стоматология",
+    "playbookNeurology": "Неврология",
+    "playbookPediatric": "Педиатрия",
+    "playbookCosmetology": "Косметология",
+    "playbookHint": "Заполним услуги, шаблоны уведомлений и расписание под выбранный профиль. Можно изменить позже.",
+    "localeLabel": "Язык интерфейса",
+    "localeRu": "Русский",
+    "localeUz": "O'zbek",
+    "submit": "Создать клинику",
+    "submitting": "Создаём…",
+    "errorEmailTaken": "Этот email уже зарегистрирован. Войдите в существующий аккаунт.",
+    "errorGeneric": "Не удалось отправить заявку. Попробуйте ещё раз.",
+    "checkInbox": {
+      "title": "Проверьте почту",
+      "body": "Мы отправили ссылку для подтверждения на {email}. Пройдите по ней в течение 24 часов, чтобы активировать клинику.",
+      "devNote": "Для разработки: ссылка также выведена в консоль сервера.",
+      "openConfirm": "Открыть страницу подтверждения"
+    },
+    "footnote": "Регистрируясь, вы соглашаетесь с условиями использования NeuroFax.",
+    "loginCta": "Уже есть аккаунт? Войти"
+  },
+  "signupConfirm": {
+    "loadingTitle": "Активируем клинику…",
+    "loadingBody": "Создаём аккаунт администратора и пробную подписку.",
+    "successTitle": "Клиника готова",
+    "successBody": "Сохраните временный пароль — он показывается один раз. При первом входе вас попросят заменить его.",
+    "loginLabel": "Логин",
+    "passwordLabel": "Временный пароль",
+    "copyLabel": "Скопировать",
+    "copiedLabel": "Скопировано",
+    "loginCta": "Перейти ко входу",
+    "errorTitle": "Не удалось подтвердить",
+    "errorExpired": "Срок действия ссылки истёк. Зарегистрируйтесь снова.",
+    "errorConsumed": "Ссылка уже использована. Войдите в свой аккаунт.",
+    "errorGeneric": "Что-то пошло не так. Свяжитесь со службой поддержки.",
+    "backToSignup": "К форме регистрации"
+  },
+  "billing": {
+    "title": "Тариф и счета",
+    "subtitle": "Текущий план, использование и история платежей.",
+    "stubModeHint": "Режим заглушки оплаты включён (NEXT_PUBLIC_BILLING_STUB=1).",
+    "currentPlan": {
+      "title": "Текущий тариф",
+      "price": "{price} в месяц",
+      "trialEndsAt": "Пробный период до {date}",
+      "nextBillingAt": "Следующее списание: {date}",
+      "pendingUpgrade": "Ожидаем оплату для перехода на {plan}"
+    },
+    "status": {
+      "trial": "Пробный",
+      "active": "Активный",
+      "past_due": "Просрочен",
+      "cancelled": "Отменён"
+    },
+    "usage": {
+      "title": "Использование в этом месяце",
+      "patients": "Пациенты",
+      "appointments": "Записи",
+      "sms": "SMS"
+    },
+    "planPicker": {
+      "title": "Сменить тариф",
+      "month": "месяц",
+      "current": "Текущий тариф",
+      "upgrade": "Перейти на {plan}",
+      "upgrading": "Создаём счёт…",
+      "features": {
+        "patients": "Пациентов: {n}",
+        "appointments": "Записей в месяц: {n}",
+        "sms": "SMS в месяц: {n}",
+        "tg": "Telegram-инбокс",
+        "call": "Колл-центр",
+        "analytics": "Расширенная аналитика"
+      }
+    },
+    "invoices": {
+      "title": "История счетов",
+      "empty": "Пока нет ни одного счёта.",
+      "cols": {
+        "number": "Номер",
+        "period": "Период",
+        "amount": "Сумма",
+        "status": "Статус",
+        "pdf": "PDF",
+        "download": "Скачать"
+      }
+    },
+    "pay": {
+      "title": "Оплата счёта",
+      "subtitle": "Подтвердите платёж, чтобы активировать новый тариф.",
+      "status": "Статус",
+      "amount": "Сумма",
+      "period": "Период",
+      "dueAt": "Срок оплаты",
+      "simulateButton": "Имитировать оплату",
+      "simulating": "Обрабатываем…",
+      "success": "Оплата успешно проведена",
+      "downloadPdf": "Скачать PDF",
+      "back": "Назад к тарифам",
+      "realProviderNote": "Платежи Click и Payme подключаются после Wave 4."
+    },
+    "errors": {
+      "upgrade": "Не удалось создать счёт ({error}).",
+      "simulate": "Не удалось провести оплату ({error})."
+    }
+  },
+  "branding": {
+    "title": "Брендинг",
+    "description": "Логотип, цвета и собственный поддомен. Доступно на тарифах Pro и Enterprise.",
+    "loading": "Загрузка…",
+    "saved": "Брендинг сохранён",
+    "save": "Сохранить",
+    "saving": "Сохраняем…",
+    "logo": {
+      "label": "Логотип",
+      "hint": "PNG или SVG, до 256 КБ. Отображается в шапке CRM и Mini App."
+    },
+    "primary": {
+      "label": "Основной цвет"
+    },
+    "secondary": {
+      "label": "Дополнительный цвет"
+    },
+    "subdomain": {
+      "label": "Собственный поддомен",
+      "dnsHint": "После сохранения свяжитесь с поддержкой для настройки DNS (CNAME-запись).",
+      "upgradeRequired": "Доступно только на тарифе Enterprise."
+    }
+  },
+  "admin": {
+    "bulk": {
+      "suspend": "Приостановить клинику",
+      "suspendConfirm": "Приостановить эту клинику? Подписка будет отменена.",
+      "suspendDone": "Клиника приостановлена",
+      "restore": "Восстановить клинику",
+      "restoreConfirm": "Восстановить эту клинику и выдать 14-дневный пробный период?",
+      "restoreDone": "Клиника восстановлена",
+      "extendTrial": "Продлить пробный +30 дней",
+      "extendTrialConfirm": "Продлить пробный период этой клиники на 30 дней?",
+      "extendTrialDone": "Пробный период продлён",
+      "error": "Не удалось выполнить действие ({error})."
     }
   }
 }

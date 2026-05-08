@@ -7,10 +7,15 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BriefcaseIcon,
   BuildingIcon,
+  CalendarIcon,
+  CalendarPlusIcon,
   CheckCircle2Icon,
   ChevronRightIcon,
   CircleIcon,
+  MailIcon,
+  MessageCircleIcon,
   StethoscopeIcon,
+  UserPlusIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,11 +26,24 @@ type Steps = {
   cabinets: boolean;
   services: boolean;
   doctors: boolean;
+  doctorSchedule: boolean;
+  templates: boolean;
+  firstPatient: boolean;
+  firstAppointment: boolean;
+  tgBotConnected: boolean;
 };
 
 type OnboardingStatus = {
   steps: Steps;
-  counts: { cabinets: number; services: number; doctors: number };
+  counts: {
+    cabinets: number;
+    services: number;
+    doctors: number;
+    doctorSchedules: number;
+    templates: number;
+    patients: number;
+    appointments: number;
+  };
   complete: boolean;
 };
 
@@ -53,15 +71,22 @@ const STEP_CONFIG: ReadonlyArray<{ key: StepKey; href: string; icon: LucideIcon 
     { key: "cabinets", href: "/crm/settings/cabinets", icon: BriefcaseIcon },
     { key: "services", href: "/crm/settings/services", icon: BriefcaseIcon },
     { key: "doctors", href: "/crm/settings/users", icon: StethoscopeIcon },
+    { key: "doctorSchedule", href: "/crm/calendar", icon: CalendarIcon },
+    { key: "templates", href: "/crm/notifications/templates", icon: MailIcon },
+    { key: "firstPatient", href: "/crm/patients", icon: UserPlusIcon },
+    { key: "firstAppointment", href: "/crm/appointments", icon: CalendarPlusIcon },
+    { key: "tgBotConnected", href: "/crm/telegram", icon: MessageCircleIcon },
   ];
 
 /**
  * Progressive setup checklist shown above the reception dashboard while the
- * clinic team fills in the basics. Auto-hides once all four steps are done.
+ * clinic team fills in the basics. Auto-hides once all steps are done.
  *
- * Steps are independent — clinic admin can tackle them in any order, but the
- * suggested path is clinic → cabinets → services → doctors so doctors can be
- * created with a service list and a cabinet to match against.
+ * Phase 11 expands the list to 9 onboarding milestones (clinic profile,
+ * resources, content, first records, TG bot). Steps are independent — clinic
+ * admin can tackle them in any order, but the suggested path is roughly
+ * top-to-bottom: clinic → cabinets → services → doctors → schedules →
+ * templates → first patient → first appointment → TG bot.
  */
 export function OnboardingChecklist({ className }: { className?: string }) {
   const locale = useLocale();
@@ -107,7 +132,7 @@ export function OnboardingChecklist({ className }: { className?: string }) {
         </div>
       </div>
 
-      <ol className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <ol className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
         {steps.map((step) => {
           const Icon = step.icon;
           const StatusIcon = step.done ? CheckCircle2Icon : CircleIcon;

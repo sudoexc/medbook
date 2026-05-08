@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatMoney, type Locale } from "@/lib/format";
 
 import { doctorKey } from "../_hooks/use-doctor";
 
@@ -42,8 +43,11 @@ type AssignmentState = {
   durationInput: string;
 };
 
-const fmtUzs = (n: number, locale: string, sumLabel: string): string =>
-  `${new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n)} ${sumLabel}`;
+// `n` is priceBase in tiins (×100); formatMoney handles minor-unit conversion
+// and unit label. The legacy inline formatter showed tiins as if they were
+// whole UZS (a 100x inflation bug); centralizing fixes it.
+const fmtUzs = (n: number, locale: Locale): string =>
+  formatMoney(n, "UZS", locale);
 
 const servicesKey = ["services-all"] as const;
 const doctorServicesKey = (id: string) =>
@@ -350,7 +354,7 @@ export function DoctorServicesEditor({
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {s.code} · {s.durationMin} min ·{" "}
-                    {t("basePrice")}: {fmtUzs(s.priceBase, locale, t("currencySum"))}
+                    {t("basePrice")}: {fmtUzs(s.priceBase, locale as Locale)}
                   </span>
                 </Label>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

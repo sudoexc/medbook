@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarPlusIcon,
+  DownloadIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
   PhoneIcon,
@@ -24,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import type { Patient } from "../_hooks/use-patient";
+import { useCurrentRole } from "../_hooks/use-current-role";
 
 export interface PatientQuickActionsProps {
   patient: Patient;
@@ -47,10 +49,49 @@ export function PatientQuickActions({
 }: PatientQuickActionsProps) {
   const t = useTranslations("patientCard.quickActions");
   const locale = useLocale();
+  const role = useCurrentRole();
+  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+
+  const [exporting, setExporting] = React.useState(false);
 
   const phoneHref = patient.phone
     ? `tel:${patient.phone.replace(/\s/g, "")}`
     : "#";
+
+  const onExportData = React.useCallback(
+    async (deliverToPatient: boolean) => {
+      if (exporting) return;
+      setExporting(true);
+      try {
+        const res = await fetch(
+          `/api/crm/patients/${encodeURIComponent(patient.id)}/data-export`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ deliverToPatient }),
+          },
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          jobId?: string;
+          error?: string;
+        };
+        if (!res.ok) {
+          if (body.error === "no_telegram_chat") {
+            toast.error(t("exportNoTelegramChat"));
+          } else {
+            toast.error(t("exportError"));
+          }
+          return;
+        }
+        toast.success(t("exportSuccess"));
+      } catch {
+        toast.error(t("exportError"));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [exporting, patient.id, t],
+  );
 
   return (
     <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -99,6 +140,26 @@ export function PatientQuickActions({
           >
             {t("mergeDuplicates")}
           </DropdownMenuItem>
+          {/* Phase 17 Wave 3 — DSAR data export, ADMIN only. */}
+          {isAdmin ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={exporting}
+                onClick={() => onExportData(true)}
+              >
+                <DownloadIcon className="size-4" />
+                {t("exportDataToPatient")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={exporting}
+                onClick={() => onExportData(false)}
+              >
+                <DownloadIcon className="size-4" />
+                {t("exportDataToAdmin")}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onOpenDeleteDialog}

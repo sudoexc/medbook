@@ -9,11 +9,14 @@ import {
   BellRingIcon,
   BuildingIcon,
   CoinsIcon,
+  CreditCardIcon,
   DoorOpenIcon,
   GitBranchIcon,
   HistoryIcon,
+  PaletteIcon,
   PlugZapIcon,
   ScrollIcon,
+  ShieldCheckIcon,
   StethoscopeIcon,
   UsersIcon,
   type LucideIcon,
@@ -32,7 +35,10 @@ interface NavItem {
     | "roles"
     | "audit"
     | "integrations"
-    | "notifications";
+    | "notifications"
+    | "dsar"
+    | "billing"
+    | "branding";
   href: string;
   icon: LucideIcon;
 }
@@ -48,6 +54,14 @@ const NAV: NavItem[] = [
   { key: "audit", href: "audit", icon: ScrollIcon },
   { key: "integrations", href: "integrations", icon: PlugZapIcon },
   { key: "notifications", href: "notifications", icon: BellRingIcon },
+  // Phase 17 Wave 3 — DSAR queue (admin-only). Listed last because it is
+  // a low-traffic surface that admins navigate to deliberately.
+  { key: "dsar", href: "dsar", icon: ShieldCheckIcon },
+  // Phase 19 Wave 3 — billing surface (plan, usage, invoices).
+  { key: "billing", href: "billing", icon: CreditCardIcon },
+  // Phase 19 Wave 4 — white-label / branding. Page calls notFound() when
+  // hasWhiteLabel === false so the link is harmless on Basic plans.
+  { key: "branding", href: "branding", icon: PaletteIcon },
 ];
 
 export function SettingsSidebar() {

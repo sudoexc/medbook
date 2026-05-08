@@ -9,6 +9,11 @@ type AppRole =
   | "NURSE"
   | "CALL_OPERATOR";
 
+type ImpersonationSessionStamp = {
+  grantId: string;
+  mode: "WRITE" | "VIEW_ONLY";
+} | null;
+
 declare module "next-auth" {
   interface User {
     role?: AppRole;
@@ -23,6 +28,11 @@ declare module "next-auth" {
       role: AppRole;
       clinicId: string | null;
       mustChangePassword: boolean;
+      // Phase 19 Wave 4 — populated when the SUPER_ADMIN has an active
+      // impersonation grant. Layouts read this to flip the banner colour
+      // and the API wrapper consults `mode === "VIEW_ONLY"` to reject
+      // mutations.
+      impersonation?: ImpersonationSessionStamp;
     };
   }
 }
@@ -33,5 +43,7 @@ declare module "next-auth/jwt" {
     role?: AppRole;
     clinicId?: string | null;
     mustChangePassword?: boolean;
+    impersonationGrantId?: string | null;
+    impersonationMode?: "WRITE" | "VIEW_ONLY" | null;
   }
 }

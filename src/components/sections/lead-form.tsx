@@ -14,9 +14,13 @@ import {
 import { useDoctors } from "@/components/providers/doctors-provider";
 import { CheckCircle, Send, MapPin, Clock, Calendar, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Locale } from "@/types";
+import { formatMoney } from "@/lib/format";
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("ru-RU").replace(/,/g, " ");
+// Public-site doctor service prices are stored as whole UZS (legacy shape).
+// formatMoney expects tiins; multiply by 100 then strip the trailing unit so
+// the JSX template can render the localized "сум"/"so'm" via t("sum").
+function formatPrice(price: number, locale: Locale): string {
+  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
 }
 
 const MONTH_NAMES: Record<Locale, string[]> = {
@@ -276,7 +280,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                           </div>
                           <span>{svc.name[locale]}</span>
                         </div>
-                        <span className="font-medium tabular-nums">{formatPrice(svc.price)} {t("sum")}</span>
+                        <span className="font-medium tabular-nums">{formatPrice(svc.price, locale)} {t("sum")}</span>
                       </button>
                     );
                   })}
@@ -286,7 +290,8 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                     {t("total")}: {formatPrice(
                       selectedDoctor.services
                         .filter((s) => selectedServices.includes(s.name[locale]))
-                        .reduce((sum, s) => sum + s.price, 0)
+                        .reduce((sum, s) => sum + s.price, 0),
+                      locale
                     )} {t("sum")}
                   </p>
                 )}

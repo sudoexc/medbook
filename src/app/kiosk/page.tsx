@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Phone, ArrowRight, ArrowLeft, Check, Printer, MapPin, Clock, User, UserPlus, Globe, Stethoscope } from "lucide-react";
+import { formatMoney } from "@/lib/format";
 
 // ─── Translations ────────────────────────────────────────────────
 const t = {
@@ -704,7 +705,10 @@ export default function KioskPage() {
                     >
                       <span className="text-lg font-medium">{name}</span>
                       <span className="text-blue-300 font-bold font-mono">
-                        {svc.price.toLocaleString()} {L.price}
+                        {/* svc.price is whole UZS (legacy /api/kiosk/doctors shape).
+                            formatMoney expects tiins, so multiply by 100. The route
+                            file is marked TODO(phase-1) for full rewrite. */}
+                        {formatMoney(svc.price * 100, "UZS", lang)}
                       </span>
                     </button>
                   );

@@ -23,6 +23,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { formatMoney, type Locale } from "@/lib/format";
+
 import {
   CABINETS_WITH_OCCUPANTS_KEY,
   CabinetSelectField,
@@ -68,8 +70,11 @@ type FieldErrors = {
   generic?: string;
 };
 
-const fmtUzs = (n: number, locale: string): string =>
-  new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n);
+// `n` is priceBase in tiins (×100); formatMoney handles minor-unit conversion
+// and locale-correct unit label. Replaces a legacy inline formatter that
+// printed tiins as if they were whole UZS.
+const fmtUzs = (n: number, locale: Locale): string =>
+  formatMoney(n, "UZS", locale);
 
 export interface NewDoctorDialogProps {
   open: boolean;
@@ -557,8 +562,7 @@ export function NewDoctorDialog({
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {s.code} · {s.durationMin} {tServices("minShort")} ·{" "}
-                          {tServices("basePrice")}: {fmtUzs(s.priceBase, locale)}{" "}
-                          {tServices("currencySum")}
+                          {tServices("basePrice")}: {fmtUzs(s.priceBase, locale as Locale)}
                         </span>
                       </Label>
                       <div className="flex items-center gap-2">

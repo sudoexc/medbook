@@ -33,7 +33,62 @@ type AuditPage = {
   nextCursor: string | null;
 };
 
+type PatientViewRow = {
+  id: string;
+  clinicId: string;
+  viewerUserId: string;
+  viewerRole: string;
+  patientId: string;
+  context: string;
+  contextRef: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  viewer: { id: string; name: string; email: string; role: string } | null;
+  patient: { id: string; fullName: string; phone: string | null } | null;
+};
+
+type PatientViewsPage = {
+  rows: PatientViewRow[];
+  nextCursor: string | null;
+};
+
+type Tab = "events" | "patientViews";
+
 export function AuditLogClient() {
+  const t = useTranslations("settings");
+  const [tab, setTab] = React.useState<Tab>("events");
+
+  return (
+    <PageContainer>
+      <SectionHeader
+        title={t("audit.title")}
+        subtitle={t("audit.subtitle")}
+      />
+
+      <div className="flex gap-2">
+        <Button
+          variant={tab === "events" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTab("events")}
+        >
+          {t("audit.tabs.events")}
+        </Button>
+        <Button
+          variant={tab === "patientViews" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTab("patientViews")}
+        >
+          {t("audit.tabs.patientViews")}
+        </Button>
+      </div>
+
+      {tab === "events" ? <EventsTab /> : <PatientViewsTab />}
+    </PageContainer>
+  );
+}
+
+function EventsTab() {
   const t = useTranslations("settings");
 
   const [filters, setFilters] = React.useState({
@@ -43,7 +98,6 @@ export function AuditLogClient() {
     from: "",
     to: "",
   });
-  // Debounce filter inputs lightly.
   const [appliedFilters, setAppliedFilters] = React.useState(filters);
   React.useEffect(() => {
     const timer = setTimeout(() => setAppliedFilters(filters), 350);
@@ -54,7 +108,7 @@ export function AuditLogClient() {
     queryKey: ["settings", "audit", appliedFilters],
     initialPageParam: null,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    queryFn: async ({ pageParam, signal }) => {
+    queryFn: async ({ pageParam }) => {
       const sp = new URLSearchParams();
       if (appliedFilters.entityType)
         sp.set("entityType", appliedFilters.entityType);
@@ -81,7 +135,6 @@ export function AuditLogClient() {
     overscan: 8,
   });
 
-  // Auto-load when scrolled near bottom.
   React.useEffect(() => {
     const el = parentRef.current;
     if (!el) return;
@@ -99,12 +152,7 @@ export function AuditLogClient() {
   }, [query]);
 
   return (
-    <PageContainer>
-      <SectionHeader
-        title={t("audit.title")}
-        subtitle={t("audit.subtitle")}
-      />
-
+    <>
       <div className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-5">
         <div>
           <Label htmlFor="a-entity">{t("audit.filters.entity")}</Label>
@@ -242,6 +290,227 @@ export function AuditLogClient() {
           </Button>
         </div>
       ) : null}
-    </PageContainer>
+    </>
+  );
+}
+
+/**
+ * Phase 17 Wave 1 — PHI access tab.
+ *
+ * Lists rows from `PatientView`. ADMIN-only on the API side; the tab is shown
+ * to everyone but the API will 403 non-ADMINs (their query just returns
+ * Forbidden). We keep the UI simple — filters by patientId / viewerUserId /
+ * date range / context.
+ */
+function PatientViewsTab() {
+  const t = useTranslations("settings");
+
+  const [filters, setFilters] = React.useState({
+    patientId: "",
+    viewerUserId: "",
+    context: "",
+    from: "",
+    to: "",
+  });
+  const [appliedFilters, setAppliedFilters] = React.useState(filters);
+  React.useEffect(() => {
+    const timer = setTimeout(() => setAppliedFilters(filters), 350);
+    return () => clearTimeout(timer);
+  }, [filters]);
+
+  const query = useInfiniteQuery<PatientViewsPage, Error>({
+    queryKey: ["settings", "audit", "patient-views", appliedFilters],
+    initialPageParam: null,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    queryFn: async ({ pageParam }) => {
+      const sp = new URLSearchParams();
+      if (appliedFilters.patientId)
+        sp.set("patientId", appliedFilters.patientId);
+      if (appliedFilters.viewerUserId)
+        sp.set("viewerUserId", appliedFilters.viewerUserId);
+      if (appliedFilters.context) sp.set("context", appliedFilters.context);
+      if (appliedFilters.from) sp.set("from", appliedFilters.from);
+      if (appliedFilters.to) sp.set("to", appliedFilters.to);
+      sp.set("limit", "50");
+      if (pageParam) sp.set("cursor", String(pageParam));
+      return settingsFetch<PatientViewsPage>(
+        `/api/crm/audit/patient-views?${sp.toString()}`,
+      );
+    },
+  });
+
+  const rows = React.useMemo(
+    () => query.data?.pages.flatMap((p) => p.rows) ?? [],
+    [query.data],
+  );
+
+  const contextLabel = (c: string) => {
+    switch (c) {
+      case "patient.detail":
+        return t("audit.patientView.contextPatientDetail");
+      case "appointment.drawer":
+        return t("audit.patientView.contextAppointmentDrawer");
+      case "case.detail":
+        return t("audit.patientView.contextCaseDetail");
+      case "export":
+        return t("audit.patientView.contextExport");
+      default:
+        return c;
+    }
+  };
+
+  return (
+    <>
+      <div className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-5">
+        <div>
+          <Label htmlFor="pv-patient">
+            {t("audit.patientView.filterPatient")}
+          </Label>
+          <Input
+            id="pv-patient"
+            placeholder="patientId"
+            value={filters.patientId}
+            onChange={(e) =>
+              setFilters({ ...filters, patientId: e.target.value })
+            }
+          />
+        </div>
+        <div>
+          <Label htmlFor="pv-viewer">
+            {t("audit.patientView.filterViewer")}
+          </Label>
+          <Input
+            id="pv-viewer"
+            placeholder="userId"
+            value={filters.viewerUserId}
+            onChange={(e) =>
+              setFilters({ ...filters, viewerUserId: e.target.value })
+            }
+          />
+        </div>
+        <div>
+          <Label htmlFor="pv-context">
+            {t("audit.patientView.filterContext")}
+          </Label>
+          <Input
+            id="pv-context"
+            placeholder="patient.detail | appointment.drawer | case.detail | export"
+            value={filters.context}
+            onChange={(e) =>
+              setFilters({ ...filters, context: e.target.value })
+            }
+          />
+        </div>
+        <div>
+          <Label htmlFor="pv-from">{t("audit.filters.from")}</Label>
+          <Input
+            id="pv-from"
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label htmlFor="pv-to">{t("audit.filters.to")}</Label>
+          <Input
+            id="pv-to"
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="overflow-auto rounded-lg border border-border bg-card">
+        {query.isLoading ? (
+          <div className="p-6 text-sm text-muted-foreground">
+            {t("common.loading")}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 p-10 text-sm text-muted-foreground">
+            <ScrollIcon className="size-5" />
+            {t("audit.patientView.empty")}
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left">
+                  {t("audit.filters.from")}
+                </th>
+                <th className="px-3 py-2 text-left">
+                  {t("audit.patientView.viewer")}
+                </th>
+                <th className="px-3 py-2 text-left">
+                  {t("audit.patientView.patient")}
+                </th>
+                <th className="px-3 py-2 text-left">
+                  {t("audit.patientView.context")}
+                </th>
+                <th className="px-3 py-2 text-left">
+                  {t("audit.patientView.contextRef")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t border-border">
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {new Date(row.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.viewer ? (
+                      <span>
+                        {row.viewer.name}
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({row.viewerRole})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {row.viewerUserId.slice(-6)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.patient ? (
+                      <span>
+                        {row.patient.fullName}
+                        {row.patient.phone ? (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            {row.patient.phone}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        #{row.patientId.slice(-6)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">{contextLabel(row.context)}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {row.contextRef ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {query.hasNextPage ? (
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            onClick={() => query.fetchNextPage()}
+            disabled={query.isFetchingNextPage}
+          >
+            {query.isFetchingNextPage
+              ? t("common.loading")
+              : t("audit.loadMore")}
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
 }

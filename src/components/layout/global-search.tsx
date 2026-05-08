@@ -15,6 +15,7 @@ import { useRouter, useParams } from "next/navigation";
 import {
   CalendarIcon,
   MessageSquareIcon,
+  SparklesIcon,
   StethoscopeIcon,
   UserIcon,
 } from "lucide-react";
@@ -28,6 +29,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { AiAskPanel } from "@/components/layout/ai-ask-panel";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Response types & parser
@@ -220,9 +223,20 @@ export interface GlobalSearchProps {
 /** Cross-entity global search dialog. */
 export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   const t = useTranslations("search");
+  const tAi = useTranslations("ai.ask");
   const router = useRouter();
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
+  // Phase 15 Wave 3 — two-tab dialog: classic command search vs. NL "Ask AI".
+  // Default = "commands" so the existing flow is unchanged when the user
+  // hits Cmd+K out of habit.
+  const [mode, setMode] = React.useState<"commands" | "ai">("commands");
+
+  // Reset to commands mode each time the dialog opens.
+  React.useEffect(() => {
+    if (!open) setMode("commands");
+  }, [open]);
 
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<SearchResults>({
@@ -325,6 +339,80 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       title={t("title")}
       description={t("description")}
     >
+      <div className="flex items-center gap-1 border-b bg-card/60 px-2 py-1.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setMode("commands")}
+          className={cn(
+            "rounded-md px-2.5 py-1 font-medium transition-colors",
+            mode === "commands"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {tAi("tabs.commands")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("ai")}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
+            mode === "ai"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <SparklesIcon className="size-3" />
+          {tAi("tabs.ai")}
+        </button>
+      </div>
+
+      {mode === "ai" ? (
+        <AiAskPanel onNavigate={() => onOpenChange(false)} />
+      ) : (
+        <ClassicCommandSearch
+          t={t}
+          query={query}
+          setQuery={setQuery}
+          loading={loading}
+          results={results}
+          locale={locale}
+          go={go}
+          doctorName={doctorName}
+          dateFmt={dateFmt}
+          total={total}
+        />
+      )}
+    </CommandDialog>
+  );
+}
+
+interface ClassicCommandSearchProps {
+  t: ReturnType<typeof useTranslations>;
+  query: string;
+  setQuery: (q: string) => void;
+  loading: boolean;
+  results: SearchResults;
+  locale: string;
+  go: (href: string) => void;
+  doctorName: (d: SearchDoctor) => string;
+  dateFmt: Intl.DateTimeFormat;
+  total: number;
+}
+
+function ClassicCommandSearch({
+  t,
+  query,
+  setQuery,
+  loading,
+  results,
+  go,
+  doctorName,
+  dateFmt,
+  total,
+}: ClassicCommandSearchProps) {
+  return (
+    <>
       <CommandInput
         placeholder={t("placeholder")}
         value={query}
@@ -430,6 +518,6 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           </CommandGroup>
         ) : null}
       </CommandList>
-    </CommandDialog>
+    </>
   );
 }

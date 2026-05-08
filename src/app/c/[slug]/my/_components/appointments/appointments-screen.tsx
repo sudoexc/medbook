@@ -12,6 +12,7 @@ import {
 } from "../mini-ui";
 import { useT } from "../mini-i18n";
 import { useAppointments, MiniAppAppointment } from "../../_hooks/use-appointments";
+import { useActiveContext } from "../../_hooks/use-active-context";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
@@ -24,9 +25,10 @@ export function AppointmentsScreen() {
   const { clinicSlug, state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const tg = useTelegramWebApp();
+  const { onBehalfOf } = useActiveContext();
   const [tab, setTab] = React.useState<Tab>("upcoming");
   const [selected, setSelected] = React.useState<MiniAppAppointment | null>(null);
-  const query = useAppointments(tab);
+  const query = useAppointments(tab, onBehalfOf);
 
   React.useEffect(() => {
     const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));

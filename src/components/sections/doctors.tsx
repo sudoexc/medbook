@@ -4,9 +4,14 @@ import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "./lead-form";
 import type { Locale } from "@/types";
 import type { DoctorView } from "@/lib/doctors";
+import { formatMoney } from "@/lib/format";
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("ru-RU").replace(/,/g, " ");
+// Public-site DoctorView stores price as whole UZS (legacy data shape pre-Phase 1).
+// formatMoney expects minor units (tiins), so we multiply by 100 here.
+// Strip the trailing currency unit; the surrounding markup adds the localized
+// "сум" / "so'm" via t("sum") so callers control where it appears.
+function formatPrice(price: number, locale: Locale): string {
+  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
 }
 
 export function Doctors({ doctors }: { doctors: DoctorView[] }) {
@@ -58,7 +63,7 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
                         key={svc.name[locale]}
                         className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
                       >
-                        {svc.name[locale]} — {formatPrice(svc.price)} {t("sum")}
+                        {svc.name[locale]} — {formatPrice(svc.price, locale)} {t("sum")}
                       </span>
                     ))}
                   </div>

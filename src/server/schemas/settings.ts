@@ -34,6 +34,21 @@ export const UpdateClinicSettingsSchema = z.object({
     .optional(),
   slotMin: z.number().int().min(5).max(240).optional(),
   active: z.boolean().optional(),
+  // Phase 16 Wave 2 — Patient experience: cutoff for the LOW_NPS_RECEIVED
+  // Action emit. Score < threshold fires an alert. 1..10 mirrors the form.
+  npsAlertThreshold: z.number().int().min(1).max(10).optional(),
+  // Phase 16 Wave 3 — Refer-a-friend reward percent applied to the
+  // referrer's next booking. 0..50; 0 disables the reward.
+  referralRewardPercent: z.number().int().min(0).max(50).optional(),
+  // Phase 16 Wave 3 — Master switch for the medication-reminder worker.
+  medicationRemindersEnabled: z.boolean().optional(),
+  // Phase 17 Wave 2 — Mandatory 2FA for every staff role. Plan-gated to
+  // Pro / Enterprise (the API rejects the flip on Basic). The schema only
+  // type-checks here; the gate is in the route handler.
+  require2faForAll: z.boolean().optional(),
+  // Phase 17 Wave 2 — Per-clinic idle-session timeout in minutes. Bound is
+  // [5, 240]; 30 is the default.
+  sessionIdleTimeoutMinutes: z.number().int().min(5).max(240).optional(),
 });
 
 export type UpdateClinicSettings = z.infer<typeof UpdateClinicSettingsSchema>;
@@ -98,3 +113,32 @@ export const TestSmsSchema = z.object({
 });
 
 export type TestSms = z.infer<typeof TestSmsSchema>;
+
+/**
+ * Phase 19 Wave 4 — white-label branding self-edit (Pro / Enterprise plans).
+ *
+ * The PATCH route accepts a JSON body with any subset of these keys; logo
+ * upload travels separately on the same multipart request (file field name
+ * `logo`). `customSubdomain` is `null` to clear, a non-empty string to set;
+ * `undefined` (key absent) means "leave unchanged".
+ */
+import { SubdomainZ } from "@/server/platform/subdomain";
+
+export const UpdateBrandingSchema = z
+  .object({
+    brandColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, "invalid_hex")
+      .optional(),
+    brandSecondaryColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, "invalid_hex")
+      .nullable()
+      .optional(),
+    customSubdomain: z.union([z.literal(""), SubdomainZ]).nullable().optional(),
+    // Set when the multipart route already wrote the file; the API hands it
+    // back into the schema so the audit log records the same path.
+    logoUrl: z.string().url().nullable().optional(),
+  })
+  .strict();
+export type UpdateBranding = z.infer<typeof UpdateBrandingSchema>;

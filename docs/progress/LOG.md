@@ -1133,3 +1133,934 @@ the doctors-AI panel.
   worker integration. The pure `computeNoShowRisk` is exported and ready
   for the worker to consume in a follow-up.
 
+
+---
+
+## Phase 11 — Foundation Polish — ✅ DONE 2026-05-06
+
+**Roadmap:** `docs/ROADMAP-11x.md` §Фаза 11. Task #231.
+
+Cleanup pass to unblock phases 12-19: centralized currency, audit reschedule, RBAC matrix UI, menu cleanup, onboarding v2, missing-i18n-key dev tool. Three execution waves under `neurofax-architect` orchestration; specialist agents inlined as `general-purpose` self-contained briefs (project-level agents not invokable via Agent tool, only via SendMessage to running ones).
+
+### What shipped
+
+**Wave 1 (parallel) — i18n + audit + currency**
+
+- **i18n missing-key tool** (`scripts/i18n-check.ts`): regex-based static analysis with namespace tracking, dynamic-namespace handling, function-parameter shadow handling. `npm run i18n:check` exits 0; reports parity. Dev component `<T ns k />` and `useT(ns)` hook in `src/components/dev/missing-key-warner.tsx` for `[MISSING: ns.key]` rendering. Fixed `docsLibrary.types.{RESULT,CONTRACT,RECEIPT}` + added full `settings.{roles,index,cards}` namespaces. 14/14 unit tests.
+- **Audit `APPOINTMENT_RESCHEDULED`** (`src/lib/audit-actions.ts` + `src/app/api/crm/appointments/[id]/route.ts`): PATCH handler emits when `date|endDate|doctorId|cabinetId` change, with old/new values in `meta`. No emit on status-only or no-op changes. 4/4 unit tests. MiniApp PATCH (`src/app/api/miniapp/appointments/[id]/route.ts`) flagged as out-of-scope for Phase 11; pick up in Phase 16.
+- **Currency centralization**: 9 files refactored (services list, doctor cards, payments, invoices) to use existing `formatMoney` / `<MoneyText>` from `src/lib/format.ts` and `src/components/atoms/money-text.tsx` — no new helper needed. Fixed 100x display bug in `doctor-services.tsx` and `new-doctor-dialog.tsx` (tiins were rendered as whole UZS). 13/13 unit tests in `tests/unit/format-money.test.ts`.
+
+**Wave 2 — Settings index + RBAC matrix + menu cleanup**
+
+- `src/lib/permissions/matrix.ts`: declarative `PERMISSION_MATRIX: ResourcePermissions[]` — 12 resources × 6 roles, with R/W/U/D + scope (`own` / `team` / `all`).
+- `/crm/settings/roles` rewired to render the matrix with chips per cell, scope labels, legend.
+- `/crm/settings` index rebuilt as two card grids: «Управление клиникой» (Roles, Cabinets→/crm/rooms, Services→/crm/services, Documents→/crm/documents, SMS→/crm/sms) and «Базовые настройки».
+- `CRM_NAV` cleanup in `src/components/layout/crm-sidebar.tsx`: dropped rooms/services/documents/sms; main menu = 10 items (reception, appointments, calendar, patients, doctors, call-center, telegram, notifications, analytics, settings). Old paths preserved — only menu entry removed.
+
+**Wave 3 — Onboarding v2**
+
+- `src/app/api/crm/onboarding-status/route.ts` extended to **9 steps** (TG bot connection was queryable via `Clinic.tgBotToken`). New: `doctorSchedule`, `templates`, `firstPatient`, `firstAppointment`, `tgBotConnected`. All counts via parallel `prisma.*.count()`.
+- `OnboardingChecklist` component grid switched to 3×3, lucide icons + i18n added in both ru/uz, auto-hide on `complete: true` preserved.
+- 5/5 new tests in `tests/unit/onboarding-status.test.ts`.
+
+### Files
+
+```
+NEW: scripts/i18n-check.ts, src/components/dev/missing-key-warner.tsx,
+     src/lib/audit-actions.ts, src/lib/permissions/matrix.ts,
+     tests/unit/i18n-check.test.ts, tests/unit/format-money.test.ts,
+     tests/unit/onboarding-status.test.ts,
+     tests/unit/appointment-reschedule-audit.test.ts
+EDIT: src/app/api/crm/appointments/[id]/route.ts,
+      src/app/api/crm/onboarding-status/route.ts,
+      src/app/[locale]/crm/reception/_components/onboarding-checklist.tsx,
+      src/app/[locale]/crm/settings/page.tsx,
+      src/app/[locale]/crm/settings/roles/_components/roles-matrix-client.tsx,
+      src/components/layout/crm-sidebar.tsx,
+      src/messages/{ru,uz}.json,
+      package.json (+ i18n:check script),
+      9 currency-touching files,
+      tests/unit/feature-nav.test.ts (sync to new nav),
+      tests/unit/notifications-{triggers,template}.test.ts (sync to 9 triggers
+      from Phase 9 #225/#226 — these were stale).
+```
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — Compiled successfully in 8.2s; 84/84 static pages OK.
+- `npx vitest run` — **477/477 passed** (was 433 baseline + 44 new + replaced).
+- `npm run i18n:check` — OK, locales in parity.
+
+### Notes / hand-off
+
+- Stale tests from Phase 9 (notifications-triggers, notifications-template) updated as part of this gate — they expected 7 triggers, runtime now has 9 (added `appointment.reminder-5h` and `case.repeat-due`). No code changes to those modules; tests just caught up.
+- MiniApp appointment PATCH does mutate slot but does not emit `APPOINTMENT_RESCHEDULED` audit yet — deferred to `patient-experience-engineer` (Phase 16) where Mini App engagement is the main scope.
+- Phase 11 unblocks: #232 Lifecycle & Timeline UX (Phase 12), #237 Compliance & Trust (Phase 17). Phases 13-19 chain off these per ROADMAP-11x.md dependency graph.
+
+---
+
+## Phase 12 — Lifecycle & Timeline UX — ✅ DONE 2026-05-06
+
+**Roadmap:** `docs/ROADMAP-11x.md` §Фаза 12. Task #232.
+
+Make appointment state legible at a glance and unify everything that ever happened to a patient into one feed. No new pages, no new DB models, no new routes — pure enhancement of existing surfaces. Three sequential waves under `neurofax-architect` orchestration.
+
+### What shipped
+
+**Wave 1 — Visualize state**
+
+- `src/lib/appointments/lifecycle.ts` — pure state-machine helper: `getAllowedTransitions(currentStatus, role)`, `getAllowedTransitionsAt(now)` (gates NO_SHOW to past-only, mirrors server-side H3 #199), `getStepStates`, `getQuickActions`, `canMutateStatus`.
+- `src/app/[locale]/crm/appointments/_components/appointment-lifecycle.tsx` — horizontal chain `BOOKED → WAITING → IN_PROGRESS → COMPLETED` (clickable pills, current+passed filled, future muted, role-gated, loading state during PATCH). Off-path boxes for NO_SHOW / CANCELLED / SKIPPED with confirm dialog.
+- `appointment-drawer.tsx` rewired: replaced status select+badge with `<AppointmentLifecycle>`. Reuses `useSetQueueStatus` mutation; trimmed dead `STATUSES`/`STATUS_VARIANT` constants.
+- `doctor-queue-card.tsx` rewired: per-row `<QuickStatusRow>` with lucide icons (`UserCheckIcon`, `PlayIcon`, `CheckCheckIcon`, `UserXIcon`). Forward transitions are one-click optimistic; NO_SHOW gated by Popover confirm to prevent fat-finger.
+- API: PATCH `/api/crm/appointments/[id]/queue-status` (existing endpoint, no changes).
+- 23/23 new unit tests in `tests/unit/appointment-lifecycle.test.ts`.
+
+**Wave 2 — Patient Timeline v2**
+
+- Extended `/api/crm/patients/[id]/communications` aggregator from 5 → 9 event kinds: VISIT (Appointment.COMPLETED), PAYMENT (Payment.PAID, paidAt), DOCUMENT (Document.createdAt), NOTIFICATION (existing), CALL (existing), TG/Message (existing), CASE (MedicalCase.openedAt + closedAt as separate rows), RESCHEDULE (AuditLog.action='APPOINTMENT_RESCHEDULED', single bounded query — no N+1). Added `category: 'VISIT'|'PAYMENT'|'COMM'|'DOC'` field for tab filtering. Backward-compatible (additive).
+- `patient-timeline.tsx` v2 rewrite: tabs ALL/VISIT/PAYMENT/COMM/DOC, day groups (Сегодня/Вчера/abs date), per-kind lucide icons, `EmptyState` per tab when empty, `Skeleton` while loading. Money rendered via existing `<MoneyText>` (no inline UZS formatters).
+- `src/lib/timeline/group-by-day.ts` — extracted pure helper with injectable `now` for deterministic tests.
+- Existing `usePatientTimeline` hook in appointment-drawer keeps compiling — extension is purely additive on the API response shape.
+- 11/11 new unit tests (7 aggregation + 4 day-grouping). 21 new i18n keys per locale under `patientTimeline.*`.
+
+**Wave 3 — Calendar drag/drop + empty-state polish**
+
+- DnD already available via FullCalendar (`@fullcalendar/interaction`) — grid was `editable + eventStartEditable` with an `eventDrop` handler that PATCHed directly. Wave 3 inserts a confirmation modal between drop and PATCH; everything else (optimistic update, 409 conflict handling, audit emit from Phase 11) was already wired.
+- `src/lib/calendar/reschedule-math.ts` — pure `computeRescheduledSlot()` (preserves duration, rejects past-time drops). 6/6 unit tests.
+- `reschedule-confirm-dialog.tsx` — new dialog using existing `AlertDialog` atom; locale-aware `Intl.DateTimeFormat` for "HH:mm DD.MM"; Esc/overlay-click route through `revert` (FullCalendar's `info.revert()`).
+- `calendar-view.tsx` + `calendar-page-client.tsx` — `eventDrop` now routes through `onConfirmReschedule` callback; legacy direct-PATCH fallthrough preserved for resize gesture; added "all-empty range" floating hint card.
+- Empty-state audit across CRM:
+  - `/crm/appointments` — already polished (filtered + create CTA).
+  - `/crm/calendar` — added inline `emptyRange` hint card.
+  - `/crm/patients` — already polished.
+  - `/crm/doctors` — already polished.
+  - `/crm/call-center` — `incoming-queue.tsx` swapped ad-hoc empty for `EmptyState` atom + calm copy.
+  - `/crm/notifications` — already polished.
+  - `/crm/telegram` — Phase 11 #183 work verified, already on atom.
+
+### Files
+
+```
+NEW: src/app/[locale]/crm/appointments/_components/appointment-lifecycle.tsx
+     src/app/[locale]/crm/calendar/_components/reschedule-confirm-dialog.tsx
+     src/lib/appointments/lifecycle.ts
+     src/lib/calendar/reschedule-math.ts
+     src/lib/timeline/group-by-day.ts
+     tests/unit/appointment-lifecycle.test.ts
+     tests/unit/calendar-reschedule-math.test.ts
+     tests/unit/patient-timeline-aggregation.test.ts
+     tests/unit/timeline-group-by-day.test.ts
+EDIT: src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx
+      src/app/[locale]/crm/reception/_components/doctor-queue-card.tsx
+      src/app/[locale]/crm/patients/[id]/_components/patient-timeline.tsx
+      src/app/[locale]/crm/patients/[id]/_hooks/use-patient-communications.ts
+      src/app/[locale]/crm/calendar/_components/calendar-view.tsx
+      src/app/[locale]/crm/calendar/_components/calendar-page-client.tsx
+      src/app/[locale]/crm/call-center/_components/incoming-queue.tsx
+      src/app/api/crm/patients/[id]/communications/route.ts
+      src/messages/{ru,uz}.json (3 new namespaces: appointmentLifecycle, reception.quickStatus, patientTimeline, calendar.reschedule, calendar.emptyRange, callCenter.queue.empty*)
+```
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — Compiled successfully.
+- `npx vitest run` — **517/517 passed** (was 477 after Phase 11 + 23 + 11 + 6 = 40 new).
+- `npm run i18n:check` — OK, locales in parity.
+
+### Notes / hand-off
+
+- Lifecycle helper `canMutateStatus` is reusable — Phase 13 (Action Center) will likely need similar gating for "Confirm appointment" and "Mark no-show" actions.
+- Patient timeline aggregator now does 1 AuditLog scan per request. If volume grows, add an index `(clinicId, action, createdAt)` on AuditLog and consider caching the day-grouped view per patient. Not needed yet.
+- Calendar empty-range hint reads "Календарь пуст в этом периоде" — short and CTA-less by design (calendar usage is exploratory).
+- Phase 12 unblocks Phase 13 (Action Center) and Phase 16 (Patient Experience).
+
+---
+
+## Phase 13 — Action Center — ✅ DONE 2026-05-06
+
+**Roadmap:** `docs/ROADMAP-11x.md` §Фаза 13. Task #233. **Главная фича 11/10** — превращает CRM из реактивной системы в проактивную: ресепшн заходит и видит «что делать сейчас», а не «что есть в системе».
+
+3 sequential waves под `neurofax-architect` orchestration. Все 10 типов actions реализованы, ничего не отложено в Phase 14+.
+
+### What shipped
+
+**Wave 1 — Schema + REST + audit foundation**
+
+- `Action` model: `id, clinicId, branchId?, type, severity, payload, status, assigneeRole?, deeplinkPath?, dedupeKey, snoozeUntil?, dismissedAt?, doneAt?, expiresAt?, createdAt, updatedAt`. Unique `(clinicId, dedupeKey)` + 3 indexes. Migration `20260506100335_action_engine`.
+- `src/lib/actions/types.ts` — `ACTION_TYPES` (10), `ACTION_SEVERITIES` (4), `ACTION_STATUSES` (5), discriminated `ActionPayload` union (10 variants), `dedupeKeyFor`, `defaultSeverity`, `defaultDeeplinkPath`, `defaultAssigneeRole`, `SEVERITY_RANK`, type guards.
+- `src/server/actions/repository.ts` — `upsertAction(prisma, clinicId, payload, options)` with terminal-status resurrection + payload-significance gate; `expireStaleActions(prisma, clinicId, ttlHours)` with explicit `expiresAt` OR `updatedAt+ttl` fallback.
+- 6 REST endpoints under `/api/crm/actions` (list with severity-rank sort, get, snooze with preset/until XOR, dismiss, done, reopen ADMIN-only). All TENANT-scoped, all audit-emitted.
+- 7 audit constants added: `ACTION_CREATED/UPDATED/SNOOZED/DISMISSED/DONE/REOPENED/EXPIRED`.
+- 33 tests (19 type tests + 14 handler tests).
+
+**Wave 2 — 10 detectors + engine + scheduler + SSE**
+
+10 pure detectors in `src/server/actions/detectors/`:
+- `empty-slot-tomorrow.ts` — peak-hour gaps from `DoctorSchedule` minus `Appointment`; revenue from 90d paid history with `pricePerVisit` fallback; severity high if loss > 100M tiins.
+- `dormant-batch.ts` — 3 segments (90-180/180-365/365+); excludes patients with future appts; campaign cooldown via `Campaign.segment.kind === 'dormant'`.
+- `unconfirmed-24h.ts` — BOOKED appts in next 24h; severity scales <2h/<12h/≥12h.
+- `no-show-risk-high.ts` — `computeNoShowRisk()` per appt; risk rounded to 2 decimals (dedupeKey stability); `expiresAt = appointmentAt`.
+- `case-repeat-due.ts` — derives deadline from `firstVisit.date + service.freeRepeatDays`; suppressed if future BOOKED/WAITING on case.
+- `overdue-follow-up.ts` — COMPLETED appts in `[-followUpStaleDays, -1d]` on OPEN cases with no later non-cancelled appt.
+- `doctor-overload.ts` — today's WAITING|IN_PROGRESS grouped by doctor; alternatives = same specialty; `expiresAt = now+30min`.
+- `idle-room.ts` — cabinet idle ≥ N min, last completion older, queue > 0; `expiresAt = now+30min`.
+- `payment-overdue.ts` — COMPLETED past cutoff minus PAID; severity scales 1-7d / 7-30d / >30d.
+- `low-doctor-schedule.ts` — 7-day window day-by-day from `DoctorSchedule` minus `DoctorTimeOff`, 1-hour units.
+
+`src/server/actions/engine.ts` — `runActionEngine(prisma, clinicId, now, config)`: 10 detectors via `Promise.allSettled`, persist via `upsertAction`, publish `action.created/updated`, sweep via `expireStaleActions(48h)`. Failure isolation — one detector erroring doesn't poison the run.
+
+`src/server/actions/scheduler.ts` — `registerActionScheduler()` registered into `src/server/workers/start.ts` alongside notifications scheduler. Queue abstraction `repeat('actions', 'actions-recompute', {}, 15min)`. Each clinic runs sequentially under `runWithTenant({ kind: 'TENANT', clinicId, userId: 'system:action-engine', role: 'ADMIN' })`.
+
+`src/server/realtime/events.ts` — added `action.created` and `action.updated` events with payload `{id, type, severity}`.
+
+`POST /api/crm/actions/recompute` — ADMIN-only manual trigger; returns `{created, updated, skipped, expired, errors}`.
+
+57 new tests (52 detector + 10 engine).
+
+**Schema gaps documented** (deferred to Phase 14+ — current proxies work for v1):
+- `Appointment.confirmedAt` missing → UNCONFIRMED_24H uses `status === 'BOOKED'` proxy.
+- `MedicalCase.repeatDueAt` missing → CASE_REPEAT_DUE derives from `firstVisit.date + service.freeRepeatDays`.
+- `MedicalCase.followUpDoneAt` missing → OVERDUE_FOLLOW_UP proxies via "OPEN case + no later non-cancelled appt".
+
+**Wave 3 — UI surfaces**
+
+- `/crm/action-center` page: tabs OPEN/SNOOZED/DISMISSED/DONE, severity chips, type filter, admin-only assigneeRole filter, severity-grouped cards (critical→high→medium→low), per-type lucide icon, deeplink, snooze popover, dismiss dialog, done one-click, admin-only Reopen on terminal rows, cursor pagination, empty states, live update via `useLiveQueryInvalidation` on `action.created/updated`, admin-only "Recompute now" button.
+- `/crm/reception` briefing module: top-5 OPEN actions for current user role, compact card variant, hides when zero. Mounted after onboarding-checklist in `reception-page-client.tsx`.
+- Sidebar: inserted "Action Center" entry between Reception and Appointments (`ZapIcon`).
+- Reusable `snooze-popover.tsx` (1h/4h/tomorrow/next-week/custom) and `dismiss-dialog.tsx` (optional 200-char reason).
+- `src/lib/actions/format.ts` — pure `formatActionTitle(t, payload)` / `formatActionBody(t, payload)` with discriminated union exhaustiveness.
+- `src/lib/actions/icons.ts` — `ACTION_ICONS` map + severity dot/border/badge color tables.
+- 7 new UI tests (3 icon-map + 4 formatter).
+- i18n: full `actionCenter.*` namespace per locale (tabs, severities, filters, actions, snooze, dismiss, attribution, empty states, all 10 type title/body strings with payload interpolation), `crmShell.sidebarNav.actionCenter`, `reception.briefing.*`.
+
+### Files
+
+```
+NEW (Wave 1):
+  prisma/migrations/20260506100335_action_engine/migration.sql
+  src/lib/actions/types.ts
+  src/server/actions/repository.ts
+  src/server/actions/handler-utils.ts
+  src/server/schemas/action.ts
+  src/app/api/crm/actions/route.ts
+  src/app/api/crm/actions/[id]/route.ts
+  src/app/api/crm/actions/[id]/{snooze,dismiss,done,reopen}/route.ts
+  tests/unit/action-types.test.ts
+  tests/unit/action-handlers.test.ts
+
+NEW (Wave 2):
+  src/server/actions/config.ts
+  src/server/actions/engine.ts
+  src/server/actions/scheduler.ts
+  src/server/actions/detectors/*.ts (10 files)
+  src/app/api/crm/actions/recompute/route.ts
+  tests/unit/detectors/*.test.ts (10 files)
+  tests/unit/action-engine.test.ts
+
+NEW (Wave 3):
+  src/app/[locale]/crm/action-center/page.tsx
+  src/app/[locale]/crm/action-center/_components/{action-center-client,action-card,snooze-popover,dismiss-dialog}.tsx
+  src/app/[locale]/crm/action-center/_hooks/use-actions.ts
+  src/app/[locale]/crm/reception/_components/action-briefing.tsx
+  src/lib/actions/{format,icons}.ts
+  tests/unit/action-icon-map.test.ts
+  tests/unit/action-payload-formatter.test.ts
+
+EDIT:
+  prisma/schema.prisma (Action model + Clinic.actions + Branch.actions reverse relations)
+  src/lib/audit-actions.ts (7 new constants)
+  src/server/realtime/events.ts (action.created + action.updated)
+  src/server/workers/start.ts (registerActionScheduler hookup)
+  src/components/layout/crm-sidebar.tsx (CRM_NAV entry)
+  src/app/[locale]/crm/reception/_components/reception-page-client.tsx (briefing mount)
+  src/messages/{ru,uz}.json (full actionCenter.* + sidebar + briefing keys)
+```
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run build` — Compiled successfully.
+- `npx vitest run` — **614/614 passed** (was 517 after Phase 12 + 33 + 57 + 7 = 97 new).
+- `npm run i18n:check` — OK, locales in parity.
+- Migration: `20260506100335_action_engine` applied cleanly, custom Prisma client refreshed at `src/generated/prisma/client`.
+
+### Notes / hand-off
+
+- Per-clinic `DetectorConfig` overrides are baked into the engine but not yet exposed in UI — all clinics use `DEFAULT_CONFIG`. Phase 19 (SaaS Self-Service) will surface this via `/crm/settings/clinic`.
+- `upsertAction` resurrects from terminal status (DONE/DISMISSED/EXPIRED) when same dedupeKey reappears — intentional but means a dismissed `EMPTY_SLOT_TOMORROW` for tomorrow comes back if same slot still empty after a recompute. Considered "respect dismissal until end-of-day" but rejected: receptionist can re-snooze if irrelevant.
+- Engine emits `action-engine` audit `actorRole: SYSTEM`, `actorLabel: action-engine` — distinguishable in audit log filter for ops.
+- `Action` is NOT in `MODELS_BRANCH_SCOPED`; rows are clinic-wide. Detectors set `branchId` explicitly when relevant. If multi-branch routing of actions to specific branches becomes a need, add Action to the branch-scoped set + force detectors to declare branch.
+
+---
+
+## Phase 14 — Revenue Engines — ✅ DONE 2026-05-06
+
+**Цель:** превратить CRM из реактивного (Action Center реагирует на сигналы из Phase 13) в проактивный по деньгам — измерять упущенную выручку, прогнозировать, реактивировать «спящих» пациентов, разлагать no-show риск на факторы. Закрывает GPT-аудит «нет инструментов для денег».
+
+### Что сделано
+
+**Wave 1 — schema + no-show factor breakdown:**
+- Миграция `20260506110253_revenue_engines`: `Patient.dormantSince DateTime?`, `Patient.reactivationSentAt DateTime[]`, новая таблица `EmptySlotSnapshot` (id, clinicId Cascade, branchId? SetNull, doctorId Cascade, date, hour 0–23, estimatedRevenueLossUzs Int в тиинах, takenSnapshotAt) + индексы `(clinicId, date)` и `(clinicId, doctorId, date)`.
+- `src/lib/ai/no-show-risk.ts` — рефактор: возвращает `{ score, factors: { historyRisk, firstVisitBump, unconfirmedBump, farFutureBump, dayOfWeekBump? }, confidence: low|medium|high }`. Сохранены поля `risk` и `band` для backward-compat (ноль изменений в `no-show-risk-high` детекторе и `resolve-queue-scores`). Confidence: <3 визитов → low, 3–9 → medium, ≥10 → high.
+
+**Wave 2 — engines + scheduled jobs:**
+- `src/server/revenue/empty-slot.ts` — pure `computeEmptySlot(input)` + `expandScheduleHours(scheduleStrings)` + side-effecting `snapshotEmptySlotsForDay(prisma, clinicId, date)` (в транзакции: delete-then-insert по (clinicId, doctorId, date) для идемпотентности). Average price = avg(`Service.priceBase` через `ServiceOnDoctor`) → fallback на clinic-wide avg → fallback на `Doctor.pricePerVisit`.
+- `src/server/revenue/reactivation.ts` — pure `classifyLapse(days)` (90/180/365 границы), `shouldSendReactivation({lastSentAtList, now, quarterDays=90})`, `deriveDormantSince` + DB-функции `findReactivationCandidates`, `enqueueReactivationFor`, `runReactivationScheduler`. Per-patient gate: skip если есть запись в `reactivationSentAt[]` за последние 90 дней или есть upcoming BOOKED/CONFIRMED.
+- `src/server/revenue/scheduler.ts` + `src/server/workers/start.ts:46` — `registerRevenueSchedulers()` регистрирует два воркера через `getQueue()`: `revenue:snapshot` (target 02:00 локально) и `revenue:reactivation` (target 07:00). Polling 1h, hour-gating через `shouldFire`. Per-clinic try/catch, console.info на старт/конец.
+- `src/server/notifications/triggers.ts` + `src/server/notifications/template.ts` — добавлен trigger key `patient.reactivation` (whitelist: patient.name, patient.firstName, clinic.name, clinic.phone, clinic.address). Тесты `notifications-triggers.test.ts` и `notifications-template.test.ts` обновлены 9 → 10 keys.
+
+**Wave 3 — analytics dashboards + tooltip:**
+- `/crm/analytics/loss` (ADMIN-only): 4 KPI-карточки (empty slots / no-shows / late cancellations / dormant), stacked-area тренд (Recharts), таблицы топ-докторов и dormant-сегментов, period tabs (week/month/quarter), empty-state «Snapshots run nightly».
+- `/crm/analytics/forecast` (ADMIN-only): 30-дневный baseline + low/high band (Recharts ComposedChart, transparent floor + translucent ceiling trick), 3 what-if слайдера (reduceNoShow 0–50%, fillEmpty 0–50%, priceUplift 0–30%) с 100ms debounce. KPI: baseline, adjusted, delta, ceiling.
+- Подменю `AnalyticsSubnav` (overview / loss / forecast) — встроено в `loss-page-client.tsx`, переиспользуется forecast-страницей. **Без отдельных sidebar entries**, доступ через `/crm/analytics`.
+- Tooltip разложения no-show риска: `src/server/ai/resolve-queue-scores.ts` теперь прокидывает `noShowFactors` + `noShowConfidence` через `useReceptionLive`. В `queue-column.tsx` чип `· {noShowPct}%` обёрнут в shadcn `Tooltip` (preventDefault на trigger, чтобы не открывать ссылку).
+
+### Files
+
+```
+NEW (Wave 1):
+  prisma/migrations/20260506110253_revenue_engines/migration.sql
+  tests/unit/no-show-risk-v2.test.ts
+
+NEW (Wave 2):
+  src/server/revenue/empty-slot.ts
+  src/server/revenue/reactivation.ts
+  src/server/revenue/scheduler.ts
+  tests/unit/revenue-empty-slot.test.ts
+  tests/unit/revenue-reactivation.test.ts
+
+NEW (Wave 3):
+  src/lib/revenue/loss-aggregation.ts
+  src/lib/revenue/forecast.ts
+  src/server/revenue/loss-data.ts
+  src/server/revenue/forecast-data.ts
+  src/app/api/crm/analytics/loss/route.ts
+  src/app/api/crm/analytics/forecast/route.ts
+  src/app/[locale]/crm/analytics/loss/page.tsx
+  src/app/[locale]/crm/analytics/loss/_components/{loss-page-client,loss-types,loss-chart}.tsx
+  src/app/[locale]/crm/analytics/forecast/page.tsx
+  src/app/[locale]/crm/analytics/forecast/_components/{forecast-page-client,forecast-chart}.tsx
+  tests/unit/revenue-forecast.test.ts
+
+EDIT:
+  prisma/schema.prisma (Patient + EmptySlotSnapshot + back-relations on Clinic/Branch/Doctor)
+  src/lib/ai/no-show-risk.ts (factor breakdown + confidence; risk/band aliases preserved)
+  src/server/ai/resolve-queue-scores.ts (noShowFactors + noShowConfidence на ScoredAppointment)
+  src/server/notifications/triggers.ts (+ patient.reactivation)
+  src/server/notifications/template.ts (+ ALLOWED_KEYS_BY_TRIGGER entry)
+  src/server/workers/start.ts (registerRevenueSchedulers wireup)
+  src/app/[locale]/crm/reception/_hooks/use-reception-live.ts (AiQueueItem fields)
+  src/app/[locale]/crm/reception/_components/queue-column.tsx (factor tooltip)
+  src/messages/{ru,uz}.json (analyticsNav, lossAnalytics, revenueForecast, noShowFactors namespaces)
+  tests/unit/notifications-triggers.test.ts, tests/unit/notifications-template.test.ts (10 keys)
+```
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run i18n:check` — OK, locales in parity.
+- `npx vitest run` — **703/703 passed** (614 baseline → +25 Wave 1 (no-show v2) → +28 Wave 2 (empty-slot + reactivation) → +36 Wave 3 (forecast/loss helpers) = +89).
+- `npm run build` — Compiled successfully, all 4 new routes registered (`/[locale]/crm/analytics/loss`, `/[locale]/crm/analytics/forecast`, `/api/crm/analytics/loss`, `/api/crm/analytics/forecast`).
+- Migration `20260506110253_revenue_engines` — applied locally, custom Prisma client refreshed.
+
+### Notes / hand-off
+
+- **Schema gaps for Phase 17 (Compliance):** (1) нет `Patient.marketingOptOut` — реактивация сейчас не имеет opt-out gate (только `consentMarketing` opt-IN, что бы выкосило почти всю seed-базу — это discriminate-against). Compliance-фаза должна добавить отдельный `marketingOptOut Boolean` + unsubscribe flow в Mini App + SMS STOP keyword. (2) Нет `Patient.deletedAt` (soft delete) — сейчас hard delete через `Cascade`. Если GDPR retention становится требованием — добавить soft-delete и gate в reactivation engine.
+- **Forecast точность:** confidence band сейчас простой (`low = baseline × (1 − historicalNoShowRate)`, `high = baseline × 1.05`). Quantile-based projection — задача для Phase 15 (AI Co-Pilot) или Phase 18 (Analytics depth). `emptySlotUpliftRate: 0.05` константа в `forecast-data.ts` потому что нет fill-outcome tracking.
+- **Late cancellation window:** 24h до `startsAt` — heuristic, потому что схема не enforces non-null `Appointment.cancelledAt` (fallback на `updatedAt`). Если потребуется точнее — Phase 18 добавит `Appointment.cancellationKind` enum (LATE / EARLY / NO_REASON).
+- **EmptySlotSnapshot первая выборка:** воркер `revenue:snapshot` пишет за вчерашний день; пустая дашборда `/crm/analytics/loss` в первые сутки после деплоя — показывает empty-state «Snapshots run nightly».
+- **`patient.reactivation` template seed:** новый trigger key прописан в `ALLOWED_KEYS_BY_TRIGGER`, но шаблоны `NotificationTemplate` сидируются per-clinic из БД, не из `src/messages/*`. Перед production-релизом в Phase 14 обязательно сидируй subject/body для каждой клиники (или отдельная админ-страница). На текущем dev-seed реактивации идут без шаблона → adapter упадёт мягко (skip), но в проде нужно добавить seed.
+- **Backward compat для consumers no-show risk:** `risk` (alias of `score`) и `band` остались на возвращаемом объекте — `no-show-risk-high.ts` детектор и `resolve-queue-scores.ts` (3 call-sites) не тронуты. В будущей фазе можно мигрировать на `.score` и убрать алиас, но это чистый рефактор без runtime-эффекта.
+- Phase 13 unblocks Phase 14 (Revenue Engines) — Loss/Forecast UI consumes `EMPTY_SLOT_TOMORROW` and `PAYMENT_OVERDUE` action streams as primary inputs.
+
+---
+
+## Phase 15 — AI Co-Pilot — ✅ DONE 2026-05-06
+
+**Цель:** ввести LLM в три-четыре точки, где он экономит минуты в день — не "AI everywhere", а целевые use cases. Закрывает GPT-аудит «нет AI поверх данных».
+
+### Что сделано
+
+**Wave 1 — Foundation (LLM proxy + redaction + audit):**
+- Миграция `20260506114917_ai_copilot_foundation`: `Patient.summaryCache String?`, `Patient.summaryCacheUpdatedAt DateTime?`, `MedicalCase.soapDraft String?`, новая таблица `LLMUsage` (id, clinicId Cascade, userId?, useCase String, provider String, model String, promptHash, inputTokens, outputTokens, costUzs Int в тиинах, latencyMs, cacheHit Boolean, errorCode String?, createdAt) + индексы `(clinicId, createdAt)` и `(clinicId, useCase, createdAt)`.
+- `src/server/ai/redact.ts` — `redact(text)` (phones UZ/международные, email, passport AA-формат, JSHSHIR 14-digit), `redactWithKnownNames(text, names)` (явный список имён), `unredact(text, replacements)` (round-trip байт-в-байт).
+- `src/server/ai/llm.ts` — `callLLM(req)` через провайдер abstraction: `mock` (deterministic) + `anthropic` (lazy import `@anthropic-ai/sdk`, real `messages.create` с `system` + `tools`). Fallback на mock когда `ANTHROPIC_API_KEY` отсутствует. Default model `claude-sonnet-4-6` (override через `LLM_DEFAULT_MODEL`). Cost из таблицы `$3/M input + $15/M output` × 12700 UZS/USD × 100 (тиины). Per-clinic 24h rate limit (basic 200, pro 1000, enterprise 10000) с `LLMRateLimitError`. Lazy ioredis cache (1h TTL) когда `REDIS_URL` стоит. Audit `LLM_CALL` + `LLMUsage` row на каждый call (включая ошибочные).
+
+**Wave 2 — Patient summary auto-gen:**
+- `src/server/ai/summary.ts` — `generatePatientSummary(input)` строит system prompt + serializes patient + last-3 visits + open cases, передаёт `knownNames`, парсит ответ и фолбэчит на детерминированный шаблон если LLM пуст.
+- `src/server/ai/patient-summary-cache.ts` — `readOrRefreshPatientSummary(prisma, clinicId, userId, patientId, locale, options)`. TTL 24h, инвалидация при новой `Appointment` (нет `Visit` модели — `Appointment` is the visit table). При stale/missing — отдаёт текущий cache (или empty) и enqueueит refresh job.
+- `src/server/workers/patient-summary-refresh.ts` — worker `ai:patient-summary` под `runWithTenant({kind:'SYSTEM'})`, читает контекст из БД, derives `birthYear` из `birthDate`, splits `fullName`, эмитит realtime `patient.summary.refreshed` событие.
+- API `/api/crm/patients/[id]/summary` GET + `/refresh` POST (ADMIN/DOCTOR), audit `PATIENT_SUMMARY_REFRESHED`.
+- UI: `<PatientSummaryCard variant="card"|"compact">` — `SparklesIcon`, AI-tag, refresh button, live-update через `useLiveQueryInvalidation`. Mounted в `patient-card-client.tsx:170` (card) и `appointment-drawer.tsx:320` (compact).
+
+**Wave 3 — NL Command Bar (Cmd+K):**
+- `src/server/ai/tools/{find-free-slots,find-patient,get-appointments-today,search-actions}.ts` — 4 read-only tools, каждый с JSON Schema input + `execute(input, context): ToolResult` (с `summary` для LLM + `chips` для UI). Все возвращают deeplinks вместо self-execution.
+- `src/server/ai/tool-loop.ts` — `askAssistant(input)` с `MAX_ITERATIONS=4`. Tool results собираются как `[tool:name ok=true] {summary}` user-messages; final assistant text + aggregated chips.
+- API `/api/crm/ai/ask` POST (ADMIN/DOCTOR/RECEPTIONIST/NURSE), audit `AI_QUERY_ASKED` (один на POST + per-iteration `LLM_CALL` через proxy).
+- UI: вкладка "Спросить AI" / "AI'dan so'rash" внутри существующего `global-search.tsx` (Cmd+K), default tab — "Команды" (existing flow не сломан). Chat-style ответ + chip-карточки с deeplinks.
+
+**Wave 4 — Marketing copy generator (admin only):**
+- `src/server/ai/marketing-copy.ts` — `generateMarketingCopy(input)` с defensive parser (numbered "1./2./3." → blank-line → single-fallback). System prompt инструктирует LLM не выдумывать promo / даты, только структурировать заданное.
+- API `/api/crm/ai/marketing-copy` POST ADMIN-only, audit `MARKETING_COPY_GENERATED`. На `LLMRateLimitError` → 429.
+- UI: `<AiCopySuggest>` popover на template-editor (mount point: `template-editor.tsx:347` рядом с bodyRu, `:395` рядом с bodyUz). Channel/audience/tone/maxChars/promo/notes inputs; 3 variant cards с green/red char-count chip; "Использовать" → fills body field, "Скопировать" → clipboard.
+
+**Wave 5 — Voice → SOAP for doctors:**
+- `src/server/ai/transcribe.ts` — `transcribe(input)` через OpenAI Whisper API (multipart form-data) или `mock` provider. Cost $0.006/min × 12700 UZS/USD × 100 (тиины). Audio file fetched and discarded — never persisted to disk, URL never stored. `LLMUsage` row + `LLM_CALL` audit на каждый transcript.
+- `src/server/ai/soap.ts` — `structureSoap(input)` через LLM proxy (useCase `voice.soap`), парсит `### Subjective/Objective/Assessment/Plan` секции; malformed → raw в subjective; empty/throw → empty struct без crash.
+- `src/server/workers/voice-soap.ts` — `voice-soap-process` worker: `transcribe → structureSoap → stitch markdown → write soapDraft → audit VOICE_SOAP_DRAFTED → publishEventSafe('case.soap-draft.refreshed')`. Overwrites без append (intentional — single draft, doctor edits in CRM).
+- `src/server/telegram/voice-handler.ts` — TG webhook detects voice/audio → resolves sender to `User.role=DOCTOR + active + telegramId match` → finds latest OPEN MedicalCase для этого doctor → `getFile + buildFileDownloadUrl` + enqueueит job → reply «Получил, расшифровываю...». Existing welcome+MiniApp flow не сломан (returns "not-doctor" → falls through).
+- UI: `<SoapDraftCard>` на case detail page (mounted в `case-detail-client.tsx` ниже meta+timeline). Read/edit toggle, PATCH через `usePatchCase`, live-update на `case.soap-draft.refreshed`.
+- **Mini App NL booking — DEFERRED.** Booking flow в Mini App — это server-routed multi-step (`/c/[slug]/my/book/{service,doctor,slot,confirm,done}`); добавить chat panel + intent extractor без рефакторинга всего flow — это inconsistent UX. Audit constant `MINIAPP_BOOKING_SUGGESTED` зарезервирован в `audit-actions.ts` для следующего pass'а в Phase 16 (Patient Experience).
+
+### Files (high-level — full list ниже)
+
+```
+NEW (Wave 1):
+  prisma/migrations/20260506114917_ai_copilot_foundation/migration.sql
+  src/server/ai/{redact,llm}.ts
+  tests/unit/ai-{redact,llm-proxy}.test.ts
+
+NEW (Wave 2):
+  src/server/ai/{summary,patient-summary-cache}.ts
+  src/server/workers/patient-summary-refresh.ts
+  src/app/api/crm/patients/[id]/summary/{route,refresh/route}.ts
+  src/app/[locale]/crm/patients/[id]/_components/patient-summary-card.tsx
+  tests/unit/ai-patient-summary{,-cache}.test.ts
+
+NEW (Wave 3):
+  src/server/ai/tools/{types,index,find-free-slots,find-patient,get-appointments-today,search-actions}.ts
+  src/server/ai/tool-loop.ts
+  src/app/api/crm/ai/ask/route.ts
+  src/components/layout/ai-ask-panel.tsx
+  tests/unit/ai-tool-{loop,registry}.test.ts
+
+NEW (Wave 4):
+  src/server/ai/marketing-copy.ts
+  src/app/api/crm/ai/marketing-copy/route.ts
+  src/app/[locale]/crm/notifications/_components/ai-copy-suggest.tsx
+  tests/unit/ai-marketing-copy.test.ts
+
+NEW (Wave 5):
+  src/server/ai/{transcribe,soap}.ts
+  src/server/workers/voice-soap.ts
+  src/server/telegram/voice-handler.ts
+  src/app/[locale]/crm/cases/[id]/_components/soap-draft-card.tsx
+  tests/unit/ai-{soap,transcribe}.test.ts
+
+EDIT:
+  prisma/schema.prisma (Patient.summaryCache + summaryCacheUpdatedAt; MedicalCase.soapDraft; LLMUsage model + Clinic.llmUsages back-relation)
+  package.json (@anthropic-ai/sdk added)
+  src/lib/audit-actions.ts (LLM_CALL, PATIENT_SUMMARY_REFRESHED, AI_QUERY_ASKED, MARKETING_COPY_GENERATED, VOICE_SOAP_DRAFTED, MINIAPP_BOOKING_SUGGESTED)
+  src/server/realtime/events.ts (patient.summary.refreshed, case.soap-draft.refreshed)
+  src/server/workers/start.ts (registerVoiceSoapWorker + startPatientSummaryRefreshWorker)
+  src/components/layout/global-search.tsx (AI tab + ClassicCommandSearch sub-component)
+  src/app/[locale]/crm/notifications/_components/template-editor.tsx (AiCopySuggest mount)
+  src/app/[locale]/crm/patients/[id]/_components/patient-card-client.tsx (PatientSummaryCard mount)
+  src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx (compact PatientSummaryCard mount)
+  src/app/[locale]/crm/cases/[id]/_components/case-detail-client.tsx (SoapDraftCard mount)
+  src/app/[locale]/crm/cases/[id]/_hooks/use-case.ts (soapDraft field)
+  src/server/schemas/medical-case.ts (UpdateMedicalCaseSchema.soapDraft)
+  src/server/telegram/{bot-api,messages}.ts + src/app/api/telegram/webhook/[clinicSlug]/route.ts (voice/audio dispatch)
+  src/messages/{ru,uz}.json (patientSummary, ai.ask, ai.chip, marketingCopy, soapDraft, tgVoiceReply namespaces)
+```
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run i18n:check` — OK, locales in parity.
+- `npx vitest run` — **804/804 passed** (703 baseline → +35 W1 → +20 W2 → +10 W3 → +17 W4 → +19 W5 = +101 net).
+- `npm run build` — Compiled successfully. New routes: `/api/crm/patients/[id]/summary` + `/refresh`, `/api/crm/ai/ask`, `/api/crm/ai/marketing-copy`.
+- Migration `20260506114917_ai_copilot_foundation` applied locally, custom Prisma client refreshed.
+
+### Notes / hand-off
+
+- **Provider strategy:** только `mock` + `anthropic` (LLM) и `mock` + `openai` (Whisper) wired. OpenAI/Ollama чat completions deferred — costs entries reserved в `COST_TABLE` так что добавить — это один switch-case. Все use cases работают в mock-режиме, prod должен иметь `ANTHROPIC_API_KEY` (для генерации) + `OPENAI_API_KEY` (только для Whisper, никакой generation).
+- **PII redaction recall:** 100% на телефонах UZ/международных формах + email + passport AA-формат + JSHSHIR в test corpus. Имена redactятся ТОЛЬКО при явном `knownNames` списке — heuristic name redaction слишком рискован (false positives на медицинских терминах, drug names). Все use cases передают известные имена (patient + doctor) в knownNames.
+- **Cost ceiling per clinic plan:** rate limit work через 24h count `LLMUsage`. Cost дашборд для админа — задача для Phase 19 (SaaS Self-Service).
+- **Audit telemetry:** каждый LLM call → `LLMUsage` row + `AuditLog{action: 'LLM_CALL'}`. Use case-specific audit (`AI_QUERY_ASKED`, `MARKETING_COPY_GENERATED`, `VOICE_SOAP_DRAFTED`, `PATIENT_SUMMARY_REFRESHED`) добавляются ОТДЕЛЬНО — для аналитики "сколько маркетинга в день" без шумa per-iteration LLM_CALL rows.
+- **Voice privacy:** verified end-to-end. URL fetched via `getFile + buildFileDownloadUrl` → `transcribe.ts` ставит multipart blob → never persisted, URL never stored, audio purged when fetch resolves. Только текст транскрипта + структурированный SOAP markdown сохраняются в `MedicalCase.soapDraft`.
+- **TG bot impact:** voice/audio handler — additive. Existing welcome + Mini App button flow (#210) ходит как обычно; non-doctor отправители voice падают на existing operator-inbox path.
+- **Mini App NL booking deferred:** scope blocker — Mini App booking — server-routed multi-step. Phase 16 (Patient Experience) либо рефакторит booking flow в single-page state machine с pre-fill, либо строит отдельный `/c/[slug]/my/ai-suggest` page как deeplink-генератор.
+- **Whisper model name in audit:** жёстко прописан как `'whisper-1'`. OpenAI deprecated `whisper-1` в пользу `whisper-large-v3` — обновить когда релиз будет stable.
+- **Cmd+K NL — read-only by design:** все 4 tools query-only. Никаких мутирующих tool registries. Chips — только deeplinks. Если в будущей фазе захочется "забронировать слот через AI" — это требует separate plan + explicit confirmation pattern + risk review.
+- **`MARKETING_COPY_GENERATED` ≠ `template.create`:** генерация copy не пишется в template — admin клик "Использовать" заполняет form, save идёт через existing template.create/update audit. Так что есть две независимые audit chain: «AI выдал варианты» + «admin сохранил template».
+
+---
+
+## Phase 16 — Patient Experience — ✅ DONE 2026-05-06
+
+**Цель:** Mini App превращается в daily-use поверхность, а не одноразовое «забронировал → закрыл». Каждый use case повышает retention пациента → LTV.
+
+### Что сделано
+
+**Wave 1 — Schema + Treatment plan + Family accounts:**
+- Миграция `20260506130214_phase16_patient_experience`: 4 новых модели — `PatientReview` (NPS — название изменено с `Review` чтобы не пересекаться с существующим public-reviews `Review`), `PatientFamily`, `Prescription`, `ReferralCode`. CHECK constraints: no-self-link, score 1..10.
+- `src/server/services/treatment-plan.ts` — pure `computeProgress` (total = max(planned, completed + (next?1:0), 1) — `MedicalCase` не имеет `plannedVisits`, helper всё же принимает arg для forward compat).
+- Mini App: `<TreatmentPlanCard>` на home (`miniapp-home.tsx:107`), `<FamilySwitcher>` в shell (`mini-app-shell.tsx:103`), форма «Добавить родственника» на `/c/[slug]/my/family/add`.
+- API: `GET/POST /api/miniapp/family`, `DELETE /api/miniapp/family/[linkedPatientId]`, `GET /api/miniapp/treatment-plan`, `GET /api/crm/patients/[id]/family`. PatientFamily ограничено 5 связями, claim-or-create по (clinicId, fullName, phone).
+- Booking flow honors `?onBehalfOf=<patientId>` — `appointments POST` валидирует PatientFamily link и swaps `bookingPatientId`.
+- CRM patient card: «Семья» панель в right-rail (read-only).
+- Phone-less родственники: stub `phoneNormalized = "family:<ownerId>:<rand>"` чтобы satisfy unique constraint.
+
+**Wave 2 — Pre-visit questionnaire + Post-visit NPS:**
+- Миграция `20260506140000_phase16_pre_visit_data`: `Appointment.{preVisitData Json?, preVisitNotifiedAt, preVisitSubmittedAt, npsRequestedAt}` + `Clinic.npsAlertThreshold Int @default(7)`.
+- 2 новых notification trigger keys: `appointment.pre-visit-questionnaire` (24h до визита) и `appointment.nps-request` (4ч после COMPLETED). Whitelist: patient.name, appointment.startsAt, appointment.doctor, appointment.url. `TRIGGER_KEYS` 10 → 12.
+- Workers: `runPreVisitTick` (hourly, 23-25h окно от now, dedupe через `preVisitNotifiedAt`) и `runPostVisitNpsTick` (hourly, 4-5h после `actualEndsAt|updatedAt`, dedupe через `npsRequestedAt`). Per-row error handling, 500-row batch limit.
+- Mini App: `/c/[slug]/my/pre-visit/[appointmentId]` (4-field form: complaints + allergies array + medications array + notes; hydrate-once UX) и `/c/[slug]/my/nps/[appointmentId]` (5×2 score grid + comment textarea).
+- API: `GET/POST /api/miniapp/pre-visit/[id]` и `GET/POST /api/miniapp/nps/[id]` — both honour PatientFamily on-behalf-of, idempotent 409 на resubmit.
+- CRM: `<PreVisitQuestionnaireCard>` в appointment drawer (status badge + collapsed expand).
+- LOW NPS path: `score < clinic.npsAlertThreshold` → `PatientReview.adminAlerted = true` + emit `LOW_NPS_RECEIVED` Action (severity high, dedupeKey `LOW_NPS_RECEIVED:appointmentId=<id>`, deeplink `/crm/action-center`, comment-preview truncated to 120 chars). Action type wired in Phase 13 engine с icon `<FrownIcon>`, RU/UZ title/body.
+
+**Wave 3 — Medication reminders + Refer-a-friend + Admin settings:**
+- Миграция `20260506150000_phase16_meds_referral_settings`: 2 новых модели — `MedicationReminderSend` (id, prescriptionId, scheduledFor unique, sentAt, patientResponse 'taken'|'skipped'|null, respondedAt) и `ReferralReward` (id, clinicId, referrerPatientId, referredPatientId unique pair, sourceCodeId, percent, status PENDING/APPLIED/EXPIRED, expiresAt default +365d, appliedAppointmentId?, appliedAt?). Новые поля: `Lead.referrerPatientId`, `Appointment.{discountPct, discountAmount, appliedReferralRewardId}`, `Clinic.{referralRewardPercent default 15, medicationRemindersEnabled default true}`.
+- 2 новых notification trigger keys: `medication.reminder` и `referral.reward-earned`. `TRIGGER_KEYS` 12 → 14.
+- Worker `medication-reminder-tick` (hourly): scans ACTIVE+remindersEnabled prescriptions, computes next tick from `schedule.times`, dedupes via `MedicationReminderSend(prescriptionId, scheduledFor)` unique constraint, auto-flips status to COMPLETED после `schedule.days` дней.
+- CRM: `<PrescriptionsCard>` на case detail page — CRUD form (drugName, dosage, schedule.times array max 4, days, startsAt, notes, remindersEnabled checkbox), per-row Pause/Resume/Complete/Edit/Delete actions.
+- Mini App: `/c/[slug]/my/medications` (active prescriptions + Today's status: taken/pending/missed counts, "Принял" button), `/c/[slug]/my/refer` (8-char unique code, copy/share via `navigator.share`).
+- Referral flow: на первом COMPLETED appointment у пришедшего по `?ref=<code>` патиента — `mintReferralRewardOnCompletion` создаёт `ReferralReward(status=PENDING, percent=clinic.referralRewardPercent)`, increments `ReferralCode.useCount`, marks `Lead.source='REFERRAL' + referrerPatientId`. На NEXT booking referrer'а: auto-apply pending reward в Serializable transaction (FIFO oldest first), stamps `appointment.discountPct/Amount + appliedReferralRewardId`, audit `REFERRAL_REWARD_APPLIED`.
+- Admin `/crm/settings/clinic`: новая секция "Patient Experience" с npsAlertThreshold (1-10), referralRewardPercent (0-50), medicationRemindersEnabled toggle.
+- CRM patient card: «Реферальная программа» секция (code, useCount, rewards earned/applied).
+
+### Files (cumulative)
+
+```
+NEW migrations:
+  prisma/migrations/20260506130214_phase16_patient_experience/migration.sql
+  prisma/migrations/20260506140000_phase16_pre_visit_data/migration.sql
+  prisma/migrations/20260506150000_phase16_meds_referral_settings/migration.sql
+
+NEW (Wave 1):
+  src/server/services/{family,treatment-plan}.ts
+  src/app/api/miniapp/family/{route,[linkedPatientId]/route}.ts
+  src/app/api/miniapp/treatment-plan/route.ts
+  src/app/api/crm/patients/[id]/family/route.ts
+  src/app/c/[slug]/my/_components/{treatment-plan-card,family-switcher,family-add-screen}.tsx
+  src/app/c/[slug]/my/_hooks/{use-family,use-treatment-plan,use-active-context}.ts
+  src/app/c/[slug]/my/family/add/page.tsx
+  src/app/[locale]/crm/patients/[id]/_hooks/use-patient-family.ts
+  tests/unit/{family-validation,treatment-plan}.test.ts
+
+NEW (Wave 2):
+  src/server/workers/{pre-visit-questionnaire,post-visit-nps}.ts
+  src/server/notifications/triggers (extended) + 2 new keys
+  src/app/api/miniapp/pre-visit/[appointmentId]/route.ts
+  src/app/api/miniapp/nps/[appointmentId]/route.ts
+  src/app/c/[slug]/my/pre-visit/[appointmentId]/page.tsx
+  src/app/c/[slug]/my/nps/[appointmentId]/page.tsx
+  src/app/[locale]/crm/appointments/_components/pre-visit-questionnaire-card.tsx
+  tests/unit/{pre-visit-validation,post-visit-nps}.test.ts
+  // LOW_NPS_RECEIVED Action type wired in src/lib/actions/{types,format,icons}.ts
+
+NEW (Wave 3):
+  src/server/workers/medication-reminder.ts
+  src/server/patient-experience/referral-mint.ts
+  src/app/api/miniapp/medications/{route,[reminderSendId]/route}.ts
+  src/app/api/miniapp/referral/route.ts
+  src/app/api/crm/cases/[id]/prescriptions/{route,[prescriptionId]/route}.ts
+  src/app/api/crm/patients/[id]/referral/route.ts
+  src/app/c/[slug]/my/medications/page.tsx + _components/medications-screen.tsx
+  src/app/c/[slug]/my/refer/page.tsx + _components/refer-screen.tsx
+  src/app/c/[slug]/my/_hooks/{use-medications,use-referral}.ts
+  src/app/[locale]/crm/cases/[id]/_components/prescriptions-card.tsx
+  src/app/[locale]/crm/patients/[id]/_components/patient-referral-card.tsx
+  tests/unit/{medication-schedule,referral-reward}.test.ts
+
+EDIT:
+  prisma/schema.prisma (4 models + 4 columns + 4 fields across 3 migrations)
+  src/lib/audit-actions.ts (PATIENT_FAMILY_LINKED/UNLINKED, PRE_VISIT_QUESTIONNAIRE_SUBMITTED, NPS_RECEIVED, LOW_NPS_RECEIVED, PRESCRIPTION_CREATED/UPDATED/DELETED, MEDICATION_REMINDER_SENT/RESPONDED, REFERRAL_CODE_GENERATED, REFERRAL_REWARD_EARNED/APPLIED)
+  src/server/notifications/{triggers,template}.ts (+4 trigger keys: pre-visit-questionnaire, nps-request, medication.reminder, referral.reward-earned; TRIGGER_KEYS 10→14)
+  src/lib/actions/{types,format,icons}.ts (+LOW_NPS_RECEIVED action type)
+  src/server/workers/start.ts (+startPreVisitWorker, startPostVisitNpsWorker, startMedicationReminderWorker)
+  src/app/api/miniapp/appointments/route.ts (onBehalfOf + auto-apply referral reward in Serializable tx)
+  src/app/api/crm/appointments/[id]/route.ts (mintReferralRewardOnCompletion on COMPLETED transition)
+  src/app/[locale]/crm/appointments/_components/appointment-drawer.tsx (PreVisitQuestionnaireCard mount)
+  src/app/[locale]/crm/cases/[id]/_components/case-detail-client.tsx (PrescriptionsCard mount)
+  src/app/[locale]/crm/patients/[id]/_components/patient-card-client.tsx (PatientReferralCard mount)
+  src/app/[locale]/crm/patients/[id]/_components/patient-right-rail.tsx (Family panel mount)
+  src/app/[locale]/crm/settings/clinic/* (Patient Experience section)
+  src/app/c/[slug]/my/_components/{mini-app-shell,miniapp-home,book/book-confirm,appointments/appointments-screen}.tsx (FamilySwitcher + treatment plan + onBehalfOf threading + medications/refer CTAs)
+  src/messages/{ru,uz}.json + src/app/c/[slug]/my/_messages/{ru,uz}.ts (treatmentPlan, family, preVisit, nps, medications, refer, prescriptions, settings.clinic.patientExperience namespaces)
+  tests/unit/notifications-{triggers,template}.test.ts (10→12→14 keys)
+```
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run i18n:check` — OK, locales in parity.
+- `npx vitest run` — **903/903 passed** (804 baseline → +23 W1 → +53 W2 → +23 W3 = +99 net).
+- `npm run build` — Compiled successfully, 94/94 static pages generated.
+- 3 migrations applied locally, custom Prisma client refreshed.
+
+### Notes / hand-off
+
+- **`Review` → `PatientReview` rename:** существующий `Review` model (public reviews от клиники для маркетинга) занимал имя; NPS получает префикс. Если в будущем захочется унифицировать — это рефактор без внешних поломок.
+- **`MedicalCase.plannedVisits` отсутствует:** treatment-plan helper использует heuristic (max(completed+next, 1)). Если doctor захочет явно указать "5 визитов в плане лечения" — Phase 17 (Compliance) или Phase 18 могут добавить explicit поле.
+- **Family + on-behalf-of:** `?onBehalfOf=<patientId>` в URL + cookie fallback. Booking valid'ate `PatientFamily(ownerId, linkedId)` существует. Если родственник делает что-то подозрительное — owner получает audit row через existing audit chain (нет separate "child action" filter).
+- **Referral reward apply order:** FIFO oldest first в Serializable tx. Если у одного referrer'а 3 PENDING rewards — первый booking applies oldest, остальные ждут. Trade-off: doesn't max savings for patient но prevents stacking abuse.
+- **Schema gap для Phase 17:** `Patient.marketingOptOut` всё ещё нет (flagged в Phase 14). NPS / referral / medication reminders ВСЕ идут без opt-out gate. Phase 17 (Compliance) обязательно должна добавить столбец и unsubscribe surface (Mini App + SMS STOP).
+- **Notification template seed:** 4 новых trigger keys — `appointment.pre-visit-questionnaire`, `appointment.nps-request`, `medication.reminder`, `referral.reward-earned`. Шаблоны RU/UZ должны быть seedened в БД per-clinic перед prod-релизом. Adapter падает мягко (skip) при missing template, но в проде это означает "пациент не получит уведомление" — добавить seed обязательно.
+- **Discount in tiins:** `Appointment.discountAmount` хранится в тиинах (×100 of soum) consistent с другими денежными полями. Pricing recalc'ится в booking tx, не в client.
+- **Mini App NL booking всё ещё DEFERRED:** Wave 5 of Phase 15 deferred это; Phase 16 не подняла из-за scope. Audit constant `MINIAPP_BOOKING_SUGGESTED` сидит зарезервированным. Поднять в Phase 18/19 либо отдельным spike.
+- **Referral max uses:** `ReferralCode.maxUses` exists в schema но не enforced в redemption. Если будут злоупотребления — добавить guard в `mintReferralRewardOnCompletion`. Сейчас ограничено только expiry datetime + already-rewarded check (referrerPatientId, referredPatientId unique).
+
+
+## Phase 17 — Compliance & Trust (2026-05-07)
+
+Closes the consent / privacy / session-security gaps accumulated through Phases 14–16. Marketing engines (reactivation, NPS, medication reminders, referral) were dispatching without an opt-out gate; staff sessions had no idle timeout, no 2FA, no concurrent-session protection; PII (passport, free-text notes, SOAP drafts, prescription notes) sat in plaintext on disk; there was no DSAR surface for patient data export or deletion.
+
+Four sequential waves; one agent per wave to keep i18n message files conflict-free.
+
+### Wave 1: Marketing opt-out + soft-delete + PatientView audit + Mini App unsubscribe
+
+- Migration `20260506160000_phase17_compliance_foundation` (front-loaded W2's User columns to avoid a second migration round-trip):
+  - `Patient.{marketingOptOut, marketingOptOutAt, marketingOptOutSource, deletedAt, deletionRequestedAt, deletionReason}`
+  - `User.{totpSecret, totpEnabledAt, recoveryCodesHash, lastSessionRotatedAt}`
+  - `PatientView` model (3 indexes; (clinicId, patientId, viewedAt) for the per-clinic feed, (viewerUserId, viewedAt) for "what did this user open", (viewedAt) for retention).
+- Consent gate `src/server/notifications/consent-gate.ts` — `isAllowedToReceive(patient, kind: 'transactional'|'marketing')` returns `{ allowed, reason? }`. Soft-deleted = never; transactional = always when not deleted; marketing + opt-out = blocked.
+- Wired into 5 callsites: reactivation engine, medication-reminder worker, post-visit-NPS worker, `onReferralRewardEarned`, `runBirthdays`. **Pre-visit-questionnaire deliberately NOT gated** (transactional — patient booked, helps the doctor; documented in worker header).
+- SMS STOP keyword (`isStopKeyword` + `stopReply(lang)` at `src/lib/sms-stop.ts`): RU/UZ/Latin variants `STOP`, `СТОП`, `TO'XTAT`, `TOXTAT`, `T0XTAT`, `ОТПИСАТЬСЯ`. SMS webhook flips `marketingOptOut=true`, audits `MARKETING_OPT_OUT_CHANGED`, queues confirmation.
+- Mini App profile PATCH accepts `marketingOptOut: boolean`, source stamped `'mini-app'`.
+- PatientView audit: `recordPatientView()` with 5-min throttle by `viewerUserId+patientId+context`; SYSTEM context excluded; errors swallowed (audit must never break reads). Wired into all GET endpoints that surface PHI.
+- ADMIN-only meta-audit: `/api/crm/audit/patient-views` paginated, audited as `PATIENT_VIEW_AUDIT_ACCESSED`. UI on `/crm/settings/audit` got a second tab "Просмотры карточек".
+
+### Wave 2: 2FA + session security
+
+- Migration `20260507100000_phase17_w2_session_security`:
+  - `Clinic.require2faForAll Boolean @default(false)` (Plan-gated: Pro+ only)
+  - `Clinic.sessionIdleTimeoutMinutes Int @default(30)` (clamped [5, 240])
+  - `UserSession` table with `tokenHash`, `lastActivityAt`, `userAgent`, `ip`, FK to User, indexed on `(userId, createdAt)`.
+- Server helpers (`src/server/auth/`):
+  - `totp.ts` — RFC 6238 SHA-1 / 30s / 6-digit, ±1 window, base32 codec, otpauth URL builder.
+  - `recovery-codes.ts` — 10 × `XXXX-XXXX-XXXX` codes, bcrypt hashed, position-leak-safe consume.
+  - `session-security.ts` — `checkSessionLifetime`, `pickSessionsToKick`, idle clamp.
+  - `security-policy.ts` — `requiresTotpEnrollment(role, clinic)` (ADMIN/SUPER_ADMIN always, plus clinic-flag for non-admin).
+  - `user-session.ts` — `mintUserSessionOnSignIn` (kicks priors + audits `CONCURRENT_SESSION_KICKED`).
+  - `totp-pending.ts` — short-lived `tfa_pending` cookie HMAC for the precheck step.
+- Login flow split: `/login` does password + precheck; if 2FA enabled redirects to `/login/2fa` (TOTP code OR "Use recovery code" toggle). Recovery code consumes the bcrypt hash and audits `RECOVERY_CODE_USED`; banner appears when ≤2 codes remain.
+- Self-service: `/crm/me/security` — enrol with QR + manual secret + verify, view recovery-code count, regenerate codes (re-prompts password), disable 2FA (re-prompts password).
+- Per-clinic settings: `clinicSecurity` block on `/crm/settings/clinic` — `require2faForAll` toggle (disabled with upsell hint on Basic plan) + idle-timeout numeric input. Audited as `CLINIC_2FA_REQUIREMENT_CHANGED` / `CLINIC_SESSION_IDLE_CHANGED`.
+- Session lifecycle in `src/proxy.ts`:
+  - Idle timeout: bumps `lastActivityAt` per request; logs out + redirects `/login?reason=idle` past threshold; audits `SESSION_TIMEOUT_LOGOUT`.
+  - 8h forced rotation: `now - lastSessionRotatedAt > 8h` → invalidate; audits `SESSION_FORCED_REROTATE`.
+  - Concurrent-session kick: any prior `UserSession` for this `userId` is invalidated on new login.
+  - Mandatory 2FA redirect to `/crm/me/security/enroll` for ADMIN/SUPER_ADMIN without `totpEnabledAt`.
+
+### Wave 3: DSAR (data export + soft-delete with 90-day execution)
+
+- Migration `20260507XXXX_phase17_w3_dsar` adds `DataExportJob` and `DataDeletionJob` models with full lifecycle enums.
+- Mini App self-service: `/c/[slug]/my/account/delete` — phone-confirmation gate, optional reason + notes, before/after summary; pending state shows "delete on YYYY-MM-DD" with cancel button. Patient-self deletion auto-approves (`PENDING_REVIEW → APPROVED` immediately).
+- CRM admin queue: `/[locale]/crm/settings/dsar` — two tabs (deletions first, exports second), per-row approve/cancel/download. ADMIN-only; staff-initiated deletions require an approver.
+- Export pipeline (`src/server/workers/data-export.ts`):
+  - JSON bundle covers profile, appointments, medical cases, prescriptions, family links, reviews/NPS, pre-visit data, referral codes/rewards, conversation messages, audit-log entries where the patient was actor or subject.
+  - `archiver` + `archiver-zip-encrypted` AES-256, passphrase bcrypt-hashed, MinIO storage at `exports/<clinicId>/<jobId>.zip`, default 30-day TTL.
+  - Delivery: TG bot sends file + passphrase to `telegramChatId` for self-request; passphrase shown in CRM modal for admin-initiated (read aloud / in-person policy documented in worker comment). Audits `PATIENT_DATA_EXPORT_GENERATED` / `…_DELIVERED`.
+- Deletion pipeline (`src/server/workers/data-deletion.ts`):
+  - Hourly cron; picks `APPROVED` jobs where `scheduledFor <= now()`.
+  - Default mode `ANONYMIZE`: `fullName='Удалённый пациент'`, `phoneNormalized='deleted:<jobId>'`, passport/birthDate/notes nulled, `deletedAt=now()`. Aggregate columns (`firstAppointmentAt`, totals) preserved for analytics integrity.
+  - `HARD_DELETE` mode: cascade through medical cases / prescriptions; `Appointment` retained with patientId nulled (analytics integrity).
+  - Forensic audit row `PATIENT_ANONYMIZED` / `PATIENT_HARD_DELETED` written from a hydrated snapshot so the trail survives key rotation.
+
+### Wave 4: encryption at rest
+
+- App-level AES-256-GCM, **not** pgcrypto — chose app-level because the key never lives in the DB, dump captured without `FIELD_ENCRYPTION_KEY` is useless, and there's no SELECT-time function-call overhead. Trade-off documented in the runbook.
+- `src/server/crypto/field-cipher.ts` — random 12-byte IV per call, 16-byte tag, wire format `v<n>:<iv_b64>:<tag_b64>:<ct_b64>`. Multi-version key resolver walks `FIELD_ENCRYPTION_KEY_V<n>` env vars (legacy `FIELD_ENCRYPTION_KEY` = v1). Production fails closed without a real key; dev fallback is a deterministic key (warned once).
+- Boundary helpers (per service): `src/server/{patient,medical-case,prescription}/cipher-fields.ts` with `serialize…ForWrite` / `hydrate…ForRead`. Partial-update keys-not-present stay absent; plaintext tolerated on read for not-yet-backfilled rows; refuses to double-encrypt.
+- Encrypted fields: `Patient.passport`, `Patient.notes`, `MedicalCase.soapDraft`, `Prescription.notes`. Not encrypted: `fullName`, `phoneNormalized`, `email`, `birthDate`, `telegramId/Username`, anything indexed (encryption breaks WHERE / search; blind-index column deferred — see hand-off).
+- Wired into all CRM patient/case/prescription routes, voice-SOAP worker, DSAR export worker (decrypts before bundling — patient owns their data), DSAR deletion worker (hydrates before forensic snapshot).
+- Backfill: `scripts/encrypt-existing-pii.ts` — cursor pagination, 200-row transactional batches per table, idempotent (`isEncryptedField` skip), `--dry-run` + `--table` flags.
+- Rotation: `scripts/rotate-encryption-key.ts` — re-encrypts non-active-version rows; both keys must be live during the rotation window.
+- Runbook `docs/runbooks/encryption-key-rotation.md` — generation, initial setup, quarterly rotation, key-compromise procedure, recovery posture.
+- SUPER_ADMIN posture page `/admin/encryption-health` — active key, known versions, dev-fallback flag, round-trip probe, per-column rows-by-version table (amber on non-active, destructive red on `plaintext > 0`). Audited as `ENCRYPTION_HEALTH_CHECKED`.
+
+### Files
+
+NEW (Wave 1):
+  prisma/migrations/20260506160000_phase17_compliance_foundation/migration.sql
+  src/server/notifications/consent-gate.ts
+  src/server/audit/patient-view.ts
+  src/lib/sms-stop.ts
+  src/app/api/crm/audit/patient-views/route.ts
+  tests/unit/{consent-gate,sms-stop,patient-view-throttle}.test.ts
+
+NEW (Wave 2):
+  prisma/migrations/20260507100000_phase17_w2_session_security/migration.sql
+  src/server/auth/{totp,recovery-codes,session-security,security-policy,user-session,totp-pending,password}.ts
+  src/app/api/crm/auth/totp-required/route.ts
+  src/app/api/crm/me/totp/{enroll,verify,disable}/route.ts
+  src/app/api/crm/me/totp/recovery-codes/regenerate/route.ts
+  src/app/[locale]/crm/me/security/{page.tsx,_components/security-client.tsx}
+  src/app/login/2fa/{page.tsx,_components/two-fa-form.tsx}
+  tests/unit/{totp,recovery-codes,session-security,security-policy,audit-actions-w2,clinic-2fa-plan-gate}.test.ts
+
+NEW (Wave 3):
+  prisma/migrations/20260507XXXX_phase17_w3_dsar/migration.sql
+  src/server/workers/{data-export,data-deletion}.ts
+  src/app/api/miniapp/account/delete/route.ts
+  src/app/api/miniapp/account/data-export/route.ts
+  src/app/api/crm/dsar/{exports,deletions}/route.ts
+  src/app/api/crm/patients/[id]/data-export/route.ts
+  src/app/c/[slug]/my/_components/account-delete-screen.tsx
+  src/app/[locale]/crm/settings/dsar/{page.tsx,_components/dsar-review-client.tsx}
+  tests/unit/{audit-actions-w3,dsar-bundle,dsar-anonymize,dsar-expiry}.test.ts
+
+NEW (Wave 4):
+  src/server/crypto/field-cipher.ts
+  src/server/{patient,medical-case,prescription}/cipher-fields.ts
+  scripts/{encrypt-existing-pii,rotate-encryption-key}.ts
+  docs/runbooks/encryption-key-rotation.md
+  src/app/api/admin/encryption-health/route.ts
+  src/app/admin/encryption-health/{page.tsx,_components/encryption-health-client.tsx}
+  tests/unit/{field-cipher,cipher-fields,audit-actions-w4,encrypt-existing-pii}.test.ts
+
+EDIT:
+  prisma/schema.prisma (Patient + User + Clinic columns, UserSession, DataExportJob, DataDeletionJob, PatientView)
+  src/lib/audit-actions.ts (+~30 constants: MARKETING_OPT_OUT_CHANGED, PATIENT_VIEW_AUDIT_ACCESSED, PATIENT_DELETED, TOTP_*, RECOVERY_CODE_*, SESSION_*, CONCURRENT_SESSION_KICKED, CLINIC_2FA_REQUIREMENT_CHANGED, CLINIC_SESSION_IDLE_CHANGED, PATIENT_DATA_EXPORT_*, PATIENT_DELETION_*, PATIENT_ANONYMIZED, ENCRYPTION_HEALTH_CHECKED, ENCRYPTION_DECRYPT_FAILED)
+  src/proxy.ts (UserSession lifecycle: idle timeout / forced 8h re-rotate / kicked check, mandatory-2FA redirect, `lastActivityAt` bump)
+  src/lib/auth.ts (credentials provider supports TOTP + recovery branches, jwt callback mints UserSession)
+  src/app/api/sms/webhook/[clinicSlug]/route.ts (STOP keyword detection, opt-out flip, confirmation queue)
+  src/app/api/miniapp/profile/route.ts (marketingOptOut PATCH)
+  src/server/revenue/reactivation.ts + src/server/workers/{medication-reminder,post-visit-nps}.ts + src/server/notifications/triggers.ts (consent-gate wired)
+  src/app/api/crm/patients/route.ts + [id]/route.ts (cipher-fields wrap)
+  src/app/api/crm/cases/route.ts + [id]/route.ts + [id]/prescriptions/* (cipher-fields wrap)
+  src/app/api/miniapp/medications/route.ts (decrypts prescription notes)
+  src/server/workers/{voice-soap,data-export,data-deletion}.ts (cipher-fields wrap)
+  src/app/[locale]/crm/settings/audit/_components/audit-log-client.tsx (Просмотры карточек tab)
+  src/app/[locale]/crm/settings/clinic/_components/clinic-settings-client.tsx (Security section)
+  src/app/[locale]/crm/settings/{_components/settings-sidebar,page}.tsx (DSAR entry)
+  src/app/admin/_components/admin-sidebar.tsx (Шифрование entry)
+  src/messages/{ru,uz}.json (crmSecurity 24, clinicSecurity 6, settings.dsar.* + nav.dsar + cards.dsar, patientCard.quickActions.exportData*; final parity 2987 keys)
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npm run i18n:check` — OK, RU=UZ=2987 keys.
+- `npx vitest run` — **1057/1057 passed** (903 baseline → +28 W1 → +61 W2 → +27 W3 → +38 W4 = +154 net across the phase).
+- `npm run build` — 101 pages generated; new routes (`/login/2fa`, `/crm/me/security`, `/crm/settings/dsar`, `/c/[slug]/my/account/delete`, `/admin/encryption-health`) all in the manifest.
+- 3 new migrations applied locally (W1 front-loaded W2's User columns; W3 added DSAR tables; W4 added no schema — encryption is at the application boundary).
+
+### Notes / hand-off
+
+- **Schema gap from Phases 14–16 closed:** `Patient.marketingOptOut` flagged after Phase 14 carried unfixed through Phase 16. Reactivation, medication reminders, NPS, and referral notifications shipped consent-blind for the W14–W16 staging window. Now gated; nothing in production was actually sent because the project hasn't deployed yet (DB on prod is ~7 migrations behind — see "deployment status" below).
+- **Pre-visit-questionnaire is intentionally not consent-gated.** It's transactional — the patient booked, the doctor uses the answers in the visit. The worker's header documents the call so a future scope creep doesn't accidentally gate it.
+- **Auto-approve on patient-self deletion request:** patients own their data; staff-initiated deletions still require an ADMIN approver. The 90-day window applies in both cases; cancellation is allowed at any time before `scheduledFor`.
+- **Anonymize is the default** for `DataDeletionJob.mode`. Hard delete is opt-in by the requester. Trade-off: aggregate analytics (revenue, no-show rate, doctor caseload) survive anonymization but break under hard delete. If a patient explicitly asks for hard delete via DSAR letter, ADMIN can flip the mode at approval time.
+- **Search over encrypted fields:** `WHERE passport CONTAINS '12345'` no longer works for new (encrypted) rows; only legacy plaintext rows match. The `/api/crm/patients` list handler carries an inline comment. Fix is a blind-index column (HMAC of normalized value) — deferred. If/when enabled, add `Patient.passportSearchHash` and rebuild via the backfill pattern.
+- **Encryption posture page assumes single-tenant key** — all clinics share `FIELD_ENCRYPTION_KEY`. Per-tenant keys would let a clinic export "delete my key" → instant cryptographic erasure of their column data. Out of scope here; revisit if a tenant ever asks.
+- **Key rotation is operator-driven**, not automated. The runbook prescribes quarterly rotation. A future cron could nag SUPER_ADMIN if the active key version hasn't rotated in 120 days; not built today.
+- **TOTP ±1 window** allows ~30s clock skew on the user's device. No replay protection on the same code within the same window — a leaked screenshot of the code is good for ~30s. Acceptable for a clinic CRM; if we ever add highly-privileged actions (e.g. payment refunds at scale), revisit with a per-code nonce table.
+- **Concurrent-session kick is per-user, NOT per-user-per-device.** Logging in on a phone kicks the desktop session immediately. Document-aware staff UX may want a "stay signed in here, kick the other?" prompt — current behavior is the strict version, deferred per scope. The kicked session sees a generic "session expired" page on next request.
+- **DSAR export passphrase delivery** for admin-initiated exports is "show in modal, admin reads to patient out-of-band" by default. The TG-self-request path sends the passphrase in the same TG chat as the file (with a "delete this message" warning) — this is a deliberate trade-off vs. multi-channel delivery (e.g. SMS the passphrase, TG the file) which would require the patient's verified phone, not always present in Mini App users.
+- **Backfill not yet run.** Every encrypted column on the dev DB is currently plaintext. Run `tsx scripts/encrypt-existing-pii.ts` after setting `FIELD_ENCRYPTION_KEY` (single deploy step). The cipher-fields helpers tolerate plaintext on read so the app keeps working between the deploy and the backfill — no flag flip required.
+- **Deployment status:** prod (5.129.242.246) DB has 10 migrations applied through `20260505100000_inapp_case_repeat`. Local repo is 7 migrations ahead (Phases 13/14/15/16/17/17/17 — action_engine, revenue_engines, ai_copilot_foundation, phase16_*, phase17_compliance_foundation, phase17_w2_session_security, phase17_w3_dsar). User chose to accumulate locally and deploy in one push after Phases 18+19 close. Build/migrate/seed are deferred to that single deploy.
+
+
+
+## Phase 18 — Analytics & Reporting (2026-05-07)
+
+Closes the "9/10 internal CRM" — director sees the entire business in one click and can build any report without an engineer. Four sequential waves; one agent per wave to keep i18n message files conflict-free.
+
+### Wave 1: Foundation (schema + materialized views + aggregation library + refresh worker)
+
+- Migration `20260507130000_phase18_w1_analytics_foundation`:
+  - `SavedReport` (clinicId, createdByUserId, name, description, config Json, lastRunAt) — config is opaque from W1's POV; W3 owns the schema.
+  - `ScheduledReport` (savedReportId FK cascade, cadence enum WEEKLY/MONTHLY/DAILY, nextRunAt, deliveryChannel enum EMAIL/TELEGRAM, deliveryTarget, enabled, lastDeliveredAt, lastFailureReason).
+  - 4 materialized views, all per-clinic, all with unique indexes for `REFRESH CONCURRENTLY`:
+    - `mv_doctor_performance` (per-doctor per-month: visits, revenue, no-show count, repeat-visit count, new-patient count, NPS avg + count)
+    - `mv_cohort_retention` (cohort by month-of-first-visit × monthOffset 0..23)
+    - `mv_financial_pace` (90d back to 30d forward via `generate_series`, daily collected/scheduled/no-show in tiins)
+    - `mv_schedule_heatmap` (last-90d per-doctor 7×24 grid)
+- Aggregation library `src/server/analytics/`:
+  - `dimensions.ts` — `date`, `doctor`, `branch`, `specialty`, `patient_segment`, `source`
+  - `measures.ts` — `count_visits`, `revenue_tiins`, `no_show_rate`, `avg_ticket_tiins`, `ltv_tiins`
+  - `query-builder.ts` — `buildAnalyticsQuery({dims, measures, filters})` returns parameterized SQL; tenant clinicId injected by AsyncLocalStorage, never string-interpolated.
+  - Resolver modules per dashboard MV: `cohort-resolver`, `doctor-performance-resolver`, `financial-pace-resolver`, `schedule-heatmap-resolver`.
+- Refresh worker `src/server/workers/analytics-refresh.ts` — registers via `repeat` (hourly), bootstraps on startup with plain (non-CONCURRENTLY) refresh on unpopulated MVs, manual trigger at `/api/crm/analytics/refresh` (ADMIN-only) audits `ANALYTICS_VIEWS_REFRESHED`. Cron does NOT audit.
+- API routes for the W2 dashboards: `/api/crm/analytics/{cohorts,doctors,financial,schedule-heatmap,refresh}`.
+
+### Wave 2: Pre-built dashboards (Cohort + Doctor Performance + Financial + Schedule Heatmap + hub)
+
+- `/[locale]/crm/analytics/cohorts` — heatmap with HSL violet ramp, month-range toolbar, "All time" reset, cell hover-tooltip with raw counts.
+- `/[locale]/crm/analytics/doctors` — 9-column ranked table, inline SVG sparklines (no chart lib), top/bottom-25% quartile band tinting, click-row drawer with monthly trend.
+- `/[locale]/crm/analytics/financial` — 4 KPI cards (today collected/scheduled/no-show, MTD + projected month-end via `projectMonthEnd` helper synced server↔client), 90-day daily-pace SVG line chart, 60s auto-refresh that pauses on hidden tabs.
+- `/[locale]/crm/analytics/schedule-heatmap` — 7×24 grid, "Все врачи" + per-doctor selector.
+- Analytics hub at `/[locale]/crm/analytics` keeps Phase 14's revenue/forecast widgets but adds a 4-card preview row above for the new dashboards.
+- Sidebar nav extended with role-gated children (`requiredRole: "ADMIN"` + `feature: "hasAnalyticsPro"`); `getVisibleCrmNav` now filters by role.
+- Shared math helpers `src/lib/analytics/dashboard-math.ts` — `projectMonthEnd`, `computeQuartileBand`, `bandOf`, `trailingMonths`, `resolveDoctorPerfRange`. Multiply-then-divide order to avoid float drift on tiins.
+- Each dashboard load audits `ANALYTICS_REPORT_RUN` with `meta = { dashboard, filters }`.
+- `src/lib/audit-server.ts` — `auditServerPage` bridges server components to the existing audit helper via a synthetic Request from `headers()`.
+
+### Wave 3: Custom Report Builder + saved reports + CSV export
+
+- `/[locale]/crm/analytics/reports/{new,[id],[id]/edit}` + `/[locale]/crm/analytics/reports` list — drag-add chips for dimensions (max 3, ordered) + measures (max 5), filter panel (date range + branch/doctor/status multi-select), result table with sticky header, "Run" → render → "Save".
+- `src/server/analytics/report-config.ts` — strict zod schema with `version: 1` anchor, `parseReportConfig` (throws) + `safeParseReportConfig`. Defensively re-validates on every read/write since `SavedReport.config` is JSON.
+- `src/server/analytics/report-runner.ts` — `runReport(config)` wraps `buildAnalyticsQuery` in a `SET LOCAL statement_timeout=30000` tx; throws `ReportTimeoutError` on PG 57014. Result shape `{rows, columns, generatedAt, rowCount, truncated}`.
+- `src/server/analytics/csv.ts` — `formatCsv(columns, rows)` with UTF-8 BOM, RFC 4180 quoting, currency cells unformatted (Excel reads them as numbers). `?format=csv` query on the run endpoints streams the CSV.
+- API routes `POST /run`, `POST /run/saved/:id`, full CRUD on `SavedReport`. 422 on invalid config, 409 on duplicate name (per clinic), 30s timeout returns 504. Audits `SAVED_REPORT_*` and `ANALYTICS_REPORT_RUN`.
+- Hard caps: rows per query ≤ 1000 (default 500), reports list paginated at 50 per page, no auto-run on builder open.
+- Sidebar gets "Reports" child (ADMIN + `hasAnalyticsPro`).
+
+### Wave 4: PDF export + scheduled delivery
+
+- Migration `20260507150534_phase18_w4_scheduled_format` — `ScheduledReport.format String @default("pdf")`. String not enum so future formats (xlsx, html email) don't need migrations.
+- PDF generator `src/server/analytics/pdf.ts` — pdfkit + DejaVuSans for Cyrillic + Latin-Uzbek glyph coverage. Newly added dep `dejavu-fonts-ttf` ships the real TTF (the agent's first-attempt curl pulled an HTML 404 page; replaced with the npm package). A4 portrait default; switches to landscape if columns > 6. Page header (clinic name + report name + locale-formatted timestamp), filter summary block, monospace numeric cells, formatted currency, "Page X of Y" footer. Hard cap 5000 rows; truncation banner directs to CSV for full export.
+- `?format=pdf` query on the run endpoints serves `application/pdf` with `Content-Disposition: attachment`.
+- Schedules CRUD at `/api/crm/analytics/reports/[id]/schedules` + `/[scheduleId]` — body `{cadence, deliveryChannel, deliveryTarget, format}`. `nextRunAt` computed by `cadence.ts::computeNextRunAt`:
+  - DAILY → tomorrow 09:00 Asia/Tashkent
+  - WEEKLY → next Monday 09:00
+  - MONTHLY → first day of next month 09:00 (handles end-of-month rollover correctly via lossy day-of-month)
+- Schedule UI on the saved-report view page — list section + create/edit modal (cadence radio, channel + target, format toggle, "next run" preview line, enabled toggle).
+- Worker `src/server/workers/scheduled-reports.ts` — polls every 5 min, picks `enabled=true AND nextRunAt <= now()` capped at 100 per tick, runs the saved report, generates PDF or CSV per `format`, delivers via channel:
+  - Email: reuses existing notification email infra
+  - Telegram: reuses existing TG bot file-send helper (same path as Phase 17 W3 DSAR delivery)
+- Per-schedule timeout (60s default) so a heavy report doesn't starve the rest. Failures stamp `lastFailureReason` (truncated 1000 chars), advance `nextRunAt` (don't loop on permanent failures), audit `SCHEDULED_REPORT_FAILED`. Three consecutive failures auto-disable + audit `SCHEDULED_REPORT_DISABLED_AFTER_FAILURES`.
+
+### Files
+
+NEW (Wave 1):
+  prisma/migrations/20260507130000_phase18_w1_analytics_foundation/migration.sql
+  src/server/analytics/{dimensions,measures,query-builder,cohort-resolver,doctor-performance-resolver,financial-pace-resolver,schedule-heatmap-resolver}.ts
+  src/server/workers/analytics-refresh.ts
+  src/app/api/crm/analytics/{cohorts,doctors,financial,schedule-heatmap,refresh}/route.ts
+  tests/unit/analytics/{query-builder,dimensions-measures,cohort-resolver,refresh-worker}.test.ts
+  tests/unit/audit-actions-phase18.test.ts
+
+NEW (Wave 2):
+  src/app/[locale]/crm/analytics/cohorts/{page,_components/cohort-heatmap-client}.tsx
+  src/app/[locale]/crm/analytics/doctors/{page,_components/doctor-performance-client}.tsx
+  src/app/[locale]/crm/analytics/financial/{page,_components/financial-dashboard-client}.tsx
+  src/app/[locale]/crm/analytics/schedule-heatmap/{page,_components/schedule-heatmap-client}.tsx
+  src/app/[locale]/crm/analytics/_components/analytics-hub-cards.tsx
+  src/lib/analytics/dashboard-math.ts
+  src/lib/audit-server.ts
+  tests/unit/analytics/dashboard-math.test.ts
+
+NEW (Wave 3):
+  src/app/[locale]/crm/analytics/reports/{page,new/page,[id]/page,[id]/edit/page}.tsx
+  src/app/[locale]/crm/analytics/reports/_components/{report-builder-client,reports-list-client}.tsx
+  src/app/[locale]/crm/analytics/reports/[id]/_components/report-view-client.tsx
+  src/server/analytics/{report-config,csv,report-runner,saved-reports}.ts
+  src/app/api/crm/analytics/reports/{route,run/route,run/saved/[id]/route,[id]/route,[id]/run/route}.ts
+  tests/unit/analytics/{report-config,csv,saved-reports-paginator,reports-api}.test.ts
+
+NEW (Wave 4):
+  prisma/migrations/20260507150534_phase18_w4_scheduled_format/migration.sql
+  src/server/analytics/{pdf,cadence,delivery,schedule-validation}.ts
+  src/server/fonts/DejaVuSans.ttf (757KB, via npm dejavu-fonts-ttf)
+  src/server/workers/scheduled-reports.ts
+  src/app/api/crm/analytics/reports/[id]/schedules/{route,[scheduleId]/route}.ts
+  tests/unit/analytics/{pdf-formatter,cadence,scheduled-reports-worker,schedule-validation}.test.ts
+
+EDIT:
+  prisma/schema.prisma (SavedReport + ScheduledReport models, enums; ScheduledReport.format String added in W4)
+  src/lib/audit-actions.ts (+11 constants: ANALYTICS_VIEWS_REFRESHED, SAVED_REPORT_CREATED/UPDATED/DELETED, SCHEDULED_REPORT_CREATED/UPDATED/DELETED/DELIVERED/FAILED/DISABLED_AFTER_FAILURES, ANALYTICS_REPORT_RUN)
+  src/components/layout/crm-sidebar.tsx (analytics group expanded with 5 children: cohorts, doctors, financial, schedule-heatmap, reports — all ADMIN + hasAnalyticsPro gated)
+  src/server/workers/start.ts (+startAnalyticsRefreshWorker, +startScheduledReportsWorker)
+  src/messages/{ru,uz}.json (analyticsHub, analyticsCohorts, analyticsDoctors, analyticsFinancial, analyticsScheduleHeatmap, analyticsReports namespaces; final parity)
+  package.json (+pdfkit ^0.18.0, +dejavu-fonts-ttf 2.37.3)
+  tests/unit/feature-nav.test.ts (analytics children expansion + role gating tests)
+
+### Gates
+
+- `npx tsc --noEmit` — clean.
+- `npx vitest run` — **1192/1192 passed** (1057 baseline → +35 W1 → +19 W2 → +39 W3 → +42 W4 = +135 net across the phase).
+- `npm run i18n:check` — OK, RU/UZ in parity.
+- `npm run build` — Compiled successfully, all new pages/routes registered.
+- 2 new migrations applied locally; 4 MVs + `relispopulated` bootstrap verified.
+
+### Notes / hand-off
+
+- **Performance budget (financial dashboard <500ms p95) verified on dev seed.** Heaviest MV resolver (`doctor-performance` 12mo window) returns in <50ms with the supporting btree on `(clinicId, month)`. Production with bigger volumes may want a pre-aggregated NPS subquery in `mv_doctor_performance`; revisit if hourly REFRESH exceeds the 5s warn threshold.
+- **Manual MV refresh audits; cron does not.** Hourly cron firing 24×/day would spam AuditLog. The button on `/crm/analytics` posts to `/api/crm/analytics/refresh` and audits as `ANALYTICS_VIEWS_REFRESHED`.
+- **`mv_schedule_heatmap.availableSlotCount`** currently mirrors `appointmentCount` because no booking-attempt event log exists. SQL comment notes this as a follow-up if/when an attempts log lands.
+- **`ScheduledReport.format` is String, not enum** — keeps the schema flat for future formats (xlsx, html email) without a migration.
+- **Search over encrypted Patient fields still doesn't work in reports.** Inherited from Phase 17 W4 — `patient_segment` dimension uses `firstAppointmentAt` and `lastAppointmentAt` on Appointment, both unencrypted; `Patient.notes` and `passport` are out of scope for analytics. Blind-index column still deferred.
+- **Cohort window capped at 24 months** — wider windows can come later if a clinic wants 5-year retention, but the MV is intentionally bounded for refresh perf.
+- **PDF row hard-cap at 5000.** Anything bigger should go through CSV. The PDF banner directs the user explicitly. If a clinic needs multi-thousand-row PDFs, build paginated streaming.
+- **DejaVuSans TTF** is now pulled from npm package `dejavu-fonts-ttf` and committed to `src/server/fonts/`. The package itself is in `dependencies`, so a fresh `npm ci` re-fetches it, but the committed file means the worker doesn't need npm at boot.
+- **Concurrent session impact on auto-refresh:** the financial dashboard's 60s auto-refresh respects session idle timeout from Phase 17 W2 — if the tab is hidden for 30 min the session expires and the next fetch will redirect to `/login?reason=idle`. This is the desired behavior.
+- **Email/Telegram delivery channels** reuse existing notification infra — no new SMTP/bot setup for this phase. If a clinic doesn't have email configured, `lastFailureReason = "Email channel not configured"` surfaces in the schedules list UI.
+- **Deployment status:** prod (5.129.242.246) DB is now ~9 migrations behind local (Phases 13/14/15/16/17/17/17/18/18). User chose to accumulate locally and deploy after Phase 19 closes. After deploy: run `tsx scripts/encrypt-existing-pii.ts` (Phase 17 W4 backfill) and verify `mv_*` populate via the analytics-refresh worker's startup pass.
+
+---
+
+## 2026-05-08 — Phase 19 закрыта (#239)
+
+**Тема.** SaaS Self-Service: новая клиника регистрируется самостоятельно, видит usage/upgrade без SUPER_ADMIN, white-label для Pro, hardened impersonation + view-as для поддержки.
+
+### Wave 1 — Plan-Limit Foundation (#239 W1)
+Migration: `20260507160000_phase19_w1_plan_limits`.
+
+- Schema: новый `Invoice` model + `InvoiceStatus` enum (DRAFT/ISSUED/PAID/VOID/OVERDUE), `Clinic` расширен полями `customSubdomain @unique`, `brandSecondaryColor`, `onboardedAt`, `onboardingPlaybook`. `Plan.features` JSON merge per-tier (basic 50/100/200/500MB; pro 500/2000/5000/10000MB; enterprise -1 across the board).
+- `src/lib/feature-flags.ts` расширен: 4 numeric quotas (`maxPatients`, `maxAppointmentsPerMonth`, `maxSmsPerMonth`, `maxStorageMb`) + 2 booleans (`hasWhiteLabel`, `hasCustomSubdomain`). DEFAULT_FLAGS / ENTERPRISE_FLAGS / parsePlanFeatures обновлены.
+- `src/server/billing/usage.ts` — `getClinicUsage(clinicId, now?)` возвращает {patientCount, appointmentCountThisMonth, smsCountThisMonth, storageMb, asOf}. SMS = NotificationSend(channel=SMS), storage из `Document.sizeBytes`. Pure helper `monthWindow(now)`.
+- `src/server/billing/plan-limits.ts` — pure `evaluateLimit(current, max, isFreePlan)` (max=-1→ok, ratio<0.8→ok, 0.8≤<1→warn, ≥1→block только для basic). Composers `ensurePatientLimit/Appointment/Sms` audit warn/block. `ensureQuotaForApi(clinicId, quota)` возвращает 402 PlanLimitExceeded.
+- Audit constants (5): PLAN_LIMIT_WARNED, PLAN_LIMIT_BLOCKED, INVOICE_CREATED/PAID/VOIDED.
+
+### Wave 2 — Self-signup + Onboarding Playbooks (#239 W2)
+Migration: `20260507170000_phase19_w2_signup`.
+
+- Schema: `ClinicSignupToken` (email, clinicName, phone, planSlug, playbookSlug, preferredLocale, token unique, expiresAt 24h, consumedAt, consumedClinicId).
+- `src/server/onboarding/playbooks/index.ts` — 5 playbooks (general / dental / neurology / pediatric / cosmetology), каждый с ≥5 services + ≥3 NotificationTemplate (триггеры appointment.created, reminder-24h, reminder-2h) + workday schedule. Plausible UZ pricing в tiins.
+- `src/server/onboarding/apply-playbook.ts` — idempotent (skip services with existing code/nameRu), audit `PLAYBOOK_APPLIED`.
+- API: POST `/api/public/signup` (zod валидация, 24h token, console.info confirm-link для dev), POST `/api/public/signup/confirm` (создаёт Clinic + ADMIN с `mustChangePassword=true` + temp password + Subscription TRIAL basic 14d, применяет playbook).
+- UI: `/[locale]/signup` форма + `/[locale]/signup/confirm/[token]` показывает temp password one-shot.
+- Audit constants (4): CLINIC_SELF_SIGNUP_REQUESTED/COMPLETED/TOKEN_EXPIRED, PLAYBOOK_APPLIED.
+
+### Wave 3 — Billing UI + Click/Payme Stubs (#239 W3)
+Migration: `20260507180000_phase19_w3_billing_ui`.
+
+- Schema: `Subscription.pendingPlanId String?` — план переключается атомарно при INVOICE_PAID.
+- `src/server/billing/invoice-number.ts` — `formatInvoiceNumber(year, counter)` → `INV-2026-0042`, sequencer `nextInvoiceNumber(clinicId, year)`.
+- `src/server/billing/invoice.ts` — `createUpgradeInvoice` (DRAFT, period 30d, due 7d), `markInvoicePaid` (PAID + plan swap + audit).
+- `src/server/billing/pdf.ts` — bilingual PDF через pdfkit + DejaVuSans (тот же шрифт из Phase 18).
+- `src/server/billing/payments/{click,payme}.ts` — `createCharge` возвращает локальный pay-url, `verifyWebhook` проверяет подпись (Click MD5, Payme JSON-RPC + Basic auth) если `*_SECRET_KEY` задан, иначе `{stub: true}`.
+- Routes: POST `/api/crm/billing/upgrade` (ADMIN), GET `/api/crm/billing/invoices/[id]/pdf`, POST `/api/crm/billing/invoices/[id]/simulate-pay` (404 без `NEXT_PUBLIC_BILLING_STUB=1`), POST `/api/webhooks/billing/{click,payme}`.
+- UI: `/[locale]/crm/settings/billing` — план + 3 progress bars (≥80% amber, ≥100% red), plan picker (basic/pro/enterprise), invoice history. Stub pay page на `/billing/pay/[id]`.
+- i18n: `billing.*` namespace в ru/uz parity.
+
+### Wave 4 — White-label + Hardened Impersonation (#239 W4)
+Migration: `20260507190000_phase19_w4_impersonation`.
+
+- Schema: `ImpersonationGrant` (superAdminId, clinicId, reason, mode WRITE|VIEW_ONLY, startedAt, expiresAt 60min, endedAt, endedReason). Без FK для forensic survival.
+- `src/server/platform/impersonation.ts` — `createGrant`, `getActiveGrant`, `endGrant`, pure `isGrantExpired`.
+- `src/app/api/platform/session/switch-clinic/route.ts` переписан: body `{clinicId, reason ≥4, mode}`, минит grant, ставит второй cookie `admin_grant_id` (60min) рядом с `admin_clinic_override` (12h). Audit STARTED/ENDED + `durationMs`.
+- `src/lib/auth.ts` JWT/session callbacks читают оба cookie на refresh, выкидывают claims при expired/missing. `session.user.impersonation = {grantId, mode} | null`.
+- CRM layout safety net: SUPER_ADMIN с clinicId но без активного grant → audit `SUPER_ADMIN_IMPERSONATE_EXPIRED` + redirect `/admin/clinics?expired=1`.
+- View-as: `src/lib/view-only.ts` (`isViewOnlySafe(request)` — GET/HEAD/OPTIONS + `/api/platform/session/*` exempt, остальное при VIEW_ONLY режекается 403 ViewAsReadOnly + audit `SUPER_ADMIN_VIEW_AS_BLOCKED`). Wired в `createApiHandler`/`createApiListHandler`. Banner flips на destructive border при VIEW_ONLY.
+- Branding page `/[locale]/crm/settings/branding` (Pro only, gate hasWhiteLabel) — color pickers, logo upload (PNG/SVG ≤256KB → MinIO key `branding/<clinicId>/<uuid>.<ext>` или public/uploads stub), subdomain field (regex `^[a-z0-9-]{3,32}$`, blocked reserved labels: api/admin/www/etc). API PATCH с changed-fields detection + audit BRANDING_CHANGED.
+- Brand color injection: CRM `[locale]/crm/layout.tsx` + Mini App `/c/[slug]/my/layout.tsx` инжектят `<style>:root{--brand-primary;--brand-secondary}</style>` когда hasWhiteLabel включён.
+- Bulk admin ops: row context menu на `/admin/clinics` — suspend (CANCELLED) / restore (TRIAL +14d) / extend-trial (+30d) через POST `/api/admin/clinics/[id]/lifecycle`. Idempotent.
+- Runbook: `docs/runbooks/custom-subdomain.md` (manual DNS provisioning, 6-step checklist + rollback).
+- Audit constants (8): BRANDING_CHANGED, SUPER_ADMIN_IMPERSONATE_STARTED/ENDED/EXPIRED, SUPER_ADMIN_VIEW_AS_BLOCKED, CLINIC_SUSPENDED/RESUMED/TRIAL_EXTENDED.
+
+### Гейты на закрытие фазы
+
+- `npx prisma format && npx prisma validate && npx prisma generate` — clean
+- `npx tsc --noEmit` — 0 errors
+- `npx vitest run` — **129 files, 1369/1369 tests** (старт фазы 1192, +177 за фазу)
+- `npm run build` — Compiled successfully, все новые routes/pages зарегистрированы
+- i18n parity (ru/uz) — vitest-enforced, проходит для `signup.*`, `signupConfirm.*`, `billing.*`, `branding.*`, `admin.bulk.*`
+
+### Notes / hand-off
+
+- **Self-signup создаёт TRIAL на basic, не pro.** 14 дней trial, после — PAST_DUE через `trial-expiry-scheduler` (Phase 9e). Это даёт hard-block surface (free tier: 50 patients, 100 appts/mo, 200 sms/mo) который реально упрётся ещё в trial — намеренно, чтобы upgrade-путь был видимым.
+- **`prisma migrate dev` всё ещё drift на phase16** локально — миграции W1-W4 написаны вручную, валидированы через `prisma validate`. Прод применит подряд через `migrate deploy` без проблем (история чистая).
+- **Email service stubbed**: `/api/public/signup` пишет confirm-link в `console.info`. До деплоя нужно либо подключить SMTP (см. Resend / nodemailer), либо отправлять confirm-link через Telegram если у клиента есть phone (Phase 11 уже умеет TG). Решить перед прод-релизом.
+- **CAPTCHA / rate-limit на signup отсутствует.** Низкий приоритет до публичного landing'а; добавить когда страница станет findable.
+- **Click/Payme — LogOnly**. `createCharge` возвращает локальный stub URL, `verifyWebhook` проверяет подпись только когда `CLICK_SECRET_KEY` / `PAYME_SECRET_KEY` заданы. Реальная Click sandbox не тестировалась — нужен живой merchant аккаунт + URL обратной связи, выставленный в кабинете провайдера.
+- **Dunning / autorenewal не реализованы.** Когда invoice OVERDUE (`dueAt < now()`), нет worker'а который флипнет Subscription в PAST_DUE из-за неоплаты. Phase 9e flow покрывает только trial expiry. Добавить worker `billing-dunning-scheduler` post-MVP.
+- **Custom subdomain DNS ручной** — runbook есть, middleware host-header → `Clinic.customSubdomain` resolver не подключён. Когда первый клиент закажет subdomain, вписать lookup в `src/middleware.ts` + кеш.
+- **Impersonation reason/mode UX** через native `prompt`/`confirm` — заменить на shadcn Dialog при следующем polish-пасе.
+- **VIEW_ONLY mode не блокирует mutations внутри Server Actions** — только через REST API wrapper. Если Server Actions начнут писать данные, добавить ту же проверку в `createServerAction` обёртку.
+- **Playbook seed pricing намеренно консервативный** (UZ-market 2026): первичная консультация невролога 350k UZS, кариес/плoмба 600k UZS. Клиники легко переопределят на onboarding tour.
+- **Storage quota counts but doesn't block.** `getClinicUsage.storageMb` подсчитан, но `ensureStorageLimit` я не написал — upload endpoints не проверяют. Намеренно warn-only пока живой клиент с большими медиа-аплоадами не появится.
+- **Deployment status:** прод DB теперь **~13 миграций позади локальной** (Phases 13/14/15/16/17×3/18×2/19×4). Деплой одним пушем после этой фазы по договорённости с пользователем. После деплоя:
+  1. `npx prisma migrate deploy` на VPS
+  2. `tsx scripts/encrypt-existing-pii.ts` (Phase 17 W4 backfill)
+  3. Установить env: `CLICK_SECRET_KEY`, `PAYME_SECRET_KEY` (если включаем платежи), либо ничего — adapters в LogOnly
+  4. Не выставлять `NEXT_PUBLIC_BILLING_STUB=1` в prod (это симулятор оплаты)
+  5. Опционально: smoke-test self-signup через `/signup` на staging
+

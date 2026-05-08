@@ -206,3 +206,32 @@ export async function deleteWebhook(
     drop_pending_updates: dropPendingUpdates,
   });
 }
+
+export type TgFile = {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  file_path?: string;
+};
+
+/**
+ * Phase 15 Wave 5 — fetch a file's `file_path` so the worker can construct
+ * `https://api.telegram.org/file/bot<TOKEN>/<file_path>` and stream the
+ * audio bytes directly into Whisper. The response URL is short-lived
+ * (~1h), so we never persist it — we use it once and forget.
+ */
+export async function getFile(
+  token: string,
+  fileId: string,
+): Promise<TgApiResponse<TgFile>> {
+  return call<TgFile>(token, "getFile", { file_id: fileId });
+}
+
+/**
+ * Construct the public download URL for a file_path returned by `getFile`.
+ * Telegram's file proxy at `api.telegram.org/file/bot<TOKEN>/<file_path>`
+ * accepts a one-shot GET with no auth header beyond the path token itself.
+ */
+export function buildFileDownloadUrl(token: string, filePath: string): string {
+  return `${API_ROOT}/file/bot${token}/${filePath}`;
+}

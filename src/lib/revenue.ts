@@ -20,6 +20,6 @@ export function getServicePrice(
   return 0;
 }
 
-export function formatRevenue(amount: number): string {
-  return amount.toLocaleString("ru-RU").replace(/,/g, " ");
-}
+// `formatRevenue` removed in favour of `formatMoney` from `@/lib/format`.
+// Callers should pass the amount in tiins (UZS minor units) and the active
+// locale; e.g. `formatMoney(amountTiins, "UZS", locale)`.

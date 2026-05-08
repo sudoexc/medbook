@@ -15,6 +15,7 @@ export type MiniAppProfile = {
   phoneNormalized: string;
   preferredLang: "RU" | "UZ";
   consentMarketing: boolean;
+  marketingOptOut: boolean;
   telegramUsername: string | null;
   hasPhone: boolean;
 };
@@ -42,6 +43,7 @@ export function useUpdateProfile() {
       phone?: string;
       lang?: "RU" | "UZ";
       consentMarketing?: boolean;
+      marketingOptOut?: boolean;
     }) => {
       const res = await request<{ patient: MiniAppProfile }>(
         "/api/miniapp/profile",

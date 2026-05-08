@@ -14,6 +14,16 @@ export type FeatureFlags = {
   hasAnalyticsPro: boolean;
   maxBranches: number;
   maxUsers: number;
+  // Phase 19 Wave 1 — usage quotas. `-1` is the "unlimited" sentinel and is
+  // honoured by `evaluateLimit` in `src/server/billing/plan-limits.ts`. The
+  // four numeric keys are evaluated against `getClinicUsage()`; the two
+  // booleans gate UI affordances (white-label theming, custom subdomain).
+  maxPatients: number;
+  maxAppointmentsPerMonth: number;
+  maxSmsPerMonth: number;
+  maxStorageMb: number;
+  hasWhiteLabel: boolean;
+  hasCustomSubdomain: boolean;
 };
 
 export const DEFAULT_FLAGS: FeatureFlags = {
@@ -22,6 +32,16 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   hasAnalyticsPro: false,
   maxBranches: 1,
   maxUsers: 5,
+  // Mirror the seeded `basic` plan in
+  // `prisma/migrations/20260507160000_phase19_w1_plan_limits/migration.sql`.
+  // Used as the fallback when a clinic has no subscription, has been
+  // CANCELLED, or `parsePlanFeatures` is given an unparseable value.
+  maxPatients: 50,
+  maxAppointmentsPerMonth: 100,
+  maxSmsPerMonth: 200,
+  maxStorageMb: 500,
+  hasWhiteLabel: false,
+  hasCustomSubdomain: false,
 };
 
 /**
@@ -50,6 +70,14 @@ export function parsePlanFeatures(raw: unknown): FeatureFlags {
     hasAnalyticsPro: pickBool("hasAnalyticsPro"),
     maxBranches: pickInt("maxBranches"),
     maxUsers: pickInt("maxUsers"),
+    // Phase 19 Wave 1 — same fall-through pattern: missing or malformed
+    // values land on the basic-tier DEFAULT_FLAGS values.
+    maxPatients: pickInt("maxPatients"),
+    maxAppointmentsPerMonth: pickInt("maxAppointmentsPerMonth"),
+    maxSmsPerMonth: pickInt("maxSmsPerMonth"),
+    maxStorageMb: pickInt("maxStorageMb"),
+    hasWhiteLabel: pickBool("hasWhiteLabel"),
+    hasCustomSubdomain: pickBool("hasCustomSubdomain"),
   };
 }
 
@@ -66,6 +94,15 @@ export const ENTERPRISE_FLAGS: FeatureFlags = {
   hasAnalyticsPro: true,
   maxBranches: 50,
   maxUsers: 500,
+  // Phase 19 Wave 1 — `-1` is the unlimited sentinel honoured by
+  // `evaluateLimit` (see `src/server/billing/plan-limits.ts`). Both
+  // white-label affordances are on for enterprise.
+  maxPatients: -1,
+  maxAppointmentsPerMonth: -1,
+  maxSmsPerMonth: -1,
+  maxStorageMb: -1,
+  hasWhiteLabel: true,
+  hasCustomSubdomain: true,
 };
 
 /**

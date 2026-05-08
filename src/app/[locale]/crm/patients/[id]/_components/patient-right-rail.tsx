@@ -11,6 +11,7 @@ import {
   InfoIcon,
   PhoneIcon,
   SendIcon,
+  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,6 +22,10 @@ import type { Patient } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
 import { usePatientCommunications } from "../_hooks/use-patient-communications";
 import { usePatientDocuments } from "../_hooks/use-patient-documents";
+import {
+  usePatientFamily,
+  type PatientFamilyRelationship,
+} from "../_hooks/use-patient-family";
 
 export interface PatientRightRailProps {
   patient: Patient;
@@ -79,6 +84,7 @@ export function PatientRightRail({
   const [nowMs] = React.useState(() => Date.now());
   const commsQ = usePatientCommunications(patient.id);
   const docsQ = usePatientDocuments(patient.id);
+  const familyQ = usePatientFamily(patient.id);
 
   const comms = commsQ.data?.items ?? [];
   const docs = docsQ.data?.rows ?? [];
@@ -235,7 +241,85 @@ export function PatientRightRail({
           </ul>
         )}
       </Section>
+
+      <Section title={t("family")}>
+        {familyQ.isLoading ? (
+          <p className="text-[12px] text-muted-foreground">{t("loading")}</p>
+        ) : !familyQ.data ||
+          (familyQ.data.ownedRelatives.length === 0 &&
+            familyQ.data.linkedFromOwners.length === 0) ? (
+          <p className="text-[12px] text-muted-foreground">
+            {t("familyEmpty")}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {familyQ.data.ownedRelatives.map((row) => (
+              <FamilyRow
+                key={row.linkId}
+                href={`/${locale}/crm/patients/${row.patient.id}`}
+                title={row.patient.fullName}
+                subtitle={`${t("familyOwnerOf")} · ${relationshipLabel(row.relationship, t)}`}
+              />
+            ))}
+            {familyQ.data.linkedFromOwners.map((row) => (
+              <FamilyRow
+                key={row.linkId}
+                href={`/${locale}/crm/patients/${row.owner.id}`}
+                title={row.owner.fullName}
+                subtitle={`${t("familyLinkedFrom")} · ${relationshipLabel(row.relationship, t)}`}
+              />
+            ))}
+          </ul>
+        )}
+      </Section>
     </div>
+  );
+}
+
+function relationshipLabel(
+  rel: PatientFamilyRelationship,
+  t: ReturnType<typeof useTranslations<"patientCard.rightRail">>,
+): string {
+  switch (rel) {
+    case "child":
+      return t("familyChild");
+    case "spouse":
+      return t("familySpouse");
+    case "parent":
+      return t("familyParent");
+    default:
+      return t("familyOther");
+  }
+}
+
+function FamilyRow({
+  href,
+  title,
+  subtitle,
+}: {
+  href: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <li>
+      <Link
+        href={href}
+        className="flex w-full items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+      >
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <UsersIcon className="size-3.5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">
+            {title}
+          </span>
+          <span className="block truncate text-[10px] text-muted-foreground">
+            {subtitle}
+          </span>
+        </span>
+      </Link>
+    </li>
   );
 }
 

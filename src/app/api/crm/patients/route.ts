@@ -7,6 +7,11 @@ import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
 import { ok, err, parseQuery } from "@/server/http";
 import {
+  hydratePatientForRead,
+  hydratePatientListForRead,
+  serializePatientForWrite,
+} from "@/server/patient/cipher-fields";
+import {
   CreatePatientSchema,
   QueryPatientSchema,
 } from "@/server/schemas/patient";
@@ -38,6 +43,9 @@ export const GET = createApiListHandler(
       const term = q.q.trim();
       const phoneDigits = term.replace(/\D/g, "");
       const phoneNorm = normalizePhone(term);
+      // Wave 4 note: `passport` is stored encrypted; `contains` only matches
+      // legacy plaintext rows. Searching encrypted passports is out of scope
+      // and would require a blind-index (HMAC) column — see runbook.
       const or: Array<Record<string, unknown>> = [
         { fullName: { contains: term, mode: "insensitive" } },
         { passport: { contains: term, mode: "insensitive" } },
@@ -88,7 +96,7 @@ export const GET = createApiListHandler(
     }
 
     return ok({
-      rows,
+      rows: hydratePatientListForRead(rows),
       nextCursor,
       total,
       segmentCounts,
@@ -120,34 +128,39 @@ export const POST = createApiHandler(
       });
     }
 
-    const created = await prisma.patient.create({
-      data: {
-        fullName: body.fullName,
-        phone: body.phone,
-        phoneNormalized,
-        birthDate: body.birthDate ?? null,
-        gender: body.gender ?? null,
-        passport: body.passport ?? null,
-        address: body.address ?? null,
-        photoUrl: body.photoUrl ?? null,
-        telegramId: body.telegramId ?? null,
-        telegramUsername: body.telegramUsername ?? null,
-        preferredChannel: body.preferredChannel ?? "TG",
-        preferredLang: body.preferredLang ?? "RU",
-        source: body.source ?? null,
-        segment: body.segment ?? "NEW",
-        tags: body.tags ?? [],
-        notes: body.notes ?? null,
-        discountPct: body.discountPct ?? 0,
-        consentMarketing: body.consentMarketing ?? false,
-      } as never, // tenant-scope extension injects clinicId
+    const writeData = serializePatientForWrite({
+      fullName: body.fullName,
+      phone: body.phone,
+      phoneNormalized,
+      birthDate: body.birthDate ?? null,
+      gender: body.gender ?? null,
+      passport: body.passport ?? null,
+      address: body.address ?? null,
+      photoUrl: body.photoUrl ?? null,
+      telegramId: body.telegramId ?? null,
+      telegramUsername: body.telegramUsername ?? null,
+      preferredChannel: body.preferredChannel ?? "TG",
+      preferredLang: body.preferredLang ?? "RU",
+      source: body.source ?? null,
+      segment: body.segment ?? "NEW",
+      tags: body.tags ?? [],
+      notes: body.notes ?? null,
+      discountPct: body.discountPct ?? 0,
+      consentMarketing: body.consentMarketing ?? false,
     });
+    const created = await prisma.patient.create({
+      data: writeData as never, // tenant-scope extension injects clinicId
+    });
+    const hydrated = hydratePatientForRead(created);
     await audit(request, {
       action: "patient.create",
       entityType: "Patient",
       entityId: created.id,
-      meta: { after: created },
+      // Audit meta carries the plaintext snapshot for forensic reconstruction —
+      // the audit table is itself sensitive but is a single sink we already
+      // trust. The DB row stays encrypted regardless.
+      meta: { after: hydrated },
     });
-    return ok(created, 201);
+    return ok(hydrated, 201);
   }
 );

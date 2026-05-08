@@ -25,6 +25,11 @@
 
 import { z } from "zod";
 
+import {
+  ACTION_SEVERITIES,
+  ACTION_TYPES,
+} from "@/lib/actions/types";
+
 /**
  * The literal-typed registry of event names. Kept in sync with
  * `AppEventSchema` — TypeScript will catch drift because `AppEvent["type"]`
@@ -54,6 +59,13 @@ export const EVENT_TYPES = [
   // notifications
   "notification.sent",
   "notification.failed",
+  // action center (Phase 13 Wave 2)
+  "action.created",
+  "action.updated",
+  // ai co-pilot (Phase 15 Wave 2)
+  "patient.summary.refreshed",
+  // ai co-pilot (Phase 15 Wave 5) — voice → SOAP draft written
+  "case.soap-draft.refreshed",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -154,6 +166,49 @@ export const NotificationPayload = z
   .passthrough();
 export type NotificationEventPayload = z.infer<typeof NotificationPayload>;
 
+/**
+ * Action Center realtime payload (Phase 13 Wave 2). Emitted by the recompute
+ * engine via `upsertAction` outcomes. Kept tiny — the UI re-fetches the row
+ * via /api/crm/actions/<id> when it needs the full payload to render.
+ */
+export const ActionEventPayload = z
+  .object({
+    id: z.string().min(1),
+    type: z.enum(ACTION_TYPES),
+    severity: z.enum(ACTION_SEVERITIES),
+  })
+  .passthrough();
+export type ActionEventPayload = z.infer<typeof ActionEventPayload>;
+
+/**
+ * Phase 15 Wave 2 — emitted by the patient-summary-refresh worker after it
+ * writes `Patient.summaryCache + summaryCacheUpdatedAt`. The UI re-fetches
+ * via `GET /api/crm/patients/[id]/summary` when this fires.
+ */
+export const PatientSummaryRefreshedPayload = z
+  .object({
+    patientId: z.string().min(1),
+  })
+  .passthrough();
+export type PatientSummaryRefreshedPayload = z.infer<
+  typeof PatientSummaryRefreshedPayload
+>;
+
+/**
+ * Phase 15 Wave 5 — emitted by the voice-soap worker after it writes
+ * `MedicalCase.soapDraft`. The CRM case page subscribes via
+ * `useLiveQueryInvalidation` and re-fetches `GET /api/crm/cases/<id>` so the
+ * SOAP card surfaces the new draft without a page refresh.
+ */
+export const CaseSoapDraftRefreshedPayload = z
+  .object({
+    caseId: z.string().min(1),
+  })
+  .passthrough();
+export type CaseSoapDraftRefreshedPayload = z.infer<
+  typeof CaseSoapDraftRefreshedPayload
+>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -191,6 +246,10 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("payment.due", PaymentPayload),
   makeEvent("notification.sent", NotificationPayload),
   makeEvent("notification.failed", NotificationPayload),
+  makeEvent("action.created", ActionEventPayload),
+  makeEvent("action.updated", ActionEventPayload),
+  makeEvent("patient.summary.refreshed", PatientSummaryRefreshedPayload),
+  makeEvent("case.soap-draft.refreshed", CaseSoapDraftRefreshedPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

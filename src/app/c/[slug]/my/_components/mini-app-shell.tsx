@@ -5,6 +5,7 @@ import * as React from "react";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useClinic } from "../_hooks/use-clinic";
+import { FamilySwitcher } from "./family-switcher";
 
 /**
  * Top-level Mini App shell. Applies Telegram theme colours to the root and
@@ -98,6 +99,7 @@ export function MiniAppShell({
         </div>
       </header>
       <main className="relative z-10 mx-auto w-full max-w-[430px] px-4 pb-24 pt-4">
+        {state.status === "ready" ? <FamilySwitcher slug={clinicSlug} /> : null}
         {children}
       </main>
     </div>

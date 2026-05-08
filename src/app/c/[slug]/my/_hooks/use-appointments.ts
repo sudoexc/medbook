@@ -37,14 +37,25 @@ export type MiniAppAppointment = {
   }>;
 };
 
-export function useAppointments(scope: "upcoming" | "past") {
+export function useAppointments(
+  scope: "upcoming" | "past",
+  activePatientId?: string | null,
+) {
   const { request, clinicSlug } = useMiniAppFetch();
   return useQuery<MiniAppAppointment[]>({
-    queryKey: ["miniapp", "appointments", clinicSlug, scope],
-    queryFn: async ({ signal }) => {
+    queryKey: [
+      "miniapp",
+      "appointments",
+      clinicSlug,
+      scope,
+      activePatientId ?? "self",
+    ],
+    queryFn: async () => {
+      const sp: Record<string, string> = { scope };
+      if (activePatientId) sp.onBehalfOf = activePatientId;
       const body = await request<{ appointments: MiniAppAppointment[] }>(
         "/api/miniapp/appointments",
-        { searchParams: { scope } },
+        { searchParams: sp },
       );
       return body.appointments;
     },
@@ -84,6 +95,7 @@ export function useBookAppointment() {
       patientPhone?: string;
       lang?: "RU" | "UZ";
       comments?: string;
+      onBehalfOf?: string | null;
     }): Promise<BookAppointmentResult> => {
       const res = await request<{
         appointment: { id: string; date: string };

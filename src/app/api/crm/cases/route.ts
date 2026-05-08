@@ -13,6 +13,10 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, parseQuery } from "@/server/http";
 import {
+  hydrateMedicalCaseForRead,
+  serializeMedicalCaseForWrite,
+} from "@/server/medical-case/cipher-fields";
+import {
   CreateMedicalCaseSchema,
   QueryMedicalCaseSchema,
 } from "@/server/schemas/medical-case";
@@ -96,29 +100,35 @@ export const POST = createApiHandler(
       }
     }
 
+    // Wave 4 — `soapDraft` is encrypted by the boundary helper. Wave 4 keeps
+    // `notes`, `primaryComplaint`, `diagnosisText` plaintext (per scope —
+    // see `cipher-fields.ts`); the create payload only ever sets `soapDraft`
+    // on later worker writes, but pass through serialize for safety.
+    const writeData = serializeMedicalCaseForWrite({
+      patientId: body.patientId,
+      title: body.title,
+      primaryDoctorId: body.primaryDoctorId ?? null,
+      primaryComplaint: body.primaryComplaint ?? null,
+      diagnosisText: body.diagnosisText ?? null,
+      diagnosisCode: body.diagnosisCode ?? null,
+      notes: body.notes ?? null,
+      status: body.status ?? "OPEN",
+    } as never);
+
     const created = await prisma.medicalCase.create({
-      data: {
-        patientId: body.patientId,
-        title: body.title,
-        primaryDoctorId: body.primaryDoctorId ?? null,
-        primaryComplaint: body.primaryComplaint ?? null,
-        diagnosisText: body.diagnosisText ?? null,
-        diagnosisCode: body.diagnosisCode ?? null,
-        notes: body.notes ?? null,
-        status: body.status ?? "OPEN",
-        // openedAt defaults to now() at the DB; createdAt/updatedAt likewise.
-      } as never, // tenant-scope extension injects clinicId
+      data: writeData as never, // tenant-scope extension injects clinicId
       include: LIST_INCLUDE,
     });
+    const hydrated = hydrateMedicalCaseForRead(created);
 
     await audit(request, {
       action: "medical_case.create",
       entityType: "MedicalCase",
       entityId: created.id,
-      meta: { after: created },
+      meta: { after: hydrated },
     });
 
-    return ok(created, 201);
+    return ok(hydrated, 201);
   }
 );
 

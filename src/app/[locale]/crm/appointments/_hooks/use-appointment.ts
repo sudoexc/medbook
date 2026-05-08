@@ -40,6 +40,17 @@ export type AppointmentDetail = Omit<AppointmentRow, "patient"> & {
   medicalCase: AppointmentCaseShort | null;
   visitNumberInCase: number | null;
   totalVisitsInCase: number | null;
+  // Phase 16 Wave 2 — pre-visit questionnaire (Mini App).
+  // The patient fills these via a 24h-before TG push; the CRM drawer reads
+  // them via `<PreVisitQuestionnaireCard>`. `preVisitData` is the freeform
+  // JSON blob shaped by `PreVisitData`; the API delivers it as `unknown` so
+  // the consumer runs `parsePreVisitData` defensively.
+  preVisitData: unknown;
+  preVisitNotifiedAt: string | null;
+  preVisitSubmittedAt: string | null;
+  // Phase 16 Wave 2 — post-visit NPS dedupe stamp. Not displayed in the
+  // drawer but useful for action-center cross-references.
+  npsRequestedAt: string | null;
 };
 
 export const appointmentKey = (id: string) => ["appointment", id] as const;

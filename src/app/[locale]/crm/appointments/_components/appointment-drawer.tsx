@@ -49,12 +49,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+// `Badge` retained for the per-payment status pill; `Select` family powers
+// the channel row. The status select that used to live here is gone — see
+// `<AppointmentLifecycle>` for the replacement.
 import { MoneyText } from "@/components/atoms/money-text";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { SlotPicker } from "@/components/appointments/SlotPicker";
 
 import { CaseSelectorDialog } from "./case-selector-dialog";
+import { AppointmentLifecycle } from "./appointment-lifecycle";
+import { PatientSummaryCard } from "../../patients/[id]/_components/patient-summary-card";
+import { PreVisitQuestionnaireCard } from "./pre-visit-questionnaire-card";
 import {
   AppointmentConflictError,
   useAppointment,
@@ -65,34 +71,11 @@ import {
 import { paymentStatusFor } from "../_hooks/use-appointments-list";
 import {
   actionsFor,
-  nextStatuses,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
-
-const STATUSES = [
-  "BOOKED",
-  "WAITING",
-  "IN_PROGRESS",
-  "COMPLETED",
-  "SKIPPED",
-  "CANCELLED",
-  "NO_SHOW",
-] as const;
+import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 
 const CHANNELS = ["WALKIN", "PHONE", "TELEGRAM", "WEBSITE", "KIOSK"] as const;
-
-const STATUS_VARIANT: Record<
-  (typeof STATUSES)[number],
-  React.ComponentProps<typeof Badge>["variant"]
-> = {
-  BOOKED: "info",
-  WAITING: "warning",
-  IN_PROGRESS: "default",
-  COMPLETED: "success",
-  SKIPPED: "muted",
-  CANCELLED: "destructive",
-  NO_SHOW: "muted",
-};
 
 export interface AppointmentDrawerProps {
   appointmentId: string | null;
@@ -132,10 +115,10 @@ export function AppointmentDrawer({
 }: AppointmentDrawerProps) {
   const t = useTranslations("appointments.drawer");
   const tCase = useTranslations("appointments.case");
-  const tStatus = useTranslations("appointments.status");
   const tChannel = useTranslations("appointments.channel");
   const tPayment = useTranslations("appointments.payment");
   const locale = useLocale() as Locale;
+  const role = useCurrentRole();
   const [caseSelectorOpen, setCaseSelectorOpen] = React.useState(false);
 
   const open = Boolean(appointmentId);
@@ -174,7 +157,7 @@ export function AppointmentDrawer({
     );
   };
 
-  const onStatusChange = (next: (typeof STATUSES)[number]) => {
+  const onStatusChange = (next: AppointmentStatus) => {
     if (!appt) return;
     setQueueStatus.mutate(next, {
       onError: () => toast.error(t("statusError")),
@@ -332,6 +315,24 @@ export function AppointmentDrawer({
                 </div>
               </section>
 
+              {/* Phase 15 Wave 2 — AI summary as a compact one-liner.
+                  Sits between the patient block and the lifecycle chain so
+                  the doctor sees recent context before they take action. */}
+              <PatientSummaryCard
+                patientId={appt.patient.id}
+                variant="compact"
+              />
+
+              {/* Phase 16 Wave 2 — pre-visit questionnaire surface. The
+                  patient fills this 24h before the visit via the Mini App;
+                  if they did, the card expands to show their complaints /
+                  allergies / medications / notes. Otherwise it shows a
+                  muted "Анкета не заполнена" pill so the doctor knows. */}
+              <PreVisitQuestionnaireCard
+                preVisitData={appt.preVisitData}
+                preVisitSubmittedAt={appt.preVisitSubmittedAt}
+              />
+
               {/* Case badge — links visit to a MedicalCase ("episode of care"). */}
               <CaseBadge
                 appt={appt}
@@ -340,14 +341,24 @@ export function AppointmentDrawer({
                 onAttach={() => setCaseSelectorOpen(true)}
               />
 
-              {/* Schedule + status — single tidy key/value list */}
+              {/* Visual lifecycle chain — replaces the old status badge +
+                  status-change select. Off-path destinations live in the
+                  attached sidebar boxes. */}
+              <AppointmentLifecycle
+                status={appt.status as AppointmentStatus}
+                appointmentDate={appt.date}
+                role={role}
+                pending={setQueueStatus.isPending}
+                onChange={onStatusChange}
+              />
+
+              {/* Schedule (time / doctor / cabinet / channel) — status row
+                  removed since the lifecycle chain owns it now. */}
               <ScheduleSection
                 appt={appt}
                 locale={locale}
                 t={t}
-                tStatus={tStatus}
                 tChannel={tChannel}
-                onStatusChange={onStatusChange}
                 onChannelChange={onChannelChange}
                 onSlotChange={onSlotChange}
               />
@@ -594,35 +605,24 @@ export function AppointmentDrawer({
 }
 
 /**
- * Compact key/value list rendering Status, Time + Duration, Doctor, Cabinet,
- * Channel. The Time row is a Popover trigger that embeds `SlotPicker` so the
+ * Compact key/value list rendering Time + Duration, Doctor, Cabinet, Channel.
+ * The Time row is a Popover trigger that embeds `SlotPicker` so the
  * receptionist can pick from real available slots instead of poking a native
  * <input type="time">. For terminal statuses (COMPLETED/CANCELLED/NO_SHOW)
- * the Time row degrades to a read-only range and the Status row to a Badge.
+ * the Time row degrades to a read-only range. The status field has moved
+ * to `<AppointmentLifecycle>` rendered above this section.
  */
 function ScheduleSection(props: {
   appt: NonNullable<ReturnType<typeof useAppointment>["data"]>;
   locale: Locale;
   t: ReturnType<typeof useTranslations>;
-  tStatus: ReturnType<typeof useTranslations>;
   tChannel: ReturnType<typeof useTranslations>;
-  onStatusChange: (next: (typeof STATUSES)[number]) => void;
   onChannelChange: (next: (typeof CHANNELS)[number]) => void;
   onSlotChange: (next: { date: Date; time: string }) => void;
 }) {
-  const {
-    appt,
-    locale,
-    t,
-    tStatus,
-    tChannel,
-    onStatusChange,
-    onChannelChange,
-    onSlotChange,
-  } = props;
+  const { appt, locale, t, tChannel, onChannelChange, onSlotChange } = props;
 
   const status = appt.status as AppointmentStatus;
-  const transitions = nextStatuses(status);
   const canEditTime = actionsFor(status).canReschedule;
 
   const startStr = appt.time ?? formatHHMM(new Date(appt.date));
@@ -643,30 +643,6 @@ function ScheduleSection(props: {
 
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-card/40">
-      <DrawerRow label={t("fields.status")}>
-        {transitions.length > 0 ? (
-          <Select
-            value={appt.status}
-            onValueChange={(v) => onStatusChange(v as (typeof STATUSES)[number])}
-          >
-            <SelectTrigger className="h-8 w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {transitions.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {tStatus(s.toLowerCase() as never)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Badge variant={STATUS_VARIANT[appt.status]}>
-            {tStatus(appt.status.toLowerCase() as never)}
-          </Badge>
-        )}
-      </DrawerRow>
-
       <DrawerRow label={t("fields.time")}>
         {canEditTime ? (
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>

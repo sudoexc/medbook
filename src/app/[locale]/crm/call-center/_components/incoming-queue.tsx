@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { PhoneIncomingIcon } from "lucide-react";
 
+import { EmptyState } from "@/components/atoms/empty-state";
+
 import type { CallRow } from "../_hooks/types";
 import { CallBubble } from "./call-bubble";
 
@@ -75,9 +77,13 @@ export function IncomingQueue({
         {isLoading && rows.length === 0 ? (
           <p className="px-3 py-4 text-xs text-muted-foreground">{t("loading")}</p>
         ) : rows.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-3 py-8 text-center">
-            <PhoneIncomingIcon className="size-8 text-muted-foreground/40" aria-hidden />
-            <p className="text-xs text-muted-foreground">{t("empty")}</p>
+          <div className="flex h-full items-center justify-center px-3 py-6">
+            <EmptyState
+              icon={<PhoneIncomingIcon />}
+              title={t("emptyTitle")}
+              description={t("emptyDescription")}
+              className="border-none bg-transparent px-2 py-4"
+            />
           </div>
         ) : (
           <ul className="grid gap-1">

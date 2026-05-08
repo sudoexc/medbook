@@ -15,7 +15,13 @@ import type { FeatureFlags } from "@/lib/feature-flags";
 import { getFeatureFlags } from "@/server/platform/get-feature-flags";
 import type { TenantContext } from "@/lib/tenant-context";
 
-type FeatureKey = "hasTelegramInbox" | "hasCallCenter" | "hasAnalyticsPro";
+type FeatureKey =
+  | "hasTelegramInbox"
+  | "hasCallCenter"
+  | "hasAnalyticsPro"
+  // Phase 19 Wave 4 — white-label gate (branding page + custom subdomain).
+  | "hasWhiteLabel"
+  | "hasCustomSubdomain";
 
 /**
  * Return a 404 `Response` when the current TENANT lacks `feature`.

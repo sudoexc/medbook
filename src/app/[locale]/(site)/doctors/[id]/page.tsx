@@ -5,13 +5,17 @@ import { LeadFormTrigger } from "@/components/sections/lead-form";
 import { getDoctorById, getDoctors } from "@/lib/doctors";
 import { SITE_DOMAIN, CONTACT } from "@/lib/constants";
 import type { Locale } from "@/types";
+import { formatMoney } from "@/lib/format";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
 
 const msgs: Record<string, typeof ruMessages> = { ru: ruMessages, uz: uzMessages };
 
-function formatPrice(price: number): string {
-  return price.toLocaleString("ru-RU").replace(/,/g, " ");
+// Public-site doctor service prices are stored as whole UZS (legacy shape).
+// formatMoney expects tiins; multiply by 100 then strip the trailing unit so
+// the JSX template can render the localized "сум"/"so'm" via t.sum.
+function formatPrice(price: number, locale: Locale): string {
+  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
 }
 
 export async function generateStaticParams() {
@@ -138,7 +142,7 @@ export default async function DoctorPage({
                 <div key={i} className="flex items-center justify-between px-5 py-4">
                   <span className="text-sm text-foreground">{svc.name[loc]}</span>
                   <span className="text-sm font-medium tabular-nums whitespace-nowrap ml-4">
-                    {formatPrice(svc.price)} <span className="text-muted-foreground font-normal">{t.sum}</span>
+                    {formatPrice(svc.price, loc)} <span className="text-muted-foreground font-normal">{t.sum}</span>
                   </span>
                 </div>
               ))}

@@ -3,19 +3,24 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
-  CalendarIcon,
-  FilterIcon,
-  MessageCircleIcon,
+  BanknoteIcon,
+  BellIcon,
+  CalendarSyncIcon,
+  ClipboardListIcon,
+  FileTextIcon,
+  HistoryIcon,
   PhoneIcon,
   SendIcon,
-  UsersIcon,
+  StethoscopeIcon,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/atoms/empty-state";
 import { MoneyText } from "@/components/atoms/money-text";
+import { groupByDay, type DayGroup } from "@/lib/timeline/group-by-day";
 
 import {
   filterTimeline,
@@ -29,107 +34,166 @@ export interface PatientTimelineProps {
   className?: string;
 }
 
-type Tab = { key: CommunicationFilter; tKey: string };
+type TabKey = Extract<
+  CommunicationFilter,
+  "ALL" | "VISIT" | "PAYMENT" | "COMM" | "DOC"
+>;
 
-const TABS: Tab[] = [
-  { key: "ALL", tKey: "tabAll" },
-  { key: "VISIT", tKey: "tabVisits" },
-  { key: "CALL", tKey: "tabCalls" },
-  { key: "TG", tKey: "tabTelegram" },
-];
+const TABS: TabKey[] = ["ALL", "VISIT", "PAYMENT", "COMM", "DOC"];
 
-function iconFor(item: CommunicationItem): {
+type IconTone = {
   icon: LucideIcon;
   bg: string;
   fg: string;
-} {
+};
+
+function iconFor(item: CommunicationItem): IconTone {
   if (item.kind === "visit")
+    return { icon: StethoscopeIcon, bg: "bg-primary/10", fg: "text-primary" };
+  if (item.kind === "payment")
+    return { icon: BanknoteIcon, bg: "bg-success/15", fg: "text-success" };
+  if (item.kind === "document")
+    return { icon: FileTextIcon, bg: "bg-muted", fg: "text-foreground" };
+  if (item.kind === "case")
     return {
-      icon: CalendarIcon,
-      bg: "bg-primary/10",
-      fg: "text-primary",
-    };
-  if (item.channel === "TG" || item.kind === "message")
-    return {
-      icon: SendIcon,
+      icon: ClipboardListIcon,
       bg: "bg-info/15",
       fg: "text-info",
     };
-  if (item.channel === "CALL" || item.kind === "call")
+  if (item.kind === "reschedule")
     return {
-      icon: PhoneIcon,
+      icon: CalendarSyncIcon,
       bg: "bg-warning/15",
       fg: "text-warning",
     };
-  if (item.channel === "SMS")
-    return {
-      icon: MessageCircleIcon,
-      bg: "bg-muted",
-      fg: "text-muted-foreground",
-    };
-  return {
-    icon: UsersIcon,
-    bg: "bg-muted",
-    fg: "text-muted-foreground",
-  };
+  if (item.kind === "notification")
+    return { icon: BellIcon, bg: "bg-muted", fg: "text-muted-foreground" };
+  if (item.kind === "call" || item.channel === "CALL")
+    return { icon: PhoneIcon, bg: "bg-warning/15", fg: "text-warning" };
+  if (item.kind === "message" || item.channel === "TG")
+    return { icon: SendIcon, bg: "bg-info/15", fg: "text-info" };
+  return { icon: BellIcon, bg: "bg-muted", fg: "text-muted-foreground" };
 }
 
-function metaOf(item: CommunicationItem): {
-  meta: React.ReactNode;
-  status?: { tKey: string; tone: "success" | "muted" | "info" };
+type RowMeta = {
+  body: React.ReactNode;
   right?: React.ReactNode;
-} {
-  const m = item.meta as Record<string, unknown> | null | undefined;
+};
+
+function metaOf(item: CommunicationItem, locale: Locale): RowMeta {
+  const m = (item.meta ?? null) as Record<string, unknown> | null;
+
   if (item.kind === "visit") {
-    const price = m && typeof m["priceFinal"] === "number" ? (m["priceFinal"] as number) : null;
-    const status = m && typeof m["status"] === "string" ? (m["status"] as string) : null;
+    const doctor =
+      m && typeof m["doctor"] === "object" && m["doctor"] !== null
+        ? ((m["doctor"] as { nameRu?: string }).nameRu ?? "")
+        : "";
+    const price =
+      m && typeof m["priceFinal"] === "number"
+        ? (m["priceFinal"] as number)
+        : null;
     return {
-      meta: m?.["doctor"] ? String((m["doctor"] as { nameRu?: string }).nameRu ?? "") : "",
-      status:
-        status === "COMPLETED"
-          ? { tKey: "statusCompleted", tone: "success" }
-          : status === "CANCELLED"
-            ? { tKey: "statusCancelled", tone: "muted" }
-            : undefined,
-      right: price ? <MoneyText amount={price} currency="UZS" /> : null,
+      body: doctor || (item.body ?? ""),
+      right:
+        price !== null ? (
+          <MoneyText amount={price} currency="UZS" locale={locale} />
+        ) : null,
     };
   }
-  if (item.channel === "CALL" || item.kind === "call") {
-    const missed = item.direction === "MISSED";
+
+  if (item.kind === "payment") {
+    const amount =
+      m && typeof m["amount"] === "number" ? (m["amount"] as number) : null;
+    const method =
+      m && typeof m["method"] === "string" ? (m["method"] as string) : null;
     return {
-      meta: item.body ?? "",
-      status: {
-        tKey: missed ? "callMissed" : "callAnswered",
-        tone: missed ? "muted" : "success",
-      },
+      body: method ?? item.body ?? "",
+      right:
+        amount !== null ? (
+          <MoneyText amount={amount} currency="UZS" locale={locale} />
+        ) : null,
     };
   }
-  if (item.channel === "TG") {
-    return {
-      meta: item.body ?? "",
-      status: {
-        tKey: item.direction === "IN" ? "incoming" : "outgoing",
-        tone: "info",
-      },
-    };
+
+  return { body: item.body ?? "" };
+}
+
+function rowTitle(
+  item: CommunicationItem,
+  t: (key: string) => string,
+): string {
+  if (item.title && item.title.trim().length > 0) return item.title;
+  switch (item.kind) {
+    case "visit":
+      return t("kinds.VISIT.title");
+    case "payment":
+      return t("kinds.PAYMENT.title");
+    case "document":
+      return t("kinds.DOCUMENT.title");
+    case "notification":
+      return t("kinds.NOTIFICATION.title");
+    case "call":
+      return t("kinds.CALL.title");
+    case "message":
+      return t("kinds.TG.title");
+    case "case":
+      return t("kinds.CASE.title");
+    case "reschedule":
+      return t("kinds.RESCHEDULE.title");
+    default:
+      return "";
   }
-  return { meta: item.body ?? "" };
+}
+
+function dayHeader(
+  group: DayGroup<CommunicationItem>,
+  locale: Locale,
+  t: (key: string) => string,
+): string {
+  if (group.label === "today") return t("dayHeader.today");
+  if (group.label === "yesterday") return t("dayHeader.yesterday");
+  return formatDate(group.date, locale, "long");
+}
+
+function TimelineSkeleton() {
+  return (
+    <div className="mt-3 space-y-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex items-start gap-3">
+          <Skeleton className="size-9 shrink-0 rounded-lg" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-3 w-48" />
+            <Skeleton className="h-3 w-72 max-w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /**
- * "История взаимодействий" timeline — docs/7 - Карточка пациента.png.
+ * Phase 12 unified patient timeline.
+ *
+ * Shows every event kind (visit / payment / document / call / TG / case /
+ * reschedule / notification) in a single chronological feed, grouped by day
+ * with relative headers ("Сегодня", "Вчера", absolute date for older days)
+ * and filterable via tabs (ALL / VISIT / PAYMENT / COMM / DOC).
  */
 export function PatientTimeline({ patientId, className }: PatientTimelineProps) {
   const locale = useLocale() as Locale;
-  const t = useTranslations("patientCard.timeline");
+  const t = useTranslations("patientTimeline");
   const q = usePatientCommunications(patientId);
-  const [tab, setTab] = React.useState<CommunicationFilter>("ALL");
-  const [showAll, setShowAll] = React.useState(false);
+  const [tab, setTab] = React.useState<TabKey>("ALL");
 
   const items = filterTimeline(q.data?.items, tab);
-  const shownLimit = 7;
-  const shown = showAll ? items : items.slice(0, shownLimit);
-  const hidden = Math.max(0, items.length - shown.length);
+  const groups = React.useMemo(
+    () =>
+      groupByDay<CommunicationItem>(
+        items.map((it) => ({ ...it })),
+        new Date(),
+      ),
+    [items],
+  );
 
   return (
     <section
@@ -142,10 +206,6 @@ export function PatientTimeline({ patientId, className }: PatientTimelineProps) 
         <h3 className="text-[13px] font-semibold text-foreground">
           {t("title")}
         </h3>
-        <Button variant="outline" size="sm" className="h-7 text-[11px]">
-          <FilterIcon className="size-3.5" />
-          {t("filter")}
-        </Button>
       </div>
 
       <div
@@ -153,15 +213,15 @@ export function PatientTimeline({ patientId, className }: PatientTimelineProps) 
         aria-label={t("typeTabs")}
         className="mt-2 inline-flex w-fit gap-1 rounded-lg bg-muted/50 p-0.5 text-[12px]"
       >
-        {TABS.map((tab_) => {
-          const active = tab === tab_.key;
+        {TABS.map((key) => {
+          const active = tab === key;
           return (
             <button
-              key={tab_.key}
+              key={key}
               type="button"
               role="tab"
               aria-selected={active}
-              onClick={() => setTab(tab_.key)}
+              onClick={() => setTab(key)}
               className={cn(
                 "rounded-md px-2.5 py-1 font-medium transition-colors",
                 active
@@ -169,102 +229,77 @@ export function PatientTimeline({ patientId, className }: PatientTimelineProps) 
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {t(tab_.tKey as never)}
+              {t(`tabs.${key}` as never)}
             </button>
           );
         })}
       </div>
 
-      <ul className="mt-3 space-y-2">
-        {q.isLoading ? (
-          <li className="text-[12px] text-muted-foreground">{t("loading")}</li>
-        ) : shown.length === 0 ? (
-          <li className="text-[12px] text-muted-foreground">
-            {t("empty")}
-          </li>
-        ) : (
-          shown.map((item) => {
-            const tone = iconFor(item);
-            const Icon = tone.icon;
-            const info = metaOf(item);
-            return (
-              <li
-                key={item.id}
-                className="grid grid-cols-[8px_40px_minmax(100px,1fr)_minmax(140px,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 rounded-lg px-1 py-1.5 text-[12px] hover:bg-muted/30"
-              >
-                <span
-                  className="mt-1.5 inline-block size-2 rounded-full bg-success"
-                  aria-hidden
-                />
-                <span
-                  className={cn(
-                    "inline-flex size-8 shrink-0 items-center justify-center rounded-lg",
-                    tone.bg,
-                    tone.fg,
-                  )}
-                  aria-hidden
-                >
-                  <Icon className="size-4" />
-                </span>
-                <div className="min-w-0 text-foreground">
-                  <div className="truncate tabular-nums font-semibold">
-                    {formatDate(item.at, locale, "short")}
-                  </div>
-                  <div className="truncate text-[11px] text-muted-foreground tabular-nums">
-                    {new Date(item.at).toLocaleTimeString("ru-RU", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-foreground">
-                    {item.title}
-                  </div>
-                  {info.meta ? (
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {info.meta}
-                    </div>
-                  ) : null}
-                </div>
-                <div className="min-w-0 truncate text-right text-foreground tabular-nums">
-                  {info.right ?? (
-                    <span className="text-muted-foreground">
-                      {item.body ?? ""}
-                    </span>
-                  )}
-                </div>
-                <div className="shrink-0">
-                  {info.status ? (
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
-                        info.status.tone === "success"
-                          ? "bg-success/15 text-success"
-                          : info.status.tone === "info"
-                            ? "bg-info/15 text-info"
-                            : "bg-muted text-muted-foreground",
-                      )}
+      {q.isLoading ? (
+        <TimelineSkeleton />
+      ) : groups.length === 0 ? (
+        <div className="mt-3">
+          <EmptyState
+            icon={<HistoryIcon />}
+            title={t(`empty.${tab}` as never)}
+          />
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-4">
+          {groups.map((group) => (
+            <div key={group.key} className="flex flex-col gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {dayHeader(group, locale, (k) => t(k as never))}
+              </div>
+              <ul className="flex flex-col gap-1.5">
+                {group.items.map((item) => {
+                  const tone = iconFor(item);
+                  const Icon = tone.icon;
+                  const info = metaOf(item, locale);
+                  const title = rowTitle(item, (k) => t(k as never));
+                  return (
+                    <li
+                      key={item.id}
+                      className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-3 rounded-lg px-1 py-1.5 text-[12px] hover:bg-muted/30"
                     >
-                      {t(info.status.tKey as never)}
-                    </span>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })
-        )}
-      </ul>
-
-      {hidden > 0 ? (
-        <button
-          type="button"
-          onClick={() => setShowAll(true)}
-          className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-[12px] font-semibold text-primary hover:bg-primary/5"
-        >
-          {t("showMore", { count: hidden })}
-        </button>
-      ) : null}
+                      <span
+                        className={cn(
+                          "inline-flex size-9 shrink-0 items-center justify-center rounded-lg",
+                          tone.bg,
+                          tone.fg,
+                        )}
+                        aria-hidden
+                      >
+                        <Icon className="size-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-foreground">
+                          {title}
+                        </div>
+                        {info.body ? (
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            {info.body}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5 text-right">
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
+                          {formatDate(item.at, locale, "time")}
+                        </span>
+                        {info.right ? (
+                          <span className="text-[12px] font-semibold text-foreground tabular-nums">
+                            {info.right}
+                          </span>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

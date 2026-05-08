@@ -43,6 +43,8 @@ import {
   usePatchCase,
 } from "../_hooks/use-case";
 import { CloseCaseDialog } from "./close-case-dialog";
+import { PrescriptionsCard } from "./prescriptions-card";
+import { SoapDraftCard } from "./soap-draft-card";
 
 // ---------------------------------------------------------------------------
 // Status badge variants — same mapping the patient-card "Cases" tab uses, so
@@ -153,6 +155,10 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
 
   const q = useCase(id);
   const patch = usePatchCase(id);
+  // Phase 16 Wave 3 — doctors list for the PrescriptionsCard. Always loaded
+  // (the card needs a populated dropdown on first render) but cached for
+  // 5min so the page-level navigation back to this view is instant.
+  const prescriptionDoctors = useDoctorsForDropdown(true);
 
   const [closeOpen, setCloseOpen] = React.useState(false);
   const [doctorMenuOpen, setDoctorMenuOpen] = React.useState(false);
@@ -339,6 +345,23 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
               onAddVisit={() => setNewApptOpen(true)}
             />
           </div>
+
+          {/* AI SOAP draft — Wave 5. Sits below the timeline on every screen
+              size so doctors can scan visits then drop into the draft. */}
+          <SoapDraftCard caseId={data.id} initialDraft={data.soapDraft} />
+
+          {/* Phase 16 Wave 3 — Prescriptions card. Doctors write meds here;
+              ACTIVE rows with `remindersEnabled` flow into the hourly
+              medication-reminder worker. The doctor dropdown reuses the
+              same lazy-fetched list as the New Visit dialog so we don't
+              double-load. */}
+          <PrescriptionsCard
+            caseId={data.id}
+            patientId={data.patient.id}
+            defaultDoctorId={data.primaryDoctorId}
+            prescriptions={data.prescriptions}
+            doctors={prescriptionDoctors.data ?? []}
+          />
         </PageContainer>
       </div>
 

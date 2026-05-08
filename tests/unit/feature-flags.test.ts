@@ -33,6 +33,13 @@ const PRO_FEATURES = {
   hasAnalyticsPro: false,
   maxBranches: 3,
   maxUsers: 20,
+  // Phase 19 Wave 1 — quotas + white-label keys (mirror seeded `pro` plan).
+  maxPatients: 500,
+  maxAppointmentsPerMonth: 2000,
+  maxSmsPerMonth: 5000,
+  maxStorageMb: 10000,
+  hasWhiteLabel: true,
+  hasCustomSubdomain: false,
 };
 
 const ENTERPRISE_FEATURES = {
@@ -41,6 +48,13 @@ const ENTERPRISE_FEATURES = {
   hasAnalyticsPro: true,
   maxBranches: 50,
   maxUsers: 500,
+  // Enterprise → unlimited (-1 sentinel) across the board.
+  maxPatients: -1,
+  maxAppointmentsPerMonth: -1,
+  maxSmsPerMonth: -1,
+  maxStorageMb: -1,
+  hasWhiteLabel: true,
+  hasCustomSubdomain: true,
 };
 
 const BASIC_FEATURES = {
@@ -49,6 +63,13 @@ const BASIC_FEATURES = {
   hasAnalyticsPro: false,
   maxBranches: 1,
   maxUsers: 5,
+  // Basic-tier defaults; matches DEFAULT_FLAGS.
+  maxPatients: 50,
+  maxAppointmentsPerMonth: 100,
+  maxSmsPerMonth: 200,
+  maxStorageMb: 500,
+  hasWhiteLabel: false,
+  hasCustomSubdomain: false,
 };
 
 function makeSubscription(
@@ -148,11 +169,8 @@ describe("getFeatureFlags", () => {
     );
     const flags = await getFeatureFlags("c1");
     expect(flags).toEqual({
+      ...DEFAULT_FLAGS,
       hasTelegramInbox: true,
-      hasCallCenter: false,
-      hasAnalyticsPro: false,
-      maxBranches: 1,
-      maxUsers: 5,
     });
   });
 
@@ -168,6 +186,7 @@ describe("getFeatureFlags", () => {
     );
     const flags = await getFeatureFlags("c1");
     expect(flags).toEqual({
+      ...DEFAULT_FLAGS,
       hasTelegramInbox: false, // bad type → default
       hasCallCenter: true, // good
       hasAnalyticsPro: false, // bad type → default

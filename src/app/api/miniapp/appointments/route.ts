@@ -11,6 +11,8 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { normalizePhone } from "@/lib/phone";
 import { conflict, err, ok } from "@/server/http";
 import { createMiniAppHandler, createMiniAppListHandler } from "@/server/miniapp/handler";
@@ -28,6 +30,11 @@ const BookBody = z.object({
   patientPhone: z.string().trim().optional(),
   lang: z.enum(["RU", "UZ"]).optional(),
   comments: z.string().max(1000).optional(),
+  // Phase 16: when set, the booking is created against a linked relative.
+  // The TG-authenticated owner remains the actor in audit/notifications,
+  // but the appointment.patientId is the relative's id. Server validates
+  // the PatientFamily link before honouring this.
+  onBehalfOf: z.string().min(1).optional(),
 });
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
@@ -37,10 +44,25 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     Math.max(Number.parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 1),
     100,
   );
+  // Phase 16 — optional `onBehalfOf` to read a linked relative's list.
+  const onBehalfOf = url.searchParams.get("onBehalfOf");
+  let listPatientId = ctx.patientId;
+  if (onBehalfOf && onBehalfOf !== ctx.patientId) {
+    const link = await prisma.patientFamily.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        ownerPatientId: ctx.patientId,
+        linkedPatientId: onBehalfOf,
+      },
+      select: { id: true },
+    });
+    if (!link) return err("on_behalf_of_not_linked", 403);
+    listPatientId = onBehalfOf;
+  }
   const now = new Date();
   const where: Record<string, unknown> = {
     clinicId: ctx.clinicId,
-    patientId: ctx.patientId,
+    patientId: listPatientId,
   };
   if (scope === "upcoming") {
     where.status = { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] };
@@ -83,7 +105,30 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
 
 export const POST = createMiniAppHandler(
   { bodySchema: BookBody },
-  async ({ body, ctx }) => {
+  async ({ request, body, ctx }) => {
+    // Phase 16 — resolve booking patient (self vs linked relative).
+    // The TG owner stays the audit actor; we just swap the patientId we
+    // attach to the appointment so the relative is the medical subject.
+    let bookingPatientId = ctx.patientId;
+    let bookingPatientLang: "RU" | "UZ" = ctx.patient.preferredLang;
+    if (body.onBehalfOf && body.onBehalfOf !== ctx.patientId) {
+      const link = await prisma.patientFamily.findFirst({
+        where: {
+          clinicId: ctx.clinicId,
+          ownerPatientId: ctx.patientId,
+          linkedPatientId: body.onBehalfOf,
+        },
+        select: {
+          linkedPatient: { select: { id: true, preferredLang: true } },
+        },
+      });
+      if (!link?.linkedPatient) return err("on_behalf_of_not_linked", 403);
+      bookingPatientId = link.linkedPatient.id;
+      bookingPatientLang =
+        (link.linkedPatient.preferredLang as "RU" | "UZ" | null) ??
+        ctx.patient.preferredLang;
+    }
+
     // Confirm doctor + services belong to this clinic.
     const [doctor, services] = await Promise.all([
       prisma.doctor.findFirst({
@@ -113,31 +158,70 @@ export const POST = createMiniAppHandler(
     if (Number.isNaN(startAt.getTime())) return err("bad_start_at", 400);
     const endAt = computeEndDate(startAt, durationMin);
 
-    // Optional profile update: sync name/phone/lang from the booking form.
-    const patientUpdate: Record<string, unknown> = {};
-    if (body.patientName && body.patientName !== ctx.patient.fullName) {
-      patientUpdate.fullName = body.patientName;
-    }
-    if (body.patientPhone) {
-      const normalized = normalizePhone(body.patientPhone);
-      if (normalized && !normalized.startsWith("tg:")) {
-        patientUpdate.phone = body.patientPhone;
-        patientUpdate.phoneNormalized = normalized;
+    // Optional profile update: sync name/phone/lang from the booking form
+    // — but ONLY when booking for self. When acting on behalf of a relative,
+    // the form fields belong to the relative; we skip this profile-update
+    // step so the owner's TG-tied profile stays intact, and we don't risk
+    // clobbering a relative profile that was created via the family form.
+    const isOnBehalfOf = bookingPatientId !== ctx.patientId;
+    if (!isOnBehalfOf) {
+      const patientUpdate: Record<string, unknown> = {};
+      if (body.patientName && body.patientName !== ctx.patient.fullName) {
+        patientUpdate.fullName = body.patientName;
       }
-    }
-    if (body.lang && body.lang !== ctx.patient.preferredLang) {
-      patientUpdate.preferredLang = body.lang;
-    }
-    if (Object.keys(patientUpdate).length > 0) {
-      await prisma.patient.update({
-        where: { id: ctx.patientId },
-        data: patientUpdate,
-      });
+      if (body.patientPhone) {
+        const normalized = normalizePhone(body.patientPhone);
+        if (normalized && !normalized.startsWith("tg:")) {
+          patientUpdate.phone = body.patientPhone;
+          patientUpdate.phoneNormalized = normalized;
+        }
+      }
+      if (body.lang && body.lang !== ctx.patient.preferredLang) {
+        patientUpdate.preferredLang = body.lang;
+      }
+      if (Object.keys(patientUpdate).length > 0) {
+        await prisma.patient.update({
+          where: { id: ctx.patientId },
+          data: patientUpdate,
+        });
+      }
     }
 
     // Compute price snapshot.
     const priceBase = services.reduce((a, s) => a + s.priceBase, 0);
     const primaryServiceId = body.serviceIds[0] ?? null;
+
+    // Phase 16 Wave 3 — auto-apply the most recent PENDING referral
+    // reward that the booking patient owns (the referrer is the one
+    // booking, the redeemer is one of their friends). The discount is
+    // computed off `priceBase` and snapshot into `discountPct` so the
+    // CRM payment engine sees it like any other manual discount.
+    let referralDiscountPct = 0;
+    let referralRewardId: string | null = null;
+    {
+      const pending = await prisma.referralReward.findFirst({
+        where: {
+          clinicId: ctx.clinicId,
+          referrerPatientId: bookingPatientId,
+          status: "PENDING",
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, rewardPercent: true },
+      });
+      if (pending && priceBase > 0) {
+        referralRewardId = pending.id;
+        referralDiscountPct = Math.max(
+          0,
+          Math.min(50, Math.floor(pending.rewardPercent)),
+        );
+      }
+    }
+    const referralDiscountAmount =
+      referralDiscountPct > 0
+        ? Math.round((priceBase * referralDiscountPct) / 100)
+        : 0;
+    const priceFinal = Math.max(0, priceBase - referralDiscountAmount);
 
     const time = `${String(startAt.getHours()).padStart(2, "0")}:${String(
       startAt.getMinutes(),
@@ -164,7 +248,7 @@ export const POST = createMiniAppHandler(
           const appt = await tx.appointment.create({
             data: {
               clinicId: ctx.clinicId,
-              patientId: ctx.patientId,
+              patientId: bookingPatientId,
               doctorId: body.doctorId,
               cabinetId: doctor.cabinetId,
               serviceId: primaryServiceId,
@@ -177,7 +261,9 @@ export const POST = createMiniAppHandler(
               channel: "TELEGRAM",
               priceService: priceBase,
               priceBase,
-              priceFinal: priceBase,
+              priceFinal,
+              discountPct: referralDiscountPct,
+              discountAmount: referralDiscountAmount,
               comments: body.comments ?? null,
             } as never,
           });
@@ -190,6 +276,18 @@ export const POST = createMiniAppHandler(
               quantity: 1,
             })) as never,
           });
+          // Stamp the referral reward APPLIED inside the same tx so we
+          // can never double-apply across concurrent bookings.
+          if (referralRewardId) {
+            await tx.referralReward.update({
+              where: { id: referralRewardId },
+              data: {
+                status: "APPLIED",
+                appliedAt: new Date(),
+                appliedAppointmentId: appt.id,
+              },
+            });
+          }
           return { kind: "ok" as const, appt };
         },
         { isolationLevel: "Serializable" },
@@ -234,6 +332,29 @@ export const POST = createMiniAppHandler(
 
     fireTrigger({ kind: "appointment.created", appointmentId: created.id });
 
+    // Phase 16 Wave 3 — audit when a referral reward auto-applied to this
+    // booking. The reward was already stamped APPLIED inside the tx; this
+    // just leaves a trail the receptionist can read in the audit log.
+    if (referralRewardId) {
+      try {
+        await audit(request, {
+          action: AUDIT_ACTION.REFERRAL_REWARD_APPLIED,
+          entityType: "ReferralReward",
+          entityId: referralRewardId,
+          meta: {
+            appointmentId: created.id,
+            patientId: bookingPatientId,
+            rewardPercent: referralDiscountPct,
+            discountAmount: referralDiscountAmount,
+            priceBase,
+            priceFinal,
+          },
+        });
+      } catch (e) {
+        console.error("[referral.applied] audit failed", e);
+      }
+    }
+
     // ─── MedicalCase auto-attach ────────────────────────────────────────────
     //
     // Patient-facing UX (per task brief): never mention "Случай" / "Davolanish"
@@ -272,7 +393,7 @@ export const POST = createMiniAppHandler(
       const openCases = await prisma.medicalCase.findMany({
         where: {
           clinicId: ctx.clinicId,
-          patientId: ctx.patientId,
+          patientId: bookingPatientId,
           status: "OPEN",
         },
         orderBy: { updatedAt: "desc" },
@@ -288,8 +409,9 @@ export const POST = createMiniAppHandler(
       });
 
       if (openCases.length === 0) {
-        // Auto-create + attach.
-        const isUz = (body.lang ?? ctx.patient.preferredLang) === "UZ";
+        // Auto-create + attach. Bind the case to the relative when on
+        // behalf of, otherwise to the owner.
+        const isUz = (body.lang ?? bookingPatientLang) === "UZ";
         const dStr = startAt.toLocaleDateString(
           isUz ? "uz-Latn-UZ" : "ru-RU",
           { day: "2-digit", month: "2-digit", year: "numeric" },
@@ -300,7 +422,7 @@ export const POST = createMiniAppHandler(
         const newCase = await prisma.medicalCase.create({
           data: {
             clinicId: ctx.clinicId,
-            patientId: ctx.patientId,
+            patientId: bookingPatientId,
             title: newTitle,
             primaryDoctorId: body.doctorId,
             primaryComplaint: body.comments?.trim() || null,
@@ -324,7 +446,7 @@ export const POST = createMiniAppHandler(
       } else {
         // 2+: ask the patient. The client will call
         // POST /api/miniapp/appointments/[id]/attach-case with their choice.
-        const lang = body.lang ?? ctx.patient.preferredLang;
+        const lang = body.lang ?? bookingPatientLang;
         caseAttach = {
           kind: "needs_choice",
           choices: openCases.map((c) => ({

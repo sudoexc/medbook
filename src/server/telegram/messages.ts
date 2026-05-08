@@ -56,6 +56,14 @@ const RU: Dict = {
   "common.error": "Что-то пошло не так, попробуйте /start",
   "common.unknownCommand":
     "Не понял запроса. Нажмите кнопку или отправьте /start, чтобы начать заново.",
+
+  // Phase 15 Wave 5 — Voice → SOAP intake replies (doctor-only path).
+  // Lives here because the bot already has its own dictionary and threading
+  // next-intl through the polling worker would be ceremony.
+  "tgVoiceReply.received":
+    "Получил, расшифровываю и структурирую SOAP-черновик. Откройте случай в CRM через минуту.",
+  "tgVoiceReply.noActiveCase":
+    "Нет активного случая. Откройте случай в CRM, чтобы получить SOAP-черновик.",
 };
 
 const UZ: Dict = {
@@ -99,6 +107,11 @@ const UZ: Dict = {
   "common.error": "Xatolik yuz berdi, /start ni yuboring",
   "common.unknownCommand":
     "Tushunmadim. Tugmani bosing yoki /start ni yuboring.",
+
+  "tgVoiceReply.received":
+    "Qabul qildim, ovozni matnga aylantirib SOAP-qoralama tayyorlayapman. Bir daqiqadan so'ng CRM'da hodisani oching.",
+  "tgVoiceReply.noActiveCase":
+    "Faol hodisa yo'q. SOAP-qoralama olish uchun CRM'da hodisani oching.",
 };
 
 const TABLES: Record<BotLang, Dict> = { ru: RU, uz: UZ };

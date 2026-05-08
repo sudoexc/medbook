@@ -11,10 +11,21 @@ import {
   KeyRoundIcon,
   CopyIcon,
   CheckIcon,
+  MoreHorizontalIcon,
+  PauseIcon,
+  PlayIcon,
+  TimerIcon,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -122,18 +133,42 @@ async function resetOwnerPassword(
 }
 
 async function impersonateClinic(clinicId: string): Promise<void> {
-  // POST sets the signed `admin_clinic_override` cookie; the JWT callback
-  // picks it up on the next request, so we hard-navigate to /ru/crm so the
-  // CRM layout renders against the new claim. Hard-nav (not router.push)
-  // because router.refresh() doesn't always flush the layout cache cleanly
-  // when the underlying session token changes.
+  // Phase 19 W4 — switch-clinic now requires a reason (≥4 chars) and a mode
+  // pick. Collect both via simple prompts so the existing flow stays one
+  // click + one input deep; the SUPER_ADMIN can always cancel.
+  const reason = window.prompt(
+    "Reason for entering this clinic (≥4 chars). This is logged.",
+    "",
+  );
+  if (reason === null) return;
+  const trimmed = reason.trim();
+  if (trimmed.length < 4) throw new Error("Reason must be ≥4 chars");
+  const viewOnly = window.confirm(
+    "OK = VIEW_ONLY (read-only).\nCancel = WRITE (mutations allowed).",
+  );
+  const mode: "WRITE" | "VIEW_ONLY" = viewOnly ? "VIEW_ONLY" : "WRITE";
   const r = await fetch("/api/platform/session/switch-clinic", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ clinicId }),
+    body: JSON.stringify({ clinicId, reason: trimmed, mode }),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   window.location.href = "/ru/crm";
+}
+
+async function lifecycleAction(
+  clinicId: string,
+  action: "suspend" | "restore" | "extend-trial",
+): Promise<void> {
+  const r = await fetch(`/api/admin/clinics/${clinicId}/lifecycle`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(txt || `HTTP ${r.status}`);
+  }
 }
 
 export function ClinicsPageClient() {
@@ -168,6 +203,25 @@ export function ClinicsPageClient() {
         login: res.ownerLogin,
         password: res.ownerTempPassword,
       }),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
+  });
+
+  // Phase 19 W4 — bulk lifecycle ops (suspend / restore / extend trial).
+  const lifecycle = useMutation({
+    mutationFn: (input: {
+      clinicId: string;
+      action: "suspend" | "restore" | "extend-trial";
+    }) => lifecycleAction(input.clinicId, input.action),
+    onSuccess: (_data, input) => {
+      const message =
+        input.action === "suspend"
+          ? "Клиника приостановлена"
+          : input.action === "restore"
+            ? "Клиника восстановлена"
+            : "Пробный период продлён";
+      toast.success(message);
+      void qc.invalidateQueries({ queryKey: ["admin", "clinics"] });
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
@@ -287,6 +341,77 @@ export function ClinicsPageClient() {
                         <PencilIcon />
                         Интеграции
                       </Link>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label="Действия с клиникой"
+                          >
+                            <MoreHorizontalIcon />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              if (
+                                window.confirm(
+                                  `Приостановить клинику «${c.nameRu}»? Подписка будет отменена.`,
+                                )
+                              ) {
+                                lifecycle.mutate({
+                                  clinicId: c.id,
+                                  action: "suspend",
+                                });
+                              }
+                            }}
+                            className="gap-2 text-destructive focus:text-destructive"
+                          >
+                            <PauseIcon className="size-4" />
+                            Приостановить
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              if (
+                                window.confirm(
+                                  `Восстановить клинику «${c.nameRu}» и выдать 14-дневный пробный?`,
+                                )
+                              ) {
+                                lifecycle.mutate({
+                                  clinicId: c.id,
+                                  action: "restore",
+                                });
+                              }
+                            }}
+                            className="gap-2"
+                          >
+                            <PlayIcon className="size-4" />
+                            Восстановить (14 дн)
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              if (
+                                window.confirm(
+                                  `Продлить пробный период «${c.nameRu}» на 30 дней?`,
+                                )
+                              ) {
+                                lifecycle.mutate({
+                                  clinicId: c.id,
+                                  action: "extend-trial",
+                                });
+                              }
+                            }}
+                            className="gap-2"
+                          >
+                            <TimerIcon className="size-4" />
+                            Пробный +30 дней
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>

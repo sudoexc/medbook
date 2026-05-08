@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+const PENDING_SS_KEY = "medbook:2fa-pending";
+
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
@@ -22,6 +24,48 @@ function LoginForm() {
     e.preventDefault();
     setError(null);
     setPending(true);
+    // Phase 17 Wave 2 — precheck whether 2FA is required. Doing this in
+    // a dedicated endpoint (instead of attempting signIn first and reading
+    // the error) lets us distinguish "wrong password" from "missing 2fa"
+    // without minting a partially-authenticated session.
+    let requiresTotp = false;
+    try {
+      const r = await fetch("/api/crm/auth/totp-required", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!r.ok) {
+        if (r.status === 401) {
+          setError("Неверный email или пароль");
+          setPending(false);
+          return;
+        }
+        throw new Error(`HTTP ${r.status}`);
+      }
+      const data = (await r.json()) as { requiresTotp: boolean };
+      requiresTotp = data.requiresTotp;
+    } catch {
+      setError("Ошибка сети");
+      setPending(false);
+      return;
+    }
+
+    if (requiresTotp) {
+      try {
+        sessionStorage.setItem(
+          PENDING_SS_KEY,
+          JSON.stringify({ email, password }),
+        );
+      } catch {
+        /* ignore */
+      }
+      const url =
+        "/login/2fa?callbackUrl=" + encodeURIComponent(callbackUrl);
+      router.push(url);
+      return;
+    }
+
     const res = await signIn("credentials", {
       email,
       password,

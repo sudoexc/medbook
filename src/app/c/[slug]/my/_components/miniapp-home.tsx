@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Calendar, FileText, History, User } from "lucide-react";
+import { Calendar, FileText, Gift, History, Pill, User } from "lucide-react";
 
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useT } from "./mini-i18n";
 import { useAppointments } from "../_hooks/use-appointments";
+import { useActiveContext } from "../_hooks/use-active-context";
 import {
   MCard,
   MEmpty,
@@ -17,6 +18,7 @@ import {
 } from "./mini-ui";
 import { InboxBanner } from "./inbox-banner";
 import { LanguagePickerScreen } from "./language-picker-screen";
+import { TreatmentPlanCard } from "./treatment-plan-card";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { OpenInTelegramFallback } from "./open-in-telegram-fallback";
 
@@ -88,7 +90,8 @@ export function MiniAppHome() {
 function HomeContent({ slug }: { slug: string }) {
   const t = useT();
   const { state } = useMiniAppAuth();
-  const upcoming = useAppointments("upcoming");
+  const { onBehalfOf } = useActiveContext();
+  const upcoming = useAppointments("upcoming", onBehalfOf);
   const patient = state.status === "ready" ? state.patient : null;
   const firstName = patient?.fullName?.split(" ")[0] ?? "";
   const lang = patient?.preferredLang ?? "RU";
@@ -104,6 +107,7 @@ function HomeContent({ slug }: { slug: string }) {
         </p>
       </div>
       <InboxBanner />
+      <TreatmentPlanCard slug={slug} />
       <div className="ma-fade-up" style={{ animationDelay: "60ms" }}>
         <MSection title={t.home.upcomingHeader}>
           {upcoming.isLoading ? (
@@ -165,6 +169,18 @@ function HomeContent({ slug }: { slug: string }) {
           label={t.home.ctaProfile}
           icon={User}
           delay={270}
+        />
+        <CtaTile
+          href={`/c/${slug}/my/medications`}
+          label={t.home.ctaMedications}
+          icon={Pill}
+          delay={320}
+        />
+        <CtaTile
+          href={`/c/${slug}/my/refer`}
+          label={t.home.ctaRefer}
+          icon={Gift}
+          delay={370}
         />
       </div>
     </>

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatMoney, type Locale } from "@/lib/format";
 
 import type { ServiceHit } from "./types";
 
@@ -28,6 +29,8 @@ export function ServicesPicker({
   doctorPicked: boolean;
 }) {
   const t = useTranslations("appointments.newDialog");
+  const locale = useLocale() as Locale;
+  const fmt = (amount: number) => formatMoney(amount, "UZS", locale);
   const [pick, setPick] = React.useState<string>("");
 
   const selected = services.filter((s) => value.includes(s.id));
@@ -60,7 +63,7 @@ export function ServicesPicker({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm">{s.nameRu}</div>
                   <div className="text-xs text-muted-foreground">
-                    {s.durationMin} {t("minutes")} · {formatSum(s.priceBase)}
+                    {s.durationMin} {t("minutes")} · {fmt(s.priceBase)}
                   </div>
                 </div>
                 <Button
@@ -100,7 +103,7 @@ export function ServicesPicker({
                 available.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.nameRu} · {s.durationMin} {t("minutes")} ·{" "}
-                    {formatSum(s.priceBase)}
+                    {fmt(s.priceBase)}
                   </SelectItem>
                 ))
               )}
@@ -113,7 +116,7 @@ export function ServicesPicker({
         <p className="text-xs text-muted-foreground">
           {t("total", {
             duration: totalDuration,
-            price: formatSum(totalPrice),
+            price: fmt(totalPrice),
           })}
         </p>
       ) : null}
@@ -121,9 +124,3 @@ export function ServicesPicker({
   );
 }
 
-function formatSum(amount: number): string {
-  if (!Number.isFinite(amount) || amount === 0) return "0 сум";
-  const whole = Math.trunc(amount / 100);
-  const grouped = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${grouped} сум`;
-}

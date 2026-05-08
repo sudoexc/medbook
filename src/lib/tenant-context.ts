@@ -28,6 +28,22 @@ export type Role =
   | "NURSE"
   | "CALL_OPERATOR";
 
+/**
+ * Phase 19 Wave 4 — when a SUPER_ADMIN enters a clinic via the switcher we
+ * stamp the resolved grant onto the TENANT context. `mode === "VIEW_ONLY"`
+ * makes `createApiHandler` reject every mutating method with 403
+ * `ViewAsReadOnly`. `WRITE` mode behaves like a normal TENANT.
+ *
+ * `null` (or undefined) means "no impersonation in flight" — i.e. either a
+ * regular tenant user or a SUPER_ADMIN with a fresh, valid WRITE grant where
+ * we deliberately don't carry the metadata downstream.
+ */
+export type ImpersonationStamp = {
+  grantId: string;
+  mode: "WRITE" | "VIEW_ONLY";
+  superAdminId: string;
+};
+
 export type TenantContext =
   | {
       kind: "TENANT";
@@ -40,6 +56,12 @@ export type TenantContext =
        * stay clinic-wide as before.
        */
       branchId?: string;
+      /**
+       * Phase 19 Wave 4 — set only when the TENANT context was synthesised
+       * from a SUPER_ADMIN's clinic-override. Downstream API guards read
+       * `impersonation?.mode === "VIEW_ONLY"` to reject writes.
+       */
+      impersonation?: ImpersonationStamp | null;
     }
   | { kind: "SUPER_ADMIN"; userId: string }
   | { kind: "SYSTEM" };

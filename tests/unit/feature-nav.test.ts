@@ -25,6 +25,13 @@ const PRO_FLAGS: FeatureFlags = {
   hasAnalyticsPro: false,
   maxBranches: 3,
   maxUsers: 20,
+  // Phase 19 Wave 1 — quotas + white-label. Mirror the seeded `pro` plan.
+  maxPatients: 500,
+  maxAppointmentsPerMonth: 2000,
+  maxSmsPerMonth: 5000,
+  maxStorageMb: 10000,
+  hasWhiteLabel: true,
+  hasCustomSubdomain: false,
 };
 
 function nameSet(groups: ReadonlyArray<{ items: { href: string }[] }>): Set<string> {
@@ -111,16 +118,14 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     // Pro-only items dropped.
     expect(hrefs.has("telegram")).toBe(false);
     expect(hrefs.has("call-center")).toBe(false);
-    // Basic-tier items still visible.
+    // Basic-tier items still visible. Phase 11 demoted rooms/services/documents/sms
+    // out of the main sidebar — they're now reached via Settings.
+    expect(hrefs.has("reception")).toBe(true);
     expect(hrefs.has("patients")).toBe(true);
     expect(hrefs.has("calendar")).toBe(true);
     expect(hrefs.has("doctors")).toBe(true);
     expect(hrefs.has("appointments")).toBe(true);
-    expect(hrefs.has("rooms")).toBe(true);
-    expect(hrefs.has("services")).toBe(true);
-    expect(hrefs.has("documents")).toBe(true);
     expect(hrefs.has("notifications")).toBe(true);
-    expect(hrefs.has("sms")).toBe(true);
     expect(hrefs.has("analytics")).toBe(true);
     expect(hrefs.has("settings")).toBe(true);
   });
@@ -145,10 +150,70 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     const visible = getVisibleCrmNav(DEFAULT_FLAGS);
     const comms = visible.find((g) => g.labelKey === "communications");
     expect(comms).toBeTruthy();
-    // sms + notifications remain (not gated).
-    expect(comms!.items.map((i) => i.href).sort()).toEqual([
-      "notifications",
-      "sms",
+    // Phase 11: only `notifications` remains ungated; call-center + telegram are
+    // Pro-only, sms was demoted to Settings.
+    expect(comms!.items.map((i) => i.href).sort()).toEqual(["notifications"]);
+  });
+});
+
+/**
+ * Phase 18 W2 — analytics sub-nav. The four pro dashboards
+ * (cohorts / doctors / financial / schedule-heatmap) hang off the
+ * `analytics` parent and are gated by ADMIN + hasAnalyticsPro.
+ */
+describe("analytics pro sub-nav (Phase 18 W2)", () => {
+  function findAnalyticsItem(visible: ReturnType<typeof getVisibleCrmNav>) {
+    for (const g of visible) {
+      const a = g.items.find((i) => i.href === "analytics");
+      if (a) return a;
+    }
+    return null;
+  }
+
+  it("hides every analytics child on Basic regardless of role", () => {
+    const adminVisible = getVisibleCrmNav(DEFAULT_FLAGS, "ADMIN");
+    const item = findAnalyticsItem(adminVisible);
+    expect(item).toBeTruthy();
+    // No children pass the hasAnalyticsPro gate on Basic.
+    expect(item!.children ?? []).toEqual([]);
+  });
+
+  it("exposes all five pro entries for ADMIN on Enterprise", () => {
+    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, "ADMIN");
+    const item = findAnalyticsItem(visible);
+    expect(item).toBeTruthy();
+    const childHrefs = (item!.children ?? []).map((c) => c.href).sort();
+    expect(childHrefs).toEqual([
+      "analytics/cohorts",
+      "analytics/doctors",
+      "analytics/financial",
+      "analytics/reports",
+      "analytics/schedule-heatmap",
     ]);
+  });
+
+  // Phase 18 W3 — the Reports entry is gated identically to the W2
+  // dashboards: ADMIN + hasAnalyticsPro. Lock that down.
+  it("hides analytics/reports from non-ADMIN even on Enterprise", () => {
+    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, null);
+    const item = findAnalyticsItem(visible);
+    expect(item).toBeTruthy();
+    const childHrefs = (item!.children ?? []).map((c) => c.href);
+    expect(childHrefs).not.toContain("analytics/reports");
+  });
+
+  it("hides analytics/reports on Basic regardless of role", () => {
+    const visible = getVisibleCrmNav(DEFAULT_FLAGS, "ADMIN");
+    const item = findAnalyticsItem(visible);
+    expect(item).toBeTruthy();
+    const childHrefs = (item!.children ?? []).map((c) => c.href);
+    expect(childHrefs).not.toContain("analytics/reports");
+  });
+
+  it("hides the pro dashboards from non-ADMIN even on Enterprise", () => {
+    const visible = getVisibleCrmNav(ENTERPRISE_FLAGS, null);
+    const item = findAnalyticsItem(visible);
+    expect(item).toBeTruthy();
+    expect(item!.children ?? []).toEqual([]);
   });
 });

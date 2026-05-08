@@ -211,59 +211,121 @@ enum CaseStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Clinic {
-  id                String    @id @default(cuid())
-  slug              String    @unique
-  nameRu            String
-  nameUz            String
-  addressRu         String?
-  addressUz         String?
-  phone             String?
-  email             String?
-  logoUrl           String?
-  brandColor        String    @default("#3DD5C0")
-  timezone          String    @default("Asia/Tashkent")
-  currency          Currency  @default(UZS)
-  secondaryCurrency Currency?
-  exchangeRateToUsd Decimal?  @db.Decimal(12, 4)
-  workdayStart      String    @default("09:00")
-  workdayEnd        String    @default("19:00")
-  slotMin           Int       @default(30)
-  tgBotUsername     String?
-  tgBotToken        String?
-  tgWebhookSecret   String?
-  smsSenderName     String?
-  kioskPin          String?
-  active            Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                         String    @id @default(cuid())
+  slug                       String    @unique
+  nameRu                     String
+  nameUz                     String
+  addressRu                  String?
+  addressUz                  String?
+  phone                      String?
+  email                      String?
+  logoUrl                    String?
+  brandColor                 String    @default("#3DD5C0")
+  timezone                   String    @default("Asia/Tashkent")
+  currency                   Currency  @default(UZS)
+  secondaryCurrency          Currency?
+  exchangeRateToUsd          Decimal?  @db.Decimal(12, 4)
+  workdayStart               String    @default("09:00")
+  workdayEnd                 String    @default("19:00")
+  slotMin                    Int       @default(30)
+  tgBotUsername              String?
+  tgBotToken                 String?
+  tgWebhookSecret            String?
+  smsSenderName              String?
+  kioskPin                   String?
+  active                     Boolean   @default(true)
+  // Phase 16 Wave 2 — NPS alert threshold. When a PatientReview lands with
+  // `score < npsAlertThreshold`, the NPS submit path emits a LOW_NPS_RECEIVED
+  // Action (severity high) and stamps `adminAlerted=true` on the review.
+  // Default 7 matches the "promoter / passive / detractor" cutoff. Wave 3
+  // exposes this in /crm/settings/clinic.
+  npsAlertThreshold          Int       @default(7)
+  // Phase 16 Wave 3 — Refer-a-friend reward percentage applied to the
+  // referrer's NEXT booking after the referred patient completes their
+  // first appointment. 0..50; 0 disables the reward. The Mini App refer
+  // page shows this number; the auto-apply logic in booking POST reads it.
+  referralRewardPercent      Int       @default(15)
+  // Phase 16 Wave 3 — Master switch for medication reminders. When false,
+  // the medication-reminder worker skips this clinic entirely. Doctors can
+  // still author Prescription rows; their `remindersEnabled` flag is
+  // independent so we don't lose existing setup if the master toggle is
+  // flipped temporarily.
+  medicationRemindersEnabled Boolean   @default(true)
+  // Phase 17 Wave 2 — when true, every staff role in the clinic must enrol
+  // TOTP, not just ADMIN/SUPER_ADMIN. Plan-gated: only Pro / Enterprise
+  // plans can flip this on (Basic UI shows it disabled with an upsell hint).
+  // Enforcement lives in the proxy/redirect guard.
+  require2faForAll           Boolean   @default(false)
+  // Phase 17 Wave 2 — clinic-level idle timeout in minutes. The proxy
+  // invalidates a session whose lastActivityAt is older than this. App-level
+  // bound is [5, 240]; the schema cannot express that, so the API + form
+  // clamp on every write.
+  sessionIdleTimeoutMinutes  Int       @default(30)
+  // Phase 19 Wave 1 — SaaS self-service.
+  // `customSubdomain` lets Pro/Enterprise tenants serve the patient surfaces
+  // off `<sub>.neurofax.uz` instead of the default `/c/<slug>`. Globally
+  // unique because it routes traffic; nullable because Basic plans don't
+  // get one. Wave 2 wires the resolver / DNS playbook.
+  customSubdomain            String?   @unique
+  // Phase 19 Wave 1 — second brand color for headers / accents on the
+  // patient-facing surfaces. White-label feature gate decides whether the
+  // UI exposes this; the column is always available so we don't need a
+  // second migration when a clinic upgrades.
+  brandSecondaryColor        String?
+  // Phase 19 Wave 1 — onboarding milestones. `onboardedAt` flips the moment
+  // the self-service wizard finishes (Wave 2). `onboardingPlaybook` records
+  // which playbook variant the clinic picked (e.g. "dental", "general",
+  // "aesthetic") so the seeded demo content + tour highlights match.
+  // Free-form string (not enum) because the playbook catalog evolves
+  // outside of schema migrations.
+  onboardedAt                DateTime?
+  onboardingPlaybook         String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
-  users                 User[]
-  doctors               Doctor[]
-  patients              Patient[]
-  appointments          Appointment[]
-  cabinets              Cabinet[]
-  services              Service[]
-  payments              Payment[]
-  documents             Document[]
-  communications        Communication[]
-  conversations         Conversation[]
-  messages              Message[]
-  notificationTemplates NotificationTemplate[]
-  notificationSends     NotificationSend[]
-  campaigns             Campaign[]
-  calls                 Call[]
-  onlineRequests        OnlineRequest[]
-  reviews               Review[]
-  exchangeRates         ExchangeRate[]
-  providerConnections   ProviderConnection[]
-  leads                 Lead[]
-  auditLogs             AuditLog[]
-  doctorSchedules       DoctorSchedule[]
-  doctorTimeOffs        DoctorTimeOff[]
-  appointmentServices   AppointmentService[]
-  branches              Branch[]
-  subscription          Subscription?
-  medicalCases          MedicalCase[]
+  users                   User[]
+  doctors                 Doctor[]
+  patients                Patient[]
+  appointments            Appointment[]
+  cabinets                Cabinet[]
+  services                Service[]
+  payments                Payment[]
+  documents               Document[]
+  communications          Communication[]
+  conversations           Conversation[]
+  messages                Message[]
+  notificationTemplates   NotificationTemplate[]
+  notificationSends       NotificationSend[]
+  campaigns               Campaign[]
+  calls                   Call[]
+  onlineRequests          OnlineRequest[]
+  reviews                 Review[]
+  exchangeRates           ExchangeRate[]
+  providerConnections     ProviderConnection[]
+  leads                   Lead[]
+  auditLogs               AuditLog[]
+  doctorSchedules         DoctorSchedule[]
+  doctorTimeOffs          DoctorTimeOff[]
+  appointmentServices     AppointmentService[]
+  branches                Branch[]
+  subscription            Subscription?
+  medicalCases            MedicalCase[]
+  actions                 Action[]
+  emptySlotSnapshots      EmptySlotSnapshot[]
+  llmUsages               LLMUsage[]
+  patientReviews          PatientReview[]
+  patientFamilies         PatientFamily[]
+  prescriptions           Prescription[]
+  referralCodes           ReferralCode[]
+  referralRewards         ReferralReward[]
+  medicationReminderSends MedicationReminderSend[]
+  patientViews            PatientView[]
+  userSessions            UserSession[]
+  dataExportJobs          DataExportJob[]
+  dataDeletionJobs        DataDeletionJob[]
+  savedReports            SavedReport[]
+  scheduledReports        ScheduledReport[]
+  invoices                Invoice[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -295,11 +357,13 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  doctors         Doctor[]
-  cabinets        Cabinet[]
-  appointments    Appointment[]
-  doctorSchedules DoctorSchedule[]
-  doctorTimeOffs  DoctorTimeOff[]
+  doctors            Doctor[]
+  cabinets           Cabinet[]
+  appointments       Appointment[]
+  doctorSchedules    DoctorSchedule[]
+  doctorTimeOffs     DoctorTimeOff[]
+  actions            Action[]
+  emptySlotSnapshots EmptySlotSnapshot[]
 
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
@@ -375,6 +439,12 @@ model Subscription {
   clinic              Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   planId              String
   plan                Plan               @relation(fields: [planId], references: [id])
+  // Phase 19 Wave 3 — set when an upgrade is initiated (DRAFT Invoice
+  // minted). On the corresponding `INVOICE_PAID` transition we move the
+  // value into `planId` and clear this column. Allows the billing UI to
+  // show "Upgrade to Pro pending payment" without yet entitling the
+  // tenant to the higher tier's feature flags.
+  pendingPlanId       String?
   status              SubscriptionStatus @default(TRIAL)
   trialEndsAt         DateTime?
   currentPeriodEndsAt DateTime?
@@ -387,43 +457,168 @@ model Subscription {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Invoices (Phase 19 Wave 1)
+//
+// One Invoice row per billing period per clinic. The MVP path:
+//   - Wave 2 admin self-service downgrade flow stamps DRAFT/ISSUED rows.
+//   - Click/Payme webhooks (Wave 4) flip ISSUED → PAID and populate
+//     `paymentRef`. The unpaid sweeper flips ISSUED → OVERDUE after `dueAt`.
+//
+// `amountTiins` is BigInt because invoice totals span months/years and can
+// overflow the Int range used by the per-row Payment model. `number` is the
+// human-readable identifier shown to the customer and on the PDF.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+  OVERDUE
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  clinicId    String
+  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  number      String        @unique
+  status      InvoiceStatus @default(DRAFT)
+  amountTiins BigInt
+  currency    Currency      @default(UZS)
+  periodStart DateTime
+  periodEnd   DateTime
+  dueAt       DateTime
+  paidAt      DateTime?
+  paymentRef  String?
+  pdfUrl      String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([clinicId, createdAt])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Self-service signup tokens (Phase 19 Wave 2)
+//
+// One row per `/signup` form submission. The token is a url-safe random ID
+// the visitor receives by email; clicking the confirm link consumes the row,
+// provisions Clinic + ADMIN + TRIAL Subscription, and applies the chosen
+// onboarding playbook.
+//
+// Intentionally NOT joined back to Clinic — the row outlives the clinic for
+// audit purposes (a future GC sweeps consumed/expired rows independently).
+// `consumedClinicId` is denormalized so we can correlate without an FK.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ClinicSignupToken {
+  id               String    @id @default(cuid())
+  email            String
+  clinicName       String
+  phone            String?
+  planSlug         String    @default("basic")
+  // null = "start blank" path. Otherwise one of the 5 catalog slugs
+  // (general / dental / neurology / pediatric / cosmetology) — kept as a
+  // free-form string so the catalog can evolve without a migration.
+  playbookSlug     String?
+  preferredLocale  String    @default("ru") // "ru" | "uz"
+  token            String    @unique
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  consumedClinicId String?
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPER_ADMIN impersonation grants (Phase 19 Wave 4)
+//
+// Today the `admin_clinic_override` cookie is the only mechanism. Wave 4 pairs
+// each switch-into-clinic action with a row here so we can:
+//   - require a free-text reason (forensic / support audit trail)
+//   - time-bound the grant (default 60min lease) and auto-expire
+//   - flip into `VIEW_ONLY` mode where the API wrapper rejects writes
+//   - emit STARTED / ENDED / EXPIRED audit transitions
+//
+// No FK back to User or Clinic on purpose: the row must outlive a deleted
+// clinic so support / compliance can still see who did what when reviewing
+// historical incidents (mirrors `ClinicSignupToken`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ImpersonationMode {
+  WRITE
+  VIEW_ONLY
+}
+
+model ImpersonationGrant {
+  id           String            @id @default(cuid())
+  superAdminId String
+  clinicId     String
+  reason       String
+  mode         ImpersonationMode @default(WRITE)
+  startedAt    DateTime          @default(now())
+  expiresAt    DateTime
+  endedAt      DateTime?
+  // "user_exit" | "expired" | "revoked"
+  endedReason  String?
+
+  @@index([superAdminId, startedAt])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Auth (NextAuth) + Staff
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
+  id                 String    @id @default(cuid())
   // SUPER_ADMIN has clinicId = null; every other user is bound to a single clinic.
-  clinicId      String?
-  clinic        Clinic?   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  email         String
-  emailVerified DateTime?
-  passwordHash  String?
-  name          String
-  photoUrl      String?
-  phone         String?
-  telegramId    String?
-  role          Role      @default(DOCTOR)
-  active        Boolean   @default(true)
+  clinicId           String?
+  clinic             Clinic?   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  email              String
+  emailVerified      DateTime?
+  passwordHash       String?
+  name               String
+  photoUrl           String?
+  phone              String?
+  telegramId         String?
+  role               Role      @default(DOCTOR)
+  active             Boolean   @default(true)
   // Set true when an admin issues a temp password; cleared on first self-set.
   // Middleware redirects users with this flag to /crm/me/change-password.
-  mustChangePassword Boolean @default(false)
+  mustChangePassword Boolean   @default(false)
   // The user (SUPER_ADMIN or ADMIN) who created/invited this account.
   // No back-relation needed — surfaced only in audit views.
-  invitedById   String?
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  invitedById        String?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Phase 17 Wave 2 reservations — added in Wave 1 to avoid a second
+  // migration when 2FA + session-rotation lands. Wave 2 will populate
+  // `totpSecret` (encrypted) + `recoveryCodesHash` (bcrypt of one-time
+  // codes; NEVER plaintext) and start stamping `lastSessionRotatedAt`
+  // from session middleware.
+  totpSecret           String?
+  totpEnabledAt        DateTime?
+  recoveryCodesHash    String[]
+  lastSessionRotatedAt DateTime?
 
   doctor              Doctor?
   accounts            Account[]
   sessions            Session[]
   auditLogs           AuditLog[]
+  patientViews        PatientView[]
+  userSessions        UserSession[]
   assignedConvs       Conversation[] @relation("ConversationAssignee")
   calls               Call[]         @relation("CallOperator")
   sentMessages        Message[]      @relation("MessageSender")
   uploadedDocuments   Document[]     @relation("DocumentUploader")
   createdAppointments Appointment[]  @relation("AppointmentCreator")
   createdCampaigns    Campaign[]     @relation("CampaignCreator")
+  savedReports        SavedReport[]  @relation("SavedReportCreator")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -500,12 +695,15 @@ model Doctor {
   cabinetId String  @unique
   cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
 
-  services     ServiceOnDoctor[]
-  schedules    DoctorSchedule[]
-  timeOffs     DoctorTimeOff[]
-  appointments Appointment[]
-  leads        Lead[]
-  primaryCases MedicalCase[]
+  services           ServiceOnDoctor[]
+  schedules          DoctorSchedule[]
+  timeOffs           DoctorTimeOff[]
+  appointments       Appointment[]
+  leads              Lead[]
+  primaryCases       MedicalCase[]
+  emptySlotSnapshots EmptySlotSnapshot[]
+  patientReviews     PatientReview[]
+  prescriptions      Prescription[]
 
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
@@ -518,22 +716,22 @@ model Doctor {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Service {
-  id          String   @id @default(cuid())
-  clinicId    String
-  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  code        String
-  nameRu      String
-  nameUz      String
-  category    String?
-  durationMin Int      @default(30)
-  priceBase   Int
+  id             String   @id @default(cuid())
+  clinicId       String
+  clinic         Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  code           String
+  nameRu         String
+  nameUz         String
+  category       String?
+  durationMin    Int      @default(30)
+  priceBase      Int
   // Free-repeat policy: when set, the N-th appointment in the same MedicalCase
   // within `freeRepeatDays` of the case's first appointment is priced at 0.
   // null = no free-repeat policy. Doctor-level overrides may be added later.
   freeRepeatDays Int?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   doctors             ServiceOnDoctor[]
   appointmentServices AppointmentService[]
@@ -625,46 +823,94 @@ model DoctorTimeOff {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Patient {
-  id               String               @id @default(cuid())
-  clinicId         String
-  clinic           Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  fullName         String
-  phone            String
-  phoneNormalized  String
-  birthDate        DateTime?
-  gender           Gender?
-  passport         String?
-  address          String?
-  photoUrl         String?
-  telegramId       String?
-  telegramUsername String?
-  preferredChannel CommunicationChannel @default(TG)
-  preferredLang    Lang                 @default(RU)
-  source           LeadSource?
-  segment          PatientSegment       @default(NEW)
-  tags             String[]
-  notes            String?              @db.Text
-  ltv              Int                  @default(0)
-  visitsCount      Int                  @default(0)
-  balance          Int                  @default(0)
-  discountPct      Int                  @default(0)
-  lastVisitAt      DateTime?
-  nextVisitAt      DateTime?
-  consentMarketing Boolean              @default(false)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  id                 String               @id @default(cuid())
+  clinicId           String
+  clinic             Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  fullName           String
+  phone              String
+  phoneNormalized    String
+  birthDate          DateTime?
+  gender             Gender?
+  passport           String?
+  address            String?
+  photoUrl           String?
+  telegramId         String?
+  telegramUsername   String?
+  preferredChannel   CommunicationChannel @default(TG)
+  preferredLang      Lang                 @default(RU)
+  source             LeadSource?
+  segment            PatientSegment       @default(NEW)
+  tags               String[]
+  notes              String?              @db.Text
+  ltv                Int                  @default(0)
+  visitsCount        Int                  @default(0)
+  balance            Int                  @default(0)
+  discountPct        Int                  @default(0)
+  lastVisitAt        DateTime?
+  nextVisitAt        DateTime?
+  consentMarketing   Boolean              @default(false)
+  // Phase 14 — Revenue Engines.
+  // `dormantSince` is stamped by a future engine when the patient crosses an
+  // inactivity threshold (no visit/contact within window). `reactivationSentAt`
+  // accumulates timestamps for each reactivation campaign send so the engine
+  // can enforce once-per-quarter idempotency without a join table.
+  dormantSince       DateTime?
+  reactivationSentAt DateTime[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  appointments   Appointment[]
-  payments       Payment[]
-  conversations  Conversation[]
-  calls          Call[]
-  notifications  NotificationSend[]
-  documents      Document[]
-  communications Communication[]
-  onlineRequests OnlineRequest[]
-  reviews        Review[]
-  leads          Lead[]
-  cases          MedicalCase[]
+  // Phase 15 Wave 1 — LLM-generated patient summary.
+  // `summaryCache` holds the latest auto-summary (last visit highlights,
+  // active diagnoses, free-text alerts) shown on the patient card. Wave 2
+  // populates it; Wave 1 just reserves the columns. `summaryCacheUpdatedAt`
+  // is the cache timestamp used to invalidate on new visit / new note.
+  summaryCache          String?   @db.Text
+  summaryCacheUpdatedAt DateTime?
+
+  // Phase 17 Wave 1 — Compliance & Trust.
+  // `marketingOptOut` is the explicit opt-OUT flag (NOT the same as
+  // `consentMarketing` opt-IN). When TRUE, marketing-classified pushes
+  // (reactivation, NPS, medication reminders, birthday, referral reward,
+  // etc.) are blocked by the consent-gate helper at every send-site.
+  // Transactional pushes (appointment confirmation, 24h/5h/2h reminders,
+  // appointment.cancelled, pre-visit questionnaire) are NEVER gated.
+  // `marketingOptOutSource` records who/what set the flag — the Mini App
+  // toggle, an inbound SMS STOP keyword, an admin action, or a future
+  // data-deletion request.
+  marketingOptOut       Boolean   @default(false)
+  marketingOptOutAt     DateTime?
+  marketingOptOutSource String?
+  // Soft-delete plumbing for Wave 3 DSAR support. `deletedAt` makes the
+  // patient invisible to all sends regardless of kind. The deletion path
+  // itself (admin approval + actual scrubbing) lands in Wave 3 — Wave 1
+  // just reserves the columns so the consent-gate helper can already
+  // honour them and we don't need a second migration in Wave 3.
+  deletedAt             DateTime?
+  deletionRequestedAt   DateTime?
+  deletionReason        String?
+
+  appointments              Appointment[]
+  payments                  Payment[]
+  conversations             Conversation[]
+  calls                     Call[]
+  notifications             NotificationSend[]
+  documents                 Document[]
+  communications            Communication[]
+  onlineRequests            OnlineRequest[]
+  reviews                   Review[]
+  leads                     Lead[]
+  cases                     MedicalCase[]
+  patientReviews            PatientReview[]
+  ownedFamilyLinks          PatientFamily[]          @relation("PatientFamilyOwner")
+  linkedFamilyLinks         PatientFamily[]          @relation("PatientFamilyLinked")
+  prescriptions             Prescription[]
+  referralCodes             ReferralCode[]
+  referralRewardsAsReferrer ReferralReward[]         @relation("ReferralRewardReferrer")
+  referralRewardsAsReferred ReferralReward[]         @relation("ReferralRewardReferred")
+  medicationReminderSends   MedicationReminderSend[]
+  patientViews              PatientView[]
+  dataExportJobs            DataExportJob[]
+  dataDeletionJobs          DataDeletionJob[]
 
   @@unique([clinicId, phoneNormalized])
   @@index([clinicId, fullName])
@@ -726,10 +972,26 @@ model Appointment {
   comments    String? @db.Text
   notes       String? @db.Text
 
-  services     AppointmentService[]
-  payments     Payment[]
-  documents    Document[]
-  conversation Conversation?
+  // Phase 16 Wave 2 — pre-visit questionnaire (24h before).
+  // `preVisitData` is a free-form JSON blob shaped by the `PreVisitData`
+  // alias in `src/lib/patient-experience/pre-visit.ts` (complaints, allergies,
+  // medications, notes, locale). `preVisitNotifiedAt` is the dedupe stamp set
+  // when the worker enqueues the TG push so a re-tick within the 23–25h
+  // window doesn't send a second notification. `preVisitSubmittedAt` is set
+  // by the Mini App submit endpoint.
+  preVisitData        Json?
+  preVisitNotifiedAt  DateTime?
+  preVisitSubmittedAt DateTime?
+  // Phase 16 Wave 2 — post-visit NPS push dedupe stamp. Set by the
+  // `post-visit-nps` worker when it enqueues the request push, prevents the
+  // hourly tick from spamming the same patient.
+  npsRequestedAt      DateTime?
+
+  services       AppointmentService[]
+  payments       Payment[]
+  documents      Document[]
+  conversation   Conversation?
+  patientReviews PatientReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -786,6 +1048,10 @@ model MedicalCase {
   // Reserved for ICD-10 (or local ICD-equivalent) — schema-only, no UI yet.
   diagnosisCode    String?
   notes            String?    @db.Text
+  // Phase 15 Wave 1 — voice-transcribed SOAP draft.
+  // Populated by the Whisper→LLM worker (Wave 3) from doctor TG voice notes;
+  // doctor edits the draft on the case page. Wave 1 just reserves the column.
+  soapDraft        String?    @db.Text
   openedAt         DateTime   @default(now())
   closedAt         DateTime?
   closedReason     String?
@@ -794,6 +1060,7 @@ model MedicalCase {
 
   appointments      Appointment[]
   notificationSends NotificationSend[]
+  prescriptions     Prescription[]
 
   @@index([clinicId, patientId, status])
   @@index([clinicId, status, openedAt])
@@ -888,29 +1155,29 @@ model Communication {
 }
 
 model Conversation {
-  id              String               @id @default(cuid())
-  clinicId        String
-  clinic          Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  channel         CommunicationChannel
-  mode            ConversationMode     @default(bot)
-  patientId       String?
-  patient         Patient?             @relation(fields: [patientId], references: [id])
-  appointmentId   String?              @unique
-  appointment     Appointment?         @relation(fields: [appointmentId], references: [id])
-  externalId      String?
+  id               String               @id @default(cuid())
+  clinicId         String
+  clinic           Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  channel          CommunicationChannel
+  mode             ConversationMode     @default(bot)
+  patientId        String?
+  patient          Patient?             @relation(fields: [patientId], references: [id])
+  appointmentId    String?              @unique
+  appointment      Appointment?         @relation(fields: [appointmentId], references: [id])
+  externalId       String?
   contactFirstName String?
   contactLastName  String?
   contactUsername  String?
-  status          ConversationStatus   @default(OPEN)
-  assignedToId    String?
-  assignedTo      User?                @relation("ConversationAssignee", fields: [assignedToId], references: [id])
-  tags            String[]
-  lastMessageAt   DateTime?
-  lastMessageText String?
-  unreadCount     Int                  @default(0)
-  snoozedUntil    DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  status           ConversationStatus   @default(OPEN)
+  assignedToId     String?
+  assignedTo       User?                @relation("ConversationAssignee", fields: [assignedToId], references: [id])
+  tags             String[]
+  lastMessageAt    DateTime?
+  lastMessageText  String?
+  unreadCount      Int                  @default(0)
+  snoozedUntil     DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   messages Message[]
 
@@ -1088,28 +1355,35 @@ model OnlineRequest {
 
 // Legacy-compatible lead (form submissions converted into Appointments)
 model Lead {
-  id        String     @id @default(cuid())
-  clinicId  String
-  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  name      String
-  phone     String
-  service   String?
-  date      DateTime?
-  doctorId  String?
-  doctor    Doctor?    @relation(fields: [doctorId], references: [id])
-  patientId String?
-  patient   Patient?   @relation(fields: [patientId], references: [id])
-  status    LeadStatus @default(NEW)
-  source    LeadSource @default(WEBSITE)
-  utm       Json?
-  comment   String?    @db.Text
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                String     @id @default(cuid())
+  clinicId          String
+  clinic            Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name              String
+  phone             String
+  service           String?
+  date              DateTime?
+  doctorId          String?
+  doctor            Doctor?    @relation(fields: [doctorId], references: [id])
+  patientId         String?
+  patient           Patient?   @relation(fields: [patientId], references: [id])
+  status            LeadStatus @default(NEW)
+  source            LeadSource @default(WEBSITE)
+  utm               Json?
+  comment           String?    @db.Text
+  // Phase 16 Wave 3 — refer-a-friend attribution. Set when the lead/booking
+  // came in through a friend's referral link; combined with `source = REFERRAL`
+  // this is what the redemption path keys off of when crediting a reward.
+  // SetNull on patient delete so the lead row survives if the referrer
+  // patient is removed.
+  referrerPatientId String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   appointment Appointment?
 
   @@index([clinicId, status, createdAt])
   @@index([clinicId, phone])
+  @@index([clinicId, referrerPatientId])
 }
 
 model Review {
@@ -1159,4 +1433,600 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
   @@index([action, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PatientView — PHI access audit (Phase 17 Wave 1)
+//
+// One row per "user opened / fetched a patient's PHI" event. Wave 1 wires it
+// into the patient-detail page, the appointment GET endpoint (drawer reads),
+// case-detail GET, and patient export jobs. The audit page on
+// /crm/settings/audit?type=patient-view exposes the rows to ADMINs only.
+//
+// Throttle: the recordPatientView helper de-duplicates the same
+// (viewerUserId, patientId, context) tuple inside a 5-minute window so a
+// React re-render storm doesn't blow up the table.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PatientView {
+  id           String   @id @default(cuid())
+  clinicId     String
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  viewerUserId String
+  viewer       User     @relation(fields: [viewerUserId], references: [id], onDelete: Cascade)
+  // Snapshot of the viewer's role at the time of the view. The user's role
+  // can change later (e.g. demotion); the audit row should reflect what
+  // they were when they looked.
+  viewerRole   String
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // Where in the CRM the view originated. Free-form String (not enum) so
+  // future surfaces can be added without a migration.
+  context      String
+  // Optional ID of the appointment / case being viewed; null for direct
+  // patient.detail loads.
+  contextRef   String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, viewerUserId, createdAt])
+  @@index([patientId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action Center (Phase 13)
+//
+// `Action` = atomic system recommendation surfaced to a CRM user with a
+// deeplink to the corresponding remediation flow. Detectors run in the
+// background (Wave 2) and upsert rows here keyed by `dedupeKey`. The UI
+// (Wave 3) reads OPEN actions filtered by role, severity, and status.
+//
+// `dedupeKey` semantics: each detector produces a stable string from the
+// payload, e.g. `EMPTY_SLOT_TOMORROW:doctorId=XYZ:slot=2026-05-07T15:00`.
+// The `(clinicId, dedupeKey)` UNIQUE constraint ensures duplicate detector
+// passes don't spam rows; instead they upsert the existing row and bump
+// `updatedAt`. See `src/lib/actions/types.ts` for the discriminated payload
+// union and the `dedupeKeyFor` helper.
+//
+// `payload` is freeform JSON typed by `ActionPayload` in the application
+// layer. Currency amounts inside payloads are stored in tiins (UZS minor
+// units, x100) to stay consistent with Payment / pricing conventions in the
+// rest of the codebase.
+//
+// `action` style on AuditLog stays a free-form String for this entity too —
+// `status` here is just a STRING, not an enum. See AUDIT_ACTION constants in
+// `src/lib/audit-actions.ts` for the lifecycle action names.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Action {
+  id           String    @id @default(cuid())
+  clinicId     String
+  branchId     String?
+  type         String // ActionType union — see src/lib/actions/types.ts
+  severity     String // 'low' | 'medium' | 'high' | 'critical'
+  payload      Json
+  status       String    @default("OPEN") // OPEN | SNOOZED | DISMISSED | DONE | EXPIRED
+  assigneeRole String? // 'ADMIN' | 'RECEPTIONIST' (null = any role)
+  deeplinkPath String?
+  dedupeKey    String // stable per (clinicId, type, payload-discriminator); UNIQUE per clinic
+  snoozeUntil  DateTime?
+  dismissedAt  DateTime?
+  doneAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  expiresAt    DateTime?
+
+  clinic Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([clinicId, dedupeKey])
+  @@index([clinicId, status, severity])
+  @@index([clinicId, type, status])
+  @@index([clinicId, assigneeRole, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14 — Empty slot snapshot (revenue loss analytics).
+//
+// One row per (doctor, date, hour) when the engine observes that a slot was
+// empty. `estimatedRevenueLossUzs` is stored in tiins (minor units, ×100 of
+// soum) — same convention as Payment.amount and other money columns. The
+// engine that populates this lives in Wave 2 (`src/server/revenue/empty-
+// slot.ts`); the analytics dashboard that reads it lives in Wave 3.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmptySlotSnapshot {
+  id                      String   @id @default(cuid())
+  clinicId                String
+  clinic                  Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId                String?
+  branch                  Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  doctorId                String
+  doctor                  Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date                    DateTime // calendar date (UTC midnight)
+  hour                    Int // 0..23
+  estimatedRevenueLossUzs Int // tiins (minor units)
+  takenSnapshotAt         DateTime @default(now())
+
+  @@index([clinicId, date])
+  @@index([clinicId, doctorId, date])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 15 Wave 1 — LLM cost / audit row.
+//
+// One row per LLM proxy call (success OR failure). `useCase` is a short slug
+// (e.g. `patient.summary`, `cmdk.search`) — intentionally a String, not a
+// Prisma enum, because Waves 2-4 add slugs incrementally and we don't want to
+// migrate the schema each time. `costUzs` is in tiins (minor units, ×100 of
+// soum) so it stays consistent with Payment.amount and other money columns;
+// 0 means the cost was unknown / not estimated. `promptHash` is sha256 of the
+// already-redacted prompt — lets us bucket cache hits without storing PII.
+// `errorCode` is null on success and one of `'rate_limit'` /
+// `'redaction_failure'` / `'provider_error'` otherwise.
+//
+// AuditLog also gets a parallel `LLM_CALL` row per call (see
+// `src/lib/audit-actions.ts`); LLMUsage is the canonical store the rate
+// limiter and analytics dashboards read from, AuditLog is the
+// human-browsable trail.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LLMUsage {
+  id           String   @id @default(cuid())
+  clinicId     String
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // System-initiated calls (cron summaries, voice→SOAP worker) leave userId
+  // null. User-initiated calls (cmdk search, marketing copy) set it for
+  // per-user analytics. No FK back to User to avoid cascade complications
+  // when a user is deleted — the row is kept for billing.
+  userId       String?
+  useCase      String
+  provider     String
+  model        String
+  promptHash   String
+  inputTokens  Int
+  outputTokens Int
+  costUzs      Int      @default(0)
+  latencyMs    Int
+  cacheHit     Boolean  @default(false)
+  errorCode    String?
+  createdAt    DateTime @default(now())
+
+  @@index([clinicId, createdAt])
+  @@index([clinicId, useCase, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 16 Wave 1 — Patient Experience.
+//
+// PatientReview = NPS response (1..10). Distinct from the existing `Review`
+// model (which holds public testimonials harvested from Yandex / Google) —
+// this is patient-private feedback collected from the Mini App / TG bot.
+//
+// PatientFamily = TG-linked patient ("owner") can act on behalf of N other
+// patients (children, spouse, parents). Self-link is rejected at app layer
+// AND at DB level via a CHECK constraint added in the migration.
+//
+// Prescription = doctor-issued medication regimen, attached to a MedicalCase.
+// Wave 1 is schema-only; Wave 3 builds the reminder pipeline + UI.
+//
+// ReferralCode = "refer-a-friend" share token, owned by a patient. Wave 1 is
+// schema-only; Wave 3 builds generation/redemption.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PatientReview {
+  id             String       @id @default(cuid())
+  clinicId       String
+  clinic         Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id])
+  doctorId       String?
+  doctor         Doctor?      @relation(fields: [doctorId], references: [id])
+  // 1..10 NPS scale. Validated at app level — Postgres CHECK added in the
+  // migration as belt-and-suspenders.
+  score          Int
+  comment        String?      @db.Text
+  // 'tg-miniapp' | 'tg-bot' | 'manual' — String for forward-compat (e.g. a
+  // future SMS channel) without schema churn.
+  source         String
+  adminAlerted   Boolean      @default(false)
+  adminAlertedAt DateTime?
+  respondedAt    DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  @@index([clinicId, score, respondedAt])
+  @@index([clinicId, doctorId, respondedAt])
+  @@index([appointmentId])
+}
+
+model PatientFamily {
+  id              String   @id @default(cuid())
+  clinicId        String
+  clinic          Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // Owner = the TG-linked patient who can act on behalf of `linkedPatient`.
+  // Self-links (owner == linked) are rejected by app code AND a DB CHECK.
+  ownerPatientId  String
+  ownerPatient    Patient  @relation("PatientFamilyOwner", fields: [ownerPatientId], references: [id], onDelete: Cascade)
+  linkedPatientId String
+  linkedPatient   Patient  @relation("PatientFamilyLinked", fields: [linkedPatientId], references: [id], onDelete: Cascade)
+  // 'child' | 'spouse' | 'parent' | 'other' — String, not enum (forward-compat).
+  relationship    String
+  createdAt       DateTime @default(now())
+
+  @@unique([ownerPatientId, linkedPatientId])
+  @@index([clinicId, ownerPatientId])
+}
+
+model Prescription {
+  id               String      @id @default(cuid())
+  clinicId         String
+  clinic           Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  caseId           String
+  case             MedicalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // Denormalized for query speed (Wave 3 reminder query: "all active
+  // prescriptions for patient X").
+  patientId        String
+  patient          Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId         String
+  doctor           Doctor      @relation(fields: [doctorId], references: [id])
+  drugName         String
+  // Free-text "500mg 2 раза в день" — no structured RxNorm / formulary yet.
+  dosage           String
+  // { times: ['09:00','21:00'], days: 30, startsAt: ISO } — kept flexible
+  // because Wave 3 may add fields like `daysOfWeek` / `mealRelation` without
+  // requiring a schema migration each time.
+  schedule         Json
+  notes            String?     @db.Text
+  // 'ACTIVE' | 'PAUSED' | 'COMPLETED' — String, not enum (small set, but
+  // we may add 'CANCELLED' or 'EXPIRED' in Wave 3 without a migration).
+  status           String      @default("ACTIVE")
+  remindersEnabled Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  reminderSends MedicationReminderSend[]
+
+  @@index([clinicId, patientId, status])
+  @@index([clinicId, caseId])
+}
+
+model ReferralCode {
+  id                String    @id @default(cuid())
+  clinicId          String
+  clinic            Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  referrerPatientId String
+  referrerPatient   Patient   @relation(fields: [referrerPatientId], references: [id], onDelete: Cascade)
+  // Short slug or full uuid — globally unique so a redemption endpoint can
+  // look up by `code` without needing a clinic context.
+  code              String    @unique
+  useCount          Int       @default(0)
+  // null = unlimited. e.g. set to 1 for a single-use friend invite.
+  maxUses           Int?
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([clinicId, referrerPatientId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 16 Wave 3 — Patient Experience (final wave).
+//
+// MedicationReminderSend = one row per scheduled medication reminder push.
+// Sources from `Prescription.schedule.times[]`. Worker (hourly tick) materialises
+// rows for the next hour and stamps them as fired. Patient interacts via the
+// Mini App medications dashboard and POSTs back TAKEN / SKIPPED / SNOOZED to
+// `/api/miniapp/medications/[reminderSendId]/mark`.
+//
+// ReferralReward = pending or applied refer-a-friend reward. Created when a
+// referred patient's first appointment lands in COMPLETED. Auto-applied on the
+// referrer's next BOOKED appointment as a percentage discount, then stamped
+// `appliedAt`. Expires after 365 days.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MedicationReminderSend {
+  id             String       @id @default(cuid())
+  clinicId       String
+  clinic         Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  // Denormalised — query hot path is "all open reminders for patient X".
+  patientId      String
+  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // The exact tick the reminder is anchored to. Worker dedupes via
+  // (prescriptionId, scheduledFor) so two ticks in the same hour can't double
+  // up.
+  scheduledFor   DateTime
+  sentAt         DateTime?
+  // 'PENDING' | 'TAKEN' | 'SKIPPED' | 'SNOOZED' | 'EXPIRED' — kept as String for
+  // forward-compat (Wave 4 may add 'PARTIAL' / 'NOT_DELIVERED').
+  status         String       @default("PENDING")
+  respondedAt    DateTime?
+  // Snooze: when the patient asks to be reminded again later. The worker
+  // skips this row until `snoozeUntil <= now`. Null = no active snooze.
+  snoozeUntil    DateTime?
+  notes          String?      @db.Text
+  createdAt      DateTime     @default(now())
+
+  @@unique([prescriptionId, scheduledFor])
+  @@index([clinicId, patientId, status])
+  @@index([clinicId, status, scheduledFor])
+}
+
+model ReferralReward {
+  id                   String    @id @default(cuid())
+  clinicId             String
+  clinic               Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // The patient who shared the link / earns the discount.
+  referrerPatientId    String
+  referrerPatient      Patient   @relation("ReferralRewardReferrer", fields: [referrerPatientId], references: [id], onDelete: Cascade)
+  // The newly-onboarded patient whose first COMPLETED appointment minted
+  // this reward.
+  referredPatientId    String
+  referredPatient      Patient   @relation("ReferralRewardReferred", fields: [referredPatientId], references: [id], onDelete: Cascade)
+  // Snapshot of the clinic.referralRewardPercent at issue time, so a later
+  // settings change doesn't retroactively rewrite a pending reward.
+  rewardPercent        Int
+  // 'PENDING' | 'APPLIED' | 'EXPIRED' — String for forward-compat.
+  status               String    @default("PENDING")
+  // Set when the reward is consumed against an appointment.
+  appliedAt            DateTime?
+  appliedAppointmentId String?
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // One reward per (referrer, referred) pair — prevents double-credit on a
+  // referred patient who happens to complete two appointments rapidly.
+  @@unique([referrerPatientId, referredPatientId])
+  @@index([clinicId, referrerPatientId, status])
+  @@index([clinicId, status, expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 17 Wave 2 — Session security.
+//
+// UserSession = one row per authenticated CRM session. The proxy stamps
+// `userSessionId` into a cookie on login (after TOTP if enrolled), and on
+// every authenticated request reads (a) the matching row, (b) bumps
+// `lastActivityAt`, (c) enforces idle timeout, (d) enforces the 8h forced
+// re-rotation window, (e) enforces "1 active session per user" (a fresh
+// login deletes prior rows for this user; the prior cookie then fails the
+// lookup and is treated as logged-out).
+//
+// `tokenHash` is sha256 of the long random session token; the plaintext is
+// never stored. `clinicId` is denormalised for analytics / auditing - it
+// can drift from the user's current clinic on a SUPER_ADMIN impersonation
+// flip, which is fine.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserSession {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinicId       String?
+  clinic         Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  tokenHash      String   @unique
+  createdAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+  userAgent      String?
+  ip             String?
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 17 Wave 3 — DSAR (Data Subject Access Requests).
+//
+// Two independent lifecycle tables:
+//
+//   DataExportJob       — patient (or admin on their behalf) asks for a
+//                         downloadable copy of every PII-bearing row tied
+//                         to the patient. The worker bundles a JSON, ZIPs
+//                         it with an AES-encrypted body using a generated
+//                         passphrase, uploads to MinIO, and delivers the
+//                         file via the per-clinic Telegram bot. The
+//                         passphrase is shown ONCE in the UI and the
+//                         Telegram caption — only `passphraseHash` is
+//                         persisted (bcryptjs).
+//
+//   DataDeletionJob     — patient asks to delete their account, or admin
+//                         schedules one from the CRM. Default mode is
+//                         ANONYMIZE: PII is scrubbed off the Patient row
+//                         while aggregate analytics (visit counts, LTV,
+//                         payments) survive. HARD_DELETE drops the
+//                         Patient row entirely (use only when legally
+//                         required — referential integrity will null
+//                         linked rows). The cron runs hourly and only
+//                         executes APPROVED jobs whose `scheduledFor`
+//                         has passed; the default 90-day delay gives
+//                         the patient a cooling-off window in which they
+//                         can cancel the request from the Mini App.
+//
+// Both tables are tenant-scoped (`clinicId`). The export bucket key is
+// `exports/<clinicId>/<jobId>.zip` so a clinic can only enumerate its own
+// objects via signed URLs.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum DataExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  DELIVERED
+  FAILED
+  EXPIRED
+}
+
+enum DataDeletionStatus {
+  PENDING_REVIEW
+  APPROVED
+  CANCELLED
+  EXECUTED
+  ANONYMIZED
+}
+
+enum DataDeletionMode {
+  HARD_DELETE
+  ANONYMIZE
+}
+
+model DataExportJob {
+  id                String           @id @default(cuid())
+  clinicId          String
+  clinic            Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  status            DataExportStatus @default(PENDING)
+  // Bcryptjs hash of the one-time passphrase used to encrypt the ZIP.
+  // The plaintext is shown ONCE (Mini App success modal + TG caption);
+  // never persisted. Allowed null only briefly before the worker has
+  // generated the passphrase — typical reads always see a value.
+  passphraseHash    String?
+  // MinIO object key (`exports/<clinicId>/<jobId>.zip`). Null until the
+  // worker has uploaded; permits PENDING / PROCESSING rows without a key.
+  storageKey        String?
+  fileSizeBytes     Int?
+  // Number of times the signed-download endpoint has served this bundle.
+  // Bumped atomically; analysed in the audit trail / DSAR queue UI.
+  downloadCount     Int              @default(0)
+  // Telegram chat that should receive the document. For Mini App requests
+  // this is the patient's tgChatId; for CRM-initiated requests it's the
+  // admin's chat (so the file lands in the admin's DM, not the patient's).
+  telegramChatId    String?
+  // Bundle expires (and is purgeable) at this instant. Default 30 days.
+  expiresAt         DateTime
+  // If a worker step fails, capture the human-readable reason here so the
+  // CRM queue UI can surface it without round-tripping to the audit log.
+  errorMessage      String?
+  // For CRM-initiated exports: the User who clicked "Экспорт данных".
+  // Null when the request came from the Mini App.
+  requestedByUserId String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([clinicId, status])
+  @@index([patientId, createdAt(sort: Desc)])
+  @@index([expiresAt])
+}
+
+model DataDeletionJob {
+  id                String             @id @default(cuid())
+  clinicId          String
+  clinic            Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  status            DataDeletionStatus @default(PENDING_REVIEW)
+  mode              DataDeletionMode   @default(ANONYMIZE)
+  // Earliest moment the cron will execute the job. Default = createdAt + 90d.
+  scheduledFor      DateTime
+  reason            String?
+  // For admin-approved jobs: the User who approved.
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  // For executed jobs: timestamp of actual scrub / hard-delete.
+  executedAt        DateTime?
+  // For cancellation: who cancelled and when.
+  cancelledByUserId String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  // Free-form note from the requesting actor (Mini App textarea or CRM
+  // admin form). Surfaced in the queue UI and the audit `meta`.
+  notes             String?            @db.Text
+  // For Mini App requests: the patient is the actor. For CRM-initiated
+  // requests: the User who created the job.
+  requestedByUserId String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([clinicId, status])
+  @@index([scheduledFor])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 18 Wave 1 — Analytics & Reporting foundation.
+//
+// SavedReport / ScheduledReport persist the W3 report-builder configuration
+// and the W4 scheduled-delivery cron rows. The `config` JSON shape is owned
+// by the W3 builder; W1 only persists it opaquely so the foundation can land
+// without dictating UI semantics.
+//
+// The materialized views (mv_doctor_performance / mv_cohort_retention /
+// mv_financial_pace / mv_schedule_heatmap) live in raw SQL inside the
+// migration — Prisma doesn't model materialized views, and the analytics
+// resolvers read from them via `$queryRawUnsafe` with parameterized clinicId.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ScheduledReportCadence {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum ScheduledReportChannel {
+  EMAIL
+  TELEGRAM
+}
+
+model SavedReport {
+  id              String    @id @default(cuid())
+  clinicId        String
+  clinic          Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // The User who built and saved the report. Restrict (not cascade) so
+  // accidental user deletion doesn't erase a clinic's saved reports.
+  createdByUserId String
+  createdBy       User      @relation("SavedReportCreator", fields: [createdByUserId], references: [id])
+  name            String
+  description     String?
+  // Opaque builder config — the W3 report-builder owns its schema (selected
+  // dimensions, measures, filters, chart kind, layout). W1 just persists it.
+  config          Json
+  // Stamped by the W3 "Run report" path so the list view can sort
+  // most-recently-used to the top.
+  lastRunAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  scheduledReports ScheduledReport[]
+
+  @@index([clinicId, createdAt(sort: Desc)])
+  @@index([createdByUserId])
+}
+
+model ScheduledReport {
+  id                  String                 @id @default(cuid())
+  clinicId            String
+  clinic              Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  savedReportId       String
+  savedReport         SavedReport            @relation(fields: [savedReportId], references: [id], onDelete: Cascade)
+  cadence             ScheduledReportCadence
+  // Driver column for the W4 cron picker — a row is "due" when
+  // enabled = true AND nextRunAt <= now(). The cron updates this after
+  // each successful delivery (cadence-step ahead).
+  nextRunAt           DateTime
+  deliveryChannel     ScheduledReportChannel
+  // Email address or Telegram chat id. Validation lives at the API layer.
+  deliveryTarget      String
+  enabled             Boolean                @default(true)
+  lastDeliveredAt     DateTime?
+  // Last failure reason text — surfaced in the "Scheduled reports" list
+  // so admins can see why a row keeps failing without digging into logs.
+  lastFailureReason   String?
+  // W4 — delivery format. Free TEXT (not enum) so future formats (xlsx,
+  // html-body) can be added without another migration. Validated at the
+  // API layer via zod ("pdf" | "csv" today).
+  format              String                 @default("pdf")
+  // W4 — consecutive-failure counter. After 3 in a row the worker disables
+  // the schedule and audits SCHEDULED_REPORT_DISABLED_AFTER_FAILURES.
+  // Resets to 0 on every successful delivery.
+  consecutiveFailures Int                    @default(0)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([enabled, nextRunAt])
+  @@index([clinicId])
+  @@index([savedReportId])
 }

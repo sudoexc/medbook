@@ -30,6 +30,10 @@ export const UpdateMedicalCaseSchema = z.object({
   diagnosisCode: z.string().max(64).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   closedReason: z.string().max(500).nullable().optional(),
+  // Phase 15 Wave 5 — AI SOAP draft (markdown with `### Subjective` etc.).
+  // Initially populated by the voice-soap worker; doctor edits it via
+  // `<SoapDraftCard>`. Capped at 20 KB which is overkill for SOAP but cheap.
+  soapDraft: z.string().max(20000).nullable().optional(),
 });
 
 export const QueryMedicalCaseSchema = z.object({

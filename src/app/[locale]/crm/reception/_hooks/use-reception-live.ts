@@ -313,6 +313,19 @@ export type AiQueueItem = {
   waitMin: number;
   isVip: boolean;
   noShowRisk: number;
+  /**
+   * Phase 14, Wave 3 — per-factor breakdown of `noShowRisk`. Mirrors
+   * `NoShowFactors` from `@/lib/ai/no-show-risk`. Used by the queue card
+   * tooltip to explain the percentage.
+   */
+  noShowFactors: {
+    historyRisk: number;
+    firstVisitBump: number;
+    unconfirmedBump: number;
+    farFutureBump: number;
+    dayOfWeekBump?: number;
+  };
+  noShowConfidence: "low" | "medium" | "high";
   score: {
     score: number;
     band: "low" | "normal" | "high" | "critical";

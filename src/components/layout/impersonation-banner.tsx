@@ -23,14 +23,22 @@ export interface ImpersonationBannerProps {
   clinicName: string
   /** Slug shown in muted text after the name. */
   clinicSlug?: string | null
+  /**
+   * Phase 19 W4 — when set to "VIEW_ONLY", the banner flips from yellow to
+   * red and the label changes to «Просмотр без записи / Faqat o'qish» so the
+   * SUPER_ADMIN cannot miss that mutations are blocked server-side.
+   */
+  mode?: "WRITE" | "VIEW_ONLY" | null
   className?: string
 }
 
 export function ImpersonationBanner({
   clinicName,
   clinicSlug,
+  mode,
   className,
 }: ImpersonationBannerProps) {
+  const viewOnly = mode === "VIEW_ONLY"
   const [exiting, setExiting] = React.useState(false)
 
   const exit = React.useCallback(async () => {
@@ -52,15 +60,30 @@ export function ImpersonationBanner({
   return (
     <div
       className={cn(
-        "flex h-9 shrink-0 items-center gap-3 border-b border-warning/40 bg-warning/15 px-6 text-sm text-foreground",
+        "flex h-9 shrink-0 items-center gap-3 border-b px-6 text-sm text-foreground",
+        viewOnly
+          ? "border-destructive/50 bg-destructive/15"
+          : "border-warning/40 bg-warning/15",
         className,
       )}
       role="status"
       aria-live="polite"
+      data-mode={viewOnly ? "view-only" : "write"}
     >
-      <ShieldIcon className="size-4 shrink-0 text-warning" />
+      <ShieldIcon
+        className={cn(
+          "size-4 shrink-0",
+          viewOnly ? "text-destructive" : "text-warning",
+        )}
+      />
       <span className="truncate">
-        Режим клиники:{" "}
+        {viewOnly ? (
+          <span className="font-semibold text-destructive">
+            Просмотр без записи / Faqat o&apos;qish ·{" "}
+          </span>
+        ) : (
+          <>Режим клиники: </>
+        )}
         <span className="font-semibold">{clinicName}</span>
         {clinicSlug ? (
           <span className="ml-1 text-muted-foreground">/{clinicSlug}</span>
@@ -70,7 +93,10 @@ export function ImpersonationBanner({
         type="button"
         onClick={() => void exit()}
         disabled={exiting}
-        className="ml-auto inline-flex items-center gap-1 rounded-md border border-warning/40 bg-card px-2 py-0.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+        className={cn(
+          "ml-auto inline-flex items-center gap-1 rounded-md border bg-card px-2 py-0.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50",
+          viewOnly ? "border-destructive/50" : "border-warning/40",
+        )}
       >
         <XIcon className="size-3" />
         {exiting ? "Выход…" : "Выйти"}

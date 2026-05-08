@@ -37,6 +37,12 @@
         "15-30": "15–30 kun",
         ">30": ">30 kun"
       }
+    },
+    "refresh": {
+      "button": "Hisobotlarni yangilash",
+      "running": "Yangilanmoqda…",
+      "successToast": "Analitik ko‘rsatkichlar yangilandi",
+      "failureToast": "Hisobotlarni yangilab bo‘lmadi"
     }
   },
   "crmLayout": {
@@ -49,6 +55,7 @@
     },
     "sidebarNav": {
       "reception": "Qabulxona",
+      "actionCenter": "Vazifalar markazi",
       "appointments": "Yozilishlar",
       "calendar": "Jadval",
       "patients": "Bemorlar",
@@ -62,6 +69,11 @@
       "smsEmail": "SMS-Email",
       "notifications": "Bildirishnomalar",
       "analytics": "Tahlillar",
+      "analyticsCohorts": "Kogortalar",
+      "analyticsDoctors": "Shifokorlar (KPI)",
+      "analyticsFinancial": "Moliya",
+      "analyticsScheduleHeatmap": "Jadval Heatmap",
+      "analyticsReports": "Hisobotlar",
       "settings": "Sozlamalar"
     },
     "footer": {
@@ -116,7 +128,8 @@
         "sms": { "title": "SMS-Email", "subtitle": "Kiruvchi va chiquvchi xabarlar" },
         "notifications": { "title": "Bildirishnomalar", "subtitle": "Bildirishnomalar markazi" },
         "analytics": { "title": "Tahlillar", "subtitle": "Klinika umumiy ko'rsatkichlari" },
-        "settings": { "title": "Sozlamalar", "subtitle": "Klinika va foydalanuvchilar" }
+        "settings": { "title": "Sozlamalar", "subtitle": "Klinika va foydalanuvchilar" },
+        "actionCenter": { "title": "Vazifalar markazi", "subtitle": "Klinika ustuvor vazifalari ro'yxati" }
       }
     },
     "trialBanner": {
@@ -596,6 +609,20 @@
         "outside_schedule": "Ish vaqtidan tashqari",
         "in_past": "Bu vaqt allaqachon o'tib ketgan",
         "invalid_transition": "Bunday status o'zgarishi mumkin emas"
+      },
+      "preVisit": {
+        "title": "Tashrifdan oldin anketa",
+        "filled": "Anketa to'ldirilgan",
+        "notFilled": "Anketa to'ldirilmagan",
+        "submittedAt": "Yuborilgan {at}",
+        "complaints": "Shikoyatlar",
+        "allergies": "Allergiyalar",
+        "medications": "Qabul qilinayotgan dorilar",
+        "notes": "Qo'shimcha",
+        "noAllergies": "ko'rsatilmagan",
+        "noMedications": "ko'rsatilmagan",
+        "expand": "Javoblarni ko'rsatish",
+        "collapse": "Yopish"
       }
     },
     "rail": {
@@ -759,6 +786,19 @@
       "moved": "Yozilish ko'chirildi",
       "reverted": "O'zgarish bekor qilindi"
     },
+    "reschedule": {
+      "confirmTitle": "Yozilishni ko'chirilsinmi?",
+      "confirmBody": "{patient} bemorining yozilishi {time} ga, {doctor} shifokoriga ko'chirilsinmi?",
+      "cancel": "Bekor qilish",
+      "confirm": "Ko'chirish",
+      "success": "Yozilish ko'chirildi",
+      "errorPast": "Yozilishni o'tmishga ko'chirib bo'lmaydi",
+      "errorConflict": "Bu vaqt allaqachon band"
+    },
+    "emptyRange": {
+      "title": "Bu davrda hali yozilishlar yo'q.",
+      "description": "Yozilish yaratish uchun bo'sh slotni bosing."
+    },
     "event": {
       "untitled": "Nomsiz",
       "patient": "Bemor",
@@ -921,7 +961,16 @@
       "files": "Fayllar",
       "allFiles": "Barcha fayllar",
       "loading": "Yuklanmoqda…",
-      "noDocuments": "Hozircha hujjatlar yo'q"
+      "noDocuments": "Hozircha hujjatlar yo'q",
+      "family": "Oila",
+      "familyEmpty": "Oilaviy aloqalar yo'q",
+      "familyOwnerOf": "Nomidan ish ko'ruvchi",
+      "familyLinkedFrom": "Oila orqali bog'langan",
+      "familyChild": "Farzand",
+      "familySpouse": "Turmush o'rtog'i",
+      "familyParent": "Ota-ona",
+      "familyOther": "Boshqa",
+      "linkedFromCrm": "Oilaviy aloqa Mini App orqali yaratilgan"
     },
     "finance": {
       "title": "Moliya",
@@ -961,7 +1010,13 @@
       "more": "Yana",
       "mergeDuplicates": "Dublikatlarni birlashtirish",
       "mergeDuplicatesSoon": "Dublikatlarni birlashtirish keyingi yangilanishda qo'shiladi",
-      "delete": "Bemorni o'chirish"
+      "delete": "Bemorni o'chirish",
+      "exportDataToPatient": "Ma'lumot eksporti → bemorga",
+      "exportDataToAdmin": "Ma'lumot eksporti → menga",
+      "exportSuccess": "Eksport navbatga qo'yildi — Telegram-bot arxiv va parolni yuboradi.",
+      "exportAlreadyRequested": "Faol eksport allaqachon bajarilmoqda.",
+      "exportNoTelegramChat": "Yetkazib berish uchun bog'langan Telegram-chat yo'q.",
+      "exportError": "Eksport yaratib bo'lmadi. Keyinroq urinib ko'ring."
     },
     "hero": {
       "years": "{age} yosh",
@@ -1171,6 +1226,49 @@
       "deleting": "O'chirilmoqda…",
       "success": "Bemor o'chirildi",
       "error": "O'chirib bo'lmadi"
+    },
+    "referral": {
+      "title": "Referal dasturi",
+      "loading": "Yuklanmoqda…",
+      "error": "Yuklab bo'lmadi",
+      "useCount": "Ishlatilgan: {n}",
+      "noCode": "Kod hali yaratilmagan — bemor do'stni taklif qilish ekranini ochmagan.",
+      "pendingLabel": "Kutilmoqda",
+      "appliedLabel": "Qo'llangan",
+      "expiredLabel": "Muddati o'tgan",
+      "referredBy": "{name} taklifi bilan keldi"
+    }
+  },
+  "patientTimeline": {
+    "title": "Bemor xronologiyasi",
+    "typeTabs": "Voqea turi",
+    "tabs": {
+      "ALL": "Barchasi",
+      "VISIT": "Tashriflar",
+      "PAYMENT": "To'lovlar",
+      "COMM": "Aloqalar",
+      "DOC": "Hujjatlar"
+    },
+    "kinds": {
+      "VISIT": { "title": "Tashrif" },
+      "PAYMENT": { "title": "To'lov" },
+      "DOCUMENT": { "title": "Hujjat" },
+      "NOTIFICATION": { "title": "Bildirishnoma" },
+      "CALL": { "title": "Qo'ng'iroq" },
+      "TG": { "title": "Xabar" },
+      "CASE": { "title": "Davolanish holati" },
+      "RESCHEDULE": { "title": "Yozuvni ko'chirish" }
+    },
+    "dayHeader": {
+      "today": "Bugun",
+      "yesterday": "Kecha"
+    },
+    "empty": {
+      "ALL": "Hozircha voqealar yo'q",
+      "VISIT": "Tashriflar hali yo'q",
+      "PAYMENT": "To'lovlar hali yo'q",
+      "COMM": "Aloqalar hali yo'q",
+      "DOC": "Hujjatlar hali yo'q"
     }
   },
   "cases": {
@@ -1221,7 +1319,50 @@
       "notFound": "Holat topilmadi",
       "notFoundBackToPatients": "Bemorlar ro'yxatiga",
       "retry": "Qayta urinish",
-      "downloadPdf": "Davolanish kartasini yuklab olish"
+      "downloadPdf": "Davolanish kartasini yuklab olish",
+      "prescriptions": {
+        "title": "Tayinlovlar",
+        "add": "Qo'shish",
+        "empty": "Hozircha tayinlovlar yo'q",
+        "created": "Tayinlov yaratildi",
+        "updated": "Tayinlov yangilandi",
+        "deleted": "Tayinlov o'chirildi",
+        "edit": "Tahrirlash",
+        "delete": "O'chirish",
+        "save": "Saqlash",
+        "cancel": "Bekor qilish",
+        "createCta": "Yaratish",
+        "confirmDelete": "Ushbu tayinlovni o'chirilsinmi?",
+        "remindersOn": "Eslatmalar",
+        "daysShort": "{n, plural, one {# kun} other {# kun}}",
+        "openEnded": "muddatsiz",
+        "validation": {
+          "drugRequired": "Dori nomini kiriting",
+          "dosageRequired": "Dozani kiriting",
+          "timesRequired": "Kamida bitta qabul vaqtini qo'shing (HH:mm)",
+          "doctorRequired": "Shifokorni tanlang"
+        },
+        "status": {
+          "ACTIVE": "Faol",
+          "PAUSED": "Pauzada",
+          "COMPLETED": "Tugatilgan",
+          "CANCELLED": "Bekor qilingan"
+        },
+        "fields": {
+          "drug": "Dori",
+          "dosage": "Doza",
+          "dosagePlaceholder": "Masalan: 1 tabl., 5 ml",
+          "times": "Qabul vaqti",
+          "timesHint": "HH:mm vergul bilan, masalan: 09:00, 21:00",
+          "days": "Kurs, kun",
+          "daysPlaceholder": "30",
+          "doctor": "Shifokor",
+          "doctorPlaceholder": "Shifokorni tanlang…",
+          "status": "Holat",
+          "notes": "Izoh",
+          "remindersEnabled": "Bemorga Telegram orqali eslatish"
+        }
+      }
     }
   },
   "documents": {
@@ -1247,7 +1388,7 @@
   },
   "onboardingChecklist": {
     "ariaLabel": "CRM sozlash ro'yxati",
-    "title": "CRM-ni 4 qadamda ishga tushiring",
+    "title": "CRM-ni qadam-baqadam ishga tushiring",
     "subtitle": "Asoslarni to'ldiring — bemorlarni yozib olish mumkin bo'ladi",
     "progressLabel": "{total} dan {done} bajarildi",
     "doneLabel": "Tayyor",
@@ -1267,6 +1408,26 @@
       "doctors": {
         "label": "Shifokorlar",
         "hint": "Profillar va jadvallar"
+      },
+      "doctorSchedule": {
+        "label": "Shifokor jadvali",
+        "hint": "Kalendarga smenalar qo'shing"
+      },
+      "templates": {
+        "label": "Xabar shablonlari",
+        "hint": "Kamida bitta shablon yarating"
+      },
+      "firstPatient": {
+        "label": "Birinchi bemor",
+        "hint": "Bemor kartasini ochish"
+      },
+      "firstAppointment": {
+        "label": "Birinchi yozilish",
+        "hint": "Birinchi qabulga yozilishni yarating"
+      },
+      "tgBotConnected": {
+        "label": "Telegram-bot",
+        "hint": "Klinika botini ulang"
       }
     }
   },
@@ -1463,6 +1624,52 @@
     "a11y": {
       "doctorCardList": "Shifokorlar kartochkalari",
       "rightRail": "Qabulxonaning o'ng paneli"
+    },
+    "quickStatus": {
+      "arrived": "Keldi",
+      "start": "Qabulni boshlash",
+      "complete": "Tugatish",
+      "noShow": "Kelmadi",
+      "noShowConfirm": "Kelmadimi?",
+      "noShowYes": "Tasdiqlash",
+      "noShowNo": "Bekor qilish",
+      "toast": {
+        "arrived": "Bemor «keldi» deb belgilandi",
+        "started": "Qabul boshlandi",
+        "completed": "Qabul tugatildi",
+        "noShow": "«Kelmadi» deb belgilandi"
+      }
+    },
+    "briefing": {
+      "title": "Hozir nima qilish kerak",
+      "viewAll": "Barcha vazifalar"
+    }
+  },
+  "appointmentLifecycle": {
+    "title": "Yozuvning hayot davri",
+    "ariaLabel": "Yozuvning hayot davri",
+    "saving": "Saqlanmoqda…",
+    "noShowTooEarly": "Qabul vaqti hali kelmadi",
+    "offpath": {
+      "NO_SHOW": "Kelmadi",
+      "CANCELLED": "Bekor qilingan",
+      "SKIPPED": "O'tkazib yuborilgan"
+    },
+    "confirm": {
+      "cancel": "Bekor qilish",
+      "proceed": "Tasdiqlash",
+      "NO_SHOW": {
+        "title": "«Kelmadi» deb belgilansinmi?",
+        "description": "Yozuv bemor kelmagan deb belgilanadi va vaqt jadvali bo'shatiladi."
+      },
+      "CANCELLED": {
+        "title": "Yozuv bekor qilinsinmi?",
+        "description": "Yozuv bekor qilinadi va jadvaldagi vaqt bo'shatiladi."
+      },
+      "SKIPPED": {
+        "title": "Yozuv o'tkazib yuborilsinmi?",
+        "description": "Bemor chaqirilmadi — vaqt o'tkazib yuborilgan deb belgilanadi."
+      }
     }
   },
   "hero": {
@@ -2124,6 +2331,37 @@
       "smsCounter": "{chars} belgi · {parts} SMS",
       "unknownVar": "Noma'lum o'zgaruvchi: {var}"
     },
+    "marketingCopy": {
+      "title": "AI kopirayting yordamchisi",
+      "button": "AI suggest",
+      "channelLabel": "Kanal",
+      "audienceLabel": "Maqsadli auditoriya",
+      "audience": {
+        "reactivation": "Uxlayotganlarni qaytarish",
+        "birthday": "Tug'ilgan kun",
+        "reminder": "Qabul haqida eslatma",
+        "no-show": "Kelmagandan keyin",
+        "general": "Umumiy xabar"
+      },
+      "toneLabel": "Ohang",
+      "tone": {
+        "friendly": "Do'stona",
+        "professional": "Professional",
+        "urgent": "Shoshilinch"
+      },
+      "maxCharsLabel": "Belgilar chegarasi",
+      "promoLabel": "Aksiya / promokod (ixtiyoriy)",
+      "notesLabel": "Qo'shimcha (ixtiyoriy)",
+      "generate": "3 ta variant yaratish",
+      "loading": "AI kopiyani yaratmoqda…",
+      "use": "Foydalanish",
+      "copy": "Nusxa olish",
+      "copied": "Nusxa olindi",
+      "charCount": "{n} belgi",
+      "overLimit": "chegaradan oshdi",
+      "error": "Variantlar yaratilmadi",
+      "retry": "Qayta urinish"
+    },
     "triggers": {
       "title": "Triggerlar",
       "hint": "CRM avtomatik tarzda bildirishnoma yaratadigan 7 hodisa. Har bir trigger mos kalitga ega shablonga bog'lanishi kerak.",
@@ -2300,6 +2538,8 @@
       "ariaLabel": "Kiruvchi qo'ng'iroqlar navbati",
       "title": "Kiruvchi",
       "empty": "Hozircha faol qo'ng'iroq yo'q",
+      "emptyTitle": "Hozir tinch",
+      "emptyDescription": "Yangi qo'ng'iroqlar bu yerda avtomatik paydo bo'ladi.",
       "loading": "Navbat yuklanmoqda…",
       "unknownCaller": "Noma'lum raqam",
       "newCallToast": "{name} dan qo'ng'iroq ({phone})",
@@ -2414,6 +2654,8 @@
       "create": "Yaratish",
       "yes": "Ha",
       "no": "Yo'q",
+      "on": "yoq",
+      "off": "o'ch",
       "none": "Tanlanmagan",
       "loading": "Yuklanmoqda…",
       "error": "Xatolik",
@@ -2430,7 +2672,10 @@
       "roles": "Rollar va ruxsatlar",
       "audit": "Audit jurnali",
       "integrations": "Integratsiyalar",
-      "notifications": "Bildirishnomalar"
+      "notifications": "Bildirishnomalar",
+      "dsar": "DSAR so'rovlari",
+      "billing": "Tarif va hisob-fakturalar",
+      "branding": "Brending"
     },
     "passwordReentry": {
       "title": "Joriy parolni kiriting",
@@ -2445,8 +2690,10 @@
       "sections": {
         "info": "Asosiy",
         "locale": "Tilga va ish kuniga sozlash",
+        "patientExperience": "Bemor tajribasi",
         "secrets": "Tokenlar va maxfiy sozlamalar"
       },
+      "patientExperienceHint": "NPS chegarasi, referal dasturi va dori-darmon eslatmalarini boshqarish.",
       "fields": {
         "slug": "Slug (klinika URLi)",
         "slugHint": "O'zgartirib bo'lmaydi — ommaviy URL va webhookni belgilaydi.",
@@ -2468,7 +2715,13 @@
         "tgWebhookSecret": "Webhook secret",
         "smsSenderName": "SMS yuboruvchi nomi",
         "active": "Klinika faol",
-        "configured": "saqlangan"
+        "configured": "saqlangan",
+        "npsAlertThreshold": "NPS-ogohlantirish chegarasi",
+        "npsAlertThresholdHint": "Chegaradan past baho administrator uchun shoshilinch Action yaratadi. Standart 7.",
+        "referralRewardPercent": "Referer chegirmasi, %",
+        "referralRewardPercentHint": "Kelgan do'stning birinchi tashrifidan keyin refererga keyingi tashrifda chegirma beriladi. 0 — o'chiq.",
+        "medicationRemindersEnabled": "Dori eslatmalari",
+        "medicationRemindersEnabledHint": "Soatlik worker yoqiladi: kasalik kartasidagi qabul jadvali bo'yicha push-eslatmalarni yuboradi."
       },
       "secretsHint": "Tokenlar va maxfiy sozlamalarni o'zgartirish uchun joriy parolni kiriting. Bo'sh maydon — o'zgarmaydi.",
       "saveSecrets": "Maxfiy sozlamalarni saqlash",
@@ -2637,35 +2890,100 @@
       }
     },
     "roles": {
-      "title": "Rollar va ruxsatlar",
-      "subtitle": "Bo'limlar bo'yicha ruxsat matritsasi.",
-      "readOnlyForAdmin": "Faqat o'qish · SUPER_ADMIN tahrirlaydi",
-      "sectionCol": "Bo'lim",
+      "title": "Ruxsatlar matritsasi / Permission Matrix",
+      "subtitle": "Manba: kod. Ushbu jadval joriy amalga oshirishni aks ettiradi.",
+      "readOnlyForAdmin": "Faqat o'qish · tahrir — Phase 17+",
+      "resourceCol": "Resurs",
       "legendTitle": "Belgilar",
-      "legendBody": "R — o'qish, W — yaratish, U — tahrirlash, D — o'chirish, own — faqat o'ziniki, ltd — cheklangan skoup, — ruxsat yo'q.",
-      "rows": {
-        "reception": "Reception dashboard",
-        "appointmentsList": "Yozilishlar — ko'rish",
-        "appointmentsCreate": "Yozilishlar — yaratish",
-        "appointmentsStatus": "Yozilishlar — holat",
-        "appointmentsDelete": "Yozilishlar — o'chirish",
-        "calendar": "Kalendar",
-        "patientsList": "Bemorlar — ro'yxat",
-        "patientsCard": "Bemorlar — kartochka",
-        "patientsDelete": "Bemorlar — o'chirish",
-        "doctorsAnalytics": "Shifokorlar (tahlil)",
-        "doctorsEdit": "Shifokorlar — tahrirlash",
-        "callCenter": "Call Center",
-        "telegram": "Telegram",
-        "sms": "SMS",
-        "notificationsTemplates": "Bildirishnoma shablonlari",
-        "notificationsSend": "Bildirishnomalar yuborish",
-        "payments": "To'lovlar",
-        "documents": "Bemor hujjatlari",
-        "settings": "Sozlamalar",
-        "users": "Foydalanuvchilar",
-        "audit": "Audit",
-        "export": "CSV eksport"
+      "legendBody": "R — o'qish, W — yaratish, U — tahrirlash, D — o'chirish. Skoup: all — klinikaning barcha yozuvlari, own — faqat o'ziniki, today — faqat bugungi.",
+      "legendChipsTitle": "Legenda:",
+      "sourceNote": "Manba: `src/lib/api-handler.ts` va /api/crm/* dagi guard'lar. Ruxsatni o'zgartirish kod-review talab qiladi.",
+      "actions": {
+        "r": "R",
+        "w": "W",
+        "u": "U",
+        "d": "D"
+      },
+      "scope": {
+        "all": "all",
+        "own": "own",
+        "today": "today"
+      },
+      "resources": {
+        "Patient": "Bemorlar",
+        "Appointment": "Yozilishlar",
+        "Doctor": "Shifokorlar",
+        "Cabinet": "Kabinetlar",
+        "Service": "Xizmatlar",
+        "Payment": "To'lovlar",
+        "MedicalCase": "Davolash holati",
+        "NotificationTemplate": "Bildirishnoma shablonlari",
+        "Lead": "Arizalar / lidlar",
+        "Call": "Qo'ng'iroqlar",
+        "AuditLog": "Audit jurnali",
+        "Settings": "Klinika sozlamalari"
+      }
+    },
+    "index": {
+      "title": "Sozlamalar",
+      "subtitle": "Klinika, foydalanuvchilar va integratsiyalarni boshqarish.",
+      "clinicManagement": "Klinika boshqaruvi",
+      "clinicManagementHint": "Kabinetlar, xizmatlar, hujjatlar va SMS — avval asosiy menyuda edi, endi shu yerga yig'ildi.",
+      "coreSettings": "Asosiy sozlamalar",
+      "coreSettingsHint": "Klinika profili, foydalanuvchilar va integratsiyalar."
+    },
+    "cards": {
+      "roles": {
+        "title": "Rollar va ruxsatlar",
+        "description": "6 rol va 12 resurs bo'yicha matritsa."
+      },
+      "cabinets": {
+        "title": "Kabinetlar",
+        "description": "Xonalar va klinika jihozlari."
+      },
+      "services": {
+        "title": "Xizmatlar katalogi",
+        "description": "Xizmatlar, narxlar va davomiylik."
+      },
+      "documents": {
+        "title": "Hujjatlar kutubxonasi",
+        "description": "Shablonlar va bemor fayllari."
+      },
+      "smsEmail": {
+        "title": "SMS / Email",
+        "description": "Yuborilgan xabarlar tarixi va test yuborish."
+      },
+      "clinic": {
+        "title": "Klinika profili",
+        "description": "Nomi, manzili, ish vaqti va brend."
+      },
+      "branches": {
+        "title": "Filiallar",
+        "description": "Filiallarning manzillari va vaqt zonalari."
+      },
+      "users": {
+        "title": "Foydalanuvchilar",
+        "description": "Klinika xodimlari va ularning rollari."
+      },
+      "exchangeRates": {
+        "title": "Valyuta kurslari",
+        "description": "To'lovlar uchun UZS↔USD manbai."
+      },
+      "integrations": {
+        "title": "Integratsiyalar",
+        "description": "SMS, Telegram, to'lovlar va telefoniya."
+      },
+      "notifications": {
+        "title": "Bildirishnoma shablonlari",
+        "description": "Triggerlar va SMS / Telegram / In-App matnlari."
+      },
+      "audit": {
+        "title": "Audit jurnali",
+        "description": "Klinikadagi barcha o'zgarishlar filtrlar bilan."
+      },
+      "dsar": {
+        "title": "DSAR so'rovlari",
+        "description": "Bemor ma'lumotlari eksporti va o'chirish so'rovlari."
       }
     },
     "audit": {
@@ -2679,7 +2997,79 @@
         "actor": "Foydalanuvchi (id)",
         "from": "Dan",
         "to": "Gacha"
+      },
+      "tabs": {
+        "events": "Hodisalar",
+        "patientViews": "Bemor kartasi ko'rishlari"
+      },
+      "patientView": {
+        "viewer": "Kim",
+        "patient": "Bemor",
+        "context": "Qayerda",
+        "contextRef": "Obyekt",
+        "filterPatient": "Bemor ID",
+        "filterViewer": "Xodim ID",
+        "filterContext": "Kontekst",
+        "empty": "Ko'rishlar qayd etilmagan",
+        "contextPatientDetail": "Bemor kartasi",
+        "contextAppointmentDrawer": "Yozuv",
+        "contextCaseDetail": "Kasallik tarixi",
+        "contextExport": "Eksport"
       }
+    },
+    "dsar": {
+      "title": "DSAR so'rovlari",
+      "subtitle": "Bemor ma'lumotlari eksporti va akkauntlarni o'chirish so'rovlari.",
+      "tabs": {
+        "exports": "Eksportlar",
+        "deletions": "O'chirishlar"
+      },
+      "empty": "Hozircha so'rovlar yo'q.",
+      "loadMore": "Yana yuklash",
+      "patient": "Bemor",
+      "patientUnknown": "(bemor o'chirilgan)",
+      "createdAt": "Yaratildi",
+      "scheduledFor": "Rejalashtirildi",
+      "executedAt": "Bajarildi",
+      "cancelledAt": "Bekor qilindi",
+      "expiresAt": "Tugaydi",
+      "downloadCount": "Yuklab olishlar: {n}",
+      "fileSize": "Hajmi: {size}",
+      "errorMessage": "Xatolik",
+      "reason": "Sabab",
+      "notes": "Izohlar",
+      "exportStatus": {
+        "PENDING": "Kutilmoqda",
+        "PROCESSING": "Tayyorlanmoqda",
+        "READY": "Tayyor",
+        "DELIVERED": "Yetkazildi",
+        "FAILED": "Xatolik",
+        "EXPIRED": "Muddati tugadi"
+      },
+      "deletionStatus": {
+        "PENDING_REVIEW": "Tekshirilmoqda",
+        "APPROVED": "Tasdiqlangan",
+        "CANCELLED": "Bekor qilingan",
+        "EXECUTED": "Bajarilgan",
+        "ANONYMIZED": "Anonimlashtirildi"
+      },
+      "mode": {
+        "ANONYMIZE": "Anonimlashtirish",
+        "HARD_DELETE": "To'liq o'chirish"
+      },
+      "actions": {
+        "download": "Arxivni yuklab olish",
+        "approve": "Tasdiqlash",
+        "cancel": "Bekor qilish",
+        "confirmCancel": "O'chirish so'rovini bekor qilasizmi?",
+        "approving": "Tasdiqlanmoqda…",
+        "cancelling": "Bekor qilinmoqda…"
+      },
+      "approveSuccess": "So'rov tasdiqlandi.",
+      "cancelSuccess": "So'rov bekor qilindi.",
+      "approveError": "So'rovni tasdiqlab bo'lmadi.",
+      "cancelError": "So'rovni bekor qilib bo'lmadi.",
+      "downloadError": "Yuklab olish havolasini olib bo'lmadi."
     },
     "integrations": {
       "title": "Integratsiyalar",
@@ -3038,6 +3428,372 @@
     "export": "PNG eksport",
     "exportSoon": "PNG eksport Phase 7 da qo‘shiladi"
   },
+  "analyticsNav": {
+    "overview": "Umumiy",
+    "loss": "Yo‘qotishlar",
+    "forecast": "Prognoz"
+  },
+  "analyticsHub": {
+    "sectionTitle": "Pro hisobotlar",
+    "sectionHint": "Klinika administratori uchun chuqur tahlil hisobotlari.",
+    "cohorts": {
+      "title": "Bemor kogortalari",
+      "description": "Birinchi tashrif oyi bo‘yicha ushlab qolish (issiqlik xaritasi)"
+    },
+    "doctors": {
+      "title": "Shifokorlar KPI",
+      "description": "Tushum, kelmaganlar va NPS — shifokor bo‘yicha"
+    },
+    "financial": {
+      "title": "Moliyaviy hisobot",
+      "description": "Bugun · MTD · oy oxiri prognozi, avtoyangilanish bilan"
+    },
+    "scheduleHeatmap": {
+      "title": "Jadval Heatmap",
+      "description": "Hafta kunlari va soatlar bo‘yicha 90 kunlik yuklama"
+    }
+  },
+  "analyticsCohorts": {
+    "title": "Bemor kogortalari",
+    "subtitle": "Birinchi tashrif oyi bo‘yicha ushlab qolish",
+    "empty": "Kogortalar bo‘yicha ma’lumot yo‘q",
+    "emptyHint": "Kogort jadvali birinchi yangilanishdan so‘ng to‘ldiriladi.",
+    "axis": {
+      "cohort": "Kogorta",
+      "monthOffsetTooltip": "Birinchi tashrifdan {offset} oy o‘tib faollik"
+    },
+    "cellTooltip": "{cohort} · M+{offset} — {cohortSize} dan {active} ({pct}%)",
+    "metaHint": "Yangilangan {generatedAt} · manba {source}",
+    "toolbar": {
+      "from": "Dan",
+      "to": "Gacha",
+      "allTime": "Barcha vaqt"
+    }
+  },
+  "analyticsDoctors": {
+    "title": "Shifokorlar KPI",
+    "subtitle": "Tushum, kelmaganlar va NPS bo‘yicha umumiy reyting",
+    "empty": "Tanlangan davr uchun ma’lumot yo‘q",
+    "emptyHint": "Yozuvlar paydo bo‘lganda reyting avtomatik yangilanadi.",
+    "metaHint": "Yangilangan {generatedAt}",
+    "sparkAria": "{name} shifokor tushumi dinamikasi",
+    "col": {
+      "name": "Shifokor",
+      "visits": "Tashriflar",
+      "revenue": "Tushum",
+      "avgTicket": "O‘rtacha chek",
+      "noShow": "Kelmaganlar %",
+      "repeat": "Takroriy %",
+      "newShare": "Yangi %",
+      "nps": "NPS",
+      "npsResp": "NPS javoblar",
+      "trend": "Trend"
+    },
+    "range": {
+      "30d": "30 kun",
+      "90d": "90 kun",
+      "ytd": "Yil boshidan",
+      "custom": "Davr"
+    },
+    "drawer": {
+      "subtitle": "Shifokor bo‘yicha tafsilotlar",
+      "visits": "Tashriflar",
+      "revenue": "Tushum",
+      "avgTicket": "O‘rtacha chek",
+      "noShow": "Kelmaganlar",
+      "repeat": "Takroriy",
+      "newShare": "Yangi bemorlar",
+      "trendTitle": "Oylik tushum",
+      "trendEmpty": "Trend uchun ma’lumot yetarli emas"
+    }
+  },
+  "analyticsFinancial": {
+    "title": "Moliyaviy hisobot",
+    "subtitle": "Bugun, MTD va oy oxiri chiziqli prognozi",
+    "lastUpdated": "Yangilangan {time}",
+    "kpi": {
+      "todayCollected": "Bugun olingan",
+      "todayCollectedHint": "Klinika tomonidan bugun qabul qilingan to‘lovlar",
+      "todayScheduled": "Bugunga rejalashtirilgan",
+      "todayScheduledHint": "Bugungi yozuvlar bo‘yicha jami summa",
+      "todayNoShow": "Kelmaganlar yo‘qotishi",
+      "todayNoShowHint": "Bugungi NO_SHOW tashriflar",
+      "mtdProjected": "MTD · prognoz",
+      "mtdProjectedHint": "{total} dan {day}-kun — chiziqli ekstrapolyatsiya",
+      "mtdProjectedSuffix": "Prognoz:"
+    },
+    "trend": {
+      "title": "90 kunlik tushum dinamikasi",
+      "subtitle": "Klinika kuniga haqiqatda olgan summa",
+      "empty": "Grafik tuzish uchun ma’lumot yetarli emas",
+      "ariaLabel": "Oxirgi 90 kunlik kunlik tushum grafigi"
+    },
+    "metaHint": "Yangilangan {generatedAt} · manba {source}"
+  },
+  "analyticsScheduleHeatmap": {
+    "title": "Jadval Heatmap",
+    "subtitle": "Hafta kuni va soat bo‘yicha bandlik",
+    "windowHint": "Oxirgi 90 kunlik yuklama",
+    "empty": "Ma’lumot yo‘q",
+    "emptyHint": "Vitrina jadvalga birinchi yozuv qo‘shilgandan so‘ng to‘ldiriladi.",
+    "allDoctors": "Barcha shifokorlar",
+    "axis": {
+      "day": "Kun",
+      "hourTooltip": "{hour}:00–{hour}:59"
+    },
+    "days": {
+      "mon": "Du",
+      "tue": "Se",
+      "wed": "Ch",
+      "thu": "Pa",
+      "fri": "Ju",
+      "sat": "Sh",
+      "sun": "Ya"
+    },
+    "cellTooltip": "{day} {hour}:00 da — {appts} ta yozuv (bo‘sh {slots})",
+    "metaHint": "Yangilangan {generatedAt} · manba {source}"
+  },
+  "analyticsReports": {
+    "dimensions": {
+      "date": "Sana",
+      "doctor": "Shifokor",
+      "branch": "Filial",
+      "specialty": "Mutaxassislik",
+      "patient_segment": "Bemor segmenti",
+      "source": "Manba"
+    },
+    "measures": {
+      "count_visits": "Tashriflar",
+      "revenue_tiins": "Daromad",
+      "no_show_rate": "Yo‘qlama ulushi",
+      "avg_ticket_tiins": "O‘rtacha chek",
+      "ltv_tiins": "Bemor LTV"
+    },
+    "status": {
+      "BOOKED": "Bron qilindi",
+      "WAITING": "Kutmoqda",
+      "IN_PROGRESS": "Jarayonda",
+      "COMPLETED": "Tugallandi",
+      "SKIPPED": "O‘tkazildi",
+      "CANCELLED": "Bekor qilindi",
+      "NO_SHOW": "Kelmadi"
+    },
+    "builder": {
+      "titleNew": "Hisobot konstruktori",
+      "titleEdit": "Hisobotni tahrirlash",
+      "subtitle": "O‘lchamlar va metrikalardan o‘z hisobotingizni yig‘ing va keyinroq ishlatish uchun saqlang.",
+      "nameLabel": "Nomi",
+      "namePlaceholder": "Masalan: Aprel oyi nevrologlarining daromadi",
+      "descriptionLabel": "Tavsif",
+      "descriptionPlaceholder": "Jamoa uchun qisqa izoh (ixtiyoriy)",
+      "dimensionsTitle": "O‘lchamlar (kesim)",
+      "dimensionsHint": "{current}/{max} tanlangan",
+      "measuresTitle": "Metrikalar",
+      "measuresHint": "{current}/{max} tanlangan",
+      "filtersTitle": "Filtrlar",
+      "filterDateFrom": "Sanadan",
+      "filterDateTo": "Sanagacha",
+      "filterBranches": "Filiallar",
+      "filterDoctors": "Shifokorlar",
+      "filterStatuses": "Tashrif statuslari",
+      "noBranches": "Faol filiallar yo‘q",
+      "noDoctors": "Faol shifokorlar yo‘q",
+      "runButton": "Ishga tushirish",
+      "runRunning": "Hisoblanmoqda…",
+      "runHint": "Kamida bitta o‘lcham va bitta metrika tanlanganda ishga tushirish mumkin.",
+      "exportCsv": "CSV-ga eksport",
+      "saveButton": "Hisobotni saqlash",
+      "saveButtonEdit": "O‘zgarishlarni saqlash",
+      "saveSaving": "Saqlanmoqda…",
+      "saveHint": "Saqlash hisobot muvaffaqiyatli ishga tushirilgandan so‘ng faollashadi.",
+      "dimMoveUp": "Yuqoriga",
+      "dimMoveDown": "Pastga",
+      "dimRemove": "O‘lchamni olib tashlash",
+      "measureRemove": "Metrikani olib tashlash",
+      "resultRowCount": "Topilgan qatorlar: {count}",
+      "resultTruncated": "natija limitgacha qisqartirildi",
+      "resultGeneratedAt": "Olingan {ts}",
+      "resultEmpty": "Tanlangan filtrlarga mos ma’lumot yo‘q",
+      "toastRunFailed": "Hisobotni ishga tushirib bo‘lmadi. Keyinroq urinib ko‘ring.",
+      "toastRunTimeout": "Hisobot 30 soniyadan oshdi — filtr yoki o‘lchamlarni qisqartiring.",
+      "toastSaved": "Hisobot saqlandi",
+      "toastSaveFailed": "Hisobotni saqlab bo‘lmadi",
+      "toastNameTaken": "Bunday nomli hisobot allaqachon mavjud",
+      "toastInvalidConfig": "Hisobot konfiguratsiyasi noto‘g‘ri",
+      "toastExportFailed": "CSV eksport amalga oshmadi"
+    },
+    "list": {
+      "title": "Saqlangan hisobotlar",
+      "subtitle": "Hisobot konstruktori va saqlangan konfiguratsiyalar",
+      "newButton": "Hisobot yaratish",
+      "emptyTitle": "Saqlangan hisobotlar hali yo‘q",
+      "emptyDescription": "Konstruktorda birinchi hisobotingizni yarating, u shu yerda paydo bo‘ladi.",
+      "colName": "Nomi",
+      "colDescription": "Tavsif",
+      "colShape": "Tarkibi",
+      "colCreatedBy": "Yaratgan",
+      "colLastRun": "Oxirgi ishga tushirish",
+      "colActions": "Amallar",
+      "shape": "{dims} o‘l. · {measures} met.",
+      "neverRun": "Hech qachon ishga tushirilmagan",
+      "actView": "Ochish",
+      "actEdit": "Tahrirlash",
+      "actDelete": "O‘chirish",
+      "confirmDelete": "Bu hisobotni o‘chirilsinmi?",
+      "toastDeleted": "Hisobot o‘chirildi",
+      "toastDeleteFailed": "Hisobotni o‘chirib bo‘lmadi",
+      "pageMeta": "Sahifa {page} / {total}",
+      "prev": "Orqaga",
+      "next": "Keyingi"
+    },
+    "view": {
+      "rerun": "Qayta ishga tushirish",
+      "rerunning": "Hisoblanmoqda…",
+      "exportCsv": "CSV-ga eksport",
+      "exportPdf": "PDF-ga eksport",
+      "edit": "Tahrirlash",
+      "delete": "O‘chirish",
+      "loading": "Hisobot ishga tushirilmoqda…",
+      "rowCount": "Qatorlar: {count}",
+      "truncated": "limitgacha qisqartirildi",
+      "generatedAt": "Olingan {ts}",
+      "empty": "Joriy filtrlarga mos ma’lumot yo‘q",
+      "confirmDelete": "Bu hisobotni o‘chirilsinmi?",
+      "toastRunFailed": "Hisobotni ishga tushirib bo‘lmadi",
+      "toastRunTimeout": "Hisobot 30 soniyadan oshdi — filtrlarni o‘zgartiring.",
+      "toastExportFailed": "CSV eksport amalga oshmadi",
+      "toastExportPdfFailed": "PDF eksport amalga oshmadi",
+      "toastDeleted": "Hisobot o‘chirildi",
+      "toastDeleteFailed": "Hisobotni o‘chirib bo‘lmadi"
+    },
+    "schedules": {
+      "sectionTitle": "Jadvallar",
+      "sectionSubtitle": "Hisobotni email yoki Telegram orqali muntazam yuborish",
+      "newButton": "Jadval yaratish",
+      "loading": "Jadvallar yuklanmoqda…",
+      "empty": "Jadvallar hali yo‘q — birinchisini yarating",
+      "statusEnabled": "Faol",
+      "statusDisabled": "O‘chirilgan",
+      "statusDisabledFailures": "Xatolardan keyin o‘chirildi",
+      "channelEmail": "Email",
+      "channelTelegram": "Telegram",
+      "formatPdf": "PDF",
+      "formatCsv": "CSV",
+      "nextRunAt": "Keyingi yuborish: {ts}",
+      "lastDeliveredAt": "Oxirgi yuborish: {ts}",
+      "lastFailureReason": "Oxirgi xato: {reason}",
+      "pause": "Pauza",
+      "resume": "Davom ettirish",
+      "edit": "Tahrirlash",
+      "delete": "O‘chirish",
+      "confirmDelete": "Bu jadval o‘chirilsinmi?",
+      "dialogTitleCreate": "Jadval yaratish",
+      "dialogTitleEdit": "Jadvalni tahrirlash",
+      "dialogDescription": "Hisobot Asia/Tashkent vaqti bilan 09:00 da tanlangan jadval bo‘yicha yuboriladi",
+      "cadenceLabel": "Davriyligi",
+      "channelLabel": "Yetkazib berish kanali",
+      "targetEmailLabel": "Email manzili",
+      "targetTelegramLabel": "Telegram chat ID",
+      "targetEmailHint": "Bitta email kiriting — hisobot fayl sifatida ilova qilinadi",
+      "targetTelegramHint": "NeuroFax bot chati yoki kanalining raqamli ID si",
+      "targetInvalidEmail": "Email manzilini to‘g‘ri kiriting",
+      "targetInvalidTelegram": "Telegram chat ID raqamli bo‘lishi kerak",
+      "formatLabel": "Fayl formati",
+      "enabledLabel": "Jadval faol",
+      "createDisabledHint": "Yangi jadvallar dastlab o‘chirilgan holda yaratiladi — yaratgandan so‘ng yoqing",
+      "submitCreate": "Yaratish",
+      "submitEdit": "Saqlash",
+      "cancel": "Bekor qilish",
+      "toastListFailed": "Jadvallarni yuklab bo‘lmadi",
+      "toastCreated": "Jadval yaratildi",
+      "toastCreateFailed": "Jadval yaratib bo‘lmadi",
+      "toastUpdated": "Jadval yangilandi",
+      "toastUpdateFailed": "Jadvalni yangilab bo‘lmadi",
+      "toastDeleted": "Jadval o‘chirildi",
+      "toastDeleteFailed": "Jadvalni o‘chirib bo‘lmadi",
+      "toastValidationFailed": "Kanal va manzil to‘g‘ri kiritilganini tekshiring"
+    }
+  },
+  "lossAnalytics": {
+    "title": "Daromad yo‘qotishlari tahlili",
+    "subtitle": "Klinika potensial daromadi qayerga ketmoqda",
+    "totalLabel": "Jami yo‘qotish",
+    "trendTitle": "Kunlik yo‘qotishlar dinamikasi",
+    "topDoctorsTitle": "Yo‘qolgan daromad bo‘yicha eng yuqori shifokorlar",
+    "topDoctorsEmpty": "Tanlangan davr uchun shifokorlar bo‘yicha ma’lumot yo‘q",
+    "dormantSegmentsTitle": "Faol bo‘lmagan bemorlar segmentlari",
+    "dormantSegmentsEmpty": "Bu kogortada faol bo‘lmagan bemorlar yo‘q",
+    "avgVisitValueHint": "O‘rtacha tashrif qiymati: {amount}",
+    "noSnapshotsTitle": "Bo‘sh slotlar surati yo‘q",
+    "noSnapshotsHint": "Suratlar har kuni to‘planadi. Birinchi ishga tushgandan keyin ma’lumotlar paydo bo‘ladi.",
+    "errorTitle": "Hisobotni yuklab bo‘lmadi",
+    "errorHint": "Aloqani tekshiring va sahifani yangilab ko‘ring.",
+    "errorRetry": "Qayta urinish",
+    "empty": "Tanlangan davr uchun ma’lumot yo‘q",
+    "emptyHint": "Bu davrga yozuvlar paydo bo‘lganda hisobot avtomatik yangilanadi.",
+    "sources": {
+      "emptySlot": "Bo‘sh slotlar",
+      "noShow": "Kelmaganlar",
+      "cancellation": "Kech bekor qilishlar",
+      "dormant": "Faol bo‘lmagan bemorlar"
+    },
+    "segments": {
+      "recent_lapse": "Yaqinda ketgan (60–120 kun)",
+      "mid_lapse": "O‘rta davr (120–270 kun)",
+      "deep_lapse": "Uzoq vaqt yo‘q (270+ kun)"
+    },
+    "col": {
+      "doctor": "Shifokor",
+      "total": "Jami",
+      "segment": "Segment",
+      "patients": "Bemorlar",
+      "estimated": "Daromad bahosi"
+    }
+  },
+  "revenueForecast": {
+    "title": "Daromad prognozi",
+    "subtitle": "30 kunlik prognoz, ishonch oralig‘i va ssenariylar bilan",
+    "chartTitle": "Kunlik prognozli daromad",
+    "slidersTitle": "«Nima bo‘lsa» ssenariysi",
+    "errorTitle": "Prognozni tuzib bo‘lmadi",
+    "errorHint": "Aloqani tekshiring va sahifani yangilab ko‘ring.",
+    "errorRetry": "Qayta urinish",
+    "empty": "Prognoz uchun ma’lumot yetarli emas",
+    "emptyHint": "Yaqin 30 kunda jadvalda yozuvlar bo‘lganda prognoz paydo bo‘ladi.",
+    "metaHint": "Kelmaganlar tarixiy darajasi: {noShowRate}. Bo‘sh slotlarni to‘ldirish: {upliftRate}.",
+    "kpi": {
+      "baseline": "Bazaviy prognoz",
+      "adjusted": "Tuzatilgan",
+      "delta": "O‘zgarish",
+      "ceiling": "Daromad chegarasi"
+    },
+    "band": {
+      "low": "Minimum",
+      "baseline": "Bazaviy",
+      "high": "Maksimum"
+    },
+    "slider": {
+      "reduceNoShow": "Kelmaganlarni kamaytirish",
+      "reduceNoShowHint": "Eslatmalar va tasdiqlash kelmaganlarni qancha kamaytirishi mumkin.",
+      "fillEmpty": "Bo‘sh slotlarni to‘ldirish",
+      "fillEmptyHint": "Navbat ro‘yxati orqali to‘ldirilishi mumkin bo‘lgan bo‘sh slotlar ulushi.",
+      "priceUplift": "O‘rtacha chek o‘sishi",
+      "priceUpliftHint": "O‘rtacha tashrif qiymatining o‘zgarishi (masalan, narx indeksatsiyasidan keyin)."
+    }
+  },
+  "noShowFactors": {
+    "historyRisk": "Bemor tarixi",
+    "firstVisitBump": "Birinchi tashrif",
+    "unconfirmedBump": "Tasdiqlanmagan",
+    "farFutureBump": "Uzoq muddatga yozuv",
+    "dayOfWeekBump": "Hafta kuni",
+    "confidenceLabel": "Ishonch",
+    "confidence": {
+      "low": "past",
+      "medium": "o‘rtacha",
+      "high": "yuqori"
+    }
+  },
   "docsLibrary": {
     "title": "Hujjatlar",
     "subtitle": "Klinika hujjatlari kutubxonasi",
@@ -3071,6 +3827,9 @@
       "ANALYSIS": "Tahlil",
       "PRESCRIPTION": "Retsept",
       "INVOICE": "Hisob",
+      "RESULT": "Natija",
+      "CONTRACT": "Shartnoma",
+      "RECEIPT": "Kvitansiya",
       "OTHER": "Boshqa"
     },
     "actions": {
@@ -3162,6 +3921,409 @@
         },
         "back": "Barcha klinikalar"
       }
+    }
+  },
+  "actionCenter": {
+    "title": "Vazifalar markazi",
+    "subtitle": "Klinika silliq ishlashi uchun hozir nima qilish kerak",
+    "recomputeNow": "Hozir qayta hisoblash",
+    "recomputeSuccess": "Tayyor: yaratildi {created}, yangilandi {updated}",
+    "recomputeError": "Qayta hisoblab bo'lmadi: {reason}",
+    "loadMore": "Yana ko'rsatish",
+    "tabs": {
+      "OPEN": "Ochiq",
+      "SNOOZED": "Keyinga",
+      "DISMISSED": "Rad etilgan",
+      "DONE": "Bajarilgan"
+    },
+    "severity": {
+      "critical": "Kritik",
+      "high": "Yuqori",
+      "medium": "O'rta",
+      "low": "Past"
+    },
+    "filters": {
+      "typeAll": "Barcha turlari",
+      "assigneeAll": "Barcha mas'ullar",
+      "assigneeAdmin": "Administrator",
+      "assigneeReceptionist": "Qabulxona"
+    },
+    "actions": {
+      "open": "Ochish",
+      "snooze": "Keyinga",
+      "dismiss": "Rad etish",
+      "done": "Bajarildi",
+      "reopen": "Qayta ochish",
+      "doneSuccess": "Vazifa bajarildi deb belgilandi",
+      "doneError": "Belgilab bo'lmadi: {reason}",
+      "reopenSuccess": "Vazifa yana ish ro'yxatida",
+      "reopenError": "Qayta ochib bo'lmadi: {reason}"
+    },
+    "snooze": {
+      "title": "Keyinga qoldirish",
+      "oneHour": "1 soat",
+      "fourHours": "4 soat",
+      "tomorrow": "Ertaga",
+      "nextWeek": "Bir hafta",
+      "custom": "Boshqa vaqt…",
+      "untilLabel": "Vaqtgacha",
+      "confirm": "Qoldirish",
+      "success": "{until} gacha qoldirildi",
+      "error": "Qoldirib bo'lmadi: {reason}"
+    },
+    "dismiss": {
+      "title": "Vazifa rad etilsinmi?",
+      "description": "Vazifa ochiq ro'yxatdan yo'qoladi. Administrator kerak bo'lsa qaytarib oladi.",
+      "reasonLabel": "Sabab (ixtiyoriy)",
+      "reasonPlaceholder": "Masalan: bemor telefon orqali tasdiqladi",
+      "confirm": "Rad etish",
+      "cancel": "Bekor qilish",
+      "success": "Vazifa rad etildi",
+      "error": "Rad etib bo'lmadi: {reason}"
+    },
+    "attribution": {
+      "dismissedAt": "{when} rad etilgan",
+      "doneAt": "{when} bajarilgan",
+      "snoozedUntil": "{when} gacha qoldirilgan"
+    },
+    "empty": {
+      "OPEN": {
+        "title": "Hammasi nazoratda",
+        "description": "Tizim yangi vazifa topishi bilan bu yerda ko'rinadi."
+      },
+      "SNOOZED": {
+        "title": "Qoldirilgan vazifalar yo'q",
+        "description": "Vazifani keyinga qoldirsangiz, tanlangan vaqtgacha shu yerda turadi."
+      },
+      "DISMISSED": {
+        "title": "Rad etilgan vazifalar yo'q",
+        "description": "Rad etish tarixi bo'sh."
+      },
+      "DONE": {
+        "title": "Bajarilgan vazifalar hozircha yo'q",
+        "description": "«Bajarildi» tugmasi orqali yopilgan vazifalar shu yerga o'tadi."
+      }
+    },
+    "types": {
+      "EMPTY_SLOT_TOMORROW": {
+        "label": "Ertaga bo'sh slot",
+        "title": "Ertaga {slotTime} da bo'sh slot — {doctorName}",
+        "body": "{specialty}. Ehtimoliy yo'qotish: {revenueLoss}. Reaktivatsiya bemorlariga taklif qiling."
+      },
+      "DORMANT_BATCH": {
+        "label": "Faolsiz bemorlar",
+        "title": "«{segment}» segmentida {patientCount} faolsiz bemor",
+        "body": "Ularni qaytarish uchun Telegram orqali tarqatma yuboring."
+      },
+      "UNCONFIRMED_24H": {
+        "label": "24 soat ichida tasdiqlanmagan",
+        "title": "{patientName} — ertaga {slotTime} dagi yozuv tasdiqlanmagan",
+        "body": "Shifokor: {doctorName}. Qo'ng'iroq qiling yoki tasdiq yuboring."
+      },
+      "NO_SHOW_RISK_HIGH": {
+        "label": "No-show xavfi yuqori",
+        "title": "Yuqori no-show xavfi: {patientName} ({riskPct}%)",
+        "body": "Qabul {slotTime} da. Bemor bilan oldindan bog'laning."
+      },
+      "CASE_REPEAT_DUE": {
+        "label": "Takroriy tashrif",
+        "title": "{patientName} uchun {dueDate} gacha takroriy tashrif",
+        "body": "Holatni oching va eng yaqin mos slotni taklif qiling."
+      },
+      "OVERDUE_FOLLOW_UP": {
+        "label": "Muddati o'tgan follow-up",
+        "title": "Follow-up {daysSinceVisit} kundan beri bajarilmagan",
+        "body": "Vazifani shifokorga uzating yoki kerak bo'lmasa yoping."
+      },
+      "DOCTOR_OVERLOAD": {
+        "label": "Shifokor yuklanishi",
+        "title": "{doctorName}: navbatda {queueLength} bemor",
+        "body": "Bo'sh hamkasblar: {alternativeCount}. Qayta taqsimlashni taklif qiling."
+      },
+      "IDLE_ROOM": {
+        "label": "Bo'sh kabinet",
+        "title": "{cabinetName} kabineti {idleMinutes} daqiqa bo'sh",
+        "body": "Navbatda {queueLength} bemor — kabinetni qayta tayinlang."
+      },
+      "PAYMENT_OVERDUE": {
+        "label": "Muddati o'tgan to'lov",
+        "title": "{patientName}: qarzdorlik {amount}",
+        "body": "Muddati {daysOverdue} kun o'tgan. Bog'laning va to'lovni yoping."
+      },
+      "LOW_DOCTOR_SCHEDULE": {
+        "label": "Shifokor slotlari kam",
+        "title": "{doctorName}: keyingi haftada {slotsNext7Days} slot",
+        "body": "Jadvalni oching va smenalar qo'shing."
+      },
+      "LOW_NPS_RECEIVED": {
+        "label": "Past tashrif bahosi",
+        "title": "{patientName}: baho {score}/10 ({doctorName})",
+        "body": "{commentPreview, select, , {Bemor bilan bog‘laning va tafsilotlarni so‘rang.} other{«{commentPreview}»}}"
+      }
+    }
+  },
+  "patientSummary": {
+    "title": "AI xulosa",
+    "loading": "AI vizitni xulosalamoqda…",
+    "empty": "Xulosa uchun ma'lumot yo'q",
+    "refresh": "Yangilash",
+    "updatedAt": "{time} oldin yangilandi",
+    "aiTag": "AI · Avto",
+    "error": "Xulosani yuklab bo'lmadi",
+    "refreshing": "yangilanmoqda…"
+  },
+  "soapDraft": {
+    "title": "AI SOAP qoralama",
+    "empty": "Vizit chog'ida botga ovozli xabar yuboring — SOAP-qoralama tayyorlanadi",
+    "edit": "Tahrirlash",
+    "save": "Saqlash",
+    "cancel": "Bekor qilish",
+    "refreshing": "Yangilanmoqda…",
+    "section": {
+      "subjective": "Shikoyatlar",
+      "objective": "Ko'rik",
+      "assessment": "Tashxis",
+      "plan": "Reja"
+    }
+  },
+  "ai": {
+    "ask": {
+      "placeholder": "AI'dan so'rang: bo'sh oyna top…",
+      "send": "So'rash",
+      "loading": "AI o'ylamoqda…",
+      "empty": "Tabiiy tilda savolingizni yozing",
+      "error": "Javob olib bo'lmadi. Qaytadan urinib ko'ring.",
+      "attribution": "AI · {model}",
+      "tabs": {
+        "commands": "Buyruqlar",
+        "ai": "AI'dan so'rash"
+      },
+      "disclaimer": "AI faqat ma'lumotni ko'radi — o'zgarishlarni qo'lda kiriting"
+    },
+    "chip": {
+      "openSlot": "Kalendarda ochish",
+      "openPatient": "Kartani ochish",
+      "openAction": "Action Center'da ochish",
+      "openAppointment": "Qabulni ochish"
+    }
+  },
+  "crmSecurity": {
+    "title": "Hisob xavfsizligi",
+    "subtitle": "Ikki bosqichli autentifikatsiya va zaxira kodlar",
+    "twoFaTitle": "Ikki bosqichli autentifikatsiya",
+    "twoFaEnabled": "Yoqilgan",
+    "twoFaDisabled": "O'chirilgan",
+    "twoFaEnableCta": "Yoqish",
+    "twoFaDisableCta": "O'chirish",
+    "twoFaForcedHint": "Sizning rolingiz 2FA dan foydalanishni talab qiladi. Davom etish uchun sozlashni yakunlang.",
+    "enrollStepScan": "1. QR-kodni ilova bilan skanerlang (Google Authenticator, 1Password, Authy).",
+    "enrollStepManual": "Skaner ishlamayaptimi? Kalitni qo'lda kiriting:",
+    "enrollStepCode": "2. Sozlashni tasdiqlash uchun ilovadan 6 raqamli kodni kiriting.",
+    "codeLabel": "Tasdiqlash kodi",
+    "codePlaceholder": "123 456",
+    "verifyCta": "Tasdiqlash",
+    "cancelCta": "Bekor qilish",
+    "recoveryTitle": "Zaxira kodlari",
+    "recoveryHint": "Bu 10 ta bir martalik kodni xavfsiz joyda saqlang. Ular faqat bir marta ko'rsatiladi.",
+    "recoveryDownload": ".txt yuklab olish",
+    "recoveryDone": "Kodlarni saqladim",
+    "recoveryRegenerateCta": "Yangi kodlarni yaratish",
+    "recoveryReprompt": "Davom etish uchun parolingizni kiriting.",
+    "passwordLabel": "Joriy parol",
+    "errorInvalidCode": "Noto'g'ri kod",
+    "errorInvalidPassword": "Noto'g'ri parol",
+    "errorAlreadyEnrolled": "2FA allaqachon yoqilgan",
+    "errorNotEnrolled": "2FA yoqilmagan",
+    "errorGeneric": "Amalni bajarib bo'lmadi",
+    "successEnrolled": "2FA yoqildi",
+    "successDisabled": "2FA o'chirildi",
+    "successRegenerated": "Zaxira kodlari yangilandi"
+  },
+  "login2fa": {
+    "title": "Kirishni tasdiqlang",
+    "subtitle": "Autentifikatsiya ilovasidan 6 raqamli kodni kiriting",
+    "codeLabel": "Kod",
+    "codePlaceholder": "123 456",
+    "submit": "Kirish",
+    "loading": "Tekshirilmoqda…",
+    "useRecovery": "Zaxira kodidan foydalanish",
+    "useTotp": "Ilova kodidan foydalanish",
+    "recoveryLabel": "Zaxira kodi",
+    "recoveryPlaceholder": "XXXX-XXXX-XXXX",
+    "errorInvalid": "Kod noto'g'ri. Qayta urinib ko'ring.",
+    "backToLogin": "Kirish sahifasiga qaytish"
+  },
+  "sessionExpired": {
+    "title": "Sessiya muddati tugadi",
+    "idleSubtitle": "Siz uzoq vaqt faol bo'lmadingiz. Davom etish uchun qayta kiring.",
+    "forcedSubtitle": "Sessiya vaqti (8 soat) tugadi. Iltimos, qayta kiring.",
+    "kickedSubtitle": "Siz boshqa qurilmadan tizimga kirdingiz.",
+    "loginCta": "Qayta kirish"
+  },
+  "clinicSecurity": {
+    "sectionTitle": "Xavfsizlik",
+    "require2faTitle": "Barcha xodimlar uchun 2FA majburiy",
+    "require2faHint": "Yoqilganda barcha xodimlar keyingi kirishda 2FA ni sozlashlari shart.",
+    "require2faPlanLock": "Pro va Enterprise tariflarida mavjud.",
+    "idleTimeoutTitle": "Faol bo'lmagan vaqt (daqiqa)",
+    "idleTimeoutHint": "5 dan 240 daqiqagacha. Standart 30 daqiqa."
+  },
+  "signup": {
+    "title": "Klinikani ro'yxatdan o'tkazish",
+    "subtitle": "14 kunlik bepul sinov muddati. Karta talab qilinmaydi, majburiyatsiz.",
+    "clinicNameLabel": "Klinika nomi",
+    "clinicNamePlaceholder": "Masalan: NeuroFax Tashkent",
+    "emailLabel": "Administrator emaili",
+    "emailPlaceholder": "you@clinic.uz",
+    "phoneLabel": "Telefon (ixtiyoriy)",
+    "phonePlaceholder": "+998 90 123 45 67",
+    "planLabel": "Tarif",
+    "planBasic": "Basic — boshlanish",
+    "planPro": "Pro — rivojlanish",
+    "playbookLabel": "Shablon tanlash",
+    "playbookBlank": "Bo'sh boshlash",
+    "playbookGeneral": "Ko'p profilli klinika",
+    "playbookDental": "Stomatologiya",
+    "playbookNeurology": "Nevrologiya",
+    "playbookPediatric": "Pediatriya",
+    "playbookCosmetology": "Kosmetologiya",
+    "playbookHint": "Tanlangan profilga mos xizmatlar, eslatma shablonlari va jadval avtomatik to'ldiriladi. Keyinroq o'zgartirish mumkin.",
+    "localeLabel": "Interfeys tili",
+    "localeRu": "Rus tili",
+    "localeUz": "O'zbek tili",
+    "submit": "Klinikani yaratish",
+    "submitting": "Yaratilmoqda…",
+    "errorEmailTaken": "Bu email allaqachon ro'yxatdan o'tgan. Mavjud akkaunt orqali kiring.",
+    "errorGeneric": "Arizani yuborib bo'lmadi. Qayta urinib ko'ring.",
+    "checkInbox": {
+      "title": "Pochtani tekshiring",
+      "body": "Tasdiqlash havolasini {email} manziliga yubordik. Klinikani faollashtirish uchun 24 soat ichida unga o'ting.",
+      "devNote": "Ishlab chiqish uchun: havola server konsoliga ham chiqarilgan.",
+      "openConfirm": "Tasdiqlash sahifasini ochish"
+    },
+    "footnote": "Ro'yxatdan o'tib, siz NeuroFax foydalanish shartlariga rozilik bildirasiz.",
+    "loginCta": "Allaqachon akkauntingiz bormi? Kirish"
+  },
+  "signupConfirm": {
+    "loadingTitle": "Klinika faollashtirilmoqda…",
+    "loadingBody": "Administrator akkaunti va sinov obunasini yaratmoqdamiz.",
+    "successTitle": "Klinika tayyor",
+    "successBody": "Vaqtinchalik parolni saqlang — u faqat bir marta ko'rsatiladi. Birinchi kirishda uni o'zgartirishingiz so'raladi.",
+    "loginLabel": "Login",
+    "passwordLabel": "Vaqtinchalik parol",
+    "copyLabel": "Nusxalash",
+    "copiedLabel": "Nusxalandi",
+    "loginCta": "Kirish sahifasiga o'tish",
+    "errorTitle": "Tasdiqlab bo'lmadi",
+    "errorExpired": "Havola muddati tugagan. Iltimos, qayta ro'yxatdan o'ting.",
+    "errorConsumed": "Havola allaqachon ishlatilgan. Akkauntingizga kiring.",
+    "errorGeneric": "Nimadir noto'g'ri ketdi. Yordam xizmatiga murojaat qiling.",
+    "backToSignup": "Ro'yxatdan o'tish formasiga"
+  },
+  "billing": {
+    "title": "Tarif va hisob-fakturalar",
+    "subtitle": "Joriy tarif, foydalanish va to'lovlar tarixi.",
+    "stubModeHint": "To'lov stubi rejimi yoqilgan (NEXT_PUBLIC_BILLING_STUB=1).",
+    "currentPlan": {
+      "title": "Joriy tarif",
+      "price": "Oyiga {price}",
+      "trialEndsAt": "Sinov muddati: {date} gacha",
+      "nextBillingAt": "Keyingi to'lov: {date}",
+      "pendingUpgrade": "{plan} tarifiga o'tish uchun to'lov kutilmoqda"
+    },
+    "status": {
+      "trial": "Sinov",
+      "active": "Faol",
+      "past_due": "Muddati o'tgan",
+      "cancelled": "Bekor qilingan"
+    },
+    "usage": {
+      "title": "Joriy oyda foydalanish",
+      "patients": "Bemorlar",
+      "appointments": "Yozuvlar",
+      "sms": "SMS"
+    },
+    "planPicker": {
+      "title": "Tarifni o'zgartirish",
+      "month": "oy",
+      "current": "Joriy tarif",
+      "upgrade": "{plan} tarifiga o'tish",
+      "upgrading": "Hisob-faktura yaratilmoqda…",
+      "features": {
+        "patients": "Bemorlar: {n}",
+        "appointments": "Oyiga yozuvlar: {n}",
+        "sms": "Oyiga SMS: {n}",
+        "tg": "Telegram-inbox",
+        "call": "Call-markaz",
+        "analytics": "Kengaytirilgan analitika"
+      }
+    },
+    "invoices": {
+      "title": "Hisob-fakturalar tarixi",
+      "empty": "Hozircha hisob-fakturalar yo'q.",
+      "cols": {
+        "number": "Raqam",
+        "period": "Davr",
+        "amount": "Summa",
+        "status": "Holat",
+        "pdf": "PDF",
+        "download": "Yuklab olish"
+      }
+    },
+    "pay": {
+      "title": "Hisob-fakturani to'lash",
+      "subtitle": "Yangi tarifni faollashtirish uchun to'lovni tasdiqlang.",
+      "status": "Holat",
+      "amount": "Summa",
+      "period": "Davr",
+      "dueAt": "To'lov muddati",
+      "simulateButton": "To'lovni imitatsiya qilish",
+      "simulating": "Bajarilmoqda…",
+      "success": "To'lov muvaffaqiyatli amalga oshirildi",
+      "downloadPdf": "PDF yuklab olish",
+      "back": "Tariflarga qaytish",
+      "realProviderNote": "Click va Payme to'lovlari Wave 4 dan keyin ulanadi."
+    },
+    "errors": {
+      "upgrade": "Hisob-fakturani yaratib bo'lmadi ({error}).",
+      "simulate": "To'lovni o'tkazib bo'lmadi ({error})."
+    }
+  },
+  "branding": {
+    "title": "Brending",
+    "description": "Logotip, ranglar va o'z subdomeningiz. Pro va Enterprise tariflarida mavjud.",
+    "loading": "Yuklanmoqda…",
+    "saved": "Brending saqlandi",
+    "save": "Saqlash",
+    "saving": "Saqlanmoqda…",
+    "logo": {
+      "label": "Logotip",
+      "hint": "PNG yoki SVG, 256 KB gacha. CRM va Mini App sarlavhasida ko'rinadi."
+    },
+    "primary": {
+      "label": "Asosiy rang"
+    },
+    "secondary": {
+      "label": "Qo'shimcha rang"
+    },
+    "subdomain": {
+      "label": "Maxsus subdomen",
+      "dnsHint": "Saqlagandan so'ng DNS (CNAME yozuvi) sozlamasi uchun yordam xizmatiga murojaat qiling.",
+      "upgradeRequired": "Faqat Enterprise tarifida mavjud."
+    }
+  },
+  "admin": {
+    "bulk": {
+      "suspend": "Klinikani to'xtatish",
+      "suspendConfirm": "Ushbu klinikani to'xtatib turamizmi? Obuna bekor qilinadi.",
+      "suspendDone": "Klinika to'xtatildi",
+      "restore": "Klinikani tiklash",
+      "restoreConfirm": "Ushbu klinikani tiklab, 14 kunlik sinov muddatini beramizmi?",
+      "restoreDone": "Klinika tiklandi",
+      "extendTrial": "Sinov muddatini +30 kunga uzaytirish",
+      "extendTrialConfirm": "Ushbu klinikaning sinov muddatini 30 kunga uzaytirilsinmi?",
+      "extendTrialDone": "Sinov muddati uzaytirildi",
+      "error": "Amalni bajarib bo'lmadi ({error})."
     }
   }
 }

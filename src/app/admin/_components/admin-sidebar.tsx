@@ -7,6 +7,7 @@ import {
   ActivityIcon,
   BuildingIcon,
   GaugeIcon,
+  KeyIcon,
   LayoutDashboardIcon,
   ScrollIcon,
   ShieldCheckIcon,
@@ -28,6 +29,7 @@ const NAV: NavItem[] = [
   { href: "/admin/usage", label: "Использование", icon: GaugeIcon },
   { href: "/admin/audit", label: "Аудит", icon: ScrollIcon },
   { href: "/admin/health", label: "Здоровье", icon: ActivityIcon },
+  { href: "/admin/encryption-health", label: "Шифрование", icon: KeyIcon },
 ];
 
 export function AdminSidebar() {

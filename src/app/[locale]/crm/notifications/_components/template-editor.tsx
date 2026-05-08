@@ -46,6 +46,7 @@ import {
   ALLOWED_KEYS_BY_TRIGGER,
   TRIGGER_KEYS,
 } from "@/server/notifications/template";
+import { AiCopySuggest } from "./ai-copy-suggest";
 
 type Props = {
   templates: Template[];
@@ -341,9 +342,17 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
           <Label htmlFor="tpl-body-ru">{t("editor.bodyRu")}</Label>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <VariableIcon className="size-3.5" />
-            {t("editor.placeholders")}
+          <div className="flex items-center gap-2">
+            <AiCopySuggest
+              channel={form.channel}
+              locale="ru"
+              triggerKey={form.key || null}
+              onUse={(text) => update("bodyRu", text)}
+            />
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <VariableIcon className="size-3.5" />
+              {t("editor.placeholders")}
+            </div>
           </div>
         </div>
         <Textarea
@@ -387,7 +396,15 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="tpl-body-uz">{t("editor.bodyUz")}</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="tpl-body-uz">{t("editor.bodyUz")}</Label>
+          <AiCopySuggest
+            channel={form.channel}
+            locale="uz"
+            triggerKey={form.key || null}
+            onUse={(text) => update("bodyUz", text)}
+          />
+        </div>
         <Textarea
           id="tpl-body-uz"
           value={form.bodyUz}

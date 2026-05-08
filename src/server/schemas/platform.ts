@@ -146,6 +146,10 @@ export const QueryPlatformAuditSchema = z.object({
 
 export const SwitchClinicSchema = z.object({
   clinicId: z.string().min(1).max(100).nullable(),
+  // Phase 19 Wave 4 — required when entering a clinic; ignored when leaving
+  // (clinicId === null). Min 4 chars so we can't ship empty strings.
+  reason: z.string().trim().min(4).max(500).optional(),
+  mode: z.enum(["WRITE", "VIEW_ONLY"]).optional(),
 });
 export type SwitchClinic = z.infer<typeof SwitchClinicSchema>;
 

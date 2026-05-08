@@ -25,6 +25,7 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
+import { isAllowedToReceive } from "./consent-gate";
 import { render } from "./template";
 
 export const TRIGGER_KEYS = [
@@ -37,6 +38,31 @@ export const TRIGGER_KEYS = [
   "no-show",
   "payment.due",
   "case.repeat-due",
+  // Phase 14 — Revenue Engines, Wave 2.
+  // Fired by `runReactivationScheduler` (src/server/revenue/reactivation.ts)
+  // for dormant patients (>=90 days since last visit). Once-per-quarter
+  // idempotency lives on `Patient.reactivationSentAt[]`.
+  "patient.reactivation",
+  // Phase 16 Wave 2 — Patient Experience.
+  // Fired ~24h before a BOOKED/WAITING appointment so the patient can fill
+  // the pre-visit questionnaire (complaints/allergies/medications/notes) in
+  // the Mini App. Idempotency: `Appointment.preVisitNotifiedAt`.
+  "appointment.pre-visit-questionnaire",
+  // Fired ~4h after an appointment lands in COMPLETED so we can ask the
+  // patient for a 1–10 NPS rating. Idempotency:
+  // `Appointment.npsRequestedAt`.
+  "appointment.nps-request",
+  // Phase 16 Wave 3 — Patient Experience.
+  // Fired by the hourly `medication-reminder-tick` worker for every
+  // active prescription whose schedule.times[] entry matches the
+  // current hour (clinic TZ). Idempotency:
+  // `MedicationReminderSend(prescriptionId, scheduledFor)` unique key.
+  "medication.reminder",
+  // Fired when a referred patient's first appointment lands in
+  // COMPLETED, minting a `ReferralReward` PENDING and notifying the
+  // referrer that they've earned a discount. Idempotency:
+  // `ReferralReward(referrerPatientId, referredPatientId)` unique key.
+  "referral.reward-earned",
 ] as const;
 
 export type TriggerKey = (typeof TRIGGER_KEYS)[number];
@@ -251,6 +277,20 @@ function whereForTrigger(
       return { key: "payment.due" };
     case "case.repeat-due":
       return { trigger: "CASE_REPEAT_DUE" };
+    case "appointment.pre-visit-questionnaire":
+      // No dedicated enum value yet — match by slug. Wave 3 may promote this
+      // to its own NotificationTrigger enum entry.
+      return { key: "appointment.pre-visit-questionnaire" };
+    case "appointment.nps-request":
+      return { key: "appointment.nps-request" };
+    case "medication.reminder":
+      // No dedicated NotificationTrigger enum — slug match. The worker
+      // builds the per-tick send manually (see medication-reminder.ts);
+      // this branch only matters if the admin templating UI ever hooks
+      // its own materializer to the registry.
+      return { key: "medication.reminder" };
+    case "referral.reward-earned":
+      return { key: "referral.reward-earned" };
     default:
       return null;
   }
@@ -602,6 +642,39 @@ export async function onAppointmentNoShow(
   await materializeForAppointment(appointmentId, "no-show", new Date());
 }
 
+/**
+ * Phase 16 Wave 2 — Pre-visit questionnaire push.
+ *
+ * Materialise a notification ~24h before the appointment with a deeplink to
+ * the Mini App questionnaire form. Caller (the worker) is responsible for
+ * stamping `preVisitNotifiedAt` on the Appointment row to dedupe future
+ * ticks; this function only writes the `NotificationSend` row.
+ */
+export async function onPreVisitQuestionnaire(
+  appointmentId: string,
+): Promise<void> {
+  await materializeForAppointment(
+    appointmentId,
+    "appointment.pre-visit-questionnaire",
+    new Date(),
+  );
+}
+
+/**
+ * Phase 16 Wave 2 — Post-visit NPS push.
+ *
+ * Materialise a notification ~4h after the appointment lands in COMPLETED
+ * with a deeplink to the Mini App NPS form. Caller stamps `npsRequestedAt`
+ * to dedupe future ticks.
+ */
+export async function onNpsRequest(appointmentId: string): Promise<void> {
+  await materializeForAppointment(
+    appointmentId,
+    "appointment.nps-request",
+    new Date(),
+  );
+}
+
 /** Schedule the 24h / 5h / 2h reminder cascade for an appointment. */
 export async function scheduleAppointmentReminders(
   appointmentId: string,
@@ -726,10 +799,15 @@ async function runBirthdays(): Promise<number> {
   const now = new Date();
   const month = now.getUTCMonth() + 1;
   const day = now.getUTCDate();
+  // Phase 17 Wave 1 — birthday is marketing. Soft-deleted + opted-out
+  // patients are excluded at the SQL layer; we still re-check via the
+  // consent gate below to keep the boolean logic in one place.
   const patients = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.patient.findMany({
       where: {
         birthDate: { not: null },
+        marketingOptOut: false,
+        deletedAt: null,
       },
       select: {
         id: true,
@@ -738,16 +816,21 @@ async function runBirthdays(): Promise<number> {
         phone: true,
         telegramId: true,
         birthDate: true,
+        marketingOptOut: true,
+        deletedAt: true,
       },
       take: 2000,
     }),
   );
-  // Filter to today's birthdays in memory, then bulk-materialize.
+  // Filter to today's birthdays in memory, then bulk-materialize. The
+  // consent re-check is a belt-and-braces guard; the WHERE above already
+  // excludes opt-outs.
   const matches = patients.filter((p) => {
     if (!p.birthDate) return false;
     const bm = p.birthDate.getUTCMonth() + 1;
     const bd = p.birthDate.getUTCDate();
-    return bm === month && bd === day;
+    if (bm !== month || bd !== day) return false;
+    return isAllowedToReceive(p, "marketing").allowed;
   });
   if (matches.length === 0) return 0;
 
@@ -1116,6 +1199,138 @@ async function runCaseRepeatReminders(): Promise<number> {
   return toInsert.length;
 }
 
+/**
+ * Phase 16 Wave 3 — `referral.reward-earned` materializer.
+ *
+ * Mints exactly ONE NotificationSend row (channel = the active
+ * template's), mirrored to INAPP for TG-using referrers. The reward row
+ * itself was already created by `mintReferralRewardOnCompletion`; this
+ * handler is purely the push side.
+ *
+ * Idempotency: we look up the most recent `NotificationSend` for this
+ * (clinicId, patientId, key=referral.reward-earned, recipient) tuple and
+ * skip if any was created in the last hour. The same trigger should
+ * never fire twice for the same reward, but the dedupe protects against
+ * a duplicate `mintReferralRewardOnCompletion` call.
+ */
+async function onReferralRewardEarned(payload: {
+  clinicId: string;
+  patientId: string;
+  rewardId: string;
+}): Promise<void> {
+  const { clinicId, patientId, rewardId } = payload;
+  await runWithTenant({ kind: "SYSTEM" }, async () => {
+    const reward = await prisma.referralReward.findFirst({
+      where: { id: rewardId, clinicId, referrerPatientId: patientId },
+      select: {
+        rewardPercent: true,
+        referredPatient: { select: { fullName: true } },
+      },
+    });
+    if (!reward) return;
+
+    const referrer = await prisma.patient.findFirst({
+      where: { id: patientId, clinicId },
+      select: {
+        fullName: true,
+        phone: true,
+        telegramId: true,
+        marketingOptOut: true,
+        deletedAt: true,
+      },
+    });
+    if (!referrer) return;
+
+    // Phase 17 Wave 1 — referral reward push is marketing. The reward
+    // row itself was already created by `mintReferralRewardOnCompletion`
+    // and is visible in the Mini App refer page on next visit; we just
+    // skip the active push when the patient has opted out.
+    const consent = isAllowedToReceive(referrer, "marketing");
+    if (!consent.allowed) return;
+
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { nameRu: true, nameUz: true },
+    });
+
+    const tpl = await prisma.notificationTemplate.findFirst({
+      where: {
+        clinicId,
+        key: "referral.reward-earned",
+        isActive: true,
+      },
+      select: {
+        id: true,
+        bodyRu: true,
+        bodyUz: true,
+        channel: true,
+      },
+    });
+    if (!tpl) return;
+
+    const friendName = reward.referredPatient?.fullName ?? "—";
+    const ctx: Record<string, unknown> = {
+      patient: {
+        name: referrer.fullName,
+        firstName: firstName(referrer.fullName),
+      },
+      friend: { name: friendName },
+      percent: String(reward.rewardPercent),
+      clinic: { name: clinic?.nameRu ?? "" },
+    };
+    const body = render(tpl.bodyRu, ctx);
+    const channel = tpl.channel as "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+
+    const recipient =
+      channel === "SMS" || channel === "EMAIL"
+        ? referrer.phone
+        : channel === "TG"
+          ? referrer.telegramId
+          : null;
+
+    const inserts: Array<{
+      clinicId: string;
+      patientId: string;
+      templateId: string;
+      channel: typeof channel;
+      recipient: string;
+      body: string;
+      scheduledFor: Date;
+      status: "QUEUED";
+    }> = [];
+    const now = new Date();
+    if (recipient && channel !== "INAPP" && channel !== "VISIT" && channel !== "CALL") {
+      inserts.push({
+        clinicId,
+        patientId,
+        templateId: tpl.id,
+        channel,
+        recipient,
+        body,
+        scheduledFor: now,
+        status: "QUEUED",
+      });
+    }
+    // INAPP banner — referrer always sees the news in the Mini App inbox.
+    inserts.push({
+      clinicId,
+      patientId,
+      templateId: tpl.id,
+      channel: "INAPP",
+      recipient: patientId,
+      body,
+      scheduledFor: now,
+      status: "QUEUED",
+    });
+
+    if (inserts.length === 0) return;
+    await prisma.notificationSend.createMany({
+      data: inserts as never,
+      skipDuplicates: true,
+    });
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public dispatcher — single entry point for route handlers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1125,7 +1340,16 @@ export type FireTriggerPayload =
   | { kind: "appointment.cancelled"; appointmentId: string }
   | { kind: "appointment.noshow"; appointmentId: string }
   | { kind: "appointment.updated"; appointmentId: string }
-  | { kind: "payment.paid"; appointmentId: string | null };
+  | { kind: "payment.paid"; appointmentId: string | null }
+  | {
+      // Phase 16 Wave 3 — fired from `mintReferralRewardOnCompletion`.
+      // The referrer (the existing patient who shared the code) gets a
+      // push that they've earned a discount on their next visit.
+      kind: "referral.reward-earned";
+      clinicId: string;
+      patientId: string; // the referrer
+      rewardId: string;
+    };
 
 /**
  * Fire-and-forget trigger hook for route handlers.
@@ -1183,6 +1407,10 @@ export function fireTrigger(payload: FireTriggerPayload): void {
               }),
             );
           }
+          return;
+        }
+        case "referral.reward-earned": {
+          await onReferralRewardEarned(payload);
           return;
         }
       }

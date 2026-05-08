@@ -216,6 +216,66 @@ export const ALLOWED_KEYS_BY_TRIGGER: Record<string, string[]> = {
     "clinic.phone",
     "clinic.address",
   ],
+  // Phase 14 — Revenue Engines, Wave 2.
+  // Whitelist kept minimal: subject + body templates only need patient name
+  // and clinic identification. Specific lapse details (segment, days since
+  // last visit) stay server-side — they're segmentation criteria, not
+  // patient-facing copy.
+  "patient.reactivation": [
+    "patient.name",
+    "patient.firstName",
+    "clinic.name",
+    "clinic.phone",
+    "clinic.address",
+  ],
+  // Phase 16 Wave 2 — Patient Experience.
+  // Pre-visit questionnaire: tells the patient when their appointment is +
+  // who they're seeing, plus a deeplink (rendered server-side as the body
+  // text — `appointment.url` placeholder is not a context key today; the
+  // template just hard-codes the path so we keep the whitelist simple).
+  "appointment.pre-visit-questionnaire": [
+    "patient.name",
+    "patient.firstName",
+    "appointment.date",
+    "appointment.time",
+    "appointment.doctor",
+    "clinic.name",
+    "clinic.phone",
+  ],
+  // Post-visit NPS request: just the doctor name + clinic — short copy with
+  // a deeplink to the rating form.
+  "appointment.nps-request": [
+    "patient.name",
+    "patient.firstName",
+    "appointment.doctor",
+    "clinic.name",
+    "clinic.phone",
+  ],
+  // Phase 16 Wave 3 — Medication reminder push.
+  // Worker fills `drug.name`, `drug.dosage`, `time` (HH:mm clinic-TZ) and
+  // `deeplink` (Mini App `/my/medications` URL). `clinic.name` is included
+  // for templates that want a sender prefix — usable but optional.
+  "medication.reminder": [
+    "patient.name",
+    "patient.firstName",
+    "drug.name",
+    "drug.dosage",
+    "time",
+    "deeplink",
+    "clinic.name",
+  ],
+  // Refer-a-friend reward earned: notifies the referrer that their referred
+  // friend completed a visit and a discount has been minted on their next
+  // booking. `friend.name` carries the referred patient's first name (or
+  // full name if a single-token alias). `percent` is the snapshot integer
+  // (e.g. 15 for 15%).
+  "referral.reward-earned": [
+    "patient.name",
+    "patient.firstName",
+    "friend.name",
+    "percent",
+    "clinic.name",
+  ],
 };
 
 export const TRIGGER_KEYS = Object.keys(ALLOWED_KEYS_BY_TRIGGER);

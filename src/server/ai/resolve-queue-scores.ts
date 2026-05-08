@@ -17,7 +17,11 @@ import {
   computeQueueScore,
   type QueueScoreOutput,
 } from "@/lib/ai/queue-score";
-import { computeNoShowRisk } from "@/lib/ai/no-show-risk";
+import {
+  computeNoShowRisk,
+  type NoShowConfidence,
+  type NoShowFactors,
+} from "@/lib/ai/no-show-risk";
 
 export interface ScoredAppointment {
   appointmentId: string;
@@ -33,6 +37,18 @@ export interface ScoredAppointment {
   waitMin: number;
   isVip: boolean;
   noShowRisk: number;
+  /**
+   * Phase 14, Wave 3 — per-factor breakdown of the no-show risk so the
+   * receptionist queue card can render a tooltip explaining *why* the
+   * percentage is high. Sum of contributions (pre-clamp) reproduces
+   * `noShowRisk`.
+   */
+  noShowFactors: NoShowFactors;
+  /**
+   * Confidence band for the no-show prediction: derived from the patient's
+   * historical visit count. "low" means too few visits to trust the score.
+   */
+  noShowConfidence: NoShowConfidence;
   score: QueueScoreOutput;
 }
 
@@ -176,6 +192,8 @@ export async function resolveQueueScores(
       waitMin,
       isVip,
       noShowRisk: ns.risk,
+      noShowFactors: ns.factors,
+      noShowConfidence: ns.confidence,
       score,
     };
   });

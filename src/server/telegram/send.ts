@@ -275,4 +275,90 @@ export async function answerCallbackQuery(
   }
 }
 
+/**
+ * Phase 17 Wave 3 — send a document (file upload via multipart/form-data).
+ *
+ * Used by the DSAR data-export worker to deliver the encrypted ZIP back
+ * to the patient's TG chat (or the admin's chat for CRM-initiated
+ * exports). All other telegram calls use JSON payloads, but file uploads
+ * require multipart — node 20+ has native `FormData` + `Blob`, so no
+ * dependency is needed.
+ *
+ * Network/backoff behaviour mirrors `tgCallWithBackoff` but the body is
+ * a multipart payload. We do NOT reuse that helper because it serialises
+ * payloads as JSON.
+ */
+export type SendDocumentOptions = {
+  caption?: string;
+  parse_mode?: "HTML" | "MarkdownV2";
+  filename?: string;
+  contentType?: string;
+};
+
+export async function sendDocument(
+  clinic: TgClinicMinimal,
+  chatId: string | number,
+  document: Buffer,
+  opts: SendDocumentOptions = {},
+): Promise<TgMessageResult> {
+  const filename = opts.filename ?? "document.bin";
+  const contentType = opts.contentType ?? "application/octet-stream";
+
+  if (!clinic.tgBotToken) {
+    return logNoop(clinic, "sendDocument", {
+      chat_id: chatId,
+      filename,
+      size: document.length,
+      ...(opts.caption ? { caption: opts.caption } : {}),
+    });
+  }
+
+  const url = `${API_ROOT}/bot${clinic.tgBotToken}/sendDocument`;
+
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    if (opts.caption) form.append("caption", opts.caption);
+    if (opts.parse_mode) form.append("parse_mode", opts.parse_mode);
+    const blob = new Blob([new Uint8Array(document)], { type: contentType });
+    form.append("document", blob, filename);
+
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS * 4), // bigger files
+      });
+    } catch (e) {
+      lastErr = e;
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await sleep(backoffMs(attempt));
+        continue;
+      }
+      throw new Error(
+        `Telegram sendDocument network failure after ${MAX_ATTEMPTS} attempts: ${(e as Error).message}`,
+      );
+    }
+    const body = (await resp.json()) as TgApiResponse<TgMessageResult>;
+    if (body.ok) return body.result;
+    if (body.error_code === 429) {
+      const wait = Math.max(1, body.parameters?.retry_after ?? 1);
+      await sleep(wait * 1000);
+      continue;
+    }
+    if (body.error_code >= 500 && attempt < MAX_ATTEMPTS - 1) {
+      await sleep(backoffMs(attempt));
+      continue;
+    }
+    throw new Error(
+      `Telegram sendDocument failed: ${body.error_code} ${body.description}`,
+    );
+  }
+  throw new Error(
+    `Telegram sendDocument exhausted retries: ${(lastErr as Error)?.message ?? "unknown"}`,
+  );
+}
+
 export const __private = { tgCallWithBackoff };

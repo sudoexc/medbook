@@ -100,14 +100,33 @@ export function ClinicSwitcher({
     if (isSuperAdmin) void loadClinics()
   }, [isSuperAdmin, loadClinics])
 
+  // Phase 19 W4 — entering a clinic now requires a reason (≥4 chars) and a
+  // mode pick (default WRITE; VIEW_ONLY for read-only support sessions). We
+  // collect both via window.prompt + window.confirm to ship without pulling
+  // in a heavier dialog primitive — the switcher is rarely used and the
+  // prompt UX is acceptable for SUPER_ADMIN-only surface.
   const switchTo = React.useCallback(async (clinicId: string) => {
+    const reason = window.prompt(
+      "Reason for entering this clinic (≥4 chars). This is logged.",
+      "",
+    )
+    if (reason === null) return // cancelled
+    const trimmed = reason.trim()
+    if (trimmed.length < 4) {
+      setError("Reason must be at least 4 characters")
+      return
+    }
+    const viewOnly = window.confirm(
+      "OK = VIEW_ONLY (read-only).\nCancel = WRITE (mutations allowed).",
+    )
+    const mode: "WRITE" | "VIEW_ONLY" = viewOnly ? "VIEW_ONLY" : "WRITE"
     setSwitching(clinicId)
     setError(null)
     try {
       const res = await fetch("/api/platform/session/switch-clinic", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clinicId }),
+        body: JSON.stringify({ clinicId, reason: trimmed, mode }),
       })
       if (!res.ok) {
         setError(`Switch failed: HTTP ${res.status}`)

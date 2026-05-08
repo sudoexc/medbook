@@ -4,18 +4,34 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArmchairIcon,
+  CheckCheckIcon,
   CheckIcon,
   ClockIcon,
   HourglassIcon,
+  Loader2Icon,
+  PlayIcon,
+  UserCheckIcon,
+  UserXIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
+import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
+import {
+  getQuickActions,
+  type QuickAction,
+} from "@/lib/appointments/lifecycle";
+import type { AppointmentStatus } from "@/lib/appointment-transitions";
 
 export interface DoctorQueueCardProps {
   /** Positional index in the cabinets grid (1-based) — shown in the blue circle. */
@@ -63,12 +79,18 @@ export function DoctorQueueCard({
   const qc = useQueryClient();
   const [pending, setPending] = React.useState(false);
 
+  const role = useCurrentRole();
+
   const current = appointments.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
   const waiting = appointments.filter((a) => a.queueStatus === "WAITING");
   const booked = appointments.filter((a) => a.queueStatus === "BOOKED");
   const upcoming = [...waiting, ...booked].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
+
+  // Tracks which row currently has an in-flight quick-status mutation.
+  // Disabling the icons during PATCH prevents double-click → 409.
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
 
   const cabinetNumber =
     (current ?? upcoming[0])?.cabinet?.number ??
@@ -89,6 +111,40 @@ export function DoctorQueueCard({
     const opts = { refetchType: "active" } as const;
     qc.invalidateQueries({ queryKey: ["reception"], ...opts });
     qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
+  };
+
+  const setQueueStatus = async (
+    appointmentId: string,
+    next: AppointmentStatus,
+    successMessage: string,
+  ) => {
+    setPendingId(appointmentId);
+    try {
+      const res = await fetch(
+        `/api/crm/appointments/${appointmentId}/queue-status`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ queueStatus: next }),
+        },
+      );
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as {
+          reason?: string;
+        } | null;
+        throw new Error(j?.reason ?? `HTTP ${res.status}`);
+      }
+      invalidate();
+      const opts = { refetchType: "active" } as const;
+      qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
+      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
+      toast.success(successMessage);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setPendingId(null);
+    }
   };
 
   const callNext = async () => {
@@ -194,11 +250,14 @@ export function DoctorQueueCard({
           </div>
           <ul className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
             {upcoming.map((a, i) => (
-              <li key={a.id}>
+              <li
+                key={a.id}
+                className="group flex items-center gap-1 rounded-md px-1 py-1 transition-colors hover:bg-muted/60"
+              >
                 <button
                   type="button"
                   onClick={() => onRowClick(a.id)}
-                  className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground tabular-nums">
                     {i + 1}
@@ -209,8 +268,15 @@ export function DoctorQueueCard({
                   <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
                     {formatQueueTime(new Date(a.date), locale)}
                   </span>
-
                 </button>
+                <QuickStatusRow
+                  appointment={a}
+                  role={role}
+                  pending={pendingId === a.id}
+                  onChange={(next, successKey) =>
+                    setQueueStatus(a.id, next, successKey)
+                  }
+                />
               </li>
             ))}
           </ul>
@@ -373,6 +439,211 @@ function EmptyBlock() {
       </p>
     </div>
   );
+}
+
+/**
+ * Compact icon row that lets the receptionist advance an appointment's
+ * status without opening the drawer. Renders only icons for transitions
+ * that are both legal (`canTransition`) and time-appropriate (`NO_SHOW`
+ * never shows up before the slot start). NO_SHOW is wrapped in a
+ * confirmation popover to prevent fat-finger clicks; forward transitions
+ * fire on a single click — the existing PATCH handler is the source of
+ * truth and any 409 surfaces through the toast.
+ */
+function QuickStatusRow({
+  appointment,
+  role,
+  pending,
+  onChange,
+}: {
+  appointment: AppointmentRow;
+  role: ReturnType<typeof useCurrentRole>;
+  pending: boolean;
+  onChange: (next: AppointmentStatus, successMessage: string) => void;
+}) {
+  const t = useTranslations("reception.quickStatus");
+  const apptDate = React.useMemo(
+    () => new Date(appointment.date),
+    [appointment.date],
+  );
+  const actions = React.useMemo(
+    () =>
+      getQuickActions(
+        appointment.status as AppointmentStatus,
+        role,
+        apptDate,
+      ),
+    [appointment.status, role, apptDate],
+  );
+
+  if (actions.length === 0) return null;
+
+  return (
+    <div className="ml-1 flex shrink-0 items-center gap-0.5">
+      {actions.map((action) =>
+        action.confirm ? (
+          <NoShowButton
+            key={action.kind}
+            pending={pending}
+            onConfirm={() =>
+              onChange(action.to, t("toast.noShow" as never))
+            }
+            label={t("noShow")}
+            confirmTitle={t("noShowConfirm")}
+            confirmYes={t("noShowYes")}
+            confirmNo={t("noShowNo")}
+          />
+        ) : (
+          <QuickIconButton
+            key={action.kind}
+            action={action}
+            pending={pending}
+            onClick={() =>
+              onChange(
+                action.to,
+                t(toastKeyFor(action.kind) as never),
+              )
+            }
+            label={t(labelKeyFor(action.kind) as never)}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+function QuickIconButton({
+  action,
+  pending,
+  onClick,
+  label,
+}: {
+  action: Exclude<QuickAction, { confirm: true }>;
+  pending: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  const Icon =
+    action.kind === "ARRIVED"
+      ? UserCheckIcon
+      : action.kind === "START"
+        ? PlayIcon
+        : CheckCheckIcon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "inline-flex size-7 items-center justify-center rounded-md transition-colors",
+        "text-muted-foreground hover:bg-muted hover:text-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+      )}
+    >
+      {pending ? (
+        <Loader2Icon className="size-3.5 animate-spin" />
+      ) : (
+        <Icon className="size-3.5" />
+      )}
+    </button>
+  );
+}
+
+function NoShowButton({
+  pending,
+  onConfirm,
+  label,
+  confirmTitle,
+  confirmYes,
+  confirmNo,
+}: {
+  pending: boolean;
+  onConfirm: () => void;
+  label: string;
+  confirmTitle: string;
+  confirmYes: string;
+  confirmNo: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={pending}
+          aria-label={label}
+          title={label}
+          className={cn(
+            "inline-flex size-7 items-center justify-center rounded-md transition-colors",
+            "text-destructive/70 hover:bg-destructive/10 hover:text-destructive",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+          )}
+        >
+          {pending ? (
+            <Loader2Icon className="size-3.5 animate-spin" />
+          ) : (
+            <UserXIcon className="size-3.5" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto p-2">
+        <div className="text-xs font-medium text-foreground">
+          {confirmTitle}
+        </div>
+        <div className="mt-2 flex gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => setOpen(false)}
+          >
+            {confirmNo}
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-7 px-2 text-xs"
+            onClick={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+          >
+            {confirmYes}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function labelKeyFor(kind: QuickAction["kind"]): string {
+  switch (kind) {
+    case "ARRIVED":
+      return "arrived";
+    case "START":
+      return "start";
+    case "COMPLETE":
+      return "complete";
+    case "NO_SHOW":
+      return "noShow";
+  }
+}
+
+function toastKeyFor(kind: QuickAction["kind"]): string {
+  switch (kind) {
+    case "ARRIVED":
+      return "toast.arrived";
+    case "START":
+      return "toast.started";
+    case "COMPLETE":
+      return "toast.completed";
+    case "NO_SHOW":
+      return "toast.noShow";
+  }
 }
 
 function formatTime(d: Date, locale: string): string {

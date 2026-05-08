@@ -48,6 +48,35 @@ export type CaseAppointmentRow = {
   } | null;
 };
 
+/**
+ * Phase 16 Wave 3 — Prescription row folded into the case detail.
+ *
+ * The case-detail GET now returns every active and historical prescription on
+ * the case, ordered by `createdAt desc`. The PrescriptionsCard reads this
+ * list directly — no second fetch.
+ */
+export type CasePrescriptionRow = {
+  id: string;
+  drugName: string;
+  dosage: string;
+  schedule: {
+    times: string[];
+    days?: number | null;
+    startsAt?: string | null;
+  };
+  notes: string | null;
+  status: "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELLED";
+  remindersEnabled: boolean;
+  doctorId: string;
+  createdAt: string;
+  updatedAt: string;
+  doctor: {
+    id: string;
+    nameRu: string;
+    nameUz: string;
+  } | null;
+};
+
 export type CaseDetail = {
   id: string;
   clinicId: string;
@@ -77,6 +106,8 @@ export type CaseDetail = {
   };
   appointments: CaseAppointmentRow[];
   visitCount: number;
+  soapDraft: string | null;
+  prescriptions: CasePrescriptionRow[];
 };
 
 export const caseKey = (id: string) => ["case", id] as const;

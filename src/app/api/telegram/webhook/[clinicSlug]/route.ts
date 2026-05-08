@@ -36,6 +36,7 @@ import {
   saveSnapshot,
   step,
 } from "@/server/telegram/state";
+import { handleDoctorVoice } from "@/server/telegram/voice-handler";
 import { publishEventSafe } from "@/server/realtime/publish";
 
 // Telegram may burst updates; the runtime must be Node (crypto + fetch).
@@ -51,13 +52,30 @@ type TgUser = {
   username?: string;
   language_code?: string;
 };
+type TgVoice = {
+  duration: number;
+  mime_type?: string;
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+};
+type TgAudio = {
+  duration: number;
+  mime_type?: string;
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  performer?: string;
+  title?: string;
+};
 type TgIncomingMessage = {
   message_id: number;
   chat: TgChat;
   from?: TgUser;
   text?: string;
   photo?: unknown;
-  voice?: unknown;
+  voice?: TgVoice;
+  audio?: TgAudio;
   contact?: { phone_number: string; first_name?: string; last_name?: string };
   date: number;
 };
@@ -300,6 +318,36 @@ export async function POST(
         chatId,
         msg,
       );
+      // Phase 15 Wave 5 — voice/audio from a doctor → SOAP draft pipeline.
+      // Try the doctor-specific handler first. If the sender isn't an
+      // authenticated DOCTOR, fall through to the regular flow so the
+      // message still lands in the operator inbox.
+      const voiceLike = msg.voice ?? msg.audio ?? null;
+      if (voiceLike && msg.from?.id) {
+        const result = await handleDoctorVoice({
+          clinic: clinicMin,
+          chatId,
+          tgUserId: String(msg.from.id),
+          voice: { duration: voiceLike.duration, file_id: voiceLike.file_id },
+        });
+        if (result.kind !== "not-doctor") {
+          // Doctor path — we already replied. Skip FSM dispatch but still
+          // emit the realtime event so the inbox surfaces the message.
+          publishEventSafe(clinic.id, {
+            type: "tg.message.new",
+            payload: {
+              conversationId: recorded.conversationId,
+              chatId,
+              direction: "IN",
+              messageId: String(msg.message_id),
+              preview: "[voice]",
+              contactName: null,
+            },
+          });
+          return jsonResponse({ ok: true });
+        }
+      }
+
       const previewBody = msg.text ?? msg.contact?.phone_number ?? "";
       const contactDisplayName = (() => {
         const full = [msg.from?.first_name, msg.from?.last_name]

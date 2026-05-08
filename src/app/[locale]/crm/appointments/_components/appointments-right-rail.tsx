@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { formatMoney, type Locale } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import {
   BellIcon,
@@ -95,6 +96,8 @@ export function AppointmentsRightRail({
   onSendRemindersAll,
 }: AppointmentsRightRailProps) {
   const t = useTranslations("appointments.rail");
+  const locale = useLocale() as Locale;
+  const fmtSum = (amount: number) => formatMoney(amount, "UZS", locale);
   const doctors = useDoctors();
   const [nowMs] = React.useState(() => Date.now());
   const today = React.useMemo(() => startOfDay(new Date(nowMs)), [nowMs]);
@@ -196,8 +199,8 @@ export function AppointmentsRightRail({
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 px-1">
           <StatCell label={t("count")} value={String(count)} />
           <StatCell label={t("conv")} value={`${convPct}%`} tone="success" />
-          <StatCell label={t("revenue")} value={formatSum(revenue)} />
-          <StatCell label={t("avgCheck")} value={formatSum(avgCheck)} />
+          <StatCell label={t("revenue")} value={fmtSum(revenue)} />
+          <StatCell label={t("avgCheck")} value={fmtSum(avgCheck)} />
         </dl>
       </section>
     </div>
@@ -316,8 +319,3 @@ function startOfDay(d: Date): Date {
   return out;
 }
 
-function formatSum(amount: number): string {
-  if (!Number.isFinite(amount) || amount === 0) return "0";
-  const whole = Math.trunc(amount / 100);
-  return whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-}

@@ -25,6 +25,7 @@ import { useDoctorPanelPrefs } from "../_hooks/use-panel-prefs";
 import { AppointmentDrawer } from "../../appointments/_components/appointment-drawer";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 
+import { ActionBriefing } from "./action-briefing";
 import { KpiStrip } from "./kpi-strip";
 import { OnboardingChecklist } from "./onboarding-checklist";
 import { DoctorQueueGrid } from "./doctor-queue-grid";
@@ -197,6 +198,8 @@ export function ReceptionPageClient() {
       </div>
 
       <OnboardingChecklist />
+
+      <ActionBriefing />
 
       <KpiStrip dashboard={dashboard.data} todayRows={todayRows} />
 

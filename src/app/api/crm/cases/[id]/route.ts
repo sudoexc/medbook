@@ -12,7 +12,13 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
+import {
+  hydrateMedicalCaseForRead,
+  serializeMedicalCaseForWrite,
+} from "@/server/medical-case/cipher-fields";
+import { hydratePrescriptionListForRead } from "@/server/prescription/cipher-fields";
 import { UpdateMedicalCaseSchema } from "@/server/schemas/medical-case";
+import { recordPatientView } from "@/server/audit/patient-view";
 
 function idFromUrl(request: Request): string {
   // /.../cases/[id]
@@ -45,11 +51,32 @@ const DETAIL_INCLUDE = {
       },
     },
   },
+  // Phase 16 Wave 3 — Prescriptions live on the case detail. Folded into the
+  // existing `findUnique` so the case-detail-client doesn't need a second
+  // round-trip to render the PrescriptionsCard.
+  prescriptions: {
+    orderBy: { createdAt: "desc" as const },
+    select: {
+      id: true,
+      drugName: true,
+      dosage: true,
+      schedule: true,
+      notes: true,
+      status: true,
+      remindersEnabled: true,
+      doctorId: true,
+      createdAt: true,
+      updatedAt: true,
+      doctor: {
+        select: { id: true, nameRu: true, nameUz: true },
+      },
+    },
+  },
 } as const;
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const id = idFromUrl(request);
     const row = await prisma.medicalCase.findUnique({
       where: { id },
@@ -57,10 +84,35 @@ export const GET = createApiListHandler(
     });
     if (!row) return notFound();
 
+    // Phase 17 Wave 1 — case detail surfaces the patient's PHI; record an
+    // audit row (5-minute throttle).
+    if (ctx.kind === "TENANT") {
+      void recordPatientView({
+        prisma,
+        clinicId: ctx.clinicId,
+        viewerUserId: ctx.userId,
+        viewerRole: ctx.role,
+        patientId: row.patientId,
+        context: "case.detail",
+        contextRef: row.id,
+        ip:
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        userAgent: request.headers.get("user-agent"),
+      });
+    }
+
     // visitCount: explicit field so the frontend can label "N-th visit"
     // without re-counting the appointments array on every render.
     const visitCount = row.appointments.length;
-    return ok({ ...row, visitCount });
+    const hydrated = hydrateMedicalCaseForRead(row);
+    const hydratedPrescriptions = hydratePrescriptionListForRead(
+      row.prescriptions,
+    );
+    return ok({
+      ...hydrated,
+      prescriptions: hydratedPrescriptions,
+      visitCount,
+    });
   }
 );
 
@@ -87,7 +139,9 @@ export const PATCH = createApiHandler(
       }
     }
 
-    const data: Record<string, unknown> = { ...body };
+    const data: Record<string, unknown> = serializeMedicalCaseForWrite({
+      ...body,
+    });
 
     // Status transition side-effects on closedAt.
     if (body.status !== undefined && body.status !== before.status) {
@@ -121,9 +175,13 @@ export const PATCH = createApiHandler(
       },
     });
 
+    const beforeHydrated = hydrateMedicalCaseForRead(
+      before as unknown as { soapDraft?: string | null },
+    );
+    const afterHydrated = hydrateMedicalCaseForRead(after);
     const d = diff(
-      before as unknown as Record<string, unknown>,
-      after as unknown as Record<string, unknown>,
+      { ...(before as unknown as Record<string, unknown>), ...beforeHydrated },
+      { ...(after as unknown as Record<string, unknown>), ...afterHydrated },
     );
     await audit(request, {
       action: "medical_case.update",
@@ -132,6 +190,6 @@ export const PATCH = createApiHandler(
       meta: d,
     });
 
-    return ok(after);
+    return ok(afterHydrated);
   }
 );

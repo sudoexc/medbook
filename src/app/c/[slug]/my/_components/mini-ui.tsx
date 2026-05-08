@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { formatMoney } from "@/lib/format";
+
 /**
  * Mini-App atoms. Tiny and theme-aware — they read `--tg-*` CSS variables
  * from the shell so they look consistent in both light and dark Telegram
@@ -166,10 +168,18 @@ export function MEmpty({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function formatSum(amount: number | null | undefined, currencyLabel: string): string {
+// `amount` is in tiins (UZS minor units); see `formatMoney` in @/lib/format.
+// TODO(mini-app): thread the patient's preferredLang into formatSum so uz
+// locale grouping is honoured. The Mini App uses dict-based i18n (no
+// next-intl context), so we accept the legacy currencyLabel argument for
+// backward compatibility but rely on formatMoney for the localised suffix.
+export function formatSum(
+  amount: number | null | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _currencyLabel: string,
+): string {
   if (amount == null) return "—";
-  const formatted = new Intl.NumberFormat("ru-RU").format(amount);
-  return `${formatted} ${currencyLabel}`;
+  return formatMoney(amount, "UZS", "ru");
 }
 
 export function formatDateISO(iso: string, lang: "RU" | "UZ"): string {

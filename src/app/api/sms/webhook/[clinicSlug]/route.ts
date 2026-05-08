@@ -22,7 +22,10 @@
  */
 import { z } from "zod";
 
+import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
+import { isStopKeyword, stopReply } from "@/lib/sms-stop";
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 
@@ -191,6 +194,89 @@ export async function POST(request: Request): Promise<Response> {
       return conv.id;
     },
   );
+
+  // Phase 17 Wave 1 — SMS STOP keyword handling.
+  //
+  // We match the inbound message body against the supported keyword set
+  // (English / Russian / Uzbek). When it matches AND the sender phone
+  // resolves to one or more known patients within this clinic, we flip
+  // their `marketingOptOut` flag, audit it, and queue a confirmation SMS
+  // back to the sender. Multiple patients on the same phone — across
+  // different clinic accounts — all opt out together; the clinic-slug
+  // route already scopes us to one clinic so the "many patients" case
+  // here is just two records sharing a phone within ONE clinic.
+  if (isStopKeyword(body)) {
+    try {
+      await runWithTenant({ kind: "SYSTEM" }, async () => {
+        const normalized = from.replace(/\D/g, "");
+        if (!normalized) return;
+        const patients = await prisma.patient.findMany({
+          where: {
+            clinicId: foundClinic.id,
+            phoneNormalized: { contains: normalized },
+            marketingOptOut: false,
+          },
+          select: { id: true, preferredLang: true, phone: true },
+        });
+        if (patients.length === 0) return;
+
+        const now = new Date();
+        await prisma.patient.updateMany({
+          where: { id: { in: patients.map((p) => p.id) } },
+          data: {
+            marketingOptOut: true,
+            marketingOptOutAt: now,
+            marketingOptOutSource: "sms-stop",
+          },
+        });
+        // One audit row per affected patient — keeps per-row forensics
+        // identical to the Mini App opt-out path.
+        for (const p of patients) {
+          await audit(request, {
+            action: AUDIT_ACTION.MARKETING_OPT_OUT_CHANGED,
+            entityType: "Patient",
+            entityId: p.id,
+            meta: { source: "sms-stop", optedOut: true },
+          });
+        }
+
+        // Queue the confirmation reply back to the sender. We pick the
+        // language from the first matching patient — it's their phone, so
+        // their preferred language is the right hint. We only enqueue per
+        // patient (NotificationSend.patientId is required), so a multi-
+        // patient phone gets one reply per row — the SMS provider will
+        // dedupe identical body+recipient, and the audit trail still
+        // shows a per-patient ack.
+        const replyBody = stopReply(
+          patients[0]?.preferredLang === "UZ" ? "UZ" : "RU",
+        );
+        for (const p of patients) {
+          try {
+            await prisma.notificationSend.create({
+              data: {
+                clinicId: foundClinic.id,
+                patientId: p.id,
+                appointmentId: null,
+                templateId: null,
+                channel: "SMS",
+                recipient: p.phone || from,
+                body: replyBody,
+                scheduledFor: now,
+                status: "QUEUED",
+              } as never,
+            });
+          } catch (err) {
+            console.error(
+              "[sms:webhook] failed to queue STOP reply",
+              err,
+            );
+          }
+        }
+      });
+    } catch (err) {
+      console.error("[sms:webhook] STOP keyword handling failed", err);
+    }
+  }
 
   publishEventSafe(foundClinic.id, {
     type: "tg.message.new",

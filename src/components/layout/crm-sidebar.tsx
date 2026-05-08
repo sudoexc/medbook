@@ -11,16 +11,13 @@ import {
   CalendarDaysIcon,
   ChevronsLeftIcon,
   ClipboardListIcon,
-  DoorOpenIcon,
-  FileTextIcon,
   LayoutDashboardIcon,
-  MailIcon,
   PhoneCallIcon,
   SendIcon,
   SettingsIcon,
-  SparklesIcon,
   StethoscopeIcon,
   UsersIcon,
+  ZapIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -33,14 +30,31 @@ import {
 } from "@/lib/feature-flags"
 
 type BadgeTone = "danger" | "info" | "warning" | "success"
-/** Keys into ShellSummary.unread — drives the live badge count for each nav item. */
+/**
+ * Keys into ShellSummary.unread — drives the live badge count for each nav item.
+ *
+ * `smsEmail` is intentionally retained even though the SMS page was demoted
+ * out of the main sidebar in Phase 11 — the count is still surfaced on the
+ * Settings → SMS card and may light up future surfaces.
+ */
 type BadgeKey = "calls" | "telegram" | "smsEmail" | "notifications"
 
 /**
  * `feature` is the gate consumed by `computeVisibleNav` (Phase 9d). When set,
  * the item only renders if the clinic's plan has that boolean flag = true.
  * Items without `feature` are unconditional (Basic-tier baseline).
+ *
+ * `requiredRole` (Phase 18 W2) hides the item unless the active session has
+ * exactly that role. Currently used for ADMIN-only sub-navs (per-doctor
+ * scoreboard, financial dashboard, …). Defense-in-depth — the page server
+ * components also `notFound()` non-admins independently.
+ *
+ * `children` lets a parent item declare a static sub-menu. Visible only
+ * when the parent route segment is active (or when `children` is non-empty
+ * and the user is on a sibling of those children).
  */
+type NavRole = "ADMIN"
+
 type NavItem = {
   href: string
   /** key under crmShell.sidebarNav */
@@ -49,6 +63,8 @@ type NavItem = {
   badgeKey?: BadgeKey
   badgeTone?: BadgeTone
   feature?: "hasTelegramInbox" | "hasCallCenter" | "hasAnalyticsPro"
+  requiredRole?: NavRole
+  children?: NavItem[]
 }
 
 type NavGroup = {
@@ -57,17 +73,22 @@ type NavGroup = {
   items: NavItem[]
 }
 
+/**
+ * Phase 11 cleanup — `rooms`, `services`, `documents`, and `sms` are no longer
+ * surfaced in the main CRM sidebar. They remain reachable via deeplinks from
+ * the Settings overview (`/crm/settings`) and continue to live at their
+ * original CRM paths (`/crm/rooms`, `/crm/services`, etc.) — only the menu
+ * entry is removed, not the routes.
+ */
 export const CRM_NAV: NavGroup[] = [
   {
     items: [
       { href: "reception", labelKey: "reception", icon: LayoutDashboardIcon },
+      { href: "action-center", labelKey: "actionCenter", icon: ZapIcon },
       { href: "appointments", labelKey: "appointments", icon: ClipboardListIcon },
       { href: "calendar", labelKey: "calendar", icon: CalendarDaysIcon },
       { href: "patients", labelKey: "patients", icon: UsersIcon },
       { href: "doctors", labelKey: "doctors", icon: StethoscopeIcon },
-      { href: "rooms", labelKey: "rooms", icon: DoorOpenIcon },
-      { href: "services", labelKey: "services", icon: SparklesIcon },
-      { href: "documents", labelKey: "documents", icon: FileTextIcon },
     ],
   },
   {
@@ -90,13 +111,6 @@ export const CRM_NAV: NavGroup[] = [
         feature: "hasTelegramInbox",
       },
       {
-        href: "sms",
-        labelKey: "smsEmail",
-        icon: MailIcon,
-        badgeKey: "smsEmail",
-        badgeTone: "warning",
-      },
-      {
         href: "notifications",
         labelKey: "notifications",
         icon: BellIcon,
@@ -107,15 +121,92 @@ export const CRM_NAV: NavGroup[] = [
   },
   {
     items: [
-      { href: "analytics", labelKey: "analytics", icon: BarChart3Icon },
+      {
+        href: "analytics",
+        labelKey: "analytics",
+        icon: BarChart3Icon,
+        children: [
+          // Phase 18 W2 — ADMIN-only pro dashboards. Plan-gated by
+          // `hasAnalyticsPro` so the Basic-tier menu stays unchanged.
+          {
+            href: "analytics/cohorts",
+            labelKey: "analyticsCohorts",
+            icon: BarChart3Icon,
+            requiredRole: "ADMIN",
+            feature: "hasAnalyticsPro",
+          },
+          {
+            href: "analytics/doctors",
+            labelKey: "analyticsDoctors",
+            icon: BarChart3Icon,
+            requiredRole: "ADMIN",
+            feature: "hasAnalyticsPro",
+          },
+          {
+            href: "analytics/financial",
+            labelKey: "analyticsFinancial",
+            icon: BarChart3Icon,
+            requiredRole: "ADMIN",
+            feature: "hasAnalyticsPro",
+          },
+          {
+            href: "analytics/schedule-heatmap",
+            labelKey: "analyticsScheduleHeatmap",
+            icon: BarChart3Icon,
+            requiredRole: "ADMIN",
+            feature: "hasAnalyticsPro",
+          },
+          // Phase 18 W3 — Custom Report Builder. Same gate as the W2
+          // dashboards: ADMIN + hasAnalyticsPro plan flag.
+          {
+            href: "analytics/reports",
+            labelKey: "analyticsReports",
+            icon: BarChart3Icon,
+            requiredRole: "ADMIN",
+            feature: "hasAnalyticsPro",
+          },
+        ],
+      },
       { href: "settings", labelKey: "settings", icon: SettingsIcon },
     ],
   },
 ]
 
 /** Filter the static nav by the clinic's plan flags. Pure / DB-less. */
-export function getVisibleCrmNav(flags: FeatureFlags): NavGroup[] {
-  return computeVisibleNav(CRM_NAV, flags) as NavGroup[]
+export function getVisibleCrmNav(
+  flags: FeatureFlags,
+  role: NavRole | null = null,
+): NavGroup[] {
+  const out = computeVisibleNav(CRM_NAV, flags) as NavGroup[]
+  // Apply role-gating to items + children. `computeVisibleNav` only knows
+  // about plan flags — role is a separate axis kept here so the pure helper
+  // stays decoupled from session shape.
+  return out
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .filter((item) => roleAllows(item.requiredRole, role))
+        .map((item) =>
+          item.children
+            ? {
+                ...item,
+                children: item.children.filter((c) =>
+                  roleAllows(c.requiredRole, role) &&
+                  (!c.feature || flags[c.feature] === true),
+                ),
+              }
+            : item,
+        ),
+    }))
+    .filter((group) => group.items.length > 0)
+}
+
+function roleAllows(
+  required: NavRole | undefined,
+  current: NavRole | null,
+): boolean {
+  if (!required) return true
+  return required === current
 }
 
 const BADGE_CLASS: Record<BadgeTone, string> = {
@@ -186,11 +277,18 @@ export interface CrmSidebarProps {
    * layout — pass the resolved flags from `getFeatureFlagsForCurrentSession`.
    */
   flags?: FeatureFlags
+  /**
+   * Active session role. Drives role-gated nav children — e.g. the W2 pro
+   * dashboards under /crm/analytics/* are ADMIN-only. Pass `null` for
+   * unauthenticated / Storybook contexts; the gate stays closed.
+   */
+  role?: NavRole | null
 }
 
 export function CrmSidebar({
   brand = "Neurofax",
   flags = ENTERPRISE_FLAGS,
+  role = null,
 }: CrmSidebarProps) {
   const pathname = usePathname() ?? ""
   const params = useParams()
@@ -200,7 +298,10 @@ export function CrmSidebar({
   const { data: summary } = useShellSummary()
   const loadPercent = summary?.today.loadPercent ?? 0
   const todayCount = summary?.today.appointmentsCount ?? 0
-  const visibleNav = React.useMemo(() => getVisibleCrmNav(flags), [flags])
+  const visibleNav = React.useMemo(
+    () => getVisibleCrmNav(flags, role),
+    [flags, role],
+  )
 
   return (
     <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -235,6 +336,11 @@ export function CrmSidebar({
                 const Icon = item.icon
                 const badgeCount =
                   item.badgeKey ? summary?.unread[item.badgeKey] ?? 0 : 0
+                const visibleChildren = item.children?.filter((c) => {
+                  // Children are pre-filtered by getVisibleCrmNav; this is
+                  // a defense-in-depth no-op when called via the prod path.
+                  return true
+                }) ?? []
                 return (
                   <li key={item.href}>
                     <Link
@@ -271,6 +377,37 @@ export function CrmSidebar({
                         </span>
                       ) : null}
                     </Link>
+                    {/*
+                      Sub-nav: only render once the parent route is active so
+                      the sidebar doesn't grow taller until the user actually
+                      navigates into the section.
+                    */}
+                    {active && visibleChildren.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5 pl-7">
+                        {visibleChildren.map((child) => {
+                          const childFull = `/${locale}/crm/${child.href}`
+                          const childActive =
+                            pathname === childFull ||
+                            pathname.startsWith(childFull + "/")
+                          return (
+                            <li key={child.href}>
+                              <Link
+                                href={childFull}
+                                aria-current={childActive ? "page" : undefined}
+                                className={cn(
+                                  "block rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                                  childActive
+                                    ? "bg-sidebar-active/60 text-sidebar-active-foreground"
+                                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                )}
+                              >
+                                {tNav(child.labelKey)}
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    ) : null}
                   </li>
                 )
               })}

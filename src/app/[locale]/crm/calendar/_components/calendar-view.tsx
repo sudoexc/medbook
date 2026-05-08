@@ -30,6 +30,7 @@ import ruLocale from "@fullcalendar/core/locales/ru";
 import uzLocale from "@fullcalendar/core/locales/uz";
 
 import { cn } from "@/lib/utils";
+import { computeRescheduledSlot } from "@/lib/calendar/reschedule-math";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type {
   CabinetRef,
@@ -48,6 +49,25 @@ import {
   STATUS_COLORS,
 } from "./calendar-utils";
 
+/**
+ * Pending reschedule surfaced to the page-level confirmation modal. The
+ * `revert` closure lets the modal undo FullCalendar's optimistic move
+ * if the user cancels — keeping the UI honest without forcing a refetch.
+ */
+export type PendingReschedule = {
+  appointmentId: string;
+  patientName: string;
+  doctorName: string;
+  newStart: Date;
+  newEnd: Date;
+  newDoctorId?: string;
+  durationMin: number;
+  /** Roll back FullCalendar's optimistic visual move. */
+  revert: () => void;
+  /** Apply the move via PATCH (already wired through useConflictDetector). */
+  confirm: () => void;
+};
+
 export interface CalendarViewProps {
   filters: CalendarFilters;
   doctors: DoctorResource[];
@@ -60,6 +80,12 @@ export interface CalendarViewProps {
     time: string;
   }) => void;
   onMoved?: () => void;
+  /**
+   * Open a confirmation dialog for a drag-rescheduled appointment.
+   * If omitted, the drop is applied directly (legacy fallthrough path,
+   * kept for resize handling and any caller that hasn't wired the modal).
+   */
+  onConfirmReschedule?: (pending: PendingReschedule) => void;
 }
 
 export function CalendarViewInner({
@@ -69,10 +95,12 @@ export function CalendarViewInner({
   onEventClick,
   onEmptySlotClick,
   onMoved,
+  onConfirmReschedule,
 }: CalendarViewProps) {
   const t = useTranslations("calendar");
   const tConflict = useTranslations("calendar.conflict");
   const tChip = useTranslations("calendar.chip");
+  const tReschedule = useTranslations("calendar.reschedule");
   const locale = useLocale();
 
   const calendarRef = React.useRef<FullCalendar | null>(null);
@@ -222,35 +250,94 @@ export function CalendarViewInner({
     }
     const id = info.event.id;
     const newStart = info.event.start;
+    const oldStart = info.oldEvent.start;
+    const oldEnd = info.oldEvent.end;
     const newResourceId = info.event.getResources()[0]?.id;
-    if (!newStart) {
+    if (!newStart || !oldStart || !oldEnd) {
       info.revert();
       return;
     }
-    const newTime = hhmm(newStart);
-    const newDateIso = new Date(newStart);
-    newDateIso.setHours(0, 0, 0, 0);
 
-    conflicts.mutate({
-      id,
-      patch: {
-        date: newDateIso.toISOString(),
-        time: newTime,
-        doctorId: newResourceId,
-      },
-      onConflict: (c) => {
-        info.revert();
-        const reasonLabel = tConflictSafe(
-          tConflict,
-          c.reason,
-          c.until ?? "",
-        );
-        toast.error(reasonLabel);
-      },
-      onSuccess: () => {
-        toast.success(t("toast.moved"));
-        onMoved?.();
-      },
+    // Phase 12 Wave 3 — short-circuit obvious "in the past" drops without
+    // a server round-trip. The same guard runs in `reschedule-math` for
+    // tested coverage; we mirror the toast copy here for UX.
+    const slot = computeRescheduledSlot({
+      originalStart: oldStart,
+      originalEnd: oldEnd,
+      newStart,
+      newDoctorId: newResourceId,
+    });
+    if (!slot.ok) {
+      info.revert();
+      if (slot.reason === "in_past") {
+        toast.error(tReschedule("errorPast"));
+      }
+      return;
+    }
+
+    const performMove = () => {
+      const newTime = hhmm(newStart);
+      const newDateIso = new Date(newStart);
+      newDateIso.setHours(0, 0, 0, 0);
+      conflicts.mutate({
+        id,
+        patch: {
+          date: newDateIso.toISOString(),
+          time: newTime,
+          doctorId: newResourceId,
+        },
+        onConflict: (c) => {
+          info.revert();
+          const reasonLabel = tConflictSafe(
+            tConflict,
+            c.reason,
+            c.until ?? "",
+          );
+          toast.error(
+            c.reason === "in_past"
+              ? tReschedule("errorPast")
+              : reasonLabel,
+          );
+        },
+        onSuccess: () => {
+          toast.success(tReschedule("success"));
+          onMoved?.();
+        },
+      });
+    };
+
+    // No modal wired? Apply directly (legacy fallthrough — keeps the
+    // resize handler and any external caller honest).
+    if (!onConfirmReschedule) {
+      performMove();
+      return;
+    }
+
+    // Spec: drop → confirm → API. We hand the page a closure over the
+    // FullCalendar revert so cancellation rolls back the optimistic move.
+    const appt = (info.event.extendedProps as { appointment?: AppointmentRow })
+      .appointment;
+    const newDoctor = newResourceId
+      ? doctors.find((d) => d.id === newResourceId)
+      : undefined;
+    onConfirmReschedule({
+      appointmentId: id,
+      patientName: appt?.patient?.fullName ?? t("event.untitled"),
+      doctorName: newDoctor
+        ? locale === "uz"
+          ? newDoctor.nameUz
+          : newDoctor.nameRu
+        : appt?.doctor
+          ? locale === "uz"
+            ? appt.doctor.nameUz
+            : appt.doctor.nameRu
+          : "",
+      newStart,
+      newEnd: new Date(slot.newEndIso),
+      newDoctorId: newResourceId,
+      durationMin: slot.durationMin,
+      revert: () => info.revert(),
+      confirm: performMove,
     });
   };
 

@@ -25,6 +25,8 @@ import {
 import { CalendarRightRail } from "./calendar-right-rail";
 import { CalendarTiles } from "./calendar-tiles";
 import { CalendarLegend } from "./calendar-legend";
+import type { PendingReschedule } from "./calendar-view";
+import { RescheduleConfirmDialog } from "./reschedule-confirm-dialog";
 import { rangeForView } from "./calendar-utils";
 import "./calendar.css";
 
@@ -66,12 +68,24 @@ export function CalendarPageClient() {
     | null
   >(null);
   const [createOpen, setCreateOpen] = React.useState(false);
+  // Phase 12 Wave 3 — drag/drop reschedule pipeline:
+  // calendar-view captures the drop, computes the new slot, and hands a
+  // PendingReschedule (with its own revert/confirm closures) up to here.
+  // The dialog renders at this level so it sits above the calendar grid.
+  const [pendingReschedule, setPendingReschedule] =
+    React.useState<PendingReschedule | null>(null);
 
   const onPrev = () => setFilters({ date: shiftDateKey(filters.date, filters.view, -1) });
   const onNext = () => setFilters({ date: shiftDateKey(filters.date, filters.view, +1) });
   const onToday = () => setFilters({ date: todayKey() });
 
   const rangeLabel = defaultRangeLabel(range.from, range.to, locale);
+
+  // Soft hint shown when the entire visible range has zero appointments
+  // (after data has loaded). The grid stays interactive — drag-create still
+  // works — but the receptionist gets a clear "no bookings here yet" cue.
+  const showAllEmptyHint =
+    !apptsQ.isLoading && (apptsQ.data?.length ?? 0) === 0;
 
   return (
     <>
@@ -102,17 +116,32 @@ export function CalendarPageClient() {
                 {t("loading")}
               </div>
             ) : (
-              <CalendarView
-                filters={filters}
-                doctors={doctorsQ.data ?? []}
-                cabinets={cabinetsQ.data ?? []}
-                appointments={apptsQ.data ?? []}
-                onEventClick={(id) => setDrawerId(id)}
-                onEmptySlotClick={(info) => {
-                  setCreateSeed(info);
-                  setCreateOpen(true);
-                }}
-              />
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <CalendarView
+                  filters={filters}
+                  doctors={doctorsQ.data ?? []}
+                  cabinets={cabinetsQ.data ?? []}
+                  appointments={apptsQ.data ?? []}
+                  onEventClick={(id) => setDrawerId(id)}
+                  onEmptySlotClick={(info) => {
+                    setCreateSeed(info);
+                    setCreateOpen(true);
+                  }}
+                  onConfirmReschedule={setPendingReschedule}
+                />
+                {showAllEmptyHint ? (
+                  <div className="pointer-events-none absolute inset-x-0 top-12 z-20 mx-auto flex justify-center px-4">
+                    <div className="pointer-events-auto rounded-lg border border-dashed border-border bg-card/95 px-4 py-2 text-center text-xs text-muted-foreground shadow-sm backdrop-blur">
+                      <span className="font-medium text-foreground">
+                        {t("emptyRange.title")}
+                      </span>
+                      <span className="ml-1.5">
+                        {t("emptyRange.description")}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             )}
             <CalendarLegend />
           </div>
@@ -148,6 +177,11 @@ export function CalendarPageClient() {
         initialDoctorId={createSeed?.doctorId ?? null}
         initialDate={createSeed?.date ?? null}
         initialTime={createSeed?.time ?? null}
+      />
+
+      <RescheduleConfirmDialog
+        pending={pendingReschedule}
+        onClose={() => setPendingReschedule(null)}
       />
     </>
   );

@@ -15,9 +15,11 @@ import { usePatient } from "../_hooks/use-patient";
 import { usePatientAppointments } from "../_hooks/use-patient-appointments";
 import { useCurrentRole, canViewMedical } from "../_hooks/use-current-role";
 import { PatientHero } from "./patient-hero";
+import { PatientSummaryCard } from "./patient-summary-card";
 import { PatientInfoPanel } from "./patient-info-panel";
 import { PatientFinanceCard } from "./patient-finance-card";
 import { PatientRecommendationsCard } from "./patient-recommendations-card";
+import { PatientReferralCard } from "./patient-referral-card";
 import { PatientTimeline } from "./patient-timeline";
 import { PatientRightRail } from "./patient-right-rail";
 import { SmsDialog } from "./sms-dialog";
@@ -166,6 +168,8 @@ export function PatientCardClient({ id }: { id: string }) {
             onOpenNewAppointmentDialog={openNewAppointmentStub}
           />
 
+          <PatientSummaryCard patientId={patient.id} />
+
           <div
             role="tablist"
             aria-label={t("tabs.overview")}
@@ -208,6 +212,7 @@ export function PatientCardClient({ id }: { id: string }) {
                     appointments={appointments}
                   />
                 </div>
+                <PatientReferralCard patientId={patient.id} />
                 <PatientTimeline patientId={patient.id} />
               </div>
             </div>

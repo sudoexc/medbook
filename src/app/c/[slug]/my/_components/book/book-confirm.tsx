@@ -7,6 +7,7 @@ import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useServices } from "../../_hooks/use-services";
 import { useDoctors } from "../../_hooks/use-doctors";
 import { useBookAppointment } from "../../_hooks/use-appointments";
+import { useActiveContext } from "../../_hooks/use-active-context";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import {
@@ -39,6 +40,7 @@ export function BookConfirm() {
   const doctors = useDoctors(null);
   const book = useBookAppointment();
   const tg = useTelegramWebApp();
+  const { onBehalfOf } = useActiveContext();
 
   // Treat placeholder/dev profile values as "no profile" so the form starts
   // empty (with a UZ country-code seed for phone).
@@ -93,6 +95,7 @@ export function BookConfirm() {
         patientName: name.trim(),
         patientPhone: phone.trim(),
         lang,
+        onBehalfOf,
       });
       tg.haptic.notification("success");
       // Persist case-attach choices (if any) so the done page can render
@@ -128,6 +131,7 @@ export function BookConfirm() {
     router,
     clinicSlug,
     tg,
+    onBehalfOf,
     t.book.errorConflict,
     t.book.errorBooking,
   ]);

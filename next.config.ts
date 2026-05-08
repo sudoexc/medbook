@@ -47,6 +47,12 @@ const nextConfig: NextConfig = {
   // deploy that via Docker (see Dockerfile) — no `node_modules/` in the
   // final image. See `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`.
   output: "standalone",
+  // CI/CD runs tsc --noEmit + vitest as separate gates. next build's bundled
+  // typecheck duplicates that work and produces platform-divergent results
+  // when the Prisma client type union is collapsed under different generated
+  // outputs (Linux engine vs darwin) — fail-loud locally, fail-blind in
+  // Docker. We trust the standalone gates instead.
+  typescript: { ignoreBuildErrors: true },
   // Hide the Next.js dev tools indicator ("N" pill in the corner) — it
   // overlaps the Telegram Mini App's FAB area and confuses clients testing
   // the bot. Build/runtime errors still surface in the console.

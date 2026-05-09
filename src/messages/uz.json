@@ -1904,15 +1904,19 @@
       "loadPercent": "Yuklama",
       "bonus": "Bonus",
       "inactiveBadge": "Nofaol",
-      "statusBusy": "Qabulda",
-      "statusIdle": "Bo'sh",
+      "statusBusy": "Qabul",
+      "statusIdle": "Tushlik",
       "statusFree": "Bo'sh",
+      "statusConsult": "Konsultatsiya",
+      "statusLunch": "Tushlik",
       "cabinetN": "Kab. {cabinet}",
+      "cabinetText": "Kabinet {cabinet}",
       "loadTodayLabel": "Bugungi yuklama",
-      "revenueToday": "Bugungi daromad",
-      "appointmentsCount": "Yozilishlar",
+      "revenueToday": "Bugungi tushum",
+      "appointmentsCount": "Bugungi yozilishlar",
       "avgTime": "O'rtacha qabul vaqti",
       "minSuffix": "{min} daq.",
+      "nearSlot": "Yaqin oyna",
       "nearSlots": "Yaqin oynalar",
       "hasFreeSlots": "Bo'sh oynalar bor",
       "now": "hozir",
@@ -2029,13 +2033,19 @@
       "serviceDiagnostic": "Diagnostika"
     },
     "topRevenue": {
-      "title": "Daromad bo'yicha TOP shifokorlar",
-      "emptyPeriod": "Davr uchun ma'lumot yo'q",
-      "statsTitle": "Shifokorlar statistikasi",
-      "conversion": "Yozilishga konversiya",
-      "avgCheck": "O'rtacha chek",
-      "noShow": "No-show",
-      "repeatVisits": "Takroriy tashriflar"
+      "title": "Tushum bo'yicha TOP shifokorlar",
+      "emptyPeriod": "Davr uchun ma'lumot yo'q"
+    },
+    "statsPanel": {
+      "title": "Shifokorlar statistikasi",
+      "total": "Jami shifokorlar",
+      "onShift": "Qabuldagilar",
+      "free": "Bo'sh",
+      "onLunch": "Tushlikda",
+      "clinicLoad": "Klinika yuklamasi",
+      "avgRating": "O'rtacha reyting",
+      "ratingEmpty": "—",
+      "viewAll": "Barcha hisobotlar"
     },
     "heatmap": {
       "title": "Shifokorlar yuklamasi vaqt bo'yicha",
@@ -4107,6 +4117,93 @@
         "label": "Past tashrif bahosi",
         "title": "{patientName}: baho {score}/10 ({doctorName})",
         "body": "{commentPreview, select, , {Bemor bilan bog‘laning va tafsilotlarni so‘rang.} other{«{commentPreview}»}}"
+      }
+    },
+    "dashboard": {
+      "headerTitle": "Amallar markazi",
+      "headerSubtitle": "Klinikani real vaqt rejimida operativ boshqarish",
+      "kpi": {
+        "threatToday": "Bugun xavf ostida",
+        "threatTodayUnit": "bemor",
+        "potentialLoss": "potensial yo'qotish",
+        "potentialRevenue": "potensial daromad",
+        "unconfirmed": "Tasdiqlanmagan",
+        "unconfirmedUnit": "yozilish",
+        "freeSlots": "Bo'sh slotlar",
+        "freeSlotsUnit": "slot",
+        "noShowRisk": "No-show xavfi",
+        "noShowRiskUnit": "bemor"
+      },
+      "responseTime": {
+        "title": "O'rtacha javob vaqti",
+        "min": "daq",
+        "sec": "soniya",
+        "telegram": "Telegram",
+        "feedback": "Pood",
+        "calls": "Qo'ng'iroqlar"
+      },
+      "actionsList": {
+        "title": "Hozir nima qilish kerak",
+        "subtitle": "Maksimal natija beradigan ustuvor amallar",
+        "showCompleted": "Bajarilgan amallarni ko'rsatish",
+        "hideCompleted": "Bajarilganlarni yashirish",
+        "potentialRevenuePrefix": "+",
+        "menuLabel": "Menyu",
+        "ctaCall": "Qo'ng'iroqni boshlash",
+        "ctaFillSlots": "Slotlarni to'ldirish",
+        "ctaTelegram": "Telegramni ochish",
+        "ctaCallback": "Qayta qo'ng'iroq",
+        "ctaTransfer": "Ko'chirish",
+        "ctaOpen": "Ochish",
+        "ctaReactivation": "Ishga tushirish",
+        "priorityHigh": "Yuqori",
+        "priorityMedium": "O'rta",
+        "priorityLow": "Past",
+        "priorityCritical": "Tanqidiy",
+        "empty": "Ustuvor amallar yo'q"
+      },
+      "aiRecs": {
+        "title": "AI tavsiyalari",
+        "rec1Title": "Tasdiqlanmagan yozilishlarga e'tibor bering.",
+        "rec1Body": "{count} ta yozilishni tasdiqlash +{revenue} keltiradi.",
+        "rec2Title": "{doctorName} bo'sh slotlarini to'ldiring.",
+        "rec2Body": "Potensial daromad +{revenue}.",
+        "rec3Title": "Telegram so'rovlariga 15 daqiqa ichida javob bering.",
+        "rec3Body": "Tezkor javob konversiyani 35% ga oshiradi.",
+        "rec4Title": "Faol bo'lmagan bemorlarni qayta jalb qiling.",
+        "rec4Body": "60 kundan ortiq yozilmagan {count} bemor bor."
+      },
+      "quickActions": {
+        "title": "Tezkor amallar",
+        "telegramBroadcast": "Telegram tarqatma",
+        "startCall": "Qo'ng'iroqni boshlash",
+        "fillSlots": "Slotlarni to'ldirish",
+        "startReactivation": "Qayta jalb qilishni boshlash"
+      },
+      "todayLosses": {
+        "title": "Bugungi yo'qotishlar",
+        "emptySlots": "Bo'sh slotlar",
+        "noShowRisk": "No-show xavfi",
+        "missedRequests": "O'tkazib yuborilgan so'rovlar",
+        "missedCalls": "O'tkazib yuborilgan qo'ng'iroqlar",
+        "totalLabel": "Jami potensial yo'qotishlar"
+      },
+      "tasksQueue": {
+        "title": "Bugungi vazifalar navbati",
+        "showAll": "Barcha vazifalarni ko'rsatish",
+        "progress": "{done}/{total}"
+      },
+      "doctorsLoad": {
+        "title": "Bugungi shifokorlar yuklamasi",
+        "openSchedule": "Shifokorlar jadvalini ochish",
+        "statusOverloaded": "Haddan tashqari yuklangan",
+        "statusHigh": "Yuqori",
+        "statusNormal": "Norma",
+        "statusFree": "Bo'sh",
+        "ratio": "{booked} / {capacity}"
+      },
+      "todayCount": {
+        "label": "yozilish bugun"
       }
     }
   },

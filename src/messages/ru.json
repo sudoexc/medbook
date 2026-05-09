@@ -1904,15 +1904,19 @@
       "loadPercent": "Загрузка",
       "bonus": "Премия",
       "inactiveBadge": "Неактивен",
-      "statusBusy": "На приёме",
-      "statusIdle": "Простаивает",
+      "statusBusy": "Приём",
+      "statusIdle": "Обед",
       "statusFree": "Свободен",
+      "statusConsult": "Консультация",
+      "statusLunch": "Обед",
       "cabinetN": "Каб. {cabinet}",
+      "cabinetText": "Кабинет {cabinet}",
       "loadTodayLabel": "Загрузка сегодня",
-      "revenueToday": "Доход сегодня",
-      "appointmentsCount": "Записей",
-      "avgTime": "Ср. время приёма",
+      "revenueToday": "Выручка сегодня",
+      "appointmentsCount": "Записей сегодня",
+      "avgTime": "Среднее время приёма",
       "minSuffix": "{min} мин",
+      "nearSlot": "Ближайшее окно",
       "nearSlots": "Ближайшие окна",
       "hasFreeSlots": "Есть свободные окна",
       "now": "сейчас",
@@ -2029,13 +2033,19 @@
       "serviceDiagnostic": "Диагностика"
     },
     "topRevenue": {
-      "title": "Топ врачей по доходу",
-      "emptyPeriod": "Нет данных за период",
-      "statsTitle": "Статистика врачей",
-      "conversion": "Конверсия в запись",
-      "avgCheck": "Средний чек",
-      "noShow": "No-show",
-      "repeatVisits": "Повторные визиты"
+      "title": "Топ врачей по выручке",
+      "emptyPeriod": "Нет данных за период"
+    },
+    "statsPanel": {
+      "title": "Статистика врачей",
+      "total": "Всего врачей",
+      "onShift": "Ведут приём",
+      "free": "Свободны",
+      "onLunch": "На обеде",
+      "clinicLoad": "Загрузка клиники",
+      "avgRating": "Средний рейтинг",
+      "ratingEmpty": "—",
+      "viewAll": "Все отчёты"
     },
     "heatmap": {
       "title": "Загрузка врачей по времени",
@@ -4107,6 +4117,93 @@
         "label": "Низкая оценка визита",
         "title": "{patientName}: оценка {score}/10 ({doctorName})",
         "body": "{commentPreview, select, , {Свяжитесь с пациентом и узнайте подробности.} other{«{commentPreview}»}}"
+      }
+    },
+    "dashboard": {
+      "headerTitle": "Центр действий",
+      "headerSubtitle": "Оперативное управление клиникой в реальном времени",
+      "kpi": {
+        "threatToday": "Под угрозой сегодня",
+        "threatTodayUnit": "пациентов",
+        "potentialLoss": "потенциальная потеря",
+        "potentialRevenue": "потенциальная выручка",
+        "unconfirmed": "Неподтвержденные",
+        "unconfirmedUnit": "записей",
+        "freeSlots": "Свободные слоты",
+        "freeSlotsUnit": "слотов",
+        "noShowRisk": "No-show risk",
+        "noShowRiskUnit": "пациентов"
+      },
+      "responseTime": {
+        "title": "Среднее время ответа",
+        "min": "мин",
+        "sec": "сек",
+        "telegram": "Telegram",
+        "feedback": "Поод",
+        "calls": "Звонки"
+      },
+      "actionsList": {
+        "title": "Что делать прямо сейчас",
+        "subtitle": "Приоритетные действия, которые принесут максимальный результат",
+        "showCompleted": "Показать выполненные действия",
+        "hideCompleted": "Скрыть выполненные",
+        "potentialRevenuePrefix": "+",
+        "menuLabel": "Меню",
+        "ctaCall": "Начать обзвон",
+        "ctaFillSlots": "Заполнить слоты",
+        "ctaTelegram": "Открыть Telegram",
+        "ctaCallback": "Перезвонить",
+        "ctaTransfer": "Перенести",
+        "ctaOpen": "Открыть",
+        "ctaReactivation": "Запустить",
+        "priorityHigh": "Высокий",
+        "priorityMedium": "Средний",
+        "priorityLow": "Низкий",
+        "priorityCritical": "Критично",
+        "empty": "Нет приоритетных действий"
+      },
+      "aiRecs": {
+        "title": "Рекомендации AI",
+        "rec1Title": "Сфокусируйтесь на неподтвержденных записях.",
+        "rec1Body": "Подтверждение {count} записей принесёт +{revenue}.",
+        "rec2Title": "Заполните свободные слоты у {doctorName}.",
+        "rec2Body": "Потенциальная выручка +{revenue}.",
+        "rec3Title": "Ответьте на Telegram-заявки в течение 15 минут.",
+        "rec3Body": "Быстрый ответ увеличивает конверсию на 35%.",
+        "rec4Title": "Запустите реактивацию неактивных пациентов.",
+        "rec4Body": "Есть {count} пациентов без записи более 60 дней."
+      },
+      "quickActions": {
+        "title": "Быстрые действия",
+        "telegramBroadcast": "Рассылка Telegram",
+        "startCall": "Начать обзвон",
+        "fillSlots": "Заполнить слоты",
+        "startReactivation": "Запустить реактивацию"
+      },
+      "todayLosses": {
+        "title": "Потери сегодня",
+        "emptySlots": "Пустые слоты",
+        "noShowRisk": "No-show риск",
+        "missedRequests": "Пропущенные заявки",
+        "missedCalls": "Пропущенные звонки",
+        "totalLabel": "Всего потенциальных потерь"
+      },
+      "tasksQueue": {
+        "title": "Очередь задач на сегодня",
+        "showAll": "Показать все задачи",
+        "progress": "{done}/{total}"
+      },
+      "doctorsLoad": {
+        "title": "Загрузка врачей на сегодня",
+        "openSchedule": "Открыть расписание врачей",
+        "statusOverloaded": "Перегружен",
+        "statusHigh": "Высокая",
+        "statusNormal": "Норма",
+        "statusFree": "Свободно",
+        "ratio": "{booked} / {capacity}"
+      },
+      "todayCount": {
+        "label": "записей сегодня"
       }
     }
   },

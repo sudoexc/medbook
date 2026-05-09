@@ -33,6 +33,7 @@ import { DoctorsKpiTabs, type DoctorsTabKey } from "./doctors-kpi-tabs";
 import { DoctorsHeatmap } from "./doctors-heatmap";
 import { DoctorsAiRecommendations } from "./doctors-ai-recommendations";
 import { DoctorsTopRevenue } from "./doctors-top-revenue";
+import { DoctorsStatsPanel } from "./doctors-stats-panel";
 import { NewDoctorDialog } from "./new-doctor-dialog";
 
 const DAY_CAPACITY = 10;
@@ -217,6 +218,18 @@ export function DoctorsPageClient() {
 
   const periodCapacity = capacityForPeriod(effectivePeriod);
 
+  const clinicLoadPct = React.useMemo(() => {
+    let totalBooked = 0;
+    for (const a of periodAggByDoctor.values()) totalBooked += a.total;
+    const cap = allDoctors.length * periodCapacity;
+    return cap > 0 ? Math.round((totalBooked / cap) * 100) : 0;
+  }, [periodAggByDoctor, allDoctors.length, periodCapacity]);
+
+  const liveStatuses = React.useMemo(
+    () => enriched.map((e) => e.status),
+    [enriched],
+  );
+
   const isEmpty = !listQuery.isLoading && allDoctors.length === 0;
 
   return (
@@ -316,7 +329,7 @@ export function DoctorsPageClient() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1fr_1fr]">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr]">
             <DoctorsHeatmap
               doctors={allDoctors}
               appointments={todayAppts}
@@ -331,6 +344,11 @@ export function DoctorsPageClient() {
               aggByDoctor={periodAggByDoctor}
               period={effectivePeriod}
               onPeriodChange={(p) => setFilter("period", p)}
+            />
+            <DoctorsStatsPanel
+              doctors={allDoctors}
+              statuses={liveStatuses}
+              clinicLoadPct={clinicLoadPct}
             />
           </div>
         </PageContainer>

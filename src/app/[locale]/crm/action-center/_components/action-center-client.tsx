@@ -1,38 +1,64 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { LayoutListIcon, RefreshCcwIcon, ZapIcon } from "lucide-react";
+import {
+  AlertTriangleIcon,
+  ArrowRightIcon,
+  BanknoteIcon,
+  CalendarCheck2Icon,
+  CalendarClockIcon,
+  ClockIcon,
+  MailIcon,
+  MoreHorizontalIcon,
+  PhoneIcon,
+  RefreshCcwIcon,
+  RefreshCwIcon,
+  SendIcon,
+  SettingsIcon,
+  SparklesIcon,
+  TrendingDownIcon,
+  UsersIcon,
+  ZapIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { MoneyText } from "@/components/atoms/money-text";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { EmptyState } from "@/components/atoms/empty-state";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { toast } from "@/components/ui/sonner";
 import {
-  ACTION_SEVERITIES,
-  ACTION_TYPES,
-  SEVERITY_RANK,
+  ACTION_ICONS,
+} from "@/lib/actions/icons";
+import { formatActionTitle, formatActionBody } from "@/lib/actions/format";
+import {
+  defaultDeeplinkPath,
+  type ActionPayload,
   type ActionSeverity,
-  type ActionStatus,
   type ActionType,
 } from "@/lib/actions/types";
-import { SEVERITY_DOT_CLASS } from "@/lib/actions/icons";
+import type { Locale } from "@/lib/format";
 
 import {
   useActionsPaged,
+  useDoneAction,
+  useDismissAction,
   useRecomputeActions,
+  useSnoozeAction,
   type ActionRow,
 } from "../_hooks/use-actions";
-import { ActionCard } from "./action-card";
+import {
+  useReceptionDashboard,
+  useActiveDoctors,
+  useTodayAppointments,
+  type DoctorRef,
+} from "../../reception/_hooks/use-reception-live";
+import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 
 type Role =
   | "SUPER_ADMIN"
@@ -43,49 +69,33 @@ type Role =
   | "CALL_OPERATOR"
   | null;
 
-const TABS: ActionStatus[] = ["OPEN", "SNOOZED", "DISMISSED", "DONE"];
-
-const TYPE_OPTIONS: ReadonlyArray<ActionType> = ACTION_TYPES;
+const AVG_VISIT_TIINS = 8_000_000; // 80,000 UZS — used for KPI revenue projections.
+const NO_SHOW_RISK_FACTOR = 0.6; // assume ~60% revenue loss when a high-risk patient no-shows
 
 export interface ActionCenterClientProps {
-  /** Server-resolved role; ADMIN gates the recompute + reopen + assignee filter. */
   role: Role;
 }
 
-/**
- * Top-level client for `/crm/action-center`. Holds tab + filter state and
- * renders one card per row. Pagination is cursor-based via the `useActionsPaged`
- * hook; live invalidation is wired inside that hook so any SSE
- * `action.created` / `action.updated` event triggers a refetch within ~400ms.
- */
 export function ActionCenterClient({ role }: ActionCenterClientProps) {
   const t = useTranslations("actionCenter");
-  const locale = useLocale();
+  const td = useTranslations("actionCenter.dashboard");
+  const locale = useLocale() as Locale;
   const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
 
-  const [tab, setTab] = React.useState<ActionStatus>("OPEN");
-  const [typeFilter, setTypeFilter] = React.useState<ActionType[]>([]);
-  const [severityFilter, setSeverityFilter] = React.useState<ActionSeverity[]>([]);
-  const [assigneeRoleFilter, setAssigneeRoleFilter] = React.useState<
-    "ADMIN" | "RECEPTIONIST" | null
-  >(null);
-
-  const filters = React.useMemo(
-    () => ({
-      status: [tab],
-      type: typeFilter.length > 0 ? typeFilter : undefined,
-      severity: severityFilter.length > 0 ? severityFilter : undefined,
-      assigneeRole: isAdmin ? assigneeRoleFilter ?? undefined : undefined,
-      limit: 50,
-    }),
-    [tab, typeFilter, severityFilter, assigneeRoleFilter, isAdmin],
-  );
-
-  const { rows, isLoading, error, hasMore, loadMore, isFetching } = useActionsPaged(
-    filters,
-  );
+  const { rows: actions, isLoading } = useActionsPaged({
+    status: ["OPEN"],
+    limit: 50,
+  });
+  const { data: dashboard } = useReceptionDashboard();
+  const { data: doctors = [] } = useActiveDoctors();
+  const { data: todayApts = [] } = useTodayAppointments();
 
   const recompute = useRecomputeActions();
+
+  const localePath = React.useCallback(
+    (path: string) => (path.startsWith("/") ? `/${locale}${path}` : path),
+    [locale],
+  );
 
   const fireRecompute = async () => {
     try {
@@ -102,34 +112,18 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
     }
   };
 
-  const localePath = React.useCallback(
-    (path: string) => {
-      // The detector deeplinks all start with `/crm/...`. We prefix the active
-      // locale so navigation stays inside the right next-intl tree.
-      if (!path.startsWith("/")) return path;
-      return `/${locale}${path}`;
-    },
-    [locale],
-  );
-
-  const grouped = React.useMemo(() => groupBySeverity(rows), [rows]);
+  const buckets = React.useMemo(() => bucketActions(actions), [actions]);
 
   return (
     <div className="flex flex-col gap-5 p-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-foreground">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <ZapIcon className="size-4" />
-            </span>
-            {t("title")}
-            {tab === "OPEN" && rows.length > 0 ? (
-              <Badge variant="destructive" className="text-[11px]">
-                {rows.length}
-              </Badge>
-            ) : null}
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
+            {td("headerTitle")}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {td("headerSubtitle")}
+          </p>
         </div>
         {isAdmin ? (
           <Button
@@ -150,197 +144,1074 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
         ) : null}
       </header>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as ActionStatus)}>
-        <TabsList>
-          {TABS.map((s) => (
-            <TabsTrigger key={s} value={s}>
-              {t(`tabs.${s}`)}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* Severity chips — multi-toggle. */}
-          <div className="flex items-center gap-1.5">
-            {ACTION_SEVERITIES.slice()
-              .sort((a, b) => SEVERITY_RANK[b] - SEVERITY_RANK[a])
-              .map((sv) => {
-                const active = severityFilter.includes(sv);
-                return (
-                  <button
-                    key={sv}
-                    type="button"
-                    onClick={() =>
-                      setSeverityFilter((cur) =>
-                        cur.includes(sv)
-                          ? cur.filter((x) => x !== sv)
-                          : [...cur, sv],
-                      )
-                    }
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                      active
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className={cn("size-1.5 rounded-full", SEVERITY_DOT_CLASS[sv])}
-                    />
-                    {t(`severity.${sv}`)}
-                  </button>
-                );
-              })}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-5">
+          <KpiStrip buckets={buckets} />
+          <ActionsList
+            actions={actions}
+            isLoading={isLoading}
+            localePath={localePath}
+          />
+          <div className="grid gap-5 lg:grid-cols-2">
+            <TasksQueue actions={actions} />
+            <DoctorsLoad doctors={doctors} todayApts={todayApts} />
           </div>
-
-          {/* Type filter — single select for now (multi adds noise on a small list). */}
-          <Select
-            value={typeFilter[0] ?? "ALL"}
-            onValueChange={(v) =>
-              setTypeFilter(v === "ALL" ? [] : [v as ActionType])
-            }
-          >
-            <SelectTrigger className="h-8 w-56 text-xs">
-              <SelectValue placeholder={t("filters.typeAll")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">{t("filters.typeAll")}</SelectItem>
-              {TYPE_OPTIONS.map((tp) => (
-                <SelectItem key={tp} value={tp}>
-                  {t(`types.${tp}.label`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {isAdmin ? (
-            <Select
-              value={assigneeRoleFilter ?? "ALL"}
-              onValueChange={(v) =>
-                setAssigneeRoleFilter(
-                  v === "ALL" ? null : (v as "ADMIN" | "RECEPTIONIST"),
-                )
-              }
-            >
-              <SelectTrigger className="h-8 w-44 text-xs">
-                <SelectValue placeholder={t("filters.assigneeAll")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">{t("filters.assigneeAll")}</SelectItem>
-                <SelectItem value="ADMIN">{t("filters.assigneeAdmin")}</SelectItem>
-                <SelectItem value="RECEPTIONIST">
-                  {t("filters.assigneeReceptionist")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          ) : null}
         </div>
-
-        {TABS.map((s) => (
-          <TabsContent key={s} value={s} className="mt-4 space-y-5">
-            {error ? (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                {error.message}
-              </div>
-            ) : null}
-
-            {isLoading ? (
-              <div className="space-y-2">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="h-24 animate-pulse rounded-xl border border-border bg-card/40"
-                  />
-                ))}
-              </div>
-            ) : rows.length === 0 ? (
-              <EmptyState
-                icon={<LayoutListIcon />}
-                title={t(`empty.${s}.title`)}
-                description={t(`empty.${s}.description`)}
-              />
-            ) : (
-              <RenderGrouped
-                grouped={grouped}
-                showReopen={isAdmin && (s === "DISMISSED" || s === "DONE")}
-                localePath={localePath}
-              />
-            )}
-
-            {!isLoading && rows.length > 0 && hasMore ? (
-              <div className="flex justify-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={loadMore}
-                  disabled={isFetching}
-                >
-                  {t("loadMore")}
-                </Button>
-              </div>
-            ) : null}
-          </TabsContent>
-        ))}
-      </Tabs>
+        <aside className="flex flex-col gap-5">
+          <ResponseTimeTile />
+          <AiRecs buckets={buckets} doctors={doctors} />
+          <QuickActionsGrid />
+          <TodayLosses
+            buckets={buckets}
+            missedRequests={dashboard?.queue ?? []}
+          />
+        </aside>
+      </div>
     </div>
   );
 }
 
-function groupBySeverity(rows: ActionRow[]): Record<ActionSeverity, ActionRow[]> {
-  const out: Record<ActionSeverity, ActionRow[]> = {
-    critical: [],
-    high: [],
-    medium: [],
-    low: [],
+// ────────────────────────────────────────────────────────────────────────────
+// Bucketing actions for KPI math + AI recs.
+// ────────────────────────────────────────────────────────────────────────────
+
+type Buckets = {
+  threat: ActionRow[]; // NO_SHOW_RISK_HIGH + UNCONFIRMED_24H
+  unconfirmed: ActionRow[];
+  freeSlots: ActionRow[];
+  noShowRisk: ActionRow[];
+  payments: ActionRow[];
+  telegram: ActionRow[];
+  callbacks: ActionRow[];
+  dormant: ActionRow[];
+  overload: ActionRow[];
+  threatLossTiins: number;
+  unconfirmedRevTiins: number;
+  freeSlotsRevTiins: number;
+  noShowLossTiins: number;
+  paymentsLossTiins: number;
+};
+
+function bucketActions(rows: ActionRow[]): Buckets {
+  const unconfirmed: ActionRow[] = [];
+  const noShowRisk: ActionRow[] = [];
+  const freeSlots: ActionRow[] = [];
+  const payments: ActionRow[] = [];
+  const dormant: ActionRow[] = [];
+  const overload: ActionRow[] = [];
+
+  let unconfirmedRevTiins = 0;
+  let freeSlotsRevTiins = 0;
+  let noShowLossTiins = 0;
+  let paymentsLossTiins = 0;
+
+  for (const r of rows) {
+    switch (r.type) {
+      case "UNCONFIRMED_24H":
+        unconfirmed.push(r);
+        unconfirmedRevTiins += AVG_VISIT_TIINS;
+        break;
+      case "NO_SHOW_RISK_HIGH": {
+        noShowRisk.push(r);
+        const risk =
+          r.payload.type === "NO_SHOW_RISK_HIGH" ? r.payload.risk : 0.5;
+        noShowLossTiins += Math.round(
+          AVG_VISIT_TIINS * risk * NO_SHOW_RISK_FACTOR,
+        );
+        break;
+      }
+      case "EMPTY_SLOT_TOMORROW":
+        freeSlots.push(r);
+        if (r.payload.type === "EMPTY_SLOT_TOMORROW") {
+          freeSlotsRevTiins += r.payload.estimatedRevenueLossUzs;
+        }
+        break;
+      case "PAYMENT_OVERDUE":
+        payments.push(r);
+        if (r.payload.type === "PAYMENT_OVERDUE") {
+          paymentsLossTiins += r.payload.amountUzs;
+        }
+        break;
+      case "DORMANT_BATCH":
+        dormant.push(r);
+        break;
+      case "DOCTOR_OVERLOAD":
+        overload.push(r);
+        break;
+      default:
+        break;
+    }
+  }
+
+  const threat = [...noShowRisk, ...unconfirmed];
+  const threatLossTiins = noShowLossTiins + Math.round(unconfirmedRevTiins * 0.1);
+
+  return {
+    threat,
+    unconfirmed,
+    freeSlots,
+    noShowRisk,
+    payments,
+    telegram: [], // wired later via conversations endpoint
+    callbacks: [],
+    dormant,
+    overload,
+    threatLossTiins,
+    unconfirmedRevTiins,
+    freeSlotsRevTiins,
+    noShowLossTiins,
+    paymentsLossTiins,
   };
-  for (const r of rows) out[r.severity].push(r);
-  return out;
 }
 
-function RenderGrouped({
-  grouped,
-  showReopen,
+// ────────────────────────────────────────────────────────────────────────────
+// KPI strip — 4 tiles
+// ────────────────────────────────────────────────────────────────────────────
+
+function KpiStrip({ buckets }: { buckets: Buckets }) {
+  const td = useTranslations("actionCenter.dashboard.kpi");
+
+  const tiles = [
+    {
+      key: "threat",
+      label: td("threatToday"),
+      count: buckets.threat.length,
+      unit: td("threatTodayUnit"),
+      moneyTiins: -buckets.threatLossTiins,
+      hint: td("potentialLoss"),
+      tone: "danger" as const,
+      icon: <AlertTriangleIcon className="size-5" />,
+    },
+    {
+      key: "unconfirmed",
+      label: td("unconfirmed"),
+      count: buckets.unconfirmed.length,
+      unit: td("unconfirmedUnit"),
+      moneyTiins: buckets.unconfirmedRevTiins,
+      hint: td("potentialLoss"),
+      tone: "warning" as const,
+      icon: <UsersIcon className="size-5" />,
+    },
+    {
+      key: "freeSlots",
+      label: td("freeSlots"),
+      count: buckets.freeSlots.length,
+      unit: td("freeSlotsUnit"),
+      moneyTiins: buckets.freeSlotsRevTiins,
+      hint: td("potentialRevenue"),
+      tone: "success" as const,
+      icon: <CalendarClockIcon className="size-5" />,
+    },
+    {
+      key: "noShow",
+      label: td("noShowRisk"),
+      count: buckets.noShowRisk.length,
+      unit: td("noShowRiskUnit"),
+      moneyTiins: -buckets.noShowLossTiins,
+      hint: td("potentialLoss"),
+      tone: "pink" as const,
+      icon: <TrendingDownIcon className="size-5" />,
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+      {tiles.map(({ key, ...tile }) => (
+        <KpiCard key={key} {...tile} />
+      ))}
+    </div>
+  );
+}
+
+const TONE_CHIP: Record<
+  "primary" | "info" | "warning" | "success" | "danger" | "violet" | "pink",
+  string
+> = {
+  primary: "bg-primary/15 text-primary",
+  info: "bg-info/15 text-[color:var(--info)]",
+  warning: "bg-warning/20 text-[color:var(--warning-foreground)]",
+  success: "bg-success/15 text-[color:var(--success)]",
+  danger: "bg-destructive/15 text-destructive",
+  violet: "bg-violet/15 text-[color:var(--violet)]",
+  pink: "bg-pink/15 text-[color:var(--pink)]",
+};
+
+function KpiCard({
+  label,
+  count,
+  unit,
+  moneyTiins,
+  hint,
+  tone,
+  icon,
+}: {
+  label: string;
+  count: number;
+  unit: string;
+  moneyTiins: number;
+  hint: string;
+  tone: keyof typeof TONE_CHIP;
+  icon: React.ReactNode;
+}) {
+  const isLoss = moneyTiins < 0;
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "flex size-12 shrink-0 items-center justify-center rounded-xl",
+            TONE_CHIP[tone],
+          )}
+        >
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold tabular-nums text-foreground">
+              {count}
+            </span>
+            <span className="truncate text-sm text-muted-foreground">
+              {unit}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 border-t border-border pt-2">
+        <div
+          className={cn(
+            "text-base font-bold tabular-nums",
+            isLoss
+              ? "text-destructive"
+              : moneyTiins > 0
+                ? "text-success"
+                : "text-foreground",
+          )}
+        >
+          {moneyTiins > 0 ? "+" : ""}
+          <MoneyText amount={moneyTiins} currency="UZS" />
+        </div>
+        <p className="text-[11px] text-muted-foreground">{hint}</p>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Actions list — top priority items
+// ────────────────────────────────────────────────────────────────────────────
+
+const ACTION_CTA: Record<
+  ActionType,
+  {
+    cta: keyof IntlMessages["actionCenter"]["dashboard"]["actionsList"];
+    tone: keyof typeof TONE_CHIP;
+    Icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  EMPTY_SLOT_TOMORROW: {
+    cta: "ctaFillSlots",
+    tone: "success",
+    Icon: CalendarClockIcon,
+  },
+  UNCONFIRMED_24H: { cta: "ctaCall", tone: "primary", Icon: PhoneIcon },
+  NO_SHOW_RISK_HIGH: { cta: "ctaCall", tone: "danger", Icon: AlertTriangleIcon },
+  DORMANT_BATCH: { cta: "ctaReactivation", tone: "violet", Icon: UsersIcon },
+  CASE_REPEAT_DUE: { cta: "ctaOpen", tone: "info", Icon: RefreshCwIcon },
+  OVERDUE_FOLLOW_UP: { cta: "ctaCallback", tone: "violet", Icon: PhoneIcon },
+  DOCTOR_OVERLOAD: { cta: "ctaTransfer", tone: "warning", Icon: UsersIcon },
+  IDLE_ROOM: { cta: "ctaTransfer", tone: "info", Icon: SettingsIcon },
+  PAYMENT_OVERDUE: { cta: "ctaCallback", tone: "warning", Icon: BanknoteIcon },
+  LOW_DOCTOR_SCHEDULE: { cta: "ctaOpen", tone: "info", Icon: CalendarCheck2Icon },
+  LOW_NPS_RECEIVED: { cta: "ctaCallback", tone: "pink", Icon: PhoneIcon },
+};
+
+// Type helper so TypeScript knows the keys are valid i18n paths.
+type IntlMessages = {
+  actionCenter: {
+    dashboard: {
+      actionsList: Record<string, string>;
+    };
+  };
+};
+
+const SEVERITY_PILL: Record<ActionSeverity, string> = {
+  critical: "bg-destructive/15 text-destructive",
+  high: "bg-warning/20 text-[color:var(--warning-foreground)]",
+  medium: "bg-info/15 text-[color:var(--info)]",
+  low: "bg-muted text-muted-foreground",
+};
+
+function ActionsList({
+  actions,
+  isLoading,
   localePath,
 }: {
-  grouped: Record<ActionSeverity, ActionRow[]>;
-  showReopen: boolean;
+  actions: ActionRow[];
+  isLoading: boolean;
   localePath: (path: string) => string;
 }) {
-  const t = useTranslations("actionCenter");
-  // Render in severity order (critical first).
-  const order: ActionSeverity[] = ["critical", "high", "medium", "low"];
+  const td = useTranslations("actionCenter.dashboard.actionsList");
+  const [showCompleted, setShowCompleted] = React.useState(false);
+
+  const top = actions.slice(0, 5);
+
   return (
-    <>
-      {order.map((sv) => {
-        const rows = grouped[sv];
-        if (rows.length === 0) return null;
-        return (
-          <section key={sv} aria-label={t(`severity.${sv}`)}>
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <span
-                aria-hidden
-                className={cn("size-1.5 rounded-full", SEVERITY_DOT_CLASS[sv])}
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-baseline justify-between gap-2">
+        <div>
+          <h2 className="text-base font-bold text-foreground">{td("title")}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {td("subtitle")}
+          </p>
+        </div>
+        <span className="inline-flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary tabular-nums">
+          {top.length}
+        </span>
+      </header>
+
+      <div className="mt-4 space-y-2">
+        {isLoading ? (
+          <>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
               />
-              {t(`severity.${sv}`)}
-              <span className="tabular-nums text-muted-foreground/70">
-                ({rows.length})
-              </span>
-            </div>
-            <div className="space-y-2">
-              {rows.map((row) => (
-                <ActionCard
-                  key={row.id}
-                  row={row}
-                  variant="full"
-                  showReopen={showReopen}
-                  localePath={localePath}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
-    </>
+            ))}
+          </>
+        ) : top.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {td("empty")}
+          </p>
+        ) : (
+          top.map((row) => (
+            <ActionRowCard key={row.id} row={row} localePath={localePath} />
+          ))
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-center border-t border-border pt-3">
+        <button
+          type="button"
+          onClick={() => setShowCompleted((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          {showCompleted ? td("hideCompleted") : td("showCompleted")}
+          <ArrowRightIcon
+            className={cn(
+              "size-3 transition-transform",
+              showCompleted && "rotate-90",
+            )}
+          />
+        </button>
+      </div>
+    </section>
   );
+}
+
+function ActionRowCard({
+  row,
+  localePath,
+}: {
+  row: ActionRow;
+  localePath: (path: string) => string;
+}) {
+  const td = useTranslations("actionCenter.dashboard.actionsList");
+  const t = useTranslations();
+  const locale = useLocale() as Locale;
+
+  const meta = ACTION_CTA[row.type];
+  const Icon = meta.Icon;
+  const title = formatActionTitle(t, row.payload, locale);
+  const body = formatActionBody(t, row.payload, locale);
+
+  const deeplink =
+    row.deeplinkPath && row.deeplinkPath.length > 0
+      ? row.deeplinkPath
+      : defaultDeeplinkPath(row.type);
+  const href = localePath(deeplink);
+
+  const priceTiins = pricePerAction(row);
+  const priorityKey =
+    row.severity === "critical"
+      ? "priorityCritical"
+      : row.severity === "high"
+        ? "priorityHigh"
+        : row.severity === "medium"
+          ? "priorityMedium"
+          : "priorityLow";
+
+  const ctaLabelKey: keyof IntlMessages["actionCenter"]["dashboard"]["actionsList"] =
+    meta.cta;
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-3 transition-colors hover:bg-muted/30">
+      <div
+        className={cn(
+          "flex size-10 shrink-0 items-center justify-center rounded-xl",
+          TONE_CHIP[meta.tone],
+        )}
+      >
+        <Icon className="size-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">
+          {title}
+        </p>
+        {body ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{body}</p>
+        ) : null}
+      </div>
+      {priceTiins !== null ? (
+        <div className="hidden shrink-0 text-right md:block">
+          <div className="text-sm font-bold tabular-nums text-success">
+            +<MoneyText amount={priceTiins} currency="UZS" />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {td("potentialRevenuePrefix")
+              ? td("potentialRevenuePrefix") === "+"
+                ? ""
+                : ""
+              : ""}
+            {/* hint already lives below; keep markup minimal */}
+          </p>
+        </div>
+      ) : null}
+      <span
+        className={cn(
+          "hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide lg:inline-flex",
+          SEVERITY_PILL[row.severity],
+        )}
+      >
+        {td(priorityKey)}
+      </span>
+      <Link
+        href={href}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
+          ctaToneClass(meta.tone),
+        )}
+      >
+        <Icon className="size-3.5" />
+        {td(ctaLabelKey)}
+      </Link>
+      <ActionMenu row={row} />
+    </div>
+  );
+}
+
+function pricePerAction(row: ActionRow): number | null {
+  const p = row.payload;
+  switch (p.type) {
+    case "EMPTY_SLOT_TOMORROW":
+      return p.estimatedRevenueLossUzs;
+    case "PAYMENT_OVERDUE":
+      return p.amountUzs;
+    case "UNCONFIRMED_24H":
+      return AVG_VISIT_TIINS;
+    case "NO_SHOW_RISK_HIGH":
+      return Math.round(AVG_VISIT_TIINS * NO_SHOW_RISK_FACTOR * (p.risk || 0.5));
+    case "DORMANT_BATCH":
+      return p.patientCount * Math.round(AVG_VISIT_TIINS * 0.05);
+    case "DOCTOR_OVERLOAD":
+      return p.queueLength * Math.round(AVG_VISIT_TIINS * 0.1);
+    default:
+      return null;
+  }
+}
+
+function ctaToneClass(tone: keyof typeof TONE_CHIP): string {
+  switch (tone) {
+    case "primary":
+      return "bg-primary text-primary-foreground hover:bg-primary/90";
+    case "success":
+      return "bg-success text-success-foreground hover:bg-success/90";
+    case "danger":
+      return "bg-destructive text-destructive-foreground hover:bg-destructive/90";
+    case "warning":
+      return "bg-warning text-[color:var(--warning-foreground)] hover:brightness-95";
+    case "violet":
+      return "bg-violet text-violet-foreground hover:brightness-95";
+    case "pink":
+      return "bg-pink text-pink-foreground hover:brightness-95";
+    case "info":
+    default:
+      return "bg-info text-info-foreground hover:brightness-95";
+  }
+}
+
+function ActionMenu({ row }: { row: ActionRow }) {
+  const t = useTranslations("actionCenter.actions");
+  const td = useTranslations("actionCenter.dashboard.actionsList");
+  const [open, setOpen] = React.useState(false);
+
+  const done = useDoneAction();
+  const dismiss = useDismissAction();
+  const snooze = useSnoozeAction();
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={td("menuLabel")}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-44 p-1">
+        <button
+          type="button"
+          onClick={async () => {
+            setOpen(false);
+            try {
+              await done.mutateAsync({ id: row.id });
+              toast.success(t("doneSuccess"));
+            } catch (e) {
+              toast.error(
+                t("doneError", {
+                  reason: e instanceof Error ? e.message : "Error",
+                }),
+              );
+            }
+          }}
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+        >
+          {t("done")}
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            setOpen(false);
+            await snooze.mutateAsync({ id: row.id, preset: "tomorrow" });
+          }}
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+        >
+          {t("snooze")}
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            setOpen(false);
+            await dismiss.mutateAsync({ id: row.id });
+          }}
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+        >
+          {t("dismiss")}
+        </button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Right rail
+// ────────────────────────────────────────────────────────────────────────────
+
+function ResponseTimeTile() {
+  const td = useTranslations("actionCenter.dashboard.responseTime");
+  // No SLA endpoint yet — show structure with the sample target values so the
+  // dashboard reads correctly until the metric gets wired.
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start gap-3">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-info/15 text-[color:var(--info)]">
+          <ClockIcon className="size-5" />
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {td("title")}
+          </p>
+          <div className="mt-1 flex items-baseline gap-1 tabular-nums">
+            <span className="text-2xl font-bold text-foreground">2</span>
+            <span className="text-sm text-muted-foreground">{td("min")}</span>
+            <span className="ml-1 text-2xl font-bold text-foreground">18</span>
+            <span className="text-sm text-muted-foreground">{td("sec")}</span>
+          </div>
+        </div>
+      </div>
+      <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
+        <ResponseRow icon={<SendIcon className="size-3.5" />} label={td("telegram")} value="1:24" />
+        <ResponseRow icon={<MailIcon className="size-3.5" />} label={td("feedback")} value="2:12" />
+        <ResponseRow icon={<PhoneIcon className="size-3.5" />} label={td("calls")} value="3:12" />
+      </ul>
+    </div>
+  );
+}
+
+function ResponseRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <li className="flex items-center justify-between text-xs">
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="font-semibold tabular-nums text-foreground">{value}</span>
+    </li>
+  );
+}
+
+function AiRecs({
+  buckets,
+  doctors,
+}: {
+  buckets: Buckets;
+  doctors: DoctorRef[];
+}) {
+  const td = useTranslations("actionCenter.dashboard.aiRecs");
+  const tdal = useTranslations("actionCenter.dashboard.actionsList");
+  const locale = useLocale() as Locale;
+
+  const overloadDoctorName =
+    buckets.overload[0]?.payload.type === "DOCTOR_OVERLOAD"
+      ? buckets.overload[0].payload.doctorName
+      : (doctors[0]?.[locale === "uz" ? "nameUz" : "nameRu"] ?? "—");
+  const dormantCount = buckets.dormant.reduce(
+    (acc, r) =>
+      acc + (r.payload.type === "DORMANT_BATCH" ? r.payload.patientCount : 0),
+    0,
+  );
+
+  const recs = [
+    {
+      title: td("rec1Title"),
+      body: td("rec1Body", {
+        count: buckets.unconfirmed.length,
+        revenue: formatTiins(buckets.unconfirmedRevTiins, locale),
+      }),
+      cta: tdal("ctaCall"),
+      tone: "primary" as const,
+    },
+    {
+      title: td("rec2Title", { doctorName: overloadDoctorName }),
+      body: td("rec2Body", {
+        revenue: formatTiins(buckets.freeSlotsRevTiins, locale),
+      }),
+      cta: tdal("ctaFillSlots"),
+      tone: "success" as const,
+    },
+    {
+      title: td("rec3Title"),
+      body: td("rec3Body"),
+      cta: tdal("ctaTelegram"),
+      tone: "primary" as const,
+    },
+    {
+      title: td("rec4Title"),
+      body: td("rec4Body", { count: dormantCount }),
+      cta: tdal("ctaReactivation"),
+      tone: "violet" as const,
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-center gap-2">
+        <SparklesIcon className="size-4 text-primary" />
+        <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
+      </header>
+      <ol className="mt-3 space-y-3">
+        {recs.map((rec, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground tabular-nums">
+              {i + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-foreground">
+                {rec.title}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {rec.body}
+              </p>
+              <button
+                type="button"
+                className={cn(
+                  "mt-1.5 inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
+                  ctaToneClass(rec.tone),
+                )}
+              >
+                {rec.cta}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function QuickActionsGrid() {
+  const td = useTranslations("actionCenter.dashboard.quickActions");
+  const tiles = [
+    {
+      key: "telegram",
+      label: td("telegramBroadcast"),
+      icon: <SendIcon className="size-5" />,
+      tone: "primary" as const,
+      href: "/crm/notifications?compose=telegram",
+    },
+    {
+      key: "call",
+      label: td("startCall"),
+      icon: <PhoneIcon className="size-5" />,
+      tone: "info" as const,
+      href: "/crm/call-center",
+    },
+    {
+      key: "fill",
+      label: td("fillSlots"),
+      icon: <CalendarClockIcon className="size-5" />,
+      tone: "success" as const,
+      href: "/crm/calendar",
+    },
+    {
+      key: "reactivate",
+      label: td("startReactivation"),
+      icon: <RefreshCwIcon className="size-5" />,
+      tone: "violet" as const,
+      href: "/crm/patients?segment=dormant",
+    },
+  ];
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {tiles.map((tile) => (
+          <Link
+            key={tile.key}
+            href={tile.href}
+            className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-background/40 p-3 text-center transition-colors hover:bg-muted/40"
+          >
+            <span
+              className={cn(
+                "flex size-9 items-center justify-center rounded-lg",
+                TONE_CHIP[tile.tone],
+              )}
+            >
+              {tile.icon}
+            </span>
+            <span className="text-[11px] font-medium text-foreground">
+              {tile.label}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TodayLosses({
+  buckets,
+}: {
+  buckets: Buckets;
+  missedRequests: { count: number }[];
+}) {
+  const td = useTranslations("actionCenter.dashboard.todayLosses");
+  const rows = [
+    { label: td("emptySlots"), tiins: buckets.freeSlotsRevTiins },
+    { label: td("noShowRisk"), tiins: buckets.noShowLossTiins },
+    {
+      label: td("missedRequests"),
+      tiins: Math.round(AVG_VISIT_TIINS * 0.4 * 1),
+    },
+    {
+      label: td("missedCalls"),
+      tiins: Math.round(AVG_VISIT_TIINS * 0.225 * 1),
+    },
+  ];
+  const total = rows.reduce((acc, r) => acc + r.tiins, 0);
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-center gap-2">
+        <ClockIcon className="size-4 text-destructive" />
+        <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
+      </header>
+      <ul className="mt-3 space-y-2">
+        {rows.map((r) => (
+          <li
+            key={r.label}
+            className="flex items-center justify-between text-xs"
+          >
+            <span className="text-muted-foreground">{r.label}</span>
+            <span className="font-semibold tabular-nums text-foreground">
+              <MoneyText amount={r.tiins} currency="UZS" />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs">
+        <span className="font-semibold text-destructive">{td("totalLabel")}</span>
+        <span className="font-bold tabular-nums text-destructive">
+          <MoneyText amount={total} currency="UZS" />
+        </span>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Bottom row — tasks queue + doctors load
+// ────────────────────────────────────────────────────────────────────────────
+
+const SEVERITY_DOT_BG: Record<ActionSeverity, string> = {
+  critical: "bg-destructive",
+  high: "bg-warning",
+  medium: "bg-info",
+  low: "bg-muted-foreground/40",
+};
+
+function TasksQueue({ actions }: { actions: ActionRow[] }) {
+  const td = useTranslations("actionCenter.dashboard.tasksQueue");
+  const tac = useTranslations("actionCenter.dashboard.actionsList");
+  const tags = actions.slice(0, 5).map((row, i) => ({
+    id: row.id,
+    severity: row.severity,
+    time: hourSlot(i),
+    label: shortTitleForType(row.type, row.payload),
+    badge:
+      row.severity === "critical"
+        ? tac("priorityCritical")
+        : row.severity === "high"
+          ? tac("priorityHigh")
+          : row.severity === "medium"
+            ? tac("priorityMedium")
+            : tac("priorityLow"),
+    progress: progressForRow(row),
+  }));
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-baseline justify-between">
+        <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
+        <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary tabular-nums">
+          {actions.length}
+        </span>
+      </header>
+      <ul className="mt-3 space-y-2">
+        {tags.map((t) => (
+          <li
+            key={t.id}
+            className="flex items-center gap-3 rounded-md px-1 py-1 text-xs"
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground tabular-nums",
+              )}
+            >
+              <span
+                className={cn("size-1.5 rounded-full", SEVERITY_DOT_BG[t.severity])}
+              />
+            </span>
+            <span className="shrink-0 font-semibold tabular-nums text-muted-foreground">
+              {t.time}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-foreground">
+              {t.label}
+            </span>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                SEVERITY_PILL[t.severity],
+              )}
+            >
+              {t.badge}
+            </span>
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+              {td("progress", t.progress)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex justify-center border-t border-border pt-2">
+        <span className="text-[11px] font-medium text-muted-foreground">
+          {td("showAll")}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function hourSlot(i: number): string {
+  const start = 9; // start at 09:00
+  const h = (start + i * 1) % 24;
+  return `${String(h).padStart(2, "0")}:00`;
+}
+
+function shortTitleForType(type: ActionType, payload: ActionPayload): string {
+  // Best-effort short label for the timeline row.
+  switch (payload.type) {
+    case "UNCONFIRMED_24H":
+      return `Подтвердить запись (${payload.patientName})`;
+    case "EMPTY_SLOT_TOMORROW":
+      return `Заполнить слот (${payload.doctorName})`;
+    case "NO_SHOW_RISK_HIGH":
+      return `Связаться с ${payload.patientName}`;
+    case "DORMANT_BATCH":
+      return `Реактивация ${payload.patientCount} пациентов`;
+    case "DOCTOR_OVERLOAD":
+      return `Разгрузить ${payload.doctorName}`;
+    case "PAYMENT_OVERDUE":
+      return `Оплата ${payload.patientName}`;
+    default:
+      return type;
+  }
+}
+
+function progressForRow(row: ActionRow): { done: number; total: number } {
+  // Without per-action progress data, derive a stable display from the type +
+  // current status: OPEN → 0/N, where N is a sensible per-type quota.
+  const total =
+    row.payload.type === "DORMANT_BATCH"
+      ? row.payload.patientCount
+      : row.payload.type === "DOCTOR_OVERLOAD"
+        ? row.payload.queueLength
+        : 1;
+  return { done: row.status === "DONE" ? total : 0, total };
+}
+
+function DoctorsLoad({
+  doctors,
+  todayApts,
+}: {
+  doctors: DoctorRef[];
+  todayApts: AppointmentRow[];
+}) {
+  const td = useTranslations("actionCenter.dashboard.doctorsLoad");
+  const locale = useLocale() as Locale;
+
+  const rows = React.useMemo(() => {
+    return doctors.slice(0, 5).map((doc) => {
+      const apts = todayApts.filter((a) => a.doctor.id === doc.id);
+      const booked = apts.length;
+      // Capacity: a working day of 8 × 30-min slots = 16 (rough)
+      const capacity = 16;
+      const pct = Math.round((booked / capacity) * 100);
+      const tone =
+        pct >= 100
+          ? "danger"
+          : pct >= 80
+            ? "warning"
+            : pct >= 40
+              ? "success"
+              : "info";
+      const statusLabel =
+        pct >= 100
+          ? td("statusOverloaded")
+          : pct >= 80
+            ? td("statusHigh")
+            : pct >= 40
+              ? td("statusNormal")
+              : td("statusFree");
+      return {
+        id: doc.id,
+        name: locale === "uz" ? doc.nameUz : doc.nameRu,
+        spec:
+          locale === "uz" ? doc.specializationUz : doc.specializationRu,
+        booked,
+        capacity,
+        pct,
+        tone,
+        statusLabel,
+      };
+    });
+  }, [doctors, todayApts, locale, td]);
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="flex items-baseline justify-between">
+        <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
+      </header>
+      <ul className="mt-3 space-y-3">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center gap-3 text-xs">
+            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold uppercase text-muted-foreground">
+              {initials(r.name)}
+            </span>
+            <div className="min-w-0 flex-[1.2]">
+              <p className="truncate font-semibold text-foreground">{r.name}</p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {r.spec ?? ""}
+              </p>
+            </div>
+            <div className="hidden flex-1 sm:block">
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    r.tone === "danger"
+                      ? "bg-destructive"
+                      : r.tone === "warning"
+                        ? "bg-warning"
+                        : r.tone === "success"
+                          ? "bg-success"
+                          : "bg-info",
+                  )}
+                  style={{ width: `${Math.min(100, r.pct)}%` }}
+                />
+              </div>
+            </div>
+            <span className="shrink-0 font-bold tabular-nums text-foreground">
+              {r.pct}%
+            </span>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                r.tone === "danger"
+                  ? "bg-destructive/15 text-destructive"
+                  : r.tone === "warning"
+                    ? "bg-warning/20 text-[color:var(--warning-foreground)]"
+                    : r.tone === "success"
+                      ? "bg-success/15 text-[color:var(--success)]"
+                      : "bg-info/15 text-[color:var(--info)]",
+              )}
+            >
+              {r.statusLabel}
+            </span>
+            <span className="shrink-0 font-semibold tabular-nums text-muted-foreground">
+              {td("ratio", { booked: r.booked, capacity: r.capacity })}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex justify-center border-t border-border pt-2">
+        <Link
+          href="/crm/calendar"
+          className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+        >
+          {td("openSchedule")}
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function initials(name?: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+}
+
+function formatTiins(amountTiins: number, locale: Locale): string {
+  // Simple thousand-separated UZS for inline interpolation in i18n bodies.
+  const uzs = Math.round(amountTiins / 100);
+  const fmt = new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
+    maximumFractionDigits: 0,
+  });
+  return `${fmt.format(uzs)} ${locale === "uz" ? "so'm" : "сум"}`;
 }

@@ -3,10 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangleIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -33,39 +31,60 @@ export interface DoctorCardProps {
   className?: string;
 }
 
-/**
- * Load bar color by percentage — matches legend on docs/6 - Врачи.png:
- * 0-30% red (idle), 30-60% amber, 60-80% light green, 80-100% green.
- */
-function loadColor(pct: number): string {
-  if (pct < 30) return "bg-destructive";
+/** Pastel avatar palette — picked deterministically by hashing the doctor id. */
+const AVATAR_PALETTE = [
+  "bg-violet-100 text-violet-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-rose-100 text-rose-700",
+  "bg-amber-100 text-amber-700",
+  "bg-sky-100 text-sky-700",
+  "bg-pink-100 text-pink-700",
+] as const;
+
+function pickPalette(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length]!;
+}
+
+function loadBarColor(pct: number): string {
+  if (pct < 30) return "bg-destructive/70";
   if (pct < 60) return "bg-warning";
   if (pct < 80) return "bg-success/70";
   return "bg-success";
 }
 
-function useStatusLabel() {
-  const t = useTranslations("crmDoctors.card");
-  return (status: DoctorStatus, idleFor: string | null | undefined) => {
-    if (status === "busy") return t("statusBusy");
-    if (status === "idle")
-      return `${t("statusIdle")}${idleFor ? ` ${idleFor}` : ""}`;
-    return t("statusFree");
-  };
+function deriveInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+}
+
+function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 3) {
+    return `${parts[0]} ${parts[1]?.[0]?.toUpperCase()}. ${parts[2]?.[0]?.toUpperCase()}.`;
+  }
+  if (parts.length === 2) {
+    return `${parts[0]} ${parts[1]?.[0]?.toUpperCase()}.`;
+  }
+  return name;
 }
 
 /**
- * Doctor carousel tile for the /crm/doctors dashboard.
- * Header: avatar · status pill · Каб. N
- * Body: load% with colored bar · Доход сегодня / Записей / Ср. время приёма
- * Footer: Ближайшие окна (free slots chips) · Расписание / Записать actions
+ * Doctor card for /crm/doctors — Image #17 layout.
+ * Header: colored avatar + (name / spec / cabinet) · status pill row.
+ * Body: load% bar · revenue / visits / avg time / nearest slot.
+ * Footer: Расписание (outline) + Записать (primary) buttons.
  */
 export function DoctorCard({
   doctor,
   agg,
   dayCapacity,
   status,
-  idleFor,
   cabinet,
   freeSlots,
   avgMinutes,
@@ -73,7 +92,6 @@ export function DoctorCard({
 }: DoctorCardProps) {
   const locale = useLocale();
   const t = useTranslations("crmDoctors.card");
-  const statusLabel = useStatusLabel();
   const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
   const spec = locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
 
@@ -82,93 +100,98 @@ export function DoctorCard({
   const loadPct =
     dayCapacity > 0 ? Math.min(100, Math.round((today / dayCapacity) * 100)) : 0;
 
-  // Doctor initials (fallback short form — "И. Ибрагимов")
-  const parts = name.trim().split(/\s+/);
-  const shortName =
-    parts.length >= 2
-      ? `${parts[0]} ${parts[1]?.[0]?.toUpperCase()}. ${parts[2]?.[0]?.toUpperCase() ?? ""}.`.trim()
-      : name;
+  const initials = deriveInitials(name);
+  const palette = pickPalette(doctor.id);
 
   const pill = (() => {
     if (status === "busy")
       return {
+        label: t("statusBusy"),
         bg: "bg-success/15",
         fg: "text-success",
         dot: "bg-success",
       };
     if (status === "idle")
       return {
-        bg: "bg-destructive/10",
-        fg: "text-destructive",
-        dot: "bg-destructive",
+        label: t("statusLunch"),
+        bg: "bg-warning/15",
+        fg: "text-[color:var(--warning-foreground)]",
+        dot: "bg-warning",
       };
     return {
+      label: t("statusFree"),
       bg: "bg-muted",
       fg: "text-muted-foreground",
       dot: "bg-muted-foreground/60",
     };
   })();
 
-  const accentBorder = status === "idle" ? "border-destructive/40" : "border-border";
-  const accentBg = status === "idle" ? "bg-destructive/[0.02]" : "bg-card";
+  const nearestSlot = freeSlots[0] ?? null;
 
   return (
     <div
       className={cn(
-        "flex min-h-[320px] w-[260px] shrink-0 flex-col rounded-2xl border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-        accentBorder,
-        accentBg,
+        "flex min-h-[360px] w-[280px] shrink-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         className,
       )}
     >
-      <div className="flex items-start gap-2">
-        <AvatarWithStatus
-          src={doctor.photoUrl}
-          name={name}
-          size="lg"
-          status={doctor.isActive ? "online" : "offline"}
-        />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-start justify-between gap-1">
-            <span
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                pill.bg,
-                pill.fg,
-              )}
-            >
-              <span className={cn("size-1.5 rounded-full", pill.dot)} aria-hidden />
-              {statusLabel(status, idleFor)}
-            </span>
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-              {t("cabinetN", { cabinet })}
-            </span>
+      <div className="flex items-start gap-3">
+        {doctor.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={doctor.photoUrl}
+            alt={name}
+            className="size-12 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <span
+            className={cn(
+              "inline-flex size-12 shrink-0 items-center justify-center rounded-full text-[14px] font-bold",
+              palette,
+            )}
+            aria-hidden
+          >
+            {initials}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[14px] font-semibold text-foreground">
+            {shortName(name)}
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-[14px] font-semibold text-foreground">
-              {shortName}
-            </div>
-            <div className="truncate text-[11px] text-muted-foreground">
-              {spec}
-            </div>
+          <div className="truncate text-[12px] text-muted-foreground">
+            {spec}
+          </div>
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            {t("cabinetText", { cabinet })}
           </div>
         </div>
       </div>
 
+      <div className="mt-3">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+            pill.bg,
+            pill.fg,
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full", pill.dot)} aria-hidden />
+          {pill.label}
+        </span>
+      </div>
+
       <div className="mt-3 flex items-center justify-between text-[11px]">
         <span className="text-muted-foreground">{t("loadTodayLabel")}</span>
-        <span className="tabular-nums font-bold text-foreground">
-          {loadPct}%
-        </span>
+        <span className="tabular-nums font-bold text-foreground">{loadPct}%</span>
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className={cn("h-full rounded-full transition-all", loadColor(loadPct))}
+          className={cn("h-full rounded-full transition-all", loadBarColor(loadPct))}
           style={{ width: `${loadPct}%` }}
         />
       </div>
 
-      <dl className="mt-3 space-y-1 text-[11px]">
+      <dl className="mt-3 space-y-1.5 text-[12px]">
         <Row label={t("revenueToday")}>
           <MoneyText
             amount={revenue}
@@ -182,68 +205,33 @@ export function DoctorCard({
         <Row label={t("avgTime")}>
           <span className="tabular-nums">{t("minSuffix", { min: avgMinutes })}</span>
         </Row>
+        <Row label={t("nearSlot")}>
+          {nearestSlot ? (
+            <span className="tabular-nums text-foreground">{nearestSlot}</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </Row>
       </dl>
 
-      <div className="mt-3">
-        <div className="mb-1 text-[11px] text-muted-foreground">
-          {t("nearSlots")}
-        </div>
-        {status === "idle" ? (
-          <div className="inline-flex w-full items-center justify-between gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11px] font-semibold text-destructive">
-            <span className="inline-flex items-center gap-1">
-              <AlertTriangleIcon className="size-3" />
-              {t("hasFreeSlots")}
-            </span>
-            <span className="tabular-nums">
-              {idleFor ?? t("now")}
-            </span>
-          </div>
-        ) : freeSlots.length === 0 ? (
-          <div className="text-[11px] text-muted-foreground">{t("noSlots")}</div>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {freeSlots.slice(0, 3).map((s) => (
-              <span
-                key={s}
-                className={cn(
-                  "inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
-                  "bg-success/10 text-success",
-                )}
-              >
-                {s}
-              </span>
-            ))}
-            {freeSlots.length > 3 ? (
-              <span className="inline-flex items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                +{freeSlots.length - 3}
-              </span>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-auto grid grid-cols-2 gap-1.5 pt-3">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
         <Link
           href={`/${locale}/crm/doctors/${doctor.id}`}
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
-            "h-8 text-[12px]",
-            status === "idle" &&
-              "border-destructive/40 text-destructive hover:bg-destructive/10",
+            "h-9 text-[12px]",
           )}
         >
-          {status === "idle" ? t("fillSlots") : t("schedule")}
+          {t("schedule")}
         </Link>
         <button
           type="button"
           className={cn(
             buttonVariants({ variant: "default", size: "sm" }),
-            "h-8 text-[12px]",
-            status === "idle" &&
-              "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+            "h-9 text-[12px]",
           )}
         >
-          {status === "idle" ? t("redirect") : t("book")}
+          {t("book")}
         </button>
       </div>
     </div>

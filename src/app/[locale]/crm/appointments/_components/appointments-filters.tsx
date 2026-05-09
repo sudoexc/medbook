@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { SearchIcon, XIcon } from "lucide-react";
+import { BookmarkIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -313,12 +313,22 @@ export function AppointmentsFilters({
         <span>{t("filters.onlyUnpaid")}</span>
       </label>
 
-      {hasAnyFilter ? (
-        <Button variant="ghost" size="sm" onClick={onClear} className="ml-auto">
-          <XIcon className="size-4" />
-          {t("filters.clear")}
+      <div className="ml-auto flex items-center gap-1">
+        {hasAnyFilter ? (
+          <Button variant="ghost" size="sm" onClick={onClear}>
+            <XIcon className="size-4" />
+            {t("filters.clear")}
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" type="button">
+          <SlidersHorizontalIcon className="size-4" />
+          {t("filters.more")}
         </Button>
-      ) : null}
+        <Button variant="ghost" size="sm" type="button">
+          <BookmarkIcon className="size-4" />
+          {t("filters.save")}
+        </Button>
+      </div>
     </div>
   );
 }

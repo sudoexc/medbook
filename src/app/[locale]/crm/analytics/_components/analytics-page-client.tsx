@@ -4,6 +4,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations, useLocale } from "next-intl";
+import { CalendarIcon, DownloadIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 import { PageContainer } from "@/components/molecules/page-container";
@@ -20,55 +21,44 @@ import type {
 
 // Recharts is large (~90KB min+gzip). Keep it out of the base CRM bundle —
 // only fetched when the user opens /crm/analytics and the data resolves.
-const AnalyticsCharts = dynamic(
-  () => import("./analytics-charts").then((m) => m.AnalyticsCharts),
+const AnalyticsTopRows = dynamic(
+  () => import("./analytics-charts").then((m) => m.AnalyticsTopRows),
   {
     ssr: false,
     loading: () => (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-64 w-full" />
-        ))}
-      </div>
-    ),
-  },
-);
-
-// Phase 8a — conversion-funnel KPI cards. Pulled in via the same dynamic
-// boundary as AnalyticsCharts (also recharts-heavy for sparklines).
-const FunnelCards = dynamic(
-  () => import("./funnel-cards").then((m) => m.FunnelCards),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-40 w-full" />
-        ))}
-      </div>
-    ),
-  },
-);
-
-// MedicalCase metrics — KPIs + complaint bar + duration histogram. Same
-// dynamic boundary so recharts stays out of the base bundle.
-const CasesSection = dynamic(
-  () => import("./cases-section").then((m) => m.CasesSection),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-6 w-40" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
+            <Skeleton key={i} className="h-56 w-full rounded-2xl" />
           ))}
         </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {[0, 1].map((i) => (
-            <Skeleton key={i} className="h-64 w-full" />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-56 w-full rounded-2xl" />
           ))}
         </div>
+      </>
+    ),
+  },
+);
+
+const PatientJourneyStrip = dynamic(
+  () => import("./cases-section").then((m) => m.PatientJourneyStrip),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-40 w-full rounded-2xl" />,
+  },
+);
+
+const AnalyticsBottomRow = dynamic(
+  () => import("./funnel-cards").then((m) => m.AnalyticsBottomRow),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-56 w-full rounded-2xl" />
+        ))}
       </div>
     ),
   },
@@ -101,12 +91,29 @@ function fetchCases(period: Period): Promise<CasesAnalyticsResponse> {
   });
 }
 
+const REASON_KEYS = [
+  "patientForgot",
+  "noTransport",
+  "wrongTime",
+  "feltBetter",
+  "noConfirm",
+  "personalReasons",
+  "wrongDoctor",
+  "longWait",
+  "weather",
+  "other",
+] as const;
+
 export function AnalyticsPageClient() {
   const t = useTranslations("analyticsDashboard");
   const tFunnels = useTranslations("analytics.funnels");
-  const tCases = useTranslations("analytics.cases");
+  const tJourney = useTranslations("analyticsDashboard.journey");
+  const tReasons = useTranslations("analyticsDashboard.noShowReasons");
+  const tNoShowTable = useTranslations("analyticsDashboard.noShowTable");
+  const tSummary = useTranslations("analyticsDashboard.summary");
+  const tAxis = useTranslations("analyticsDashboard.axis");
   const locale = useLocale();
-  const [period, setPeriod] = React.useState<Period>("month");
+  const [period, setPeriod] = React.useState<Period>("week");
 
   const q = useQuery({
     queryKey: ["analytics", period],
@@ -114,16 +121,12 @@ export function AnalyticsPageClient() {
     staleTime: 60_000,
   });
 
-  // Funnels live behind their own endpoint so the heavier joins don't slow
-  // down the main dashboard render. Both queries share the period state.
   const qFunnels = useQuery({
     queryKey: ["analytics-funnels", period],
     queryFn: () => fetchFunnels(period),
     staleTime: 60_000,
   });
 
-  // MedicalCase metrics — also a separate endpoint to keep this dashboard's
-  // round trips parallelizable.
   const qCases = useQuery({
     queryKey: ["analytics-cases", period],
     queryFn: () => fetchCases(period),
@@ -134,24 +137,54 @@ export function AnalyticsPageClient() {
   const funnels = qFunnels.data;
   const cases = qCases.data;
 
+  const reasonLabels = React.useMemo(
+    () => REASON_KEYS.map((k) => tReasons(k)),
+    [tReasons],
+  );
+
   return (
     <PageContainer>
       <SectionHeader
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              aria-label={t("openCalendar")}
+              className="h-8 w-8"
+            >
+              <CalendarIcon className="size-4" />
+            </Button>
             <PeriodTabs value={period} onChange={setPeriod} />
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              className="h-8 gap-1.5 text-xs"
+            >
+              <DownloadIcon className="size-3.5" />
+              {t("downloadReport")}
+            </Button>
           </div>
         }
       />
 
       {q.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-64 w-full" />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-56 w-full rounded-2xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-56 w-full rounded-2xl" />
+            ))}
+          </div>
+        </>
       ) : q.isError ? (
         <EmptyState
           title={t("errorTitle")}
@@ -166,7 +199,7 @@ export function AnalyticsPageClient() {
         <EmptyState title={t("empty")} description={t("emptyHint")} />
       ) : (
         <>
-          <AnalyticsCharts
+          <AnalyticsTopRows
             data={data}
             locale={locale === "uz" ? "uz" : "ru"}
             labels={{
@@ -177,72 +210,66 @@ export function AnalyticsPageClient() {
               topServices: t("sections.topServices"),
               sources: t("sections.sources"),
               ltv: t("sections.ltv"),
+              apptUnit: tAxis("appointments"),
+              avgLtvLabel: tSummary("averageLtv"),
+              totalCount: (count) => tSummary("totalCount", { count }),
+              totalAll: (count) => tSummary("totalAll", { count }),
+              viewAllDoctors: (count) =>
+                tSummary("viewAllDoctors", { count }),
+              viewAllServices: (count) =>
+                tSummary("viewAllServices", { count }),
+              deltaPp: (value) => tSummary("deltaPp", { value }),
             }}
           />
 
           {qCases.isError ? null : !cases ? (
-            <div className="flex flex-col gap-4">
-              <Skeleton className="h-6 w-40" />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {[0, 1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-24 w-full" />
-                ))}
-              </div>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {[0, 1].map((i) => (
-                  <Skeleton key={i} className="h-64 w-full" />
-                ))}
-              </div>
-            </div>
+            <Skeleton className="h-40 w-full rounded-2xl" />
           ) : (
-            <CasesSection
-              data={cases}
+            <PatientJourneyStrip
+              cases={cases}
+              analytics={data}
               locale={locale === "uz" ? "uz" : "ru"}
               labels={{
-                sectionTitle: tCases("sectionTitle"),
-                kpiOpen: tCases("kpiOpen"),
-                kpiRepeat: tCases("kpiRepeat"),
-                kpiDuration: tCases("kpiDuration"),
-                kpiAvgRevenue: tCases("kpiAvgRevenue"),
-                pct: (v) => tCases("pct", { value: v }),
-                days: (v) => tCases("days", { value: v }),
-                topComplaintsTitle: tCases("topComplaintsTitle"),
-                durationTitle: tCases("durationTitle"),
-                durationBucketLabel: (b) => tCases(`bucket.${b}`),
-                complaintsEmpty: tCases("complaintsEmpty"),
+                sectionTitle: tJourney("title"),
+                newPatients: tJourney("newPatients"),
+                firstConsult: tJourney("firstConsult"),
+                repeatVisits: tJourney("repeatVisits"),
+                repeatPct: tJourney("repeatPct"),
+                avgCheck: tJourney("avgCheck"),
+                revenue: tJourney("revenue"),
+                deltaPp: (value) => tSummary("deltaPp", { value }),
               }}
             />
           )}
 
           {qFunnels.isError ? null : !funnels ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-40 w-full" />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-56 w-full rounded-2xl" />
               ))}
             </div>
           ) : (
-            <FunnelCards
-              data={funnels}
+            <AnalyticsBottomRow
+              funnels={funnels}
+              analytics={data}
               locale={locale === "uz" ? "uz" : "ru"}
               labels={{
                 tgTitle: tFunnels("tgTitle"),
                 callTitle: tFunnels("callTitle"),
                 noShowTitle: tFunnels("noShowTitle"),
                 waitTimeTitle: tFunnels("waitTimeTitle"),
-                rate: tFunnels("rate"),
-                converted: tFunnels("converted"),
-                of: tFunnels("of"),
-                sparkTooltipDate: tFunnels("sparkTooltipDate"),
-                sparkTooltipRate: tFunnels("sparkTooltipRate"),
-                noShowDoctorsTab: tFunnels("noShowDoctorsTab"),
-                noShowServicesTab: tFunnels("noShowServicesTab"),
-                noShowEmpty: tFunnels("noShowEmpty"),
-                waitTimeEmpty: tFunnels("waitTimeEmpty"),
+                clinicLoadTitle: t("sections.clinicLoad"),
+                deltaPp: (value) => tSummary("deltaPp", { value }),
                 waitColumnDoctor: tFunnels("waitColumnDoctor"),
                 waitColumnAvg: tFunnels("waitColumnAvg"),
                 waitColumnSamples: tFunnels("waitColumnSamples"),
                 seconds: tFunnels("seconds"),
                 minutes: tFunnels("minutes"),
+                waitTimeEmpty: tFunnels("waitTimeEmpty"),
+                noShowReasonHeader: tNoShowTable("reason"),
+                noShowCountHeader: tNoShowTable("count"),
+                noShowShareHeader: tNoShowTable("share"),
+                reasonLabels,
                 pickName: (row) =>
                   locale === "uz" && row.nameUz ? row.nameUz : row.name,
               }}

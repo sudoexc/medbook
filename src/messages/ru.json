@@ -452,6 +452,9 @@
     "export": "Экспорт CSV",
     "loadMore": "Показать ещё",
     "loading": "Загрузка…",
+    "pagination": {
+      "range": "Записей {shown} из {total}"
+    },
     "columns": {
       "select": "Выбрать",
       "time": "Время",
@@ -524,6 +527,8 @@
       "channelAll": "Все каналы",
       "onlyUnpaid": "Только неоплаченные",
       "clear": "Сбросить",
+      "more": "Фильтры",
+      "save": "Сохранить",
       "dateMode": {
         "today": "Сегодня",
         "week": "7 дней",
@@ -533,11 +538,17 @@
     },
     "tiles": {
       "all": "Все записи",
-      "needsAttention": "Сейчас важно",
-      "soon": "Скоро приём",
+      "needsAttention": "Срочные",
+      "soon": "Скоро",
       "unconfirmed": "Не подтверждены",
       "late": "Опоздания",
-      "arrived": "Пришли"
+      "arrived": "Прибыли",
+      "allHint": "+{count} за сегодня",
+      "needsAttentionHint": "Требуют действий",
+      "soonHint": "В ближайший час",
+      "unconfirmedHint": "Нужно подтвердить",
+      "lateHint": "От 5 до 15 мин",
+      "arrivedHint": "Готовы к приёму"
     },
     "kpiStrip": {
       "ariaLabel": "Быстрые фильтры",
@@ -649,22 +660,32 @@
       "remindersStub": "Рассылка появится вместе с уведомлениями",
       "exportCsv": "Экспорт CSV",
       "freeSlots": "Свободные слоты сегодня",
+      "freeSlotsUpdated": "Обновлено {min} мин назад",
+      "freeSlotsBook": "Записать",
+      "freeSlotsShowAll": "Показать все ({count}) →",
+      "freeSlotsCabinet": "Каб. {n}",
       "noDoctors": "Нет активных врачей",
-      "todaySummary": "Сводка за сегодня",
-      "count": "Записей",
-      "revenue": "Выручка",
-      "avgCheck": "Средний чек",
-      "conv": "Конверсия",
       "actionCenter": "Центр действий",
-      "todayStats": "Статистика за сегодня",
       "actionRemindTitle": "Напомнить пациентам",
-      "actionRemindHint": "{count, plural, one {# запись без подтверждения} few {# записи без подтверждения} other {# записей без подтверждения}}",
-      "actionConfirmTitle": "Подтвердить приходы",
-      "actionConfirmHint": "{count, plural, one {# ожидает в холле} few {# ожидают в холле} other {# ожидают в холле}}",
-      "actionBroadcastTitle": "Рассылка в Telegram",
-      "actionBroadcastHint": "Массовое сообщение",
-      "actionExportTitle": "Экспорт CSV",
-      "actionExportHint": "Скачать текущий фильтр",
+      "actionRemindHint": "Записи на сегодня",
+      "actionRemindCta": "Напомнить всем",
+      "actionConfirmTitle": "Подтвердить прибытие",
+      "actionConfirmHint": "Ожидают в клинике",
+      "actionConfirmCta": "Подтвердить всех",
+      "actionBroadcastTitle": "Telegram-рассылки",
+      "actionBroadcastHint": "Запланирована на {time}",
+      "actionBroadcastBody": "Напоминание о приеме",
+      "actionBroadcastCta": "Открыть кампании",
+      "morePlus": "+{count}",
+      "moreActions": "Ещё действия",
+      "dayStats": "Статистика дня",
+      "dayStatsAt": "На {time}",
+      "statTotal": "Записей всего",
+      "statConfirmed": "Подтверждено",
+      "statUnconfirmed": "Не подтверждено",
+      "statCancelled": "Отменено",
+      "statNoShow": "No-show",
+      "statRevenue": "Выручка",
       "slotsLoading": "Загрузка…",
       "slotsNone": "Нет слотов"
     },
@@ -3461,7 +3482,7 @@
   },
   "analyticsDashboard": {
     "title": "Аналитика",
-    "subtitle": "Сводные метрики клиники",
+    "subtitle": "Ключевые метрики и аналитика эффективности клиники",
     "period": {
       "week": "Неделя",
       "month": "Месяц",
@@ -3471,11 +3492,50 @@
     "sections": {
       "revenue": "Выручка по дням",
       "appointments": "Записи по статусам",
-      "noShow": "Неявки по дням",
-      "topDoctors": "Топ врачи по выручке",
-      "topServices": "Топ услуги по количеству",
+      "noShow": "Динамика no-show",
+      "topDoctors": "Топ врачей по выручке",
+      "topServices": "Топ услуг по количеству",
       "sources": "Источники пациентов",
-      "ltv": "Распределение LTV"
+      "ltv": "Распределение LTV",
+      "clinicLoad": "Динамика загрузки клиники"
+    },
+    "axis": {
+      "appointments": "запис.",
+      "patients": "пац."
+    },
+    "summary": {
+      "totalCount": "{count} всего",
+      "averageLtv": "Средний LTV",
+      "viewAllDoctors": "Показать всех ({count})",
+      "viewAllServices": "Показать все услуги ({count})",
+      "totalAll": "Всего {count}",
+      "deltaPp": "{value} п.п."
+    },
+    "journey": {
+      "title": "Путь пациента (медицинские кейсы)",
+      "newPatients": "Новые пациенты",
+      "firstConsult": "Первичные консультации",
+      "repeatVisits": "Повторные визиты",
+      "repeatPct": "Процент повторных визитов",
+      "avgCheck": "Средний чек",
+      "revenue": "Выручка"
+    },
+    "noShowTable": {
+      "reason": "Причина",
+      "count": "Кол-во",
+      "share": "Доля"
+    },
+    "noShowReasons": {
+      "patientForgot": "Пациент забыл",
+      "noTransport": "Нет транспорта",
+      "wrongTime": "Не подошло время",
+      "feltBetter": "Стало лучше",
+      "noConfirm": "Не подтвердил",
+      "personalReasons": "Личные причины",
+      "wrongDoctor": "Не тот врач",
+      "longWait": "Долгое ожидание",
+      "weather": "Погодные условия",
+      "other": "Другое"
     },
     "empty": "Нет данных за выбранный период",
     "emptyHint": "Когда появятся записи за этот период, графики обновятся автоматически.",
@@ -3484,7 +3544,9 @@
     "errorRetry": "Повторить",
     "loading": "Загрузка…",
     "export": "Экспорт PNG",
-    "exportSoon": "Экспорт PNG будет добавлен в Phase 7"
+    "exportSoon": "Экспорт PNG будет добавлен в Phase 7",
+    "downloadReport": "Скачать отчёт",
+    "openCalendar": "Выбрать период"
   },
   "analyticsNav": {
     "overview": "Обзор",

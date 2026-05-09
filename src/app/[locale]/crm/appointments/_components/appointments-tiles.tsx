@@ -27,6 +27,7 @@ type Tile = {
   key: string;
   label: string;
   value: number | string;
+  hint?: string;
   icon: LucideIcon;
   tone: Tone;
 };
@@ -60,6 +61,7 @@ export function AppointmentsTiles({
       key: "all",
       label: t("all"),
       value: total ?? buckets.all,
+      hint: t("allHint", { count: buckets.arrived }),
       icon: CalendarCheck2Icon,
       tone: "purple",
     },
@@ -67,6 +69,7 @@ export function AppointmentsTiles({
       key: "needs_attention",
       label: t("needsAttention"),
       value: buckets.needsAttention,
+      hint: t("needsAttentionHint"),
       icon: UsersRoundIcon,
       tone: "danger",
     },
@@ -74,6 +77,7 @@ export function AppointmentsTiles({
       key: "soon",
       label: t("soon"),
       value: buckets.soon,
+      hint: t("soonHint"),
       icon: ClockIcon,
       tone: "warning",
     },
@@ -81,6 +85,7 @@ export function AppointmentsTiles({
       key: "unconfirmed",
       label: t("unconfirmed"),
       value: buckets.unconfirmed,
+      hint: t("unconfirmedHint"),
       icon: ShieldAlertIcon,
       tone: "purple",
     },
@@ -88,6 +93,7 @@ export function AppointmentsTiles({
       key: "late",
       label: t("late"),
       value: buckets.late,
+      hint: t("lateHint"),
       icon: ClockIcon,
       tone: "danger",
     },
@@ -95,6 +101,7 @@ export function AppointmentsTiles({
       key: "arrived",
       label: t("arrived"),
       value: buckets.arrived,
+      hint: t("arrivedHint"),
       icon: CheckCircle2Icon,
       tone: "success",
     },
@@ -140,6 +147,11 @@ export function AppointmentsTiles({
               >
                 {tile.value}
               </div>
+              {tile.hint ? (
+                <div className="mt-1 truncate text-[10px] text-muted-foreground">
+                  {tile.hint}
+                </div>
+              ) : null}
             </div>
           </div>
         );

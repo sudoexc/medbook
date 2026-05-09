@@ -19,7 +19,6 @@ import {
 import { useAppointmentsFilters } from "../_hooks/use-appointments-filters";
 import { AppointmentsFilters } from "./appointments-filters";
 import { AppointmentsTiles } from "./appointments-tiles";
-import { AppointmentsKpiStrip } from "./appointments-kpi-strip";
 import { AppointmentsBulkBar } from "./appointments-bulk-bar";
 import { AppointmentsTable } from "./appointments-table";
 import { AppointmentsRightRail } from "./appointments-right-rail";
@@ -31,7 +30,7 @@ import { ExportButton } from "./export-button";
  *
  * Responsibilities:
  *  - Own the URL-synced filter state via `useAppointmentsFilters`.
- *  - Drive the virtualised table, KPI bucket strip, filter bar, bulk bar,
+ *  - Drive the virtualised table, tiles, filter bar, bulk bar,
  *    row drawer and right rail.
  *  - Own transient UI state: current selection set, dialog prefill, open row.
  */
@@ -92,9 +91,6 @@ export function AppointmentsPageClient() {
     () => flattenAppointments(query.data),
     [query.data],
   );
-  // Server-side tally — counts across the whole filter set (ignoring the
-  // active status bucket), so switching tabs doesn't zero out the others.
-  const tally = query.data?.pages?.[0]?.tally ?? {};
   const total = query.data?.pages?.[0]?.total ?? null;
 
   const toggleSelectAll = (on: boolean) => {
@@ -117,7 +113,6 @@ export function AppointmentsPageClient() {
     Boolean(state.from) ||
     Boolean(state.to);
 
-  const currentBucket = state.bucket ?? "all";
   const selectedIds = React.useMemo(() => Array.from(selected), [selected]);
 
   const sendRemindersAll = () => {
@@ -159,14 +154,6 @@ export function AppointmentsPageClient() {
               clearAll();
               setSelected(new Set());
             }}
-          />
-
-          <AppointmentsKpiStrip
-            tally={tally}
-            active={currentBucket}
-            onChange={(next) =>
-              setFilter("bucket", next === "all" ? undefined : next)
-            }
           />
 
           {selectedIds.length > 0 ? (

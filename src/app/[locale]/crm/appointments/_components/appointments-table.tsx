@@ -632,17 +632,90 @@ export function AppointmentsTable({
           )}
         </div>
 
-        {hasNextPage && !isLoading ? (
-          <div className="flex items-center justify-center border-t border-border px-4 py-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onLoadMore}
-              disabled={isFetchingNextPage}
-            >
-              {isFetchingNextPage ? t("loading") : t("loadMore")}
-            </Button>
-          </div>
+        {!isLoading && rows.length > 0 ? (
+          <PaginationFooter
+            shown={rows.length}
+            total={total ?? rows.length}
+            hasNext={hasNextPage}
+            isFetching={isFetchingNextPage}
+            onMore={onLoadMore}
+            rangeLabel={t("pagination.range", {
+              shown: rows.length,
+              total: total ?? rows.length,
+            })}
+            loadMoreLabel={t("loadMore")}
+            loadingLabel={t("loading")}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PaginationFooter({
+  shown,
+  total,
+  hasNext,
+  isFetching,
+  onMore,
+  rangeLabel,
+  loadMoreLabel,
+  loadingLabel,
+}: {
+  shown: number;
+  total: number;
+  hasNext: boolean;
+  isFetching: boolean;
+  onMore: () => void;
+  rangeLabel: string;
+  loadMoreLabel: string;
+  loadingLabel: string;
+}) {
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(totalPages, Math.max(1, Math.ceil(shown / pageSize)));
+  const pages: number[] = [];
+  const windowSize = 4;
+  const start = Math.max(1, currentPage - 1);
+  const end = Math.min(totalPages, start + windowSize - 1);
+  for (let p = start; p <= end; p++) pages.push(p);
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2.5">
+      <span className="text-xs tabular-nums text-muted-foreground">
+        {rangeLabel}
+      </span>
+      <div className="flex items-center gap-1">
+        {pages.map((p) => (
+          <button
+            key={p}
+            type="button"
+            disabled={p > currentPage}
+            onClick={() => {
+              if (hasNext && !isFetching && p > currentPage) onMore();
+            }}
+            className={cn(
+              "inline-flex size-7 items-center justify-center rounded-md text-[12px] font-semibold tabular-nums transition-colors",
+              p === currentPage
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent",
+            )}
+          >
+            {p}
+          </button>
+        ))}
+        {totalPages > end ? (
+          <span className="px-1 text-xs text-muted-foreground">…</span>
+        ) : null}
+        {hasNext ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onMore}
+            disabled={isFetching}
+            className="ml-2 h-7"
+          >
+            {isFetching ? loadingLabel : loadMoreLabel}
+          </Button>
         ) : null}
       </div>
     </div>

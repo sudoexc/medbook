@@ -452,6 +452,9 @@
     "export": "CSV eksport",
     "loadMore": "Yana ko'rsatish",
     "loading": "Yuklanmoqda…",
+    "pagination": {
+      "range": "{total} dan {shown} ta yozuv"
+    },
     "columns": {
       "select": "Tanlash",
       "time": "Vaqt",
@@ -524,6 +527,8 @@
       "channelAll": "Barcha kanallar",
       "onlyUnpaid": "Faqat to'lanmaganlar",
       "clear": "Tozalash",
+      "more": "Filtrlar",
+      "save": "Saqlash",
       "dateMode": {
         "today": "Bugun",
         "week": "7 kun",
@@ -533,11 +538,17 @@
     },
     "tiles": {
       "all": "Barcha yozuvlar",
-      "needsAttention": "Hozir muhim",
-      "soon": "Yaqin qabul",
+      "needsAttention": "Shoshilinch",
+      "soon": "Yaqin",
       "unconfirmed": "Tasdiqlanmagan",
       "late": "Kechikkanlar",
-      "arrived": "Kelganlar"
+      "arrived": "Yetib kelganlar",
+      "allHint": "Bugun uchun +{count}",
+      "needsAttentionHint": "Choralar talab qilinadi",
+      "soonHint": "Eng yaqin soatda",
+      "unconfirmedHint": "Tasdiqlash kerak",
+      "lateHint": "5–15 daqiqa",
+      "arrivedHint": "Qabulga tayyor"
     },
     "kpiStrip": {
       "ariaLabel": "Tez filtrlar",
@@ -649,22 +660,32 @@
       "remindersStub": "Xabarnomalar modulida qo'shiladi",
       "exportCsv": "CSV eksport",
       "freeSlots": "Bugungi bo'sh slotlar",
+      "freeSlotsUpdated": "{min} daqiqa oldin yangilandi",
+      "freeSlotsBook": "Yozish",
+      "freeSlotsShowAll": "Barchasini ko'rsatish ({count}) →",
+      "freeSlotsCabinet": "Kab. {n}",
       "noDoctors": "Faol shifokorlar yo'q",
-      "todaySummary": "Bugungi umumiy",
-      "count": "Yozilishlar",
-      "revenue": "Tushum",
-      "avgCheck": "O'rtacha chek",
-      "conv": "Konversiya",
       "actionCenter": "Amallar markazi",
-      "todayStats": "Bugungi statistika",
       "actionRemindTitle": "Bemorlarga eslatish",
-      "actionRemindHint": "{count, plural, one {# tasdiqlanmagan yozilish} other {# tasdiqlanmagan yozilish}}",
-      "actionConfirmTitle": "Tashriflarni tasdiqlash",
-      "actionConfirmHint": "{count, plural, one {# kutmoqda holda} other {# kutmoqda holda}}",
-      "actionBroadcastTitle": "Telegram'ga tarqatish",
-      "actionBroadcastHint": "Ommaviy xabar",
-      "actionExportTitle": "CSV eksport",
-      "actionExportHint": "Joriy filtrni yuklab olish",
+      "actionRemindHint": "Bugungi yozuvlar",
+      "actionRemindCta": "Barchaga eslatish",
+      "actionConfirmTitle": "Tashrifni tasdiqlash",
+      "actionConfirmHint": "Klinikada kutmoqda",
+      "actionConfirmCta": "Barchasini tasdiqlash",
+      "actionBroadcastTitle": "Telegram tarqatuvi",
+      "actionBroadcastHint": "{time} ga rejalashtirilgan",
+      "actionBroadcastBody": "Qabul haqida eslatma",
+      "actionBroadcastCta": "Kampaniyalarni ochish",
+      "morePlus": "+{count}",
+      "moreActions": "Yana amallar",
+      "dayStats": "Kunlik statistika",
+      "dayStatsAt": "{time} ga",
+      "statTotal": "Jami yozuvlar",
+      "statConfirmed": "Tasdiqlangan",
+      "statUnconfirmed": "Tasdiqlanmagan",
+      "statCancelled": "Bekor qilingan",
+      "statNoShow": "No-show",
+      "statRevenue": "Tushum",
       "slotsLoading": "Yuklanmoqda…",
       "slotsNone": "Slotlar yo'q"
     },
@@ -3461,7 +3482,7 @@
   },
   "analyticsDashboard": {
     "title": "Analitika",
-    "subtitle": "Klinika metrikalari",
+    "subtitle": "Klinika samaradorligining asosiy metrikalari",
     "period": {
       "week": "Hafta",
       "month": "Oy",
@@ -3471,11 +3492,50 @@
     "sections": {
       "revenue": "Kunlik tushum",
       "appointments": "Statuslar bo‘yicha qabullar",
-      "noShow": "Kelmagan bemorlar",
+      "noShow": "No-show dinamikasi",
       "topDoctors": "Tushum bo‘yicha top shifokorlar",
       "topServices": "Soni bo‘yicha top xizmatlar",
       "sources": "Bemor manbalari",
-      "ltv": "LTV taqsimoti"
+      "ltv": "LTV taqsimoti",
+      "clinicLoad": "Klinika yuklamasi dinamikasi"
+    },
+    "axis": {
+      "appointments": "yozuv",
+      "patients": "bemor"
+    },
+    "summary": {
+      "totalCount": "Jami {count} ta",
+      "averageLtv": "O‘rtacha LTV",
+      "viewAllDoctors": "Barchasini ko‘rsatish ({count})",
+      "viewAllServices": "Barcha xizmatlar ({count})",
+      "totalAll": "Jami {count}",
+      "deltaPp": "{value} f.p."
+    },
+    "journey": {
+      "title": "Bemor yo‘li (tibbiy holatlar)",
+      "newPatients": "Yangi bemorlar",
+      "firstConsult": "Birlamchi konsultatsiyalar",
+      "repeatVisits": "Takroriy tashriflar",
+      "repeatPct": "Takroriy tashriflar ulushi",
+      "avgCheck": "O‘rtacha chek",
+      "revenue": "Tushum"
+    },
+    "noShowTable": {
+      "reason": "Sabab",
+      "count": "Soni",
+      "share": "Ulush"
+    },
+    "noShowReasons": {
+      "patientForgot": "Bemor unutgan",
+      "noTransport": "Transport yo‘q",
+      "wrongTime": "Vaqt mos kelmadi",
+      "feltBetter": "Yaxshi bo‘lib ketdi",
+      "noConfirm": "Tasdiqlanmagan",
+      "personalReasons": "Shaxsiy sabablar",
+      "wrongDoctor": "Boshqa shifokor",
+      "longWait": "Uzoq kutish",
+      "weather": "Ob-havo sharoiti",
+      "other": "Boshqa"
     },
     "empty": "Tanlangan davr uchun ma’lumot yo‘q",
     "emptyHint": "Ushbu davr uchun yozuvlar paydo bo‘lganda grafiklar avtomatik yangilanadi.",
@@ -3484,7 +3544,9 @@
     "errorRetry": "Qayta urinish",
     "loading": "Yuklanmoqda…",
     "export": "PNG eksport",
-    "exportSoon": "PNG eksport Phase 7 da qo‘shiladi"
+    "exportSoon": "PNG eksport Phase 7 da qo‘shiladi",
+    "downloadReport": "Hisobotni yuklash",
+    "openCalendar": "Davr tanlash"
   },
   "analyticsNav": {
     "overview": "Umumiy",

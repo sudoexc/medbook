@@ -2,22 +2,13 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
-import {
-  ArmchairIcon,
-  CheckCheckIcon,
-  CheckIcon,
-  ClockIcon,
-  HourglassIcon,
-  Loader2Icon,
-  PlayIcon,
-  UserCheckIcon,
-  UserXIcon,
-} from "lucide-react";
+import { ClockIcon, MoreVerticalIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
   Popover,
   PopoverContent,
@@ -26,15 +17,9 @@ import {
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
-import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
-import {
-  getQuickActions,
-  type QuickAction,
-} from "@/lib/appointments/lifecycle";
-import type { AppointmentStatus } from "@/lib/appointment-transitions";
 
 export interface DoctorQueueCardProps {
-  /** Positional index in the cabinets grid (1-based) — shown in the blue circle. */
+  /** Positional index in the cabinets grid (1-based) — fallback for cabinet number. */
   index: number;
   doctor: DoctorRef;
   appointments: AppointmentRow[];
@@ -45,25 +30,20 @@ export interface DoctorQueueCardProps {
 
 type CabinetState = "in_session" | "awaiting" | "empty";
 
+const MAX_VISIBLE_QUEUE = 3;
+
 /**
- * Cabinet card per docs/1-Ресепшн (2).png.
+ * Compact cabinet card per Image #13 feedback.
  *
  *   ┌──────────────────────────────────────┐
- *   │ ● Каб. 1                       [①]   │
+ *   │ Кабинет 101  ● Идёт приём        ⋮  │
+ *   │ ◯ Эргашев Б. С.                      │
  *   │   Невролог                           │
- *   ├──────────────────────────────────────┤
- *   │  ┌──────────────────────────────┐    │
- *   │  │ ● НА ПРИЁМЕ                  │    │
- *   │  │ Muhammad                     │    │
- *   │  │ 28 лет    ⓘ Осталось 6 мин  │    │
- *   │  │ ▓▓▓▓▓░░░░                    │    │
- *   │  └──────────────────────────────┘    │
- *   │                                      │
- *   │ ОЧЕРЕДЬ (2)                          │
- *   │ 1 Aliyev Sanjar         0:20         │
- *   │ 2 Karimova Malika       0:40         │
- *   │                                      │
- *   │ [  Вызвать следующего  ]             │
+ *   │ В ОЧЕРЕДИ (3)              🕐 25 мин │
+ *   │ 1. Ali Karimov           — 14:30     │
+ *   │ 2. Dilshod Aliyev        — 14:50     │
+ *   │ 3. Madina Yusupova       — 15:10     │
+ *   │ [   Вызвать следующего           ]   │
  *   └──────────────────────────────────────┘
  */
 export function DoctorQueueCard({
@@ -78,19 +58,15 @@ export function DoctorQueueCard({
   const t = useTranslations("reception.doctorQueue");
   const qc = useQueryClient();
   const [pending, setPending] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
 
-  const role = useCurrentRole();
-
-  const current = appointments.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
+  const current =
+    appointments.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
   const waiting = appointments.filter((a) => a.queueStatus === "WAITING");
   const booked = appointments.filter((a) => a.queueStatus === "BOOKED");
   const upcoming = [...waiting, ...booked].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
-
-  // Tracks which row currently has an in-flight quick-status mutation.
-  // Disabling the icons during PATCH prevents double-click → 409.
-  const [pendingId, setPendingId] = React.useState<string | null>(null);
 
   const cabinetNumber =
     (current ?? upcoming[0])?.cabinet?.number ??
@@ -107,50 +83,41 @@ export function DoctorQueueCard({
     locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
   const doctorName = locale === "uz" ? doctor.nameUz : doctor.nameRu;
 
+  const waitMin = computeWaitMinutes(state, current, upcoming[0] ?? null);
+
   const invalidate = () => {
     const opts = { refetchType: "active" } as const;
     qc.invalidateQueries({ queryKey: ["reception"], ...opts });
     qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
+    qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
+    qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
   };
 
-  const setQueueStatus = async (
-    appointmentId: string,
-    next: AppointmentStatus,
-    successMessage: string,
-  ) => {
-    setPendingId(appointmentId);
-    try {
-      const res = await fetch(
-        `/api/crm/appointments/${appointmentId}/queue-status`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ queueStatus: next }),
-        },
-      );
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as {
-          reason?: string;
-        } | null;
-        throw new Error(j?.reason ?? `HTTP ${res.status}`);
+  const advanceQueue = async () => {
+    // If there's a current in-session patient, complete them first.
+    if (current) {
+      setPending(true);
+      try {
+        const res = await fetch(
+          `/api/crm/appointments/${current.id}/queue-status`,
+          {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ queueStatus: "COMPLETED" }),
+          },
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch (err) {
+        setPending(false);
+        toast.error((err as Error).message);
+        return;
       }
-      invalidate();
-      const opts = { refetchType: "active" } as const;
-      qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
-      qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
-      toast.success(successMessage);
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setPendingId(null);
     }
-  };
-
-  const callNext = async () => {
     const candidate = waiting[0] ?? booked[0];
     if (!candidate) {
-      if (onAddAppointment) onAddAppointment(doctor.id);
+      setPending(false);
+      invalidate();
       return;
     }
     setPending(true);
@@ -173,140 +140,126 @@ export function DoctorQueueCard({
     }
   };
 
+  const visible = upcoming.slice(0, MAX_VISIBLE_QUEUE);
+
   return (
     <article
       className={cn(
-        "flex min-h-[320px] flex-col rounded-2xl border border-border bg-card p-4",
+        "flex flex-col gap-3 rounded-2xl border border-border bg-card p-4",
         "shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
         className,
       )}
     >
-      <header className="flex items-start justify-between gap-2">
+      <header className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <h3 className="truncate text-sm font-semibold text-foreground">
+            {t("cabinet")} {cabinetNumber ?? index}
+          </h3>
+          <StatusPill state={state} t={t} />
+        </div>
+        {onAddAppointment ? (
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("menuLabel")}
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <MoreVerticalIcon className="size-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-48 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onAddAppointment(doctor.id);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+              >
+                <PlusIcon className="size-4" />
+                {t("addAppointment")}
+              </button>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+      </header>
+
+      <div className="flex items-center gap-2.5">
+        <AvatarWithStatus
+          name={doctorName}
+          src={doctor.photoUrl}
+          size="sm"
+          className="shrink-0"
+        />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span
-              className="inline-block size-1.5 shrink-0 rounded-full"
-              style={{ backgroundColor: doctor.color ?? "#2b6cff" }}
-              aria-hidden
-            />
-            <h3 className="truncate text-[15px] font-bold text-foreground">
-              {t("cabinet")} {cabinetNumber ?? index}
-            </h3>
-          </div>
-          <p className="mt-0.5 truncate text-[13px] font-semibold text-foreground">
+          <p className="truncate text-sm font-semibold text-foreground">
             {doctorName}
           </p>
-          <p className="truncate text-[12px] text-muted-foreground">
+          <p className="truncate text-xs text-muted-foreground">
             {doctorSpec ?? t("specialist")}
           </p>
         </div>
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground tabular-nums">
-          {index}
-        </span>
-      </header>
-
-      <div className="mt-3 flex-1">
-        {state === "in_session" && current ? (
-          <InSessionBlock
-            appointment={current}
-            onClick={() => onRowClick(current.id)}
-            onComplete={async () => {
-              setPending(true);
-              try {
-                const res = await fetch(
-                  `/api/crm/appointments/${current.id}/queue-status`,
-                  {
-                    method: "PATCH",
-                    credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ queueStatus: "COMPLETED" }),
-                  },
-                );
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                invalidate();
-                const opts = { refetchType: "active" } as const;
-                qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
-                qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
-              } catch (err) {
-                toast.error((err as Error).message);
-              } finally {
-                setPending(false);
-              }
-            }}
-            pending={pending}
-          />
-        ) : state === "awaiting" ? (
-          <AwaitingBlock nextTime={upcoming[0] ? new Date(upcoming[0].date) : null} />
-        ) : (
-          <EmptyBlock />
-        )}
-
       </div>
 
-      {upcoming.length > 0 ? (
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            <span>{t("queueCount", { count: upcoming.length })}</span>
-          </div>
-          <ul className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
-            {upcoming.map((a, i) => (
-              <li
-                key={a.id}
-                className="group flex items-center gap-1 rounded-md px-1 py-1 transition-colors hover:bg-muted/60"
-              >
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            {t("inQueueCount", { count: upcoming.length })}
+          </span>
+          {waitMin !== null ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground tabular-nums">
+              <ClockIcon className="size-3" />
+              {t("waitMin", { min: waitMin })}
+            </span>
+          ) : null}
+        </div>
+
+        {visible.length > 0 ? (
+          <ul className="space-y-1">
+            {visible.map((a, i) => (
+              <li key={a.id}>
                 <button
                   type="button"
                   onClick={() => onRowClick(a.id)}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  className="group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
                 >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground tabular-nums">
-                    {i + 1}
+                  <span className="text-xs font-semibold text-muted-foreground tabular-nums">
+                    {i + 1}.
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {a.patient.fullName}
                   </span>
-                  <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
-                    {formatQueueTime(new Date(a.date), locale)}
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    — {formatTime(new Date(a.date), locale)}
                   </span>
                 </button>
-                <QuickStatusRow
-                  appointment={a}
-                  role={role}
-                  pending={pendingId === a.id}
-                  onChange={(next, successKey) =>
-                    setQueueStatus(a.id, next, successKey)
-                  }
-                />
               </li>
             ))}
           </ul>
-        </div>
-      ) : state === "in_session" ? null : (
-        <div className="mt-4">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            {t("queueCount", { count: 0 })}
-          </div>
-          <p className="text-center text-sm text-muted-foreground">
+        ) : (
+          <p className="py-1 text-center text-xs text-muted-foreground">
             {t("queueEmpty")}
           </p>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="mt-4">
-        {state === "empty" ? (
+      <div className="mt-auto pt-1">
+        {state === "empty" && upcoming.length === 0 ? (
           <Button
             variant="outline"
             className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
             onClick={() => onAddAppointment?.(doctor.id)}
+            disabled={!onAddAppointment}
           >
+            <PlusIcon className="size-4" />
             {t("addAppointment")}
           </Button>
         ) : (
           <Button
-            variant="outline"
             className="w-full"
-            disabled={pending || upcoming.length === 0}
-            onClick={callNext}
+            disabled={pending || (upcoming.length === 0 && !current)}
+            onClick={advanceQueue}
           >
             {t("callNext")}
           </Button>
@@ -316,334 +269,68 @@ export function DoctorQueueCard({
   );
 }
 
-function InSessionBlock({
-  appointment,
-  onClick,
-  onComplete,
-  pending,
+function StatusPill({
+  state,
+  t,
 }: {
-  appointment: AppointmentRow;
-  onClick: () => void;
-  onComplete: () => void;
-  pending: boolean;
+  state: CabinetState;
+  t: ReturnType<typeof useTranslations>;
 }) {
-  const t = useTranslations("reception.doctorQueue");
-  const locale = useLocale();
-  const [nowMs] = React.useState(() => Date.now());
-  const remaining = React.useMemo(() => {
-    if (!appointment.startedAt) {
-      return {
-        label: t("minPlan", { min: appointment.durationMin }),
-        pct: 10,
-      };
-    }
-    const startedMs = new Date(appointment.startedAt).getTime();
-    const planned = Math.max(5, appointment.durationMin || 30);
-    const elapsed = Math.max(0, Math.round((nowMs - startedMs) / 60000));
-    const left = Math.max(0, planned - elapsed);
-    const pct = Math.min(100, Math.round((elapsed / planned) * 100));
-    return { label: t("remaining", { min: left }), pct };
-  }, [appointment, nowMs, t]);
-
-  const serviceName =
-    (locale === "uz"
-      ? appointment.primaryService?.nameUz
-      : appointment.primaryService?.nameRu) ?? t("fallbackService");
+  const label =
+    state === "in_session"
+      ? t("pillInSession")
+      : state === "awaiting"
+        ? t("pillAwaiting")
+        : t("pillFree");
+  const tone =
+    state === "in_session"
+      ? "bg-success/15 text-success"
+      : state === "awaiting"
+        ? "bg-warning/15 text-[color:var(--warning-foreground)]"
+        : "bg-muted text-muted-foreground";
+  const dot =
+    state === "in_session"
+      ? "bg-success"
+      : state === "awaiting"
+        ? "bg-warning"
+        : "bg-muted-foreground/60";
 
   return (
-    <div className="rounded-xl bg-success-soft p-3">
-      <button
-        type="button"
-        onClick={onClick}
-        className="block w-full text-left transition-opacity hover:opacity-90"
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-success" aria-hidden />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-success">
-            {t("current")}
-          </span>
-        </div>
-        <p className="mt-2 truncate text-lg font-bold text-foreground">
-          {appointment.patient.fullName}
-        </p>
-        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          <span className="truncate">{serviceName}</span>
-          <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-success">
-            <ClockIcon className="size-3" />
-            {remaining.label}
-          </span>
-        </div>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/60">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-success to-success/80 transition-all"
-            style={{ width: `${remaining.pct}%` }}
-          />
-        </div>
-      </button>
-      <button
-        type="button"
-        onClick={onComplete}
-        disabled={pending}
-        className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md bg-success px-2 py-1.5 text-[11px] font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50"
-      >
-        <CheckIcon className="size-3.5" />
-        {t("complete")}
-      </button>
-    </div>
-  );
-}
-
-function AwaitingBlock({ nextTime }: { nextTime: Date | null }) {
-  const t = useTranslations("reception.doctorQueue");
-  const locale = useLocale();
-  return (
-    <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
-      <div className="flex items-center justify-center gap-1.5">
-        <HourglassIcon className="size-3.5 text-warning" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-warning">
-          {t("awaitingPatient")}
-        </span>
-      </div>
-      <div className="mt-4 flex justify-center">
-        <ArmchairIcon className="size-10 text-muted-foreground/60" aria-hidden />
-      </div>
-      <p className="mt-3 text-sm font-semibold text-foreground">{t("statusFree")}</p>
-      {nextTime ? (
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          {t("nearestTime")}{" "}
-          <span className="font-bold text-foreground tabular-nums">
-            {formatTime(nextTime, locale)}
-          </span>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function EmptyBlock() {
-  const t = useTranslations("reception.doctorQueue");
-  return (
-    <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
-      <div className="flex items-center justify-center gap-1.5">
-        <HourglassIcon className="size-3.5 text-warning" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-warning">
-          {t("awaitingPatient")}
-        </span>
-      </div>
-      <div className="mt-4 flex justify-center">
-        <ArmchairIcon className="size-10 text-muted-foreground/60" aria-hidden />
-      </div>
-      <p className="mt-3 text-sm font-semibold text-foreground">{t("statusFree")}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        {t("noPatients")}
-      </p>
-    </div>
-  );
-}
-
-/**
- * Compact icon row that lets the receptionist advance an appointment's
- * status without opening the drawer. Renders only icons for transitions
- * that are both legal (`canTransition`) and time-appropriate (`NO_SHOW`
- * never shows up before the slot start). NO_SHOW is wrapped in a
- * confirmation popover to prevent fat-finger clicks; forward transitions
- * fire on a single click — the existing PATCH handler is the source of
- * truth and any 409 surfaces through the toast.
- */
-function QuickStatusRow({
-  appointment,
-  role,
-  pending,
-  onChange,
-}: {
-  appointment: AppointmentRow;
-  role: ReturnType<typeof useCurrentRole>;
-  pending: boolean;
-  onChange: (next: AppointmentStatus, successMessage: string) => void;
-}) {
-  const t = useTranslations("reception.quickStatus");
-  const apptDate = React.useMemo(
-    () => new Date(appointment.date),
-    [appointment.date],
-  );
-  const actions = React.useMemo(
-    () =>
-      getQuickActions(
-        appointment.status as AppointmentStatus,
-        role,
-        apptDate,
-      ),
-    [appointment.status, role, apptDate],
-  );
-
-  if (actions.length === 0) return null;
-
-  return (
-    <div className="ml-1 flex shrink-0 items-center gap-0.5">
-      {actions.map((action) =>
-        action.confirm ? (
-          <NoShowButton
-            key={action.kind}
-            pending={pending}
-            onConfirm={() =>
-              onChange(action.to, t("toast.noShow" as never))
-            }
-            label={t("noShow")}
-            confirmTitle={t("noShowConfirm")}
-            confirmYes={t("noShowYes")}
-            confirmNo={t("noShowNo")}
-          />
-        ) : (
-          <QuickIconButton
-            key={action.kind}
-            action={action}
-            pending={pending}
-            onClick={() =>
-              onChange(
-                action.to,
-                t(toastKeyFor(action.kind) as never),
-              )
-            }
-            label={t(labelKeyFor(action.kind) as never)}
-          />
-        ),
-      )}
-    </div>
-  );
-}
-
-function QuickIconButton({
-  action,
-  pending,
-  onClick,
-  label,
-}: {
-  action: Exclude<QuickAction, { confirm: true }>;
-  pending: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  const Icon =
-    action.kind === "ARRIVED"
-      ? UserCheckIcon
-      : action.kind === "START"
-        ? PlayIcon
-        : CheckCheckIcon;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={pending}
-      aria-label={label}
-      title={label}
+    <span
       className={cn(
-        "inline-flex size-7 items-center justify-center rounded-md transition-colors",
-        "text-muted-foreground hover:bg-muted hover:text-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        "disabled:opacity-50 disabled:cursor-not-allowed",
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+        tone,
       )}
     >
-      {pending ? (
-        <Loader2Icon className="size-3.5 animate-spin" />
-      ) : (
-        <Icon className="size-3.5" />
-      )}
-    </button>
+      <span className={cn("size-1.5 rounded-full", dot)} aria-hidden />
+      {label}
+    </span>
   );
 }
 
-function NoShowButton({
-  pending,
-  onConfirm,
-  label,
-  confirmTitle,
-  confirmYes,
-  confirmNo,
-}: {
-  pending: boolean;
-  onConfirm: () => void;
-  label: string;
-  confirmTitle: string;
-  confirmYes: string;
-  confirmNo: string;
-}) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={pending}
-          aria-label={label}
-          title={label}
-          className={cn(
-            "inline-flex size-7 items-center justify-center rounded-md transition-colors",
-            "text-destructive/70 hover:bg-destructive/10 hover:text-destructive",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            "disabled:opacity-50 disabled:cursor-not-allowed",
-          )}
-        >
-          {pending ? (
-            <Loader2Icon className="size-3.5 animate-spin" />
-          ) : (
-            <UserXIcon className="size-3.5" />
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-auto p-2">
-        <div className="text-xs font-medium text-foreground">
-          {confirmTitle}
-        </div>
-        <div className="mt-2 flex gap-1.5">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs"
-            onClick={() => setOpen(false)}
-          >
-            {confirmNo}
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-7 px-2 text-xs"
-            onClick={() => {
-              setOpen(false);
-              onConfirm();
-            }}
-          >
-            {confirmYes}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function labelKeyFor(kind: QuickAction["kind"]): string {
-  switch (kind) {
-    case "ARRIVED":
-      return "arrived";
-    case "START":
-      return "start";
-    case "COMPLETE":
-      return "complete";
-    case "NO_SHOW":
-      return "noShow";
+function computeWaitMinutes(
+  state: CabinetState,
+  current: AppointmentRow | null,
+  next: AppointmentRow | null,
+): number | null {
+  const now = Date.now();
+  if (state === "in_session" && current) {
+    if (current.startedAt) {
+      const started = new Date(current.startedAt).getTime();
+      const planned = Math.max(5, current.durationMin || 30);
+      const elapsed = Math.max(0, Math.round((now - started) / 60000));
+      const left = Math.max(0, planned - elapsed);
+      return left;
+    }
+    return current.durationMin || null;
   }
-}
-
-function toastKeyFor(kind: QuickAction["kind"]): string {
-  switch (kind) {
-    case "ARRIVED":
-      return "toast.arrived";
-    case "START":
-      return "toast.started";
-    case "COMPLETE":
-      return "toast.completed";
-    case "NO_SHOW":
-      return "toast.noShow";
+  if (next) {
+    const at = new Date(next.date).getTime();
+    const diff = Math.round((at - now) / 60000);
+    if (diff > 0) return diff;
+    return 0;
   }
+  return null;
 }
 
 function formatTime(d: Date, locale: string): string {
@@ -652,12 +339,4 @@ function formatTime(d: Date, locale: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(d);
-}
-
-function formatQueueTime(date: Date, locale: string, now = new Date()): string {
-  const diffMin = Math.round((date.getTime() - now.getTime()) / 60000);
-  if (diffMin > 0 && diffMin < 60) {
-    return `+${diffMin}m`;
-  }
-  return formatTime(date, locale);
 }

@@ -100,10 +100,6 @@ export function CalendarPageClient() {
           onPrev={onPrev}
           onNext={onNext}
           onToday={onToday}
-          onCreateClick={() => {
-            setCreateSeed({ doctorId: null, date: anchor, time: null });
-            setCreateOpen(true);
-          }}
           doctors={doctorsQ.data ?? []}
           cabinets={cabinetsQ.data ?? []}
           services={servicesQ.data ?? []}

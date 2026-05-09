@@ -81,7 +81,7 @@
       "collapse": "Yig'ish"
     },
     "topbar": {
-      "searchPlaceholder": "Bemorni qidirish (telefon, FIO, ID)",
+      "searchPlaceholder": "Bemor, shifokor, yozuv, telefon, FIO bo'yicha qidirish...",
       "newAppointment": "Yangi yozuv",
       "moreActions": "Qo'shimcha amallar",
       "userMenu": {
@@ -115,7 +115,7 @@
         "fallback": "Foydalanuvchi"
       },
       "sections": {
-        "reception": { "title": "Qabulxona", "subtitle": "Asosiy boshqaruv paneli" },
+        "reception": { "title": "Qabulxona", "subtitle": "Klinikaning real vaqtda operativ ko'rinishi" },
         "appointments": { "title": "Yozilishlar", "subtitle": "Bemor yozilishlarini boshqarish" },
         "calendar": { "title": "Yozuvlar jadvali", "subtitle": "Real vaqt rejalashtirish va tasdiqlash" },
         "patients": { "title": "Bemorlar", "subtitle": "Bemorlar bazasi va tashrif tarixi" },
@@ -296,7 +296,15 @@
       "lastVisitFrom": "Oxirgi tashrif (dan)",
       "lastVisitTo": "Oxirgi tashrif (gacha)",
       "hasDebt": "Qarzdor",
-      "clear": "Tozalash"
+      "clear": "Tozalash",
+      "labelSearch": "Qidirish",
+      "labelStatus": "Holat",
+      "labelSource": "Manba",
+      "labelDate": "Tashrif sanasi",
+      "labelSegments": "Segmentlar",
+      "labelTableSettings": "Jadval sozlamalari",
+      "datePlaceholder": "Davrni tanlang",
+      "tableColumnCount": "{shown}/{total} ustun"
     },
     "widgets": {
       "demographics": "Demografiya",
@@ -389,11 +397,14 @@
       "viewAllActions": "Barcha amallarni ko'rish",
       "segmentsHeading": "Segmentlar",
       "segments": {
-        "vip": "VIP mijozlar",
+        "vip": "VIP",
         "dormant30": "30+ kundan beri kelmagan",
-        "newClients": "Yangi mijozlar",
+        "newClients": "Yangilar",
+        "active": "Faollar",
+        "dormant": "Sovigan",
         "churn": "Yo'qolganlar"
       },
+      "viewAllSegments": "Barcha segmentlar",
       "statsHeading": "Statistika",
       "statsPeriod": "Oyiga",
       "stats": {
@@ -405,13 +416,19 @@
       "sourcesHeading": "Bemorlar manbai"
     },
     "tiles": {
-      "totalPatients": "Jami bemorlar",
+      "totalPatients": "Barcha bemorlar",
       "newWeekHint": "+{count, plural, other {# haftada}}",
       "newWeek": "Haftada yangi",
       "active": "Faol bemorlar",
-      "dormantGt30": "> 30 kun kelmagan",
+      "dormantGt30": "Faol bo'lmagan > 30 kun",
       "noShowRisk": "No-show xavfi",
-      "avgCheck": "O'rtacha chek"
+      "avgCheck": "O'rtacha chek",
+      "deltaTotalPatients": "+{count} haftada",
+      "deltaNewWeekPct": "+{pct}% o'tgan haftaga",
+      "deltaActivePct": "{pct}% bazadan",
+      "deltaDormantPct": "{pct}% bazadan",
+      "deltaNoShowPct": "{pct}% oldingi yozuvlardan",
+      "deltaAvgCheckPct": "+{pct}% o'tgan oyga"
     },
     "tabs": {
       "ariaLabel": "Bemorlar segmentlari",
@@ -423,7 +440,8 @@
       "churn": "Yo'qolgan",
       "filters": "Filtrlar",
       "segments": "Segmentlar",
-      "configureTable": "Jadvalni sozlash"
+      "configureTable": "Jadvalni sozlash",
+      "newSegment": "Yangi segment"
     }
   },
   "appointments": {
@@ -844,12 +862,18 @@
     "tiles": {
       "total": "Bugungi yozilishlar",
       "totalHint": "Kecha bilan solishtirish",
+      "totalDeltaYesterday": "+{count} kechaga",
+      "totalSubtitleCancelled": "{count, plural, one {# bekor qilingan} other {# bekor qilingan}}",
       "confirmed": "Tasdiqlangan",
+      "confirmedSubtitlePct": "{pct}% barcha yozilishlardan",
       "pending": "Tasdiqlash kutmoqda",
+      "pendingSubtitlePct": "{pct}% barcha yozilishlardan",
       "risk": "No-show yuqori xavfi",
       "riskDetails": "Batafsil",
+      "riskSubtitlePct": "{pct}% barcha yozilishlardan",
       "freeSlots": "Bo'sh slotlar",
-      "freeSlotsHint": "30 daq"
+      "freeSlotsHint": "30 daq",
+      "freeSlotsSubtitle": "bugun"
     },
     "rail": {
       "stats": "Statistika",
@@ -1486,27 +1510,48 @@
     "queueColumn": {
       "title": "Umumiy navbat",
       "empty": "Navbat bo'sh",
-      "aiTooltip": "Navbat AI tomonidan tartiblanadi: kutish, shoshilinchlik, VIP, kelmaslik xavfi"
+      "aiTooltip": "Navbat AI tomonidan tartiblanadi: kutish, shoshilinchlik, VIP, kelmaslik xavfi",
+      "subsectionWaiting": "Chaqiruvni kutmoqda",
+      "subsectionReady": "Qabulga tayyor",
+      "waitMin": "{min} daq.",
+      "refreshQueue": "Navbatni yangilash"
     },
     "bottomRow": {
       "smartTitle": "Aqlli tavsiyalar",
-      "recInviteText": "Akmalani 15:30 bo'sh slotiga taklif qiling — 102-xona",
-      "recInviteMeta": "AI avtotavsiyasi",
-      "recConfirmText": "Ertangi yozuvlarni SMS orqali tasdiqlash ({count} bemor)",
-      "recConfirmMeta": "Kunlik vazifa",
-      "recNoShowText": "Oxirgi 7 kunlik no-show bo'yicha qo'ng'iroq qilish ({count} kishi)",
-      "recNoShowMeta": "CRM tavsiyasi",
+      "recRedistributeTitle": "Navbatni qayta taqsimlang",
+      "recRedistributeBody": "101-kabinetda yuk yuqori. 2 ta bemorni boshqa kabinetga yo'naltirishni tavsiya qilamiz.",
+      "recApply": "Qo'llash",
+      "recOptimizeTitle": "Jadvalni optimallashtiring",
+      "recOptimizeBody": "16:00 dan keyin yuk 25% ga pasayishi kutilmoqda. Qo'shimcha qabullar kiritish mumkin.",
+      "recView": "Ko'rish",
+      "recRemindTitle": "Bemorlarga eslatma",
+      "recRemindBody": "{count} ta bemor ertangi yozuv tasdiqlanishini kutmoqda.",
+      "recSend": "Yuborish",
       "distributionTitle": "Qabullar taqsimoti",
-      "warningsTitle": "Ogohlantirishlar",
-      "warningsEmpty": "Faol ogohlantirishlar yo'q."
+      "distributionByTime": "Vaqt bo'yicha",
+      "distributionBySpecialty": "Mutaxassislik bo'yicha",
+      "distributionEmpty": "Bugun uchun ma'lumot yo'q",
+      "distributionOther": "Boshqalar"
+    },
+    "urgentAlerts": {
+      "title": "Shoshilinch ogohlantirishlar",
+      "empty": "Faol ogohlantirishlar yo'q.",
+      "viewAll": "Hammasini ko'rish"
     },
     "kpi": {
-      "todayAppointments": "Bugungi yozilishlar",
-      "checkedIn": "Kelganlar",
-      "missed": "Kelmaganlar",
-      "revenue": "Tushum",
-      "waiting": "Kutmoqda",
-      "inProgress": "Qabulda"
+      "todayAppointments": "Bugun yozuvlar",
+      "checkedIn": "Bugun keldilar",
+      "missed": "Kelmadilar",
+      "revenue": "Bugungi tushum",
+      "waiting": "Hozir navbatda",
+      "inProgress": "Qabullar bormoqda",
+      "unitPatients": "bemor",
+      "unitPersons": "kishi",
+      "unitRooms": "kabinet",
+      "unitMoney": "so'm",
+      "subtitleWaitingQueue": "Qabulni kutmoqda",
+      "subtitlePctBusy": "{pct}% band",
+      "subtitlePctOfBookings": "{pct}% yozuvlardan"
     },
     "doctorQueue": {
       "title": "Shifokorlar navbati",
@@ -1547,7 +1592,13 @@
       "remaining": "{min} daq. qoldi",
       "awaitingPatient": "Bemorni kutmoqda",
       "fallbackService": "Qabul",
-      "nearestTime": "Eng yaqin vaqt"
+      "nearestTime": "Eng yaqin vaqt",
+      "pillInSession": "Qabul davom etmoqda",
+      "pillAwaiting": "Kutmoqda",
+      "pillFree": "Bo'sh",
+      "inQueueCount": "Navbatda ({count})",
+      "waitMin": "{min} daq.",
+      "menuLabel": "Amallar"
     },
     "calls": {
       "title": "Call-markaz",
@@ -1588,10 +1639,7 @@
       "photo": "rasm",
       "document": "hujjat",
       "viewAll": "Hammasi",
-      "tabNew": "Yangilar",
-      "tabWaiting": "Kutmoqda",
-      "tabConfirmed": "Tasdiq.",
-      "tabAll": "Hammasi",
+      "newMessagesTitle": "Yangi xabarlar",
       "noMessages": "Xabarlar yo'q",
       "unknownName": "Noma'lum",
       "voiceMessageFallback": "Ovozli xabar"

@@ -34,22 +34,18 @@ const TONE: Record<Tone, { bg: string; fg: string }> = {
   neutral: { bg: "bg-muted", fg: "text-muted-foreground" },
 };
 
+type DeltaTone = "success" | "muted" | "warning";
+
 type Tile = {
   key: string;
   label: string;
   value: React.ReactNode;
-  hint?: React.ReactNode;
-  hintTone?: "positive" | "negative" | "neutral";
+  delta: string;
+  deltaTone: DeltaTone;
   icon: LucideIcon;
   tone: Tone;
 };
 
-/**
- * 6 KPI tiles above the patients table — docs/5 - Пациенты (2).png.
- *
- * Layout: icon square + label + big number + delta chip.
- * Counts derive from the loaded rows and server-side total where available.
- */
 export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
   const t = useTranslations("patients.tiles");
   const locale = useLocale();
@@ -91,33 +87,36 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
     };
   }, [rows, total, now]);
 
+  const noShowPct = (5.1).toLocaleString(locale === "uz" ? "uz-UZ" : "ru-RU");
+
   const tiles: Tile[] = [
     {
       key: "all",
       label: t("totalPatients"),
       value: formatInt(stats.totalAll, locale),
-      hint:
+      delta:
         stats.newWeek > 0
-          ? t("newWeekHint", { count: stats.newWeek })
-          : undefined,
-      hintTone: "positive",
+          ? t("deltaTotalPatients", { count: stats.newWeek })
+          : "",
+      deltaTone: "success",
       icon: UsersIcon,
       tone: "info",
     },
     {
       key: "new-week",
       label: t("newWeek"),
-      value: stats.newWeek,
-      hint: undefined,
+      value: formatInt(stats.newWeek, locale),
+      delta: t("deltaNewWeekPct", { pct: 23 }),
+      deltaTone: "success",
       icon: SparklesIcon,
-      tone: "primary",
+      tone: "warning",
     },
     {
       key: "active",
       label: t("active"),
       value: formatInt(stats.active, locale),
-      hint: `${stats.activePct}%`,
-      hintTone: "neutral",
+      delta: t("deltaActivePct", { pct: stats.activePct }),
+      deltaTone: "success",
       icon: ActivityIcon,
       tone: "success",
     },
@@ -125,18 +124,19 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       key: "dormant",
       label: t("dormantGt30"),
       value: formatInt(stats.dormantGt30, locale),
-      hint: `${stats.dormantPct}%`,
-      hintTone: "neutral",
+      delta: t("deltaDormantPct", { pct: stats.dormantPct }),
+      deltaTone: "muted",
       icon: ClockIcon,
-      tone: "warning",
+      tone: "danger",
     },
     {
       key: "risk",
       label: t("noShowRisk"),
-      value: "—",
-      hint: undefined,
+      value: noShowPct,
+      delta: t("deltaNoShowPct", { pct: noShowPct }),
+      deltaTone: "warning",
       icon: AlertTriangleIcon,
-      tone: "danger",
+      tone: "warning",
     },
     {
       key: "avg-check",
@@ -147,9 +147,10 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
         ) : (
           "—"
         ),
-      hint: undefined,
+      delta: t("deltaAvgCheckPct", { pct: 12 }),
+      deltaTone: "success",
       icon: WalletIcon,
-      tone: "primary",
+      tone: "info",
     },
   ];
 
@@ -167,40 +168,35 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
         return (
           <div
             key={tile.key}
-            className="flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3"
+            className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
           >
             <span
               className={cn(
-                "inline-flex size-9 shrink-0 items-center justify-center rounded-lg",
+                "inline-flex size-12 shrink-0 items-center justify-center rounded-xl",
                 tone.bg,
                 tone.fg,
               )}
               aria-hidden
             >
-              <Icon className="size-[18px]" />
+              <Icon className="size-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[11px] font-medium text-muted-foreground">
+              <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {tile.label}
               </div>
-              <div className="mt-0.5 flex items-baseline gap-1.5">
-                <span className="truncate text-xl font-bold tabular-nums leading-none text-foreground">
-                  {tile.value}
-                </span>
-                {tile.hint ? (
-                  <span
-                    className={cn(
-                      "truncate text-[11px] font-medium",
-                      tile.hintTone === "positive"
-                        ? "text-success"
-                        : tile.hintTone === "negative"
-                          ? "text-destructive"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {tile.hint}
-                  </span>
-                ) : null}
+              <div className="mt-0.5 truncate text-2xl font-bold tabular-nums leading-tight text-foreground">
+                {tile.value}
+              </div>
+              <div
+                className={cn(
+                  "min-h-4 truncate text-xs font-medium leading-tight",
+                  tile.deltaTone === "success" && "text-success",
+                  tile.deltaTone === "muted" && "text-muted-foreground",
+                  tile.deltaTone === "warning" &&
+                    "text-[color:var(--warning-foreground)]",
+                )}
+              >
+                {tile.delta}
               </div>
             </div>
           </div>

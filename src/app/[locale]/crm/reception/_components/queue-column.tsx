@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { SparklesIcon } from "lucide-react";
+import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -14,7 +14,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
-import { type AiQueueItem, useAiQueueScores } from "../_hooks/use-reception-live";
+import {
+  type AiQueueItem,
+  useActiveDoctors,
+  useAiQueueScores,
+} from "../_hooks/use-reception-live";
 
 export interface QueueColumnProps {
   rows: AppointmentRow[];
@@ -32,10 +36,24 @@ const BAND_ACCENT: Record<Band, string> = {
   low: "before:bg-muted-foreground/30",
 };
 
+type QueueMode = "waiting" | "ready";
+
 export function QueueColumn({ rows, className }: QueueColumnProps) {
   const t = useTranslations("reception.queueColumn");
   const locale = useLocale();
   const aiScores = useAiQueueScores();
+  const doctorsQuery = useActiveDoctors();
+
+  /**
+   * "Now" stamp for the wait-time fallback. Ticks every 30s so the orange
+   * chip stays fresh without re-rendering on every animation frame, and so
+   * we don't call the impure `Date.now()` directly during render.
+   */
+  const [nowMs, setNowMs] = React.useState<number>(() => Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const scoreMap = React.useMemo(() => {
     const m = new Map<string, AiQueueItem>();
@@ -45,20 +63,54 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
 
   const aiActive = scoreMap.size > 0;
 
-  const queue = React.useMemo(() => {
-    const filtered = rows.filter((r) => QUEUE_STATUSES.has(r.status));
-    if (aiActive) {
-      return filtered.slice().sort((a, b) => {
+  /**
+   * doctorId -> specialization (locale-aware). Used by the "Готовы к приёму"
+   * subsection rows; `AppointmentDoctorShort` doesn't carry the specialization,
+   * so we look it up from the active-doctors query.
+   */
+  const specByDoctor = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of doctorsQuery.data ?? []) {
+      const spec = locale === "uz" ? d.specializationUz : d.specializationRu;
+      if (spec) m.set(d.id, spec);
+    }
+    return m;
+  }, [doctorsQuery.data, locale]);
+
+  const sortFn = React.useCallback(
+    (a: AppointmentRow, b: AppointmentRow) => {
+      if (aiActive) {
         const sa = scoreMap.get(a.id)?.score.score ?? -1;
         const sb = scoreMap.get(b.id)?.score.score ?? -1;
         if (sa !== sb) return sb - sa;
-        return new Date(a.date).getTime() - new Date(b.date).getTime();
-      });
+      }
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    },
+    [aiActive, scoreMap],
+  );
+
+  /**
+   * Bucket split by `queueStatus` (the canonical queue lifecycle field):
+   *   - WAITING               -> "Ожидают вызова" (already arrived)
+   *   - BOOKED / CONFIRMED    -> "Готовы к приёму" (scheduled, not arrived)
+   *
+   * AI score sort is applied WITHIN each bucket, not across them.
+   */
+  const { waiting, ready, total } = React.useMemo(() => {
+    const w: AppointmentRow[] = [];
+    const r: AppointmentRow[] = [];
+    for (const row of rows) {
+      const queueField = row.queueStatus ?? row.status;
+      if (!QUEUE_STATUSES.has(queueField)) continue;
+      if (queueField === "WAITING") w.push(row);
+      else r.push(row);
     }
-    return filtered.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-  }, [rows, aiActive, scoreMap]);
+    w.sort(sortFn);
+    r.sort(sortFn);
+    return { waiting: w, ready: r, total: w.length + r.length };
+  }, [rows, sortFn]);
+
+  const empty = total === 0;
 
   return (
     <TooltipProvider>
@@ -82,28 +134,104 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
             ) : null}
           </h3>
           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
-            {queue.length}
+            {total}
           </span>
         </header>
-        <ol className="flex-1 divide-y divide-border overflow-y-auto">
-          {queue.length === 0 ? (
-            <li className="px-4 py-8 text-center text-xs text-muted-foreground">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {empty ? (
+            <div className="px-4 py-8 text-center text-xs text-muted-foreground">
               {t("empty")}
-            </li>
+            </div>
           ) : (
-            queue.map((row, i) => (
-              <QueueItem
-                key={row.id}
-                index={i + 1}
-                row={row}
-                locale={locale}
-                ai={scoreMap.get(row.id)}
-              />
-            ))
+            <>
+              {waiting.length > 0 ? (
+                <QueueSubsection
+                  title={t("subsectionWaiting")}
+                  count={waiting.length}
+                >
+                  {waiting.map((row, i) => (
+                    <QueueItem
+                      key={row.id}
+                      index={i + 1}
+                      row={row}
+                      locale={locale}
+                      ai={scoreMap.get(row.id)}
+                      mode="waiting"
+                      nowMs={nowMs}
+                    />
+                  ))}
+                </QueueSubsection>
+              ) : null}
+              {ready.length > 0 ? (
+                <QueueSubsection
+                  title={t("subsectionReady")}
+                  count={ready.length}
+                >
+                  {ready.map((row, i) => (
+                    <QueueItem
+                      key={row.id}
+                      index={i + 1}
+                      row={row}
+                      locale={locale}
+                      ai={scoreMap.get(row.id)}
+                      mode="ready"
+                      specialty={specByDoctor.get(row.doctor.id) ?? null}
+                    />
+                  ))}
+                </QueueSubsection>
+              ) : null}
+            </>
           )}
-        </ol>
+        </div>
+        <footer className="border-t border-border px-3 py-2">
+          <button
+            type="button"
+            onClick={() => {
+              void aiScores.refetch();
+            }}
+            disabled={aiScores.isFetching}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCwIcon
+              className={cn(
+                "size-3",
+                aiScores.isFetching && "animate-spin",
+              )}
+            />
+            {t("refreshQueue")}
+          </button>
+        </footer>
       </section>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Subsection wrapper — renders a sticky-ish header with title + count and
+ * the rows below it. Caller is responsible for omitting the subsection when
+ * empty so we never render a header with zero rows.
+ */
+function QueueSubsection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-b border-border last:border-b-0">
+      <header className="flex items-center justify-between bg-muted/30 px-4 py-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+          {title}
+        </span>
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground tabular-nums">
+          {count}
+        </span>
+      </header>
+      <ol className="divide-y divide-border">{children}</ol>
+    </section>
   );
 }
 
@@ -112,12 +240,19 @@ function QueueItem({
   row,
   locale,
   ai,
+  mode,
+  specialty,
+  nowMs,
 }: {
   index: number;
   row: AppointmentRow;
   locale: string;
   ai: AiQueueItem | undefined;
+  mode: QueueMode;
+  specialty?: string | null;
+  nowMs?: number;
 }) {
+  const t = useTranslations("reception.queueColumn");
   const time = new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
@@ -127,6 +262,22 @@ function QueueItem({
   const band = ai?.score.band;
   const noShowPct = ai ? Math.round(ai.noShowRisk * 100) : 0;
   const showRisk = ai && noShowPct >= 40;
+
+  /**
+   * Wait minutes for the orange chip on "Ожидают вызова" rows.
+   * Prefer the AI-scored `waitMin` (computed server-side relative to call/
+   * arrival time); otherwise fall back to "minutes past slot start", clamped
+   * at zero so we never render a negative wait.
+   */
+  let waitMin = 0;
+  if (mode === "waiting") {
+    if (ai?.waitMin != null) {
+      waitMin = Math.max(0, Math.round(ai.waitMin));
+    } else if (nowMs != null) {
+      const elapsed = (nowMs - new Date(row.date).getTime()) / 60_000;
+      waitMin = Math.max(0, Math.round(elapsed));
+    }
+  }
 
   return (
     <li>
@@ -171,6 +322,15 @@ function QueueItem({
         <span className="text-xs font-semibold text-muted-foreground tabular-nums">
           {time}
         </span>
+        {mode === "waiting" ? (
+          <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
+            {t("waitMin", { min: waitMin })}
+          </span>
+        ) : specialty ? (
+          <span className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {specialty}
+          </span>
+        ) : null}
       </Link>
     </li>
   );

@@ -1,36 +1,37 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
-  AlertTriangleIcon,
+  BellIcon,
   LightbulbIcon,
+  RefreshCwIcon,
   SparklesIcon,
   TrendingUpIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import type { DoctorRef } from "../_hooks/use-reception-live";
 
 export function BottomRow({
   todayRows,
-  warnings,
+  doctors,
   className,
 }: {
   todayRows: AppointmentRow[];
-  warnings: { id: string; text: string; tone?: "warning" | "danger" }[];
+  doctors: DoctorRef[];
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        "grid gap-3 lg:grid-cols-3",
+        "grid gap-3 lg:grid-cols-2",
         className,
       )}
     >
       <SmartRecommendations />
-      <DistributionChart todayRows={todayRows} />
-      <WarningsCard warnings={warnings} />
+      <DistributionChart todayRows={todayRows} doctors={doctors} />
     </div>
   );
 }
@@ -39,80 +40,189 @@ function SectionCard({
   title,
   icon: Icon,
   iconClass,
+  headerRight,
   children,
 }: {
-  title: string
-  icon: React.ComponentType<{ className?: string }>
-  iconClass: string
-  children: React.ReactNode
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconClass: string;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <section className="flex min-h-[200px] flex-col rounded-2xl border border-border bg-card">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <span
-          className={cn(
-            "flex size-7 items-center justify-center rounded-lg",
-            iconClass,
-          )}
-        >
-          <Icon className="size-4" />
-        </span>
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-          {title}
-        </h3>
+      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex size-7 items-center justify-center rounded-lg",
+              iconClass,
+            )}
+          >
+            <Icon className="size-4" />
+          </span>
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            {title}
+          </h3>
+        </div>
+        {headerRight ? <div className="flex items-center">{headerRight}</div> : null}
       </header>
       <div className="flex-1 p-4">{children}</div>
     </section>
   );
 }
 
+type RecCardVariant = "redistribute" | "optimize" | "remind";
+
+const REC_VARIANT_STYLES: Record<
+  RecCardVariant,
+  {
+    surface: string;
+    title: string;
+    iconWrap: string;
+    button: string;
+  }
+> = {
+  redistribute: {
+    surface: "bg-orange-50 dark:bg-orange-500/10 border-orange-200/60 dark:border-orange-500/20",
+    title: "text-orange-600 dark:text-orange-400",
+    iconWrap: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
+    button:
+      "bg-orange-600 text-white hover:bg-orange-600/90 focus-visible:outline-orange-600",
+  },
+  optimize: {
+    surface: "bg-violet-50 dark:bg-violet-500/10 border-violet-200/60 dark:border-violet-500/20",
+    title: "text-violet-600 dark:text-violet-400",
+    iconWrap: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+    button:
+      "bg-violet-600 text-white hover:bg-violet-600/90 focus-visible:outline-violet-600",
+  },
+  remind: {
+    surface: "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/60 dark:border-emerald-500/20",
+    title: "text-emerald-600 dark:text-emerald-400",
+    iconWrap: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    button:
+      "bg-emerald-600 text-white hover:bg-emerald-600/90 focus-visible:outline-emerald-600",
+  },
+};
+
+function RecCard({
+  variant,
+  icon: Icon,
+  title,
+  body,
+  cta,
+  onClick,
+}: {
+  variant: RecCardVariant;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  body: string;
+  cta: string;
+  onClick: () => void;
+}) {
+  const styles = REC_VARIANT_STYLES[variant];
+  return (
+    <article
+      className={cn(
+        "flex min-h-[150px] flex-col gap-3 rounded-xl border p-3",
+        styles.surface,
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-lg",
+            styles.iconWrap,
+          )}
+        >
+          <Icon className="size-4" />
+        </span>
+        <h4 className={cn("text-sm font-semibold", styles.title)}>{title}</h4>
+      </div>
+      <p className="flex-1 text-xs leading-relaxed text-foreground/80">
+        {body}
+      </p>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex h-8 items-center justify-center self-end rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+          styles.button,
+        )}
+      >
+        {cta}
+      </button>
+    </article>
+  );
+}
+
 function SmartRecommendations() {
   const t = useTranslations("reception.bottomRow");
-  const items = [
-    {
-      id: "1",
-      text: t("recInviteText"),
-      meta: t("recInviteMeta"),
-    },
-    {
-      id: "2",
-      text: t("recConfirmText", { count: 14 }),
-      meta: t("recConfirmMeta"),
-    },
-    {
-      id: "3",
-      text: t("recNoShowText", { count: 6 }),
-      meta: t("recNoShowMeta"),
-    },
-  ];
   return (
     <SectionCard
       title={t("smartTitle")}
       icon={SparklesIcon}
-      iconClass="bg-violet/15 text-violet"
+      iconClass="bg-violet-500/15 text-violet-600 dark:text-violet-400"
     >
-      <ul className="space-y-2.5">
-        {items.map((item) => (
-          <li
-            key={item.id}
-            className="flex items-start gap-2 rounded-lg border border-border/60 bg-background/40 p-2.5"
-          >
-            <LightbulbIcon className="mt-0.5 size-4 shrink-0 text-violet" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-foreground">{item.text}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {item.meta}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <RecCard
+          variant="redistribute"
+          icon={RefreshCwIcon}
+          title={t("recRedistributeTitle")}
+          body={t("recRedistributeBody")}
+          cta={t("recApply")}
+          onClick={() => {
+            console.log("[reception] smart-rec: redistribute apply");
+          }}
+        />
+        <RecCard
+          variant="optimize"
+          icon={LightbulbIcon}
+          title={t("recOptimizeTitle")}
+          body={t("recOptimizeBody")}
+          cta={t("recView")}
+          onClick={() => {
+            console.log("[reception] smart-rec: optimize view");
+          }}
+        />
+        <RecCard
+          variant="remind"
+          icon={BellIcon}
+          title={t("recRemindTitle")}
+          body={t("recRemindBody", { count: 7 })}
+          cta={t("recSend")}
+          onClick={() => {
+            console.log("[reception] smart-rec: remind send");
+          }}
+        />
+      </div>
     </SectionCard>
   );
 }
 
-function DistributionChart({ todayRows }: { todayRows: AppointmentRow[] }) {
+type DistributionMode = "bySpecialty" | "byTime";
+
+const SPECIALTY_BAR_COLORS = [
+  "bg-red-500",
+  "bg-amber-500",
+  "bg-emerald-500",
+  "bg-blue-500",
+  "bg-violet-500",
+  "bg-slate-400",
+];
+
+function DistributionChart({
+  todayRows,
+  doctors,
+}: {
+  todayRows: AppointmentRow[];
+  doctors: DoctorRef[];
+}) {
   const t = useTranslations("reception.bottomRow");
+  const locale = useLocale();
+  const [mode, setMode] = React.useState<DistributionMode>("bySpecialty");
+
   // Bucket today's appointments into 3-hour blocks (08-11, 11-14, 14-17, 17-20).
   const buckets = React.useMemo(() => {
     const counts = [0, 0, 0, 0];
@@ -128,74 +238,145 @@ function DistributionChart({ todayRows }: { todayRows: AppointmentRow[] }) {
     return labels.map((label, i) => ({ label, count: counts[i], max }));
   }, [todayRows]);
 
+  // Group by doctor specialization for bySpecialty mode.
+  const specialties = React.useMemo(() => {
+    if (todayRows.length === 0) return { rows: [], total: 0, max: 0 };
+    const doctorById = new Map<string, DoctorRef>();
+    for (const d of doctors) doctorById.set(d.id, d);
+
+    const counts = new Map<string, number>();
+    for (const row of todayRows) {
+      const doctor = doctorById.get(row.doctor.id);
+      const label =
+        (locale === "uz"
+          ? doctor?.specializationUz
+          : doctor?.specializationRu) ?? t("distributionOther");
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    const total = todayRows.length;
+    const sorted = Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const top = sorted.slice(0, 5);
+    const rest = sorted.slice(5);
+    if (rest.length > 0) {
+      const otherCount = rest.reduce((acc, x) => acc + x.count, 0);
+      const otherLabel = t("distributionOther");
+      const existing = top.find((r) => r.label === otherLabel);
+      if (existing) {
+        existing.count += otherCount;
+      } else {
+        top.push({ label: otherLabel, count: otherCount });
+      }
+    }
+
+    const max = Math.max(1, ...top.map((r) => r.count));
+    return { rows: top, total, max };
+  }, [todayRows, doctors, locale, t]);
+
+  const toggle = (
+    <div
+      role="tablist"
+      aria-label={t("distributionTitle")}
+      className="inline-flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "bySpecialty"}
+        onClick={() => setMode("bySpecialty")}
+        className={cn(
+          "rounded-[5px] px-2 py-1 text-[11px] font-medium transition-colors",
+          mode === "bySpecialty"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("distributionBySpecialty")}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "byTime"}
+        onClick={() => setMode("byTime")}
+        className={cn(
+          "rounded-[5px] px-2 py-1 text-[11px] font-medium transition-colors",
+          mode === "byTime"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("distributionByTime")}
+      </button>
+    </div>
+  );
+
   return (
     <SectionCard
       title={t("distributionTitle")}
       icon={TrendingUpIcon}
       iconClass="bg-primary/15 text-primary"
+      headerRight={toggle}
     >
-      <div className="flex h-[120px] items-end justify-between gap-3">
-        {buckets.map((b) => {
-          const h = (b.count / b.max) * 100;
-          return (
-            <div key={b.label} className="flex flex-1 flex-col items-center gap-2">
-              <span className="text-[11px] font-semibold text-foreground tabular-nums">
-                {b.count}
-              </span>
-              <div className="flex h-[80px] w-full items-end">
-                <div
-                  className="w-full rounded-md bg-gradient-to-t from-primary to-primary/60 transition-all"
-                  style={{ height: `${Math.max(6, h)}%` }}
-                />
+      {mode === "byTime" ? (
+        <div className="flex h-[120px] items-end justify-between gap-3">
+          {buckets.map((b) => {
+            const h = (b.count / b.max) * 100;
+            return (
+              <div
+                key={b.label}
+                className="flex flex-1 flex-col items-center gap-2"
+              >
+                <span className="text-[11px] font-semibold text-foreground tabular-nums">
+                  {b.count}
+                </span>
+                <div className="flex h-[80px] w-full items-end">
+                  <div
+                    className="w-full rounded-md bg-gradient-to-t from-primary to-primary/60 transition-all"
+                    style={{ height: `${Math.max(6, h)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {b.label}
+                </span>
               </div>
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {b.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </SectionCard>
-  );
-}
-
-function WarningsCard({
-  warnings,
-}: {
-  warnings: { id: string; text: string; tone?: "warning" | "danger" }[];
-}) {
-  const t = useTranslations("reception.bottomRow");
-  return (
-    <SectionCard
-      title={t("warningsTitle")}
-      icon={AlertTriangleIcon}
-      iconClass="bg-destructive/15 text-destructive"
-    >
-      {warnings.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("warningsEmpty")}</p>
+            );
+          })}
+        </div>
+      ) : specialties.rows.length === 0 ? (
+        <p className="py-6 text-center text-xs text-muted-foreground">
+          {t("distributionEmpty")}
+        </p>
       ) : (
-        <ul className="space-y-2">
-          {warnings.slice(0, 4).map((w) => (
-            <li
-              key={w.id}
-              className={cn(
-                "flex items-start gap-2 rounded-lg border p-2.5 text-sm",
-                w.tone === "danger"
-                  ? "border-destructive/30 bg-destructive/5 text-foreground"
-                  : "border-warning/30 bg-warning/5 text-foreground",
-              )}
-            >
-              <AlertTriangleIcon
-                className={cn(
-                  "mt-0.5 size-4 shrink-0",
-                  w.tone === "danger"
-                    ? "text-destructive"
-                    : "text-warning",
-                )}
-              />
-              <span className="min-w-0 flex-1">{w.text}</span>
-            </li>
-          ))}
+        <ul className="flex flex-col gap-2.5">
+          {specialties.rows.map((row, i) => {
+            const widthPct = (row.count / specialties.max) * 100;
+            const sharePct =
+              specialties.total > 0
+                ? Math.round((row.count / specialties.total) * 100)
+                : 0;
+            const colorClass =
+              SPECIALTY_BAR_COLORS[i % SPECIALTY_BAR_COLORS.length];
+            return (
+              <li key={row.label} className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate text-xs font-medium text-foreground">
+                    {row.label}
+                  </span>
+                  <span className="shrink-0 text-[11px] font-semibold text-muted-foreground tabular-nums">
+                    {sharePct}%
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full rounded-full transition-all", colorClass)}
+                    style={{ width: `${Math.max(4, widthPct)}%` }}
+                  />
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </SectionCard>

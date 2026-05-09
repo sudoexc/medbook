@@ -7,16 +7,12 @@ import {
   ArrowRightIcon,
   CalendarClockIcon,
   ChevronRightIcon,
-  ClockIcon,
   PhoneIcon,
   SendIcon,
-  SparklesIcon,
-  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { MoneyText } from "@/components/atoms/money-text";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { usePatientsStats } from "../_hooks/use-patients-stats";
@@ -74,15 +70,20 @@ const SourcesWidget = dynamic(
   },
 );
 
-/**
- * Right rail for the patients list — docs/5 - Пациенты (2).png.
- *
- * Sections:
- *  - Центр действий (3 quick actions + "Смотреть все")
- *  - Сегменты (VIP / >30 дней / Новые / Потерянные)
- *  - Статистика за месяц (Новые / Вернувшиеся / Средний чек / Общий доход)
- *  - Источники пациентов (donut)
- */
+type SegmentRowDef = {
+  key: PatientRow["segment"];
+  labelKey: string;
+  dotClass: string;
+};
+
+const SEGMENT_ROWS: SegmentRowDef[] = [
+  { key: "VIP", labelKey: "segments.vip", dotClass: "bg-destructive" },
+  { key: "NEW", labelKey: "segments.newClients", dotClass: "bg-warning" },
+  { key: "ACTIVE", labelKey: "segments.active", dotClass: "bg-success" },
+  { key: "DORMANT", labelKey: "segments.dormant", dotClass: "bg-info" },
+  { key: "CHURN", labelKey: "segments.churn", dotClass: "bg-destructive/70" },
+];
+
 export function PatientsRightRail({
   rows,
   segmentCounts,
@@ -97,16 +98,18 @@ export function PatientsRightRail({
     if (segmentCounts) {
       return {
         VIP: segmentCounts.VIP,
-        DORMANT: segmentCounts.DORMANT,
         NEW: segmentCounts.NEW,
+        ACTIVE: segmentCounts.ACTIVE,
+        DORMANT: segmentCounts.DORMANT,
         CHURN: segmentCounts.CHURN,
       };
     }
-    const count = { VIP: 0, DORMANT: 0, NEW: 0, CHURN: 0 };
+    const count = { VIP: 0, NEW: 0, ACTIVE: 0, DORMANT: 0, CHURN: 0 };
     for (const p of rows) {
       if (p.segment === "VIP") count.VIP += 1;
-      if (p.segment === "DORMANT") count.DORMANT += 1;
       if (p.segment === "NEW") count.NEW += 1;
+      if (p.segment === "ACTIVE") count.ACTIVE += 1;
+      if (p.segment === "DORMANT") count.DORMANT += 1;
       if (p.segment === "CHURN") count.CHURN += 1;
     }
     return count;
@@ -142,27 +145,11 @@ export function PatientsRightRail({
     },
   ];
 
-  const monthly = React.useMemo(() => {
-    let ltvSum = 0;
-    let ltvCount = 0;
-    for (const p of rows) {
-      if (p.ltv > 0) {
-        ltvSum += p.ltv;
-        ltvCount += 1;
-      }
-    }
-    const avgCheck = ltvCount > 0 ? Math.round(ltvSum / ltvCount) : 0;
-    return {
-      newCount: segments.NEW,
-      returning: rows.filter((p) => p.visitsCount > 1).length,
-      avgCheck,
-      totalRevenue: ltvSum,
-    };
-  }, [rows, segments]);
+  const fmt = (n: number) =>
+    new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n);
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto">
-      {/* Центр действий */}
       <section>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {t("actionsHeading")}
@@ -220,168 +207,60 @@ export function PatientsRightRail({
         </button>
       </section>
 
-      {/* Сегменты */}
       <section>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {t("segmentsHeading")}
         </h3>
-        <ul className="space-y-1.5">
-          <SegmentRow
-            icon={SparklesIcon}
-            label={t("segments.vip")}
-            count={segments.VIP}
-            tone="info"
-            locale={locale}
-            isActive={activeSegment === "VIP"}
-            onClick={() =>
-              onSelectSegment(activeSegment === "VIP" ? undefined : "VIP")
-            }
-          />
-          <SegmentRow
-            icon={ClockIcon}
-            label={t("segments.dormant30")}
-            count={segments.DORMANT}
-            tone="warning"
-            locale={locale}
-            isActive={activeSegment === "DORMANT"}
-            onClick={() =>
-              onSelectSegment(activeSegment === "DORMANT" ? undefined : "DORMANT")
-            }
-          />
-          <SegmentRow
-            icon={UsersIcon}
-            label={t("segments.newClients")}
-            count={segments.NEW}
-            tone="success"
-            locale={locale}
-            isActive={activeSegment === "NEW"}
-            onClick={() =>
-              onSelectSegment(activeSegment === "NEW" ? undefined : "NEW")
-            }
-          />
-          <SegmentRow
-            icon={ClockIcon}
-            label={t("segments.churn")}
-            count={segments.CHURN}
-            tone="danger"
-            locale={locale}
-            isActive={activeSegment === "CHURN"}
-            onClick={() =>
-              onSelectSegment(activeSegment === "CHURN" ? undefined : "CHURN")
-            }
-          />
+        <ul className="space-y-1">
+          {SEGMENT_ROWS.map((row) => {
+            const isActive = activeSegment === row.key;
+            const count = segments[row.key];
+            return (
+              <li key={row.key}>
+                <button
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() =>
+                    onSelectSegment(isActive ? undefined : row.key)
+                  }
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-muted/40",
+                    isActive && "bg-primary/5 ring-1 ring-primary/40",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block size-2 shrink-0 rounded-full",
+                      row.dotClass,
+                    )}
+                    aria-hidden
+                  />
+                  <span className="truncate text-foreground">
+                    {t(row.labelKey as never)}
+                  </span>
+                  <span className="ml-auto tabular-nums font-semibold text-foreground">
+                    {fmt(count)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
+        <button
+          type="button"
+          className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline"
+        >
+          {t("viewAllSegments")}
+          <ArrowRightIcon className="size-3" />
+        </button>
       </section>
 
-      {/* Статистика */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("statsHeading")}
-          </h3>
-          <span className="text-[11px] font-medium text-muted-foreground">
-            {t("statsPeriod")}
-          </span>
-        </div>
-        <div className="divide-y divide-border rounded-2xl border border-border bg-card">
-          <StatsRow label={t("stats.newPatients")} value={monthly.newCount} />
-          <StatsRow label={t("stats.returning")} value={monthly.returning} />
-          <StatsRow
-            label={t("stats.avgCheck")}
-            value={
-              monthly.avgCheck > 0 ? (
-                <MoneyText amount={monthly.avgCheck} currency="UZS" />
-              ) : (
-                "—"
-              )
-            }
-          />
-          <StatsRow
-            label={t("stats.totalRevenue")}
-            value={
-              monthly.totalRevenue > 0 ? (
-                <MoneyText amount={monthly.totalRevenue} currency="UZS" />
-              ) : (
-                "—"
-              )
-            }
-          />
-        </div>
-      </section>
-
-      {/* Источники пациентов (donut) */}
       <section>
         <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {t("sourcesHeading")}
         </h3>
         <SourcesWidget stats={stats} isLoading={isLoading} />
       </section>
-    </div>
-  );
-}
-
-function SegmentRow({
-  icon: Icon,
-  label,
-  count,
-  tone,
-  locale,
-  isActive,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  count: number;
-  tone: Tone;
-  locale: string;
-  isActive?: boolean;
-  onClick?: () => void;
-}) {
-  const toneClass = TONE_CLASS[tone];
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={isActive}
-        className={cn(
-          "flex w-full items-center gap-2 rounded-xl border bg-card px-2.5 py-1.5 text-[12px] text-left transition-colors hover:bg-muted/40",
-          isActive
-            ? "border-primary ring-1 ring-primary/40"
-            : "border-border",
-        )}
-      >
-        <span
-          className={cn(
-            "inline-flex size-6 shrink-0 items-center justify-center rounded-md",
-            toneClass.icon,
-          )}
-          aria-hidden
-        >
-          <Icon className="size-3.5" />
-        </span>
-        <span className="truncate text-foreground">{label}</span>
-        <span className="ml-auto tabular-nums font-semibold text-foreground">
-          {new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(count)}
-        </span>
-      </button>
-    </li>
-  );
-}
-
-function StatsRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 px-3 py-2 text-[12px]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-semibold tabular-nums text-foreground">
-        {value}
-      </span>
     </div>
   );
 }

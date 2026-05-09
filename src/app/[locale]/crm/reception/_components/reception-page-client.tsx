@@ -34,6 +34,7 @@ import { DayPickerDropdown } from "./day-picker-dropdown";
 import { DoctorPanelSettings } from "./doctor-panel-settings";
 import { CallsWidget } from "./calls-widget";
 import { TgPreviewWidget } from "./tg-preview-widget";
+import { UrgentAlertsWidget } from "./urgent-alerts-widget";
 import { QueueColumn } from "./queue-column";
 import { BottomRow } from "./bottom-row";
 
@@ -201,7 +202,11 @@ export function ReceptionPageClient() {
 
       <ActionBriefing />
 
-      <KpiStrip dashboard={dashboard.data} todayRows={todayRows} />
+      <KpiStrip
+        dashboard={dashboard.data}
+        todayRows={todayRows}
+        totalDoctors={doctors.data?.length ?? 0}
+      />
 
       <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
         <QueueColumn rows={todayRows} />
@@ -296,10 +301,11 @@ export function ReceptionPageClient() {
             rows={conversations.data ?? []}
             isLoading={conversations.isLoading}
           />
+          <UrgentAlertsWidget alerts={warnings} />
         </aside>
       </div>
 
-      <BottomRow todayRows={todayRows} warnings={warnings} />
+      <BottomRow todayRows={todayRows} doctors={doctors.data ?? []} />
 
       <AppointmentDrawer
         appointmentId={openRowId}

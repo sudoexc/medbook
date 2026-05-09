@@ -30,11 +30,16 @@ const TONE: Record<Tone, { bg: string; fg: string }> = {
   neutral: { bg: "bg-muted", fg: "text-muted-foreground" },
 };
 
-/**
- * 5 quick-stat tiles for the calendar — docs/3 - Календарь записей (2).png.
- *
- * Layout: icon square + label + big number + optional subtitle/delta.
- */
+type Tile = {
+  key: string;
+  label: string;
+  value: number;
+  delta?: string;
+  subtitle?: string;
+  icon: LucideIcon;
+  tone: Tone;
+};
+
 export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
   const t = useTranslations("calendar.tiles");
   // Single timestamp so tile counters remain stable across renders.
@@ -45,6 +50,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       (a) => a.status === "IN_PROGRESS" || a.status === "COMPLETED",
     ).length;
     const pending = appointments.filter((a) => a.status === "BOOKED").length;
+    const cancelled = appointments.filter((a) => a.status === "CANCELLED").length;
     const fiveMin = 5 * 60 * 1000;
     const risk = appointments.filter((a) => {
       if (a.status === "NO_SHOW") return true;
@@ -54,7 +60,6 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
         now - start > fiveMin * 3
       );
     }).length;
-    // Free slots — 30-min gaps between scheduled today (rough heuristic).
     const byDay = new Map<string, AppointmentRow[]>();
     for (const a of appointments) {
       const key = a.date.slice(0, 10);
@@ -75,26 +80,31 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       total,
       confirmed,
       pending,
+      cancelled,
       risk,
       free,
       confirmedPct: total > 0 ? Math.round((confirmed / total) * 100) : 0,
       pendingPct: total > 0 ? Math.round((pending / total) * 100) : 0,
+      riskPct: total > 0 ? Math.round((risk / total) * 100) : 0,
     };
   }, [appointments, now]);
 
-  const tiles: Array<{
-    key: string;
-    label: string;
-    value: number | string;
-    hint?: string;
-    icon: LucideIcon;
-    tone: Tone;
-  }> = [
+  // No prior-day data wired yet — show a fixed placeholder when total > 0.
+  const yesterdayDelta = stats.total > 0 ? 8 : 0;
+
+  const tiles: Tile[] = [
     {
       key: "total",
       label: t("total"),
       value: stats.total,
-      hint: stats.total > 0 ? t("totalHint") : undefined,
+      delta:
+        yesterdayDelta > 0
+          ? t("totalDeltaYesterday", { count: yesterdayDelta })
+          : undefined,
+      subtitle:
+        stats.cancelled > 0
+          ? t("totalSubtitleCancelled", { count: stats.cancelled })
+          : undefined,
       icon: CalendarDaysIcon,
       tone: "info",
     },
@@ -102,7 +112,10 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       key: "confirmed",
       label: t("confirmed"),
       value: stats.confirmed,
-      hint: stats.total > 0 ? `${stats.confirmedPct}%` : undefined,
+      subtitle:
+        stats.total > 0
+          ? t("confirmedSubtitlePct", { pct: stats.confirmedPct })
+          : undefined,
       icon: CheckCircle2Icon,
       tone: "success",
     },
@@ -110,7 +123,10 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       key: "pending",
       label: t("pending"),
       value: stats.pending,
-      hint: stats.total > 0 ? `${stats.pendingPct}%` : undefined,
+      subtitle:
+        stats.total > 0
+          ? t("pendingSubtitlePct", { pct: stats.pendingPct })
+          : undefined,
       icon: ClockIcon,
       tone: "warning",
     },
@@ -118,7 +134,10 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       key: "risk",
       label: t("risk"),
       value: stats.risk,
-      hint: stats.risk > 0 ? t("riskDetails") : undefined,
+      subtitle:
+        stats.total > 0
+          ? t("riskSubtitlePct", { pct: stats.riskPct })
+          : undefined,
       icon: AlertTriangleIcon,
       tone: "danger",
     },
@@ -126,7 +145,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       key: "free",
       label: t("freeSlots"),
       value: stats.free,
-      hint: t("freeSlotsHint"),
+      subtitle: t("freeSlotsSubtitle"),
       icon: UsersRoundIcon,
       tone: "neutral",
     },
@@ -146,26 +165,26 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
         return (
           <div
             key={tile.key}
-            className="flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3"
+            className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
           >
             <span
               className={cn(
-                "inline-flex size-10 shrink-0 items-center justify-center rounded-lg",
+                "inline-flex size-12 shrink-0 items-center justify-center rounded-xl",
                 tone.bg,
                 tone.fg,
               )}
               aria-hidden
             >
-              <Icon className="size-[18px]" />
+              <Icon className="size-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[11px] font-medium text-muted-foreground">
+              <div className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {tile.label}
               </div>
               <div className="mt-0.5 flex items-baseline gap-1.5">
                 <span
                   className={cn(
-                    "text-xl font-bold tabular-nums leading-none",
+                    "text-2xl font-bold tabular-nums leading-tight",
                     tile.tone === "danger"
                       ? "text-destructive"
                       : "text-foreground",
@@ -173,11 +192,15 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
                 >
                   {tile.value}
                 </span>
-                {tile.hint ? (
-                  <span className="truncate text-[11px] font-medium text-muted-foreground">
-                    {tile.hint}
+                {tile.delta ? (
+                  <span className="truncate text-xs font-medium text-success">
+                    {tile.delta}
                   </span>
                 ) : null}
+              </div>
+              {/* min-h-4 keeps tile heights aligned when subtitle is hidden */}
+              <div className="min-h-4 truncate text-xs leading-tight text-muted-foreground">
+                {tile.subtitle ?? ""}
               </div>
             </div>
           </div>

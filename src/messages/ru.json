@@ -81,7 +81,7 @@
       "collapse": "Свернуть"
     },
     "topbar": {
-      "searchPlaceholder": "Поиск пациента (телефон, ФИО, ID)",
+      "searchPlaceholder": "Поиск пациента, врача, записи, телефона, ФИО...",
       "newAppointment": "Новая запись",
       "moreActions": "Дополнительные действия",
       "userMenu": {
@@ -115,7 +115,7 @@
         "fallback": "Пользователь"
       },
       "sections": {
-        "reception": { "title": "Ресепшн", "subtitle": "Главный дашборд" },
+        "reception": { "title": "Ресепшн", "subtitle": "Оперативная картина клиники в реальном времени" },
         "appointments": { "title": "Записи", "subtitle": "Управление записями пациентов" },
         "calendar": { "title": "Календарь записей", "subtitle": "Планирование и подтверждения в реальном времени" },
         "patients": { "title": "Пациенты", "subtitle": "База пациентов и история визитов" },
@@ -296,7 +296,15 @@
       "lastVisitFrom": "Последний визит от",
       "lastVisitTo": "Последний визит до",
       "hasDebt": "С долгом",
-      "clear": "Сбросить"
+      "clear": "Сбросить",
+      "labelSearch": "Поиск",
+      "labelStatus": "Статус",
+      "labelSource": "Источник",
+      "labelDate": "Дата посещения",
+      "labelSegments": "Сегменты",
+      "labelTableSettings": "Настройки таблицы",
+      "datePlaceholder": "Выберите период",
+      "tableColumnCount": "{shown}/{total} колонок"
     },
     "widgets": {
       "demographics": "Демография",
@@ -389,11 +397,14 @@
       "viewAllActions": "Смотреть все действия",
       "segmentsHeading": "Сегменты",
       "segments": {
-        "vip": "VIP клиенты",
+        "vip": "VIP",
         "dormant30": "Не были > 30 дней",
-        "newClients": "Новые клиенты",
+        "newClients": "Новые",
+        "active": "Активные",
+        "dormant": "Остывают",
         "churn": "Потерянные"
       },
+      "viewAllSegments": "Все сегменты",
       "statsHeading": "Статистика",
       "statsPeriod": "За месяц",
       "stats": {
@@ -405,13 +416,19 @@
       "sourcesHeading": "Источники пациентов"
     },
     "tiles": {
-      "totalPatients": "Всего пациентов",
+      "totalPatients": "Все пациенты",
       "newWeekHint": "+{count, plural, one {# за неделю} few {# за неделю} other {# за неделю}}",
       "newWeek": "Новые за неделю",
       "active": "Активные пациенты",
-      "dormantGt30": "Не были > 30 дней",
-      "noShowRisk": "Риск no-show",
-      "avgCheck": "Средний чек"
+      "dormantGt30": "Неактивные > 30 дней",
+      "noShowRisk": "No-show risk",
+      "avgCheck": "Средний чек",
+      "deltaTotalPatients": "+{count} за неделю",
+      "deltaNewWeekPct": "+{pct}% к прошлой неделе",
+      "deltaActivePct": "{pct}% от базы",
+      "deltaDormantPct": "{pct}% от базы",
+      "deltaNoShowPct": "{pct}% от пред. записей",
+      "deltaAvgCheckPct": "+{pct}% к прошлому месяцу"
     },
     "tabs": {
       "ariaLabel": "Сегменты пациентов",
@@ -423,7 +440,8 @@
       "churn": "Потерянные",
       "filters": "Фильтры",
       "segments": "Сегменты",
-      "configureTable": "Настроить таблицу"
+      "configureTable": "Настроить таблицу",
+      "newSegment": "Новый сегмент"
     }
   },
   "appointments": {
@@ -842,14 +860,20 @@
       }
     },
     "tiles": {
-      "total": "Записей на сегодня",
+      "total": "Записей сегодня",
       "totalHint": "Сравнение с вчера",
+      "totalDeltaYesterday": "+{count} к вчера",
+      "totalSubtitleCancelled": "{count, plural, one {# отменена} few {# отменено} other {# отменено}}",
       "confirmed": "Подтверждено",
+      "confirmedSubtitlePct": "{pct}% от всех записей",
       "pending": "Ожидают подтверждения",
+      "pendingSubtitlePct": "{pct}% от всех записей",
       "risk": "Высокий риск no-show",
       "riskDetails": "Подробнее",
-      "freeSlots": "Свободных слотов",
-      "freeSlotsHint": "30 мин"
+      "riskSubtitlePct": "{pct}% от всех записей",
+      "freeSlots": "Свободные слоты",
+      "freeSlotsHint": "30 мин",
+      "freeSlotsSubtitle": "сегодня"
     },
     "rail": {
       "stats": "Статистика",
@@ -1486,27 +1510,48 @@
     "queueColumn": {
       "title": "Общая очередь",
       "empty": "Очередь пуста",
-      "aiTooltip": "Очередь ранжируется ИИ: ожидание, срочность, VIP, риск неявки"
+      "aiTooltip": "Очередь ранжируется ИИ: ожидание, срочность, VIP, риск неявки",
+      "subsectionWaiting": "Ожидают вызова",
+      "subsectionReady": "Готовы к приёму",
+      "waitMin": "{min} мин",
+      "refreshQueue": "Обновить очередь"
     },
     "bottomRow": {
       "smartTitle": "Умные рекомендации",
-      "recInviteText": "Пригласить Akmala на свободный слот в 15:30 — кабинет 102",
-      "recInviteMeta": "Автопредложение ИИ",
-      "recConfirmText": "Подтвердить записи на завтра по SMS ({count} пациентов)",
-      "recConfirmMeta": "Ежедневная задача",
-      "recNoShowText": "Позвонить по no-show за последние 7 дней ({count} человек)",
-      "recNoShowMeta": "Рекомендация CRM",
+      "recRedistributeTitle": "Перераспределите очередь",
+      "recRedistributeBody": "В кабинете 101 высокая нагрузка. Рекомендуем перенаправить 2 пациента.",
+      "recApply": "Применить",
+      "recOptimizeTitle": "Оптимизируйте расписание",
+      "recOptimizeBody": "После 16:00 ожидается спад нагрузки на 25%. Можно добавить приёмы.",
+      "recView": "Смотреть",
+      "recRemindTitle": "Напоминания пациентам",
+      "recRemindBody": "{count} пациентов ожидают подтверждения записи на завтра.",
+      "recSend": "Отправить",
       "distributionTitle": "Распределение приёмов",
-      "warningsTitle": "Предупреждения",
-      "warningsEmpty": "Нет активных предупреждений."
+      "distributionByTime": "По времени",
+      "distributionBySpecialty": "По специальности",
+      "distributionEmpty": "Нет данных за сегодня",
+      "distributionOther": "Другие"
+    },
+    "urgentAlerts": {
+      "title": "Срочные оповещения",
+      "empty": "Нет активных оповещений.",
+      "viewAll": "Смотреть все"
     },
     "kpi": {
-      "todayAppointments": "Записей сегодня",
-      "checkedIn": "Пришли",
-      "missed": "Пропустили",
-      "revenue": "Выручка",
-      "waiting": "Ожидают",
-      "inProgress": "На приёме"
+      "todayAppointments": "Записей на сегодня",
+      "checkedIn": "Прибыли сегодня",
+      "missed": "Не явились",
+      "revenue": "Выручка за сегодня",
+      "waiting": "В очереди сейчас",
+      "inProgress": "Идут приёмы",
+      "unitPatients": "пациентов",
+      "unitPersons": "человек",
+      "unitRooms": "кабинетов",
+      "unitMoney": "сум",
+      "subtitleWaitingQueue": "Ожидают приём",
+      "subtitlePctBusy": "{pct}% занято",
+      "subtitlePctOfBookings": "{pct}% от записей"
     },
     "doctorQueue": {
       "title": "Очередь по врачам",
@@ -1547,7 +1592,13 @@
       "remaining": "Осталось {min} мин",
       "awaitingPatient": "Ожидает пациента",
       "fallbackService": "Приём",
-      "nearestTime": "Ближайшее время"
+      "nearestTime": "Ближайшее время",
+      "pillInSession": "Идёт приём",
+      "pillAwaiting": "Ожидает",
+      "pillFree": "Свободен",
+      "inQueueCount": "В очереди ({count})",
+      "waitMin": "{min} мин",
+      "menuLabel": "Действия"
     },
     "calls": {
       "title": "Call-центр",
@@ -1588,10 +1639,7 @@
       "photo": "фото",
       "document": "документ",
       "viewAll": "Все",
-      "tabNew": "Новые",
-      "tabWaiting": "Ожидают",
-      "tabConfirmed": "Подтв.",
-      "tabAll": "Все",
+      "newMessagesTitle": "Новые сообщения",
       "noMessages": "Сообщений нет",
       "unknownName": "Неизвестный",
       "voiceMessageFallback": "Голосовое сообщение"

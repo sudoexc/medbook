@@ -66,14 +66,6 @@ export function PatientsPageClient() {
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
-  const filtersRef = React.useRef<HTMLDivElement | null>(null);
-  const [filtersFlash, setFiltersFlash] = React.useState(false);
-  const handleOpenFilters = React.useCallback(() => {
-    filtersRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    setFiltersFlash(true);
-    window.setTimeout(() => setFiltersFlash(false), 1200);
-  }, []);
-
   const [visibleColumns, setVisibleColumns] = React.useState<
     Record<OptionalColumnId, boolean>
   >({
@@ -122,7 +114,6 @@ export function PatientsPageClient() {
     Boolean(state.registeredTo) ||
     state.balance === "debt";
 
-  // Derive the active tab from the current segment filter.
   const activeTab: PatientsTabKey = state.segment
     ? (SEGMENT_TO_TAB[state.segment as PatientRow["segment"]] ?? "all")
     : "all";
@@ -169,26 +160,15 @@ export function PatientsPageClient() {
             totalAcrossSegments={totalAcrossSegments}
             active={activeTab}
             onChange={handleTabChange}
-            onOpenFilters={handleOpenFilters}
-            onSelectSegment={(seg) => setFilter("segment", seg)}
+          />
+
+          <PatientsFilters
+            state={state}
+            onChange={setFilter}
+            onClear={clearAll}
             visibleColumns={visibleColumns}
             onToggleColumn={handleToggleColumn}
           />
-
-          <div
-            ref={filtersRef}
-            className={
-              filtersFlash
-                ? "rounded-2xl ring-2 ring-primary/60 ring-offset-2 transition-shadow"
-                : "transition-shadow"
-            }
-          >
-            <PatientsFilters
-              state={state}
-              onChange={setFilter}
-              onClear={clearAll}
-            />
-          </div>
 
           <div className="flex min-h-[60vh] flex-1 flex-col">
             <PatientsTable

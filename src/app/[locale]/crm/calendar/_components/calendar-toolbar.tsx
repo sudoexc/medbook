@@ -4,10 +4,9 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  FilterIcon,
-  PlusIcon,
   SettingsIcon,
 } from "lucide-react";
 
@@ -53,7 +52,6 @@ export interface CalendarToolbarProps {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
-  onCreateClick: () => void;
   doctors: DoctorResource[];
   cabinets: CabinetRef[];
   services: ServiceRef[];
@@ -66,14 +64,15 @@ export function CalendarToolbar({
   onPrev,
   onNext,
   onToday,
-  onCreateClick,
   doctors,
   cabinets,
   services,
   rangeLabel,
 }: CalendarToolbarProps) {
   const t = useTranslations("calendar");
+  const tCommon = useTranslations("common");
   const locale = useLocale();
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
 
   const filterCount =
     filters.doctorIds.length +
@@ -82,7 +81,9 @@ export function CalendarToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/40 px-4 py-2.5">
-      {/* Date navigation */}
+      <Button variant="outline" size="sm" onClick={onToday}>
+        {t("today")}
+      </Button>
       <div className="flex items-center gap-1">
         <Button
           variant="outline"
@@ -91,9 +92,6 @@ export function CalendarToolbar({
           aria-label={t("prev")}
         >
           <ChevronLeftIcon className="size-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={onToday}>
-          {t("today")}
         </Button>
         <Button
           variant="outline"
@@ -109,6 +107,7 @@ export function CalendarToolbar({
         <PopoverTrigger className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm font-medium hover:bg-muted">
           <CalendarIcon className="size-4 text-muted-foreground" />
           <span className="tabular-nums">{rangeLabel}</span>
+          <ChevronDownIcon className="size-3.5 text-muted-foreground" />
         </PopoverTrigger>
         <PopoverContent align="start" className="w-auto p-3">
           <Input
@@ -123,7 +122,8 @@ export function CalendarToolbar({
         </PopoverContent>
       </Popover>
 
-      {/* View switcher */}
+      <div className="flex-1" />
+
       <div
         className="flex items-center rounded-md bg-muted/60 p-0.5"
         role="tablist"
@@ -150,13 +150,11 @@ export function CalendarToolbar({
         })}
       </div>
 
-      <div className="flex-1" />
-
-      {/* Consolidated filters */}
-      <Popover>
+      {/* Settings popover doubles as filters host in the new design. */}
+      <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
         <PopoverTrigger className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm hover:bg-muted">
-          <FilterIcon className="size-3.5 text-muted-foreground" />
-          <span className="font-medium">{t("filtersLabel")}</span>
+          <SettingsIcon className="size-3.5" />
+          <span className="font-medium">{t("configureView")}</span>
           {filterCount > 0 ? (
             <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
               {filterCount}
@@ -206,19 +204,19 @@ export function CalendarToolbar({
                 {t("filters.cabinetOverlay")}
               </Label>
             </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSettingsOpen(false)}
+              >
+                {tCommon("close")}
+              </Button>
+            </div>
           </div>
         </PopoverContent>
       </Popover>
-
-      <Button variant="outline" size="sm">
-        <SettingsIcon className="size-3.5" />
-        {t("configureView")}
-      </Button>
-
-      <Button size="sm" onClick={onCreateClick}>
-        <PlusIcon className="size-4" />
-        {t("newAppointment")}
-      </Button>
     </div>
   );
 }

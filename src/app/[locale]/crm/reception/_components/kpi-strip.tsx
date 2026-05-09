@@ -8,7 +8,7 @@ import {
   BanknoteIcon,
   CalendarDaysIcon,
   CheckCircle2Icon,
-  HourglassIcon,
+  Users2Icon,
   XCircleIcon,
 } from "lucide-react";
 
@@ -25,6 +25,8 @@ import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-
 export interface KpiStripProps {
   dashboard: DashboardResponse | undefined;
   todayRows: AppointmentRow[];
+  /** Total active doctors — used for the "% busy" cabinet subtitle. */
+  totalDoctors?: number;
   className?: string;
 }
 
@@ -46,7 +48,12 @@ function pickBucket(
  * Each tile links to `/crm/appointments` pre-filtered on status so the
  * receptionist can drill into the list.
  */
-export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
+export function KpiStrip({
+  dashboard,
+  todayRows,
+  totalDoctors = 0,
+  className,
+}: KpiStripProps) {
   const t = useTranslations("reception.kpi");
 
   const today = dashboard?.today;
@@ -59,12 +66,20 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
   const revenue = today?.revenue ?? 0;
   const animatedRevenue = useCountUp(Number(revenue));
 
+  const inProgressPct =
+    totalDoctors > 0 ? Math.round((inProgress / totalDoctors) * 100) : null;
+  const completedPct =
+    totalToday > 0 ? Math.round((completed / totalToday) * 100) : null;
+  const noShowPct =
+    totalToday > 0 ? Math.round((noShow / totalToday) * 100) : null;
+
   const tiles = [
     {
       key: "today",
       href: "/crm/appointments?dateMode=today",
       label: t("todayAppointments"),
       value: <CountUp to={totalToday} className="tabular-nums" />,
+      unit: t("unitPatients"),
       tone: "primary" as const,
       icon: <CalendarDaysIcon />,
     },
@@ -73,15 +88,22 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       href: "/crm/appointments?dateMode=today&bucket=waiting",
       label: t("waiting"),
       value: <CountUp to={waiting} className="tabular-nums" />,
+      unit: t("unitPersons"),
+      subtitle: t("subtitleWaitingQueue"),
       tone: "warning" as const,
-      icon: <HourglassIcon />,
+      icon: <Users2Icon />,
     },
     {
       key: "inProgress",
       href: "/crm/appointments?dateMode=today&bucket=in_progress",
       label: t("inProgress"),
       value: <CountUp to={inProgress} className="tabular-nums" />,
-      tone: "info" as const,
+      unit: t("unitRooms"),
+      subtitle:
+        inProgressPct !== null
+          ? t("subtitlePctBusy", { pct: inProgressPct })
+          : undefined,
+      tone: "success" as const,
       icon: <ActivityIcon />,
     },
     {
@@ -89,7 +111,12 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       href: "/crm/appointments?dateMode=today&bucket=completed",
       label: t("checkedIn"),
       value: <CountUp to={completed} className="tabular-nums" />,
-      tone: "success" as const,
+      unit: t("unitPatients"),
+      subtitle:
+        completedPct !== null
+          ? t("subtitlePctOfBookings", { pct: completedPct })
+          : undefined,
+      tone: "violet" as const,
       icon: <CheckCircle2Icon />,
     },
     {
@@ -97,7 +124,12 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
       href: "/crm/appointments?dateMode=today&bucket=no_show",
       label: t("missed"),
       value: <CountUp to={noShow} className="tabular-nums" />,
-      tone: "neutral" as const,
+      unit: t("unitPatients"),
+      subtitle:
+        noShowPct !== null
+          ? t("subtitlePctOfBookings", { pct: noShowPct })
+          : undefined,
+      tone: "pink" as const,
       icon: <XCircleIcon />,
     },
     {
@@ -111,7 +143,8 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
           className="tabular-nums"
         />
       ),
-      tone: "violet" as const,
+      unit: t("unitMoney"),
+      tone: "success" as const,
       icon: <BanknoteIcon />,
     },
   ];
@@ -131,11 +164,13 @@ export function KpiStrip({ dashboard, todayRows, className }: KpiStripProps) {
         <Link
           key={tile.key}
           href={tile.href}
-          className="rounded-xl transition-shadow hover:shadow-[0_2px_8px_rgba(15,23,42,.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="block h-full rounded-xl transition-shadow hover:shadow-[0_2px_8px_rgba(15,23,42,.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <KpiTile
             label={tile.label}
             value={tile.value}
+            unit={tile.unit}
+            subtitle={tile.subtitle}
             tone={tile.tone}
             icon={tile.icon}
           />

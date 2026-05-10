@@ -64,7 +64,7 @@ export function SourcesWidget({ stats, isLoading }: SourcesWidgetProps) {
       ) : data.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("sourcesEmpty")}</p>
       ) : (
-        <div style={{ height: chartHeight }}>
+        <div className="motion-fade-in" style={{ height: chartHeight }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={data}

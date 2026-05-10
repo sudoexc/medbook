@@ -161,13 +161,13 @@ function ExportsTab() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="motion-stagger space-y-2">
       {rows.map((r) => {
         const canDownload = r.status === "READY" || r.status === "DELIVERED";
         return (
           <div
             key={r.id}
-            className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+            className="motion-rise-in flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -298,7 +298,7 @@ function DeletionsTab() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="motion-stagger space-y-2">
       {sortedRows.map((r) => (
         <DeletionRowCard
           key={r.id}
@@ -334,7 +334,7 @@ function DeletionRowCard({
   const canApprove = row.status === "PENDING_REVIEW";
   const canCancel = row.status === "PENDING_REVIEW" || row.status === "APPROVED";
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="motion-rise-in flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <DeletionStatusBadge status={row.status} />

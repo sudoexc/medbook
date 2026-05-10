@@ -141,7 +141,7 @@ function FunnelKpiCard({
               stroke={accent}
               strokeWidth={2}
               dot={false}
-              isAnimationActive={false}
+              animationDuration={800}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -343,7 +343,7 @@ function ClinicLoadCard({
               stroke={accent}
               strokeWidth={2}
               dot={false}
-              isAnimationActive={false}
+              animationDuration={800}
             />
           </LineChart>
         </ResponsiveContainer>

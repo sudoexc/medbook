@@ -68,6 +68,15 @@ export function NewPatientDialog({
   const tGender = useTranslations("patients.gender");
   const queryClient = useQueryClient();
 
+  const formRef = React.useRef<HTMLFormElement>(null);
+  const triggerShake = React.useCallback(() => {
+    const el = formRef.current;
+    if (!el) return;
+    el.classList.remove("motion-shake");
+    void el.offsetWidth;
+    el.classList.add("motion-shake");
+  }, []);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
@@ -132,6 +141,7 @@ export function NewPatientDialog({
       if (onCreated) onCreated(created.id);
     },
     onError: (e: Error) => {
+      triggerShake();
       if (e.message === "PHONE_EXISTS") {
         toast.error(t("phoneExists"));
       } else {
@@ -140,7 +150,10 @@ export function NewPatientDialog({
     },
   });
 
-  const submit = form.handleSubmit((values) => mutation.mutate(values));
+  const submit = form.handleSubmit(
+    (values) => mutation.mutate(values),
+    () => triggerShake(),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,7 +163,7 @@ export function NewPatientDialog({
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={submit} className="grid gap-3">
+        <form ref={formRef} onSubmit={submit} className="grid gap-3">
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
               <Label htmlFor="np-last">{t("lastName")}</Label>
@@ -160,7 +173,7 @@ export function NewPatientDialog({
                 aria-invalid={!!form.formState.errors.lastName}
               />
               {form.formState.errors.lastName ? (
-                <p className="text-xs text-destructive">
+                <p className="motion-error-in text-xs text-destructive">
                   {t("errorRequired")}
                 </p>
               ) : null}
@@ -173,7 +186,7 @@ export function NewPatientDialog({
                 aria-invalid={!!form.formState.errors.firstName}
               />
               {form.formState.errors.firstName ? (
-                <p className="text-xs text-destructive">
+                <p className="motion-error-in text-xs text-destructive">
                   {t("errorRequired")}
                 </p>
               ) : null}
@@ -196,7 +209,7 @@ export function NewPatientDialog({
                 aria-invalid={!!form.formState.errors.phone}
               />
               {form.formState.errors.phone ? (
-                <p className="text-xs text-destructive">
+                <p className="motion-error-in text-xs text-destructive">
                   {t("errorPhoneFormat")}
                 </p>
               ) : null}

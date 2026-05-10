@@ -371,7 +371,7 @@ export function AnalyticsTopRows({
                   stroke={c.chart1}
                   strokeWidth={2}
                   dot={false}
-                  isAnimationActive={false}
+                  animationDuration={800}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -440,7 +440,7 @@ export function AnalyticsTopRows({
                   stroke={c.warning}
                   strokeWidth={2}
                   dot={false}
-                  isAnimationActive={false}
+                  animationDuration={800}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -505,7 +505,7 @@ export function AnalyticsTopRows({
                       innerRadius={32}
                       outerRadius={50}
                       paddingAngle={2}
-                      isAnimationActive={false}
+                      animationDuration={800}
                     >
                       {data.sources.map((_, i) => (
                         <Cell

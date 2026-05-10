@@ -487,6 +487,23 @@
     width var(--motion-dur-base) var(--motion-ease-emphasized);
 }
 
+/* Tab content swap — fade+slide a panel in when it becomes active. Pairs
+ * with Radix's `data-state="active"` on TabsContent. */
+[data-slot="tabs-content"][data-state="active"] {
+  animation: motion-tab-in var(--motion-dur-base) var(--motion-ease-out);
+}
+
+@keyframes motion-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Chart enter wrapper — recharts re-renders on data; the wrapper stays
  * mounted, so we use the @starting-style trick to tween svg opacity once
  * on first render and on data swaps via a `key` change. */
@@ -495,12 +512,61 @@
     backwards;
 }
 
+/* Form micro-interactions — shake on invalid submit, pop on success. Both
+ * are one-shot animations applied via a class toggled by mutation state. */
+@keyframes motion-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+.motion-shake {
+  animation: motion-shake 360ms var(--motion-ease-out);
+}
+
+@keyframes motion-success-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.motion-success-pop {
+  animation: motion-success-pop 320ms var(--motion-ease-spring);
+}
+
+/* Inline error text — fade+slide down so it doesn't pop in jarringly. */
+.motion-error-in {
+  animation: motion-rise-in var(--motion-dur-fast) var(--motion-ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .motion-fade-in,
   .motion-rise-in,
   .motion-zoom-in,
   .motion-skeleton-out,
-  .motion-chart-in {
+  .motion-chart-in,
+  .motion-shake,
+  .motion-success-pop,
+  .motion-error-in {
     animation: none;
   }
 
@@ -512,6 +578,10 @@
   .motion-press,
   .motion-tab-indicator {
     transition: none;
+  }
+
+  [data-slot="tabs-content"][data-state="active"] {
+    animation: none;
   }
 
   .motion-hover-lift:hover {

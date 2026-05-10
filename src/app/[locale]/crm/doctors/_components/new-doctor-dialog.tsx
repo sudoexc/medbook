@@ -449,7 +449,7 @@ export function NewDoctorDialog({
               <span className="text-xs text-muted-foreground">{t("cabinetHint")}</span>
             </div>
             {errors.cabinetId ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
+              <div className="motion-error-in rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
                 {errors.cabinetId}
               </div>
             ) : null}

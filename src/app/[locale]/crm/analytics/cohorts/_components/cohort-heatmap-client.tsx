@@ -96,7 +96,7 @@ export function CohortHeatmapClient({
         }
       />
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <div className="motion-fade-in overflow-x-auto rounded-lg border border-border bg-card">
         <table className="min-w-full border-collapse text-xs">
           <thead>
             <tr>

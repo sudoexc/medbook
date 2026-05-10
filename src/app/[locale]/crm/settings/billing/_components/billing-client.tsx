@@ -211,8 +211,8 @@ export function BillingClient(props: BillingPageProps) {
     <PageContainer>
       <SectionHeader title={t("title")} subtitle={t("subtitle")} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
+      <div className="motion-stagger grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-1 motion-rise-in">
           <CardHeader>
             <CardTitle>{t("currentPlan.title")}</CardTitle>
           </CardHeader>
@@ -265,7 +265,7 @@ export function BillingClient(props: BillingPageProps) {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 motion-rise-in">
           <CardHeader>
             <CardTitle>{t("usage.title")}</CardTitle>
           </CardHeader>
@@ -296,7 +296,7 @@ export function BillingClient(props: BillingPageProps) {
           <CardTitle>{t("planPicker.title")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="motion-stagger grid grid-cols-1 gap-3 md:grid-cols-3">
             {props.plans.map((plan) => {
               const isCurrent = plan.id === props.subscription.planId;
               const planName =
@@ -305,7 +305,7 @@ export function BillingClient(props: BillingPageProps) {
                 <div
                   key={plan.id}
                   className={cn(
-                    "flex flex-col gap-3 rounded-lg border p-4",
+                    "motion-rise-in motion-hover-lift flex flex-col gap-3 rounded-lg border p-4",
                     isCurrent
                       ? "border-primary/50 bg-primary/[0.04]"
                       : "border-border bg-card",

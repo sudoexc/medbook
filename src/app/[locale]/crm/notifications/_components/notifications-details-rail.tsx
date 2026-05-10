@@ -24,7 +24,11 @@ import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
 
 import type { QueueRow, StatsResponse } from "../_hooks/use-queue";
-import { useRetrySend } from "../_hooks/use-queue";
+import {
+  useRetrySend,
+  useCancelSend,
+  useResendSend,
+} from "../_hooks/use-queue";
 import type { QueueStatus, TemplateChannel } from "../_hooks/types";
 
 const CHANNEL_ICON: Record<TemplateChannel, LucideIcon> = {
@@ -57,6 +61,8 @@ export function NotificationsDetailsRail({
   const t = useTranslations("notifications.details");
   const locale = useLocale();
   const retry = useRetrySend();
+  const cancel = useCancelSend();
+  const resend = useResendSend();
 
   if (!row) {
     return (
@@ -87,7 +93,22 @@ export function NotificationsDetailsRail({
       toast.error((e as Error).message);
     }
   };
-  const onStub = () => toast.info(t("toasts.stubAction"));
+  const onCancel = async () => {
+    try {
+      await cancel.mutateAsync(row.id);
+      toast.success(t("toasts.cancelled"));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+  const onResend = async () => {
+    try {
+      await resend.mutateAsync(row.id);
+      toast.success(t("toasts.resent"));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
@@ -174,13 +195,18 @@ export function NotificationsDetailsRail({
           <Button
             size="sm"
             variant="outline"
-            onClick={onStub}
-            disabled={row.status !== "QUEUED"}
+            onClick={onCancel}
+            disabled={row.status !== "QUEUED" || cancel.isPending}
           >
             <XIcon className="size-3.5" />
             {t("actions.cancel")}
           </Button>
-          <Button size="sm" variant="outline" onClick={onStub}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onResend}
+            disabled={row.status === "QUEUED" || resend.isPending}
+          >
             <SendIcon className="size-3.5" />
             {t("actions.resend")}
           </Button>

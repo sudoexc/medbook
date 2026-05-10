@@ -26,6 +26,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { MoneyText } from "@/components/atoms/money-text";
+import { CountUp } from "@/components/atoms/count-up";
+import { AnimatedMoney } from "@/components/motion/animated-money";
 import {
   Popover,
   PopoverContent,
@@ -50,8 +52,10 @@ import {
   useDismissAction,
   useRecomputeActions,
   useSnoozeAction,
+  useActionsSla,
   type ActionRow,
 } from "../_hooks/use-actions";
+import { AnimatedDuration } from "@/components/motion/animated-time";
 import {
   useReceptionDashboard,
   useActiveDoctors,
@@ -371,7 +375,7 @@ function KpiCard({
           </p>
           <div className="mt-1 flex items-baseline gap-1.5">
             <span className="text-2xl font-bold tabular-nums text-foreground">
-              {count}
+              <CountUp to={count} />
             </span>
             <span className="truncate text-sm text-muted-foreground">
               {unit}
@@ -391,7 +395,7 @@ function KpiCard({
           )}
         >
           {moneyTiins > 0 ? "+" : ""}
-          <MoneyText amount={moneyTiins} currency="UZS" />
+          <AnimatedMoney amount={moneyTiins} currency="UZS" />
         </div>
         <p className="text-[11px] text-muted-foreground">{hint}</p>
       </div>
@@ -714,10 +718,12 @@ function ActionMenu({ row }: { row: ActionRow }) {
 
 function ResponseTimeTile() {
   const td = useTranslations("actionCenter.dashboard.responseTime");
-  // No SLA endpoint yet — show structure with the sample target values so the
-  // dashboard reads correctly until the metric gets wired.
+  const sla = useActionsSla();
+  const overall = sla.data?.overall.avgSeconds ?? null;
+  const overallMin = overall != null ? Math.floor(overall / 60) : null;
+  const overallSec = overall != null ? overall % 60 : null;
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="motion-rise-in rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start gap-3">
         <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-info/15 text-[color:var(--info)]">
           <ClockIcon className="size-5" />
@@ -726,18 +732,38 @@ function ResponseTimeTile() {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {td("title")}
           </p>
-          <div className="mt-1 flex items-baseline gap-1 tabular-nums">
-            <span className="text-2xl font-bold text-foreground">2</span>
-            <span className="text-sm text-muted-foreground">{td("min")}</span>
-            <span className="ml-1 text-2xl font-bold text-foreground">18</span>
-            <span className="text-sm text-muted-foreground">{td("sec")}</span>
-          </div>
+          {overall == null ? (
+            <p className="mt-1 text-sm text-muted-foreground">—</p>
+          ) : (
+            <div className="mt-1 flex items-baseline gap-1 tabular-nums">
+              <span className="text-2xl font-bold text-foreground">
+                {overallMin}
+              </span>
+              <span className="text-sm text-muted-foreground">{td("min")}</span>
+              <span className="ml-1 text-2xl font-bold text-foreground">
+                {overallSec}
+              </span>
+              <span className="text-sm text-muted-foreground">{td("sec")}</span>
+            </div>
+          )}
         </div>
       </div>
       <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
-        <ResponseRow icon={<SendIcon className="size-3.5" />} label={td("telegram")} value="1:24" />
-        <ResponseRow icon={<MailIcon className="size-3.5" />} label={td("feedback")} value="2:12" />
-        <ResponseRow icon={<PhoneIcon className="size-3.5" />} label={td("calls")} value="3:12" />
+        <ResponseRow
+          icon={<SendIcon className="size-3.5" />}
+          label={td("telegram")}
+          seconds={sla.data?.telegram.avgSeconds ?? null}
+        />
+        <ResponseRow
+          icon={<MailIcon className="size-3.5" />}
+          label={td("feedback")}
+          seconds={sla.data?.feedback.avgSeconds ?? null}
+        />
+        <ResponseRow
+          icon={<PhoneIcon className="size-3.5" />}
+          label={td("calls")}
+          seconds={sla.data?.calls.avgSeconds ?? null}
+        />
       </ul>
     </div>
   );
@@ -746,11 +772,11 @@ function ResponseTimeTile() {
 function ResponseRow({
   icon,
   label,
-  value,
+  seconds,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  seconds: number | null;
 }) {
   return (
     <li className="flex items-center justify-between text-xs">
@@ -758,7 +784,13 @@ function ResponseRow({
         {icon}
         {label}
       </span>
-      <span className="font-semibold tabular-nums text-foreground">{value}</span>
+      <span className="font-semibold tabular-nums text-foreground">
+        {seconds == null ? (
+          "—"
+        ) : (
+          <AnimatedDuration seconds={seconds} format="m:ss" />
+        )}
+      </span>
     </li>
   );
 }
@@ -784,6 +816,9 @@ function AiRecs({
     0,
   );
 
+  // Each rec routes to the surface that helps the operator act on it; hrefs
+  // mirror the QuickActionsGrid so the same intent always lands in the same
+  // place. `?from=ai-rec` lets the destination page surface a banner/hint.
   const recs = [
     {
       title: td("rec1Title"),
@@ -793,6 +828,7 @@ function AiRecs({
       }),
       cta: tdal("ctaCall"),
       tone: "primary" as const,
+      href: "/crm/call-center?from=ai-rec&intent=unconfirmed",
     },
     {
       title: td("rec2Title", { doctorName: overloadDoctorName }),
@@ -801,30 +837,33 @@ function AiRecs({
       }),
       cta: tdal("ctaFillSlots"),
       tone: "success" as const,
+      href: "/crm/calendar?from=ai-rec&intent=fill-slots",
     },
     {
       title: td("rec3Title"),
       body: td("rec3Body"),
       cta: tdal("ctaTelegram"),
       tone: "primary" as const,
+      href: "/crm/notifications?compose=telegram&from=ai-rec",
     },
     {
       title: td("rec4Title"),
       body: td("rec4Body", { count: dormantCount }),
       cta: tdal("ctaReactivation"),
       tone: "violet" as const,
+      href: "/crm/patients?segment=dormant&from=ai-rec",
     },
   ];
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="motion-rise-in rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <header className="flex items-center gap-2">
         <SparklesIcon className="size-4 text-primary" />
         <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
       </header>
-      <ol className="mt-3 space-y-3">
+      <ol className="motion-stagger mt-3 space-y-3">
         {recs.map((rec, i) => (
-          <li key={i} className="flex items-start gap-2">
+          <li key={i} className="motion-rise-in flex items-start gap-2">
             <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground tabular-nums">
               {i + 1}
             </span>
@@ -835,15 +874,15 @@ function AiRecs({
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {rec.body}
               </p>
-              <button
-                type="button"
+              <Link
+                href={`/${locale}${rec.href}`}
                 className={cn(
-                  "mt-1.5 inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
+                  "motion-press mt-1.5 inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold transition-colors",
                   ctaToneClass(rec.tone),
                 )}
               >
                 {rec.cta}
-              </button>
+              </Link>
             </div>
           </li>
         ))}
@@ -976,7 +1015,9 @@ const SEVERITY_DOT_BG: Record<ActionSeverity, string> = {
 function TasksQueue({ actions }: { actions: ActionRow[] }) {
   const td = useTranslations("actionCenter.dashboard.tasksQueue");
   const tac = useTranslations("actionCenter.dashboard.actionsList");
-  const tags = actions.slice(0, 5).map((row, i) => ({
+  const [showAll, setShowAll] = React.useState(false);
+  const visible = showAll ? actions : actions.slice(0, 5);
+  const tags = visible.map((row, i) => ({
     id: row.id,
     severity: row.severity,
     time: hourSlot(i),
@@ -993,7 +1034,7 @@ function TasksQueue({ actions }: { actions: ActionRow[] }) {
   }));
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="motion-rise-in rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <header className="flex items-baseline justify-between">
         <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
         <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary tabular-nums">
@@ -1036,11 +1077,23 @@ function TasksQueue({ actions }: { actions: ActionRow[] }) {
           </li>
         ))}
       </ul>
-      <div className="mt-3 flex justify-center border-t border-border pt-2">
-        <span className="text-[11px] font-medium text-muted-foreground">
-          {td("showAll")}
-        </span>
-      </div>
+      {actions.length > 5 ? (
+        <div className="mt-3 flex justify-center border-t border-border pt-2">
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="motion-press inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {showAll ? td("showLess") : td("showAll")}
+            <ArrowRightIcon
+              className={cn(
+                "size-3 transition-transform",
+                showAll ? "-rotate-90" : "rotate-90",
+              )}
+            />
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

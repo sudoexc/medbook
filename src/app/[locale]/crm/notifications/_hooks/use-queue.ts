@@ -69,6 +69,46 @@ export function useRetrySend() {
   });
 }
 
+export function useCancelSend() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/crm/notifications/sends/${id}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(j?.error ?? `Cancel failed: ${res.status}`);
+      }
+      return (await res.json()) as QueueRow;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useResendSend() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/crm/notifications/sends/${id}/resend`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(j?.error ?? `Resend failed: ${res.status}`);
+      }
+      return (await res.json()) as QueueRow;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
 export type StatsResponse = {
   last30d: {
     total: number;

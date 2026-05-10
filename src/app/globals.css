@@ -86,6 +86,19 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  --motion-dur-instant: 80ms;
+  --motion-dur-fast: 160ms;
+  --motion-dur-base: 220ms;
+  --motion-dur-slow: 360ms;
+  --motion-dur-slower: 560ms;
+
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  --motion-stagger-step: 38ms;
 }
 
 /*
@@ -302,5 +315,207 @@
 @media (prefers-reduced-motion: reduce) {
   .tg-row-pulse {
     animation: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Motion primitives — used across CRM for entrance, stagger, hover-lift,
+ * skeleton cross-fade, and micro-interactions. All durations/easings are
+ * driven by the CSS vars in `:root` so we can re-tune the whole feel by
+ * editing one block. Every keyframe respects prefers-reduced-motion.
+ * ────────────────────────────────────────────────────────────────────── */
+
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes motion-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 12px hsl(var(--primary) / 0);
+  }
+}
+
+@keyframes motion-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes motion-spinner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.motion-fade-in {
+  animation: motion-fade-in var(--motion-dur-base) var(--motion-ease-out)
+    backwards;
+}
+
+.motion-rise-in {
+  animation: motion-rise-in var(--motion-dur-slow) var(--motion-ease-out)
+    backwards;
+}
+
+.motion-zoom-in {
+  animation: motion-zoom-in var(--motion-dur-base) var(--motion-ease-spring)
+    backwards;
+}
+
+/* Stagger: parent applies `motion-stagger`, each direct child receives a
+ * cumulative delay `--motion-stagger-step` capped at the 12th child to
+ * keep the list snappy on long lists (virtualized rows opt out anyway). */
+.motion-stagger > * {
+  animation-delay: calc(var(--motion-stagger-step) * var(--motion-i, 0));
+}
+
+.motion-stagger > *:nth-child(1) {
+  --motion-i: 0;
+}
+.motion-stagger > *:nth-child(2) {
+  --motion-i: 1;
+}
+.motion-stagger > *:nth-child(3) {
+  --motion-i: 2;
+}
+.motion-stagger > *:nth-child(4) {
+  --motion-i: 3;
+}
+.motion-stagger > *:nth-child(5) {
+  --motion-i: 4;
+}
+.motion-stagger > *:nth-child(6) {
+  --motion-i: 5;
+}
+.motion-stagger > *:nth-child(7) {
+  --motion-i: 6;
+}
+.motion-stagger > *:nth-child(8) {
+  --motion-i: 7;
+}
+.motion-stagger > *:nth-child(9) {
+  --motion-i: 8;
+}
+.motion-stagger > *:nth-child(10) {
+  --motion-i: 9;
+}
+.motion-stagger > *:nth-child(11) {
+  --motion-i: 10;
+}
+.motion-stagger > *:nth-child(12) {
+  --motion-i: 11;
+}
+
+/* Hover-lift: subtle scale + shadow on interactive cards. The transform
+ * uses a tiny translateY so cards "rise" toward the user; pair with the
+ * existing `transition-shadow` Tailwind utility. */
+.motion-hover-lift {
+  transition:
+    transform var(--motion-dur-fast) var(--motion-ease-out),
+    box-shadow var(--motion-dur-fast) var(--motion-ease-out);
+  will-change: transform;
+}
+
+.motion-hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -8px rgb(15 23 42 / 0.12);
+}
+
+.motion-hover-lift:active {
+  transform: translateY(0);
+  transition-duration: var(--motion-dur-instant);
+}
+
+/* Press-scale: smaller bump for buttons and chips that already have their
+ * own shadows — just provide tactile feedback without lifting. */
+.motion-press {
+  transition: transform var(--motion-dur-fast) var(--motion-ease-out);
+}
+
+.motion-press:active {
+  transform: scale(0.97);
+}
+
+/* Skeleton cross-fade: skeleton container fades out while the content
+ * fades in. Apply to the wrapper that swaps between states. */
+.motion-skeleton-out {
+  animation: motion-fade-in var(--motion-dur-slow) var(--motion-ease-out)
+    reverse forwards;
+}
+
+/* Tab indicator: slides under the active tab. Use with the Tabs primitive
+ * by setting `data-state` on the indicator element. */
+.motion-tab-indicator {
+  transition:
+    transform var(--motion-dur-base) var(--motion-ease-emphasized),
+    width var(--motion-dur-base) var(--motion-ease-emphasized);
+}
+
+/* Chart enter wrapper — recharts re-renders on data; the wrapper stays
+ * mounted, so we use the @starting-style trick to tween svg opacity once
+ * on first render and on data swaps via a `key` change. */
+.motion-chart-in {
+  animation: motion-fade-in var(--motion-dur-slower) var(--motion-ease-out)
+    backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-fade-in,
+  .motion-rise-in,
+  .motion-zoom-in,
+  .motion-skeleton-out,
+  .motion-chart-in {
+    animation: none;
+  }
+
+  .motion-stagger > * {
+    animation-delay: 0ms !important;
+  }
+
+  .motion-hover-lift,
+  .motion-press,
+  .motion-tab-indicator {
+    transition: none;
+  }
+
+  .motion-hover-lift:hover {
+    transform: none;
+    box-shadow: inherit;
   }
 }

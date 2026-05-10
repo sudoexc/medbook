@@ -401,7 +401,7 @@ async function createSend(params: {
  *   3. one `findMany` for existing NotificationSend idempotency check
  *   4. one `createMany` to insert all queued rows
  */
-async function materializeForAppointmentsBulk(
+export async function materializeForAppointmentsBulk(
   jobs: ReadonlyArray<{ appointmentId: string; scheduledFor: Date }>,
   trigger: TriggerKey,
 ): Promise<{ created: number; skipped: number }> {

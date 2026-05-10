@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { formatMoney, type Locale } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckIcon,
@@ -15,6 +14,8 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CountUp } from "@/components/atoms/count-up";
+import { AnimatedMoney } from "@/components/motion/animated-money";
 
 import type { AppointmentRow } from "../_hooks/use-appointments-list";
 
@@ -59,11 +60,20 @@ function useSlotsForDoctor(doctorId: string, enabled: boolean) {
   });
 }
 
+export type ReminderTrigger =
+  | "appointment.reminder-24h"
+  | "appointment.reminder-5h"
+  | "appointment.reminder-2h";
+
 export interface AppointmentsRightRailProps {
   rows: AppointmentRow[];
   onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
   onExport: () => void;
-  onSendRemindersAll: () => void;
+  onSendReminders: (
+    appointmentIds: string[],
+    trigger?: ReminderTrigger,
+  ) => void;
+  remindersBusy?: boolean;
 }
 
 type Tone = "primary" | "success" | "info" | "warning";
@@ -130,11 +140,10 @@ function deriveInitials(name: string): string {
 export function AppointmentsRightRail({
   rows,
   onSlotPick,
-  onSendRemindersAll,
+  onSendReminders,
+  remindersBusy = false,
 }: AppointmentsRightRailProps) {
   const t = useTranslations("appointments.rail");
-  const locale = useLocale() as Locale;
-  const fmtSum = (amount: number) => formatMoney(amount, "UZS", locale);
   const doctors = useDoctors();
 
   const [nowMs] = React.useState(() => Date.now());
@@ -179,7 +188,13 @@ export function AppointmentsRightRail({
         tone="primary"
         ctaLabel={t("actionRemindCta")}
         ctaIcon={SendHorizontalIcon}
-        onCta={onSendRemindersAll}
+        onCta={() =>
+          onSendReminders(
+            bookedRows.map((r) => r.id),
+            "appointment.reminder-2h",
+          )
+        }
+        ctaDisabled={remindersBusy || bookedRows.length === 0}
         moreLabel={t("moreActions")}
       >
         <AvatarsRow
@@ -197,7 +212,13 @@ export function AppointmentsRightRail({
         tone="primary"
         ctaLabel={t("actionConfirmCta")}
         ctaIcon={CheckIcon}
-        onCta={onSendRemindersAll}
+        onCta={() =>
+          onSendReminders(
+            waitingRows.map((r) => r.id),
+            "appointment.reminder-2h",
+          )
+        }
+        ctaDisabled={remindersBusy || waitingRows.length === 0}
         moreLabel={t("moreActions")}
       >
         <InitialsChipsRow rows={waitingRows} max={4} />
@@ -211,7 +232,17 @@ export function AppointmentsRightRail({
         tone="primary"
         ctaLabel={t("actionBroadcastCta")}
         ctaIcon={SendHorizontalIcon}
-        onCta={onSendRemindersAll}
+        onCta={() =>
+          onSendReminders(
+            todayRows
+              .filter(
+                (r) => r.status === "BOOKED" || r.status === "WAITING",
+              )
+              .map((r) => r.id),
+            "appointment.reminder-2h",
+          )
+        }
+        ctaDisabled={remindersBusy || todayRows.length === 0}
         moreLabel={t("moreActions")}
       >
         <p className="px-1 text-[12px] text-muted-foreground">
@@ -293,7 +324,7 @@ export function AppointmentsRightRail({
             {t("statRevenue")}
           </span>
           <span className="text-[15px] font-bold text-foreground tabular-nums">
-            {fmtSum(revenue)}
+            <AnimatedMoney amount={revenue} currency="UZS" />
           </span>
         </div>
       </section>
@@ -310,6 +341,7 @@ function ActionBigCard({
   ctaLabel,
   ctaIcon: CtaIcon,
   onCta,
+  ctaDisabled = false,
   moreLabel,
   children,
 }: {
@@ -321,12 +353,13 @@ function ActionBigCard({
   ctaLabel: string;
   ctaIcon: LucideIcon;
   onCta: () => void;
+  ctaDisabled?: boolean;
   moreLabel: string;
   children?: React.ReactNode;
 }) {
   const palette = TONE[tone];
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3.5">
+    <section className="motion-fade-in flex flex-col gap-3 rounded-2xl border border-border bg-card p-3.5">
       <header className="flex items-start gap-2.5">
         <span
           className={cn(
@@ -365,9 +398,11 @@ function ActionBigCard({
         <button
           type="button"
           onClick={onCta}
+          disabled={ctaDisabled}
           className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-semibold transition-colors",
+            "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-semibold transition-colors motion-press",
             "hover:border-primary/40 hover:bg-primary/5",
+            "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-background",
             palette.iconFg,
           )}
         >
@@ -515,10 +550,12 @@ function StatLine({
     <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
       <span className="flex items-center gap-3 tabular-nums">
-        <span className="font-semibold text-foreground">{value}</span>
+        <span className="font-semibold text-foreground">
+          <CountUp to={value} />
+        </span>
         {typeof pct === "number" ? (
           <span className="w-9 text-right text-[12px] text-muted-foreground">
-            {pct}%
+            <CountUp to={pct} />%
           </span>
         ) : (
           <span className="w-9" />

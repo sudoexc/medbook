@@ -326,6 +326,9 @@ model Clinic {
   savedReports            SavedReport[]
   scheduledReports        ScheduledReport[]
   invoices                Invoice[]
+  patientAllergies        PatientAllergy[]
+  patientChronicConditions PatientChronicCondition[]
+  patientDiagnoses        PatientDiagnosis[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -918,6 +921,9 @@ model Patient {
   patientViews              PatientView[]
   dataExportJobs            DataExportJob[]
   dataDeletionJobs          DataDeletionJob[]
+  allergies                 PatientAllergy[]
+  chronicConditions         PatientChronicCondition[]
+  diagnoses                 PatientDiagnosis[]
 
   @@unique([clinicId, phoneNormalized])
   @@index([clinicId, fullName])
@@ -1699,6 +1705,72 @@ model Prescription {
 
   @@index([clinicId, patientId, status])
   @@index([clinicId, caseId])
+}
+
+// Patient medical history — structured fields shown on the patient card
+// "Medical" tab. These are denormalized from MedicalCase / Prescription so
+// doctors can see allergies / chronic conditions / persistent diagnoses
+// at a glance, independent of any single visit.
+
+model PatientAllergy {
+  id         String    @id @default(cuid())
+  clinicId   String
+  clinic     Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId  String
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // Substance: drug, food, environmental ("penicillin", "peanuts", "pollen").
+  substance  String
+  // Free-text reaction ("rash", "anaphylaxis"). Optional.
+  reaction   String?
+  // 'MILD' | 'MODERATE' | 'SEVERE'. String not enum so we can add levels
+  // without a migration.
+  severity   String    @default("MILD")
+  notes      String?   @db.Text
+  // When the allergy was first observed / recorded by the clinic. Optional.
+  recordedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([clinicId, patientId])
+}
+
+model PatientChronicCondition {
+  id        String    @id @default(cuid())
+  clinicId  String
+  clinic    Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  // Onset date if known. Free-form notes for context.
+  sinceDate DateTime?
+  notes     String?   @db.Text
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([clinicId, patientId, isActive])
+}
+
+model PatientDiagnosis {
+  id          String    @id @default(cuid())
+  clinicId    String
+  clinic      Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // ICD-10 code (free-text — we don't validate against a code list yet
+  // because Uzbekistan's MoH publishes its own subset and integrating it
+  // is out of scope).
+  icd10Code   String?
+  label       String
+  diagnosedAt DateTime?
+  notes       String?   @db.Text
+  // 'ACTIVE' | 'RESOLVED'. Resolved diagnoses are still shown for history
+  // but visually muted in the UI.
+  status      String    @default("ACTIVE")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([clinicId, patientId, status])
 }
 
 model ReferralCode {

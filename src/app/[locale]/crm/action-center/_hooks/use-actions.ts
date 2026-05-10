@@ -310,3 +310,32 @@ export function useRecomputeActions() {
     },
   });
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// SLA — response-time aggregates for the right-rail tile.
+// ────────────────────────────────────────────────────────────────────────
+
+type SlaBucket = { avgSeconds: number | null; samples: number };
+export type SlaResponse = {
+  windowDays: number;
+  overall: SlaBucket;
+  telegram: SlaBucket;
+  feedback: SlaBucket;
+  calls: SlaBucket;
+};
+
+export function useActionsSla() {
+  return useQuery<SlaResponse>({
+    queryKey: ["actions", "sla"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/crm/actions/sla`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`sla.http.${res.status}`);
+      return (await res.json()) as SlaResponse;
+    },
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}

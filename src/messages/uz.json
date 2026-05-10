@@ -657,7 +657,10 @@
     "rail": {
       "quickActions": "Tez amallar",
       "sendReminders": "Barchaga eslatmalar",
-      "remindersStub": "Xabarnomalar modulida qo'shiladi",
+      "remindersSent": "Navbatga qo'shildi: {count}",
+      "remindersAllSkipped": "Bu bemorlar allaqachon eslatma olishgan",
+      "remindersNothing": "Eslatma yuboriladigan tashriflar yo'q",
+      "remindersFailed": "Eslatmalarni yuborib bo'lmadi",
       "exportCsv": "CSV eksport",
       "freeSlots": "Bugungi bo'sh slotlar",
       "freeSlotsUpdated": "{min} daqiqa oldin yangilandi",
@@ -1235,19 +1238,71 @@
       }
     },
     "medical": {
-      "stubNotice": "2a-bosqich: tibbiy maydonlar bitta Patient.notes matn blokida saqlanadi. Strukturalangan jadvallar (anamnez, allergiyalar, ICD-10) keyingi migratsiyadan so'ng.",
-      "anamnesis": "Anamnez",
-      "anamnesisHint": "Schema migratsiyasidan so'ng alohida tuzilmaga chiqariladi.",
-      "allergies": "Allergiyalar",
-      "allergiesHint": "Alohida Allergy jadvali kerak.",
-      "diagnoses": "Diagnozlar",
-      "diagnosesHint": "ICD-10 kodi bilan Diagnosis jadvali kerak.",
       "notes": "Izohlar (erkin shakl)",
+      "notesHint": "Shikoyatlar, kuzatuvlar, davolash rejasi — yagona matn bloki.",
+      "notesShort": "Izoh",
+      "notesSaved": "Izoh saqlandi",
+      "notesSaveFailed": "Izohni saqlab bo'lmadi",
       "placeholder": "Shikoyatlar, kuzatuvlar, davolash rejasi…",
       "save": "Saqlash",
       "saving": "Saqlanmoqda…",
       "reset": "Tiklash",
-      "empty": "Yozuvlar yo'q"
+      "add": "Qo'shish",
+      "close": "Yig'ish",
+      "edit": "Tahrirlash",
+      "delete": "O'chirish",
+      "cancel": "Bekor qilish",
+      "allergies": {
+        "title": "Allergiyalar",
+        "subtitle": "Dori, oziq-ovqat va aloqa reaktsiyalari.",
+        "empty": "Allergiyalar qayd etilmagan",
+        "created": "Allergiya qo'shildi",
+        "updated": "Allergiya yangilandi",
+        "deleted": "Allergiya o'chirildi",
+        "saveFailed": "Saqlab bo'lmadi",
+        "deleteFailed": "O'chirib bo'lmadi",
+        "confirmDelete": "Allergiya yozuvini o'chirilsinmi?",
+        "substance": "Allergen",
+        "severity": "Og'irligi",
+        "severityMild": "Yengil",
+        "severityModerate": "O'rtacha",
+        "severitySevere": "Og'ir",
+        "reaction": "Reaktsiya",
+        "reactionPlaceholder": "Toshma, shish, anafilaksiya…"
+      },
+      "chronic": {
+        "title": "Surunkali kasalliklar",
+        "subtitle": "Doimiy kuzatuvdagi holatlar.",
+        "empty": "Surunkali kasalliklar yo'q",
+        "created": "Kasallik qo'shildi",
+        "updated": "Kasallik yangilandi",
+        "deleted": "Kasallik o'chirildi",
+        "saveFailed": "Saqlab bo'lmadi",
+        "deleteFailed": "O'chirib bo'lmadi",
+        "confirmDelete": "Kasallik yozuvini o'chirilsinmi?",
+        "name": "Nomi",
+        "since": "Qachondan beri",
+        "status": "Holati",
+        "active": "Faol",
+        "inactive": "Faol emas"
+      },
+      "diagnoses": {
+        "title": "Diagnozlar",
+        "subtitle": "ICD-10 va qo'yilgan diagnozlar.",
+        "empty": "Diagnozlar qayd etilmagan",
+        "created": "Diagnoz qo'shildi",
+        "updated": "Diagnoz yangilandi",
+        "deleted": "Diagnoz o'chirildi",
+        "saveFailed": "Saqlab bo'lmadi",
+        "deleteFailed": "O'chirib bo'lmadi",
+        "confirmDelete": "Diagnoz o'chirilsinmi?",
+        "icd": "ICD-10 kodi",
+        "label": "Diagnoz",
+        "diagnosedAt": "Qo'yilgan sana",
+        "status": "Holati",
+        "active": "Joriy",
+        "resolved": "Hal qilingan"
+      }
     },
     "smsDialog": {
       "title": "SMS yuborish",
@@ -2218,9 +2273,13 @@
     },
     "reviews": {
       "title": "Sharhlar",
-      "subtitle": "Bemorlarning shifokor haqidagi sharhlari.",
+      "subtitle": "Bemorlarning tashrifdan keyingi baholari va sharhlari (NPS 1–10).",
       "empty": "Hozircha sharhlar yo'q",
-      "todoHint": "Shifokor haqidagi sharhlar agregatsiyasi ommaviy sharhlar bo'limi bilan paydo bo'ladi."
+      "emptyHint": "Sharhlar bemorlar tashrifdan keyin so'rovni to'ldirgach paydo bo'ladi.",
+      "loadError": "Sharhlarni yuklab bo'lmadi",
+      "countLabel": "ta baho",
+      "anonymousAuthor": "Bemor",
+      "noComment": "Izohsiz"
     },
     "services": {
       "title": "Xizmatlar",
@@ -2359,6 +2418,8 @@
       },
       "toasts": {
         "retried": "Qayta navbatga qo'yildi",
+        "cancelled": "Yuborish bekor qilindi",
+        "resent": "Qayta yuborish navbatga qo'yildi",
         "stubAction": "Amal keyingi relizda paydo bo'ladi"
       }
     },
@@ -3919,7 +3980,7 @@
     "subtitle": "Klinika hujjatlari kutubxonasi",
     "upload": "Yuklash",
     "uploadTitle": "Hujjat yuklash",
-    "uploadHint": "Fayl saqlash Phase 6 da qo‘shiladi — hozir faqat metadata saqlanadi",
+    "uploadHint": "Fayl klinikaning xavfsiz omboriga yuklanadi",
     "pendingSignatures": "Imzolashni kutmoqda",
     "empty": "Hujjatlar topilmadi",
     "filters": {
@@ -3959,8 +4020,17 @@
     "cancel": "Bekor qilish",
     "fileUrl": "Fayl URL",
     "uploading": "Yuklanmoqda…",
+    "modeFile": "Fayl",
+    "modeUrl": "Havola",
+    "dropPrompt": "Faylni tashlang yoki tanlash uchun bosing",
+    "maxSizeHint": "Maksimum {max}",
+    "removeFile": "Faylni olib tashlash",
+    "errorRequired": "Majburiy maydon",
     "toastMissingFields": "Majburiy maydonlarni to'ldiring",
-    "toastUploadError": "Yuklashda xatolik"
+    "toastUploadError": "Yuklashda xatolik",
+    "toastSelectFile": "Avval faylni tanlang",
+    "toastTooLarge": "Fayl juda katta, maksimum {max}",
+    "toastStubMode": "Fayl ombori mavjud emas. Havolani qo'lda kiriting."
   },
   "branchSwitcher": {
     "label": "Filial",
@@ -4253,6 +4323,7 @@
       "tasksQueue": {
         "title": "Bugungi vazifalar navbati",
         "showAll": "Barcha vazifalarni ko'rsatish",
+        "showLess": "Yig'ish",
         "progress": "{done}/{total}"
       },
       "doctorsLoad": {

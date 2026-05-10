@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CountUp } from "@/components/atoms/count-up";
+import { AnimatedPercent } from "@/components/motion/animated-percent";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
 import type { DoctorStatus } from "./doctor-card";
@@ -68,28 +70,28 @@ export function DoctorsStatsPanel({
     {
       key: "total",
       label: t("total"),
-      value: <span className="tabular-nums">{total}</span>,
+      value: <CountUp to={total} className="tabular-nums" />,
       icon: UsersIcon,
       tone: "bg-muted text-muted-foreground",
     },
     {
       key: "onShift",
       label: t("onShift"),
-      value: <span className="tabular-nums">{onShift}</span>,
+      value: <CountUp to={onShift} className="tabular-nums" />,
       icon: StethoscopeIcon,
       tone: "bg-success/15 text-success",
     },
     {
       key: "free",
       label: t("free"),
-      value: <span className="tabular-nums">{free}</span>,
+      value: <CountUp to={free} className="tabular-nums" />,
       icon: UserCheckIcon,
       tone: "bg-muted text-muted-foreground",
     },
     {
       key: "lunch",
       label: t("onLunch"),
-      value: <span className="tabular-nums">{onLunch}</span>,
+      value: <CountUp to={onLunch} className="tabular-nums" />,
       icon: CoffeeIcon,
       tone: "bg-warning/15 text-[color:var(--warning-foreground)]",
     },
@@ -97,7 +99,12 @@ export function DoctorsStatsPanel({
       key: "load",
       label: t("clinicLoad"),
       value: (
-        <span className="tabular-nums">{`${Math.round(clinicLoadPct)}%`}</span>
+        <AnimatedPercent
+          value={clinicLoadPct}
+          decimals={0}
+          fromHundred
+          className="tabular-nums"
+        />
       ),
       icon: ActivityIcon,
       tone: "bg-primary/10 text-primary",
@@ -128,13 +135,13 @@ export function DoctorsStatsPanel({
     >
       <h3 className="text-[13px] font-semibold text-foreground">{t("title")}</h3>
 
-      <ul className="mt-3 divide-y divide-border">
+      <ul className="motion-stagger mt-3 divide-y divide-border">
         {rows.map((r) => {
           const Icon = r.icon;
           return (
             <li
               key={r.key}
-              className="flex items-center justify-between gap-2 py-2.5 text-[12px]"
+              className="motion-fade-in flex items-center justify-between gap-2 py-2.5 text-[12px]"
             >
               <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
                 <span

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CountUp } from "@/components/atoms/count-up";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 
@@ -154,7 +155,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
   return (
     <div
       className={cn(
-        "grid gap-2",
+        "motion-stagger grid gap-2",
         "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5",
         className,
       )}
@@ -165,7 +166,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
         return (
           <div
             key={tile.key}
-            className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
+            className="motion-rise-in motion-hover-lift flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
           >
             <span
               className={cn(
@@ -190,7 +191,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
                       : "text-foreground",
                   )}
                 >
-                  {tile.value}
+                  <CountUp to={tile.value} />
                 </span>
                 {tile.delta ? (
                   <span className="truncate text-xs font-medium text-success">

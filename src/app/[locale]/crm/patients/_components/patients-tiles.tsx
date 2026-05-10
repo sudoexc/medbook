@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { MoneyText } from "@/components/atoms/money-text";
+import { AnimatedMoney } from "@/components/motion/animated-money";
+import { CountUp } from "@/components/atoms/count-up";
 
 import type { PatientRow } from "../_hooks/use-patients-list";
 
@@ -93,7 +94,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
     {
       key: "all",
       label: t("totalPatients"),
-      value: formatInt(stats.totalAll, locale),
+      value: <CountUp to={stats.totalAll} />,
       delta:
         stats.newWeek > 0
           ? t("deltaTotalPatients", { count: stats.newWeek })
@@ -105,7 +106,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
     {
       key: "new-week",
       label: t("newWeek"),
-      value: formatInt(stats.newWeek, locale),
+      value: <CountUp to={stats.newWeek} />,
       delta: t("deltaNewWeekPct", { pct: 23 }),
       deltaTone: "success",
       icon: SparklesIcon,
@@ -114,7 +115,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
     {
       key: "active",
       label: t("active"),
-      value: formatInt(stats.active, locale),
+      value: <CountUp to={stats.active} />,
       delta: t("deltaActivePct", { pct: stats.activePct }),
       deltaTone: "success",
       icon: ActivityIcon,
@@ -123,7 +124,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
     {
       key: "dormant",
       label: t("dormantGt30"),
-      value: formatInt(stats.dormantGt30, locale),
+      value: <CountUp to={stats.dormantGt30} />,
       delta: t("deltaDormantPct", { pct: stats.dormantPct }),
       deltaTone: "muted",
       icon: ClockIcon,
@@ -143,7 +144,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       label: t("avgCheck"),
       value:
         stats.avgCheck > 0 ? (
-          <MoneyText amount={stats.avgCheck} currency="UZS" />
+          <AnimatedMoney amount={stats.avgCheck} currency="UZS" />
         ) : (
           "—"
         ),
@@ -157,7 +158,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
   return (
     <div
       className={cn(
-        "grid gap-2",
+        "motion-stagger grid gap-2",
         "grid-cols-2 sm:grid-cols-3 xl:grid-cols-6",
         className,
       )}
@@ -168,7 +169,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
         return (
           <div
             key={tile.key}
-            className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
+            className="motion-rise-in motion-hover-lift flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
           >
             <span
               className={cn(
@@ -204,8 +205,4 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       })}
     </div>
   );
-}
-
-function formatInt(n: number, locale: string): string {
-  return new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(n);
 }

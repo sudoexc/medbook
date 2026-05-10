@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CountUp } from "@/components/atoms/count-up";
 
 import { tallyBuckets, type AppointmentRow } from "../_hooks/use-appointments-list";
 
@@ -110,7 +111,7 @@ export function AppointmentsTiles({
   return (
     <div
       className={cn(
-        "grid gap-2",
+        "motion-stagger grid gap-2",
         "grid-cols-2 sm:grid-cols-3 xl:grid-cols-6",
         className,
       )}
@@ -121,7 +122,7 @@ export function AppointmentsTiles({
         return (
           <div
             key={tile.key}
-            className="flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3"
+            className="motion-rise-in motion-hover-lift flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3"
           >
             <span
               className={cn(
@@ -145,7 +146,7 @@ export function AppointmentsTiles({
                     : "text-foreground",
                 )}
               >
-                {tile.value}
+                {typeof tile.value === "number" ? <CountUp to={tile.value} /> : tile.value}
               </div>
               {tile.hint ? (
                 <div className="mt-1 truncate text-[10px] text-muted-foreground">

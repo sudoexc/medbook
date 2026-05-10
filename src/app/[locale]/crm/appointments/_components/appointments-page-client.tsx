@@ -5,6 +5,7 @@ import { PlusIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useMutation } from "@tanstack/react-query";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { Button } from "@/components/ui/button";
@@ -115,10 +116,65 @@ export function AppointmentsPageClient() {
 
   const selectedIds = React.useMemo(() => Array.from(selected), [selected]);
 
-  const sendRemindersAll = () => {
-    // TODO(api): dedicated bulk reminders endpoint.
-    toast.info(t("rail.remindersStub"));
-  };
+  const remindersMutation = useMutation<
+    { requested: number; scoped: number; created: number; skipped: number; dispatched: number },
+    Error,
+    { ids: string[]; trigger?: "appointment.reminder-24h" | "appointment.reminder-5h" | "appointment.reminder-2h" }
+  >({
+    mutationFn: async (input) => {
+      const res = await fetch(`/api/crm/appointments/bulk-reminders`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appointmentIds: input.ids,
+          ...(input.trigger ? { trigger: input.trigger } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: string; reason?: string }
+          | null;
+        throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
+      }
+      return (await res.json()) as {
+        requested: number;
+        scoped: number;
+        created: number;
+        skipped: number;
+        dispatched: number;
+      };
+    },
+    onSuccess: (result) => {
+      if (result.dispatched > 0) {
+        toast.success(t("rail.remindersSent", { count: result.dispatched }));
+      } else if (result.skipped > 0) {
+        toast.info(t("rail.remindersAllSkipped"));
+      } else {
+        toast.info(t("rail.remindersNothing"));
+      }
+    },
+    onError: (e) => {
+      toast.error(t("rail.remindersFailed"), { description: e.message });
+    },
+  });
+
+  const sendReminders = React.useCallback(
+    (
+      ids: string[],
+      trigger?:
+        | "appointment.reminder-24h"
+        | "appointment.reminder-5h"
+        | "appointment.reminder-2h",
+    ) => {
+      if (ids.length === 0) {
+        toast.info(t("rail.remindersNothing"));
+        return;
+      }
+      remindersMutation.mutate({ ids, trigger });
+    },
+    [remindersMutation, t],
+  );
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -205,7 +261,8 @@ export function AppointmentsPageClient() {
               : `/api/crm/appointments/export-csv`;
             window.location.href = href;
           }}
-          onSendRemindersAll={sendRemindersAll}
+          onSendReminders={sendReminders}
+          remindersBusy={remindersMutation.isPending}
         />
       </aside>
 

@@ -21,6 +21,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useChartColors } from "@/hooks/use-chart-colors";
+import { AnimatedPercent } from "@/components/motion/animated-percent";
 
 import type {
   AnalyticsResponse,
@@ -52,10 +53,6 @@ export interface AnalyticsBottomRowProps {
     reasonLabels: string[];
     pickName: (row: { name: string; nameUz: string | null }) => string;
   };
-}
-
-function pct(rate: number): string {
-  return `${(rate * 100).toFixed(1).replace(".", ",")}%`;
 }
 
 function pctSigned(rate: number): string {
@@ -125,7 +122,7 @@ function FunnelKpiCard({
         <DeltaChip label={pctSigned(delta)} positive={delta >= 0} />
       </div>
       <div className="mt-1 text-[20px] font-bold leading-tight text-foreground tabular-nums">
-        {pct(summary.rate)}
+        <AnimatedPercent value={summary.rate} decimals={1} />
       </div>
       <div className="mt-3 h-24 w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -327,7 +324,7 @@ function ClinicLoadCard({
         />
       </div>
       <div className="mt-1 text-[20px] font-bold leading-tight text-foreground tabular-nums">
-        {`${avg.toFixed(0)}%`}
+        <AnimatedPercent value={avg} decimals={0} fromHundred />
       </div>
       <div className="mt-3 h-24 w-full">
         <ResponsiveContainer width="100%" height="100%">

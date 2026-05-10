@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/format";
 import { useChartColors } from "@/hooks/use-chart-colors";
 import { MoneyText } from "@/components/atoms/money-text";
+import { CountUp } from "@/components/atoms/count-up";
+import { AnimatedPercent } from "@/components/motion/animated-percent";
 
 import type { AnalyticsResponse } from "./analytics-types";
 
@@ -378,7 +380,7 @@ export function AnalyticsTopRows({
 
         <KpiCardShell
           title={labels.appointments}
-          primary={totalAppointments.toLocaleString("ru-RU")}
+          primary={<CountUp to={totalAppointments} />}
           secondary={labels.totalCount(totalAppointments).split(" ").slice(1).join(" ") || undefined}
           body={
             <ResponsiveContainer width="100%" height="100%">
@@ -419,7 +421,7 @@ export function AnalyticsTopRows({
               positive={noShowDelta <= 0}
             />
           }
-          primary={pct(noShowAvgRate)}
+          primary={<AnimatedPercent value={noShowAvgRate} decimals={1} fromHundred />}
           body={
             <ResponsiveContainer width="100%" height="100%">
               <LineChart

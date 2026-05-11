@@ -369,8 +369,16 @@ export function CrmSidebar({
             <ul className="space-y-1">
               {group.items.map((item) => {
                 const full = `/${locale}/crm/${item.href}`
+                // next-intl runs with `localePrefix: "as-needed"`, so URLs for
+                // the default locale (ru) have no `/ru` prefix — usePathname
+                // returns `/crm/...`. Compare against both shapes so the
+                // active highlight works for ru and uz uniformly.
+                const bare = `/crm/${item.href}`
                 const active =
-                  pathname === full || pathname.startsWith(full + "/")
+                  pathname === full ||
+                  pathname.startsWith(full + "/") ||
+                  pathname === bare ||
+                  pathname.startsWith(bare + "/")
                 const Icon = item.icon
                 const badgeCount =
                   item.badgeKey ? summary?.unread[item.badgeKey] ?? 0 : 0
@@ -387,25 +395,25 @@ export function CrmSidebar({
                       aria-current={active ? "page" : undefined}
                       title={collapsed ? label : undefined}
                       className={cn(
-                        "motion-press group relative flex items-center rounded-lg text-sm font-medium transition-colors",
+                        "motion-press group relative flex items-center rounded-lg text-sm transition-colors",
                         collapsed
                           ? "justify-center px-2 py-2"
                           : "gap-3 px-3 py-2",
                         active
-                          ? "bg-sidebar-active text-sidebar-active-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          ? "bg-primary/10 font-semibold text-primary"
+                          : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                       )}
                     >
                       {active ? (
                         <span
                           aria-hidden
-                          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-success animate-in fade-in slide-in-from-left-1 duration-300"
+                          className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-primary animate-in fade-in slide-in-from-left-1 duration-300"
                         />
                       ) : null}
                       <Icon
                         className={cn(
                           "size-4 shrink-0 transition-colors",
-                          active ? "text-success" : "text-muted-foreground group-hover:text-foreground",
+                          active ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
                         )}
                       />
                       {collapsed ? (
@@ -445,19 +453,22 @@ export function CrmSidebar({
                       <ul className="mt-1 space-y-0.5 pl-7">
                         {visibleChildren.map((child) => {
                           const childFull = `/${locale}/crm/${child.href}`
+                          const childBare = `/crm/${child.href}`
                           const childActive =
                             pathname === childFull ||
-                            pathname.startsWith(childFull + "/")
+                            pathname.startsWith(childFull + "/") ||
+                            pathname === childBare ||
+                            pathname.startsWith(childBare + "/")
                           return (
                             <li key={child.href}>
                               <Link
                                 href={childFull}
                                 aria-current={childActive ? "page" : undefined}
                                 className={cn(
-                                  "block rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                                  "block rounded-md px-2 py-1 text-xs transition-colors",
                                   childActive
-                                    ? "bg-sidebar-active/60 text-sidebar-active-foreground"
-                                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                    ? "bg-primary/10 font-semibold text-primary"
+                                    : "font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                                 )}
                               >
                                 {tNav(child.labelKey)}

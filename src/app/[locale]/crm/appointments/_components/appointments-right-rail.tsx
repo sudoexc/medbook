@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -34,6 +34,7 @@ type DoctorOption = {
   nameRu: string;
   nameUz: string;
   color: string | null;
+  cabinet?: { number: string } | null;
 };
 
 function useDoctors() {
@@ -52,24 +53,6 @@ function useDoctors() {
   });
 }
 
-function useSlotsForDoctor(doctorId: string, enabled: boolean) {
-  return useQuery<string[], Error>({
-    queryKey: ["appointments", "slots", doctorId, "today"],
-    enabled,
-    queryFn: async ({ signal }) => {
-      const dateIso = new Date().toISOString();
-      const res = await fetch(
-        `/api/crm/appointments/slots/available?doctorId=${doctorId}&date=${encodeURIComponent(dateIso)}`,
-        { credentials: "include", signal },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as { slots: string[] };
-      return j.slots ?? [];
-    },
-    staleTime: 60_000,
-  });
-}
-
 export type ReminderTrigger =
   | "appointment.reminder-24h"
   | "appointment.reminder-5h"
@@ -77,6 +60,7 @@ export type ReminderTrigger =
 
 export interface AppointmentsRightRailProps {
   rows: AppointmentRow[];
+  selectedDoctorId?: string | null;
   onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
   onExport: () => void;
   onSendReminders: (
@@ -149,12 +133,18 @@ function deriveInitials(name: string): string {
  */
 export function AppointmentsRightRail({
   rows,
+  selectedDoctorId = null,
   onSlotPick,
   onSendReminders,
   remindersBusy = false,
 }: AppointmentsRightRailProps) {
   const t = useTranslations("appointments.rail");
   const doctors = useDoctors();
+  const freeSlotDoctors = React.useMemo(() => {
+    const all = doctors.data ?? [];
+    if (!selectedDoctorId) return all;
+    return all.filter((d) => d.id === selectedDoctorId);
+  }, [doctors.data, selectedDoctorId]);
 
   const [nowMs] = React.useState(() => Date.now());
   const today = React.useMemo(() => startOfDay(new Date(nowMs)), [nowMs]);
@@ -262,7 +252,7 @@ export function AppointmentsRightRail({
 
       {/* Free slots */}
       <FreeSlotsSection
-        doctors={doctors.data ?? []}
+        doctors={freeSlotDoctors}
         today={today}
         onSlotPick={onSlotPick}
         lastUpdatedMin={lastUpdatedMin}
@@ -326,12 +316,38 @@ function FreeSlotsSection({
   lastUpdatedMin: number;
 }) {
   const t = useTranslations("appointments.rail");
-  // Toggling between the compact preview (3 doctors) and the full list. We
-  // expand in place rather than navigating elsewhere because the slot rows
-  // already act as inline booking surfaces — pulling them onto a separate
-  // page would just add a hop.
   const [expanded, setExpanded] = React.useState(false);
-  const visible = expanded ? doctors : doctors.slice(0, 3);
+
+  // Fan-out slot fetches at the parent so we can filter doctors who actually
+  // have free slots today — showing rows with "—" for fully-booked doctors
+  // was misleading (looked like the widget was broken).
+  const slotQueries = useQueries({
+    queries: doctors.map((d) => ({
+      queryKey: ["appointments", "slots", d.id, "today"] as const,
+      queryFn: async ({ signal }: { signal?: AbortSignal }) => {
+        const dateIso = new Date().toISOString();
+        const res = await fetch(
+          `/api/crm/appointments/slots/available?doctorId=${d.id}&date=${encodeURIComponent(dateIso)}`,
+          { credentials: "include", signal },
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const j = (await res.json()) as { slots: string[] };
+        return j.slots ?? [];
+      },
+      staleTime: 60_000,
+    })),
+  });
+
+  const withSlots = React.useMemo(
+    () =>
+      doctors
+        .map((d, i) => ({ doctor: d, firstSlot: slotQueries[i]?.data?.[0] ?? null }))
+        .filter((x) => x.firstSlot !== null),
+    [doctors, slotQueries],
+  );
+
+  const anyLoading = slotQueries.some((q) => q.isLoading);
+  const visible = expanded ? withSlots : withSlots.slice(0, 3);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-3.5">
@@ -344,12 +360,13 @@ function FreeSlotsSection({
         </span>
       </div>
       <ul className="flex flex-col gap-2">
-        {visible.map((d) => (
+        {visible.map(({ doctor, firstSlot }) => (
           <SlotRow
-            key={d.id}
-            doctor={d}
+            key={doctor.id}
+            doctor={doctor}
+            firstSlot={firstSlot}
             onPick={(time) =>
-              onSlotPick({ doctorId: d.id, date: today, time })
+              onSlotPick({ doctorId: doctor.id, date: today, time })
             }
           />
         ))}
@@ -357,9 +374,13 @@ function FreeSlotsSection({
           <p className="px-1 text-xs text-muted-foreground">
             {t("noDoctors")}
           </p>
+        ) : withSlots.length === 0 && !anyLoading ? (
+          <p className="px-1 text-xs text-muted-foreground">
+            {t("freeSlotsAllBooked")}
+          </p>
         ) : null}
       </ul>
-      {doctors.length > 3 ? (
+      {withSlots.length > 3 ? (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
@@ -374,7 +395,7 @@ function FreeSlotsSection({
           ) : (
             <>
               <ChevronDownIcon className="size-3.5" />
-              {t("freeSlotsShowAll", { count: doctors.length })}
+              {t("freeSlotsShowAll", { count: withSlots.length })}
             </>
           )}
         </button>
@@ -595,17 +616,17 @@ function InitialsChipsRow({
 
 function SlotRow({
   doctor,
+  firstSlot,
   onPick,
 }: {
   doctor: DoctorOption;
+  firstSlot: string | null;
   onPick: (time: string) => void;
 }) {
   const locale = useLocale();
   const t = useTranslations("appointments.rail");
-  const slots = useSlotsForDoctor(doctor.id, true);
   const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
-  const firstSlot = (slots.data ?? [])[0];
-  const cabinetGuess = ((doctor.id.charCodeAt(0) % 5) + 1).toString();
+  const cabinet = doctor.cabinet?.number ?? null;
 
   return (
     <li className="flex items-center gap-2 text-[12px]">
@@ -618,9 +639,11 @@ function SlotRow({
         {firstSlot ?? "—"}
       </span>
       <span className="flex-1 truncate text-foreground">{name}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">
-        {t("freeSlotsCabinet", { n: cabinetGuess })}
-      </span>
+      {cabinet ? (
+        <span className="shrink-0 text-[11px] text-muted-foreground">
+          {t("freeSlotsCabinet", { n: cabinet })}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={() => firstSlot && onPick(firstSlot)}

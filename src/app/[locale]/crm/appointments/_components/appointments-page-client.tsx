@@ -251,6 +251,7 @@ export function AppointmentsPageClient() {
       >
         <AppointmentsRightRail
           rows={rows}
+          selectedDoctorId={state.doctorId ?? null}
           onSlotPick={({ doctorId, date, time }) =>
             openCreateDialog({ doctorId, date, time })
           }

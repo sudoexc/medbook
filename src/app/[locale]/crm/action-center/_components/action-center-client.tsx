@@ -471,9 +471,9 @@ function ActionsList({
   localePath: (path: string) => string;
 }) {
   const td = useTranslations("actionCenter.dashboard.actionsList");
-  const [showCompleted, setShowCompleted] = React.useState(false);
+  const [showAll, setShowAll] = React.useState(false);
 
-  const top = actions.slice(0, 5);
+  const visible = showAll ? actions : actions.slice(0, 5);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -485,7 +485,7 @@ function ActionsList({
           </p>
         </div>
         <span className="inline-flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary tabular-nums">
-          {top.length}
+          {actions.length}
         </span>
       </header>
 
@@ -499,32 +499,34 @@ function ActionsList({
               />
             ))}
           </>
-        ) : top.length === 0 ? (
+        ) : visible.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
             {td("empty")}
           </p>
         ) : (
-          top.map((row) => (
+          visible.map((row) => (
             <ActionRowCard key={row.id} row={row} localePath={localePath} />
           ))
         )}
       </div>
 
-      <div className="mt-4 flex justify-center border-t border-border pt-3">
-        <button
-          type="button"
-          onClick={() => setShowCompleted((v) => !v)}
-          className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          {showCompleted ? td("hideCompleted") : td("showCompleted")}
-          <ArrowRightIcon
-            className={cn(
-              "size-3 transition-transform",
-              showCompleted && "rotate-90",
-            )}
-          />
-        </button>
-      </div>
+      {actions.length > 5 ? (
+        <div className="mt-4 flex justify-center border-t border-border pt-3">
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {showAll ? td("collapseList") : td("showAllTasks", { count: actions.length })}
+            <ArrowRightIcon
+              className={cn(
+                "size-3 transition-transform",
+                showAll ? "-rotate-90" : "rotate-90",
+              )}
+            />
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

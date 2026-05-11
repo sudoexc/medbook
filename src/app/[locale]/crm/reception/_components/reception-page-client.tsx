@@ -208,7 +208,7 @@ export function ReceptionPageClient() {
         totalDoctors={doctors.data?.length ?? 0}
       />
 
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[360px_minmax(0,1fr)_340px]">
         <QueueColumn rows={todayRows} />
 
         <section className="flex min-h-0 flex-col gap-3">

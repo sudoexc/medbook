@@ -30,7 +30,8 @@ export interface DoctorQueueCardProps {
 
 type CabinetState = "in_session" | "awaiting" | "empty";
 
-const MAX_VISIBLE_QUEUE = 3;
+/** When the queue exceeds this many rows, switch to a scrollable list. */
+const SCROLL_AFTER = 4;
 
 /**
  * Compact cabinet card per Image #13 feedback.
@@ -145,7 +146,7 @@ export function DoctorQueueCard({
     }
   };
 
-  const visible = upcoming.slice(0, MAX_VISIBLE_QUEUE);
+  const scrollable = upcoming.length > SCROLL_AFTER;
 
   return (
     <article
@@ -220,9 +221,15 @@ export function DoctorQueueCard({
           ) : null}
         </div>
 
-        {visible.length > 0 ? (
-          <ul className="space-y-1">
-            {visible.map((a, i) => (
+        {upcoming.length > 0 ? (
+          <ul
+            className={cn(
+              "space-y-1",
+              scrollable &&
+                "max-h-[136px] overflow-y-auto pr-1 [scrollbar-width:thin]",
+            )}
+          >
+            {upcoming.map((a, i) => (
               <li key={a.id}>
                 <button
                   type="button"

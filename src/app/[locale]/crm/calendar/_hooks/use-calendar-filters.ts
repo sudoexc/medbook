@@ -14,7 +14,7 @@ export type CalendarFilters = {
   cabinetOverlay: boolean;
 };
 
-const DEFAULT_VIEW: CalendarView = "workWeek";
+const DEFAULT_VIEW: CalendarView = "day";
 
 function todayKey(): string {
   const d = new Date();

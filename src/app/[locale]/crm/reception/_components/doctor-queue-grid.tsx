@@ -81,7 +81,7 @@ export function DoctorQueueGrid({
       aria-live="polite"
       aria-atomic="false"
       className={cn(
-        "grid gap-3",
+        "motion-stagger grid gap-3",
         "grid-cols-1 sm:grid-cols-2 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]",
         className,
       )}

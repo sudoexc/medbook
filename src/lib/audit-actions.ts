@@ -424,6 +424,12 @@ export const AUDIT_ACTION = {
   CLINIC_SUSPENDED: "CLINIC_SUSPENDED",
   CLINIC_RESUMED: "CLINIC_RESUMED",
   CLINIC_TRIAL_EXTENDED: "CLINIC_TRIAL_EXTENDED",
+
+  // Patient duplicate merge. `entityType: "Patient"`, `entityId: <winnerId>`.
+  // `meta` carries `{ loserId, loserSnapshot, reassigned: { table: count, … },
+  // mergedFields: string[] }` — full forensic trail so the merge can be
+  // reasoned about after the loser row is gone.
+  PATIENT_MERGED: "PATIENT_MERGED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

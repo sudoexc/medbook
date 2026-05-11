@@ -78,7 +78,8 @@
     },
     "footer": {
       "todayCount": "Bugungi yozuvlar",
-      "collapse": "Yig'ish"
+      "collapse": "Yig'ish",
+      "expand": "Yoyish"
     },
     "topbar": {
       "searchPlaceholder": "Bemor, shifokor, yozuv, telefon, FIO bo'yicha qidirish...",
@@ -730,6 +731,7 @@
       "freeSlotsUpdated": "{min} daqiqa oldin yangilandi",
       "freeSlotsBook": "Yozish",
       "freeSlotsShowAll": "Barchasini ko'rsatish ({count}) →",
+      "freeSlotsCollapse": "Yopish",
       "freeSlotsCabinet": "Kab. {n}",
       "noDoctors": "Faol shifokorlar yo'q",
       "actionCenter": "Amallar markazi",
@@ -745,6 +747,9 @@
       "actionBroadcastCta": "Kampaniyalarni ochish",
       "morePlus": "+{count}",
       "moreActions": "Yana amallar",
+      "moreOpenCampaigns": "Kampaniyalarni ochish",
+      "moreHistory": "Tarqatuvlar tarixi",
+      "moreTemplates": "Shablonlar",
       "dayStats": "Kunlik statistika",
       "dayStatsAt": "{time} ga",
       "statTotal": "Jami yozuvlar",
@@ -3224,6 +3229,14 @@
       "dsar": {
         "title": "DSAR so'rovlari",
         "description": "Bemor ma'lumotlari eksporti va o'chirish so'rovlari."
+      },
+      "billing": {
+        "title": "Billing",
+        "description": "Obuna, hisob-fakturalar va to'lov usuli."
+      },
+      "branding": {
+        "title": "Brending",
+        "description": "Logotip, ranglar va White-Label rejimi."
       }
     },
     "audit": {

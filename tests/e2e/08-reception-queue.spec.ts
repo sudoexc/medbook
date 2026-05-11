@@ -25,7 +25,7 @@ test.describe("reception — queue transitions", () => {
     page,
     request,
   }) => {
-    await as.receptionist(page);
+    await as.receptionist(page, { request });
     const [doctorId, patientId, service] = await Promise.all([
       firstDoctorId(page.context()),
       firstPatientId(page.context()),

@@ -17,7 +17,7 @@ test.describe("rbac — doctor on /crm/settings", () => {
     page,
     request,
   }) => {
-    await as.doctor(page);
+    await as.doctor(page, { request });
     // Settings clinic profile endpoint is ADMIN-only.
     const res = await request.get(`${BASE_URL}/api/crm/clinic`, {
       failOnStatusCode: false,

@@ -18,7 +18,7 @@ test.describe("multi-tenancy isolation", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     // Try to search for a phone that only exists in the demo clinic.
     const demoOnlyPhone = PATIENT_PHONES["demo-clinic"][0];
     const res = await request.get(
@@ -40,7 +40,7 @@ test.describe("multi-tenancy isolation", () => {
     request,
   }) => {
     void DEMO_CLINIC;
-    await as.otherClinicAdmin(page);
+    await as.otherClinicAdmin(page, { request });
     const demoOnlyPhone = PATIENT_PHONES["demo-clinic"][0];
     const res = await request.get(
       `${BASE_URL}/api/crm/patients?q=${encodeURIComponent(demoOnlyPhone)}`,

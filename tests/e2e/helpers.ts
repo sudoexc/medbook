@@ -71,13 +71,29 @@ export async function isAppHealthy(): Promise<boolean> {
 export async function loginAs(
   page: Page,
   user: SeededUser,
-  opts: { landing?: string } = {},
+  opts: { landing?: string; request?: APIRequestContext } = {},
 ): Promise<void> {
   const landing = opts.landing ?? "/ru/crm";
   const ctx = page.context();
-  const req = ctx.request;
+  await loginRequest(ctx.request, user, landing);
 
-  // Read CSRF token.
+  // If a separate test `request` fixture was passed in, log it in too. The
+  // Playwright `request` fixture is its own APIRequestContext that does NOT
+  // share cookies with `page.context()`, so without this every API call made
+  // via the test-level `request` lands as an unauthenticated 401.
+  if (opts.request && opts.request !== ctx.request) {
+    await loginRequest(opts.request, user, landing);
+  }
+
+  // Navigate to the landing page to kick off the SSR session sync.
+  await page.goto(landing);
+}
+
+async function loginRequest(
+  req: APIRequestContext,
+  user: SeededUser,
+  landing: string,
+): Promise<void> {
   const csrfRes = await req.get(`${BASE_URL}/api/auth/csrf`);
   if (!csrfRes.ok()) {
     throw new Error(
@@ -86,8 +102,6 @@ export async function loginAs(
   }
   const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
 
-  // Post credentials. NextAuth accepts either URL-encoded body or JSON;
-  // URL-encoded is the traditional path.
   const signinRes = await req.post(
     `${BASE_URL}/api/auth/callback/credentials`,
     {
@@ -108,26 +122,21 @@ export async function loginAs(
       `signIn failed for ${user.email}: ${signinRes.status()} ${text}`,
     );
   }
-
-  // At this point the session cookie (`__Secure-authjs.session-token` or
-  // `authjs.session-token` depending on scheme) is stored in the context.
-  // Navigate to the landing page to kick off the SSR session sync.
-  await page.goto(landing);
 }
 
 /**
  * Convenience wrappers for each seeded role (primary clinic = neurofax).
  */
+type LoginOpts = { landing?: string; request?: APIRequestContext };
 export const as = {
-  admin: (page: Page, opts?: { landing?: string }) =>
-    loginAs(page, NEUROFAX.admin, opts),
-  doctor: (page: Page, opts?: { landing?: string }) =>
+  admin: (page: Page, opts?: LoginOpts) => loginAs(page, NEUROFAX.admin, opts),
+  doctor: (page: Page, opts?: LoginOpts) =>
     loginAs(page, NEUROFAX.doctors[0], opts),
-  receptionist: (page: Page, opts?: { landing?: string }) =>
+  receptionist: (page: Page, opts?: LoginOpts) =>
     loginAs(page, NEUROFAX.receptionist, opts),
-  superAdmin: (page: Page, opts?: { landing?: string }) =>
+  superAdmin: (page: Page, opts?: LoginOpts) =>
     loginAs(page, SUPER_ADMIN, opts),
-  otherClinicAdmin: (page: Page, opts?: { landing?: string }) =>
+  otherClinicAdmin: (page: Page, opts?: LoginOpts) =>
     loginAs(page, DEMO_CLINIC.admin, opts),
 };
 

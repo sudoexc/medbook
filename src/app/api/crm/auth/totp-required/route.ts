@@ -28,6 +28,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err } from "@/server/http";
 import { PENDING_COOKIE_NAME, signPending } from "@/server/auth/totp-pending";
+import { is2faDisabled } from "@/server/auth/security-policy";
 
 const Schema = z.object({
   email: z.string().email().max(200),
@@ -68,6 +69,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return err("invalid_credentials", 401);
+
+  // Kill-switch: when DISABLE_2FA is set we never gate the login on TOTP,
+  // even for enrolled users. Skip the pending-cookie too — the login
+  // client will call signIn() directly with password only.
+  if (is2faDisabled()) {
+    return ok({ requiresTotp: false });
+  }
 
   const requiresTotp = Boolean(user.totpEnabledAt);
 

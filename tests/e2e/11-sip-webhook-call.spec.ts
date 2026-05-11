@@ -17,7 +17,7 @@ test.describe("call-center — SIP webhook ingest", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
 
     const callId = `e2e-${Date.now()}`;
     // The webhook accepts dev-mode requests without a secret (logs a warning).

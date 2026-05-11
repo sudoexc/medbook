@@ -14,7 +14,7 @@ test.describe("admin platform — clinic lifecycle", () => {
   });
 
   test("SUPER_ADMIN can list + create clinics", async ({ page, request }) => {
-    await as.superAdmin(page);
+    await as.superAdmin(page, { request });
     const listRes = await request.get(`${BASE_URL}/api/platform/clinics`, {
       failOnStatusCode: false,
     });

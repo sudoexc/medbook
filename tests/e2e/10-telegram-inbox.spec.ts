@@ -21,7 +21,7 @@ test.describe("telegram inbox", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const res = await request.get(
       `${BASE_URL}/api/crm/conversations?channel=TG`,
       { failOnStatusCode: false },

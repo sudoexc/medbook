@@ -10,6 +10,7 @@ import {
   BrainIcon,
   CalendarDaysIcon,
   ChevronsLeftIcon,
+  ChevronsRightIcon,
   ClipboardListIcon,
   LayoutDashboardIcon,
   PhoneCallIcon,
@@ -285,6 +286,8 @@ export interface CrmSidebarProps {
   role?: NavRole | null
 }
 
+const COLLAPSED_STORAGE_KEY = "crm:sidebar:collapsed"
+
 export function CrmSidebar({
   brand = "Neurofax",
   flags = ENTERPRISE_FLAGS,
@@ -303,27 +306,62 @@ export function CrmSidebar({
     [flags, role],
   )
 
+  // Persist collapsed state in localStorage so a hard reload keeps the user's
+  // chosen sidebar width. We hydrate after mount to avoid SSR/CSR mismatch on
+  // the initial paint — the server always renders expanded.
+  const [collapsed, setCollapsed] = React.useState(false)
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY)
+      if (raw === "1") setCollapsed(true)
+    } catch {
+      /* localStorage disabled — fall back to expanded */
+    }
+  }, [])
+  const toggleCollapsed = React.useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev
+      try {
+        window.localStorage.setItem(COLLAPSED_STORAGE_KEY, next ? "1" : "0")
+      } catch {
+        /* ignore — state still toggles in memory */
+      }
+      return next
+    })
+  }, [])
+
   return (
-    <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200",
+        collapsed ? "w-[68px]" : "w-[240px]",
+      )}
+    >
       <Link
         href={`/${locale}/crm/reception`}
         aria-label={tShell("brand.homeLink")}
-        className="flex h-16 items-center gap-2.5 px-5 outline-none transition-colors hover:bg-sidebar-accent/40 focus-visible:ring-2 focus-visible:ring-ring"
+        title={collapsed ? brand : undefined}
+        className={cn(
+          "motion-press flex h-16 items-center gap-2.5 outline-none transition-colors hover:bg-sidebar-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
+          collapsed ? "justify-center px-2" : "px-5",
+        )}
       >
         <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet text-white">
           <BrainIcon className="size-5" />
         </div>
-        <div className="leading-tight">
-          <div className="text-sm font-semibold text-foreground">{brand}</div>
-          <div className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
-            {tShell("brand.tagline")}
+        {collapsed ? null : (
+          <div className="leading-tight">
+            <div className="text-sm font-semibold text-foreground">{brand}</div>
+            <div className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+              {tShell("brand.tagline")}
+            </div>
           </div>
-        </div>
+        )}
       </Link>
-      <nav className="flex-1 overflow-y-auto px-3 py-1">
+      <nav className={cn("flex-1 overflow-y-auto py-1", collapsed ? "px-2" : "px-3")}>
         {visibleNav.map((group, gi) => (
           <div key={gi} className={cn(gi > 0 && "mt-4")}>
-            {group.labelKey ? (
+            {group.labelKey && !collapsed ? (
               <div className="mb-1 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
                 {tNav(group.labelKey)}
               </div>
@@ -341,13 +379,18 @@ export function CrmSidebar({
                   // a defense-in-depth no-op when called via the prod path.
                   return true
                 }) ?? []
+                const label = tNav(item.labelKey)
                 return (
                   <li key={item.href}>
                     <Link
                       href={full}
                       aria-current={active ? "page" : undefined}
+                      title={collapsed ? label : undefined}
                       className={cn(
-                        "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        "motion-press group relative flex items-center rounded-lg text-sm font-medium transition-colors",
+                        collapsed
+                          ? "justify-center px-2 py-2"
+                          : "gap-3 px-3 py-2",
                         active
                           ? "bg-sidebar-active text-sidebar-active-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -365,24 +408,40 @@ export function CrmSidebar({
                           active ? "text-success" : "text-muted-foreground group-hover:text-foreground",
                         )}
                       />
-                      <span className="flex-1 truncate">{tNav(item.labelKey)}</span>
-                      {item.badgeTone && badgeCount > 0 ? (
-                        <span
-                          className={cn(
-                            "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold",
-                            BADGE_CLASS[item.badgeTone],
-                          )}
-                        >
-                          {badgeCount}
-                        </span>
-                      ) : null}
+                      {collapsed ? (
+                        // Tiny badge dot — count is invisible to keep the rail
+                        // narrow, but the dot still signals "you have unread".
+                        item.badgeTone && badgeCount > 0 ? (
+                          <span
+                            aria-label={`${label}: ${badgeCount}`}
+                            className={cn(
+                              "absolute right-1 top-1 size-1.5 rounded-full",
+                              BADGE_CLASS[item.badgeTone],
+                            )}
+                          />
+                        ) : null
+                      ) : (
+                        <>
+                          <span className="flex-1 truncate">{label}</span>
+                          {item.badgeTone && badgeCount > 0 ? (
+                            <span
+                              className={cn(
+                                "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold",
+                                BADGE_CLASS[item.badgeTone],
+                              )}
+                            >
+                              {badgeCount}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                     </Link>
                     {/*
                       Sub-nav: only render once the parent route is active so
                       the sidebar doesn't grow taller until the user actually
                       navigates into the section.
                     */}
-                    {active && visibleChildren.length > 0 ? (
+                    {!collapsed && active && visibleChildren.length > 0 ? (
                       <ul className="mt-1 space-y-0.5 pl-7">
                         {visibleChildren.map((child) => {
                           const childFull = `/${locale}/crm/${child.href}`
@@ -415,27 +474,51 @@ export function CrmSidebar({
           </div>
         ))}
       </nav>
-      <div className="border-t border-sidebar-border px-4 py-4">
+      <div
+        className={cn(
+          "border-t border-sidebar-border py-4",
+          collapsed ? "px-2" : "px-4",
+        )}
+      >
         <Link
           href={`/${locale}/crm/analytics`}
-          className="flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-sidebar-accent"
+          title={collapsed ? `${todayCount} ${tShell("footer.todayCount")}` : undefined}
+          className={cn(
+            "motion-press flex items-center rounded-xl p-2 transition-colors hover:bg-sidebar-accent",
+            collapsed ? "justify-center" : "gap-3",
+          )}
         >
-          <DonutGauge percent={loadPercent} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xl font-bold text-foreground tabular-nums">
-              {todayCount}
+          <DonutGauge percent={loadPercent} size={collapsed ? 40 : 64} />
+          {collapsed ? null : (
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xl font-bold text-foreground tabular-nums">
+                {todayCount}
+              </div>
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {tShell("footer.todayCount")}
+              </div>
             </div>
-            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {tShell("footer.todayCount")}
-            </div>
-          </div>
+          )}
         </Link>
         <button
           type="button"
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          onClick={toggleCollapsed}
+          aria-pressed={collapsed}
+          aria-label={collapsed ? tShell("footer.expand") : tShell("footer.collapse")}
+          title={collapsed ? tShell("footer.expand") : tShell("footer.collapse")}
+          className={cn(
+            "motion-press mt-2 flex w-full items-center justify-center rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
+            !collapsed && "gap-1.5",
+          )}
         >
-          <ChevronsLeftIcon className="size-3.5" />
-          {tShell("footer.collapse")}
+          {collapsed ? (
+            <ChevronsRightIcon className="size-3.5" />
+          ) : (
+            <>
+              <ChevronsLeftIcon className="size-3.5" />
+              {tShell("footer.collapse")}
+            </>
+          )}
         </button>
       </div>
     </aside>

@@ -17,7 +17,7 @@ test.describe("settings — clinic profile + audit", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     // Read current profile.
     const before = await request.get(`${BASE_URL}/api/crm/clinic`, {
       failOnStatusCode: false,

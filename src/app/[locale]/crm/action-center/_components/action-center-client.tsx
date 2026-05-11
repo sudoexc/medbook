@@ -274,6 +274,7 @@ function bucketActions(rows: ActionRow[]): Buckets {
 
 function KpiStrip({ buckets }: { buckets: Buckets }) {
   const td = useTranslations("actionCenter.dashboard.kpi");
+  const locale = useLocale();
 
   const tiles = [
     {
@@ -285,6 +286,10 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
       hint: td("potentialLoss"),
       tone: "danger" as const,
       icon: <AlertTriangleIcon className="size-5" />,
+      // Threat = noShow + unconfirmed today. The appointments page filter
+      // doesn't have a single "threat" bucket, so we route to the noShow
+      // bucket which is the most actionable subset.
+      href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show`,
     },
     {
       key: "unconfirmed",
@@ -295,6 +300,7 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
       hint: td("potentialLoss"),
       tone: "warning" as const,
       icon: <UsersIcon className="size-5" />,
+      href: `/${locale}/crm/call-center?from=kpi&intent=unconfirmed`,
     },
     {
       key: "freeSlots",
@@ -305,6 +311,7 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
       hint: td("potentialRevenue"),
       tone: "success" as const,
       icon: <CalendarClockIcon className="size-5" />,
+      href: `/${locale}/crm/calendar?from=kpi&intent=fill-slots`,
     },
     {
       key: "noShow",
@@ -315,11 +322,12 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
       hint: td("potentialLoss"),
       tone: "pink" as const,
       icon: <TrendingDownIcon className="size-5" />,
+      href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show`,
     },
   ];
 
   return (
-    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="motion-stagger grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
       {tiles.map(({ key, ...tile }) => (
         <KpiCard key={key} {...tile} />
       ))}
@@ -348,6 +356,7 @@ function KpiCard({
   hint,
   tone,
   icon,
+  href,
 }: {
   label: string;
   count: number;
@@ -356,10 +365,14 @@ function KpiCard({
   hint: string;
   tone: keyof typeof TONE_CHIP;
   icon: React.ReactNode;
+  href: string;
 }) {
   const isLoss = moneyTiins < 0;
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <Link
+      href={href}
+      className="motion-rise-in motion-press motion-hover-lift block rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-primary/30"
+    >
       <div className="flex items-start gap-3">
         <div
           className={cn(
@@ -399,7 +412,7 @@ function KpiCard({
         </div>
         <p className="text-[11px] text-muted-foreground">{hint}</p>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -958,16 +971,30 @@ function TodayLosses({
   missedRequests: { count: number }[];
 }) {
   const td = useTranslations("actionCenter.dashboard.todayLosses");
+  const locale = useLocale();
+  // Each row links to the surface where the loss happens — so a receptionist
+  // tapping the line can act on it immediately. `from=losses` lets analytics
+  // attribute follow-up bookings back to this card.
   const rows = [
-    { label: td("emptySlots"), tiins: buckets.freeSlotsRevTiins },
-    { label: td("noShowRisk"), tiins: buckets.noShowLossTiins },
+    {
+      label: td("emptySlots"),
+      tiins: buckets.freeSlotsRevTiins,
+      href: `/${locale}/crm/calendar?from=losses&intent=fill-slots`,
+    },
+    {
+      label: td("noShowRisk"),
+      tiins: buckets.noShowLossTiins,
+      href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show&from=losses`,
+    },
     {
       label: td("missedRequests"),
       tiins: Math.round(AVG_VISIT_TIINS * 0.4 * 1),
+      href: `/${locale}/crm/online-requests?from=losses`,
     },
     {
       label: td("missedCalls"),
       tiins: Math.round(AVG_VISIT_TIINS * 0.225 * 1),
+      href: `/${locale}/crm/call-center?from=losses&intent=missed-calls`,
     },
   ];
   const total = rows.reduce((acc, r) => acc + r.tiins, 0);
@@ -978,16 +1005,20 @@ function TodayLosses({
         <ClockIcon className="size-4 text-destructive" />
         <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
       </header>
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 space-y-1">
         {rows.map((r) => (
-          <li
-            key={r.label}
-            className="flex items-center justify-between text-xs"
-          >
-            <span className="text-muted-foreground">{r.label}</span>
-            <span className="font-semibold tabular-nums text-foreground">
-              <MoneyText amount={r.tiins} currency="UZS" />
-            </span>
+          <li key={r.label}>
+            <Link
+              href={r.href}
+              className="motion-press group -mx-1 flex items-center justify-between gap-2 rounded-md px-1 py-1.5 text-xs transition-colors hover:bg-muted/50"
+            >
+              <span className="text-muted-foreground group-hover:text-foreground">
+                {r.label}
+              </span>
+              <span className="font-semibold tabular-nums text-foreground">
+                <MoneyText amount={r.tiins} currency="UZS" />
+              </span>
+            </Link>
           </li>
         ))}
       </ul>

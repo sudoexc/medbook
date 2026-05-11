@@ -5,10 +5,12 @@ import {
   BellRingIcon,
   BuildingIcon,
   CoinsIcon,
+  CreditCardIcon,
   DoorOpenIcon,
   FileTextIcon,
   GitBranchIcon,
   MailIcon,
+  PaletteIcon,
   PlugZapIcon,
   ScrollIcon,
   ShieldCheckIcon,
@@ -41,10 +43,12 @@ const CLINIC_MANAGEMENT: CardSpec[] = [
 const CORE_SETTINGS: CardSpec[] = [
   { key: "clinic", path: "settings/clinic", icon: BuildingIcon },
   { key: "branches", path: "settings/branches", icon: GitBranchIcon },
+  { key: "branding", path: "settings/branding", icon: PaletteIcon },
   { key: "users", path: "settings/users", icon: UsersIcon },
   { key: "exchangeRates", path: "settings/exchange-rates", icon: CoinsIcon },
   { key: "integrations", path: "settings/integrations", icon: PlugZapIcon },
   { key: "notifications", path: "settings/notifications", icon: BellRingIcon },
+  { key: "billing", path: "settings/billing", icon: CreditCardIcon },
   { key: "audit", path: "settings/audit", icon: ScrollIcon },
   // Phase 17 Wave 3 — DSAR review queue.
   { key: "dsar", path: "settings/dsar", icon: ShieldCheckIcon },
@@ -60,14 +64,14 @@ function CardGrid({
   t: (key: string) => string;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="motion-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {cards.map((card) => {
         const Icon = card.icon;
         return (
           <Link
             key={card.key}
             href={`/${locale}/crm/${card.path}`}
-            className="group flex items-start gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
+            className="motion-rise-in motion-hover-lift motion-press group flex items-start gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15">
               <Icon className="size-5" />

@@ -78,7 +78,8 @@
     },
     "footer": {
       "todayCount": "Записей сегодня",
-      "collapse": "Свернуть"
+      "collapse": "Свернуть",
+      "expand": "Развернуть"
     },
     "topbar": {
       "searchPlaceholder": "Поиск пациента, врача, записи, телефона, ФИО...",
@@ -730,6 +731,7 @@
       "freeSlotsUpdated": "Обновлено {min} мин назад",
       "freeSlotsBook": "Записать",
       "freeSlotsShowAll": "Показать все ({count}) →",
+      "freeSlotsCollapse": "Свернуть",
       "freeSlotsCabinet": "Каб. {n}",
       "noDoctors": "Нет активных врачей",
       "actionCenter": "Центр действий",
@@ -745,6 +747,9 @@
       "actionBroadcastCta": "Открыть кампании",
       "morePlus": "+{count}",
       "moreActions": "Ещё действия",
+      "moreOpenCampaigns": "Открыть кампании",
+      "moreHistory": "История рассылок",
+      "moreTemplates": "Шаблоны",
       "dayStats": "Статистика дня",
       "dayStatsAt": "На {time}",
       "statTotal": "Записей всего",
@@ -3224,6 +3229,14 @@
       "dsar": {
         "title": "Запросы DSAR",
         "description": "Экспорты и заявки на удаление данных пациентов."
+      },
+      "billing": {
+        "title": "Биллинг",
+        "description": "Подписка, счета и платёжный метод клиники."
+      },
+      "branding": {
+        "title": "Брендинг",
+        "description": "Логотип, цвета и оформление в режиме White-Label."
       }
     },
     "audit": {

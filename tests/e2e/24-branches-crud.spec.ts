@@ -27,7 +27,7 @@ test.describe("branches — CRUD + active switcher", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
 
     // 1. List existing branches — at least the backfilled "hq" should exist.
     const listRes = await request.get(`${BASE_URL}/api/crm/branches`, {
@@ -93,7 +93,7 @@ test.describe("branches — CRUD + active switcher", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     // Use an obviously-invalid branchId that won't exist for this clinic.
     const res = await request.post(`${BASE_URL}/api/crm/branches/active`, {
       data: { branchId: "br_does_not_exist_xyz" },

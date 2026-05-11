@@ -115,6 +115,7 @@ export function DoctorQueueList({
   }
 
   const compact = density === "compact";
+  const gridTemplate = gridTemplateColumns(showCabinet, showNextSlot);
 
   return (
     <div
@@ -129,8 +130,8 @@ export function DoctorQueueList({
         className={cn(
           "grid items-center gap-3 border-b border-border bg-muted/40 px-3 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground",
           compact ? "py-1.5" : "py-2",
-          gridCols(showCabinet, showNextSlot),
         )}
+        style={{ gridTemplateColumns: gridTemplate }}
         role="row"
       >
         <span role="columnheader">{t("doctor")}</span>
@@ -149,7 +150,7 @@ export function DoctorQueueList({
         </span>
       </div>
 
-      <ul className="divide-y divide-border">
+      <ul className="motion-stagger divide-y divide-border">
         {rows.map(({ doctor, state, current, next, count, cabinet }) => {
           const spec =
             locale === "uz"
@@ -164,10 +165,10 @@ export function DoctorQueueList({
               key={doctor.id}
               role="row"
               className={cn(
-                "grid items-center gap-3 px-3 transition-colors hover:bg-muted/40",
+                "motion-rise-in grid items-center gap-3 px-3 transition-colors hover:bg-muted/40",
                 compact ? "py-2" : "py-3",
-                gridCols(showCabinet, showNextSlot),
               )}
+              style={{ gridTemplateColumns: gridTemplate }}
             >
               <button
                 type="button"
@@ -246,7 +247,10 @@ export function DoctorQueueList({
   );
 }
 
-function gridCols(showCabinet: boolean, showNextSlot: boolean): string {
+// Inline style (not a Tailwind class) — Tailwind JIT can't see template-string
+// classes built at runtime, so they get dropped from the bundle and the grid
+// collapses to a single column. We use a real CSS value instead.
+function gridTemplateColumns(showCabinet: boolean, showNextSlot: boolean): string {
   // [doctor] [cabinet?] [count] [next?] [status] [action]
   const parts: string[] = ["minmax(180px,2fr)"];
   if (showCabinet) parts.push("90px");
@@ -254,7 +258,7 @@ function gridCols(showCabinet: boolean, showNextSlot: boolean): string {
   if (showNextSlot) parts.push("90px");
   parts.push("140px");
   parts.push("auto");
-  return `grid-cols-[${parts.join("_")}]`;
+  return parts.join(" ");
 }
 
 function StatusPill({

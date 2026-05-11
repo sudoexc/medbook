@@ -17,7 +17,7 @@ test.describe("analytics dashboard", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const res = await request.get(
       `${BASE_URL}/api/crm/analytics?period=week`,
       { failOnStatusCode: false },
@@ -38,7 +38,7 @@ test.describe("analytics dashboard", () => {
   });
 
   test("/crm/analytics renders without crash", async ({ page }) => {
-    await as.admin(page, { landing: crm("/analytics") });
+    await as.admin(page, { landing: crm("/analytics")});
     await expect(page).toHaveURL(/\/crm\/analytics/);
     const body = await page.content();
     // Basic smoke test — page shouldn't be an error overlay.

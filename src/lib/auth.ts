@@ -28,6 +28,7 @@ import {
   type ConsumeResult,
 } from "@/server/auth/recovery-codes";
 import { mintUserSessionOnSignIn } from "@/server/auth/user-session";
+import { is2faDisabled } from "@/server/auth/security-policy";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
   "SUPER_ADMIN",
@@ -102,7 +103,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // current TOTP code or a recovery code on the same submit. The
         // `/login/2fa` page collects exactly one of these and re-submits
         // the credentials together; the password-only path is rejected.
-        if (user.totpEnabledAt && user.totpSecret) {
+        //
+        // `DISABLE_2FA=1` short-circuits the gate entirely — even enrolled
+        // users can log in with password alone. Used in dev/staging and as
+        // a short-term ops bypass.
+        if (user.totpEnabledAt && user.totpSecret && !is2faDisabled()) {
           if (totp) {
             if (!verifyTotpCode(user.totpSecret, totp)) return null;
           } else if (recoveryCode) {

@@ -17,7 +17,7 @@ test.describe("global search", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const res = await request.get(
       `${BASE_URL}/api/crm/search?q=Иванов`,
       { failOnStatusCode: false },
@@ -31,7 +31,7 @@ test.describe("global search", () => {
   });
 
   test("Ctrl+K on a CRM page opens the dialog", async ({ page }) => {
-    await as.admin(page, { landing: crm("/") });
+    await as.admin(page, { landing: crm("/")});
     // Using keyboard shortcut — the handler is wired via `useGlobalSearchShortcut`.
     await page.keyboard.press("Control+KeyK");
     // cmdk renders a dialog with role=dialog; tolerate either cmdk or Radix.

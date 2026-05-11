@@ -89,12 +89,29 @@ export async function resolveFinancialPace(
   const from = opts.dayFrom ?? monthStart;
   const to = opts.dayTo ?? nextMonthStart;
 
-  const raw = await prisma.$queryRawUnsafe<RawDayRow[]>(
-    SQL,
-    clinicId,
-    from,
-    to,
-  );
+  let raw: RawDayRow[];
+  try {
+    raw = await prisma.$queryRawUnsafe<RawDayRow[]>(SQL, clinicId, from, to);
+  } catch (e) {
+    // MV exists but never refreshed yet — return an empty snapshot rather
+    // than 500. Same fallback the cohort resolver uses.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("has not been populated")) {
+      return {
+        today: null,
+        mtd: {
+          revenueCollectedTiins: 0,
+          revenueScheduledTiins: 0,
+          noShowLossTiins: 0,
+        },
+        forecastMonthEndTiins: 0,
+        daily: [],
+        generatedAt: new Date().toISOString(),
+        source: "mv:mv_financial_pace",
+      };
+    }
+    throw e;
+  }
 
   const todayKey = ymdKeyUtc(now);
   let today: FinancialDailyPoint | null = null;

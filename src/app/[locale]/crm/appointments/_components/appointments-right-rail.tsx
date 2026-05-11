@@ -1,19 +1,29 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ClockIcon,
+  HistoryIcon,
   MegaphoneIcon,
   MoreHorizontalIcon,
   SendHorizontalIcon,
+  SettingsIcon,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CountUp } from "@/components/atoms/count-up";
 import { AnimatedMoney } from "@/components/motion/animated-money";
 
@@ -251,40 +261,12 @@ export function AppointmentsRightRail({
       </ActionBigCard>
 
       {/* Free slots */}
-      <section className="rounded-2xl border border-border bg-card p-3.5">
-        <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
-          <h5 className="text-[13px] font-semibold text-foreground">
-            {t("freeSlots")}
-          </h5>
-          <span className="text-[10px] text-muted-foreground">
-            {t("freeSlotsUpdated", { min: lastUpdatedMin })}
-          </span>
-        </div>
-        <ul className="flex flex-col gap-2">
-          {(doctors.data ?? []).slice(0, 3).map((d) => (
-            <SlotRow
-              key={d.id}
-              doctor={d}
-              onPick={(time) =>
-                onSlotPick({ doctorId: d.id, date: today, time })
-              }
-            />
-          ))}
-          {!doctors.data?.length ? (
-            <p className="px-1 text-xs text-muted-foreground">
-              {t("noDoctors")}
-            </p>
-          ) : null}
-        </ul>
-        {doctors.data && doctors.data.length > 3 ? (
-          <button
-            type="button"
-            className="mt-2 inline-flex items-center gap-1 px-1 text-[12px] font-semibold text-primary hover:underline"
-          >
-            {t("freeSlotsShowAll", { count: doctors.data.length })}
-          </button>
-        ) : null}
-      </section>
+      <FreeSlotsSection
+        doctors={doctors.data ?? []}
+        today={today}
+        onSlotPick={onSlotPick}
+        lastUpdatedMin={lastUpdatedMin}
+      />
 
       {/* Day stats */}
       <section className="rounded-2xl border border-border bg-card p-3.5">
@@ -329,6 +311,75 @@ export function AppointmentsRightRail({
         </div>
       </section>
     </div>
+  );
+}
+
+function FreeSlotsSection({
+  doctors,
+  today,
+  onSlotPick,
+  lastUpdatedMin,
+}: {
+  doctors: DoctorOption[];
+  today: Date;
+  onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
+  lastUpdatedMin: number;
+}) {
+  const t = useTranslations("appointments.rail");
+  // Toggling between the compact preview (3 doctors) and the full list. We
+  // expand in place rather than navigating elsewhere because the slot rows
+  // already act as inline booking surfaces — pulling them onto a separate
+  // page would just add a hop.
+  const [expanded, setExpanded] = React.useState(false);
+  const visible = expanded ? doctors : doctors.slice(0, 3);
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-3.5">
+      <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
+        <h5 className="text-[13px] font-semibold text-foreground">
+          {t("freeSlots")}
+        </h5>
+        <span className="text-[10px] text-muted-foreground">
+          {t("freeSlotsUpdated", { min: lastUpdatedMin })}
+        </span>
+      </div>
+      <ul className="flex flex-col gap-2">
+        {visible.map((d) => (
+          <SlotRow
+            key={d.id}
+            doctor={d}
+            onPick={(time) =>
+              onSlotPick({ doctorId: d.id, date: today, time })
+            }
+          />
+        ))}
+        {doctors.length === 0 ? (
+          <p className="px-1 text-xs text-muted-foreground">
+            {t("noDoctors")}
+          </p>
+        ) : null}
+      </ul>
+      {doctors.length > 3 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="motion-press mt-2 inline-flex items-center gap-1 px-1 text-[12px] font-semibold text-primary hover:underline"
+        >
+          {expanded ? (
+            <>
+              <ChevronUpIcon className="size-3.5" />
+              {t("freeSlotsCollapse")}
+            </>
+          ) : (
+            <>
+              <ChevronDownIcon className="size-3.5" />
+              {t("freeSlotsShowAll", { count: doctors.length })}
+            </>
+          )}
+        </button>
+      ) : null}
+    </section>
   );
 }
 
@@ -409,15 +460,65 @@ function ActionBigCard({
           <CtaIcon className="size-4" />
           {ctaLabel}
         </button>
+        <ActionBigCardMenu moreLabel={moreLabel} />
+      </footer>
+    </section>
+  );
+}
+
+function ActionBigCardMenu({ moreLabel }: { moreLabel: string }) {
+  const t = useTranslations("appointments.rail");
+  const locale = useLocale();
+  const [open, setOpen] = React.useState(false);
+  // The card's primary CTA already sends the reminder. This overflow menu
+  // routes to the surfaces that let the receptionist tweak templates / read
+  // history / drop into the campaign editor — i.e. everything *adjacent* to
+  // the one-click send.
+  const items = [
+    {
+      label: t("moreOpenCampaigns"),
+      href: `/${locale}/crm/notifications`,
+      icon: SendHorizontalIcon,
+    },
+    {
+      label: t("moreHistory"),
+      href: `/${locale}/crm/notifications?tab=history`,
+      icon: HistoryIcon,
+    },
+    {
+      label: t("moreTemplates"),
+      href: `/${locale}/crm/notifications?tab=templates`,
+      icon: SettingsIcon,
+    },
+  ];
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={moreLabel}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/50 hover:text-foreground"
+          className="motion-press inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/50 hover:text-foreground"
         >
           <MoreHorizontalIcon className="size-4" />
         </button>
-      </footer>
-    </section>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 p-1">
+        {items.map((it) => {
+          const Icon = it.icon;
+          return (
+            <Link
+              key={it.href}
+              href={it.href}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+            >
+              <Icon className="size-4 text-muted-foreground" />
+              {it.label}
+            </Link>
+          );
+        })}
+      </PopoverContent>
+    </Popover>
   );
 }
 

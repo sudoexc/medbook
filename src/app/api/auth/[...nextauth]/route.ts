@@ -25,8 +25,16 @@ function clientIp(request: NextRequest): string {
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
+// Dev / CI bypass for the login throttle. Same shape as DISABLE_2FA —
+// set DISABLE_AUTH_RATE_LIMIT=1 to allow the Playwright e2e suite (and
+// brute-force ops bypass) to log in many users in a single minute.
+function authRateLimitDisabled(): boolean {
+  const v = process.env.DISABLE_AUTH_RATE_LIMIT;
+  return v === "1" || v === "true";
+}
+
 export async function POST(request: NextRequest): Promise<Response> {
-  if (!rateLimit(`auth:${clientIp(request)}`, 5, 60_000)) {
+  if (!authRateLimitDisabled() && !rateLimit(`auth:${clientIp(request)}`, 5, 60_000)) {
     return Response.json(
       { error: "Too many requests" },
       { status: 429, headers: { "retry-after": "60" } },

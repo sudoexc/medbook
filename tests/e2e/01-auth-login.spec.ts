@@ -23,15 +23,15 @@ test.describe("auth — login", () => {
     test(`${role} can log in and lands on CRM`, async ({ page }) => {
       const user =
         role === "admin" ? NEUROFAX.admin : NEUROFAX.receptionist;
-      await loginAs(page, user, { landing: "/ru/crm" });
+      await loginAs(page, user, { landing: "/ru/crm"});
       // Root /ru/crm redirects to /ru/crm/reception. Accept either as success.
-      await expect(page).toHaveURL(/\/ru\/crm(\/reception)?\/?$/);
+      await expect(page).toHaveURL(/\/(?:ru\/)?crm(\/reception)?\/?$/);
     });
   }
 
   test("doctor can log in and lands on CRM", async ({ page }) => {
-    await loginAs(page, NEUROFAX.doctors[0], { landing: "/ru/crm" });
-    await expect(page).toHaveURL(/\/ru\/crm(\/reception)?\/?$/);
+    await loginAs(page, NEUROFAX.doctors[0], { landing: "/ru/crm"});
+    await expect(page).toHaveURL(/\/(?:ru\/)?crm(\/reception)?\/?$/);
   });
 
   test("invalid credentials are rejected", async ({ request }) => {

@@ -23,7 +23,7 @@ test.describe("documents library", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const patientId = await firstPatientId(page.context());
     test.skip(!patientId, "seed missing patient");
 

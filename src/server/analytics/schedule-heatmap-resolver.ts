@@ -48,7 +48,22 @@ export async function resolveScheduleHeatmap(
   prisma: RawQueryClient,
   clinicId: string,
 ): Promise<ScheduleHeatmapResult> {
-  const rows = await prisma.$queryRawUnsafe<RawHeatmapRow[]>(SQL, clinicId);
+  let rows: RawHeatmapRow[];
+  try {
+    rows = await prisma.$queryRawUnsafe<RawHeatmapRow[]>(SQL, clinicId);
+  } catch (e) {
+    // MV exists but never refreshed yet — return empty heatmap rather than
+    // 500. Same fallback the cohort + financial-pace resolvers use.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("has not been populated")) {
+      return {
+        cells: [],
+        generatedAt: new Date().toISOString(),
+        source: "mv:mv_schedule_heatmap",
+      };
+    }
+    throw e;
+  }
   return {
     cells: rows.map((r) => ({
       doctorId: r.doctorId,

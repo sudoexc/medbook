@@ -19,7 +19,7 @@ test.describe("settings — notifications editor", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
 
     // Pull list of templates via the new settings GET.
     const listRes = await request.get(
@@ -76,7 +76,7 @@ test.describe("settings — notifications editor", () => {
   });
 
   test("PATCH rejects unknown placeholder", async ({ page, request }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const listRes = await request.get(
       `${BASE_URL}/api/crm/settings/notifications/templates`,
       { failOnStatusCode: false },

@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { SparklesIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
 import type { DoctorAgg } from "../_hooks/use-doctors-stats";
@@ -210,6 +211,29 @@ export function DoctorsAiRecommendations({
     return out;
   }, [aiRecs, recs]);
 
+  // Map heuristic / live-AI rec ids → the surface that lets the user act
+  // on the suggestion. `reassign:<apptId>` deep-links straight into the
+  // appointment drawer; everything else routes by intent flag so analytics
+  // can attribute follow-ups back to the AI panel.
+  const recHref = (id: string, loc: string): string => {
+    if (id.startsWith("reassign:")) {
+      const apptId = id.slice("reassign:".length);
+      return `/${loc}/crm/appointments?ap=${apptId}&from=ai-rec`;
+    }
+    switch (id) {
+      case "redirect":
+        return `/${loc}/crm/calendar?from=ai-rec&intent=redirect`;
+      case "fill":
+        return `/${loc}/crm/calendar?from=ai-rec&intent=fill-slots`;
+      case "specialist":
+        return `/${loc}/crm/doctors?from=ai-rec&intent=specialist`;
+      case "evening":
+        return `/${loc}/crm/calendar?from=ai-rec&intent=evening`;
+      default:
+        return `/${loc}/crm/calendar?from=ai-rec`;
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -249,9 +273,15 @@ export function DoctorsAiRecommendations({
                   {r.description}
                 </div>
               </div>
-              <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]">
+              <Link
+                href={recHref(r.id, locale)}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "motion-press h-7 px-2 text-[11px]",
+                )}
+              >
                 {r.actionLabel}
-              </Button>
+              </Link>
             </li>
           ))
         )}

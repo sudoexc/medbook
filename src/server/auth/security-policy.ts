@@ -23,6 +23,18 @@ export function isMandatory2faRole(role: Role): boolean {
 }
 
 /**
+ * Global kill-switch for two-factor authentication. When `DISABLE_2FA=1`
+ * is set, the login authorize callback skips the TOTP/recovery gate, the
+ * proxy stops forcing enrolment, and the pre-flight `totp-required`
+ * endpoint always reports `false`. Intended for dev environments and
+ * short-term ops bypass; flip back to `0`/unset to restore enforcement.
+ */
+export function is2faDisabled(): boolean {
+  const v = process.env.DISABLE_2FA;
+  return v === "1" || v === "true";
+}
+
+/**
  * Decide whether `role` (in `clinicRequire2faForAll` clinic) must have TOTP
  * enrolled. Returns true → the proxy must redirect to /crm/me/security/enroll
  * if the user has no `totpEnabledAt`.
@@ -31,6 +43,7 @@ export function requiresTotpEnrollment(args: {
   role: Role;
   clinicRequire2faForAll: boolean;
 }): boolean {
+  if (is2faDisabled()) return false;
   if (isMandatory2faRole(args.role)) return true;
   return args.clinicRequire2faForAll;
 }

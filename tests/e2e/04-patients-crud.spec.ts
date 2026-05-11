@@ -19,7 +19,7 @@ test.describe("patients — CRUD lifecycle", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
 
     // 1. Create
     const unique = `E2E Patient ${Date.now()}`;

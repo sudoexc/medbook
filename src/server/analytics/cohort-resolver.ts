@@ -55,7 +55,24 @@ export async function resolveCohortRetention(
   prisma: RawQueryClient,
   clinicId: string,
 ): Promise<CohortMatrix> {
-  const rows = await prisma.$queryRawUnsafe<RawCohortRow[]>(SQL, clinicId);
+  let rows: RawCohortRow[];
+  try {
+    rows = await prisma.$queryRawUnsafe<RawCohortRow[]>(SQL, clinicId);
+  } catch (e) {
+    // MV exists but never refreshed yet (fresh install, or dev without the
+    // analytics:refresh worker scheduled). Treat as "no cohort data yet"
+    // rather than 500 — the dashboard heatmap renders an empty state.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("has not been populated")) {
+      return {
+        cohorts: [],
+        cells: [],
+        generatedAt: new Date().toISOString(),
+        source: "mv:mv_cohort_retention",
+      };
+    }
+    throw e;
+  }
   const cohortSet = new Set<string>();
   const cells: CohortCell[] = [];
   for (const r of rows) {

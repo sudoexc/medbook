@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ActivityIcon,
@@ -48,6 +49,8 @@ type Tile = {
   sub?: React.ReactNode;
   icon: LucideIcon;
   tone: Tone;
+  /** Each tile drills into the most relevant surface for the metric. */
+  href: string;
 };
 
 function formatInt(n: number, locale: string): string {
@@ -154,6 +157,7 @@ export function DoctorsTiles({
       ),
       icon: AlertTriangleIcon,
       tone: "danger",
+      href: `/${locale}/crm/analytics/loss`,
     },
     {
       key: "load",
@@ -163,6 +167,7 @@ export function DoctorsTiles({
       hintTone: "positive",
       icon: ActivityIcon,
       tone: "success",
+      href: `/${locale}/crm/analytics/schedule-heatmap`,
     },
     {
       key: "revenue",
@@ -178,6 +183,7 @@ export function DoctorsTiles({
       hintTone: "positive",
       icon: PhoneIcon,
       tone: "primary",
+      href: `/${locale}/crm/analytics/financial`,
     },
     {
       key: "appointments",
@@ -187,6 +193,7 @@ export function DoctorsTiles({
       hintTone: "positive",
       icon: CalendarIcon,
       tone: "info",
+      href: `/${locale}/crm/appointments?dateMode=today`,
     },
     {
       key: "avg-check",
@@ -205,6 +212,7 @@ export function DoctorsTiles({
       hintTone: "positive",
       icon: WalletIcon,
       tone: "warning",
+      href: `/${locale}/crm/analytics/financial`,
     },
     {
       key: "conversion",
@@ -214,6 +222,7 @@ export function DoctorsTiles({
       hintTone: "positive",
       icon: TargetIcon,
       tone: "info",
+      href: `/${locale}/crm/analytics/cohorts`,
     },
   ];
 
@@ -229,9 +238,10 @@ export function DoctorsTiles({
         const Icon = tile.icon;
         const tone = TONE[tile.tone];
         return (
-          <div
+          <Link
             key={tile.key}
-            className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-3"
+            href={tile.href}
+            className="motion-press motion-hover-lift flex min-w-0 flex-col rounded-2xl border border-border bg-card p-3 transition-colors hover:border-primary/30"
           >
             <div className="flex items-center gap-2">
               <span
@@ -268,7 +278,7 @@ export function DoctorsTiles({
               </div>
             ) : null}
             {tile.sub}
-          </div>
+          </Link>
         );
       })}
     </div>

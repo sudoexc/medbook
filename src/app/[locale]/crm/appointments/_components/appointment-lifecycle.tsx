@@ -70,8 +70,11 @@ const OFFPATH_VARIANT: { [K in "NO_SHOW" | "CANCELLED" | "SKIPPED"]: OffpathStyl
     iconClass: "text-muted-foreground",
   },
   SKIPPED: {
+    // `--warning-foreground` is white (sized for solid `bg-warning`); on the
+    // soft `bg-warning/10` tint it disappears. Use dark amber ink instead
+    // (Tailwind amber-800, ~5.5:1 over the cream tint).
     boxClass:
-      "border-warning/40 bg-warning/10 text-[color:var(--warning-foreground)] hover:bg-warning/15",
+      "border-warning/40 bg-warning/10 text-amber-800 dark:text-amber-200 hover:bg-warning/15",
     iconClass: "text-warning",
   },
 };

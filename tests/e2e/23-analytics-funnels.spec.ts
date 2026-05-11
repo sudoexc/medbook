@@ -25,7 +25,7 @@ test.describe("analytics — conversion funnel KPIs", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const res = await request.get(
       `${BASE_URL}/api/crm/analytics/funnels?period=week`,
       { failOnStatusCode: false },
@@ -53,7 +53,7 @@ test.describe("analytics — conversion funnel KPIs", () => {
   test("/crm/analytics renders funnel cards and survives a period switch", async ({
     page,
   }) => {
-    await as.admin(page, { landing: crm("/analytics") });
+    await as.admin(page, { landing: crm("/analytics")});
     await expect(page).toHaveURL(/\/crm\/analytics/);
 
     // Wait for funnel cards to mount (dynamic import + react-query roundtrip).

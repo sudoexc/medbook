@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   AlertTriangleIcon,
@@ -138,6 +139,7 @@ export function CalendarRightRail({
     title: string;
     body: string;
     cta: string;
+    href: string;
   }> = [
     {
       tone: "danger",
@@ -148,6 +150,9 @@ export function CalendarRightRail({
           ? t("recRescheduleBody", { count: stats.noShowRisk })
           : t("recRescheduleEmpty"),
       cta: t("recRescheduleCta"),
+      // Drop into appointments filtered to the no-show bucket so the
+      // receptionist sees exactly the rows the rec is talking about.
+      href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show`,
     },
     {
       tone: "primary",
@@ -155,6 +160,9 @@ export function CalendarRightRail({
       title: t("recFillSlot"),
       body: t("recFillSlotBody"),
       cta: t("recFillSlotCta"),
+      // Open calendar in fill-slot intent — the action-center uses the same
+      // `from=ai-rec` flag for analytics attribution.
+      href: `/${locale}/crm/calendar?from=ai-rec&intent=fill-slots`,
     },
     {
       tone: "warning",
@@ -165,6 +173,7 @@ export function CalendarRightRail({
           ? t("recCallbackBody", { count: stats.unconfirmed })
           : t("recCallbackEmpty"),
       cta: t("recCallbackCta"),
+      href: `/${locale}/crm/call-center?from=ai-rec&intent=unconfirmed`,
     },
   ];
 
@@ -186,42 +195,43 @@ export function CalendarRightRail({
             const tone = TONE_CLASS[r.tone];
             const Icon = r.icon;
             return (
-              <li
-                key={r.title}
-                className={cn(
-                  "rounded-xl border border-border bg-card p-2.5 border-l-[3px]",
-                  tone.border,
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  <span
-                    className={cn(
-                      "inline-flex size-7 shrink-0 items-center justify-center rounded-lg",
-                      tone.icon,
-                    )}
-                    aria-hidden
-                  >
-                    <Icon className="size-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-semibold text-foreground">
-                      {r.title}
-                    </p>
-                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                      {r.body}
-                    </p>
-                    <button
-                      type="button"
+              <li key={r.title}>
+                <Link
+                  href={r.href}
+                  className={cn(
+                    "motion-press motion-hover-lift group block rounded-xl border border-border bg-card p-2.5 border-l-[3px] transition-colors hover:bg-muted/40",
+                    tone.border,
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <span
                       className={cn(
-                        "mt-1.5 inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
-                        tone.chip,
+                        "inline-flex size-7 shrink-0 items-center justify-center rounded-lg",
+                        tone.icon,
                       )}
+                      aria-hidden
                     >
-                      {r.cta}
-                      <ArrowRightIcon className="size-3" />
-                    </button>
+                      <Icon className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-semibold text-foreground">
+                        {r.title}
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                        {r.body}
+                      </p>
+                      <span
+                        className={cn(
+                          "mt-1.5 inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-semibold transition-transform group-hover:translate-x-0.5",
+                          tone.chip,
+                        )}
+                      >
+                        {r.cta}
+                        <ArrowRightIcon className="size-3" />
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </Link>
               </li>
             );
           })}
@@ -244,29 +254,33 @@ export function CalendarRightRail({
               const hh = String(start.getHours()).padStart(2, "0");
               const mm = String(start.getMinutes()).padStart(2, "0");
               return (
-                <li
-                  key={a.id}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-card p-2 text-[12px]"
-                >
-                  <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                    <UserRoundIcon className="size-3.5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-foreground">
-                      {a.patient?.fullName ?? "—"}
-                    </p>
-                    <p className="truncate text-[10px] text-muted-foreground">
-                      {hh}:{mm}
-                      {(() => {
-                        const svcName =
-                          locale === "uz"
-                            ? a.primaryService?.nameUz
-                            : a.primaryService?.nameRu;
-                        return svcName ? ` · ${svcName}` : "";
-                      })()}
-                    </p>
-                  </div>
-                  <ChevronRightIcon className="size-3.5 text-muted-foreground" />
+                <li key={a.id}>
+                  <Link
+                    // `?ap=<id>` is the deep-link handled by the appointments
+                    // page client to pop the appointment drawer.
+                    href={`/${locale}/crm/appointments?ap=${a.id}`}
+                    className="motion-press group flex items-center gap-2 rounded-xl border border-border bg-card p-2 text-[12px] transition-colors hover:bg-muted/40 hover:border-primary/30"
+                  >
+                    <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <UserRoundIcon className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-foreground">
+                        {a.patient?.fullName ?? "—"}
+                      </p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {hh}:{mm}
+                        {(() => {
+                          const svcName =
+                            locale === "uz"
+                              ? a.primaryService?.nameUz
+                              : a.primaryService?.nameRu;
+                          return svcName ? ` · ${svcName}` : "";
+                        })()}
+                      </p>
+                    </div>
+                    <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                  </Link>
                 </li>
               );
             })}
@@ -286,21 +300,25 @@ export function CalendarRightRail({
         ) : (
           <ul className="space-y-1.5">
             {freeSlotsByDoctor.map((d) => (
-              <li
-                key={d.id}
-                className="flex items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12px]"
-              >
-                <span
-                  className="inline-block size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: d.color }}
-                  aria-hidden
-                />
-                <span className="truncate font-medium text-foreground">
-                  {d.name}
-                </span>
-                <span className="ml-auto tabular-nums text-muted-foreground">
-                  {t("slotsCount", { count: d.free })}
-                </span>
+              <li key={d.id}>
+                <Link
+                  // Pin the calendar to this doctor — `?doctors=<id>` is the
+                  // shape parsed by `use-calendar-filters`.
+                  href={`/${locale}/crm/calendar?doctors=${d.id}`}
+                  className="motion-press group flex items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-1.5 text-[12px] transition-colors hover:bg-muted/40 hover:border-primary/30"
+                >
+                  <span
+                    className="inline-block size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: d.color }}
+                    aria-hidden
+                  />
+                  <span className="truncate font-medium text-foreground">
+                    {d.name}
+                  </span>
+                  <span className="ml-auto tabular-nums text-muted-foreground group-hover:text-foreground">
+                    {t("slotsCount", { count: d.free })}
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>

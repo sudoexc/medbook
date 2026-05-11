@@ -23,7 +23,7 @@ test.describe("admin billing — change plan", () => {
     page,
     request,
   }) => {
-    await as.superAdmin(page);
+    await as.superAdmin(page, { request });
 
     // Resolve the seeded `neurofax` clinic id via the platform list endpoint.
     const listRes = await request.get(`${BASE_URL}/api/platform/clinics`, {

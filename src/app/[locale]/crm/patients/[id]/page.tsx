@@ -18,5 +18,9 @@ export default async function PatientCardPage({
   params: Promise<{ id: string; locale: string }>;
 }) {
   const { id } = await params;
-  return <PatientCardClient id={id} />;
+  // `key={id}` forces React to remount on patient navigation; without it the
+  // PatientCardClient's local state (active tab, open dialogs) leaks between
+  // patients because Next reuses the same component across dynamic-segment
+  // changes.
+  return <PatientCardClient key={id} id={id} />;
 }

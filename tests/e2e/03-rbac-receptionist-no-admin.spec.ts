@@ -17,7 +17,7 @@ test.describe("rbac — receptionist on /admin", () => {
     page,
     request,
   }) => {
-    await as.receptionist(page);
+    await as.receptionist(page, { request });
     const res = await request.get(`${BASE_URL}/api/platform/clinics`, {
       failOnStatusCode: false,
     });
@@ -28,7 +28,7 @@ test.describe("rbac — receptionist on /admin", () => {
     page,
     request,
   }) => {
-    await as.receptionist(page);
+    await as.receptionist(page, { request });
     const res = await request.post(`${BASE_URL}/api/platform/clinics`, {
       data: {
         slug: "hack",

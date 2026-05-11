@@ -1,24 +1,29 @@
 import type { CalendarView } from "../_hooks/use-calendar-filters";
 
+// FullCalendar paints events with `backgroundColor`/`textColor`. Each status
+// gets a *soft* tint + a deep ink text so the title + time read at AA contrast
+// against the pastel surface. We intentionally do NOT route the text through
+// the `--*-foreground` design tokens — those resolve to `#ffffff` (sized for
+// solid badge backgrounds) and produce invisible white text on these tints.
 export const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   BOOKED: {
-    bg: "var(--color-info-soft, #dbeafe)",
-    text: "var(--color-info-foreground, #1e3a8a)",
+    bg: "#dbeafe",
+    text: "#1e3a8a",
     border: "var(--color-info, #3b82f6)",
   },
   WAITING: {
-    bg: "var(--color-warning-soft, #fef3c7)",
-    text: "var(--color-warning-foreground, #78350f)",
+    bg: "#fef3c7",
+    text: "#78350f",
     border: "var(--color-warning, #f59e0b)",
   },
   IN_PROGRESS: {
-    bg: "var(--color-primary-soft, #ccfbf1)",
-    text: "var(--color-primary-foreground, #134e4a)",
+    bg: "#ccfbf1",
+    text: "#134e4a",
     border: "var(--color-primary, #3DD5C0)",
   },
   COMPLETED: {
-    bg: "var(--color-success-soft, #d1fae5)",
-    text: "var(--color-success-foreground, #064e3b)",
+    bg: "#d1fae5",
+    text: "#064e3b",
     border: "var(--color-success, #10b981)",
   },
   SKIPPED: {
@@ -27,8 +32,8 @@ export const STATUS_COLORS: Record<string, { bg: string; text: string; border: s
     border: "var(--color-border, #d1d5db)",
   },
   CANCELLED: {
-    bg: "var(--color-destructive-soft, #fee2e2)",
-    text: "var(--color-destructive-foreground, #7f1d1d)",
+    bg: "#fee2e2",
+    text: "#7f1d1d",
     border: "var(--color-destructive, #ef4444)",
   },
   NO_SHOW: {

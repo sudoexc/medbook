@@ -483,41 +483,45 @@ function statusChip(status: string, tChip: ChipT): {
   className: string;
   Icon: LucideIcon | null;
 } {
+  // Inner pill rendered inside an already-tinted event surface. Text colour
+  // must clear AA against the soft chip background — the brand `text-info` /
+  // `text-warning-foreground` (= white) variants collapse to invisible here.
+  // Hard-coded ink shades pulled from STATUS_COLORS keep both faces in sync.
   switch (status) {
     case "BOOKED":
       return {
         label: tChip("statusBooked"),
-        className: "bg-info/15 text-info",
+        className: "bg-info/20 text-[#1e3a8a] dark:text-blue-200",
         Icon: CheckCircle2Icon,
       };
     case "WAITING":
       return {
         label: tChip("statusWaiting"),
-        className: "bg-warning/20 text-warning-foreground",
+        className: "bg-warning/25 text-[#78350f] dark:text-amber-200",
         Icon: ClockIcon,
       };
     case "IN_PROGRESS":
       return {
         label: tChip("statusInProgress"),
-        className: "bg-primary/15 text-primary",
+        className: "bg-primary/20 text-[#134e4a] dark:text-teal-200",
         Icon: ClockIcon,
       };
     case "COMPLETED":
       return {
         label: tChip("statusCompleted"),
-        className: "bg-success/15 text-success-foreground",
+        className: "bg-success/20 text-[#064e3b] dark:text-emerald-200",
         Icon: CheckCircle2Icon,
       };
     case "NO_SHOW":
       return {
         label: tChip("statusNoShowRisk"),
-        className: "bg-destructive/15 text-destructive",
+        className: "bg-destructive/20 text-[#7f1d1d] dark:text-red-200",
         Icon: AlertTriangleIcon,
       };
     case "CANCELLED":
       return {
         label: tChip("statusCancelled"),
-        className: "bg-destructive/15 text-destructive",
+        className: "bg-destructive/20 text-[#7f1d1d] dark:text-red-200",
         Icon: AlertTriangleIcon,
       };
     default:
@@ -539,38 +543,51 @@ function renderEvent(arg: EventContentArg, tChip: ChipT, locale: string) {
       ? appt.primaryService.nameUz
       : appt.primaryService.nameRu
     : null;
+  // Layout contract:
+  //  • Header row (`shrink-0`) keeps time + status chip + channel icon pinned
+  //    to the top — these are the highest-signal bits and must never be
+  //    clipped.
+  //  • Body (`flex-1 min-h-0`) holds name + service/cabinet and is the first
+  //    thing to collapse when the tile is short (30-min slot ≈ 50px tall).
+  //  • The chip used to live at the bottom with `mt-0.5`; on short tiles its
+  //    tinted background rendered over the service line and looked stacked.
+  //    Pinning it to the header fixes the visual overlap and also gives the
+  //    receptionist the status before any other detail.
   return (
-    <div className="flex h-full min-w-0 flex-col gap-0.5 overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-tight">
-      <div className="flex items-start justify-between gap-1">
-        <span className="truncate tabular-nums text-[10px] font-semibold opacity-80">
+    <div className="flex h-full min-w-0 flex-col overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-tight">
+      <div className="flex min-w-0 shrink-0 items-center gap-1">
+        <span className="shrink-0 tabular-nums text-[10px] font-semibold opacity-80">
           {time}
         </span>
+        <span
+          title={chip.label}
+          className={cn(
+            "inline-flex min-w-0 shrink items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold",
+            chip.className,
+          )}
+        >
+          {chip.Icon ? <chip.Icon className="size-2.5 shrink-0" aria-hidden /> : null}
+          <span className="truncate">{chip.label}</span>
+        </span>
         {ChannelIcon ? (
-          <ChannelIcon className="size-3 shrink-0 opacity-70" aria-hidden />
+          <ChannelIcon className="ml-auto size-3 shrink-0 opacity-70" aria-hidden />
         ) : null}
       </div>
-      <span className="truncate text-[12px] font-semibold">
-        {arg.event.title || "—"}
-      </span>
-      {serviceName ? (
-        <span className="truncate text-[10px] opacity-75">
-          {serviceName}
-          {cabinet ? ` · ${tChip("cabinetN", { n: cabinet.number })}` : ""}
+      <div className="mt-0.5 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <span className="truncate text-[12px] font-semibold">
+          {arg.event.title || "—"}
         </span>
-      ) : cabinet ? (
-        <span className="truncate text-[10px] opacity-75">
-          {tChip("cabinetN", { n: cabinet.number })}
-        </span>
-      ) : null}
-      <span
-        className={cn(
-          "mt-0.5 inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-          chip.className,
-        )}
-      >
-        {chip.Icon ? <chip.Icon className="size-3" aria-hidden /> : null}
-        {chip.label}
-      </span>
+        {serviceName ? (
+          <span className="truncate text-[10px] opacity-75">
+            {serviceName}
+            {cabinet ? ` · ${tChip("cabinetN", { n: cabinet.number })}` : ""}
+          </span>
+        ) : cabinet ? (
+          <span className="truncate text-[10px] opacity-75">
+            {tChip("cabinetN", { n: cabinet.number })}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

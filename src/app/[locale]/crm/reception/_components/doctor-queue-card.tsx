@@ -59,6 +59,10 @@ export function DoctorQueueCard({
   const qc = useQueryClient();
   const [pending, setPending] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Bumped on successful queue advance to retrigger the `motion-success-pop`
+  // animation on the action button via a re-mount key. CSS animations don't
+  // replay without a class toggle or re-mount, so we use the cheapest path.
+  const [popKey, setPopKey] = React.useState(0);
 
   const current =
     appointments.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
@@ -133,6 +137,7 @@ export function DoctorQueueCard({
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       invalidate();
+      setPopKey((k) => k + 1);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -145,7 +150,7 @@ export function DoctorQueueCard({
   return (
     <article
       className={cn(
-        "flex flex-col gap-3 rounded-2xl border border-border bg-card p-4",
+        "motion-rise-in motion-hover-lift flex flex-col gap-3 rounded-2xl border border-border bg-card p-4",
         "shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
         className,
       )}
@@ -222,7 +227,7 @@ export function DoctorQueueCard({
                 <button
                   type="button"
                   onClick={() => onRowClick(a.id)}
-                  className="group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
+                  className="motion-press group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
                 >
                   <span className="text-xs font-semibold text-muted-foreground tabular-nums">
                     {i + 1}.
@@ -248,7 +253,7 @@ export function DoctorQueueCard({
         {state === "empty" && upcoming.length === 0 ? (
           <Button
             variant="outline"
-            className="w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
+            className="motion-press w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
             onClick={() => onAddAppointment?.(doctor.id)}
             disabled={!onAddAppointment}
           >
@@ -257,7 +262,11 @@ export function DoctorQueueCard({
           </Button>
         ) : (
           <Button
-            className="w-full"
+            key={popKey}
+            className={cn(
+              "motion-press w-full",
+              popKey > 0 && "motion-success-pop",
+            )}
             disabled={pending || (upcoming.length === 0 && !current)}
             onClick={advanceQueue}
           >
@@ -282,11 +291,14 @@ function StatusPill({
       : state === "awaiting"
         ? t("pillAwaiting")
         : t("pillFree");
+  // `--warning-foreground` is white (designed for solid `bg-warning`). On a
+  // light tint like `bg-warning/15` it disappears — use a dark amber instead
+  // (Tailwind amber-800, ~5.5:1 on the tint over white).
   const tone =
     state === "in_session"
       ? "bg-success/15 text-success"
       : state === "awaiting"
-        ? "bg-warning/15 text-[color:var(--warning-foreground)]"
+        ? "bg-warning/20 text-amber-800 dark:bg-warning/25 dark:text-amber-200"
         : "bg-muted text-muted-foreground";
   const dot =
     state === "in_session"

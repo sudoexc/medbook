@@ -17,7 +17,7 @@ test.describe("csv export worker", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const enq = await request.post(`${BASE_URL}/api/crm/exports`, {
       data: { kind: "patients", filters: {} },
       failOnStatusCode: false,

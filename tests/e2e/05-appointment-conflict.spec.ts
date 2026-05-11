@@ -24,7 +24,7 @@ test.describe("appointments — conflict detection", () => {
     page,
     request,
   }) => {
-    await as.admin(page);
+    await as.admin(page, { request });
     const [doctorId, patientId, service] = await Promise.all([
       firstDoctorId(page.context()),
       firstPatientId(page.context()),

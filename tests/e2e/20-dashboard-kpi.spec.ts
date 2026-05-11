@@ -22,7 +22,7 @@ test.describe("reception dashboard KPI", () => {
       page,
       request,
     }) => {
-      await as.admin(page);
+      await as.admin(page, { request });
       const res = await request.get(
         `${BASE_URL}/api/crm/dashboard?period=${period}`,
         { failOnStatusCode: false },

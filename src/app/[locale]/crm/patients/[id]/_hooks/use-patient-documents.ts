@@ -82,3 +82,28 @@ export function useCreateDocument(patientId: string) {
     onError: (e) => toast.error(e.message || "Не удалось загрузить документ"),
   });
 }
+
+export function useDeleteDocument(patientId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ id: string }, Error, string>({
+    mutationFn: async (documentId) => {
+      const res = await fetch(
+        `/api/crm/documents/${encodeURIComponent(documentId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (res.status === 403) {
+          throw new Error("FORBIDDEN");
+        }
+        throw new Error(j?.error ?? `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { id: string };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient", patientId, "documents"] });
+    },
+  });
+}

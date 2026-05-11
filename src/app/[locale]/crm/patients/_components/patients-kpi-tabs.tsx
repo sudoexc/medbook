@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { PlusIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -137,18 +136,6 @@ export function PatientsKpiTabs({
           </button>
         );
       })}
-      <div className="ml-auto flex shrink-0 items-center pl-2">
-        <button
-          type="button"
-          onClick={() => {
-            console.log("TODO: new segment dialog");
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-primary hover:bg-primary/5"
-        >
-          <PlusIcon className="size-3.5" />
-          {t("newSegment")}
-        </button>
-      </div>
     </div>
   );
 }

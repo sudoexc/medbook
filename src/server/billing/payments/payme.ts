@@ -1,14 +1,21 @@
 /**
- * Phase 19 Wave 3 — Payme payment adapter (LogOnly stub).
+ * Payme payment adapter.
  *
- * Payme uses JSON-RPC (CheckPerformTransaction / CreateTransaction /
- * PerformTransaction). Authentication is HTTP-Basic with the Payme
- * subscribe key. For Wave 3 we accept any well-formed JSON-RPC envelope
- * and log the parsed call. Real Payme integration is post-MVP.
+ * Two responsibilities:
  *
- * The shared secret here is the Payme `Authorization: Basic ...` value
- * the merchant configures in their dashboard. The route reads it from
- * env and threads it in.
+ *   1. `paymeCreateCharge` — build the user-facing checkout URL the
+ *      browser should navigate to. If `PAYME_MERCHANT_ID` is configured
+ *      we return Payme's real `checkout.paycom.uz/<base64(params)>` URL.
+ *      Otherwise we fall back to the in-app stub page so QA can drive
+ *      the flow without provisioning provider credentials.
+ *
+ *   2. `paymeVerifyWebhook` — accept a Payme JSON-RPC envelope and
+ *      verify the `Authorization: Basic ${b64('Paycom:'+SECRET)}` header
+ *      Payme sends with every notification.
+ *
+ *  The shared secret here is the Payme `Authorization: Basic …` value
+ *  the merchant configures in their dashboard. The route reads it from
+ *  env and threads it in.
  */
 
 export interface PaymeRpcEnvelope {
@@ -18,9 +25,19 @@ export interface PaymeRpcEnvelope {
   params?: Record<string, unknown>;
 }
 
+export interface PaymeCreateChargeInput {
+  invoice: { id: string; number: string; amountTiins: bigint };
+  /** Absolute URL Payme redirects the user back to after payment. */
+  returnUrl: string;
+  /** UI locale — both for the stub fallback and the `l=` checkout param. */
+  locale?: "ru" | "uz";
+}
+
 export interface PaymeCreateChargeResult {
   payUrl: string;
   providerRef: string;
+  /** True when credentials are missing and we fell back to the in-app stub. */
+  isStub: boolean;
 }
 
 export interface PaymeVerifyOk {
@@ -47,16 +64,53 @@ const PAYME_METHODS = new Set([
   "GetStatement",
 ]);
 
+/**
+ * Build the user-facing Payme checkout URL.
+ *
+ * Payme encodes its checkout params as base64 of a semicolon-separated
+ * `key=value` string, then appends them as the path:
+ *
+ *   https://checkout.paycom.uz/<base64("m=...;ac.invoice_id=...;a=<tiins>;l=ru;c=<return>")>
+ *
+ * `ac.invoice_id` is the merchant-account field name Payme expects —
+ * it's configured in the merchant cabinet and MUST match what the
+ * webhook later sends inside `params.account`.
+ */
 export async function paymeCreateCharge(
-  invoice: { id: string; number: string },
-  locale: "ru" | "uz" = "ru",
+  input: PaymeCreateChargeInput,
+  env: { merchantId?: string } = {},
 ): Promise<PaymeCreateChargeResult> {
-  console.info(
-    `[payme] stub createCharge invoice=${invoice.id} number=${invoice.number}`,
-  );
+  const { invoice, returnUrl } = input;
+  const locale = input.locale ?? "ru";
+  const merchantId = env.merchantId ?? process.env.PAYME_MERCHANT_ID;
+
+  if (!merchantId) {
+    console.info(
+      `[payme] stub createCharge invoice=${invoice.id} number=${invoice.number} ` +
+        `(missing PAYME_MERCHANT_ID)`,
+    );
+    return {
+      payUrl: `/${locale}/crm/settings/billing/pay/${invoice.id}`,
+      providerRef: `stub-payme-${invoice.number}`,
+      isStub: true,
+    };
+  }
+
+  // Payme expects the amount in tiins (smallest unit) as an integer.
+  const amountTiins = invoice.amountTiins.toString();
+  const semi = [
+    `m=${merchantId}`,
+    `ac.invoice_id=${invoice.id}`,
+    `a=${amountTiins}`,
+    `l=${locale}`,
+    `c=${returnUrl}`,
+  ].join(";");
+  const encoded = Buffer.from(semi, "utf8").toString("base64");
+  const payUrl = `https://checkout.paycom.uz/${encoded}`;
   return {
-    payUrl: `/${locale}/crm/settings/billing/pay/${invoice.id}`,
-    providerRef: `stub-payme-${invoice.number}`,
+    payUrl,
+    providerRef: `payme-${invoice.number}`,
+    isStub: false,
   };
 }
 
@@ -65,8 +119,7 @@ export async function paymeCreateCharge(
  *
  * Returns `{ok: true, stub: true}` when no shared secret is configured
  * — same dev-friendly fallback as the Click adapter. In prod the
- * Authorization header check would belong here too; we keep the seam
- * (the secret arg) so Wave 4 / real-integration can drop it in.
+ * Authorization header check enforces `Basic ${b64('Paycom:'+SECRET)}`.
  */
 export async function paymeVerifyWebhook(
   payload: unknown,
@@ -111,8 +164,6 @@ export async function paymeVerifyWebhook(
     };
   }
 
-  // Real impl checks `authHeader` against `Basic ${b64(`Paycom:${secret}`)}`.
-  // Wave 3 stub: require the header to be present and start with "Basic ".
   if (!authHeader || !authHeader.toLowerCase().startsWith("basic ")) {
     return { ok: false, reason: "missing_auth_header" };
   }

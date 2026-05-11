@@ -1,21 +1,28 @@
 /**
- * Phase 19 Wave 3 — Click payment adapter (LogOnly stub).
+ * Click payment adapter.
  *
- * Click's official spec uses a `merchant_trans_id` field that maps to
- * our `Invoice.id`, plus an MD5 `sign_string` over a specific concat:
+ * Two responsibilities:
  *
- *   md5(click_trans_id + service_id + SECRET_KEY +
- *       merchant_trans_id + amount + action + sign_time)
+ *   1. `clickCreateCharge` — build the user-facing checkout URL the
+ *      browser should navigate to. If the merchant credentials are
+ *      configured (`CLICK_SERVICE_ID` + `CLICK_MERCHANT_ID`) we return
+ *      Click's real `my.click.uz/services/pay` URL. Otherwise we fall
+ *      back to the in-app stub page so QA can drive the flow without
+ *      provisioning provider credentials.
  *
- * Wave 3 only verifies the shape and the signature — actually creating
- * a charge against Click is post-MVP. `clickCreateCharge` returns a
- * stub `payUrl` that points at the in-app simulate-pay screen so QA can
- * exercise the success path without leaving NeuroFax.
+ *   2. `clickVerifyWebhook` — verify the inbound webhook against the
+ *      MD5 sign-string Click documents:
  *
- * The `secretFromEnv` argument is NOT read from `process.env` here —
- * the route handler reads it and passes it in. That keeps this module
- * pure-ish (testable without env mutation) and gives the caller the
- * choice of whether to allow stub mode.
+ *        md5(click_trans_id + service_id + SECRET_KEY +
+ *            merchant_trans_id + amount + action + sign_time)
+ *
+ *      When `CLICK_SECRET_KEY` is unset (dev), the webhook stub-accepts
+ *      so the simulate-pay button still works end-to-end. In prod the
+ *      env var MUST be set; the route handler decides whether to act.
+ *
+ *  The `secretFromEnv` argument is NOT read from `process.env` here —
+ *  the route handler reads it and passes it in. That keeps this module
+ *  pure-ish (testable without env mutation).
  */
 import { createHash } from "node:crypto";
 
@@ -38,9 +45,19 @@ export interface ClickWebhookPayload {
   [key: string]: unknown;
 }
 
+export interface ClickCreateChargeInput {
+  invoice: { id: string; number: string; amountTiins: bigint };
+  /** Absolute URL Click redirects the user back to after payment. */
+  returnUrl: string;
+  /** UI locale; threaded through to the stub fallback URL. */
+  locale?: "ru" | "uz";
+}
+
 export interface ClickCreateChargeResult {
   payUrl: string;
   providerRef: string;
+  /** True when credentials are missing and we fell back to the in-app stub. */
+  isStub: boolean;
 }
 
 export interface ClickVerifyOk {
@@ -59,24 +76,75 @@ export interface ClickVerifyFail {
 export type ClickVerifyResult = ClickVerifyOk | ClickVerifyFail;
 
 /**
- * Stub charge creator. Real impl would call Click's REST endpoint to
- * register the merchant transaction. For Wave 3 we surface a pay-url
- * that points at the in-app simulate page.
+ * Build the user-facing Click checkout URL.
  *
- * The `locale` is resolved upstream and threaded through so the URL
- * matches the user's current locale path segment.
+ * Real mode (credentials present) produces e.g.
+ *   https://my.click.uz/services/pay
+ *     ?service_id=...&merchant_id=...
+ *     &amount=120000.00
+ *     &transaction_param=<invoice_id>
+ *     &return_url=<urlencoded return URL>
+ *
+ * Stub mode (credentials missing) keeps the legacy in-app URL pointing
+ * at the simulate-pay screen so the flow still demoable in dev.
  */
 export async function clickCreateCharge(
-  invoice: { id: string; number: string },
-  locale: "ru" | "uz" = "ru",
+  input: ClickCreateChargeInput,
+  env: {
+    serviceId?: string;
+    merchantId?: string;
+  } = {},
 ): Promise<ClickCreateChargeResult> {
-  console.info(
-    `[click] stub createCharge invoice=${invoice.id} number=${invoice.number}`,
-  );
+  const { invoice, returnUrl } = input;
+  const locale = input.locale ?? "ru";
+  const serviceId = env.serviceId ?? process.env.CLICK_SERVICE_ID;
+  const merchantId = env.merchantId ?? process.env.CLICK_MERCHANT_ID;
+
+  if (!serviceId || !merchantId) {
+    console.info(
+      `[click] stub createCharge invoice=${invoice.id} number=${invoice.number} ` +
+        `(missing CLICK_SERVICE_ID or CLICK_MERCHANT_ID)`,
+    );
+    return {
+      payUrl: `/${locale}/crm/settings/billing/pay/${invoice.id}`,
+      providerRef: `stub-click-${invoice.number}`,
+      isStub: true,
+    };
+  }
+
+  // Click wants decimal soum, not tiins. tiins / 100 with exact integer
+  // math — invoices are seeded as whole-soum values, but if somebody
+  // ever stores a sub-soum residue we render it as `.NN` rather than
+  // silently floor.
+  const amountSoum = tiinsToSoumString(invoice.amountTiins);
+
+  const params = new URLSearchParams({
+    service_id: serviceId,
+    merchant_id: merchantId,
+    amount: amountSoum,
+    transaction_param: invoice.id,
+    return_url: returnUrl,
+  });
+  const payUrl = `https://my.click.uz/services/pay?${params.toString()}`;
   return {
-    payUrl: `/${locale}/crm/settings/billing/pay/${invoice.id}`,
-    providerRef: `stub-click-${invoice.number}`,
+    payUrl,
+    providerRef: `click-${invoice.number}`,
+    isStub: false,
   };
+}
+
+function tiinsToSoumString(tiins: bigint): string {
+  const ZERO = BigInt(0);
+  const HUNDRED = BigInt(100);
+  const negative = tiins < ZERO;
+  const abs = negative ? -tiins : tiins;
+  const whole = abs / HUNDRED;
+  const frac = abs % HUNDRED;
+  const fracStr = frac.toString().padStart(2, "0");
+  const sign = negative ? "-" : "";
+  return frac === ZERO
+    ? `${sign}${whole.toString()}`
+    : `${sign}${whole.toString()}.${fracStr}`;
 }
 
 /**

@@ -105,6 +105,17 @@ export const BulkStatusSchema = z.object({
   cancelReason: z.string().max(500).optional(),
 });
 
+export const BulkRescheduleSchema = z.object({
+  ids: z.array(z.string()).min(1).max(500),
+  deltaMinutes: z
+    .number()
+    .int()
+    .min(-60 * 24 * 365)
+    .max(60 * 24 * 365)
+    .refine((v) => v !== 0, "delta cannot be zero"),
+});
+
 export type CreateAppointment = z.infer<typeof CreateAppointmentSchema>;
 export type UpdateAppointment = z.infer<typeof UpdateAppointmentSchema>;
 export type QueryAppointment = z.infer<typeof QueryAppointmentSchema>;
+export type BulkReschedule = z.infer<typeof BulkRescheduleSchema>;

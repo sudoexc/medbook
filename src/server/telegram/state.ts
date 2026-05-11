@@ -44,7 +44,7 @@ export type FsmSnapshot = {
 };
 
 export type FsmEvent =
-  | { kind: "start" }
+  | { kind: "start"; payload?: string }
   | { kind: "text"; text: string }
   | { kind: "callback"; data: string };
 

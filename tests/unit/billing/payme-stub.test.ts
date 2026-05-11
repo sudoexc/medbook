@@ -1,5 +1,5 @@
 /**
- * Phase 19 Wave 3 — Payme JSON-RPC webhook verifier (stub mode).
+ * Payme JSON-RPC webhook verifier + checkout URL builder.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -95,12 +95,40 @@ describe("paymeVerifyWebhook", () => {
 });
 
 describe("paymeCreateCharge", () => {
-  it("returns a stub pay URL", async () => {
-    const res = await paymeCreateCharge(
-      { id: "inv-1", number: "INV-2026-0001" },
-      "ru",
-    );
+  const invoice = {
+    id: "inv-1",
+    number: "INV-2026-0001",
+    amountTiins: BigInt(12_000_000),
+  };
+
+  it("returns the in-app stub URL when merchant id is missing", async () => {
+    const res = await paymeCreateCharge({
+      invoice,
+      returnUrl: "https://app.example/return",
+      locale: "ru",
+    });
+    expect(res.isStub).toBe(true);
     expect(res.payUrl).toBe("/ru/crm/settings/billing/pay/inv-1");
     expect(res.providerRef).toContain("INV-2026-0001");
+  });
+
+  it("builds a real checkout.paycom.uz URL when merchant id is present", async () => {
+    const res = await paymeCreateCharge(
+      {
+        invoice,
+        returnUrl: "https://neurofax.uz/ru/crm/settings/billing",
+        locale: "ru",
+      },
+      { merchantId: "abc123" },
+    );
+    expect(res.isStub).toBe(false);
+    expect(res.payUrl.startsWith("https://checkout.paycom.uz/")).toBe(true);
+    const encoded = res.payUrl.slice("https://checkout.paycom.uz/".length);
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    expect(decoded).toContain("m=abc123");
+    expect(decoded).toContain("ac.invoice_id=inv-1");
+    expect(decoded).toContain("a=12000000");
+    expect(decoded).toContain("l=ru");
+    expect(decoded).toContain("c=https://neurofax.uz/ru/crm/settings/billing");
   });
 });

@@ -3,9 +3,10 @@
  *
  * Body: `{ targetPlanSlug: "basic" | "pro" | "enterprise" }`
  *
- * Mints a DRAFT Invoice and returns `{ invoiceId, payUrl }`. The
- * payUrl is the in-app simulate-pay screen for Wave 3 (LogOnly stub).
- * Real Click/Payme charge creation is a Wave 4 concern.
+ * Mints a DRAFT Invoice and returns `{ invoiceId, payUrl }`. The payUrl
+ * points at the in-app pay screen where the user picks Click or Payme;
+ * the actual provider checkout URL is built by
+ * `/api/crm/billing/invoices/[id]/charge`.
  */
 import { z } from "zod";
 

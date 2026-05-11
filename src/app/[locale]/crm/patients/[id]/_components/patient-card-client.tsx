@@ -3,12 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon, RefreshCwIcon } from "lucide-react";
-import { toast } from "sonner";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
+import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 import { cn } from "@/lib/utils";
 
 import { usePatient } from "../_hooks/use-patient";
@@ -76,8 +77,10 @@ export function PatientCardClient({ id }: { id: string }) {
   const q = usePatient(id);
   const apptsQ = usePatientAppointments(id);
 
+  const queryClient = useQueryClient();
   const [smsOpen, setSmsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [newApptOpen, setNewApptOpen] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
 
   // Hash deep-link: when arriving with `#case-<id>`, switch to the Cases tab
@@ -97,9 +100,15 @@ export function PatientCardClient({ id }: { id: string }) {
     }
   }, []);
 
-  const openNewAppointmentStub = React.useCallback(() => {
-    toast.info(t("newAppointmentTodo"));
-  }, [t]);
+  const openNewAppointment = React.useCallback(() => {
+    setNewApptOpen(true);
+  }, []);
+
+  const handleAppointmentCreated = React.useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["patient", id] });
+    queryClient.invalidateQueries({ queryKey: ["patient-appointments", id] });
+    queryClient.invalidateQueries({ queryKey: ["appointments"] });
+  }, [queryClient, id]);
 
   if (q.isLoading) {
     return <PatientCardSkeleton />;
@@ -165,7 +174,7 @@ export function PatientCardClient({ id }: { id: string }) {
             appointments={appointments}
             onOpenSmsDialog={() => setSmsOpen(true)}
             onOpenDeleteDialog={() => setDeleteOpen(true)}
-            onOpenNewAppointmentDialog={openNewAppointmentStub}
+            onOpenNewAppointmentDialog={openNewAppointment}
           />
 
           <PatientSummaryCard patientId={patient.id} />
@@ -227,7 +236,7 @@ export function PatientCardClient({ id }: { id: string }) {
               {tab === "visits" ? (
                 <VisitsTab
                   patient={patient}
-                  onCreate={openNewAppointmentStub}
+                  onCreate={openNewAppointment}
                 />
               ) : tab === "cases" ? (
                 <CasesTab patient={patient} />
@@ -250,7 +259,7 @@ export function PatientCardClient({ id }: { id: string }) {
           <PatientRightRail
             patient={patient}
             appointments={appointments}
-            onOpenNewAppointmentDialog={openNewAppointmentStub}
+            onOpenNewAppointmentDialog={openNewAppointment}
           />
         </div>
       </aside>
@@ -265,6 +274,12 @@ export function PatientCardClient({ id }: { id: string }) {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         patient={patient}
+      />
+      <NewAppointmentDialog
+        open={newApptOpen}
+        onOpenChange={setNewApptOpen}
+        patientId={patient.id}
+        onCreated={handleAppointmentCreated}
       />
     </div>
   );

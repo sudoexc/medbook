@@ -37,6 +37,7 @@ import {
   step,
 } from "@/server/telegram/state";
 import { handleDoctorVoice } from "@/server/telegram/voice-handler";
+import { consumeInviteToken } from "@/server/telegram/invite-token";
 import { publishEventSafe } from "@/server/realtime/publish";
 
 // Telegram may burst updates; the runtime must be Node (crypto + fetch).
@@ -384,10 +385,47 @@ export async function POST(
       }
 
       // BOT mode: dispatch to FSM.
-      const event: FsmEvent =
-        typeof msg.text === "string"
-          ? { kind: "text", text: msg.text }
-          : { kind: "start" };
+      // Parse `/start <payload>` so we can consume invite tokens minted from
+      // the CRM patient card. Without this, `/start abc123` would arrive at
+      // the FSM as a plain text event (and the FSM's `text === "/start"`
+      // check would miss it), so payload-bearing deep links would never
+      // greet the patient nor stamp Patient.telegramId.
+      const trimmedText =
+        typeof msg.text === "string" ? msg.text.trim() : null;
+      let event: FsmEvent;
+      let startPayload: string | undefined;
+      if (trimmedText === "/start") {
+        event = { kind: "start" };
+      } else if (trimmedText && trimmedText.startsWith("/start ")) {
+        startPayload = trimmedText.slice("/start ".length).trim() || undefined;
+        event = { kind: "start", payload: startPayload };
+      } else if (typeof msg.text === "string") {
+        event = { kind: "text", text: msg.text };
+      } else {
+        event = { kind: "start" };
+      }
+
+      if (startPayload && msg.from?.id) {
+        try {
+          const result = await consumeInviteToken({
+            clinicId: clinic.id,
+            token: startPayload,
+            telegramId: String(msg.from.id),
+            telegramUsername: msg.from.username ?? null,
+          });
+          // Best-effort logging for support; the FSM still greets the
+          // patient regardless of outcome.
+          console.info(
+            `[tg:webhook clinic=${clinic.slug}] invite consume → ${result.kind}`,
+          );
+        } catch (consumeErr) {
+          console.warn(
+            `[tg:webhook clinic=${clinic.slug}] invite consume threw`,
+            consumeErr,
+          );
+        }
+      }
+
       await handleFsmMessage(
         clinicMin,
         chatId,

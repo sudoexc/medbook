@@ -25,6 +25,7 @@ import {
   useBulkStatus,
 } from "../_hooks/use-appointment";
 import type { AppointmentRow } from "../_hooks/use-appointments-list";
+import { BulkRescheduleDialog } from "./bulk-reschedule-dialog";
 
 export interface AppointmentsBulkBarProps {
   selectedIds: string[];
@@ -72,6 +73,7 @@ export function AppointmentsBulkBar({
     () => new Set(selectedIds),
     [selectedIds],
   );
+  const [rescheduleOpen, setRescheduleOpen] = React.useState(false);
 
   // Action availability is the intersection across all selected rows: a
   // button is enabled only if EVERY selected row allows it.
@@ -183,7 +185,7 @@ export function AppointmentsBulkBar({
         <BulkActionButton
           icon={<CalendarClockIcon className="size-4" />}
           label={t("reschedule")}
-          onClick={() => toast.info(t("rescheduleStub"))}
+          onClick={() => setRescheduleOpen(true)}
           disabled={mutation.isPending || !actions.canReschedule}
           disabledReason={
             !actions.canReschedule ? t("disabled.reschedule") : undefined
@@ -211,6 +213,13 @@ export function AppointmentsBulkBar({
           {t("clear")}
         </Button>
       </div>
+
+      <BulkRescheduleDialog
+        open={rescheduleOpen}
+        onOpenChange={setRescheduleOpen}
+        selectedIds={selectedIds}
+        onCompleted={() => onClear()}
+      />
     </TooltipProvider>
   );
 }

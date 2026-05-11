@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 
 import type { Patient } from "../_hooks/use-patient";
 import { useCurrentRole } from "../_hooks/use-current-role";
+import { TelegramInviteDialog } from "./telegram-invite-dialog";
 
 export interface PatientQuickActionsProps {
   patient: Patient;
@@ -53,6 +54,7 @@ export function PatientQuickActions({
   const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
 
   const [exporting, setExporting] = React.useState(false);
+  const [inviteOpen, setInviteOpen] = React.useState(false);
 
   const phoneHref = patient.phone
     ? `tel:${patient.phone.replace(/\s/g, "")}`
@@ -122,7 +124,7 @@ export function PatientQuickActions({
         <Button
           size="sm"
           variant="outline"
-          onClick={() => toast.info(t("inviteToBot"))}
+          onClick={() => setInviteOpen(true)}
         >
           <SendIcon className="size-4" />
           {t("telegram")}
@@ -170,6 +172,11 @@ export function PatientQuickActions({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <TelegramInviteDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        patientId={patient.id}
+      />
     </div>
   );
 }

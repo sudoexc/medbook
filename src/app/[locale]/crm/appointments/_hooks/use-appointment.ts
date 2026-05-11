@@ -297,6 +297,45 @@ export function useSetQueueStatus(id: string) {
   });
 }
 
+export function useBulkReschedule() {
+  const qc = useQueryClient();
+  return useMutation<
+    { count: number; ids: string[] },
+    Error,
+    { ids: string[]; deltaMinutes: number }
+  >({
+    mutationFn: async (body) => {
+      const res = await fetch(`/api/crm/appointments/bulk-reschedule`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 409) {
+        const j = (await res.json().catch(() => null)) as {
+          reason?: string;
+          until?: string;
+        } | null;
+        throw new AppointmentConflictError({
+          reason:
+            (j?.reason as AppointmentConflict["reason"]) ?? "invalid_transition",
+          until: j?.until,
+        });
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as { count: number; ids: string[] };
+    },
+    onSuccess: () => {
+      invalidateAppointmentSurfaces(qc);
+    },
+    onError: (err) => {
+      if (!(err instanceof AppointmentConflictError)) {
+        toast.error(err.message || "Не удалось перенести записи");
+      }
+    },
+  });
+}
+
 export function useBulkStatus() {
   const qc = useQueryClient();
   return useMutation<

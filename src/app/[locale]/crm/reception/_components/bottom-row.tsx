@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 import {
   BellIcon,
   LightbulbIcon,
@@ -30,10 +32,77 @@ export function BottomRow({
         className,
       )}
     >
-      <SmartRecommendations />
+      <SmartRecommendations todayRows={todayRows} />
       <DistributionChart todayRows={todayRows} doctors={doctors} />
     </div>
   );
+}
+
+type SmartRecs = {
+  redistribute: { cabinet: string; count: number } | null;
+  optimize: { hour: number; dropPct: number } | null;
+  remind: number;
+};
+
+function useSmartRecs(todayRows: AppointmentRow[]): SmartRecs {
+  return React.useMemo(() => {
+    const now = new Date();
+    const cabinetCounts = new Map<string, number>();
+    const hourCounts = new Map<number, number>();
+    let remind = 0;
+
+    for (const row of todayRows) {
+      if (row.queueStatus === "CANCELLED" || row.queueStatus === "NO_SHOW") {
+        continue;
+      }
+      if (row.cabinet) {
+        cabinetCounts.set(
+          row.cabinet.number,
+          (cabinetCounts.get(row.cabinet.number) ?? 0) + 1,
+        );
+      }
+      const start = new Date(row.date);
+      const h = start.getHours();
+      hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
+      if (row.queueStatus === "BOOKED" && start.getTime() > now.getTime()) {
+        remind += 1;
+      }
+    }
+
+    // Cabinet imbalance: peak vs average.
+    let redistribute: SmartRecs["redistribute"] = null;
+    if (cabinetCounts.size >= 2) {
+      const entries = Array.from(cabinetCounts.entries()).sort(
+        (a, b) => b[1] - a[1],
+      );
+      const [peakCab, peakCount] = entries[0];
+      const total = entries.reduce((acc, [, c]) => acc + c, 0);
+      const avg = total / entries.length;
+      const overflow = Math.round(peakCount - avg);
+      if (overflow >= 2) {
+        redistribute = { cabinet: peakCab, count: overflow };
+      }
+    }
+
+    // Schedule optimization: find the first upcoming hour where load drops
+    // ≥25% below the day's peak. Ignores past hours.
+    let optimize: SmartRecs["optimize"] = null;
+    if (hourCounts.size >= 2) {
+      const maxLoad = Math.max(...Array.from(hourCounts.values()));
+      const futureHours = Array.from(hourCounts.entries())
+        .filter(([h]) => h >= now.getHours())
+        .sort((a, b) => a[0] - b[0]);
+      for (const [h, c] of futureHours) {
+        const drop = (maxLoad - c) / maxLoad;
+        if (drop >= 0.25) {
+          optimize = { hour: h, dropPct: Math.round(drop * 100) };
+          break;
+        }
+      }
+    }
+
+    return { redistribute, optimize, remind };
+  }, [todayRows]);
 }
 
 function SectionCard({
@@ -125,7 +194,7 @@ function RecCard({
   return (
     <article
       className={cn(
-        "flex min-h-[150px] flex-col gap-3 rounded-xl border p-3",
+        "motion-rise-in motion-hover-lift flex min-h-[150px] flex-col gap-3 rounded-xl border p-3",
         styles.surface,
       )}
     >
@@ -147,7 +216,7 @@ function RecCard({
         type="button"
         onClick={onClick}
         className={cn(
-          "inline-flex h-8 items-center justify-center self-end rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+          "motion-press inline-flex h-8 items-center justify-center self-end rounded-md px-3 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
           styles.button,
         )}
       >
@@ -157,46 +226,93 @@ function RecCard({
   );
 }
 
-function SmartRecommendations() {
+function SmartRecommendations({
+  todayRows,
+}: {
+  todayRows: AppointmentRow[];
+}) {
   const t = useTranslations("reception.bottomRow");
+  const router = useRouter();
+  const locale = useLocale();
+  const recs = useSmartRecs(todayRows);
+
+  const cards: React.ReactNode[] = [];
+
+  if (recs.redistribute) {
+    const { cabinet, count } = recs.redistribute;
+    cards.push(
+      <RecCard
+        key="redistribute"
+        variant="redistribute"
+        icon={RefreshCwIcon}
+        title={t("recRedistributeTitle")}
+        body={t("recRedistributeBody", { cabinet, count })}
+        cta={t("recApply")}
+        onClick={() => {
+          toast.info(t("recRedistributeTitle"), {
+            description: t("recRedistributeBody", { cabinet, count }),
+          });
+          router.push(`/${locale}/crm/calendar`);
+        }}
+      />,
+    );
+  }
+
+  if (recs.optimize) {
+    const { hour, dropPct } = recs.optimize;
+    cards.push(
+      <RecCard
+        key="optimize"
+        variant="optimize"
+        icon={LightbulbIcon}
+        title={t("recOptimizeTitle")}
+        body={t("recOptimizeBody", { hour, pct: dropPct })}
+        cta={t("recView")}
+        onClick={() => {
+          router.push(`/${locale}/crm/calendar`);
+        }}
+      />,
+    );
+  }
+
+  if (recs.remind > 0) {
+    cards.push(
+      <RecCard
+        key="remind"
+        variant="remind"
+        icon={BellIcon}
+        title={t("recRemindTitle")}
+        body={t("recRemindBody", { count: recs.remind })}
+        cta={t("recSend")}
+        onClick={() => {
+          router.push(`/${locale}/crm/action-center`);
+        }}
+      />,
+    );
+  }
+
   return (
     <SectionCard
       title={t("smartTitle")}
       icon={SparklesIcon}
       iconClass="bg-violet-500/15 text-violet-600 dark:text-violet-400"
     >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <RecCard
-          variant="redistribute"
-          icon={RefreshCwIcon}
-          title={t("recRedistributeTitle")}
-          body={t("recRedistributeBody")}
-          cta={t("recApply")}
-          onClick={() => {
-            console.log("[reception] smart-rec: redistribute apply");
-          }}
-        />
-        <RecCard
-          variant="optimize"
-          icon={LightbulbIcon}
-          title={t("recOptimizeTitle")}
-          body={t("recOptimizeBody")}
-          cta={t("recView")}
-          onClick={() => {
-            console.log("[reception] smart-rec: optimize view");
-          }}
-        />
-        <RecCard
-          variant="remind"
-          icon={BellIcon}
-          title={t("recRemindTitle")}
-          body={t("recRemindBody", { count: 7 })}
-          cta={t("recSend")}
-          onClick={() => {
-            console.log("[reception] smart-rec: remind send");
-          }}
-        />
-      </div>
+      {cards.length === 0 ? (
+        <p className="py-8 text-center text-xs text-muted-foreground">
+          {t("recEmpty")}
+        </p>
+      ) : (
+        <div
+          className={cn(
+            "motion-stagger grid grid-cols-1 gap-3",
+            cards.length === 1 && "md:grid-cols-1",
+            cards.length === 2 && "md:grid-cols-2",
+            cards.length === 3 && "md:grid-cols-3",
+          )}
+        >
+          {cards}
+        </div>
+      )}
     </SectionCard>
   );
 }

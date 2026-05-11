@@ -24,10 +24,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import type { Patient } from "../../_hooks/use-patient";
 import {
   useCreateDocument,
+  useDeleteDocument,
   usePatientDocuments,
   type PatientDocument,
 } from "../../_hooks/use-patient-documents";
@@ -61,39 +72,117 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
 
   const q = usePatientDocuments(patient.id);
   const create = useCreateDocument(patient.id);
+  const remove = useDeleteDocument(patient.id);
   const [signOpen, setSignOpen] = React.useState(false);
   const [dragOver, setDragOver] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] =
+    React.useState<PatientDocument | null>(null);
 
   const docs = q.data?.rows ?? [];
 
+  const confirmDelete = React.useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      await remove.mutateAsync(deleteTarget.id);
+      toast.success(t("deleted"));
+      setDeleteTarget(null);
+    } catch (err) {
+      const e = err as Error;
+      if (e.message === "FORBIDDEN") toast.error(t("deleteForbidden"));
+      else toast.error(t("deleteError"));
+    }
+  }, [deleteTarget, remove, t]);
+
+  const uploadOne = React.useCallback(
+    async (file: File): Promise<{
+      fileUrl: string;
+      mimeType: string | null;
+      sizeBytes: number | null;
+      stub: boolean;
+    }> => {
+      const presignRes = await fetch("/api/crm/documents/upload-url", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type || "application/octet-stream",
+          patientId: patient.id,
+        }),
+      });
+      if (!presignRes.ok) {
+        throw new Error(`presign HTTP ${presignRes.status}`);
+      }
+      const presign = (await presignRes.json()) as {
+        key: string;
+        uploadUrl: string | null;
+        publicUrl: string | null;
+        stub?: boolean;
+      };
+
+      if (presign.stub || !presign.uploadUrl || !presign.publicUrl) {
+        return {
+          fileUrl: `pending://${encodeURIComponent(file.name)}`,
+          mimeType: file.type || null,
+          sizeBytes: file.size ?? null,
+          stub: true,
+        };
+      }
+
+      const putRes = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+      });
+      if (!putRes.ok) {
+        throw new Error(`upload HTTP ${putRes.status}`);
+      }
+
+      return {
+        fileUrl: presign.publicUrl,
+        mimeType: file.type || null,
+        sizeBytes: file.size ?? null,
+        stub: false,
+      };
+    },
+    [patient.id],
+  );
+
   const handleFiles = React.useCallback(
-    (files: FileList | File[]) => {
+    async (files: FileList | File[]) => {
       const arr = Array.from(files);
       if (arr.length === 0) return;
-      // Phase 4 will do the MinIO upload here. For now we persist metadata
-      // only with a placeholder fileUrl so the card acquires a real row.
-      Promise.all(
-        arr.map((file) =>
-          create.mutateAsync({
+      setUploading(true);
+      let stubCount = 0;
+      try {
+        for (const file of arr) {
+          const uploaded = await uploadOne(file);
+          if (uploaded.stub) stubCount += 1;
+          await create.mutateAsync({
             patientId: patient.id,
             title: file.name,
-            fileUrl: `pending://${encodeURIComponent(file.name)}`,
+            fileUrl: uploaded.fileUrl,
             type: "OTHER",
-            mimeType: file.type || null,
-            sizeBytes: file.size ?? null,
-          }),
-        ),
-      )
-        .then(() =>
-          toast.success(
-            t("uploadStub", { count: arr.length }),
-          ),
-        )
-        .catch(() => {
-          /* useCreateDocument already toasts */
-        });
+            mimeType: uploaded.mimeType,
+            sizeBytes: uploaded.sizeBytes,
+          });
+        }
+        if (stubCount === arr.length) {
+          toast.success(t("uploadStub", { count: arr.length }));
+        } else {
+          toast.success(t("uploaded", { count: arr.length }));
+        }
+      } catch (err) {
+        const e = err as Error;
+        toast.error(t("uploadError", { message: e.message }));
+      } finally {
+        setUploading(false);
+      }
     },
-    [create, patient.id, t],
+    [create, patient.id, t, uploadOne],
   );
 
   return (
@@ -109,15 +198,19 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          if (e.dataTransfer?.files) handleFiles(e.dataTransfer.files);
+          if (uploading) return;
+          if (e.dataTransfer?.files) void handleFiles(e.dataTransfer.files);
         }}
         className={cn(
           "flex flex-col items-center gap-2 rounded-xl border-2 border-dashed bg-card/60 p-6 text-center transition-colors",
           dragOver ? "border-primary bg-primary/5" : "border-border",
+          uploading && "pointer-events-none opacity-70",
         )}
       >
         <UploadCloudIcon className="size-8 text-muted-foreground" />
-        <div className="text-sm font-medium">{t("dropzoneTitle")}</div>
+        <div className="text-sm font-medium">
+          {uploading ? t("uploadingTitle") : t("dropzoneTitle")}
+        </div>
         <div className="text-xs text-muted-foreground">
           {t("dropzoneHint")}
         </div>
@@ -125,29 +218,33 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
           <label
             className={cn(
               buttonVariants({ size: "sm" }),
-              "cursor-pointer",
+              uploading ? "pointer-events-none opacity-60" : "cursor-pointer",
             )}
+            aria-disabled={uploading}
           >
             <UploadCloudIcon className="size-4" />
-            {t("upload")}
+            {uploading ? t("uploading") : t("upload")}
             <input
               type="file"
               className="hidden"
               multiple
+              disabled={uploading}
               onChange={(e) => {
-                if (e.target.files) handleFiles(e.target.files);
+                if (e.target.files) void handleFiles(e.target.files);
                 e.currentTarget.value = "";
               }}
             />
           </label>
-          <Button size="sm" variant="outline" onClick={() => setSignOpen(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSignOpen(true)}
+            disabled={uploading}
+          >
             <PenToolIcon className="size-4" />
             {t("sign")}
           </Button>
         </div>
-        <p className="text-[10px] text-muted-foreground">
-          {t("noFile")}
-        </p>
       </div>
 
       {docs.length === 0 ? (
@@ -217,7 +314,8 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => toast.info(t("deleteSoon"))}
+                    onClick={() => setDeleteTarget(doc)}
+                    aria-label={t("deleteAria")}
                   >
                     <Trash2Icon className="size-3" />
                   </Button>
@@ -241,6 +339,35 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
           });
         }}
       />
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("deleteDescription", { name: deleteTarget?.title ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>
+              {t("deleteCancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+              disabled={remove.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {remove.isPending ? t("deleting") : t("deleteConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

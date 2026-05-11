@@ -26,6 +26,7 @@ import {
   usePatientFamily,
   type PatientFamilyRelationship,
 } from "../_hooks/use-patient-family";
+import { TelegramInviteDialog } from "./telegram-invite-dialog";
 
 export interface PatientRightRailProps {
   patient: Patient;
@@ -82,6 +83,7 @@ export function PatientRightRail({
   const locale = useLocale() as Locale;
   const t = useTranslations("patientCard.rightRail");
   const [nowMs] = React.useState(() => Date.now());
+  const [inviteOpen, setInviteOpen] = React.useState(false);
   const commsQ = usePatientCommunications(patient.id);
   const docsQ = usePatientDocuments(patient.id);
   const familyQ = usePatientFamily(patient.id);
@@ -134,8 +136,8 @@ export function PatientRightRail({
           ) : (
             <QuickAction
               icon={SendIcon}
-              label={t("writeTelegram")}
-              disabled
+              label={t("inviteToTelegram")}
+              onClick={() => setInviteOpen(true)}
             />
           )}
           <QuickAction
@@ -272,6 +274,12 @@ export function PatientRightRail({
           </ul>
         )}
       </Section>
+
+      <TelegramInviteDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        patientId={patient.id}
+      />
     </div>
   );
 }

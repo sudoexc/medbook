@@ -1,10 +1,14 @@
 /**
- * Phase 19 Wave 3 — Click webhook verifier (stub mode).
+ * Click webhook verifier + checkout URL builder.
  *
- *   - Missing secret → `{ ok: true, stub: true }`.
+ *   - Missing secret on verify → `{ ok: true, stub: true }`.
  *   - Invalid signature → `{ ok: false, reason: "bad_signature" }`.
  *   - Valid signature → `{ ok: true }` with parsed invoiceId.
  *   - Malformed envelope → `{ ok: false, reason: ... }`.
+ *
+ *   - `createCharge` with missing service/merchant id → in-app stub URL.
+ *   - `createCharge` with credentials → real my.click.uz URL with the
+ *     expected query params and amount in soum.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -91,17 +95,62 @@ describe("clickVerifyWebhook", () => {
 });
 
 describe("clickCreateCharge", () => {
-  it("returns a stub pay URL pointing at the simulate page", async () => {
-    const res = await clickCreateCharge(
-      { id: "inv-1", number: "INV-2026-0001" },
-      "uz",
-    );
+  const invoice = {
+    id: "inv-1",
+    number: "INV-2026-0001",
+    amountTiins: BigInt(12_000_000), // 120 000 soum
+  };
+
+  it("returns the in-app stub URL when credentials are missing", async () => {
+    const res = await clickCreateCharge({
+      invoice,
+      returnUrl: "https://app.example/return",
+      locale: "uz",
+    });
+    expect(res.isStub).toBe(true);
     expect(res.payUrl).toBe("/uz/crm/settings/billing/pay/inv-1");
     expect(res.providerRef).toContain("INV-2026-0001");
   });
 
   it("defaults to RU when locale is not provided", async () => {
-    const res = await clickCreateCharge({ id: "inv-2", number: "X" });
-    expect(res.payUrl).toBe("/ru/crm/settings/billing/pay/inv-2");
+    const res = await clickCreateCharge({
+      invoice,
+      returnUrl: "https://app.example/return",
+    });
+    expect(res.payUrl).toBe("/ru/crm/settings/billing/pay/inv-1");
+  });
+
+  it("builds a real my.click.uz URL when service+merchant ids are present", async () => {
+    const res = await clickCreateCharge(
+      {
+        invoice,
+        returnUrl: "https://neurofax.uz/ru/crm/settings/billing",
+        locale: "ru",
+      },
+      { serviceId: "777", merchantId: "999" },
+    );
+    expect(res.isStub).toBe(false);
+    expect(res.payUrl.startsWith("https://my.click.uz/services/pay?")).toBe(true);
+    const url = new URL(res.payUrl);
+    expect(url.searchParams.get("service_id")).toBe("777");
+    expect(url.searchParams.get("merchant_id")).toBe("999");
+    expect(url.searchParams.get("amount")).toBe("120000");
+    expect(url.searchParams.get("transaction_param")).toBe("inv-1");
+    expect(url.searchParams.get("return_url")).toBe(
+      "https://neurofax.uz/ru/crm/settings/billing",
+    );
+  });
+
+  it("renders fractional tiins as decimal soum", async () => {
+    const res = await clickCreateCharge(
+      {
+        invoice: { id: "inv-2", number: "INV-2", amountTiins: BigInt(12_345) },
+        returnUrl: "https://x.example/",
+      },
+      { serviceId: "1", merchantId: "2" },
+    );
+    expect(res.isStub).toBe(false);
+    const url = new URL(res.payUrl);
+    expect(url.searchParams.get("amount")).toBe("123.45");
   });
 });

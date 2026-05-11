@@ -329,6 +329,7 @@ model Clinic {
   patientAllergies        PatientAllergy[]
   patientChronicConditions PatientChronicCondition[]
   patientDiagnoses        PatientDiagnosis[]
+  telegramInviteTokens    TelegramInviteToken[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -629,6 +630,7 @@ model User {
   createdAppointments Appointment[]  @relation("AppointmentCreator")
   createdCampaigns    Campaign[]     @relation("CampaignCreator")
   savedReports        SavedReport[]  @relation("SavedReportCreator")
+  createdTelegramInviteTokens TelegramInviteToken[] @relation("TelegramInviteTokenCreator")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -924,6 +926,7 @@ model Patient {
   allergies                 PatientAllergy[]
   chronicConditions         PatientChronicCondition[]
   diagnoses                 PatientDiagnosis[]
+  telegramInviteTokens      TelegramInviteToken[]
 
   @@unique([clinicId, phoneNormalized])
   @@index([clinicId, fullName])
@@ -2109,3 +2112,43 @@ model ScheduledReport {
   @@index([clinicId])
   @@index([savedReportId])
 }
+
+
+/// Phase 19 (post-MVP add-on) — short-lived invite link a staff member
+/// mints from the patient card so a not-yet-linked patient can land in
+/// the Telegram bot via `t.me/<botUsername>?start=<token>`. The bot
+/// webhook parses the `/start <token>` payload, looks up an unconsumed
+/// row by `token` scoped to the clinic, stamps `Patient.telegramId` +
+/// `telegramUsername`, then marks the token `consumedAt`. Tokens are
+/// idempotent: minting twice within the validity window returns the
+/// existing row instead of issuing a fresh one.
+model TelegramInviteToken {
+  id                 String    @id @default(cuid())
+  clinicId           String
+  clinic             Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId          String
+  patient            Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// URL-safe random string used as the `/start <payload>` argument. Globally
+  /// unique to keep the bot lookup a single index hit even when no clinic id
+  /// is available at the call site (the bot sees a chat update before it
+  /// knows the merchant clinic).
+  token              String    @unique
+  /// Staff user who created the invite. Nullable so historical / migrated
+  /// rows can survive a user delete without breaking the audit join.
+  createdByUserId    String?
+  createdByUser      User?     @relation("TelegramInviteTokenCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime
+  /// Stamped the first time the bot consumes the token. Nullable rows are
+  /// still active; non-null rows are inert and only kept for the audit
+  /// trail.
+  consumedAt         DateTime?
+  /// Telegram user id that consumed the token. Captured for support when
+  /// a patient claims they linked the wrong account.
+  consumedTelegramId String?
+
+  @@index([clinicId])
+  @@index([patientId])
+  @@index([expiresAt])
+}
+

@@ -32,6 +32,8 @@ interface PayStubClientProps {
   };
 }
 
+type Provider = "click" | "payme";
+
 function formatTiinsAsUzs(amountTiins: string): string {
   const minor = Number(amountTiins);
   if (!Number.isFinite(minor)) return "0 UZS";
@@ -45,11 +47,12 @@ function formatTiinsAsUzs(amountTiins: string): string {
 export function PayStubClient(props: PayStubClientProps) {
   const t = useTranslations("billing");
   const router = useRouter();
-  const [busy, setBusy] = React.useState(false);
+  const [busyProvider, setBusyProvider] = React.useState<Provider | null>(null);
+  const [busySimulate, setBusySimulate] = React.useState(false);
 
   async function onSimulate() {
-    if (busy) return;
-    setBusy(true);
+    if (busySimulate) return;
+    setBusySimulate(true);
     try {
       const res = await fetch(
         `/api/crm/billing/invoices/${props.invoice.id}/simulate-pay`,
@@ -68,7 +71,48 @@ export function PayStubClient(props: PayStubClientProps) {
     } catch (e) {
       toast.error(t("errors.simulate", { error: String(e) }));
     } finally {
-      setBusy(false);
+      setBusySimulate(false);
+    }
+  }
+
+  async function onPayWith(provider: Provider) {
+    if (busyProvider) return;
+    setBusyProvider(provider);
+    try {
+      const res = await fetch(
+        `/api/crm/billing/invoices/${props.invoice.id}/charge?locale=${encodeURIComponent(props.locale)}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider }),
+        },
+      );
+      const data = (await res.json().catch(() => null)) as
+        | { payUrl?: string; isStub?: boolean; error?: string }
+        | null;
+      if (!res.ok || !data?.payUrl) {
+        toast.error(
+          t("errors.charge", {
+            provider,
+            error: data?.error ?? `HTTP ${res.status}`,
+          }),
+        );
+        return;
+      }
+      if (data.isStub) {
+        toast.error(t("errors.providerNotConfigured", { provider }));
+        return;
+      }
+      // Real provider URL — redirect the browser away to the checkout
+      // page. After completion the provider redirects back to
+      // /<locale>/crm/settings/billing where the invoice status reflects
+      // the webhook's outcome.
+      window.location.href = data.payUrl;
+    } catch (e) {
+      toast.error(t("errors.charge", { provider, error: String(e) }));
+    } finally {
+      setBusyProvider(null);
     }
   }
 
@@ -113,10 +157,39 @@ export function PayStubClient(props: PayStubClientProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-4">
+          {!isPaid ? (
+            <div className="grid grid-cols-1 gap-2 pt-4 sm:grid-cols-2">
+              <Button
+                onClick={() => onPayWith("click")}
+                disabled={busyProvider !== null}
+                className="w-full"
+              >
+                {busyProvider === "click"
+                  ? t("pay.redirecting")
+                  : t("pay.payWithClick")}
+              </Button>
+              <Button
+                onClick={() => onPayWith("payme")}
+                disabled={busyProvider !== null}
+                variant="secondary"
+                className="w-full"
+              >
+                {busyProvider === "payme"
+                  ? t("pay.redirecting")
+                  : t("pay.payWithPayme")}
+              </Button>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3 pt-3">
             {props.stubMode && !isPaid ? (
-              <Button onClick={onSimulate} disabled={busy}>
-                {busy ? t("pay.simulating") : t("pay.simulateButton")}
+              <Button
+                onClick={onSimulate}
+                disabled={busySimulate || busyProvider !== null}
+                variant="outline"
+                size="sm"
+              >
+                {busySimulate ? t("pay.simulating") : t("pay.simulateButton")}
               </Button>
             ) : null}
             <a
@@ -135,7 +208,7 @@ export function PayStubClient(props: PayStubClientProps) {
             </Link>
           </div>
 
-          {!props.stubMode && !isPaid ? (
+          {!isPaid ? (
             <p className="pt-4 text-xs text-muted-foreground">
               {t("pay.realProviderNote")}
             </p>

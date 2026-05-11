@@ -28,6 +28,7 @@ import {
 
 import type { Patient } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
+import { TelegramInviteDialog } from "./telegram-invite-dialog";
 
 export interface PatientHeroProps {
   patient: Patient;
@@ -76,6 +77,7 @@ export function PatientHero({
   const t = useTranslations("patientCard.hero");
   const tq = useTranslations("patientCard.quickActions");
   const [nowMs] = React.useState(() => Date.now());
+  const [inviteOpen, setInviteOpen] = React.useState(false);
 
   const age = ageFrom(patient.birthDate, nowMs);
   const shortId = patient.id.slice(0, 6).toUpperCase();
@@ -274,7 +276,7 @@ export function PatientHero({
           <Button
             variant="default"
             className="h-9 flex-1 min-w-[140px]"
-            onClick={() => toast.info(tq("inviteToBot"))}
+            onClick={() => setInviteOpen(true)}
           >
             <SendIcon className="size-4" />
             {t("actionTelegram")}
@@ -319,6 +321,11 @@ export function PatientHero({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <TelegramInviteDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        patientId={patient.id}
+      />
     </div>
   );
 }

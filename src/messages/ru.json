@@ -115,21 +115,66 @@
         "fallback": "Пользователь"
       },
       "sections": {
-        "reception": { "title": "Ресепшн", "subtitle": "Оперативная картина клиники в реальном времени" },
-        "appointments": { "title": "Записи", "subtitle": "Управление записями пациентов" },
-        "calendar": { "title": "Календарь записей", "subtitle": "Планирование и подтверждения в реальном времени" },
-        "patients": { "title": "Пациенты", "subtitle": "База пациентов и история визитов" },
-        "doctors": { "title": "Врачи", "subtitle": "Расписание и результативность" },
-        "rooms": { "title": "Кабинеты", "subtitle": "Загрузка помещений и оборудования" },
-        "services": { "title": "Услуги", "subtitle": "Каталог услуг и цен" },
-        "documents": { "title": "Документы", "subtitle": "Шаблоны и файлы пациентов" },
-        "callCenter": { "title": "Call Center", "subtitle": "Входящие и исходящие звонки" },
-        "telegram": { "title": "Telegram", "subtitle": "Чаты с пациентами" },
-        "sms": { "title": "SMS-Email", "subtitle": "Входящие и исходящие сообщения" },
-        "notifications": { "title": "Уведомления", "subtitle": "Центр уведомлений" },
-        "analytics": { "title": "Аналитика", "subtitle": "Сводные метрики клиники" },
-        "settings": { "title": "Настройки", "subtitle": "Клиника и пользователи" },
-        "actionCenter": { "title": "Центр действий", "subtitle": "Очередь приоритетных задач клиники" }
+        "reception": {
+          "title": "Ресепшн",
+          "subtitle": "Оперативная картина клиники в реальном времени"
+        },
+        "appointments": {
+          "title": "Записи",
+          "subtitle": "Управление записями пациентов"
+        },
+        "calendar": {
+          "title": "Календарь записей",
+          "subtitle": "Планирование и подтверждения в реальном времени"
+        },
+        "patients": {
+          "title": "Пациенты",
+          "subtitle": "База пациентов и история визитов"
+        },
+        "doctors": {
+          "title": "Врачи",
+          "subtitle": "Расписание и результативность"
+        },
+        "rooms": {
+          "title": "Кабинеты",
+          "subtitle": "Загрузка помещений и оборудования"
+        },
+        "services": {
+          "title": "Услуги",
+          "subtitle": "Каталог услуг и цен"
+        },
+        "documents": {
+          "title": "Документы",
+          "subtitle": "Шаблоны и файлы пациентов"
+        },
+        "callCenter": {
+          "title": "Call Center",
+          "subtitle": "Входящие и исходящие звонки"
+        },
+        "telegram": {
+          "title": "Telegram",
+          "subtitle": "Чаты с пациентами"
+        },
+        "sms": {
+          "title": "SMS-Email",
+          "subtitle": "Входящие и исходящие сообщения"
+        },
+        "notifications": {
+          "title": "Уведомления",
+          "subtitle": "Центр уведомлений"
+        },
+        "analytics": {
+          "title": "Аналитика",
+          "subtitle": "Сводные метрики клиники"
+        },
+        "settings": {
+          "title": "Настройки",
+          "subtitle": "Клиника и пользователи"
+        },
+        "actionCenter": {
+          "title": "Центр действий",
+          "subtitle": "Очередь приоритетных задач клиники"
+        }
       }
     },
     "trialBanner": {
@@ -440,8 +485,7 @@
       "churn": "Потерянные",
       "filters": "Фильтры",
       "segments": "Сегменты",
-      "configureTable": "Настроить таблицу",
-      "newSegment": "Новый сегмент"
+      "configureTable": "Настроить таблицу"
     }
   },
   "appointments": {
@@ -566,7 +610,6 @@
       "markArrived": "Пришёл",
       "markNoShow": "Не пришёл",
       "reschedule": "Перенести",
-      "rescheduleStub": "Перенос появится вместе с календарём",
       "sendSms": "SMS напоминание",
       "smsTemplate": "Напоминаем о записи в {time} к {doctor}",
       "smsSent": "SMS отправлено: {count}",
@@ -582,6 +625,27 @@
         "reschedule": "Нельзя перенести завершённый приём",
         "sendSms": "Среди выбранных есть пациенты, которым напоминание уже неактуально"
       }
+    },
+    "bulkReschedule": {
+      "title": "Перенести записи",
+      "description": "Сдвинуть {count} запис(ей) на выбранную величину. Конфликты будут показаны до сохранения.",
+      "direction": "Направление",
+      "forward": "Вперёд",
+      "backward": "Назад",
+      "amount": "На сколько",
+      "presets": {
+        "15min": "15 мин",
+        "30min": "30 мин",
+        "1hour": "1 час",
+        "1day": "1 день",
+        "1week": "1 неделя",
+        "custom": "Свое (мин)"
+      },
+      "customPlaceholder": "Минут (положительное число)",
+      "cancel": "Отмена",
+      "submit": "Перенести",
+      "submitting": "Перенос…",
+      "success": "Перенесено: {count}"
     },
     "rowActions": {
       "open": "Открыть запись",
@@ -931,7 +995,6 @@
   },
   "patientCard": {
     "back": "Назад в список",
-    "newAppointmentTodo": "TODO: создание записи — Фаза 2b",
     "notFound": {
       "title": "Пациент не найден",
       "description": "Карточка могла быть удалена или у вас нет доступа.",
@@ -988,6 +1051,7 @@
       "quickActions": "Быстрые действия",
       "callPatient": "Позвонить пациенту",
       "writeTelegram": "Написать в Telegram",
+      "inviteToTelegram": "Пригласить в Telegram",
       "createAppointment": "Создать запись",
       "patientStatus": "Статус пациента",
       "statusLabel": "Статус",
@@ -1157,14 +1221,25 @@
     },
     "documents": {
       "upload": "Загрузить",
+      "uploading": "Загрузка…",
+      "uploadingTitle": "Загружаем файлы",
       "dropzoneTitle": "Перетащите файлы сюда",
       "dropzoneHint": "PDF, JPG, PNG, DOCX — до 10 МБ",
-      "noFile": "Загрузка файлов появится в Фазе 4 (MinIO). Сейчас сохраняется только мета.",
-      "uploadStub": "Сохранено {count} файл(ов) как метаданные",
+      "uploadStub": "Сохранено {count} файл(ов) (хранилище в dev-режиме)",
+      "uploaded": "Загружено {count} файл(ов)",
+      "uploadError": "Ошибка загрузки: {message}",
       "sign": "Подписать",
       "download": "Скачать",
       "delete": "Удалить",
-      "deleteSoon": "Удаление документов появится в следующем обновлении",
+      "deleteAria": "Удалить документ",
+      "deleteTitle": "Удалить документ?",
+      "deleteDescription": "Документ «{name}» будет удалён без возможности восстановления.",
+      "deleteCancel": "Отмена",
+      "deleteConfirm": "Удалить",
+      "deleting": "Удаление…",
+      "deleted": "Документ удалён",
+      "deleteError": "Не удалось удалить документ",
+      "deleteForbidden": "Удалять документы может только администратор",
       "empty": "Нет документов",
       "emptyDescription": "Загрузите файл или попросите пациента подписать согласие.",
       "types": {
@@ -1316,6 +1391,23 @@
       "sent": "SMS поставлено в очередь",
       "error": "Не удалось отправить SMS"
     },
+    "telegramInviteDialog": {
+      "title": "Пригласить в Telegram-бот",
+      "description": "Поделитесь ссылкой с пациентом. Когда он откроет её в Telegram, мы автоматически свяжем чат с карточкой.",
+      "minting": "Создаём приглашение…",
+      "linkLabel": "Ссылка-приглашение",
+      "copy": "Скопировать",
+      "copied": "Скопировано",
+      "copyFailed": "Не удалось скопировать",
+      "botLabel": "Бот",
+      "expiresAt": "Действует до",
+      "hint": "Ссылка одноразовая, действительна 30 дней. При повторном открытии диалога будет использована та же активная ссылка.",
+      "remint": "Обновить",
+      "openInTelegram": "Открыть в Telegram",
+      "close": "Закрыть",
+      "alreadyLinkedTitle": "Пациент уже связан с Telegram",
+      "botNotConfigured": "У клиники не настроен Telegram-бот. Откройте настройки клиники и укажите username бота."
+    },
     "delete": {
       "title": "Удалить пациента?",
       "warning": "Это действие нельзя отменить. История визитов, платежей и документов пациента будет удалена.",
@@ -1350,14 +1442,30 @@
       "DOC": "Документы"
     },
     "kinds": {
-      "VISIT": { "title": "Визит" },
-      "PAYMENT": { "title": "Оплата" },
-      "DOCUMENT": { "title": "Документ" },
-      "NOTIFICATION": { "title": "Уведомление" },
-      "CALL": { "title": "Звонок" },
-      "TG": { "title": "Сообщение" },
-      "CASE": { "title": "Случай" },
-      "RESCHEDULE": { "title": "Перенос записи" }
+      "VISIT": {
+        "title": "Визит"
+      },
+      "PAYMENT": {
+        "title": "Оплата"
+      },
+      "DOCUMENT": {
+        "title": "Документ"
+      },
+      "NOTIFICATION": {
+        "title": "Уведомление"
+      },
+      "CALL": {
+        "title": "Звонок"
+      },
+      "TG": {
+        "title": "Сообщение"
+      },
+      "CASE": {
+        "title": "Случай"
+      },
+      "RESCHEDULE": {
+        "title": "Перенос записи"
+      }
     },
     "dayHeader": {
       "today": "Сегодня",
@@ -1595,14 +1703,15 @@
     "bottomRow": {
       "smartTitle": "Умные рекомендации",
       "recRedistributeTitle": "Перераспределите очередь",
-      "recRedistributeBody": "В кабинете 101 высокая нагрузка. Рекомендуем перенаправить 2 пациента.",
+      "recRedistributeBody": "В кабинете {cabinet} высокая нагрузка. Рекомендуем перенаправить {count} пациент(ов).",
       "recApply": "Применить",
       "recOptimizeTitle": "Оптимизируйте расписание",
-      "recOptimizeBody": "После 16:00 ожидается спад нагрузки на 25%. Можно добавить приёмы.",
+      "recOptimizeBody": "После {hour}:00 ожидается спад нагрузки на {pct}%. Можно добавить приёмы.",
       "recView": "Смотреть",
       "recRemindTitle": "Напоминания пациентам",
-      "recRemindBody": "{count} пациентов ожидают подтверждения записи на завтра.",
+      "recRemindBody": "{count} пациент(ов) ожидают подтверждения записи.",
       "recSend": "Отправить",
+      "recEmpty": "Сегодня всё под контролем — рекомендаций нет.",
       "distributionTitle": "Распределение приёмов",
       "distributionByTime": "По времени",
       "distributionBySpecialty": "По специальности",
@@ -2134,13 +2243,18 @@
       "legendHigh": "80–100% (высокая)"
     },
     "tabs": {
-      "ariaLabel": "Фильтр врачей",
-      "all": "Все врачи",
+      "overview": "Сводная",
+      "schedule": "Расписание",
+      "services": "Услуги",
+      "patients": "Пациенты",
+      "reviews": "Отзывы",
+      "ariaLabel": "Фильтр врачей по загрузке",
+      "all": "Все",
       "idle": "Простаивают",
-      "optimal": "Оптимальная загрузка",
+      "optimal": "Оптимально",
       "overloaded": "Перегружены",
-      "has-slots": "Есть окна сейчас",
-      "configureView": "Настроить вид"
+      "has-slots": "Есть слоты",
+      "configureView": "Настроить"
     },
     "profile": {
       "notFoundTitle": "Врач не найден",
@@ -2165,20 +2279,6 @@
       "cabinetTaken": "Кабинет уже занят другим врачом",
       "cabinetEmpty": "Нет доступных кабинетов",
       "cabinetLoadError": "Не удалось загрузить кабинеты"
-    },
-    "tabs": {
-      "overview": "Сводная",
-      "schedule": "Расписание",
-      "services": "Услуги",
-      "patients": "Пациенты",
-      "reviews": "Отзывы",
-      "ariaLabel": "Фильтр врачей по загрузке",
-      "all": "Все",
-      "idle": "Простаивают",
-      "optimal": "Оптимально",
-      "overloaded": "Перегружены",
-      "has-slots": "Есть слоты",
-      "configureView": "Настроить"
     },
     "finance": {
       "title": "Финансы",
@@ -4054,63 +4154,17 @@
     "openDetails": "Открыть детали"
   },
   "admin": {
-    "nav": {
-      "billing": "Тарификация",
-      "integrations": "Интеграции"
-    },
-    "clinics": {
-      "billing": {
-        "title": "Тарификация",
-        "subtitle": "Управление подпиской и тарифом клиники. Действия выполняются от имени SUPER_ADMIN и записываются в аудит-лог.",
-        "currentPlan": "Текущий тариф",
-        "perMonth": "/ мес.",
-        "trialUntil": "Триал до",
-        "trialDaysLeft": "Осталось дней",
-        "periodUntil": "Период до",
-        "cancelledAt": "Отменена",
-        "actions": {
-          "title": "Действия SUPER_ADMIN",
-          "subtitle": "Все действия выполняются вручную (без Stripe / Payme). Подписка никогда не удаляется — отмена помечает строку как CANCELLED.",
-          "changePlan": "Сменить план",
-          "changeStatus": "Сменить статус (admin override)",
-          "extendTrial": "Продлить триал на 30 дней",
-          "extendingTrial": "Продление…",
-          "cancel": "Отменить подписку",
-          "cancelling": "Отмена…",
-          "refresh": "Обновить",
-          "confirmCancel": "Отменить подписку? Данные сохранятся (soft-cancel)."
-        },
-        "status": {
-          "TRIAL": "Trial",
-          "ACTIVE": "Активна",
-          "PAST_DUE": "Просрочена",
-          "CANCELLED": "Отменена"
-        },
-        "features": {
-          "telegramInbox": "Telegram-инбокс",
-          "callCenter": "Колл-центр",
-          "analyticsPro": "Pro-аналитика",
-          "maxBranches": "Макс. филиалов",
-          "maxUsers": "Макс. пользователей"
-        },
-        "catalog": {
-          "title": "Каталог планов",
-          "subtitle": "Управление планами как сущностями — отдельная задача (Phase 9d+).",
-          "current": "Текущий"
-        },
-        "toasts": {
-          "planUpdated": "План обновлён",
-          "statusUpdated": "Статус обновлён",
-          "trialExtended": "Триал продлён на 30 дней",
-          "subscriptionCancelled": "Подписка отменена",
-          "networkError": "Ошибка сети"
-        },
-        "errors": {
-          "noPlans": "У клиники нет активной подписки и каталог планов пуст. Запустите prisma migrate, чтобы засеять Plan-каталог.",
-          "invalidPlan": "Указан недопустимый план"
-        },
-        "back": "Все клиники"
-      }
+    "bulk": {
+      "suspend": "Приостановить клинику",
+      "suspendConfirm": "Приостановить эту клинику? Подписка будет отменена.",
+      "suspendDone": "Клиника приостановлена",
+      "restore": "Восстановить клинику",
+      "restoreConfirm": "Восстановить эту клинику и выдать 14-дневный пробный период?",
+      "restoreDone": "Клиника восстановлена",
+      "extendTrial": "Продлить пробный +30 дней",
+      "extendTrialConfirm": "Продлить пробный период этой клиники на 30 дней?",
+      "extendTrialDone": "Пробный период продлён",
+      "error": "Не удалось выполнить действие ({error})."
     }
   },
   "actionCenter": {
@@ -4579,11 +4633,16 @@
       "success": "Оплата успешно проведена",
       "downloadPdf": "Скачать PDF",
       "back": "Назад к тарифам",
-      "realProviderNote": "Платежи Click и Payme подключаются после Wave 4."
+      "realProviderNote": "После нажатия «Оплатить через Click/Payme» вы попадёте на страницу платёжного провайдера. После оплаты счёт автоматически отметится как оплаченный.",
+      "payWithClick": "Оплатить через Click",
+      "payWithPayme": "Оплатить через Payme",
+      "redirecting": "Перенаправляем…"
     },
     "errors": {
       "upgrade": "Не удалось создать счёт ({error}).",
-      "simulate": "Не удалось провести оплату ({error})."
+      "simulate": "Не удалось провести оплату ({error}).",
+      "charge": "Не удалось начать оплату через {provider} ({error}).",
+      "providerNotConfigured": "Провайдер {provider} не настроен (нет ключей). Свяжитесь с поддержкой."
     }
   },
   "branding": {
@@ -4607,20 +4666,6 @@
       "label": "Собственный поддомен",
       "dnsHint": "После сохранения свяжитесь с поддержкой для настройки DNS (CNAME-запись).",
       "upgradeRequired": "Доступно только на тарифе Enterprise."
-    }
-  },
-  "admin": {
-    "bulk": {
-      "suspend": "Приостановить клинику",
-      "suspendConfirm": "Приостановить эту клинику? Подписка будет отменена.",
-      "suspendDone": "Клиника приостановлена",
-      "restore": "Восстановить клинику",
-      "restoreConfirm": "Восстановить эту клинику и выдать 14-дневный пробный период?",
-      "restoreDone": "Клиника восстановлена",
-      "extendTrial": "Продлить пробный +30 дней",
-      "extendTrialConfirm": "Продлить пробный период этой клиники на 30 дней?",
-      "extendTrialDone": "Пробный период продлён",
-      "error": "Не удалось выполнить действие ({error})."
     }
   }
 }

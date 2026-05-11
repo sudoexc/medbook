@@ -6,6 +6,7 @@ import {
   BellIcon,
   CheckIcon,
   ExternalLinkIcon,
+  InboxIcon,
   MailIcon,
   MessageSquareIcon,
   PhoneIcon,
@@ -37,6 +38,7 @@ const CHANNEL_ICON: Record<TemplateChannel, LucideIcon> = {
   EMAIL: MailIcon,
   CALL: PhoneIcon,
   VISIT: BellIcon,
+  INAPP: InboxIcon,
 };
 
 const STATUS_VARIANT: Record<

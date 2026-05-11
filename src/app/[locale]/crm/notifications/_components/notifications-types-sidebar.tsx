@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import {
   BellIcon,
   FilterIcon,
+  InboxIcon,
   MailIcon,
   MessageSquareIcon,
   PhoneIcon,
@@ -27,9 +28,10 @@ const CHANNEL_ICON: Record<ChannelFilter, LucideIcon> = {
   EMAIL: MailIcon,
   CALL: PhoneIcon,
   VISIT: BellIcon,
+  INAPP: InboxIcon,
 };
 
-const VISIBLE: ChannelFilter[] = ["all", "SMS", "TG", "EMAIL", "CALL"];
+const VISIBLE: ChannelFilter[] = ["all", "SMS", "TG", "EMAIL", "CALL", "INAPP"];
 
 export function NotificationsTypesSidebar({
   rows,
@@ -52,6 +54,7 @@ export function NotificationsTypesSidebar({
       EMAIL: 0,
       CALL: 0,
       VISIT: 0,
+      INAPP: 0,
     };
     for (const r of rows) out[r.channel] += 1;
     return out;

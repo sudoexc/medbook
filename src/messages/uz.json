@@ -2448,7 +2448,8 @@
         "TG": "Telegram",
         "EMAIL": "Email",
         "CALL": "Qo'ng'iroqlar",
-        "VISIT": "Tashrif"
+        "VISIT": "Tashrif",
+        "INAPP": "Ilova ichida"
       }
     },
     "kpiStrip": {

@@ -2448,7 +2448,8 @@
         "TG": "Telegram",
         "EMAIL": "Email",
         "CALL": "Звонки",
-        "VISIT": "Визит"
+        "VISIT": "Визит",
+        "INAPP": "В приложении"
       }
     },
     "kpiStrip": {

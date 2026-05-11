@@ -20,7 +20,7 @@ import { NotificationsKpiStrip } from "./notifications-kpi-strip";
 import { NotificationsActivityList } from "./notifications-activity-list";
 import { NotificationsDetailsRail } from "./notifications-details-rail";
 
-const CHANNELS: TemplateChannel[] = ["SMS", "TG", "EMAIL", "CALL", "VISIT"];
+const CHANNELS: TemplateChannel[] = ["SMS", "TG", "EMAIL", "CALL", "VISIT", "INAPP"];
 
 function isChannel(v: string | null | undefined): v is TemplateChannel {
   return v !== null && v !== undefined && (CHANNELS as string[]).includes(v);

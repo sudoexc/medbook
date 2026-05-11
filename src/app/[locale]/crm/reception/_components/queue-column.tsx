@@ -285,13 +285,13 @@ function QueueItem({
         href={`?ap=${row.id}`}
         scroll={false}
         className={cn(
-          "relative flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/60",
+          "relative flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/60",
           band &&
             "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full",
           band ? BAND_ACCENT[band] : "",
         )}
       >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground tabular-nums">
+        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground tabular-nums">
           {index}
         </span>
         <AvatarWithStatus
@@ -301,7 +301,7 @@ function QueueItem({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-semibold text-foreground">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-foreground">
               {row.patient.fullName}
             </span>
             {ai?.isVip ? (
@@ -309,28 +309,30 @@ function QueueItem({
                 VIP
               </span>
             ) : null}
+            {mode === "waiting" ? (
+              <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
+                {t("waitMin", { min: waitMin })}
+              </span>
+            ) : (
+              <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
+                {time}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2 truncate text-xs text-muted-foreground">
-            <span className="truncate">
-              {locale === "uz"
-                ? row.primaryService?.nameUz ?? row.doctor.nameUz
-                : row.primaryService?.nameRu ?? row.doctor.nameRu}
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate">
+              {(locale === "uz"
+                ? row.primaryService?.nameUz
+                : row.primaryService?.nameRu) ??
+                specialty ??
+                (locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu)}
             </span>
             {showRisk && ai ? <NoShowRiskPill ai={ai} /> : null}
+            {mode === "waiting" ? (
+              <span className="shrink-0 tabular-nums">{time}</span>
+            ) : null}
           </div>
         </div>
-        <span className="text-xs font-semibold text-muted-foreground tabular-nums">
-          {time}
-        </span>
-        {mode === "waiting" ? (
-          <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
-            {t("waitMin", { min: waitMin })}
-          </span>
-        ) : specialty ? (
-          <span className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {specialty}
-          </span>
-        ) : null}
       </Link>
     </li>
   );

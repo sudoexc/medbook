@@ -116,7 +116,7 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
     <TooltipProvider>
       <section
         className={cn(
-          "flex min-h-0 flex-col rounded-2xl border border-border bg-card",
+          "flex min-h-0 max-h-[min(640px,calc(100vh-14rem))] flex-col rounded-2xl border border-border bg-card",
           className,
         )}
       >
@@ -137,7 +137,7 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
             {total}
           </span>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
           {empty ? (
             <div className="px-4 py-8 text-center text-xs text-muted-foreground">
               {t("empty")}

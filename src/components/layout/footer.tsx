@@ -1,11 +1,13 @@
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import Image from "next/image";
+import Link from "next/link";
 import { Send, Camera, Clock } from "lucide-react";
 import { CONTACT, SITE_NAME } from "@/lib/constants";
 
 export function Footer() {
   const t = useTranslations("footer");
   const tNav = useTranslations("nav");
+  const locale = useLocale();
 
   return (
     <footer className="border-t border-border bg-white">
@@ -107,8 +109,18 @@ export function Footer() {
             &copy; {new Date().getFullYear()} {SITE_NAME}. {t("rights")}.
           </p>
           <div className="flex gap-6 text-xs text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">{t("privacy")}</a>
-            <a href="#" className="hover:text-foreground transition-colors">{t("terms")}</a>
+            <Link
+              href={`/${locale}/privacy`}
+              className="hover:text-foreground transition-colors"
+            >
+              {t("privacy")}
+            </Link>
+            <Link
+              href={`/${locale}/terms`}
+              className="hover:text-foreground transition-colors"
+            >
+              {t("terms")}
+            </Link>
           </div>
         </div>
       </div>

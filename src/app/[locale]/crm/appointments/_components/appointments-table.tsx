@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
@@ -225,17 +226,24 @@ export function AppointmentsTable({
               />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-semibold text-foreground">
+                  <Link
+                    href={`/${locale}/crm/patients/${p.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="truncate text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                  >
                     {p.fullName}
-                  </span>
+                  </Link>
                   {isVip ? (
                     <span className="inline-flex items-center rounded-md bg-warning/15 px-1 py-px text-[9px] font-bold uppercase text-warning">
                       VIP
                     </span>
                   ) : null}
                 </div>
-                <div className="truncate text-xs text-muted-foreground tabular-nums">
-                  <PhoneText phone={p.phone} asText />
+                <div
+                  className="truncate text-xs text-muted-foreground tabular-nums"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <PhoneText phone={p.phone} />
                 </div>
               </div>
             </div>
@@ -283,9 +291,13 @@ export function AppointmentsTable({
           const c = row.original.cabinet;
           return (
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-medium text-foreground">
+              <Link
+                href={`/${locale}/crm/doctors/${d.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="truncate text-sm font-medium text-foreground hover:text-primary hover:underline"
+              >
                 {locale === "uz" ? d.nameUz : d.nameRu}
-              </span>
+              </Link>
               <span className="truncate text-[11px] text-muted-foreground tabular-nums">
                 {c ? t("cell.cabinetN", { number: c.number }) : t("cell.noCabinet")}
               </span>

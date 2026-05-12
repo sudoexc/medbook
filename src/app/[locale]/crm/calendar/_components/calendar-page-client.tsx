@@ -92,7 +92,10 @@ export function CalendarPageClient() {
       {/* Desktop-only gate. */}
       <div className="hidden xl:flex xl:h-full xl:min-h-0 xl:flex-col">
         <div className="shrink-0 border-b border-border bg-background px-4 pt-3 pb-2">
-          <CalendarTiles appointments={apptsQ.data ?? []} />
+          <CalendarTiles
+            appointments={apptsQ.data ?? []}
+            date={filters.date}
+          />
         </div>
         <CalendarToolbar
           filters={filters}

@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { CheckIcon, CheckCheckIcon, ClockIcon, AlertCircleIcon } from "lucide-react";
+import {
+  CheckIcon,
+  CheckCheckIcon,
+  ClockIcon,
+  AlertCircleIcon,
+  BotIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DateText } from "@/components/atoms/date-text";
@@ -82,13 +88,36 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     ? (message.attachments as unknown[]).filter(isImageAttachment)
     : [];
 
+  const isBotReply = isOut && !message.senderId;
+  const onRight = isOut;
+
   return (
-    <div className={cn("flex", isOut ? "justify-end" : "justify-start")}>
+    <div
+      data-message-id={message.id}
+      data-message-body={body}
+      className={cn(
+        "flex items-end gap-1.5 rounded-md transition-shadow",
+        onRight ? "flex-row-reverse" : "",
+      )}
+    >
+      {isOut ? (
+        <span
+          className={cn(
+            "inline-flex size-6 shrink-0 items-center justify-center rounded-full",
+            isBotReply
+              ? "bg-primary/15 text-primary"
+              : "bg-muted text-muted-foreground",
+          )}
+          aria-hidden
+        >
+          <BotIcon className="size-3.5" />
+        </span>
+      ) : null}
       <div
         className={cn(
           "max-w-[68%] rounded-2xl px-3 py-2 text-sm shadow-sm",
-          isOut
-            ? "rounded-br-sm bg-primary text-primary-foreground"
+          onRight
+            ? "rounded-br-sm bg-primary/10 text-foreground"
             : "rounded-bl-sm bg-muted text-foreground",
         )}
       >
@@ -134,12 +163,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 {row.map((b, bi) => (
                   <span
                     key={bi}
-                    className={cn(
-                      "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
-                      isOut
-                        ? "border-primary-foreground/30 text-primary-foreground"
-                        : "border-border text-foreground",
-                    )}
+                    className="inline-flex items-center rounded-full border border-primary/30 bg-card px-2 py-0.5 text-xs text-primary"
                   >
                     {b.text}
                   </span>
@@ -150,8 +174,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         ) : null}
         <div
           className={cn(
-            "mt-1 flex items-center gap-1 text-[11px]",
-            isOut ? "justify-end text-primary-foreground/75" : "justify-start text-muted-foreground",
+            "mt-1 flex items-center gap-1 text-[11px] text-muted-foreground",
+            onRight ? "justify-end" : "justify-start",
           )}
         >
           <DateText date={message.createdAt} style="time" />

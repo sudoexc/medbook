@@ -312,8 +312,31 @@
   animation: tg-row-pulse 2.5s ease-out;
 }
 
+/* TG inbox: when the operator clicks a topic chip in the right rail, the
+   chat pane scrolls to the first matching message and pulses a soft yellow
+   highlight around the bubble so the matched message is easy to spot. */
+@keyframes tg-find-pulse {
+  0% {
+    box-shadow: 0 0 0 0 hsl(var(--warning) / 0);
+    background-color: hsl(var(--warning) / 0);
+  }
+  18% {
+    box-shadow: 0 0 0 8px hsl(var(--warning) / 0.18);
+    background-color: hsl(var(--warning) / 0.14);
+  }
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--warning) / 0);
+    background-color: hsl(var(--warning) / 0);
+  }
+}
+
+.tg-find-pulse {
+  animation: tg-find-pulse 2.2s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .tg-row-pulse {
+  .tg-row-pulse,
+  .tg-find-pulse {
     animation: none;
   }
 }

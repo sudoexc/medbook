@@ -151,7 +151,7 @@ export function PatientsPageClient() {
             </div>
           </div>
 
-          <PatientsTiles rows={rows} total={total} />
+          <PatientsTiles rows={rows} total={total} activeKey="all" />
 
           <PatientsKpiTabs
             rows={rows}

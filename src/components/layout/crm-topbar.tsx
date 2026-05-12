@@ -108,7 +108,14 @@ export function CrmTopbar({
   const params = useParams()
   const pathname = usePathname() ?? ""
   const locale = typeof params?.locale === "string" ? params.locale : "ru"
-  const segment = pathname.split("/").filter(Boolean)[2] ?? "reception"
+  // With next-intl's `localePrefix: "as-needed"`, the default locale (`ru`)
+  // is served without a URL prefix, so the segment index is off-by-one
+  // between `/crm/telegram` (parts: ["crm","telegram"]) and
+  // `/uz/crm/telegram` (parts: ["uz","crm","telegram"]). Find the segment
+  // after "crm" instead of hard-coding an index.
+  const parts = pathname.split("/").filter(Boolean)
+  const crmIdx = parts.indexOf("crm")
+  const segment = crmIdx >= 0 ? (parts[crmIdx + 1] ?? "reception") : "reception"
   const sectionKey = SECTION_KEY[segment] ?? "reception"
   const tTopbar = useTranslations("crmShell.topbar")
   const tSection = useTranslations(`crmShell.topbar.sections.${sectionKey}`)
@@ -231,12 +238,12 @@ export function CrmTopbar({
                 {tTopbar("create.appointment")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => toast.message(tTopbar("create.patientStub"))}
+                onClick={() => intlRouter.push("/crm/patients?new=true")}
               >
                 {tTopbar("create.patient")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => toast.message(tTopbar("create.walkinStub"))}
+                onClick={() => intlRouter.push("/crm/reception?walkin=true")}
               >
                 {tTopbar("create.walkin")}
               </DropdownMenuItem>

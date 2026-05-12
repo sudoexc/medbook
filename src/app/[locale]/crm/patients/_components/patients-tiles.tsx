@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ActivityIcon,
@@ -22,6 +23,7 @@ export interface PatientsTilesProps {
   rows: PatientRow[];
   total: number | null;
   className?: string;
+  activeKey?: string | null;
 }
 
 type Tone = "info" | "success" | "primary" | "warning" | "danger" | "neutral";
@@ -45,9 +47,15 @@ type Tile = {
   deltaTone: DeltaTone;
   icon: LucideIcon;
   tone: Tone;
+  href: string;
 };
 
-export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
+export function PatientsTiles({
+  rows,
+  total,
+  className,
+  activeKey,
+}: PatientsTilesProps) {
   const t = useTranslations("patients.tiles");
   const locale = useLocale();
   const [now] = React.useState(() => Date.now());
@@ -90,6 +98,14 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
 
   const noShowPct = (5.1).toLocaleString(locale === "uz" ? "uz-UZ" : "ru-RU");
 
+  // Pre-computed last-7-day floor for the "new" tile drill-down.
+  const newWeekFrom = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, []);
+
   const tiles: Tile[] = [
     {
       key: "all",
@@ -102,6 +118,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       deltaTone: "success",
       icon: UsersIcon,
       tone: "info",
+      href: `/${locale}/crm/patients`,
     },
     {
       key: "new-week",
@@ -111,6 +128,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       deltaTone: "success",
       icon: SparklesIcon,
       tone: "warning",
+      href: `/${locale}/crm/patients/segments/new`,
     },
     {
       key: "active",
@@ -120,6 +138,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       deltaTone: "success",
       icon: ActivityIcon,
       tone: "success",
+      href: `/${locale}/crm/patients/segments/active`,
     },
     {
       key: "dormant",
@@ -129,6 +148,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       deltaTone: "muted",
       icon: ClockIcon,
       tone: "danger",
+      href: `/${locale}/crm/patients/segments/dormant`,
     },
     {
       key: "risk",
@@ -138,6 +158,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       deltaTone: "warning",
       icon: AlertTriangleIcon,
       tone: "warning",
+      href: `/${locale}/crm/patients/segments/risk`,
     },
     {
       key: "avg-check",
@@ -152,8 +173,10 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       deltaTone: "success",
       icon: WalletIcon,
       tone: "info",
+      href: `/${locale}/crm/analytics?period=month`,
     },
   ];
+  void newWeekFrom;
 
   return (
     <div
@@ -166,10 +189,18 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
       {tiles.map((tile) => {
         const Icon = tile.icon;
         const tone = TONE[tile.tone];
+        const isActive = (activeKey ?? "all") === tile.key;
         return (
-          <div
+          <Link
             key={tile.key}
-            className="motion-rise-in motion-hover-lift flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
+            href={tile.href}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "motion-rise-in motion-hover-lift motion-press flex items-center gap-3 rounded-2xl border bg-card p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              isActive
+                ? "border-primary ring-1 ring-primary/40"
+                : "border-border hover:border-primary/40",
+            )}
           >
             <span
               className={cn(
@@ -200,7 +231,7 @@ export function PatientsTiles({ rows, total, className }: PatientsTilesProps) {
                 {tile.delta}
               </div>
             </div>
-          </div>
+          </Link>
         );
       })}
     </div>

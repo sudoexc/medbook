@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import {
   PhoneIncomingIcon,
   PhoneOffIcon,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
+import { useCallPatch } from "../../call-center/_hooks/use-call-notes";
 
 import type { CallRow } from "../_hooks/use-reception-live";
 
@@ -129,6 +131,18 @@ function HeroCall({
 }) {
   const t = useTranslations("reception.calls");
   const isVip = row.patient && /VIP/i.test(row.patient.fullName); // lightweight flag
+  const patch = useCallPatch();
+  const onReject = async () => {
+    try {
+      await patch.mutateAsync({
+        id: row.id,
+        patch: { endedAt: new Date().toISOString() },
+      });
+      toast.success(t("rejectedToast"));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
       <div className="flex items-center gap-2">
@@ -173,16 +187,31 @@ function HeroCall({
       <div className="flex items-center gap-2">
         <Button
           size="default"
-          className="flex-1 bg-success text-success-foreground hover:bg-success/90"
+          className="motion-press flex-1 bg-success text-success-foreground hover:bg-success/90"
           onClick={onAnswer}
         >
           <CheckIcon className="size-4" />
           {t("accept")}
         </Button>
-        <Button size="icon" variant="secondary" aria-label={t("rejectAria")}>
+        <Button
+          size="icon"
+          variant="secondary"
+          aria-label={t("rejectAria")}
+          title={t("rejectAria")}
+          disabled={patch.isPending}
+          onClick={onReject}
+          className="motion-press"
+        >
           <PhoneOffIcon className="size-4" />
         </Button>
-        <Button size="icon" variant="secondary" aria-label={t("quickBookAria")}>
+        <Button
+          size="icon"
+          variant="secondary"
+          aria-label={t("quickBookAria")}
+          title={t("quickBookAria")}
+          onClick={onAnswer}
+          className="motion-press"
+        >
           <CalendarPlusIcon className="size-4" />
         </Button>
       </div>

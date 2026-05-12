@@ -20,7 +20,7 @@ import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
 import { ok } from "@/server/http";
-import { getSignedUrl, isStubMode } from "@/server/storage/minio";
+import { getSignedUploadUrl, isStubMode } from "@/server/storage/minio";
 
 const BodySchema = z.object({
   fileName: z.string().min(1).max(256),
@@ -54,7 +54,12 @@ export const POST = createApiHandler(
       });
     }
 
-    const uploadUrl = await getSignedUrl(undefined, key, 900);
+    const uploadUrl = await getSignedUploadUrl(
+      undefined,
+      key,
+      body.contentType,
+      900,
+    );
     const pub = process.env.MINIO_PUBLIC_URL || process.env.MINIO_ENDPOINT!;
     const bucket = process.env.MINIO_BUCKET || "medbook";
     const publicUrl = `${pub.replace(/\/$/, "")}/${bucket}/${key}`;

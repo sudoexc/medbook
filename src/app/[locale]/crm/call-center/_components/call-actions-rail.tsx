@@ -134,6 +134,7 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             tone="muted"
             disabled={!call}
             onClick={onStub}
+            title={t("toasts.sipUnavailable")}
           />
           <ControlTile
             label={t("controls.mute")}
@@ -141,6 +142,7 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             tone="muted"
             disabled={!call}
             onClick={onStub}
+            title={t("toasts.sipUnavailable")}
           />
           <ControlTile
             label={t("controls.hold")}
@@ -148,6 +150,7 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             tone="muted"
             disabled={!call}
             onClick={onStub}
+            title={t("toasts.sipUnavailable")}
           />
           <Link
             href={smsHref}
@@ -238,12 +241,14 @@ function ControlTile({
   tone,
   disabled,
   onClick,
+  title,
 }: {
   label: string;
   icon: React.ReactNode;
   tone: "danger" | "warning" | "muted";
   disabled?: boolean;
   onClick?: () => void;
+  title?: string;
 }) {
   const toneClass =
     tone === "danger"
@@ -257,8 +262,9 @@ function ControlTile({
       variant="outline"
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={cn(
-        "flex h-auto flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center",
+        "motion-press flex h-auto flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted",
         toneClass,
       )}
     >

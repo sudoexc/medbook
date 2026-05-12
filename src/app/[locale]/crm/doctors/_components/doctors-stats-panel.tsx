@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import {
   ActivityIcon,
   ArrowRightIcon,
@@ -58,6 +59,7 @@ export function DoctorsStatsPanel({
   className,
 }: DoctorsStatsPanelProps) {
   const t = useTranslations("crmDoctors.statsPanel");
+  const locale = useLocale();
 
   const total = doctors.length;
   const onShift = statuses.filter((s) => s === "busy").length;
@@ -163,13 +165,13 @@ export function DoctorsStatsPanel({
         })}
       </ul>
 
-      <button
-        type="button"
-        className="mt-2 inline-flex items-center justify-center gap-1 self-end text-[12px] font-semibold text-primary hover:text-primary/80"
+      <Link
+        href={`/${locale}/crm/doctors?view=all`}
+        className="motion-press mt-2 inline-flex items-center justify-center gap-1 self-end text-[12px] font-semibold text-primary transition hover:text-primary/80 hover:gap-1.5"
       >
         {t("viewAll")}
         <ArrowRightIcon className="size-3.5" />
-      </button>
+      </Link>
     </div>
   );
 }

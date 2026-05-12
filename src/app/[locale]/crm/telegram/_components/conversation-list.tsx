@@ -8,7 +8,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { DateText } from "@/components/atoms/date-text";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
@@ -79,28 +78,16 @@ export function ConversationList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Header: search + filter chips */}
-      <div className="space-y-3 border-b border-border p-3">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("list.searchPlaceholder")}
-              className="pl-8"
-              aria-label={t("list.searchAria")}
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
+      {/* Header: filter chips above search */}
+      <div className="space-y-2.5 border-b border-border p-3">
+        <div className="flex flex-wrap items-center gap-1">
           {MODE_OPTIONS.map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setFilters({ mode: m })}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
                 filters.mode === m
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border text-muted-foreground hover:text-foreground",
@@ -109,17 +96,32 @@ export function ConversationList({
               {t(`list.mode.${m}`)}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setFilters({ unreadOnly: !filters.unreadOnly })}
+            aria-pressed={filters.unreadOnly}
+            className={cn(
+              "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              filters.unreadOnly
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t("list.unreadToggleShort")}
+          </button>
         </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <label className="flex items-center gap-2">
-            <Switch
-              checked={filters.unreadOnly}
-              onCheckedChange={(v) => setFilters({ unreadOnly: v })}
-              aria-label={t("list.unreadToggle")}
-            />
-            {t("list.unreadToggle")}
-          </label>
-          <span>{t("list.count", { n: rows.length })}</span>
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("list.searchPlaceholder")}
+            className="pl-8"
+            aria-label={t("list.searchAria")}
+          />
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          {t("list.count", { n: rows.length })}
         </div>
       </div>
 

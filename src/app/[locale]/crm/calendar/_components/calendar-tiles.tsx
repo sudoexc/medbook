@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import {
   AlertTriangleIcon,
   CalendarDaysIcon,
@@ -18,6 +19,8 @@ import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-
 
 export interface CalendarTilesProps {
   appointments: AppointmentRow[];
+  /** YYYY-MM-DD of the day the calendar is showing — used for drill-down links. */
+  date?: string;
   className?: string;
 }
 
@@ -39,10 +42,17 @@ type Tile = {
   subtitle?: string;
   icon: LucideIcon;
   tone: Tone;
+  /** Optional drill-down URL — when present the tile renders as a Link. */
+  href?: string;
 };
 
-export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
+export function CalendarTiles({
+  appointments,
+  date,
+  className,
+}: CalendarTilesProps) {
   const t = useTranslations("calendar.tiles");
+  const locale = useLocale();
   // Single timestamp so tile counters remain stable across renders.
   const [now] = React.useState(() => Date.now());
   const stats = React.useMemo(() => {
@@ -93,6 +103,35 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
   // No prior-day data wired yet — show a fixed placeholder when total > 0.
   const yesterdayDelta = stats.total > 0 ? 8 : 0;
 
+  const dayWindow = React.useMemo(() => {
+    if (!date) return null;
+    const [yStr, mStr, dStr] = date.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+      return null;
+    }
+    const from = new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+    const to = new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
+    return { from, to };
+  }, [date]);
+
+  const buildHref = React.useCallback(
+    (bucket?: string) => {
+      const sp = new URLSearchParams();
+      if (dayWindow) {
+        sp.set("from", dayWindow.from);
+        sp.set("to", dayWindow.to);
+        sp.set("dateMode", "range");
+      }
+      if (bucket) sp.set("bucket", bucket);
+      const qs = sp.toString();
+      return `/${locale}/crm/appointments${qs ? `?${qs}` : ""}`;
+    },
+    [dayWindow, locale],
+  );
+
   const tiles: Tile[] = [
     {
       key: "total",
@@ -108,6 +147,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
           : undefined,
       icon: CalendarDaysIcon,
       tone: "info",
+      href: buildHref(),
     },
     {
       key: "confirmed",
@@ -119,6 +159,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
           : undefined,
       icon: CheckCircle2Icon,
       tone: "success",
+      href: buildHref("arrived"),
     },
     {
       key: "pending",
@@ -130,6 +171,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
           : undefined,
       icon: ClockIcon,
       tone: "warning",
+      href: buildHref("unconfirmed"),
     },
     {
       key: "risk",
@@ -141,6 +183,7 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
           : undefined,
       icon: AlertTriangleIcon,
       tone: "danger",
+      href: buildHref("needs_attention"),
     },
     {
       key: "free",
@@ -163,11 +206,13 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
       {tiles.map((tile) => {
         const Icon = tile.icon;
         const tone = TONE[tile.tone];
-        return (
-          <div
-            key={tile.key}
-            className="motion-rise-in motion-hover-lift flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
-          >
+        const sharedClass = cn(
+          "motion-rise-in motion-hover-lift flex items-center gap-3 rounded-2xl border border-border bg-card p-4",
+          tile.href &&
+            "motion-press cursor-pointer transition hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        );
+        const inner = (
+          <>
             <span
               className={cn(
                 "inline-flex size-12 shrink-0 items-center justify-center rounded-xl",
@@ -204,6 +249,22 @@ export function CalendarTiles({ appointments, className }: CalendarTilesProps) {
                 {tile.subtitle ?? ""}
               </div>
             </div>
+          </>
+        );
+        if (tile.href) {
+          return (
+            <Link
+              key={tile.key}
+              href={tile.href}
+              className={sharedClass}
+            >
+              {inner}
+            </Link>
+          );
+        }
+        return (
+          <div key={tile.key} className={sharedClass}>
+            {inner}
           </div>
         );
       })}

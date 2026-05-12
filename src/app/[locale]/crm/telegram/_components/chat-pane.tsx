@@ -2,14 +2,24 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { Loader2Icon, UserIcon, BotIcon, HeadsetIcon } from "lucide-react";
+import {
+  Loader2Icon,
+  UserIcon,
+  BotIcon,
+  HeadsetIcon,
+  MoreVerticalIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { PhoneText } from "@/components/atoms/phone-text";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 import type { InboxConversation } from "../_hooks/types";
 import {
@@ -18,6 +28,7 @@ import {
 } from "../_hooks/use-tg-messages";
 import { useTakeover } from "../_hooks/use-takeover";
 import { useMarkConversationRead } from "../_hooks/use-mark-read";
+import { useChatFind } from "../_hooks/use-tg-events";
 import { MessageBubble } from "./message-bubble";
 import { MessageComposer } from "./message-composer";
 
@@ -59,6 +70,31 @@ export function ChatPane({ conversation }: ChatPaneProps) {
       }
     }
   }, [messages.length]);
+
+  // External "find by keyword" — fired from right rail topic chips. Scrolls
+  // the first matching message into view and briefly pulses it so the user
+  // can see what was matched.
+  useChatFind(conversationId, ({ term }) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const root = el.getRootNode() as Document | ShadowRoot;
+    const escaped = term.replace(/"/g, '\\"').toLowerCase();
+    const bubbles = el.querySelectorAll<HTMLElement>("[data-message-id]");
+    let hit: HTMLElement | null = null;
+    for (const node of Array.from(bubbles)) {
+      const body = (node.getAttribute("data-message-body") ?? "").toLowerCase();
+      if (body.includes(escaped)) {
+        hit = node;
+        break;
+      }
+    }
+    if (!hit) return;
+    hit.scrollIntoView({ behavior: "smooth", block: "center" });
+    hit.classList.remove("tg-find-pulse");
+    void (hit as HTMLElement).offsetWidth; // restart animation
+    hit.classList.add("tg-find-pulse");
+    void root;
+  });
 
   // Auto-load older when scrolling near top.
   React.useEffect(() => {
@@ -118,16 +154,33 @@ export function ChatPane({ conversation }: ChatPaneProps) {
             size="md"
           />
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">
-              {conversation.patient?.fullName ??
-                [conversation.contactFirstName, conversation.contactLastName]
-                  .filter(Boolean)
-                  .join(" ")
-                  .trim() ??
-                (conversation.contactUsername
-                  ? `@${conversation.contactUsername}`
-                  : null) ??
-                t("list.anonymous")}
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm font-semibold">
+                {conversation.patient?.fullName ??
+                  [conversation.contactFirstName, conversation.contactLastName]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() ??
+                  (conversation.contactUsername
+                    ? `@${conversation.contactUsername}`
+                    : null) ??
+                  t("list.anonymous")}
+              </span>
+              <span
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                  isTakeover
+                    ? "bg-warning/15 text-[color:var(--warning)]"
+                    : "bg-primary/10 text-primary",
+                )}
+              >
+                {isTakeover ? (
+                  <HeadsetIcon className="size-2.5" aria-hidden />
+                ) : (
+                  <BotIcon className="size-2.5" aria-hidden />
+                )}
+                {isTakeover ? t("chat.mode.takeover") : t("chat.mode.bot")}
+              </span>
             </div>
             <div className="truncate text-xs text-muted-foreground">
               {conversation.patient?.phone ? (
@@ -141,22 +194,6 @@ export function ChatPane({ conversation }: ChatPaneProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge
-            variant={isTakeover ? "default" : "secondary"}
-            className={cn(isTakeover ? "bg-warning text-white" : "")}
-          >
-            {isTakeover ? (
-              <span className="flex items-center gap-1">
-                <HeadsetIcon className="size-3" />
-                {t("chat.mode.takeover")}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <BotIcon className="size-3" />
-                {t("chat.mode.bot")}
-              </span>
-            )}
-          </Badge>
           <Button
             variant={isTakeover ? "outline" : "default"}
             size="sm"
@@ -168,6 +205,26 @@ export function ChatPane({ conversation }: ChatPaneProps) {
             ) : null}
             {isTakeover ? t("chat.returnToBot") : t("chat.takeover")}
           </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label={t("chat.moreMenu")}
+              >
+                <MoreVerticalIcon className="size-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-44 p-1">
+              <button
+                type="button"
+                onClick={() => markRead.mutate(conversation.id)}
+                className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+              >
+                {t("chat.markRead")}
+              </button>
+            </PopoverContent>
+          </Popover>
         </div>
       </header>
 

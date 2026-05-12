@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { formatDate, formatName, type Locale } from "@/lib/format";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
+import { PhoneText } from "@/components/atoms/phone-text";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
@@ -275,9 +277,13 @@ export function PatientsTable({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate text-[13px] font-semibold text-foreground">
+                  <Link
+                    href={`/${locale}/crm/patients/${p.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="truncate text-[13px] font-semibold text-foreground hover:text-primary hover:underline"
+                  >
                     {display}
-                  </span>
+                  </Link>
                   {p.segment === "VIP" ? (
                     <span className="inline-flex h-4 items-center rounded bg-info/15 px-1 text-[9px] font-bold uppercase text-info">
                       VIP
@@ -306,11 +312,12 @@ export function PatientsTable({
         header: () => t("columns.phone"),
         cell: ({ row }) => {
           const p = row.original;
-          const Icon = p.source ? SOURCE_ICON[p.source] : PhoneIcon;
           return (
-            <div className="flex items-center gap-1.5 text-[13px] tabular-nums text-foreground">
-              <span className="truncate">{p.phone}</span>
-              <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            <div
+              className="flex min-w-0 items-center text-[13px] tabular-nums text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PhoneText phone={p.phone} className="truncate" />
             </div>
           );
         },
@@ -320,8 +327,16 @@ export function PatientsTable({
         header: () => t("columns.lastVisit"),
         cell: ({ row }) => {
           const v = row.original.lastVisitAt;
-          if (!v)
-            return <span className="text-[12px] text-muted-foreground">—</span>;
+          if (!v) {
+            return (
+              <div className="flex flex-col">
+                <span className="text-[13px] text-muted-foreground">—</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t("table.noVisits")}
+                </span>
+              </div>
+            );
+          }
           return (
             <div className="flex min-w-0 flex-col">
               <span className="text-[13px] tabular-nums text-foreground">

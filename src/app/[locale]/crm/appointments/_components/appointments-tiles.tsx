@@ -19,6 +19,8 @@ import { tallyBuckets, type AppointmentRow } from "../_hooks/use-appointments-li
 export interface AppointmentsTilesProps {
   rows: AppointmentRow[];
   total: number | null;
+  activeBucket?: string | null;
+  onSelect?: (bucket: string) => void;
   className?: string;
 }
 
@@ -52,6 +54,8 @@ const TONE: Record<Tone, { bg: string; fg: string }> = {
 export function AppointmentsTiles({
   rows,
   total,
+  activeBucket,
+  onSelect,
   className,
 }: AppointmentsTilesProps) {
   const t = useTranslations("appointments.tiles");
@@ -119,14 +123,23 @@ export function AppointmentsTiles({
       {tiles.map((tile) => {
         const Icon = tile.icon;
         const tone = TONE[tile.tone];
+        const isActive = (activeBucket ?? "all") === tile.key;
         return (
-          <div
+          <button
+            type="button"
             key={tile.key}
-            className="motion-rise-in motion-hover-lift flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3"
+            onClick={() => onSelect?.(tile.key)}
+            aria-pressed={isActive}
+            className={cn(
+              "motion-rise-in motion-hover-lift motion-press group flex items-center gap-2.5 rounded-2xl border bg-card p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              isActive
+                ? "border-primary ring-1 ring-primary/40"
+                : "border-border hover:border-primary/40",
+            )}
           >
             <span
               className={cn(
-                "inline-flex size-9 shrink-0 items-center justify-center rounded-lg",
+                "inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition group-hover:scale-105",
                 tone.bg,
                 tone.fg,
               )}
@@ -154,7 +167,7 @@ export function AppointmentsTiles({
                 </div>
               ) : null}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

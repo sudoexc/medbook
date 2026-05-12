@@ -5,16 +5,18 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BadgeCheckIcon,
   CalendarPlusIcon,
-  ClockIcon,
+  ChevronRightIcon,
+  CircleDotIcon,
   CopyIcon,
-  DownloadIcon,
-  ExternalLinkIcon,
-  FileUpIcon,
-  HistoryIcon,
+  IdCardIcon,
+  LayoutGridIcon,
   Loader2Icon,
-  MessageSquareIcon,
+  MoreHorizontalIcon,
   PhoneIcon,
+  PlusIcon,
+  SendIcon,
   SparklesIcon,
   UserIcon,
   UserPlusIcon,
@@ -22,18 +24,28 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
-import { PhoneText } from "@/components/atoms/phone-text";
 import { MoneyText } from "@/components/atoms/money-text";
+import { CountUp } from "@/components/atoms/count-up";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
-import type { InboxConversation } from "../_hooks/types";
+import type { InboxConversation, InboxMessage } from "../_hooks/types";
 import { conversationsKey } from "../_hooks/use-conversations";
 import { flattenMessages, useTgMessages } from "../_hooks/use-tg-messages";
+import { useMarkConversationRead } from "../_hooks/use-mark-read";
+import {
+  dispatchChatFind,
+  dispatchComposerInsert,
+} from "../_hooks/use-tg-events";
 
 export interface ChatRightRailProps {
   conversation: InboxConversation | null;
@@ -46,23 +58,11 @@ type PatientDetails = {
   photoUrl: string | null;
   segment: string | null;
   balance: number | bigint | null;
-  lifetimeSpend: number | bigint | null;
+  ltv: number | bigint | null;
   lastVisitAt: string | null;
+  isVerified?: boolean;
 };
 
-/**
- * Right rail on the Telegram inbox — see docs/7 - Telegram .png.
- *
- * Five stacked cards when a linked patient is selected:
- *  1. Patient mini (avatar + name + phone + primary CTAs)
- *  2. Quick-action tile grid (call, SMS, book, task, file, note)
- *  3. AI hints (placeholder until the AI service ships)
- *  4. Conversation history preview (last 4 messages)
- *  5. Telegram stats (in / out / unread / last activity)
- *
- * When the conversation lacks a `patientId` we render the compact "create
- * patient" mini-form from earlier (operator flow is: attach → rail changes).
- */
 export function ChatRightRail({ conversation }: ChatRightRailProps) {
   const t = useTranslations("tgInbox.rail");
 
@@ -122,37 +122,47 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
   const patientId = conversation.patientId!;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-      <PatientHeaderCard
+    <div
+      key={patientId}
+      className="motion-stagger flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 [&>*]:motion-rise-in"
+    >
+      <PatientIdentityCard
         name={displayName}
         photoUrl={photo}
         phone={phone}
-        segment={p?.segment ?? null}
-        balance={p?.balance ?? 0}
-        lifetimeSpend={p?.lifetimeSpend ?? 0}
+        externalId={conversation.externalId}
+        username={conversation.contactUsername}
+        isVerified={Boolean(p?.isVerified)}
         isLoading={detailsQuery.isLoading}
-        onBook={() => setDialogOpen(true)}
-        openPatientHref={`/${locale}/crm/patients/${patientId}`}
-        openPatientLabel={t("openPatient")}
-        bookLabel={t("newAppointment")}
-        segmentLabel={t("segment")}
-        balanceLabel={t("balance")}
-        lifetimeSpendLabel={t("lifetimeSpend")}
       />
 
-      <ActionTileGrid phone={phone} patientId={patientId} />
+      <LtvBalanceCard
+        balance={p?.balance ?? 0}
+        ltv={p?.ltv ?? 0}
+        isLoading={detailsQuery.isLoading}
+        patientId={patientId}
+      />
 
-      <AiHintsCard />
+      <QuickActionsRow
+        phone={phone}
+        patientId={patientId}
+        locale={locale}
+        onBook={() => setDialogOpen(true)}
+      />
 
-      <ConversationHistoryCard
+      <AiAssistantCard
         messages={messages}
-        isLoading={messagesQuery.isLoading}
+        conversationId={conversation.id}
+      />
+
+      <RelatedTopicsCard
+        messages={messages}
+        conversationId={conversation.id}
       />
 
       <TelegramStatsCard
         messages={messages}
-        unreadCount={conversation.unreadCount}
-        lastMessageAt={conversation.lastMessageAt}
+        conversation={conversation}
       />
 
       <NewAppointmentDialog
@@ -168,366 +178,703 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
   );
 }
 
-function PatientHeaderCard({
+function PatientIdentityCard({
   name,
   photoUrl,
   phone,
-  segment,
-  balance,
-  lifetimeSpend,
+  externalId,
+  username,
+  isVerified,
   isLoading,
-  onBook,
-  openPatientHref,
-  openPatientLabel,
-  bookLabel,
-  segmentLabel,
-  balanceLabel,
-  lifetimeSpendLabel,
 }: {
   name: string;
   photoUrl: string | null;
   phone: string | null;
-  segment: string | null;
-  balance: number | bigint;
-  lifetimeSpend: number | bigint;
+  externalId: string | null;
+  username: string | null;
+  isVerified: boolean;
   isLoading: boolean;
-  onBook: () => void;
-  openPatientHref: string;
-  openPatientLabel: string;
-  bookLabel: string;
-  segmentLabel: string;
-  balanceLabel: string;
-  lifetimeSpendLabel: string;
 }) {
-  return (
-    <section className="rounded-xl border border-border bg-background p-3">
-      <div className="flex items-start gap-3">
-        <AvatarWithStatus name={name} src={photoUrl} size="md" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{name}</div>
-          {phone ? (
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              <PhoneText phone={phone} />
-            </div>
-          ) : null}
-          {segment ? (
-            <span className="mt-1 inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {segmentLabel}: {segment}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MiniStat label={lifetimeSpendLabel}>
-          {isLoading ? (
-            <Loader2Icon className="size-3 animate-spin" />
-          ) : (
-            <MoneyText amount={lifetimeSpend} currency="UZS" className="text-[13px] font-semibold" />
-          )}
-        </MiniStat>
-        <MiniStat label={balanceLabel}>
-          {isLoading ? (
-            <Loader2Icon className="size-3 animate-spin" />
-          ) : (
-            <MoneyText amount={balance} currency="UZS" className="text-[13px] font-semibold" />
-          )}
-        </MiniStat>
-      </div>
-
-      <div className="mt-3 flex gap-2">
-        <Button size="sm" onClick={onBook} className="flex-1">
-          <CalendarPlusIcon className="size-3" />
-          {bookLabel}
-        </Button>
-        <Link
-          href={openPatientHref}
-          className={cn(
-            buttonVariants({ size: "sm", variant: "outline" }),
-            "flex-1",
-          )}
-        >
-          <ExternalLinkIcon className="size-3" />
-          {openPatientLabel}
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-function ActionTileGrid({
-  phone,
-  patientId,
-}: {
-  phone: string | null;
-  patientId: string;
-}) {
-  const t = useTranslations("tgInbox.rail.actions");
-
+  const t = useTranslations("tgInbox.rail");
   const copyPhone = async () => {
-    if (!phone || typeof navigator === "undefined") return;
+    if (!phone) return;
     try {
       await navigator.clipboard.writeText(phone);
-      toast.success(t("phoneCopied"));
+      toast.success(t("actions.phoneCopied"));
     } catch {
-      toast.error(t("copyFailed"));
+      toast.error(t("actions.copyFailed"));
     }
   };
 
-  const onStub = (key: string) => () => toast.info(t(`stubs.${key}`));
-
-  const callHref = phone ? `tel:${phone.replace(/\s/g, "")}` : "#";
-  const smsHref = `/crm/patients/${patientId}?sms=true`;
-
   return (
-    <section
-      aria-label={t("ariaLabel")}
-      className="rounded-xl border border-border bg-background p-3"
-    >
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {t("title")}
-      </h3>
-      <div className="grid grid-cols-3 gap-2">
-        <a
-          href={callHref}
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted",
-            !phone && "pointer-events-none opacity-50",
-          )}
-        >
-          <PhoneIcon className="size-4 text-primary" aria-hidden />
-          <span className="text-[11px] font-medium">{t("call")}</span>
-        </a>
-        <Link
-          href={smsHref}
-          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
-        >
-          <MessageSquareIcon className="size-4 text-primary" aria-hidden />
-          <span className="text-[11px] font-medium">{t("sms")}</span>
-        </Link>
-        <button
-          type="button"
-          onClick={copyPhone}
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted",
-            !phone && "pointer-events-none opacity-50",
-          )}
-        >
-          <CopyIcon className="size-4 text-muted-foreground" aria-hidden />
-          <span className="text-[11px] font-medium">{t("copyPhone")}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onStub("attachment")}
-          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
-        >
-          <FileUpIcon className="size-4 text-muted-foreground" aria-hidden />
-          <span className="text-[11px] font-medium">{t("attachment")}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onStub("task")}
-          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
-        >
-          <ClockIcon className="size-4 text-muted-foreground" aria-hidden />
-          <span className="text-[11px] font-medium">{t("task")}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onStub("export")}
-          className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted"
-        >
-          <DownloadIcon className="size-4 text-muted-foreground" aria-hidden />
-          <span className="text-[11px] font-medium">{t("export")}</span>
-        </button>
+    <section className="flex flex-col items-center gap-3 pb-2">
+      <AvatarWithStatus name={name} src={photoUrl} size="lg" />
+      <div className="flex flex-col items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[15px] font-bold text-foreground">{name}</span>
+          {isVerified ? (
+            <BadgeCheckIcon className="size-4 text-primary" aria-label={t("verified")} />
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          {externalId ? (
+            <span className="inline-flex items-center gap-1">
+              <IdCardIcon className="size-3" aria-hidden />
+              ID: {externalId}
+            </span>
+          ) : null}
+          {externalId ? <span aria-hidden>·</span> : null}
+          <span className="rounded-full bg-muted px-1.5 py-0.5 font-medium">
+            {t("patientTag")}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex w-full flex-col gap-2 pt-1">
+        {phone ? (
+          <div className="flex items-center gap-2 text-[13px]">
+            <PhoneIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="flex-1 truncate tabular-nums text-foreground">
+              {phone}
+            </span>
+            <button
+              type="button"
+              onClick={copyPhone}
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label={t("actions.copyPhone")}
+            >
+              <CopyIcon className="size-3.5" />
+            </button>
+          </div>
+        ) : null}
+        {username ? (
+          <div className="flex items-center gap-2 text-[13px]">
+            <SendIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="flex-1 truncate text-foreground">@{username}</span>
+          </div>
+        ) : null}
+        {isLoading && !phone && !username ? (
+          <div className="flex justify-center py-1">
+            <Loader2Icon className="size-3.5 animate-spin text-muted-foreground" />
+          </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function AiHintsCard() {
-  const t = useTranslations("tgInbox.rail.ai");
+function LtvBalanceCard({
+  balance,
+  ltv,
+  isLoading,
+  patientId,
+}: {
+  balance: number | bigint;
+  ltv: number | bigint;
+  isLoading: boolean;
+  patientId: string;
+}) {
+  const t = useTranslations("tgInbox.rail");
+  const balanceNum = typeof balance === "bigint" ? Number(balance) : balance;
+  const isNegative = balanceNum < 0;
+
   return (
-    <section
-      aria-label={t("ariaLabel")}
-      className="rounded-xl border border-border bg-background p-3"
-    >
-      <header className="mb-2 flex items-center gap-2">
-        <SparklesIcon
-          className="size-4 text-info"
-          aria-hidden
-        />
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("title")}
-        </h3>
-      </header>
-      <ul className="space-y-1.5">
-        {[1, 2, 3].map((idx) => (
-          <li
-            key={idx}
-            className="rounded-md bg-muted/60 px-2.5 py-1.5 text-[12px] leading-snug text-foreground"
-          >
-            {t(`tip${idx}`)}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        {t("disclaimer")}
-      </p>
+    <section className="rounded-2xl border border-border bg-card p-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {t("ltv")}
+          </div>
+          <div className="mt-1 text-[14px] font-bold text-foreground tabular-nums">
+            {isLoading ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : (
+              <MoneyText amount={ltv} currency="UZS" />
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col items-end">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {t("balance")}
+          </div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span
+              className={cn(
+                "text-[14px] font-bold tabular-nums",
+                isNegative ? "text-destructive" : "text-foreground",
+              )}
+            >
+              {isLoading ? (
+                <Loader2Icon className="size-3.5 animate-spin" />
+              ) : (
+                <MoneyText amount={balance} currency="UZS" />
+              )}
+            </span>
+            <Link
+              href={`/crm/patients/${patientId}?action=topup`}
+              className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+              aria-label={t("topUp")}
+            >
+              <PlusIcon className="size-3.5" />
+            </Link>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
 
-function ConversationHistoryCard({
-  messages,
-  isLoading,
+function QuickActionsRow({
+  phone,
+  patientId,
+  locale,
+  onBook,
 }: {
-  messages: { id: string; body: string | null; direction: "IN" | "OUT"; createdAt: string }[];
-  isLoading: boolean;
+  phone: string | null;
+  patientId: string;
+  locale: string;
+  onBook: () => void;
 }) {
-  const t = useTranslations("tgInbox.rail.history");
-  const locale = useLocale();
+  const t = useTranslations("tgInbox.rail.actions");
 
-  const recent = messages.slice(-4).reverse();
-
-  const fmtTime = (iso: string) => {
-    const d = new Date(iso);
-    return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-      day: "2-digit",
-      month: "2-digit",
-    }).format(d);
-  };
+  const tiles: {
+    key: string;
+    icon: React.ReactNode;
+    label: string;
+    href?: string;
+    onClick?: () => void;
+    disabled?: boolean;
+  }[] = [
+    {
+      key: "call",
+      icon: <PhoneIcon className="size-4" />,
+      label: t("call"),
+      href: phone ? `tel:${phone.replace(/\s/g, "")}` : undefined,
+      disabled: !phone,
+    },
+    {
+      key: "book",
+      icon: <CalendarPlusIcon className="size-4" />,
+      label: t("book"),
+      onClick: onBook,
+    },
+    {
+      key: "card",
+      icon: <IdCardIcon className="size-4" />,
+      label: t("card"),
+      href: `/${locale}/crm/patients/${patientId}`,
+    },
+  ];
 
   return (
-    <section
-      aria-label={t("ariaLabel")}
-      className="rounded-xl border border-border bg-background p-3"
-    >
-      <header className="mb-2 flex items-center gap-2">
-        <HistoryIcon className="size-4 text-muted-foreground" aria-hidden />
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("title")}
-        </h3>
+    <section className="grid grid-cols-4 gap-1.5">
+      {tiles.map((tile) =>
+        tile.href ? (
+          <Link
+            key={tile.key}
+            href={tile.href}
+            className={cn(
+              "motion-hover-lift motion-press flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-2 text-center transition-colors hover:border-primary/30 hover:bg-primary/5",
+              tile.disabled && "pointer-events-none opacity-50 motion-safe:hover:translate-y-0",
+            )}
+          >
+            <span className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              {tile.icon}
+            </span>
+            <span className="text-[10px] font-medium text-foreground">
+              {tile.label}
+            </span>
+          </Link>
+        ) : (
+          <button
+            key={tile.key}
+            type="button"
+            onClick={tile.onClick}
+            disabled={tile.disabled}
+            className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-2 text-center transition-colors hover:border-primary/30 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              {tile.icon}
+            </span>
+            <span className="text-[10px] font-medium text-foreground">
+              {tile.label}
+            </span>
+          </button>
+        ),
+      )}
+      <MoreActionsTile patientId={patientId} locale={locale} />
+    </section>
+  );
+}
+
+function MoreActionsTile({
+  patientId,
+  locale,
+}: {
+  patientId: string;
+  locale: string;
+}) {
+  const t = useTranslations("tgInbox.rail.actions");
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="motion-hover-lift motion-press flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-2 text-center transition-colors hover:border-primary/30 hover:bg-primary/5"
+        >
+          <span className="inline-flex size-9 items-center justify-center rounded-lg bg-muted text-foreground">
+            <MoreHorizontalIcon className="size-4" />
+          </span>
+          <span className="text-[10px] font-medium text-foreground">
+            {t("more")}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-48 p-1">
+        <Link
+          href={`/${locale}/crm/patients/${patientId}?tab=cases`}
+          onClick={() => setOpen(false)}
+          className="flex items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+        >
+          {t("openCases")}
+        </Link>
+        <Link
+          href={`/${locale}/crm/patients/${patientId}?tab=payments`}
+          onClick={() => setOpen(false)}
+          className="flex items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+        >
+          {t("openPayments")}
+        </Link>
+        <Link
+          href={`/${locale}/crm/patients/${patientId}?tab=documents`}
+          onClick={() => setOpen(false)}
+          className="flex items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+        >
+          {t("openDocuments")}
+        </Link>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function AiAssistantCard({
+  messages,
+  conversationId,
+}: {
+  messages: { body: string | null; direction: "IN" | "OUT" }[];
+  conversationId: string;
+}) {
+  const t = useTranslations("tgInbox.rail.ai");
+  // Crude topic detection from message bodies so the rec list reflects the
+  // actual conversation. Real AI service ships separately — once wired up,
+  // swap this for the API response.
+  const recs = React.useMemo(() => deriveAiRecs(messages, t), [messages, t]);
+  const onInsert = (text: string) => {
+    dispatchComposerInsert({ conversationId, text });
+    toast.success(t("inserted"));
+  };
+
+  const confidence = 92;
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-primary/5 p-3">
+      <header className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="relative inline-flex">
+            <SparklesIcon className="size-4 text-primary" aria-hidden />
+            <span
+              className="absolute inset-0 inline-flex rounded-full"
+              style={{
+                animation:
+                  "motion-pulse-ring 2.4s cubic-bezier(0, 0, 0.2, 1) infinite",
+              }}
+              aria-hidden
+            />
+          </span>
+          <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
+        </div>
+        <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--success)]">
+          {t("badge")}
+        </span>
       </header>
-      {isLoading && recent.length === 0 ? (
-        <p className="py-3 text-center text-[11px] text-muted-foreground">
-          {t("loading")}
-        </p>
-      ) : recent.length === 0 ? (
-        <p className="py-3 text-center text-[11px] text-muted-foreground">
-          {t("empty")}
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {recent.map((m) => (
-            <li
-              key={m.id}
-              className="flex items-start gap-2 text-[12px] leading-snug"
+      <p className="mb-2 text-[11px] text-muted-foreground">{t("subtitle")}</p>
+      <ul className="space-y-1.5">
+        {recs.map((rec, i) => (
+          <li key={i}>
+            <button
+              type="button"
+              onClick={() => onInsert(rec)}
+              className="motion-press group flex w-full cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-primary/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              aria-label={t("insertAria")}
             >
               <span
                 className={cn(
-                  "mt-1 size-1.5 shrink-0 rounded-full",
-                  m.direction === "IN" ? "bg-primary" : "bg-muted-foreground",
+                  "mt-1.5 inline-block size-1.5 shrink-0 rounded-full transition-transform group-hover:scale-150",
+                  i === 0 ? "bg-muted-foreground/60" : "bg-success",
                 )}
                 aria-hidden
               />
-              <div className="min-w-0 flex-1">
-                <div className="line-clamp-2 text-foreground">
-                  {m.body?.trim() || t("noText")}
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
-                  {fmtTime(m.createdAt)} ·{" "}
-                  {t(m.direction === "IN" ? "in" : "out")}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+              <span className="min-w-0 flex-1 leading-snug">{rec}</span>
+              <PlusIcon
+                className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                aria-hidden
+              />
+              <ChevronRightIcon
+                className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:opacity-0"
+                aria-hidden
+              />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 border-t border-border pt-2">
+        <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+          <span>{t("confidenceLabel")}</span>
+          <span className="font-semibold tabular-nums text-foreground">
+            <CountUp to={confidence} />%
+          </span>
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary to-[color:var(--success)] transition-[width] duration-700 ease-out"
+            style={{ width: `${confidence}%` }}
+          />
+        </div>
+      </div>
     </section>
   );
 }
 
-function TelegramStatsCard({
+function deriveAiRecs(
+  messages: { body: string | null; direction: "IN" | "OUT" }[],
+  t: (key: string) => string,
+): string[] {
+  const haystack = messages
+    .map((m) => m.body ?? "")
+    .join(" ")
+    .toLowerCase();
+  const out: string[] = [];
+  if (
+    haystack.includes("запис") ||
+    haystack.includes("прием") ||
+    haystack.includes("приём")
+  ) {
+    out.push(t("recBooking"));
+  }
+  if (haystack.includes("утр") || haystack.includes("утром")) {
+    out.push(t("recMorningSlot"));
+  }
+  if (haystack.includes("невролог")) {
+    out.push(t("recPrepReminder"));
+  }
+  // Fall back to generic recs when topics aren't detected yet.
+  while (out.length < 3) {
+    const fallback = [t("recBooking"), t("recMorningSlot"), t("recPrepReminder")];
+    const next = fallback.find((x) => !out.includes(x));
+    if (!next) break;
+    out.push(next);
+  }
+  return out.slice(0, 3);
+}
+
+function RelatedTopicsCard({
   messages,
-  unreadCount,
-  lastMessageAt,
+  conversationId,
 }: {
-  messages: { direction: "IN" | "OUT" }[];
-  unreadCount: number;
-  lastMessageAt: string | null;
+  messages: { body: string | null }[];
+  conversationId: string;
 }) {
-  const t = useTranslations("tgInbox.rail.stats");
-  const locale = useLocale();
+  const t = useTranslations("tgInbox.rail.topics");
+  const counts = React.useMemo(() => countTopics(messages), [messages]);
+  const [expanded, setExpanded] = React.useState(false);
 
-  const inbound = messages.filter((m) => m.direction === "IN").length;
-  const outbound = messages.filter((m) => m.direction === "OUT").length;
-  const total = messages.length;
+  if (counts.length === 0) return null;
 
-  const lastLabel = lastMessageAt
-    ? new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
-        day: "2-digit",
-        month: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date(lastMessageAt))
-    : null;
+  const shown = expanded ? counts : counts.slice(0, 3);
 
   return (
-    <section
-      aria-label={t("ariaLabel")}
-      className="rounded-xl border border-border bg-background p-3"
-    >
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {t("title")}
-      </h3>
-      <div className="grid grid-cols-2 gap-2">
-        <MiniStat label={t("total")}>
-          <span className="text-[13px] font-semibold tabular-nums">{total}</span>
-        </MiniStat>
-        <MiniStat label={t("unread")}>
-          <span
-            className={cn(
-              "text-[13px] font-semibold tabular-nums",
-              unreadCount > 0 ? "text-primary" : undefined,
-            )}
+    <section className="rounded-2xl border border-border bg-card p-3">
+      <header className="mb-2 flex items-center gap-1.5">
+        <CircleDotIcon
+          className="size-3.5 text-muted-foreground"
+          aria-hidden
+        />
+        <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
+      </header>
+      <ul className="space-y-0.5">
+        {shown.map((c) => {
+          const tint =
+            c.key === "booking"
+              ? "bg-primary/15 text-primary"
+              : c.key === "neurology"
+                ? "bg-info/15 text-[color:var(--info)]"
+                : "bg-warning/15 text-[color:var(--warning)]";
+          const term = TOPIC_TERMS[c.key];
+          return (
+            <li key={c.key}>
+              <button
+                type="button"
+                onClick={() => dispatchChatFind({ conversationId, term })}
+                className="motion-press group flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-[12px] transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                aria-label={t("findAria", { topic: t(`labels.${c.key}`) })}
+              >
+                <span className="flex items-center gap-2 text-foreground">
+                  <span
+                    className={cn(
+                      "inline-block size-1.5 rounded-full transition-transform group-hover:scale-150",
+                      c.key === "booking"
+                        ? "bg-primary"
+                        : c.key === "neurology"
+                          ? "bg-[color:var(--info)]"
+                          : "bg-[color:var(--warning)]",
+                    )}
+                    aria-hidden
+                  />
+                  {t(`labels.${c.key}`)}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums transition-transform group-hover:scale-105",
+                    tint,
+                  )}
+                >
+                  {c.count}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {counts.length > 3 ? (
+        <div className="mt-2 flex justify-center border-t border-border pt-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            {unreadCount}
-          </span>
-        </MiniStat>
-        <MiniStat label={t("inbound")}>
-          <span className="text-[13px] font-semibold tabular-nums">{inbound}</span>
-        </MiniStat>
-        <MiniStat label={t("outbound")}>
-          <span className="text-[13px] font-semibold tabular-nums">{outbound}</span>
-        </MiniStat>
-      </div>
-      {lastLabel ? (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {t("lastActivity", { time: lastLabel })}
-        </p>
+            {expanded ? t("collapse") : t("showAll")}
+          </button>
+        </div>
       ) : null}
     </section>
   );
 }
 
-function MiniStat({
-  label,
-  children,
+const TOPIC_TERMS: Record<"booking" | "neurology" | "pricing", string> = {
+  booking: "запис",
+  neurology: "невролог",
+  pricing: "цен",
+};
+
+function countTopics(
+  messages: { body: string | null }[],
+): { key: "booking" | "neurology" | "pricing"; count: number }[] {
+  let booking = 0;
+  let neurology = 0;
+  let pricing = 0;
+  for (const m of messages) {
+    const body = (m.body ?? "").toLowerCase();
+    if (
+      body.includes("запис") ||
+      body.includes("прием") ||
+      body.includes("приём")
+    )
+      booking += 1;
+    if (body.includes("невролог")) neurology += 1;
+    if (
+      body.includes("цен") ||
+      body.includes("стоимост") ||
+      body.includes("сум")
+    )
+      pricing += 1;
+  }
+  return [
+    { key: "booking" as const, count: booking },
+    { key: "neurology" as const, count: neurology },
+    { key: "pricing" as const, count: pricing },
+  ].filter((x) => x.count > 0);
+}
+
+function TelegramStatsCard({
+  messages,
+  conversation,
 }: {
-  label: string;
-  children: React.ReactNode;
+  messages: InboxMessage[];
+  conversation: InboxConversation;
 }) {
+  const t = useTranslations("tgInbox.rail.stats");
+  const markRead = useMarkConversationRead();
+  const inbound = messages.filter((m) => m.direction === "IN").length;
+  const outbound = messages.filter((m) => m.direction === "OUT").length;
+  const total = messages.length;
+  const unread = conversation.unreadCount;
+  const avgReplySec = React.useMemo(
+    () => computeAvgReplySeconds(messages),
+    [messages],
+  );
+
+  const tiles: StatTile[] = [
+    {
+      key: "messages",
+      label: t("messages"),
+      value: total,
+      kind: "count",
+      tone: "neutral",
+    },
+    {
+      key: "botReplies",
+      label: t("botReplies"),
+      value: outbound,
+      kind: "count",
+      tone: "primary",
+    },
+    {
+      key: "fromPatient",
+      label: t("fromPatient"),
+      value: inbound,
+      kind: "count",
+      tone: "info",
+    },
+    {
+      key: "avgReply",
+      label: t("avgReply"),
+      value: avgReplySec,
+      kind: "duration",
+      tone: "success",
+    },
+  ];
+
   return (
-    <div className="rounded-md border border-border bg-card p-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
+    <section className="rounded-2xl border border-border bg-card p-3">
+      <header className="mb-3 flex items-baseline justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <LayoutGridIcon
+            className="size-3.5 text-muted-foreground"
+            aria-hidden
+          />
+          <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
+        </div>
+        <span className="text-[10px] text-muted-foreground">{t("period")}</span>
+      </header>
+      <div className="grid grid-cols-2 gap-2">
+        {tiles.map((tile) => (
+          <StatTileView key={tile.key} tile={tile} />
+        ))}
       </div>
-      <div className="mt-0.5 text-foreground">{children}</div>
+      {unread > 0 ? (
+        <button
+          type="button"
+          onClick={() => markRead.mutate(conversation.id)}
+          disabled={markRead.isPending}
+          className="motion-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] font-medium text-[color:var(--warning)] transition-colors hover:bg-warning/15 disabled:opacity-50"
+        >
+          {markRead.isPending ? (
+            <Loader2Icon className="size-3 animate-spin" aria-hidden />
+          ) : null}
+          {t("markRead", { n: unread })}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+type StatTone = "neutral" | "primary" | "info" | "success";
+
+type StatTile = {
+  key: string;
+  label: string;
+  value: number | null;
+  kind: "count" | "duration";
+  tone: StatTone;
+};
+
+function StatTileView({ tile }: { tile: StatTile }) {
+  const empty = tile.value === null || tile.value === 0;
+  const tone = {
+    neutral: {
+      ring: "hover:border-foreground/20",
+      value: "text-foreground",
+      accent: "from-foreground/0 via-foreground/0 to-foreground/0",
+    },
+    primary: {
+      ring: "hover:border-primary/40",
+      value: "text-foreground group-hover:text-primary",
+      accent: "from-primary/0 via-primary/0 to-primary/25",
+    },
+    info: {
+      ring: "hover:border-info/40",
+      value: "text-foreground group-hover:text-[color:var(--info)]",
+      accent: "from-info/0 via-info/0 to-info/25",
+    },
+    success: {
+      ring: "hover:border-success/40",
+      value: "text-foreground group-hover:text-[color:var(--success)]",
+      accent: "from-success/0 via-success/0 to-success/25",
+    },
+  }[tile.tone];
+  return (
+    <div
+      className={cn(
+        "motion-hover-lift group relative flex flex-col gap-0.5 overflow-hidden rounded-xl border border-border/60 bg-muted/30 px-2.5 py-2 transition-colors",
+        tone.ring,
+      )}
+    >
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+          tone.accent,
+        )}
+        aria-hidden
+      />
+      <span className="text-[10px] leading-tight text-muted-foreground">
+        {tile.label}
+      </span>
+      <span
+        className={cn(
+          "mt-0.5 text-[18px] font-bold leading-none tabular-nums transition-colors",
+          tone.value,
+        )}
+      >
+        {empty ? (
+          <span className="text-muted-foreground/60">—</span>
+        ) : tile.kind === "duration" ? (
+          formatDuration(tile.value!)
+        ) : (
+          <CountUp to={tile.value!} />
+        )}
+      </span>
     </div>
   );
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  return `${hours.toFixed(1)}h`;
+}
+
+function computeAvgReplySeconds(messages: InboxMessage[]): number | null {
+  // Average time between a patient (IN) message and the next clinic (OUT)
+  // reply. Returns null when we don't have at least one IN → OUT pair yet.
+  if (messages.length < 2) return null;
+  const sorted = [...messages].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+  let lastInAt: number | null = null;
+  const gaps: number[] = [];
+  for (const m of sorted) {
+    const t = new Date(m.createdAt).getTime();
+    if (m.direction === "IN") {
+      lastInAt = t;
+    } else if (m.direction === "OUT" && lastInAt !== null) {
+      gaps.push((t - lastInAt) / 1000);
+      lastInAt = null;
+    }
+  }
+  if (gaps.length === 0) return null;
+  return gaps.reduce((a, b) => a + b, 0) / gaps.length;
 }
 
 function CreatePatientForm({
@@ -559,13 +906,30 @@ function CreatePatientForm({
           source: "TELEGRAM",
         }),
       });
-      if (!res.ok) {
+
+      let patientId: string;
+      let reused = false;
+      if (res.ok) {
+        const created = (await res.json()) as { id: string };
+        patientId = created.id;
+      } else if (res.status === 409) {
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+          reason?: string;
+          patientId?: string;
+        } | null;
+        if (j?.reason === "phone_already_exists" && j.patientId) {
+          patientId = j.patientId;
+          reused = true;
+        } else {
+          throw new Error(j?.error ?? "conflict");
+        }
+      } else {
         const j = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      const patient = (await res.json()) as { id: string };
 
       const patchRes = await fetch(
         `/api/crm/conversations/${conversation.id}`,
@@ -573,16 +937,16 @@ function CreatePatientForm({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ patientId: patient.id }),
+          body: JSON.stringify({ patientId }),
         },
       );
       if (!patchRes.ok) {
         throw new Error(`Link failed: ${patchRes.status}`);
       }
-      return patient;
+      return { id: patientId, reused };
     },
-    onSuccess: () => {
-      toast.success(t("patientCreated"));
+    onSuccess: ({ reused }) => {
+      toast.success(reused ? t("patientLinked") : t("patientCreated"));
       void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
       void qc.invalidateQueries({
         queryKey: conversationsKey({ q: "", mode: "all", unreadOnly: false }),
@@ -610,6 +974,7 @@ function CreatePatientForm({
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder={t("fullNamePlaceholder")}
+            autoComplete="off"
             className="h-8"
           />
         </div>
@@ -619,8 +984,11 @@ function CreatePatientForm({
           </Label>
           <Input
             id="tg-new-patient-phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="off"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s()-]/g, ""))}
             placeholder="+998 ..."
             className="h-8"
           />

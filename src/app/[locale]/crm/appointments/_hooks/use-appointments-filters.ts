@@ -17,6 +17,15 @@ import type { AppointmentsListFilters } from "./use-appointments-list";
  *    We translate that to `status` before calling the API.
  */
 export type DateMode = "today" | "week" | "month" | "range";
+/**
+ * Buckets come in two flavours:
+ *   - API-aligned statuses (`waiting`, `booked`, …) → translate to a server
+ *     `status` filter.
+ *   - UX-only smart buckets (`needs_attention`, `soon`, `unconfirmed`, `late`,
+ *     `arrived`) → leave the server filter open, narrow rows client-side.
+ *
+ * Both are reflected in the URL so the active tile sticks across reloads.
+ */
 export type StatusBucket =
   | "all"
   | "waiting"
@@ -24,7 +33,12 @@ export type StatusBucket =
   | "in_progress"
   | "completed"
   | "cancelled"
-  | "no_show";
+  | "no_show"
+  | "needs_attention"
+  | "soon"
+  | "unconfirmed"
+  | "late"
+  | "arrived";
 
 export type AppointmentsFilterState = AppointmentsListFilters & {
   dateMode?: DateMode;
@@ -72,6 +86,11 @@ function parse(sp: URLSearchParams): AppointmentsFilterState {
         "completed",
         "cancelled",
         "no_show",
+        "needs_attention",
+        "soon",
+        "unconfirmed",
+        "late",
+        "arrived",
       ];
       if ((allowed as string[]).includes(v)) {
         out.bucket = v as StatusBucket;
@@ -157,6 +176,12 @@ const BUCKET_TO_STATUS: Record<StatusBucket, string | undefined> = {
   completed: "COMPLETED",
   cancelled: "CANCELLED",
   no_show: "NO_SHOW",
+  // UX-only buckets: no server filter, rows narrowed client-side.
+  needs_attention: undefined,
+  soon: undefined,
+  unconfirmed: undefined,
+  late: undefined,
+  arrived: undefined,
 };
 
 export function useAppointmentsFilters() {

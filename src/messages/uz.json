@@ -154,7 +154,7 @@
         },
         "telegram": {
           "title": "Telegram",
-          "subtitle": "Bemorlar bilan chatlar"
+          "subtitle": "Bemorlar bilan Telegram-bot va operatorlar orqali muloqot"
         },
         "sms": {
           "title": "SMS-Email",
@@ -295,6 +295,30 @@
       "partial": "Qisman"
     }
   },
+  "patientsSegments": {
+    "backToAll": "← Barcha bemorlar",
+    "count": "{count, plural, one {# bemor} other {# bemor}}",
+    "actions": {
+      "new": "Yangi bemor",
+      "callBack": "Qo'ng'iroqni boshlash"
+    },
+    "new": {
+      "title": "Haftadagi yangi",
+      "subtitle": "So'nggi 7 kunda ro'yxatdan o'tgan bemorlar. Onbordingni yakunlash va birinchi qabulga e'tibor qarating."
+    },
+    "active": {
+      "title": "Faol bemorlar",
+      "subtitle": "So'nggi 30 kunda tashrif buyurgan bemorlar — klinika daromadining asosi."
+    },
+    "dormant": {
+      "title": "Faol bo'lmagan bemorlar",
+      "subtitle": "30 kundan ortiq tashrif qilmagan bemorlar — win-back qo'ng'iroq nomzodlari."
+    },
+    "risk": {
+      "title": "No-show xavfi",
+      "subtitle": "O'tkazib yuborish tarixi bo'lgan bemorlar. Yozilishni tasdiqlash uchun oldindan bog'laning."
+    }
+  },
   "patients": {
     "title": "Bemorlar",
     "subtitle": "Klinika bemorlari bazasi",
@@ -318,7 +342,8 @@
     "table": {
       "selectAll": "Hammasini tanlash",
       "selectRow": "Tanlash",
-      "noAppointment": "Yozilish yo'q"
+      "noAppointment": "Yozilish yo'q",
+      "noVisits": "Tashriflar yo'q"
     },
     "ageYears": "{age} yosh",
     "priority": {
@@ -1818,6 +1843,7 @@
       "tagNew": "Yangi",
       "rejectAria": "Rad etish",
       "quickBookAria": "Tezkor yozilish",
+      "rejectedToast": "Qo‘ng‘iroq rad etildi",
       "nowLabel": "hozir"
     },
     "tg": {
@@ -2652,6 +2678,7 @@
         "takeoverBadge": "Operator"
       },
       "unreadToggle": "Faqat o'qilmagan",
+      "unreadToggleShort": "O'qilmagan",
       "count": "{n, plural, =0 {suhbat yo'q} one {# suhbat} other {# ta suhbat}}",
       "empty": "Suhbatlar yo'q",
       "noMessages": "Xabarlar yo'q",
@@ -2674,6 +2701,8 @@
       },
       "takeover": "Suhbatni olish",
       "returnToBot": "Botga qaytarish",
+      "moreMenu": "Suhbat amallari",
+      "markRead": "O'qilgan deb belgilash",
       "noMessages": "Tarix bo'sh"
     },
     "rail": {
@@ -2685,12 +2714,15 @@
       "openPatient": "Karta",
       "segment": "Segment",
       "balance": "Balans",
-      "lifetimeSpend": "LTV",
+      "ltv": "LTV",
       "lastVisit": "Oxirgi tashrif",
       "never": "Yo'q",
       "assignedTo": "Mas'ul",
       "tags": "Teglar",
       "appointmentCreated": "Qabul yaratildi",
+      "patientTag": "Bemor",
+      "verified": "Tasdiqlangan",
+      "topUp": "Balansni to'ldirish",
       "noPatientTitle": "Bemor biriktirilmagan",
       "noPatientDescription": "Tez yozib qo'yish uchun bemor yarating.",
       "fullNameLabel": "F.I.Sh.",
@@ -2698,6 +2730,7 @@
       "phoneLabel": "Telefon",
       "createPatient": "Bemor yaratish",
       "patientCreated": "Bemor yaratildi va biriktirildi",
+      "patientLinked": "Bu raqamga ega bemor allaqachon bor — chatga biriktirildi",
       "actions": {
         "ariaLabel": "Tezkor harakatlar",
         "title": "Harakatlar",
@@ -2707,6 +2740,12 @@
         "attachment": "Fayl",
         "task": "Eslatma",
         "export": "Eksport",
+        "book": "Yozuv yaratish",
+        "card": "Karta",
+        "more": "Yana",
+        "openCases": "Holatlarni ochish",
+        "openPayments": "To'lovlar",
+        "openDocuments": "Hujjatlar",
         "phoneCopied": "Raqam nusxalandi",
         "copyFailed": "Nusxa olib bo'lmadi",
         "stubs": {
@@ -2716,12 +2755,32 @@
         }
       },
       "ai": {
-        "ariaLabel": "AI-yordamchi",
-        "title": "AI-yordamchi",
+        "ariaLabel": "AI-assistent",
+        "title": "AI-assistent",
+        "badge": "Tavsiyalar",
+        "subtitle": "muloqot tarixi asosida",
+        "confidence": "Javoblar ishonchliligi: {percent}%",
+        "confidenceLabel": "Javoblar ishonchliligi",
+        "inserted": "Matn javob maydoniga qo'yildi",
+        "insertAria": "Tavsiyani javobga qo'yish",
+        "recBooking": "Qabuldan bir kun oldin yozuvni tasdiqlash.",
+        "recMorningSlot": "Qulaylik uchun ertalabki slotni taklif qilish.",
+        "recPrepReminder": "Tashrifga tayyorgarlik qoidalarini eslatish.",
         "tip1": "Tashrifdan bir kun oldin qabulni tasdiqlashni taklif qiling.",
         "tip2": "Xizmat talab qilsa, tayyorgarlik qoidalarini eslating.",
         "tip3": "Agar bemor 30 daqiqadan ko'p javob bermasa — savollar qoldimi, so'rang.",
         "disclaimer": "AI-xizmat ishga tushgach maslahatlar avtomatik yoqiladi."
+      },
+      "topics": {
+        "title": "Bog'liq mavzular",
+        "showAll": "Hammasini ko'rsatish",
+        "collapse": "Yig'ish",
+        "findAria": "Eslatmalarni topish: {topic}",
+        "labels": {
+          "booking": "Qabulga yozilish",
+          "neurology": "Nevrologiya",
+          "pricing": "Narx"
+        }
       },
       "history": {
         "ariaLabel": "Muloqot tarixi",
@@ -2735,11 +2794,19 @@
       "stats": {
         "ariaLabel": "Telegram statistikasi",
         "title": "Telegram statistikasi",
+        "period": "30 kunda",
+        "dialogs": "Suhbatlar",
+        "messages": "Xabarlar",
+        "botReplies": "Bot javoblari",
+        "fromPatient": "Bemordan",
+        "toOperator": "Operatorga uzatildi",
+        "avgReply": "O'rtacha javob vaqti",
         "total": "Jami",
         "unread": "O'qilmagan",
         "inbound": "Kiruvchi",
         "outbound": "Chiquvchi",
-        "lastActivity": "Oxirgi faollik: {time}"
+        "lastActivity": "Oxirgi faollik: {time}",
+        "markRead": "{n, plural, one {# ta xabarni o'qilgan deb belgilash} other {# ta xabarni o'qilgan deb belgilash}}"
       }
     },
     "composer": {
@@ -2747,8 +2814,12 @@
       "send": "Yuborish",
       "sendAria": "Xabarni yuborish",
       "textareaAria": "Xabar matni",
+      "transfer": {
+        "toOperator": "Operatorga uzatish",
+        "toBot": "Botga qaytarish"
+      },
       "template": {
-        "label": "Shablon",
+        "label": "Shablonlar",
         "title": "Shablonni tanlang",
         "empty": "Shablonlar yo'q"
       },
@@ -2764,7 +2835,7 @@
         "addButton": "Tugma"
       },
       "upload": {
-        "label": "Rasm",
+        "label": "Fayl biriktirish",
         "attach": "Rasm biriktirish",
         "remove": "Olib tashlash",
         "dropHere": "Biriktirish uchun qo'yvoring",
@@ -3722,7 +3793,10 @@
     "export": "PNG eksport",
     "exportSoon": "PNG eksport Phase 7 da qo‘shiladi",
     "downloadReport": "Hisobotni yuklash",
-    "openCalendar": "Davr tanlash"
+    "openCalendar": "Davr tanlash",
+    "rangeStart": "Davr boshi",
+    "rangeEnd": "Davr oxiri",
+    "rangeHint": "Maxsus sanalar diapazoni keyingi yangilanishda qo‘shiladi."
   },
   "analyticsNav": {
     "overview": "Umumiy",
@@ -4683,6 +4757,76 @@
       "label": "Maxsus subdomen",
       "dnsHint": "Saqlagandan so'ng DNS (CNAME yozuvi) sozlamasi uchun yordam xizmatiga murojaat qiling.",
       "upgradeRequired": "Faqat Enterprise tarifida mavjud."
+    }
+  },
+  "legal": {
+    "privacy": {
+      "title": "Maxfiylik siyosati",
+      "updated": "Yangilandi: 2026-yil may",
+      "intro": {
+        "title": "Kirish",
+        "body": "Maxfiyligingizni qadrlaymiz va ma'lumotlaringizga shifokor sirini saqlash darajasida e'tibor beramiz. Quyida qanday ma'lumotlarni yig'amiz, nima uchun va qanday himoya qilishimizni tushuntiramiz."
+      },
+      "data": {
+        "title": "Qanday ma'lumotlarni yig'amiz",
+        "body": "Ism, telefon, tug'ilgan sana, kerak bo'lganda yaqinlaringizning aloqasi, klinikaga murojaatlar tarixi, shifokor yozuvlari, tahlil natijalari, siz yoki klinika yuklagan foto/video."
+      },
+      "use": {
+        "title": "Ma'lumotlardan qanday foydalanamiz",
+        "body": "Qabulingizni tashkil etish, eslatish yuborish, natijalarni shifokorga yetkazish, hisob-faktura yozish va xizmatni yaxshilash uchun. Tibbiy ma'lumotlar hech qachon reklamada ishlatilmaydi."
+      },
+      "share": {
+        "title": "Kim bilan ulashamiz",
+        "body": "Faqat sizni qabul qilayotgan shifokor va klinika operatorlari bilan. Uchinchi tomonlarga — faqat sizning yozma roziligingiz yoki qonun talabi asosida."
+      },
+      "storage": {
+        "title": "Saqlash va himoya",
+        "body": "Ma'lumotlar O'zbekistondagi serverlarda saqlanadi. Uzatish TLS bilan shifrlanadi. Faqat klinika xodimlari kirishi mumkin. Zaxira nusxalari shifrlangan, 30 kun saqlanadi."
+      },
+      "rights": {
+        "title": "Sizning huquqlaringiz",
+        "body": "Ma'lumotlaringizning nusxasini olishingiz, xatolarni tuzatishingiz, akkauntni o'chirishingiz yoki ishlov berishni cheklashingiz mumkin. So'rovni shaxsiy kabinetdagi «Profil» bo'limidan yoki email orqali yuboring."
+      },
+      "contact": {
+        "title": "Aloqa",
+        "body": "Maxfiylik bo'yicha: support@neurofax.uz. 3 ish kuni ichida javob beramiz."
+      }
+    },
+    "terms": {
+      "title": "Foydalanish shartlari",
+      "updated": "Yangilandi: 2026-yil may",
+      "intro": {
+        "title": "Umumiy qoidalar",
+        "body": "Saytdan va shaxsiy kabinetdan foydalanish orqali siz quyidagi shartlarga rozilik bildirasiz. Tushunarsiz joy bo'lsa — bizga yozing."
+      },
+      "services": {
+        "title": "Xizmatlar",
+        "body": "Sayt orqali qabulga yozilish, hujjatlarni olish, klinika bilan muloqot qilish va onlayn to'lov mumkin. Xizmatlar va narxlar tegishli bo'limda e'lon qilinadi va o'zgarishi mumkin."
+      },
+      "booking": {
+        "title": "Qabulga yozilish",
+        "body": "Tasdiq SMS yoki Telegram orqali keladi. Iltimos, qabuldan 10 daqiqa oldin keling. Bekor qilish kerak bo'lsa, kamida 2 soat oldin xabar bering."
+      },
+      "payment": {
+        "title": "To'lov",
+        "body": "Ressepshenda yoki onlayn to'lashingiz mumkin. Chek va hisob-faktura shaxsiy kabinetdagi «Hujjatlar» bo'limida mavjud."
+      },
+      "cancellation": {
+        "title": "Bekor qilish va qaytarish",
+        "body": "2 soat oldin xabar berib bekor qilish bepul. Kechroq bekor qilinsa, klinika xizmatning qisman summasini ushlab qolishi mumkin."
+      },
+      "liability": {
+        "title": "Javobgarlik",
+        "body": "Biz sifatli ishlashga harakat qilamiz, lekin uchinchi tomonlar (bank, mobil operator, Telegram) tomonidagi nosozliklar uchun javobgarlikni o'z zimmamizga olmaymiz."
+      },
+      "changes": {
+        "title": "O'zgarishlar",
+        "body": "Shartlarni o'zgartirishimiz mumkin. Muhim o'zgarishlar shu sahifada e'lon qilinadi va shaxsiy kabinetda xabar beriladi."
+      },
+      "contact": {
+        "title": "Aloqa",
+        "body": "Shartnoma bo'yicha: support@neurofax.uz."
+      }
     }
   }
 }

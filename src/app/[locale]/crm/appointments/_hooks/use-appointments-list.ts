@@ -284,6 +284,57 @@ export function tallyBuckets(
 }
 
 /**
+ * Client-side narrowing for UX-only tile buckets that don't translate to a
+ * single API status. Returns the same array reference when `bucket` doesn't
+ * trigger any filtering so React.useMemo callers stay cheap.
+ */
+export function filterRowsByBucket(
+  rows: AppointmentRow[],
+  bucket: string | null | undefined,
+  now = new Date(),
+): AppointmentRow[] {
+  if (!bucket || bucket === "all") return rows;
+  const nowMs = now.getTime();
+  const fifteenMin = 15 * 60 * 1000;
+  const fiveMin = 5 * 60 * 1000;
+  switch (bucket) {
+    case "needs_attention":
+      return rows.filter((r) => {
+        const startMs = new Date(r.date).getTime();
+        const isLate =
+          (r.status === "BOOKED" || r.status === "WAITING") &&
+          nowMs - startMs > fiveMin;
+        return r.status === "WAITING" || isLate;
+      });
+    case "soon":
+      return rows.filter((r) => {
+        const startMs = new Date(r.date).getTime();
+        return (
+          r.status === "BOOKED" &&
+          startMs - nowMs >= 0 &&
+          startMs - nowMs <= fifteenMin
+        );
+      });
+    case "unconfirmed":
+      return rows.filter((r) => r.status === "BOOKED");
+    case "late":
+      return rows.filter((r) => {
+        const startMs = new Date(r.date).getTime();
+        return (
+          (r.status === "BOOKED" || r.status === "WAITING") &&
+          nowMs - startMs > fiveMin
+        );
+      });
+    case "arrived":
+      return rows.filter(
+        (r) => r.status === "IN_PROGRESS" || r.status === "COMPLETED",
+      );
+    default:
+      return rows;
+  }
+}
+
+/**
  * Resolve the effective payment status for a row: PAID if any PAID payment
  * covers the final price, PARTIAL if partial payments exist, UNPAID otherwise.
  */

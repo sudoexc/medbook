@@ -8,6 +8,7 @@
  */
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Bar,
   BarChart,
@@ -458,12 +459,12 @@ export function AnalyticsTopRows({
             )
           }
           footer={
-            <button
-              type="button"
-              className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-2 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted"
+            <Link
+              href={`/${locale}/crm/doctors`}
+              className="motion-press inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-2 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >
               {labels.viewAllDoctors(data.topDoctors.length)}
-            </button>
+            </Link>
           }
         />
       </div>
@@ -481,12 +482,12 @@ export function AnalyticsTopRows({
             )
           }
           footer={
-            <button
-              type="button"
-              className="inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-2 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted"
+            <Link
+              href={`/${locale}/crm/settings/services`}
+              className="motion-press inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-2 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >
               {labels.viewAllServices(data.topServices.length)}
-            </button>
+            </Link>
           }
         />
 

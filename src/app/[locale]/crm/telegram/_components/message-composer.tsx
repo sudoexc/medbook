@@ -12,6 +12,7 @@ import {
   PaperclipIcon,
   XIcon,
   ImageIcon,
+  HeadsetIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,6 +32,8 @@ import {
   useSendMessage,
   type ChatAttachment,
 } from "../_hooks/use-send-message";
+import { useTakeover } from "../_hooks/use-takeover";
+import { useComposerInsert } from "../_hooks/use-tg-events";
 
 export interface MessageComposerProps {
   conversation: InboxConversation;
@@ -74,8 +77,28 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
   const [attachments, setAttachments] = React.useState<LocalAttachment[]>([]);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const dragCounterRef = React.useRef(0);
+
+  // External insertions (AI rec / template chip / quick action) push text
+  // into the composer via window event so callers don't need a callback prop.
+  useComposerInsert(conversation.id, ({ text: incoming, mode }) => {
+    setText((prev) => {
+      if (mode === "replace" || !prev.trim()) return incoming;
+      const sep = prev.endsWith("\n") || prev.endsWith(" ") ? "" : " ";
+      return prev + sep + incoming;
+    });
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.scrollTop = el.scrollHeight;
+    });
+  });
   const send = useSendMessage();
+  const takeover = useTakeover();
+  const isTakeover = conversation.mode === "takeover";
 
   React.useEffect(() => {
     return () => {
@@ -348,35 +371,51 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
         </div>
       ) : null}
 
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-muted/10 px-3 py-1.5">
+        <TemplatePicker onPick={onPickTemplate} />
+        <ToolbarChip
+          icon={<PaperclipIcon className="size-3.5" />}
+          label={t("upload.label")}
+          onClick={() => fileInputRef.current?.click()}
+          aria-label={t("upload.attach")}
+        />
+        <ToolbarChip
+          icon={<PlusIcon className="size-3.5" />}
+          label={t("inlineButtons.label")}
+          onClick={() =>
+            setButtonRows((prev) =>
+              prev.length === 0 ? [[{ text: "", callback_data: "" }]] : prev,
+            )
+          }
+          aria-label={t("inlineButtons.add")}
+        />
+        <span className="ml-auto" />
+        <ToolbarChip
+          icon={
+            takeover.isPending ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : (
+              <HeadsetIcon className="size-3.5" />
+            )
+          }
+          label={isTakeover ? t("transfer.toBot") : t("transfer.toOperator")}
+          onClick={() =>
+            takeover.mutate({
+              conversationId: conversation.id,
+              mode: isTakeover ? "bot" : "takeover",
+            })
+          }
+          variant={isTakeover ? "warning" : "primary"}
+          disabled={takeover.isPending}
+          aria-label={
+            isTakeover ? t("transfer.toBot") : t("transfer.toOperator")
+          }
+        />
+      </div>
+
       <div className="flex items-end gap-2 p-3">
-        <div className="flex shrink-0 flex-col gap-1">
-          <TemplatePicker onPick={onPickTemplate} />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label={t("upload.attach")}
-            title={t("upload.attach")}
-          >
-            <PaperclipIcon className="size-3" /> {t("upload.label")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setButtonRows((prev) =>
-                prev.length === 0 ? [[{ text: "", callback_data: "" }]] : prev,
-              )
-            }
-            aria-label={t("inlineButtons.add")}
-            title={t("inlineButtons.add")}
-          >
-            <PlusIcon className="size-3" /> {t("inlineButtons.label")}
-          </Button>
-        </div>
         <Textarea
+          ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
@@ -415,6 +454,44 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
   );
 }
 
+function ToolbarChip({
+  icon,
+  label,
+  onClick,
+  disabled,
+  variant = "default",
+  "aria-label": ariaLabel,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  variant?: "default" | "primary" | "warning";
+  "aria-label"?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors",
+        variant === "default" &&
+          "border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
+        variant === "primary" &&
+          "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15",
+        variant === "warning" &&
+          "border-warning/40 bg-warning/10 text-[color:var(--warning)] hover:bg-warning/15",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+      )}
+    >
+      <span className="inline-flex items-center">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
   const t = useTranslations("tgInbox.composer");
   const locale = useLocale();
@@ -437,9 +514,14 @@ function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" aria-label={t("template.label")}>
-          <FileTextIcon className="size-3" /> {t("template.label")}
-        </Button>
+        <button
+          type="button"
+          aria-label={t("template.label")}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[12px] font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+        >
+          <FileTextIcon className="size-3.5" />
+          {t("template.label")}
+        </button>
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-0" align="start">
         <div className="border-b border-border px-3 py-2 text-xs font-semibold">

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
 import {
+  filterRowsByBucket,
   flattenAppointments,
   useAppointmentsList,
   useAppointmentsRealtime,
@@ -88,9 +89,14 @@ export function AppointmentsPageClient() {
 
   // --- data ----------------------------------------------------------------
   const query = useAppointmentsList(apiFilters);
-  const rows = React.useMemo(
+  const allRows = React.useMemo(
     () => flattenAppointments(query.data),
     [query.data],
+  );
+  // Tiles see every row so counts stay stable; the table sees the bucket-narrowed slice.
+  const rows = React.useMemo(
+    () => filterRowsByBucket(allRows, state.bucket ?? null),
+    [allRows, state.bucket],
   );
   const total = query.data?.pages?.[0]?.total ?? null;
 
@@ -201,7 +207,12 @@ export function AppointmentsPageClient() {
             </div>
           </div>
 
-          <AppointmentsTiles rows={rows} total={total} />
+          <AppointmentsTiles
+            rows={allRows}
+            total={total}
+            activeBucket={state.bucket ?? "all"}
+            onSelect={(b) => setFilter("bucket", b as typeof state.bucket)}
+          />
 
           <AppointmentsFilters
             state={state}

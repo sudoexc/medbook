@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { MoneyText } from "@/components/atoms/money-text";
 import { buttonVariants } from "@/components/ui/button";
+import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
 import type { DoctorAgg } from "../_hooks/use-doctors-stats";
@@ -94,6 +95,7 @@ export function DoctorCard({
   const t = useTranslations("crmDoctors.card");
   const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
   const spec = locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
+  const [bookOpen, setBookOpen] = React.useState(false);
 
   const today = agg?.todayCount ?? 0;
   const revenue = agg?.revenue ?? 0;
@@ -219,21 +221,27 @@ export function DoctorCard({
           href={`/${locale}/crm/doctors/${doctor.id}`}
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
-            "h-9 text-[12px]",
+            "motion-press h-9 text-[12px]",
           )}
         >
           {t("schedule")}
         </Link>
         <button
           type="button"
+          onClick={() => setBookOpen(true)}
           className={cn(
             buttonVariants({ variant: "default", size: "sm" }),
-            "h-9 text-[12px]",
+            "motion-press h-9 text-[12px]",
           )}
         >
           {t("book")}
         </button>
       </div>
+      <NewAppointmentDialog
+        open={bookOpen}
+        onOpenChange={setBookOpen}
+        initialDoctorId={doctor.id}
+      />
     </div>
   );
 }

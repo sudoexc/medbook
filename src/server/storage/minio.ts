@@ -115,6 +115,11 @@ let clientPromise: Promise<{
   presigner: PresignerModule;
 }> | null = null;
 
+// Separate client for browser-facing presigned URLs. Uses MINIO_PUBLIC_URL as
+// the endpoint so the resulting URL contains the host the browser can reach
+// (e.g. https://neurofax.uz/files), not the docker-internal host (minio:9000).
+let publicClientPromise: Promise<S3ClientLike> | null = null;
+
 // Use `Function`-wrapped dynamic imports so TypeScript doesn't try to
 // resolve the module at compile-time — these SDKs are optional runtime
 // dependencies (only required when MINIO_ENDPOINT is set).
@@ -159,9 +164,32 @@ async function getClient() {
   return clientPromise;
 }
 
+async function getPublicClient(): Promise<S3ClientLike> {
+  if (publicClientPromise) return publicClientPromise;
+  publicClientPromise = (async () => {
+    const { s3 } = await getClient();
+    const publicEndpoint =
+      process.env.MINIO_PUBLIC_URL || process.env.MINIO_ENDPOINT!;
+    const region = process.env.MINIO_REGION || "us-east-1";
+    const forcePathStyle =
+      (process.env.MINIO_FORCE_PATH_STYLE ?? "true") !== "false";
+    return new s3.S3Client({
+      endpoint: publicEndpoint,
+      region,
+      forcePathStyle,
+      credentials: {
+        accessKeyId: process.env.MINIO_ACCESS_KEY || "",
+        secretAccessKey: process.env.MINIO_SECRET_KEY || "",
+      },
+    });
+  })();
+  return publicClientPromise;
+}
+
 /** Testing only — drop cached SDK client so env changes take effect. */
 export function __resetStorageForTests(): void {
   clientPromise = null;
+  publicClientPromise = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,9 +228,34 @@ export async function getSignedUrl(
   if (isStubMode()) {
     return stubSignedUrl(b, key);
   }
-  const { client, s3, presigner } = await getClient();
+  const { s3, presigner } = await getClient();
+  const publicClient = await getPublicClient();
   const cmd = new s3.GetObjectCommand({ Bucket: b, Key: key });
-  return presigner.getSignedUrl(client, cmd, { expiresIn });
+  return presigner.getSignedUrl(publicClient, cmd, { expiresIn });
+}
+
+/**
+ * Presign a PUT URL the browser can use to upload bytes directly to MinIO.
+ * Distinct from {@link getSignedUrl} (which is for downloads/reads).
+ */
+export async function getSignedUploadUrl(
+  bucket: string | undefined,
+  key: string,
+  contentType = "application/octet-stream",
+  expiresIn = 900,
+): Promise<string> {
+  const b = resolveBucket(bucket);
+  if (isStubMode()) {
+    return stubSignedUrl(b, key);
+  }
+  const { s3, presigner } = await getClient();
+  const publicClient = await getPublicClient();
+  const cmd = new s3.PutObjectCommand({
+    Bucket: b,
+    Key: key,
+    ContentType: contentType,
+  });
+  return presigner.getSignedUrl(publicClient, cmd, { expiresIn });
 }
 
 export async function deleteObject(

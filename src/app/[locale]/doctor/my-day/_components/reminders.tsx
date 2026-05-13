@@ -1,0 +1,57 @@
+"use client";
+
+import { BellIcon } from "lucide-react";
+
+import { MOCK_REMINDERS } from "../_mocks";
+
+export function Reminders() {
+  return (
+    <section className="flex flex-col rounded-2xl border border-border bg-card">
+      <header className="px-5 pt-4 pb-3">
+        <div className="text-[15px] font-semibold text-foreground">
+          Напоминания
+        </div>
+      </header>
+
+      <ul className="space-y-1 px-3 pb-2">
+        {MOCK_REMINDERS.map((r) => (
+          <li key={r.id}>
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BellIcon className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-foreground">
+                  {r.title}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {r.patientShort}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-xs font-medium text-foreground">
+                  {r.inDaysLabel}
+                </div>
+                <div className="text-[11px] text-muted-foreground tabular-nums">
+                  {r.dueDate}
+                </div>
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <footer className="border-t border-border px-5 py-3">
+        <button
+          type="button"
+          className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
+        >
+          Все напоминания
+        </button>
+      </footer>
+    </section>
+  );
+}

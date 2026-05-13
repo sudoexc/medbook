@@ -10,13 +10,13 @@ import type { AppointmentsListFilters } from "./use-appointments-list";
  *
  * Two helpers are handy on top of the raw fields:
  *
- *  - `dateMode` → quick pill selection (`today`/`week`/`month`/`range`).
+ *  - `dateMode` → quick pill selection (`today`/`tomorrow`/`afterTomorrow`/`range`).
  *    The server-facing hook only cares about `from`/`to` so we compute them
  *    here when the user picks a pill.
  *  - `bucket` → the status pill above the table (`all` | `waiting` | ...).
  *    We translate that to `status` before calling the API.
  */
-export type DateMode = "today" | "week" | "month" | "range";
+export type DateMode = "today" | "tomorrow" | "afterTomorrow" | "range";
 /**
  * Buckets come in two flavours:
  *   - API-aligned statuses (`waiting`, `booked`, …) → translate to a server
@@ -74,7 +74,12 @@ function parse(sp: URLSearchParams): AppointmentsFilterState {
     } else if (key === "dir") {
       if (v === "asc" || v === "desc") out.dir = v;
     } else if (key === "dateMode") {
-      if (v === "today" || v === "week" || v === "month" || v === "range") {
+      if (
+        v === "today" ||
+        v === "tomorrow" ||
+        v === "afterTomorrow" ||
+        v === "range"
+      ) {
         out.dateMode = v;
       }
     } else if (key === "bucket") {
@@ -130,37 +135,31 @@ function endOfDay(d: Date): Date {
 
 /**
  * Translate `dateMode` + explicit `from`/`to` to a concrete window.
- * "today" → [startOfDay, endOfDay] of now.
- * "week"  → next 7 days starting now.
- * "month" → next 30 days starting now.
- * "range" → respect explicit `from`/`to` as-is.
+ * "today"         → [startOfDay, endOfDay] of now.
+ * "tomorrow"      → single day, +1 from today.
+ * "afterTomorrow" → single day, +2 from today.
+ * "range"         → respect explicit `from`/`to` as-is.
  */
 function resolveWindow(
   state: AppointmentsFilterState,
 ): { from?: string; to?: string } {
   const mode = state.dateMode ?? (state.from || state.to ? "range" : "today");
   const now = new Date();
+  const offsetByDays = (n: number) =>
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
   if (mode === "today") {
     return {
       from: startOfDay(now).toISOString(),
       to: endOfDay(now).toISOString(),
     };
   }
-  if (mode === "week") {
-    return {
-      from: startOfDay(now).toISOString(),
-      to: endOfDay(
-        new Date(now.getFullYear(), now.getMonth(), now.getDate() + 6),
-      ).toISOString(),
-    };
+  if (mode === "tomorrow") {
+    const d = offsetByDays(1);
+    return { from: startOfDay(d).toISOString(), to: endOfDay(d).toISOString() };
   }
-  if (mode === "month") {
-    return {
-      from: startOfDay(now).toISOString(),
-      to: endOfDay(
-        new Date(now.getFullYear(), now.getMonth(), now.getDate() + 29),
-      ).toISOString(),
-    };
+  if (mode === "afterTomorrow") {
+    const d = offsetByDays(2);
+    return { from: startOfDay(d).toISOString(), to: endOfDay(d).toISOString() };
   }
   return {
     from: state.from || undefined,

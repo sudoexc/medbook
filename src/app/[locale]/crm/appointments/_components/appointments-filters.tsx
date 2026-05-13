@@ -149,7 +149,7 @@ export function AppointmentsFilters({
         role="radiogroup"
         className="inline-flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5"
       >
-        {(["today", "week", "month", "range"] as const).map((m) => (
+        {(["today", "tomorrow", "afterTomorrow", "range"] as const).map((m) => (
           <button
             key={m}
             type="button"

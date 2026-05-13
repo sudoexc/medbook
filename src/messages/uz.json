@@ -601,8 +601,8 @@
       "save": "Saqlash",
       "dateMode": {
         "today": "Bugun",
-        "week": "7 kun",
-        "month": "30 kun",
+        "tomorrow": "Ertaga",
+        "afterTomorrow": "Indinga",
         "range": "Davr"
       }
     },

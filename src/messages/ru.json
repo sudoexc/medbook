@@ -601,8 +601,8 @@
       "save": "Сохранить",
       "dateMode": {
         "today": "Сегодня",
-        "week": "7 дней",
-        "month": "30 дней",
+        "tomorrow": "Завтра",
+        "afterTomorrow": "Послезавтра",
         "range": "Период"
       }
     },

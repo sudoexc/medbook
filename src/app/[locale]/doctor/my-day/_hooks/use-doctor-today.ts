@@ -39,7 +39,10 @@ export type UpcomingPatient = {
   appointmentId: string;
   patientId: string;
   shortName: string;
+  phone: string;
   startTime: string;
+  /** Full ISO timestamp — needed for relative-time («через X») on the client. */
+  startAt: string;
   durationMin: number;
   type: "consultation" | "repeat";
   avatarUrl: string | null;
@@ -95,6 +98,7 @@ export type DoctorToday = {
   schedule: ScheduleEntry[];
   current: CurrentPatient | null;
   upcoming: UpcomingPatient[];
+  upcomingTotal: number;
   daySummary: DaySummary;
   ai: { summary: string | null; alerts: unknown[]; recommendations: unknown[] };
   actionItems: ActionItem[];

@@ -1,11 +1,17 @@
 "use client";
 
+import * as React from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { PhoneIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+
 import {
   useDoctorToday,
+  type DoctorToday,
   type UpcomingPatient,
 } from "../_hooks/use-doctor-today";
 
@@ -14,10 +20,71 @@ const TYPE_LABEL: Record<UpcomingPatient["type"], string> = {
   repeat: "Повторный приём",
 };
 
+/**
+ * Render "через 5 мин", "через 1 ч 15 мин", or fall back to the slot
+ * duration when the appointment is too far away to be operationally
+ * useful as a relative timer.
+ *
+ * Threshold = 4h: past that, the absolute HH:MM above already gives the
+ * doctor everything they need; what they want under the time block is a
+ * sense of *imminence*, not a ticker that reads «через 6 ч».
+ */
+function formatRelative(
+  startAtMs: number,
+  nowMs: number,
+  durationMin: number,
+): string {
+  const diffMin = Math.round((startAtMs - nowMs) / 60000);
+  if (diffMin < -1) return `${durationMin} мин`;
+  if (diffMin <= 0) return "сейчас";
+  if (diffMin > 240) return `${durationMin} мин`;
+  if (diffMin < 60) return `через ${diffMin} мин`;
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  return mins > 0
+    ? `через ${hours} ч ${mins} мин`
+    : `через ${hours} ч`;
+}
+
+/**
+ * Tick once a minute so relative-time labels stay honest. Using the
+ * minute as the clock instead of seconds keeps the render rate down
+ * (10 rows × 1 update/min vs 10 × 60), and the user can't tell the
+ * difference because the label only changes on minute boundaries.
+ */
+function useMinuteClock(): number {
+  const [now, setNow] = React.useState<number>(() => Date.now());
+  React.useEffect(() => {
+    // Sync to the next minute boundary so all rows update in lockstep.
+    const msToNextMinute = 60_000 - (Date.now() % 60_000);
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const align = setTimeout(() => {
+      setNow(Date.now());
+      interval = setInterval(() => setNow(Date.now()), 60_000);
+    }, msToNextMinute);
+    return () => {
+      clearTimeout(align);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
+  return now;
+}
+
+type Slice = { upcoming: UpcomingPatient[]; total: number };
+
 export function UpcomingPatients() {
-  const { data: upcoming, isLoading } = useDoctorToday<UpcomingPatient[]>(
-    (d) => d.upcoming,
-  );
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
+  const { data, isLoading } = useDoctorToday<Slice>((d: DoctorToday) => ({
+    upcoming: d.upcoming,
+    total: d.upcomingTotal,
+  }));
+  const upcoming = data?.upcoming ?? [];
+  const total = data?.total ?? 0;
+  const hidden = Math.max(0, total - upcoming.length);
+
+  const nowMs = useMinuteClock();
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
@@ -42,56 +109,103 @@ export function UpcomingPatients() {
               </div>
             </li>
           ))
-        ) : !upcoming || upcoming.length === 0 ? (
+        ) : upcoming.length === 0 ? (
           <li className="px-5 py-10 text-center text-sm text-muted-foreground">
             Других пациентов на сегодня нет
           </li>
         ) : (
-          upcoming.map((p) => (
-            <li
-              key={p.appointmentId}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
-            >
-              <div className="w-12 shrink-0">
-                <div className="text-sm font-semibold tabular-nums text-foreground">
-                  {p.startTime}
-                </div>
-                <div className="text-[11px] text-muted-foreground tabular-nums">
-                  {p.durationMin} мин
-                </div>
-              </div>
-              <AvatarWithStatus
-                src={p.avatarUrl}
-                name={p.shortName}
-                size="sm"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-foreground">
-                  {p.shortName}
-                </div>
-                <div className="truncate text-[11px] text-muted-foreground">
-                  {TYPE_LABEL[p.type]}
-                </div>
-              </div>
-              <button
-                type="button"
-                aria-label={`Позвонить ${p.shortName}`}
-                className="motion-press flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+          upcoming.map((p) => {
+            const startAtMs = new Date(p.startAt).getTime();
+            const relative = formatRelative(startAtMs, nowMs, p.durationMin);
+            const imminent =
+              startAtMs - nowMs <= 15 * 60_000 && startAtMs - nowMs >= 0;
+            const patientHref = `/${locale}/doctor/patients/${p.patientId}`;
+
+            return (
+              <li
+                key={p.appointmentId}
+                className="group relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50 focus-within:bg-muted/50"
               >
-                <PhoneIcon className="size-4" />
-              </button>
-            </li>
-          ))
+                {/*
+                  Stretched-link pattern: the Link spans the whole row
+                  (absolute inset-0) so anywhere on the row activates it,
+                  while the phone <a> below sits at z-10 above so its own
+                  click doesn't navigate to the patient card.
+                */}
+                <Link
+                  href={patientHref}
+                  aria-label={`Открыть карту: ${p.shortName}`}
+                  className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <div className="relative w-12 shrink-0">
+                  <div className="text-sm font-semibold tabular-nums text-foreground">
+                    {p.startTime}
+                  </div>
+                  <div
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      imminent
+                        ? "font-semibold text-primary"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {relative}
+                  </div>
+                </div>
+                <AvatarWithStatus
+                  src={p.avatarUrl}
+                  name={p.shortName}
+                  size="sm"
+                />
+                <div className="relative min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-foreground">
+                    {p.shortName}
+                  </div>
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {TYPE_LABEL[p.type]}
+                  </div>
+                </div>
+                {p.phone ? (
+                  <a
+                    href={`tel:${p.phone}`}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Позвонить: ${p.shortName}`}
+                    className="motion-press relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <PhoneIcon className="size-4" />
+                  </a>
+                ) : (
+                  <span
+                    aria-hidden
+                    className="relative z-10 flex h-8 w-8 items-center justify-center text-muted-foreground/40"
+                    title="Телефон не указан"
+                  >
+                    <PhoneIcon className="size-4" />
+                  </span>
+                )}
+              </li>
+            );
+          })
         )}
       </ul>
 
       <footer className="border-t border-border px-5 py-3">
-        <button
-          type="button"
-          className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
+        <Link
+          href={`/${locale}/doctor/reception`}
+          className="motion-press inline-flex w-full items-center justify-center gap-2 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           Показать всех
-        </button>
+          {total > 0 ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold">
+              {total}
+            </span>
+          ) : null}
+          {hidden > 0 ? (
+            <span className="text-[11px] font-normal text-muted-foreground">
+              · ещё {hidden}
+            </span>
+          ) : null}
+        </Link>
       </footer>
     </section>
   );

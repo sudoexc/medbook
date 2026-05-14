@@ -62,7 +62,9 @@ type UpcomingPatient = {
   appointmentId: string;
   patientId: string;
   shortName: string;
+  phone: string;
   startTime: string;
+  startAt: string;
   durationMin: number;
   type: "consultation" | "repeat";
   avatarUrl: string | null;
@@ -113,6 +115,12 @@ type TodayResponse = {
   schedule: ScheduleEntry[];
   current: CurrentPatient | null;
   upcoming: UpcomingPatient[];
+  /**
+   * Total upcoming appointments today, regardless of how many the
+   * `upcoming` array carries — used by the «Показать всех (N)» footer
+   * so the count is honest even when we slice the list at 5.
+   */
+  upcomingTotal: number;
   daySummary: DaySummary;
   ai: { summary: null; alerts: []; recommendations: [] };
   actionItems: ActionItem[];
@@ -482,23 +490,26 @@ export const GET = createApiListHandler(
     // ──────────────────────────────────────────────────────────────────────
     // upcoming — next 5 actionable today (not current, not cancelled, not
     // done), excluding whichever appointment is currentSource.
+    // upcomingTotal counts the *whole* upcoming queue so the «Показать
+    // всех (N)» footer doesn't lie about how many we're hiding.
     // ──────────────────────────────────────────────────────────────────────
-    const upcoming: UpcomingPatient[] = todayAppts
-      .filter((a) => {
-        if (currentSource && a.id === currentSource.id) return false;
-        const s = scheduleStatusOf(a.status);
-        return s === "upcoming";
-      })
-      .slice(0, 5)
-      .map((a) => ({
-        appointmentId: a.id,
-        patientId: a.patientId,
-        shortName: a.patient ? shortName(a.patient.fullName) : "—",
-        startTime: a.time ?? formatHHMM(a.date),
-        durationMin: a.durationMin,
-        type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
-        avatarUrl: a.patient?.photoUrl ?? null,
-      }));
+    const upcomingAll = todayAppts.filter((a) => {
+      if (currentSource && a.id === currentSource.id) return false;
+      const s = scheduleStatusOf(a.status);
+      return s === "upcoming";
+    });
+    const upcoming: UpcomingPatient[] = upcomingAll.slice(0, 5).map((a) => ({
+      appointmentId: a.id,
+      patientId: a.patientId,
+      shortName: a.patient ? shortName(a.patient.fullName) : "—",
+      phone: a.patient?.phone ?? "",
+      startTime: a.time ?? formatHHMM(a.date),
+      startAt: a.date.toISOString(),
+      durationMin: a.durationMin,
+      type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
+      avatarUrl: a.patient?.photoUrl ?? null,
+    }));
+    const upcomingTotal = upcomingAll.length;
 
     // ──────────────────────────────────────────────────────────────────────
     // actionItems — derived counts. Order matters: this is the order the
@@ -580,6 +591,7 @@ export const GET = createApiListHandler(
       schedule,
       current,
       upcoming,
+      upcomingTotal,
       daySummary,
       ai: { summary: null, alerts: [], recommendations: [] },
       actionItems,

@@ -2,8 +2,9 @@
 
 import { ChevronDownIcon, FilterIcon, SearchIcon } from "lucide-react";
 
+import { usePatientsFilters } from "../_hooks/patients-context";
+
 const SELECTS = [
-  "Все врачи",
   "Все диагнозы",
   "Все статусы",
   "Возраст",
@@ -11,6 +12,8 @@ const SELECTS = [
 ] as const;
 
 export function PatientsFilters() {
+  const { setQ } = usePatientsFilters();
+
   return (
     <section className="rounded-2xl border border-border bg-card p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -18,7 +21,8 @@ export function PatientsFilters() {
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
-            placeholder="Поиск по ФИО, телефону, диагнозу..."
+            placeholder="Поиск по ФИО или телефону..."
+            onChange={(e) => setQ(e.target.value)}
             className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
           />
         </label>

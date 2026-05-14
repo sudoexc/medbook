@@ -40,7 +40,10 @@ export type LLMUseCase =
   | "cmdk.search"
   | "voice.soap"
   | "tg.intent"
-  | "marketing.copy";
+  | "marketing.copy"
+  | "reception.clarifying"
+  | "reception.icd10"
+  | "reception.conclusion";
 
 export type LLMProvider = "anthropic" | "openai" | "ollama" | "mock";
 

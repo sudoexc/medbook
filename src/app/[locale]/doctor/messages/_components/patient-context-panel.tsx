@@ -1,36 +1,87 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
-  BellIcon,
   CalendarIcon,
   ChevronRightIcon,
-  ChevronUpIcon,
-  InfoIcon,
-  MessageSquareIcon,
-  PillIcon,
-  SparklesIcon,
-  StethoscopeIcon,
+  ClipboardListIcon,
+  FileTextIcon,
+  ShieldAlertIcon,
   TagIcon,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  MOCK_AI_QUICK_REPLIES,
-  MOCK_PATIENT_CONTEXT,
-} from "../_mocks";
 
-const QR_ICON: Record<string, LucideIcon> = {
-  "qr-1": MessageSquareIcon,
-  "qr-2": BellIcon,
-  "qr-3": InfoIcon,
+import { useMessagesContext } from "../_hooks/messages-context";
+import {
+  flattenConversations,
+  useDoctorConversations,
+} from "../_hooks/use-conversations";
+
+type PatientSummary = {
+  id: string;
+  fullName: string;
+  phone: string;
+  phoneNormalized: string | null;
+  birthDate: string | null;
+  segment: string | null;
+  allergies: Array<{ id: string; substance: string; severity: string }>;
+  chronicConditions: Array<{ id: string; name: string }>;
+  upcomingAppointment: {
+    id: string;
+    date: string;
+    status: string;
+    doctor: { id: string; nameRu: string | null; nameUz: string | null } | null;
+  } | null;
+  lastDocument: {
+    id: string;
+    title: string;
+    type: string;
+    createdAt: string;
+  } | null;
 };
 
+function ageFromBirth(iso: string | null): number | null {
+  if (!iso) return null;
+  const b = new Date(iso);
+  const now = new Date();
+  let years = now.getFullYear() - b.getFullYear();
+  const md = now.getMonth() - b.getMonth();
+  if (md < 0 || (md === 0 && now.getDate() < b.getDate())) years -= 1;
+  return years >= 0 ? years : null;
+}
+
 export function PatientContextPanel() {
-  const ctx = MOCK_PATIENT_CONTEXT;
+  const { selectedId, filters } = useMessagesContext();
+  const router = useRouter();
+  const params = useParams<{ locale: string }>();
+  const locale = params?.locale ?? "ru";
+
+  const convQuery = useDoctorConversations(filters);
+  const conversations = flattenConversations(convQuery.data);
+  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const patientId = selected?.patient?.id ?? null;
+
+  const summaryQuery = useQuery<PatientSummary>({
+    queryKey: ["doctor", "messages", "patient-summary", patientId],
+    enabled: !!patientId,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(
+        `/api/crm/doctors/me/patients/${patientId}/summary`,
+        { credentials: "include", signal },
+      );
+      if (!res.ok) throw new Error(`summary ${res.status}`);
+      return (await res.json()) as PatientSummary;
+    },
+  });
+
+  const summary = summaryQuery.data ?? null;
+  const age = ageFromBirth(summary?.birthDate ?? null);
+
   return (
     <aside className="hidden w-[320px] shrink-0 flex-col gap-3 xl:flex">
-      {/* Context group */}
       <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-4">
         <header className="flex items-center justify-between">
           <div className="inline-flex items-center gap-2">
@@ -39,138 +90,125 @@ export function PatientContextPanel() {
               Контекст пациента
             </span>
           </div>
-          <button
-            type="button"
-            aria-label="Свернуть"
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ChevronUpIcon className="size-4" />
-          </button>
         </header>
 
-        <ContextCard
-          Icon={CalendarIcon}
-          title="Последний визит"
-          actionLabel="Открыть визит"
-        >
-          <div className="text-sm font-semibold text-foreground tabular-nums">
-            {ctx.lastVisit.date}
-          </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {ctx.lastVisit.meta}
-          </div>
-        </ContextCard>
+        {!patientId ? (
+          <p className="text-xs text-muted-foreground">
+            Этот диалог не связан с пациентом
+          </p>
+        ) : summaryQuery.isLoading ? (
+          <p className="text-xs text-muted-foreground">Загружаем…</p>
+        ) : summaryQuery.isError || !summary ? (
+          <p className="text-xs text-destructive">Ошибка загрузки</p>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/${locale}/doctor/visits/${summary.id}`)
+              }
+              className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left transition-colors hover:bg-muted/40"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-foreground">
+                  {summary.fullName}
+                </div>
+                <div className="truncate text-xs text-muted-foreground tabular-nums">
+                  {age !== null ? `${age} лет` : "возраст —"} ·{" "}
+                  {summary.phone}
+                </div>
+              </div>
+              <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
 
-        <ContextCard
-          Icon={StethoscopeIcon}
-          title="Последний диагноз"
-          actionLabel="Открыть диагноз"
-        >
-          <div className="text-sm text-foreground">
-            <span className="font-bold tabular-nums">{ctx.lastDiagnosis.code}</span>{" "}
-            <span>{ctx.lastDiagnosis.name}</span>
-          </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {ctx.lastDiagnosis.meta}
-          </div>
-        </ContextCard>
+            <Row
+              icon={ShieldAlertIcon}
+              tone={
+                summary.allergies.length === 0
+                  ? "text-muted-foreground"
+                  : summary.allergies.some((a) => a.severity === "SEVERE")
+                    ? "text-destructive"
+                    : "text-warning"
+              }
+              label="Аллергии"
+              value={
+                summary.allergies.length === 0
+                  ? "не указано"
+                  : summary.allergies.map((a) => a.substance).join(", ")
+              }
+            />
 
-        <ContextCard
-          Icon={PillIcon}
-          title="Текущее лечение"
-          actionLabel="Открыть назначения"
-        >
-          <ul className="space-y-0.5 text-sm">
-            {ctx.treatment.map((t) => (
-              <li key={t.name}>
-                <span className="font-semibold text-foreground">{t.name}</span>
-                <span className="text-muted-foreground"> — {t.dose}</span>
-              </li>
-            ))}
-          </ul>
-        </ContextCard>
+            <Row
+              icon={ClipboardListIcon}
+              tone={
+                summary.chronicConditions.length === 0
+                  ? "text-muted-foreground"
+                  : "text-warning"
+              }
+              label="Хронические"
+              value={
+                summary.chronicConditions.length === 0
+                  ? "не указано"
+                  : summary.chronicConditions.map((c) => c.name).join(", ")
+              }
+            />
+
+            {summary.upcomingAppointment ? (
+              <Row
+                icon={CalendarIcon}
+                tone="text-info"
+                label="Следующий приём"
+                value={new Date(
+                  summary.upcomingAppointment.date,
+                ).toLocaleString("ru-RU", {
+                  day: "2-digit",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              />
+            ) : (
+              <Row
+                icon={CalendarIcon}
+                tone="text-muted-foreground"
+                label="Следующий приём"
+                value="не назначен"
+              />
+            )}
+
+            {summary.lastDocument ? (
+              <Row
+                icon={FileTextIcon}
+                tone="text-foreground"
+                label="Последний документ"
+                value={summary.lastDocument.title}
+              />
+            ) : null}
+          </>
+        )}
       </section>
-
-      {/* AI quick replies */}
-      <section className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4">
-        <header className="flex items-center gap-2">
-          <SparklesIcon className="size-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">
-            ИИ-помощник: быстрые ответы
-          </span>
-        </header>
-
-        <ul className="mt-3 space-y-2">
-          {MOCK_AI_QUICK_REPLIES.map((r) => {
-            const Icon = QR_ICON[r.id]!;
-            return (
-              <li key={r.id}>
-                <button
-                  type="button"
-                  className="group flex w-full items-start gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
-                >
-                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                    <Icon className="size-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-foreground">
-                      {r.title}
-                    </div>
-                    <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                      {r.description}
-                    </div>
-                  </div>
-                  <ChevronRightIcon className="mt-1 size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-
-        <button
-          type="button"
-          className="mt-3 inline-flex w-full items-center justify-center gap-1 text-sm font-semibold text-primary transition-colors hover:underline"
-        >
-          Показать ещё
-          <ChevronUpIcon className="size-3.5 rotate-180" />
-        </button>
-      </section>
-
-      {/* Disclaimer */}
-      <p className="px-1 text-[11px] leading-relaxed text-muted-foreground">
-        <span className="inline-flex size-4 -mb-0.5 mr-1 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <InfoIcon className="size-3" />
-        </span>
-        ИИ-помощник использует данные пациента и историю визитов для генерации ответов.
-      </p>
     </aside>
   );
 }
 
-function ContextCard({
-  Icon,
-  title,
-  actionLabel,
-  children,
+function Row({
+  icon: Icon,
+  tone,
+  label,
+  value,
 }: {
-  Icon: LucideIcon;
-  title: string;
-  actionLabel: string;
-  children: React.ReactNode;
+  icon: LucideIcon;
+  tone: string;
+  label: string;
+  value: string;
 }) {
   return (
-    <div className={cn("rounded-xl border border-border bg-background/40 px-3 py-3")}>
-      <div className="flex items-center gap-2">
-        <Icon className="size-4 text-muted-foreground" />
-        <span className="text-xs font-semibold text-foreground">{title}</span>
+    <div className="flex items-start gap-2 text-xs">
+      <Icon className={cn("mt-0.5 size-4 shrink-0", tone)} />
+      <div className="min-w-0">
+        <div className="font-semibold text-foreground">{label}</div>
+        <div className="text-muted-foreground">{value}</div>
       </div>
-      <div className="mt-2">{children}</div>
-      <button
-        type="button"
-        className="mt-2 inline-flex items-center text-xs font-semibold text-primary transition-colors hover:underline"
-      >
-        {actionLabel}
-      </button>
     </div>
   );
 }

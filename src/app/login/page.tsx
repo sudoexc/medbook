@@ -1,19 +1,28 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+import { safeCallbackOrHome } from "@/lib/post-login-redirect";
+import type { Role } from "@/lib/tenant-context";
+
 const PENDING_SS_KEY = "medbook:2fa-pending";
+
+function readLocaleCookie(): string {
+  if (typeof document === "undefined") return "ru";
+  const m = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=(ru|uz)/);
+  return m?.[1] ?? "ru";
+}
 
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const callbackUrl = search.get("callbackUrl") ?? "/ru/crm";
+  const callbackUrl = search.get("callbackUrl");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -60,8 +69,11 @@ function LoginForm() {
       } catch {
         /* ignore */
       }
-      const url =
-        "/login/2fa?callbackUrl=" + encodeURIComponent(callbackUrl);
+      // Forward callbackUrl only if explicitly set — otherwise let the 2FA
+      // form resolve role-home on its own from the post-signIn session.
+      const url = callbackUrl
+        ? "/login/2fa?callbackUrl=" + encodeURIComponent(callbackUrl)
+        : "/login/2fa";
       router.push(url);
       return;
     }
@@ -76,7 +88,16 @@ function LoginForm() {
       setError("Неверный email или пароль");
       return;
     }
-    router.push(callbackUrl);
+    // Pull the freshly-minted session to learn the user's role, then send
+    // them to the right surface. Falls back to /ru/crm only if /api/auth
+    // somehow returns no session — unlikely right after a successful signIn.
+    const session = await getSession();
+    const role = (session?.user?.role as Role | undefined) ?? null;
+    const locale = readLocaleCookie();
+    const target = role
+      ? safeCallbackOrHome(callbackUrl, role, locale)
+      : `/${locale}/crm`;
+    router.push(target);
     router.refresh();
   }
 

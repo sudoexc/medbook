@@ -206,6 +206,15 @@ enum CaseStatus {
   TRANSFERRED
 }
 
+// Doctor's per-appointment medical note (SOAP / structured fields). DRAFT
+// while consultation is in progress and auto-saved; flipped to FINALIZED
+// when the doctor presses «Завершить приём». Editable within a short
+// post-visit window (audit logged); otherwise read-only.
+enum VisitNoteStatus {
+  DRAFT
+  FINALIZED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,6 +339,9 @@ model Clinic {
   patientChronicConditions PatientChronicCondition[]
   patientDiagnoses        PatientDiagnosis[]
   telegramInviteTokens    TelegramInviteToken[]
+  visitNotes              VisitNote[]
+  reminders               Reminder[]
+  labResults              LabResult[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -631,6 +643,12 @@ model User {
   createdCampaigns    Campaign[]     @relation("CampaignCreator")
   savedReports        SavedReport[]  @relation("SavedReportCreator")
   createdTelegramInviteTokens TelegramInviteToken[] @relation("TelegramInviteTokenCreator")
+  // Phase 20 Wave 5a — doctor surface productivity tables. The `doctorId`
+  // on Reminder + LabResult points at the User row (not Doctor) because the
+  // permission gate is "is this the assigned user?" and the user→doctor
+  // mapping is 1:1 anyway.
+  reminders                   Reminder[]            @relation("DoctorReminders")
+  labResults                  LabResult[]           @relation("DoctorLabResults")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -716,6 +734,7 @@ model Doctor {
   emptySlotSnapshots EmptySlotSnapshot[]
   patientReviews     PatientReview[]
   prescriptions      Prescription[]
+  visitNotes         VisitNote[]
 
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
@@ -927,6 +946,9 @@ model Patient {
   chronicConditions         PatientChronicCondition[]
   diagnoses                 PatientDiagnosis[]
   telegramInviteTokens      TelegramInviteToken[]
+  visitNotes                VisitNote[]
+  reminders                 Reminder[]
+  labResults                LabResult[]
 
   @@unique([clinicId, phoneNormalized])
   @@index([clinicId, fullName])
@@ -1008,6 +1030,9 @@ model Appointment {
   documents      Document[]
   conversation   Conversation?
   patientReviews PatientReview[]
+  visitNote      VisitNote?
+  reminders      Reminder[]
+  labResults     LabResult[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1081,6 +1106,64 @@ model MedicalCase {
   @@index([clinicId, patientId, status])
   @@index([clinicId, status, openedAt])
   @@index([clinicId, primaryDoctorId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VisitNote — doctor's per-appointment SOAP / structured note. One per
+// Appointment (1:1, unique appointmentId). The reception screen reads/writes
+// this row continuously while consultation is active; finalize transitions
+// status → FINALIZED and is paired with Appointment.status → COMPLETED.
+//
+// Multi-tenant via clinicId. ICD-10 lives in two flat columns rather than a
+// FK so we can ship without a coded reference table; a separate ICD lookup
+// table can land later without breaking existing rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model VisitNote {
+  id              String          @id @default(cuid())
+  clinicId        String
+  clinic          Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointmentId   String          @unique
+  appointment     Appointment     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient         @relation(fields: [patientId], references: [id])
+  doctorId        String
+  doctor          Doctor          @relation(fields: [doctorId], references: [id])
+
+  status          VisitNoteStatus @default(DRAFT)
+  startedAt       DateTime?
+  finalizedAt     DateTime?
+
+  // Structured fields. Stored as String[] so chips can be added/removed
+  // without rewriting the whole array shape in the editor.
+  complaints      String[]        @default([])
+  anamnesis       String[]        @default([])
+  examination     String[]        @default([])
+  prescriptions   String[]        @default([])
+  advice          String[]        @default([])
+
+  // Diagnosis (ICD-10). Code is the canonical key; name is a denormalized
+  // copy for display so the editor doesn't need a lookup roundtrip.
+  diagnosisCode   String?
+  diagnosisName   String?
+
+  // Free-form rich body in Markdown. The notes editor on the right is the
+  // canonical source; the structured chips are the parsed/derived view.
+  bodyMarkdown    String?         @db.Text
+
+  // Provenance — set when any field was AI-generated and never cleared by
+  // edits. Used by audit + UI ("сгенерировано AI" badge).
+  aiGenerated     Boolean         @default(false)
+  aiModel         String?
+  aiTokens        Int?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  labResults      LabResult[]
+
+  @@index([clinicId, doctorId, status])
+  @@index([clinicId, patientId, finalizedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2152,3 +2235,118 @@ model TelegramInviteToken {
   @@index([expiresAt])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 20 Wave 5a — Reminder + LabResult
+//
+// `Reminder` is the doctor's personal task list ("позвонить Касымову",
+// "пересдать ОАК") surfaced on /doctor/my-day and the Action Center. Owner
+// is always a User (DOCTOR role); doctorId/userId distinction is irrelevant
+// because the link is 1:1.
+//
+// `LabResult` is the MVP shape for incoming lab work — a flat row keyed by
+// (patient, doctor, test). When a real lab-system integration lands later
+// we layer a `LabOrder` parent without breaking these rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ReminderStatus {
+  PENDING
+  DONE
+  DISMISSED
+  SNOOZED
+}
+
+model Reminder {
+  id            String         @id @default(cuid())
+  clinicId      String
+  clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // Owning doctor (User row, role=DOCTOR). The list endpoint filters by
+  // `doctorId = me`; admins can read clinic-wide.
+  doctorId      String
+  doctor        User           @relation("DoctorReminders", fields: [doctorId], references: [id])
+  // Optional patient context. NULL = "general" reminder unrelated to a
+  // specific case (e.g., "перезвонить страховой").
+  patientId     String?
+  patient       Patient?       @relation(fields: [patientId], references: [id])
+  // Optional appointment context — surfaces this reminder on the visit
+  // page and lets us auto-create follow-up reminders from a finalized
+  // VisitNote later (no UI today).
+  appointmentId String?
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+
+  title       String
+  body        String?        @db.Text
+  // The wall-clock moment this should pop on My Day. Filtered against
+  // `now()` server-side; UTC in storage, formatted in clinic timezone in UI.
+  remindAt    DateTime
+  status      ReminderStatus @default(PENDING)
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([clinicId, doctorId, status, remindAt])
+  @@index([clinicId, patientId])
+}
+
+enum LabStatus {
+  PENDING
+  RESULTED
+  REVIEWED
+  ARCHIVED
+}
+
+enum LabFlag {
+  NORMAL
+  LOW
+  HIGH
+  CRITICAL
+}
+
+model LabResult {
+  id            String       @id @default(cuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  // Ordering doctor (User row). The unread-labs feed is filtered by
+  // `doctorId = me`; the patient-detail tab shows all labs regardless.
+  doctorId      String
+  doctor        User         @relation("DoctorLabResults", fields: [doctorId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  // Explicit link to the visit note that ordered the test (when the
+  // doctor used the «назначения» chip flow to create this lab order).
+  visitNoteId   String?
+  visitNote     VisitNote?   @relation(fields: [visitNoteId], references: [id])
+
+  // Free-text test name; we don't gate on a controlled vocabulary because
+  // doctors copy values from paper reports today. `testCode` reserved for
+  // LOINC/local once we wire a lab-system integration.
+  testName String
+  testCode String?
+  // Stored as string so we can accept ranges ("3.5-5.5"), qualitative
+  // results ("положит."), and free-form annotations without losing them
+  // to a Decimal coercion.
+  value    String
+  unit     String?
+  refRange String?
+  flag     LabFlag?
+  notes    String?  @db.Text
+
+  status        LabStatus @default(PENDING)
+  // Stamped server-side at create. The unread feed orders by this DESC.
+  receivedAt    DateTime  @default(now())
+  reviewedAt    DateTime?
+  // userId who flipped status to REVIEWED. No FK relation because we
+  // never join — used for audit display only.
+  reviewedBy    String?
+  // Optional PDF/scan upload (MinIO key). Wave 5a does not implement the
+  // upload UI; the column is reserved so the real integration in Phase 6
+  // doesn't need another migration.
+  attachmentUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId, doctorId, status, receivedAt])
+  @@index([clinicId, patientId, receivedAt])
+}

@@ -25,6 +25,12 @@ export const QueryConversationSchema = z.object({
   status: ConversationStatusEnum.optional(),
   mode: ConversationModeEnum.optional(),
   assignedToId: z.string().optional(),
+  /**
+   * Scope to a specific doctor. Pass `me` to use the caller's doctor id
+   * (resolved from the session). Returns conversations either explicitly
+   * assigned to that doctor's user, or tied to one of their appointments.
+   */
+  doctorId: z.string().optional(),
   unread: z.coerce.boolean().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),

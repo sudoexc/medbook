@@ -1,40 +1,158 @@
 "use client";
 
-import { MessageSquareIcon, MoreHorizontalIcon, PhoneIcon } from "lucide-react";
+import * as React from "react";
+import { useParams, useRouter } from "next/navigation";
+import {
+  EyeIcon,
+  FileTextIcon,
+  HistoryIcon,
+  MessageSquareIcon,
+  MoreHorizontalIcon,
+  PhoneIcon,
+} from "lucide-react";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
-import { cn } from "@/lib/utils";
 import {
-  MOCK_PATIENTS,
-  type Patient,
-  type RiskLevel,
-} from "../_mocks";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-const STATUS_BADGE: Record<Patient["status"]["tone"], string> = {
+import { usePatientsFilters } from "../_hooks/patients-context";
+import {
+  flattenDoctorPatients,
+  useMyPatients,
+  type DoctorPatientRow,
+} from "../_hooks/use-my-patients";
+
+const GRID =
+  "grid grid-cols-[minmax(0,1.7fr)_64px_150px_110px_minmax(0,1.4fr)_110px_140px_84px] gap-3";
+
+const RU_MONTHS_SHORT = [
+  "янв.",
+  "февр.",
+  "мар.",
+  "апр.",
+  "мая",
+  "июня",
+  "июля",
+  "авг.",
+  "сент.",
+  "окт.",
+  "нояб.",
+  "дек.",
+];
+
+function ruDate(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const day = d.getDate();
+  const month = RU_MONTHS_SHORT[d.getMonth()] ?? "";
+  const year = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return { date: `${day} ${month} ${year}`, time: `${hh}:${mm}` };
+}
+
+function ageFromBirth(iso: string | null): number | null {
+  if (!iso) return null;
+  const b = new Date(iso);
+  const now = new Date();
+  let years = now.getFullYear() - b.getFullYear();
+  const monthDelta = now.getMonth() - b.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < b.getDate())) {
+    years -= 1;
+  }
+  return years >= 0 ? years : null;
+}
+
+function initials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
+
+type StatusTone = "active" | "watch" | "dormant";
+
+function deriveStatus(row: DoctorPatientRow): {
+  label: string;
+  tone: StatusTone;
+} {
+  if (row.hasActiveAppointment) return { label: "На приёме", tone: "active" };
+  if (row.nextAppointmentWithMeAt)
+    return { label: "На контроле", tone: "watch" };
+  if (!row.lastVisitWithMeAt) return { label: "Новый", tone: "active" };
+  // Visit was >90 days ago and nothing booked → давно не был.
+  const last = new Date(row.lastVisitWithMeAt).getTime();
+  const ninetyDays = 90 * 24 * 60 * 60 * 1000;
+  if (Date.now() - last > ninetyDays) {
+    return { label: "Давно не был", tone: "dormant" };
+  }
+  return { label: "На контроле", tone: "watch" };
+}
+
+const STATUS_BADGE: Record<StatusTone, string> = {
   active: "bg-success/15 text-success",
   watch: "bg-info/15 text-info",
   dormant: "bg-muted text-muted-foreground",
 };
 
-const RISK_LABEL: Record<RiskLevel, string> = {
-  low: "Низкий",
-  medium: "Средний",
-  high: "Высокий",
-};
-
-const RISK_BADGE: Record<RiskLevel, string> = {
-  low: "bg-success/15 text-success",
-  medium: "bg-warning/15 text-warning",
-  high: "bg-destructive/15 text-destructive",
-};
-
-const GRID =
-  "grid grid-cols-[minmax(0,1.7fr)_64px_150px_110px_minmax(0,1.4fr)_110px_140px_100px_84px] gap-3";
-
 export function PatientsTable() {
+  const { filters, selectedPatientId, setSelectedPatientId } =
+    usePatientsFilters();
+  const query = useMyPatients(filters);
+  const router = useRouter();
+  const params = useParams<{ locale: string }>();
+  const locale = params?.locale ?? "ru";
+
+  const rows = flattenDoctorPatients(query.data);
+  const isInitialLoading = query.isLoading;
+  const isEmpty = !isInitialLoading && rows.length === 0;
+
+  // Auto-select the top row so `SelectedPatientCard` shows something useful
+  // when the page first loads. We only seed when there is no selection yet —
+  // user picks via row click take precedence and survive re-renders.
+  React.useEffect(() => {
+    if (rows.length === 0) return;
+    const present = rows.some((r) => r.id === selectedPatientId);
+    if (!present) setSelectedPatientId(rows[0]!.id);
+  }, [rows, selectedPatientId, setSelectedPatientId]);
+
+  const openPatient = (id: string) => {
+    setSelectedPatientId(id);
+    router.push(`/${locale}/doctor/patients/${id}`);
+  };
+
+  const onWrite = async (id: string) => {
+    try {
+      const res = await fetch(
+        "/api/crm/doctors/me/conversations/find-or-create",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patientId: id }),
+        },
+      );
+      if (res.status === 422) {
+        toast.error("Нет канала связи с пациентом", {
+          description: "Добавьте телефон или Telegram, чтобы написать.",
+        });
+        return;
+      }
+      if (!res.ok) {
+        toast.error("Не удалось открыть чат");
+        return;
+      }
+      router.push(`/${locale}/doctor/messages?patientId=${id}`);
+    } catch {
+      toast.error("Не удалось открыть чат");
+    }
+  };
+
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-card">
-      {/* Header */}
       <div
         className={cn(
           GRID,
@@ -48,110 +166,196 @@ export function PatientsTable() {
         <div>Последний диагноз</div>
         <div>Статус</div>
         <div>Следующий приём</div>
-        <div>Риск no-show</div>
         <div className="text-right">Действия</div>
       </div>
 
-      {/* Rows */}
-      <ul className="divide-y divide-border">
-        {MOCK_PATIENTS.map((p) => (
-          <li
-            key={p.id}
-            className={cn(
-              GRID,
-              "items-center px-5 py-3.5 transition-colors hover:bg-muted/30",
-            )}
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <AvatarWithStatus
-                initials={p.initials}
-                size="sm"
-                status={p.online ? "online" : undefined}
-              />
-              <span className="truncate text-sm font-semibold text-foreground">
-                {p.fullName}
-              </span>
-            </div>
+      {isInitialLoading ? (
+        <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+          Загружаем пациентов…
+        </div>
+      ) : query.isError ? (
+        <div className="px-5 py-10 text-center text-sm text-destructive">
+          Не удалось загрузить список пациентов
+        </div>
+      ) : isEmpty ? (
+        <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+          {filters.q
+            ? "Ничего не найдено по этому запросу."
+            : "У вас пока нет пациентов в этой группе."}
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rows.map((p) => {
+            const age = ageFromBirth(p.birthDate);
+            const lastVisit = p.lastVisitWithMeAt
+              ? ruDate(p.lastVisitWithMeAt)
+              : null;
+            const nextAppt = p.nextAppointmentWithMeAt
+              ? ruDate(p.nextAppointmentWithMeAt)
+              : null;
+            const status = deriveStatus(p);
 
-            <div className="text-sm text-foreground tabular-nums">{p.age} лет</div>
-
-            <div className="flex items-center gap-1.5 text-sm text-foreground tabular-nums">
-              <span>{p.phone}</span>
-              <PhoneIcon className="size-3.5 text-muted-foreground" />
-            </div>
-
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-foreground tabular-nums">
-                {p.lastVisit.date}
-              </div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {p.lastVisit.time}
-              </div>
-            </div>
-
-            <div className="min-w-0">
-              <span className="text-sm text-foreground">
-                <span className="font-semibold tabular-nums">{p.lastDiagnosis.code}</span>{" "}
-                <span className="text-muted-foreground">{p.lastDiagnosis.name}</span>
-              </span>
-            </div>
-
-            <div>
-              <span
+            const isSelected = selectedPatientId === p.id;
+            return (
+              <li
+                key={p.id}
+                role="link"
+                tabIndex={0}
+                onClick={() => openPatient(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openPatient(p.id);
+                  }
+                }}
                 className={cn(
-                  "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
-                  STATUS_BADGE[p.status.tone],
+                  GRID,
+                  "cursor-pointer items-center px-5 py-3.5 transition-colors hover:bg-muted/30 focus:bg-muted/30 focus:outline-none",
+                  isSelected && "bg-primary/5",
                 )}
               >
-                {p.status.label}
-              </span>
-            </div>
+                <div className="flex min-w-0 items-center gap-3">
+                  <AvatarWithStatus
+                    initials={initials(p.fullName)}
+                    size="sm"
+                    status={p.hasActiveAppointment ? "online" : undefined}
+                  />
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {p.fullName}
+                  </span>
+                </div>
 
-            <div className="min-w-0 text-sm">
-              {p.nextAppointment ? (
-                <>
-                  <div className="font-medium text-foreground tabular-nums">
-                    {p.nextAppointment.date}
-                  </div>
-                  <div className="text-xs text-muted-foreground tabular-nums">
-                    {p.nextAppointment.time}
-                  </div>
-                </>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </div>
+                <div className="text-sm text-foreground tabular-nums">
+                  {age !== null ? `${age} лет` : "—"}
+                </div>
 
-            <div>
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
-                  RISK_BADGE[p.risk],
-                )}
-              >
-                {RISK_LABEL[p.risk]}
-              </span>
-            </div>
+                <div className="flex items-center gap-1.5 text-sm text-foreground tabular-nums">
+                  <span>{p.phone}</span>
+                  <PhoneIcon className="size-3.5 text-muted-foreground" />
+                </div>
 
-            <div className="flex items-center justify-end gap-1.5">
-              <button
-                type="button"
-                aria-label="Написать"
-                className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <MessageSquareIcon className="size-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Ещё действия"
-                className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <MoreHorizontalIcon className="size-4" />
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+                <div className="min-w-0">
+                  {lastVisit ? (
+                    <>
+                      <div className="text-sm font-medium text-foreground tabular-nums">
+                        {lastVisit.date}
+                      </div>
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {lastVisit.time}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  {p.lastDiagnosisCode || p.lastDiagnosisName ? (
+                    <span className="text-sm text-foreground">
+                      {p.lastDiagnosisCode ? (
+                        <span className="font-semibold tabular-nums">
+                          {p.lastDiagnosisCode}{" "}
+                        </span>
+                      ) : null}
+                      <span className="text-muted-foreground">
+                        {p.lastDiagnosisName ?? ""}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </div>
+
+                <div>
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
+                      STATUS_BADGE[status.tone],
+                    )}
+                  >
+                    {status.label}
+                  </span>
+                </div>
+
+                <div className="min-w-0 text-sm">
+                  {nextAppt ? (
+                    <>
+                      <div className="font-medium text-foreground tabular-nums">
+                        {nextAppt.date}
+                      </div>
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {nextAppt.time}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    aria-label="Написать"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void onWrite(p.id);
+                    }}
+                    className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <MessageSquareIcon className="size-4" />
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Ещё действия"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSelectedPatientId(p.id);
+                          router.push(`/${locale}/doctor/patients/${p.id}`);
+                        }}
+                      >
+                        <EyeIcon className="mr-2 size-4" />
+                        Открыть карточку
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          router.push(
+                            `/${locale}/doctor/patients/${p.id}?tab=visits`,
+                          )
+                        }
+                      >
+                        <HistoryIcon className="mr-2 size-4" />
+                        История визитов
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          router.push(
+                            `/${locale}/doctor/patients/${p.id}?tab=documents`,
+                          )
+                        }
+                      >
+                        <FileTextIcon className="mr-2 size-4" />
+                        Документы
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

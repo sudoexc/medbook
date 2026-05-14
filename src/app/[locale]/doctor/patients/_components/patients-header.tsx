@@ -3,10 +3,26 @@
 import { ChevronDownIcon, SlidersHorizontalIcon, UploadIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { MOCK_TABS, type Tab } from "../_mocks";
+
+import { usePatientsFilters } from "../_hooks/patients-context";
+import type { DoctorPatientTab } from "../_hooks/use-my-patients";
+
+const TABS: Array<{
+  key: DoctorPatientTab;
+  label: string;
+  highlight?: "danger";
+}> = [
+  { key: "all", label: "Все пациенты" },
+  { key: "active", label: "Активные" },
+  { key: "new", label: "Новые" },
+  { key: "watch", label: "На контроле" },
+  { key: "returned", label: "Вернулись" },
+  { key: "dormant", label: "Давно не были", highlight: "danger" },
+];
 
 export function PatientsHeader() {
-  const active: Tab = "all";
+  const { filters, setTab } = usePatientsFilters();
+  const active = filters.tab ?? "all";
 
   return (
     <>
@@ -19,12 +35,13 @@ export function PatientsHeader() {
 
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border">
         <nav className="flex flex-wrap items-center gap-1">
-          {MOCK_TABS.map((t) => {
+          {TABS.map((t) => {
             const isActive = t.key === active;
             return (
               <button
                 key={t.key}
                 type="button"
+                onClick={() => setTab(t.key)}
                 className={cn(
                   "relative inline-flex items-center gap-2 px-3 py-2.5 text-sm transition-colors",
                   isActive
@@ -33,18 +50,6 @@ export function PatientsHeader() {
                 )}
               >
                 <span>{t.label}</span>
-                <span
-                  className={cn(
-                    "inline-flex min-w-[22px] items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
-                    t.highlight === "danger"
-                      ? "bg-destructive/15 text-destructive"
-                      : isActive
-                        ? "bg-primary/15 text-primary"
-                        : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {t.count}
-                </span>
                 {isActive ? (
                   <span
                     aria-hidden

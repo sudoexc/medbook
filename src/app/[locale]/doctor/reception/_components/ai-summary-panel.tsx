@@ -1,15 +1,67 @@
 "use client";
 
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2Icon,
   ChevronUpIcon,
-  SettingsIcon,
+  Loader2Icon,
+  RefreshCwIcon,
   SparklesIcon,
 } from "lucide-react";
 
-import { MOCK_AI_SUMMARY, MOCK_KEY_TRENDS } from "../_mocks";
+type SummaryResponse = {
+  text: string | null;
+  cacheAge: number | null;
+  pendingRefresh: boolean;
+  updatedAt: string | null;
+};
 
-export function AISummaryPanel() {
+/**
+ * Right-rail AI summary on the patient visits-history page.
+ *
+ * Data sources:
+ *  - `GET /api/crm/patients/{id}/summary?locale=ru` — cached LLM summary,
+ *    refreshed asynchronously by the worker (`patient.summary.refreshed`
+ *    SSE event triggers refetch downstream). Text is one paragraph block;
+ *    we split on `\n\n` to render visually if the LLM segmented it.
+ *  - `chronicConditions` (from the server component) — rendered as
+ *    "Ключевые тенденции". Cheap, deterministic, no extra round-trip.
+ *
+ * Empty state requirement: when no patient is selected or the cache is
+ * empty + a refresh is pending, show a soft skeleton + "AI ещё анализирует
+ * визит" so the doctor knows the panel isn't stuck.
+ */
+export function AISummaryPanel({
+  patientId,
+  chronicConditions = [],
+}: {
+  patientId: string | null;
+  chronicConditions?: string[];
+}) {
+  const summary = useQuery<SummaryResponse>({
+    queryKey: ["doctor", "patient-summary", patientId],
+    enabled: !!patientId,
+    staleTime: 60_000,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(
+        `/api/crm/patients/${patientId}/summary?locale=ru`,
+        { credentials: "include", signal },
+      );
+      if (!res.ok) throw new Error(`summary ${res.status}`);
+      return (await res.json()) as SummaryResponse;
+    },
+  });
+
+  const paragraphs = React.useMemo(() => {
+    const t = summary.data?.text?.trim();
+    if (!t) return [];
+    return t
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  }, [summary.data?.text]);
+
   return (
     <section className="rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
@@ -24,10 +76,16 @@ export function AISummaryPanel() {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Настройки AI"
-            className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Обновить"
+            onClick={() => summary.refetch()}
+            disabled={!patientId || summary.isFetching}
+            className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
-            <SettingsIcon className="size-3.5" />
+            {summary.isFetching ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCwIcon className="size-3.5" />
+            )}
           </button>
           <button
             type="button"
@@ -45,34 +103,59 @@ export function AISummaryPanel() {
             AI-сводка истории пациента
           </div>
           <div className="mt-1.5 space-y-2 text-xs leading-relaxed text-foreground">
-            {MOCK_AI_SUMMARY.paragraphs.map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
+            {!patientId ? (
+              <EmptyHint label="Выберите пациента, чтобы открыть сводку." />
+            ) : summary.isLoading ? (
+              <SummarySkeleton />
+            ) : paragraphs.length === 0 ? (
+              <EmptyHint
+                label={
+                  summary.data?.pendingRefresh
+                    ? "AI ещё анализирует визит"
+                    : "AI ещё анализирует визит"
+                }
+              />
+            ) : (
+              paragraphs.map((p, i) => <p key={i}>{p}</p>)
+            )}
           </div>
         </div>
 
-        <div>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Ключевые тенденции
+        {chronicConditions.length > 0 && (
+          <div>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Ключевые тенденции
+            </div>
+            <ul className="space-y-1.5">
+              {chronicConditions.map((label, i) => (
+                <li key={`${label}-${i}`} className="flex items-center gap-2 text-xs">
+                  <CheckCircle2Icon className="size-4 shrink-0 text-success" />
+                  <span className="text-foreground">{label}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="space-y-1.5">
-            {MOCK_KEY_TRENDS.map((t) => (
-              <li key={t.id} className="flex items-center gap-2 text-xs">
-                <CheckCircle2Icon className="size-4 shrink-0 text-success" />
-                <span className="text-foreground">{t.label}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <button
-          type="button"
-          className="motion-press inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/5 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
-        >
-          <SparklesIcon className="size-4" />
-          Сформировать заключение
-        </button>
+        )}
       </div>
     </section>
+  );
+}
+
+function SummarySkeleton() {
+  return (
+    <div className="space-y-1.5">
+      <div className="h-3 w-full animate-pulse rounded bg-muted" />
+      <div className="h-3 w-[92%] animate-pulse rounded bg-muted" />
+      <div className="h-3 w-[78%] animate-pulse rounded bg-muted" />
+    </div>
+  );
+}
+
+function EmptyHint({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-background/60 px-3 py-2 text-muted-foreground">
+      <Loader2Icon className="size-3.5 animate-spin" />
+      <span>{label}</span>
+    </div>
   );
 }

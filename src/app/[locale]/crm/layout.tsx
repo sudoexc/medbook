@@ -34,13 +34,27 @@ function renderBrandStyle(
   return `:root{${lines.join("")}}`
 }
 
-export default async function CrmLayout({ children }: { children: React.ReactNode }) {
+export default async function CrmLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: Promise<{ locale: string }>
+}) {
   const t = await getTranslations("crmLayout")
   // We read the session here so the topbar (and the BranchSwitcher inside)
   // know who the user is. The hardcoded fallback values below preserve the
   // legacy demo-friendly render when the session is missing — pages enforce
   // their own auth, so the layout never blocks.
   const session = await auth()
+  // Mirror the guard in /[locale]/doctor/layout.tsx: a DOCTOR who manually
+  // navigates to /crm has nothing to do here. Bounce them to their own
+  // surface so the login UX promise ("you land where your role belongs")
+  // holds even when the URL is typed by hand.
+  if (session?.user?.role === "DOCTOR") {
+    const { locale } = await params
+    redirect(`/${locale}/doctor`)
+  }
   const cookieStore = await cookies()
   const branchCookie = cookieStore.get(ACTIVE_BRANCH_COOKIE_NAME)?.value || null
   // Phase 9d — resolve plan-aware nav flags once on the server. The sidebar

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useDoctorSidebarStats } from "../_hooks/use-doctor-sidebar-stats";
 
 type NavItem = {
   href: string;
@@ -43,13 +44,13 @@ const DOCTOR_NAV: NavGroup[] = [
   {
     label: "Рабочее пространство",
     items: [
-      { href: "my-day", label: "Мой день", icon: SunIcon, badge: 7 },
+      { href: "my-day", label: "Мой день", icon: SunIcon },
       { href: "reception", label: "Приём", icon: ClipboardCheckIcon },
       { href: "patients", label: "Пациенты", icon: UsersIcon },
       { href: "visits", label: "История визитов", icon: HistoryIcon },
       { href: "documents", label: "Документы", icon: FilesIcon },
       { href: "conclusions", label: "Заключения", icon: FileTextIcon },
-      { href: "messages", label: "Сообщения", icon: MessageSquareIcon, badge: 2 },
+      { href: "messages", label: "Сообщения", icon: MessageSquareIcon },
     ],
   },
   {
@@ -153,9 +154,17 @@ export function DoctorSidebar() {
     });
   }, []);
 
-  // Mock figures — replaced by real data when we wire the hook.
-  const loadPercent = 68;
-  const todayCount = 47;
+  // Live numbers from /api/crm/doctors/me/sidebar-stats. The hook also
+  // wires SSE invalidation, so a status change in the reception flow
+  // (or a fresh Telegram message) propagates into the sidebar inside
+  // the 400ms debounce window without us having to refetch on focus.
+  const { data: stats } = useDoctorSidebarStats();
+  const loadPercent = stats?.loadPercent ?? 0;
+  const todayCount = stats?.todayCount ?? 0;
+  const badgeByHref: Record<string, number> = {
+    "my-day": stats?.todayBadge ?? 0,
+    messages: stats?.unreadMessages ?? 0,
+  };
 
   return (
     <aside
@@ -209,6 +218,11 @@ export function DoctorSidebar() {
                   pathname === bare ||
                   pathname.startsWith(bare + "/");
                 const Icon = item.icon;
+                // `badgeByHref` lookup wins over the static `item.badge`
+                // so the sidebar nav stays a pure constant (easy to grep)
+                // while the live numbers come from the hook.
+                const badge =
+                  badgeByHref[item.href] ?? item.badge ?? 0;
                 return (
                   <li key={item.href}>
                     <Link
@@ -240,16 +254,16 @@ export function DoctorSidebar() {
                         )}
                       />
                       {collapsed ? (
-                        item.badge && item.badge > 0 ? (
+                        badge > 0 ? (
                           <span
-                            aria-label={`${item.label}: ${item.badge}`}
+                            aria-label={`${item.label}: ${badge}`}
                             className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
                           />
                         ) : null
                       ) : (
                         <>
                           <span className="flex-1 truncate">{item.label}</span>
-                          {item.badge && item.badge > 0 ? (
+                          {badge > 0 ? (
                             <span
                               className={cn(
                                 "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold",
@@ -258,7 +272,7 @@ export function DoctorSidebar() {
                                   : "bg-primary/10 text-primary",
                               )}
                             >
-                              {item.badge}
+                              {badge}
                             </span>
                           ) : null}
                         </>

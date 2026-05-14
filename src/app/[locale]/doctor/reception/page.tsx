@@ -1,15 +1,15 @@
 import Link from "next/link";
-import { ArrowLeftIcon, ChevronDownIcon, UploadIcon } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
 
-import { AISummaryPanel } from "./_components/ai-summary-panel";
-import { LastDiagnosisCard } from "./_components/last-diagnosis-card";
-import { LastVisitCard } from "./_components/last-visit-card";
-import { PatientHeader } from "./_components/patient-header";
-import { PatientMetaRow } from "./_components/patient-meta-row";
-import { VisitComparison } from "./_components/visit-comparison";
-import { VisitsFilters } from "./_components/visits-filters";
-import { VisitsTable } from "./_components/visits-table";
-import { VisitsTimeline } from "./_components/visits-timeline";
+import { ActiveAIRail } from "./_components/active-ai-rail";
+import { ActivePatientCard } from "./_components/active-patient-card";
+import { DraftConclusionsCard } from "./_components/draft-conclusions-card";
+import { HistoryDocsCard } from "./_components/history-docs-card";
+import { QueueCard } from "./_components/queue-card";
+import { RecentFilesCard } from "./_components/recent-files-card";
+import { SessionTabContent } from "./_components/session-tab-content";
+import { SessionTabs } from "./_components/session-tabs";
+import { ReceptionProvider } from "./_hooks/reception-context";
 
 export default async function ReceptionPage({
   params,
@@ -18,42 +18,33 @@ export default async function ReceptionPage({
 }) {
   const { locale } = await params;
   return (
-    <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
-      <div className="flex min-w-0 flex-1 flex-col gap-4 xl:gap-5">
-        <Link
-          href={`/${locale}/doctor/patients`}
-          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-        >
-          <ArrowLeftIcon className="size-4" />
-          К списку пациентов
-        </Link>
-
-        <PatientHeader />
-        <PatientMetaRow />
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-bold text-foreground">История визитов</h1>
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+    <ReceptionProvider>
+      <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 xl:gap-5">
+          <Link
+            href={`/${locale}/doctor/patients`}
+            className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
-            <UploadIcon className="size-4 text-muted-foreground" />
-            Экспорт
-            <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-          </button>
+            <ArrowLeftIcon className="size-4" />
+            К списку приёмов
+          </Link>
+
+          <ActivePatientCard />
+          <SessionTabs />
+          <SessionTabContent locale={locale} />
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4 xl:gap-5">
+            <HistoryDocsCard />
+            <RecentFilesCard />
+            <DraftConclusionsCard />
+            <QueueCard />
+          </div>
         </div>
 
-        <VisitsFilters />
-        <VisitsTimeline />
-        <VisitsTable />
+        <div className="hidden xl:block">
+          <ActiveAIRail />
+        </div>
       </div>
-
-      <aside className="hidden w-[320px] shrink-0 flex-col gap-4 xl:flex xl:gap-5">
-        <AISummaryPanel />
-        <LastVisitCard />
-        <LastDiagnosisCard />
-        <VisitComparison />
-      </aside>
-    </div>
+    </ReceptionProvider>
   );
 }

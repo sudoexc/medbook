@@ -529,6 +529,130 @@ async function main() {
       }
     }
 
+    // ── Reminders + LabResults (Phase 20 Wave 5a) ─────────────────────
+    // Each doctor gets a few PENDING reminders (so /doctor/my-day "Дела
+    // на сегодня" is not empty) + 3-5 RESULTED labs (so the «Анализы»
+    // unread feed has something to render). Idempotent — skip if any row
+    // already exists for the doctor in this clinic.
+    const reminderTitles = [
+      "Перезвонить пациенту по результатам",
+      "Заказать повторный ОАК",
+      "Уточнить дозу препарата у фармацевта",
+      "Подготовить выписку",
+      "Проверить рецепт",
+    ];
+    const labCatalog: Array<{
+      testName: string;
+      unit: string | null;
+      refRange: string | null;
+      values: Array<{ value: string; flag: "NORMAL" | "LOW" | "HIGH" | "CRITICAL" | null }>;
+    }> = [
+      {
+        testName: "Глюкоза крови",
+        unit: "ммоль/л",
+        refRange: "3.3-5.5",
+        values: [
+          { value: "5.1", flag: "NORMAL" },
+          { value: "6.4", flag: "HIGH" },
+          { value: "3.0", flag: "LOW" },
+        ],
+      },
+      {
+        testName: "Гемоглобин",
+        unit: "г/л",
+        refRange: "120-160",
+        values: [
+          { value: "135", flag: "NORMAL" },
+          { value: "108", flag: "LOW" },
+        ],
+      },
+      {
+        testName: "Холестерин общий",
+        unit: "ммоль/л",
+        refRange: "3.0-5.2",
+        values: [
+          { value: "4.5", flag: "NORMAL" },
+          { value: "7.8", flag: "HIGH" },
+          { value: "9.2", flag: "CRITICAL" },
+        ],
+      },
+      {
+        testName: "ТТГ",
+        unit: "мЕд/л",
+        refRange: "0.4-4.0",
+        values: [
+          { value: "2.1", flag: "NORMAL" },
+          { value: "5.8", flag: "HIGH" },
+        ],
+      },
+      {
+        testName: "СОЭ",
+        unit: "мм/ч",
+        refRange: "2-15",
+        values: [
+          { value: "8", flag: "NORMAL" },
+          { value: "32", flag: "HIGH" },
+        ],
+      },
+    ];
+    for (const d of createdDoctors) {
+      if (!d.userId) continue;
+
+      const existingReminders = await prisma.reminder.count({
+        where: { clinicId: clinic.id, doctorId: d.userId },
+      });
+      if (existingReminders === 0) {
+        for (let i = 0; i < 3; i++) {
+          const title = pick(reminderTitles);
+          // Spread reminders across the next 24h so the default
+          // (status=PENDING|SNOOZED, remindAt<=now+24h) feed has content.
+          const remindAt = new Date(now.getTime() + Math.random() * 22 * 3_600_000);
+          const patient = i === 0 ? null : pick(createdPatients);
+          await prisma.reminder.create({
+            data: {
+              clinicId: clinic.id,
+              doctorId: d.userId,
+              patientId: patient?.id ?? null,
+              title,
+              remindAt,
+              status: "PENDING",
+            },
+          });
+        }
+      }
+
+      const existingLabs = await prisma.labResult.count({
+        where: { clinicId: clinic.id, doctorId: d.userId },
+      });
+      if (existingLabs === 0) {
+        const labCount = 3 + Math.floor(Math.random() * 3); // 3..5
+        for (let i = 0; i < labCount; i++) {
+          const test = pick(labCatalog);
+          const v = pick(test.values);
+          const patient = pick(createdPatients);
+          // Spread receivedAt across the last 14 days so timeline ordering
+          // is realistic.
+          const receivedAt = new Date(
+            now.getTime() - Math.random() * 14 * 24 * 3_600_000,
+          );
+          await prisma.labResult.create({
+            data: {
+              clinicId: clinic.id,
+              doctorId: d.userId,
+              patientId: patient.id,
+              testName: test.testName,
+              value: v.value,
+              unit: test.unit,
+              refRange: test.refRange,
+              flag: v.flag,
+              status: "RESULTED",
+              receivedAt,
+            },
+          });
+        }
+      }
+    }
+
     // ── 10 NotificationTemplates ─────────────────────────────────────
     for (const t of TEMPLATE_SEEDS) {
       const tWithBody = t as typeof t & { bodyRu?: string; bodyUz?: string };

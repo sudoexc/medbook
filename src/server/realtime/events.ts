@@ -66,6 +66,11 @@ export const EVENT_TYPES = [
   "patient.summary.refreshed",
   // ai co-pilot (Phase 15 Wave 5) — voice → SOAP draft written
   "case.soap-draft.refreshed",
+  // doctor surface (Phase 20 Wave 5a) — personal reminders + incoming labs
+  "reminder.created",
+  "reminder.updated",
+  "lab.result.received",
+  "lab.result.reviewed",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -209,6 +214,31 @@ export type CaseSoapDraftRefreshedPayload = z.infer<
   typeof CaseSoapDraftRefreshedPayload
 >;
 
+/**
+ * Phase 20 Wave 5a — doctor reminders + lab results. The doctorId is the
+ * User row (not Doctor) — subscribers filter on `clinicId` and then narrow
+ * to "is this for me" via the doctorId field. We only ship ids; the hook
+ * re-fetches the list/detail when its key changes.
+ */
+export const ReminderEventPayload = z
+  .object({
+    reminderId: z.string().min(1),
+    doctorId: z.string().min(1),
+    patientId: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type ReminderEventPayload = z.infer<typeof ReminderEventPayload>;
+
+export const LabResultEventPayload = z
+  .object({
+    labResultId: z.string().min(1),
+    doctorId: z.string().min(1),
+    patientId: z.string().min(1),
+    flag: z.enum(["NORMAL", "LOW", "HIGH", "CRITICAL"]).nullable().optional(),
+  })
+  .passthrough();
+export type LabResultEventPayload = z.infer<typeof LabResultEventPayload>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -250,6 +280,10 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("action.updated", ActionEventPayload),
   makeEvent("patient.summary.refreshed", PatientSummaryRefreshedPayload),
   makeEvent("case.soap-draft.refreshed", CaseSoapDraftRefreshedPayload),
+  makeEvent("reminder.created", ReminderEventPayload),
+  makeEvent("reminder.updated", ReminderEventPayload),
+  makeEvent("lab.result.received", LabResultEventPayload),
+  makeEvent("lab.result.reviewed", LabResultEventPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

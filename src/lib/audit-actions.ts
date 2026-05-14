@@ -430,6 +430,25 @@ export const AUDIT_ACTION = {
   // mergedFields: string[] }` — full forensic trail so the merge can be
   // reasoned about after the loser row is gone.
   PATIENT_MERGED: "PATIENT_MERGED",
+
+  // Phase 20 Wave 5a — doctor surface reminders. `entityType: "Reminder"`,
+  // `entityId: <reminderId>`. `meta` carries `{ doctorId, patientId,
+  // appointmentId, remindAt }` (creates) or `{ oldStatus, newStatus }`
+  // (transitions). Three explicit transitions because they each carry a
+  // different intent: DONE = completed work, DISMISSED = won't do,
+  // SNOOZED = postponed.
+  REMINDER_CREATED: "REMINDER_CREATED",
+  REMINDER_COMPLETED: "REMINDER_COMPLETED",
+  REMINDER_DISMISSED: "REMINDER_DISMISSED",
+  REMINDER_SNOOZED: "REMINDER_SNOOZED",
+
+  // Phase 20 Wave 5a — incoming lab results. `entityType: "LabResult"`,
+  // `entityId: <labResultId>`. CREATED is emitted on both manual entry
+  // (POST /api/crm/doctors/me/labs) and future lab-system webhooks; meta
+  // carries `{ doctorId, patientId, testName, flag }`. REVIEWED meta:
+  // `{ doctorId, reviewedAt }`.
+  LAB_RESULT_CREATED: "LAB_RESULT_CREATED",
+  LAB_RESULT_REVIEWED: "LAB_RESULT_REVIEWED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

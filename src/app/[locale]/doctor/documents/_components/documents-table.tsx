@@ -1,236 +1,270 @@
 "use client";
 
+import * as React from "react";
 import {
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
+  DownloadIcon,
   FileTextIcon,
   MoreHorizontalIcon,
-  SettingsIcon,
+  Trash2Icon,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+
+import { useDocumentsFilters } from "../_hooks/documents-context";
 import {
-  MOCK_DOC_PAGINATION,
-  MOCK_DOC_ROWS,
-  type DocRowStatus,
-} from "../_mocks";
+  flattenDoctorDocuments,
+  useDoctorDocuments,
+  type DocumentType,
+  type DoctorDocumentRow,
+} from "../_hooks/use-doctor-documents";
 
-const STATUS_LABEL: Record<DocRowStatus, string> = {
-  ready: "Готов",
-  signed: "Подписан",
-  in_progress: "В работе",
+const RU_MONTHS_SHORT = [
+  "янв.",
+  "февр.",
+  "мар.",
+  "апр.",
+  "мая",
+  "июня",
+  "июля",
+  "авг.",
+  "сент.",
+  "окт.",
+  "нояб.",
+  "дек.",
+];
+
+function ruDate(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const day = d.getDate();
+  const month = RU_MONTHS_SHORT[d.getMonth()] ?? "";
+  const year = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return { date: `${day} ${month} ${year}`, time: `${hh}:${mm}` };
+}
+
+function formatSize(bytes: number | null): string {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
+}
+
+const TYPE_LABEL: Record<DocumentType, string> = {
+  REFERRAL: "Направление",
+  PRESCRIPTION: "Рецепт",
+  RESULT: "Результат",
+  CONSENT: "Согласие",
+  CONTRACT: "Договор",
+  RECEIPT: "Чек",
+  OTHER: "Прочее",
 };
 
-const STATUS_DOT: Record<DocRowStatus, string> = {
-  ready: "bg-success",
-  signed: "bg-info",
-  in_progress: "bg-warning",
-};
-
-const STATUS_TEXT: Record<DocRowStatus, string> = {
-  ready: "text-success",
-  signed: "text-info",
-  in_progress: "text-warning",
+const TYPE_TONE: Record<DocumentType, string> = {
+  REFERRAL: "bg-info/15 text-info",
+  PRESCRIPTION: "bg-primary/15 text-primary",
+  RESULT: "bg-success/15 text-success",
+  CONSENT: "bg-warning/15 text-warning",
+  CONTRACT: "bg-warning/15 text-warning",
+  RECEIPT: "bg-muted text-muted-foreground",
+  OTHER: "bg-muted text-muted-foreground",
 };
 
 const GRID =
-  "grid grid-cols-[28px_minmax(0,1.6fr)_minmax(0,1.2fr)_120px_120px_90px_minmax(0,1.2fr)_110px_36px] gap-3";
+  "grid grid-cols-[minmax(0,1.7fr)_minmax(0,1.2fr)_130px_140px_90px_44px] gap-3";
 
 export function DocumentsTable() {
+  const { filters } = useDocumentsFilters();
+  const query = useDoctorDocuments(filters);
+  const rows = flattenDoctorDocuments(query.data);
+
+  const isInitialLoading = query.isLoading;
+  const isEmpty = !isInitialLoading && rows.length === 0;
+
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-card">
-      {/* Header */}
       <div
         className={cn(
           GRID,
           "items-center border-b border-border bg-muted/30 px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
         )}
       >
-        <div>
-          <Checkbox />
-        </div>
         <div>Название</div>
         <div>Пациент</div>
-        <div>Тип документа</div>
+        <div>Тип</div>
         <div>Дата</div>
         <div>Размер</div>
-        <div>Теги</div>
-        <div>Статус</div>
-        <div className="flex justify-end">
-          <SettingsIcon className="size-4" />
-        </div>
+        <div className="text-right">…</div>
       </div>
 
-      {/* Rows */}
-      <ul className="divide-y divide-border">
-        {MOCK_DOC_ROWS.map((r) => (
-          <li
-            key={r.id}
-            className={cn(
-              GRID,
-              "items-center px-5 py-3.5 transition-colors hover:bg-muted/30",
-              r.selected && "bg-primary/5",
-            )}
-          >
-            <div>
-              <Checkbox checked={r.selected} />
-            </div>
+      {isInitialLoading ? (
+        <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+          Загружаем документы…
+        </div>
+      ) : query.isError ? (
+        <div className="px-5 py-10 text-center text-sm text-destructive">
+          Не удалось загрузить документы
+        </div>
+      ) : isEmpty ? (
+        <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+          {filters.q || filters.type
+            ? "Ничего не найдено."
+            : "У вас пока нет документов."}
+        </div>
+      ) : (
+        <>
+          <ul className="divide-y divide-border">
+            {rows.map((r) => (
+              <DocumentRow key={r.id} doc={r} />
+            ))}
+          </ul>
 
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
-                <FileTextIcon className="size-4 text-destructive" />
-              </span>
-              <span className="truncate text-sm font-medium text-foreground">
-                {r.filename}
-              </span>
-            </div>
-
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-foreground">
-                {r.patient.name}
-              </div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {r.patient.age} лет
-              </div>
-            </div>
-
-            <div className="text-sm text-foreground">{r.type}</div>
-
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-foreground tabular-nums">
-                {r.date}
-              </div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {r.time}
-              </div>
-            </div>
-
-            <div className="text-sm text-foreground tabular-nums">{r.size}</div>
-
-            <div className="flex min-w-0 flex-wrap gap-1">
-              {r.tags.map((t) => (
-                <span
-                  key={t}
-                  className="inline-flex items-center rounded-md border border-border bg-background px-1.5 py-0.5 text-[11px] text-foreground"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-
-            <div className="inline-flex items-center gap-1.5">
-              <span className={cn("size-1.5 rounded-full", STATUS_DOT[r.status])} />
-              <span className={cn("text-xs font-medium", STATUS_TEXT[r.status])}>
-                {STATUS_LABEL[r.status]}
-              </span>
-            </div>
-
-            <div className="flex justify-end">
+          {query.hasNextPage ? (
+            <div className="border-t border-border px-5 py-3 text-center">
               <button
                 type="button"
-                aria-label="Ещё действия"
-                className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => query.fetchNextPage()}
+                disabled={query.isFetchingNextPage}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <MoreHorizontalIcon className="size-4" />
+                {query.isFetchingNextPage ? "Загрузка…" : "Загрузить ещё"}
               </button>
             </div>
-          </li>
-        ))}
-      </ul>
-
-      {/* Pagination */}
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
-        <div className="text-xs text-muted-foreground tabular-nums">
-          Показано {MOCK_DOC_PAGINATION.rangeFrom}–{MOCK_DOC_PAGINATION.rangeTo} из{" "}
-          {MOCK_DOC_PAGINATION.total.toLocaleString("ru-RU").replace(",", " ")}
-        </div>
-
-        <nav className="flex items-center gap-1">
-          <PageNavBtn aria="Предыдущая">
-            <ChevronLeftIcon className="size-4" />
-          </PageNavBtn>
-          {[1, 2, 3].map((n) => (
-            <button
-              key={n}
-              type="button"
-              className={cn(
-                "flex size-8 items-center justify-center rounded-lg text-sm tabular-nums transition-colors",
-                n === MOCK_DOC_PAGINATION.currentPage
-                  ? "bg-primary text-primary-foreground"
-                  : "text-foreground hover:bg-muted",
-              )}
-            >
-              {n}
-            </button>
-          ))}
-          <span className="flex size-8 items-center justify-center text-sm text-muted-foreground">
-            …
-          </span>
-          <button
-            type="button"
-            className="flex size-8 items-center justify-center rounded-lg text-sm text-foreground transition-colors hover:bg-muted tabular-nums"
-          >
-            {MOCK_DOC_PAGINATION.totalPages}
-          </button>
-          <PageNavBtn aria="Следующая">
-            <ChevronRightIcon className="size-4" />
-          </PageNavBtn>
-        </nav>
-
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs text-foreground transition-colors hover:bg-muted"
-        >
-          <span className="tabular-nums">{MOCK_DOC_PAGINATION.pageSize}</span> на странице
-          <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-        </button>
-      </footer>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
 
-function PageNavBtn({
-  aria,
-  children,
-}: {
-  aria: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={aria}
-      className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-    >
-      {children}
-    </button>
-  );
-}
+function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
+  const { filters } = useDocumentsFilters();
+  const queryClient = useQueryClient();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const { date, time } = ruDate(doc.createdAt);
 
-function Checkbox({ checked }: { checked?: boolean }) {
+  const handleDelete = async () => {
+    if (busy) return;
+    if (!confirm(`Удалить документ «${doc.title}»?`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/crm/documents/${doc.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        alert(`Не удалось удалить: ${txt || res.status}`);
+        return;
+      }
+      await queryClient.invalidateQueries({
+        queryKey: ["doctor", "me", "documents", filters],
+      });
+    } finally {
+      setBusy(false);
+      setMenuOpen(false);
+    }
+  };
+
+  const handleDownload = () => {
+    setMenuOpen(false);
+    if (doc.fileUrl) window.open(doc.fileUrl, "_blank", "noopener");
+  };
+
   return (
-    <span
-      role="checkbox"
-      aria-checked={checked ? "true" : "false"}
-      className={cn(
-        "flex size-4 items-center justify-center rounded border transition-colors",
-        checked
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-background",
-      )}
+    <li
+      className={cn(GRID, "items-center px-5 py-3.5 transition-colors hover:bg-muted/30")}
     >
-      {checked ? (
-        <svg viewBox="0 0 16 16" fill="none" className="size-3">
-          <path
-            d="M3 8l3 3 7-7"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : null}
-    </span>
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
+          <FileTextIcon className="size-4 text-destructive" />
+        </span>
+        <a
+          href={doc.fileUrl || "#"}
+          target="_blank"
+          rel="noopener"
+          className="truncate text-sm font-medium text-foreground hover:underline"
+          title={doc.title}
+        >
+          {doc.title}
+        </a>
+      </div>
+
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-foreground">
+          {doc.patient?.fullName ?? "—"}
+        </div>
+        {doc.uploadedBy ? (
+          <div className="truncate text-xs text-muted-foreground">
+            загрузил: {doc.uploadedBy.name}
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <span
+          className={cn(
+            "inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold",
+            TYPE_TONE[doc.type],
+          )}
+        >
+          {TYPE_LABEL[doc.type]}
+        </span>
+      </div>
+
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-foreground tabular-nums">
+          {date}
+        </div>
+        <div className="text-xs text-muted-foreground tabular-nums">{time}</div>
+      </div>
+
+      <div className="text-sm text-foreground tabular-nums">
+        {formatSize(doc.sizeBytes)}
+      </div>
+
+      <div className="relative flex justify-end">
+        <button
+          type="button"
+          aria-label="Ещё действия"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </button>
+        {menuOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Закрыть меню"
+              onClick={() => setMenuOpen(false)}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div className="absolute right-0 top-9 z-20 min-w-[180px] overflow-hidden rounded-lg border border-border bg-popover py-1 text-sm shadow-md">
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-foreground transition-colors hover:bg-muted"
+              >
+                <DownloadIcon className="size-4 text-muted-foreground" />
+                Скачать
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+              >
+                <Trash2Icon className="size-4" />
+                {busy ? "Удаление…" : "Удалить"}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </li>
   );
 }

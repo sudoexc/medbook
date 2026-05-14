@@ -5,7 +5,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound } from "@/server/http";
+import { ok, err, notFound } from "@/server/http";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -30,11 +30,19 @@ export const GET = createApiListHandler(
 );
 
 export const DELETE = createApiHandler(
-  { roles: ["ADMIN"] },
-  async ({ request }) => {
+  { roles: ["ADMIN", "DOCTOR"] },
+  async ({ request, ctx }) => {
     const id = idFromUrl(request);
     const before = await prisma.document.findUnique({ where: { id } });
     if (!before) return notFound();
+
+    // DOCTOR may only delete documents they uploaded themselves.
+    if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
+      if (before.uploadedById !== ctx.userId) {
+        return err("Forbidden", 403);
+      }
+    }
+
     await prisma.document.delete({ where: { id } });
     await audit(request, {
       action: "document.delete",

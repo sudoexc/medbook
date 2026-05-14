@@ -12,7 +12,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+import { safeCallbackOrHome } from "@/lib/post-login-redirect";
+import type { Role } from "@/lib/tenant-context";
+
 const PENDING_SS_KEY = "medbook:2fa-pending";
+
+function readLocaleCookie(): string {
+  if (typeof document === "undefined") return "ru";
+  const m = document.cookie.match(/(?:^|;\s*)NEXT_LOCALE=(ru|uz)/);
+  return m?.[1] ?? "ru";
+}
 
 type Pending = { email: string; password: string };
 
@@ -56,7 +65,7 @@ function clearPending() {
 export function TwoFaForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const callbackUrl = search.get("callbackUrl") ?? "/ru/crm";
+  const callbackUrl = search.get("callbackUrl");
 
   const [pending, setPending] = React.useState<Pending | null>(null);
   const [mode, setMode] = React.useState<"totp" | "recovery">("totp");
@@ -93,7 +102,13 @@ export function TwoFaForm() {
       return;
     }
     clearPending();
-    router.push(callbackUrl);
+    const session = await getSession();
+    const role = (session?.user?.role as Role | undefined) ?? null;
+    const locale = readLocaleCookie();
+    const target = role
+      ? safeCallbackOrHome(callbackUrl, role, locale)
+      : `/${locale}/crm`;
+    router.push(target);
     router.refresh();
   }
 

@@ -1,14 +1,19 @@
 "use client";
 
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import * as React from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import {
+  CalendarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  useDoctorToday,
-  type ScheduleEntry,
-  type ScheduleType,
-} from "../_hooks/use-doctor-today";
+
+import { useDoctorSchedule } from "../_hooks/use-doctor-schedule";
+import type { ScheduleType } from "../_hooks/use-doctor-today";
 
 const TYPE_LABEL: Record<ScheduleType, string> = {
   consultation: "Консультация",
@@ -17,39 +22,95 @@ const TYPE_LABEL: Record<ScheduleType, string> = {
   break: "Обед",
 };
 
-function formatTodayLabel(now: Date): string {
+function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function startOfDay(d: Date): Date {
+  const out = new Date(d);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+
+function addDays(d: Date, n: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+function daysBetween(a: Date, b: Date): number {
+  const ms = startOfDay(a).getTime() - startOfDay(b).getTime();
+  return Math.round(ms / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Headline label above the date — anchors "today" and "yesterday/tomorrow"
+ * so the doctor can tell at a glance which day they're paging through
+ * without re-reading the date string each time.
+ */
+function relativeLabel(view: Date, today: Date): string | null {
+  const delta = daysBetween(view, today);
+  if (delta === 0) return "Сегодня";
+  if (delta === -1) return "Вчера";
+  if (delta === 1) return "Завтра";
+  return null;
+}
+
+function fullDateLabel(view: Date): string {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     weekday: "long",
-  }).format(now);
+  }).format(view);
 }
 
 export function ScheduleCard() {
-  const { data: schedule, isLoading } = useDoctorToday<ScheduleEntry[]>(
-    (d) => d.schedule,
-  );
-  const todayLabel = formatTodayLabel(new Date());
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
+  const [viewDate, setViewDate] = React.useState<Date>(() => startOfDay(new Date()));
+  const today = React.useMemo(() => startOfDay(new Date()), []);
+  const isToday = daysBetween(viewDate, today) === 0;
+  const dateKey = toIsoDate(viewDate);
+
+  const { data, isLoading } = useDoctorSchedule(dateKey);
+  const entries = data?.entries ?? [];
+
+  const rel = relativeLabel(viewDate, today);
+  const dateLine = fullDateLabel(viewDate);
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
         <div>
           <div className="text-[15px] font-semibold text-foreground">
-            Расписание на сегодня
+            {rel ? `${rel} · ${dateLine}` : dateLine}
           </div>
-          <div className="text-xs text-muted-foreground">{todayLabel}</div>
+          <div className="text-xs text-muted-foreground">
+            Расписание врача
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="motion-press inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+            onClick={() => setViewDate(today)}
+            disabled={isToday}
+            className={cn(
+              "motion-press inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors",
+              isToday
+                ? "cursor-default text-muted-foreground opacity-60"
+                : "text-foreground hover:bg-muted",
+            )}
           >
             Сегодня
           </button>
           <button
             type="button"
             aria-label="Предыдущий день"
+            onClick={() => setViewDate((d) => addDays(d, -1))}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ChevronLeftIcon className="size-3.5" />
@@ -57,6 +118,7 @@ export function ScheduleCard() {
           <button
             type="button"
             aria-label="Следующий день"
+            onClick={() => setViewDate((d) => addDays(d, 1))}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ChevronRightIcon className="size-3.5" />
@@ -77,15 +139,18 @@ export function ScheduleCard() {
               <Skeleton className="h-4 w-12" />
             </li>
           ))
-        ) : !schedule || schedule.length === 0 ? (
+        ) : entries.length === 0 ? (
           <li className="px-5 py-10 text-center text-sm text-muted-foreground">
-            На сегодня записей нет
+            {isToday ? "На сегодня записей нет" : "Записей на этот день нет"}
           </li>
         ) : (
-          schedule.map((entry) => {
+          entries.slice(0, 6).map((entry) => {
             const isBreak = entry.type === "break";
             const isReserve = entry.type === "reserve";
-            const active = entry.status === "in_progress";
+            // Only highlight "active" appointments when viewing today —
+            // the dot has no semantic meaning when paging through past
+            // or future days.
+            const active = isToday && entry.status === "in_progress";
 
             return (
               <li
@@ -148,13 +213,18 @@ export function ScheduleCard() {
       </ul>
 
       <footer className="border-t border-border px-5 py-3">
-        <button
-          type="button"
+        <Link
+          href={`/${locale}/doctor/schedule?date=${dateKey}`}
           className="motion-press inline-flex w-full items-center justify-center gap-2 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           <CalendarIcon className="size-4" />
           Показать весь день
-        </button>
+          {entries.length > 6 ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold">
+              +{entries.length - 6}
+            </span>
+          ) : null}
+        </Link>
       </footer>
     </section>
   );

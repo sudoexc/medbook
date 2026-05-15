@@ -2,19 +2,31 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CopyIcon,
+  ExternalLinkIcon,
   FileTextIcon,
   InfoIcon,
   Loader2Icon,
   MoreVerticalIcon,
+  PrinterIcon,
+  UserIcon,
 } from "lucide-react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/components/ui/sonner";
 
 const RU_MONTHS_FULL = [
   "янв.",
@@ -276,6 +288,7 @@ function TableCard({
   fetchingMore: boolean;
   onLoadMore: () => void;
 }) {
+  const router = useRouter();
   // After dropping the «Сравнить» column the action cell is narrower.
   const GRID =
     "grid grid-cols-[120px_130px_minmax(0,200px)_minmax(0,1fr)_170px_150px_160px] gap-3";
@@ -423,13 +436,67 @@ function TableCard({
                   >
                     Открыть
                   </Link>
-                  <button
-                    type="button"
-                    aria-label="Ещё действия"
-                    className="flex h-9 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <MoreVerticalIcon className="size-4" />
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Ещё действия"
+                        className="flex h-9 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <MoreVerticalIcon className="size-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem
+                        onClick={() =>
+                          router.push(
+                            `/${locale}/doctor/visits/${patientId}/${v.id}`,
+                          )
+                        }
+                      >
+                        <ExternalLinkIcon className="mr-2 size-3.5" />
+                        Открыть визит
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(v.id);
+                            toast.success("ID скопирован");
+                          } catch {
+                            toast.error("Не удалось скопировать");
+                          }
+                        }}
+                      >
+                        <CopyIcon className="mr-2 size-3.5" />
+                        Копировать ID визита
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          router.push(`/${locale}/doctor/patients/${patientId}`)
+                        }
+                      >
+                        <UserIcon className="mr-2 size-3.5" />
+                        Открыть карту пациента
+                      </DropdownMenuItem>
+                      {v.visitNoteId ? (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() =>
+                              window.open(
+                                `/api/crm/visit-notes/${v.visitNoteId}/print`,
+                                "_blank",
+                                "noopener,noreferrer",
+                              )
+                            }
+                          >
+                            <PrinterIcon className="mr-2 size-3.5" />
+                            Печать заключения
+                          </DropdownMenuItem>
+                        </>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </li>
             );

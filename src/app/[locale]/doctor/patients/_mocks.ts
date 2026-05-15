@@ -195,34 +195,3 @@ export const MOCK_AI_RECOS: AiReco[] = [
 
 export const MOCK_AI_RECOS_TOTAL = 12;
 
-export const MOCK_SELECTED_PATIENT = {
-  id: "1",
-  fullName: "Юлдашев Иван Икромович",
-  initials: "ЮИ",
-  statusLabel: "На приёме",
-  age: 37,
-  phone: "+998 (91) 910-05-37",
-  lastVisit: "13 мая 2025, 09:00",
-  diagnosis: { code: "F41.1", name: "Генерализованное тревожное расстройство" },
-  status: "Активное наблюдение",
-  nextAppointment: "20 мая 2025, 10:00",
-  risk: "Низкий" as const,
-};
-
-export type SegmentTone = "active" | "watch" | "dormant" | "new" | "returned";
-export type Segment = {
-  key: SegmentTone;
-  label: string;
-  count: number;
-  percent: number;
-};
-
-export const MOCK_SEGMENTS: Segment[] = [
-  { key: "active", label: "На приёме", count: 382, percent: 30 },
-  { key: "watch", label: "На контроле", count: 214, percent: 17 },
-  { key: "dormant", label: "Давно не были", count: 397, percent: 32 },
-  { key: "new", label: "Новые", count: 89, percent: 7 },
-  { key: "returned", label: "Вернулись", count: 156, percent: 12 },
-];
-
-export const MOCK_SEGMENTS_TOTAL = 1248;

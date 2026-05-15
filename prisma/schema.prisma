@@ -649,6 +649,7 @@ model User {
   // mapping is 1:1 anyway.
   reminders                   Reminder[]            @relation("DoctorReminders")
   labResults                  LabResult[]           @relation("DoctorLabResults")
+  notificationPref            DoctorNotificationPref?
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -724,6 +725,11 @@ model Doctor {
   // it's still occupied; admin must reassign first.
   cabinetId String  @unique
   cabinet   Cabinet @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
+
+  // Doctor's wet-signature image (MinIO public URL). Stamped into the PDF
+  // print template at `/api/crm/visit-notes/[id]/print`. Optional — falls
+  // back to a typed signature in the PDF when missing.
+  signatureUrl     String?
 
   services           ServiceOnDoctor[]
   schedules          DoctorSchedule[]
@@ -2349,4 +2355,38 @@ model LabResult {
 
   @@index([clinicId, doctorId, status, receivedAt])
   @@index([clinicId, patientId, receivedAt])
+}
+
+// Per-doctor notification channel preferences. One row per doctor; the row
+// is materialized lazily on first GET of /api/crm/doctors/me/notification-prefs
+// so we don't need to backfill on signup. All booleans default to a sensible
+// "doctors want to know" set — in-app is always on for the four core events,
+// telegram is on for the noisy events, email is on only for lab results.
+//
+// Channel naming convention: `<event>_<channel>`. Adding a new event means a
+// migration; adding a new channel means many migrations — fine for v1 (~4 events
+// × 3 channels). When the matrix grows past 24 cells we'll switch to JSONB.
+model DoctorNotificationPref {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  appointmentCreated_inApp    Boolean @default(true)
+  appointmentCreated_email    Boolean @default(false)
+  appointmentCreated_telegram Boolean @default(true)
+
+  messageNew_inApp            Boolean @default(true)
+  messageNew_email            Boolean @default(false)
+  messageNew_telegram         Boolean @default(true)
+
+  labResultReceived_inApp     Boolean @default(true)
+  labResultReceived_email     Boolean @default(true)
+  labResultReceived_telegram  Boolean @default(false)
+
+  reminderDue_inApp           Boolean @default(true)
+  reminderDue_email           Boolean @default(false)
+  reminderDue_telegram        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

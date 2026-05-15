@@ -4,21 +4,16 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import {
-  BarChart3Icon,
   BellIcon,
   BookOpenIcon,
   BrainIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   ClipboardCheckIcon,
-  FileBarChart2Icon,
   FileTextIcon,
   FilesIcon,
   HistoryIcon,
-  LayoutTemplateIcon,
   MessageSquareIcon,
-  PhoneCallIcon,
-  SendIcon,
   SettingsIcon,
   SunIcon,
   UsersIcon,
@@ -56,22 +51,12 @@ const DOCTOR_NAV: NavGroup[] = [
   {
     label: "Коммуникации",
     items: [
-      { href: "call-center", label: "Call Center", icon: PhoneCallIcon },
-      { href: "telegram", label: "Telegram", icon: SendIcon },
       { href: "notifications", label: "Уведомления", icon: BellIcon },
-    ],
-  },
-  {
-    label: "Аналитика",
-    items: [
-      { href: "analytics", label: "Аналитика", icon: BarChart3Icon },
-      { href: "reports", label: "Отчёты", icon: FileBarChart2Icon },
     ],
   },
   {
     label: "Настройки",
     items: [
-      { href: "templates", label: "Шаблоны", icon: LayoutTemplateIcon },
       { href: "references", label: "Справочники", icon: BookOpenIcon },
       { href: "settings", label: "Настройки", icon: SettingsIcon },
     ],

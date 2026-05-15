@@ -449,6 +449,15 @@ export const AUDIT_ACTION = {
   // `{ doctorId, reviewedAt }`.
   LAB_RESULT_CREATED: "LAB_RESULT_CREATED",
   LAB_RESULT_REVIEWED: "LAB_RESULT_REVIEWED",
+
+  // Phase 20 Wave 5b — doctor self-service settings. `entityType: "User"`
+  // for profile/security mutations, `entityType: "Doctor"` for signature.
+  // meta carries the patched fields (PROFILE_UPDATED, NOTIFICATION_PREFS)
+  // or the new URL (SIGNATURE_SET).
+  DOCTOR_PROFILE_UPDATED: "DOCTOR_PROFILE_UPDATED",
+  DOCTOR_SIGNATURE_SET: "DOCTOR_SIGNATURE_SET",
+  DOCTOR_SIGNATURE_REMOVED: "DOCTOR_SIGNATURE_REMOVED",
+  DOCTOR_NOTIFICATION_PREFS_UPDATED: "DOCTOR_NOTIFICATION_PREFS_UPDATED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

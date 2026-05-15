@@ -1,5 +1,10 @@
-import { PlaceholderPage } from "../_components/placeholder-page";
+import { redirect } from "next/navigation";
 
-export default function AnalyticsPage() {
-  return <PlaceholderPage title="Аналитика" />;
+export default async function AnalyticsPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  redirect(`/${locale}/crm/analytics`);
 }

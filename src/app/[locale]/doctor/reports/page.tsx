@@ -1,5 +1,10 @@
-import { PlaceholderPage } from "../_components/placeholder-page";
+import { redirect } from "next/navigation";
 
-export default function ReportsPage() {
-  return <PlaceholderPage title="Отчёты" />;
+export default async function ReportsPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  redirect(`/${locale}/crm/analytics`);
 }

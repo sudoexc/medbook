@@ -5,15 +5,23 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   CalendarIcon,
+  CheckCircle2Icon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  Loader2Icon,
+  PlayIcon,
+  RotateCcwIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSchedule } from "../_hooks/use-doctor-schedule";
-import type { ScheduleType } from "../_hooks/use-doctor-today";
+import type {
+  ScheduleEntry,
+  ScheduleType,
+} from "../_hooks/use-doctor-today";
+import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 
 const TYPE_LABEL: Record<ScheduleType, string> = {
   consultation: "Консультация",
@@ -71,7 +79,9 @@ export function ScheduleCard() {
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
-  const [viewDate, setViewDate] = React.useState<Date>(() => startOfDay(new Date()));
+  const [viewDate, setViewDate] = React.useState<Date>(() =>
+    startOfDay(new Date()),
+  );
   const today = React.useMemo(() => startOfDay(new Date()), []);
   const isToday = daysBetween(viewDate, today) === 0;
   const dateKey = toIsoDate(viewDate);
@@ -81,6 +91,22 @@ export function ScheduleCard() {
 
   const rel = relativeLabel(viewDate, today);
   const dateLine = fullDateLabel(viewDate);
+
+  // Index of the first "next-up" slot — primary action target. Only the
+  // very first eligible row gets the prominent "Старт" CTA so the doctor
+  // isn't tempted to fire multiple receptions at once. Eligibility:
+  // upcoming entry with a real patient (not break/reserve), only when
+  // viewing today.
+  const nextUpcomingIndex = React.useMemo(() => {
+    if (!isToday) return -1;
+    return entries.findIndex(
+      (e) =>
+        e.status === "upcoming" &&
+        e.type !== "break" &&
+        e.type !== "reserve" &&
+        e.patientId != null,
+    );
+  }, [entries, isToday]);
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
@@ -129,94 +155,35 @@ export function ScheduleCard() {
       <ul className="flex-1 divide-y divide-border/60 px-2">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <li key={i} className="flex items-center gap-3 px-3 py-2.5">
+            <li
+              key={i}
+              className="flex items-center gap-3 px-3 py-3.5"
+            >
               <Skeleton className="h-4 w-10" />
               <Skeleton className="size-2 rounded-full" />
               <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-3.5 w-3/4" />
+                <Skeleton className="h-4 w-3/4" />
                 <Skeleton className="h-3 w-1/3" />
               </div>
-              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-7 w-20" />
             </li>
           ))
         ) : entries.length === 0 ? (
-          <li className="px-5 py-10 text-center text-sm text-muted-foreground">
+          <li className="px-5 py-12 text-center text-sm text-muted-foreground">
             {isToday ? "На сегодня записей нет" : "Записей на этот день нет"}
           </li>
         ) : (
-          entries.slice(0, 6).map((entry) => {
-            const isBreak = entry.type === "break";
-            const isReserve = entry.type === "reserve";
-            // Only highlight "active" appointments when viewing today —
-            // the dot has no semantic meaning when paging through past
-            // or future days.
-            const active = isToday && entry.status === "in_progress";
-
-            return (
-              <li
+          entries
+            .slice(0, 6)
+            .map((entry, i) => (
+              <ScheduleRow
                 key={entry.id}
-                className={cn(
-                  "group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
-                  active && "bg-primary/[0.04]",
-                  !active && !isBreak && "hover:bg-muted/50",
-                )}
-              >
-                <div className="w-12 shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                  {entry.startTime}
-                </div>
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center">
-                  <span
-                    className={cn(
-                      "size-2 rounded-full",
-                      active
-                        ? "bg-success ring-2 ring-success/30"
-                        : isReserve
-                          ? "border-2 border-warning"
-                          : isBreak
-                            ? "bg-muted-foreground/30"
-                            : "border-2 border-border",
-                    )}
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={cn(
-                      "truncate text-sm font-semibold",
-                      isBreak || isReserve
-                        ? "text-muted-foreground"
-                        : "text-foreground",
-                    )}
-                  >
-                    {entry.patientName ?? (isBreak ? "Обед" : "Не указано")}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {TYPE_LABEL[entry.type]}
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  {active ? (
-                    <span className="inline-flex items-center rounded-full bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success">
-                      Идёт приём
-                    </span>
-                  ) : entry.status === "no_show" ? (
-                    <span className="inline-flex items-center rounded-full bg-warning/15 px-2.5 py-1 text-[11px] font-semibold text-warning">
-                      Не пришёл
-                    </span>
-                  ) : entry.status === "cancelled" ? (
-                    <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">
-                      Отменён
-                    </span>
-                  ) : entry.durationMin ? (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {entry.durationMin} мин
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </div>
-              </li>
-            );
-          })
+                entry={entry}
+                dateKey={dateKey}
+                isToday={isToday}
+                isNextUpcoming={i === nextUpcomingIndex}
+              />
+            ))
         )}
       </ul>
 
@@ -235,5 +202,250 @@ export function ScheduleCard() {
         </Link>
       </footer>
     </section>
+  );
+}
+
+function ScheduleRow({
+  entry,
+  dateKey,
+  isToday,
+  isNextUpcoming,
+}: {
+  entry: ScheduleEntry;
+  dateKey: string;
+  isToday: boolean;
+  isNextUpcoming: boolean;
+}) {
+  const mutation = useAppointmentStatusMutation(dateKey);
+  const isBreak = entry.type === "break";
+  const isReserve = entry.type === "reserve";
+  const active = isToday && entry.status === "in_progress";
+  const dimmed =
+    entry.status === "no_show" ||
+    entry.status === "cancelled" ||
+    entry.status === "done";
+
+  return (
+    <li
+      className={cn(
+        "group flex items-center gap-3 rounded-lg px-3 py-3 transition-colors",
+        active && "bg-primary/[0.04]",
+        !active && !isBreak && !dimmed && "hover:bg-muted/50",
+        dimmed && "opacity-75",
+      )}
+    >
+      <div className="w-12 shrink-0 text-sm font-semibold tabular-nums text-foreground">
+        {entry.startTime}
+      </div>
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+        <span
+          className={cn(
+            "size-2 rounded-full",
+            active
+              ? "bg-success ring-2 ring-success/30"
+              : isReserve
+                ? "border-2 border-warning"
+                : isBreak
+                  ? "bg-muted-foreground/30"
+                  : entry.status === "done"
+                    ? "bg-success/60"
+                    : entry.status === "no_show"
+                      ? "bg-warning"
+                      : entry.status === "cancelled"
+                        ? "bg-destructive/60"
+                        : "border-2 border-border",
+          )}
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div
+          className={cn(
+            "truncate text-sm font-semibold",
+            isBreak || isReserve
+              ? "text-muted-foreground"
+              : "text-foreground",
+          )}
+        >
+          {entry.patientName ?? (isBreak ? "Обед" : "Не указано")}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {TYPE_LABEL[entry.type]}
+        </div>
+      </div>
+      <RowAction
+        entry={entry}
+        isNextUpcoming={isNextUpcoming}
+        isPending={mutation.isPending}
+        onFire={(toStatus, opts) =>
+          mutation.mutate({
+            appointmentId: entry.id,
+            toStatus,
+            revert: opts?.revert,
+          })
+        }
+      />
+    </li>
+  );
+}
+
+function RowAction({
+  entry,
+  isNextUpcoming,
+  isPending,
+  onFire,
+}: {
+  entry: ScheduleEntry;
+  isNextUpcoming: boolean;
+  isPending: boolean;
+  onFire: (
+    toStatus: Parameters<
+      ReturnType<typeof useAppointmentStatusMutation>["mutate"]
+    >[0]["toStatus"],
+    opts?: { revert?: boolean },
+  ) => void;
+}) {
+  const isBreak = entry.type === "break";
+  const isReserve = entry.type === "reserve";
+
+  if (isBreak || isReserve || entry.patientId == null) {
+    return (
+      <div className="shrink-0 text-right">
+        {entry.durationMin ? (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {entry.durationMin} мин
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </div>
+    );
+  }
+
+  if (entry.status === "in_progress") {
+    return (
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span className="inline-flex items-center rounded-full bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success">
+          Идёт приём
+        </span>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => onFire("COMPLETED")}
+          className="motion-press inline-flex h-7 items-center gap-1 rounded-lg bg-success/10 px-2.5 text-xs font-semibold text-success transition-colors hover:bg-success/20 disabled:opacity-60"
+        >
+          {isPending ? (
+            <Loader2Icon className="size-3 animate-spin" />
+          ) : (
+            <CheckCircle2Icon className="size-3.5" />
+          )}
+          Завершить
+        </button>
+      </div>
+    );
+  }
+
+  if (entry.status === "done") {
+    return (
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+          Уже был
+        </span>
+        <RevertButton
+          isPending={isPending}
+          /* The doctor's primary "oops" recovery — most common case is
+             clicking "Завершить" on the wrong row. */
+          onClick={() => onFire("IN_PROGRESS", { revert: true })}
+          tooltip="Открыть приём заново"
+        />
+      </div>
+    );
+  }
+
+  if (entry.status === "no_show") {
+    return (
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="inline-flex items-center rounded-full bg-warning/15 px-2.5 py-1 text-[11px] font-semibold text-warning">
+          Не пришёл
+        </span>
+        <RevertButton
+          isPending={isPending}
+          onClick={() => onFire("BOOKED", { revert: true })}
+          tooltip="Вернуть в запланированные"
+        />
+      </div>
+    );
+  }
+
+  if (entry.status === "cancelled") {
+    return (
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">
+          Отменён
+        </span>
+        <RevertButton
+          isPending={isPending}
+          onClick={() => onFire("BOOKED", { revert: true })}
+          tooltip="Восстановить приём"
+        />
+      </div>
+    );
+  }
+
+  // upcoming
+  if (isNextUpcoming) {
+    return (
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => onFire("IN_PROGRESS")}
+        className="motion-press inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+      >
+        {isPending ? (
+          <Loader2Icon className="size-3 animate-spin" />
+        ) : (
+          <PlayIcon className="size-3.5" />
+        )}
+        Старт
+      </button>
+    );
+  }
+
+  return (
+    <div className="shrink-0 text-right">
+      {entry.durationMin ? (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {entry.durationMin} мин
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground">—</span>
+      )}
+    </div>
+  );
+}
+
+function RevertButton({
+  isPending,
+  onClick,
+  tooltip,
+}: {
+  isPending: boolean;
+  onClick: () => void;
+  tooltip: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={onClick}
+      aria-label={tooltip}
+      title={tooltip}
+      className="motion-press flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+    >
+      {isPending ? (
+        <Loader2Icon className="size-3 animate-spin" />
+      ) : (
+        <RotateCcwIcon className="size-3.5" />
+      )}
+    </button>
   );
 }

@@ -27,6 +27,7 @@ import {
   scheduleStatusOf,
   type DoctorScheduleStatus,
 } from "@/lib/doctor-schedule-status";
+import type { AppointmentStatus } from "@/lib/appointment-transitions";
 
 const REPEAT_VISITS_THRESHOLD = 2;
 const RECENT_PATIENTS_WINDOW_DAYS = 14;
@@ -49,6 +50,12 @@ type PatientTag = "active" | "first_visit" | "vip" | "new";
 type CurrentPatient = {
   appointmentId: string;
   patientId: string;
+  /**
+   * Raw appointment status — the doctor surface picks the primary CTA off
+   * this. `current` is surfaced for BOOKED-imminent / WAITING / IN_PROGRESS;
+   * the UI branches accordingly so each state has a distinct primary action.
+   */
+  status: AppointmentStatus;
   fullName: string;
   age: number | null;
   birthDate: string | null;
@@ -56,6 +63,12 @@ type CurrentPatient = {
   avatarUrl: string | null;
   tags: PatientTag[];
   appointmentRange: string;
+  /** Scheduled start (ISO). Frontend computes "через X мин" before start. */
+  startsAt: string;
+  /** Scheduled end (ISO). Backstop for the slot-end timer. */
+  endsAt: string;
+  /** When the doctor flipped to IN_PROGRESS. Null until then. */
+  startedAt: string | null;
   appointmentSecondsLeft: number;
   complaints: string;
   lastVisit: { date: string; title: string } | null;
@@ -251,9 +264,11 @@ export const GET = createApiListHandler(
         select: {
           id: true,
           date: true,
+          endDate: true,
           time: true,
           durationMin: true,
           status: true,
+          startedAt: true,
           patientId: true,
           patient: {
             select: {
@@ -450,6 +465,7 @@ export const GET = createApiListHandler(
       current = {
         appointmentId: currentSource.id,
         patientId: p.id,
+        status: currentSource.status as AppointmentStatus,
         fullName: p.fullName,
         age: ageFromBirthDate(p.birthDate),
         birthDate: p.birthDate ? p.birthDate.toISOString() : null,
@@ -462,6 +478,11 @@ export const GET = createApiListHandler(
           lastVisitAt: p.lastVisitAt,
         }),
         appointmentRange: range,
+        startsAt: currentSource.date.toISOString(),
+        endsAt: endAt.toISOString(),
+        startedAt: currentSource.startedAt
+          ? currentSource.startedAt.toISOString()
+          : null,
         appointmentSecondsLeft: secondsLeft,
         // Patient.notes is the closest analogue we have to "complaints"
         // without dragging in the whole VisitNote.complaints[] array. v2

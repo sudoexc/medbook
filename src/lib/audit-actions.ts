@@ -18,6 +18,15 @@ export const AUDIT_ACTION = {
   // sifting through every status flip.
   APPOINTMENT_RESCHEDULED: "APPOINTMENT_RESCHEDULED",
 
+  // Phase 20 Wave 5b+ — doctor pressed "Шаг назад" on a status transition.
+  // Distinct from `appointment.update` so support can find "doctor undid X
+  // visits today" without scanning generic-update meta. `entityType:
+  // "Appointment"`, `entityId: <appointmentId>`. `meta` carries
+  // `{ from, to, doctorUserId, originalCompletedAt?, originalStartedAt?,
+  //   originalCancelledAt? }` so the prior timestamps are recoverable for
+  //  forensic reconstruction even after the revert clears them.
+  APPOINTMENT_STATUS_REVERTED: "APPOINTMENT_STATUS_REVERTED",
+
   // Phase 13 — Action Center lifecycle. `entityType: "Action"` for all of
   // these. `meta` carries `{ type, payload, oldStatus, newStatus, ... }` plus
   // any reason / preset / role-specific fields. `ACTION_CREATED` and

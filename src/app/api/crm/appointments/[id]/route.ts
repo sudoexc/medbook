@@ -24,6 +24,7 @@ import { getTenant } from "@/lib/tenant-context";
 import { recordPatientView } from "@/server/audit/patient-view";
 import {
   canTransitionAt,
+  revertTargetFor,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 
@@ -132,6 +133,112 @@ export const PATCH = createApiHandler(
       before.doctor.userId !== ctx.userId
     ) {
       return forbidden();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Doctor-initiated revert path. `?revert=true` bypasses the forward
+    // TRANSITIONS guard and uses the REVERTS map instead. Only doctors can
+    // revert, and only on their own appointments — same predicate as the
+    // forbidden() check above, plus an explicit role check here for callers
+    // running under SUPER_ADMIN or other privileged contexts.
+    // ──────────────────────────────────────────────────────────────────────
+    const revertRequested =
+      new URL(request.url).searchParams.get("revert") === "true";
+    if (revertRequested) {
+      if (ctx.kind !== "TENANT" || ctx.role !== "DOCTOR") {
+        return forbidden();
+      }
+      if (before.doctor.userId !== ctx.userId) {
+        return forbidden();
+      }
+      const fromStatus = before.status as AppointmentStatus;
+      const expected = revertTargetFor(fromStatus);
+      if (!expected) {
+        return conflict("not_revertable", { from: fromStatus });
+      }
+      if (body.status !== expected) {
+        return conflict("revert_target_mismatch", {
+          from: fromStatus,
+          expected,
+          got: body.status,
+        });
+      }
+      // Build a tight data set — revert only flips status and clears the
+      // matching timestamp. We deliberately do NOT touch endDate / durationMin
+      // (the COMPLETED branch may have shrunk them; restoring is best-effort
+      // and we don't store the original anyway — re-completing will reshrink).
+      const revertData: Record<string, unknown> = {
+        status: expected,
+      };
+      if (fromStatus === "IN_PROGRESS") {
+        revertData.startedAt = null;
+      }
+      if (fromStatus === "COMPLETED") {
+        revertData.completedAt = null;
+      }
+      if (fromStatus === "CANCELLED") {
+        revertData.cancelledAt = null;
+        revertData.cancelReason = null;
+      }
+
+      const revertedRow = await prisma.$transaction(async (tx) => {
+        const row = await tx.appointment.update({
+          where: { id },
+          data: revertData as never,
+        });
+        // Re-pricing siblings is needed when un-killing a visit (CANCELLED
+        // or NO_SHOW → BOOKED) because the case timeline now has a new
+        // active sibling. SKIPPED → WAITING does not affect repricing
+        // (SKIPPED already counts as active for free-repeat purposes).
+        const unkill =
+          fromStatus === "CANCELLED" || fromStatus === "NO_SHOW";
+        if (unkill && row.medicalCaseId) {
+          await recomputeCaseAppointments(tx, row.medicalCaseId);
+        }
+        return row;
+      });
+
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_STATUS_REVERTED,
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          from: fromStatus,
+          to: expected,
+          doctorUserId: ctx.userId,
+          originalStartedAt: before.startedAt,
+          originalCompletedAt: before.completedAt,
+          originalCancelledAt: before.cancelledAt,
+        },
+      });
+
+      const tenant = getTenant();
+      const clinicId =
+        tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      if (clinicId) {
+        publishEventSafe(clinicId, {
+          type: "appointment.statusChanged",
+          payload: {
+            appointmentId: id,
+            doctorId: revertedRow.doctorId,
+            patientId: revertedRow.patientId,
+            cabinetId: revertedRow.cabinetId,
+            status: revertedRow.status,
+            previousStatus: before.status,
+            date: revertedRow.date.toISOString(),
+          },
+        });
+        publishEventSafe(clinicId, {
+          type: "queue.updated",
+          payload: {
+            appointmentId: id,
+            doctorId: revertedRow.doctorId,
+            queueStatus: revertedRow.queueStatus,
+            previousStatus: before.queueStatus,
+          },
+        });
+      }
+      return ok(revertedRow);
     }
 
     if (body.status !== undefined) {

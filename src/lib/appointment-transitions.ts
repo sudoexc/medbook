@@ -72,6 +72,40 @@ export function nextStatuses(from: AppointmentStatus): AppointmentStatus[] {
   return [from, ...Array.from(TRANSITIONS[from])];
 }
 
+/**
+ * Reverse-step targets — the status that "undoes" the given one. Used by
+ * the doctor surface to walk a click back when the doctor flipped the
+ * wrong row (mis-clicked "Завершить", or marked NO_SHOW then the patient
+ * walked in late). Only doctor-initiated reverts via `?revert=true` on
+ * PATCH `/api/crm/appointments/[id]` are allowed to use this map.
+ *
+ * Target choices encode the realistic "where was the patient just before":
+ *   - COMPLETED → IN_PROGRESS: clears `completedAt`, visit goes back live.
+ *   - IN_PROGRESS → WAITING: patient is still in the clinic, just put them
+ *     back into the waiting-room queue. Clears `startedAt`.
+ *   - SKIPPED → WAITING: same — they were waiting before they got skipped.
+ *   - NO_SHOW → BOOKED: late arrival showed up; reactivate the slot so the
+ *     receptionist can mark them as arrived from scratch.
+ *   - CANCELLED → BOOKED: cancellation undone; cancelledAt cleared.
+ */
+const REVERTS: Partial<Record<AppointmentStatus, AppointmentStatus>> = {
+  IN_PROGRESS: "WAITING",
+  COMPLETED: "IN_PROGRESS",
+  SKIPPED: "WAITING",
+  NO_SHOW: "BOOKED",
+  CANCELLED: "BOOKED",
+};
+
+export function revertTargetFor(
+  status: AppointmentStatus,
+): AppointmentStatus | null {
+  return REVERTS[status] ?? null;
+}
+
+export function canRevert(status: AppointmentStatus): boolean {
+  return revertTargetFor(status) !== null;
+}
+
 /** Per-row action availability — the UI consults this to enable buttons. */
 export interface AppointmentActions {
   /** Mark "Пришёл" → queueStatus=WAITING. Valid only when not yet arrived. */

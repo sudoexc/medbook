@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+import type { AppointmentStatus } from "@/lib/appointment-transitions";
 
 export type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
 export type ScheduleStatus =
@@ -27,6 +28,12 @@ export type PatientTag = "active" | "first_visit" | "vip" | "new";
 export type CurrentPatient = {
   appointmentId: string;
   patientId: string;
+  /**
+   * Raw appointment status — drives which CTA the card shows. WAITING →
+   * «Начать приём», IN_PROGRESS → «Завершить приём», BOOKED → «Пациент
+   * пришёл».
+   */
+  status: AppointmentStatus;
   fullName: string;
   age: number | null;
   birthDate: string | null;
@@ -34,6 +41,9 @@ export type CurrentPatient = {
   avatarUrl: string | null;
   tags: PatientTag[];
   appointmentRange: string;
+  startsAt: string;
+  endsAt: string;
+  startedAt: string | null;
   appointmentSecondsLeft: number;
   complaints: string;
   lastVisit: { date: string; title: string } | null;

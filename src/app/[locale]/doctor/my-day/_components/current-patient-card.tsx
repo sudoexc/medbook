@@ -1,23 +1,40 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
+  CheckCircle2Icon,
   ChevronRightIcon,
   ClockIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
   PhoneIcon,
   PlayIcon,
+  RotateCcwIcon,
+  UserCheckIcon,
   UserIcon,
+  UserXIcon,
+  XIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import {
   useDoctorToday,
   type CurrentPatient,
   type PatientTag,
 } from "../_hooks/use-doctor-today";
+import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 
 const TAG_LABEL: Record<PatientTag, string> = {
   active: "Активный пациент",
@@ -33,7 +50,7 @@ const TAG_CLASS: Record<PatientTag, string> = {
   new: "bg-info/15 text-info",
 };
 
-function formatTimer(totalSec: number) {
+function formatHHMMSS(totalSec: number) {
   const sign = totalSec < 0 ? "-" : "";
   const abs = Math.abs(totalSec);
   const h = String(Math.floor(abs / 3600)).padStart(2, "0");
@@ -48,6 +65,22 @@ function formatVisitDate(iso: string): string {
     month: "2-digit",
     year: "numeric",
   }).format(new Date(iso));
+}
+
+function formatHHMM(iso: string): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+/** YYYY-MM-DD for today's local date — matches the schedule cache key. */
+function todayDateKey(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function CurrentPatientCard() {
@@ -106,19 +139,95 @@ export function CurrentPatientCard() {
 }
 
 function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
-  const [seconds, setSeconds] = React.useState(p.appointmentSecondsLeft);
-  // Reset the timer whenever the backing payload's secondsLeft changes (e.g.
-  // SSE refetch swapped the appointment). Without this the local counter
-  // keeps incrementing from the previous patient.
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+  const dateKey = React.useMemo(todayDateKey, []);
+  const mutation = useAppointmentStatusMutation(dateKey);
+
+  // One global tick re-renders the timer every second; cheap because the
+  // rest of the card is memoized through React's bailout on identical
+  // props. We tick on a single setState rather than maintaining separate
+  // state for "elapsed", "until-start", etc. — derived locally on render.
+  const [, setTick] = React.useState(0);
   React.useEffect(() => {
-    setSeconds(p.appointmentSecondsLeft);
-  }, [p.appointmentSecondsLeft]);
-  React.useEffect(() => {
-    const id = window.setInterval(() => setSeconds((s) => s - 1), 1000);
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
     return () => window.clearInterval(id);
   }, []);
 
+  const now = Date.now();
+  const startsAtMs = new Date(p.startsAt).getTime();
+  const startedAtMs = p.startedAt ? new Date(p.startedAt).getTime() : null;
+
+  let timer: {
+    label: string;
+    tone: "neutral" | "active" | "late";
+  };
+  if (p.status === "IN_PROGRESS" && startedAtMs) {
+    const elapsedSec = Math.max(0, Math.floor((now - startedAtMs) / 1000));
+    timer = {
+      label: `Идёт: ${formatHHMMSS(elapsedSec)}`,
+      tone: "active",
+    };
+  } else if (p.status === "WAITING") {
+    // Patient is in the waiting room. Show how long past scheduled start —
+    // if doctor is on time it'll read "00:00:00", once they're late it
+    // flips to the warn tone.
+    const waitingSec = Math.max(0, Math.floor((now - startsAtMs) / 1000));
+    timer = {
+      label:
+        waitingSec > 0
+          ? `Ожидает: ${formatHHMMSS(waitingSec)}`
+          : `Начало в ${formatHHMM(p.startsAt)}`,
+      tone: waitingSec > 60 ? "late" : "neutral",
+    };
+  } else {
+    // BOOKED imminent — countdown to scheduled start.
+    const untilStartSec = Math.floor((startsAtMs - now) / 1000);
+    timer = {
+      label:
+        untilStartSec > 0
+          ? `Через ${formatHHMMSS(untilStartSec)}`
+          : `Начало в ${formatHHMM(p.startsAt)}`,
+      tone: "neutral",
+    };
+  }
+
   const birthLabel = p.birthDate ? formatVisitDate(p.birthDate) : null;
+
+  const primary = (() => {
+    if (p.status === "BOOKED") {
+      return {
+        label: "Пациент пришёл",
+        Icon: UserCheckIcon,
+        toStatus: "WAITING" as const,
+      };
+    }
+    if (p.status === "WAITING") {
+      return {
+        label: "Начать приём",
+        Icon: PlayIcon,
+        toStatus: "IN_PROGRESS" as const,
+      };
+    }
+    if (p.status === "IN_PROGRESS") {
+      return {
+        label: "Завершить приём",
+        Icon: CheckCircle2Icon,
+        toStatus: "COMPLETED" as const,
+      };
+    }
+    return null;
+  })();
+
+  const fire = (
+    toStatus: Parameters<typeof mutation.mutate>[0]["toStatus"],
+    opts?: { revert?: boolean },
+  ) =>
+    mutation.mutate({
+      appointmentId: p.appointmentId,
+      toStatus,
+      revert: opts?.revert,
+    });
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
@@ -134,7 +243,13 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
             src={p.avatarUrl}
             name={p.fullName}
             size="lg"
-            status="online"
+            status={
+              p.status === "IN_PROGRESS"
+                ? "in-progress"
+                : p.status === "WAITING"
+                  ? "waiting"
+                  : "confirmed"
+            }
           />
           <div className="min-w-0 flex-1">
             <div className="truncate text-base font-semibold text-foreground">
@@ -171,9 +286,16 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
           {p.appointmentRange}
         </div>
 
-        <div className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1 text-sm font-bold tabular-nums text-primary">
+        <div
+          className={cn(
+            "inline-flex w-fit items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums",
+            timer.tone === "active" && "bg-success/15 text-success",
+            timer.tone === "late" && "bg-warning/15 text-warning",
+            timer.tone === "neutral" && "bg-primary/10 text-primary",
+          )}
+        >
           <ClockIcon className="size-3.5" />
-          {formatTimer(seconds)}
+          {timer.label}
         </div>
       </div>
 
@@ -201,13 +323,13 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
               <div className="text-xs text-muted-foreground">
                 {p.lastVisit.title}
               </div>
-              <button
-                type="button"
+              <Link
+                href={`/${locale}/doctor/visits/${p.patientId}`}
                 className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
               >
                 Открыть визит
                 <ChevronRightIcon className="size-3" />
-              </button>
+              </Link>
             </>
           ) : (
             <div className="mt-2 text-xs text-muted-foreground">
@@ -233,13 +355,13 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                   </li>
                 ))}
               </ul>
-              <button
-                type="button"
+              <Link
+                href={`/${locale}/doctor/visits/${p.patientId}`}
                 className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
               >
                 Смотреть историю
                 <ChevronRightIcon className="size-3" />
-              </button>
+              </Link>
             </>
           ) : (
             <div className="mt-2 text-xs text-muted-foreground">
@@ -250,26 +372,90 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
-        <button
-          type="button"
-          className="motion-press inline-flex flex-1 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+        <Link
+          href={`/${locale}/doctor/patients/${p.patientId}`}
+          className="motion-press inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
         >
           Открыть карту пациента
-        </button>
-        <button
-          type="button"
-          className="motion-press inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <PlayIcon className="size-4" />
-          Начать приём
-        </button>
-        <button
-          type="button"
-          aria-label="Ещё действия"
-          className="motion-press flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <MoreHorizontalIcon className="size-4" />
-        </button>
+        </Link>
+        {primary ? (
+          <button
+            type="button"
+            onClick={() => fire(primary.toStatus)}
+            disabled={mutation.isPending}
+            className="motion-press inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          >
+            {mutation.isPending ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <primary.Icon className="size-4" />
+            )}
+            {primary.label}
+          </button>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Ещё действия"
+              disabled={mutation.isPending}
+              className="motion-press flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+            >
+              <MoreHorizontalIcon className="size-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {p.status === "IN_PROGRESS" ? (
+              <>
+                <DropdownMenuItem
+                  onSelect={() => fire("WAITING", { revert: true })}
+                  className="gap-2"
+                >
+                  <RotateCcwIcon className="size-4" />
+                  Шаг назад: ожидает
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            {p.status === "WAITING" ? (
+              <>
+                <DropdownMenuItem
+                  onSelect={() => fire("BOOKED", { revert: true })}
+                  className="gap-2"
+                >
+                  <RotateCcwIcon className="size-4" />
+                  Шаг назад: запланирован
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            {p.status === "BOOKED" ? (
+              <DropdownMenuItem
+                onSelect={() => fire("IN_PROGRESS")}
+                className="gap-2"
+              >
+                <PlayIcon className="size-4" />
+                Начать без ожидания
+              </DropdownMenuItem>
+            ) : null}
+            {p.status === "BOOKED" || p.status === "WAITING" ? (
+              <DropdownMenuItem
+                onSelect={() => fire("NO_SHOW")}
+                className="gap-2"
+              >
+                <UserXIcon className="size-4" />
+                Не пришёл
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem
+              onSelect={() => fire("CANCELLED")}
+              className="gap-2 text-destructive focus:text-destructive"
+            >
+              <XIcon className="size-4" />
+              Отменить приём
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </footer>
     </section>
   );

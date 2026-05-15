@@ -194,15 +194,14 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
 
   const birthLabel = p.birthDate ? formatVisitDate(p.birthDate) : null;
 
+  // Doctor-side workflow: doctor cares about start ↔ end of the visit. The
+  // BOOKED → WAITING "Пациент пришёл" step is a receptionist concern, so we
+  // collapse it into the primary CTA. BOOKED and WAITING both go straight
+  // to IN_PROGRESS — the optional "только зарегистрировать" path stays in
+  // the kebab for the rare case the doctor wants to log arrival without
+  // starting the consultation yet.
   const primary = (() => {
-    if (p.status === "BOOKED") {
-      return {
-        label: "Пациент пришёл",
-        Icon: UserCheckIcon,
-        toStatus: "WAITING" as const,
-      };
-    }
-    if (p.status === "WAITING") {
+    if (p.status === "BOOKED" || p.status === "WAITING") {
       return {
         label: "Начать приём",
         Icon: PlayIcon,
@@ -233,7 +232,9 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-2">
         <div className="text-[15px] font-semibold text-foreground">
-          Текущий пациент
+          {p.status === "IN_PROGRESS"
+            ? "Текущий приём"
+            : "Следующий пациент"}
         </div>
       </header>
 
@@ -431,11 +432,11 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
             ) : null}
             {p.status === "BOOKED" ? (
               <DropdownMenuItem
-                onSelect={() => fire("IN_PROGRESS")}
+                onSelect={() => fire("WAITING")}
                 className="gap-2"
               >
-                <PlayIcon className="size-4" />
-                Начать без ожидания
+                <UserCheckIcon className="size-4" />
+                Только зарегистрировать прибытие
               </DropdownMenuItem>
             ) : null}
             {p.status === "BOOKED" || p.status === "WAITING" ? (

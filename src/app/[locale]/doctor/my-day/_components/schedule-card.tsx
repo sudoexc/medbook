@@ -109,7 +109,7 @@ export function ScheduleCard() {
   }, [entries, isToday]);
 
   return (
-    <section className="flex flex-col rounded-2xl border border-border bg-card">
+    <section className="flex flex-col rounded-2xl border border-border bg-card xl:col-span-2">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
         <div>
           <div className="text-[15px] font-semibold text-foreground">
@@ -174,7 +174,7 @@ export function ScheduleCard() {
           </li>
         ) : (
           entries
-            .slice(0, 6)
+            .slice(0, 10)
             .map((entry, i) => (
               <ScheduleRow
                 key={entry.id}
@@ -194,9 +194,9 @@ export function ScheduleCard() {
         >
           <CalendarIcon className="size-4" />
           Показать весь день
-          {entries.length > 6 ? (
+          {entries.length > 10 ? (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold">
-              +{entries.length - 6}
+              +{entries.length - 10}
             </span>
           ) : null}
         </Link>
@@ -228,19 +228,19 @@ function ScheduleRow({
   return (
     <li
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-3 transition-colors",
+        "group flex items-center gap-3 rounded-lg px-3 py-4 transition-colors",
         active && "bg-primary/[0.04]",
         !active && !isBreak && !dimmed && "hover:bg-muted/50",
         dimmed && "opacity-75",
       )}
     >
-      <div className="w-12 shrink-0 text-sm font-semibold tabular-nums text-foreground">
+      <div className="w-14 shrink-0 text-base font-semibold tabular-nums text-foreground">
         {entry.startTime}
       </div>
       <div className="flex h-7 w-7 shrink-0 items-center justify-center">
         <span
           className={cn(
-            "size-2 rounded-full",
+            "size-2.5 rounded-full",
             active
               ? "bg-success ring-2 ring-success/30"
               : isReserve
@@ -260,7 +260,7 @@ function ScheduleRow({
       <div className="min-w-0 flex-1">
         <div
           className={cn(
-            "truncate text-sm font-semibold",
+            "truncate text-[15px] font-semibold",
             isBreak || isReserve
               ? "text-muted-foreground"
               : "text-foreground",
@@ -270,6 +270,7 @@ function ScheduleRow({
         </div>
         <div className="truncate text-xs text-muted-foreground">
           {TYPE_LABEL[entry.type]}
+          {entry.durationMin ? ` · ${entry.durationMin} мин` : ""}
         </div>
       </div>
       <RowAction
@@ -323,20 +324,20 @@ function RowAction({
 
   if (entry.status === "in_progress") {
     return (
-      <div className="flex shrink-0 items-center gap-1.5">
-        <span className="inline-flex items-center rounded-full bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success">
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="inline-flex items-center rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
           Идёт приём
         </span>
         <button
           type="button"
           disabled={isPending}
           onClick={() => onFire("COMPLETED")}
-          className="motion-press inline-flex h-7 items-center gap-1 rounded-lg bg-success/10 px-2.5 text-xs font-semibold text-success transition-colors hover:bg-success/20 disabled:opacity-60"
+          className="motion-press inline-flex h-9 items-center gap-1.5 rounded-lg bg-success px-3 text-sm font-semibold text-white transition-colors hover:bg-success/90 disabled:opacity-60"
         >
           {isPending ? (
-            <Loader2Icon className="size-3 animate-spin" />
+            <Loader2Icon className="size-4 animate-spin" />
           ) : (
-            <CheckCircle2Icon className="size-3.5" />
+            <CheckCircle2Icon className="size-4" />
           )}
           Завершить
         </button>
@@ -391,35 +392,29 @@ function RowAction({
     );
   }
 
-  // upcoming
-  if (isNextUpcoming) {
-    return (
-      <button
-        type="button"
-        disabled={isPending}
-        onClick={() => onFire("IN_PROGRESS")}
-        className="motion-press inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-      >
-        {isPending ? (
-          <Loader2Icon className="size-3 animate-spin" />
-        ) : (
-          <PlayIcon className="size-3.5" />
-        )}
-        Старт
-      </button>
-    );
-  }
-
+  // upcoming — every patient row gets an explicit "Начать приём" button so
+  // the doctor never feels the visit started without their click. The very
+  // first upcoming gets a filled-primary style; the rest a softer outline
+  // (still clickable — handy when the doctor wants to start out-of-order).
   return (
-    <div className="shrink-0 text-right">
-      {entry.durationMin ? (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {entry.durationMin} мин
-        </span>
-      ) : (
-        <span className="text-xs text-muted-foreground">—</span>
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={() => onFire("IN_PROGRESS")}
+      className={cn(
+        "motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60",
+        isNextUpcoming
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "border border-border bg-background text-foreground hover:bg-muted",
       )}
-    </div>
+    >
+      {isPending ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <PlayIcon className="size-4" />
+      )}
+      Начать приём
+    </button>
   );
 }
 

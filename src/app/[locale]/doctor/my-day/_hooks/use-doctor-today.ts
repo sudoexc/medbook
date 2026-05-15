@@ -58,6 +58,8 @@ export type ActionItem = {
 export type ReminderItem = {
   id: string;
   title: string;
+  /** Null when the reminder isn't bound to a patient (general task). */
+  patientId: string | null;
   patientShort: string | null;
   remindAt: string;
   status: string;
@@ -66,6 +68,7 @@ export type ReminderItem = {
 export type UnreadResultItem = {
   id: string;
   testName: string;
+  patientId: string;
   patientShort: string;
   receivedAt: string;
   flag: string | null;
@@ -73,8 +76,10 @@ export type UnreadResultItem = {
 };
 
 export type DraftItem = {
+  /** VisitNote id — opens at /doctor/conclusions/[id]. */
   id: string;
   title: string;
+  patientId: string;
   patientShort: string;
   updatedAt: string;
 };

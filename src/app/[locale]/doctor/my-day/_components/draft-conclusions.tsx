@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { ChevronRightIcon, FileEditIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +18,9 @@ function formatTime(iso: string): string {
 }
 
 export function DraftConclusions() {
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
   const { data: rows, isLoading } = useDoctorToday<DraftItem[]>(
     (d) => d.drafts,
   );
@@ -51,47 +56,47 @@ export function DraftConclusions() {
           </li>
         ) : (
           rows.map((d) => (
-            <li
-              key={d.id}
-              className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 px-3 py-2.5"
-            >
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <FileEditIcon className="size-3.5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-semibold text-foreground">
-                    {d.title}
-                  </div>
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    {d.patientShort}
+            <li key={d.id}>
+              <Link
+                href={`/${locale}/doctor/conclusions/${d.id}`}
+                aria-label={`Продолжить: ${d.title} — ${d.patientShort}`}
+                className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 px-3 py-2.5 transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <FileEditIcon className="size-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-semibold text-foreground">
+                      {d.title}
+                    </div>
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      {d.patientShort}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {formatTime(d.updatedAt)}
-                </span>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary hover:underline"
-                >
-                  Продолжить
-                  <ChevronRightIcon className="size-3" />
-                </button>
-              </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    {formatTime(d.updatedAt)}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary">
+                    Продолжить
+                    <ChevronRightIcon className="size-3" />
+                  </span>
+                </div>
+              </Link>
             </li>
           ))
         )}
       </ul>
 
       <footer className="border-t border-border px-5 py-3">
-        <button
-          type="button"
+        <Link
+          href={`/${locale}/doctor/conclusions?status=draft`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           Все черновики
-        </button>
+        </Link>
       </footer>
     </section>
   );

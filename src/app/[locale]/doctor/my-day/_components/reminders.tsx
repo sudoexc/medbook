@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { BellIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +38,9 @@ function formatRemindAt(iso: string, now: Date): {
 }
 
 export function Reminders() {
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
   const { data: rows, isLoading } = useDoctorToday<ReminderItem[]>(
     (d) => d.reminders,
   );
@@ -68,11 +73,19 @@ export function Reminders() {
         ) : (
           rows.map((r) => {
             const { rel, abs } = formatRemindAt(r.remindAt, now);
+            // Patient-bound reminders deep-link to the patient card so the
+            // doctor can take action in context; unbound reminders fall back
+            // to the central notifications inbox where the reminder lives.
+            const href = r.patientId
+              ? `/${locale}/doctor/patients/${r.patientId}`
+              : `/${locale}/doctor/notifications`;
+
             return (
               <li key={r.id}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50"
+                <Link
+                  href={href}
+                  aria-label={`Напоминание: ${r.title}`}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <BellIcon className="size-4" />
@@ -93,7 +106,7 @@ export function Reminders() {
                       {abs}
                     </div>
                   </div>
-                </button>
+                </Link>
               </li>
             );
           })
@@ -101,12 +114,12 @@ export function Reminders() {
       </ul>
 
       <footer className="border-t border-border px-5 py-3">
-        <button
-          type="button"
+        <Link
+          href={`/${locale}/doctor/notifications`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           Все напоминания
-        </button>
+        </Link>
       </footer>
     </section>
   );

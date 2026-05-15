@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronRightIcon,
   FileTextIcon,
@@ -18,12 +18,36 @@ import {
   type ConclusionRow,
 } from "../_hooks/use-conclusions-list";
 
+type StatusFilter = "FINALIZED" | "DRAFT";
+
+function statusFromParam(raw: string | null): StatusFilter {
+  return raw?.toLowerCase() === "draft" ? "DRAFT" : "FINALIZED";
+}
+
 export function ConclusionsList() {
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [query, setQuery] = React.useState("");
-  const [status, setStatus] = React.useState<"FINALIZED" | "DRAFT">("FINALIZED");
+  const [status, setStatus] = React.useState<StatusFilter>(() =>
+    statusFromParam(searchParams.get("status")),
+  );
+
+  // Keep URL in sync so the «Все черновики» deep-link from /my-day lands on
+  // the Drafts tab, and tab switches stay shareable / back-button-friendly.
+  const setStatusAndUrl = React.useCallback(
+    (next: StatusFilter) => {
+      setStatus(next);
+      const p = new URLSearchParams(searchParams.toString());
+      if (next === "DRAFT") p.set("status", "draft");
+      else p.delete("status");
+      const qs = p.toString();
+      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+    },
+    [router, searchParams],
+  );
 
   const [debounced, setDebounced] = React.useState(query);
   React.useEffect(() => {
@@ -64,10 +88,10 @@ export function ConclusionsList() {
         </div>
 
         <div className="inline-flex rounded-xl border border-border bg-card p-0.5">
-          <TabBtn active={status === "FINALIZED"} onClick={() => setStatus("FINALIZED")}>
+          <TabBtn active={status === "FINALIZED"} onClick={() => setStatusAndUrl("FINALIZED")}>
             Финализированы
           </TabBtn>
-          <TabBtn active={status === "DRAFT"} onClick={() => setStatus("DRAFT")}>
+          <TabBtn active={status === "DRAFT"} onClick={() => setStatusAndUrl("DRAFT")}>
             Черновики
           </TabBtn>
         </div>

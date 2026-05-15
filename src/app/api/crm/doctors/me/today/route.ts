@@ -75,6 +75,8 @@ type ActionItem = { id: string; title: string; count: number; href: string };
 type ReminderItem = {
   id: string;
   title: string;
+  /** Null when the reminder isn't bound to a patient (general task). */
+  patientId: string | null;
   patientShort: string | null;
   remindAt: string;
   status: string;
@@ -83,6 +85,8 @@ type ReminderItem = {
 type UnreadResultItem = {
   id: string;
   testName: string;
+  /** Deep-link target so a click on the row opens the patient's labs tab. */
+  patientId: string;
   patientShort: string;
   receivedAt: string;
   flag: string | null;
@@ -90,8 +94,10 @@ type UnreadResultItem = {
 };
 
 type DraftItem = {
+  /** VisitNote id — used to deep-link «Продолжить» to /doctor/conclusions/[id]. */
   id: string;
   title: string;
+  patientId: string;
   patientShort: string;
   updatedAt: string;
 };
@@ -282,7 +288,7 @@ export const GET = createApiListHandler(
           title: true,
           remindAt: true,
           status: true,
-          patient: { select: { fullName: true } },
+          patient: { select: { id: true, fullName: true } },
         },
       }),
       prisma.labResult.findMany({
@@ -294,7 +300,7 @@ export const GET = createApiListHandler(
           testName: true,
           flag: true,
           receivedAt: true,
-          patient: { select: { fullName: true } },
+          patient: { select: { id: true, fullName: true } },
         },
       }),
       prisma.visitNote.findMany({
@@ -307,7 +313,7 @@ export const GET = createApiListHandler(
           appointment: {
             select: { date: true },
           },
-          patient: { select: { fullName: true } },
+          patient: { select: { id: true, fullName: true } },
         },
       }),
       // "Recent" = COMPLETED visits in the last 14d, distinct on patientId.
@@ -546,30 +552,37 @@ export const GET = createApiListHandler(
     const reminders: ReminderItem[] = activeReminders.map((r) => ({
       id: r.id,
       title: r.title,
+      patientId: r.patient?.id ?? null,
       patientShort: r.patient ? shortName(r.patient.fullName) : null,
       remindAt: r.remindAt.toISOString(),
       status: r.status,
     }));
 
-    const unreadResults: UnreadResultItem[] = unreadLabs.map((r) => ({
-      id: r.id,
-      testName: r.testName,
-      patientShort: r.patient ? shortName(r.patient.fullName) : "—",
-      receivedAt: r.receivedAt.toISOString(),
-      flag: r.flag,
-      // "new" badge — received within the last 24h.
-      isNew: now.getTime() - r.receivedAt.getTime() <= 24 * 60 * 60_000,
-    }));
+    const unreadResults: UnreadResultItem[] = unreadLabs
+      .filter((r) => r.patient)
+      .map((r) => ({
+        id: r.id,
+        testName: r.testName,
+        patientId: r.patient!.id,
+        patientShort: shortName(r.patient!.fullName),
+        receivedAt: r.receivedAt.toISOString(),
+        flag: r.flag,
+        // "new" badge — received within the last 24h.
+        isNew: now.getTime() - r.receivedAt.getTime() <= 24 * 60 * 60_000,
+      }));
 
-    const drafts: DraftItem[] = draftNotes.map((d) => {
-      const appointmentDate = d.appointment?.date ?? d.startedAt ?? now;
-      return {
-        id: d.id,
-        title: `Заключение от ${appointmentDate.toISOString().slice(0, 10)}`,
-        patientShort: d.patient ? shortName(d.patient.fullName) : "—",
-        updatedAt: (d.startedAt ?? appointmentDate).toISOString(),
-      };
-    });
+    const drafts: DraftItem[] = draftNotes
+      .filter((d) => d.patient)
+      .map((d) => {
+        const appointmentDate = d.appointment?.date ?? d.startedAt ?? now;
+        return {
+          id: d.id,
+          title: `Заключение от ${appointmentDate.toISOString().slice(0, 10)}`,
+          patientId: d.patient!.id,
+          patientShort: shortName(d.patient!.fullName),
+          updatedAt: (d.startedAt ?? appointmentDate).toISOString(),
+        };
+      });
 
     // De-dupe completed visits by patientId, keep first (most recent) hit.
     const seen = new Set<string>();

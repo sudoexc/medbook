@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { ConclusionsList } from "./_components/conclusions-list";
 
 export default function ConclusionsPage() {
@@ -12,7 +14,10 @@ export default function ConclusionsPage() {
         </div>
       </div>
 
-      <ConclusionsList />
+      {/* ConclusionsList reads `?status=draft` via useSearchParams. */}
+      <Suspense fallback={null}>
+        <ConclusionsList />
+      </Suspense>
     </div>
   );
 }

@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
@@ -16,6 +19,9 @@ function formatDate(iso: string): string {
 }
 
 export function RecentPatients() {
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
   const { data: rows, isLoading } = useDoctorToday<RecentPatientItem[]>(
     (d) => d.recentPatients,
   );
@@ -46,35 +52,38 @@ export function RecentPatients() {
           </li>
         ) : (
           rows.map((p) => (
-            <li
-              key={p.id}
-              className="flex flex-col items-center gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/40"
-            >
-              <AvatarWithStatus
-                src={p.avatarUrl}
-                name={p.shortName}
-                size="lg"
-              />
-              <div className="text-center">
-                <div className="truncate text-xs font-semibold text-foreground">
-                  {p.shortName}
+            <li key={p.id}>
+              <Link
+                href={`/${locale}/doctor/patients/${p.id}`}
+                aria-label={`Открыть карту: ${p.shortName}`}
+                className="flex h-full flex-col items-center gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <AvatarWithStatus
+                  src={p.avatarUrl}
+                  name={p.shortName}
+                  size="lg"
+                />
+                <div className="text-center">
+                  <div className="truncate text-xs font-semibold text-foreground">
+                    {p.shortName}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground tabular-nums">
+                    {formatDate(p.lastVisitAt)}
+                  </div>
                 </div>
-                <div className="text-[11px] text-muted-foreground tabular-nums">
-                  {formatDate(p.lastVisitAt)}
-                </div>
-              </div>
+              </Link>
             </li>
           ))
         )}
       </ul>
 
       <footer className="border-t border-border px-5 py-3">
-        <button
-          type="button"
+        <Link
+          href={`/${locale}/doctor/patients`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           Все пациенты
-        </button>
+        </Link>
       </footer>
     </section>
   );

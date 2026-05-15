@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { ArrowRightIcon, FileTextIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +27,9 @@ const FLAG_TONE: Record<string, string> = {
 };
 
 export function UnreadResults() {
+  const params = useParams();
+  const locale = typeof params?.locale === "string" ? params.locale : "ru";
+
   const { data: rows, isLoading } = useDoctorToday<UnreadResultItem[]>(
     (d) => d.unreadResults,
   );
@@ -56,9 +61,10 @@ export function UnreadResults() {
         ) : (
           rows.map((r) => (
             <li key={r.id}>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50"
+              <Link
+                href={`/${locale}/doctor/patients/${r.patientId}?tab=labs`}
+                aria-label={`${r.testName} — ${r.patientShort}: открыть анализы`}
+                className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
                   <FileTextIcon className="size-4" />
@@ -94,20 +100,20 @@ export function UnreadResults() {
                     </span>
                   ) : null}
                 </div>
-              </button>
+              </Link>
             </li>
           ))
         )}
       </ul>
 
       <footer className="border-t border-border px-5 py-3">
-        <button
-          type="button"
+        <Link
+          href={`/${locale}/doctor/conclusions`}
           className="motion-press inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           Показать все результаты
           <ArrowRightIcon className="size-4" />
-        </button>
+        </Link>
       </footer>
     </section>
   );

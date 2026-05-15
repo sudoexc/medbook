@@ -18,6 +18,15 @@ export const AUDIT_ACTION = {
   // sifting through every status flip.
   APPOINTMENT_RESCHEDULED: "APPOINTMENT_RESCHEDULED",
 
+  // Phase 20 Wave 5d — doctor pressed "Вызвать пациента" on /my-day. Sets
+  // Appointment.calledAt, bumps BOOKED → WAITING when applicable, fires the
+  // patient-facing Telegram "проходите в кабинет" notification. `entityType:
+  // "Appointment"`, `entityId: <appointmentId>`. `meta` carries
+  // `{ doctorUserId, previousStatus, statusBumpedToWaiting: boolean,
+  //   notificationSent: boolean }` — `notificationSent` is false when the
+  // patient has no telegramChatId so support can audit "called but no push".
+  APPOINTMENT_CALLED: "APPOINTMENT_CALLED",
+
   // Phase 20 Wave 5b+ — doctor pressed "Шаг назад" on a status transition.
   // Distinct from `appointment.update` so support can find "doctor undid X
   // visits today" without scanning generic-update meta. `entityType:

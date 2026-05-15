@@ -27,6 +27,7 @@ import {
   revertTargetFor,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
+import { sendMessage, escapeHtml } from "@/lib/telegram";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -239,6 +240,129 @@ export const PATCH = createApiHandler(
         });
       }
       return ok(revertedRow);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Doctor-initiated "Вызвать пациента" — sets calledAt = now(), bumps
+    // BOOKED → WAITING when applicable, fires the patient-facing Telegram
+    // notification ("Проходите в кабинет N"). The call is distinct from the
+    // status transition: the appointment is NOT IN_PROGRESS yet — that
+    // happens when the doctor presses "Начать приём" after the patient
+    // walks in. Repeated calls within the same WAITING window refresh
+    // calledAt and re-fire the notification (handy when a patient doesn't
+    // come back in 2-3 minutes).
+    // ──────────────────────────────────────────────────────────────────────
+    const callRequested =
+      new URL(request.url).searchParams.get("call") === "true";
+    if (callRequested) {
+      if (ctx.kind !== "TENANT" || ctx.role !== "DOCTOR") {
+        return forbidden();
+      }
+      if (before.doctor.userId !== ctx.userId) {
+        return forbidden();
+      }
+      const fromStatus = before.status as AppointmentStatus;
+      if (
+        fromStatus === "COMPLETED" ||
+        fromStatus === "CANCELLED" ||
+        fromStatus === "NO_SHOW"
+      ) {
+        return conflict("invalid_transition", {
+          from: fromStatus,
+          reason: "cannot_call_terminal",
+        });
+      }
+      if (fromStatus === "IN_PROGRESS") {
+        return conflict("invalid_transition", {
+          from: fromStatus,
+          reason: "already_in_progress",
+        });
+      }
+
+      const callData: Record<string, unknown> = {
+        calledAt: new Date(),
+      };
+      const bumpToWaiting = fromStatus === "BOOKED";
+      if (bumpToWaiting) callData.status = "WAITING";
+
+      const updatedRow = await prisma.appointment.update({
+        where: { id },
+        data: callData as never,
+        select: {
+          id: true,
+          status: true,
+          queueStatus: true,
+          calledAt: true,
+          date: true,
+          doctorId: true,
+          patientId: true,
+          cabinetId: true,
+          patient: { select: { fullName: true, telegramId: true } },
+          doctor: {
+            select: {
+              nameRu: true,
+              cabinet: { select: { number: true } },
+            },
+          },
+        },
+      });
+
+      let notificationSent = false;
+      if (updatedRow.patient.telegramId) {
+        const cabinetLine = updatedRow.doctor.cabinet?.number
+          ? `Кабинет ${escapeHtml(updatedRow.doctor.cabinet.number)}`
+          : "Подойдите к врачу";
+        const text = `📢 <b>Вас вызывают!</b>\n\n${cabinetLine}\nВрач: ${escapeHtml(updatedRow.doctor.nameRu)}`;
+        await sendMessage(updatedRow.patient.telegramId, text, {
+          parse_mode: "HTML",
+        })
+          .then(() => {
+            notificationSent = true;
+          })
+          .catch((err) => {
+            console.error("[appointments/call] telegram", err);
+          });
+      }
+
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_CALLED,
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          doctorUserId: ctx.userId,
+          previousStatus: fromStatus,
+          statusBumpedToWaiting: bumpToWaiting,
+          notificationSent,
+        },
+      });
+
+      const tenant = getTenant();
+      const clinicId =
+        tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      if (clinicId) {
+        publishEventSafe(clinicId, {
+          type: "appointment.statusChanged",
+          payload: {
+            appointmentId: id,
+            doctorId: updatedRow.doctorId,
+            patientId: updatedRow.patientId,
+            cabinetId: updatedRow.cabinetId,
+            status: updatedRow.status,
+            previousStatus: before.status,
+            date: updatedRow.date.toISOString(),
+          },
+        });
+        publishEventSafe(clinicId, {
+          type: "queue.updated",
+          payload: {
+            appointmentId: id,
+            doctorId: updatedRow.doctorId,
+            queueStatus: updatedRow.queueStatus,
+            previousStatus: before.queueStatus,
+          },
+        });
+      }
+      return ok(updatedRow);
     }
 
     if (body.status !== undefined) {

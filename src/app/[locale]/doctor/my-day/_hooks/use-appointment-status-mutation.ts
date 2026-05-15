@@ -16,9 +16,20 @@ import { doctorScheduleKey, type DoctorSchedule } from "./use-doctor-schedule";
 
 export type StatusMutationArgs = {
   appointmentId: string;
+  /**
+   * Forward status target. Ignored when `call` is true — the call branch
+   * stamps `calledAt` server-side and may bump BOOKED → WAITING, but the
+   * caller doesn't pick a target status explicitly.
+   */
   toStatus: AppointmentStatus;
   /** When true, hits PATCH with `?revert=true` (bypasses forward guard). */
   revert?: boolean;
+  /**
+   * When true, hits PATCH with `?call=true` — doctor pressed "Вызвать
+   * пациента". Server stamps `calledAt`, bumps BOOKED → WAITING when
+   * needed, and fires the patient-facing Telegram "проходите в кабинет".
+   */
+  call?: boolean;
 };
 
 type Snapshot = {
@@ -57,15 +68,19 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
   const qc = useQueryClient();
 
   return useMutation<unknown, Error, StatusMutationArgs, Snapshot>({
-    mutationFn: async ({ appointmentId, toStatus, revert }) => {
-      const url = revert
-        ? `/api/crm/appointments/${appointmentId}?revert=true`
-        : `/api/crm/appointments/${appointmentId}`;
+    mutationFn: async ({ appointmentId, toStatus, revert, call }) => {
+      const url = call
+        ? `/api/crm/appointments/${appointmentId}?call=true`
+        : revert
+          ? `/api/crm/appointments/${appointmentId}?revert=true`
+          : `/api/crm/appointments/${appointmentId}`;
       const res = await fetch(url, {
         method: "PATCH",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: toStatus }),
+        // Call branch ignores the body server-side, but sending `{}` keeps
+        // the content-type header honest.
+        body: call ? "{}" : JSON.stringify({ status: toStatus }),
       });
       if (!res.ok) {
         let reason = "";
@@ -83,7 +98,7 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       return (await res.json()) as unknown;
     },
 
-    onMutate: async ({ appointmentId, toStatus }) => {
+    onMutate: async ({ appointmentId, toStatus, call }) => {
       await qc.cancelQueries({ queryKey: doctorTodayKey });
       if (dateKey) {
         await qc.cancelQueries({ queryKey: doctorScheduleKey(dateKey) });
@@ -92,6 +107,47 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       const schedule = dateKey
         ? qc.getQueryData<DoctorSchedule>(doctorScheduleKey(dateKey))
         : undefined;
+
+      // Call branch is a state-on-row stamp (`calledAt` + maybe WAITING),
+      // not a forward status flip — branched separately so the regular
+      // path stays readable.
+      if (call) {
+        const nowIso = new Date().toISOString();
+        if (today) {
+          const cur = today.current;
+          const currentMatches =
+            cur !== null && cur.appointmentId === appointmentId;
+          const nextCurrent: CurrentPatient | null = currentMatches
+            ? {
+                ...cur,
+                calledAt: nowIso,
+                status: cur.status === "BOOKED" ? "WAITING" : cur.status,
+              }
+            : cur;
+          // Schedule entry's `status` is a mapped category ("upcoming" /
+          // "in_progress" / …). BOOKED and WAITING both map to "upcoming",
+          // so the BOOKED → WAITING server bump doesn't change the row's
+          // schedule status — we only stamp `calledAt`.
+          const next: DoctorToday = {
+            ...today,
+            schedule: today.schedule.map((e: ScheduleEntry) =>
+              e.id === appointmentId ? { ...e, calledAt: nowIso } : e,
+            ),
+            current: nextCurrent,
+          };
+          qc.setQueryData(doctorTodayKey, next);
+        }
+        if (schedule && dateKey) {
+          const next: DoctorSchedule = {
+            ...schedule,
+            entries: schedule.entries.map((e) =>
+              e.id === appointmentId ? { ...e, calledAt: nowIso } : e,
+            ),
+          };
+          qc.setQueryData(doctorScheduleKey(dateKey), next);
+        }
+        return { today, schedule };
+      }
 
       const mappedScheduleStatus = scheduleStatusOf(toStatus);
 
@@ -176,6 +232,7 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
 }
 
 function successFor(args: StatusMutationArgs): string | null {
+  if (args.call) return "Пациент вызван";
   if (args.revert) return "Шаг назад выполнен";
   switch (args.toStatus) {
     case "WAITING":
@@ -207,5 +264,6 @@ function messageFor(args: StatusMutationArgs, raw: string): string {
   if (raw === "revert_target_mismatch") {
     return "Не удалось определить, к чему откатить";
   }
+  if (args.call) return "Не удалось вызвать пациента";
   return args.revert ? "Не удалось отменить шаг" : "Не удалось обновить статус";
 }

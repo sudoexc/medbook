@@ -21,6 +21,8 @@ export type ScheduleEntry = {
   type: ScheduleType;
   durationMin: number | null;
   status: ScheduleStatus;
+  /** When the doctor pressed «Вызвать пациента». Drives the row CTA. */
+  calledAt: string | null;
 };
 
 export type PatientTag = "active" | "first_visit" | "vip" | "new";
@@ -29,9 +31,11 @@ export type CurrentPatient = {
   appointmentId: string;
   patientId: string;
   /**
-   * Raw appointment status — drives which CTA the card shows. WAITING →
-   * «Начать приём», IN_PROGRESS → «Завершить приём», BOOKED → «Пациент
-   * пришёл».
+   * Raw appointment status — combined with `calledAt` drives which CTA the
+   * card shows. The 3-step doctor workflow is:
+   *   BOOKED/WAITING + !calledAt  → «Вызвать пациента»
+   *   BOOKED/WAITING +  calledAt  → «Начать приём»
+   *   IN_PROGRESS                 → «Завершить приём»
    */
   status: AppointmentStatus;
   fullName: string;
@@ -44,6 +48,7 @@ export type CurrentPatient = {
   startsAt: string;
   endsAt: string;
   startedAt: string | null;
+  calledAt: string | null;
   appointmentSecondsLeft: number;
   complaints: string;
   lastVisit: { date: string; title: string } | null;

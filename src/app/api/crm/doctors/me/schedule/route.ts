@@ -38,6 +38,12 @@ type ScheduleEntry = {
   type: ScheduleType;
   durationMin: number | null;
   status: ScheduleStatus;
+  /**
+   * When the doctor pressed "Вызвать пациента". The schedule UI uses this
+   * to flip the row CTA from "Вызвать" to "Начать приём" without needing
+   * a separate enum status. Null when the patient has not been called yet.
+   */
+  calledAt: string | null;
 };
 
 type DaySummary = {
@@ -105,6 +111,7 @@ export const GET = createApiListHandler(
         time: true,
         durationMin: true,
         status: true,
+        calledAt: true,
         patientId: true,
         patient: {
           select: {
@@ -123,6 +130,7 @@ export const GET = createApiListHandler(
       type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
       durationMin: a.durationMin,
       status: scheduleStatusOf(a.status),
+      calledAt: a.calledAt ? a.calledAt.toISOString() : null,
     }));
 
     let consultations = 0;

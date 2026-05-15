@@ -9,6 +9,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Loader2Icon,
+  MegaphoneIcon,
   PlayIcon,
   RotateCcwIcon,
 } from "lucide-react";
@@ -284,6 +285,14 @@ function ScheduleRow({
             revert: opts?.revert,
           })
         }
+        onCall={() =>
+          mutation.mutate({
+            appointmentId: entry.id,
+            // toStatus is ignored by the call branch — sentinel only.
+            toStatus: "WAITING",
+            call: true,
+          })
+        }
       />
     </li>
   );
@@ -294,6 +303,7 @@ function RowAction({
   isNextUpcoming,
   isPending,
   onFire,
+  onCall,
 }: {
   entry: ScheduleEntry;
   isNextUpcoming: boolean;
@@ -304,6 +314,7 @@ function RowAction({
     >[0]["toStatus"],
     opts?: { revert?: boolean },
   ) => void;
+  onCall: () => void;
 }) {
   const isBreak = entry.type === "break";
   const isReserve = entry.type === "reserve";
@@ -392,29 +403,60 @@ function RowAction({
     );
   }
 
-  // upcoming — every patient row gets an explicit "Начать приём" button so
-  // the doctor never feels the visit started without their click. The very
-  // first upcoming gets a filled-primary style; the rest a softer outline
-  // (still clickable — handy when the doctor wants to start out-of-order).
+  // upcoming — the 3-step clinic workflow lives here as a per-row CTA:
+  //   - !calledAt → «Вызвать» (stamps calledAt + Telegram пациенту)
+  //   -  calledAt → «Начать приём» (with a small "Вызван" badge)
+  // Only the first upcoming row gets the bold primary style; everything
+  // else is outlined (still clickable — handy when the doctor wants to
+  // start out-of-order or call someone earlier than the queue suggests).
+  if (!entry.calledAt) {
+    return (
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={onCall}
+        className={cn(
+          "motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60",
+          isNextUpcoming
+            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+            : "border border-border bg-background text-foreground hover:bg-muted",
+        )}
+      >
+        {isPending ? (
+          <Loader2Icon className="size-4 animate-spin" />
+        ) : (
+          <MegaphoneIcon className="size-4" />
+        )}
+        Вызвать
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      disabled={isPending}
-      onClick={() => onFire("IN_PROGRESS")}
-      className={cn(
-        "motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60",
-        isNextUpcoming
-          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-          : "border border-border bg-background text-foreground hover:bg-muted",
-      )}
-    >
-      {isPending ? (
-        <Loader2Icon className="size-4 animate-spin" />
-      ) : (
-        <PlayIcon className="size-4" />
-      )}
-      Начать приём
-    </button>
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="inline-flex items-center gap-1 rounded-full bg-violet/15 px-2 py-1 text-[11px] font-semibold text-violet">
+        <MegaphoneIcon className="size-3" />
+        Вызван
+      </span>
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => onFire("IN_PROGRESS")}
+        className={cn(
+          "motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60",
+          isNextUpcoming
+            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+            : "border border-border bg-background text-foreground hover:bg-muted",
+        )}
+      >
+        {isPending ? (
+          <Loader2Icon className="size-4 animate-spin" />
+        ) : (
+          <PlayIcon className="size-4" />
+        )}
+        Начать приём
+      </button>
+    </div>
   );
 }
 

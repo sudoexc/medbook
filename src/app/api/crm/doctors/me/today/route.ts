@@ -43,6 +43,8 @@ type ScheduleEntry = {
   type: ScheduleType;
   durationMin: number | null;
   status: ScheduleStatus;
+  /** Same semantics as in /schedule — flips row CTA Вызвать → Начать. */
+  calledAt: string | null;
 };
 
 type PatientTag = "active" | "first_visit" | "vip" | "new";
@@ -69,6 +71,13 @@ type CurrentPatient = {
   endsAt: string;
   /** When the doctor flipped to IN_PROGRESS. Null until then. */
   startedAt: string | null;
+  /**
+   * When the doctor pressed "Вызвать пациента". Drives the 3-step flow
+   * on the current-patient card: !calledAt → primary CTA "Вызвать",
+   * calledAt && WAITING → primary CTA "Начать приём" (with a "Вызван
+   * N сек назад" badge).
+   */
+  calledAt: string | null;
   appointmentSecondsLeft: number;
   complaints: string;
   lastVisit: { date: string; title: string } | null;
@@ -269,6 +278,7 @@ export const GET = createApiListHandler(
           durationMin: true,
           status: true,
           startedAt: true,
+          calledAt: true,
           patientId: true,
           patient: {
             select: {
@@ -389,6 +399,7 @@ export const GET = createApiListHandler(
       type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
       durationMin: a.durationMin,
       status: scheduleStatusOf(a.status),
+      calledAt: a.calledAt ? a.calledAt.toISOString() : null,
     }));
 
     let consultations = 0;
@@ -482,6 +493,9 @@ export const GET = createApiListHandler(
         endsAt: endAt.toISOString(),
         startedAt: currentSource.startedAt
           ? currentSource.startedAt.toISOString()
+          : null,
+        calledAt: currentSource.calledAt
+          ? currentSource.calledAt.toISOString()
           : null,
         appointmentSecondsLeft: secondsLeft,
         // Patient.notes is the closest analogue we have to "complaints"

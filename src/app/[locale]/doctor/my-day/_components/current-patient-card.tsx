@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   ClockIcon,
   Loader2Icon,
+  MegaphoneIcon,
   MoreHorizontalIcon,
   PhoneIcon,
   PlayIcon,
@@ -72,6 +73,13 @@ function formatHHMM(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+/** "30 сек назад" / "2 мин назад" — only used by the «Вызван …» hint. */
+function formatCalledAgo(seconds: number): string {
+  if (seconds < 60) return `${seconds} сек назад`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} мин назад`;
 }
 
 /** YYYY-MM-DD for today's local date — matches the schedule cache key. */
@@ -194,39 +202,75 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
 
   const birthLabel = p.birthDate ? formatVisitDate(p.birthDate) : null;
 
-  // Doctor-side workflow: doctor cares about start ↔ end of the visit. The
-  // BOOKED → WAITING "Пациент пришёл" step is a receptionist concern, so we
-  // collapse it into the primary CTA. BOOKED and WAITING both go straight
-  // to IN_PROGRESS — the optional "только зарегистрировать" path stays in
-  // the kebab for the rare case the doctor wants to log arrival without
-  // starting the consultation yet.
-  const primary = (() => {
-    if (p.status === "BOOKED" || p.status === "WAITING") {
+  type StatusTarget = Parameters<typeof mutation.mutate>[0]["toStatus"];
+
+  // Three-step clinic workflow surfaced as one rotating primary CTA:
+  //   1. BOOKED/WAITING + !calledAt → «Вызвать пациента» (stamps calledAt
+  //      server-side + fires the patient-facing Telegram "проходите в
+  //      кабинет"; BOOKED gets bumped to WAITING in the same write)
+  //   2. BOOKED/WAITING +  calledAt → «Начать приём» (status → IN_PROGRESS)
+  //   3. IN_PROGRESS            → «Завершить приём» (status → COMPLETED)
+  type PrimaryAction =
+    | { kind: "call" }
+    | { kind: "status"; toStatus: StatusTarget };
+  const primary: {
+    label: string;
+    Icon: typeof PlayIcon;
+    action: PrimaryAction;
+  } | null = (() => {
+    const isPreVisit = p.status === "BOOKED" || p.status === "WAITING";
+    if (isPreVisit && !p.calledAt) {
+      return {
+        label: "Вызвать пациента",
+        Icon: MegaphoneIcon,
+        action: { kind: "call" },
+      };
+    }
+    if (isPreVisit && p.calledAt) {
       return {
         label: "Начать приём",
         Icon: PlayIcon,
-        toStatus: "IN_PROGRESS" as const,
+        action: { kind: "status", toStatus: "IN_PROGRESS" },
       };
     }
     if (p.status === "IN_PROGRESS") {
       return {
         label: "Завершить приём",
         Icon: CheckCircle2Icon,
-        toStatus: "COMPLETED" as const,
+        action: { kind: "status", toStatus: "COMPLETED" },
       };
     }
     return null;
   })();
 
-  const fire = (
-    toStatus: Parameters<typeof mutation.mutate>[0]["toStatus"],
-    opts?: { revert?: boolean },
-  ) =>
+  const fire = (toStatus: StatusTarget, opts?: { revert?: boolean }) =>
     mutation.mutate({
       appointmentId: p.appointmentId,
       toStatus,
       revert: opts?.revert,
     });
+
+  const fireCall = () =>
+    mutation.mutate({
+      appointmentId: p.appointmentId,
+      // toStatus is ignored in the call branch — sentinel kept to satisfy
+      // the args type without leaking a separate mutation hook.
+      toStatus: "WAITING",
+      call: true,
+    });
+
+  const runPrimary = () => {
+    if (!primary) return;
+    if (primary.action.kind === "call") fireCall();
+    else fire(primary.action.toStatus);
+  };
+
+  // Seconds since the doctor pressed «Вызвать» — used for the small
+  // "Вызван N сек назад" hint. Recomputed every tick via the parent's
+  // 1Hz setTick.
+  const calledSecondsAgo = p.calledAt
+    ? Math.max(0, Math.floor((now - new Date(p.calledAt).getTime()) / 1000))
+    : null;
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
@@ -287,16 +331,24 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
           {p.appointmentRange}
         </div>
 
-        <div
-          className={cn(
-            "inline-flex w-fit items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums",
-            timer.tone === "active" && "bg-success/15 text-success",
-            timer.tone === "late" && "bg-warning/15 text-warning",
-            timer.tone === "neutral" && "bg-primary/10 text-primary",
-          )}
-        >
-          <ClockIcon className="size-3.5" />
-          {timer.label}
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className={cn(
+              "inline-flex w-fit items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums",
+              timer.tone === "active" && "bg-success/15 text-success",
+              timer.tone === "late" && "bg-warning/15 text-warning",
+              timer.tone === "neutral" && "bg-primary/10 text-primary",
+            )}
+          >
+            <ClockIcon className="size-3.5" />
+            {timer.label}
+          </div>
+          {calledSecondsAgo !== null && p.status !== "IN_PROGRESS" ? (
+            <div className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-violet/15 px-2.5 py-1 text-xs font-semibold text-violet">
+              <MegaphoneIcon className="size-3" />
+              Вызван {formatCalledAgo(calledSecondsAgo)}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -382,7 +434,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
         {primary ? (
           <button
             type="button"
-            onClick={() => fire(primary.toStatus)}
+            onClick={runPrimary}
             disabled={mutation.isPending}
             className="motion-press inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
@@ -429,6 +481,36 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
+            ) : null}
+            {(p.status === "BOOKED" || p.status === "WAITING") &&
+            p.calledAt ? (
+              <>
+                <DropdownMenuItem
+                  onSelect={() => fireCall()}
+                  className="gap-2"
+                >
+                  <MegaphoneIcon className="size-4" />
+                  Вызвать ещё раз
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => fire("IN_PROGRESS")}
+                  className="gap-2"
+                >
+                  <PlayIcon className="size-4" />
+                  Начать без повторного вызова
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            {(p.status === "BOOKED" || p.status === "WAITING") &&
+            !p.calledAt ? (
+              <DropdownMenuItem
+                onSelect={() => fire("IN_PROGRESS")}
+                className="gap-2"
+              >
+                <PlayIcon className="size-4" />
+                Начать без вызова
+              </DropdownMenuItem>
             ) : null}
             {p.status === "BOOKED" ? (
               <DropdownMenuItem

@@ -23,6 +23,10 @@ export const MODELS_WITHOUT_TENANT: ReadonlySet<string> = new Set([
   // and the table itself has no `clinicId` column. Without this entry the
   // extension would inject `clinicId` and Prisma rejects the call.
   "ServiceOnDoctor",
+  // Phase 11 (doctor settings): per-doctor notification matrix. Keyed by
+  // userId only; tenancy is implied by the User row. No clinicId column,
+  // so the auto-injector must stay out of it.
+  "DoctorNotificationPref",
 ]);
 
 /**

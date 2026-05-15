@@ -5,6 +5,11 @@
  * Returns booleans + counters, never secrets. Actual password change / TOTP
  * enrolment / session revocation lives at `/crm/me/security`; this endpoint
  * exists so the tab card can render without redirecting.
+ *
+ * `activeSessions` counts rows in `UserSession` (the CRM proxy session
+ * table), NOT NextAuth's `Session` table — the latter is empty under JWT
+ * strategy. By policy the count is ≤ 1 (concurrent sessions are kicked on
+ * fresh sign-in), so the typical value is 1 while the user is signed in.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +20,6 @@ export const GET = createApiListHandler(
   async ({ ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
-    const now = new Date();
     const [user, activeSessions] = await Promise.all([
       prisma.user.findUnique({
         where: { id: ctx.userId },
@@ -26,9 +30,7 @@ export const GET = createApiListHandler(
           mustChangePassword: true,
         },
       }),
-      prisma.session.count({
-        where: { userId: ctx.userId, expires: { gt: now } },
-      }),
+      prisma.userSession.count({ where: { userId: ctx.userId } }),
     ]);
     if (!user) return err("NotFound", 404);
 

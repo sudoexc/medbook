@@ -177,6 +177,12 @@ function statusBadge(entry: ScheduleEntry): {
       className: "bg-muted text-muted-foreground",
     };
   }
+  if (entry.status === "no_show") {
+    return {
+      label: "Не пришёл",
+      className: "bg-warning/15 text-warning",
+    };
+  }
   if (entry.status === "cancelled") {
     return { label: "Отменён", className: "bg-destructive/10 text-destructive" };
   }
@@ -384,7 +390,10 @@ export function AgendaShell({ locale }: { locale: string }) {
                 const e = slot.entry;
                 const badge = statusBadge(e);
                 const href = e.patientId
-                  ? isToday && e.status !== "done" && e.status !== "cancelled"
+                  ? isToday &&
+                    e.status !== "done" &&
+                    e.status !== "no_show" &&
+                    e.status !== "cancelled"
                     ? `/${locale}/doctor/reception`
                     : `/${locale}/doctor/patients/${e.patientId}`
                   : null;
@@ -395,6 +404,7 @@ export function AgendaShell({ locale }: { locale: string }) {
                       e.status === "in_progress" &&
                         "border-success/40 bg-success/[0.04]",
                       e.status === "done" && "opacity-70",
+                      e.status === "no_show" && "opacity-70",
                       isPast && e.status !== "in_progress" && "opacity-80",
                       href && "hover:border-primary/30 hover:bg-muted/40",
                     )}

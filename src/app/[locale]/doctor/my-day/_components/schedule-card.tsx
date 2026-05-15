@@ -198,6 +198,14 @@ export function ScheduleCard() {
                     <span className="inline-flex items-center rounded-full bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success">
                       Идёт приём
                     </span>
+                  ) : entry.status === "no_show" ? (
+                    <span className="inline-flex items-center rounded-full bg-warning/15 px-2.5 py-1 text-[11px] font-semibold text-warning">
+                      Не пришёл
+                    </span>
+                  ) : entry.status === "cancelled" ? (
+                    <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">
+                      Отменён
+                    </span>
                   ) : entry.durationMin ? (
                     <span className="text-xs text-muted-foreground tabular-nums">
                       {entry.durationMin} мин

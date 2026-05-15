@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 
+import { usePatientsFilters } from "../_hooks/patients-context";
 import {
   useDoctorPatientSegments,
   type Segment,
@@ -29,16 +30,36 @@ const STROKE = 14;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-function Header() {
+function Header({
+  activeTab,
+  onClear,
+}: {
+  activeTab?: SegmentKey | null;
+  onClear?: () => void;
+}) {
   return (
-    <div className="mb-3 text-[15px] font-semibold text-foreground">
-      Сегментация базы
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <span className="text-[15px] font-semibold text-foreground">
+        Сегментация базы
+      </span>
+      {activeTab && onClear ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Сбросить
+        </button>
+      ) : null}
     </div>
   );
 }
 
 export function SegmentationCard() {
   const { data, isLoading, isError } = useDoctorPatientSegments();
+  const { filters, setTab } = usePatientsFilters();
+  const activeTab: SegmentKey | null =
+    filters.tab && filters.tab !== "all" ? (filters.tab as SegmentKey) : null;
 
   if (isLoading) {
     return (
@@ -120,9 +141,17 @@ export function SegmentationCard() {
       return arc;
     });
 
+  const toggle = (key: SegmentKey, count: number) => {
+    if (count === 0) return; // nothing to filter into — keep the click inert
+    setTab(activeTab === key ? "all" : key);
+  };
+
   return (
     <section className="rounded-2xl border border-border bg-card px-5 py-4">
-      <Header />
+      <Header
+        activeTab={activeTab}
+        onClear={activeTab ? () => setTab("all") : undefined}
+      />
 
       <div className="flex items-center gap-4">
         <svg
@@ -140,33 +169,56 @@ export function SegmentationCard() {
             stroke="var(--border)"
             strokeWidth={STROKE}
           />
-          {arcs.map((a) => (
-            <circle
-              key={a.key}
-              cx={SIZE / 2}
-              cy={SIZE / 2}
-              r={RADIUS}
-              fill="none"
-              stroke={COLOR[a.key]}
-              strokeWidth={STROKE}
-              strokeDasharray={`${a.length} ${CIRCUMFERENCE - a.length}`}
-              strokeDashoffset={-a.offset}
-            />
-          ))}
+          {arcs.map((a) => {
+            const dim = activeTab !== null && activeTab !== a.key;
+            return (
+              <circle
+                key={a.key}
+                cx={SIZE / 2}
+                cy={SIZE / 2}
+                r={RADIUS}
+                fill="none"
+                stroke={COLOR[a.key]}
+                strokeWidth={STROKE}
+                strokeDasharray={`${a.length} ${CIRCUMFERENCE - a.length}`}
+                strokeDashoffset={-a.offset}
+                opacity={dim ? 0.3 : 1}
+              />
+            );
+          })}
         </svg>
 
-        <ul className="min-w-0 flex-1 space-y-1.5">
-          {data.segments.map((s) => (
-            <li key={s.key} className="flex items-center gap-2 text-xs">
-              <span
-                className={cn("size-1.5 shrink-0 rounded-full", DOT[s.key])}
-              />
-              <span className="flex-1 text-foreground">{s.label}</span>
-              <span className="text-muted-foreground tabular-nums">
-                {s.count} ({s.percent}%)
-              </span>
-            </li>
-          ))}
+        <ul className="min-w-0 flex-1 space-y-1">
+          {data.segments.map((s) => {
+            const isActive = activeTab === s.key;
+            const disabled = s.count === 0;
+            return (
+              <li key={s.key}>
+                <button
+                  type="button"
+                  onClick={() => toggle(s.key, s.count)}
+                  disabled={disabled}
+                  aria-pressed={isActive}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs transition-colors",
+                    !disabled && "hover:bg-muted/60",
+                    isActive && "bg-muted",
+                    disabled && "cursor-default opacity-60",
+                  )}
+                >
+                  <span
+                    className={cn("size-1.5 shrink-0 rounded-full", DOT[s.key])}
+                  />
+                  <span className="flex-1 truncate text-foreground">
+                    {s.label}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {s.count} ({s.percent}%)
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
 

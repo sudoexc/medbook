@@ -48,8 +48,9 @@ export async function readSessionCookie(): Promise<string | null> {
  *   2. Pick the IDs to delete (kicking ALL prior rows per spec).
  *   3. Delete them and emit `CONCURRENT_SESSION_KICKED` per kicked id.
  *   4. Insert a new row with a fresh random `tokenHash`.
- *   5. Stamp `User.lastSessionRotatedAt = now()` so the proxy's 8h check
- *      has a single source of truth.
+ *   5. Stamp `User.lastSessionRotatedAt = now()` (proxy 8h check anchor)
+ *      and `User.lastLoginAt = now()` (user-visible "last sign-in" on the
+ *      security tab) in the same transaction.
  *   6. Set the `crm_user_session` cookie with the plaintext token.
  *
  * All DB work runs under `runWithTenant({kind:"SYSTEM"})` so the Prisma
@@ -94,9 +95,14 @@ export async function mintUserSessionOnSignIn(
         },
         select: { id: true },
       });
+      const now = new Date();
       await tx.user.update({
         where: { id: userId },
-        data: { lastSessionRotatedAt: new Date() },
+        // `lastSessionRotatedAt` powers the proxy's 8h hard-cap.
+        // `lastLoginAt` is the user-facing "last sign-in" timestamp shown
+        // on the security tab — same event, separate field so the security
+        // surface doesn't depend on a security-policy internal name.
+        data: { lastSessionRotatedAt: now, lastLoginAt: now },
       });
       return row;
     });

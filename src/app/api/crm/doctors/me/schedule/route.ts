@@ -19,12 +19,16 @@ import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  scheduleStatusOf,
+  type DoctorScheduleStatus,
+} from "@/lib/doctor-schedule-status";
 import { ok, err, parseQuery } from "@/server/http";
 
 const REPEAT_VISITS_THRESHOLD = 2;
 
 type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
-type ScheduleStatus = "in_progress" | "upcoming" | "done" | "cancelled";
+type ScheduleStatus = DoctorScheduleStatus;
 
 type ScheduleEntry = {
   id: string;
@@ -69,14 +73,6 @@ function formatHHMM(d: Date): string {
 
 function appointmentTypeOf(visitsCount: number): "consultation" | "repeat" {
   return visitsCount >= REPEAT_VISITS_THRESHOLD ? "repeat" : "consultation";
-}
-
-function scheduleStatusOf(status: string): ScheduleStatus {
-  if (status === "IN_PROGRESS" || status === "WAITING") return "in_progress";
-  if (status === "COMPLETED" || status === "NO_SHOW" || status === "SKIPPED")
-    return "done";
-  if (status === "CANCELLED") return "cancelled";
-  return "upcoming";
 }
 
 export const GET = createApiListHandler(

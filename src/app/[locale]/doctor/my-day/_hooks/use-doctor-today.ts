@@ -5,7 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 
 export type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
-export type ScheduleStatus = "in_progress" | "upcoming" | "done" | "cancelled";
+export type ScheduleStatus =
+  | "in_progress"
+  | "upcoming"
+  | "done"
+  | "no_show"
+  | "cancelled";
 
 export type ScheduleEntry = {
   id: string;

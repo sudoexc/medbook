@@ -27,6 +27,11 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
+import {
+  classifyDoctorSegment,
+  DAY_MS,
+  type DoctorSegmentKey,
+} from "@/lib/doctor-patient-segments";
 
 const QuerySchema = z.object({
   q: z.string().trim().min(1).optional(),
@@ -101,95 +106,43 @@ export const GET = createApiListHandler(
       where.OR = or;
     }
 
-    // Tab filters are derived from the doctor's relationship with the
-    // patient, not the patient's clinic-wide state — so we layer extra
-    // `appointments: { some: ... }` conditions on top.
-    const ninetyDaysAgo = new Date(now);
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    if (q.tab === "active") {
-      // Either currently in cabinet, or has a future booking with me.
-      where.appointments = {
-        some: {
-          doctorId,
-          OR: [
-            { status: "IN_PROGRESS" },
-            { status: { in: ["BOOKED", "WAITING"] }, date: { gte: now } },
-          ],
-        },
-      };
-    } else if (q.tab === "new") {
-      // First appointment with me was in the last 30 days. Approximated as
-      // "has appointment with me created in last 30 days" — exact "first
-      // ever" check would need a window function.
-      where.appointments = {
-        some: { doctorId, createdAt: { gte: thirtyDaysAgo } },
-      };
-    } else if (q.tab === "watch") {
-      // Has a completed visit with me AND a future booking → return visit
-      // scheduled, "под наблюдением".
-      where.AND = [
-        { appointments: { some: { doctorId, status: "COMPLETED" } } },
-        {
-          appointments: {
-            some: {
-              doctorId,
-              status: { in: ["BOOKED", "WAITING"] },
-              date: { gte: now },
-            },
-          },
-        },
-      ];
-    } else if (q.tab === "dormant") {
-      // Last completed visit with me >90 days ago AND no future booking
-      // with me.
-      where.AND = [
-        {
-          appointments: {
-            some: {
-              doctorId,
-              status: "COMPLETED",
-              date: { lt: ninetyDaysAgo },
-            },
-          },
-        },
-        {
-          appointments: {
-            none: {
-              doctorId,
-              status: { in: ["BOOKED", "WAITING"] },
-              date: { gte: now },
-            },
-          },
-        },
-      ];
-    } else if (q.tab === "returned") {
-      // Recent visit (last 30 days) AND there was a gap >90 days before it.
-      // Heuristic — exact gap check would require window functions.
-      where.AND = [
-        {
-          appointments: {
-            some: {
-              doctorId,
-              status: "COMPLETED",
-              date: { gte: thirtyDaysAgo },
-            },
-          },
-        },
-        {
-          appointments: {
-            some: {
-              doctorId,
-              status: "COMPLETED",
-              date: { lt: ninetyDaysAgo },
-            },
-          },
-        },
-      ];
+    // Tab filters use the same classifier as the segmentation donut so the
+    // donut counts and the table rows always agree. See
+    // `src/lib/doctor-patient-segments.ts` for the canonical rules. We
+    // compute the eligible patient-ID set in-process: groupBy completed
+    // appointments by patient → classify → keep only IDs in the target
+    // bucket, then layer `id: { in: ids }` on the main query.
+    //
+    // `tab === "all"` skips this step and falls through to the plain
+    // doctor-caseload filter above.
+    if (q.tab !== "all") {
+      const grouped = await prisma.appointment.groupBy({
+        by: ["patientId"],
+        where: { doctorId, status: "COMPLETED" },
+        _count: { _all: true },
+        _max: { completedAt: true, date: true },
+      });
+      const nowMs = now.getTime();
+      const target = q.tab as DoctorSegmentKey;
+      const eligibleIds: string[] = [];
+      for (const row of grouped) {
+        const last = row._max.completedAt ?? row._max.date;
+        if (!last) continue;
+        const days = Math.floor((nowMs - last.getTime()) / DAY_MS);
+        if (classifyDoctorSegment(row._count._all, days) === target) {
+          eligibleIds.push(row.patientId);
+        }
+      }
+      if (eligibleIds.length === 0) {
+        // Short-circuit — the segment is empty, no further work needed.
+        return ok({ rows: [], nextCursor: null, total: 0 });
+      }
+      // `id IN (...)` already implies "had a completed visit with this
+      // doctor" — every id came from `groupBy(doctorId, COMPLETED)` above —
+      // so drop the redundant `appointments.some` join filter.
+      delete where.appointments;
+      where.id = { in: eligibleIds };
     }
-    // tab === "all" → no extra filter.
 
     // ── Page the patients ─────────────────────────────────────────────────
     // Order by `lastVisitAt` desc — this is the clinic-wide last-visit

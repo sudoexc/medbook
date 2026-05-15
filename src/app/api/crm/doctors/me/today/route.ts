@@ -23,12 +23,16 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
+import {
+  scheduleStatusOf,
+  type DoctorScheduleStatus,
+} from "@/lib/doctor-schedule-status";
 
 const REPEAT_VISITS_THRESHOLD = 2;
 const RECENT_PATIENTS_WINDOW_DAYS = 14;
 
 type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
-type ScheduleStatus = "in_progress" | "upcoming" | "done" | "cancelled";
+type ScheduleStatus = DoctorScheduleStatus;
 
 type ScheduleEntry = {
   id: string;
@@ -200,14 +204,6 @@ function derivePatientTags(p: {
 
 function appointmentTypeOf(visitsCount: number): "consultation" | "repeat" {
   return visitsCount >= REPEAT_VISITS_THRESHOLD ? "repeat" : "consultation";
-}
-
-function scheduleStatusOf(status: string): ScheduleStatus {
-  if (status === "IN_PROGRESS" || status === "WAITING") return "in_progress";
-  if (status === "COMPLETED" || status === "NO_SHOW" || status === "SKIPPED")
-    return "done";
-  if (status === "CANCELLED") return "cancelled";
-  return "upcoming";
 }
 
 export const GET = createApiListHandler(

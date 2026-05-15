@@ -7,25 +7,22 @@
  * BOOKED-but-never-arrived patients so the buckets reflect actual care
  * history, not roster noise.
  *
- * Classification (priority top-down — first match wins so buckets don't
- * overlap):
- *   - new       : visitsCount === 1 AND daysSinceLast ≤ 30
- *   - active    : daysSinceLast ≤ 30 (and visitsCount > 1)
- *   - watch     : 30 < daysSinceLast ≤ 90
- *   - returned  : 90 < daysSinceLast ≤ 180
- *   - dormant   : daysSinceLast > 180
- *
- * Why these tones (and not `first_visit`/`returning` from the design TZ):
- * we keep the keys aligned with the existing SegmentationCard colour map
- * (`active|watch|dormant|new|returned`) — renaming the tone keys would
- * require a card refactor for zero visible gain. The semantics match the
- * spec, only the naming is preserved.
+ * Classification lives in `src/lib/doctor-patient-segments.ts` and is
+ * shared with `/api/crm/doctors/me/patients?tab=*` so the donut and the
+ * table can never disagree.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
+import {
+  classifyDoctorSegment,
+  DAY_MS,
+  DOCTOR_SEGMENT_KEYS,
+  DOCTOR_SEGMENT_LABELS_RU,
+  type DoctorSegmentKey,
+} from "@/lib/doctor-patient-segments";
 
-export type SegmentKey = "active" | "watch" | "dormant" | "new" | "returned";
+export type SegmentKey = DoctorSegmentKey;
 
 type SegmentRow = {
   key: SegmentKey;
@@ -38,22 +35,6 @@ type SegmentResponse = {
   total: number;
   segments: SegmentRow[];
 };
-
-const SEGMENT_DEFS: Array<{ key: SegmentKey; label: string }> = [
-  { key: "active", label: "На приёме" },
-  { key: "watch", label: "На контроле" },
-  { key: "returned", label: "Вернулись" },
-  { key: "new", label: "Новые" },
-  { key: "dormant", label: "Давно не были" },
-];
-
-function classify(visitsCount: number, daysSinceLast: number): SegmentKey {
-  if (visitsCount === 1 && daysSinceLast <= 30) return "new";
-  if (daysSinceLast <= 30) return "active";
-  if (daysSinceLast <= 90) return "watch";
-  if (daysSinceLast <= 180) return "returned";
-  return "dormant";
-}
 
 export const GET = createApiListHandler(
   { roles: ["DOCTOR"] },
@@ -86,7 +67,6 @@ export const GET = createApiListHandler(
     });
 
     const now = Date.now();
-    const DAY_MS = 86_400_000;
 
     const counts: Record<SegmentKey, number> = {
       active: 0,
@@ -100,17 +80,17 @@ export const GET = createApiListHandler(
       const last = row._max.completedAt ?? row._max.date;
       if (!last) continue; // defensive — shouldn't happen with status=COMPLETED
       const daysSinceLast = Math.floor((now - last.getTime()) / DAY_MS);
-      const key = classify(row._count._all, daysSinceLast);
+      const key = classifyDoctorSegment(row._count._all, daysSinceLast);
       counts[key] += 1;
     }
 
     const total = grouped.length;
 
-    const segments: SegmentRow[] = SEGMENT_DEFS.map(({ key, label }) => {
+    const segments: SegmentRow[] = DOCTOR_SEGMENT_KEYS.map((key) => {
       const count = counts[key];
       const percent =
         total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
-      return { key, label, count, percent };
+      return { key, label: DOCTOR_SEGMENT_LABELS_RU[key], count, percent };
     });
 
     const payload: SegmentResponse = { total, segments };

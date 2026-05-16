@@ -26,6 +26,11 @@ function pickLocale(request: Request): Locale {
   return "ru";
 }
 
+function pickPrintType(request: Request): "clinical" | "handout" {
+  const q = (new URL(request.url).searchParams.get("type") ?? "").toLowerCase();
+  return q === "handout" ? "handout" : "clinical";
+}
+
 function escapeHtml(input: string | null | undefined): string {
   if (input === null || input === undefined) return "";
   return String(input)
@@ -53,11 +58,83 @@ function renderBody(markdown: string | null): string {
   return `<div class="body-md">${escapeHtml(markdown)}</div>`;
 }
 
+/**
+ * Tiny safe Markdown renderer for the handout body.
+ *
+ * Supports only what the deterministic composer emits:
+ *   - `# Heading 1` / `## Heading 2` at the start of a line
+ *   - `**bold**`, `_italic_` inline (no nesting)
+ *   - `- bullet` lines collected into a single <ul>
+ *   - Blank-line-separated paragraphs
+ *
+ * Everything is escaped first, then re-marked, so user-typed HTML in the
+ * editable handout cannot inject markup into the printed page.
+ */
+function renderHandoutMarkdown(markdown: string | null): string {
+  const src = (markdown ?? "").trim();
+  if (!src) return `<p class="empty">—</p>`;
+
+  const inline = (s: string) =>
+    escapeHtml(s)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[\s(])_([^_]+)_(?=$|[\s.,;:!?)])/g, "$1<em>$2</em>");
+
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let bulletBuf: string[] = [];
+  let paragraphBuf: string[] = [];
+
+  const flushBullets = () => {
+    if (bulletBuf.length === 0) return;
+    out.push(`<ul class="md-list">${bulletBuf.join("")}</ul>`);
+    bulletBuf = [];
+  };
+  const flushParagraph = () => {
+    if (paragraphBuf.length === 0) return;
+    const text = paragraphBuf.join(" ").trim();
+    if (text) out.push(`<p>${inline(text)}</p>`);
+    paragraphBuf = [];
+  };
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (line.length === 0) {
+      flushParagraph();
+      flushBullets();
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      flushParagraph();
+      flushBullets();
+      out.push(`<h1 class="md-h1">${inline(line.slice(2))}</h1>`);
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      flushParagraph();
+      flushBullets();
+      out.push(`<h2 class="md-h2">${inline(line.slice(3))}</h2>`);
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      flushParagraph();
+      bulletBuf.push(`<li>${inline(line.slice(2))}</li>`);
+      continue;
+    }
+    flushBullets();
+    paragraphBuf.push(line);
+  }
+  flushParagraph();
+  flushBullets();
+
+  return out.join("\n");
+}
+
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR"] },
   async ({ request, ctx }) => {
     const id = idFromUrl(request);
     const locale = pickLocale(request);
+    const printType = pickPrintType(request);
 
     const note = await prisma.visitNote.findUnique({
       where: { id },
@@ -210,6 +287,264 @@ export const GET = createApiListHandler(
 
     const generatedAt = new Date();
     const isFinalized = note.status === "FINALIZED";
+
+    // ── Patient-facing handout branch ─────────────────────────────────
+    if (printType === "handout") {
+      const handoutLabels =
+        locale === "uz"
+          ? {
+              title: "Bemor uchun eslatma",
+              patient: "Bemor",
+              doctor: "Shifokor",
+              visitDate: "Tashrif sanasi",
+              print: "Chop etish / PDF",
+              generated: "Tayyorlandi",
+              emptyHint:
+                "Eslatma hali shakllantirilmagan. Iltimos, qabul oynasida \"Shakllantirish\" tugmasini bosing.",
+            }
+          : {
+              title: "Памятка для пациента",
+              patient: "Пациент",
+              doctor: "Врач",
+              visitDate: "Дата приёма",
+              print: "Печать / PDF",
+              generated: "Подготовлено",
+              emptyHint:
+                "Памятка ещё не сформирована. На экране приёма нажмите «Сформировать», затем повторите печать.",
+            };
+
+      const handoutBody = note.patientHandoutMarkdown?.trim()
+        ? renderHandoutMarkdown(note.patientHandoutMarkdown)
+        : `<p class="empty">${escapeHtml(handoutLabels.emptyHint)}</p>`;
+
+      const handoutHtml = `<!doctype html>
+<html lang="${locale === "uz" ? "uz" : "ru"}">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(`${handoutLabels.title} — ${note.patient.fullName}`)}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --brand: ${escapeHtml(brandColor)}; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+      color: #1a1f2e;
+      font-size: 13px;
+      line-height: 1.6;
+      background: #fff;
+    }
+    .page {
+      max-width: 760px;
+      margin: 24px auto;
+      padding: 24px 32px;
+    }
+    @media print {
+      body { font-size: 12px; }
+      .page { margin: 0; padding: 16mm; max-width: none; }
+      .no-print { display: none !important; }
+    }
+    .print-bar {
+      position: sticky; top: 0;
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding: 8px 16px;
+      background: #f6f7f9;
+      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 16px;
+    }
+    .print-bar button {
+      background: var(--brand);
+      color: #fff;
+      border: 0;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      border-bottom: 2px solid var(--brand);
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .header .logo {
+      width: 56px; height: 56px;
+      border-radius: 8px;
+      background: #f1f5f9;
+      object-fit: contain;
+      display: block;
+    }
+    .header .clinic-name {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0;
+    }
+    .header .clinic-meta {
+      color: #525866;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .header .doc-title {
+      margin-left: auto;
+      text-align: right;
+    }
+    .header .doc-title h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .quick-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 24px;
+      margin-bottom: 18px;
+      color: #525866;
+      font-size: 12px;
+    }
+    .quick-meta strong {
+      color: #1a1f2e;
+      margin-left: 4px;
+    }
+    .md-h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 12px 0;
+      color: #1a1f2e;
+    }
+    .md-h2 {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 14px 0 6px 0;
+      color: #1a1f2e;
+    }
+    p {
+      margin: 6px 0;
+    }
+    .md-list {
+      list-style: none;
+      padding: 0;
+      margin: 4px 0 6px 0;
+    }
+    .md-list li {
+      position: relative;
+      padding-left: 18px;
+      margin: 4px 0;
+    }
+    .md-list li::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 9px;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--brand);
+    }
+    em {
+      color: #525866;
+      font-style: italic;
+    }
+    strong {
+      color: #1a1f2e;
+    }
+    .empty {
+      color: #8b909b;
+      font-style: italic;
+    }
+    .signature {
+      margin-top: 36px;
+      padding-top: 16px;
+      border-top: 1px dotted #d6dae2;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      font-size: 11px;
+      color: #525866;
+    }
+    .signature .slot {
+      border-top: 1px solid #1a1f2e;
+      padding-top: 6px;
+    }
+    footer {
+      margin-top: 18px;
+      color: #8b909b;
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    @page {
+      size: A4 portrait;
+      margin: 16mm;
+    }
+  </style>
+</head>
+<body>
+  <div class="print-bar no-print">
+    <button onclick="window.print()">${escapeHtml(handoutLabels.print)}</button>
+  </div>
+  <div class="page">
+    <header class="header">
+      ${
+        clinic?.logoUrl
+          ? `<img class="logo" src="${escapeHtml(clinic.logoUrl)}" alt="" />`
+          : `<div class="logo" aria-hidden="true"></div>`
+      }
+      <div>
+        <h1 class="clinic-name">${escapeHtml(clinicName)}</h1>
+        <div class="clinic-meta">
+          ${clinicAddress ? escapeHtml(clinicAddress) : ""}
+          ${clinic?.phone ? ` · ${escapeHtml(formatPhone(clinic.phone))}` : ""}
+        </div>
+      </div>
+      <div class="doc-title">
+        <h2>${escapeHtml(handoutLabels.title)}</h2>
+      </div>
+    </header>
+
+    <div class="quick-meta">
+      <span>${escapeHtml(handoutLabels.patient)}<strong>${escapeHtml(note.patient.fullName)}</strong></span>
+      <span>${escapeHtml(handoutLabels.doctor)}<strong>${escapeHtml(doctorName ?? "—")}</strong></span>
+      <span>${escapeHtml(handoutLabels.visitDate)}<strong>${visitDate}</strong></span>
+    </div>
+
+    <article>${handoutBody}</article>
+
+    <div class="signature">
+      <div class="slot">${escapeHtml(handoutLabels.doctor)}: ${escapeHtml(doctorName ?? "")}</div>
+      <div class="slot">${escapeHtml(handoutLabels.patient)}: ${escapeHtml(note.patient.fullName)}</div>
+    </div>
+
+    <footer>
+      <span>${escapeHtml(handoutLabels.generated)}: ${escapeHtml(formatDate(generatedAt, locale, "long"))} ${escapeHtml(formatDate(generatedAt, locale, "time"))}</span>
+      <span>${escapeHtml(clinicName)}</span>
+    </footer>
+  </div>
+</body>
+</html>`;
+
+      await audit(request, {
+        action: "visit_note.print",
+        entityType: "VisitNote",
+        entityId: id,
+        meta: { locale, status: note.status, type: "handout" },
+      });
+
+      return new Response(handoutHtml, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": `inline; filename="patient-handout-${note.id}.html"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
 
     const html = `<!doctype html>
 <html lang="${locale === "uz" ? "uz" : "ru"}">

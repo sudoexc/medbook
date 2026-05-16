@@ -4,15 +4,18 @@ import * as React from "react";
 import {
   BellIcon,
   ChevronDownIcon,
+  MoonIcon,
   PhoneIcon,
   PlusIcon,
   SearchIcon,
   SendIcon,
+  SunIcon,
   XIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { useTheme } from "@/components/providers/theme-provider";
 
 const RU_WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"] as const;
 const RU_MONTHS = [
@@ -136,6 +139,7 @@ export function DoctorTopbar({
 
       {/* Comms icon buttons */}
       <div className="ml-2 flex items-center gap-3">
+        <ThemeToggleButton />
         <TopbarIconButton icon={PhoneIcon} label="Звонки" />
         <TopbarIconButton icon={SendIcon} label="Telegram" />
         <TopbarIconButton icon={BellIcon} label="Уведомления" badge={3} />
@@ -159,6 +163,30 @@ export function DoctorTopbar({
         </div>
       </div>
     </header>
+  );
+}
+
+function ThemeToggleButton() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const Icon = isDark ? SunIcon : MoonIcon;
+  return (
+    <button
+      type="button"
+      aria-label={isDark ? "Светлая тема" : "Тёмная тема"}
+      title={isDark ? "Светлая тема" : "Тёмная тема"}
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className={cn(
+        "motion-press group relative flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-colors hover:bg-muted",
+      )}
+    >
+      <span className="relative">
+        <Icon className="size-5 text-muted-foreground group-hover:text-foreground" />
+      </span>
+      <span className="text-[10px] font-medium text-muted-foreground group-hover:text-foreground">
+        Тема
+      </span>
+    </button>
   );
 }
 

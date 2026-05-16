@@ -17,6 +17,7 @@ export const UpdateVisitNoteSchema = z.object({
   diagnosisCode: z.string().max(20).nullable().optional(),
   diagnosisName: z.string().max(500).nullable().optional(),
   bodyMarkdown: z.string().max(64_000).nullable().optional(),
+  patientHandoutMarkdown: z.string().max(64_000).nullable().optional(),
 });
 
 export const FinalizeVisitNoteSchema = z.object({}).optional();

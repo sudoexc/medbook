@@ -227,6 +227,9 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       if (dateKey) {
         qc.invalidateQueries({ queryKey: doctorScheduleKey(dateKey) });
       }
+      // /patients reads `hasActiveAppointment` per row — without this the
+      // "На приёме" badge only appears after a manual refresh.
+      qc.invalidateQueries({ queryKey: ["doctor", "me", "patients"] });
     },
   });
 }

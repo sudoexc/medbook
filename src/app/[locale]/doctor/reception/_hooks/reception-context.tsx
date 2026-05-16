@@ -35,6 +35,25 @@ type ReceptionContextValue = {
    */
   bodyInjectVersion: number;
   bumpBodyInject: () => void;
+  /**
+   * One-shot "append this text to the conclusion editor". Set by preset
+   * chips; consumed by NotesEditorPanel which appends to its local draft
+   * (preserving any unsaved typing) and lets the autosave persist.
+   *
+   * `nonce` is the discriminator the editor watches — the same `text` value
+   * can be requested multiple times by re-bumping the nonce.
+   */
+  bodyAppendRequest: { text: string; nonce: number } | null;
+  requestBodyAppend: (text: string) => void;
+  /**
+   * Inverse of append — when the doctor removes a structured chip whose
+   * preset had a noteTemplate, we strip the corresponding snippet from the
+   * conclusion. The editor tries the "\n\n<text>" form first (the form the
+   * append channel writes) and falls back to a plain match if the doctor
+   * has edited around it.
+   */
+  bodyRemoveRequest: { text: string; nonce: number } | null;
+  requestBodyRemove: (text: string) => void;
   activeTab: ReceptionTab;
   setActiveTab: (t: ReceptionTab) => void;
 };
@@ -91,6 +110,24 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
     setBodyInjectVersion((v) => v + 1);
   }, []);
 
+  const [bodyAppendRequest, setBodyAppendRequest] = React.useState<
+    { text: string; nonce: number } | null
+  >(null);
+  const requestBodyAppend = React.useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setBodyAppendRequest({ text: trimmed, nonce: Date.now() });
+  }, []);
+
+  const [bodyRemoveRequest, setBodyRemoveRequest] = React.useState<
+    { text: string; nonce: number } | null
+  >(null);
+  const requestBodyRemove = React.useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setBodyRemoveRequest({ text: trimmed, nonce: Date.now() });
+  }, []);
+
   const [activeTab, setActiveTab] = React.useState<ReceptionTab>("session");
 
   // Realtime — when any appointment status changes in this clinic, refetch
@@ -135,6 +172,10 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       visitNoteLoading: ensureNote.isPending || noteQuery.isLoading,
       bodyInjectVersion,
       bumpBodyInject,
+      bodyAppendRequest,
+      requestBodyAppend,
+      bodyRemoveRequest,
+      requestBodyRemove,
       activeTab,
       setActiveTab,
     }),
@@ -148,6 +189,10 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       noteQuery.isLoading,
       bodyInjectVersion,
       bumpBodyInject,
+      bodyAppendRequest,
+      requestBodyAppend,
+      bodyRemoveRequest,
+      requestBodyRemove,
       activeTab,
     ],
   );

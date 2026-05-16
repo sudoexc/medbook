@@ -77,6 +77,110 @@ const LAST_NAMES_RU = [
   "Каримов", "Усманов", "Юлдашев", "Хасанов", "Турсунов", "Махмудов", "Рахимов",
 ];
 
+// ── DoctorPreset seeds ────────────────────────────────────────────────
+// Personal chip presets surfaced under each ChipFieldCard on the doctor's
+// reception screen. Clicking a chip adds `fieldValue` to the structured
+// field and (if `noteTemplate` is set) appends that snippet to the
+// conclusion editor. Demo doctors only — production doctors manage their
+// own presets at /doctor/settings?tab=presets.
+type PresetSeed = {
+  field: "COMPLAINTS" | "ANAMNESIS" | "EXAMINATION" | "PRESCRIPTIONS" | "ADVICE";
+  label: string;
+  fieldValue?: string;
+  noteTemplate?: string;
+};
+
+const PRESETS_BY_SLUG: Record<string, PresetSeed[] | undefined> = {
+  neurologist: [
+    { field: "COMPLAINTS", label: "Головная боль",
+      noteTemplate: "Жалобы на головную боль давящего характера в лобно-теменной области, периодическая, без рвоты, светобоязнь умеренная." },
+    { field: "COMPLAINTS", label: "Головокружение",
+      noteTemplate: "Жалобы на головокружение несистемного характера, преимущественно при перемене положения тела." },
+    { field: "COMPLAINTS", label: "Бессонница",
+      noteTemplate: "Жалобы на нарушение сна: трудности засыпания, поверхностный сон, частые ночные пробуждения." },
+    { field: "COMPLAINTS", label: "Слабость" },
+    { field: "COMPLAINTS", label: "Онемение" },
+
+    { field: "ANAMNESIS", label: "Без особенностей",
+      fieldValue: "Анамнез без особенностей",
+      noteTemplate: "Из анамнеза: хронических заболеваний не выявлено, операций, травм не было, аллергоанамнез не отягощён." },
+    { field: "ANAMNESIS", label: "Стресс на работе" },
+    { field: "ANAMNESIS", label: "ЧМТ в анамнезе" },
+
+    { field: "EXAMINATION", label: "В сознании, ориентирован",
+      noteTemplate: "Сознание ясное, контактен, ориентирован в месте, времени и собственной личности." },
+    { field: "EXAMINATION", label: "ЧМН без патологии" },
+    { field: "EXAMINATION", label: "Рефлексы D=S" },
+
+    { field: "PRESCRIPTIONS", label: "Мексидол 125 мг",
+      fieldValue: "Мексидол 125 мг — по 1 таб 3 раза в день, 30 дней",
+      noteTemplate: "Мексидол 125 мг — по 1 таблетке 3 раза в день внутрь, курс 30 дней. Принимать после еды." },
+    { field: "PRESCRIPTIONS", label: "Глицин 100 мг",
+      fieldValue: "Глицин 100 мг — по 1 таб 3 раза в день, 30 дней",
+      noteTemplate: "Глицин 100 мг — рассасывать по 1 таблетке под язык 3 раза в день, 30 дней." },
+    { field: "PRESCRIPTIONS", label: "Магне B6",
+      fieldValue: "Магне B6 — по 2 таб 2 раза в день, 1 месяц",
+      noteTemplate: "Магне B6 — по 2 таблетки 2 раза в день во время еды, курс 1 месяц." },
+    { field: "PRESCRIPTIONS", label: "Грандаксин 50 мг",
+      fieldValue: "Грандаксин 50 мг — по 1 таб 2 раза в день утром и днём, 14 дней",
+      noteTemplate: "Грандаксин 50 мг — по 1 таблетке утром и днём, не вечером, курс 14 дней." },
+
+    { field: "ADVICE", label: "Режим сна",
+      fieldValue: "Режим сна 7–8 часов, отбой до 23:00",
+      noteTemplate: "Рекомендуется соблюдать режим сна: 7–8 часов в сутки, отбой не позднее 23:00, исключить экраны за час до сна." },
+    { field: "ADVICE", label: "Прогулки",
+      fieldValue: "Прогулки на свежем воздухе 30–40 минут ежедневно" },
+    { field: "ADVICE", label: "Контрольная явка через 2 нед",
+      noteTemplate: "Контрольный осмотр через 2 недели. При ухудшении — обратиться раньше." },
+  ],
+
+  cardiologist: [
+    { field: "COMPLAINTS", label: "Боль в груди",
+      noteTemplate: "Жалобы на боли в области сердца, давящего характера, длительностью до 10 минут, купируются в покое." },
+    { field: "COMPLAINTS", label: "Одышка",
+      noteTemplate: "Жалобы на одышку при умеренной физической нагрузке (подъём на 2–3 этаж)." },
+    { field: "COMPLAINTS", label: "Учащённое сердцебиение" },
+    { field: "COMPLAINTS", label: "Отёки голеней" },
+    { field: "COMPLAINTS", label: "Перебои в работе сердца" },
+
+    { field: "ANAMNESIS", label: "АГ в анамнезе",
+      fieldValue: "Артериальная гипертензия в анамнезе",
+      noteTemplate: "Из анамнеза: артериальная гипертензия в течение нескольких лет, рабочее АД 130–140/85 мм рт. ст." },
+    { field: "ANAMNESIS", label: "ИБС в анамнезе" },
+    { field: "ANAMNESIS", label: "Курение",
+      fieldValue: "Курит, стаж > 10 лет" },
+    { field: "ANAMNESIS", label: "Семейный анамнез по ССЗ" },
+
+    { field: "EXAMINATION", label: "Тоны сердца ясные",
+      noteTemplate: "Тоны сердца ясные, ритмичные. Шумов не выслушивается." },
+    { field: "EXAMINATION", label: "АД 120/80, ЧСС 72" },
+    { field: "EXAMINATION", label: "Отёков нет" },
+
+    { field: "PRESCRIPTIONS", label: "Конкор 5 мг",
+      fieldValue: "Конкор 5 мг — по 1 таб утром, длительно",
+      noteTemplate: "Конкор (бисопролол) 5 мг — по 1 таблетке утром, длительно. Контроль ЧСС и АД." },
+    { field: "PRESCRIPTIONS", label: "Энап 10 мг",
+      fieldValue: "Энап 10 мг — по 1 таб 2 раза в день",
+      noteTemplate: "Энап (эналаприл) 10 мг — по 1 таблетке утром и вечером. Контроль АД." },
+    { field: "PRESCRIPTIONS", label: "Кардиомагнил 75 мг",
+      fieldValue: "Кардиомагнил 75 мг — по 1 таб вечером, длительно",
+      noteTemplate: "Кардиомагнил 75 мг — по 1 таблетке вечером после еды, длительно." },
+    { field: "PRESCRIPTIONS", label: "Аторвастатин 20 мг",
+      fieldValue: "Аторвастатин 20 мг — по 1 таб вечером",
+      noteTemplate: "Аторвастатин 20 мг — по 1 таблетке вечером. Через 1 месяц — контроль АЛТ, АСТ, липидограмма." },
+
+    { field: "ADVICE", label: "Низкосолевая диета",
+      fieldValue: "Низкосолевая диета (до 5 г соли в сутки)",
+      noteTemplate: "Низкосолевая диета — не более 5 г соли в сутки. Ограничить копчёности, маринады, фастфуд." },
+    { field: "ADVICE", label: "Дневник АД",
+      fieldValue: "Вести дневник АД — утром и вечером",
+      noteTemplate: "Вести дневник АД: утром (после пробуждения, до приёма таблеток) и вечером. Принести на следующий приём." },
+    { field: "ADVICE", label: "Отказ от курения" },
+    { field: "ADVICE", label: "Контроль через 1 мес",
+      noteTemplate: "Повторный осмотр через 1 месяц с дневником АД и результатами липидограммы." },
+  ],
+};
+
 const SERVICE_TEMPLATES = [
   { code: "CONSULT", nameRu: "Консультация", nameUz: "Konsultatsiya", durationMin: 30, priceBase: 200_000 * 100, category: "Консультация" },
   { code: "EEG", nameRu: "ЭЭГ", nameUz: "EEG", durationMin: 60, priceBase: 150_000 * 100, category: "Диагностика" },
@@ -339,6 +443,28 @@ async function main() {
       });
 
       createdDoctors.push({ id: doctor.id, userId: user.id });
+
+      // ── DoctorPreset chips (idempotent) ─────────────────────────────
+      // Wipe + reseed each run so demo data tracks any updates to the
+      // hard-coded list. Production doctors manage their own presets via
+      // /doctor/settings; this only seeds the two demo accounts.
+      const presets = PRESETS_BY_SLUG[d.slug];
+      if (presets) {
+        await prisma.doctorPreset.deleteMany({
+          where: { clinicId: clinic.id, doctorId: doctor.id },
+        });
+        await prisma.doctorPreset.createMany({
+          data: presets.map((p, i) => ({
+            clinicId: clinic.id,
+            doctorId: doctor.id,
+            field: p.field,
+            label: p.label,
+            fieldValue: p.fieldValue ?? p.label,
+            noteTemplate: p.noteTemplate ?? null,
+            sortOrder: i,
+          })),
+        });
+      }
 
       // Schedule Mon–Fri (weekday 1..5) 09:00-18:00
       for (let weekday = 1; weekday <= 5; weekday++) {

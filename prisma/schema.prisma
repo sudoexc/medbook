@@ -215,6 +215,16 @@ enum VisitNoteStatus {
   FINALIZED
 }
 
+// Which structured field on a VisitNote a DoctorPreset feeds into.
+// One enum value per ChipFieldCard in the reception editor.
+enum DoctorPresetField {
+  COMPLAINTS
+  ANAMNESIS
+  EXAMINATION
+  PRESCRIPTIONS
+  ADVICE
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +352,7 @@ model Clinic {
   visitNotes              VisitNote[]
   reminders               Reminder[]
   labResults              LabResult[]
+  doctorPresets           DoctorPreset[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -741,11 +752,46 @@ model Doctor {
   patientReviews     PatientReview[]
   prescriptions      Prescription[]
   visitNotes         VisitNote[]
+  presets            DoctorPreset[]
 
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
   @@index([clinicId, specializationRu])
   @@index([clinicId, branchId])
+}
+
+// Per-doctor reusable preset for a structured field on a VisitNote.
+//
+// One row = one chip that appears under a ChipFieldCard. Clicking it both
+// pushes `fieldValue` into the structured array on the active VisitNote AND
+// appends `noteTemplate` (if set) to bodyMarkdown — the "smart constructor"
+// behavior. Doctors manage their own presets in /doctor/settings.
+//
+// `field` partitions the row by VisitNote field so the editor can render
+// one chip-row per card without filtering on the client.
+model DoctorPreset {
+  id            String            @id @default(cuid())
+  clinicId      String
+  clinic        Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId      String
+  doctor        Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  field         DoctorPresetField
+  // Short label shown on the chip itself, e.g. "Головная боль".
+  label         String
+  // Value appended to the structured array on VisitNote (e.g. into
+  // VisitNote.complaints). Usually equal to `label`, but kept separate so
+  // the chip can display a short label while the stored value carries
+  // qualifiers like "Головная боль, давящая, > 1 нед".
+  fieldValue    String
+  // Markdown snippet appended to VisitNote.bodyMarkdown when the chip is
+  // clicked. Null/empty = chip only mutates the structured array.
+  noteTemplate  String?           @db.Text
+  sortOrder     Int               @default(0)
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([clinicId, doctorId, field, active, sortOrder])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1156,6 +1202,12 @@ model VisitNote {
   // Free-form rich body in Markdown. The notes editor on the right is the
   // canonical source; the structured chips are the parsed/derived view.
   bodyMarkdown    String?         @db.Text
+
+  // Patient-facing handout in Markdown. Composed by the manual templating
+  // composer (no LLM) from the structured fields, then editable by the
+  // doctor before print. Independent from bodyMarkdown (clinical record):
+  // the printed handout never includes МКБ codes or technical anamnesis.
+  patientHandoutMarkdown String?  @db.Text
 
   // Provenance — set when any field was AI-generated and never cleared by
   // edits. Used by audit + UI ("сгенерировано AI" badge).

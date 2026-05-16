@@ -25,6 +25,14 @@ export const GET = createApiListHandler(
       include: {
         patient: { select: { id: true, fullName: true } },
         appointment: { select: { id: true, date: true, status: true } },
+        doctor: {
+          select: {
+            specializationRu: true,
+            specializationUz: true,
+            user: { select: { name: true } },
+          },
+        },
+        clinic: { select: { nameRu: true, nameUz: true } },
       },
     });
     if (!note) return notFound();
@@ -77,6 +85,9 @@ export const PATCH = createApiHandler(
     if (body.diagnosisCode !== undefined) data.diagnosisCode = body.diagnosisCode;
     if (body.diagnosisName !== undefined) data.diagnosisName = body.diagnosisName;
     if (body.bodyMarkdown !== undefined) data.bodyMarkdown = body.bodyMarkdown;
+    if (body.patientHandoutMarkdown !== undefined) {
+      data.patientHandoutMarkdown = body.patientHandoutMarkdown;
+    }
 
     const updated = await prisma.visitNote.update({
       where: { id },

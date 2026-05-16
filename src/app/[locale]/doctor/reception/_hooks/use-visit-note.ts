@@ -19,6 +19,7 @@ export type VisitNoteRow = {
   diagnosisCode: string | null;
   diagnosisName: string | null;
   bodyMarkdown: string | null;
+  patientHandoutMarkdown: string | null;
   aiGenerated: boolean;
   aiModel: string | null;
   aiTokens: number | null;
@@ -27,6 +28,12 @@ export type VisitNoteRow = {
   // Included by the GET endpoint, omitted from PATCH responses.
   patient?: { id: string; fullName: string } | null;
   appointment?: { id: string; date: string; status: string } | null;
+  doctor?: {
+    specializationRu: string | null;
+    specializationUz: string | null;
+    user: { name: string | null };
+  } | null;
+  clinic?: { nameRu: string | null; nameUz: string | null } | null;
 };
 
 export const visitNoteKey = (id: string | null) =>
@@ -78,6 +85,7 @@ export type VisitNotePatch = Partial<{
   diagnosisCode: string | null;
   diagnosisName: string | null;
   bodyMarkdown: string | null;
+  patientHandoutMarkdown: string | null;
 }>;
 
 export function usePatchVisitNote(noteId: string | null) {

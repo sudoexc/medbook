@@ -101,7 +101,7 @@ export function ActionCard({
     return (
       <div
         className={cn(
-          "flex items-center gap-2 rounded-lg border-l-4 border-y border-r border-border bg-card px-3 py-2",
+          "group/action flex items-center gap-2 rounded-lg border-l-4 border-y border-r border-border bg-card px-3 py-2 transition-colors hover:bg-muted/40",
           SEVERITY_BORDER_CLASS[row.severity],
         )}
       >
@@ -113,9 +113,12 @@ export function ActionCard({
           )}
         />
         <Icon className="size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+        <Link
+          href={href}
+          className="min-w-0 flex-1 truncate text-xs font-medium text-foreground transition-colors group-hover/action:text-primary focus-visible:outline-none focus-visible:underline"
+        >
           {title}
-        </div>
+        </Link>
         <div className="flex shrink-0 items-center gap-0.5">
           <Link
             href={href}

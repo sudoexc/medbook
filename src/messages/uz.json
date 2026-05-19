@@ -1754,6 +1754,21 @@
       "empty": "Faol ogohlantirishlar yo'q.",
       "viewAll": "Hammasini ko'rish"
     },
+    "listDrawer": {
+      "queueTitle": "Hozir navbatda",
+      "queueSubtitle": "Kutayotgan va yozilgan bemorlar",
+      "queueEmpty": "Navbat bo'sh",
+      "queueEmptyHint": "Yangi yozuvlar bu yerda avtomatik paydo bo'ladi.",
+      "inProgressTitle": "Qabul jarayonida",
+      "inProgressSubtitle": "Hozir qabul qilinayotgan kabinetlar",
+      "inProgressEmpty": "Hozir qabuldagi bemor yo'q",
+      "inProgressEmptyHint": "Shifokor bemorni qabul qilganda u bu yerda paydo bo'ladi.",
+      "openFullList": "To'liq ro'yxatni ochish",
+      "cabinetShort": "kab. {num}",
+      "elapsed": "{min} daqiqa",
+      "remaining": "{min} daqiqa qoldi",
+      "overdue": "{min} daqiqa ortiqcha"
+    },
     "kpi": {
       "todayAppointments": "Bugun yozuvlar",
       "checkedIn": "Bugun keldilar",
@@ -1767,7 +1782,8 @@
       "unitMoney": "so'm",
       "subtitleWaitingQueue": "Qabulni kutmoqda",
       "subtitlePctBusy": "{pct}% band",
-      "subtitlePctOfBookings": "{pct}% yozuvlardan"
+      "subtitlePctOfBookings": "{pct}% yozuvlardan",
+      "openDetails": "tafsilotlarni ochish"
     },
     "doctorQueue": {
       "title": "Shifokorlar navbati",
@@ -1814,7 +1830,8 @@
       "pillFree": "Bo'sh",
       "inQueueCount": "Navbatda ({count})",
       "waitMin": "{min} daq.",
-      "menuLabel": "Amallar"
+      "menuLabel": "Amallar",
+      "openDoctor": "{name} kartochkasini ochish"
     },
     "calls": {
       "title": "Call-markaz",

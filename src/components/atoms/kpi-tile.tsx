@@ -39,6 +39,7 @@ export function KpiTile({
 }: KpiTileProps) {
   return (
     <div
+      data-kpi-card
       className={cn(
         "flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)]",
         className

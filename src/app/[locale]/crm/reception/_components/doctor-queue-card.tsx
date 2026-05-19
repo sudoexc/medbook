@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { ClockIcon, MoreVerticalIcon, PlusIcon } from "lucide-react";
+import { ChevronRightIcon, ClockIcon, MoreVerticalIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -191,7 +192,15 @@ export function DoctorQueueCard({
         ) : null}
       </header>
 
-      <div className="flex items-center gap-2.5">
+      <Link
+        href={`/crm/calendar?doctors=${doctor.id}`}
+        aria-label={t("openDoctor", { name: doctorName })}
+        className={cn(
+          "group/doctor -mx-1 flex items-center gap-2.5 rounded-lg px-1 py-1",
+          "transition-colors hover:bg-muted/60",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        )}
+      >
         <AvatarWithStatus
           name={doctorName}
           src={doctor.photoUrl}
@@ -206,7 +215,11 @@ export function DoctorQueueCard({
             {doctorSpec ?? t("specialist")}
           </p>
         </div>
-      </div>
+        <ChevronRightIcon
+          aria-hidden
+          className="size-4 shrink-0 text-muted-foreground/40 transition-[transform,color] duration-150 group-hover/doctor:translate-x-0.5 group-hover/doctor:text-foreground"
+        />
+      </Link>
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">

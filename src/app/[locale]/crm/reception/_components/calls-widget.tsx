@@ -229,28 +229,33 @@ function QueueCallRow({ row }: { row: CallRow }) {
         ? t("nowLabel")
         : "—";
   return (
-    <li className="flex items-center gap-2.5 px-3 py-2.5">
-      <AvatarWithStatus
-        name={row.patient?.fullName ?? "?"}
-        size="sm"
-        status={row.endedAt ? "offline" : "online"}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
-          {row.patient?.fullName ?? t("unknownShort")}
-        </p>
-        <p className="truncate text-[11px] text-muted-foreground tabular-nums">
-          <PhoneText phone={row.fromNumber} asText />
-        </p>
-      </div>
-      <span
-        className={cn(
-          "shrink-0 text-[11px] font-semibold tabular-nums",
-          row.endedAt ? "text-muted-foreground" : "text-success",
-        )}
+    <li>
+      <Link
+        href={`/crm/call-center?active=${row.id}`}
+        className="flex items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
       >
-        {durationLabel}
-      </span>
+        <AvatarWithStatus
+          name={row.patient?.fullName ?? "?"}
+          size="sm"
+          status={row.endedAt ? "offline" : "online"}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">
+            {row.patient?.fullName ?? t("unknownShort")}
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground tabular-nums">
+            <PhoneText phone={row.fromNumber} asText />
+          </p>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 text-[11px] font-semibold tabular-nums",
+            row.endedAt ? "text-muted-foreground" : "text-success",
+          )}
+        >
+          {durationLabel}
+        </span>
+      </Link>
     </li>
   );
 }

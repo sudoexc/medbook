@@ -37,6 +37,10 @@ import { TgPreviewWidget } from "./tg-preview-widget";
 import { UrgentAlertsWidget } from "./urgent-alerts-widget";
 import { QueueColumn } from "./queue-column";
 import { BottomRow } from "./bottom-row";
+import {
+  ReceptionListDrawer,
+  type ReceptionListMode,
+} from "./reception-list-drawer";
 
 /**
  * Root client shell for `/crm/reception` — matches docs/1 - Ресепшн (2).png.
@@ -125,6 +129,23 @@ export function ReceptionPageClient() {
       const sp = new URLSearchParams(searchParams?.toString() ?? "");
       if (id) sp.set("ap", id);
       else sp.delete("ap");
+      const qs = sp.toString();
+      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  // Side-panel state via `?panel=queue|in_progress`. Coexists with `?ap=`.
+  const panelParam = searchParams?.get("panel") ?? null;
+  const openPanelMode: ReceptionListMode | null =
+    panelParam === "queue" || panelParam === "in_progress"
+      ? panelParam
+      : null;
+  const setPanel = React.useCallback(
+    (mode: ReceptionListMode | null) => {
+      const sp = new URLSearchParams(searchParams?.toString() ?? "");
+      if (mode) sp.set("panel", mode);
+      else sp.delete("panel");
       const qs = sp.toString();
       router.replace(qs ? `?${qs}` : "?", { scroll: false });
     },
@@ -310,6 +331,18 @@ export function ReceptionPageClient() {
       <AppointmentDrawer
         appointmentId={openRowId}
         onClose={() => openRow(null)}
+      />
+
+      <ReceptionListDrawer
+        mode={openPanelMode}
+        rows={todayRows}
+        onOpenChange={(open) => {
+          if (!open) setPanel(null);
+        }}
+        onRowClick={(id) => {
+          setPanel(null);
+          openRow(id);
+        }}
       />
 
       <NewAppointmentDialog

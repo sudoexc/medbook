@@ -59,22 +59,28 @@ export function UrgentAlertsWidget({
         ) : (
           <ul className="space-y-1.5">
             {alerts.slice(0, 4).map((a) => (
-              <li
-                key={a.id}
-                className={cn(
-                  "flex items-start gap-2 rounded-lg border px-2.5 py-2 text-xs",
-                  a.tone === "danger"
-                    ? "border-destructive/30 bg-destructive/5"
-                    : "border-warning/30 bg-warning/5",
-                )}
-              >
-                <span
+              <li key={a.id}>
+                <Link
+                  href={`?ap=${a.id}`}
+                  scroll={false}
                   className={cn(
-                    "mt-0.5 inline-block size-1.5 shrink-0 rounded-full",
-                    a.tone === "danger" ? "bg-destructive" : "bg-warning",
+                    "group flex items-start gap-2 rounded-lg border px-2.5 py-2 text-xs transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                    a.tone === "danger"
+                      ? "border-destructive/30 bg-destructive/5 hover:bg-destructive/10"
+                      : "border-warning/30 bg-warning/5 hover:bg-warning/10",
                   )}
-                />
-                <span className="min-w-0 flex-1 text-foreground">{a.text}</span>
+                >
+                  <span
+                    className={cn(
+                      "mt-0.5 inline-block size-1.5 shrink-0 rounded-full",
+                      a.tone === "danger" ? "bg-destructive" : "bg-warning",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 text-foreground">
+                    {a.text}
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>

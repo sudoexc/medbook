@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
   ActivityIcon,
+  ArrowUpRightIcon,
   BanknoteIcon,
   CalendarDaysIcon,
   CheckCircle2Icon,
@@ -85,7 +86,7 @@ export function KpiStrip({
     },
     {
       key: "waiting",
-      href: "/crm/appointments?dateMode=today&bucket=waiting",
+      href: "?panel=queue",
       label: t("waiting"),
       value: <CountUp to={waiting} className="tabular-nums" />,
       unit: t("unitPersons"),
@@ -95,7 +96,7 @@ export function KpiStrip({
     },
     {
       key: "inProgress",
-      href: "/crm/appointments?dateMode=today&bucket=in_progress",
+      href: "?panel=in_progress",
       label: t("inProgress"),
       value: <CountUp to={inProgress} className="tabular-nums" />,
       unit: t("unitRooms"),
@@ -134,7 +135,7 @@ export function KpiStrip({
     },
     {
       key: "revenue",
-      href: "/crm/payments?period=today",
+      href: "/crm/analytics/financial",
       label: t("revenue"),
       value: (
         <MoneyText
@@ -164,7 +165,18 @@ export function KpiStrip({
         <Link
           key={tile.key}
           href={tile.href}
-          className="block h-full rounded-xl transition-shadow hover:shadow-[0_2px_8px_rgba(15,23,42,.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          scroll={tile.href.startsWith("?") ? false : undefined}
+          aria-label={`${tile.label} — ${t("openDetails")}`}
+          className={cn(
+            "group relative block h-full rounded-xl",
+            "transition-[transform,box-shadow,border-color] duration-200 ease-out",
+            "hover:-translate-y-0.5 hover:shadow-[0_8px_20px_-8px_rgba(15,23,42,0.18)]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2",
+            "active:translate-y-0",
+            // Inner card border highlights on hover via descendant selector.
+            "[&_[data-kpi-card]]:transition-colors [&_[data-kpi-card]]:duration-200",
+            "hover:[&_[data-kpi-card]]:border-primary/35",
+          )}
         >
           <KpiTile
             label={tile.label}
@@ -174,6 +186,18 @@ export function KpiStrip({
             tone={tile.tone}
             icon={tile.icon}
           />
+          <span
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute right-3 top-3 inline-flex size-5 items-center justify-center rounded-md",
+              "bg-muted/60 text-muted-foreground opacity-0",
+              "transition-[opacity,transform,background-color,color] duration-200 ease-out",
+              "group-hover:opacity-100 group-hover:bg-primary/12 group-hover:text-primary",
+              "group-focus-visible:opacity-100",
+            )}
+          >
+            <ArrowUpRightIcon className="size-3" />
+          </span>
         </Link>
       ))}
     </div>

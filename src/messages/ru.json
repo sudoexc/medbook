@@ -1754,6 +1754,21 @@
       "empty": "Нет активных оповещений.",
       "viewAll": "Смотреть все"
     },
+    "listDrawer": {
+      "queueTitle": "В очереди сейчас",
+      "queueSubtitle": "Ожидают и записаны на приём",
+      "queueEmpty": "Очередь пуста",
+      "queueEmptyHint": "Новые записи появятся здесь автоматически.",
+      "inProgressTitle": "Идут приёмы",
+      "inProgressSubtitle": "Кабинеты, в которых сейчас принимают",
+      "inProgressEmpty": "Сейчас никто не на приёме",
+      "inProgressEmptyHint": "Когда врач примет пациента, он появится здесь.",
+      "openFullList": "Открыть полный список",
+      "cabinetShort": "каб. {num}",
+      "elapsed": "{min} мин",
+      "remaining": "осталось {min} мин",
+      "overdue": "переработка {min} мин"
+    },
     "kpi": {
       "todayAppointments": "Записей на сегодня",
       "checkedIn": "Прибыли сегодня",
@@ -1767,7 +1782,8 @@
       "unitMoney": "сум",
       "subtitleWaitingQueue": "Ожидают приём",
       "subtitlePctBusy": "{pct}% занято",
-      "subtitlePctOfBookings": "{pct}% от записей"
+      "subtitlePctOfBookings": "{pct}% от записей",
+      "openDetails": "открыть детали"
     },
     "doctorQueue": {
       "title": "Очередь по врачам",
@@ -1813,6 +1829,7 @@
       "pillAwaiting": "Ожидает",
       "pillFree": "Свободен",
       "inQueueCount": "В очереди ({count})",
+      "openDoctor": "Открыть карточку врача {name}",
       "waitMin": "{min} мин",
       "menuLabel": "Действия"
     },

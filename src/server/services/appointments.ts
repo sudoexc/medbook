@@ -13,6 +13,11 @@
  *   - outside DoctorSchedule for the weekday
  */
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentComponents,
+  tashkentDayBounds,
+  toTashkentDate,
+} from "@/lib/booking-validation";
 
 type PrismaLike =
   | typeof prisma
@@ -22,10 +27,10 @@ export type ConflictResult =
   | { ok: true }
   | { ok: false; reason: string; until?: string };
 
+// Format an instant as Tashkent wall-clock "HH:mm". Never use the server's
+// local Date.getHours() — prod runs UTC, which would skew the result by 5h.
 function fmt(d: Date): string {
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+  return tashkentComponents(d).time;
 }
 
 export function computeEndDate(start: Date, durationMin: number): Date {
@@ -119,8 +124,13 @@ export async function detectConflicts(
     };
   }
 
-  // DoctorSchedule — ensure the slot falls inside a working window for that weekday
-  const weekday = args.startAt.getDay();
+  // DoctorSchedule — ensure the slot falls inside a working window for that
+  // weekday. All comparisons must use Tashkent wall clock; server-local
+  // `getDay()` / `getHours()` skews by 5h on the UTC prod box and flips
+  // weekday near midnight, so we route everything through tashkentComponents.
+  const startComp = tashkentComponents(args.startAt);
+  const endComp = tashkentComponents(args.endAt);
+  const weekday = startComp.dow;
   const schedules = await client.doctorSchedule.findMany({
     where: {
       doctorId: args.doctorId,
@@ -130,8 +140,8 @@ export async function detectConflicts(
     select: { startTime: true, endTime: true },
   });
   if (schedules.length > 0) {
-    const slotStart = args.startAt.getHours() * 60 + args.startAt.getMinutes();
-    const slotEnd = args.endAt.getHours() * 60 + args.endAt.getMinutes();
+    const slotStart = startComp.minutes;
+    const slotEnd = endComp.minutes;
     const inWindow = schedules.some((s) => {
       const [sh, sm] = s.startTime.split(":").map((v) => Number(v));
       const [eh, em] = s.endTime.split(":").map((v) => Number(v));
@@ -158,7 +168,14 @@ export async function findAvailableSlots(args: {
   slotMin?: number;
 }): Promise<string[]> {
   const slot = args.slotMin ?? 30;
-  const weekday = args.date.getDay();
+
+  // All reasoning is in Tashkent wall clock. Server-local helpers
+  // (`getDay`, `setHours(0,0,0,0)`) silently skew ±5h on UTC prod and used
+  // to leak today's already-passed slots into the picker.
+  const dateComp = tashkentComponents(args.date);
+  const weekday = dateComp.dow;
+  const { dayStart, dayEnd } = tashkentDayBounds(args.date);
+
   const schedules = await prisma.doctorSchedule.findMany({
     where: { doctorId: args.doctorId, weekday, isActive: true },
     select: { startTime: true, endTime: true },
@@ -169,19 +186,8 @@ export async function findAvailableSlots(args: {
       ? schedules.map((s) => ({ start: s.startTime, end: s.endTime }))
       : [{ start: "09:00", end: "19:00" }];
 
-  const dayStart = new Date(args.date);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-
-  // For today, hide slots whose start time has already passed — patients
-  // and receptionists shouldn't be able to book into the past. Future
-  // dates pass through unchanged.
   const now = new Date();
-  const isToday =
-    now.getFullYear() === dayStart.getFullYear() &&
-    now.getMonth() === dayStart.getMonth() &&
-    now.getDate() === dayStart.getDate();
+  const isToday = tashkentComponents(now).date === dateComp.date;
 
   const [appts, timeOffs] = await Promise.all([
     prisma.appointment.findMany({
@@ -204,12 +210,11 @@ export async function findAvailableSlots(args: {
 
   const slots: string[] = [];
   for (const w of windows) {
-    const [sh, sm] = w.start.split(":").map((v) => Number(v));
-    const [eh, em] = w.end.split(":").map((v) => Number(v));
-    const start = new Date(dayStart);
-    start.setHours(sh, sm, 0, 0);
-    const end = new Date(dayStart);
-    end.setHours(eh, em, 0, 0);
+    // Anchor window edges to Tashkent wall clock for the requested calendar
+    // day, then iterate the UTC instants. The instants are correct because
+    // they were constructed via `+05:00` offset.
+    const start = toTashkentDate(dateComp.date, w.start);
+    const end = toTashkentDate(dateComp.date, w.end);
 
     for (
       let t = new Date(start);

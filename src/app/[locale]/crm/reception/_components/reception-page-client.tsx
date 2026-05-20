@@ -219,10 +219,6 @@ export function ReceptionPageClient() {
         </div>
       </div>
 
-      <OnboardingChecklist />
-
-      <ActionBriefing />
-
       <KpiStrip
         dashboard={dashboard.data}
         todayRows={todayRows}
@@ -327,6 +323,10 @@ export function ReceptionPageClient() {
       </div>
 
       <BottomRow todayRows={todayRows} doctors={doctors.data ?? []} />
+
+      <ActionBriefing />
+
+      <OnboardingChecklist />
 
       <AppointmentDrawer
         appointmentId={openRowId}

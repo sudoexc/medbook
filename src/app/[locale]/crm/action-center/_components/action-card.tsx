@@ -3,7 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { CheckIcon, ExternalLinkIcon, RotateCcwIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ClockIcon,
+  ExternalLinkIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -98,10 +103,15 @@ export function ActionCard({
   };
 
   if (variant === "compact") {
+    // Row is one big clickable Link surface (via `::after` overlay on the
+    // title) so anywhere in the row routes to the action's deeplink. Snooze
+    // and Done sit in a `relative z-10` cluster on the right so they win
+    // their own clicks. Snooze is hover/focus-revealed; Done stays visible
+    // because it's the single most-frequent verb on this widget.
     return (
       <div
         className={cn(
-          "group/action flex items-center gap-2 rounded-lg border-l-4 border-y border-r border-border bg-card px-3 py-2 transition-colors hover:bg-muted/40",
+          "group/action relative flex items-center gap-2 rounded-lg border-l-4 border-y border-r border-border bg-card pl-3 pr-1.5 py-1.5 transition-colors hover:bg-muted/40 focus-within:bg-muted/40",
           SEVERITY_BORDER_CLASS[row.severity],
         )}
       >
@@ -115,39 +125,38 @@ export function ActionCard({
         <Icon className="size-4 shrink-0 text-muted-foreground" />
         <Link
           href={href}
-          className="min-w-0 flex-1 truncate text-xs font-medium text-foreground transition-colors group-hover/action:text-primary focus-visible:outline-none focus-visible:underline"
+          aria-label={`${tac("actions.open")}: ${title}`}
+          className="min-w-0 flex-1 truncate text-xs font-medium text-foreground transition-colors group-hover/action:text-primary focus-visible:outline-none focus-visible:text-primary after:absolute after:inset-0 after:content-['']"
         >
           {title}
         </Link>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Link
-            href={href}
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "sm" }),
-              "h-7 px-2 text-xs",
-            )}
-          >
-            {tac("actions.open")}
-          </Link>
+        <ExternalLinkIcon
+          aria-hidden
+          className="size-3 shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover/action:opacity-100 group-focus-within/action:opacity-100"
+        />
+        <div className="relative z-10 flex shrink-0 items-center gap-0.5">
           <SnoozePopover
             actionId={row.id}
             trigger={
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
+                size="icon-sm"
                 aria-label={tac("actions.snooze")}
+                title={tac("actions.snooze")}
+                className="text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/action:opacity-100 group-focus-within/action:opacity-100 data-[state=open]:opacity-100 aria-expanded:opacity-100"
               >
-                {tac("actions.snooze")}
+                <ClockIcon className="size-3.5" />
               </Button>
             }
           />
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-success"
+            size="icon-sm"
+            aria-label={tac("actions.done")}
+            title={tac("actions.done")}
             onClick={() => void fireDone()}
             disabled={done.isPending}
+            className="text-success hover:bg-success/10 hover:text-success"
           >
             <CheckIcon className="size-3.5" />
           </Button>

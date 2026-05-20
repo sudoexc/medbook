@@ -9,6 +9,7 @@ import {
   BanknoteIcon,
   CalendarCheck2Icon,
   CalendarClockIcon,
+  ChevronDownIcon,
   ClockIcon,
   MailIcon,
   MoreHorizontalIcon,
@@ -461,6 +462,66 @@ const SEVERITY_PILL: Record<ActionSeverity, string> = {
   low: "bg-muted text-muted-foreground",
 };
 
+// Category model — five operational buckets that mirror how a receptionist's
+// day actually splits up: phone work → schedule work → money → strategic
+// reactivation → background ops. Ordering reflects "what to do first".
+type CategoryKey =
+  | "calls"
+  | "slots"
+  | "payments"
+  | "reactivation"
+  | "operations";
+
+const CATEGORY_MAP: Record<ActionType, CategoryKey> = {
+  UNCONFIRMED_24H: "calls",
+  NO_SHOW_RISK_HIGH: "calls",
+  OVERDUE_FOLLOW_UP: "calls",
+  LOW_NPS_RECEIVED: "calls",
+  EMPTY_SLOT_TOMORROW: "slots",
+  IDLE_ROOM: "slots",
+  LOW_DOCTOR_SCHEDULE: "slots",
+  PAYMENT_OVERDUE: "payments",
+  DORMANT_BATCH: "reactivation",
+  CASE_REPEAT_DUE: "reactivation",
+  DOCTOR_OVERLOAD: "operations",
+};
+
+const CATEGORY_ORDER: readonly CategoryKey[] = [
+  "calls",
+  "slots",
+  "payments",
+  "reactivation",
+  "operations",
+];
+
+const CATEGORY_META: Record<
+  CategoryKey,
+  {
+    Icon: React.ComponentType<{ className?: string }>;
+    tone: keyof typeof TONE_CHIP;
+  }
+> = {
+  calls: { Icon: PhoneIcon, tone: "primary" },
+  slots: { Icon: CalendarClockIcon, tone: "success" },
+  payments: { Icon: BanknoteIcon, tone: "warning" },
+  reactivation: { Icon: UsersIcon, tone: "violet" },
+  operations: { Icon: SettingsIcon, tone: "info" },
+};
+
+function groupByCategory(rows: ActionRow[]): Map<CategoryKey, ActionRow[]> {
+  const map = new Map<CategoryKey, ActionRow[]>();
+  for (const row of rows) {
+    const cat = CATEGORY_MAP[row.type];
+    if (!cat) continue;
+    const list = map.get(cat) ?? [];
+    list.push(row);
+    map.set(cat, list);
+  }
+  return map;
+}
+
+const SECTION_PREVIEW_LIMIT = 5;
+
 function ActionsList({
   actions,
   isLoading,
@@ -471,9 +532,8 @@ function ActionsList({
   localePath: (path: string) => string;
 }) {
   const td = useTranslations("actionCenter.dashboard.actionsList");
-  const [showAll, setShowAll] = React.useState(false);
 
-  const visible = showAll ? actions : actions.slice(0, 5);
+  const grouped = React.useMemo(() => groupByCategory(actions), [actions]);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -489,45 +549,141 @@ function ActionsList({
         </span>
       </header>
 
-      <div className="mt-4 space-y-2">
-        {isLoading ? (
-          <>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
-              />
-            ))}
-          </>
-        ) : visible.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            {td("empty")}
-          </p>
-        ) : (
-          visible.map((row) => (
-            <ActionRowCard key={row.id} row={row} localePath={localePath} />
-          ))
-        )}
-      </div>
-
-      {actions.length > 5 ? (
-        <div className="mt-4 flex justify-center border-t border-border pt-3">
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            {showAll ? td("collapseList") : td("showAllTasks", { count: actions.length })}
-            <ArrowRightIcon
-              className={cn(
-                "size-3 transition-transform",
-                showAll ? "-rotate-90" : "rotate-90",
-              )}
+      {isLoading ? (
+        <div className="mt-4 space-y-2">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="h-20 animate-pulse rounded-xl border border-border bg-muted/30"
             />
-          </button>
+          ))}
+        </div>
+      ) : actions.length === 0 ? (
+        <p className="mt-6 py-8 text-center text-sm text-muted-foreground">
+          {td("empty")}
+        </p>
+      ) : (
+        <div className="motion-stagger mt-4 space-y-3">
+          {CATEGORY_ORDER.map((cat) => {
+            const rows = grouped.get(cat);
+            if (!rows || rows.length === 0) return null;
+            return (
+              <CategorySection
+                key={cat}
+                category={cat}
+                rows={rows}
+                localePath={localePath}
+              />
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CategorySection({
+  category,
+  rows,
+  localePath,
+}: {
+  category: CategoryKey;
+  rows: ActionRow[];
+  localePath: (path: string) => string;
+}) {
+  const td = useTranslations("actionCenter.dashboard.actionsList");
+  const meta = CATEGORY_META[category];
+  const Icon = meta.Icon;
+
+  const [expanded, setExpanded] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(false);
+
+  // Sum of per-row revenue/loss estimates → group-level money chip.
+  // Payments are tracked as positive amounts owed; everything else is a
+  // potential gain if recovered, so we sum positives only.
+  const groupImpactTiins = React.useMemo(() => {
+    let total = 0;
+    for (const r of rows) {
+      const v = pricePerAction(r);
+      if (typeof v === "number" && v > 0) total += v;
+    }
+    return total;
+  }, [rows]);
+
+  const visible = expanded ? rows : rows.slice(0, SECTION_PREVIEW_LIMIT);
+  const canExpand = rows.length > SECTION_PREVIEW_LIMIT;
+
+  return (
+    <div className="motion-rise-in overflow-hidden rounded-xl border border-border bg-background/40">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+        aria-expanded={!collapsed}
+      >
+        <span
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-xl",
+            TONE_CHIP[meta.tone],
+          )}
+        >
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-foreground">
+            {td(`categories.${category}.title`)}
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {td(`categories.${category}.subtitle`)}
+          </p>
+        </div>
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums text-foreground">
+          {rows.length}
+        </span>
+        {groupImpactTiins > 0 ? (
+          <span className="hidden shrink-0 text-right md:block">
+            <span className="text-sm font-bold tabular-nums text-success">
+              +<MoneyText amount={groupImpactTiins} currency="UZS" />
+            </span>
+          </span>
+        ) : null}
+        <ChevronDownIcon
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            collapsed ? "-rotate-90" : "",
+          )}
+        />
+      </button>
+
+      {!collapsed ? (
+        <div className="border-t border-border p-3">
+          <div className="space-y-2">
+            {visible.map((row) => (
+              <ActionRowCard key={row.id} row={row} localePath={localePath} />
+            ))}
+          </div>
+          {canExpand ? (
+            <div className="mt-3 flex justify-center border-t border-border pt-2">
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="motion-press inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {expanded
+                  ? td("collapseList")
+                  : td("showAllTasks", { count: rows.length })}
+                <ArrowRightIcon
+                  className={cn(
+                    "size-3 transition-transform",
+                    expanded ? "-rotate-90" : "rotate-90",
+                  )}
+                />
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
 

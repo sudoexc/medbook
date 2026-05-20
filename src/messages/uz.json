@@ -4454,7 +4454,29 @@
         "priorityMedium": "O'rta",
         "priorityLow": "Past",
         "priorityCritical": "Tanqidiy",
-        "empty": "Ustuvor amallar yo'q"
+        "empty": "Ustuvor amallar yo'q",
+        "categories": {
+          "calls": {
+            "title": "Tasdiqlash va qo'ng'iroqlar",
+            "subtitle": "Qo'ng'iroqlar, yozilishlarni tasdiqlash, qayta aloqa"
+          },
+          "slots": {
+            "title": "Bo'sh slotlar",
+            "subtitle": "To'ldirilmagan vaqtlar — potensial daromad"
+          },
+          "payments": {
+            "title": "To'lovlar",
+            "subtitle": "Muddati o'tgan to'lovlar va hisoblar"
+          },
+          "reactivation": {
+            "title": "Reaktivatsiya",
+            "subtitle": "Uxlayotgan bemorlar va rejali qayta tashriflar"
+          },
+          "operations": {
+            "title": "Jadval va yuklama",
+            "subtitle": "Ortiqcha yuklangan shifokorlar va bo'sh smenalar"
+          }
+        }
       },
       "aiRecs": {
         "title": "AI tavsiyalari",

@@ -71,6 +71,19 @@ export const EVENT_TYPES = [
   "reminder.updated",
   "lab.result.received",
   "lab.result.reviewed",
+  // Phase G3 — new lab order created (front desk / nurse views can react).
+  "lab.order.created",
+  // Phase G7 — clinical forms lifecycle. Issued/cancelled events let the
+  // patient card and visit history refresh live; printed isn't broadcast
+  // (paper handoff is a non-realtime concern).
+  "eprescription.issued",
+  "eprescription.cancelled",
+  "sickleave.issued",
+  "sickleave.cancelled",
+  // Phase G8 — CDS override recorded. Lets a future quality dashboard refresh
+  // its KPI tiles the moment a doctor justifies a flagged warning. Tenant
+  // scope is the clinic; no PHI in the payload.
+  "cds.override.recorded",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -239,6 +252,70 @@ export const LabResultEventPayload = z
   .passthrough();
 export type LabResultEventPayload = z.infer<typeof LabResultEventPayload>;
 
+/**
+ * Phase G3 — outbound lab order receipt. Used by front-desk + nurse surfaces
+ * to react ("новый заказ для Касымова — на столе"); we ship only ids and
+ * urgency so the listening UI can refetch detail when it cares.
+ */
+export const LabOrderCreatedPayload = z
+  .object({
+    labOrderId: z.string().min(1),
+    orderNumber: z.string().min(1),
+    doctorId: z.string().min(1),
+    patientId: z.string().min(1),
+    urgency: z.enum(["ROUTINE", "URGENT", "STAT"]),
+  })
+  .passthrough();
+export type LabOrderCreatedPayload = z.infer<typeof LabOrderCreatedPayload>;
+
+/**
+ * Phase G7 — e-prescription lifecycle. Issued + cancelled share the same
+ * envelope: id + human-readable number + originating doctor/patient so a
+ * listening surface (history drawer, action feed) can decide whether to
+ * refetch without joining tables.
+ */
+export const EPrescriptionEventPayload = z
+  .object({
+    ePrescriptionId: z.string().min(1),
+    rxNumber: z.string().min(1),
+    doctorId: z.string().min(1).optional(),
+    patientId: z.string().min(1).optional(),
+    itemCount: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+export type EPrescriptionEventPayload = z.infer<typeof EPrescriptionEventPayload>;
+
+/**
+ * Phase G7 — sick-leave lifecycle. Same shape rules as the Rx payload.
+ */
+export const SickLeaveEventPayload = z
+  .object({
+    sickLeaveId: z.string().min(1),
+    certNumber: z.string().min(1),
+    doctorId: z.string().min(1).optional(),
+    patientId: z.string().min(1).optional(),
+    days: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+export type SickLeaveEventPayload = z.infer<typeof SickLeaveEventPayload>;
+
+/**
+ * Phase G8 — CDS override recorded. Carries the override id plus a small
+ * snapshot of the warning (kind + severity) so dashboards can update their
+ * counters without a fetch. No PHI: the warning detail lives on the row.
+ */
+export const CdsOverrideEventPayload = z
+  .object({
+    overrideId: z.string().min(1),
+    doctorId: z.string().min(1).optional(),
+    patientId: z.string().min(1).optional(),
+    warningKind: z.string().min(1),
+    severity: z.string().min(1),
+    reason: z.string().min(1),
+  })
+  .passthrough();
+export type CdsOverrideEventPayload = z.infer<typeof CdsOverrideEventPayload>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -284,6 +361,12 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("reminder.updated", ReminderEventPayload),
   makeEvent("lab.result.received", LabResultEventPayload),
   makeEvent("lab.result.reviewed", LabResultEventPayload),
+  makeEvent("lab.order.created", LabOrderCreatedPayload),
+  makeEvent("eprescription.issued", EPrescriptionEventPayload),
+  makeEvent("eprescription.cancelled", EPrescriptionEventPayload),
+  makeEvent("sickleave.issued", SickLeaveEventPayload),
+  makeEvent("sickleave.cancelled", SickLeaveEventPayload),
+  makeEvent("cds.override.recorded", CdsOverrideEventPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

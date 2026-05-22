@@ -21,6 +21,7 @@ export const GET = createApiListHandler(
     if (q.status) where.status = q.status;
     if (q.mode) where.mode = q.mode;
     if (q.assignedToId) where.assignedToId = q.assignedToId;
+    if (q.patientId) where.patientId = q.patientId;
     if (q.unread) where.unreadCount = { gt: 0 };
 
     // Doctor scope: `doctorId=me` (or explicit id) restricts to conversations

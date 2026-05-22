@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 /**
  * Unified timeline returned by `GET /api/crm/patients/[id]/communications`.
@@ -49,6 +49,50 @@ export type CommunicationFilter =
   | "TG"
   | "CALL";
 
+export type CommunicationsPage = {
+  items: CommunicationItem[];
+  nextCursor: string | null;
+};
+
+const PAGE_SIZE = 50;
+
+/**
+ * Cursor-paginated infinite query backing the Communications tab.
+ *
+ * Cursor is the `at` of the last item — see the server route for how each
+ * per-source query narrows to its own date column. The first page renders
+ * the most recent 50 events; Load More appends the next 50.
+ */
+export function usePatientCommunicationsInfinite(patientId: string) {
+  return useInfiniteQuery<
+    CommunicationsPage,
+    Error,
+    { pages: CommunicationsPage[]; pageParams: (string | undefined)[] },
+    readonly ["patient", string, "communications", "infinite"],
+    string | undefined
+  >({
+    queryKey: ["patient", patientId, "communications", "infinite"] as const,
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      if (pageParam) params.set("before", pageParam);
+      const res = await fetch(
+        `/api/crm/patients/${patientId}/communications?${params.toString()}`,
+        { credentials: "include", signal },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as CommunicationsPage;
+    },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * Single-shot fetch retained for the drawer/right-rail consumers that just
+ * want "the latest". Server defaults to 50 newest items, no cursor.
+ */
 export function usePatientCommunications(patientId: string) {
   return useQuery<{ items: CommunicationItem[] }, Error>({
     queryKey: ["patient", patientId, "communications"],
@@ -62,6 +106,13 @@ export function usePatientCommunications(patientId: string) {
     },
     staleTime: 15_000,
   });
+}
+
+export function flattenCommunications(
+  data: { pages: CommunicationsPage[] } | undefined,
+): CommunicationItem[] {
+  if (!data) return [];
+  return data.pages.flatMap((p) => p.items);
 }
 
 /**

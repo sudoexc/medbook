@@ -524,7 +524,7 @@ function CaseMetaCard({
       {/* Primary doctor */}
       <div className="flex items-start gap-3">
         <Avatar className="size-9">
-          <AvatarImage alt={doctorName ?? ""} />
+          <AvatarImage src={doctor?.photoUrl ?? undefined} alt={doctorName ?? ""} />
           <AvatarFallback className="text-[11px]">
             {(doctorName ?? "?")
               .split(" ")

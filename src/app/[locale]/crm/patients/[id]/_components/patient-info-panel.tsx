@@ -106,7 +106,6 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
           label={tPanel("firstVisit")}
           value={firstVisit ? formatDate(firstVisit, locale, "short") : "—"}
         />
-        <InfoRow label={tPanel("manager")} value="—" />
         <InfoRow
           label={tPanel("preferredLang")}
           value={patient.preferredLang === "UZ" ? tPanel("langUz") : tPanel("langRu")}

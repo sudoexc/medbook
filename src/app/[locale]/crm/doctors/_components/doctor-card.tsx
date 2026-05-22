@@ -23,12 +23,10 @@ export interface DoctorCardProps {
   status: DoctorStatus;
   /** Human-readable idle interval ("2ч 10м") if status === "idle" */
   idleFor?: string | null;
-  /** Ordinal cabinet number assigned to this doctor */
-  cabinet: number;
+  /** Cabinet number (e.g. "101") assigned to this doctor */
+  cabinet: string;
   /** Upcoming free slots today (HH:MM) */
   freeSlots: string[];
-  /** Average minutes per appointment */
-  avgMinutes: number;
   className?: string;
 }
 
@@ -88,7 +86,6 @@ export function DoctorCard({
   status,
   cabinet,
   freeSlots,
-  avgMinutes,
   className,
 }: DoctorCardProps) {
   const locale = useLocale();
@@ -203,9 +200,6 @@ export function DoctorCard({
         </Row>
         <Row label={t("appointmentsCount")}>
           <span className="tabular-nums">{today}</span>
-        </Row>
-        <Row label={t("avgTime")}>
-          <span className="tabular-nums">{t("minSuffix", { min: avgMinutes })}</span>
         </Row>
         <Row label={t("nearSlot")}>
           {nearestSlot ? (

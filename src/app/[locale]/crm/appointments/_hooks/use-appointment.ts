@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import type {
@@ -137,6 +138,7 @@ export class AppointmentConflictError extends Error {
 
 export function usePatchAppointment(id: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
   return useMutation<
     AppointmentDetail,
     Error,
@@ -186,7 +188,7 @@ export function usePatchAppointment(id: string) {
         qc.setQueryData(appointmentKey(id), context.previous);
       }
       if (!(err instanceof AppointmentConflictError)) {
-        toast.error(err.message || "Ошибка сохранения");
+        toast.error(err.message || t("saveFailed"));
       }
     },
     onSuccess: (fresh) => {
@@ -202,6 +204,7 @@ export function usePatchAppointment(id: string) {
 
 export function useDeleteAppointment(id: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
   return useMutation<
     { id: string; cancelled: true },
     Error,
@@ -232,7 +235,7 @@ export function useDeleteAppointment(id: string) {
       if (context?.previous) {
         qc.setQueryData(appointmentKey(id), context.previous);
       }
-      toast.error(err.message || "Ошибка отмены");
+      toast.error(err.message || t("cancelFailed"));
     },
     onSuccess: () => {
       qc.removeQueries({ queryKey: appointmentKey(id) });
@@ -245,6 +248,7 @@ export function useDeleteAppointment(id: string) {
 
 export function useSetQueueStatus(id: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
   return useMutation<
     AppointmentDetail,
     Error,
@@ -289,7 +293,7 @@ export function useSetQueueStatus(id: string) {
       if (context?.previous) {
         qc.setQueryData(appointmentKey(id), context.previous);
       }
-      toast.error(err.message || "Ошибка");
+      toast.error(err.message || t("actionFailed"));
     },
     onSettled: () => {
       invalidateAppointmentSurfaces(qc, id);
@@ -299,6 +303,7 @@ export function useSetQueueStatus(id: string) {
 
 export function useBulkReschedule() {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
   return useMutation<
     { count: number; ids: string[] },
     Error,
@@ -330,7 +335,7 @@ export function useBulkReschedule() {
     },
     onError: (err) => {
       if (!(err instanceof AppointmentConflictError)) {
-        toast.error(err.message || "Не удалось перенести записи");
+        toast.error(err.message || t("rescheduleFailed"));
       }
     },
   });
@@ -338,6 +343,7 @@ export function useBulkReschedule() {
 
 export function useBulkStatus() {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
   return useMutation<
     { count: number },
     Error,
@@ -389,7 +395,7 @@ export function useBulkStatus() {
         }
       }
       if (!(err instanceof AppointmentConflictError)) {
-        toast.error(err.message || "Ошибка изменения статуса");
+        toast.error(err.message || t("statusFailed"));
       }
     },
     onSettled: () => {

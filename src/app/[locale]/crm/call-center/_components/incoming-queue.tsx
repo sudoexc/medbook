@@ -102,7 +102,7 @@ export function IncomingQueue({
 
       <footer className="border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
         {t("pollingHint")}
-        {/* TODO(realtime-engineer): replace 5s polling with SSE on `call.incoming`. */}
+        {/* SSE-driven via useCallCenterRealtime; 60s poll is the resilience fallback. */}
       </footer>
     </div>
   );

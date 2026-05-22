@@ -7,7 +7,7 @@ import { BellIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useDoctorToday,
-  type ReminderItem,
+  type RemindersBlock,
 } from "../_hooks/use-doctor-today";
 
 function formatRemindAt(iso: string, now: Date): {
@@ -41,17 +41,27 @@ export function Reminders() {
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
-  const { data: rows, isLoading } = useDoctorToday<ReminderItem[]>(
+  const { data, isLoading } = useDoctorToday<RemindersBlock>(
     (d) => d.reminders,
   );
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  // Doctor seeing «5 шт» when 119 are actually due is the bug we're guarding
+  // against — surface the overflow on the same card.
+  const overflow = Math.max(0, total - items.length);
   const now = new Date();
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
-      <header className="px-5 pt-4 pb-3">
+      <header className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
           Напоминания
         </div>
+        {!isLoading && total > 0 ? (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
+            {total}
+          </span>
+        ) : null}
       </header>
 
       <ul className="space-y-1 px-3 pb-2">
@@ -66,12 +76,12 @@ export function Reminders() {
               <Skeleton className="h-4 w-16" />
             </li>
           ))
-        ) : !rows || rows.length === 0 ? (
+        ) : items.length === 0 ? (
           <li className="px-5 py-8 text-center text-sm text-muted-foreground">
             Активных напоминаний нет
           </li>
         ) : (
-          rows.map((r) => {
+          items.map((r) => {
             const { rel, abs } = formatRemindAt(r.remindAt, now);
             // Patient-bound reminders deep-link to the patient card so the
             // doctor can take action in context; unbound reminders fall back
@@ -118,7 +128,7 @@ export function Reminders() {
           href={`/${locale}/doctor/notifications`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          Все напоминания
+          {overflow > 0 ? `Ещё ${overflow} — все напоминания` : "Все напоминания"}
         </Link>
       </footer>
     </section>

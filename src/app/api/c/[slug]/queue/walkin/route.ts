@@ -16,6 +16,7 @@ import { resolvePublicClinic } from "@/server/clinic-public/resolve";
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
+import { allocatePatientNumber } from "@/server/services/patient-number";
 
 const Body = z.object({
   fullName: z.string().trim().min(2).max(120),
@@ -63,16 +64,20 @@ export async function POST(request: Request) {
       select: { id: true, fullName: true },
     });
     if (!patient) {
-      patient = await prisma.patient.create({
-        data: {
-          clinicId: ctx.clinicId,
-          fullName: parsed.fullName,
-          phone: phoneNorm,
-          phoneNormalized: phoneNorm,
-          preferredLang: parsed.lang ?? "RU",
-          source: "WALKIN",
-        } as never,
-        select: { id: true, fullName: true },
+      patient = await prisma.$transaction(async (tx) => {
+        const patientNumber = await allocatePatientNumber(ctx.clinicId, tx);
+        return tx.patient.create({
+          data: {
+            clinicId: ctx.clinicId,
+            patientNumber,
+            fullName: parsed.fullName,
+            phone: phoneNorm,
+            phoneNormalized: phoneNorm,
+            preferredLang: parsed.lang ?? "RU",
+            source: "WALKIN",
+          } as never,
+          select: { id: true, fullName: true },
+        });
       });
     }
 

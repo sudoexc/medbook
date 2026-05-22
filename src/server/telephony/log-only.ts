@@ -23,7 +23,9 @@
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
+import { phoneSearchVariants } from "@/lib/phone";
 import { requireTenant } from "@/lib/tenant-context";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { getEventBus, publish } from "@/server/realtime/event-bus";
 
 import {
@@ -52,6 +54,20 @@ export class LogOnlyTelephonyAdapter implements TelephonyAdapter {
       throw new Error("LogOnly.call requires TENANT context");
     }
     const sipCallId = makeSipCallId();
+    // Outbound dial: try to link to a known patient by destination number so
+    // the `lastContactedAt` bump downstream isn't silently skipped.
+    const variants = phoneSearchVariants(to);
+    const patientMatch = variants.length
+      ? await prisma.patient.findFirst({
+          where: {
+            OR: [
+              { phoneNormalized: { in: variants } },
+              { phone: { in: variants } },
+            ],
+          },
+          select: { id: true },
+        })
+      : null;
     // `clinicId` is injected by the Prisma tenant extension — see
     // `src/lib/prisma.ts`. Cast away the required-clinicId typing to match
     // the existing pattern in `src/app/api/crm/calls/route.ts`.
@@ -62,8 +78,12 @@ export class LogOnlyTelephonyAdapter implements TelephonyAdapter {
         toNumber: to,
         operatorId: ctx.userId,
         sipCallId,
+        patientId: patientMatch?.id ?? null,
       } as never,
     });
+    if (patientMatch?.id) {
+      await bumpPatientLastContact(patientMatch.id, created.createdAt);
+    }
 
     // Synthetic `ringing` so reception/call-center widgets can reflect it.
     const evt: TelephonyEvent = {
@@ -112,6 +132,9 @@ export class LogOnlyTelephonyAdapter implements TelephonyAdapter {
       where: { id: existing.id },
       data: { endedAt, durationSec },
     });
+    if (existing.patientId) {
+      await bumpPatientLastContact(existing.patientId, endedAt);
+    }
 
     const evt: TelephonyEvent = {
       kind: "hangup",

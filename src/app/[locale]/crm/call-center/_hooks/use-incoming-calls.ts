@@ -8,16 +8,16 @@ import type { CallListResponse, CallRow } from "./types";
 import { deriveStatus } from "./types";
 
 /**
- * Polls `/api/crm/calls` for the current ringing queue.
+ * Backs the ringing queue in the call center.
  *
- * Until realtime-engineer wires SSE channel `call.incoming`, the UI polls
- * every 5s. The server returns *all* recent calls — we filter down to
- * "ringing" on the client (rows with direction=IN and no endedAt).
- *
- * TODO(realtime-engineer): replace polling with SSE subscription to
- * `call.incoming` / `call.ended` and invalidate this query on each event.
+ * Primary transport is SSE: `useCallCenterRealtime` (below) subscribes to
+ * `call.incoming` / `call.answered` / `call.ended` / `call.missed` and
+ * invalidates this query on every event — events are emitted by the SIP
+ * webhook at `/api/calls/sip/event`. Polling is a safety net only: SSE
+ * connections can drop on transformer reconnects, mobile-network flaps,
+ * or long page-suspend periods, so we still refetch every 60s to backstop
+ * the queue. The list is filtered to direction=IN and no `endedAt`.
  */
-// SSE invalidation keeps this list live; polling is a 60s safety net.
 const POLL_MS = 60_000;
 
 async function fetchRinging(): Promise<CallRow[]> {

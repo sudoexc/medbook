@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import {
+  BarChart3Icon,
   BellIcon,
   BookOpenIcon,
   BrainIcon,
@@ -46,6 +47,7 @@ const DOCTOR_NAV: NavGroup[] = [
       { href: "documents", label: "Документы", icon: FilesIcon },
       { href: "conclusions", label: "Заключения", icon: FileTextIcon },
       { href: "messages", label: "Сообщения", icon: MessageSquareIcon },
+      { href: "analytics", label: "Моя статистика", icon: BarChart3Icon },
     ],
   },
   {

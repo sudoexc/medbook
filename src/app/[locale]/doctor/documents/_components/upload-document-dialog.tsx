@@ -101,46 +101,32 @@ export function UploadDocumentDialog({
     setSubmitting(true);
     setError(null);
     try {
-      // 1) Request a presigned URL (or stub).
-      const presignRes = await fetch("/api/crm/documents/upload-url", {
+      // 1) Upload bytes — server stores via uploadObject() (MinIO/S3 in prod,
+      //    local stub root in dev) and returns a real `fileUrl` either way.
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("patientId", patient.id);
+      const uploadRes = await fetch("/api/crm/documents/upload", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          contentType: file.type || "application/octet-stream",
-          patientId: patient.id,
-        }),
+        body: fd,
       });
-      if (!presignRes.ok) {
-        const txt = await presignRes.text();
-        throw new Error(`upload-url: ${txt || presignRes.status}`);
-      }
-      const presign = (await presignRes.json()) as {
-        key: string;
-        uploadUrl: string | null;
-        publicUrl: string | null;
-        stub?: boolean;
-      };
-
-      let fileUrl: string;
-      if (presign.stub || !presign.uploadUrl || !presign.publicUrl) {
-        // Stub mode: no real upload; store the key as fileUrl placeholder.
-        fileUrl = `stub://${presign.key}`;
-      } else {
-        // 2) PUT the file bytes directly to storage.
-        const putRes = await fetch(presign.uploadUrl, {
-          method: "PUT",
-          body: file,
-          headers: { "content-type": file.type || "application/octet-stream" },
-        });
-        if (!putRes.ok) {
-          throw new Error(`storage PUT failed: ${putRes.status}`);
+      if (!uploadRes.ok) {
+        let detail = `upload: ${uploadRes.status}`;
+        try {
+          const body = (await uploadRes.json()) as { error?: string };
+          if (body?.error) detail = body.error;
+        } catch {
+          // ignore
         }
-        fileUrl = presign.publicUrl;
+        throw new Error(detail);
       }
+      const uploaded = (await uploadRes.json()) as {
+        fileUrl: string;
+      };
+      const fileUrl = uploaded.fileUrl;
 
-      // 3) Persist metadata.
+      // 2) Persist metadata.
       const metaRes = await fetch("/api/crm/documents", {
         method: "POST",
         credentials: "include",

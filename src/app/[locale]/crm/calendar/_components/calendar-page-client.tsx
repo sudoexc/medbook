@@ -32,15 +32,25 @@ import "./calendar.css";
 
 // FullCalendar touches `window` — render only on the client. SSR render would
 // otherwise blow up during the initial server pass.
+//
+// The `loading` callback runs at module scope (no React context), so we can't
+// `useTranslations` there directly. A tiny inner client component lets the
+// fallback render the localized "Загрузка…" string instead of a hardcoded
+// English "Loading…".
+function CalendarLoadingFallback() {
+  const t = useTranslations("calendar");
+  return (
+    <div className="flex h-full flex-1 items-center justify-center text-sm text-muted-foreground">
+      {t("loading")}
+    </div>
+  );
+}
+
 const CalendarView = dynamic(
   () => import("./calendar-view").then((m) => m.CalendarViewInner),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex h-full flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    ),
+    loading: () => <CalendarLoadingFallback />,
   },
 );
 

@@ -3,7 +3,9 @@
  * center right-rail.
  *
  *   - 30d totals by status (QUEUED / SENT / DELIVERED / READ / FAILED)
- *   - today sent / failed
+ *   - today sent / delivered / failed (the KPI strip shows these so the four
+ *     tiles share a single time window; `queued` is inherently realtime —
+ *     "how many rows are sitting in QUEUED state right now")
  *   - active template count
  *   - top templates by usage last 30d
  */
@@ -30,6 +32,12 @@ export const GET = createApiListHandler(
 
     const todaySent = await prisma.notificationSend.count({
       where: { sentAt: { gte: startOfToday }, status: { in: ["SENT", "DELIVERED", "READ"] } },
+    });
+    const todayDelivered = await prisma.notificationSend.count({
+      where: {
+        deliveredAt: { gte: startOfToday },
+        status: { in: ["DELIVERED", "READ"] },
+      },
     });
     const todayFailed = await prisma.notificationSend.count({
       where: { createdAt: { gte: startOfToday }, status: "FAILED" },
@@ -84,6 +92,7 @@ export const GET = createApiListHandler(
       },
       today: {
         sent: todaySent,
+        delivered: todayDelivered,
         failed: todayFailed,
         queued: todayQueued,
       },

@@ -15,6 +15,16 @@
 export type Locale = "ru" | "uz";
 export type Currency = "UZS" | "USD";
 
+/**
+ * Map the app's locale to a BCP-47 tag accepted by `Intl.*` / `toLocaleString`.
+ * Centralises the `"uz" → "uz-Latn-UZ"` mapping so callers don't hardcode
+ * `"ru-RU"` directly (which would format numbers and dates as Russian even
+ * when the UI is in Uzbek).
+ */
+export function intlLocale(locale: Locale | string): string {
+  return locale === "uz" ? "uz-Latn-UZ" : "ru-RU";
+}
+
 // -----------------------------------------------------------------------------
 // Money
 // -----------------------------------------------------------------------------
@@ -104,10 +114,10 @@ export function formatDate(
   const d = date instanceof Date ? date : new Date(date);
   if (!Number.isFinite(d.getTime())) return "";
 
-  const intlLocale = locale === "uz" ? "uz-Latn-UZ" : "ru-RU";
+  const tag = intlLocale(locale);
 
   if (style === "short") {
-    return new Intl.DateTimeFormat(intlLocale, {
+    return new Intl.DateTimeFormat(tag, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -115,7 +125,7 @@ export function formatDate(
   }
 
   if (style === "long") {
-    return new Intl.DateTimeFormat(intlLocale, {
+    return new Intl.DateTimeFormat(tag, {
       day: "numeric",
       month: "long",
       year: "numeric",
@@ -123,7 +133,7 @@ export function formatDate(
   }
 
   if (style === "time") {
-    return new Intl.DateTimeFormat(intlLocale, {
+    return new Intl.DateTimeFormat(tag, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -136,8 +146,8 @@ export function formatDate(
 
 function formatRelative(d: Date, locale: Locale): string {
   const now = new Date();
-  const intlLocale = locale === "uz" ? "uz-Latn-UZ" : "ru-RU";
-  const time = new Intl.DateTimeFormat(intlLocale, {
+  const tag = intlLocale(locale);
+  const time = new Intl.DateTimeFormat(tag, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -162,7 +172,7 @@ function formatRelative(d: Date, locale: Locale): string {
 
   // Fallback: Intl.RelativeTimeFormat for days within a week, else absolute.
   if (Math.abs(dayDiff) < 7) {
-    const rtf = new Intl.RelativeTimeFormat(intlLocale, { numeric: "auto" });
+    const rtf = new Intl.RelativeTimeFormat(tag, { numeric: "auto" });
     return `${rtf.format(dayDiff, "day")}, ${time}`;
   }
 

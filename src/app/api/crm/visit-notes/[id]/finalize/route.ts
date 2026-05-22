@@ -15,6 +15,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound } from "@/server/http";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -76,6 +77,13 @@ export const POST = createApiHandler(
 
       return { note: updatedNote, appointment: updatedAppt };
     });
+
+    if (note.appointment.status !== "COMPLETED") {
+      await bumpPatientLastContact(
+        note.patientId,
+        result.appointment.completedAt ?? new Date(),
+      );
+    }
 
     await audit(request, {
       action: "visit_note.finalize",

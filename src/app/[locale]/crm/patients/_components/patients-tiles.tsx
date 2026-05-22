@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ActivityIcon,
-  AlertTriangleIcon,
   ClockIcon,
   SparklesIcon,
   UsersIcon,
@@ -96,8 +95,6 @@ export function PatientsTiles({
     };
   }, [rows, total, now]);
 
-  const noShowPct = (5.1).toLocaleString(locale === "uz" ? "uz-UZ" : "ru-RU");
-
   // Pre-computed last-7-day floor for the "new" tile drill-down.
   const newWeekFrom = React.useMemo(() => {
     const d = new Date();
@@ -124,8 +121,8 @@ export function PatientsTiles({
       key: "new-week",
       label: t("newWeek"),
       value: <CountUp to={stats.newWeek} />,
-      delta: t("deltaNewWeekPct", { pct: 23 }),
-      deltaTone: "success",
+      delta: "",
+      deltaTone: "muted",
       icon: SparklesIcon,
       tone: "warning",
       href: `/${locale}/crm/patients/segments/new`,
@@ -151,16 +148,6 @@ export function PatientsTiles({
       href: `/${locale}/crm/patients/segments/dormant`,
     },
     {
-      key: "risk",
-      label: t("noShowRisk"),
-      value: noShowPct,
-      delta: t("deltaNoShowPct", { pct: noShowPct }),
-      deltaTone: "warning",
-      icon: AlertTriangleIcon,
-      tone: "warning",
-      href: `/${locale}/crm/patients/segments/risk`,
-    },
-    {
       key: "avg-check",
       label: t("avgCheck"),
       value:
@@ -169,8 +156,8 @@ export function PatientsTiles({
         ) : (
           "—"
         ),
-      delta: t("deltaAvgCheckPct", { pct: 12 }),
-      deltaTone: "success",
+      delta: "",
+      deltaTone: "muted",
       icon: WalletIcon,
       tone: "info",
       href: `/${locale}/crm/analytics?period=month`,
@@ -182,7 +169,7 @@ export function PatientsTiles({
     <div
       className={cn(
         "motion-stagger grid gap-2",
-        "grid-cols-2 sm:grid-cols-3 xl:grid-cols-6",
+        "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5",
         className,
       )}
     >

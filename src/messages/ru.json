@@ -313,10 +313,6 @@
     "dormant": {
       "title": "Неактивные пациенты",
       "subtitle": "Пациенты без визита более 30 дней — кандидаты на win-back обзвон."
-    },
-    "risk": {
-      "title": "Риск no-show",
-      "subtitle": "Пациенты с историей пропусков. Свяжитесь заранее, чтобы подтвердить запись."
     }
   },
   "patients": {
@@ -1151,8 +1147,6 @@
       "telegram": "Telegram",
       "inviteToBot": "У пациента нет Telegram — пришлём приглашение в бот",
       "more": "Ещё",
-      "mergeDuplicates": "Объединить дубликаты",
-      "mergeDuplicatesSoon": "Объединение дубликатов появится в следующем обновлении",
       "delete": "Удалить пациента",
       "exportDataToPatient": "Экспорт данных → пациенту",
       "exportDataToAdmin": "Экспорт данных → мне",
@@ -1167,6 +1161,8 @@
       "copyPhoneAria": "Копировать номер",
       "phoneCopied": "Номер скопирован",
       "activeBadge": "Активный пациент",
+      "lastContactNeverChip": "Ещё не связывались",
+      "lastContactStaleChip": "Не связывались {days} {days, plural, one {день} few {дня} other {дней}}",
       "kpiLtv": "LTV",
       "kpiVisits": "Визитов",
       "kpiAvgCheck": "Средний чек",
@@ -1188,10 +1184,15 @@
       "visitsCount": "Визитов",
       "lastVisit": "Последний визит",
       "nextVisit": "Следующий визит",
+      "lastContact": "Последний контакт",
+      "lastContactNever": "—",
+      "lastContactToday": "сегодня",
+      "lastContactDaysAgo": "{days, plural, one {# день назад} few {# дня назад} other {# дней назад}}",
       "balance": "Баланс",
       "recentActivity": "Последние касания",
       "viewAll": "Открыть все",
-      "noActivity": "Пока ничего не происходило."
+      "noActivity": "Пока ничего не происходило.",
+      "diagnosesMore": "и ещё {count, plural, one {# диагноз} few {# диагноза} other {# диагнозов}}"
     },
     "recs": {
       "title": "Рекомендуемые действия",
@@ -1273,6 +1274,12 @@
       "deleteForbidden": "Удалять документы может только администратор",
       "empty": "Нет документов",
       "emptyDescription": "Загрузите файл или попросите пациента подписать согласие.",
+      "emptyFiltered": "По заданным фильтрам ничего не найдено",
+      "searchPlaceholder": "Поиск по названию…",
+      "typeFilterPlaceholder": "Тип",
+      "typeFilterAll": "Все типы",
+      "clearFilters": "Сбросить фильтры",
+      "loadMore": "Загрузить ещё",
       "types": {
         "referral": "Направление",
         "prescription": "Рецепт",
@@ -1296,6 +1303,7 @@
       "filter": "Фильтр",
       "total": "Событий: {count}",
       "empty": "Коммуникаций пока нет",
+      "loadMore": "Загрузить ещё",
       "types": {
         "all": "Все",
         "sms": "SMS",
@@ -2503,11 +2511,11 @@
       },
       "delivered": {
         "label": "Доставлено",
-        "hint": "За 30 дней"
+        "hint": "Сегодня"
       },
       "queued": {
         "label": "В очереди",
-        "hint": "Ждут отправки"
+        "hint": "Сейчас"
       },
       "failed": {
         "label": "Ошибки",
@@ -3076,6 +3084,8 @@
       "created": "Пользователь создан",
       "deactivated": "Пользователь деактивирован",
       "deactivate": "Деактивировать",
+      "deactivateConfirmTitle": "Деактивировать пользователя?",
+      "deactivateConfirmDescription": "{name} больше не сможет войти в систему. Это можно отменить позже.",
       "deleteTitle": "Деактивировать пользователя?",
       "deleteDescription": "{name} больше не сможет войти. Это обратимо.",
       "resetPassword": "Сбросить пароль",
@@ -3132,6 +3142,9 @@
       "createHint": "Код должен быть уникальным в пределах клиники.",
       "created": "Услуга создана",
       "deactivated": "Услуга скрыта",
+      "deleteConfirmTitle": "Скрыть услугу?",
+      "deleteConfirmDesc": "«{name}» будет отключена для записи. Историю это не затронет; включить обратно можно из этой же таблицы.",
+      "deleteConfirmAction": "Скрыть",
       "min": "мин",
       "doctorsRequired": "Кто оказывает услугу",
       "doctorsRequiredHint": "Выберите хотя бы одного врача — без врачей услуга не сохранится.",
@@ -3406,7 +3419,17 @@
         "cancel": "Отменить",
         "confirmCancel": "Отменить заявку на удаление?",
         "approving": "Утверждаем…",
-        "cancelling": "Отменяем…"
+        "cancelling": "Отменяем…",
+        "dialogCancel": "Не сейчас",
+        "confirmApproveTitle": "Утвердить удаление данных пациента?",
+        "confirmApproveBody": {
+          "ANONYMIZE": "Это необратимое действие. Персональные данные пациента будут обезличены сразу после утверждения. Связи с записями сохранятся для отчётности, но идентифицирующие поля будут удалены.",
+          "HARD_DELETE": "Это необратимое действие. Все данные пациента, включая историю визитов и медицинские записи, будут полностью удалены. Восстановить их будет невозможно."
+        },
+        "confirmApproveAction": "Утвердить удаление",
+        "confirmCancelTitle": "Отменить заявку на удаление?",
+        "confirmCancelBody": "Заявка будет помечена как отменённая. Данные пациента сохранятся без изменений. Действие можно отменить только созданием новой заявки.",
+        "confirmCancelAction": "Отменить заявку"
       },
       "approveSuccess": "Заявка утверждена.",
       "cancelSuccess": "Заявка отменена.",
@@ -3430,11 +3453,59 @@
       "fields": {
         "label": "Метка (опционально)",
         "labelPlaceholder": "main, backup, eskiz…",
+        "variant": "Провайдер",
         "secret": "Токен / ключ",
         "secretKeepBlank": "Оставьте пустым, чтобы не менять",
         "currentSecretIndicator": "Текущий: {mask}",
         "config": "Конфигурация (JSON)",
         "configHint": "Произвольный JSON; адаптеры прочитают нужные ключи."
+      },
+      "variants": {
+        "eskiz": "Eskiz.uz",
+        "playmobile": "PlayMobile",
+        "payme": "Payme",
+        "click": "Click",
+        "uzum": "Uzum Bank",
+        "sip": "SIP-провайдер",
+        "custom": "Другой"
+      },
+      "cfg": {
+        "smsBaseUrl": {
+          "label": "API base URL",
+          "placeholder": "https://notify.eskiz.uz/api"
+        },
+        "smsEmail": {
+          "label": "Логин (email)",
+          "placeholder": "clinic@example.com"
+        },
+        "smsSender": {
+          "label": "Sender ID",
+          "placeholder": "MedBook"
+        },
+        "merchantId": {
+          "label": "Merchant ID",
+          "placeholder": "5e..."
+        },
+        "mode": {
+          "label": "Режим",
+          "placeholder": "",
+          "opts": {
+            "test": "Тестовый",
+            "prod": "Боевой"
+          }
+        },
+        "openaiModel": {
+          "label": "Модель",
+          "placeholder": "gpt-4o-mini"
+        },
+        "telServer": {
+          "label": "Сервер",
+          "placeholder": "sip.example.com"
+        },
+        "telUsername": {
+          "label": "Логин",
+          "placeholder": "operator"
+        }
       },
       "cards": {
         "sms": {
@@ -3455,9 +3526,12 @@
         }
       },
       "smsTest": "Тестовая SMS",
-      "smsTestHint": "Отправит сообщение через текущий адаптер (log-only в dev).",
+      "smsTestHintLog": "Провайдер SMS не настроен — сообщение будет записано в лог, реальная отправка не произойдёт.",
+      "smsTestHintReal": "Сообщение будет отправлено через настроенный SMS-провайдер.",
+      "smsTestWarning": "Внимание: это реальная SMS. Будет списана с баланса провайдера.",
       "smsTestDefault": "MedBook: это тестовое сообщение.",
-      "smsTestSent": "Тест поставлен в очередь",
+      "smsTestSentLog": "Тест записан в лог (провайдер не настроен)",
+      "smsTestSentReal": "SMS отправлена через {adapter}",
       "smsPhone": "Телефон",
       "smsBody": "Текст",
       "smsSend": "Отправить",
@@ -4256,8 +4330,16 @@
     "title": "SMS",
     "subtitle": "Входящие и исходящие SMS",
     "empty": "Нет SMS диалогов",
-    "mvpHint": "MVP-версия: список разговоров. Полный инбокс — Phase 6.",
-    "openDetails": "Открыть детали"
+    "mvpHint": "Нажмите на разговор, чтобы прочитать историю и ответить.",
+    "openDetails": "Карточка пациента",
+    "back": "К списку",
+    "unknownSender": "Неизвестный отправитель",
+    "emptyThread": "В этом диалоге пока нет сообщений.",
+    "composerPlaceholder": "Ответ пациенту…",
+    "composerHint": "Ctrl/⌘ + Enter — отправить. Отправка идёт через настроенный SMS-провайдер; если провайдер не подключён, сообщение записывается в лог.",
+    "send": "Отправить",
+    "sending": "Отправка…",
+    "sendFailed": "Не удалось отправить SMS"
   },
   "admin": {
     "bulk": {
@@ -4415,16 +4497,46 @@
       "headerTitle": "Центр действий",
       "headerSubtitle": "Оперативное управление клиникой в реальном времени",
       "kpi": {
-        "threatToday": "Под угрозой сегодня",
-        "threatTodayUnit": "пациентов",
         "potentialLoss": "потенциальная потеря",
         "potentialRevenue": "потенциальная выручка",
-        "unconfirmed": "Неподтвержденные",
+        "unconfirmed": "Неподтверждённые",
         "unconfirmedUnit": "записей",
         "freeSlots": "Свободные слоты",
         "freeSlotsUnit": "слотов",
-        "noShowRisk": "No-show risk",
+        "noShowRisk": "Риск пропуска",
         "noShowRiskUnit": "пациентов"
+      },
+      "riskToday": {
+        "title": "Сегодня в зоне риска",
+        "subtitle": "{count, plural, one {# запись требует} few {# записи требуют} many {# записей требуют} other {# записи требуют}} внимания",
+        "subtitleAllDone": "Все {count, plural, one {# запись обработана} few {# записи обработаны} many {# записей обработано} other {# записи обработано}} 🎉",
+        "subtitleEmpty": "На сегодня угроз не обнаружено",
+        "empty": "Сегодня всё под контролем",
+        "emptyHint": "Записей с риском пропуска или без подтверждения нет. Спокойного дня!",
+        "emptyAllDone": "Все сегодняшние риски закрыты",
+        "emptyAllDoneHint": "Ты прошёл сегодняшний риск-лист до конца. Можно выдохнуть.",
+        "errorTitle": "Не удалось загрузить риск-лист",
+        "lossHint": "до потери",
+        "progressLabel": "{handled}/{total}",
+        "progressTitle": "Обработано {handled} из {total}",
+        "openShort": "осталось",
+        "ctaCall": "Звонок",
+        "ctaCallTitle": "Открыть звонок с пациентом",
+        "ctaSms": "SMS",
+        "ctaSmsTitle": "Отправить SMS-подтверждение",
+        "ctaHandled": "Обработано",
+        "ctaHandledTitle": "Отметить, что пациент обработан",
+        "menuLabel": "Ещё действия",
+        "menuSnooze": "Отложить до завтра",
+        "menuOpenPatient": "Открыть карту пациента",
+        "menuOpenAppt": "Открыть запись",
+        "reasons": {
+          "highRisk": "Риск пропуска {pct}%",
+          "unconfirmedHours": "Не подтвердил · {hours}ч до приёма",
+          "unconfirmedSoon": "Не подтвердил · меньше часа",
+          "noContactDays": "Не на связи {days, plural, one {# день} few {# дня} many {# дней} other {# дней}}",
+          "noContactNever": "Ни разу не связывались"
+        }
       },
       "responseTime": {
         "title": "Среднее время ответа",
@@ -4508,7 +4620,16 @@
         "title": "Очередь задач на сегодня",
         "showAll": "Показать все задачи",
         "showLess": "Свернуть",
-        "progress": "{done}/{total}"
+        "progress": "{done}/{total}",
+        "shortLabel": {
+          "UNCONFIRMED_24H": "Подтвердить запись ({patientName})",
+          "EMPTY_SLOT_TOMORROW": "Заполнить слот ({doctorName})",
+          "NO_SHOW_RISK_HIGH": "Связаться с {patientName}",
+          "DORMANT_BATCH": "Реактивация {patientCount} пациентов",
+          "DOCTOR_OVERLOAD": "Разгрузить {doctorName}",
+          "PAYMENT_OVERDUE": "Оплата {patientName}",
+          "fallback": "{type}"
+        }
       },
       "doctorsLoad": {
         "title": "Загрузка врачей на сегодня",
@@ -4742,6 +4863,12 @@
     "invoices": {
       "title": "История счетов",
       "empty": "Пока нет ни одного счёта.",
+      "emptyFiltered": "По выбранному фильтру счетов нет.",
+      "filterLabel": "Статус",
+      "filterAll": "Все",
+      "loadMore": "Показать ещё",
+      "loading": "Загружаем…",
+      "loadError": "Не удалось загрузить счета.",
       "cols": {
         "number": "Номер",
         "period": "Период",
@@ -4867,5 +4994,45 @@
         "body": "По вопросам соглашения: support@neurofax.uz."
       }
     }
+  },
+  "crmToasts": {
+    "patient": {
+      "saveFailed": "Не удалось сохранить",
+      "paymentAdded": "Платёж добавлен",
+      "paymentFailed": "Не удалось создать платёж",
+      "documentAdded": "Документ добавлен",
+      "documentFailed": "Не удалось загрузить документ",
+      "caseCreateFailed": "Не удалось создать случай",
+      "caseUpdateFailed": "Не удалось обновить случай"
+    },
+    "appointment": {
+      "saveFailed": "Ошибка сохранения",
+      "cancelFailed": "Ошибка отмены",
+      "actionFailed": "Ошибка",
+      "rescheduleFailed": "Не удалось перенести записи",
+      "statusFailed": "Ошибка изменения статуса"
+    },
+    "case": {
+      "saveFailed": "Не удалось сохранить",
+      "detachFailed": "Не удалось отвязать запись"
+    },
+    "doctor": {
+      "saveFailed": "Не удалось сохранить"
+    }
+  },
+  "meChangePassword": {
+    "headingForced": "Установите новый пароль",
+    "headingChange": "Сменить пароль",
+    "subtitleForced": "Это первый вход — задайте свой постоянный пароль.",
+    "subtitleChange": "Минимум 8 символов.",
+    "currentLabel": "Текущий пароль",
+    "newLabel": "Новый пароль",
+    "confirmLabel": "Повторите пароль",
+    "mismatch": "Пароли не совпадают",
+    "saving": "Сохраняем…",
+    "submit": "Сохранить",
+    "updated": "Пароль обновлён",
+    "invalidCurrent": "Неверный текущий пароль",
+    "currentRequired": "Введите текущий пароль"
   }
 }

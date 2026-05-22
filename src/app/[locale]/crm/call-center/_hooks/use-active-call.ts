@@ -30,10 +30,12 @@ export function useActiveCallId(): [string | null, (id: string | null) => void] 
 }
 
 /**
- * Fetches the active call row. Polls more often than the history (10s) so
- * the duration timer stays fresh-ish even before SSE.
+ * Fetches the active call row.
  *
- * TODO(realtime-engineer): drop polling in favour of SSE invalidation.
+ * Live updates arrive via SSE (`useCallCenterRealtime` invalidates this key
+ * on every `call.*` event). The 60s polling is a safety net for dropped
+ * connections, not the primary transport — see `use-incoming-calls.ts` for
+ * the full rationale.
  */
 export function useActiveCall(id: string | null) {
   return useQuery<CallRow | null, Error>({
@@ -49,8 +51,6 @@ export function useActiveCall(id: string | null) {
       if (!res.ok) throw new Error(`Active call load failed: ${res.status}`);
       return (await res.json()) as CallRow;
     },
-    // SSE invalidation (see `useCallCenterRealtime`) drives live refreshes.
-    // Polling stays as a 60s safety net.
     refetchInterval: 60_000,
   });
 }

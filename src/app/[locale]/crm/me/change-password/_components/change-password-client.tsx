@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { KeyRoundIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ async function postPassword(body: PostBody): Promise<void> {
 }
 
 export function ChangePasswordClient({ forced }: { forced: boolean }) {
+  const t = useTranslations("meChangePassword");
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
@@ -41,7 +43,7 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
         newPassword: next,
       }),
     onSuccess: async () => {
-      toast.success("Пароль обновлён");
+      toast.success(t("updated"));
       // Force the JWT to refresh: POST /api/auth/session triggers the
       // `jwt` callback with trigger='update', which re-reads the user
       // from the DB and rewrites the cookie. Without this, the proxy
@@ -59,9 +61,9 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Error";
       if (msg === "invalid_current") {
-        toast.error("Неверный текущий пароль");
+        toast.error(t("invalidCurrent"));
       } else if (msg === "current_required") {
-        toast.error("Введите текущий пароль");
+        toast.error(t("currentRequired"));
       } else {
         toast.error(msg);
       }
@@ -96,19 +98,17 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
           </div>
           <div>
             <h1 className="text-base font-semibold leading-none">
-              {forced ? "Установите новый пароль" : "Сменить пароль"}
+              {forced ? t("headingForced") : t("headingChange")}
             </h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              {forced
-                ? "Это первый вход — задайте свой постоянный пароль."
-                : "Минимум 8 символов."}
+              {forced ? t("subtitleForced") : t("subtitleChange")}
             </p>
           </div>
         </div>
 
         {!forced && (
           <div className="grid gap-1.5">
-            <Label htmlFor="current">Текущий пароль</Label>
+            <Label htmlFor="current">{t("currentLabel")}</Label>
             <Input
               id="current"
               type="password"
@@ -120,7 +120,7 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
         )}
 
         <div className="grid gap-1.5">
-          <Label htmlFor="next">Новый пароль</Label>
+          <Label htmlFor="next">{t("newLabel")}</Label>
           <Input
             id="next"
             type="password"
@@ -135,7 +135,7 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="confirm">Повторите пароль</Label>
+          <Label htmlFor="confirm">{t("confirmLabel")}</Label>
           <Input
             id="confirm"
             type="password"
@@ -148,12 +148,12 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
             aria-invalid={mismatch ? true : undefined}
           />
           {mismatch && (
-            <p className="text-xs text-destructive">Пароли не совпадают</p>
+            <p className="text-xs text-destructive">{t("mismatch")}</p>
           )}
         </div>
 
         <Button type="submit" className="w-full" disabled={!canSubmit}>
-          {mut.isPending ? "Сохраняем…" : "Сохранить"}
+          {mut.isPending ? t("saving") : t("submit")}
         </Button>
       </form>
     </div>

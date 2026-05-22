@@ -27,6 +27,8 @@ export type DoctorRow = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  cabinetId: string;
+  cabinet: { id: string; number: string; floor: number | null } | null;
 };
 
 export type DoctorsListResponse = {

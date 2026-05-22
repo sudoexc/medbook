@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
+  flattenReminders,
+  totalsFromPages,
   useDoctorReminders,
   type Reminder,
 } from "../_hooks/use-doctor-reminders";
@@ -101,39 +103,60 @@ export function NotificationsList() {
   );
 
   const list = useDoctorReminders();
-  const buckets = React.useMemo(
-    () => bucketRows(list.data ?? [], THIRTY_DAYS_MS),
+  const allRows = React.useMemo(
+    () => flattenReminders(list.data),
     [list.data],
   );
+  const buckets = React.useMemo(
+    () => bucketRows(allRows, THIRTY_DAYS_MS),
+    [allRows],
+  );
+  const totals = totalsFromPages(list.data);
+  // Tab badges show the *server-side* total, not the loaded slice — so a
+  // doctor with 119 active reminders sees "Актуальные 119" even before
+  // pages 2..N have streamed in.
+  const tabCounts: Record<TabKey, number> = {
+    active: totals.PENDING + totals.SNOOZED,
+    done: totals.DONE,
+    archive: totals.DISMISSED,
+  };
   const rows =
     tab === "active"
       ? buckets.active
       : tab === "done"
         ? buckets.done
         : buckets.archive;
+  const expectedForTab = tabCounts[tab];
+
+  // Auto-paginate the active tab until every PENDING/SNOOZED reminder is on
+  // screen — that's the bug we're guarding against (doctor with 119 due
+  // reminders silently seeing the first 50). Done/Archive are NOT auto-
+  // loaded: their 30-day cutoff means later pages may yield zero visible
+  // rows, which would loop forever; the user opens Load More if they need
+  // history. Hard page cap is a safety belt only.
+  const activeLoadedCount = buckets.active.length;
+  React.useEffect(() => {
+    if (tab !== "active") return;
+    if (!list.hasNextPage || list.isFetchingNextPage) return;
+    if (activeLoadedCount >= tabCounts.active) return;
+    if ((list.data?.pages.length ?? 0) >= 20) return;
+    void list.fetchNextPage();
+  }, [list, tab, activeLoadedCount, tabCounts.active]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-xl border border-border bg-card p-0.5">
-          {TABS.map((t) => {
-            const count =
-              t.key === "active"
-                ? buckets.active.length
-                : t.key === "done"
-                  ? buckets.done.length
-                  : buckets.archive.length;
-            return (
-              <TabBtn
-                key={t.key}
-                active={tab === t.key}
-                onClick={() => setTabAndUrl(t.key)}
-                count={count}
-              >
-                {t.label}
-              </TabBtn>
-            );
-          })}
+          {TABS.map((t) => (
+            <TabBtn
+              key={t.key}
+              active={tab === t.key}
+              onClick={() => setTabAndUrl(t.key)}
+              count={tabCounts[t.key]}
+            >
+              {t.label}
+            </TabBtn>
+          ))}
         </div>
 
         <Button type="button" onClick={() => setCreateOpen(true)}>
@@ -171,13 +194,42 @@ export function NotificationsList() {
         ) : rows.length === 0 ? (
           <EmptyState tab={tab} onCreate={() => setCreateOpen(true)} />
         ) : (
-          <ul className="divide-y divide-border">
-            {rows.map((r) => (
-              <ReminderRow key={r.id} reminder={r} locale={locale} now={now} />
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-border">
+              {rows.map((r) => (
+                <ReminderRow
+                  key={r.id}
+                  reminder={r}
+                  locale={locale}
+                  now={now}
+                />
+              ))}
+            </ul>
+            {list.hasNextPage ? (
+              <div className="flex justify-center border-t border-border px-4 py-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={list.isFetchingNextPage}
+                  onClick={() => void list.fetchNextPage()}
+                >
+                  {list.isFetchingNextPage ? (
+                    <>
+                      <Loader2Icon className="mr-1.5 size-3 animate-spin" />
+                      Загружаем…
+                    </>
+                  ) : tab === "active" && rows.length < expectedForTab ? (
+                    <>Показать ещё ({expectedForTab - rows.length})</>
+                  ) : (
+                    <>Показать ещё</>
+                  )}
+                </Button>
+              </div>
+            ) : null}
+          </>
         )}
-        {list.isFetching && !list.isLoading ? (
+        {list.isFetching && !list.isLoading && !list.isFetchingNextPage ? (
           <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
             <Loader2Icon className="size-3 animate-spin" />
             Обновляем…

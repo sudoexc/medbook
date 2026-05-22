@@ -25,7 +25,7 @@ export const GET = createApiListHandler(
     const row = await prisma.call.findUnique({
       where: { id },
       include: {
-        patient: { select: { id: true, fullName: true, phone: true } },
+        patient: { select: { id: true, fullName: true, phone: true, segment: true } },
         operator: { select: { id: true, name: true } },
       },
     });
@@ -45,6 +45,10 @@ export const PATCH = createApiHandler(
     const after = await prisma.call.update({
       where: { id },
       data: body as never,
+      include: {
+        patient: { select: { id: true, fullName: true, phone: true, segment: true } },
+        operator: { select: { id: true, name: true } },
+      },
     });
     const d = diff(
       before as unknown as Record<string, unknown>,

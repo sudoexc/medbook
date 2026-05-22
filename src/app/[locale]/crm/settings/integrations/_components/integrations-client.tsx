@@ -30,6 +30,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 import { settingsFetch } from "../../_hooks/use-settings-api";
 import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
 import { TgConnectWizard } from "./tg-connect-wizard";
@@ -42,6 +50,53 @@ type ProviderKind =
   | "UZUM"
   | "OPENAI"
   | "OTHER";
+
+type ConfigFieldType = "text" | "url" | "select" | "number";
+
+type ConfigFieldDef = {
+  key: string;
+  type: ConfigFieldType;
+  required?: boolean;
+  placeholder?: string;
+  /** i18n key under `settings.integrations.cfg`. */
+  i18n: string;
+  /** Select options (value = stored value, i18n key under settings.integrations.cfg.<i18n>.opts). */
+  options?: string[];
+};
+
+/**
+ * Per-provider field schemas. These replace the legacy free-form JSON
+ * textarea — each known kind exposes typed inputs that map to the JSON
+ * keys actually consumed by adapters (see server/notifications/adapters).
+ *
+ * Adding a new variant: extend VARIANTS[kind] + CONFIG_FIELDS[kind], then
+ * mirror the i18n keys in ru.json / uz.json.
+ */
+const VARIANTS: Partial<Record<ProviderKind, string[]>> = {
+  SMS: ["eskiz", "playmobile"],
+  PAYME: ["payme", "click", "uzum"],
+  OTHER: ["sip", "custom"],
+};
+
+const CONFIG_FIELDS: Record<ProviderKind, ConfigFieldDef[]> = {
+  SMS: [
+    { key: "baseUrl", type: "url", i18n: "smsBaseUrl" },
+    { key: "email", type: "text", required: true, i18n: "smsEmail" },
+    { key: "sender", type: "text", i18n: "smsSender" },
+  ],
+  PAYME: [
+    { key: "merchantId", type: "text", required: true, i18n: "merchantId" },
+    { key: "mode", type: "select", options: ["test", "prod"], i18n: "mode" },
+  ],
+  CLICK: [],
+  UZUM: [],
+  TELEGRAM: [],
+  OPENAI: [{ key: "model", type: "text", i18n: "openaiModel" }],
+  OTHER: [
+    { key: "server", type: "text", i18n: "telServer" },
+    { key: "username", type: "text", i18n: "telUsername" },
+  ],
+};
 
 type ProviderConn = {
   id: string;
@@ -117,7 +172,13 @@ export function IntegrationsClient() {
           description={t("integrations.cards.sms.description")}
           conn={connsByKind.SMS ?? null}
           onSetup={() => setEditKind("SMS")}
-          extra={<SmsTestButton />}
+          extra={
+            <SmsTestButton
+              smsConfigured={Boolean(
+                connsByKind.SMS?.active && connsByKind.SMS.hasSecret,
+              )}
+            />
+          }
         />
 
         <IntegrationCard
@@ -343,30 +404,49 @@ function ProviderEditDialog({
   onSaved: () => void;
 }) {
   const t = useTranslations("settings");
-  const [form, setForm] = React.useState({
-    label: existing?.label ?? "",
-    secret: "",
-    active: existing?.active ?? true,
-    config: existing?.config ? JSON.stringify(existing.config, null, 2) : "{}",
-  });
+  const fields = CONFIG_FIELDS[kind];
+  const variants = VARIANTS[kind];
+
+  // Hydrate config values from the existing row's JSON. Unknown keys are
+  // preserved and re-merged on save, so the dialog never silently drops
+  // data that doesn't have a typed field yet.
+  const initialConfig = React.useMemo<Record<string, unknown>>(
+    () => (existing?.config as Record<string, unknown> | null) ?? {},
+    [existing],
+  );
+
+  const [config, setConfig] = React.useState<Record<string, unknown>>(initialConfig);
+  const [label, setLabel] = React.useState<string>(
+    existing?.label ?? variants?.[0] ?? "",
+  );
+  const [secret, setSecret] = React.useState("");
+  const [active, setActive] = React.useState(existing?.active ?? true);
   const [pwOpen, setPwOpen] = React.useState(false);
+
+  const setField = (key: string, value: string) =>
+    setConfig((prev) => ({ ...prev, [key]: value }));
+
+  const missingRequired = fields.some(
+    (f) => f.required && !String(config[f.key] ?? "").trim(),
+  );
 
   const mut = useMutation({
     mutationFn: (currentPassword: string | undefined) => {
-      let configParsed: Record<string, unknown> = {};
-      try {
-        configParsed = form.config ? JSON.parse(form.config) : {};
-      } catch {
-        throw new Error("Invalid JSON config");
+      // Strip empty strings so the stored JSON stays clean, but preserve
+      // any unknown keys that came in from `existing.config`.
+      const cleaned: Record<string, unknown> = { ...config };
+      for (const f of fields) {
+        const v = cleaned[f.key];
+        if (typeof v === "string" && v.trim() === "") delete cleaned[f.key];
       }
       const body: Record<string, unknown> = {
         kind,
-        label: form.label || null,
-        active: form.active,
-        config: configParsed,
+        label: label || null,
+        active,
+        config: cleaned,
       };
-      if (form.secret) {
-        body.secret = form.secret;
+      if (secret) {
+        body.secret = secret;
         body.currentPassword = currentPassword;
       }
       return settingsFetch<ProviderConn>("/api/crm/integrations", {
@@ -381,7 +461,7 @@ function ProviderEditDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const needsPassword = form.secret.length > 0;
+  const needsPassword = secret.length > 0;
 
   return (
     <>
@@ -396,20 +476,30 @@ function ProviderEditDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div>
-              <Label>{t("integrations.fields.label")}</Label>
-              <Input
-                value={form.label}
-                onChange={(e) => setForm({ ...form, label: e.target.value })}
-                placeholder={t("integrations.fields.labelPlaceholder")}
-              />
-            </div>
+            {variants ? (
+              <div>
+                <Label>{t("integrations.fields.variant")}</Label>
+                <Select value={label || variants[0]} onValueChange={setLabel}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {variants.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {t(`integrations.variants.${v}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
             <div>
               <Label>{t("integrations.fields.secret")}</Label>
               <Input
                 type="password"
-                value={form.secret}
-                onChange={(e) => setForm({ ...form, secret: e.target.value })}
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
                 placeholder={
                   existing?.hasSecret
                     ? t("integrations.fields.secretKeepBlank")
@@ -425,26 +515,58 @@ function ProviderEditDialog({
                 </p>
               ) : null}
             </div>
-            <div>
-              <Label>{t("integrations.fields.config")}</Label>
-              <textarea
-                className="flex h-32 w-full rounded-md border border-input bg-transparent px-3 py-1 font-mono text-xs"
-                value={form.config}
-                onChange={(e) => setForm({ ...form, config: e.target.value })}
-                spellCheck={false}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t("integrations.fields.configHint")}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
+
+            {fields.map((f) => {
+              const value = String(config[f.key] ?? "");
+              if (f.type === "select") {
+                return (
+                  <div key={f.key}>
+                    <Label>{t(`integrations.cfg.${f.i18n}.label`)}</Label>
+                    <Select
+                      value={value || (f.options?.[0] ?? "")}
+                      onValueChange={(v) => setField(f.key, v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {f.options?.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {t(`integrations.cfg.${f.i18n}.opts.${opt}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              }
+              return (
+                <div key={f.key}>
+                  <Label>
+                    {t(`integrations.cfg.${f.i18n}.label`)}
+                    {f.required ? (
+                      <span className="text-destructive"> *</span>
+                    ) : null}
+                  </Label>
+                  <Input
+                    type={f.type === "url" ? "url" : f.type === "number" ? "number" : "text"}
+                    value={value}
+                    onChange={(e) => setField(f.key, e.target.value)}
+                    placeholder={t(`integrations.cfg.${f.i18n}.placeholder`)}
+                    inputMode={f.type === "url" ? "url" : undefined}
+                  />
+                </div>
+              );
+            })}
+
+            <div className="flex items-center gap-2 pt-1">
               <Switch
-                checked={form.active}
-                onCheckedChange={(v: boolean) => setForm({ ...form, active: v })}
+                checked={active}
+                onCheckedChange={setActive}
                 id="prov-active"
               />
               <Label htmlFor="prov-active">
-                {form.active
+                {active
                   ? t("integrations.active")
                   : t("integrations.inactive")}
               </Label>
@@ -459,7 +581,7 @@ function ProviderEditDialog({
                 if (needsPassword) setPwOpen(true);
                 else mut.mutate(undefined);
               }}
-              disabled={mut.isPending}
+              disabled={mut.isPending || missingRequired}
             >
               {mut.isPending ? t("common.saving") : t("common.save")}
             </Button>
@@ -479,19 +601,26 @@ function ProviderEditDialog({
   );
 }
 
-function SmsTestButton() {
+function SmsTestButton({ smsConfigured }: { smsConfigured: boolean }) {
   const t = useTranslations("settings");
   const [open, setOpen] = React.useState(false);
   const [phone, setPhone] = React.useState("");
   const [body, setBody] = React.useState(t("integrations.smsTestDefault"));
   const mut = useMutation({
     mutationFn: () =>
-      settingsFetch("/api/crm/integrations/sms/test", {
-        method: "POST",
-        body: JSON.stringify({ phone, body }),
-      }),
-    onSuccess: () => {
-      toast.success(t("integrations.smsTestSent"));
+      settingsFetch<{ adapter: string; real: boolean; providerId: string | null }>(
+        "/api/crm/integrations/sms/test",
+        {
+          method: "POST",
+          body: JSON.stringify({ phone, body }),
+        },
+      ),
+    onSuccess: (res) => {
+      toast.success(
+        res.real
+          ? t("integrations.smsTestSentReal", { adapter: res.adapter })
+          : t("integrations.smsTestSentLog"),
+      );
       setOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -507,9 +636,17 @@ function SmsTestButton() {
           <DialogHeader>
             <DialogTitle>{t("integrations.smsTest")}</DialogTitle>
             <DialogDescription>
-              {t("integrations.smsTestHint")}
+              {smsConfigured
+                ? t("integrations.smsTestHintReal")
+                : t("integrations.smsTestHintLog")}
             </DialogDescription>
           </DialogHeader>
+          {smsConfigured ? (
+            <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
+              <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
+              <span>{t("integrations.smsTestWarning")}</span>
+            </div>
+          ) : null}
           <div className="space-y-3 py-2">
             <div>
               <Label>{t("integrations.smsPhone")}</Label>

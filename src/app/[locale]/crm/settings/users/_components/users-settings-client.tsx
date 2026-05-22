@@ -629,6 +629,21 @@ function EditUserDialog({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Deactivation is destructive: an inactive user can no longer log in, and
+  // the audit team flagged "isActive toggle" as missing a confirm step. We
+  // only intercept the active → inactive transition; reactivating (off → on)
+  // or saving other changes still commits straight through.
+  const [confirmDeactivate, setConfirmDeactivate] = React.useState(false);
+  const isDeactivating = row.active && !form.active;
+
+  const onSave = () => {
+    if (isDeactivating) {
+      setConfirmDeactivate(true);
+      return;
+    }
+    mut.mutate();
+  };
   return (
     <Dialog open onOpenChange={(v: boolean) => !v && onClose()}>
       <DialogContent className="max-w-lg">
@@ -688,13 +703,41 @@ function EditUserDialog({
             {t("common.cancel")}
           </Button>
           <Button
-            onClick={() => mut.mutate()}
+            onClick={onSave}
             disabled={mut.isPending || !form.name}
           >
             {mut.isPending ? t("common.saving") : t("common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
+      <AlertDialog
+        open={confirmDeactivate}
+        onOpenChange={(v: boolean) => !v && setConfirmDeactivate(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("users.deactivateConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("users.deactivateConfirmDescription", { name: row.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirmDeactivate(false)}>
+              {t("common.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDeactivate(false);
+                mut.mutate();
+              }}
+            >
+              {t("users.deactivate")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

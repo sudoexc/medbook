@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
@@ -16,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { intlLocale, type Locale } from "@/lib/format";
 
 export interface BillingPagePlan {
   id: string;
@@ -70,8 +72,31 @@ export interface BillingPageProps {
     smsCountThisMonth: number;
   };
   plans: BillingPagePlan[];
+  /**
+   * First page of invoices, rendered by the server so the table never
+   * flickers empty on first paint. The client useInfiniteQuery hydrates
+   * its initial cache from this list when `statusFilter === "ALL"`.
+   */
   invoices: BillingPageInvoice[];
+  /** Cursor that points at the next unread invoice, or null if the SSR fetch already exhausted the list. */
+  invoiceNextCursor: string | null;
+  /** Server-side page size, mirrored to the client so cursor math is consistent. */
+  invoicePageSize: number;
 }
+
+type InvoiceStatus = "DRAFT" | "ISSUED" | "PAID" | "VOID" | "OVERDUE";
+const INVOICE_STATUSES: readonly InvoiceStatus[] = [
+  "DRAFT",
+  "ISSUED",
+  "PAID",
+  "OVERDUE",
+  "VOID",
+];
+
+type InvoicesPage = {
+  rows: BillingPageInvoice[];
+  nextCursor: string | null;
+};
 
 function formatTiinsAsUzs(amountTiins: string): string {
   const minor = Number(amountTiins);
@@ -109,11 +134,14 @@ function UsageBar({
   label,
   current,
   max,
+  locale,
 }: {
   label: string;
   current: number;
   max: number;
+  locale: Locale;
 }) {
+  const tag = intlLocale(locale);
   const band = pctBand(current, max);
   const fillPct = Math.min(100, band.pct);
   const trackTone =
@@ -134,8 +162,8 @@ function UsageBar({
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="font-medium text-foreground">{label}</span>
         <span className="tabular-nums text-muted-foreground">
-          {current.toLocaleString("ru-RU")}
-          {max > 0 ? ` / ${max.toLocaleString("ru-RU")}` : ""}
+          {current.toLocaleString(tag)}
+          {max > 0 ? ` / ${max.toLocaleString(tag)}` : ""}
           {max > 0 ? ` (${band.pct}%)` : ""}
           {max < 0 ? " / ∞" : ""}
         </span>
@@ -178,6 +206,8 @@ export function BillingClient(props: BillingPageProps) {
   const t = useTranslations("billing");
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
+  const localeKey: Locale = props.locale === "uz" ? "uz" : "ru";
+  const tag = intlLocale(localeKey);
 
   async function onUpgrade(planSlug: string) {
     if (busy) return;
@@ -275,16 +305,19 @@ export function BillingClient(props: BillingPageProps) {
                 label={t("usage.patients")}
                 current={props.usage.patientCount}
                 max={props.flags.maxPatients}
+                locale={localeKey}
               />
               <UsageBar
                 label={t("usage.appointments")}
                 current={props.usage.appointmentCountThisMonth}
                 max={props.flags.maxAppointmentsPerMonth}
+                locale={localeKey}
               />
               <UsageBar
                 label={t("usage.sms")}
                 current={props.usage.smsCountThisMonth}
                 max={props.flags.maxSmsPerMonth}
+                locale={localeKey}
               />
             </div>
           </CardContent>
@@ -331,7 +364,7 @@ export function BillingClient(props: BillingPageProps) {
                         n:
                           plan.maxPatients < 0
                             ? "∞"
-                            : plan.maxPatients.toLocaleString("ru-RU"),
+                            : plan.maxPatients.toLocaleString(tag),
                       })}
                     </li>
                     <li>
@@ -339,7 +372,7 @@ export function BillingClient(props: BillingPageProps) {
                         n:
                           plan.maxAppointmentsPerMonth < 0
                             ? "∞"
-                            : plan.maxAppointmentsPerMonth.toLocaleString("ru-RU"),
+                            : plan.maxAppointmentsPerMonth.toLocaleString(tag),
                       })}
                     </li>
                     <li>
@@ -347,7 +380,7 @@ export function BillingClient(props: BillingPageProps) {
                         n:
                           plan.maxSmsPerMonth < 0
                             ? "∞"
-                            : plan.maxSmsPerMonth.toLocaleString("ru-RU"),
+                            : plan.maxSmsPerMonth.toLocaleString(tag),
                       })}
                     </li>
                     {plan.hasTelegramInbox ? <li>{t("planPicker.features.tg")}</li> : null}
@@ -378,16 +411,116 @@ export function BillingClient(props: BillingPageProps) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
+      <InvoicesSection
+        initialInvoices={props.invoices}
+        initialNextCursor={props.invoiceNextCursor}
+        pageSize={props.invoicePageSize}
+      />
+
+      {props.stubMode ? (
+        <p className="text-xs text-muted-foreground">{t("stubModeHint")}</p>
+      ) : null}
+    </PageContainer>
+  );
+}
+
+/**
+ * Cursor-paginated invoices list.
+ *
+ * The first page comes from SSR (no network round-trip on first paint),
+ * any subsequent page or status-filter change goes through
+ * `/api/crm/billing/invoices`. Cache is keyed by `statusFilter` so
+ * toggling between "ALL" and a specific status doesn't reuse the wrong
+ * dataset.
+ */
+function InvoicesSection({
+  initialInvoices,
+  initialNextCursor,
+  pageSize,
+}: {
+  initialInvoices: BillingPageInvoice[];
+  initialNextCursor: string | null;
+  pageSize: number;
+}) {
+  const t = useTranslations("billing");
+  const [statusFilter, setStatusFilter] = React.useState<"ALL" | InvoiceStatus>(
+    "ALL",
+  );
+
+  const query = useInfiniteQuery<
+    InvoicesPage,
+    Error,
+    { pages: InvoicesPage[]; pageParams: (string | undefined)[] },
+    readonly ["billing", "invoices", "ALL" | InvoiceStatus],
+    string | undefined
+  >({
+    queryKey: ["billing", "invoices", statusFilter] as const,
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      params.set("limit", String(pageSize));
+      if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (pageParam) params.set("cursor", pageParam);
+      const res = await fetch(
+        `/api/crm/billing/invoices?${params.toString()}`,
+        { credentials: "include", signal },
+      );
+      if (!res.ok) throw new Error(`invoices: ${res.status}`);
+      return (await res.json()) as InvoicesPage;
+    },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: 30_000,
+    // SSR seeded only the unfiltered first page; for any status filter the
+    // server-provided rows are not a valid initial cache, so we let the
+    // query fetch fresh. When statusFilter === "ALL" we hydrate from the
+    // server payload so the table renders without an extra round-trip.
+    initialData:
+      statusFilter === "ALL"
+        ? {
+            pages: [{ rows: initialInvoices, nextCursor: initialNextCursor }],
+            pageParams: [undefined],
+          }
+        : undefined,
+  });
+
+  const rows = (query.data?.pages ?? []).flatMap((p) => p.rows);
+  const hasFilter = statusFilter !== "ALL";
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>{t("invoices.title")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {props.invoices.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              {t("invoices.empty")}
-            </div>
-          ) : (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{t("invoices.filterLabel")}</span>
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as "ALL" | InvoiceStatus)
+              }
+              className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="ALL">{t("invoices.filterAll")}</option>
+              {INVOICE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {query.isError ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            {t("invoices.loadError")}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            {hasFilter ? t("invoices.emptyFiltered") : t("invoices.empty")}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -400,7 +533,7 @@ export function BillingClient(props: BillingPageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {props.invoices.map((inv) => (
+                  {rows.map((inv) => (
                     <tr key={inv.id} className="border-b border-border/60">
                       <td className="py-2 pr-3 font-mono text-foreground">
                         {inv.number}
@@ -431,13 +564,23 @@ export function BillingClient(props: BillingPageProps) {
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {props.stubMode ? (
-        <p className="text-xs text-muted-foreground">{t("stubModeHint")}</p>
-      ) : null}
-    </PageContainer>
+            {query.hasNextPage ? (
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void query.fetchNextPage()}
+                  disabled={query.isFetchingNextPage}
+                >
+                  {query.isFetchingNextPage
+                    ? t("invoices.loading")
+                    : t("invoices.loadMore")}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

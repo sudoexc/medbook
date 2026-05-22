@@ -225,6 +225,49 @@ enum DoctorPresetField {
   ADVICE
 }
 
+enum DrugCategory {
+  ANTIBIOTIC
+  ANALGESIC
+  ANTIPYRETIC
+  NSAID
+  ANTIHISTAMINE
+  GI
+  CARDIO
+  RESPIRATORY
+  VITAMIN
+  SEDATIVE
+  ENDOCRINE
+  DIURETIC
+  ANTIEMETIC
+  ANTISPASMODIC
+  STEROID
+  TOPICAL
+  EYE_EAR
+  UROLOGY
+  NEUROLOGICAL
+  PSYCHIATRIC
+  ANTIFUNGAL
+  ANTIVIRAL
+  HORMONAL
+  DERMATOLOGICAL
+  HEMATOLOGY
+  OPHTHALMIC
+  GYNECOLOGY
+  VACCINE
+  OTHER
+}
+
+// FDA-style pregnancy categories. Stored as enum so we can render colored
+// badges and filter ("no D/X drugs for this patient").
+enum PregnancyCategory {
+  A
+  B
+  C
+  D
+  X
+  UNKNOWN
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenancy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,6 +323,10 @@ model Clinic {
   // bound is [5, 240]; the schema cannot express that, so the API + form
   // clamp on every write.
   sessionIdleTimeoutMinutes  Int       @default(30)
+  // Monotonic counter for human-readable patient numbers. Incremented
+  // atomically (UPDATE … RETURNING) by allocatePatientNumber() in every
+  // Patient creation path so each clinic gets its own 1, 2, 3 … sequence.
+  patientCounter             Int       @default(0)
   // Phase 19 Wave 1 — SaaS self-service.
   // `customSubdomain` lets Pro/Enterprise tenants serve the patient surfaces
   // off `<sub>.neurofax.uz` instead of the default `/c/<slug>`. Globally
@@ -302,57 +349,62 @@ model Clinic {
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
-  users                   User[]
-  doctors                 Doctor[]
-  patients                Patient[]
-  appointments            Appointment[]
-  cabinets                Cabinet[]
-  services                Service[]
-  payments                Payment[]
-  documents               Document[]
-  communications          Communication[]
-  conversations           Conversation[]
-  messages                Message[]
-  notificationTemplates   NotificationTemplate[]
-  notificationSends       NotificationSend[]
-  campaigns               Campaign[]
-  calls                   Call[]
-  onlineRequests          OnlineRequest[]
-  reviews                 Review[]
-  exchangeRates           ExchangeRate[]
-  providerConnections     ProviderConnection[]
-  leads                   Lead[]
-  auditLogs               AuditLog[]
-  doctorSchedules         DoctorSchedule[]
-  doctorTimeOffs          DoctorTimeOff[]
-  appointmentServices     AppointmentService[]
-  branches                Branch[]
-  subscription            Subscription?
-  medicalCases            MedicalCase[]
-  actions                 Action[]
-  emptySlotSnapshots      EmptySlotSnapshot[]
-  llmUsages               LLMUsage[]
-  patientReviews          PatientReview[]
-  patientFamilies         PatientFamily[]
-  prescriptions           Prescription[]
-  referralCodes           ReferralCode[]
-  referralRewards         ReferralReward[]
-  medicationReminderSends MedicationReminderSend[]
-  patientViews            PatientView[]
-  userSessions            UserSession[]
-  dataExportJobs          DataExportJob[]
-  dataDeletionJobs        DataDeletionJob[]
-  savedReports            SavedReport[]
-  scheduledReports        ScheduledReport[]
-  invoices                Invoice[]
-  patientAllergies        PatientAllergy[]
+  users                    User[]
+  doctors                  Doctor[]
+  patients                 Patient[]
+  appointments             Appointment[]
+  cabinets                 Cabinet[]
+  services                 Service[]
+  payments                 Payment[]
+  documents                Document[]
+  communications           Communication[]
+  conversations            Conversation[]
+  messages                 Message[]
+  notificationTemplates    NotificationTemplate[]
+  notificationSends        NotificationSend[]
+  campaigns                Campaign[]
+  calls                    Call[]
+  onlineRequests           OnlineRequest[]
+  reviews                  Review[]
+  exchangeRates            ExchangeRate[]
+  providerConnections      ProviderConnection[]
+  leads                    Lead[]
+  auditLogs                AuditLog[]
+  doctorSchedules          DoctorSchedule[]
+  doctorTimeOffs           DoctorTimeOff[]
+  appointmentServices      AppointmentService[]
+  branches                 Branch[]
+  subscription             Subscription?
+  medicalCases             MedicalCase[]
+  actions                  Action[]
+  emptySlotSnapshots       EmptySlotSnapshot[]
+  llmUsages                LLMUsage[]
+  patientReviews           PatientReview[]
+  patientFamilies          PatientFamily[]
+  prescriptions            Prescription[]
+  referralCodes            ReferralCode[]
+  referralRewards          ReferralReward[]
+  medicationReminderSends  MedicationReminderSend[]
+  patientViews             PatientView[]
+  userSessions             UserSession[]
+  dataExportJobs           DataExportJob[]
+  dataDeletionJobs         DataDeletionJob[]
+  savedReports             SavedReport[]
+  scheduledReports         ScheduledReport[]
+  invoices                 Invoice[]
+  patientAllergies         PatientAllergy[]
   patientChronicConditions PatientChronicCondition[]
-  patientDiagnoses        PatientDiagnosis[]
-  telegramInviteTokens    TelegramInviteToken[]
-  visitNotes              VisitNote[]
-  reminders               Reminder[]
-  labResults              LabResult[]
-  doctorPresets           DoctorPreset[]
+  patientDiagnoses         PatientDiagnosis[]
+  telegramInviteTokens     TelegramInviteToken[]
+  visitNotes               VisitNote[]
+  reminders                Reminder[]
+  labResults               LabResult[]
+  labOrders                LabOrder[]
+  doctorPresets            DoctorPreset[]
+  catalogOverlays          ClinicCatalogOverlay[]
+  ePrescriptions           EPrescription[]
+  sickLeaves               SickLeave[]
+  cdsOverrides             CdsOverride[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -637,30 +689,35 @@ model User {
   // /verify must match against this row instead of trusting the client to
   // echo back the secret. TTL is short (10 min) and the fields are wiped on
   // successful verify or by the next /enroll call.
-  pendingTotpSecret      String?
-  pendingTotpExpiresAt   DateTime?
+  pendingTotpSecret    String?
+  pendingTotpExpiresAt DateTime?
 
-  doctor              Doctor?
-  accounts            Account[]
-  sessions            Session[]
-  auditLogs           AuditLog[]
-  patientViews        PatientView[]
-  userSessions        UserSession[]
-  assignedConvs       Conversation[] @relation("ConversationAssignee")
-  calls               Call[]         @relation("CallOperator")
-  sentMessages        Message[]      @relation("MessageSender")
-  uploadedDocuments   Document[]     @relation("DocumentUploader")
-  createdAppointments Appointment[]  @relation("AppointmentCreator")
-  createdCampaigns    Campaign[]     @relation("CampaignCreator")
-  savedReports        SavedReport[]  @relation("SavedReportCreator")
-  createdTelegramInviteTokens TelegramInviteToken[] @relation("TelegramInviteTokenCreator")
+  doctor                      Doctor?
+  accounts                    Account[]
+  sessions                    Session[]
+  auditLogs                   AuditLog[]
+  patientViews                PatientView[]
+  userSessions                UserSession[]
+  assignedConvs               Conversation[]          @relation("ConversationAssignee")
+  calls                       Call[]                  @relation("CallOperator")
+  sentMessages                Message[]               @relation("MessageSender")
+  uploadedDocuments           Document[]              @relation("DocumentUploader")
+  createdAppointments         Appointment[]           @relation("AppointmentCreator")
+  createdCampaigns            Campaign[]              @relation("CampaignCreator")
+  savedReports                SavedReport[]           @relation("SavedReportCreator")
+  createdTelegramInviteTokens TelegramInviteToken[]   @relation("TelegramInviteTokenCreator")
   // Phase 20 Wave 5a — doctor surface productivity tables. The `doctorId`
   // on Reminder + LabResult points at the User row (not Doctor) because the
   // permission gate is "is this the assigned user?" and the user→doctor
   // mapping is 1:1 anyway.
-  reminders                   Reminder[]            @relation("DoctorReminders")
-  labResults                  LabResult[]           @relation("DoctorLabResults")
+  reminders                   Reminder[]              @relation("DoctorReminders")
+  labResults                  LabResult[]             @relation("DoctorLabResults")
+  labOrders                   LabOrder[]              @relation("DoctorLabOrders")
   notificationPref            DoctorNotificationPref?
+  catalogFavorites            DoctorFavorite[]
+  ePrescriptions              EPrescription[]         @relation("DoctorEPrescriptions")
+  sickLeaves                  SickLeave[]             @relation("DoctorSickLeaves")
+  cdsOverrides                CdsOverride[]           @relation("DoctorCdsOverrides")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -740,7 +797,7 @@ model Doctor {
   // Doctor's wet-signature image (MinIO public URL). Stamped into the PDF
   // print template at `/api/crm/visit-notes/[id]/print`. Optional — falls
   // back to a typed signature in the PDF when missing.
-  signatureUrl     String?
+  signatureUrl String?
 
   services           ServiceOnDoctor[]
   schedules          DoctorSchedule[]
@@ -770,26 +827,26 @@ model Doctor {
 // `field` partitions the row by VisitNote field so the editor can render
 // one chip-row per card without filtering on the client.
 model DoctorPreset {
-  id            String            @id @default(cuid())
-  clinicId      String
-  clinic        Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  doctorId      String
-  doctor        Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  field         DoctorPresetField
+  id           String            @id @default(cuid())
+  clinicId     String
+  clinic       Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId     String
+  doctor       Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  field        DoctorPresetField
   // Short label shown on the chip itself, e.g. "Головная боль".
-  label         String
+  label        String
   // Value appended to the structured array on VisitNote (e.g. into
   // VisitNote.complaints). Usually equal to `label`, but kept separate so
   // the chip can display a short label while the stored value carries
   // qualifiers like "Головная боль, давящая, > 1 нед".
-  fieldValue    String
+  fieldValue   String
   // Markdown snippet appended to VisitNote.bodyMarkdown when the chip is
   // clicked. Null/empty = chip only mutates the structured array.
-  noteTemplate  String?           @db.Text
-  sortOrder     Int               @default(0)
-  active        Boolean           @default(true)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  noteTemplate String?           @db.Text
+  sortOrder    Int               @default(0)
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([clinicId, doctorId, field, active, sortOrder])
 }
@@ -797,6 +854,562 @@ model DoctorPreset {
 // ─────────────────────────────────────────────────────────────────────────────
 // Catalog
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Platform-wide drug catalog (МНН + brand mappings). NOT scoped to clinic —
+// curated globally. Per-clinic overrides come later via a thin overlay table
+// (Phase G6). Doctor presets in PRESCRIPTIONS can either be plain strings
+// (legacy) or reference a drugId (new path — gives us the structured view).
+model Drug {
+  // Stable slug-style id so frontend code can hard-code references to common
+  // drugs in protocols (e.g. "bisoprolol"). Migration backfill creates these
+  // from the canonical `inn` lowercased.
+  id                String            @id
+  // INN (International Nonproprietary Name) in Latin — the canonical handle.
+  // Unique because brand names overlap (e.g. "Аспирин" is a brand for ASA).
+  inn               String            @unique
+  nameRu            String
+  nameUz            String?
+  // WHO Anatomical Therapeutic Chemical code — used for interaction lookup
+  // (Phase G4) and grouping. Optional because not every herbal/supplement
+  // has one.
+  atcCode           String?
+  category          DrugCategory
+  // Forms + strengths shipped as JSON to keep the row count down and let
+  // the dosage-builder UI evolve without migrations. Shape:
+  //   [{ form: "TAB", strengths: ["2,5 мг", "5 мг"] }, ...]
+  forms             Json
+  // Common indications as ICD-10 prefixes ("I10", "G43") — drives the
+  // diagnosis-driven suggestion engine in Phase G2.
+  indications       String[]          @default([])
+  // Plain-text bullet list (RU), one item per array slot. Rendered as
+  // hover-tooltip in the prescription chip.
+  contraindications String[]          @default([])
+  sideEffects       String[]          @default([])
+  pregnancyCat      PregnancyCategory @default(UNKNOWN)
+  // Default dosing copy by patient subgroup. JSON for shape flexibility:
+  //   { adult: "По 1 таб 2 раза в день, длительно", pediatric: "...", renal: "..." }
+  defaultDosing     Json?
+  // Rx-only = требует рецепта. Most drugs are rx; OTC includes vitamins,
+  // some analgesics. Drives e-recipe formatting in Phase G7.
+  rxOnly            Boolean           @default(true)
+  // Hide from search without deleting (preserves historical references in
+  // VisitNote.prescriptions[]).
+  active            Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  brands          DrugBrand[]
+  interactionsAsA DrugInteraction[] @relation("DrugA")
+  interactionsAsB DrugInteraction[] @relation("DrugB")
+
+  @@index([category, active])
+  @@index([atcCode])
+}
+
+// Phase G4 — drug-drug interaction registry. Pairs of drugs that should not
+// be co-prescribed (or require caution). The CDS engine walks current
+// prescriptions on the visit note, builds the pair set, and emits warnings.
+// Curated globally; per-clinic overrides ride in G6.
+enum DrugInteractionSeverity {
+  MINOR
+  MODERATE
+  MAJOR
+  CONTRAINDICATED
+}
+
+model DrugInteraction {
+  id            String                  @id @default(cuid())
+  drugAId       String
+  drugBId       String
+  drugA         Drug                    @relation("DrugA", fields: [drugAId], references: [id], onDelete: Cascade)
+  drugB         Drug                    @relation("DrugB", fields: [drugBId], references: [id], onDelete: Cascade)
+  severity      DrugInteractionSeverity
+  // Plain-text mechanism (RU), e.g. "Усиление гипогликемического эффекта".
+  mechanism     String?                 @db.Text
+  // One-line clinical advice (RU) shown in the warning chip.
+  advice        String                  @db.Text
+  // ICD-10 prefixes that elevate this interaction's risk (e.g. "I50" for
+  // heart-failure raising the floor of NSAID risk). Empty for general pairs.
+  riskDiagnoses String[]                @default([])
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  @@unique([drugAId, drugBId])
+  @@index([drugAId])
+  @@index([drugBId])
+}
+
+// Brand name → drug mapping. Search by brand (e.g. "Конкор") resolves
+// to the underlying INN (bisoprolol) so doctors can type either.
+model DrugBrand {
+  id           String   @id @default(cuid())
+  drugId       String
+  drug         Drug     @relation(fields: [drugId], references: [id], onDelete: Cascade)
+  name         String
+  manufacturer String?
+  createdAt    DateTime @default(now())
+
+  @@index([drugId])
+  @@index([name])
+}
+
+// Phase G2 — clinical protocol bundles. A ClinicalProtocol packages a complete
+// "standard of care" snapshot for a diagnosis: complaints/anamnesis/exam
+// templates (chips for the structured fields), default prescriptions (drug
+// ids), recommended labs (codes, wired into Phase G3), advice copy, and an
+// optional conclusion-markdown block that appends to the editor. The doctor
+// can apply one with a single click ("Применить стандарт") and then edit.
+//
+// Match is by `diagnosisCodePrefix` against the chosen ICD-10 code — "I10"
+// matches all I10.* subcodes. Higher specificity wins (longer prefix first).
+// Curated globally for now; per-clinic overrides ride in via the same overlay
+// table planned in G6.
+model ClinicalProtocol {
+  id                    String   @id @default(cuid())
+  /**
+   * ICD-10 prefix this protocol activates for, e.g. "I10", "E11", "K21".
+   */
+  diagnosisCodePrefix   String
+  /**
+   * RU heading shown in the apply-confirm modal.
+   */
+  nameRu                String
+  nameUz                String?
+  /**
+   * One-liner shown under the heading.
+   */
+  summaryRu             String?
+  /**
+   * Chip values for the corresponding structured field.
+   */
+  complaintsTemplate    String[] @default([])
+  anamnesisTemplate     String[] @default([])
+  examinationTemplate   String[] @default([])
+  /**
+   * Free-text lines (e.g. "Бисопролол 5 мг — по 1 таб утром").
+   */
+  prescriptionsTemplate String[] @default([])
+  adviceTemplate        String[] @default([])
+  /**
+   * Lab order codes — populated in G3 when LabTest catalog lands.
+   */
+  recommendedLabs       String[] @default([])
+  /**
+   * Optional markdown block that appends to the conclusion editor.
+   */
+  conclusionTemplateMd  String?
+  /**
+   * Sort hint when multiple protocols share a prefix.
+   */
+  sortOrder             Int      @default(0)
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([diagnosisCodePrefix, active])
+}
+
+// Phase G5 — patient handout library. Curated Markdown snippets the doctor
+// can drop into VisitNote.patientHandoutMarkdown. Matched against the active
+// diagnosis via `matchPrefixes` (e.g. ["I10","I11"] for hypertension), plus
+// topic-based browsing for generic snippets (food hygiene, AB rules, BP diary).
+model HandoutTemplate {
+  id            String   @id @default(cuid())
+  // Stable slug ("HTN_LIFESTYLE", "AB_RULES") for code references.
+  code          String   @unique
+  titleRu       String
+  titleUz       String?
+  // 1-line subtitle shown under the title in the picker list.
+  summaryRu     String?
+  // Markdown body that appends to the handout draft.
+  bodyMd        String   @db.Text
+  // ICD-10 prefixes this handout applies to. Empty = general (always shown
+  // under the "Общее" tab).
+  matchPrefixes String[] @default([])
+  // RU category label for filter tabs ("Образ жизни", "Приём препаратов", …).
+  topic         String?
+  sortOrder     Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// Phase G6 — Clinic overlay + doctor favorites.
+//
+// `ClinicCatalogOverlay` lets a clinic hide a global catalog entry (drug,
+// protocol, handout, lab test/panel) so it disappears from search/order
+// surfaces without mutating the curated source. Future iterations may
+// extend this with a JSON `overrides` patch (custom local dosing notes,
+// renamed handouts, …) — the `overridesJson` column is reserved now to
+// avoid a second migration.
+//
+// `DoctorFavorite` is the per-user "★ pin" — favourites float to the top
+// of catalog drawers so common picks stay one click away. Per-user (not
+// per-clinic) because every doctor's preference shape is different.
+//
+// Both tables key entries by (entityType, entityCode) — `entityCode` is the
+// stable slug (Drug.id is INN-derived; HandoutTemplate.code; LabTest.code;
+// LabPanel.code; ClinicalProtocol.code).
+enum CatalogEntityType {
+  DRUG
+  PROTOCOL
+  HANDOUT
+  LAB_TEST
+  LAB_PANEL
+}
+
+model ClinicCatalogOverlay {
+  id            String            @id @default(cuid())
+  clinicId      String
+  clinic        Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  entityType    CatalogEntityType
+  entityCode    String
+  // When true, hide the global entry entirely for this clinic. MVP is
+  // hide-only; future overrides land in `overridesJson`.
+  hideGlobal    Boolean           @default(true)
+  // Reserved for G8 — JSON patch applied on top of the curated row before
+  // surfacing it in the doctor UI. Null until then.
+  overridesJson Json?
+  createdById   String
+  updatedById   String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([clinicId, entityType, entityCode])
+  @@index([clinicId, entityType])
+}
+
+model DoctorFavorite {
+  id         String            @id @default(cuid())
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType CatalogEntityType
+  entityCode String
+  // Lower = pinned higher in the drawer list. Defaults to insertion order
+  // by epoch ms; reorder UI can update this in batch later.
+  sortOrder  Int               @default(0)
+  createdAt  DateTime          @default(now())
+
+  @@unique([userId, entityType, entityCode])
+  @@index([userId, entityType, sortOrder])
+}
+
+// Phase G3 — Lab catalog + ordering.
+//
+// `LabTest` is the controlled vocabulary of individual analyses ("ОАК",
+// "Глюкоза", "TSH") with reference ranges and turnaround. `LabPanel` groups
+// commonly-ordered tests into named bundles (e.g. "Биохимия базовая").
+// `LabOrder` is the actual order the doctor creates from a visit: a snapshot
+// of selected test codes + panels, with a printable направление and a QR
+// linking to its detail page once the lab/result-entry UI lands.
+enum Biomaterial {
+  BLOOD
+  SERUM
+  PLASMA
+  URINE
+  STOOL
+  SALIVA
+  SWAB
+  TISSUE
+  CSF
+  SPUTUM
+  OTHER
+}
+
+enum LabOrderStatus {
+  DRAFT
+  ORDERED
+  COLLECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum LabUrgency {
+  ROUTINE
+  URGENT
+  STAT
+}
+
+model LabTest {
+  id              String      @id
+  /**
+   * Short clinical code shown in chips and on the print form, e.g. "CBC", "GLU".
+   */
+  code            String      @unique
+  nameRu          String
+  nameUz          String?
+  /**
+   * LOINC code reserved for future integrations.
+   */
+  loinc           String?
+  biomaterial     Biomaterial
+  /**
+   * Free-text unit ("г/л", "мкмоль/л", "тыс/мкл"). Optional for qualitative tests.
+   */
+  unit            String?
+  /**
+   * Reference ranges as JSON array. Each entry:
+   * { sex?: "M" | "F", ageMinMo?: number, ageMaxMo?: number, low?: number, high?: number, text?: string }
+   * Server-side helpers (G3+) resolve the matching row per patient.
+   */
+  refRanges       Json?
+  /**
+   * Approximate turnaround in hours; UI shows "≈ Xч".
+   */
+  turnaroundHours Int         @default(24)
+  /**
+   * Per-test price in UZS; optional, used by future billing wiring.
+   */
+  priceUzs        Int?
+  /**
+   * ICD-10 prefixes this test is commonly ordered for — drives "recommended" badges.
+   */
+  commonForCodes  String[]    @default([])
+  /**
+   * Free-text preparation hint for the patient ("натощак", "до 10:00").
+   */
+  patientPrep     String?
+  active          Boolean     @default(true)
+  sortOrder       Int         @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  panels LabPanelTest[]
+
+  @@index([active, sortOrder])
+}
+
+model LabPanel {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  nameRu      String
+  nameUz      String?
+  description String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tests LabPanelTest[]
+
+  @@index([active, sortOrder])
+}
+
+/**
+ * Join table — keeps the test catalog and panels in their own rows so a
+ * test can belong to multiple panels and we can attach optional metadata
+ * (sort order within the panel) later without touching either side.
+ */
+model LabPanelTest {
+  panelId   String
+  panel     LabPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  testId    String
+  test      LabTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
+  sortOrder Int      @default(0)
+
+  @@id([panelId, testId])
+  @@index([testId])
+}
+
+model LabOrder {
+  id            String       @id @default(cuid())
+  /**
+   * Short, human-readable order number stamped at create (e.g. "LO-20260518-0042").
+   */
+  orderNumber   String       @unique
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  doctorId      String
+  doctor        User         @relation("DoctorLabOrders", fields: [doctorId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  visitNoteId   String?
+  visitNote     VisitNote?   @relation(fields: [visitNoteId], references: [id])
+
+  /**
+   * Snapshot of test codes at order time — survives catalog edits.
+   */
+  testCodes     String[]       @default([])
+  /**
+   * Snapshot of panel codes at order time.
+   */
+  panelCodes    String[]       @default([])
+  /**
+   * Optional ICD-10 code copied from the visit note for the lab's reference.
+   */
+  diagnosisCode String?
+  notes         String?        @db.Text
+  urgency       LabUrgency     @default(ROUTINE)
+  status        LabOrderStatus @default(ORDERED)
+  /**
+   * Stamped when the doctor opens the print preview.
+   */
+  printedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, doctorId, createdAt])
+  @@index([clinicId, status, createdAt])
+}
+
+enum EPrescriptionStatus {
+  ISSUED
+  CANCELLED
+}
+
+enum SickLeaveRegimen {
+  OUTPATIENT
+  HOSPITAL
+  HOME
+}
+
+enum SickLeaveStatus {
+  ISSUED
+  CANCELLED
+}
+
+model EPrescription {
+  id            String              @id @default(cuid())
+  // Human-readable receipt number, e.g. "RX-20260518-0042".
+  rxNumber      String              @unique
+  // Public verification token printed as a QR — opaque, unguessable.
+  verifyToken   String              @unique
+  clinicId      String
+  clinic        Clinic              @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient             @relation(fields: [patientId], references: [id])
+  doctorId      String
+  doctor        User                @relation("DoctorEPrescriptions", fields: [doctorId], references: [id])
+  appointmentId String?
+  appointment   Appointment?        @relation(fields: [appointmentId], references: [id])
+  visitNoteId   String?
+  visitNote     VisitNote?          @relation(fields: [visitNoteId], references: [id])
+  // Snapshot ICD-10 from the visit at issue time so cancellations still print.
+  diagnosisCode String?
+  diagnosisName String?
+  // Snapshot of doctor's signature image URL at issue time. Empty if doctor
+  // had no signature on file — the print falls back to the typed name.
+  signatureUrl  String?
+  // Items: [{ drugId, drugName, dose, route, frequency, durationDays, instructions, notes }]
+  items         Json                @default("[]")
+  notes         String?             @db.Text
+  issuedAt      DateTime            @default(now())
+  // Default validUntil = issuedAt + 30d; computed and stored at create.
+  validUntilAt  DateTime
+  printedAt     DateTime?
+  status        EPrescriptionStatus @default(ISSUED)
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, doctorId, createdAt])
+  @@index([clinicId, status, createdAt])
+}
+
+model SickLeave {
+  id            String           @id @default(cuid())
+  // Human-readable certificate number, e.g. "SL-20260518-0042".
+  certNumber    String           @unique
+  // Public verification token printed as a QR — opaque, unguessable.
+  verifyToken   String           @unique
+  clinicId      String
+  clinic        Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient          @relation(fields: [patientId], references: [id])
+  doctorId      String
+  doctor        User             @relation("DoctorSickLeaves", fields: [doctorId], references: [id])
+  appointmentId String?
+  appointment   Appointment?     @relation(fields: [appointmentId], references: [id])
+  visitNoteId   String?
+  visitNote     VisitNote?       @relation(fields: [visitNoteId], references: [id])
+  diagnosisCode String?
+  diagnosisName String?
+  signatureUrl  String?
+  regimen       SickLeaveRegimen @default(OUTPATIENT)
+  periodFrom    DateTime         @db.Date
+  periodTo      DateTime         @db.Date
+  // Free-form restrictions (e.g. "no heavy lifting", "indoor work only").
+  restrictions  String?          @db.Text
+  notes         String?          @db.Text
+  issuedAt      DateTime         @default(now())
+  printedAt     DateTime?
+  status        SickLeaveStatus  @default(ISSUED)
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, doctorId, createdAt])
+  @@index([clinicId, status, periodFrom])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G8 — CDS override audit. One row per CDS warning that the doctor chose
+// to override (i.e., kept the prescription despite a flagged interaction,
+// allergy, duplicate-class, pregnancy, or diagnosis-risk warning). Recording
+// is mandatory before a visit can be finalized with unresolved warnings,
+// which gives the quality team an audit trail and lets the analytics
+// dashboard surface override-heavy doctors or recurring patterns.
+//
+// Snapshot fields (warningTitle, warningDetail, severity) are required —
+// the CDS rules table can evolve without breaking historical override
+// records. The two pointers (visitNoteId, appointmentId) are nullable so
+// the same shape can later cover overrides taken outside of an active
+// reception (e.g. retrospective audit annotations).
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CdsOverrideReason {
+  CLINICALLY_JUSTIFIED
+  PATIENT_INFORMED
+  ALTERNATIVES_TRIED
+  FALSE_POSITIVE
+  OTHER
+}
+
+model CdsOverride {
+  id            String       @id @default(cuid())
+  clinicId      String
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId      String
+  doctor        User         @relation("DoctorCdsOverrides", fields: [doctorId], references: [id])
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  visitNoteId   String?
+  visitNote     VisitNote?   @relation(fields: [visitNoteId], references: [id])
+
+  // Snapshot of the warning at override time. `warningKind` matches the
+  // CDS engine's discriminator (ALLERGY|INTERACTION|DUPLICATE_CLASS|
+  // PREGNANCY|DIAGNOSIS_RISK); `severity` mirrors CdsSeverity.
+  warningKind   String
+  severity      String
+  warningTitle  String
+  warningDetail String  @db.Text
+  // Free-form stable key emitted by the CDS engine — useful for collapsing
+  // duplicate overrides across reprints of the same warning.
+  warningKey    String?
+
+  reason     CdsOverrideReason
+  reasonNote String?           @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([clinicId, createdAt])
+  @@index([clinicId, doctorId, createdAt])
+  @@index([clinicId, patientId, createdAt])
+  @@index([visitNoteId])
+}
 
 model Service {
   id             String   @id @default(cuid())
@@ -909,6 +1522,10 @@ model Patient {
   id                 String               @id @default(cuid())
   clinicId           String
   clinic             Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // Per-clinic human-readable patient number. Allocated atomically at
+  // creation via Clinic.patientCounter; rendered as "P-00125" everywhere
+  // the patient is shown (cards, invoices, receipts, call-center).
+  patientNumber      Int
   fullName           String
   phone              String
   phoneNormalized    String
@@ -931,6 +1548,12 @@ model Patient {
   discountPct        Int                  @default(0)
   lastVisitAt        DateTime?
   nextVisitAt        DateTime?
+  // Most-recent operator-driven contact (any direction): manual SMS/email,
+  // telegram message, voice call, completed visit. Excludes automated template
+  // sends — those are mechanical, not a "we got in touch" signal. Maintained
+  // by `bumpPatientLastContact` at every write site; backfilled by the
+  // accompanying migration. Indexed for the dormant-contact segment query.
+  lastContactedAt    DateTime?
   consentMarketing   Boolean              @default(false)
   // Phase 14 — Revenue Engines.
   // `dormantSince` is stamped by a future engine when the patient crosses an
@@ -984,12 +1607,12 @@ model Patient {
   leads                     Lead[]
   cases                     MedicalCase[]
   patientReviews            PatientReview[]
-  ownedFamilyLinks          PatientFamily[]          @relation("PatientFamilyOwner")
-  linkedFamilyLinks         PatientFamily[]          @relation("PatientFamilyLinked")
+  ownedFamilyLinks          PatientFamily[]           @relation("PatientFamilyOwner")
+  linkedFamilyLinks         PatientFamily[]           @relation("PatientFamilyLinked")
   prescriptions             Prescription[]
   referralCodes             ReferralCode[]
-  referralRewardsAsReferrer ReferralReward[]         @relation("ReferralRewardReferrer")
-  referralRewardsAsReferred ReferralReward[]         @relation("ReferralRewardReferred")
+  referralRewardsAsReferrer ReferralReward[]          @relation("ReferralRewardReferrer")
+  referralRewardsAsReferred ReferralReward[]          @relation("ReferralRewardReferred")
   medicationReminderSends   MedicationReminderSend[]
   patientViews              PatientView[]
   dataExportJobs            DataExportJob[]
@@ -1001,11 +1624,17 @@ model Patient {
   visitNotes                VisitNote[]
   reminders                 Reminder[]
   labResults                LabResult[]
+  labOrders                 LabOrder[]
+  ePrescriptions            EPrescription[]
+  sickLeaves                SickLeave[]
+  cdsOverrides              CdsOverride[]
 
   @@unique([clinicId, phoneNormalized])
+  @@unique([clinicId, patientNumber])
   @@index([clinicId, fullName])
   @@index([clinicId, segment])
   @@index([clinicId, lastVisitAt])
+  @@index([clinicId, lastContactedAt])
   @@index([clinicId, createdAt])
   @@index([clinicId, telegramId])
 }
@@ -1085,9 +1714,13 @@ model Appointment {
   visitNote      VisitNote?
   reminders      Reminder[]
   labResults     LabResult[]
+  labOrders      LabOrder[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  eprescriptions EPrescription[]
+  sickLeaves     SickLeave[]
+  cdsOverrides   CdsOverride[]
 
   @@index([clinicId, date])
   @@index([clinicId, doctorId, date])
@@ -1172,53 +1805,57 @@ model MedicalCase {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model VisitNote {
-  id              String          @id @default(cuid())
-  clinicId        String
-  clinic          Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  appointmentId   String          @unique
-  appointment     Appointment     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  patientId       String
-  patient         Patient         @relation(fields: [patientId], references: [id])
-  doctorId        String
-  doctor          Doctor          @relation(fields: [doctorId], references: [id])
+  id            String      @id @default(cuid())
+  clinicId      String
+  clinic        Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient     @relation(fields: [patientId], references: [id])
+  doctorId      String
+  doctor        Doctor      @relation(fields: [doctorId], references: [id])
 
-  status          VisitNoteStatus @default(DRAFT)
-  startedAt       DateTime?
-  finalizedAt     DateTime?
+  status      VisitNoteStatus @default(DRAFT)
+  startedAt   DateTime?
+  finalizedAt DateTime?
 
   // Structured fields. Stored as String[] so chips can be added/removed
   // without rewriting the whole array shape in the editor.
-  complaints      String[]        @default([])
-  anamnesis       String[]        @default([])
-  examination     String[]        @default([])
-  prescriptions   String[]        @default([])
-  advice          String[]        @default([])
+  complaints    String[] @default([])
+  anamnesis     String[] @default([])
+  examination   String[] @default([])
+  prescriptions String[] @default([])
+  advice        String[] @default([])
 
   // Diagnosis (ICD-10). Code is the canonical key; name is a denormalized
   // copy for display so the editor doesn't need a lookup roundtrip.
-  diagnosisCode   String?
-  diagnosisName   String?
+  diagnosisCode String?
+  diagnosisName String?
 
   // Free-form rich body in Markdown. The notes editor on the right is the
   // canonical source; the structured chips are the parsed/derived view.
-  bodyMarkdown    String?         @db.Text
+  bodyMarkdown String? @db.Text
 
   // Patient-facing handout in Markdown. Composed by the manual templating
   // composer (no LLM) from the structured fields, then editable by the
   // doctor before print. Independent from bodyMarkdown (clinical record):
   // the printed handout never includes МКБ codes or technical anamnesis.
-  patientHandoutMarkdown String?  @db.Text
+  patientHandoutMarkdown String? @db.Text
 
   // Provenance — set when any field was AI-generated and never cleared by
   // edits. Used by audit + UI ("сгенерировано AI" badge).
-  aiGenerated     Boolean         @default(false)
-  aiModel         String?
-  aiTokens        Int?
+  aiGenerated Boolean @default(false)
+  aiModel     String?
+  aiTokens    Int?
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  labResults      LabResult[]
+  labResults     LabResult[]
+  labOrders      LabOrder[]
+  ePrescriptions EPrescription[]
+  sickLeaves     SickLeave[]
+  cdsOverrides   CdsOverride[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -2254,7 +2891,6 @@ model ScheduledReport {
   @@index([savedReportId])
 }
 
-
 /// Phase 19 (post-MVP add-on) — short-lived invite link a staff member
 /// mints from the patient card so a not-yet-linked patient can land in
 /// the Telegram bot via `t.me/<botUsername>?start=<token>`. The bot
@@ -2314,22 +2950,22 @@ enum ReminderStatus {
 }
 
 model Reminder {
-  id            String         @id @default(cuid())
+  id            String       @id @default(cuid())
   clinicId      String
-  clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   // Owning doctor (User row, role=DOCTOR). The list endpoint filters by
   // `doctorId = me`; admins can read clinic-wide.
   doctorId      String
-  doctor        User           @relation("DoctorReminders", fields: [doctorId], references: [id])
+  doctor        User         @relation("DoctorReminders", fields: [doctorId], references: [id])
   // Optional patient context. NULL = "general" reminder unrelated to a
   // specific case (e.g., "перезвонить страховой").
   patientId     String?
-  patient       Patient?       @relation(fields: [patientId], references: [id])
+  patient       Patient?     @relation(fields: [patientId], references: [id])
   // Optional appointment context — surfaces this reminder on the visit
   // page and lets us auto-create follow-up reminders from a finalized
   // VisitNote later (no UI today).
   appointmentId String?
-  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
 
   title       String
   body        String?        @db.Text
@@ -2419,25 +3055,25 @@ model LabResult {
 // migration; adding a new channel means many migrations — fine for v1 (~4 events
 // × 3 channels). When the matrix grows past 24 cells we'll switch to JSONB.
 model DoctorNotificationPref {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   appointmentCreated_inApp    Boolean @default(true)
   appointmentCreated_email    Boolean @default(false)
   appointmentCreated_telegram Boolean @default(true)
 
-  messageNew_inApp            Boolean @default(true)
-  messageNew_email            Boolean @default(false)
-  messageNew_telegram         Boolean @default(true)
+  messageNew_inApp    Boolean @default(true)
+  messageNew_email    Boolean @default(false)
+  messageNew_telegram Boolean @default(true)
 
-  labResultReceived_inApp     Boolean @default(true)
-  labResultReceived_email     Boolean @default(true)
-  labResultReceived_telegram  Boolean @default(false)
+  labResultReceived_inApp    Boolean @default(true)
+  labResultReceived_email    Boolean @default(true)
+  labResultReceived_telegram Boolean @default(false)
 
-  reminderDue_inApp           Boolean @default(true)
-  reminderDue_email           Boolean @default(false)
-  reminderDue_telegram        Boolean @default(true)
+  reminderDue_inApp    Boolean @default(true)
+  reminderDue_email    Boolean @default(false)
+  reminderDue_telegram Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

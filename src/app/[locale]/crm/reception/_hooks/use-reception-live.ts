@@ -88,6 +88,7 @@ export type CallRow = {
     id: string;
     fullName: string;
     phone: string;
+    segment: "NEW" | "ACTIVE" | "DORMANT" | "VIP" | "CHURN";
   } | null;
   operator: { id: string; name: string } | null;
 };

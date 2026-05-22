@@ -16,6 +16,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { normalizePhone } from "@/lib/phone";
 import { err, ok } from "@/server/http";
 import { resolveMiniAppContext } from "@/server/miniapp/handler";
+import { allocatePatientNumber } from "@/server/services/patient-number";
 
 const BodySchema = z
   .object({
@@ -83,18 +84,22 @@ export async function POST(request: Request) {
       // Create a minimal patient record — phone can be empty; the client can
       // fill it in via /api/miniapp/profile later.
       try {
-        patient = await prisma.patient.create({
-          data: {
-            clinicId: ctx.clinicId,
-            fullName,
-            phone: normalizedPhone || `tg:${tgIdStr}`,
-            phoneNormalized: normalizedPhone || `tg:${tgIdStr}`,
-            telegramId: tgIdStr,
-            telegramUsername: tgUser.username ?? null,
-            preferredLang: desiredLang,
-            source: "TELEGRAM",
-            segment: "NEW",
-          } as never,
+        patient = await prisma.$transaction(async (tx) => {
+          const patientNumber = await allocatePatientNumber(ctx.clinicId, tx);
+          return tx.patient.create({
+            data: {
+              clinicId: ctx.clinicId,
+              patientNumber,
+              fullName,
+              phone: normalizedPhone || `tg:${tgIdStr}`,
+              phoneNormalized: normalizedPhone || `tg:${tgIdStr}`,
+              telegramId: tgIdStr,
+              telegramUsername: tgUser.username ?? null,
+              preferredLang: desiredLang,
+              source: "TELEGRAM",
+              segment: "NEW",
+            } as never,
+          });
         });
       } catch (e) {
         const msg = (e as Error).message || "";

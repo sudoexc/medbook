@@ -73,6 +73,7 @@ export default async function DoctorLayout({
             doctorName={doctor.nameRu}
             doctorSpecialty={doctor.specializationRu}
             doctorAvatarUrl={doctor.photoUrl}
+            userEmail={session.user.email}
           />
           <main className="min-h-0 flex-1 overflow-y-auto bg-surface">
             {children}

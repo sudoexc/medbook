@@ -1,6 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 
@@ -19,27 +23,47 @@ export type Reminder = {
   createdAt: string;
 };
 
+export type ReminderTotals = Record<ReminderStatus, number>;
+
+export type RemindersPage = {
+  rows: Reminder[];
+  nextCursor: string | null;
+  totals: ReminderTotals;
+};
+
 export const remindersKey = ["doctor", "me", "reminders"] as const;
+const PAGE_SIZE = 50;
 
 /**
- * One aggregate fetch (`status=ALL`) backs all three tabs on
- * /doctor/notifications. The list is small (we cap at 200 server-side and a
- * working doctor produces low-dozens of reminders per month), so a single
- * request + client-side split per tab keeps SSE invalidation trivial — one
- * key to invalidate, one refetch.
+ * Cursor-paginated fetch (`status=ALL`) backs all three tabs on
+ * /doctor/notifications. The list is bucketed client-side per tab — when
+ * one bucket runs out before another, the UI fetches the next page until
+ * `nextCursor` is null. `totals` from the server drives tab badges so
+ * counters stay honest even when later pages haven't been loaded yet.
  */
 export function useDoctorReminders() {
-  const query = useQuery<Reminder[], Error>({
+  const query = useInfiniteQuery<
+    RemindersPage,
+    Error,
+    { pages: RemindersPage[]; pageParams: (string | undefined)[] },
+    typeof remindersKey,
+    string | undefined
+  >({
     queryKey: remindersKey,
-    queryFn: async ({ signal }) => {
-      const res = await fetch("/api/crm/doctors/me/reminders?status=ALL", {
-        credentials: "include",
-        signal,
-      });
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      params.set("status", "ALL");
+      params.set("limit", String(PAGE_SIZE));
+      if (pageParam) params.set("cursor", pageParam);
+      const res = await fetch(
+        `/api/crm/doctors/me/reminders?${params.toString()}`,
+        { credentials: "include", signal },
+      );
       if (!res.ok) throw new Error(`reminders: ${res.status}`);
-      const j = (await res.json()) as { rows: Reminder[] };
-      return j.rows;
+      return (await res.json()) as RemindersPage;
     },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 15_000,
   });
 
@@ -49,6 +73,24 @@ export function useDoctorReminders() {
   });
 
   return query;
+}
+
+export function flattenReminders(
+  data: { pages: RemindersPage[] } | undefined,
+): Reminder[] {
+  if (!data) return [];
+  const out: Reminder[] = [];
+  for (const p of data.pages) out.push(...p.rows);
+  return out;
+}
+
+export function totalsFromPages(
+  data: { pages: RemindersPage[] } | undefined,
+): ReminderTotals {
+  // First page always carries fresh totals (server recomputes per request);
+  // a 0-page query reflects the loading state with empty totals.
+  const first = data?.pages[0]?.totals;
+  return first ?? { PENDING: 0, SNOOZED: 0, DONE: 0, DISMISSED: 0 };
 }
 
 export type CreateReminderInput = {

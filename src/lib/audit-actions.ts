@@ -468,6 +468,13 @@ export const AUDIT_ACTION = {
   LAB_RESULT_CREATED: "LAB_RESULT_CREATED",
   LAB_RESULT_REVIEWED: "LAB_RESULT_REVIEWED",
 
+  // Phase G3 — Lab orders. `entityType: "LabOrder"`. CREATED meta carries
+  // `{ patientId, doctorId, testCodes, panelCodes, urgency }`. PRINTED meta
+  // is `{ printedAt }`. CANCELLED meta is `{ reason? }`.
+  LAB_ORDER_CREATED: "LAB_ORDER_CREATED",
+  LAB_ORDER_PRINTED: "LAB_ORDER_PRINTED",
+  LAB_ORDER_CANCELLED: "LAB_ORDER_CANCELLED",
+
   // Phase 20 Wave 5b — doctor self-service settings. `entityType: "User"`
   // for profile/security mutations, `entityType: "Doctor"` for signature.
   // meta carries the patched fields (PROFILE_UPDATED, NOTIFICATION_PREFS)
@@ -476,6 +483,50 @@ export const AUDIT_ACTION = {
   DOCTOR_SIGNATURE_SET: "DOCTOR_SIGNATURE_SET",
   DOCTOR_SIGNATURE_REMOVED: "DOCTOR_SIGNATURE_REMOVED",
   DOCTOR_NOTIFICATION_PREFS_UPDATED: "DOCTOR_NOTIFICATION_PREFS_UPDATED",
+
+  // Phase G6 — Clinic catalog overlay + Doctor favorites.
+  //
+  // CATALOG_OVERLAY_* — admin hid (or un-hid) a global catalog entry for
+  // their clinic. `entityType: "ClinicCatalogOverlay"`,
+  // `entityId: <overlay.id>`. `meta` carries `{ targetEntityType, entityCode,
+  // hideGlobal }` so the audit row is self-contained even after the overlay
+  // is deleted.
+  CATALOG_OVERLAY_CREATED: "CATALOG_OVERLAY_CREATED",
+  CATALOG_OVERLAY_UPDATED: "CATALOG_OVERLAY_UPDATED",
+  CATALOG_OVERLAY_DELETED: "CATALOG_OVERLAY_DELETED",
+
+  // Phase G6 — Doctor pinned / unpinned a catalog entry as a favourite.
+  // `entityType: "DoctorFavorite"`, `entityId: <favorite.id>`. `meta`
+  // carries `{ userId, targetEntityType, entityCode }`. Unpins still log a
+  // row (with the pre-delete favorite id) so support can reconstruct the
+  // favourites timeline.
+  DOCTOR_FAVORITE_ADDED: "DOCTOR_FAVORITE_ADDED",
+  DOCTOR_FAVORITE_REMOVED: "DOCTOR_FAVORITE_REMOVED",
+
+  // Phase G7 — E-recipe + sick leave forms.
+  //
+  // EPRESCRIPTION_* — `entityType: "EPrescription"`, `entityId: <rx.id>`.
+  // ISSUED meta: `{ patientId, doctorId, rxNumber, itemCount, diagnosisCode }`.
+  // PRINTED meta: `{ rxNumber, printedAt }` (first print only — re-prints are
+  // not audited).
+  // CANCELLED meta: `{ rxNumber, reason }`.
+  EPRESCRIPTION_ISSUED: "EPRESCRIPTION_ISSUED",
+  EPRESCRIPTION_PRINTED: "EPRESCRIPTION_PRINTED",
+  EPRESCRIPTION_CANCELLED: "EPRESCRIPTION_CANCELLED",
+
+  // SICK_LEAVE_* — `entityType: "SickLeave"`, `entityId: <sl.id>`.
+  // ISSUED meta: `{ patientId, doctorId, certNumber, regimen, periodFrom,
+  // periodTo, days }`. PRINTED + CANCELLED mirror EPrescription.
+  SICK_LEAVE_ISSUED: "SICK_LEAVE_ISSUED",
+  SICK_LEAVE_PRINTED: "SICK_LEAVE_PRINTED",
+  SICK_LEAVE_CANCELLED: "SICK_LEAVE_CANCELLED",
+
+  // Phase G8 — CDS override audit. Doctor kept a prescription despite an
+  // active CDS warning and gave a reason. `entityType: "CdsOverride"`,
+  // `entityId: <override.id>`. `meta` carries `{ patientId, doctorId,
+  // visitNoteId?, appointmentId?, warningKind, severity, warningKey?,
+  // reason }`. No PII in meta — the warning text snapshot lives on the row.
+  CDS_OVERRIDE_RECORDED: "CDS_OVERRIDE_RECORDED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

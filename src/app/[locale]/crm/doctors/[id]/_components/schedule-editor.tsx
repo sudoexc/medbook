@@ -51,8 +51,12 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
   );
   const [slots, setSlots] = React.useState<ScheduleSlotInput[]>(baseline);
 
-  // Re-sync slots when server data changes (e.g. after save).
+  const dirtyRef = React.useRef(false);
+  // Re-sync slots from server only when local state matches the previous
+  // baseline (i.e. no unsaved edits). Without this, a background refetch
+  // mid-edit silently nukes the user's changes.
   React.useEffect(() => {
+    if (dirtyRef.current) return;
     setSlots(scheduleToSlots(doctor.schedules));
   }, [doctor.schedules]);
 
@@ -80,6 +84,9 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
     }
     return false;
   }, [slots, baseline]);
+  React.useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
 
   const addSlotForDay = (weekday: number) => {
     setSlots((prev) => [

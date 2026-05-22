@@ -118,7 +118,7 @@ export type StatsResponse = {
     failed: number;
     queued: number;
   };
-  today: { sent: number; failed: number; queued: number };
+  today: { sent: number; delivered: number; failed: number; queued: number };
   activeTemplates: number;
   topTemplates: Array<{
     templateId: string | null;

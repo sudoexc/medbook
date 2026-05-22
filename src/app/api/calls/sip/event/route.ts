@@ -39,6 +39,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneSearchVariants } from "@/lib/phone";
 import { runWithTenant } from "@/lib/tenant-context";
 import { CALL_CHANNELS, TELEPHONY_CHANNELS } from "@/server/telephony/adapter";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { publish } from "@/server/realtime/event-bus";
 import { publishEventSafe } from "@/server/realtime/publish";
 
@@ -172,18 +173,22 @@ async function handleRinging(
       select: { id: true, patientId: true },
     }),
   );
+  if (row.patientId) {
+    await bumpPatientLastContact(row.patientId, createdAt);
+  }
   return { dbId: row.id, patientId: row.patientId };
 }
 
 async function handleAnswered(clinicId: string, evt: SipEvent): Promise<void> {
-  await runWithTenant({ kind: "SYSTEM" }, async () => {
+  const patientId = await runWithTenant({ kind: "SYSTEM" }, async () => {
     const existing = await prisma.call.findUnique({
       where: { clinicId_sipCallId: { clinicId, sipCallId: evt.callId } },
-      select: { id: true, tags: true, operatorId: true },
+      select: { id: true, tags: true, operatorId: true, patientId: true },
     });
     if (!existing) {
       // Out-of-order event: create a minimal IN row so hangup has something
       // to update. Direction defaults to IN (operator answered something).
+      const linked = await linkPatientByPhone(clinicId, evt.from);
       await prisma.call.create({
         data: {
           clinicId,
@@ -192,10 +197,11 @@ async function handleAnswered(clinicId: string, evt: SipEvent): Promise<void> {
           toNumber: evt.to,
           sipCallId: evt.callId,
           operatorId: evt.operatorId ?? null,
+          patientId: linked,
           tags: ["answered"],
         },
       });
-      return;
+      return linked;
     }
     const nextTags = existing.tags.includes("answered")
       ? existing.tags
@@ -207,17 +213,21 @@ async function handleAnswered(clinicId: string, evt: SipEvent): Promise<void> {
         operatorId: evt.operatorId ?? existing.operatorId ?? undefined,
       },
     });
+    return existing.patientId;
   });
+  if (patientId) {
+    await bumpPatientLastContact(patientId, evt.timestamp);
+  }
 }
 
 async function handleHangup(clinicId: string, evt: SipEvent): Promise<{ dbId: string } | null> {
-  return runWithTenant({ kind: "SYSTEM" }, async () => {
+  const result = await runWithTenant({ kind: "SYSTEM" }, async () => {
     const existing = await prisma.call.findUnique({
       where: { clinicId_sipCallId: { clinicId, sipCallId: evt.callId } },
-      select: { id: true, createdAt: true, endedAt: true },
+      select: { id: true, createdAt: true, endedAt: true, patientId: true },
     });
     if (!existing) return null;
-    if (existing.endedAt) return { dbId: existing.id };
+    if (existing.endedAt) return { dbId: existing.id, patientId: existing.patientId };
     const endedAt = evt.timestamp;
     const durationSec = Math.max(
       0,
@@ -232,15 +242,19 @@ async function handleHangup(clinicId: string, evt: SipEvent): Promise<{ dbId: st
       },
       select: { id: true },
     });
-    return { dbId: updated.id };
+    return { dbId: updated.id, patientId: existing.patientId };
   });
+  if (result?.patientId) {
+    await bumpPatientLastContact(result.patientId, evt.timestamp);
+  }
+  return result ? { dbId: result.dbId } : null;
 }
 
 async function handleMissed(clinicId: string, evt: SipEvent): Promise<{ dbId: string } | null> {
-  return runWithTenant({ kind: "SYSTEM" }, async () => {
+  const result = await runWithTenant({ kind: "SYSTEM" }, async () => {
     const existing = await prisma.call.findUnique({
       where: { clinicId_sipCallId: { clinicId, sipCallId: evt.callId } },
-      select: { id: true },
+      select: { id: true, patientId: true },
     });
     if (existing) {
       const updated = await prisma.call.update({
@@ -251,7 +265,7 @@ async function handleMissed(clinicId: string, evt: SipEvent): Promise<{ dbId: st
         },
         select: { id: true },
       });
-      return { dbId: updated.id };
+      return { dbId: updated.id, patientId: existing.patientId };
     }
     // No prior ringing event — create a MISSED row.
     const patientId = await linkPatientByPhone(clinicId, evt.from);
@@ -267,8 +281,12 @@ async function handleMissed(clinicId: string, evt: SipEvent): Promise<{ dbId: st
       },
       select: { id: true },
     });
-    return { dbId: created.id };
+    return { dbId: created.id, patientId };
   });
+  if (result?.patientId) {
+    await bumpPatientLastContact(result.patientId, evt.timestamp);
+  }
+  return result ? { dbId: result.dbId } : null;
 }
 
 export async function POST(request: NextRequest): Promise<Response> {

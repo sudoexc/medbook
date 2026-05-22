@@ -24,7 +24,7 @@ import {
 const LIST_INCLUDE = {
   _count: { select: { appointments: true } },
   primaryDoctor: {
-    select: { id: true, nameRu: true, nameUz: true, color: true },
+    select: { id: true, nameRu: true, nameUz: true, color: true, photoUrl: true },
   },
   patient: {
     select: { id: true, fullName: true, phone: true },

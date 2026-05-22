@@ -2,14 +2,17 @@
 
 import * as React from "react";
 import {
+  BookOpenIcon,
   ClipboardListIcon,
   FileTextIcon,
+  FlaskConicalIcon,
   Loader2Icon,
   PillIcon,
   PlusIcon,
   ScrollTextIcon,
   SearchIcon,
   SlidersHorizontalIcon,
+  ScrollIcon,
   StethoscopeIcon,
   WandSparklesIcon,
   XIcon,
@@ -26,12 +29,22 @@ import {
 } from "../_hooks/use-doctor-presets";
 import { useIcd10Search } from "../_hooks/use-icd10";
 import {
+  useClinicalProtocols,
+  type ClinicalProtocolRow,
+} from "../_hooks/use-clinical-protocols";
+import {
   usePatchVisitNote,
   useVisitNote,
   type VisitNotePatch,
   type VisitNoteRow,
 } from "../_hooks/use-visit-note";
+import { ApplyProtocolDialog } from "./apply-protocol-dialog";
+import { CatalogDrawer } from "./catalog-drawer";
+import { CdsWarningsCard } from "./cds-warnings-card";
 import { DosageBuilderDialog } from "./dosage-builder-dialog";
+import { EPrescriptionDialog } from "./e-prescription-dialog";
+import { LabOrderDialog } from "./lab-order-dialog";
+import { SickLeaveDialog } from "./sick-leave-dialog";
 
 type ArrayKey =
   | "complaints"
@@ -87,14 +100,25 @@ const FIELDS: FieldDef[] = [
 ];
 
 export function StructuredFieldsPanel() {
-  const { visitNoteId, requestBodyAppend, requestBodyRemove } =
-    useReceptionContext();
+  const {
+    visitNoteId,
+    requestBodyAppend,
+    requestBodyRemove,
+    activeAppointment,
+  } = useReceptionContext();
   const noteQuery = useVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
   const presetsQuery = useDoctorPresets();
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
   const [builderOpen, setBuilderOpen] = React.useState(false);
+  const [catalogOpen, setCatalogOpen] = React.useState(false);
+  const [labOrderOpen, setLabOrderOpen] = React.useState(false);
+  const [labOrderInitial, setLabOrderInitial] = React.useState<string[]>([]);
+  const [rxOpen, setRxOpen] = React.useState(false);
+  const [sickLeaveOpen, setSickLeaveOpen] = React.useState(false);
+  const [protocolToApply, setProtocolToApply] =
+    React.useState<ClinicalProtocolRow | null>(null);
 
   const applyPatch = React.useCallback(
     (p: VisitNotePatch) => {
@@ -136,6 +160,47 @@ export function StructuredFieldsPanel() {
     [note, isFinalized, applyPatch, requestBodyAppend],
   );
 
+  const handleApplyProtocol = React.useCallback(
+    (protocol: ClinicalProtocolRow) => {
+      if (!note || isFinalized) return;
+      const mergeUnique = (existing: string[], incoming: string[]) => {
+        const seen = new Set(existing);
+        const out = [...existing];
+        for (const item of incoming) {
+          if (!seen.has(item)) {
+            seen.add(item);
+            out.push(item);
+          }
+        }
+        return out;
+      };
+      applyPatch({
+        complaints: mergeUnique(note.complaints ?? [], protocol.complaintsTemplate),
+        anamnesis: mergeUnique(note.anamnesis ?? [], protocol.anamnesisTemplate),
+        examination: mergeUnique(
+          note.examination ?? [],
+          protocol.examinationTemplate,
+        ),
+        prescriptions: mergeUnique(
+          note.prescriptions ?? [],
+          protocol.prescriptionsTemplate,
+        ),
+        advice: mergeUnique(note.advice ?? [], protocol.adviceTemplate),
+      });
+      if (protocol.conclusionTemplateMd && protocol.conclusionTemplateMd.trim()) {
+        requestBodyAppend(protocol.conclusionTemplateMd);
+      }
+      // If the protocol recommends labs, open the lab-order dialog with the
+      // codes pre-selected. The doctor can still tweak before printing.
+      if (protocol.recommendedLabs && protocol.recommendedLabs.length > 0) {
+        setLabOrderInitial(protocol.recommendedLabs);
+        setLabOrderOpen(true);
+      }
+      setProtocolToApply(null);
+    },
+    [note, isFinalized, applyPatch, requestBodyAppend],
+  );
+
   const handleRemoveChip = React.useCallback(
     (def: FieldDef, chip: string) => {
       if (!note || isFinalized) return;
@@ -159,16 +224,52 @@ export function StructuredFieldsPanel() {
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">
           Структурированные поля
         </h2>
-        {patch.isPending && (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Loader2Icon className="size-3 animate-spin" />
-            Сохраняем…
-          </span>
-        )}
+        <div className="inline-flex items-center gap-2">
+          {patch.isPending && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2Icon className="size-3 animate-spin" />
+              Сохраняем…
+            </span>
+          )}
+          {note && !isFinalized && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setLabOrderInitial([]);
+                  setLabOrderOpen(true);
+                }}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                title="Создать направление в лабораторию"
+              >
+                <FlaskConicalIcon className="size-3" />
+                Лаб. заявка
+              </button>
+              <button
+                type="button"
+                onClick={() => setRxOpen(true)}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                title="Выписать рецепт"
+              >
+                <PillIcon className="size-3" />
+                Рецепт
+              </button>
+              <button
+                type="button"
+                onClick={() => setSickLeaveOpen(true)}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                title="Выписать лист нетрудоспособности"
+              >
+                <ScrollIcon className="size-3" />
+                Б/л
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {!note ? (
@@ -178,19 +279,32 @@ export function StructuredFieldsPanel() {
       ) : (
         <div className="flex flex-col gap-2">
           {FIELDS.map((f) => (
-            <ChipFieldCard
-              key={f.key}
-              def={f}
-              value={note[f.key] ?? []}
-              presets={presetsByField[f.presetField] ?? []}
-              disabled={isFinalized}
-              onChange={(next) => applyPatch({ [f.key]: next } as VisitNotePatch)}
-              onPresetClick={(preset) => handlePresetClick(f, preset)}
-              onRemoveChip={(chip) => handleRemoveChip(f, chip)}
-              onOpenBuilder={
-                f.key === "prescriptions" ? () => setBuilderOpen(true) : undefined
-              }
-            />
+            <React.Fragment key={f.key}>
+              <ChipFieldCard
+                def={f}
+                value={note[f.key] ?? []}
+                presets={presetsByField[f.presetField] ?? []}
+                disabled={isFinalized}
+                onChange={(next) => applyPatch({ [f.key]: next } as VisitNotePatch)}
+                onPresetClick={(preset) => handlePresetClick(f, preset)}
+                onRemoveChip={(chip) => handleRemoveChip(f, chip)}
+                onOpenBuilder={
+                  f.key === "prescriptions" ? () => setBuilderOpen(true) : undefined
+                }
+                onOpenCatalog={
+                  f.key === "prescriptions" ? () => setCatalogOpen(true) : undefined
+                }
+              />
+              {f.key === "prescriptions" && (
+                <CdsWarningsCard
+                  patientId={activeAppointment?.patient.id ?? null}
+                  prescriptions={note.prescriptions ?? []}
+                  diagnosisCode={note.diagnosisCode ?? null}
+                  appointmentId={activeAppointment?.id ?? null}
+                  visitNoteId={visitNoteId}
+                />
+              )}
+            </React.Fragment>
           ))}
           <DiagnosisCard
             note={note}
@@ -198,6 +312,7 @@ export function StructuredFieldsPanel() {
             onChange={(code, name) =>
               applyPatch({ diagnosisCode: code, diagnosisName: name })
             }
+            onRequestApplyProtocol={(p) => setProtocolToApply(p)}
           />
         </div>
       )}
@@ -206,6 +321,52 @@ export function StructuredFieldsPanel() {
         open={builderOpen}
         onOpenChange={setBuilderOpen}
         onAdd={handleAddPrescription}
+      />
+
+      <CatalogDrawer
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        onPick={handleAddPrescription}
+      />
+
+      <LabOrderDialog
+        open={labOrderOpen}
+        onOpenChange={setLabOrderOpen}
+        patientId={activeAppointment?.patient.id ?? null}
+        appointmentId={activeAppointment?.id ?? null}
+        visitNoteId={visitNoteId}
+        diagnosisCode={note?.diagnosisCode ?? null}
+        initialTestCodes={labOrderInitial}
+      />
+
+      <EPrescriptionDialog
+        open={rxOpen}
+        onOpenChange={setRxOpen}
+        patientId={activeAppointment?.patient.id ?? null}
+        appointmentId={activeAppointment?.id ?? null}
+        visitNoteId={visitNoteId}
+        diagnosisCode={note?.diagnosisCode ?? null}
+        diagnosisName={note?.diagnosisName ?? null}
+        seedItems={note?.prescriptions ?? []}
+      />
+
+      <SickLeaveDialog
+        open={sickLeaveOpen}
+        onOpenChange={setSickLeaveOpen}
+        patientId={activeAppointment?.patient.id ?? null}
+        appointmentId={activeAppointment?.id ?? null}
+        visitNoteId={visitNoteId}
+        diagnosisCode={note?.diagnosisCode ?? null}
+        diagnosisName={note?.diagnosisName ?? null}
+      />
+
+      <ApplyProtocolDialog
+        open={!!protocolToApply}
+        onOpenChange={(next) => {
+          if (!next) setProtocolToApply(null);
+        }}
+        protocol={protocolToApply}
+        onApply={handleApplyProtocol}
       />
     </section>
   );
@@ -220,6 +381,7 @@ function ChipFieldCard({
   onPresetClick,
   onRemoveChip,
   onOpenBuilder,
+  onOpenCatalog,
 }: {
   def: FieldDef;
   value: string[];
@@ -233,6 +395,8 @@ function ChipFieldCard({
    * the prescriptions field to open the structured dosage builder modal.
    */
   onOpenBuilder?: () => void;
+  /** Opens the searchable drug catalog drawer (Phase G1). */
+  onOpenCatalog?: () => void;
 }) {
   const [adding, setAdding] = React.useState(false);
   const [draft, setDraft] = React.useState("");
@@ -276,6 +440,18 @@ function ChipFieldCard({
           )}
         </div>
         <div className="inline-flex items-center gap-1">
+          {onOpenCatalog && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onOpenCatalog}
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
+              title="Каталог препаратов"
+            >
+              <BookOpenIcon className="size-3" />
+              Каталог
+            </button>
+          )}
           {onOpenBuilder && (
             <button
               type="button"
@@ -399,14 +575,18 @@ function DiagnosisCard({
   note,
   disabled,
   onChange,
+  onRequestApplyProtocol,
 }: {
   note: VisitNoteRow;
   disabled: boolean;
   onChange: (code: string | null, name: string | null) => void;
+  onRequestApplyProtocol: (protocol: ClinicalProtocolRow) => void;
 }) {
   const [query, setQuery] = React.useState("");
   const [focused, setFocused] = React.useState(false);
   const hits = useIcd10Search(query);
+  const protocolsQuery = useClinicalProtocols(note.diagnosisCode);
+  const protocols = protocolsQuery.data ?? [];
 
   const rows = hits.data ?? [];
 
@@ -459,22 +639,43 @@ function DiagnosisCard({
           )}
         </div>
         {note.diagnosisCode && note.diagnosisName && (
-          <div className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-sm">
-            <span className="font-mono font-semibold text-primary">
-              {note.diagnosisCode}
-            </span>
-            <span className="text-foreground">{note.diagnosisName}</span>
-            {!disabled && (
-              <button
-                type="button"
-                aria-label="Сбросить диагноз"
-                onClick={() => onChange(null, null)}
-                className="ml-auto inline-flex size-5 items-center justify-center rounded-full text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary"
-              >
-                <XIcon className="size-3.5" />
-              </button>
+          <>
+            <div className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-sm">
+              <span className="font-mono font-semibold text-primary">
+                {note.diagnosisCode}
+              </span>
+              <span className="text-foreground">{note.diagnosisName}</span>
+              {!disabled && (
+                <button
+                  type="button"
+                  aria-label="Сбросить диагноз"
+                  onClick={() => onChange(null, null)}
+                  className="ml-auto inline-flex size-5 items-center justify-center rounded-full text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              )}
+            </div>
+            {!disabled && protocols.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {protocols.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onRequestApplyProtocol(p)}
+                    title={p.summaryRu ?? "Применить шаблон протокола"}
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                  >
+                    <WandSparklesIcon className="size-3" />
+                    Применить стандарт
+                    <span className="rounded-md bg-primary/15 px-1 font-mono text-[10px]">
+                      {p.diagnosisCodePrefix}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

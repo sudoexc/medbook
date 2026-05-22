@@ -31,6 +31,12 @@ export const QueryConversationSchema = z.object({
    * assigned to that doctor's user, or tied to one of their appointments.
    */
   doctorId: z.string().optional(),
+  /**
+   * Scope to a specific patient. Used by the appointments-table "Telegram"
+   * row action and the patient page "Открыть в Telegram" quick action so the
+   * inbox lands prefiltered to the patient's threads.
+   */
+  patientId: z.string().optional(),
   unread: z.coerce.boolean().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),

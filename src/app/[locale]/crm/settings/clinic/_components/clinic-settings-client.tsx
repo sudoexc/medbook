@@ -50,12 +50,7 @@ type ClinicRow = {
   planSlug: "basic" | "pro" | "enterprise" | string;
 };
 
-const TIMEZONES = [
-  "Asia/Tashkent",
-  "Asia/Samarkand",
-  "UTC",
-  "Europe/Moscow",
-];
+const TIMEZONES = ["Asia/Tashkent", "Asia/Samarkand"];
 
 export function ClinicSettingsClient() {
   const t = useTranslations("settings");
@@ -278,7 +273,10 @@ export function ClinicSettingsClient() {
                   setForm({ ...form, timezone: e.target.value })
                 }
               >
-                {TIMEZONES.map((tz) => (
+                {(form.timezone && !TIMEZONES.includes(form.timezone)
+                  ? [form.timezone, ...TIMEZONES]
+                  : TIMEZONES
+                ).map((tz) => (
                   <option key={tz} value={tz}>
                     {tz}
                   </option>

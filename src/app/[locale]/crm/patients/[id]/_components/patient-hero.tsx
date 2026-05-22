@@ -22,7 +22,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -47,6 +46,24 @@ function ageFrom(birthDate: string | null, nowMs: number): number | null {
   const m = now.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
   return age;
+}
+
+/**
+ * Decide whether to render a "last contact" chip and at what severity.
+ * Thresholds: ≤14 days = no chip (fresh). 15–30 = warning. 31+ = danger.
+ * `null` lastContactedAt → "never" chip (rendered as danger).
+ */
+function lastContactChip(
+  at: string | null,
+  nowMs: number,
+): { kind: "never" | "stale" | "danger" } | null {
+  if (!at) return { kind: "never" };
+  const then = new Date(at).getTime();
+  if (!Number.isFinite(then)) return null;
+  const days = Math.round((nowMs - then) / (1000 * 60 * 60 * 24));
+  if (days <= 14) return null;
+  if (days <= 30) return { kind: "stale" };
+  return { kind: "danger" };
 }
 
 function relativeDays(at: string, nowMs: number, locale: string): string {
@@ -185,9 +202,43 @@ export function PatientHero({
                 </span>
               ) : null}
             </div>
-            <span className="mt-1 inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
-              {t("activeBadge")}
-            </span>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
+                {t("activeBadge")}
+              </span>
+              {(() => {
+                const chip = lastContactChip(patient.lastContactedAt, nowMs);
+                if (!chip) return null;
+                const days =
+                  chip.kind === "stale" || chip.kind === "danger"
+                    ? Math.round(
+                        (nowMs - new Date(patient.lastContactedAt as string).getTime()) /
+                          (1000 * 60 * 60 * 24),
+                      )
+                    : 0;
+                const label =
+                  chip.kind === "never"
+                    ? t("lastContactNeverChip")
+                    : t("lastContactStaleChip", { days });
+                return (
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                      chip.kind === "never" || chip.kind === "danger"
+                        ? "bg-destructive/10 text-destructive"
+                        : "bg-warning/15 text-warning",
+                    )}
+                    title={
+                      patient.lastContactedAt
+                        ? formatDate(patient.lastContactedAt, locale, "long")
+                        : undefined
+                    }
+                  >
+                    {label}
+                  </span>
+                );
+              })()}
+            </div>
           </div>
         </div>
 
@@ -306,12 +357,6 @@ export function PatientHero({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => toast.info(tq("mergeDuplicatesSoon"))}
-            >
-              {tq("mergeDuplicates")}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={onOpenDeleteDialog}
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"

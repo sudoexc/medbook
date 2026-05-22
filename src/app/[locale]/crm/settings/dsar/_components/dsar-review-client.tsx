@@ -9,7 +9,7 @@
  * gate the cancel/approve buttons by status to keep the UI honest.
  */
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -23,8 +23,21 @@ import {
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
 
@@ -72,9 +85,9 @@ type DeletionRow = {
   requestedByUserId: string | null;
 };
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, tag: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("ru-RU", {
+  return d.toLocaleString(tag, {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -124,6 +137,7 @@ export function DsarReviewClient() {
 
 function ExportsTab() {
   const t = useTranslations("settings.dsar");
+  const tag = intlLocale(useLocale());
   const query = useQuery<{ items: ExportRow[] }>({
     queryKey: ["crm", "dsar", "exports"],
     queryFn: async () => settingsFetch("/api/crm/dsar/exports"),
@@ -176,13 +190,13 @@ function ExportsTab() {
                   {r.patientName ?? t("patientUnknown")}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  · {formatDate(r.createdAt)}
+                  · {formatDate(r.createdAt, tag)}
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
                 {t("fileSize", { size: formatBytes(r.fileSizeBytes) })} ·{" "}
                 {t("downloadCount", { n: r.downloadCount })} ·{" "}
-                {t("expiresAt")}: {formatDate(r.expiresAt)}
+                {t("expiresAt")}: {formatDate(r.expiresAt, tag)}
               </div>
               {r.errorMessage ? (
                 <div className="text-xs text-destructive">
@@ -304,11 +318,7 @@ function DeletionsTab() {
           key={r.id}
           row={r}
           onApprove={() => approveMut.mutate(r.id)}
-          onCancel={() => {
-            if (confirm(t("actions.confirmCancel"))) {
-              cancelMut.mutate(r.id);
-            }
-          }}
+          onCancel={() => cancelMut.mutate(r.id)}
           approving={approveMut.isPending}
           cancelling={cancelMut.isPending}
         />
@@ -331,6 +341,7 @@ function DeletionRowCard({
   cancelling: boolean;
 }) {
   const t = useTranslations("settings.dsar");
+  const tag = intlLocale(useLocale());
   const canApprove = row.status === "PENDING_REVIEW";
   const canCancel = row.status === "PENDING_REVIEW" || row.status === "APPROVED";
   return (
@@ -346,16 +357,16 @@ function DeletionRowCard({
             {row.patientName ?? t("patientUnknown")}
           </span>
           <span className="text-xs text-muted-foreground">
-            · {formatDate(row.createdAt)}
+            · {formatDate(row.createdAt, tag)}
           </span>
         </div>
         <div className="text-xs text-muted-foreground">
-          {t("scheduledFor")}: {formatDate(row.scheduledFor)}
+          {t("scheduledFor")}: {formatDate(row.scheduledFor, tag)}
           {row.executedAt
-            ? ` · ${t("executedAt")}: ${formatDate(row.executedAt)}`
+            ? ` · ${t("executedAt")}: ${formatDate(row.executedAt, tag)}`
             : null}
           {row.cancelledAt
-            ? ` · ${t("cancelledAt")}: ${formatDate(row.cancelledAt)}`
+            ? ` · ${t("cancelledAt")}: ${formatDate(row.cancelledAt, tag)}`
             : null}
         </div>
         {row.reason ? (
@@ -371,24 +382,63 @@ function DeletionRowCard({
       </div>
       <div className="flex shrink-0 gap-2">
         {canApprove ? (
-          <Button
-            size="sm"
-            variant="default"
-            disabled={approving}
-            onClick={onApprove}
-          >
-            {approving ? t("actions.approving") : t("actions.approve")}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="default" disabled={approving}>
+                {approving ? t("actions.approving") : t("actions.approve")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("actions.confirmApproveTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t(`actions.confirmApproveBody.${row.mode}`)}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t("actions.dialogCancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className={cn(
+                    buttonVariants({ variant: "destructive" }),
+                  )}
+                  onClick={onApprove}
+                >
+                  {t("actions.confirmApproveAction")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         ) : null}
         {canCancel ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={cancelling}
-            onClick={onCancel}
-          >
-            {cancelling ? t("actions.cancelling") : t("actions.cancel")}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" disabled={cancelling}>
+                {cancelling ? t("actions.cancelling") : t("actions.cancel")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("actions.confirmCancelTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("actions.confirmCancelBody")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t("actions.dialogCancel")}
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={onCancel}>
+                  {t("actions.confirmCancelAction")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         ) : null}
       </div>
     </div>

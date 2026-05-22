@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ActivityIcon,
-  AlertTriangleIcon,
   ArrowLeftIcon,
   ClockIcon,
   PhoneCallIcon,
@@ -27,7 +26,7 @@ import {
 import { PatientsTable } from "../../_components/patients-table";
 import { NewPatientDialog } from "../../_components/new-patient-dialog";
 
-export type SegmentKey = "new" | "active" | "dormant" | "risk";
+export type SegmentKey = "new" | "active" | "dormant";
 
 const SEGMENT_META: Record<
   SegmentKey,
@@ -56,18 +55,8 @@ const SEGMENT_META: Record<
     iconFg: "text-destructive",
     accent: "border-destructive/40",
   },
-  risk: {
-    icon: AlertTriangleIcon,
-    iconBg: "bg-warning/15",
-    iconFg: "text-warning",
-    accent: "border-warning/40",
-  },
 };
 
-/**
- * Returns the `usePatientsList` filter slice that defines each segment.
- * Pages share the same hook/route so React Query cache is reused.
- */
 function filtersFor(segment: SegmentKey): PatientsListFilters {
   switch (segment) {
     case "new": {
@@ -83,10 +72,6 @@ function filtersFor(segment: SegmentKey): PatientsListFilters {
     case "active":
       return { segment: "ACTIVE", sort: "lastVisitAt", dir: "desc" };
     case "dormant":
-      return { segment: "DORMANT", sort: "lastVisitAt", dir: "desc" };
-    case "risk":
-      // We don't have a server-side "no-show risk" filter yet — use DORMANT as
-      // a stand-in (those patients tend to skew the no-show rate).
       return { segment: "DORMANT", sort: "lastVisitAt", dir: "desc" };
   }
 }
@@ -151,7 +136,7 @@ export function PatientSegmentView({ segment }: { segment: SegmentKey }) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {segment === "dormant" || segment === "risk" ? (
+            {segment === "dormant" ? (
               <Button
                 variant="outline"
                 onClick={() =>
@@ -190,7 +175,7 @@ export function PatientSegmentView({ segment }: { segment: SegmentKey }) {
               lastVisitAt: true,
               nextVisitAt: true,
               ltv: true,
-              priority: segment === "risk" || segment === "dormant",
+              priority: segment === "dormant",
               source: segment === "new",
             }}
           />

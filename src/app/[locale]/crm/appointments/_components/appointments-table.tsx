@@ -441,6 +441,9 @@ export function AppointmentsTable({
                 aria-label={t("cell.telegramAria")}
                 onClick={(e) => {
                   e.stopPropagation();
+                  router.push(
+                    `/${locale}/crm/telegram?patientId=${encodeURIComponent(r.patient.id)}`,
+                  );
                 }}
                 className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
               >

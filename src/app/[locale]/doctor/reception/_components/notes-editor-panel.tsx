@@ -1,13 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { CheckIcon, Loader2Icon, PrinterIcon, SparklesIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  CheckIcon,
+  Loader2Icon,
+  PrinterIcon,
+  SparklesIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { composePatientHandoutRu } from "@/lib/catalogs/handout-composer";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePatchVisitNote, useVisitNote } from "../_hooks/use-visit-note";
+import { HandoutLibraryDrawer } from "./handout-library-drawer";
 
 const AUTOSAVE_DEBOUNCE_MS = 1_500;
 
@@ -281,6 +288,23 @@ function HandoutEditor() {
       (note.advice?.length ?? 0) > 0 ||
       !!note.diagnosisName);
 
+  const [libraryOpen, setLibraryOpen] = React.useState(false);
+
+  const handleLibraryPick = React.useCallback(
+    (bodyMd: string, mode: "APPEND" | "REPLACE") => {
+      if (!bodyMd.trim()) return;
+      if (mode === "REPLACE") {
+        setDraft(bodyMd);
+        return;
+      }
+      setDraft((prev) => {
+        const trimmed = prev.trimEnd();
+        return trimmed ? `${trimmed}\n\n${bodyMd}` : bodyMd;
+      });
+    },
+    [],
+  );
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
@@ -289,6 +313,15 @@ function HandoutEditor() {
           Памятка собирается из структурированных полей слева
         </div>
         <div className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={!note || isFinalized}
+            onClick={() => setLibraryOpen(true)}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <BookOpenIcon className="size-3.5" />
+            Библиотека
+          </button>
           <button
             type="button"
             disabled={!note || isFinalized || !hasStructured}
@@ -338,6 +371,13 @@ function HandoutEditor() {
       />
 
       <StatsFooter chars={chars} words={words} isFinalized={isFinalized} />
+
+      <HandoutLibraryDrawer
+        open={libraryOpen}
+        onOpenChange={setLibraryOpen}
+        diagnosisCode={note?.diagnosisCode ?? null}
+        onPick={handleLibraryPick}
+      />
     </div>
   );
 }

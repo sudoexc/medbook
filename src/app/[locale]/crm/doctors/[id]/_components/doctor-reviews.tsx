@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { MessageSquareIcon, StarIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { DateText } from "@/components/atoms/date-text";
 import { CountUp } from "@/components/atoms/count-up";
@@ -26,6 +27,7 @@ export interface DoctorReviewsProps {
  */
 export function DoctorReviews({ doctorId, className }: DoctorReviewsProps) {
   const t = useTranslations("crmDoctors.reviews");
+  const tag = intlLocale(useLocale());
   const query = useDoctorReviews(doctorId, 20);
 
   const summary = query.data?.summary;
@@ -58,7 +60,7 @@ export function DoctorReviews({ doctorId, className }: DoctorReviewsProps) {
         />
       ) : summary && summary.count > 0 ? (
         <>
-          <SummaryCard summary={summary} t={t} />
+          <SummaryCard summary={summary} t={t} tag={tag} />
           <ul className="motion-stagger mt-4 space-y-2">
             {rows.map((r) => (
               <ReviewItem key={r.id} row={r} t={t} />
@@ -88,6 +90,7 @@ type ReviewT = ReturnType<typeof useTranslations<"crmDoctors.reviews">>;
 function SummaryCard({
   summary,
   t,
+  tag,
 }: {
   summary: {
     count: number;
@@ -95,6 +98,7 @@ function SummaryCard({
     distribution: Record<string, number>;
   };
   t: ReviewT;
+  tag: string;
 }) {
   const avg = summary.avgScore ?? 0;
   const tone = avg >= 9 ? "good" : avg >= 7 ? "ok" : "bad";
@@ -140,7 +144,7 @@ function SummaryCard({
           <CountUp
             to={summary.count}
             durationMs={520}
-            format={(v) => Math.round(v).toLocaleString("ru-RU")}
+            format={(v) => Math.round(v).toLocaleString(tag)}
             className="tabular-nums"
           />{" "}
           {t("countLabel")}

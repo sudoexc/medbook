@@ -100,9 +100,6 @@ export function CalendarTiles({
     };
   }, [appointments, now]);
 
-  // No prior-day data wired yet — show a fixed placeholder when total > 0.
-  const yesterdayDelta = stats.total > 0 ? 8 : 0;
-
   const dayWindow = React.useMemo(() => {
     if (!date) return null;
     const [yStr, mStr, dStr] = date.split("-");
@@ -137,10 +134,6 @@ export function CalendarTiles({
       key: "total",
       label: t("total"),
       value: stats.total,
-      delta:
-        yesterdayDelta > 0
-          ? t("totalDeltaYesterday", { count: yesterdayDelta })
-          : undefined,
       subtitle:
         stats.cancelled > 0
           ? t("totalSubtitleCancelled", { count: stats.cancelled })

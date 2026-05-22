@@ -51,9 +51,12 @@ export function NotificationsKpiStrip() {
     );
   }
 
+  // C3 alignment: all four tiles share the same "today" snapshot. `queued`
+  // remains a realtime count (sends still in QUEUED state right now), which
+  // is the only window that makes sense for it.
   const values: Record<TileDef["key"], number> = {
     sent: data?.today.sent ?? 0,
-    delivered: data?.last30d.delivered ?? 0,
+    delivered: data?.today.delivered ?? 0,
     queued: data?.today.queued ?? 0,
     failed: data?.today.failed ?? 0,
   };

@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { signOut } from "next-auth/react";
 import {
   BellIcon,
   ChevronDownIcon,
+  LogOutIcon,
   MoonIcon,
   PhoneIcon,
   PlusIcon,
@@ -16,6 +18,14 @@ import {
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { useTheme } from "@/components/providers/theme-provider";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const RU_WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"] as const;
 const RU_MONTHS = [
@@ -47,12 +57,14 @@ export interface DoctorTopbarProps {
   doctorName: string;
   doctorSpecialty: string;
   doctorAvatarUrl?: string | null;
+  userEmail?: string | null;
 }
 
 export function DoctorTopbar({
   doctorName,
   doctorSpecialty,
   doctorAvatarUrl,
+  userEmail,
 }: DoctorTopbarProps) {
   const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => {
@@ -145,23 +157,48 @@ export function DoctorTopbar({
         <TopbarIconButton icon={BellIcon} label="Уведомления" badge={3} />
       </div>
 
-      {/* Doctor profile */}
-      <div className="ml-2 flex items-center gap-3">
-        <AvatarWithStatus
-          src={doctorAvatarUrl ?? undefined}
-          name={doctorName}
-          status="online"
-          size="md"
-        />
-        <div className="hidden leading-tight md:block">
-          <div className="text-sm font-semibold text-foreground">
-            {doctorName}
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            {doctorSpecialty}
-          </div>
-        </div>
-      </div>
+      {/* Doctor profile — dropdown with sign out. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Меню профиля"
+            className="motion-press ml-2 flex items-center gap-3 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted"
+          >
+            <AvatarWithStatus
+              src={doctorAvatarUrl ?? undefined}
+              name={doctorName}
+              status="online"
+              size="md"
+            />
+            <div className="hidden text-left leading-tight md:block">
+              <div className="flex items-center gap-1 text-sm font-semibold text-foreground">
+                {doctorName}
+                <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {doctorSpecialty}
+              </div>
+            </div>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72 p-2">
+          <DropdownMenuLabel className="px-2 py-1.5 text-xs normal-case">
+            <div className="font-semibold text-foreground">{doctorName}</div>
+            <div className="truncate text-muted-foreground">
+              {userEmail ?? doctorSpecialty}
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="text-destructive focus:text-destructive"
+          >
+            <LogOutIcon className="size-4" />
+            Выйти
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   );
 }

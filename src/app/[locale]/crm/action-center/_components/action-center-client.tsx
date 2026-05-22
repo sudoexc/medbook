@@ -41,7 +41,6 @@ import {
 import { formatActionTitle, formatActionBody } from "@/lib/actions/format";
 import {
   defaultDeeplinkPath,
-  type ActionPayload,
   type ActionSeverity,
   type ActionType,
 } from "@/lib/actions/types";
@@ -56,6 +55,7 @@ import {
   useActionsSla,
   type ActionRow,
 } from "../_hooks/use-actions";
+import { RiskTodaySection } from "./risk-today-section";
 import { AnimatedDuration } from "@/components/motion/animated-time";
 import {
   useReceptionDashboard,
@@ -151,6 +151,7 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex flex-col gap-5">
+          <RiskTodaySection anchorId="risk-today" />
           <KpiStrip buckets={buckets} />
           <ActionsList
             actions={actions}
@@ -181,7 +182,6 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
 // ────────────────────────────────────────────────────────────────────────────
 
 type Buckets = {
-  threat: ActionRow[]; // NO_SHOW_RISK_HIGH + UNCONFIRMED_24H
   unconfirmed: ActionRow[];
   freeSlots: ActionRow[];
   noShowRisk: ActionRow[];
@@ -190,7 +190,6 @@ type Buckets = {
   callbacks: ActionRow[];
   dormant: ActionRow[];
   overload: ActionRow[];
-  threatLossTiins: number;
   unconfirmedRevTiins: number;
   freeSlotsRevTiins: number;
   noShowLossTiins: number;
@@ -248,11 +247,7 @@ function bucketActions(rows: ActionRow[]): Buckets {
     }
   }
 
-  const threat = [...noShowRisk, ...unconfirmed];
-  const threatLossTiins = noShowLossTiins + Math.round(unconfirmedRevTiins * 0.1);
-
   return {
-    threat,
     unconfirmed,
     freeSlots,
     noShowRisk,
@@ -261,7 +256,6 @@ function bucketActions(rows: ActionRow[]): Buckets {
     callbacks: [],
     dormant,
     overload,
-    threatLossTiins,
     unconfirmedRevTiins,
     freeSlotsRevTiins,
     noShowLossTiins,
@@ -278,20 +272,6 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
   const locale = useLocale();
 
   const tiles = [
-    {
-      key: "threat",
-      label: td("threatToday"),
-      count: buckets.threat.length,
-      unit: td("threatTodayUnit"),
-      moneyTiins: -buckets.threatLossTiins,
-      hint: td("potentialLoss"),
-      tone: "danger" as const,
-      icon: <AlertTriangleIcon className="size-5" />,
-      // Threat = noShow + unconfirmed today. The appointments page filter
-      // doesn't have a single "threat" bucket, so we route to the noShow
-      // bucket which is the most actionable subset.
-      href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show`,
-    },
     {
       key: "unconfirmed",
       label: td("unconfirmed"),
@@ -328,7 +308,7 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
   ];
 
   return (
-    <div className="motion-stagger grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="motion-stagger grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
       {tiles.map(({ key, ...tile }) => (
         <KpiCard key={key} {...tile} />
       ))}
@@ -1210,7 +1190,7 @@ function TasksQueue({ actions }: { actions: ActionRow[] }) {
     id: row.id,
     severity: row.severity,
     time: hourSlot(i),
-    label: shortTitleForType(row.type, row.payload),
+    label: shortLabelForRow(td, row),
     badge:
       row.severity === "critical"
         ? tac("priorityCritical")
@@ -1293,24 +1273,30 @@ function hourSlot(i: number): string {
   return `${String(h).padStart(2, "0")}:00`;
 }
 
-function shortTitleForType(type: ActionType, payload: ActionPayload): string {
-  // Best-effort short label for the timeline row.
-  switch (payload.type) {
-    case "UNCONFIRMED_24H":
-      return `Подтвердить запись (${payload.patientName})`;
-    case "EMPTY_SLOT_TOMORROW":
-      return `Заполнить слот (${payload.doctorName})`;
-    case "NO_SHOW_RISK_HIGH":
-      return `Связаться с ${payload.patientName}`;
-    case "DORMANT_BATCH":
-      return `Реактивация ${payload.patientCount} пациентов`;
-    case "DOCTOR_OVERLOAD":
-      return `Разгрузить ${payload.doctorName}`;
-    case "PAYMENT_OVERDUE":
-      return `Оплата ${payload.patientName}`;
-    default:
-      return type;
-  }
+const SHORT_LABEL_TYPES = new Set([
+  "UNCONFIRMED_24H",
+  "EMPTY_SLOT_TOMORROW",
+  "NO_SHOW_RISK_HIGH",
+  "DORMANT_BATCH",
+  "DOCTOR_OVERLOAD",
+  "PAYMENT_OVERDUE",
+]);
+
+function shortLabelForRow(
+  td: ReturnType<typeof useTranslations>,
+  row: ActionRow,
+): string {
+  if (!SHORT_LABEL_TYPES.has(row.payload.type)) return row.type;
+  const values: Record<string, string | number> = {};
+  const p = row.payload as Record<string, unknown>;
+  if (typeof p.patientName === "string") values.patientName = p.patientName;
+  if (typeof p.doctorName === "string") values.doctorName = p.doctorName;
+  if (typeof p.patientCount === "number") values.patientCount = p.patientCount;
+  const tDynamic = td as unknown as (
+    key: string,
+    vals: Record<string, string | number>,
+  ) => string;
+  return tDynamic(`shortLabel.${row.payload.type}`, values);
 }
 
 function progressForRow(row: ActionRow): { done: number; total: number } {
@@ -1431,7 +1417,7 @@ function DoctorsLoad({
       </ul>
       <div className="mt-3 flex justify-center border-t border-border pt-2">
         <Link
-          href="/crm/calendar"
+          href={`/${locale}/crm/calendar`}
           className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
         >
           {td("openSchedule")}

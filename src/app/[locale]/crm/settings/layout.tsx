@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { redirect } from "@/i18n/navigation";
 import type * as React from "react";
 
 import { auth } from "@/lib/auth";
@@ -12,14 +12,17 @@ import { SettingsSidebar } from "./_components/settings-sidebar";
  */
 export default async function SettingsLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
   const session = await auth();
   const role = session?.user?.role;
-  if (!session?.user) redirect("/login");
+  if (!session?.user) redirect({ href: "/login", locale });
   if (role !== "ADMIN" && role !== "SUPER_ADMIN") {
-    redirect("/crm");
+    redirect({ href: "/crm", locale });
   }
   return (
     <div className="flex min-h-0 flex-1">

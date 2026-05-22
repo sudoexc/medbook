@@ -62,7 +62,6 @@ export interface AppointmentsRightRailProps {
   rows: AppointmentRow[];
   selectedDoctorId?: string | null;
   onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
-  onExport: () => void;
   onSendReminders: (
     appointmentIds: string[],
     trigger?: ReminderTrigger,

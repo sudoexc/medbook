@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 /**
@@ -113,6 +114,7 @@ export function usePatientCases(patientId: string, filters: CasesFilters = {}) {
 
 export function useCreateCase() {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.patient");
   return useMutation<PatientCase, Error, CreateCaseInput>({
     mutationFn: async (input) => {
       const res = await fetch(`/api/crm/cases`, {
@@ -137,13 +139,14 @@ export function useCreateCase() {
       });
     },
     onError: (err) => {
-      toast.error(err.message || "Не удалось создать случай");
+      toast.error(err.message || t("caseCreateFailed"));
     },
   });
 }
 
 export function usePatchCase(caseId: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.patient");
   return useMutation<PatientCase, Error, PatchCaseInput>({
     mutationFn: async (patch) => {
       const res = await fetch(`/api/crm/cases/${caseId}`, {
@@ -167,7 +170,7 @@ export function usePatchCase(caseId: string) {
       qc.invalidateQueries({ queryKey: ["case", caseId] });
     },
     onError: (err) => {
-      toast.error(err.message || "Не удалось обновить случай");
+      toast.error(err.message || t("caseUpdateFailed"));
     },
   });
 }

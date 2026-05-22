@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 export type PatientPayment = {
@@ -60,6 +61,7 @@ export type CreatePaymentInput = {
 
 export function useCreatePayment(patientId: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.patient");
   return useMutation<PatientPayment, Error, CreatePaymentInput>({
     mutationFn: async (input) => {
       const res = await fetch(`/api/crm/payments`, {
@@ -83,8 +85,8 @@ export function useCreatePayment(patientId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["patient", patientId, "payments"] });
       qc.invalidateQueries({ queryKey: ["patient", patientId] });
-      toast.success("Платёж добавлен");
+      toast.success(t("paymentAdded"));
     },
-    onError: (e) => toast.error(e.message || "Не удалось создать платёж"),
+    onError: (e) => toast.error(e.message || t("paymentFailed")),
   });
 }

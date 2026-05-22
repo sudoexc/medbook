@@ -2,14 +2,14 @@
  * PUT    /api/crm/doctors/me/signature — set Doctor.signatureUrl.
  * DELETE /api/crm/doctors/me/signature — clear it.
  *
- * The actual byte upload is done by the client via the existing presigned-URL
- * flow (`POST /api/crm/documents/upload-url`). Once the PUT to MinIO succeeds
- * the client calls this endpoint with the `publicUrl` to persist it on the
- * Doctor row.
+ * The actual byte upload is done by the client via `POST /api/crm/documents/upload`
+ * (multipart). That endpoint stores the bytes through `uploadObject` (MinIO in
+ * prod, local stub root in dev) and returns a real `fileUrl`. The client then
+ * calls this endpoint with the URL to persist it on the Doctor row.
  *
- * We accept ANY HTTPS URL — we don't validate that the URL is reachable or
- * that it sits in our MinIO bucket. A misuse here only hurts the doctor's own
- * PDF; we keep validation cheap.
+ * We accept ANY URL — we don't validate that it's reachable or that it sits in
+ * our bucket. A misuse here only hurts the doctor's own PDF; we keep
+ * validation cheap.
  *
  * Audit: DOCTOR_SIGNATURE_SET on PUT, DOCTOR_SIGNATURE_REMOVED on DELETE.
  */

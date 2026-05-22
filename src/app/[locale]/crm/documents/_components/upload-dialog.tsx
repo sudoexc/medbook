@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * Upload dialog — real MinIO presigned-URL upload.
+ * Upload dialog — multipart byte upload via `/api/crm/documents/upload`.
  *
- * Flow on submit:
- *   1. POST /api/crm/documents/upload-url → { uploadUrl, publicUrl, stub }
- *   2. If `stub` is true (MINIO_ENDPOINT unset), surface a message and ask
- *      the operator to paste a URL manually instead of failing silently.
- *   3. Otherwise PUT the File bytes directly to the presigned URL while
- *      tracking progress via XHR (fetch can't report upload progress).
- *   4. POST /api/crm/documents with the resulting publicUrl + metadata.
+ * Flow on submit (file mode):
+ *   1. POST the File as `multipart/form-data` to `/api/crm/documents/upload`.
+ *      The server stores it through `uploadObject()` (MinIO/S3 in prod, local
+ *      stub root in dev) and returns a real `fileUrl` either way.
+ *   2. Track XHR progress so the operator sees a live progress bar.
+ *   3. POST /api/crm/documents with that `fileUrl` + metadata.
+ *
+ * URL mode is unchanged — the operator pastes an existing URL straight into
+ * the metadata payload.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -58,57 +60,48 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function requestUploadUrl(
+function uploadFileWithProgress(
   patientId: string,
   file: File,
-): Promise<{
-  uploadUrl: string | null;
-  publicUrl: string | null;
-  stub: boolean;
-  hint?: string;
-}> {
-  const res = await fetch("/api/crm/documents/upload-url", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      fileName: file.name,
-      contentType: file.type || "application/octet-stream",
-      patientId: patientId || undefined,
-    }),
-  });
-  if (!res.ok) throw new Error(`upload-url.${res.status}`);
-  return (await res.json()) as {
-    uploadUrl: string | null;
-    publicUrl: string | null;
-    stub: boolean;
-    hint?: string;
-  };
-}
-
-function putFileWithProgress(
-  uploadUrl: string,
-  file: File,
   onProgress: (pct: number) => void,
-): Promise<void> {
+): Promise<{ fileUrl: string; mimeType: string | null; sizeBytes: number | null }> {
   return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (patientId) fd.append("patientId", patientId);
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadUrl);
-    xhr.setRequestHeader(
-      "Content-Type",
-      file.type || "application/octet-stream",
-    );
+    xhr.open("POST", "/api/crm/documents/upload");
+    xhr.withCredentials = true;
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) {
         onProgress(Math.round((ev.loaded / ev.total) * 100));
       }
     };
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`put.${xhr.status}`));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const parsed = JSON.parse(xhr.responseText) as {
+            fileUrl: string;
+            mimeType: string | null;
+            sizeBytes: number | null;
+          };
+          resolve(parsed);
+        } catch {
+          reject(new Error("upload.parse"));
+        }
+      } else {
+        let detail = `upload.${xhr.status}`;
+        try {
+          const body = JSON.parse(xhr.responseText) as { error?: string };
+          if (body?.error) detail = body.error;
+        } catch {
+          // ignore
+        }
+        reject(new Error(detail));
+      }
     };
-    xhr.onerror = () => reject(new Error("put.network"));
-    xhr.send(file);
+    xhr.onerror = () => reject(new Error("upload.network"));
+    xhr.send(fd);
   });
 }
 
@@ -194,17 +187,12 @@ export function UploadDialog({
     setProgress(0);
     try {
       if (usedFile) {
-        const { uploadUrl, publicUrl, stub, hint } = await requestUploadUrl(
+        const uploaded = await uploadFileWithProgress(
           patientId,
           usedFile,
+          setProgress,
         );
-        if (stub || !uploadUrl || !publicUrl) {
-          toast.error(hint ?? t("toastStubMode"));
-          setMode("url");
-          return;
-        }
-        await putFileWithProgress(uploadUrl, usedFile, setProgress);
-        resolvedUrl = publicUrl;
+        resolvedUrl = uploaded.fileUrl;
       }
 
       const parsed = CreateDocumentSchema.safeParse({

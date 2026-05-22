@@ -110,18 +110,13 @@ function deriveStatus(
   return { status: "free", idleFor: null, freeSlots };
 }
 
-function cabinetOf(index: number): number {
-  return index + 1;
-}
-
 type EnrichedDoctor = {
   doctor: DoctorRow;
   agg: DoctorAgg | null;
   status: DoctorStatus;
   idleFor: string | null;
   freeSlots: string[];
-  cabinet: number;
-  avgMinutes: number;
+  cabinet: string;
 };
 
 export function DoctorsPageClient() {
@@ -167,7 +162,7 @@ export function DoctorsPageClient() {
   const hourShort = t("hourShort");
   const minuteShort = t("minuteShort");
   const enriched: EnrichedDoctor[] = React.useMemo(() => {
-    return allDoctors.map((d, i) => {
+    return allDoctors.map((d) => {
       const todays = byDoctorToday[d.id] ?? [];
       const { status, idleFor, freeSlots } = deriveStatus(nowMs, todays, hourShort, minuteShort);
       return {
@@ -176,8 +171,7 @@ export function DoctorsPageClient() {
         status,
         idleFor,
         freeSlots,
-        cabinet: cabinetOf(i),
-        avgMinutes: 25 + ((d.id.charCodeAt(0) + d.id.charCodeAt(d.id.length - 1)) % 20),
+        cabinet: d.cabinet?.number ?? "—",
       };
     });
   }, [allDoctors, byDoctorToday, periodAggByDoctor, nowMs, hourShort, minuteShort]);
@@ -317,7 +311,6 @@ export function DoctorsPageClient() {
                     idleFor={e.idleFor}
                     cabinet={e.cabinet}
                     freeSlots={e.freeSlots}
-                    avgMinutes={e.avgMinutes}
                   />
                 ))}
                 {filteredEnriched.length === 0 ? (

@@ -27,6 +27,7 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
 import { isStopKeyword, stopReply } from "@/lib/sms-stop";
 import { runWithTenant } from "@/lib/tenant-context";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { publishEventSafe } from "@/server/realtime/publish";
 
 export const runtime = "nodejs";
@@ -124,9 +125,9 @@ export async function POST(request: Request): Promise<Response> {
   }
   const { from, to, body, externalId } = parsed.data;
 
-  const conversationId = await runWithTenant(
+  const conversationResult = await runWithTenant(
     { kind: "SYSTEM" },
-    async () => {
+    async (): Promise<{ id: string; patientId: string | null }> => {
       // We use `externalId` as the unique per-clinic key when provided; else
       // fall back to the sender phone so repeat messages stitch into one thread.
       const externalKey = externalId ?? `sms:${from}`;
@@ -191,9 +192,13 @@ export async function POST(request: Request): Promise<Response> {
         },
       });
 
-      return conv.id;
+      return { id: conv.id, patientId: patient?.id ?? null };
     },
   );
+  const conversationId = conversationResult.id;
+  if (conversationResult.patientId) {
+    await bumpPatientLastContact(conversationResult.patientId);
+  }
 
   // Phase 17 Wave 1 — SMS STOP keyword handling.
   //

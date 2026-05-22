@@ -8,21 +8,26 @@
  *     AuditLog(APPOINTMENT_RESCHEDULED) so the patient-card timeline can
  *     render the full lifecycle in one feed.
  *
- * Response shape (backward-compatible — only adds fields):
+ * Response shape (backward-compatible — adds optional `nextCursor`):
  *   { items: Array<{
  *       id, kind, at,
  *       channel?, direction?, title, body?, meta?,
  *       category: "VISIT" | "PAYMENT" | "COMM" | "DOC"
- *     }> }
+ *     }>,
+ *     nextCursor: string | null
+ *   }
  *
  * The drawer's `usePatientTimeline` keeps working because we only **add**
- * the optional `category` field — every previous field is preserved.
+ * the optional `nextCursor` field — every previous field is preserved.
  *
  * Tenancy: the `createApiListHandler` wrapper builds a TENANT context, and
  * the `prisma` client below is the tenant-scoped extension (see
  * `src/lib/prisma.ts`). All `clinicId` filters happen automatically.
  *
- * Limit: caller may pass `?limit=N` to cap final items (default 200).
+ * Pagination: `?limit=N&before=<isoTimestamp>`. Cursor is the `at` of the
+ * last item on the previous page. Each per-source `findMany` filters its
+ * own date column by `before`, then we merge + sort + slice — so the
+ * timeline stays consistent across heterogeneous sources.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -33,6 +38,13 @@ function idFromUrl(request: Request): string {
   // .../patients/[id]/communications
   return parts[parts.length - 2] ?? "";
 }
+
+const DEFAULT_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 200;
+// Per-source over-fetch. The merge step throws most of these away — we just
+// need enough to be sure the next page still has the newest items. 80 covers
+// the realistic worst-case for any single source per page.
+const PER_SOURCE_TAKE = 80;
 
 type Category = "VISIT" | "PAYMENT" | "COMM" | "DOC";
 
@@ -54,7 +66,16 @@ export const GET = createApiListHandler(
     const patientId = idFromUrl(request);
     const url = new URL(request.url);
     const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
-    const finalLimit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 500) : 200;
+    const limit =
+      Number.isFinite(limitRaw) && limitRaw > 0
+        ? Math.min(limitRaw, MAX_PAGE_LIMIT)
+        : DEFAULT_PAGE_LIMIT;
+    const beforeRaw = url.searchParams.get("before");
+    const before = beforeRaw ? new Date(beforeRaw) : null;
+    const beforeFilter = before && !Number.isNaN(before.getTime()) ? before : null;
+    // The shape of each per-source date filter is the same: strict-less-than
+    // the cursor. Build it once so the eight findManys stay readable.
+    const lt = beforeFilter ? { lt: beforeFilter } : undefined;
 
     const [
       communications,
@@ -67,24 +88,28 @@ export const GET = createApiListHandler(
       cases,
     ] = await Promise.all([
       prisma.communication.findMany({
-        where: { patientId },
+        where: { patientId, ...(lt ? { createdAt: lt } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PER_SOURCE_TAKE,
       }),
       prisma.call.findMany({
-        where: { patientId },
+        where: { patientId, ...(lt ? { createdAt: lt } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PER_SOURCE_TAKE,
       }),
       prisma.notificationSend.findMany({
-        where: { patientId },
+        where: { patientId, ...(lt ? { createdAt: lt } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PER_SOURCE_TAKE,
       }),
       prisma.appointment.findMany({
-        where: { patientId, status: "COMPLETED" },
+        where: {
+          patientId,
+          status: "COMPLETED",
+          ...(lt ? { date: lt } : {}),
+        },
         orderBy: { date: "desc" },
-        take: 50,
+        take: PER_SOURCE_TAKE,
         select: {
           id: true,
           date: true,
@@ -95,14 +120,21 @@ export const GET = createApiListHandler(
         },
       }),
       prisma.message.findMany({
-        where: { conversation: { patientId } },
+        where: {
+          conversation: { patientId },
+          ...(lt ? { createdAt: lt } : {}),
+        },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PER_SOURCE_TAKE,
       }),
       prisma.payment.findMany({
-        where: { patientId, status: "PAID" },
+        where: {
+          patientId,
+          status: "PAID",
+          ...(lt ? { OR: [{ paidAt: lt }, { paidAt: null, createdAt: lt }] } : {}),
+        },
         orderBy: { paidAt: "desc" },
-        take: 50,
+        take: PER_SOURCE_TAKE,
         select: {
           id: true,
           amount: true,
@@ -115,9 +147,9 @@ export const GET = createApiListHandler(
         },
       }),
       prisma.document.findMany({
-        where: { patientId },
+        where: { patientId, ...(lt ? { createdAt: lt } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: PER_SOURCE_TAKE,
         select: {
           id: true,
           type: true,
@@ -128,9 +160,9 @@ export const GET = createApiListHandler(
         },
       }),
       prisma.medicalCase.findMany({
-        where: { patientId },
+        where: { patientId, ...(lt ? { openedAt: lt } : {}) },
         orderBy: { openedAt: "desc" },
-        take: 50,
+        take: PER_SOURCE_TAKE,
         select: {
           id: true,
           title: true,
@@ -280,7 +312,7 @@ export const GET = createApiListHandler(
     // appointments we already touched in this clinic — single query, no N+1.
     // We fetch a shallow list of all appointment ids for the patient first
     // (cheap, indexed by clinicId+patientId), then a single AuditLog lookup
-    // bounded to those entityIds.
+    // bounded to those entityIds and the cursor.
     const apptIds = await prisma.appointment.findMany({
       where: { patientId },
       select: { id: true },
@@ -293,9 +325,10 @@ export const GET = createApiListHandler(
           action: "APPOINTMENT_RESCHEDULED",
           entityType: "Appointment",
           entityId: { in: ids },
+          ...(lt ? { createdAt: lt } : {}),
         },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PER_SOURCE_TAKE,
         select: {
           id: true,
           createdAt: true,
@@ -321,6 +354,19 @@ export const GET = createApiListHandler(
     }
 
     items.sort((a, b) => b.at.getTime() - a.at.getTime());
-    return ok({ items: items.slice(0, finalLimit) });
+
+    // Cursor pagination: over-fetch by one row so we know whether the next
+    // page exists. The cursor is the `at` of the last item we return — the
+    // next request asks for `before=<thatAt>` and each per-source query
+    // narrows to its own date column.
+    let nextCursor: string | null = null;
+    let sliced = items;
+    if (items.length > limit) {
+      sliced = items.slice(0, limit);
+      const last = sliced[sliced.length - 1];
+      if (last) nextCursor = last.at.toISOString();
+    }
+
+    return ok({ items: sliced, nextCursor });
   }
 );

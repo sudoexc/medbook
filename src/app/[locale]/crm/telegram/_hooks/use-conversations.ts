@@ -18,6 +18,8 @@ import type {
  *  - mode         — bot | takeover | all
  *  - unread       — "1" to restrict to unread
  *  - conv         — selected conversation id (managed by page client)
+ *  - patientId    — scope deep-link from appointments table / patient page
+ *                   (no UI chip; persists in URL so back-nav stays in scope)
  *
  * Polling is 30s (the active chat polls faster in its own hook). Once
  * SSE `tg.message.new` lands, these intervals go away.
@@ -26,6 +28,7 @@ export type ConversationFilters = {
   q: string;
   mode: ModeFilter;
   unreadOnly: boolean;
+  patientId: string | null;
 };
 
 export function useConversationsFilters() {
@@ -38,6 +41,7 @@ export function useConversationsFilters() {
       q: searchParams?.get("q") ?? "",
       mode: m === "bot" || m === "takeover" ? m : "all",
       unreadOnly: searchParams?.get("unread") === "1",
+      patientId: searchParams?.get("patientId") ?? null,
     };
   }, [searchParams]);
 
@@ -55,6 +59,10 @@ export function useConversationsFilters() {
       if (patch.unreadOnly !== undefined) {
         if (patch.unreadOnly) sp.set("unread", "1");
         else sp.delete("unread");
+      }
+      if (patch.patientId !== undefined) {
+        if (patch.patientId) sp.set("patientId", patch.patientId);
+        else sp.delete("patientId");
       }
       router.replace(`?${sp.toString()}`, { scroll: false });
     },
@@ -94,6 +102,7 @@ async function fetchConversations(
   if (filters.q) sp.set("q", filters.q);
   if (filters.mode !== "all") sp.set("mode", filters.mode);
   if (filters.unreadOnly) sp.set("unread", "1");
+  if (filters.patientId) sp.set("patientId", filters.patientId);
   if (cursor) sp.set("cursor", cursor);
   const res = await fetch(`/api/crm/conversations?${sp.toString()}`, {
     credentials: "include",

@@ -3,6 +3,13 @@
  * marked REVIEWED yet. Backs the «Анализы» card on /doctor/my-day and the
  * inbox-style list on the action center.
  *
+ * Scope (load-bearing): "MY unread labs" means **labs this user ordered**,
+ * not every RESULTED lab in the clinic. `LabResult.doctorId` is a User FK
+ * stamped to the ordering doctor at create time (see schema relation
+ * `DoctorLabResults`). The patient-detail tab is the place to see labs a
+ * colleague ordered; this endpoint is intentionally narrow so each doctor
+ * gets a finite inbox they can actually empty.
+ *
  * Ordered by `receivedAt DESC` so freshest first; CRITICAL flags are NOT
  * sorted ahead in this version — the UI badges them so they pop visually
  * without us having to express two-axis sort here. Pagination is offset-
@@ -20,6 +27,15 @@ const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+/**
+ * Where clause for "RESULTED labs I am the ordering doctor of, not yet
+ * REVIEWED". Centralized so the today aggregate (`doctors/me/today`)
+ * and this endpoint never diverge on what counts as "my unread".
+ */
+function myUnreadLabsWhere(orderingUserId: string) {
+  return { doctorId: orderingUserId, status: "RESULTED" as const };
+}
+
 export const GET = createApiListHandler(
   { roles: ["DOCTOR"] },
   async ({ request, ctx }) => {
@@ -29,9 +45,10 @@ export const GET = createApiListHandler(
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
 
+    const where = myUnreadLabsWhere(ctx.userId);
     const take = q.limit + 1;
     const rows = await prisma.labResult.findMany({
-      where: { doctorId: ctx.userId, status: "RESULTED" },
+      where,
       orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
@@ -57,9 +74,7 @@ export const GET = createApiListHandler(
       nextCursor = next?.id ?? null;
     }
 
-    const total = await prisma.labResult.count({
-      where: { doctorId: ctx.userId, status: "RESULTED" },
-    });
+    const total = await prisma.labResult.count({ where });
 
     return ok({
       rows: rows.map((r) => ({

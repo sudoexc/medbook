@@ -28,7 +28,7 @@ function idFromUrl(request: Request): string {
 
 const DETAIL_INCLUDE = {
   primaryDoctor: {
-    select: { id: true, nameRu: true, nameUz: true, color: true },
+    select: { id: true, nameRu: true, nameUz: true, color: true, photoUrl: true },
   },
   patient: {
     select: { id: true, fullName: true, phone: true },
@@ -44,7 +44,7 @@ const DETAIL_INCLUDE = {
       doctorId: true,
       priceFinal: true,
       doctor: {
-        select: { id: true, nameRu: true, nameUz: true, color: true },
+        select: { id: true, nameRu: true, nameUz: true, color: true, photoUrl: true },
       },
       primaryService: {
         select: { id: true, nameRu: true, nameUz: true },
@@ -166,7 +166,7 @@ export const PATCH = createApiHandler(
       data: data as never,
       include: {
         primaryDoctor: {
-          select: { id: true, nameRu: true, nameUz: true, color: true },
+          select: { id: true, nameRu: true, nameUz: true, color: true, photoUrl: true },
         },
         patient: {
           select: { id: true, fullName: true, phone: true },

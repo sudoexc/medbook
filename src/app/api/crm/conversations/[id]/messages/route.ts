@@ -17,6 +17,8 @@ import {
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { sendMessage, sendPhoto } from "@/server/telegram/send";
+import { resolveAdapters } from "@/server/notifications/adapters";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
 function conversationIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -71,6 +73,8 @@ export const POST = createApiHandler(
         id: true,
         channel: true,
         externalId: true,
+        patientId: true,
+        patient: { select: { phone: true } },
         clinic: {
           select: {
             id: true,
@@ -190,6 +194,45 @@ export const POST = createApiHandler(
           data: { status: "FAILED" },
         });
       }
+    } else if (conv.channel === "SMS") {
+      // Phone resolution: prefer linked patient.phone, fall back to the
+      // `sms:<from>` externalId stored by the inbound webhook. If neither
+      // resolves, mark the message FAILED — the operator can fix the patient
+      // link rather than have the message silently stuck in QUEUED.
+      const externalPhone =
+        conv.externalId && conv.externalId.startsWith("sms:")
+          ? conv.externalId.slice("sms:".length)
+          : null;
+      const phone = conv.patient?.phone ?? externalPhone;
+
+      if (!phone || !body.body) {
+        dispatched = await prisma.message.update({
+          where: { id: msg.id },
+          data: { status: "FAILED" },
+        });
+      } else {
+        try {
+          const adapters = await resolveAdapters(conv.clinic.id);
+          const res = await adapters.sms.send(phone, body.body);
+          dispatched = await prisma.message.update({
+            where: { id: msg.id },
+            data: { status: "SENT", externalId: res.providerId },
+          });
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : String(e);
+          console.error(
+            `[crm:send] sms dispatch failed conv=${conversationId}: ${reason}`,
+          );
+          dispatched = await prisma.message.update({
+            where: { id: msg.id },
+            data: { status: "FAILED" },
+          });
+        }
+      }
+    }
+
+    if (dispatched.status === "SENT" && conv.patientId) {
+      await bumpPatientLastContact(conv.patientId, dispatched.createdAt);
     }
 
     await audit(request, {

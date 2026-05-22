@@ -313,10 +313,6 @@
     "dormant": {
       "title": "Faol bo'lmagan bemorlar",
       "subtitle": "30 kundan ortiq tashrif qilmagan bemorlar — win-back qo'ng'iroq nomzodlari."
-    },
-    "risk": {
-      "title": "No-show xavfi",
-      "subtitle": "O'tkazib yuborish tarixi bo'lgan bemorlar. Yozilishni tasdiqlash uchun oldindan bog'laning."
     }
   },
   "patients": {
@@ -1151,8 +1147,6 @@
       "telegram": "Telegram",
       "inviteToBot": "Bemorda Telegram yo'q — taklif yuboramiz",
       "more": "Yana",
-      "mergeDuplicates": "Dublikatlarni birlashtirish",
-      "mergeDuplicatesSoon": "Dublikatlarni birlashtirish keyingi yangilanishda qo'shiladi",
       "delete": "Bemorni o'chirish",
       "exportDataToPatient": "Ma'lumot eksporti → bemorga",
       "exportDataToAdmin": "Ma'lumot eksporti → menga",
@@ -1167,6 +1161,8 @@
       "copyPhoneAria": "Raqamdan nusxa olish",
       "phoneCopied": "Raqam nusxalandi",
       "activeBadge": "Faol bemor",
+      "lastContactNeverChip": "Hali aloqa qilinmagan",
+      "lastContactStaleChip": "{days} kundan beri aloqa qilinmagan",
       "kpiLtv": "LTV",
       "kpiVisits": "Tashriflar",
       "kpiAvgCheck": "O'rtacha chek",
@@ -1188,10 +1184,15 @@
       "visitsCount": "Tashriflar",
       "lastVisit": "Oxirgi tashrif",
       "nextVisit": "Keyingi tashrif",
+      "lastContact": "Oxirgi aloqa",
+      "lastContactNever": "—",
+      "lastContactToday": "bugun",
+      "lastContactDaysAgo": "{days} kun oldin",
       "balance": "Balans",
       "recentActivity": "So'nggi aloqalar",
       "viewAll": "Barchasi",
-      "noActivity": "Hozircha hech qanday harakat yo'q."
+      "noActivity": "Hozircha hech qanday harakat yo'q.",
+      "diagnosesMore": "yana {count} ta tashxis"
     },
     "recs": {
       "title": "Tavsiya etilgan amallar",
@@ -1273,6 +1274,12 @@
       "deleteForbidden": "Hujjatlarni faqat administrator o'chira oladi",
       "empty": "Hujjatlar yo'q",
       "emptyDescription": "Fayl yuklang yoki bemorda rozilikni imzolang.",
+      "emptyFiltered": "Tanlangan filtrlar bo'yicha hech narsa topilmadi",
+      "searchPlaceholder": "Nomi bo'yicha qidirish…",
+      "typeFilterPlaceholder": "Turi",
+      "typeFilterAll": "Barcha turlar",
+      "clearFilters": "Filtrlarni tozalash",
+      "loadMore": "Yana yuklash",
       "types": {
         "referral": "Yo'llanma",
         "prescription": "Retsept",
@@ -1296,6 +1303,7 @@
       "filter": "Filter",
       "total": "Voqealar: {count}",
       "empty": "Aloqalar yo'q",
+      "loadMore": "Yana yuklash",
       "types": {
         "all": "Barchasi",
         "sms": "SMS",
@@ -2503,11 +2511,11 @@
       },
       "delivered": {
         "label": "Yetkazildi",
-        "hint": "30 kun"
+        "hint": "Bugun"
       },
       "queued": {
         "label": "Navbatda",
-        "hint": "Yuborilishni kutmoqda"
+        "hint": "Hozir"
       },
       "failed": {
         "label": "Xatolar",
@@ -3076,6 +3084,8 @@
       "created": "Foydalanuvchi yaratildi",
       "deactivated": "Foydalanuvchi nofaol qilindi",
       "deactivate": "Nofaol qilish",
+      "deactivateConfirmTitle": "Foydalanuvchini nofaol qilasizmi?",
+      "deactivateConfirmDescription": "{name} endi tizimga kira olmaydi. Buni keyinroq qaytarish mumkin.",
       "deleteTitle": "Foydalanuvchini nofaol qilish?",
       "deleteDescription": "{name} endi kira olmaydi. Buni qaytarish mumkin.",
       "resetPassword": "Parolni tiklash",
@@ -3132,6 +3142,9 @@
       "createHint": "Kod klinika ichida noyob bo'lishi kerak.",
       "created": "Xizmat yaratildi",
       "deactivated": "Xizmat yashirildi",
+      "deleteConfirmTitle": "Xizmatni yashirasizmi?",
+      "deleteConfirmDesc": "«{name}» yozuv uchun nofaol qilinadi. Tarixga ta'sir qilmaydi; xuddi shu jadvaldan qayta yoqsa bo'ladi.",
+      "deleteConfirmAction": "Yashirish",
       "min": "daq",
       "doctorsRequired": "Kim ko'rsatadi",
       "doctorsRequiredHint": "Kamida bitta shifokorni tanlang — shifokorsiz xizmat saqlanmaydi.",
@@ -3406,7 +3419,17 @@
         "cancel": "Bekor qilish",
         "confirmCancel": "O'chirish so'rovini bekor qilasizmi?",
         "approving": "Tasdiqlanmoqda…",
-        "cancelling": "Bekor qilinmoqda…"
+        "cancelling": "Bekor qilinmoqda…",
+        "dialogCancel": "Hozir emas",
+        "confirmApproveTitle": "Bemor ma'lumotlarini o'chirishni tasdiqlaysizmi?",
+        "confirmApproveBody": {
+          "ANONYMIZE": "Bu qaytarib bo'lmaydigan amal. Bemorning shaxsiy ma'lumotlari tasdiqlash bilan birga anonimlashtiriladi. Yozuvlar bilan bog'lanishlar hisobot uchun saqlanadi, lekin identifikatsiya maydonlari o'chiriladi.",
+          "HARD_DELETE": "Bu qaytarib bo'lmaydigan amal. Bemorning barcha ma'lumotlari, jumladan tashriflar tarixi va tibbiy yozuvlar to'liq o'chiriladi. Tiklab bo'lmaydi."
+        },
+        "confirmApproveAction": "O'chirishni tasdiqlash",
+        "confirmCancelTitle": "So'rovni bekor qilasizmi?",
+        "confirmCancelBody": "So'rov bekor qilingan deb belgilanadi. Bemor ma'lumotlari o'zgartirishsiz saqlanadi. Faqat yangi so'rov bilan qaytarish mumkin.",
+        "confirmCancelAction": "So'rovni bekor qilish"
       },
       "approveSuccess": "So'rov tasdiqlandi.",
       "cancelSuccess": "So'rov bekor qilindi.",
@@ -3430,11 +3453,59 @@
       "fields": {
         "label": "Yorliq (ixtiyoriy)",
         "labelPlaceholder": "main, backup, eskiz…",
+        "variant": "Provayder",
         "secret": "Token / kalit",
         "secretKeepBlank": "O'zgartirmaslik uchun bo'sh qoldiring",
         "currentSecretIndicator": "Joriy: {mask}",
         "config": "Konfiguratsiya (JSON)",
         "configHint": "Ixtiyoriy JSON; adapterlar kerakli kalitlarni o'qiydi."
+      },
+      "variants": {
+        "eskiz": "Eskiz.uz",
+        "playmobile": "PlayMobile",
+        "payme": "Payme",
+        "click": "Click",
+        "uzum": "Uzum Bank",
+        "sip": "SIP-provayder",
+        "custom": "Boshqa"
+      },
+      "cfg": {
+        "smsBaseUrl": {
+          "label": "API base URL",
+          "placeholder": "https://notify.eskiz.uz/api"
+        },
+        "smsEmail": {
+          "label": "Login (email)",
+          "placeholder": "clinic@example.com"
+        },
+        "smsSender": {
+          "label": "Sender ID",
+          "placeholder": "MedBook"
+        },
+        "merchantId": {
+          "label": "Merchant ID",
+          "placeholder": "5e..."
+        },
+        "mode": {
+          "label": "Rejim",
+          "placeholder": "",
+          "opts": {
+            "test": "Test",
+            "prod": "Ishlab chiqarish"
+          }
+        },
+        "openaiModel": {
+          "label": "Model",
+          "placeholder": "gpt-4o-mini"
+        },
+        "telServer": {
+          "label": "Server",
+          "placeholder": "sip.example.com"
+        },
+        "telUsername": {
+          "label": "Login",
+          "placeholder": "operator"
+        }
       },
       "cards": {
         "sms": {
@@ -3455,9 +3526,12 @@
         }
       },
       "smsTest": "Test SMS",
-      "smsTestHint": "Joriy adapter orqali xabar yuboradi (dev rejimida log-only).",
+      "smsTestHintLog": "SMS-provayder sozlanmagan — xabar faqat logga yoziladi, haqiqiy yuborish bo'lmaydi.",
+      "smsTestHintReal": "Xabar sozlangan SMS-provayder orqali yuboriladi.",
+      "smsTestWarning": "Diqqat: bu haqiqiy SMS. Provayder balansidan yechiladi.",
       "smsTestDefault": "MedBook: bu test xabari.",
-      "smsTestSent": "Test navbatga qo'shildi",
+      "smsTestSentLog": "Test logga yozildi (provayder sozlanmagan)",
+      "smsTestSentReal": "SMS {adapter} orqali yuborildi",
       "smsPhone": "Telefon",
       "smsBody": "Matn",
       "smsSend": "Yuborish",
@@ -4256,8 +4330,16 @@
     "title": "SMS",
     "subtitle": "Kiruvchi va chiquvchi SMS",
     "empty": "SMS dialoglar yo‘q",
-    "mvpHint": "MVP versiyasi: suhbatlar ro‘yxati. To‘liq inbox — Phase 6.",
-    "openDetails": "Tafsilotlarni ochish"
+    "mvpHint": "Tarixni o‘qish va javob berish uchun suhbatga bosing.",
+    "openDetails": "Bemor kartasi",
+    "back": "Ro‘yxatga",
+    "unknownSender": "Noma'lum jo‘natuvchi",
+    "emptyThread": "Hozircha bu suhbatda xabarlar yo‘q.",
+    "composerPlaceholder": "Bemorga javob…",
+    "composerHint": "Ctrl/⌘ + Enter — yuborish. Yuborish sozlangan SMS-provayder orqali amalga oshiriladi; provayder ulanmagan bo'lsa, xabar logga yoziladi.",
+    "send": "Yuborish",
+    "sending": "Yuborilmoqda…",
+    "sendFailed": "SMSni yuborib bo'lmadi"
   },
   "admin": {
     "bulk": {
@@ -4415,16 +4497,46 @@
       "headerTitle": "Amallar markazi",
       "headerSubtitle": "Klinikani real vaqt rejimida operativ boshqarish",
       "kpi": {
-        "threatToday": "Bugun xavf ostida",
-        "threatTodayUnit": "bemor",
         "potentialLoss": "potensial yo'qotish",
         "potentialRevenue": "potensial daromad",
         "unconfirmed": "Tasdiqlanmagan",
         "unconfirmedUnit": "yozilish",
         "freeSlots": "Bo'sh slotlar",
         "freeSlotsUnit": "slot",
-        "noShowRisk": "No-show xavfi",
+        "noShowRisk": "O'tkazib yuborish xavfi",
         "noShowRiskUnit": "bemor"
+      },
+      "riskToday": {
+        "title": "Bugun xavf zonasida",
+        "subtitle": "{count, plural, one {# yozuv} other {# yozuv}} e'tibor talab qiladi",
+        "subtitleAllDone": "Bugungi {count, plural, one {# yozuv} other {# yozuv}} hammasi yopildi 🎉",
+        "subtitleEmpty": "Bugunga xavf aniqlanmadi",
+        "empty": "Bugun hammasi nazoratda",
+        "emptyHint": "O'tkazib yuborish xavfi yoki tasdiqlanmagan yozuvlar yo'q. Tinch kun bo'lsin!",
+        "emptyAllDone": "Bugungi barcha xavflar yopildi",
+        "emptyAllDoneHint": "Bugungi xavf-ro'yxatni oxirigacha o'tib bo'ldingiz. Nafas olsa bo'ladi.",
+        "errorTitle": "Xavf-ro'yxatni yuklab bo'lmadi",
+        "lossHint": "yo'qotishgacha",
+        "progressLabel": "{handled}/{total}",
+        "progressTitle": "{total} dan {handled} ta ishlangan",
+        "openShort": "qoldi",
+        "ctaCall": "Qo'ng'iroq",
+        "ctaCallTitle": "Bemorga qo'ng'iroqni ochish",
+        "ctaSms": "SMS",
+        "ctaSmsTitle": "SMS-tasdiqnoma yuborish",
+        "ctaHandled": "Ishlandi",
+        "ctaHandledTitle": "Bemor ishlanganini belgilash",
+        "menuLabel": "Yana amallar",
+        "menuSnooze": "Ertaga qoldirish",
+        "menuOpenPatient": "Bemor kartasini ochish",
+        "menuOpenAppt": "Yozuvni ochish",
+        "reasons": {
+          "highRisk": "O'tkazib yuborish xavfi {pct}%",
+          "unconfirmedHours": "Tasdiqlamadi · qabulgacha {hours}s",
+          "unconfirmedSoon": "Tasdiqlamadi · bir soatdan kam",
+          "noContactDays": "Aloqa yo'q {days, plural, one {# kun} other {# kun}}",
+          "noContactNever": "Hech qachon aloqaga chiqilmagan"
+        }
       },
       "responseTime": {
         "title": "O'rtacha javob vaqti",
@@ -4508,7 +4620,16 @@
         "title": "Bugungi vazifalar navbati",
         "showAll": "Barcha vazifalarni ko'rsatish",
         "showLess": "Yig'ish",
-        "progress": "{done}/{total}"
+        "progress": "{done}/{total}",
+        "shortLabel": {
+          "UNCONFIRMED_24H": "Yozuvni tasdiqlash ({patientName})",
+          "EMPTY_SLOT_TOMORROW": "Bo'sh vaqtni to'ldirish ({doctorName})",
+          "NO_SHOW_RISK_HIGH": "{patientName} bilan bog'lanish",
+          "DORMANT_BATCH": "{patientCount} bemorni qaytarish",
+          "DOCTOR_OVERLOAD": "{doctorName} yukini kamaytirish",
+          "PAYMENT_OVERDUE": "{patientName} to'lovi",
+          "fallback": "{type}"
+        }
       },
       "doctorsLoad": {
         "title": "Bugungi shifokorlar yuklamasi",
@@ -4742,6 +4863,12 @@
     "invoices": {
       "title": "Hisob-fakturalar tarixi",
       "empty": "Hozircha hisob-fakturalar yo'q.",
+      "emptyFiltered": "Tanlangan filtr bo'yicha hisob-fakturalar yo'q.",
+      "filterLabel": "Holat",
+      "filterAll": "Hammasi",
+      "loadMore": "Yana ko'rsatish",
+      "loading": "Yuklanmoqda…",
+      "loadError": "Hisob-fakturalarni yuklab bo'lmadi.",
       "cols": {
         "number": "Raqam",
         "period": "Davr",
@@ -4867,5 +4994,45 @@
         "body": "Shartnoma bo'yicha: support@neurofax.uz."
       }
     }
+  },
+  "crmToasts": {
+    "patient": {
+      "saveFailed": "Saqlash imkonsiz",
+      "paymentAdded": "To'lov qo'shildi",
+      "paymentFailed": "To'lov yaratish imkonsiz",
+      "documentAdded": "Hujjat qo'shildi",
+      "documentFailed": "Hujjat yuklash imkonsiz",
+      "caseCreateFailed": "Holatni yaratish imkonsiz",
+      "caseUpdateFailed": "Holatni yangilash imkonsiz"
+    },
+    "appointment": {
+      "saveFailed": "Saqlashda xato",
+      "cancelFailed": "Bekor qilishda xato",
+      "actionFailed": "Xato",
+      "rescheduleFailed": "Yozuvlarni o'tkazib bo'lmadi",
+      "statusFailed": "Statusni o'zgartirishda xato"
+    },
+    "case": {
+      "saveFailed": "Saqlash imkonsiz",
+      "detachFailed": "Yozuvni uzib bo'lmadi"
+    },
+    "doctor": {
+      "saveFailed": "Saqlash imkonsiz"
+    }
+  },
+  "meChangePassword": {
+    "headingForced": "Yangi parol o'rnating",
+    "headingChange": "Parolni o'zgartirish",
+    "subtitleForced": "Bu birinchi kirish — doimiy parolingizni belgilang.",
+    "subtitleChange": "Kamida 8 ta belgi.",
+    "currentLabel": "Joriy parol",
+    "newLabel": "Yangi parol",
+    "confirmLabel": "Parolni takrorlang",
+    "mismatch": "Parollar mos kelmadi",
+    "saving": "Saqlanmoqda…",
+    "submit": "Saqlash",
+    "updated": "Parol yangilandi",
+    "invalidCurrent": "Joriy parol noto'g'ri",
+    "currentRequired": "Joriy parolni kiriting"
   }
 }

@@ -12,6 +12,7 @@ import { audit } from "@/lib/audit";
 import { ok, parseQuery } from "@/server/http";
 import { CreateCallSchema, QueryCallSchema } from "@/server/schemas/call";
 import { ensureFeature } from "@/server/platform/feature-guard";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"] },
@@ -47,7 +48,7 @@ export const GET = createApiListHandler(
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
-        patient: { select: { id: true, fullName: true, phone: true } },
+        patient: { select: { id: true, fullName: true, phone: true, segment: true } },
         operator: { select: { id: true, name: true } },
       },
     });
@@ -81,6 +82,9 @@ export const POST = createApiHandler(
         endedAt: body.endedAt ?? null,
       } as never,
     });
+    if (created.patientId) {
+      await bumpPatientLastContact(created.patientId, created.createdAt);
+    }
     await audit(request, {
       action: "call.create",
       entityType: "Call",

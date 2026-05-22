@@ -266,13 +266,6 @@ export function AppointmentsPageClient() {
           onSlotPick={({ doctorId, date, time }) =>
             openCreateDialog({ doctorId, date, time })
           }
-          onExport={() => {
-            const qs = searchParams?.toString() ?? "";
-            const href = qs
-              ? `/api/crm/appointments/export-csv?${qs}`
-              : `/api/crm/appointments/export-csv`;
-            window.location.href = href;
-          }}
           onSendReminders={sendReminders}
           remindersBusy={remindersMutation.isPending}
         />

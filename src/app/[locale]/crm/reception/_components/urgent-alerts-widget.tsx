@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { AlertTriangleIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -29,6 +29,7 @@ export function UrgentAlertsWidget({
   className,
 }: UrgentAlertsWidgetProps) {
   const t = useTranslations("reception.urgentAlerts");
+  const locale = useLocale();
   return (
     <section
       className={cn(
@@ -88,7 +89,7 @@ export function UrgentAlertsWidget({
       </div>
       {alerts.length > 0 ? (
         <Link
-          href="/crm/notifications"
+          href={`/${locale}/crm/notifications`}
           className="block border-t border-destructive/30 px-4 py-2.5 text-center text-[11px] font-semibold text-destructive hover:bg-destructive/5"
         >
           {t("viewAll")}

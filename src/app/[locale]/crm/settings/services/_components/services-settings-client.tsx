@@ -21,6 +21,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
 
@@ -52,6 +62,9 @@ export function ServicesSettingsClient() {
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [pendingDelete, setPendingDelete] = React.useState<ServiceRow | null>(
+    null,
+  );
 
   const patchMutation = useMutation({
     mutationFn: (payload: { id: string; data: Partial<ServiceRow> }) =>
@@ -71,7 +84,9 @@ export function ServicesSettingsClient() {
     onSuccess: () => {
       toast.success(t("services.deactivated"));
       qc.invalidateQueries({ queryKey: ["settings", "services"] });
+      setPendingDelete(null);
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const rows = listQuery.data?.rows ?? [];
@@ -147,7 +162,7 @@ export function ServicesSettingsClient() {
                   onPatch={(data) =>
                     patchMutation.mutate({ id: s.id, data })
                   }
-                  onDelete={() => deleteMutation.mutate(s.id)}
+                  onDelete={() => setPendingDelete(s)}
                 />
               ))}
             </tbody>
@@ -175,6 +190,40 @@ export function ServicesSettingsClient() {
           qc.invalidateQueries({ queryKey: ["settings", "services"] })
         }
       />
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("services.deleteConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("services.deleteConfirmDesc", {
+                name: pendingDelete?.nameRu ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t("common.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending
+                ? t("common.saving")
+                : t("services.deleteConfirmAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageContainer>
   );
 }

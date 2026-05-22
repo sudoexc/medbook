@@ -9,6 +9,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { intlLocale } from "@/lib/format";
 import { MoneyText } from "@/components/atoms/money-text";
 
 import type {
@@ -93,8 +94,10 @@ function StripCard({
 export function PatientJourneyStrip({
   cases,
   analytics,
+  locale,
   labels,
 }: PatientJourneyStripProps) {
+  const tag = intlLocale(locale);
   const totalAppts = React.useMemo(
     () => analytics.appointmentsByStatus.reduce((a, s) => a + s.count, 0),
     [analytics.appointmentsByStatus],
@@ -144,19 +147,19 @@ export function PatientJourneyStrip({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StripCard
           label={labels.newPatients}
-          value={newPatients.toLocaleString("ru-RU")}
+          value={newPatients.toLocaleString(tag)}
           delta={pctSigned(deltas.newPatients)}
           positive={deltas.newPatients >= 0}
         />
         <StripCard
           label={labels.firstConsult}
-          value={firstConsult.toLocaleString("ru-RU")}
+          value={firstConsult.toLocaleString(tag)}
           delta={pctSigned(deltas.firstConsult)}
           positive={deltas.firstConsult >= 0}
         />
         <StripCard
           label={labels.repeatVisits}
-          value={repeatVisits.toLocaleString("ru-RU")}
+          value={repeatVisits.toLocaleString(tag)}
           delta={pctSigned(deltas.repeatVisits)}
           positive={deltas.repeatVisits >= 0}
         />

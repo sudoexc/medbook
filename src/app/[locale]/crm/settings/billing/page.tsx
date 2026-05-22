@@ -45,8 +45,13 @@ export default async function BillingPage(props: {
     role,
   };
 
+  // SSR seeds the first page of invoices (limit+1 trick mirrors the
+  // API at /api/crm/billing/invoices). The client useInfiniteQuery
+  // takes over for subsequent pages and any status-filter changes.
+  const INITIAL_INVOICE_LIMIT = 20;
+
   const data = await runWithTenant(ctx, async () => {
-    const [sub, plans, invoices, usage] = await Promise.all([
+    const [sub, plans, invoiceRowsPlus1, usage] = await Promise.all([
       prisma.subscription.findUnique({
         where: { clinicId: ctx.clinicId as string },
         include: { plan: true },
@@ -57,8 +62,8 @@ export default async function BillingPage(props: {
       }),
       prisma.invoice.findMany({
         where: { clinicId: ctx.clinicId as string },
-        orderBy: { createdAt: "desc" },
-        take: 20,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: INITIAL_INVOICE_LIMIT + 1,
         select: {
           id: true,
           number: true,
@@ -75,7 +80,14 @@ export default async function BillingPage(props: {
       getClinicUsage(ctx.clinicId as string),
     ]);
 
-    return { sub, plans, invoices, usage };
+    let invoiceNextCursor: string | null = null;
+    const invoices = [...invoiceRowsPlus1];
+    if (invoices.length > INITIAL_INVOICE_LIMIT) {
+      const next = invoices.pop();
+      invoiceNextCursor = next?.id ?? null;
+    }
+
+    return { sub, plans, invoices, invoiceNextCursor, usage };
   });
 
   if (!data.sub) {
@@ -150,6 +162,8 @@ export default async function BillingPage(props: {
       paidAt: i.paidAt?.toISOString() ?? null,
       createdAt: i.createdAt.toISOString(),
     })),
+    invoiceNextCursor: data.invoiceNextCursor,
+    invoicePageSize: INITIAL_INVOICE_LIMIT,
   };
 
   return <BillingClient {...props2} />;

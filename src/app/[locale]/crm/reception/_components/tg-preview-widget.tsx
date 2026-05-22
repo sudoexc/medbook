@@ -27,6 +27,7 @@ export function TgPreviewWidget({
   className,
 }: TgPreviewWidgetProps) {
   const t = useTranslations("reception.tg");
+  const locale = useLocale();
 
   const unreadTotal = rows.reduce((acc, r) => acc + (r.unreadCount ?? 0), 0);
 
@@ -61,7 +62,7 @@ export function TgPreviewWidget({
           ) : null}
         </div>
         <Link
-          href="/crm/telegram"
+          href={`/${locale}/crm/telegram`}
           className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
         >
           {t("viewAll")}
@@ -109,7 +110,7 @@ function ConversationRowItem({ row }: { row: ConversationRow }) {
   return (
     <li>
       <Link
-        href={`/crm/telegram?c=${row.id}`}
+        href={`/${locale}/crm/telegram?c=${row.id}`}
         className="flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/60"
       >
         <AvatarWithStatus

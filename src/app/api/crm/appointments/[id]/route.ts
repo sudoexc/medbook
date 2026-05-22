@@ -19,6 +19,7 @@ import {
 } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { recordPatientView } from "@/server/audit/patient-view";
@@ -636,6 +637,10 @@ export const PATCH = createApiHandler(
       } catch (e) {
         console.error("[referral-mint] failed for appointment", id, e);
       }
+      await bumpPatientLastContact(
+        after.patientId,
+        after.completedAt ?? new Date(),
+      );
     }
 
     // Realtime fan-out. Pick the event type that best reflects the change:

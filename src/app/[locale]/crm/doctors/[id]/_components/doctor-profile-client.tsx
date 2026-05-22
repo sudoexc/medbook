@@ -204,12 +204,21 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
           <DoctorCases doctorId={doctor.id} />
         </TabsContent>
 
-        <TabsContent value="schedule" className="flex flex-col gap-4">
+        {/* forceMount keeps unsaved schedule/service edits alive across tab switches. */}
+        <TabsContent
+          value="schedule"
+          forceMount
+          className="flex flex-col gap-4 data-[state=inactive]:hidden"
+        >
           <ScheduleEditor doctor={doctor} />
           <DoctorTimeOff doctor={doctor} />
         </TabsContent>
 
-        <TabsContent value="services" className="flex flex-col gap-4">
+        <TabsContent
+          value="services"
+          forceMount
+          className="flex flex-col gap-4 data-[state=inactive]:hidden"
+        >
           <DoctorServicesEditor
             doctorId={doctor.id}
             canEdit={role === "ADMIN"}

@@ -108,6 +108,16 @@ type ReminderItem = {
   status: string;
 };
 
+type RemindersBlock = {
+  /** Preview slice — at most 5 next-up actionable reminders. */
+  items: ReminderItem[];
+  /**
+   * Total reminders matching the "actionable in next 24h" predicate, so the
+   * preview card can show «N всего» and link to the full list without lying.
+   */
+  total: number;
+};
+
 type UnreadResultItem = {
   id: string;
   testName: string;
@@ -156,7 +166,7 @@ type TodayResponse = {
   daySummary: DaySummary;
   ai: { summary: null; alerts: []; recommendations: [] };
   actionItems: ActionItem[];
-  reminders: ReminderItem[];
+  reminders: RemindersBlock;
   unreadResults: UnreadResultItem[];
   drafts: DraftItem[];
   recentPatients: RecentPatientItem[];
@@ -576,18 +586,24 @@ export const GET = createApiListHandler(
         id: "reminders",
         title: "Активные напоминания",
         count: dueRemindersCount,
-        href: "/doctor/my-day",
+        // Full reminders list lives at /doctor/notifications — the my-day
+        // card only surfaces the next 5, so the "go to all" link must leave
+        // the my-day page, not loop back to it.
+        href: "/doctor/notifications",
       },
     ];
 
-    const reminders: ReminderItem[] = activeReminders.map((r) => ({
-      id: r.id,
-      title: r.title,
-      patientId: r.patient?.id ?? null,
-      patientShort: r.patient ? shortName(r.patient.fullName) : null,
-      remindAt: r.remindAt.toISOString(),
-      status: r.status,
-    }));
+    const reminders: RemindersBlock = {
+      items: activeReminders.map((r) => ({
+        id: r.id,
+        title: r.title,
+        patientId: r.patient?.id ?? null,
+        patientShort: r.patient ? shortName(r.patient.fullName) : null,
+        remindAt: r.remindAt.toISOString(),
+        status: r.status,
+      })),
+      total: dueRemindersCount,
+    };
 
     const unreadResults: UnreadResultItem[] = unreadLabs
       .filter((r) => r.patient)

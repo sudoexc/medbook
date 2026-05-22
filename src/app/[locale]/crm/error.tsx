@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangleIcon, HomeIcon, RotateCwIcon } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 
@@ -28,6 +28,7 @@ export default function CrmError({
   reset: () => void;
 }) {
   const t = useTranslations("common");
+  const locale = useLocale();
 
   React.useEffect(() => {
     console.error("[crm/error-boundary]", error);
@@ -56,7 +57,7 @@ export default function CrmError({
           {t("retry")}
         </Button>
         <Link
-          href="/crm/reception"
+          href={`/${locale}/crm/reception`}
           className={buttonVariants({ variant: "outline" })}
         >
           <HomeIcon className="size-4" />

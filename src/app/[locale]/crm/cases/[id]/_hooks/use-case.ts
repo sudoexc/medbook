@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import type {
@@ -98,6 +99,7 @@ export type CaseDetail = {
     nameRu: string;
     nameUz: string;
     color: string | null;
+    photoUrl: string | null;
   } | null;
   patient: {
     id: string;
@@ -136,6 +138,7 @@ export function useCase(id: string) {
  */
 export function usePatchCase(id: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.case");
   return useMutation<CaseDetail, Error, PatchCaseInput, { previous?: CaseDetail }>(
     {
       mutationFn: async (patch) => {
@@ -168,7 +171,7 @@ export function usePatchCase(id: string) {
         if (context?.previous) {
           qc.setQueryData(caseKey(id), context.previous);
         }
-        toast.error(err.message || "Не удалось сохранить");
+        toast.error(err.message || t("saveFailed"));
       },
       onSuccess: (fresh) => {
         // Server returns the case sans the heavy `appointments` array on
@@ -197,6 +200,7 @@ export function usePatchCase(id: string) {
  */
 export function useDetachAppointment(caseId: string, patientId: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.case");
   return useMutation<{ id: string }, Error, { appointmentId: string }>({
     mutationFn: async ({ appointmentId }) => {
       const res = await fetch(
@@ -223,7 +227,7 @@ export function useDetachAppointment(caseId: string, patientId: string) {
       qc.invalidateQueries({ queryKey: ["appointments", "list"] });
     },
     onError: (err) => {
-      toast.error(err.message || "Не удалось отвязать запись");
+      toast.error(err.message || t("detachFailed"));
     },
   });
 }

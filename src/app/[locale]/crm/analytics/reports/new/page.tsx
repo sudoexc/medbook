@@ -21,7 +21,9 @@ export default async function NewReportPage({
   const { locale } = await params;
   const session = await auth();
   if (!session?.user) redirect(`/${locale}/login`);
-  if (session.user.role !== "ADMIN") notFound();
+  if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
+    notFound();
+  }
   if (!session.user.clinicId) notFound();
 
   const lang: "ru" | "uz" = locale === "uz" ? "uz" : "ru";

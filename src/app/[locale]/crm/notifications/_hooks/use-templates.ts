@@ -59,6 +59,13 @@ export type TemplateInput = {
   isActive?: boolean;
 };
 
+/**
+ * Template mutations broad-invalidate the whole `["notifications"]` subtree
+ * rather than just the templates list. Stats (`activeTemplates`,
+ * `topTemplates`) and the triggers view both join against template state, so
+ * a templates-only invalidation leaves stale numbers in the KPI strip and
+ * stale template names in the triggers panel.
+ */
 export function useCreateTemplate() {
   const qc = useQueryClient();
   return useMutation({
@@ -75,7 +82,7 @@ export function useCreateTemplate() {
       if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       return (await res.json()) as Template;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: templatesKey() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 
@@ -98,7 +105,7 @@ export function useUpdateTemplate() {
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
       return (await res.json()) as Template;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: templatesKey() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 
@@ -113,6 +120,6 @@ export function useDeleteTemplate() {
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       return (await res.json()) as { id: string; deleted: boolean };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: templatesKey() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }

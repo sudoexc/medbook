@@ -11,6 +11,12 @@
  * — surfaces what to do today on /doctor/my-day without dragging in every
  * future reminder. Pass `?status=ALL` (or any explicit status) to override.
  *
+ * Pagination is cursor-based (limit+1 sentinel + cursor on id) to match the
+ * other /doctors/me list endpoints, so the /doctor/notifications list can
+ * scroll past the first page when a doctor has 100+ outstanding reminders.
+ * The response also returns `totals` per status — the UI surfaces these on
+ * tab badges so counters stay honest while only the first page is loaded.
+ *
  * SSE: `reminder.created` on POST, `reminder.updated` on PATCH/DELETE (see
  * sibling [id]/route.ts).
  *
@@ -31,7 +37,8 @@ const ListQuery = z.object({
   status: z
     .enum([...REMINDER_STATUSES, "ALL"] as [string, ...string[]])
     .optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 const CreateBody = z.object({
@@ -56,18 +63,24 @@ export const GET = createApiListHandler(
     horizon.setHours(horizon.getHours() + 24);
 
     const where: Record<string, unknown> = { doctorId: ctx.userId };
+    const isAll = !q.status || q.status === "ALL";
     if (q.status && q.status !== "ALL") {
       where.status = q.status;
-    } else {
-      // Default — actionable in the next 24h.
+    } else if (!isAll) {
+      // Reserved branch — current schema makes this unreachable, but keeps
+      // the intent explicit if we later split "actionable now" from "ALL".
       where.status = { in: ["PENDING", "SNOOZED"] };
       where.remindAt = { lte: horizon };
     }
+    // ALL mode (used by /doctor/notifications) returns every reminder so the
+    // tab UI can bucket client-side. Filtered modes narrow at the DB.
 
+    const take = q.limit + 1;
     const rows = await prisma.reminder.findMany({
       where,
       orderBy: [{ remindAt: "asc" }, { id: "asc" }],
-      take: q.limit,
+      take,
+      ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       select: {
         id: true,
         title: true,
@@ -84,6 +97,33 @@ export const GET = createApiListHandler(
       },
     });
 
+    let nextCursor: string | null = null;
+    if (rows.length > q.limit) {
+      const next = rows.pop();
+      nextCursor = next?.id ?? null;
+    }
+
+    // Totals per status — drives tab badges on /doctor/notifications so the
+    // counters stay accurate while only the first page is in memory. A single
+    // groupBy is cheap vs four separate counts.
+    const grouped = await prisma.reminder.groupBy({
+      by: ["status"],
+      where: { doctorId: ctx.userId },
+      _count: { _all: true },
+    });
+    const totals = {
+      PENDING: 0,
+      SNOOZED: 0,
+      DONE: 0,
+      DISMISSED: 0,
+    } as Record<(typeof REMINDER_STATUSES)[number], number>;
+    for (const g of grouped) {
+      if (g.status in totals) {
+        totals[g.status as (typeof REMINDER_STATUSES)[number]] =
+          g._count._all;
+      }
+    }
+
     return ok({
       rows: rows.map((r) => ({
         id: r.id,
@@ -97,6 +137,8 @@ export const GET = createApiListHandler(
         patientFullName: r.patient?.fullName ?? null,
         createdAt: r.createdAt.toISOString(),
       })),
+      nextCursor,
+      totals,
     });
   },
 );

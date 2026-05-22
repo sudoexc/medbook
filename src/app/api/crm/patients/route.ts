@@ -15,6 +15,7 @@ import {
   CreatePatientSchema,
   QueryPatientSchema,
 } from "@/server/schemas/patient";
+import { allocatePatientNumber } from "@/server/services/patient-number";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -110,7 +111,7 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
     bodySchema: CreatePatientSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const phoneNormalized = normalizePhone(body.phone);
     if (!phoneNormalized) {
       return err("ValidationError", 400, { reason: "invalid_phone" });
@@ -128,28 +129,38 @@ export const POST = createApiHandler(
       });
     }
 
-    const writeData = serializePatientForWrite({
-      fullName: body.fullName,
-      phone: body.phone,
-      phoneNormalized,
-      birthDate: body.birthDate ?? null,
-      gender: body.gender ?? null,
-      passport: body.passport ?? null,
-      address: body.address ?? null,
-      photoUrl: body.photoUrl ?? null,
-      telegramId: body.telegramId ?? null,
-      telegramUsername: body.telegramUsername ?? null,
-      preferredChannel: body.preferredChannel ?? "TG",
-      preferredLang: body.preferredLang ?? "RU",
-      source: body.source ?? null,
-      segment: body.segment ?? "NEW",
-      tags: body.tags ?? [],
-      notes: body.notes ?? null,
-      discountPct: body.discountPct ?? 0,
-      consentMarketing: body.consentMarketing ?? false,
-    });
-    const created = await prisma.patient.create({
-      data: writeData as never, // tenant-scope extension injects clinicId
+    // Allocate the per-clinic patient number and create the row inside a
+    // transaction so a unique-violation on the resulting (clinicId,
+    // patientNumber) pair rolls back the counter bump as well.
+    if (ctx.kind !== "TENANT") {
+      return err("forbidden", 403, { reason: "tenant_required" });
+    }
+    const clinicId = ctx.clinicId;
+    const created = await prisma.$transaction(async (tx) => {
+      const patientNumber = await allocatePatientNumber(clinicId, tx);
+      const writeData = serializePatientForWrite({
+        fullName: body.fullName,
+        phone: body.phone,
+        phoneNormalized,
+        birthDate: body.birthDate ?? null,
+        gender: body.gender ?? null,
+        passport: body.passport ?? null,
+        address: body.address ?? null,
+        photoUrl: body.photoUrl ?? null,
+        telegramId: body.telegramId ?? null,
+        telegramUsername: body.telegramUsername ?? null,
+        preferredChannel: body.preferredChannel ?? "TG",
+        preferredLang: body.preferredLang ?? "RU",
+        source: body.source ?? null,
+        segment: body.segment ?? "NEW",
+        tags: body.tags ?? [],
+        notes: body.notes ?? null,
+        discountPct: body.discountPct ?? 0,
+        consentMarketing: body.consentMarketing ?? false,
+      });
+      return tx.patient.create({
+        data: { ...writeData, patientNumber } as never, // tenant ext injects clinicId
+      });
     });
     const hydrated = hydratePatientForRead(created);
     await audit(request, {

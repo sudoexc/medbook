@@ -22,24 +22,25 @@ import {
 const MAX_BYTES = 1_024 * 1_024; // 1 MB
 const ACCEPTED = "image/png,image/jpeg";
 
-type UploadUrlResponse = {
-  uploadUrl: string | null;
-  publicUrl: string | null;
-  stub?: boolean;
-};
-
-async function fetchUploadUrl(file: File): Promise<UploadUrlResponse> {
-  const res = await fetch("/api/crm/documents/upload-url", {
+async function uploadSignature(file: File): Promise<{ fileUrl: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/crm/documents/upload", {
     method: "POST",
     credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      fileName: file.name,
-      contentType: file.type || "application/octet-stream",
-    }),
+    body: fd,
   });
-  if (!res.ok) throw new Error(`upload-url: ${res.status}`);
-  return (await res.json()) as UploadUrlResponse;
+  if (!res.ok) {
+    let detail = `upload: ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) detail = body.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as { fileUrl: string };
 }
 
 export function SignatureTab() {
@@ -64,21 +65,8 @@ export function SignatureTab() {
     }
     setUploading(true);
     try {
-      const presigned = await fetchUploadUrl(file);
-      if (presigned.stub || !presigned.uploadUrl || !presigned.publicUrl) {
-        toast.error("Хранилище не настроено (MINIO_ENDPOINT)");
-        return;
-      }
-      const put = await fetch(presigned.uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: { "content-type": file.type },
-      });
-      if (!put.ok) {
-        toast.error(`Загрузка не удалась: ${put.status}`);
-        return;
-      }
-      await setSignature.mutateAsync(presigned.publicUrl);
+      const uploaded = await uploadSignature(file);
+      await setSignature.mutateAsync(uploaded.fileUrl);
       toast.success("Подпись сохранена");
     } catch (e) {
       toast.error("Не удалось загрузить");

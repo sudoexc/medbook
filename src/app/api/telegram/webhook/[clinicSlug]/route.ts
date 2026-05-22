@@ -39,6 +39,7 @@ import {
 import { handleDoctorVoice } from "@/server/telegram/voice-handler";
 import { consumeInviteToken } from "@/server/telegram/invite-token";
 import { publishEventSafe } from "@/server/realtime/publish";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
 // Telegram may burst updates; the runtime must be Node (crypto + fetch).
 export const runtime = "nodejs";
@@ -144,7 +145,7 @@ async function recordIncoming(
   clinic: TgClinicMinimal & { tgWebhookSecret: string | null },
   chatId: string,
   message: TgIncomingMessage,
-): Promise<{ conversationId: string; mode: "bot" | "takeover" }> {
+): Promise<{ conversationId: string; mode: "bot" | "takeover"; patientId: string | null }> {
   const body = message.text ?? (message.contact ? message.contact.phone_number : "");
   const now = new Date();
   const contact = {
@@ -176,7 +177,7 @@ async function recordIncoming(
         status: "OPEN",
         ...contact,
       },
-      select: { id: true, mode: true },
+      select: { id: true, mode: true, patientId: true },
     });
 
     // Dedupe on (clinicId, externalId) — Telegram may retry a webhook.
@@ -198,7 +199,7 @@ async function recordIncoming(
       if (!/Unique constraint/i.test(msg)) throw e;
     }
 
-    return { conversationId: conv.id, mode: conv.mode };
+    return { conversationId: conv.id, mode: conv.mode, patientId: conv.patientId };
   });
 }
 
@@ -319,6 +320,9 @@ export async function POST(
         chatId,
         msg,
       );
+      if (recorded.patientId) {
+        await bumpPatientLastContact(recorded.patientId);
+      }
       // Phase 15 Wave 5 — voice/audio from a doctor → SOAP draft pipeline.
       // Try the doctor-specific handler first. If the sender isn't an
       // authenticated DOCTOR, fall through to the regular flow so the

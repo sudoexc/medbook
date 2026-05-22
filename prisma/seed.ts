@@ -575,18 +575,26 @@ async function main() {
         continue;
       }
 
-      const p = await prisma.patient.create({
-        data: {
-          clinicId: clinic.id,
-          fullName: `${last} ${first}`,
-          phone,
-          phoneNormalized: normalized,
-          gender: Math.random() > 0.5 ? "MALE" : "FEMALE",
-          segment: pick(["NEW", "ACTIVE", "DORMANT", "VIP"] as const),
-          preferredChannel: "TG",
-          preferredLang: "RU",
-          consentMarketing: Math.random() > 0.3,
-        },
+      const p = await prisma.$transaction(async (tx) => {
+        const c = await tx.clinic.update({
+          where: { id: clinic.id },
+          data: { patientCounter: { increment: 1 } },
+          select: { patientCounter: true },
+        });
+        return tx.patient.create({
+          data: {
+            clinicId: clinic.id,
+            patientNumber: c.patientCounter,
+            fullName: `${last} ${first}`,
+            phone,
+            phoneNormalized: normalized,
+            gender: Math.random() > 0.5 ? "MALE" : "FEMALE",
+            segment: pick(["NEW", "ACTIVE", "DORMANT", "VIP"] as const),
+            preferredChannel: "TG",
+            preferredLang: "RU",
+            consentMarketing: Math.random() > 0.3,
+          },
+        });
       });
       createdPatients.push({ id: p.id });
     }

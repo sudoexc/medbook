@@ -16,6 +16,14 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/atoms/empty-state";
 import {
   Dialog,
@@ -37,9 +45,11 @@ import {
 
 import type { Patient } from "../../_hooks/use-patient";
 import {
+  flattenDocuments,
   useCreateDocument,
   useDeleteDocument,
-  usePatientDocuments,
+  usePatientDocumentsInfinite,
+  type DocumentTypeFilter,
   type PatientDocument,
 } from "../../_hooks/use-patient-documents";
 
@@ -70,7 +80,19 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   const tType = useTranslations("patientCard.documents.types");
   const locale = useLocale() as Locale;
 
-  const q = usePatientDocuments(patient.id);
+  const [searchInput, setSearchInput] = React.useState("");
+  const [typeFilter, setTypeFilter] = React.useState<DocumentTypeFilter>("ALL");
+  // Debounce the search input so each keystroke doesn't trigger a request.
+  const [searchDebounced, setSearchDebounced] = React.useState("");
+  React.useEffect(() => {
+    const id = window.setTimeout(() => setSearchDebounced(searchInput), 250);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
+
+  const q = usePatientDocumentsInfinite(patient.id, {
+    q: searchDebounced,
+    type: typeFilter,
+  });
   const create = useCreateDocument(patient.id);
   const remove = useDeleteDocument(patient.id);
   const [signOpen, setSignOpen] = React.useState(false);
@@ -79,7 +101,8 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   const [deleteTarget, setDeleteTarget] =
     React.useState<PatientDocument | null>(null);
 
-  const docs = q.data?.rows ?? [];
+  const docs = React.useMemo(() => flattenDocuments(q.data), [q.data]);
+  const hasFilters = searchDebounced.trim().length > 0 || typeFilter !== "ALL";
 
   const confirmDelete = React.useCallback(async () => {
     if (!deleteTarget) return;
@@ -99,53 +122,34 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
       fileUrl: string;
       mimeType: string | null;
       sizeBytes: number | null;
-      stub: boolean;
     }> => {
-      const presignRes = await fetch("/api/crm/documents/upload-url", {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("patientId", patient.id);
+      const res = await fetch("/api/crm/documents/upload", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          contentType: file.type || "application/octet-stream",
-          patientId: patient.id,
-        }),
+        body: fd,
       });
-      if (!presignRes.ok) {
-        throw new Error(`presign HTTP ${presignRes.status}`);
+      if (!res.ok) {
+        let detail = `upload HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) detail = body.error;
+        } catch {
+          // ignore non-json error bodies
+        }
+        throw new Error(detail);
       }
-      const presign = (await presignRes.json()) as {
-        key: string;
-        uploadUrl: string | null;
-        publicUrl: string | null;
-        stub?: boolean;
+      const data = (await res.json()) as {
+        fileUrl: string;
+        mimeType: string | null;
+        sizeBytes: number | null;
       };
-
-      if (presign.stub || !presign.uploadUrl || !presign.publicUrl) {
-        return {
-          fileUrl: `pending://${encodeURIComponent(file.name)}`,
-          mimeType: file.type || null,
-          sizeBytes: file.size ?? null,
-          stub: true,
-        };
-      }
-
-      const putRes = await fetch(presign.uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
-      });
-      if (!putRes.ok) {
-        throw new Error(`upload HTTP ${putRes.status}`);
-      }
-
       return {
-        fileUrl: presign.publicUrl,
-        mimeType: file.type || null,
-        sizeBytes: file.size ?? null,
-        stub: false,
+        fileUrl: data.fileUrl,
+        mimeType: data.mimeType,
+        sizeBytes: data.sizeBytes,
       };
     },
     [patient.id],
@@ -156,11 +160,9 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
       const arr = Array.from(files);
       if (arr.length === 0) return;
       setUploading(true);
-      let stubCount = 0;
       try {
         for (const file of arr) {
           const uploaded = await uploadOne(file);
-          if (uploaded.stub) stubCount += 1;
           await create.mutateAsync({
             patientId: patient.id,
             title: file.name,
@@ -170,11 +172,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
             sizeBytes: uploaded.sizeBytes,
           });
         }
-        if (stubCount === arr.length) {
-          toast.success(t("uploadStub", { count: arr.length }));
-        } else {
-          toast.success(t("uploaded", { count: arr.length }));
-        }
+        toast.success(t("uploaded", { count: arr.length }));
       } catch (err) {
         const e = err as Error;
         toast.error(t("uploadError", { message: e.message }));
@@ -247,11 +245,62 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
         </div>
       </div>
 
-      {docs.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="search"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={t("searchPlaceholder")}
+          className="h-9 max-w-xs"
+        />
+        <Select
+          value={typeFilter}
+          onValueChange={(v) => setTypeFilter(v as DocumentTypeFilter)}
+        >
+          <SelectTrigger className="h-9 w-[180px]">
+            <SelectValue placeholder={t("typeFilterPlaceholder")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">{t("typeFilterAll")}</SelectItem>
+            {DOC_TYPES.map((dt) => (
+              <SelectItem key={dt} value={dt}>
+                {tType(
+                  dt.toLowerCase() as
+                    | "referral"
+                    | "prescription"
+                    | "result"
+                    | "consent"
+                    | "contract"
+                    | "receipt"
+                    | "other",
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {hasFilters ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearchInput("");
+              setTypeFilter("ALL");
+            }}
+          >
+            {t("clearFilters")}
+          </Button>
+        ) : null}
+      </div>
+
+      {q.isLoading ? (
+        <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          …
+        </div>
+      ) : docs.length === 0 ? (
         <EmptyState
           icon={<FileIcon />}
-          title={t("empty")}
-          description={t("emptyDescription")}
+          title={hasFilters ? t("emptyFiltered") : t("empty")}
+          description={hasFilters ? undefined : t("emptyDescription")}
         />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -293,7 +342,9 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   <span>{formatDate(doc.createdAt, locale, "short")}</span>
                 </div>
                 <div className="mt-2 flex gap-1">
-                  {doc.fileUrl.startsWith("http") ? (
+                  {doc.fileUrl.startsWith("http") ||
+                  doc.fileUrl.startsWith("/api/") ||
+                  doc.fileUrl.startsWith("data:") ? (
                     <a
                       href={doc.fileUrl}
                       target="_blank"
@@ -325,6 +376,19 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
           ))}
         </div>
       )}
+
+      {q.hasNextPage ? (
+        <div className="flex justify-center pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void q.fetchNextPage()}
+            disabled={q.isFetchingNextPage}
+          >
+            {q.isFetchingNextPage ? "…" : t("loadMore")}
+          </Button>
+        </div>
+      ) : null}
 
       <SignaturePadDialog
         open={signOpen}

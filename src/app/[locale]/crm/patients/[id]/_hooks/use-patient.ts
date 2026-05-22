@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 /**
@@ -62,6 +63,7 @@ export type Patient = {
   discountPct: number;
   lastVisitAt: string | null;
   nextVisitAt: string | null;
+  lastContactedAt: string | null;
   consentMarketing: boolean;
   createdAt: string;
   updatedAt: string;
@@ -79,6 +81,7 @@ export type PatientUpdateInput = Partial<
     | "balance"
     | "lastVisitAt"
     | "nextVisitAt"
+    | "lastContactedAt"
     | "createdAt"
     | "updatedAt"
     | "appointments"
@@ -110,6 +113,7 @@ export function usePatient(id: string) {
  */
 export function usePatchPatient(id: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.patient");
   return useMutation<Patient, Error, PatientUpdateInput, { previous?: Patient }>(
     {
       mutationFn: async (patch) => {
@@ -142,7 +146,7 @@ export function usePatchPatient(id: string) {
         if (context?.previous) {
           qc.setQueryData(patientKey(id), context.previous);
         }
-        toast.error(err.message || "Не удалось сохранить");
+        toast.error(err.message || t("saveFailed"));
       },
       onSuccess: (fresh) => {
         qc.setQueryData<Patient>(patientKey(id), (prev) =>

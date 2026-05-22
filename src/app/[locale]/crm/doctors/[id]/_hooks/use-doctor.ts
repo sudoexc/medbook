@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 /**
@@ -118,6 +119,7 @@ export function useDoctor(id: string) {
 
 export function usePatchDoctor(id: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.doctor");
   return useMutation<DoctorDetail, Error, DoctorUpdateInput, { prev?: DoctorDetail }>({
     mutationFn: async (patch) => {
       const res = await fetch(`/api/crm/doctors/${id}`, {
@@ -147,7 +149,7 @@ export function usePatchDoctor(id: string) {
     },
     onError: (err, _patch, context) => {
       if (context?.prev) qc.setQueryData(doctorKey(id), context.prev);
-      toast.error(err.message || "Не удалось сохранить");
+      toast.error(err.message || t("saveFailed"));
     },
     onSuccess: (fresh) => {
       qc.setQueryData<DoctorDetail>(doctorKey(id), (prev) =>

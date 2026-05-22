@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
 import { EmptyState } from "@/components/atoms/empty-state";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -25,7 +26,8 @@ import {
 import type { Patient } from "../../_hooks/use-patient";
 import {
   filterTimeline,
-  usePatientCommunications,
+  flattenCommunications,
+  usePatientCommunicationsInfinite,
   type CommunicationFilter,
   type CommunicationItem,
 } from "../../_hooks/use-patient-communications";
@@ -54,19 +56,20 @@ export interface CommunicationsTabProps {
 
 export function CommunicationsTab({ patient }: CommunicationsTabProps) {
   const t = useTranslations("patientCard.communications");
-  const q = usePatientCommunications(patient.id);
+  const q = usePatientCommunicationsInfinite(patient.id);
   const [filter, setFilter] = React.useState<CommunicationFilter>("ALL");
 
+  const items = React.useMemo(() => flattenCommunications(q.data), [q.data]);
   const filtered = React.useMemo(
-    () => filterTimeline(q.data?.items, filter),
-    [q.data, filter],
+    () => filterTimeline(items, filter),
+    [items, filter],
   );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="text-xs text-muted-foreground">
-          {t("total", { count: q.data?.items.length ?? 0 })}
+          {t("total", { count: items.length })}
         </div>
         <Select
           value={filter}
@@ -92,7 +95,21 @@ export function CommunicationsTab({ patient }: CommunicationsTabProps) {
       ) : filtered.length === 0 ? (
         <EmptyState icon={<InboxIcon />} title={t("empty")} />
       ) : (
-        <CommunicationsList items={filtered} />
+        <>
+          <CommunicationsList items={filtered} />
+          {q.hasNextPage ? (
+            <div className="flex justify-center pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void q.fetchNextPage()}
+                disabled={q.isFetchingNextPage}
+              >
+                {q.isFetchingNextPage ? "…" : t("loadMore")}
+              </Button>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

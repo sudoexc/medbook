@@ -85,6 +85,12 @@ export type ReminderItem = {
   status: string;
 };
 
+export type RemindersBlock = {
+  items: ReminderItem[];
+  /** Total actionable reminders behind the preview slice. */
+  total: number;
+};
+
 export type UnreadResultItem = {
   id: string;
   testName: string;
@@ -127,7 +133,7 @@ export type DoctorToday = {
   daySummary: DaySummary;
   ai: { summary: string | null; alerts: unknown[]; recommendations: unknown[] };
   actionItems: ActionItem[];
-  reminders: ReminderItem[];
+  reminders: RemindersBlock;
   unreadResults: UnreadResultItem[];
   drafts: DraftItem[];
   recentPatients: RecentPatientItem[];

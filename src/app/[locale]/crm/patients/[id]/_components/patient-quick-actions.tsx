@@ -137,15 +137,8 @@ export function PatientQuickActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={() => toast.info(t("mergeDuplicatesSoon"))}
-          >
-            {t("mergeDuplicates")}
-          </DropdownMenuItem>
-          {/* Phase 17 Wave 3 — DSAR data export, ADMIN only. */}
           {isAdmin ? (
             <>
-              <DropdownMenuSeparator />
               <DropdownMenuItem
                 disabled={exporting}
                 onClick={() => onExportData(true)}
@@ -160,9 +153,9 @@ export function PatientQuickActions({
                 <DownloadIcon className="size-4" />
                 {t("exportDataToAdmin")}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
             </>
           ) : null}
-          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onOpenDeleteDialog}
             className="text-destructive focus:bg-destructive/10 focus:text-destructive"

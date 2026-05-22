@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 export type PatientDocument = {
@@ -32,19 +34,96 @@ export type DocumentsListResponse = {
   nextCursor: string | null;
 };
 
+export type DocumentTypeFilter = PatientDocument["type"] | "ALL";
+
+export type PatientDocumentsFilters = {
+  /** Free-text search — filename, patient name, phone. */
+  q?: string;
+  /** Document type narrowing; "ALL" or omitted means no filter. */
+  type?: DocumentTypeFilter;
+};
+
+const PAGE_SIZE = 30;
+
+/**
+ * Single-shot fetch retained for surfaces that just want "the first page of
+ * documents" (the right-rail summary). Internally uses the same paginated
+ * endpoint; we only render the first 50 rows here.
+ */
 export function usePatientDocuments(patientId: string) {
   return useQuery<DocumentsListResponse, Error>({
     queryKey: ["patient", patientId, "documents"],
     queryFn: async ({ signal }) => {
       const res = await fetch(
-        `/api/crm/documents?patientId=${encodeURIComponent(patientId)}&limit=100`,
-        {  credentials: "include", signal },
+        `/api/crm/documents?patientId=${encodeURIComponent(patientId)}&limit=50`,
+        { credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as DocumentsListResponse;
     },
     staleTime: 15_000,
   });
+}
+
+/**
+ * Cursor-paginated infinite query for the patient-card Documents tab.
+ *
+ * The server uses Prisma `cursor + skip:1` on the `id` column, ordered by
+ * `createdAt desc`. `?q=` and `?type=` are passed straight through to the
+ * list endpoint — keep the filter values in the query key so cache buckets
+ * stay separate per filter combo.
+ */
+export function usePatientDocumentsInfinite(
+  patientId: string,
+  filters: PatientDocumentsFilters = {},
+) {
+  const q = filters.q?.trim() ?? "";
+  const type = filters.type && filters.type !== "ALL" ? filters.type : undefined;
+  return useInfiniteQuery<
+    DocumentsListResponse,
+    Error,
+    { pages: DocumentsListResponse[]; pageParams: (string | undefined)[] },
+    readonly [
+      "patient",
+      string,
+      "documents",
+      "infinite",
+      { q: string; type: string | undefined },
+    ],
+    string | undefined
+  >({
+    queryKey: [
+      "patient",
+      patientId,
+      "documents",
+      "infinite",
+      { q, type },
+    ] as const,
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      params.set("patientId", patientId);
+      params.set("limit", String(PAGE_SIZE));
+      if (q) params.set("q", q);
+      if (type) params.set("type", type);
+      if (pageParam) params.set("cursor", pageParam);
+      const res = await fetch(`/api/crm/documents?${params.toString()}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as DocumentsListResponse;
+    },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: 15_000,
+  });
+}
+
+export function flattenDocuments(
+  data: { pages: DocumentsListResponse[] } | undefined,
+): PatientDocument[] {
+  if (!data) return [];
+  return data.pages.flatMap((p) => p.rows);
 }
 
 export type CreateDocumentInput = {
@@ -59,6 +138,7 @@ export type CreateDocumentInput = {
 
 export function useCreateDocument(patientId: string) {
   const qc = useQueryClient();
+  const t = useTranslations("crmToasts.patient");
   return useMutation<PatientDocument, Error, CreateDocumentInput>({
     mutationFn: async (input) => {
       const res = await fetch(`/api/crm/documents`, {
@@ -77,9 +157,9 @@ export function useCreateDocument(patientId: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["patient", patientId, "documents"] });
-      toast.success("Документ добавлен");
+      toast.success(t("documentAdded"));
     },
-    onError: (e) => toast.error(e.message || "Не удалось загрузить документ"),
+    onError: (e) => toast.error(e.message || t("documentFailed")),
   });
 }
 

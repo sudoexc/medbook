@@ -1027,12 +1027,74 @@ async function cleanupStressLeftovers(clinicId: string): Promise<number> {
   if (ids.length > 0) {
     await prisma.payment.deleteMany({ where: { patientId: { in: ids } } });
     await prisma.document.deleteMany({ where: { patientId: { in: ids } } });
+    // Stress runs that have since been retired left MedicalCase, allergies,
+    // chronic conditions, etc — sweep them up so the Patient delete succeeds.
+    await prisma.medicalCase.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.patientAllergy.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.patientChronicCondition.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.patientDiagnosis.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.visitNote.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.labOrder.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.prescription.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.review.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.reminder.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.communication.deleteMany({ where: { patientId: { in: ids } } });
+    await prisma.conversation.updateMany({
+      where: { patientId: { in: ids } },
+      data: { patientId: null },
+    });
+    await prisma.call.updateMany({
+      where: { patientId: { in: ids } },
+      data: { patientId: null },
+    });
     await prisma.patient.deleteMany({ where: { id: { in: ids } } });
   }
-  if (cabIds.length > 0) {
-    await prisma.cabinet.deleteMany({ where: { id: { in: cabIds } } });
+  // Stress doctors hold the STRESS cabinets via Doctor.cabinetId UNIQUE NOT NULL.
+  // Wipe their schedules, service links, the doctor row, then the cabinet.
+  const stressDoctors = await prisma.doctor.findMany({
+    where: {
+      clinicId,
+      OR: [
+        { slug: { startsWith: "STRESS" } },
+        { slug: { startsWith: "stress-" } },
+        { nameRu: { contains: "Стресс" } },
+        { nameRu: { contains: "Stress" } },
+      ],
+    },
+    select: { id: true, cabinetId: true },
+  });
+  const docIds = stressDoctors.map((d) => d.id);
+  const extraCabIds = stressDoctors.map((d) => d.cabinetId).filter((c): c is string => !!c);
+  if (docIds.length > 0) {
+    await prisma.doctorSchedule.deleteMany({ where: { doctorId: { in: docIds } } });
+    await prisma.doctorTimeOff.deleteMany({ where: { doctorId: { in: docIds } } });
+    await prisma.serviceOnDoctor.deleteMany({ where: { doctorId: { in: docIds } } });
+    await prisma.doctorPreset.deleteMany({ where: { doctorId: { in: docIds } } }).catch(() => {});
+    await prisma.doctorFavorite.deleteMany({ where: { doctorId: { in: docIds } } }).catch(() => {});
+    await prisma.doctorNotificationPref.deleteMany({ where: { doctorId: { in: docIds } } }).catch(() => {});
+    // Appointments tied to these stress doctors — wipe with cascading deps.
+    const orphanApptIds = (
+      await prisma.appointment.findMany({
+        where: { doctorId: { in: docIds } },
+        select: { id: true },
+      })
+    ).map((r) => r.id);
+    if (orphanApptIds.length > 0) {
+      await prisma.appointmentService.deleteMany({ where: { appointmentId: { in: orphanApptIds } } });
+      await prisma.payment.deleteMany({ where: { appointmentId: { in: orphanApptIds } } });
+      await prisma.notificationSend.deleteMany({ where: { appointmentId: { in: orphanApptIds } } });
+      await prisma.visitNote.deleteMany({ where: { appointmentId: { in: orphanApptIds } } }).catch(() => {});
+      await prisma.labOrder.deleteMany({ where: { appointmentId: { in: orphanApptIds } } }).catch(() => {});
+      await prisma.labResult.deleteMany({ where: { appointmentId: { in: orphanApptIds } } }).catch(() => {});
+      await prisma.appointment.deleteMany({ where: { id: { in: orphanApptIds } } });
+    }
+    await prisma.doctor.deleteMany({ where: { id: { in: docIds } } });
   }
-  return ids.length + cabIds.length;
+  const allCabIds = Array.from(new Set([...cabIds, ...extraCabIds]));
+  if (allCabIds.length > 0) {
+    await prisma.cabinet.deleteMany({ where: { id: { in: allCabIds } } }).catch(() => {});
+  }
+  return ids.length + allCabIds.length + docIds.length;
 }
 
 /**

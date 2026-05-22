@@ -38,7 +38,10 @@ export function UnreadResults() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Непрочитанные результаты
+          Мои новые результаты
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          Лабы по моим назначениям, ещё не просмотренные
         </div>
       </header>
 

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   PhoneIncomingIcon,
@@ -47,6 +47,7 @@ export function CallsWidget({
   className,
 }: CallsWidgetProps) {
   const t = useTranslations("reception.calls");
+  const locale = useLocale();
   const active = rows.filter((c) => !c.endedAt);
   const hero = active[0] ?? null;
   const queued = (hero ? active.slice(1) : active).slice(0, 3);
@@ -72,7 +73,7 @@ export function CallsWidget({
           ) : null}
         </div>
         <Link
-          href="/crm/call-center"
+          href={`/${locale}/crm/call-center`}
           className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
         >
           {t("viewAll")}
@@ -130,7 +131,7 @@ function HeroCall({
   onAnswer: () => void;
 }) {
   const t = useTranslations("reception.calls");
-  const isVip = row.patient && /VIP/i.test(row.patient.fullName); // lightweight flag
+  const isVip = row.patient?.segment === "VIP";
   const patch = useCallPatch();
   const onReject = async () => {
     try {
@@ -221,6 +222,7 @@ function HeroCall({
 
 function QueueCallRow({ row }: { row: CallRow }) {
   const t = useTranslations("reception.calls");
+  const locale = useLocale();
   const duration = row.durationSec;
   const durationLabel =
     duration != null
@@ -231,7 +233,7 @@ function QueueCallRow({ row }: { row: CallRow }) {
   return (
     <li>
       <Link
-        href={`/crm/call-center?active=${row.id}`}
+        href={`/${locale}/crm/call-center?active=${row.id}`}
         className="flex items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
       >
         <AvatarWithStatus

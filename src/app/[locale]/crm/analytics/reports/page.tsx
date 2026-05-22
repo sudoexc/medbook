@@ -16,7 +16,8 @@ import { ReportsListClient } from "./_components/reports-list-client";
  * /crm/analytics/reports — saved reports landing.
  *
  * SSR-renders the first page so the client has data on first paint and
- * can switch pages via the API. ADMIN-only.
+ * can switch pages via the API. ADMIN-only, with SUPER_ADMIN allowed when
+ * they've impersonated a clinic (matches api-handler's checkRoles bypass).
  */
 export default async function SavedReportsPage({
   params,
@@ -26,7 +27,9 @@ export default async function SavedReportsPage({
   const { locale } = await params;
   const session = await auth();
   if (!session?.user) redirect(`/${locale}/login`);
-  if (session.user.role !== "ADMIN") notFound();
+  if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
+    notFound();
+  }
   if (!session.user.clinicId) notFound();
 
   const lang: "ru" | "uz" = locale === "uz" ? "uz" : "ru";

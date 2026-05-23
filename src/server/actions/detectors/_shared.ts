@@ -19,12 +19,16 @@
  * no-op gate inside `upsertAction`.
  */
 
-import type { PrismaClient } from "@/generated/prisma/client";
-
 import type { TenantScopedPrisma } from "@/lib/prisma";
 
-/** Subset of the tenant-scoped client we accept everywhere. */
-export type PrismaLike = TenantScopedPrisma | PrismaClient;
+/**
+ * Subset of the tenant-scoped client we accept everywhere. Previously a
+ * `TenantScopedPrisma | PrismaClient` union to "allow mocks", but the union
+ * confused TS's overload resolution for extended-client methods (TS2349
+ * "expression is not callable"). Tests pass `as never` structural mocks
+ * anyway, so the union bought nothing — narrowed to the extended type.
+ */
+export type PrismaLike = TenantScopedPrisma;
 
 /** Round `n` to `digits` decimal places. Stable for dedupe key churn. */
 export function round(n: number, digits = 2): number {

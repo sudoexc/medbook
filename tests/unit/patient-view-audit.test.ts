@@ -11,7 +11,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { recordPatientView } from "@/server/audit/patient-view";
-import type { PrismaClient } from "@/generated/prisma/client";
 
 type PatientViewLike = {
   id: string;
@@ -56,9 +55,9 @@ function makePrisma(initialRows: PatientViewLike[] = []) {
     return row;
   });
   return {
-    prisma: {
-      patientView: { findFirst, create },
-    } as unknown as PrismaClient,
+    // Structural mock; the helper only touches `patientView.findFirst|create`.
+    // Mirrors how detector tests cast — see `tests/unit/detectors/*`.
+    prisma: { patientView: { findFirst, create } } as never,
     rows,
     findFirst,
     create,
@@ -148,7 +147,7 @@ describe("recordPatientView", () => {
         findFirst: vi.fn().mockRejectedValue(new Error("db down")),
         create: vi.fn(),
       },
-    } as unknown as PrismaClient;
+    } as never;
     const written = await recordPatientView({ prisma: broken, ...baseInput });
     expect(written).toBe(false);
   });

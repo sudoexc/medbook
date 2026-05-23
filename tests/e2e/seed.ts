@@ -308,26 +308,49 @@ async function main() {
       // differentiate phones between clinics so phoneNormalized never collides
       const raw = p.phone.slice(0, -1) + clinicPhoneSuffix;
       const normalized = normalizePhone(raw);
-      const patient = await prisma.patient.upsert({
+      // upsert can't allocate `patientNumber` from `clinic.patientCounter`, so
+      // we split into find-or-create-in-tx; updates only touch mutable fields.
+      const found = await prisma.patient.findUnique({
         where: { clinicId_phoneNormalized: { clinicId: clinic.id, phoneNormalized: normalized } },
-        update: {
-          fullName: p.fullName,
-          gender: p.gender,
-          segment: p.segment,
-        },
-        create: {
-          clinicId: clinic.id,
-          fullName: p.fullName,
-          phone: raw,
-          phoneNormalized: normalized,
-          gender: p.gender,
-          segment: p.segment,
-          preferredChannel: "TG",
-          preferredLang: "RU",
-          consentMarketing: true,
-        },
+        select: { id: true },
       });
-      createdPatients.push({ id: patient.id });
+      let patientId: string;
+      if (found) {
+        await prisma.patient.update({
+          where: { id: found.id },
+          data: {
+            fullName: p.fullName,
+            gender: p.gender,
+            segment: p.segment,
+          },
+        });
+        patientId = found.id;
+      } else {
+        const created = await prisma.$transaction(async (tx) => {
+          const c = await tx.clinic.update({
+            where: { id: clinic.id },
+            data: { patientCounter: { increment: 1 } },
+            select: { patientCounter: true },
+          });
+          return tx.patient.create({
+            data: {
+              clinicId: clinic.id,
+              patientNumber: c.patientCounter,
+              fullName: p.fullName,
+              phone: raw,
+              phoneNormalized: normalized,
+              gender: p.gender,
+              segment: p.segment,
+              preferredChannel: "TG",
+              preferredLang: "RU",
+              consentMarketing: true,
+            },
+            select: { id: true },
+          });
+        });
+        patientId = created.id;
+      }
+      createdPatients.push({ id: patientId });
     }
 
     // 5 Appointments today (idempotent by composite natural key: date+doctor+patient)

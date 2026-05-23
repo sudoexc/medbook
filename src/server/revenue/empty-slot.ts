@@ -190,10 +190,12 @@ const SLOT_OCCUPYING_STATUSES = [
 ] as const;
 
 /**
- * Accept either the raw `PrismaClient` (used by ops scripts) or the
- * tenant-scoped wrapper (production code path). Mirrors `_shared.ts`.
+ * Tenant-scoped client. Narrowed from `TenantScopedPrisma | PrismaClient`
+ * because TS couldn't unify overload signatures across extended/raw
+ * clients (TS2349). Mirrors `_shared.ts`. The `$transaction` site casts
+ * explicitly to `PrismaClient` to expose the overload it needs.
  */
-type PrismaLike = TenantScopedPrisma | PrismaClient;
+type PrismaLike = TenantScopedPrisma;
 
 /** Average `Service.priceBase` (tiins) for doctors keyed by id. */
 async function loadAveragePriceByDoctor(

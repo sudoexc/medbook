@@ -17,8 +17,6 @@
  *   - `expiresAt` is set explicitly for volatile signals so `expireStaleActions`
  *     can sweep them without needing the 48h `updatedAt` fallback.
  */
-import type { PrismaClient } from "@/generated/prisma/client";
-
 import type {
   ActionPayload,
   ActionSeverity,
@@ -53,7 +51,9 @@ import {
   severityForUnconfirmed24h,
 } from "./detectors/unconfirmed-24h";
 
-type PrismaLike = TenantScopedPrisma | PrismaClient;
+// Narrowed from `TenantScopedPrisma | PrismaClient` — TS couldn't unify
+// the overload signatures (TS2349). Engine runs with the extended client.
+type PrismaLike = TenantScopedPrisma;
 
 export type DetectorRun = {
   type: ActionType;

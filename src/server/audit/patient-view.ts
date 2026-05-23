@@ -18,11 +18,13 @@
  * caught + logged. We never block the originating request on the audit
  * write.
  */
-import type { PrismaClient } from "@/generated/prisma/client";
 import type { TenantScopedPrisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
-type PrismaLike = PrismaClient | TenantScopedPrisma;
+// Narrowed from `PrismaClient | TenantScopedPrisma` — TS couldn't unify
+// overload signatures across extended/raw clients (TS2349). Real callers
+// always pass the extended `prisma`; tests would use `as never`.
+type PrismaLike = TenantScopedPrisma;
 
 export type PatientViewContext =
   | "patient.detail"

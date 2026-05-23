@@ -13,8 +13,6 @@
  * the engine can compose them inside a single context boundary.
  */
 
-import type { PrismaClient } from "@/generated/prisma/client";
-
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   defaultAssigneeRole,
@@ -27,10 +25,12 @@ import {
 import type { TenantScopedPrisma } from "@/lib/prisma";
 
 /**
- * Minimal subset of the tenant-scoped client we need so the helpers can
- * accept either the real `prisma` import or a mock in tests.
+ * Tenant-scoped client alias. Narrowed from the original union with
+ * `PrismaClient` because TS couldn't unify the overload signatures from
+ * the extended-vs-raw clients, surfacing as TS2349 across every call site.
+ * Test mocks bypass this with `as never`, so the union bought nothing.
  */
-type PrismaLike = TenantScopedPrisma | PrismaClient;
+type PrismaLike = TenantScopedPrisma;
 
 export type UpsertActionOptions = {
   /** Override default severity for this action type. */

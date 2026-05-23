@@ -113,17 +113,25 @@ async function makePatient(opts: {
   withTelegram: boolean;
 }): Promise<string> {
   const phone = `+99890${Math.floor(1_000_000 + Math.random() * 8_999_999)}`;
-  const p = await raw.patient.create({
-    data: {
-      clinicId: opts.s.clinicId,
-      fullName: `${RUN_ID}-${opts.tag}`,
-      phone,
-      phoneNormalized: normalizePhone(phone),
-      preferredLang: "RU",
-      preferredChannel: "TG",
-      telegramId: opts.withTelegram ? `tg-${RUN_ID}-${opts.tag}` : null,
-    },
-    select: { id: true },
+  const p = await raw.$transaction(async (tx) => {
+    const c = await tx.clinic.update({
+      where: { id: opts.s.clinicId },
+      data: { patientCounter: { increment: 1 } },
+      select: { patientCounter: true },
+    });
+    return tx.patient.create({
+      data: {
+        clinicId: opts.s.clinicId,
+        patientNumber: c.patientCounter,
+        fullName: `${RUN_ID}-${opts.tag}`,
+        phone,
+        phoneNormalized: normalizePhone(phone),
+        preferredLang: "RU",
+        preferredChannel: "TG",
+        telegramId: opts.withTelegram ? `tg-${RUN_ID}-${opts.tag}` : null,
+      },
+      select: { id: true },
+    });
   });
   return p.id;
 }

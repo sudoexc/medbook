@@ -86,14 +86,22 @@ async function setupFixture(label: string): Promise<Setup> {
   const phone = `+9989000${Math.floor(Math.random() * 1_000_000)
     .toString()
     .padStart(6, "0")}`;
-  const patient = await raw.patient.create({
-    data: {
-      clinicId: clinic.id,
-      fullName: `STRESS::${label}::${Date.now().toString(36)}`,
-      phone,
-      phoneNormalized: phone.replace(/\D/g, ""),
-    },
-    select: { id: true },
+  const patient = await raw.$transaction(async (tx) => {
+    const c = await tx.clinic.update({
+      where: { id: clinic.id },
+      data: { patientCounter: { increment: 1 } },
+      select: { patientCounter: true },
+    });
+    return tx.patient.create({
+      data: {
+        clinicId: clinic.id,
+        patientNumber: c.patientCounter,
+        fullName: `STRESS::${label}::${Date.now().toString(36)}`,
+        phone,
+        phoneNormalized: phone.replace(/\D/g, ""),
+      },
+      select: { id: true },
+    });
   });
 
   // Fresh services so no other test mutates them.

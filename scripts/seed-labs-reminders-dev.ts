@@ -33,12 +33,19 @@ async function main() {
     "Подготовить выписку",
     "Проверить рецепт",
   ];
-  const labCatalog = [
-    { testName: "Глюкоза крови", unit: "ммоль/л", refRange: "3.3-5.5", values: [{ v: "5.1", f: "NORMAL" as const }, { v: "6.4", f: "HIGH" as const }, { v: "3.0", f: "LOW" as const }] },
-    { testName: "Гемоглобин", unit: "г/л", refRange: "120-160", values: [{ v: "135", f: "NORMAL" as const }, { v: "108", f: "LOW" as const }] },
-    { testName: "Холестерин общий", unit: "ммоль/л", refRange: "3.0-5.2", values: [{ v: "4.5", f: "NORMAL" as const }, { v: "7.8", f: "HIGH" as const }, { v: "9.2", f: "CRITICAL" as const }] },
-    { testName: "ТТГ", unit: "мЕд/л", refRange: "0.4-4.0", values: [{ v: "2.1", f: "NORMAL" as const }, { v: "5.8", f: "HIGH" as const }] },
-    { testName: "СОЭ", unit: "мм/ч", refRange: "2-15", values: [{ v: "8", f: "NORMAL" as const }, { v: "32", f: "HIGH" as const }] },
+  type LabFlag = "NORMAL" | "LOW" | "HIGH" | "CRITICAL";
+  type LabValue = { v: string; f: LabFlag };
+  const labCatalog: Array<{
+    testName: string;
+    unit: string;
+    refRange: string;
+    values: LabValue[];
+  }> = [
+    { testName: "Глюкоза крови", unit: "ммоль/л", refRange: "3.3-5.5", values: [{ v: "5.1", f: "NORMAL" }, { v: "6.4", f: "HIGH" }, { v: "3.0", f: "LOW" }] },
+    { testName: "Гемоглобин", unit: "г/л", refRange: "120-160", values: [{ v: "135", f: "NORMAL" }, { v: "108", f: "LOW" }] },
+    { testName: "Холестерин общий", unit: "ммоль/л", refRange: "3.0-5.2", values: [{ v: "4.5", f: "NORMAL" }, { v: "7.8", f: "HIGH" }, { v: "9.2", f: "CRITICAL" }] },
+    { testName: "ТТГ", unit: "мЕд/л", refRange: "0.4-4.0", values: [{ v: "2.1", f: "NORMAL" }, { v: "5.8", f: "HIGH" }] },
+    { testName: "СОЭ", unit: "мм/ч", refRange: "2-15", values: [{ v: "8", f: "NORMAL" }, { v: "32", f: "HIGH" }] },
   ];
 
   const clinics = await prisma.clinic.findMany({ select: { id: true, slug: true } });

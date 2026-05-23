@@ -367,38 +367,48 @@ async function main() {
     const source = pick(SOURCES, i + 1);
     const tgId = i % 3 === 0 ? `${5_000_000 + i}` : null;
 
-    // Idempotency via uniqueBy (clinicId, phoneNormalized).
-    const patient = await prisma.patient.upsert({
-      where: {
-        clinicId_phoneNormalized: {
-          clinicId,
-          phoneNormalized: normalizePhone(phone),
-        },
-      },
-      update: {},
-      create: {
-        clinicId,
-        fullName,
-        phone,
-        phoneNormalized: normalizePhone(phone),
-        birthDate: birthDate(),
-        gender: female ? "FEMALE" : "MALE",
-        address: pick(ADDRESSES, i),
-        telegramId: tgId,
-        telegramUsername: tgUsername ?? null,
-        preferredChannel: tgId ? "TG" : "CALL",
-        preferredLang: i % 4 === 0 ? "UZ" : "RU",
-        source,
-        segment,
-        tags: [TAG, source.toLowerCase()],
-        consentMarketing: i % 3 !== 0,
-        ltv: 0,
-        visitsCount: 0,
-        balance: 0,
-        notes: i % 5 === 0 ? "Аллергия на анальгетики." : null,
-      },
+    // Idempotency via uniqueBy (clinicId, phoneNormalized). `patientNumber`
+    // is allocated atomically off `clinic.patientCounter` inside a tx so
+    // re-runs don't burn numbers when the patient already exists.
+    const phoneNormalized = normalizePhone(phone);
+    const existing = await prisma.patient.findUnique({
+      where: { clinicId_phoneNormalized: { clinicId, phoneNormalized } },
       select: { id: true },
     });
+    const patient = existing
+      ? existing
+      : await prisma.$transaction(async (tx) => {
+          const c = await tx.clinic.update({
+            where: { id: clinicId },
+            data: { patientCounter: { increment: 1 } },
+            select: { patientCounter: true },
+          });
+          return tx.patient.create({
+            data: {
+              clinicId,
+              patientNumber: c.patientCounter,
+              fullName,
+              phone,
+              phoneNormalized,
+              birthDate: birthDate(),
+              gender: female ? "FEMALE" : "MALE",
+              address: pick(ADDRESSES, i),
+              telegramId: tgId,
+              telegramUsername: tgUsername ?? null,
+              preferredChannel: tgId ? "TG" : "CALL",
+              preferredLang: i % 4 === 0 ? "UZ" : "RU",
+              source,
+              segment,
+              tags: [TAG, source.toLowerCase()],
+              consentMarketing: i % 3 !== 0,
+              ltv: 0,
+              visitsCount: 0,
+              balance: 0,
+              notes: i % 5 === 0 ? "Аллергия на анальгетики." : null,
+            },
+            select: { id: true },
+          });
+        });
     createdP++;
 
     // ─ Documents (1-3 per patient, varied types) ─────────────────────
@@ -1061,17 +1071,24 @@ async function cleanupStressLeftovers(clinicId: string): Promise<number> {
         { nameRu: { contains: "Stress" } },
       ],
     },
-    select: { id: true, cabinetId: true },
+    select: { id: true, cabinetId: true, userId: true },
   });
   const docIds = stressDoctors.map((d) => d.id);
+  // DoctorFavorite / DoctorNotificationPref are keyed by User.id (not Doctor.id),
+  // so we route the cleanup through the Doctor→User link when present.
+  const stressUserIds = stressDoctors
+    .map((d) => d.userId)
+    .filter((u): u is string => !!u);
   const extraCabIds = stressDoctors.map((d) => d.cabinetId).filter((c): c is string => !!c);
   if (docIds.length > 0) {
     await prisma.doctorSchedule.deleteMany({ where: { doctorId: { in: docIds } } });
     await prisma.doctorTimeOff.deleteMany({ where: { doctorId: { in: docIds } } });
     await prisma.serviceOnDoctor.deleteMany({ where: { doctorId: { in: docIds } } });
     await prisma.doctorPreset.deleteMany({ where: { doctorId: { in: docIds } } }).catch(() => {});
-    await prisma.doctorFavorite.deleteMany({ where: { doctorId: { in: docIds } } }).catch(() => {});
-    await prisma.doctorNotificationPref.deleteMany({ where: { doctorId: { in: docIds } } }).catch(() => {});
+    if (stressUserIds.length > 0) {
+      await prisma.doctorFavorite.deleteMany({ where: { userId: { in: stressUserIds } } }).catch(() => {});
+      await prisma.doctorNotificationPref.deleteMany({ where: { userId: { in: stressUserIds } } }).catch(() => {});
+    }
     // Appointments tied to these stress doctors — wipe with cascading deps.
     const orphanApptIds = (
       await prisma.appointment.findMany({

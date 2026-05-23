@@ -97,10 +97,12 @@ export function shouldSendReactivation(input: {
 }
 
 /**
- * Accept either the raw `PrismaClient` (used by ops scripts) or the
- * tenant-scoped wrapper (production code path).
+ * Tenant-scoped client. Narrowed from `TenantScopedPrisma | PrismaClient`
+ * because TS couldn't unify the overload signatures across extended/raw
+ * clients (TS2349). Ops scripts that still hand in a raw client will need
+ * to cast; the `$transaction` site already does an `as PrismaClient` cast.
  */
-type PrismaLike = TenantScopedPrisma | PrismaClient;
+type PrismaLike = TenantScopedPrisma;
 
 type PatientRow = {
   id: string;

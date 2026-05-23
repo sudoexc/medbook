@@ -30,7 +30,11 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { defaultRewardExpiry } from "@/lib/patient-experience/referral-reward";
 import { fireTrigger } from "@/server/notifications/triggers";
 
-type Tx = Prisma.TransactionClient | typeof prismaT;
+// Narrowed from `Prisma.TransactionClient | typeof prismaT` — the union
+// confused TS's overload resolution (TS2349). Real callers pass the
+// extended `prisma`; a transaction client would need an explicit cast at
+// the call site.
+type Tx = typeof prismaT;
 
 export async function mintReferralRewardOnCompletion(opts: {
   tx: Tx;

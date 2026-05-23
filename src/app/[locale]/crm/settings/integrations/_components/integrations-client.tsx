@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { intlLocale } from "@/lib/format";
 import {
   CheckCircle2Icon,
   CreditCardIcon,
@@ -680,6 +682,7 @@ function SmsTestButton({ smsConfigured }: { smsConfigured: boolean }) {
 
 function TgWebhookPanel() {
   const t = useTranslations("settings");
+  const locale = useLocale();
   const [open, setOpen] = React.useState(false);
   const statusQuery = useQuery({
     enabled: open,
@@ -749,7 +752,7 @@ function TgWebhookPanel() {
                     {statusQuery.data.webhook?.last_error_date
                       ? ` (${new Date(
                           statusQuery.data.webhook.last_error_date * 1000,
-                        ).toLocaleString()})`
+                        ).toLocaleString(intlLocale(locale))})`
                       : ""}
                   </dd>
                 </div>

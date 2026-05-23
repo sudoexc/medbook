@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { intlLocale } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import {
@@ -209,9 +210,7 @@ export function DocumentsPageClient() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {new Date(d.createdAt).toLocaleString(
-                        locale === "uz" ? "uz-UZ" : "ru-RU",
-                      )}
+                      {new Date(d.createdAt).toLocaleString(intlLocale(locale))}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {formatSize(d.sizeBytes)}

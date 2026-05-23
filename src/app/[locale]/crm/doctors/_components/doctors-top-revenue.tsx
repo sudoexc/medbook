@@ -4,6 +4,7 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+
 import { MoneyText } from "@/components/atoms/money-text";
 import {
   Select,
@@ -59,10 +60,6 @@ export function DoctorsTopRevenue({
     return withAgg.slice(0, 5);
   }, [doctors, aggByDoctor]);
 
-  // Synthetic +% deltas derived from doctor position in the list to match the
-  // layout of the mockup; will be replaced once we have a prior-period hook.
-  const deltas = [12, 8, 15, 5, -10];
-
   return (
     <div
       className={cn(
@@ -97,8 +94,6 @@ export function DoctorsTopRevenue({
           ranked.map((x, i) => {
             const name =
               locale === "uz" ? x.doctor.nameUz : x.doctor.nameRu;
-            const delta = deltas[i] ?? 0;
-            const positive = delta >= 0;
             return (
               <li
                 key={x.doctor.id}
@@ -115,17 +110,6 @@ export function DoctorsTopRevenue({
                   currency="UZS"
                   className="shrink-0 text-[12px] font-semibold tabular-nums"
                 />
-                <span
-                  className={cn(
-                    "ml-1 inline-flex shrink-0 items-center rounded-md px-1 text-[11px] font-bold tabular-nums",
-                    positive
-                      ? "bg-success/15 text-success"
-                      : "bg-destructive/10 text-destructive",
-                  )}
-                >
-                  {positive ? "+" : ""}
-                  {delta}%
-                </span>
               </li>
             );
           })

@@ -95,7 +95,8 @@ export function PatientSummaryCard({
   const locale = useLocale();
   const role = useCurrentRole();
   const qc = useQueryClient();
-  const canRefresh = role === "ADMIN" || role === "DOCTOR";
+  const canRefresh =
+    role === "ADMIN" || role === "SUPER_ADMIN" || role === "DOCTOR";
 
   const queryKey = summaryQueryKey(patientId, locale);
   const q = useQuery<SummaryResponse, Error>({

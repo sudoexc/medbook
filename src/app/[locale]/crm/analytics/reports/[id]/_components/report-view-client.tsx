@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
+import { intlLocale } from "@/lib/format";
 
 import type { ReportConfig } from "@/server/analytics/report-config";
 
@@ -44,29 +45,30 @@ export interface ReportViewClientProps {
   };
 }
 
-function formatTiins(tiins: number): string {
-  return new Intl.NumberFormat("ru-RU").format(Math.round(tiins / 100));
+function formatTiins(tiins: number, tag: string): string {
+  return new Intl.NumberFormat(tag).format(Math.round(tiins / 100));
 }
 
 function formatCellForTable(
   v: unknown,
   unit: ReportColumnDescriptor["unit"],
+  tag: string,
 ): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "string") {
     if (unit === "tiins") {
       const n = Number(v);
-      if (Number.isFinite(n)) return formatTiins(n);
+      if (Number.isFinite(n)) return formatTiins(n, tag);
     }
     return v;
   }
   if (typeof v === "number") {
-    if (unit === "tiins") return formatTiins(v);
+    if (unit === "tiins") return formatTiins(v, tag);
     if (unit === "ratio") return `${(v * 100).toFixed(1)}%`;
-    return v.toLocaleString();
+    return v.toLocaleString(tag);
   }
   if (typeof v === "bigint") {
-    if (unit === "tiins") return formatTiins(Number(v));
+    if (unit === "tiins") return formatTiins(Number(v), tag);
     return v.toString();
   }
   return String(v);
@@ -78,6 +80,7 @@ export function ReportViewClient({
 }: ReportViewClientProps): React.JSX.Element {
   const t = useTranslations("analyticsReports.view");
   const router = useRouter();
+  const dateTag = intlLocale(locale);
   const [loading, setLoading] = React.useState(true);
   const [result, setResult] = React.useState<ReportRunResponse | null>(null);
   const [deleting, setDeleting] = React.useState(false);
@@ -209,7 +212,7 @@ export function ReportViewClient({
             </span>
             <span>
               {t("generatedAt", {
-                ts: new Date(result.generatedAt).toLocaleString(),
+                ts: new Date(result.generatedAt).toLocaleString(dateTag),
               })}
             </span>
           </div>
@@ -244,7 +247,7 @@ export function ReportViewClient({
                               : "px-3 py-1.5"
                           }
                         >
-                          {formatCellForTable(row[c.key], c.unit)}
+                          {formatCellForTable(row[c.key], c.unit, dateTag)}
                         </td>
                       ))}
                     </tr>

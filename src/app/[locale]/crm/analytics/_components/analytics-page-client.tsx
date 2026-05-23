@@ -343,7 +343,6 @@ export function AnalyticsPageClient() {
                 repeatPct: tJourney("repeatPct"),
                 avgCheck: tJourney("avgCheck"),
                 revenue: tJourney("revenue"),
-                deltaPp: (value) => tSummary("deltaPp", { value }),
               }}
             />
           )}

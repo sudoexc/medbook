@@ -221,7 +221,7 @@ export function DoctorProfileClient({ id }: DoctorProfileClientProps) {
         >
           <DoctorServicesEditor
             doctorId={doctor.id}
-            canEdit={role === "ADMIN"}
+            canEdit={role === "ADMIN" || role === "SUPER_ADMIN"}
           />
         </TabsContent>
 

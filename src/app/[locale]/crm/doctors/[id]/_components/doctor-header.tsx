@@ -118,7 +118,7 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
             <CalendarPlusIcon className="size-4" />
             {t("newAppointment")}
           </Button>
-          {role === "ADMIN" ? (
+          {role === "ADMIN" || role === "SUPER_ADMIN" ? (
             <Button
               variant="outline"
               size="sm"
@@ -130,7 +130,7 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
           ) : null}
         </div>
       </div>
-      {role === "ADMIN" ? (
+      {role === "ADMIN" || role === "SUPER_ADMIN" ? (
         <CabinetPickerDialog
           open={cabinetOpen}
           onOpenChange={setCabinetOpen}

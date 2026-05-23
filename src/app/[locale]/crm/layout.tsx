@@ -164,7 +164,12 @@ export default async function CrmLayout({
       <div className="flex h-screen min-h-0 w-full bg-background">
         <CrmSidebar
           flags={flags}
-          role={session?.user?.role === "ADMIN" ? "ADMIN" : null}
+          role={
+            session?.user?.role === "ADMIN" ||
+            session?.user?.role === "SUPER_ADMIN"
+              ? "ADMIN"
+              : null
+          }
         />
         <div className="flex min-w-0 flex-1 flex-col">
           {impersonatedClinic && (

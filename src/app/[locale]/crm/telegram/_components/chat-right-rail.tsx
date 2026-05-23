@@ -949,7 +949,12 @@ function CreatePatientForm({
       toast.success(reused ? t("patientLinked") : t("patientCreated"));
       void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
       void qc.invalidateQueries({
-        queryKey: conversationsKey({ q: "", mode: "all", unreadOnly: false }),
+        queryKey: conversationsKey({
+          q: "",
+          mode: "all",
+          unreadOnly: false,
+          patientId: null,
+        }),
       });
     },
     onError: (err) => {

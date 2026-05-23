@@ -3,8 +3,7 @@
 /**
  * Row 3 — "Путь пациента (медицинские кейсы)" — full-width strip of 6 KPI
  * cards. Combines numbers from `cases` (MedicalCase) and `analytics` (revenue
- * + appointments) responses; period-over-period deltas are synthesized until
- * the API exposes prior-period series.
+ * + appointments) responses.
  */
 
 import * as React from "react";
@@ -29,18 +28,7 @@ export interface PatientJourneyStripProps {
     repeatPct: string;
     avgCheck: string;
     revenue: string;
-    deltaPp: (value: string) => string;
   };
-}
-
-function pctSigned(n: number): string {
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(1).replace(".", ",")}%`;
-}
-
-function ppSigned(n: number): string {
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(1).replace(".", ",")}`;
 }
 
 function pct(n: number): string {
@@ -50,14 +38,10 @@ function pct(n: number): string {
 function StripCard({
   label,
   value,
-  delta,
-  positive,
   className,
 }: {
   label: string;
   value: React.ReactNode;
-  delta?: string;
-  positive?: boolean;
   className?: string;
 }) {
   return (
@@ -73,20 +57,6 @@ function StripCard({
       <div className="text-[18px] font-bold leading-tight text-foreground tabular-nums">
         {value}
       </div>
-      {delta ? (
-        <span
-          className={cn(
-            "inline-flex w-fit items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums",
-            positive
-              ? "bg-success/15 text-success"
-              : "bg-destructive/10 text-destructive",
-          )}
-        >
-          {delta}
-        </span>
-      ) : (
-        <span className="h-4" />
-      )}
     </div>
   );
 }
@@ -127,17 +97,6 @@ export function PatientJourneyStrip({
   const avgCheck =
     completedTotal > 0 ? Math.round(totalRevenue / completedTotal) : 0;
 
-  // Synthesized period-over-period deltas. Stable per dataset shape; will be
-  // replaced once the API returns prior-period numbers alongside current.
-  const deltas = {
-    newPatients: 14.2,
-    firstConsult: 16.8,
-    repeatVisits: 12.3,
-    repeatPctPp: 3.7,
-    avgCheck: 9.1,
-    revenue: 18.6,
-  };
-
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
       <h2 className="text-[14px] font-semibold text-foreground">
@@ -148,26 +107,18 @@ export function PatientJourneyStrip({
         <StripCard
           label={labels.newPatients}
           value={newPatients.toLocaleString(tag)}
-          delta={pctSigned(deltas.newPatients)}
-          positive={deltas.newPatients >= 0}
         />
         <StripCard
           label={labels.firstConsult}
           value={firstConsult.toLocaleString(tag)}
-          delta={pctSigned(deltas.firstConsult)}
-          positive={deltas.firstConsult >= 0}
         />
         <StripCard
           label={labels.repeatVisits}
           value={repeatVisits.toLocaleString(tag)}
-          delta={pctSigned(deltas.repeatVisits)}
-          positive={deltas.repeatVisits >= 0}
         />
         <StripCard
           label={labels.repeatPct}
           value={pct(repeatPct)}
-          delta={labels.deltaPp(ppSigned(deltas.repeatPctPp))}
-          positive={deltas.repeatPctPp >= 0}
         />
         <StripCard
           label={labels.avgCheck}
@@ -178,8 +129,6 @@ export function PatientJourneyStrip({
               className="text-[18px] font-bold tabular-nums"
             />
           }
-          delta={pctSigned(deltas.avgCheck)}
-          positive={deltas.avgCheck >= 0}
         />
         <StripCard
           label={labels.revenue}
@@ -190,8 +139,6 @@ export function PatientJourneyStrip({
               className="text-[18px] font-bold tabular-nums"
             />
           }
-          delta={pctSigned(deltas.revenue)}
-          positive={deltas.revenue >= 0}
         />
       </div>
     </section>

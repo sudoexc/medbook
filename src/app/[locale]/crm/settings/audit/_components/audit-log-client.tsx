@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ScrollIcon } from "lucide-react";
+
+import { intlLocale } from "@/lib/format";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
@@ -173,6 +175,8 @@ export function AuditLogClient() {
 
 function EventsTab() {
   const t = useTranslations("settings");
+  const locale = useLocale();
+  const dateTag = intlLocale(locale);
   const searchParams = useSearchParams();
   const writeUrl = useUrlWriter();
 
@@ -372,7 +376,7 @@ function EventsTab() {
                       </div>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(row.createdAt).toLocaleString()}
+                      {new Date(row.createdAt).toLocaleString(dateTag)}
                     </div>
                   </div>
                   {row.meta ? (
@@ -413,6 +417,8 @@ function EventsTab() {
  */
 function PatientViewsTab() {
   const t = useTranslations("settings");
+  const locale = useLocale();
+  const dateTag = intlLocale(locale);
   const searchParams = useSearchParams();
   const writeUrl = useUrlWriter();
 
@@ -617,7 +623,7 @@ function PatientViewsTab() {
                     className="grid grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)_140px_minmax(0,1fr)] gap-3 border-b border-border px-3 py-2 text-sm"
                   >
                     <div className="text-xs text-muted-foreground">
-                      {new Date(row.createdAt).toLocaleString()}
+                      {new Date(row.createdAt).toLocaleString(dateTag)}
                     </div>
                     <div className="min-w-0 truncate">
                       {row.viewer ? (

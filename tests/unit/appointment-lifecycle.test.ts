@@ -155,11 +155,12 @@ describe("getQuickActions — reception card icon row", () => {
   const before = new Date("2026-06-01T09:30:00.000Z");
   const after = new Date("2026-06-01T10:30:00.000Z");
 
-  it("BOOKED + before slot → ARRIVED + START (no NO_SHOW yet)", () => {
+  it("RECEPTIONIST BOOKED + before slot → CONFIRM + ARRIVED (no START, no NO_SHOW yet)", () => {
     const a = getQuickActions("BOOKED", "RECEPTIONIST", start, before);
     const kinds = a.map((x) => x.kind);
+    expect(kinds).toContain("CONFIRM");
     expect(kinds).toContain("ARRIVED");
-    expect(kinds).toContain("START");
+    expect(kinds).not.toContain("START");
     expect(kinds).not.toContain("NO_SHOW");
   });
 
@@ -170,16 +171,16 @@ describe("getQuickActions — reception card icon row", () => {
     expect(noShow?.confirm).toBe(true);
   });
 
-  it("WAITING → START + NO_SHOW (when past), no ARRIVED", () => {
-    const a = getQuickActions("WAITING", "RECEPTIONIST", start, after);
+  it("DOCTOR WAITING → START + NO_SHOW (when past), no ARRIVED", () => {
+    const a = getQuickActions("WAITING", "DOCTOR", start, after);
     const kinds = a.map((x) => x.kind);
     expect(kinds).not.toContain("ARRIVED");
     expect(kinds).toContain("START");
     expect(kinds).toContain("NO_SHOW");
   });
 
-  it("IN_PROGRESS → COMPLETE only", () => {
-    const a = getQuickActions("IN_PROGRESS", "RECEPTIONIST", start, after);
+  it("DOCTOR IN_PROGRESS → COMPLETE only", () => {
+    const a = getQuickActions("IN_PROGRESS", "DOCTOR", start, after);
     const kinds = a.map((x) => x.kind);
     expect(kinds).toEqual(["COMPLETE"]);
   });

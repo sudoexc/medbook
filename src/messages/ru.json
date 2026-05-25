@@ -274,6 +274,7 @@
     "comment": "Комментарий",
     "status": {
       "booked": "Записан",
+      "confirmed": "Подтверждён",
       "waiting": "Ожидает",
       "inProgress": "На приёме",
       "completed": "Завершён",
@@ -555,6 +556,7 @@
     },
     "status": {
       "booked": "Записан",
+      "confirmed": "Подтверждён",
       "waiting": "Ожидает",
       "in_progress": "На приёме",
       "completed": "Завершён",
@@ -578,6 +580,16 @@
       "telegram": "Telegram",
       "website": "Сайт",
       "kiosk": "Киоск"
+    },
+    "confirmation": {
+      "title": "Подтверждено",
+      "via": {
+        "BOOKING_AUTO": "при записи",
+        "MANUAL_CRM": "вручную",
+        "SMS_REPLY": "SMS",
+        "TG_BUTTON": "Telegram",
+        "INBOUND_CALL": "по звонку"
+      }
     },
     "filters": {
       "search": "Поиск: пациент, врач, телефон",
@@ -940,7 +952,8 @@
       "clickToCreate": "Кликните, чтобы создать запись"
     },
     "chip": {
-      "statusBooked": "Подтверждён",
+      "statusBooked": "Записан",
+      "statusConfirmed": "Подтверждён",
       "statusWaiting": "Ожидает",
       "statusInProgress": "На приёме",
       "statusCompleted": "Пришёл",
@@ -957,7 +970,8 @@
       "byDoctor": "По врачу",
       "byCabinet": "По кабинету",
       "status": {
-        "BOOKED": "Подтверждён",
+        "BOOKED": "Записан",
+        "CONFIRMED": "Подтверждён",
         "WAITING": "Ожидает",
         "IN_PROGRESS": "На приёме",
         "COMPLETED": "Пришёл",
@@ -1725,6 +1739,29 @@
         "actions": "",
         "noNext": "—",
         "addAppointment": "Записать"
+      },
+      "panel": {
+        "ariaLabel": "Очередь врача",
+        "dragHandle": "Перетащить пациента",
+        "queueEmpty": "В очереди никого нет",
+        "addAppointment": "Записать",
+        "more": "Ещё",
+        "openCard": "Открыть карточку",
+        "primary": {
+          "CONFIRM": "Подтвердить",
+          "ARRIVED": "Пришёл",
+          "START": "Начать",
+          "COMPLETE": "Завершить",
+          "NO_SHOW": "Не пришёл"
+        },
+        "confirm": {
+          "cancel": "Отмена",
+          "proceed": "Подтвердить",
+          "NO_SHOW": {
+            "title": "Отметить «Не пришёл»?",
+            "description": "Пациент {patient} будет помечен как не пришедший. Действие необратимо без возврата в очередь вручную."
+          }
+        }
       }
     },
     "warnings": {
@@ -2981,6 +3018,28 @@
     "bubble": {
       "unknownCaller": "Неизвестный абонент",
       "linked": "пациент"
+    },
+    "unconfirmed": {
+      "ariaLabel": "Записи, требующие подтверждения",
+      "title": "К подтверждению",
+      "subtitle": "{count, plural, =0 {Нет неподтверждённых записей} one {{count} запись ждёт подтверждения} few {{count} записи ждут подтверждения} many {{count} записей ждут подтверждения} other {{count} записи ждут подтверждения}}",
+      "loading": "Загрузка…",
+      "call": "Позвонить",
+      "open": "Открыть запись",
+      "confirm": "Подтвердить",
+      "snooze": "Отложить",
+      "relative": {
+        "today": "сегодня {clock}",
+        "tomorrow": "завтра {clock}",
+        "inDays": "через {days, plural, one {{days} день} few {{days} дня} many {{days} дней} other {{days} дня}}, {clock}",
+        "inMinutes": "через {mins} мин ({clock})"
+      },
+      "toasts": {
+        "confirmed": "Подтверждено: {name}",
+        "confirmFailed": "Не удалось подтвердить запись",
+        "snoozed": "Отложено до завтра",
+        "snoozeFailed": "Не удалось отложить"
+      }
     }
   },
   "settings": {
@@ -4032,6 +4091,7 @@
     },
     "status": {
       "BOOKED": "Забронировано",
+      "CONFIRMED": "Подтверждено",
       "WAITING": "Ожидание",
       "IN_PROGRESS": "В процессе",
       "COMPLETED": "Завершено",
@@ -5010,6 +5070,7 @@
       "cancelFailed": "Ошибка отмены",
       "actionFailed": "Ошибка",
       "rescheduleFailed": "Не удалось перенести записи",
+      "reorderFailed": "Не удалось изменить порядок очереди",
       "statusFailed": "Ошибка изменения статуса"
     },
     "case": {

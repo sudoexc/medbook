@@ -60,7 +60,10 @@ export function KpiStrip({
   const today = dashboard?.today;
   const queue = dashboard?.queue;
   const totalToday = todayRows.length;
-  const waiting = pickBucket(queue, "WAITING") + pickBucket(queue, "BOOKED");
+  const waiting =
+    pickBucket(queue, "WAITING") +
+    pickBucket(queue, "BOOKED") +
+    pickBucket(queue, "CONFIRMED");
   const inProgress = today?.inProgress ?? pickBucket(queue, "IN_PROGRESS");
   const completed = today?.completed ?? pickBucket(queue, "COMPLETED");
   const noShow = pickBucket(queue, "NO_SHOW");

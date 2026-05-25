@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
+  CheckCircle2Icon,
   ChevronDownIcon,
   ClockIcon,
   ExternalLinkIcon,
@@ -331,6 +332,18 @@ export function AppointmentDrawer({
               <PreVisitQuestionnaireCard
                 preVisitData={appt.preVisitData}
                 preVisitSubmittedAt={appt.preVisitSubmittedAt}
+              />
+
+              {/* Stage 2.F — Confirmation pill. Renders only when the
+                  appointment has been confirmed (`confirmedAt != null`); we
+                  intentionally do NOT show an "unconfirmed" counterpart —
+                  that state is already implicit from the BOOKED lifecycle
+                  step below, and a second "still waiting" badge would just
+                  add visual noise. */}
+              <ConfirmationPill
+                confirmedAt={appt.confirmedAt}
+                confirmedVia={appt.confirmedVia}
+                locale={locale}
               />
 
               {/* Case badge — links visit to a MedicalCase ("episode of care"). */}
@@ -827,4 +840,57 @@ function formatHHMM(d: Date): string {
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   return `${h}:${m}`;
+}
+
+/**
+ * Stage 2.F — green "Подтверждено: <date> · <via>" pill.
+ *
+ * Read-only on purpose: confirmation is owned by the
+ * `confirmAppointment(...)` server helper (see `src/server/appointments/
+ * confirm.ts`) which stamps the via + actor based on the call path. The
+ * drawer just reflects what's already been written.
+ *
+ * The `via` enum lives on the Prisma model; we render a friendly label
+ * sourced from the locale bundle so the UI stays single-language without a
+ * per-locale switch here.
+ */
+function ConfirmationPill({
+  confirmedAt,
+  confirmedVia,
+  locale,
+}: {
+  confirmedAt: string | null;
+  confirmedVia:
+    | "BOOKING_AUTO"
+    | "MANUAL_CRM"
+    | "SMS_REPLY"
+    | "TG_BUTTON"
+    | "INBOUND_CALL"
+    | null;
+  locale: Locale;
+}) {
+  const t = useTranslations("appointments.confirmation");
+  if (!confirmedAt) return null;
+
+  const viaKey = confirmedVia ?? "MANUAL_CRM";
+  const viaLabel = t(`via.${viaKey}`);
+  // Compact "22 мая 14:02" / "22-may 14:02" — uses the existing locale
+  // formatter so date conventions match the rest of the drawer.
+  const stamp = formatDate(confirmedAt, locale, "long");
+  const time = formatDate(confirmedAt, locale, "time");
+
+  return (
+    <section className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2">
+      <CheckCircle2Icon className="size-4 shrink-0 text-[color:var(--success)]" aria-hidden />
+      <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+        <span className="font-semibold">{t("title")}</span>
+        <span className="mx-1 text-muted-foreground">·</span>
+        <span className="tabular-nums">
+          {stamp} {time}
+        </span>
+        <span className="mx-1 text-muted-foreground">·</span>
+        <span>{viaLabel}</span>
+      </p>
+    </section>
+  );
 }

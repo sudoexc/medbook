@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const AppointmentStatusEnum = z.enum([
   "BOOKED",
+  "CONFIRMED",
   "WAITING",
   "IN_PROGRESS",
   "COMPLETED",
@@ -87,7 +88,7 @@ export const QueryAppointmentSchema = z.object({
 });
 
 export const QueueStatusUpdateSchema = z.object({
-  queueStatus: z.enum(["WAITING", "IN_PROGRESS", "COMPLETED", "SKIPPED"]),
+  queueStatus: z.enum(["CONFIRMED", "WAITING", "IN_PROGRESS", "COMPLETED", "SKIPPED"]),
 });
 
 export const SlotsQuerySchema = z.object({
@@ -115,7 +116,13 @@ export const BulkRescheduleSchema = z.object({
     .refine((v) => v !== 0, "delta cannot be zero"),
 });
 
+export const ReorderQueueSchema = z.object({
+  doctorId: z.string().min(1),
+  orderedIds: z.array(z.string().min(1)).min(1).max(200),
+});
+
 export type CreateAppointment = z.infer<typeof CreateAppointmentSchema>;
 export type UpdateAppointment = z.infer<typeof UpdateAppointmentSchema>;
 export type QueryAppointment = z.infer<typeof QueryAppointmentSchema>;
 export type BulkReschedule = z.infer<typeof BulkRescheduleSchema>;
+export type ReorderQueue = z.infer<typeof ReorderQueueSchema>;

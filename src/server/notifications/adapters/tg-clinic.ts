@@ -11,14 +11,18 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { sendMessage, type TgClinicMinimal } from "@/server/telegram/send";
-import type { TgAdapter, TgSendResult } from "./tg";
+import type { TgAdapter, TgSendOptions, TgSendResult } from "./tg";
 
 export class TelegramClinicAdapter implements TgAdapter {
   readonly name = "telegram";
 
   constructor(private readonly clinicId: string) {}
 
-  async send(chatId: string, body: string): Promise<TgSendResult> {
+  async send(
+    chatId: string,
+    body: string,
+    options?: TgSendOptions,
+  ): Promise<TgSendResult> {
     const clinic = await runWithTenant({ kind: "SYSTEM" }, async () =>
       prisma.clinic.findUnique({
         where: { id: this.clinicId },
@@ -39,7 +43,12 @@ export class TelegramClinicAdapter implements TgAdapter {
       tgBotToken: clinic.tgBotToken,
       tgBotUsername: clinic.tgBotUsername,
     };
-    const res = await sendMessage(clinicMin, chatId, body, { parse_mode: "HTML" });
+    const res = await sendMessage(clinicMin, chatId, body, {
+      parse_mode: "HTML",
+      ...(options?.replyMarkup
+        ? { reply_markup: options.replyMarkup }
+        : {}),
+    });
     return { messageId: res.message_id };
   }
 }

@@ -49,6 +49,25 @@ const LAST_NAMES = [
 ];
 
 const TEMPLATES = [
+  // Stage 2.D — soft T-3d "gentle ping" for unconfirmed TELEGRAM/WEBSITE
+  // bookings. PHONE/KIOSK/WALKIN auto-confirm at booking and never receive
+  // this template (gated by `confirmedAt: null` in the scheduler band).
+  {
+    key: "reminder.3d",
+    nameRu: "Напоминание за 3 дня",
+    nameUz: "3 kun oldin eslatma",
+    category: "REMINDER" as const,
+    trigger: "APPOINTMENT_BEFORE" as const,
+    triggerConfig: { offsetMin: -4320 },
+    bodyRu:
+      "Напоминаем: визит к {{appointment.doctor}} {{appointment.date}} в {{appointment.time}}. Если планы изменились — позвоните: {{clinic.phone}}.",
+    bodyUz:
+      "Eslatma: {{appointment.doctor}} qabuluvingiz {{appointment.date}} kuni soat {{appointment.time}} da. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.",
+    variables: [
+      "appointment.date", "appointment.time", "appointment.doctor",
+      "clinic.phone",
+    ],
+  },
   {
     key: "reminder.24h",
     nameRu: "Напоминание за 24 часа",
@@ -56,10 +75,13 @@ const TEMPLATES = [
     category: "REMINDER" as const,
     trigger: "APPOINTMENT_BEFORE" as const,
     triggerConfig: { offsetMin: -1440 },
+    // Stage 2.D — SMS now ends with the "reply YES" CTA. On TG the
+    // notifications-send worker also attaches an inline "✅ Подтверждаю"
+    // button with callback_data `confirm:<appointmentId>`.
     bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Напоминаем: завтра в {{appointment.time}} у вас приём — {{appointment.doctor}}. Адрес: {{clinic.address}}. Тел: {{clinic.phone}}.",
+      "Напоминание: завтра в {{appointment.time}} у вас приём — {{appointment.doctor}}. Чтобы подтвердить, ответьте YES (или ДА / HA).",
     bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Eslatma: ertaga soat {{appointment.time}} da qabulga yoziluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tel: {{clinic.phone}}.",
+      "Eslatma: ertaga soat {{appointment.time}} da qabuluvingiz bor — {{appointment.doctor}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.",
     variables: [
       "patient.firstName", "appointment.time", "appointment.doctor",
       "clinic.address", "clinic.phone",
@@ -88,10 +110,12 @@ const TEMPLATES = [
     category: "REMINDER" as const,
     trigger: "APPOINTMENT_BEFORE" as const,
     triggerConfig: { offsetMin: -120 },
+    // Stage 2.D — SMS now ends with the "reply YES" CTA. TG channel also
+    // attaches the inline "✅ Подтверждаю" button (see 24h note above).
     bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Через 2 часа у вас приём — {{appointment.doctor}}. Адрес: {{clinic.address}}.",
+      "Через 2 часа приём — {{appointment.doctor}}. Чтобы подтвердить, ответьте YES (или ДА / HA).",
     bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! 2 soat ichida qabulga yoziluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}.",
+      "2 soatdan so'ng qabul — {{appointment.doctor}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.",
     variables: ["patient.firstName", "appointment.doctor", "clinic.address"],
   },
   {

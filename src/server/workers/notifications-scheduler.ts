@@ -2,9 +2,12 @@
  * notifications-scheduler — cron-style poller.
  *
  * Every minute:
- *   1. Run trigger materialisation (birthday, 24h/2h reminders, payment.due)
- *      via the legacy `runScheduledTriggers()` pass — this honors the seeded
- *      offsetMin values (-1440, -120) and is idempotent.
+ *   1. Run trigger materialisation (birthday, 3d/24h/5h/2h reminders,
+ *      payment.due) via the legacy `runScheduledTriggers()` pass — this
+ *      honors the seeded offsetMin values (-4320, -1440, -300, -120) and is
+ *      idempotent. The -4320 (T-3d) band is additionally gated on
+ *      `confirmedAt IS NULL` so PHONE/KIOSK/WALKIN auto-confirms never
+ *      receive the gentle ping.
  *   2. Run a *dynamic* pass for any APPOINTMENT_BEFORE templates whose
  *      `triggerConfig.offsetMin` was customised by the admin in
  *      /crm/settings/notifications. The dynamic pass uses the same
@@ -87,8 +90,15 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
         ? (t.triggerConfig as { offsetMin?: number })
         : {};
     const off = typeof cfg.offsetMin === "number" ? cfg.offsetMin : null;
-    // Legacy hardcoded values are owned by the existing pass.
-    return off !== null && off !== -1440 && off !== -120;
+    // Legacy hardcoded values are owned by `runScheduledTriggers` — the 3d
+    // (-4320) band lands here too as of Stage 2.D, gated on confirmedAt.
+    return (
+      off !== null &&
+      off !== -4320 &&
+      off !== -1440 &&
+      off !== -300 &&
+      off !== -120
+    );
   });
 
   if (dynamicTemplates.length === 0) {
@@ -117,7 +127,10 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
       where: {
         clinicId: { in: clinicIds },
         date: { gte: now, lte: horizon },
-        status: { in: ["BOOKED", "WAITING"] },
+        // CONFIRMED rows still need ordinary reminders (e.g. day-of "in 1 hour"
+        // pings). The dedicated 24h confirm-call detector keys on BOOKED only,
+        // so a confirmed patient is already silent on that specific template.
+        status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
       },
       select: {
         id: true,

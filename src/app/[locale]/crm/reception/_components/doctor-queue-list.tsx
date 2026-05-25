@@ -4,6 +4,7 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CheckIcon,
+  ChevronDownIcon,
   HourglassIcon,
   PlusIcon,
   StethoscopeIcon,
@@ -20,6 +21,7 @@ import { SkeletonRow } from "@/components/atoms/skeleton-row";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 import type { DoctorPanelDensity } from "../_hooks/use-panel-prefs";
+import { DoctorQueuePanel } from "./doctor-queue-panel";
 
 export interface DoctorQueueListProps {
   doctors: DoctorRef[];
@@ -49,6 +51,10 @@ interface DerivedRow {
  * row with status, queue count, next slot time and an inline "add" action.
  *
  * Sorting is performed by the parent — the list trusts the caller's order.
+ *
+ * Clicking a row toggles an inline accordion panel beneath it that lists the
+ * doctor's queue and exposes one-click status advances. Only one row is
+ * expanded at a time so the page doesn't sprawl.
  */
 export function DoctorQueueList({
   doctors,
@@ -64,6 +70,9 @@ export function DoctorQueueList({
   const t = useTranslations("reception.doctorsPanel.list");
   const tStatus = useTranslations("reception.doctorQueue");
   const locale = useLocale();
+  const [expandedDoctorId, setExpandedDoctorId] = React.useState<string | null>(
+    null,
+  );
 
   const rows = React.useMemo<DerivedRow[]>(() => {
     return doctors.map((doctor) => {
@@ -74,7 +83,15 @@ export function DoctorQueueList({
         .filter(
           (a) => a.queueStatus === "WAITING" || a.queueStatus === "BOOKED",
         )
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        .sort((a, b) => {
+          // Mirror the panel's sort so the "next" preview matches what the
+          // receptionist has been dragging into place. `queueOrder` nulls
+          // sink to the bottom, then we break ties by appointment time.
+          const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
+          const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
+          if (oa !== ob) return oa - ob;
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        });
       const next = upcoming[0] ?? null;
       const cabinet =
         (current ?? next)?.cabinet?.number ?? items[0]?.cabinet?.number ?? null;
@@ -151,94 +168,129 @@ export function DoctorQueueList({
       </div>
 
       <ul className="motion-stagger divide-y divide-border">
-        {rows.map(({ doctor, state, current, next, count, cabinet }) => {
+        {rows.map(({ doctor, state, count, cabinet, next }) => {
           const spec =
             locale === "uz"
               ? doctor.specializationUz
               : doctor.specializationRu;
-          const handleRowClick = () => {
-            const target = current ?? next;
-            if (target) onRowClick(target.id);
+          const expanded = expandedDoctorId === doctor.id;
+          const items = appointmentsByDoctor.get(doctor.id) ?? [];
+          const panelId = `doctor-queue-panel-${doctor.id}`;
+          const toggle = () => {
+            setExpandedDoctorId((cur) => (cur === doctor.id ? null : doctor.id));
           };
           return (
             <li
               key={doctor.id}
-              role="row"
               className={cn(
-                "motion-rise-in grid items-center gap-3 px-3 transition-colors hover:bg-muted/40",
-                compact ? "py-2" : "py-3",
+                "motion-rise-in flex flex-col",
+                expanded && "bg-muted/30",
               )}
-              style={{ gridTemplateColumns: gridTemplate }}
             >
-              <button
-                type="button"
-                onClick={handleRowClick}
-                disabled={!current && !next}
-                className="flex min-w-0 items-center gap-2 text-left disabled:cursor-default"
-              >
-                <AvatarWithStatus
-                  name={doctor.nameRu}
-                  src={doctor.photoUrl}
-                  size={compact ? "sm" : "md"}
-                  status={
-                    state === "in_session"
-                      ? "online"
-                      : state === "awaiting"
-                        ? "waiting"
-                        : null
+              <div
+                role="row"
+                aria-expanded={expanded}
+                aria-controls={panelId}
+                tabIndex={0}
+                onClick={toggle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle();
                   }
-                />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-foreground">
-                    {locale === "uz" ? doctor.nameUz : doctor.nameRu}
-                  </div>
-                  {spec ? (
-                    <div className="truncate text-xs text-muted-foreground">
-                      {spec}
-                    </div>
-                  ) : null}
-                </div>
-              </button>
-
-              {showCabinet ? (
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {cabinet ? `№ ${cabinet}` : t("noNext")}
-                </span>
-              ) : null}
-
-              <span
-                className="text-center text-sm font-semibold tabular-nums text-foreground"
-                aria-label={t("queue")}
+                }}
+                className={cn(
+                  "grid cursor-pointer items-center gap-3 px-3 transition-colors hover:bg-muted/40",
+                  compact ? "py-2" : "py-3",
+                )}
+                style={{ gridTemplateColumns: gridTemplate }}
               >
-                {count}
-              </span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <AvatarWithStatus
+                    name={doctor.nameRu}
+                    src={doctor.photoUrl}
+                    size={compact ? "sm" : "md"}
+                    status={
+                      state === "in_session"
+                        ? "online"
+                        : state === "awaiting"
+                          ? "waiting"
+                          : null
+                    }
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {locale === "uz" ? doctor.nameUz : doctor.nameRu}
+                    </div>
+                    {spec ? (
+                      <div className="truncate text-xs text-muted-foreground">
+                        {spec}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
 
-              {showNextSlot ? (
-                <span className="text-center text-xs tabular-nums text-muted-foreground">
-                  {next
-                    ? new Date(next.date).toLocaleTimeString(
-                        locale === "uz" ? "uz-UZ" : "ru-RU",
-                        { hour: "2-digit", minute: "2-digit" },
-                      )
-                    : t("noNext")}
-                </span>
-              ) : null}
-
-              <StatusPill state={state} t={tStatus} />
-
-              <div className="flex justify-end">
-                {onAddAppointment ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1 text-xs"
-                    onClick={() => onAddAppointment(doctor.id)}
-                  >
-                    <PlusIcon className="size-3.5" />
-                    {t("addAppointment")}
-                  </Button>
+                {showCabinet ? (
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {cabinet ? `№ ${cabinet}` : t("noNext")}
+                  </span>
                 ) : null}
+
+                <span
+                  className="text-center text-sm font-semibold tabular-nums text-foreground"
+                  aria-label={t("queue")}
+                >
+                  {count}
+                </span>
+
+                {showNextSlot ? (
+                  <span className="text-center text-xs tabular-nums text-muted-foreground">
+                    {next
+                      ? new Date(next.date).toLocaleTimeString(
+                          locale === "uz" ? "uz-UZ" : "ru-RU",
+                          { hour: "2-digit", minute: "2-digit" },
+                        )
+                      : t("noNext")}
+                  </span>
+                ) : null}
+
+                <StatusPill state={state} t={tStatus} />
+
+                <div className="flex items-center justify-end gap-1.5">
+                  {onAddAppointment ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddAppointment(doctor.id);
+                      }}
+                    >
+                      <PlusIcon className="size-3.5" />
+                      {t("addAppointment")}
+                    </Button>
+                  ) : null}
+                  <ChevronDownIcon
+                    className={cn(
+                      "size-4 text-muted-foreground transition-transform duration-200",
+                      expanded && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </div>
               </div>
+
+              {expanded ? (
+                <div id={panelId} className="px-3 pb-3">
+                  <DoctorQueuePanel
+                    appointments={items}
+                    doctorId={doctor.id}
+                    onOpenAppointment={onRowClick}
+                    onAddAppointment={(id) => onAddAppointment?.(id)}
+                  />
+                </div>
+              ) : null}
             </li>
           );
         })}

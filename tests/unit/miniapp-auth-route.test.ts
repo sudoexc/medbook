@@ -34,9 +34,31 @@ const state = {
   lastId: 0,
 };
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    clinic: {
+vi.mock("@/lib/prisma", () => {
+  const tx = {
+    patient: {
+      create: vi.fn(async ({ data }: { data: Partial<MockPatient> }) => {
+        state.lastId++;
+        const p: MockPatient = {
+          id: `p${state.lastId}`,
+          clinicId: (data.clinicId as string) ?? "",
+          fullName: (data.fullName as string) ?? "",
+          phone: (data.phone as string) ?? "",
+          phoneNormalized: (data.phoneNormalized as string) ?? "",
+          telegramId: (data.telegramId as string) ?? null,
+          telegramUsername: (data.telegramUsername as string) ?? null,
+          preferredLang: (data.preferredLang as "RU" | "UZ") ?? "RU",
+          consentMarketing: false,
+        };
+        state.patients.push(p);
+        return p;
+      }),
+    },
+  };
+  return {
+    prisma: {
+      $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
+      clinic: {
       findUnique: vi.fn(async ({ where }: { where: Where }) => {
         if (!state.clinic) return null;
         if (where.slug && where.slug !== state.clinic.slug) return null;
@@ -80,6 +102,12 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
   },
+};
+});
+
+// allocatePatientNumber expects a tx with $queryRaw / patient.aggregate — stub it.
+vi.mock("@/server/services/patient-number", () => ({
+  allocatePatientNumber: vi.fn(async () => "P-0001"),
 }));
 
 const BOT_TOKEN = "999:testBotToken";

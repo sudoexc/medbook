@@ -90,6 +90,10 @@ const SERVICE_TEMPLATES = [
 ];
 
 const TEMPLATE_SEEDS = [
+  // Stage 2.D — added `reminder.3d` (soft ping, no YES). 24h + 2h templates
+  // now end with the SMS reply-YES CTA; TG channel surfaces an inline
+  // "✅ Подтверждаю" button on the same two rows via notifications-send.ts.
+  { key: "reminder.3d",      nameRu: "Напоминание за 3 дня", nameUz: "3 kun oldin eslatma",       category: "REMINDER" as const,     trigger: "APPOINTMENT_BEFORE" as const,    triggerConfig: { offsetMin: -4320 } },
   { key: "reminder.24h",     nameRu: "Напоминание за 24ч",   nameUz: "24 soat oldin eslatma",     category: "REMINDER" as const,     trigger: "APPOINTMENT_BEFORE" as const,    triggerConfig: { offsetMin: -1440 } },
   { key: "reminder.2h",      nameRu: "Напоминание за 2ч",    nameUz: "2 soat oldin eslatma",      category: "REMINDER" as const,     trigger: "APPOINTMENT_BEFORE" as const,    triggerConfig: { offsetMin: -120 } },
   { key: "reminder.confirm", nameRu: "Подтверждение записи", nameUz: "Yozuv tasdiqlash",          category: "REMINDER" as const,     trigger: "APPOINTMENT_CREATED" as const,   triggerConfig: null },

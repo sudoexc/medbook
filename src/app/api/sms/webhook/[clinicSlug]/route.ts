@@ -24,11 +24,37 @@ import { z } from "zod";
 
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { isStopKeyword, stopReply } from "@/lib/sms-stop";
 import { runWithTenant } from "@/lib/tenant-context";
+import { confirmAppointment } from "@/server/appointments/confirm";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { publishEventSafe } from "@/server/realtime/publish";
+
+/**
+ * Phase 17 — appointment confirmation via SMS reply.
+ *
+ * The T-1d / T-2h reminder CTA tells patients to reply "YES" (or one of the
+ * locale variants). We normalize the inbound body to uppercase, strip
+ * punctuation/whitespace, and match against this token set. The match policy
+ * mirrors `isStopKeyword` — the whole message must be the token (after
+ * stripping), so "yes please" or "ha rahmat" do NOT confirm. Loose matching
+ * would risk silently flipping the wrong appointment for chatty patients.
+ */
+const CONFIRM_TOKENS = new Set<string>(["YES", "Y", "ДА", "DA", "HA"]);
+
+function isConfirmKeyword(text: string | null | undefined): boolean {
+  if (!text) return false;
+  // Strip whitespace and punctuation, uppercase. Leave letters (Cyrillic
+  // included) and digits — the token set has no digits but the strip rule
+  // is identical to what we'd want for any future expansion.
+  const stripped = text
+    .toUpperCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+  if (!stripped) return false;
+  return CONFIRM_TOKENS.has(stripped);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -280,6 +306,94 @@ export async function POST(request: Request): Promise<Response> {
       });
     } catch (err) {
       console.error("[sms:webhook] STOP keyword handling failed", err);
+    }
+  }
+
+  // Phase 17 Stage 3.G.1 — appointment confirmation via SMS reply.
+  //
+  // Layered on top of the STOP handler (and the conversation upsert) so the
+  // inbound message is always recorded as a regular conversation row first.
+  // Then, if the body matches the YES token set, we resolve sender phone →
+  // patient → nearest future unconfirmed appointment, and call the central
+  // `confirmAppointment` helper inside a TENANT runWithTenant frame. The
+  // helper is idempotent and writes the audit row itself, so we don't add
+  // any audit constants here.
+  if (isConfirmKeyword(body)) {
+    try {
+      const canonical = normalizePhone(from);
+      const digits = from.replace(/\D/g, "");
+      // Find the nearest future unconfirmed appointment for any patient on
+      // this phone, scoped to this clinic. Family members share a phone, so
+      // we don't try to disambiguate — the soonest one is the one the
+      // reminder went out for.
+      const match = await runWithTenant({ kind: "SYSTEM" }, async () => {
+        if (!canonical && !digits) return null;
+        const phoneFilter: Array<{ phoneNormalized: { contains: string } }> =
+          [];
+        if (canonical) phoneFilter.push({ phoneNormalized: { contains: canonical } });
+        if (digits) phoneFilter.push({ phoneNormalized: { contains: digits } });
+        const patients = await prisma.patient.findMany({
+          where: {
+            clinicId: foundClinic.id,
+            OR: phoneFilter,
+          },
+          select: { id: true },
+        });
+        if (patients.length === 0) return null;
+
+        const now = new Date();
+        const appt = await prisma.appointment.findFirst({
+          where: {
+            clinicId: foundClinic.id,
+            patientId: { in: patients.map((p) => p.id) },
+            confirmedAt: null,
+            status: { notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
+            date: { gte: now },
+          },
+          orderBy: { date: "asc" },
+          select: { id: true },
+        });
+        return appt ? { appointmentId: appt.id } : null;
+      });
+
+      if (!match) {
+        console.log(
+          `[sms-webhook] YES from=${from} clinic=${foundClinic.slug} — no matching unconfirmed appointment`,
+        );
+      } else {
+        // System-initiated TENANT frame (no NextAuth session on this
+        // webhook). Same convention as `src/server/actions/scheduler.ts` —
+        // synthetic `userId` + ADMIN role so the Prisma extension scopes
+        // writes by `clinicId`. The helper writes the audit row with
+        // `actorId: null` / `actorLabel: "confirm:SMS_REPLY"`.
+        const result = await runWithTenant(
+          {
+            kind: "TENANT",
+            clinicId: foundClinic.id,
+            userId: "system:sms-webhook",
+            role: "ADMIN",
+          },
+          () =>
+            confirmAppointment({
+              appointmentId: match.appointmentId,
+              clinicId: foundClinic.id,
+              actorId: null,
+              via: "SMS_REPLY",
+            }),
+        );
+        if (result.ok) {
+          console.log(
+            `[sms-webhook] confirm via=SMS_REPLY appointmentId=${match.appointmentId} alreadyConfirmed=${result.alreadyConfirmed}`,
+          );
+        } else {
+          console.log(
+            `[sms-webhook] confirm via=SMS_REPLY appointmentId=${match.appointmentId} skipped reason=${result.reason}`,
+          );
+        }
+      }
+    } catch (err) {
+      // Never 4xx the webhook — most SMS providers retry hard on non-200.
+      console.error("[sms-webhook] YES handling failed", err);
     }
   }
 

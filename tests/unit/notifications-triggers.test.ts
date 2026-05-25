@@ -13,9 +13,10 @@ import { describe, it, expect } from "vitest";
 import { TRIGGER_KEYS } from "@/server/notifications/triggers";
 
 describe("TRIGGER_KEYS", () => {
-  it("exposes all 14 triggers in the documented order", () => {
+  it("exposes all 15 triggers in the documented order", () => {
     expect([...TRIGGER_KEYS]).toEqual([
       "appointment.created",
+      "appointment.reminder-3d",
       "appointment.reminder-24h",
       "appointment.reminder-5h",
       "appointment.reminder-2h",
@@ -32,7 +33,7 @@ describe("TRIGGER_KEYS", () => {
     ]);
   });
 
-  it("is a tuple-const (readonly) length 14", () => {
-    expect(TRIGGER_KEYS.length).toBe(14);
+  it("is a tuple-const (readonly) length 15", () => {
+    expect(TRIGGER_KEYS.length).toBe(15);
   });
 });

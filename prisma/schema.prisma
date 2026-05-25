@@ -49,12 +49,24 @@ enum PaymentStatus {
 
 enum AppointmentStatus {
   BOOKED
+  CONFIRMED
   WAITING
   IN_PROGRESS
   COMPLETED
   SKIPPED
   CANCELLED
   NO_SHOW
+}
+
+// How an appointment was confirmed. Lets us tell "patient called us back"
+// apart from "reception phoned the patient" — important for staff-load
+// metrics and for routing inbound responses (SMS/TG) to the right handler.
+enum ConfirmationVia {
+  BOOKING_AUTO   // Inbound: the patient created the booking themselves via PHONE/KIOSK.
+  MANUAL_CRM     // Reception/callcenter flipped CONFIRMED from the CRM UI.
+  SMS_REPLY      // Patient texted YES/ДА/HA to a reminder SMS.
+  TG_BUTTON      // Patient pressed "Подтверждаю" on a Telegram reminder.
+  INBOUND_CALL   // Patient called us back to confirm — flipped by whoever picked up.
 }
 
 enum PatientSegment {
@@ -703,6 +715,7 @@ model User {
   sentMessages                Message[]               @relation("MessageSender")
   uploadedDocuments           Document[]              @relation("DocumentUploader")
   createdAppointments         Appointment[]           @relation("AppointmentCreator")
+  confirmedAppointments       Appointment[]           @relation("AppointmentConfirmer")
   createdCampaigns            Campaign[]              @relation("CampaignCreator")
   savedReports                SavedReport[]           @relation("SavedReportCreator")
   createdTelegramInviteTokens TelegramInviteToken[]   @relation("TelegramInviteTokenCreator")
@@ -1670,6 +1683,18 @@ model Appointment {
   cancelledAt  DateTime?
   cancelReason String?
 
+  // Pre-visit confirmation audit. `status === CONFIRMED` answers "is it
+  // confirmed right now"; these three fields answer "when / by whom / how"
+  // so reports, dedupe of confirm-call tasks, and metrics ("avg time from
+  // booking to confirmation by channel") can read history directly instead
+  // of replaying the AuditLog. Set together via `confirmAppointment()`.
+  // `confirmedBy` is null for BOOKING_AUTO (channel = PHONE/KIOSK) and for
+  // SMS_REPLY / TG_BUTTON (acted on behalf of patient, not staff).
+  confirmedAt  DateTime?
+  confirmedBy  String?
+  confirmedVia ConfirmationVia?
+  confirmedByUser User? @relation("AppointmentConfirmer", fields: [confirmedBy], references: [id])
+
   // Optional grouping into a MedicalCase (episode of care). Nullable —
   // appointments may be one-off without a case. onDelete: SetNull keeps
   // the appointment row alive if its case is deleted.
@@ -1731,6 +1756,13 @@ model Appointment {
   @@index([clinicId, createdAt])
   @@index([clinicId, branchId])
   @@index([clinicId, medicalCaseId])
+  // Confirmation-window detectors hit this thousands of times per scheduler
+  // tick: "appointments in [now+window-Δ, now+window] with confirmedAt IS NULL
+  // and status = BOOKED". Composite (clinicId, date, confirmedAt) keeps the
+  // scan bounded; partial-index on (confirmedAt IS NULL) would be tighter
+  // but Prisma doesn't model partial indexes — the planner handles it well
+  // enough on the composite alone.
+  @@index([clinicId, date, confirmedAt])
 }
 
 model AppointmentService {

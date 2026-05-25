@@ -29,6 +29,9 @@ let nextId = 1;
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    patient: {
+      findFirst: vi.fn(async () => null),
+    },
     call: {
       create: vi.fn(async (args: { data: Partial<CallRow> }) => {
         const row: CallRow = {

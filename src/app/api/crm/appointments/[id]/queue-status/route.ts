@@ -5,7 +5,7 @@
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, conflict } from "@/server/http";
+import { ok, notFound, conflict, err } from "@/server/http";
 import { QueueStatusUpdateSchema } from "@/server/schemas/appointment";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
@@ -13,6 +13,7 @@ import {
   canTransition,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
+import { confirmAppointment } from "@/server/appointments/confirm";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -42,6 +43,35 @@ export const PATCH = createApiHandler(
         from: before.queueStatus,
         to: body.queueStatus,
       });
+    }
+
+    // Confirmation is its own write — route through the single entry point so
+    // audit + Action close + realtime fan-out stay consistent across the five
+    // confirm paths (manual CRM / SMS reply / TG button / inbound call /
+    // booking auto-confirm). The helper handles its own audit + events; we
+    // just translate its result into the route's response shape.
+    if (body.queueStatus === "CONFIRMED") {
+      const tenant = getTenant();
+      const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      const actorId = tenant?.kind === "TENANT" ? tenant.userId : null;
+      if (!clinicId) {
+        return err("ClinicNotSelected", 400);
+      }
+      const result = await confirmAppointment({
+        appointmentId: id,
+        clinicId,
+        actorId,
+        via: "MANUAL_CRM",
+      });
+      if (!result.ok) {
+        if (result.reason === "not_found") return notFound();
+        return conflict("invalid_transition", {
+          from: before.queueStatus,
+          to: "CONFIRMED",
+          reason: result.reason,
+        });
+      }
+      return ok(result.appointment);
     }
 
     const data: Record<string, unknown> = {

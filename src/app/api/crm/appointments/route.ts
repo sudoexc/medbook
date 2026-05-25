@@ -8,6 +8,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err, conflict, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
 import {
@@ -210,6 +211,18 @@ export const POST = createApiHandler(
 
     const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
 
+    // Auto-confirm channels: the patient is either physically in the clinic
+    // (WALKIN at the desk, KIOSK in the lobby) or had a live conversation with
+    // reception/callcenter (PHONE). In all three cases the confirmation step
+    // happened during booking itself — no need for a follow-up reminder Action.
+    // TELEGRAM / WEBSITE bookings are remote/self-service and stay BOOKED until
+    // the unconfirmed-window detector posts a confirm-call task and the patient
+    // (or staff on their behalf) flips them via SMS-YES / TG-button / inbound
+    // call / manual CRM. Booking time becomes the confirmedAt for the auto
+    // path; the via flag distinguishes it from the four interactive paths.
+    const AUTO_CONFIRM_CHANNELS = new Set(["PHONE", "KIOSK", "WALKIN"]);
+    const autoConfirm = AUTO_CONFIRM_CHANNELS.has(body.channel);
+
     // Conflict check + create run in one Serializable transaction so that
     // concurrent bookings on the same slot can't both pass the overlap check.
     // PostgreSQL raises a serialization error (P2034) on the loser; we
@@ -255,8 +268,8 @@ export const POST = createApiHandler(
             time: body.time ?? null,
             durationMin: body.durationMin,
             endDate: endAt,
-            status: "BOOKED",
-            queueStatus: "BOOKED",
+            status: autoConfirm ? "CONFIRMED" : "BOOKED",
+            queueStatus: autoConfirm ? "CONFIRMED" : "BOOKED",
             channel: body.channel,
             leadId: body.leadId ?? null,
             priceService,
@@ -267,6 +280,13 @@ export const POST = createApiHandler(
             createdById,
             comments: body.comments ?? null,
             notes: body.notes ?? null,
+            ...(autoConfirm
+              ? {
+                  confirmedAt: new Date(),
+                  confirmedBy: createdById,
+                  confirmedVia: "BOOKING_AUTO",
+                }
+              : {}),
           } as never,
         });
         if (body.services && body.services.length > 0) {
@@ -381,6 +401,26 @@ export const POST = createApiHandler(
       entityId: created.id,
       meta: { after: created },
     });
+    // Auto-confirmed bookings get a second audit row so the confirmation
+    // analytics (avg time-to-confirm by channel, %-confirmed at booking time)
+    // can be sliced uniformly across all five confirm paths. The create row
+    // alone is generic and would force every report to special-case
+    // `channel ∈ {PHONE,KIOSK,WALKIN} && status === CONFIRMED` to count
+    // booking-time confirms.
+    if (autoConfirm) {
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_CONFIRMED,
+        entityType: "Appointment",
+        entityId: created.id,
+        meta: {
+          via: "BOOKING_AUTO",
+          statusBefore: "BOOKED",
+          statusAfter: "CONFIRMED",
+          statusFlipped: true,
+          channel: body.channel,
+        },
+      });
+    }
     if (txResult.recomputed?.reason === "free_repeat") {
       await audit(request, {
         action: "appointment.free_repeat_applied",

@@ -53,6 +53,7 @@ const STATUS_VARIANT: Record<
   React.ComponentProps<typeof Badge>["variant"]
 > = {
   BOOKED: "info",
+  CONFIRMED: "default",
   WAITING: "warning",
   IN_PROGRESS: "default",
   COMPLETED: "success",

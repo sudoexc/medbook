@@ -30,6 +30,7 @@ export type StatusBucket =
   | "all"
   | "waiting"
   | "booked"
+  | "confirmed"
   | "in_progress"
   | "completed"
   | "cancelled"
@@ -171,6 +172,7 @@ const BUCKET_TO_STATUS: Record<StatusBucket, string | undefined> = {
   all: undefined,
   waiting: "WAITING",
   booked: "BOOKED",
+  confirmed: "CONFIRMED",
   in_progress: "IN_PROGRESS",
   completed: "COMPLETED",
   cancelled: "CANCELLED",

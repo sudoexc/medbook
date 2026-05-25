@@ -18,10 +18,12 @@
  * Sort: by `appointmentAt ASC` (timeline order). Receptionists work the day
  * top-to-bottom; pure risk-DESC would jump them around chronologically.
  *
- * Status filter: only BOOKED|WAITING|IN_PROGRESS. Once an appointment is
- * COMPLETED / CANCELLED / NO_SHOW / SKIPPED it's no longer actionable, so it
- * drops off the triage even if its Action rows are still hanging around for
- * audit.
+ * Status filter: only BOOKED|CONFIRMED|WAITING|IN_PROGRESS. Once an
+ * appointment is COMPLETED / CANCELLED / NO_SHOW / SKIPPED it's no longer
+ * actionable, so it drops off the triage even if its Action rows are still
+ * hanging around for audit. CONFIRMED rows can still land here via high_risk
+ * or no_contact reasons — confirmation lowers the unconfirmed signal but
+ * doesn't eliminate every other risk.
  *
  * Tenant scoping: the Prisma extension already injects `clinicId` into every
  * relevant model. We only need an explicit clinic fetch to read `timezone`.
@@ -49,7 +51,7 @@ export type RiskTodayRow = {
   doctorName: { ru: string; uz: string };
   serviceName: { ru: string; uz: string } | null;
   priceFinalTiins: number | null;
-  status: "BOOKED" | "WAITING" | "IN_PROGRESS";
+  status: "BOOKED" | "CONFIRMED" | "WAITING" | "IN_PROGRESS";
   reasons: RiskReason[];
   riskScore: number;
   actionIds: string[];
@@ -149,7 +151,7 @@ export const GET = createApiListHandler(
     const appts = await prisma.appointment.findMany({
       where: {
         date: { gte: dayStart, lt: dayEnd },
-        status: { in: ["BOOKED", "WAITING", "IN_PROGRESS"] },
+        status: { in: ["BOOKED", "CONFIRMED", "WAITING", "IN_PROGRESS"] },
       },
       orderBy: { date: "asc" },
       select: {

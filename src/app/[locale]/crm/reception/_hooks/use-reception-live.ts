@@ -38,6 +38,7 @@ export type DashboardKpi = {
 export type DashboardQueueBucket = {
   status:
     | "BOOKED"
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"

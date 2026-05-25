@@ -17,11 +17,14 @@
  * 2026 Tashkent mid-market price points for the corresponding service.
  *
  * Templates use `TRIGGER_KEYS` from `@/server/notifications/triggers`. Each
- * playbook ships with the trio that triggers `fireTrigger` actually emits
- * out of the box on appointment booking: confirmation + 24h reminder +
- * 2h reminder. The applier maps these `TriggerKey` values to the
- * `NotificationTrigger` enum + `triggerConfig.offsetMin` shape that
- * `whereForTrigger` (in triggers.ts) looks up.
+ * playbook ships with the four templates `fireTrigger` actually emits out of
+ * the box on appointment booking: confirmation + 3d / 24h / 2h reminders.
+ * Stage 2.D added the 3d "gentle ping" — audience is filtered at the
+ * materialiser to TELEGRAM/WEBSITE bookings whose `confirmedAt` is still
+ * null, so PHONE/KIOSK/WALKIN auto-confirms never receive it. The applier
+ * maps these `TriggerKey` values to the `NotificationTrigger` enum +
+ * `triggerConfig.offsetMin` shape that `whereForTrigger` (in triggers.ts)
+ * looks up.
  */
 import type { TriggerKey } from "@/server/notifications/triggers";
 
@@ -82,15 +85,30 @@ const RU_CONFIRM =
 const UZ_CONFIRM =
   "Assalomu alaykum, {{patient.firstName}}! {{clinic.name}}da {{appointment.date}} kuni soat {{appointment.time}} ga yozildingiz — {{appointment.doctor}}. Ko'rishguncha!";
 
+// Stage 2.D — softer T-3d "gentle ping". No urgency, no YES required.
+// The detector's 72h horizon surfaces unconfirmed rows in the Action Center;
+// this template just gives the patient an early heads-up they can call to
+// reschedule on. Audience is gated at the materialiser (`confirmedAt: null`,
+// i.e. TELEGRAM/WEBSITE bookings only).
+const RU_3D =
+  "Напоминаем: визит к {{appointment.doctor}} {{appointment.date}} в {{appointment.time}}. Если планы изменились — позвоните: {{clinic.phone}}.";
+const UZ_3D =
+  "Eslatma: {{appointment.doctor}} qabuluvingiz {{appointment.date}} kuni soat {{appointment.time}} da. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.";
+
+// Stage 2.D — append the "reply YES to confirm" CTA. The TG channel also
+// surfaces an inline "✅ Подтверждаю" button (wired in notifications-send.ts),
+// so this trailing sentence is what survives on SMS-only fallbacks. We keep
+// both RU and UZ trigger words ("YES / ДА / HA") so the SMS reply webhook
+// (Stage 3.G) can match either language without a per-patient lookup.
 const RU_24H =
-  "Напоминание: завтра в {{appointment.time}} у вас приём в {{clinic.name}} — {{appointment.doctor}}. Адрес: {{clinic.address}}.";
+  "Напоминание: завтра в {{appointment.time}} у вас приём в {{clinic.name}} — {{appointment.doctor}}. Адрес: {{clinic.address}}. Чтобы подтвердить, ответьте YES (или ДА / HA).";
 const UZ_24H =
-  "Eslatma: ertaga soat {{appointment.time}} da {{clinic.name}}da qabuluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}.";
+  "Eslatma: ertaga soat {{appointment.time}} da {{clinic.name}}da qabuluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.";
 
 const RU_2H =
-  "Через 2 часа ваш приём в {{clinic.name}} ({{appointment.doctor}}). Если не сможете — позвоните: {{clinic.phone}}.";
+  "Через 2 часа ваш приём в {{clinic.name}} ({{appointment.doctor}}). Если не сможете — позвоните: {{clinic.phone}}. Чтобы подтвердить, ответьте YES (или ДА / HA).";
 const UZ_2H =
-  "2 soatdan so'ng {{clinic.name}}da qabuluvingiz bor ({{appointment.doctor}}). Kelolmasangiz qo'ng'iroq qiling: {{clinic.phone}}.";
+  "2 soatdan so'ng {{clinic.name}}da qabuluvingiz bor ({{appointment.doctor}}). Kelolmasangiz qo'ng'iroq qiling: {{clinic.phone}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.";
 
 function trio(
   flavour: { confirmRu: string; confirmUz: string },
@@ -101,6 +119,12 @@ function trio(
       channel: "TG",
       bodyRu: flavour.confirmRu,
       bodyUz: flavour.confirmUz,
+    },
+    {
+      trigger: "appointment.reminder-3d",
+      channel: "TG",
+      bodyRu: RU_3D,
+      bodyUz: UZ_3D,
     },
     {
       trigger: "appointment.reminder-24h",
@@ -466,6 +490,12 @@ export function triggerKeyToDbShape(trigger: TriggerKey): {
   switch (trigger) {
     case "appointment.created":
       return { trigger: "APPOINTMENT_CREATED", triggerConfig: null, key: "reminder.confirm" };
+    case "appointment.reminder-3d":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { offsetMin: -4320 },
+        key: "reminder.3d",
+      };
     case "appointment.reminder-24h":
       return {
         trigger: "APPOINTMENT_BEFORE",

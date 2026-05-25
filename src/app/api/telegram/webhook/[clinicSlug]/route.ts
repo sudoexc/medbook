@@ -26,9 +26,11 @@ import { runWithTenant } from "@/lib/tenant-context";
 
 import {
   answerCallbackQuery,
+  editMessageText,
   sendMessage,
   type TgClinicMinimal,
 } from "@/server/telegram/send";
+import { confirmAppointment } from "@/server/appointments/confirm";
 import {
   type Catalog,
   type FsmEvent,
@@ -444,6 +446,110 @@ export async function POST(
     if (update.callback_query) {
       const cq = update.callback_query;
       const chatId = cq.message?.chat?.id ? String(cq.message.chat.id) : null;
+
+      // Stage 3.G.2 — confirm-button branch. The T-1d / T-2h reminder
+      // attaches an inline keyboard with `callback_data="confirm:<id>"`.
+      // Match the exact pattern (whole string, no whitespace) so unrelated
+      // future buttons cannot accidentally trip the confirmation path.
+      const confirmMatch =
+        typeof cq.data === "string" ? /^confirm:(.+)$/.exec(cq.data) : null;
+      if (confirmMatch) {
+        const appointmentId = confirmMatch[1];
+        // Ownership check — only the patient who owns the appointment may
+        // confirm it, otherwise a forwarded message could let a third party
+        // flip someone else's row. Look up under SYSTEM (no tenant ctx
+        // available yet) but scope by clinicId we already authenticated.
+        const appt = await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.appointment.findFirst({
+            where: { id: appointmentId, clinicId: clinic.id },
+            select: {
+              id: true,
+              clinicId: true,
+              patientId: true,
+              patient: { select: { telegramId: true } },
+            },
+          }),
+        );
+
+        const senderTgId = cq.from?.id ? String(cq.from.id) : null;
+        const patientTgId = appt?.patient?.telegramId ?? null;
+        const ownerMatches =
+          !!appt && !!senderTgId && !!patientTgId && senderTgId === patientTgId;
+
+        if (!appt) {
+          await answerCallbackQuery(
+            clinicMin,
+            cq.id,
+            "Запись не найдена",
+            false,
+          );
+          return jsonResponse({ ok: true });
+        }
+        if (!ownerMatches) {
+          await answerCallbackQuery(
+            clinicMin,
+            cq.id,
+            "Эта запись не ваша",
+            true,
+          );
+          return jsonResponse({ ok: true });
+        }
+
+        // Confirm via the single entry point. The helper writes audit, closes
+        // any open UNCONFIRMED_24H Action, and fans realtime events. Caller
+        // contract: must be inside a `TENANT` runWithTenant.
+        const result = await runWithTenant(
+          {
+            kind: "TENANT",
+            clinicId: appt.clinicId,
+            userId: "",
+            role: "SUPER_ADMIN",
+          },
+          () =>
+            confirmAppointment({
+              appointmentId: appt.id,
+              clinicId: appt.clinicId,
+              actorId: null,
+              via: "TG_BUTTON",
+            }),
+        );
+
+        // Translate the helper's result into a TG toast + a one-shot edit
+        // that drops the keyboard so the patient can't double-tap.
+        let toast: string;
+        let editTo: string | null = null;
+        if (result.ok) {
+          toast = result.alreadyConfirmed
+            ? "Уже подтверждено"
+            : "Подтверждено ✅";
+          editTo = "✅ Подтверждено · спасибо!";
+        } else if (result.reason === "cancelled") {
+          toast = "Запись уже отменена";
+        } else if (result.reason === "completed") {
+          toast = "Запись уже завершена";
+        } else {
+          toast = "Не получилось";
+        }
+        await answerCallbackQuery(clinicMin, cq.id, toast, false);
+
+        if (editTo && cq.message?.message_id && chatId) {
+          try {
+            await editMessageText(
+              clinicMin,
+              chatId,
+              cq.message.message_id,
+              editTo,
+            );
+          } catch (editErr) {
+            // Editing is best-effort — the confirm itself already landed.
+            console.warn(
+              `[tg:webhook clinic=${clinic.slug}] editMessageText after confirm failed: ${(editErr as Error).message}`,
+            );
+          }
+        }
+        return jsonResponse({ ok: true });
+      }
+
       // Always ack — prevents Telegram from spamming retries.
       await answerCallbackQuery(clinicMin, cq.id);
 

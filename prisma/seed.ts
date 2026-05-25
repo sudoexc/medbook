@@ -190,12 +190,23 @@ const SERVICE_TEMPLATES = [
 ];
 
 const TEMPLATE_SEEDS = [
-  // 6 reminders (24h / 5h / 2h cascade per shef Z. spec — see docs/TZ.md §6.9)
-  { key: "reminder.24h", nameRu: "Напоминание за 24 часа", nameUz: "24 soat oldin eslatma", category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -1440 } },
+  // 7 reminders (3d / 24h / 5h / 2h cascade — Stage 2.D added the soft 3d
+  // ping for TELEGRAM/WEBSITE bookings whose `confirmedAt` is still null.
+  // The 24h + 2h messages now end with a "reply YES to confirm" CTA so
+  // patients on SMS-only fallback can still confirm without the TG button.
+  // See docs/TZ.md §6.9.)
+  { key: "reminder.3d",  nameRu: "Напоминание за 3 дня",   nameUz: "3 kun oldin eslatma",   category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -4320 },
+    bodyRu: "Напоминаем: визит к {{appointment.doctor}} {{appointment.date}} в {{appointment.time}}. Если планы изменились — позвоните: {{clinic.phone}}.",
+    bodyUz: "Eslatma: {{appointment.doctor}} qabuluvingiz {{appointment.date}} kuni soat {{appointment.time}} da. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}." },
+  { key: "reminder.24h", nameRu: "Напоминание за 24 часа", nameUz: "24 soat oldin eslatma", category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -1440 },
+    bodyRu: "Напоминание: завтра в {{appointment.time}} у вас приём — {{appointment.doctor}}. Чтобы подтвердить, ответьте YES (или ДА / HA).",
+    bodyUz: "Eslatma: ertaga soat {{appointment.time}} da qabuluvingiz bor — {{appointment.doctor}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering." },
   { key: "reminder.5h",  nameRu: "Напоминание за 5 часов", nameUz: "5 soat oldin eslatma",  category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -300 },
     bodyRu: "Здравствуйте, {{patient.firstName}}! Напоминаем: сегодня в {{appointment.time}} у вас приём — {{appointment.doctor}}. Адрес: {{clinic.address}}. Тел: {{clinic.phone}}.",
     bodyUz: "Assalomu alaykum, {{patient.firstName}}! Eslatma: bugun soat {{appointment.time}} da qabulga yoziluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tel: {{clinic.phone}}." },
-  { key: "reminder.2h",  nameRu: "Напоминание за 2 часа",  nameUz: "2 soat oldin eslatma",  category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -120 } },
+  { key: "reminder.2h",  nameRu: "Напоминание за 2 часа",  nameUz: "2 soat oldin eslatma",  category: "REMINDER" as const, trigger: "APPOINTMENT_BEFORE" as const, triggerConfig: { offsetMin: -120 },
+    bodyRu: "Через 2 часа приём — {{appointment.doctor}}. Чтобы подтвердить, ответьте YES (или ДА / HA).",
+    bodyUz: "2 soatdan so'ng qabul — {{appointment.doctor}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering." },
   { key: "reminder.confirm", nameRu: "Подтверждение записи", nameUz: "Yozuv tasdiqlash", category: "REMINDER" as const, trigger: "APPOINTMENT_CREATED" as const, triggerConfig: null },
   { key: "reminder.missed", nameRu: "Не пришли на приём", nameUz: "Qabulga kelmadingiz", category: "REMINDER" as const, trigger: "APPOINTMENT_MISSED" as const, triggerConfig: { offsetMin: 30 } },
   { key: "reminder.feedback", nameRu: "Оставьте отзыв", nameUz: "Fikr qoldiring", category: "REMINDER" as const, trigger: "APPOINTMENT_COMPLETED" as const, triggerConfig: { offsetMin: 60 } },

@@ -15,6 +15,7 @@ import { useActiveCall, useActiveCallId } from "../_hooks/use-active-call";
 import { IncomingQueue } from "./incoming-queue";
 import { ActiveCall } from "./active-call";
 import { CallActionsRail } from "./call-actions-rail";
+import { UnconfirmedWidget } from "./unconfirmed-widget";
 
 /**
  * 3-column Call Center layout — see `docs/6 - Call Center.png` and `docs/TZ.md` §6.7.
@@ -64,7 +65,14 @@ export function CallCenterPageClient() {
         />
       </div>
 
-      <div className="hidden min-h-0 flex-1 xl:flex">
+      <div className="hidden min-h-0 flex-1 flex-col xl:flex">
+        {/* Stage 2.F — "К подтверждению" widget. Sits above the 3-column
+            workspace so it shares vertical space with the queue/active/rail
+            trio without fighting them for width. Collapses to zero height
+            when there are no open UNCONFIRMED_24H actions. */}
+        <UnconfirmedWidget />
+
+      <div className="flex min-h-0 flex-1">
         <aside
           className="flex w-[320px] shrink-0 flex-col border-r border-border bg-card"
           aria-label={t("queue.ariaLabel")}
@@ -91,6 +99,7 @@ export function CallCenterPageClient() {
         >
           <CallActionsRail call={activeQuery.data ?? null} />
         </aside>
+      </div>
       </div>
     </>
   );

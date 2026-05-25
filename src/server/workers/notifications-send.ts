@@ -43,11 +43,49 @@ async function deliver(job: DeliverJob): Promise<void> {
       where: { id: job.sendId },
       include: {
         patient: { select: { id: true, phone: true, telegramId: true } },
+        template: { select: { key: true } },
       },
     }),
   );
   if (!send) return;
   if (send.status !== "QUEUED") return;
+
+  // Stage 2.D — no-spam guard for the confirm cascade. If the patient
+  // has already confirmed (any path: SMS_REPLY, TG_BUTTON, MANUAL_CRM,
+  // INBOUND_CALL, BOOKING_AUTO) by the time the worker fires, skip the
+  // send entirely. Same gate the detector uses (`confirmedAt IS NULL`),
+  // applied to the three reminder keys that still ask "are you coming?".
+  const templateKey = send.template?.key ?? null;
+  const isConfirmCascade =
+    templateKey === "reminder.3d" ||
+    templateKey === "reminder.24h" ||
+    templateKey === "reminder.2h";
+  if (isConfirmCascade && send.appointmentId) {
+    const appt = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.appointment.findUnique({
+        where: { id: send.appointmentId! },
+        select: { confirmedAt: true, status: true },
+      }),
+    );
+    if (
+      appt &&
+      (appt.confirmedAt !== null ||
+        appt.status === "CANCELLED" ||
+        appt.status === "NO_SHOW" ||
+        appt.status === "COMPLETED")
+    ) {
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.update({
+          where: { id: send.id },
+          data: {
+            status: "CANCELLED",
+            failedReason: "patient already confirmed (or appointment closed)",
+          },
+        }),
+      );
+      return;
+    }
+  }
 
   const adapters = await resolveAdapters(send.clinicId);
 
@@ -120,7 +158,31 @@ async function deliver(job: DeliverJob): Promise<void> {
       );
     } else if (send.channel === "TG") {
       const chatId = send.recipient;
-      const res = await adapters.tg.send(chatId, send.body);
+      // Stage 2.D — attach a "✅ Подтверждаю" inline keyboard for the two
+      // confirm-CTA reminders (T-1d, T-2h). The callback_data shape is
+      // `confirm:<appointmentId>` — the Stage 3.G webhook (not wired here)
+      // routes it back through `confirmAppointment({ via: 'TG_BUTTON' })`.
+      // The T-3d "gentle ping" intentionally has no button.
+      const wantsConfirmButton =
+        send.appointmentId &&
+        (templateKey === "reminder.24h" || templateKey === "reminder.2h");
+      const replyMarkup = wantsConfirmButton
+        ? {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Подтверждаю",
+                  callback_data: `confirm:${send.appointmentId}`,
+                },
+              ],
+            ],
+          }
+        : undefined;
+      const res = await adapters.tg.send(
+        chatId,
+        send.body,
+        replyMarkup ? { replyMarkup } : undefined,
+      );
       await runWithTenant({ kind: "SYSTEM" }, () =>
         prisma.notificationSend.update({
           where: { id: send.id },

@@ -274,6 +274,7 @@
     "comment": "Izoh",
     "status": {
       "booked": "Yozilgan",
+      "confirmed": "Tasdiqlangan",
       "waiting": "Kutmoqda",
       "inProgress": "Qabulda",
       "completed": "Yakunlandi",
@@ -555,6 +556,7 @@
     },
     "status": {
       "booked": "Yozilgan",
+      "confirmed": "Tasdiqlangan",
       "waiting": "Kutmoqda",
       "in_progress": "Qabulda",
       "completed": "Tugatildi",
@@ -578,6 +580,16 @@
       "telegram": "Telegram",
       "website": "Sayt",
       "kiosk": "Kiosk"
+    },
+    "confirmation": {
+      "title": "Tasdiqlangan",
+      "via": {
+        "BOOKING_AUTO": "yozilishda",
+        "MANUAL_CRM": "qo'lda",
+        "SMS_REPLY": "SMS",
+        "TG_BUTTON": "Telegram",
+        "INBOUND_CALL": "qo'ng'iroq orqali"
+      }
     },
     "filters": {
       "search": "Qidiruv: bemor, shifokor, telefon",
@@ -940,7 +952,8 @@
       "clickToCreate": "Yozilish yaratish uchun bosing"
     },
     "chip": {
-      "statusBooked": "Tasdiqlangan",
+      "statusBooked": "Yozildi",
+      "statusConfirmed": "Tasdiqlangan",
       "statusWaiting": "Kutmoqda",
       "statusInProgress": "Qabulda",
       "statusCompleted": "Keldi",
@@ -957,7 +970,8 @@
       "byDoctor": "Shifokor bo'yicha",
       "byCabinet": "Kabinet bo'yicha",
       "status": {
-        "BOOKED": "Tasdiqlangan",
+        "BOOKED": "Yozildi",
+        "CONFIRMED": "Tasdiqlangan",
         "WAITING": "Kutmoqda",
         "IN_PROGRESS": "Qabulda",
         "COMPLETED": "Keldi",
@@ -1725,6 +1739,29 @@
         "actions": "",
         "noNext": "—",
         "addAppointment": "Yozish"
+      },
+      "panel": {
+        "ariaLabel": "Shifokor navbati",
+        "dragHandle": "Bemorni siljitish",
+        "queueEmpty": "Navbatda hech kim yo'q",
+        "addAppointment": "Yozish",
+        "more": "Yana",
+        "openCard": "Kartani ochish",
+        "primary": {
+          "CONFIRM": "Tasdiqladi",
+          "ARRIVED": "Keldi",
+          "START": "Boshlash",
+          "COMPLETE": "Yakunlash",
+          "NO_SHOW": "Kelmadi"
+        },
+        "confirm": {
+          "cancel": "Bekor qilish",
+          "proceed": "Tasdiqlash",
+          "NO_SHOW": {
+            "title": "“Kelmadi” deb belgilash?",
+            "description": "{patient} kelmadi deb belgilanadi. Qo'lda qaytarmasangiz, amal qaytarilmaydi."
+          }
+        }
       }
     },
     "warnings": {
@@ -2981,6 +3018,28 @@
     "bubble": {
       "unknownCaller": "Noma'lum abonent",
       "linked": "bemor"
+    },
+    "unconfirmed": {
+      "ariaLabel": "Tasdiqlash kerak bo'lgan yozuvlar",
+      "title": "Tasdiqlanishi kerak",
+      "subtitle": "{count, plural, =0 {Tasdiqlanmagan yozuvlar yo'q} other {{count} ta yozuv tasdiqlanishini kutmoqda}}",
+      "loading": "Yuklanmoqda…",
+      "call": "Qo'ng'iroq qilish",
+      "open": "Yozuvni ochish",
+      "confirm": "Tasdiqlash",
+      "snooze": "Keyinroq",
+      "relative": {
+        "today": "bugun {clock}",
+        "tomorrow": "ertaga {clock}",
+        "inDays": "{days} kundan keyin, {clock}",
+        "inMinutes": "{mins} daqiqadan keyin ({clock})"
+      },
+      "toasts": {
+        "confirmed": "Tasdiqlandi: {name}",
+        "confirmFailed": "Yozuvni tasdiqlab bo'lmadi",
+        "snoozed": "Ertagacha qoldirildi",
+        "snoozeFailed": "Qoldirib bo'lmadi"
+      }
     }
   },
   "settings": {
@@ -4032,6 +4091,7 @@
     },
     "status": {
       "BOOKED": "Bron qilindi",
+      "CONFIRMED": "Tasdiqlangan",
       "WAITING": "Kutmoqda",
       "IN_PROGRESS": "Jarayonda",
       "COMPLETED": "Tugallandi",
@@ -5010,6 +5070,7 @@
       "cancelFailed": "Bekor qilishda xato",
       "actionFailed": "Xato",
       "rescheduleFailed": "Yozuvlarni o'tkazib bo'lmadi",
+      "reorderFailed": "Navbat tartibini o'zgartirib bo'lmadi",
       "statusFailed": "Statusni o'zgartirishda xato"
     },
     "case": {

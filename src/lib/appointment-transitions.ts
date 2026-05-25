@@ -9,6 +9,7 @@
 
 export type AppointmentStatus =
   | "BOOKED"
+  | "CONFIRMED"
   | "WAITING"
   | "IN_PROGRESS"
   | "COMPLETED"
@@ -20,9 +21,16 @@ export type AppointmentStatus =
  * Allowed forward transitions. A no-op (from === to) is always allowed.
  * COMPLETED, CANCELLED, NO_SHOW are terminal — reopening requires a
  * separate flow (creating a new appointment) which is not covered here.
+ *
+ * CONFIRMED is a pre-arrival state: reception has rung the patient and
+ * heard "yes, I'm coming". It silences the 24h confirm reminder and
+ * deflates no-show risk. Walk-ins skip it entirely (BOOKED → WAITING is
+ * still allowed). CONFIRMED → BOOKED exists so a fat-finger can be undone
+ * via the same forward transition (no need for the revert side-channel).
  */
 const TRANSITIONS: Record<AppointmentStatus, ReadonlySet<AppointmentStatus>> = {
-  BOOKED: new Set(["WAITING", "IN_PROGRESS", "NO_SHOW", "CANCELLED"]),
+  BOOKED: new Set(["CONFIRMED", "WAITING", "IN_PROGRESS", "NO_SHOW", "CANCELLED"]),
+  CONFIRMED: new Set(["BOOKED", "WAITING", "IN_PROGRESS", "NO_SHOW", "CANCELLED"]),
   WAITING: new Set(["BOOKED", "IN_PROGRESS", "SKIPPED", "NO_SHOW", "CANCELLED"]),
   IN_PROGRESS: new Set(["WAITING", "COMPLETED", "CANCELLED"]),
   SKIPPED: new Set(["WAITING", "IN_PROGRESS", "NO_SHOW", "CANCELLED"]),
@@ -143,6 +151,18 @@ export function actionsFor(status: AppointmentStatus): AppointmentActions {
         canReschedule: true,
         canCancel: true,
         canSendReminder: true,
+        canCallNext: true,
+        canComplete: false,
+      };
+    case "CONFIRMED":
+      // Same affordances as BOOKED except `canSendReminder` — the patient
+      // already told us they're coming, pinging them again is noise.
+      return {
+        canMarkArrived: true,
+        canMarkNoShow: true,
+        canReschedule: true,
+        canCancel: true,
+        canSendReminder: false,
         canCallNext: true,
         canComplete: false,
       };

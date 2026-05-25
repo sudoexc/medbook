@@ -18,6 +18,16 @@ export const AUDIT_ACTION = {
   // sifting through every status flip.
   APPOINTMENT_RESCHEDULED: "APPOINTMENT_RESCHEDULED",
 
+  // Wave 3.5 — appointment moved into confirmed state through one of the five
+  // canonical paths (booking auto-confirm for PHONE/KIOSK, reception/callcenter
+  // manual flip, patient SMS-YES, Telegram button press, inbound call).
+  // `entityType: "Appointment"`, `entityId: <appointmentId>`. `meta` carries
+  // `{ via, statusBefore, statusAfter, statusFlipped }`. `statusFlipped: false`
+  // means the audit row records the timestamp without changing status/queueStatus
+  // (already past BOOKED — e.g. late SMS-YES after the front desk moved them to
+  // WAITING).
+  APPOINTMENT_CONFIRMED: "APPOINTMENT_CONFIRMED",
+
   // Phase 20 Wave 5d — doctor pressed "Вызвать пациента" on /my-day. Sets
   // Appointment.calledAt, bumps BOOKED → WAITING when applicable, fires the
   // patient-facing Telegram "проходите в кабинет" notification. `entityType:

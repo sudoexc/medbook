@@ -494,6 +494,12 @@ function statusChip(status: string, tChip: ChipT): {
         className: "bg-info/20 text-[#1e3a8a] dark:text-blue-200",
         Icon: CheckCircle2Icon,
       };
+    case "CONFIRMED":
+      return {
+        label: tChip("statusConfirmed"),
+        className: "bg-info/30 text-[#1e40af] dark:text-blue-100",
+        Icon: CheckCircle2Icon,
+      };
     case "WAITING":
       return {
         label: tChip("statusWaiting"),

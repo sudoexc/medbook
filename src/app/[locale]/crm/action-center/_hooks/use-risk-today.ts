@@ -18,7 +18,7 @@ export type RiskTodayRow = {
   doctorName: { ru: string; uz: string };
   serviceName: { ru: string; uz: string } | null;
   priceFinalTiins: number | null;
-  status: "BOOKED" | "WAITING" | "IN_PROGRESS";
+  status: "BOOKED" | "CONFIRMED" | "WAITING" | "IN_PROGRESS";
   reasons: RiskReason[];
   riskScore: number;
   actionIds: string[];

@@ -52,6 +52,21 @@ export type AppointmentDetail = Omit<AppointmentRow, "patient"> & {
   // Phase 16 Wave 2 — post-visit NPS dedupe stamp. Not displayed in the
   // drawer but useful for action-center cross-references.
   npsRequestedAt: string | null;
+  // Stage 2.F — confirmation flow. `confirmedAt` is the source of truth for
+  // "did the patient (or operator) confirm this visit"; it's set by the
+  // booking auto-confirm, manual CRM click, SMS reply, TG button, or
+  // inbound call paths (see ConfirmationVia enum). `null` means still
+  // outstanding, which is also the predicate the UNCONFIRMED_24H detector
+  // uses to surface a row on the call-center widget.
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+  confirmedVia:
+    | "BOOKING_AUTO"
+    | "MANUAL_CRM"
+    | "SMS_REPLY"
+    | "TG_BUTTON"
+    | "INBOUND_CALL"
+    | null;
 };
 
 export const appointmentKey = (id: string) => ["appointment", id] as const;
@@ -337,6 +352,77 @@ export function useBulkReschedule() {
       if (!(err instanceof AppointmentConflictError)) {
         toast.error(err.message || t("rescheduleFailed"));
       }
+    },
+  });
+}
+
+/**
+ * Persist a new top-to-bottom ordering for a single doctor's live queue.
+ *
+ * Optimistically rewrites `queueOrder` on every cached `["reception","appointments","today",...]`
+ * snapshot so the list jumps into the new order instantly. We don't touch the
+ * generic `["appointments","list",...]` cache — its query keys are filter-scoped
+ * and the reception panel is the only consumer that sorts by `queueOrder`. On
+ * settled we invalidate all reception surfaces so kiosk/TV come back in sync.
+ */
+export function useReorderQueue() {
+  const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
+  return useMutation<
+    { count: number },
+    Error,
+    { doctorId: string; orderedIds: string[] },
+    { snapshots: Array<[readonly unknown[], AppointmentRow[]]> }
+  >({
+    mutationFn: async ({ doctorId, orderedIds }) => {
+      const res = await fetch(`/api/crm/appointments/reorder`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId, orderedIds }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+          reason?: string;
+        } | null;
+        throw new Error(j?.reason ?? j?.error ?? `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { count: number };
+    },
+    onMutate: async ({ orderedIds }) => {
+      const orderMap = new Map(orderedIds.map((id, idx) => [id, idx + 1]));
+      // Snapshot every reception-today cache (there can be several — one per
+      // forDate) so onError can roll back even if multiple panels are mounted.
+      await qc.cancelQueries({ queryKey: ["reception", "appointments", "today"] });
+      const snapshots: Array<[readonly unknown[], AppointmentRow[]]> = [];
+      const entries = qc.getQueriesData<AppointmentRow[]>({
+        queryKey: ["reception", "appointments", "today"],
+      });
+      for (const [key, rows] of entries) {
+        if (!rows) continue;
+        snapshots.push([key, rows]);
+        qc.setQueryData<AppointmentRow[]>(
+          key,
+          rows.map((r) =>
+            orderMap.has(r.id)
+              ? { ...r, queueOrder: orderMap.get(r.id) ?? r.queueOrder }
+              : r,
+          ),
+        );
+      }
+      return { snapshots };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.snapshots) {
+        for (const [key, prev] of context.snapshots) {
+          qc.setQueryData(key, prev);
+        }
+      }
+      toast.error(err.message || t("reorderFailed"));
+    },
+    onSettled: () => {
+      invalidateAppointmentSurfaces(qc);
     },
   });
 }

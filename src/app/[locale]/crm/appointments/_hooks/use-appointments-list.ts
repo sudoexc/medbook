@@ -63,6 +63,7 @@ export type AppointmentRow = {
   durationMin: number;
   status:
     | "BOOKED"
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"
@@ -71,6 +72,7 @@ export type AppointmentRow = {
     | "NO_SHOW";
   queueStatus:
     | "BOOKED"
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"
@@ -78,6 +80,7 @@ export type AppointmentRow = {
     | "CANCELLED"
     | "NO_SHOW";
   channel: "WALKIN" | "PHONE" | "TELEGRAM" | "WEBSITE" | "KIOSK";
+  queueOrder: number | null;
   priceBase: number | null;
   priceService: number | null;
   priceFinal: number | null;

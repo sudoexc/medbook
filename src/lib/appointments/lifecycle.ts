@@ -34,9 +34,17 @@ export type LifecycleRole =
  * The "happy-path" sequence rendered as a horizontal chain in the drawer.
  * Off-path statuses (NO_SHOW, CANCELLED, SKIPPED) live in a sidebar and are
  * NOT part of this list — they are reachable via dedicated affordances.
+ *
+ * CONFIRMED sits between BOOKED and WAITING: reception phones the patient
+ * the day before and flips them to CONFIRMED if they say "yes". Walk-ins
+ * skip the step (BOOKED → WAITING is still a legal transition), in which
+ * case the chain renders CONFIRMED as "passed" even though it was never
+ * literally entered — the dot lights up so the visual progress stays
+ * monotonic.
  */
 export const LIFECYCLE_STEPS: readonly AppointmentStatus[] = [
   "BOOKED",
+  "CONFIRMED",
   "WAITING",
   "IN_PROGRESS",
   "COMPLETED",
@@ -86,6 +94,7 @@ export function getAllowedTransitions(
   if (!canMutateStatus(role)) return [];
   const all: AppointmentStatus[] = [
     "BOOKED",
+    "CONFIRMED",
     "WAITING",
     "IN_PROGRESS",
     "COMPLETED",
@@ -163,12 +172,30 @@ export function getStepStates(
  * Forward-only icons used by the reception card's quick-action row. Returns
  * the next step icon hints in declaration order. NO_SHOW is always last and
  * tagged `confirm` so the UI knows to wrap it in a popover.
+ *
+ * `confirm` here means "wrap in an Are-You-Sure dialog" — it is unrelated to
+ * the CONFIRM action kind (which is the pre-visit phone confirmation flip).
  */
 export type QuickAction =
+  | { kind: "CONFIRM"; to: "CONFIRMED"; confirm: false }
   | { kind: "ARRIVED"; to: "WAITING"; confirm: false }
   | { kind: "START"; to: "IN_PROGRESS"; confirm: false }
   | { kind: "COMPLETE"; to: "COMPLETED"; confirm: false }
   | { kind: "NO_SHOW"; to: "NO_SHOW"; confirm: true };
+
+/**
+ * Lifecycle ownership by action — anchors the role/action separation enforced
+ * below. Reception desks own intake (ARRIVED + NO_SHOW): they decide whether
+ * the patient is in the room. Doctors own the consultation itself (START +
+ * COMPLETE): they're the ones actually delivering care. Admins fall on the
+ * reception side because the surface here IS reception — emergency overrides
+ * are routed through the drawer's lifecycle chain, not these quick actions.
+ */
+const RECEPTION_ROLES = new Set<LifecycleRole>([
+  "ADMIN",
+  "SUPER_ADMIN",
+  "RECEPTIONIST",
+]);
 
 export function getQuickActions(
   current: AppointmentStatus,
@@ -180,6 +207,9 @@ export function getQuickActions(
   const allowed = new Set(
     getAllowedTransitionsAt(current, role, appointmentDate, now),
   );
+
+  const isDoctor = role === "DOCTOR";
+  const isReception = RECEPTION_ROLES.has(role);
 
   // Quick-action row is forward-only: we hide ARRIVED once the patient is
   // past WAITING, hide START once they're past IN_PROGRESS, etc. The state
@@ -195,15 +225,46 @@ export function getQuickActions(
   };
 
   const actions: QuickAction[] = [];
-  if (allowed.has("WAITING") && isForward("WAITING")) {
+  // Pre-visit confirmation belongs to the front desk: receptionists ring the
+  // patient the day before and flip BOOKED → CONFIRMED. We surface CONFIRM
+  // ahead of ARRIVED because for most rows the phone call happens before the
+  // patient physically arrives. On CONFIRMED rows isForward returns false
+  // for "CONFIRMED" (current === target), so the button self-hides.
+  if (
+    isReception &&
+    allowed.has("CONFIRMED") &&
+    isForward("CONFIRMED")
+  ) {
+    actions.push({ kind: "CONFIRM", to: "CONFIRMED", confirm: false });
+  }
+  // Intake belongs to the front desk: doctors don't tick "patient walked in".
+  if (
+    isReception &&
+    allowed.has("WAITING") &&
+    isForward("WAITING")
+  ) {
     actions.push({ kind: "ARRIVED", to: "WAITING", confirm: false });
   }
-  if (allowed.has("IN_PROGRESS") && isForward("IN_PROGRESS")) {
+  // Consultation start belongs to the doctor — receptionists can't decide
+  // when the doctor is ready to see the next patient.
+  if (
+    isDoctor &&
+    allowed.has("IN_PROGRESS") &&
+    isForward("IN_PROGRESS")
+  ) {
     actions.push({ kind: "START", to: "IN_PROGRESS", confirm: false });
   }
-  if (allowed.has("COMPLETED") && isForward("COMPLETED")) {
+  // Same with completion: only the doctor knows when the visit is done.
+  if (
+    isDoctor &&
+    allowed.has("COMPLETED") &&
+    isForward("COMPLETED")
+  ) {
     actions.push({ kind: "COMPLETE", to: "COMPLETED", confirm: false });
   }
+  // NO_SHOW is shared: receptionists trigger it when the patient never
+  // arrives; doctors trigger it when they finish reception's WAITING-bucket
+  // patients ahead of a no-show that drifted through.
   if (allowed.has("NO_SHOW")) {
     actions.push({ kind: "NO_SHOW", to: "NO_SHOW", confirm: true });
   }

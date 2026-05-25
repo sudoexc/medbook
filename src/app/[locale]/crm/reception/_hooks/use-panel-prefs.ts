@@ -16,7 +16,7 @@ export interface DoctorPanelPrefs {
 }
 
 export const DEFAULT_PANEL_PREFS: DoctorPanelPrefs = {
-  view: "grid",
+  view: "list",
   hideIdle: false,
   sortBy: "load",
   density: "comfortable",
@@ -24,7 +24,9 @@ export const DEFAULT_PANEL_PREFS: DoctorPanelPrefs = {
   showNextSlot: true,
 };
 
-const STORAGE_KEY = "reception:doctorPanelPrefs:v1";
+// v2: default view switched from grid → list (denser data at a glance).
+// Bumping the key force-resets stored prefs so the new default takes effect.
+const STORAGE_KEY = "reception:doctorPanelPrefs:v2";
 
 function readPrefs(): DoctorPanelPrefs {
   if (typeof window === "undefined") return DEFAULT_PANEL_PREFS;

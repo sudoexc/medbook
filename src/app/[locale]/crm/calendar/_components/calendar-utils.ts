@@ -11,6 +11,13 @@ export const STATUS_COLORS: Record<string, { bg: string; text: string; border: s
     text: "#1e3a8a",
     border: "var(--color-info, #3b82f6)",
   },
+  CONFIRMED: {
+    // Deeper info tint than BOOKED — the patient committed, so the tile
+    // visually outranks an unconfirmed slot in the calendar grid.
+    bg: "#bfdbfe",
+    text: "#1e40af",
+    border: "var(--color-info, #2563eb)",
+  },
   WAITING: {
     bg: "#fef3c7",
     text: "#78350f",

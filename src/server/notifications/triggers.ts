@@ -30,6 +30,11 @@ import { render } from "./template";
 
 export const TRIGGER_KEYS = [
   "appointment.created",
+  // Stage 2.D — soft 3-day "gentle ping" reminder. Audience is restricted at
+  // the materialiser (TELEGRAM/WEBSITE bookings still pending confirmation,
+  // i.e. `confirmedAt IS NULL`). PHONE/KIOSK/WALKIN auto-confirm at booking
+  // and never see this template.
+  "appointment.reminder-3d",
   "appointment.reminder-24h",
   "appointment.reminder-5h",
   "appointment.reminder-2h",
@@ -135,6 +140,8 @@ type AppointmentWithRefs = {
   time: string | null;
   endDate: Date;
   status: string;
+  /** Stage 2.D — used to gate the T-3d "gentle ping" reminder. */
+  confirmedAt: Date | null;
   patient: {
     id: string;
     fullName: string;
@@ -250,6 +257,11 @@ function whereForTrigger(
   switch (trigger) {
     case "appointment.created":
       return { trigger: "APPOINTMENT_CREATED" };
+    case "appointment.reminder-3d":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -4320 },
+      };
     case "appointment.reminder-24h":
       return {
         trigger: "APPOINTMENT_BEFORE",
@@ -495,6 +507,16 @@ export async function materializeForAppointmentsBulk(
       skipped += 1;
       continue;
     }
+    // Stage 2.D — race-safety: skip the T-3d reminder if the patient
+    // confirmed between the scheduler's scan loop and this bulk insert.
+    // Same gate as the detector / scheduler band predicate.
+    if (
+      trigger === "appointment.reminder-3d" &&
+      appt.confirmedAt !== null
+    ) {
+      skipped += 1;
+      continue;
+    }
     const tpl = templates.get(appt.clinicId);
     if (!tpl) {
       skipped += 1;
@@ -675,7 +697,7 @@ export async function onNpsRequest(appointmentId: string): Promise<void> {
   );
 }
 
-/** Schedule the 24h / 5h / 2h reminder cascade for an appointment. */
+/** Schedule the 3d / 24h / 5h / 2h reminder cascade for an appointment. */
 export async function scheduleAppointmentReminders(
   appointmentId: string,
 ): Promise<void> {
@@ -683,6 +705,18 @@ export async function scheduleAppointmentReminders(
   if (!appt) return;
   const start = appt.date.getTime();
   const now = Date.now();
+  // Stage 2.D — T-3d "gentle ping" only for appointments that still need
+  // confirming. Auto-confirm channels (PHONE/KIOSK/WALKIN) stamp `confirmedAt`
+  // synchronously in the booking route before this scheduler runs, so the
+  // check below filters them out cleanly. TELEGRAM/WEBSITE bookings stay
+  // `confirmedAt: null` until the patient acts.
+  if (appt.confirmedAt === null && start - 72 * 60 * 60 * 1000 > now) {
+    await materializeForAppointment(
+      appointmentId,
+      "appointment.reminder-3d",
+      new Date(start - 72 * 60 * 60 * 1000),
+    );
+  }
   if (start - 24 * 60 * 60 * 1000 > now) {
     await materializeForAppointment(
       appointmentId,
@@ -711,6 +745,7 @@ export async function scheduleAppointmentReminders(
  * runs birthday and payment.due triggers once per tick.
  */
 export async function runScheduledTriggers(): Promise<{
+  reminders3d: number;
   reminders24h: number;
   reminders5h: number;
   reminders2h: number;
@@ -719,10 +754,9 @@ export async function runScheduledTriggers(): Promise<{
   caseRepeats: number;
 }> {
   const now = new Date();
-  // Select appointments in [now, now+25h] that are still BOOKED and lack
-  // a queued reminder. We cap the horizon so we don't re-scan the whole
-  // future every minute.
-  const horizon = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+  // Stage 2.D — widen horizon to 73h so the T-3d (-4320 min) "gentle ping"
+  // band lands inside the same scan. The 24/5/2h bands are unchanged.
+  const horizon = new Date(now.getTime() + 73 * 60 * 60 * 1000);
 
   const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
@@ -730,7 +764,7 @@ export async function runScheduledTriggers(): Promise<{
         date: { gte: now, lte: horizon },
         status: { in: ["BOOKED", "WAITING"] },
       },
-      select: { id: true, date: true },
+      select: { id: true, date: true, confirmedAt: true },
       take: 500,
     }),
   );
@@ -743,15 +777,33 @@ export async function runScheduledTriggers(): Promise<{
   //
   // Bands are chosen so a typical 60-second tick comfortably covers each
   // one without missing or duplicating:
+  //   - 71–72h before  → 3d  reminder (gated on confirmedAt IS NULL)
   //   - 23–24h before  → 24h reminder
   //   -  4–5h  before  → 5h  reminder
   //   -  1–2h  before  → 2h  reminder
+  const jobs3d: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   const jobs24h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   const jobs5h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   const jobs2h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const start = r.date.getTime();
     const until = start - Date.now();
+    // T-3d (-4320 min) "gentle ping" — only for appointments still pending
+    // confirmation. Auto-confirmed bookings (PHONE/KIOSK/WALKIN) carry a
+    // non-null `confirmedAt` and are skipped here to avoid spamming patients
+    // who have nothing to confirm. The same gate lives in the detector
+    // (`unconfirmed-24h.ts`).
+    if (
+      r.confirmedAt === null &&
+      until > 0 &&
+      until <= 72 * 60 * 60 * 1000 &&
+      until > 71 * 60 * 60 * 1000
+    ) {
+      jobs3d.push({
+        appointmentId: r.id,
+        scheduledFor: new Date(start - 72 * 60 * 60 * 1000),
+      });
+    }
     if (until > 0 && until <= 24 * 60 * 60 * 1000 && until > 23 * 60 * 60 * 1000) {
       jobs24h.push({
         appointmentId: r.id,
@@ -771,11 +823,13 @@ export async function runScheduledTriggers(): Promise<{
       });
     }
   }
-  const [res24, res5, res2] = await Promise.all([
+  const [res3d, res24, res5, res2] = await Promise.all([
+    materializeForAppointmentsBulk(jobs3d, "appointment.reminder-3d"),
     materializeForAppointmentsBulk(jobs24h, "appointment.reminder-24h"),
     materializeForAppointmentsBulk(jobs5h, "appointment.reminder-5h"),
     materializeForAppointmentsBulk(jobs2h, "appointment.reminder-2h"),
   ]);
+  const reminders3d = res3d.created;
   const reminders24h = res24.created;
   const reminders5h = res5.created;
   const reminders2h = res2.created;
@@ -784,6 +838,7 @@ export async function runScheduledTriggers(): Promise<{
   const paymentsDue = await runPaymentsDue();
   const caseRepeats = await runCaseRepeatReminders();
   return {
+    reminders3d,
     reminders24h,
     reminders5h,
     reminders2h,

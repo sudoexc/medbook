@@ -19,6 +19,7 @@ export interface CalendarLegendProps {
 
 type StatusKey =
   | "BOOKED"
+  | "CONFIRMED"
   | "WAITING"
   | "IN_PROGRESS"
   | "COMPLETED"
@@ -28,7 +29,8 @@ type StatusKey =
   | "FREE";
 
 const STATUS_SWATCHES: Array<{ key: StatusKey; dotClass: string }> = [
-  { key: "BOOKED", dotClass: "bg-info" },
+  { key: "BOOKED", dotClass: "bg-info/60" },
+  { key: "CONFIRMED", dotClass: "bg-info" },
   { key: "WAITING", dotClass: "bg-warning" },
   { key: "IN_PROGRESS", dotClass: "bg-primary" },
   { key: "COMPLETED", dotClass: "bg-success" },

@@ -14,6 +14,8 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 
 import { cadenceLabel, type ScheduleCadence } from "@/server/analytics/cadence";
 
@@ -42,14 +44,8 @@ export interface SchedulesSectionProps {
   locale: "ru" | "uz";
 }
 
-function fmtDateTime(iso: string, locale: "ru" | "uz"): string {
-  return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
+function fmtDateTime(iso: string, locale: Locale): string {
+  return formatClinicDateTime(iso, locale);
 }
 
 export function SchedulesSection({
@@ -61,6 +57,10 @@ export function SchedulesSection({
   const [loading, setLoading] = React.useState(true);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ScheduleRow | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
+  const [deleting, setDeleting] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -153,18 +153,25 @@ export function SchedulesSection({
     void refresh();
   };
 
-  const onDelete = async (id: string) => {
-    if (!confirm(t("confirmDelete"))) return;
-    const r = await fetch(
-      `/api/crm/analytics/reports/${reportId}/schedules/${id}`,
-      { method: "DELETE" },
-    );
-    if (!r.ok) {
-      toast.error(t("toastDeleteFailed"));
-      return;
+  const confirmDelete = async () => {
+    const id = pendingDeleteId;
+    if (!id) return;
+    setDeleting(true);
+    try {
+      const r = await fetch(
+        `/api/crm/analytics/reports/${reportId}/schedules/${id}`,
+        { method: "DELETE" },
+      );
+      if (!r.ok) {
+        toast.error(t("toastDeleteFailed"));
+        return;
+      }
+      toast.success(t("toastDeleted"));
+      void refresh();
+    } finally {
+      setDeleting(false);
+      setPendingDeleteId(null);
     }
-    toast.success(t("toastDeleted"));
-    void refresh();
   };
 
   const onTogglePause = async (row: ScheduleRow) => {
@@ -248,7 +255,7 @@ export function SchedulesSection({
                   <Button
                     size="sm"
                     variant="destructive"
-                    onClick={() => void onDelete(row.id)}
+                    onClick={() => setPendingDeleteId(row.id)}
                   >
                     {t("delete")}
                   </Button>
@@ -285,6 +292,18 @@ export function SchedulesSection({
           onSubmit={(values) => onUpdate(editing.id, values)}
         />
       ) : null}
+
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+        title={t("confirmDelete")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        onConfirm={confirmDelete}
+        pending={deleting}
+      />
     </section>
   );
 }

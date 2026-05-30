@@ -20,10 +20,23 @@ import { getTenant } from "@/lib/tenant-context";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const parsed = parseQuery(request, QueryPaymentSchema);
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
+
+    // Privacy guard: DOCTOR and CALL_OPERATOR can only inspect a single
+    // patient's payments (e.g. inside the patient card). Unscoped clinic-wide
+    // listing is reserved for ADMIN / RECEPTIONIST who actually need it for
+    // reconciliation. Without this, the patient-card payments tab keeps
+    // working but a curious doctor cannot dump the whole cashflow.
+    if (
+      ctx.kind === "TENANT" &&
+      (ctx.role === "DOCTOR" || ctx.role === "CALL_OPERATOR") &&
+      !q.patientId
+    ) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const where: Record<string, unknown> = {};
     if (q.status) where.status = q.status;

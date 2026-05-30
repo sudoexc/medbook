@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { intlLocale } from "@/lib/format";
@@ -84,6 +85,7 @@ export function ReportViewClient({
   const [loading, setLoading] = React.useState(true);
   const [result, setResult] = React.useState<ReportRunResponse | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const run = React.useCallback(async () => {
     setLoading(true);
@@ -134,8 +136,7 @@ export function ReportViewClient({
     URL.revokeObjectURL(a.href);
   };
 
-  const onDelete = async () => {
-    if (!confirm(t("confirmDelete"))) return;
+  const confirmDelete = async () => {
     setDeleting(true);
     try {
       const r = await fetch(`/api/crm/analytics/reports/${report.id}`, {
@@ -149,6 +150,7 @@ export function ReportViewClient({
       router.push(`/${locale}/crm/analytics/reports`);
     } finally {
       setDeleting(false);
+      setDeleteOpen(false);
     }
   };
 
@@ -186,7 +188,7 @@ export function ReportViewClient({
             </Button>
             <Button
               variant="destructive"
-              onClick={onDelete}
+              onClick={() => setDeleteOpen(true)}
               disabled={deleting}
             >
               {t("delete")}
@@ -202,6 +204,16 @@ export function ReportViewClient({
       ) : null}
 
       <SchedulesSection reportId={report.id} locale={locale} />
+
+      <ConfirmDeleteDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={t("confirmDelete")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        onConfirm={confirmDelete}
+        pending={deleting}
+      />
 
       {result ? (
         <section className="mt-6 rounded-md border">

@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DateText } from "@/components/atoms/date-text";
+import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 
 import type { Patient } from "../../_hooks/use-patient";
 import { usePatchPatient } from "../../_hooks/use-patient";
@@ -158,8 +159,26 @@ function AllergiesCard({
   const remove = useDeleteAllergy(patientId);
   const [showForm, setShowForm] = React.useState(false);
   const [editing, setEditing] = React.useState<AllergyRow | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
 
   const rows = list.data?.rows ?? [];
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    try {
+      await remove.mutateAsync(id);
+      toast.success(t("allergies.deleted"));
+      setPendingDeleteId(null);
+    } catch (e) {
+      toast.error(t("allergies.deleteFailed"), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+      setPendingDeleteId(null);
+    }
+  };
 
   const onSubmit = async (input: Partial<AllergyRow>) => {
     try {
@@ -228,22 +247,23 @@ function AllergiesCard({
                 setEditing(row);
                 setShowForm(true);
               }}
-              onDelete={async () => {
-                if (!window.confirm(t("allergies.confirmDelete"))) return;
-                try {
-                  await remove.mutateAsync(row.id);
-                  toast.success(t("allergies.deleted"));
-                } catch (e) {
-                  toast.error(t("allergies.deleteFailed"), {
-                    description: e instanceof Error ? e.message : undefined,
-                  });
-                }
-              }}
+              onDelete={() => setPendingDeleteId(row.id)}
               t={t}
             />
           ))}
         </ul>
       )}
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+        title={t("allergies.confirmDelete")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        onConfirm={confirmDelete}
+        pending={remove.isPending}
+      />
     </Section>
   );
 }
@@ -417,8 +437,26 @@ function ChronicCard({
   const remove = useDeleteChronic(patientId);
   const [showForm, setShowForm] = React.useState(false);
   const [editing, setEditing] = React.useState<ChronicRow | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
 
   const rows = list.data?.rows ?? [];
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    try {
+      await remove.mutateAsync(id);
+      toast.success(t("chronic.deleted"));
+      setPendingDeleteId(null);
+    } catch (e) {
+      toast.error(t("chronic.deleteFailed"), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+      setPendingDeleteId(null);
+    }
+  };
 
   const onSubmit = async (input: Partial<ChronicRow>) => {
     try {
@@ -516,17 +554,7 @@ function ChronicCard({
                       <PencilIcon className="size-3.5" />
                     </IconBtn>
                     <IconBtn
-                      onClick={async () => {
-                        if (!window.confirm(t("chronic.confirmDelete"))) return;
-                        try {
-                          await remove.mutateAsync(row.id);
-                          toast.success(t("chronic.deleted"));
-                        } catch (e) {
-                          toast.error(t("chronic.deleteFailed"), {
-                            description: e instanceof Error ? e.message : undefined,
-                          });
-                        }
-                      }}
+                      onClick={() => setPendingDeleteId(row.id)}
                       aria-label={t("delete")}
                     >
                       <Trash2Icon className="size-3.5" />
@@ -538,6 +566,17 @@ function ChronicCard({
           ))}
         </ul>
       )}
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+        title={t("chronic.confirmDelete")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        onConfirm={confirmDelete}
+        pending={remove.isPending}
+      />
     </Section>
   );
 }
@@ -641,8 +680,26 @@ function DiagnosesCard({
   const remove = useDeleteDiagnosis(patientId);
   const [showForm, setShowForm] = React.useState(false);
   const [editing, setEditing] = React.useState<DiagnosisRow | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
 
   const rows = list.data?.rows ?? [];
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    try {
+      await remove.mutateAsync(id);
+      toast.success(t("diagnoses.deleted"));
+      setPendingDeleteId(null);
+    } catch (e) {
+      toast.error(t("diagnoses.deleteFailed"), {
+        description: e instanceof Error ? e.message : undefined,
+      });
+      setPendingDeleteId(null);
+    }
+  };
 
   const onSubmit = async (input: Partial<DiagnosisRow>) => {
     try {
@@ -745,17 +802,7 @@ function DiagnosesCard({
                       <PencilIcon className="size-3.5" />
                     </IconBtn>
                     <IconBtn
-                      onClick={async () => {
-                        if (!window.confirm(t("diagnoses.confirmDelete"))) return;
-                        try {
-                          await remove.mutateAsync(row.id);
-                          toast.success(t("diagnoses.deleted"));
-                        } catch (e) {
-                          toast.error(t("diagnoses.deleteFailed"), {
-                            description: e instanceof Error ? e.message : undefined,
-                          });
-                        }
-                      }}
+                      onClick={() => setPendingDeleteId(row.id)}
                       aria-label={t("delete")}
                     >
                       <Trash2Icon className="size-3.5" />
@@ -767,6 +814,17 @@ function DiagnosesCard({
           ))}
         </ul>
       )}
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+        title={t("diagnoses.confirmDelete")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        onConfirm={confirmDelete}
+        pending={remove.isPending}
+      />
     </Section>
   );
 }

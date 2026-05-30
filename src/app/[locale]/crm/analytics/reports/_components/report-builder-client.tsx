@@ -22,6 +22,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
+import {
+  formatClinicDateTime,
+  intlLocale,
+  type Locale,
+} from "@/lib/format";
 
 import {
   DIMENSION_KEYS,
@@ -89,35 +94,37 @@ function moveItem<T>(arr: ReadonlyArray<T>, idx: number, dir: -1 | 1): T[] {
 function formatCellForTable(
   v: unknown,
   unit: ReportColumnDescriptor["unit"],
+  locale: Locale,
 ): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "string") {
     if (unit === "tiins") {
       const n = Number(v);
-      if (Number.isFinite(n)) return formatTiins(n);
+      if (Number.isFinite(n)) return formatTiins(n, locale);
       return v;
     }
     return v;
   }
   if (typeof v === "number") {
-    if (unit === "tiins") return formatTiins(v);
+    if (unit === "tiins") return formatTiins(v, locale);
     if (unit === "ratio") return `${(v * 100).toFixed(1)}%`;
-    return v.toLocaleString();
+    return v.toLocaleString(intlLocale(locale));
   }
   if (typeof v === "bigint") {
-    if (unit === "tiins") return formatTiins(Number(v));
+    if (unit === "tiins") return formatTiins(Number(v), locale);
     return v.toString();
   }
   return String(v);
 }
 
-function formatTiins(tiins: number): string {
+function formatTiins(tiins: number, locale: Locale): string {
   const soum = tiins / 100;
-  return new Intl.NumberFormat("ru-RU", {
+  return new Intl.NumberFormat(intlLocale(locale), {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Math.round(soum));
 }
+
 
 export function ReportBuilderClient({
   locale,
@@ -607,7 +614,7 @@ export function ReportBuilderClient({
             </span>
             <span>
               {t("resultGeneratedAt", {
-                ts: new Date(result.generatedAt).toLocaleString(),
+                ts: formatClinicDateTime(result.generatedAt, locale),
               })}
             </span>
           </div>
@@ -642,7 +649,7 @@ export function ReportBuilderClient({
                               : "px-3 py-1.5"
                           }
                         >
-                          {formatCellForTable(row[c.key], c.unit)}
+                          {formatCellForTable(row[c.key], c.unit, locale)}
                         </td>
                       ))}
                     </tr>

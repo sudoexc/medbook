@@ -537,6 +537,13 @@ export const AUDIT_ACTION = {
   // visitNoteId?, appointmentId?, warningKind, severity, warningKey?,
   // reason }`. No PII in meta — the warning text snapshot lives on the row.
   CDS_OVERRIDE_RECORDED: "CDS_OVERRIDE_RECORDED",
+
+  // CRM CSV export enqueued via `POST /api/crm/exports` — admin requested a
+  // bulk dump of patients / appointments / payments. `entityType:
+  // "ExportJob"`, `entityId: <job.id>`. `meta` carries `{ kind, filters }`
+  // so we have a forensic record of which slice of PII left the system.
+  // Distinct from PATIENT_DATA_EXPORT_* (those are DSAR per-patient JSON).
+  CRM_EXPORT_REQUESTED: "CRM_EXPORT_REQUESTED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

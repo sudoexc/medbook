@@ -11,8 +11,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
+import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 
 import type { SavedReportListResponse } from "@/server/analytics/saved-reports";
 
@@ -29,6 +31,9 @@ export function ReportsListClient({
   const router = useRouter();
   const [data, setData] = React.useState(initial);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
 
   const refresh = async (page: number) => {
     const r = await fetch(
@@ -41,8 +46,9 @@ export function ReportsListClient({
     }
   };
 
-  const onDelete = async (id: string) => {
-    if (!confirm(t("confirmDelete"))) return;
+  const confirmDelete = async () => {
+    const id = pendingDeleteId;
+    if (!id) return;
     setBusyId(id);
     try {
       const r = await fetch(`/api/crm/analytics/reports/${id}`, {
@@ -56,6 +62,7 @@ export function ReportsListClient({
       await refresh(data.pagination.page);
     } finally {
       setBusyId(null);
+      setPendingDeleteId(null);
     }
   };
 
@@ -131,7 +138,7 @@ export function ReportsListClient({
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {r.lastRunAt
-                      ? new Date(r.lastRunAt).toLocaleString()
+                      ? formatClinicDateTime(r.lastRunAt, locale as Locale)
                       : t("neverRun")}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -160,7 +167,7 @@ export function ReportsListClient({
                         variant="ghost"
                         size="sm"
                         disabled={busyId === r.id}
-                        onClick={() => onDelete(r.id)}
+                        onClick={() => setPendingDeleteId(r.id)}
                       >
                         {t("actDelete")}
                       </Button>
@@ -206,6 +213,18 @@ export function ReportsListClient({
         {/* router.refresh fallback for environments without sonner toasts */}
         <button onClick={() => router.refresh()} />
       </noscript>
+
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+        title={t("confirmDelete")}
+        confirmLabel={t("actDelete")}
+        cancelLabel={t("cancel")}
+        onConfirm={confirmDelete}
+        pending={busyId !== null}
+      />
     </PageContainer>
   );
 }

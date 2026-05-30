@@ -143,8 +143,8 @@ export function DocumentsPageClient() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <table className="w-full min-w-[800px] text-sm">
           <thead className="border-b border-border bg-muted/30 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">{t("columns.title")}</th>

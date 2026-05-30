@@ -22,6 +22,7 @@ import {
   resolveDoctorPerfRange,
   type DoctorPerfRangeKind,
 } from "@/lib/analytics/dashboard-math";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 import type { DoctorPerformanceRow } from "@/server/analytics/doctor-performance-resolver";
 
 interface DoctorMeta {
@@ -342,7 +343,7 @@ export function DoctorPerformanceClient({
 
       <p className="text-xs text-muted-foreground">
         {t("metaHint", {
-          generatedAt: new Date(generatedAtState).toLocaleString(),
+          generatedAt: formatClinicDateTime(generatedAtState, locale as Locale),
         })}
       </p>
 

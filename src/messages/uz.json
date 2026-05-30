@@ -519,6 +519,11 @@
     "export": "CSV eksport",
     "loadMore": "Yana ko'rsatish",
     "loading": "Yuklanmoqda…",
+    "loadError": {
+      "title": "Yozilishlarni yuklab bo'lmadi",
+      "description": "Server javob bermadi. Internetni tekshirib, qayta urinib ko'ring.",
+      "retry": "Qayta urinish"
+    },
     "pagination": {
       "range": "{total} dan {shown} ta yozuv"
     },
@@ -943,6 +948,11 @@
     "emptyRange": {
       "title": "Bu davrda hali yozilishlar yo'q.",
       "description": "Yozilish yaratish uchun bo'sh slotni bosing."
+    },
+    "partialRange": {
+      "title": "Yozilishlarning bir qismi yuklanmadi.",
+      "description": "Aloqani tekshirib, sahifani yangilang.",
+      "retry": "Yangilash"
     },
     "event": {
       "untitled": "Nomsiz",
@@ -4161,6 +4171,7 @@
       "actEdit": "Tahrirlash",
       "actDelete": "O‘chirish",
       "confirmDelete": "Bu hisobotni o‘chirilsinmi?",
+      "cancel": "Bekor qilish",
       "toastDeleted": "Hisobot o‘chirildi",
       "toastDeleteFailed": "Hisobotni o‘chirib bo‘lmadi",
       "pageMeta": "Sahifa {page} / {total}",
@@ -4180,6 +4191,7 @@
       "generatedAt": "Olingan {ts}",
       "empty": "Joriy filtrlarga mos ma’lumot yo‘q",
       "confirmDelete": "Bu hisobotni o‘chirilsinmi?",
+      "cancel": "Bekor qilish",
       "toastRunFailed": "Hisobotni ishga tushirib bo‘lmadi",
       "toastRunTimeout": "Hisobot 30 soniyadan oshdi — filtrlarni o‘zgartiring.",
       "toastExportFailed": "CSV eksport amalga oshmadi",
@@ -4713,6 +4725,7 @@
     "updatedAt": "{time} oldin yangilandi",
     "aiTag": "AI · Avto",
     "error": "Xulosani yuklab bo'lmadi",
+    "retry": "Qayta urinish",
     "refreshing": "yangilanmoqda…"
   },
   "soapDraft": {

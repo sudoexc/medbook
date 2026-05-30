@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 import type { ScheduleHeatmapCell } from "@/server/analytics/schedule-heatmap-resolver";
 
 interface DoctorMeta {
@@ -179,7 +180,7 @@ export function ScheduleHeatmapClient({
 
       <p className="text-xs text-muted-foreground">
         {t("metaHint", {
-          generatedAt: new Date(generatedAt).toLocaleString(),
+          generatedAt: formatClinicDateTime(generatedAt, locale as Locale),
           source,
         })}
       </p>

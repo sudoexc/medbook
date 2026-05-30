@@ -7,6 +7,8 @@
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
+import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok } from "@/server/http";
 import { enqueueExport } from "@/server/workers/exports";
 
@@ -30,7 +32,7 @@ const Schema = z.object({
 
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: Schema },
-  async ({ body, ctx }) => {
+  async ({ request, body, ctx }) => {
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     const requestedBy =
       ctx.kind === "TENANT" || ctx.kind === "SUPER_ADMIN" ? ctx.userId : null;
@@ -40,6 +42,12 @@ export const POST = createApiHandler(
       requestedBy,
       clinicId,
       tenant: ctx,
+    });
+    await audit(request, {
+      action: AUDIT_ACTION.CRM_EXPORT_REQUESTED,
+      entityType: "ExportJob",
+      entityId: job.id,
+      meta: { kind: body.kind, filters: body.filters },
     });
     return ok({ jobId: job.id, status: job.status });
   },

@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { PlusIcon } from "lucide-react";
+import { AlertTriangleIcon, PlusIcon, RotateCwIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation } from "@tanstack/react-query";
 
 import { PageContainer } from "@/components/molecules/page-container";
+import { EmptyState } from "@/components/atoms/empty-state";
 import { Button } from "@/components/ui/button";
 
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
@@ -232,26 +233,46 @@ export function AppointmentsPageClient() {
           ) : null}
 
           <div className="flex min-h-[60vh] flex-1 flex-col">
-            <AppointmentsTable
-              rows={rows}
-              isLoading={query.isLoading}
-              isFetchingNextPage={query.isFetchingNextPage}
-              hasNextPage={Boolean(query.hasNextPage)}
-              onLoadMore={() => query.fetchNextPage()}
-              hasFilters={Boolean(hasFilters)}
-              onCreate={() => openCreateDialog()}
-              onRowSelect={(id) => openRow(id)}
-              selectedIds={selected}
-              onToggleSelect={toggleSelect}
-              onToggleSelectAll={toggleSelectAll}
-              sort={state.sort}
-              dir={state.dir}
-              onSortChange={(sort, dir) => {
-                setFilter("sort", sort);
-                setFilter("dir", dir);
-              }}
-              total={total}
-            />
+            {query.isError ? (
+              <EmptyState
+                icon={<AlertTriangleIcon />}
+                title={t("loadError.title")}
+                description={t("loadError.description")}
+                action={
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => query.refetch()}
+                    className="gap-2"
+                  >
+                    <RotateCwIcon className="size-4" />
+                    {t("loadError.retry")}
+                  </Button>
+                }
+                className="my-4"
+              />
+            ) : (
+              <AppointmentsTable
+                rows={rows}
+                isLoading={query.isLoading}
+                isFetchingNextPage={query.isFetchingNextPage}
+                hasNextPage={Boolean(query.hasNextPage)}
+                onLoadMore={() => query.fetchNextPage()}
+                hasFilters={Boolean(hasFilters)}
+                onCreate={() => openCreateDialog()}
+                onRowSelect={(id) => openRow(id)}
+                selectedIds={selected}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
+                sort={state.sort}
+                dir={state.dir}
+                onSortChange={(sort, dir) => {
+                  setFilter("sort", sort);
+                  setFilter("dir", dir);
+                }}
+                total={total}
+              />
+            )}
           </div>
         </PageContainer>
       </div>

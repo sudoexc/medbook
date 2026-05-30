@@ -9,6 +9,7 @@ import { ArrowLeftIcon, RefreshCwIcon } from "lucide-react";
 import { PageContainer } from "@/components/molecules/page-container";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
+import { SkeletonCard } from "@/components/atoms/skeleton-card";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 import { cn } from "@/lib/utils";
 
@@ -228,8 +229,9 @@ export function PatientCardClient({ id }: { id: string }) {
           ) : (
             <React.Suspense
               fallback={
-                <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-                  …
+                <div className="flex flex-col gap-3">
+                  <SkeletonCard />
+                  <SkeletonCard />
                 </div>
               }
             >

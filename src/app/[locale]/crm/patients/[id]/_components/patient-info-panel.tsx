@@ -4,8 +4,14 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
-import { formatDate, formatPhone, type Locale } from "@/lib/format";
+import { formatDate, formatPhone, intlLocale, type Locale } from "@/lib/format";
 import { Textarea } from "@/components/ui/textarea";
+
+// Clinic operates in Asia/Tashkent. An appointment booked locally at e.g.
+// 03:00 serialises to UTC the previous day, so we must render dates against
+// the clinic's wall-clock — otherwise admins on non-Tashkent browsers see
+// off-by-one "first visit" dates.
+const CLINIC_TZ = "Asia/Tashkent";
 
 import {
   type Patient,
@@ -55,8 +61,18 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
       .map((a) => new Date(a.date).getTime())
       .filter((t) => Number.isFinite(t))
       .sort((a, b) => a - b);
-    return withDate[0] ? new Date(withDate[0]).toISOString() : null;
+    return withDate[0] ? new Date(withDate[0]) : null;
   }, [appointments]);
+
+  const firstVisitLabel = React.useMemo(() => {
+    if (!firstVisit) return "—";
+    return new Intl.DateTimeFormat(intlLocale(locale), {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: CLINIC_TZ,
+    }).format(firstVisit);
+  }, [firstVisit, locale]);
 
   const age = ageFrom(patient.birthDate, nowMs);
 
@@ -102,10 +118,7 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
               : "—"
           }
         />
-        <InfoRow
-          label={tPanel("firstVisit")}
-          value={firstVisit ? formatDate(firstVisit, locale, "short") : "—"}
-        />
+        <InfoRow label={tPanel("firstVisit")} value={firstVisitLabel} />
         <InfoRow
           label={tPanel("preferredLang")}
           value={patient.preferredLang === "UZ" ? tPanel("langUz") : tPanel("langRu")}

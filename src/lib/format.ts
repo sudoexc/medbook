@@ -144,6 +144,30 @@ export function formatDate(
   return formatRelative(d, locale);
 }
 
+/**
+ * Format an ISO/Date timestamp as `dd.mm.yyyy HH:mm` anchored in the clinic's
+ * wall-clock (Asia/Tashkent). Use for "generated at" / "expires at" /
+ * "last run" labels that should read the same to a receptionist in the
+ * clinic and an admin browsing from another timezone.
+ */
+export function formatClinicDateTime(
+  value: Date | string | number | null | undefined,
+  locale: Locale,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tashkent",
+  }).format(d);
+}
+
 function formatRelative(d: Date, locale: Locale): string {
   const now = new Date();
   const tag = intlLocale(locale);

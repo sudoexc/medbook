@@ -91,11 +91,14 @@ export function CalendarPageClient() {
 
   const rangeLabel = defaultRangeLabel(range.from, range.to, locale);
 
+  const appointmentsRows = apptsQ.data?.rows ?? [];
+  const isPartial = apptsQ.data?.partial ?? false;
+
   // Soft hint shown when the entire visible range has zero appointments
   // (after data has loaded). The grid stays interactive — drag-create still
   // works — but the receptionist gets a clear "no bookings here yet" cue.
   const showAllEmptyHint =
-    !apptsQ.isLoading && (apptsQ.data?.length ?? 0) === 0;
+    !apptsQ.isLoading && appointmentsRows.length === 0 && !isPartial;
 
   return (
     <>
@@ -103,7 +106,7 @@ export function CalendarPageClient() {
       <div className="hidden xl:flex xl:h-full xl:min-h-0 xl:flex-col">
         <div className="shrink-0 border-b border-border bg-background px-4 pt-3 pb-2">
           <CalendarTiles
-            appointments={apptsQ.data ?? []}
+            appointments={appointmentsRows}
             date={filters.date}
           />
         </div>
@@ -130,7 +133,7 @@ export function CalendarPageClient() {
                   filters={filters}
                   doctors={doctorsQ.data ?? []}
                   cabinets={cabinetsQ.data ?? []}
-                  appointments={apptsQ.data ?? []}
+                  appointments={appointmentsRows}
                   onEventClick={(id) => setDrawerId(id)}
                   onEmptySlotClick={(info) => {
                     setCreateSeed(info);
@@ -138,6 +141,25 @@ export function CalendarPageClient() {
                   }}
                   onConfirmReschedule={setPendingReschedule}
                 />
+                {isPartial ? (
+                  <div className="pointer-events-none absolute inset-x-0 top-12 z-20 mx-auto flex justify-center px-4">
+                    <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {t("partialRange.title")}
+                        </span>
+                        <span>{t("partialRange.description")}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => apptsQ.refetch()}
+                        className="shrink-0 rounded-md border border-amber-400/60 bg-white/70 px-2 py-1 text-[11px] font-medium text-amber-900 hover:bg-white dark:bg-amber-950/70 dark:text-amber-100 dark:hover:bg-amber-900"
+                      >
+                        {t("partialRange.retry")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {showAllEmptyHint ? (
                   <div className="pointer-events-none absolute inset-x-0 top-12 z-20 mx-auto flex justify-center px-4">
                     <div className="pointer-events-auto rounded-lg border border-dashed border-border bg-card/95 px-4 py-2 text-center text-xs text-muted-foreground shadow-sm backdrop-blur">
@@ -155,7 +177,7 @@ export function CalendarPageClient() {
             <CalendarLegend />
           </div>
           <CalendarRightRail
-            appointments={apptsQ.data ?? []}
+            appointments={appointmentsRows}
             doctors={doctorsQ.data ?? []}
           />
         </div>

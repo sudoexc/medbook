@@ -222,3 +222,157 @@ Right rail wires to existing `src/server/ai/llm.ts`:
 - Phase 4: 2-3 days
 
 **Total: ~2-3 weeks** of focused work for the full functional version (no perf tuning).
+
+---
+
+# Unpause readiness checklist (2026-05-30)
+
+> Doctor cabinet was paused 2026-05-18 (priority pivot) and gated off behind
+> `DOCTOR_CABINET_ENABLED=1` env in `src/app/[locale]/doctor/layout.tsx`.
+> Default-off layout redirect bounces all `/doctor/*` traffic to `/crm`. Before
+> flipping the gate back to enabled, every item below must be resolved or
+> consciously waived. Audit run 2026-05-30 against current `main` (`f1e18a4 +
+> 6d74082 deployed`). Findings labelled `[V]` were verified by reading the
+> referenced file; `[A]` were reported by audit agents and not independently
+> re-verified — re-verify before fixing.
+
+## Blocker P0 — fake data exposure (must fix)
+
+Active screens render `MOCK_*` constants. The moment the gate flips on, real
+doctors see fake patient names, fake diagnoses, fake AI counts. These three
+components are the hard blockers:
+
+- [V] `/doctor/visits/[patientId]`
+  - `_components/last-visit-card.tsx` → consumes `reception/_mocks.ts:MOCK_LAST_VISIT`
+  - `_components/last-diagnosis-card.tsx` → consumes `reception/_mocks.ts:MOCK_LAST_DIAGNOSIS`
+  - `_components/patient-meta-row.tsx` → consumes `reception/_mocks.ts:MOCK_META_CHIPS` (allergies, chronic, medications)
+  - Fix: query last completed `Appointment` + linked `VisitNote` for diagnosis;
+    query `PatientAllergy` / `PatientChronicCondition` for chips
+- [V] `/doctor/patients`
+  - `_components/ai-assistant-panel.tsx` → consumes `patients/_mocks.ts:MOCK_AI_RECOS` + `MOCK_AI_RECOS_TOTAL`
+  - Fix: wire to `/api/crm/doctors/me/patient-segments` (already exists, role-gated)
+    or to a real AI-recs endpoint when Phase 3b lands
+
+Inactive but should be cleaned before unpause (cognitive load — anyone reading
+the code will think they're live):
+
+- [V] `reception/_components/patient-header.tsx` — consumes `MOCK_PATIENT`,
+  not currently mounted but still imported
+- [V] `reception/_components/visits-timeline.tsx` — consumes `MOCK_TIMELINE` +
+  `MOCK_VISITS_TOTAL`, comment says kept for future; either wire or remove
+- [V] All of `reception/_active-mocks.ts` — `MOCK_ACTIVE_PATIENT`,
+  `MOCK_STRUCTURED_FIELDS`, `MOCK_EDITOR_BODY`, `MOCK_AI_QUESTIONS`,
+  `MOCK_DIAGNOSIS_HINTS`, `MOCK_WARNINGS` etc. This was the Phase 3a/3b
+  fixture set. Replace with real `VisitNote` reads + Phase 3b AI endpoints
+  before unpause
+
+## Blocker P0 — security: TOTP bypass via /api
+
+- [V] `src/proxy.ts:268-272` — matcher excludes `/api`, so when the clinic
+  enforces `Clinic.require2faForAll = true` and a doctor hasn't enrolled,
+  page navigation to `/crm/me/security` is forced, but direct API calls to
+  `/api/crm/doctors/me/**` succeed without enrolment
+- [V] `src/lib/api-handler.ts` — `createApiHandler` / `createApiListHandler`
+  have no `requiresTotpEnrollment` check anywhere in the chain
+- Fix: insert TOTP-enrollment gate inside `createApiHandler` / `createApiListHandler`
+  (after `buildContext`, before `runWithTenant`). Read `Clinic.require2faForAll`
+  + `User.totpEnabledAt`, return `{ error: "MFA_REQUIRED" }` 403 when required
+  and missing. Applies to all `/api/crm/**` routes, not just doctor — affects
+  CRM users too, so coordinate with CRM team before flipping
+- Risk if not fixed: doctor with TOTP-required policy can bypass MFA via
+  curl, a mobile client, or any browser extension that fetches directly
+
+## Blocker P1 — audit log coverage
+
+- [V] `POST /api/crm/doctors/me/conversations/find-or-create` —
+  `src/app/api/crm/doctors/me/conversations/find-or-create/route.ts:106-121`.
+  Creates a new `Conversation` row (cold-start outbound TG/SMS thread to patient),
+  fires SSE via `publishEventSafe`, but never calls `audit()`. Compliance-relevant
+  — first message from a clinic to a patient should be logged
+- Fix: add `audit({ action: AUDIT_ACTION.CONVERSATION_CREATED, entityType:
+  "Conversation", entityId: created.id, ... })` after `prisma.conversation.create`
+- Explicitly NOT a gap (verified): `/me/presets` POST/PATCH/DELETE — file
+  header at `src/app/api/crm/doctors/me/presets/route.ts:12-13` documents
+  "No audit/SSE: these are personal config, not patient data". Treat as
+  intentional; revisit only if compliance later requires personal-config audit
+
+## Blocker P1 — internationalisation (66+ components)
+
+Every component listed below renders raw Cyrillic strings without
+`useTranslations` and is therefore untranslatable to UZ. Counts per screen
+(verified by audit pass against `/doctor/**` directory tree):
+
+| Screen | components with hardcoded RU |
+|---|---|
+| `reception` | 15+ |
+| `my-day` | 10 |
+| `patients` (+ `[id]`) | 13 (7 + 6) |
+| `visits` | 5 |
+| `settings` | 5 |
+| `documents` | 4 |
+| `notifications` | 4 |
+| `messages` | 3 |
+| `conclusions` | 2 |
+| `schedule` | 1 |
+| `references` | 1 |
+| `analytics` | 1 |
+| layout (sidebar + topbar) | 2 |
+
+Fix strategy: per-screen sweep + add entries to `src/messages/{ru,uz}.json`
+under a `doctor.*` namespace. Mirror the existing `crm.*` namespace
+structure to stay consistent. Track per-screen in a follow-up issue when
+unpause becomes real — don't try to do all 66 in one pass.
+
+## Non-blockers (intentional or out-of-scope)
+
+These came up in the audit but are **not** blockers — keep listed so we
+don't re-litigate during the next unpause review:
+
+- [V] Cross-doctor labs visibility on `/api/crm/doctors/me/patients/[patientId]/labs`:
+  any doctor in the clinic who has seen the patient sees every lab, regardless
+  of who ordered it. Code comment at top of the route explicitly chose this.
+  Anti-leak still in place via the appointment-relationship check. Acceptable
+  by product spec; document if compliance asks.
+- [V] Session-lifetime + idle-timeout not re-checked on API calls. The proxy
+  page-layer gate prevents stale users from reaching the UI; API calls inherit
+  the JWT TTL (24h, rotated hourly). Acceptable by JWT design.
+- [A] SSE event payloads carry `clinicId` for fan-out; doctor-specific filtering
+  is client-side. Sufficient because (a) JWT auth still required to subscribe,
+  (b) the client UI filters by `event.doctorId`. Re-evaluate only if we add
+  server-pushed PHI to event payloads later.
+- [A] All 30+ doctor-facing API endpoints exist and enforce
+  `{ roles: ["DOCTOR"] }` via `createApiHandler` (audit pass enumerated all
+  21 routes under `/api/crm/doctors/me/**`). No route-coverage gap to fill.
+- [V] Link from `settings/_components/security-tab.tsx:95` to
+  `/${locale}/crm/me/security` — agent flagged as broken, FALSE ALARM:
+  `src/app/[locale]/crm/me/security/page.tsx` exists. No action.
+- [V] All Prisma fields referenced by doctor components exist in schema
+  (`VisitNote`, `Patient`, `Appointment`, `Doctor`, `Document`, `DoctorPreset`,
+  `LabResult` all match). No schema migrations needed for unpause itself.
+
+## Sequence to actually unpause
+
+When the pivot reverses and we re-enable the cabinet:
+
+1. **Land P0 mock-removal** (blocker section above) on a feature branch.
+   Acceptance: grep `MOCK_` in `src/app/[locale]/doctor/**` returns only
+   commented-out or removed lines; live screens query real data.
+2. **Land P0 TOTP gate in `createApiHandler`**. Acceptance: vitest +
+   integration test where a doctor without `totpEnabledAt` in a clinic with
+   `require2faForAll = true` gets 403 `MFA_REQUIRED` from a curl POST to
+   `/api/crm/doctors/me/today`.
+3. **Land P1 audit call** in conversations find-or-create. Acceptance:
+   `AuditLog` row exists after first cold-start outbound to a patient.
+4. **Start per-screen i18n sweep**. Reception + my-day first (highest doctor
+   time-on-screen). Don't block unpause on full coverage — UZ doctor users
+   are downstream of CRM rollout anyway.
+5. **Flip `DOCTOR_CABINET_ENABLED=1`** in `.env` on staging, smoke-test for
+   one week with one volunteer doctor before prod.
+6. **Remove the `DOCTOR_CABINET_ENABLED` env gate** from `layout.tsx` once
+   prod is green for two weeks.
+
+## Closed by this checklist
+
+Memory tasks `#523` (doctor cabinet mock removal) and `#525` (doctor cabinet
+i18n sweep) are rolled into the P0 / P1 sections above. Don't re-create them
+as standalone — work the checklist top-to-bottom when unpause comes.

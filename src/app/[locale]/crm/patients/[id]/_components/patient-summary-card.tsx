@@ -131,9 +131,11 @@ export function PatientSummaryCard({
 
   const data = q.data;
   const isInitialLoading = q.isLoading;
+  const isError = q.isError && !data;
   const text = data?.text ?? "";
   const pending = Boolean(data?.pendingRefresh) || refreshing;
-  const empty = !isInitialLoading && !pending && text.trim().length === 0;
+  const empty =
+    !isInitialLoading && !isError && !pending && text.trim().length === 0;
 
   if (variant === "compact") {
     return (
@@ -148,6 +150,17 @@ export function PatientSummaryCard({
         <div className="min-w-0 flex-1 leading-snug">
           {isInitialLoading ? (
             <Skeleton className="h-3 w-3/4" />
+          ) : isError ? (
+            <span className="flex items-center gap-1.5 text-destructive">
+              {t("error")}
+              <button
+                type="button"
+                onClick={() => void q.refetch()}
+                className="underline-offset-2 hover:underline"
+              >
+                {t("retry")}
+              </button>
+            </span>
           ) : empty ? (
             <span className="text-muted-foreground">{t("empty")}</span>
           ) : (
@@ -208,6 +221,18 @@ export function PatientSummaryCard({
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-5/6" />
           <Skeleton className="h-3 w-4/6" />
+        </div>
+      ) : isError ? (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-destructive">{t("error")}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void q.refetch()}
+          >
+            {t("retry")}
+          </Button>
         </div>
       ) : empty ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>

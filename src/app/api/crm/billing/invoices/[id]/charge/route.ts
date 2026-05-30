@@ -17,12 +17,14 @@
  * The webhook side (`/api/webhooks/billing/{click,payme}`) is what
  * eventually flips the invoice to PAID — this endpoint never mutates
  * state.
+ *
+ * Wrapped in `createApiHandler` so SUPER_ADMIN impersonation in VIEW_ONLY
+ * mode is blocked before any provider call (Phase 19 W4 contract).
  */
 import { z } from "zod";
 
-import { auth } from "@/lib/auth";
+import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
 import { err, ok } from "@/server/http";
 import { clickCreateCharge } from "@/server/billing/payments/click";
 import { paymeCreateCharge } from "@/server/billing/payments/payme";
@@ -65,37 +67,19 @@ function buildReturnUrl(request: Request, locale: "ru" | "uz"): string {
   return `${base}/${locale}/crm/settings/billing`;
 }
 
-export async function POST(request: Request): Promise<Response> {
-  const session = await auth();
-  if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "ADMIN") return err("Forbidden", 403);
-  if (!session.user.clinicId) return err("ClinicNotSelected", 400);
+export const POST = createApiHandler(
+  { roles: ["ADMIN"], bodySchema: BodySchema },
+  async ({ request, body, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
 
-  let parsed: z.infer<typeof BodySchema>;
-  try {
-    parsed = BodySchema.parse(await request.json());
-  } catch (e) {
-    return err("ValidationError", 400, {
-      issues: (e as { issues?: unknown }).issues,
-    });
-  }
+    const id = idFromUrl(request);
+    if (!id) return err("InvalidInvoiceId", 400);
 
-  const id = idFromUrl(request);
-  if (!id) return err("InvalidInvoiceId", 400);
+    const locale = resolveLocaleFromRequest(request);
+    const returnUrl = buildReturnUrl(request, locale);
 
-  const locale = resolveLocaleFromRequest(request);
-  const returnUrl = buildReturnUrl(request, locale);
-
-  const ctx: TenantContext = {
-    kind: "TENANT",
-    clinicId: session.user.clinicId,
-    userId: session.user.id,
-    role: session.user.role,
-  };
-
-  return runWithTenant(ctx, async () => {
     const invoice = await prisma.invoice.findFirst({
-      where: { id, clinicId: ctx.clinicId as string },
+      where: { id, clinicId: ctx.clinicId },
       select: {
         id: true,
         number: true,
@@ -108,7 +92,7 @@ export async function POST(request: Request): Promise<Response> {
     if (invoice.status === "VOID") return err("InvoiceVoided", 409);
 
     const charge =
-      parsed.provider === "click"
+      body.provider === "click"
         ? await clickCreateCharge({
             invoice: {
               id: invoice.id,
@@ -131,7 +115,7 @@ export async function POST(request: Request): Promise<Response> {
     try {
       await prisma.auditLog.create({
         data: {
-          clinicId: ctx.clinicId as string,
+          clinicId: ctx.clinicId,
           actorId: ctx.userId ?? null,
           actorRole: ctx.role ?? null,
           action: "billing.charge.initiated",
@@ -139,7 +123,7 @@ export async function POST(request: Request): Promise<Response> {
           entityId: invoice.id,
           meta: {
             number: invoice.number,
-            provider: parsed.provider,
+            provider: body.provider,
             amountTiins: invoice.amountTiins.toString(),
             isStub: charge.isStub,
             providerRef: charge.providerRef,
@@ -151,10 +135,10 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     return ok({
-      provider: parsed.provider,
+      provider: body.provider,
       payUrl: charge.payUrl,
       providerRef: charge.providerRef,
       isStub: charge.isStub,
     });
-  });
-}
+  },
+);

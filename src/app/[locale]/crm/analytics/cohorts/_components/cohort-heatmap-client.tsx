@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 
 import type { CohortMatrix } from "@/server/analytics/cohort-resolver";
 
@@ -29,6 +30,7 @@ export function CohortHeatmapClient({
   defaultToMonth,
 }: CohortHeatmapClientProps) {
   const t = useTranslations("analyticsCohorts");
+  const locale = useLocale() as Locale;
 
   const [fromMonth, setFromMonth] = React.useState(defaultFromMonth);
   const [toMonth, setToMonth] = React.useState(defaultToMonth);
@@ -156,7 +158,7 @@ export function CohortHeatmapClient({
 
       <p className="text-xs text-muted-foreground">
         {t("metaHint", {
-          generatedAt: new Date(matrix.generatedAt).toLocaleString(),
+          generatedAt: formatClinicDateTime(matrix.generatedAt, locale),
           source: matrix.source,
         })}
       </p>

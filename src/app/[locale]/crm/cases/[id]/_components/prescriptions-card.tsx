@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 
 import {
   type CasePrescriptionRow,
@@ -103,6 +104,9 @@ export function PrescriptionsCard({
   const qc = useQueryClient();
 
   const [form, setForm] = React.useState<FormState | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(
+    null,
+  );
 
   const invalidate = React.useCallback(() => {
     qc.invalidateQueries({ queryKey: caseKey(caseId) });
@@ -319,11 +323,7 @@ export function PrescriptionsCard({
               <Button
                 size="icon-sm"
                 variant="ghost"
-                onClick={() => {
-                  if (window.confirm(t("confirmDelete"))) {
-                    deleteMutation.mutate(rx.id);
-                  }
-                }}
+                onClick={() => setPendingDeleteId(rx.id)}
                 aria-label={t("delete")}
               >
                 <Trash2Icon className="size-4 text-destructive" />
@@ -460,6 +460,24 @@ export function PrescriptionsCard({
           </div>
         )}
       </div>
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+        title={t("confirmDelete")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        onConfirm={async () => {
+          if (!pendingDeleteId) return;
+          const id = pendingDeleteId;
+          setPendingDeleteId(null);
+          await deleteMutation.mutateAsync(id).catch(() => {
+            // toast handled by onError
+          });
+        }}
+        pending={deleteMutation.isPending}
+      />
     </section>
   );
 }

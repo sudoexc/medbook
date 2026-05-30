@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { MoneyText } from "@/components/atoms/money-text";
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { projectMonthEnd } from "@/lib/analytics/dashboard-math";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 import type { FinancialPaceSnapshot } from "@/server/analytics/financial-pace-resolver";
 
 const REFRESH_MS = 60_000;
@@ -28,6 +29,7 @@ export function FinancialDashboardClient({
   initialSnapshot,
 }: FinancialDashboardClientProps) {
   const t = useTranslations("analyticsFinancial");
+  const locale = useLocale() as Locale;
 
   const [snapshot, setSnapshot] = React.useState(initialSnapshot);
   const [updatedAt, setUpdatedAt] = React.useState(initialSnapshot.generatedAt);
@@ -131,7 +133,7 @@ export function FinancialDashboardClient({
 
       <p className="text-xs text-muted-foreground">
         {t("metaHint", {
-          generatedAt: new Date(snapshot.generatedAt).toLocaleString(),
+          generatedAt: formatClinicDateTime(snapshot.generatedAt, locale),
           source: snapshot.source,
         })}
       </p>

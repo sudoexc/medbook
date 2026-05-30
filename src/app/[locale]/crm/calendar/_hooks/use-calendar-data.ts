@@ -37,6 +37,18 @@ export function calendarRangeKey(fromIso: string, toIso: string) {
   return ["calendar", "appointments", fromIso, toIso] as const;
 }
 
+export type CalendarAppointmentsPayload = {
+  rows: AppointmentRow[];
+  /**
+   * True when one of the cursor-paginated requests failed mid-stream. The
+   * earlier pages are preserved so the grid stays usable; the page surfaces
+   * a banner so the receptionist knows the view is incomplete and offers a
+   * retry. Without this, a single HTTP 5xx during pagination wiped the
+   * entire calendar render.
+   */
+  partial: boolean;
+};
+
 /**
  * Loads every appointment in the visible date range. Unlike the paginated
  * appointments table, the calendar fetches **all rows** for the window and
@@ -47,12 +59,15 @@ export function useCalendarAppointments(from: Date, to: Date) {
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
 
-  return useQuery<AppointmentRow[], Error>({
+  return useQuery<CalendarAppointmentsPayload, Error>({
     queryKey: calendarRangeKey(fromIso, toIso),
     queryFn: async ({ signal }) => {
       const out: AppointmentRow[] = [];
       let cursor: string | undefined;
-      // Loop cursor pages — the API caps `limit` at 200.
+      let partial = false;
+      // Loop cursor pages — the API caps `limit` at 200. If a page after
+      // the first one fails, keep whatever was loaded and flag `partial`
+      // instead of throwing away successful pages.
       for (let i = 0; i < 10; i += 1) {
         const sp = new URLSearchParams();
         sp.set("from", fromIso);
@@ -61,17 +76,26 @@ export function useCalendarAppointments(from: Date, to: Date) {
         sp.set("sort", "date");
         sp.set("dir", "asc");
         if (cursor) sp.set("cursor", cursor);
-        const res = await fetch(`/api/crm/appointments?${sp.toString()}`, {
-          credentials: "include",
-          signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = (await res.json()) as AppointmentsListResponse;
-        out.push(...j.rows);
-        if (!j.nextCursor) break;
-        cursor = j.nextCursor;
+        try {
+          const res = await fetch(`/api/crm/appointments?${sp.toString()}`, {
+            credentials: "include",
+            signal,
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const j = (await res.json()) as AppointmentsListResponse;
+          out.push(...j.rows);
+          if (!j.nextCursor) break;
+          cursor = j.nextCursor;
+        } catch (err) {
+          // First-page failure → bubble up so the query goes into error
+          // state and React Query retries cleanly. Mid-stream failure →
+          // serve what we have plus a partial flag.
+          if (i === 0) throw err;
+          partial = true;
+          break;
+        }
       }
-      return out;
+      return { rows: out, partial };
     },
     // SSE invalidation wires the `calendar` query keys on every
     // `appointment.*` event (see `useCalendarRealtime`). Polling stays on

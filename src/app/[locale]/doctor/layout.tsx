@@ -9,18 +9,11 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { DoctorSidebar } from "./_components/doctor-sidebar";
 import { DoctorTopbar } from "./_components/doctor-topbar";
 
-// Server layout guard for the doctor surface. Three rules:
-//
-//   1. No session → bounce to /login.
-//   2. Session but role !== DOCTOR → push to /crm (the regular CRM home).
-//      SUPER_ADMIN bypasses are intentionally NOT honoured here — the
-//      doctor surface is data-bound to a specific Doctor row that
-//      SUPER_ADMIN cannot impersonate without a real Doctor.userId link.
-//   3. Role === DOCTOR but no Doctor row joined to userId → bounce to /crm
-//      with an error flag so the admin can finish provisioning the user.
-//
-// The resolved Doctor row (name, specialization, photo) drives the topbar
-// avatar + greeting without a second roundtrip from a client component.
+// Doctor cabinet is paused (priority pivot 2026-05-18, feature freeze 2026-05-22).
+// Several screens still render MOCK_* fixtures (last-diagnosis, patient meta chips,
+// visits timeline, AI recos) — exposing them to real doctors would show fake
+// patient data. Bounce everyone to /crm until the cabinet is finished.
+// Flip DOCTOR_CABINET_ENABLED=1 in env to re-enable for dev/preview.
 export default async function DoctorLayout({
   children,
   params,
@@ -33,6 +26,9 @@ export default async function DoctorLayout({
 
   if (!session?.user) {
     redirect(`/${locale}/login`);
+  }
+  if (process.env.DOCTOR_CABINET_ENABLED !== "1") {
+    redirect(`/${locale}/crm?notice=doctor_cabinet_paused`);
   }
   if (session.user.role !== "DOCTOR") {
     redirect(`/${locale}/crm`);

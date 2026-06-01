@@ -7,6 +7,11 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 //  - `script-src 'unsafe-inline'` is required for JSON-LD inline scripts and
 //    Next.js framework hydration. A full nonce strategy would need per-request
 //    header plumbing via proxy.ts; tracked as follow-up.
+//  - `https://telegram.org` is allowed under script-src so the Mini App can
+//    load `telegram-web-app.js` — the SDK that bridges the WebView to the
+//    Telegram client and populates `window.Telegram.WebApp` with the
+//    real init-data. Without it, the Mini App falls through to the
+//    "Open in Telegram" guard even when launched inside Telegram.
 //  - Image sources include api.qrserver.com for the /ticket QR fallback.
 //  - Telegram API is allowed for server-side fetches (fine) and is listed under
 //    connect-src defensively in case client code ever needs it.
@@ -14,7 +19,7 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' https://telegram.org${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://api.qrserver.com",
   "font-src 'self' data:",

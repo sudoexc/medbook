@@ -96,13 +96,30 @@ export function useBookAppointment() {
       lang?: "RU" | "UZ";
       comments?: string;
       onBehalfOf?: string | null;
+      // Phase M4 — caller mints a stable id (UUID/ULID) once per
+      // confirmation-screen instance so a double-tap MainButton or a
+      // network retry collapses to a single booking. The mini-app server
+      // (`/api/miniapp/appointments` POST) caches the response for 24h
+      // keyed by `<clinicId, patientId, idempotencyKey>`.
+      idempotencyKey?: string;
     }): Promise<BookAppointmentResult> => {
+      const { idempotencyKey, ...rest } = body;
+      // Drop null/undefined keys so the server's z.string().optional()
+      // doesn't reject `onBehalfOf: null` (the active-context hook returns
+      // null when the patient is booking for themselves).
+      const payload: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(rest)) {
+        if (v !== null && v !== undefined) payload[k] = v;
+      }
       const res = await request<{
         appointment: { id: string; date: string };
         caseAttach: CaseAttachResult;
       }>("/api/miniapp/appointments", {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
+        headers: idempotencyKey
+          ? { "Idempotency-Key": idempotencyKey }
+          : undefined,
       });
       return {
         id: res.appointment.id,
@@ -161,7 +178,34 @@ export function useCancelAppointment() {
       await request(`/api/miniapp/appointments/${id}`, { method: "DELETE" });
       return id;
     },
-    onSuccess: () => {
+    // Phase M4 — Optimistic update. The patient taps "Cancel" and expects the
+    // row to disappear instantly; the server round-trip can take 200–800ms on
+    // mobile. We mark the row as CANCELLED across every cached scope (upcoming
+    // / past / per-relative variants) and roll back on error.
+    onMutate: async (id) => {
+      await qc.cancelQueries({
+        queryKey: ["miniapp", "appointments", clinicSlug],
+      });
+      const snapshots: Array<[unknown[], MiniAppAppointment[] | undefined]> = [];
+      qc.getQueriesData<MiniAppAppointment[]>({
+        queryKey: ["miniapp", "appointments", clinicSlug],
+      }).forEach(([key, value]) => {
+        snapshots.push([key as unknown[], value]);
+        if (!value) return;
+        qc.setQueryData<MiniAppAppointment[]>(
+          key as unknown[],
+          value.map((a) => (a.id === id ? { ...a, status: "CANCELLED" } : a)),
+        );
+      });
+      return { snapshots };
+    },
+    onError: (_err, _id, ctx) => {
+      if (!ctx?.snapshots) return;
+      for (const [key, value] of ctx.snapshots) {
+        qc.setQueryData(key, value);
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({
         queryKey: ["miniapp", "appointments", clinicSlug],
       });

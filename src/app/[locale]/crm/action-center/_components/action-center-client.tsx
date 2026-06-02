@@ -74,8 +74,18 @@ type Role =
   | "CALL_OPERATOR"
   | null;
 
-const AVG_VISIT_TIINS = 8_000_000; // 80,000 UZS — used for KPI revenue projections.
+// Fallback average visit price (in tiins, 80 000 сум) — used only when the
+// clinic has no COMPLETED appointments in the last 90 days. Real value comes
+// from `DashboardResponse.avgVisitTiins`.
+const FALLBACK_AVG_VISIT_TIINS = 8_000_000;
 const NO_SHOW_RISK_FACTOR = 0.6; // assume ~60% revenue loss when a high-risk patient no-shows
+
+// Expected-recovery coefficients (share of an average visit price that a
+// missed touchpoint would have brought in if handled). These reflect the
+// industry conversion estimate the product team agreed on: an online request
+// converts at ~40 %, a missed call at ~22.5 %.
+const REQUEST_RECOVERY_RATE = 0.4;
+const CALL_RECOVERY_RATE = 0.225;
 
 export interface ActionCenterClientProps {
   role: Role;
@@ -117,7 +127,15 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
     }
   };
 
-  const buckets = React.useMemo(() => bucketActions(actions), [actions]);
+  const avgVisitTiins =
+    dashboard?.avgVisitTiins && dashboard.avgVisitTiins > 0
+      ? dashboard.avgVisitTiins
+      : FALLBACK_AVG_VISIT_TIINS;
+
+  const buckets = React.useMemo(
+    () => bucketActions(actions, avgVisitTiins),
+    [actions, avgVisitTiins],
+  );
 
   return (
     <div className="flex flex-col gap-5 p-5">
@@ -157,6 +175,7 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
             actions={actions}
             isLoading={isLoading}
             localePath={localePath}
+            avgVisitTiins={avgVisitTiins}
           />
           <div className="grid gap-5 lg:grid-cols-2">
             <TasksQueue actions={actions} />
@@ -169,7 +188,8 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
           <QuickActionsGrid />
           <TodayLosses
             buckets={buckets}
-            missedRequests={dashboard?.queue ?? []}
+            missedToday={dashboard?.missedToday}
+            avgVisitTiins={avgVisitTiins}
           />
         </aside>
       </div>
@@ -196,7 +216,7 @@ type Buckets = {
   paymentsLossTiins: number;
 };
 
-function bucketActions(rows: ActionRow[]): Buckets {
+function bucketActions(rows: ActionRow[], avgVisitTiins: number): Buckets {
   const unconfirmed: ActionRow[] = [];
   const noShowRisk: ActionRow[] = [];
   const freeSlots: ActionRow[] = [];
@@ -213,14 +233,14 @@ function bucketActions(rows: ActionRow[]): Buckets {
     switch (r.type) {
       case "UNCONFIRMED_24H":
         unconfirmed.push(r);
-        unconfirmedRevTiins += AVG_VISIT_TIINS;
+        unconfirmedRevTiins += avgVisitTiins;
         break;
       case "NO_SHOW_RISK_HIGH": {
         noShowRisk.push(r);
         const risk =
           r.payload.type === "NO_SHOW_RISK_HIGH" ? r.payload.risk : 0.5;
         noShowLossTiins += Math.round(
-          AVG_VISIT_TIINS * risk * NO_SHOW_RISK_FACTOR,
+          avgVisitTiins * risk * NO_SHOW_RISK_FACTOR,
         );
         break;
       }
@@ -506,10 +526,12 @@ function ActionsList({
   actions,
   isLoading,
   localePath,
+  avgVisitTiins,
 }: {
   actions: ActionRow[];
   isLoading: boolean;
   localePath: (path: string) => string;
+  avgVisitTiins: number;
 }) {
   const td = useTranslations("actionCenter.dashboard.actionsList");
 
@@ -553,6 +575,7 @@ function ActionsList({
                 category={cat}
                 rows={rows}
                 localePath={localePath}
+                avgVisitTiins={avgVisitTiins}
               />
             );
           })}
@@ -566,10 +589,12 @@ function CategorySection({
   category,
   rows,
   localePath,
+  avgVisitTiins,
 }: {
   category: CategoryKey;
   rows: ActionRow[];
   localePath: (path: string) => string;
+  avgVisitTiins: number;
 }) {
   const td = useTranslations("actionCenter.dashboard.actionsList");
   const meta = CATEGORY_META[category];
@@ -584,11 +609,11 @@ function CategorySection({
   const groupImpactTiins = React.useMemo(() => {
     let total = 0;
     for (const r of rows) {
-      const v = pricePerAction(r);
+      const v = pricePerAction(r, avgVisitTiins);
       if (typeof v === "number" && v > 0) total += v;
     }
     return total;
-  }, [rows]);
+  }, [rows, avgVisitTiins]);
 
   const visible = expanded ? rows : rows.slice(0, SECTION_PREVIEW_LIMIT);
   const canExpand = rows.length > SECTION_PREVIEW_LIMIT;
@@ -639,7 +664,12 @@ function CategorySection({
         <div className="border-t border-border p-3">
           <div className="space-y-2">
             {visible.map((row) => (
-              <ActionRowCard key={row.id} row={row} localePath={localePath} />
+              <ActionRowCard
+                key={row.id}
+                row={row}
+                localePath={localePath}
+                avgVisitTiins={avgVisitTiins}
+              />
             ))}
           </div>
           {canExpand ? (
@@ -670,9 +700,11 @@ function CategorySection({
 function ActionRowCard({
   row,
   localePath,
+  avgVisitTiins,
 }: {
   row: ActionRow;
   localePath: (path: string) => string;
+  avgVisitTiins: number;
 }) {
   const td = useTranslations("actionCenter.dashboard.actionsList");
   const t = useTranslations();
@@ -689,7 +721,7 @@ function ActionRowCard({
       : defaultDeeplinkPath(row.type);
   const href = localePath(deeplink);
 
-  const priceTiins = pricePerAction(row);
+  const priceTiins = pricePerAction(row, avgVisitTiins);
   const priorityKey =
     row.severity === "critical"
       ? "priorityCritical"
@@ -758,7 +790,7 @@ function ActionRowCard({
   );
 }
 
-function pricePerAction(row: ActionRow): number | null {
+function pricePerAction(row: ActionRow, avgVisitTiins: number): number | null {
   const p = row.payload;
   switch (p.type) {
     case "EMPTY_SLOT_TOMORROW":
@@ -766,13 +798,13 @@ function pricePerAction(row: ActionRow): number | null {
     case "PAYMENT_OVERDUE":
       return p.amountUzs;
     case "UNCONFIRMED_24H":
-      return AVG_VISIT_TIINS;
+      return avgVisitTiins;
     case "NO_SHOW_RISK_HIGH":
-      return Math.round(AVG_VISIT_TIINS * NO_SHOW_RISK_FACTOR * (p.risk || 0.5));
+      return Math.round(avgVisitTiins * NO_SHOW_RISK_FACTOR * (p.risk || 0.5));
     case "DORMANT_BATCH":
-      return p.patientCount * Math.round(AVG_VISIT_TIINS * 0.05);
+      return p.patientCount * Math.round(avgVisitTiins * 0.05);
     case "DOCTOR_OVERLOAD":
-      return p.queueLength * Math.round(AVG_VISIT_TIINS * 0.1);
+      return p.queueLength * Math.round(avgVisitTiins * 0.1);
     default:
       return null;
   }
@@ -1104,12 +1136,17 @@ function QuickActionsGrid() {
 
 function TodayLosses({
   buckets,
+  missedToday,
+  avgVisitTiins,
 }: {
   buckets: Buckets;
-  missedRequests: { count: number }[];
+  missedToday: { calls: number; requests: number } | undefined;
+  avgVisitTiins: number;
 }) {
   const td = useTranslations("actionCenter.dashboard.todayLosses");
   const locale = useLocale();
+  const missedRequests = missedToday?.requests ?? 0;
+  const missedCalls = missedToday?.calls ?? 0;
   // Each row links to the surface where the loss happens — so a receptionist
   // tapping the line can act on it immediately. `from=losses` lets analytics
   // attribute follow-up bookings back to this card.
@@ -1117,21 +1154,25 @@ function TodayLosses({
     {
       label: td("emptySlots"),
       tiins: buckets.freeSlotsRevTiins,
+      count: buckets.freeSlots.length,
       href: `/${locale}/crm/calendar?from=losses&intent=fill-slots`,
     },
     {
       label: td("noShowRisk"),
       tiins: buckets.noShowLossTiins,
+      count: buckets.noShowRisk.length,
       href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show&from=losses`,
     },
     {
       label: td("missedRequests"),
-      tiins: Math.round(AVG_VISIT_TIINS * 0.4 * 1),
+      tiins: Math.round(avgVisitTiins * REQUEST_RECOVERY_RATE * missedRequests),
+      count: missedRequests,
       href: `/${locale}/crm/online-requests?from=losses`,
     },
     {
       label: td("missedCalls"),
-      tiins: Math.round(AVG_VISIT_TIINS * 0.225 * 1),
+      tiins: Math.round(avgVisitTiins * CALL_RECOVERY_RATE * missedCalls),
+      count: missedCalls,
       href: `/${locale}/crm/call-center?from=losses&intent=missed-calls`,
     },
   ];
@@ -1150,8 +1191,11 @@ function TodayLosses({
               href={r.href}
               className="motion-press group -mx-1 flex items-center justify-between gap-2 rounded-md px-1 py-1.5 text-xs transition-colors hover:bg-muted/50"
             >
-              <span className="text-muted-foreground group-hover:text-foreground">
+              <span className="flex items-baseline gap-1.5 text-muted-foreground group-hover:text-foreground">
                 {r.label}
+                <span className="text-[10px] tabular-nums text-muted-foreground/70">
+                  ×{r.count}
+                </span>
               </span>
               <span className="font-semibold tabular-nums text-foreground">
                 <MoneyText amount={r.tiins} currency="UZS" />

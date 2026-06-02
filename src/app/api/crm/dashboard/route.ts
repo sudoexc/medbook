@@ -6,6 +6,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { getClinicAvgVisitTiins } from "@/server/revenue/avg-visit";
 import { ok } from "@/server/http";
 
 function startOfDay(d: Date): Date {
@@ -74,13 +75,34 @@ export const GET = createApiListHandler(
     const monthStart = startOfMonth(now);
     const nextMonth = addDays(startOfMonth(addDays(now, 40)), 0);
 
-    const [today, week, month, newPatients] = await Promise.all([
+    const [
+      today,
+      week,
+      month,
+      newPatients,
+      missedCallsToday,
+      missedRequestsToday,
+      avgVisitTiins,
+    ] = await Promise.all([
       kpisFor(todayStart, tomorrow),
       kpisFor(weekStart, nextWeek),
       kpisFor(monthStart, nextMonth),
       prisma.patient.count({
         where: { createdAt: { gte: monthStart, lt: nextMonth } },
       }),
+      prisma.call.count({
+        where: {
+          direction: "MISSED",
+          createdAt: { gte: todayStart, lt: tomorrow },
+        },
+      }),
+      prisma.onlineRequest.count({
+        where: {
+          status: "NEW",
+          createdAt: { gte: todayStart, lt: tomorrow },
+        },
+      }),
+      getClinicAvgVisitTiins(now),
     ]);
 
     // Queue snapshot (live): how many appointments are in each queueStatus today
@@ -96,6 +118,8 @@ export const GET = createApiListHandler(
       month,
       newPatientsThisMonth: newPatients,
       queue: queue.map((q) => ({ status: q.queueStatus, count: q._count._all })),
+      missedToday: { calls: missedCallsToday, requests: missedRequestsToday },
+      avgVisitTiins,
     });
   }
 );

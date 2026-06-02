@@ -54,6 +54,9 @@ export type DashboardResponse = {
   month: DashboardKpi;
   newPatientsThisMonth: number;
   queue: DashboardQueueBucket[];
+  missedToday: { calls: number; requests: number };
+  /** Trailing-90d average COMPLETED `Appointment.priceFinal` in tiins. 0 if no history. */
+  avgVisitTiins: number;
 };
 
 export type DoctorRef = {

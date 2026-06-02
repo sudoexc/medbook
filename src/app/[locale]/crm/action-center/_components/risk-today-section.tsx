@@ -290,28 +290,48 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
 
   // Optimistically drop this row from the cached risk-today response so the
   // UI feels instant. Server-driven invalidation re-syncs after the writes.
-  const optimisticallyDrop = React.useCallback(() => {
-    qc.setQueryData<RiskTodayResponse>(RISK_TODAY_KEY, (prev) => {
-      if (!prev) return prev;
-      const next = prev.appointments.filter(
-        (a) => a.appointmentId !== row.appointmentId,
-      );
-      return {
-        ...prev,
-        appointments: next,
-        totals: {
-          ...prev.totals,
-          open: next.length,
-          handledToday: prev.totals.handledToday + (next.length < prev.appointments.length ? 1 : 0),
-        },
-      };
-    });
-  }, [qc, row.appointmentId]);
+  //
+  // Must mirror the server's per-row loss formula in route.ts:
+  //   estimatedLossTiins += (priceFinal ?? FALLBACK) * riskScore
+  // otherwise the «X сум до потери» chip stays stuck at the original total
+  // until the next refetch.
+  const optimisticallyDrop = React.useCallback(
+    (isDone: boolean) => {
+      qc.setQueryData<RiskTodayResponse>(RISK_TODAY_KEY, (prev) => {
+        if (!prev) return prev;
+        const target = prev.appointments.find(
+          (a) => a.appointmentId === row.appointmentId,
+        );
+        if (!target) return prev;
+        const next = prev.appointments.filter(
+          (a) => a.appointmentId !== row.appointmentId,
+        );
+        const FALLBACK_PRICE_TIINS = 8_000_000;
+        const droppedLoss = Math.round(
+          (target.priceFinalTiins ?? FALLBACK_PRICE_TIINS) * target.riskScore,
+        );
+        return {
+          ...prev,
+          appointments: next,
+          totals: {
+            ...prev.totals,
+            open: next.length,
+            handledToday: prev.totals.handledToday + (isDone ? 1 : 0),
+            estimatedLossTiins: Math.max(
+              0,
+              prev.totals.estimatedLossTiins - droppedLoss,
+            ),
+          },
+        };
+      });
+    },
+    [qc, row.appointmentId],
+  );
 
   const onMarkHandled = async () => {
     if (busy) return;
     setBusy(true);
-    optimisticallyDrop();
+    optimisticallyDrop(true);
     try {
       const writes: Array<Promise<unknown>> = row.actionIds.map((id) =>
         done.mutateAsync({ id }),
@@ -351,7 +371,7 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const onSnoozeAll = async () => {
     if (busy || row.actionIds.length === 0) return;
     setBusy(true);
-    optimisticallyDrop();
+    optimisticallyDrop(false);
     try {
       await Promise.all(
         row.actionIds.map((id) =>

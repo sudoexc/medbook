@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 
@@ -66,4 +66,37 @@ export function useRiskToday() {
   });
 
   return q;
+}
+
+/**
+ * Marks a patient as "contacted now" by stamping `Patient.lastContactedAt`.
+ * Used by the risk-today section when a row's only reason is `no_contact`
+ * (no detector Action attached) — without this, clicking "Обработано"
+ * just invalidated the cache and the row came right back on refetch.
+ */
+export function useMarkPatientContacted() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { patientId: string; appointmentId?: string }) => {
+      const res = await fetch(`/api/crm/action-center/mark-contacted`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: string; reason?: string }
+          | null;
+        throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
+      }
+      return (await res.json()) as {
+        patientId: string;
+        lastContactedAt: string;
+      };
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
+    },
+  });
 }

@@ -56,6 +56,7 @@ import {
 } from "../_hooks/use-actions";
 import {
   RISK_TODAY_KEY,
+  useMarkPatientContacted,
   useRiskToday,
   type RiskReason,
   type RiskTodayResponse,
@@ -261,7 +262,14 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const qc = useQueryClient();
   const done = useDoneAction();
   const snooze = useSnoozeAction();
+  const markContacted = useMarkPatientContacted();
   const [busy, setBusy] = React.useState(false);
+
+  // A row carries `no_contact` whenever the patient hasn't been touched in
+  // N+ days. Closing the attached detector actions alone isn't enough to
+  // silence it — `Patient.lastContactedAt` has to advance too. Otherwise
+  // the next risk-today refetch resurrects the same row.
+  const hasNoContactReason = row.reasons.some((r) => r.kind === "no_contact");
 
   const doctorName = locale === "uz" ? row.doctorName.uz : row.doctorName.ru;
   const serviceName = row.serviceName
@@ -305,15 +313,27 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     setBusy(true);
     optimisticallyDrop();
     try {
-      if (row.actionIds.length === 0) {
-        // No detector actions to close — the row only surfaced from the
-        // no-contact reason. Just refresh; the receptionist has signalled
-        // intent and the row will reappear if conditions still match.
+      const writes: Array<Promise<unknown>> = row.actionIds.map((id) =>
+        done.mutateAsync({ id }),
+      );
+      // Stamp lastContactedAt whenever the row surfaced (also) from the
+      // no_contact signal — without this the receptionist closes the
+      // detector actions but the row keeps coming back on the next refetch.
+      if (hasNoContactReason) {
+        writes.push(
+          markContacted.mutateAsync({
+            patientId: row.patientId,
+            appointmentId: row.appointmentId,
+          }),
+        );
+      }
+      if (writes.length === 0) {
+        // Nothing to close on the server (no actions, no no_contact). Just
+        // refresh — this branch is mostly defensive; the row reached the UI
+        // because at least one reason matched.
         await qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
       } else {
-        await Promise.all(
-          row.actionIds.map((id) => done.mutateAsync({ id })),
-        );
+        await Promise.all(writes);
       }
       toast.success(tAction("doneSuccess"));
     } catch (e) {

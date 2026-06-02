@@ -300,7 +300,7 @@ export function CrmTopbar({
             badge={summary?.unread.telegram ?? 0}
             tone="success"
             iconClass="text-primary"
-            onClick={() => intlRouter.push("/crm/notifications")}
+            onClick={() => intlRouter.push("/crm/telegram")}
           />
           <TopbarChannelIcon
             label={tTopbar("channels.notifications")}

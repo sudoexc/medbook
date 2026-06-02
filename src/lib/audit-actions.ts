@@ -18,6 +18,14 @@ export const AUDIT_ACTION = {
   // sifting through every status flip.
   APPOINTMENT_RESCHEDULED: "APPOINTMENT_RESCHEDULED",
 
+  // Cross-surface sync Phase B.2 — appointment soft-cancelled via the
+  // canonical `cancelAppointment(...)` helper. Distinct from the generic
+  // `appointment.cancel` legacy string so reports can filter
+  // "true cancellations" without scanning every DELETE on the appointment
+  // route. `entityType: "Appointment"`, `entityId: <appointmentId>`. `meta`
+  // carries `{ reason, lateCancelMinutes, statusBefore, correlationId }`.
+  APPOINTMENT_CANCELLED: "APPOINTMENT_CANCELLED",
+
   // Wave 3.5 — appointment moved into confirmed state through one of the five
   // canonical paths (booking auto-confirm for PHONE/KIOSK, reception/callcenter
   // manual flip, patient SMS-YES, Telegram button press, inbound call).
@@ -71,6 +79,16 @@ export const AUDIT_ACTION = {
   // trail can show who hit "Обновить". `entityType: "Patient"`,
   // `entityId: <patientId>`. `meta.locale` carries 'ru' | 'uz'.
   PATIENT_SUMMARY_REFRESHED: "PATIENT_SUMMARY_REFRESHED",
+
+  // Action Center — receptionist pressed "Обработано" on a triage row whose
+  // primary signal was "patient not contacted in N days" (no detector Action
+  // was attached). Stamps Patient.lastContactedAt = now via
+  // `bumpPatientLastContact`, which clears the no_contact reason on the next
+  // risk-today refetch. Without this row, the triage card kept resurrecting
+  // the same patient on every poll because optimistic-drop alone never
+  // reached the server. `entityType: "Patient"`, `entityId: <patientId>`.
+  // `meta` carries `{ appointmentId?, surface: 'action-center.risk-today' }`.
+  PATIENT_CONTACT_MARKED: "PATIENT_CONTACT_MARKED",
 
   // Phase 15 Wave 3 — NL Command Bar question. One row per `/ai/ask` POST,
   // success or failure. `entityType: "LLMUsage"`, `entityId: null`. `meta`

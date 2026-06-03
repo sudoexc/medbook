@@ -20,7 +20,10 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { publishEventSafe } from "@/server/realtime/publish";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
 import { ok, err, parseQuery } from "@/server/http";
 import {
   CreateEPrescriptionSchema,
@@ -88,24 +91,52 @@ export const POST = createApiHandler(
     const rxNumber = await nextRxNumber(ctx.clinicId);
     const verifyToken = newVerifyToken();
 
-    const created = await prisma.ePrescription.create({
-      data: {
-        rxNumber,
-        verifyToken,
-        clinicId: ctx.clinicId,
-        patientId: body.patientId,
-        doctorId: ctx.userId,
-        appointmentId: body.appointmentId ?? null,
-        visitNoteId: body.visitNoteId ?? null,
-        diagnosisCode: body.diagnosisCode ?? null,
-        diagnosisName: body.diagnosisName ?? null,
-        signatureUrl: doctor.signatureUrl ?? null,
-        items: body.items,
-        notes: body.notes ?? null,
-        issuedAt,
-        validUntilAt,
-        status: "ISSUED",
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.ePrescription.create({
+        data: {
+          rxNumber,
+          verifyToken,
+          clinicId: ctx.clinicId,
+          patientId: body.patientId,
+          doctorId: ctx.userId,
+          appointmentId: body.appointmentId ?? null,
+          visitNoteId: body.visitNoteId ?? null,
+          diagnosisCode: body.diagnosisCode ?? null,
+          diagnosisName: body.diagnosisName ?? null,
+          signatureUrl: doctor.signatureUrl ?? null,
+          items: body.items,
+          notes: body.notes ?? null,
+          issuedAt,
+          validUntilAt,
+          status: "ISSUED",
+        },
+      });
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "DOCTOR",
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `user:${ctx.userId}`,
+        },
+        surface: "DOCTOR_CABINET",
+        tenantScope: {
+          clinicId: ctx.clinicId,
+          patientId: row.patientId,
+          doctorId: doctor.id,
+          appointmentId: body.appointmentId ?? undefined,
+        },
+        type: "eprescription.issued",
+        payload: {
+          ePrescriptionId: row.id,
+          rxNumber: row.rxNumber,
+          doctorId: ctx.userId,
+          patientId: row.patientId,
+          itemCount: body.items.length,
+        },
+      });
+      return row;
     });
 
     await audit(request, {
@@ -119,17 +150,6 @@ export const POST = createApiHandler(
         itemCount: body.items.length,
         diagnosisCode: body.diagnosisCode ?? null,
         validForDays: body.validForDays,
-      },
-    });
-
-    publishEventSafe(ctx.clinicId, {
-      type: "eprescription.issued",
-      payload: {
-        ePrescriptionId: created.id,
-        rxNumber: created.rxNumber,
-        doctorId: ctx.userId,
-        patientId: created.patientId,
-        itemCount: body.items.length,
       },
     });
 

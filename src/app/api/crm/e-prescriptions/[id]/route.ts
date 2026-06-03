@@ -13,7 +13,11 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { publishEventSafe } from "@/server/realtime/publish";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { ActorRole, Surface } from "@/server/realtime/envelope";
 import { ok, err } from "@/server/http";
 import { CancelEPrescriptionSchema } from "@/server/schemas/clinical-forms";
 
@@ -94,14 +98,34 @@ export const PATCH = createApiHandler(
       return err("BadRequest", 400, { reason: "already_cancelled" });
     }
 
-    const updated = await prisma.ePrescription.update({
-      where: { id },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-        cancelledById: ctx.userId,
-        cancelReason: body.cancelReason,
-      },
+    const actorRole: ActorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "ADMIN";
+    const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.ePrescription.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          cancelledById: ctx.userId,
+          cancelReason: body.cancelReason,
+        },
+      });
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: actorRole,
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `user:${ctx.userId}`,
+        },
+        surface,
+        tenantScope: { clinicId: ctx.clinicId },
+        type: "eprescription.cancelled",
+        payload: { ePrescriptionId: id, rxNumber: existing.rxNumber },
+      });
+      return row;
     });
 
     await audit(request, {
@@ -109,11 +133,6 @@ export const PATCH = createApiHandler(
       entityType: "EPrescription",
       entityId: id,
       meta: { rxNumber: existing.rxNumber, reason: body.cancelReason },
-    });
-
-    publishEventSafe(ctx.clinicId, {
-      type: "eprescription.cancelled",
-      payload: { ePrescriptionId: id, rxNumber: existing.rxNumber },
     });
 
     return ok({

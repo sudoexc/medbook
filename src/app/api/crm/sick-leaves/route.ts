@@ -11,7 +11,10 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { publishEventSafe } from "@/server/realtime/publish";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
 import { ok, err, parseQuery } from "@/server/http";
 import {
   CreateSickLeaveSchema,
@@ -86,25 +89,53 @@ export const POST = createApiHandler(
     const certNumber = await nextSickLeaveNumber(ctx.clinicId);
     const verifyToken = newVerifyToken();
 
-    const created = await prisma.sickLeave.create({
-      data: {
-        certNumber,
-        verifyToken,
-        clinicId: ctx.clinicId,
-        patientId: body.patientId,
-        doctorId: ctx.userId,
-        appointmentId: body.appointmentId ?? null,
-        visitNoteId: body.visitNoteId ?? null,
-        diagnosisCode: body.diagnosisCode ?? null,
-        diagnosisName: body.diagnosisName ?? null,
-        signatureUrl: doctor.signatureUrl ?? null,
-        regimen: body.regimen,
-        periodFrom,
-        periodTo,
-        restrictions: body.restrictions ?? null,
-        notes: body.notes ?? null,
-        status: "ISSUED",
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.sickLeave.create({
+        data: {
+          certNumber,
+          verifyToken,
+          clinicId: ctx.clinicId,
+          patientId: body.patientId,
+          doctorId: ctx.userId,
+          appointmentId: body.appointmentId ?? null,
+          visitNoteId: body.visitNoteId ?? null,
+          diagnosisCode: body.diagnosisCode ?? null,
+          diagnosisName: body.diagnosisName ?? null,
+          signatureUrl: doctor.signatureUrl ?? null,
+          regimen: body.regimen,
+          periodFrom,
+          periodTo,
+          restrictions: body.restrictions ?? null,
+          notes: body.notes ?? null,
+          status: "ISSUED",
+        },
+      });
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "DOCTOR",
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `user:${ctx.userId}`,
+        },
+        surface: "DOCTOR_CABINET",
+        tenantScope: {
+          clinicId: ctx.clinicId,
+          patientId: row.patientId,
+          doctorId: doctor.id,
+          appointmentId: body.appointmentId ?? undefined,
+        },
+        type: "sickleave.issued",
+        payload: {
+          sickLeaveId: row.id,
+          certNumber: row.certNumber,
+          doctorId: ctx.userId,
+          patientId: row.patientId,
+          days,
+        },
+      });
+      return row;
     });
 
     await audit(request, {
@@ -120,17 +151,6 @@ export const POST = createApiHandler(
         periodTo: body.periodTo,
         days,
         diagnosisCode: body.diagnosisCode ?? null,
-      },
-    });
-
-    publishEventSafe(ctx.clinicId, {
-      type: "sickleave.issued",
-      payload: {
-        sickLeaveId: created.id,
-        certNumber: created.certNumber,
-        doctorId: ctx.userId,
-        patientId: created.patientId,
-        days,
       },
     });
 

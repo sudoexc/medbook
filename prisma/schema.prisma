@@ -62,11 +62,11 @@ enum AppointmentStatus {
 // apart from "reception phoned the patient" — important for staff-load
 // metrics and for routing inbound responses (SMS/TG) to the right handler.
 enum ConfirmationVia {
-  BOOKING_AUTO   // Inbound: the patient created the booking themselves via PHONE/KIOSK.
-  MANUAL_CRM     // Reception/callcenter flipped CONFIRMED from the CRM UI.
-  SMS_REPLY      // Patient texted YES/ДА/HA to a reminder SMS.
-  TG_BUTTON      // Patient pressed "Подтверждаю" on a Telegram reminder.
-  INBOUND_CALL   // Patient called us back to confirm — flipped by whoever picked up.
+  BOOKING_AUTO // Inbound: the patient created the booking themselves via PHONE/KIOSK.
+  MANUAL_CRM // Reception/callcenter flipped CONFIRMED from the CRM UI.
+  SMS_REPLY // Patient texted YES/ДА/HA to a reminder SMS.
+  TG_BUTTON // Patient pressed "Подтверждаю" on a Telegram reminder.
+  INBOUND_CALL // Patient called us back to confirm — flipped by whoever picked up.
 }
 
 enum PatientSegment {
@@ -1682,6 +1682,10 @@ model Appointment {
   completedAt  DateTime?
   cancelledAt  DateTime?
   cancelReason String?
+  // Cross-surface sync v1 (Phase A) — who initiated the cancel. Free-form
+  // string ("patient" | "staff" | "system" | "no-show") so future actors
+  // (e.g. payment-failure-auto-cancel) don't need a migration.
+  cancelledBy  String?
 
   // Pre-visit confirmation audit. `status === CONFIRMED` answers "is it
   // confirmed right now"; these three fields answer "when / by whom / how"
@@ -1690,10 +1694,10 @@ model Appointment {
   // of replaying the AuditLog. Set together via `confirmAppointment()`.
   // `confirmedBy` is null for BOOKING_AUTO (channel = PHONE/KIOSK) and for
   // SMS_REPLY / TG_BUTTON (acted on behalf of patient, not staff).
-  confirmedAt  DateTime?
-  confirmedBy  String?
-  confirmedVia ConfirmationVia?
-  confirmedByUser User? @relation("AppointmentConfirmer", fields: [confirmedBy], references: [id])
+  confirmedAt     DateTime?
+  confirmedBy     String?
+  confirmedVia    ConfirmationVia?
+  confirmedByUser User?            @relation("AppointmentConfirmer", fields: [confirmedBy], references: [id])
 
   // Optional grouping into a MedicalCase (episode of care). Nullable —
   // appointments may be one-off without a case. onDelete: SetNull keeps
@@ -2255,10 +2259,65 @@ model AuditLog {
   userAgent  String?
   createdAt  DateTime @default(now())
 
+  // Cross-surface sync v1 (Phase A) — link audit row to the realtime event
+  // that caused it, the surface it originated from, and a correlation id so
+  // a single user action can be traced across all surfaces & cascades.
+  // All nullable for backwards compat — only outbox-pumper writes them today.
+  eventId       String? @unique
+  surface       String?
+  correlationId String?
+
   @@index([clinicId, createdAt])
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
   @@index([action, createdAt])
+  @@index([correlationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EventOutbox — durable write-ahead log for realtime events (Phase A).
+//
+// Domain mutations insert a PENDING row inside the same Prisma transaction as
+// their writes. A background pumper picks up PENDING rows, publishes them to
+// the in-process EventBus + Redis (if enabled), and marks them DELIVERED.
+//
+// This gives at-least-once delivery for SSE consumers and cursor-based replay
+// when an EventSource client reconnects with `Last-Event-ID`. See
+// `docs/TZ-cross-surface-sync.md` §5 for the full contract.
+//
+// `envelope` stores the full EventEnvelope JSON (v2 fields: actor, surface,
+// tenantScope, correlationId, causedByEventId). The `auditable:true` events
+// get materialised into AuditLog rows by the pumper, with `AuditLog.eventId`
+// FK-linking back here.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EventOutbox {
+  id              String       @id @default(cuid())
+  correlationId   String
+  causedByEventId String?
+  clinicId        String
+  type            String
+  envelope        Json
+  createdAt       DateTime     @default(now())
+  status          OutboxStatus @default(PENDING)
+  deliveredAt     DateTime?
+  attempts        Int          @default(0)
+  lastError       String?
+
+  // Pumper poll — narrow PENDING rows per clinic by createdAt.
+  @@index([clinicId, status, createdAt])
+  // Replay cursor — `/api/events?since=<eventId>` reads DELIVERED rows after
+  // the cursor's createdAt.
+  @@index([clinicId, createdAt])
+  // Trace cascade — "show me everything caused by event X".
+  @@index([correlationId])
+}
+
+enum OutboxStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  DEAD
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

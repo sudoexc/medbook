@@ -29,6 +29,7 @@ import { registerDsarScheduler } from "./data-deletion";
 import { startMedicationReminderWorker } from "./medication-reminder";
 import { startNotificationsSendWorker } from "./notifications-send";
 import { startNotificationsSchedulerWorker } from "./notifications-scheduler";
+import { startOutboxPumperWorker } from "./outbox-pumper";
 import { startPatientSummaryRefreshWorker } from "./patient-summary-refresh";
 import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
@@ -39,6 +40,12 @@ async function main() {
   console.info("[workers] starting…");
   startNotificationsSendWorker();
   const scheduler = startNotificationsSchedulerWorker(60_000);
+
+  // Cross-surface sync Phase A.5 — drain EventOutbox to local bus + Redis.
+  // 200ms poll keeps in-flight latency well under 1s; locks rows with
+  // FOR UPDATE SKIP LOCKED so multiple worker replicas don't double-deliver.
+  // See `docs/TZ-cross-surface-sync.md` §5.
+  const outboxPumper = startOutboxPumperWorker(200);
   // Phase 9e — flip TRIAL→PAST_DUE for clinics whose 30-day trial elapsed.
   // Same 60s cadence as the notifications scheduler: cheap query, idempotent.
   const trialExpiry = startTrialExpirySchedulerWorker(60_000);
@@ -128,6 +135,7 @@ async function main() {
   const shutdown = (signal: NodeJS.Signals) => {
     console.info(`[workers] received ${signal} — shutting down`);
     scheduler.stop();
+    outboxPumper.stop();
     trialExpiry.stop();
     actionEngine.stop();
     revenue.stop();

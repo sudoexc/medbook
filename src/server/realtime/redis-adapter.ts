@@ -22,6 +22,7 @@ import type { Redis as RedisClient } from "ioredis";
 
 import { getEventBus } from "./event-bus";
 import { clinicChannel, type AppEvent } from "./channels";
+import type { EventEnvelope } from "./envelope";
 
 let publisher: RedisClient | null = null;
 let subscriber: RedisClient | null = null;
@@ -103,6 +104,28 @@ export async function publishToRedis(event: AppEvent): Promise<boolean> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[realtime:redis:pub] publish failed", msg);
+  }
+  return true;
+}
+
+/**
+ * Cross-surface sync Phase A.7 — fan out a v2 envelope to Redis. The
+ * subscriber on the other side parses and re-emits on the same channel as
+ * a v1 publish, so the SSE handler sees both shapes interchangeably.
+ */
+export async function publishEnvelopeToRedis(
+  envelope: EventEnvelope,
+): Promise<boolean> {
+  const pub = getPublisher();
+  if (!pub) return false;
+  try {
+    await pub.publish(
+      `events:${envelope.tenantScope.clinicId}`,
+      JSON.stringify(envelope),
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[realtime:redis:pub] envelope publish failed", msg);
   }
   return true;
 }

@@ -196,6 +196,12 @@ vi.mock("@/lib/prisma", () => ({
         },
       ),
     },
+    // Phase B.3 — PATCH now writes envelope rows via the outbox helper
+    // (publishViaOutbox) inside the same transaction. The test doesn't
+    // assert envelope content; it just needs the call not to crash.
+    eventOutbox: {
+      create: vi.fn(async () => ({ id: "outbox_stub" })),
+    },
     $transaction: vi.fn(
       async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
         // Pass the same prisma object as the tx — sufficient for these tests

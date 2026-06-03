@@ -2,15 +2,30 @@
  * SSE endpoint `/api/events`.
  *
  * One stream per browser tab. The browser opens an `EventSource`, we return
- * `text/event-stream` with keep-alive, and push every `AppEvent` that
- * targets the subscriber's `clinicId`.
+ * `text/event-stream` with keep-alive, and push every event that targets
+ * the subscriber's `clinicId`.
  *
  * Transport contract:
  *   - `data: <json>\n\n` per event (json is the validated envelope).
+ *   - `id: <eventId>\n` line precedes the `data:` whenever the payload is a
+ *     v2 envelope. `EventSource` stores it on the client side; when the
+ *     connection drops and the browser reconnects it sends the value back
+ *     in the `Last-Event-ID` request header so the server can replay any
+ *     events the client missed during the gap.
  *   - `: ping\n\n` heartbeat every 20s. Browsers use this to detect dead
  *     sockets and reconnect.
  *   - The first line is `: ok\n\n` so proxies that buffer the first byte
  *     flush the response.
+ *
+ * Replay (Phase A.7):
+ *   - On connect with a `Last-Event-ID` header, we look up the cursor row
+ *     in `EventOutbox` and flush every `DELIVERED` row newer than the
+ *     cursor (capped at `REPLAY_LIMIT`). After the replay we switch to the
+ *     live in-process bus. The two pathways are deduplicated by `eventId`
+ *     so a row that lands during the replay isn't re-emitted live.
+ *   - If the cursor row is missing (TTL expired, manual delete) we emit
+ *     a sentinel comment `: cursor-too-old\n\n` so the client can fully
+ *     invalidate its cache and refetch.
  *
  * Auth:
  *   - `auth()` is required; a missing session returns 401. For SUPER_ADMIN
@@ -31,12 +46,17 @@
 import { NextRequest } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { runWithTenant } from "@/lib/tenant-context";
 import { getEventBus } from "@/server/realtime/event-bus";
 import { clinicChannel } from "@/server/realtime/channels";
+import { isEventEnvelope } from "@/server/realtime/envelope";
 import {
   ensureRedisSubscriber,
   isRedisEnabled,
 } from "@/server/realtime/redis-adapter";
+
+const REPLAY_LIMIT = 200;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,8 +97,16 @@ export async function GET(request: NextRequest): Promise<Response> {
   const channel = clinicChannel(clinicId);
   const bus = getEventBus();
 
+  // Last-Event-ID may come from the standard header (modern EventSource on
+  // reconnect) or from a `?since=<eventId>` query (manual replay, used by
+  // smoke tests + the mini-app prior to subscribing).
+  const lastEventId =
+    request.headers.get("last-event-id") ??
+    request.nextUrl.searchParams.get("since") ??
+    null;
+
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       let closed = false;
       const safeEnqueue = (chunk: string) => {
         if (closed) return;
@@ -89,20 +117,67 @@ export async function GET(request: NextRequest): Promise<Response> {
         }
       };
 
-      // Force an immediate flush past any intermediate buffer.
-      safeEnqueue(`: ok\n\n`);
+      // Track ids that came through the replay so the live subscription
+      // doesn't re-emit any row that landed during the cursor window.
+      const replayedIds = new Set<string>();
 
-      // Forward per-clinic events.
-      const unsubscribe = bus.subscribe(channel, (payload) => {
+      const emit = (payload: unknown) => {
         if (closed) return;
         try {
-          const json = JSON.stringify(payload);
-          safeEnqueue(`data: ${json}\n\n`);
+          const eventId = isEventEnvelope(payload) ? payload.eventId : null;
+          if (eventId) {
+            if (replayedIds.has(eventId)) return;
+            replayedIds.add(eventId);
+            safeEnqueue(`id: ${eventId}\ndata: ${JSON.stringify(payload)}\n\n`);
+          } else {
+            safeEnqueue(`data: ${JSON.stringify(payload)}\n\n`);
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           safeEnqueue(`: error ${msg}\n\n`);
         }
-      });
+      };
+
+      // Force an immediate flush past any intermediate buffer.
+      safeEnqueue(`: ok\n\n`);
+
+      // Replay missed events when the client carries a Last-Event-ID.
+      if (lastEventId) {
+        try {
+          await runWithTenant({ kind: "SYSTEM" }, async () => {
+            const cursor = await prisma.eventOutbox.findUnique({
+              where: { id: lastEventId },
+              select: { createdAt: true, clinicId: true },
+            });
+            if (!cursor || cursor.clinicId !== clinicId) {
+              // Cursor either expired or belongs to a different tenant.
+              // Client should discard caches and refetch.
+              safeEnqueue(`: cursor-too-old\n\n`);
+              return;
+            }
+            const missed = await prisma.eventOutbox.findMany({
+              where: {
+                clinicId,
+                status: "DELIVERED",
+                createdAt: { gt: cursor.createdAt },
+              },
+              orderBy: { createdAt: "asc" },
+              take: REPLAY_LIMIT,
+              select: { envelope: true },
+            });
+            for (const row of missed) {
+              emit(row.envelope);
+            }
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn("[sse] replay failed", msg);
+          safeEnqueue(`: replay-failed\n\n`);
+        }
+      }
+
+      // Forward live per-clinic events (after replay so ordering is preserved).
+      const unsubscribe = bus.subscribe(channel, (payload) => emit(payload));
 
       const heartbeat = setInterval(() => {
         safeEnqueue(`: ping\n\n`);

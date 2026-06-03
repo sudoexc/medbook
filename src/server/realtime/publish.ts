@@ -24,12 +24,17 @@
 
 import { getEventBus } from "./event-bus";
 import { clinicChannel } from "./channels";
+import type { EventEnvelope } from "./envelope";
 import {
   AppEventSchema,
   type AppEvent,
   type AppEventInput,
 } from "./events";
-import { publishToRedis, isRedisEnabled } from "./redis-adapter";
+import {
+  publishToRedis,
+  publishEnvelopeToRedis,
+  isRedisEnabled,
+} from "./redis-adapter";
 
 export type PublishOutcome = {
   /** Validated envelope (useful for logging). */
@@ -93,4 +98,29 @@ export function publishEventSafe(
     const msg = e instanceof Error ? e.message : String(e);
     console.warn(`[realtime] publishEvent failed: ${msg}`);
   });
+}
+
+/**
+ * Cross-surface sync Phase A.7 — broadcast a pre-validated v2 envelope.
+ *
+ * Used by `OutboxPumper`: the envelope was already validated when the
+ * outbox row was inserted via `publishViaOutbox`, so we skip re-validation
+ * and dispatch directly onto the bus. SSE handlers see the full v2
+ * envelope (eventId, correlationId, actor, surface, tenantScope) so they
+ * can emit `id: <eventId>` lines for `Last-Event-ID` reconnects.
+ *
+ * Returns whether Redis fan-out was attempted (same contract as
+ * `publishEvent`).
+ */
+export async function broadcastEnvelope(
+  envelope: EventEnvelope,
+): Promise<{ local: boolean; redis: boolean }> {
+  const clinicId = envelope.tenantScope.clinicId;
+  getEventBus().publish(clinicChannel(clinicId), envelope);
+
+  const redis = isRedisEnabled();
+  if (redis) {
+    await publishEnvelopeToRedis(envelope);
+  }
+  return { local: true, redis };
 }

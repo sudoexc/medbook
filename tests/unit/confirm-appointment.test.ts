@@ -157,6 +157,34 @@ vi.mock("@/lib/prisma", () => ({
         return { id: `audit_${state.audits.length}` };
       }),
     },
+    // Phase B.2 — confirmAppointment writes via the outbox inside a tx. The
+    // legacy assertions check `state.publishes`, so we flatten envelope rows
+    // into the same {clinicId, event:{type,payload}} shape that the
+    // publishEventSafe mock pushed.
+    eventOutbox: {
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            clinicId: string;
+            envelope: { type: string; payload: Record<string, unknown> };
+          };
+        }) => {
+          state.publishes.push({
+            clinicId: data.clinicId,
+            event: { type: data.envelope.type, payload: data.envelope.payload },
+          });
+          return { id: "outbox_stub" };
+        },
+      ),
+    },
+    $transaction: vi.fn(
+      async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+        const { prisma } = await import("@/lib/prisma");
+        return fn(prisma);
+      },
+    ),
   },
 }));
 

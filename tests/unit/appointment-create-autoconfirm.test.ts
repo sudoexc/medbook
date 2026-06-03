@@ -102,6 +102,7 @@ vi.mock("@/lib/prisma", () => ({
     doctor: {
       findUnique: vi.fn(async () => ({
         id: "doc_1",
+        clinicId: "c1",
         cabinetId: "cab_1",
         isActive: true,
         cabinet: { isActive: true },
@@ -118,6 +119,7 @@ vi.mock("@/lib/prisma", () => ({
         const id = `appt_${state.apptIdSeq}`;
         return {
           id,
+          clinicId: data.clinicId,
           doctorId: data.doctorId,
           patientId: data.patientId,
           cabinetId: data.cabinetId,
@@ -125,17 +127,45 @@ vi.mock("@/lib/prisma", () => ({
           queueStatus: data.queueStatus,
           date: data.date,
           endDate: data.endDate,
+          time: data.time,
+          durationMin: data.durationMin,
+          priceBase: data.priceBase,
+          priceService: data.priceService,
+          priceFinal: data.priceFinal,
+          discountPct: data.discountPct,
+          discountAmount: data.discountAmount,
         };
       }),
     },
     appointmentService: {
       createMany: vi.fn(async () => ({ count: 0 })),
     },
+    // Phase M1 — bookAppointment writes APPOINTMENT_CONFIRMED + referral +
+    // free-repeat audit rows via `tx.auditLog.create` (the generic
+    // `appointment.created` audit is materialised by the outbox pumper post-tx
+    // and is intentionally invisible to this in-memory test).
+    auditLog: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        state.audits.push({
+          action: String(data.action),
+          entityType: String(data.entityType),
+          entityId: (data.entityId as string | null) ?? null,
+          meta: data.meta,
+        });
+        return { id: `audit_${state.audits.length}` };
+      }),
+    },
     action: {
       updateMany: vi.fn(async (args: Record<string, unknown>) => {
         state.actionUpdateMany.push(args);
         return { count: 0 };
       }),
+    },
+    // Phase B.4 — POST now writes envelope rows via the outbox helper
+    // (publishViaOutbox) inside the same transaction. The test doesn't
+    // assert envelope content; it just needs the call not to crash.
+    eventOutbox: {
+      create: vi.fn(async () => ({ id: "outbox_stub" })),
     },
     $transaction: vi.fn(
       async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
@@ -209,7 +239,9 @@ describe("POST /api/crm/appointments — auto-confirm branch", () => {
       (a) => a.action === "APPOINTMENT_CONFIRMED",
     );
     expect(confirmAudit).toBeDefined();
-    expect(confirmAudit!.meta).toEqual({
+    // Phase M1 — book.ts also stamps `correlationId` on every audit row, so
+    // we match shape instead of strict equality.
+    expect(confirmAudit!.meta).toMatchObject({
       via: "BOOKING_AUTO",
       statusBefore: "BOOKED",
       statusAfter: "CONFIRMED",
@@ -264,9 +296,10 @@ describe("POST /api/crm/appointments — auto-confirm branch", () => {
     expect(
       state.audits.find((a) => a.action === "APPOINTMENT_CONFIRMED"),
     ).toBeUndefined();
-    // Only the generic create audit row fires.
-    expect(state.audits.filter((a) => a.action === "appointment.create"))
-      .toHaveLength(1);
+    // Phase M1 — the generic `appointment.created` audit row is now
+    // materialised post-tx by the outbox pumper (auditable=true on the
+    // envelope), so no audit fires synchronously on the BOOKED path.
+    expect(state.audits).toHaveLength(0);
   });
 
   it("AC5 — channel=WEBSITE: stays BOOKED, no APPOINTMENT_CONFIRMED audit", async () => {

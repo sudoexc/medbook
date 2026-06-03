@@ -84,6 +84,21 @@ export const EVENT_TYPES = [
   // its KPI tiles the moment a doctor justifies a flagged warning. Tenant
   // scope is the clinic; no PHI in the payload.
   "cds.override.recorded",
+  // Phase B.5 — visit-note lifecycle. `draftSaved` is autosave (high-frequency,
+  // not audited); `finalized` flips the note + appointment to COMPLETED and is
+  // audited. Patient surface ignores both; CRM + cabinet listen to refresh
+  // the reception list and the note panel.
+  "visit-note.draftSaved",
+  "visit-note.finalized",
+  // Phase M2 — mini-app patient-driven mutations. CRM surfaces (patient card,
+  // notifications inbox, family panel, NPS dashboard, pre-visit drawer) need
+  // to react in realtime when the patient touches them from TG.
+  "patient.familyLinked",
+  "patient.familyUnlinked",
+  "patient.profileUpdated",
+  "notification.read",
+  "nps.submitted",
+  "previsit.submitted",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -316,6 +331,110 @@ export const CdsOverrideEventPayload = z
   .passthrough();
 export type CdsOverrideEventPayload = z.infer<typeof CdsOverrideEventPayload>;
 
+/**
+ * Phase B.5 — visit-note lifecycle. `draftSaved` ships the note id + which
+ * fields changed so listening surfaces can decide to refetch detail (or
+ * skip — autosave fires every ~1.5 s and most subscribers only care about
+ * the existence of new content, not the keystrokes). `finalized` is its own
+ * envelope so the reception desk can flip the row to "completed" without
+ * waiting on the cascade-emitted `appointment.statusChanged`. No PHI in
+ * either payload.
+ */
+export const VisitNotePayload = z
+  .object({
+    visitNoteId: z.string().min(1),
+    appointmentId: z.string().min(1).optional(),
+    doctorId: z.string().min(1).optional(),
+    patientId: z.string().min(1).optional(),
+    /** Fields that changed in this autosave (for `draftSaved` only). */
+    changedFields: z.array(z.string()).optional(),
+    /** Lifecycle marker for `finalized`. */
+    finalizedAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .passthrough();
+export type VisitNoteEventPayload = z.infer<typeof VisitNotePayload>;
+
+/**
+ * Phase M2 — mini-app family link lifecycle. Both add (familyLinked) and
+ * remove (familyUnlinked) ship the same shape: who's linking, who's being
+ * linked, and how they're related. CRM patient-card subscribers refresh the
+ * "связанные пациенты" panel; the patient inbox can show a confirmation.
+ */
+export const PatientFamilyPayload = z
+  .object({
+    ownerPatientId: z.string().min(1),
+    linkedPatientId: z.string().min(1),
+    relationship: z.string().nullable().optional(),
+    /** Whether the linked Patient row was created vs. claimed from existing. */
+    createdNew: z.boolean().optional(),
+  })
+  .passthrough();
+export type PatientFamilyEventPayload = z.infer<typeof PatientFamilyPayload>;
+
+/**
+ * Phase M2 — patient self-edited their TG-tied profile (name, phone, lang).
+ * `changedFields` lets the CRM-side subscribers decide whether to refetch the
+ * full row (worth it on phone/name changes) or just bump preferredLang in
+ * cache (cheap toggle). No PHI in the payload — listeners join on patientId.
+ */
+export const PatientProfileUpdatedPayload = z
+  .object({
+    patientId: z.string().min(1),
+    changedFields: z.array(z.string()).min(1),
+  })
+  .passthrough();
+export type PatientProfileUpdatedEventPayload = z.infer<
+  typeof PatientProfileUpdatedPayload
+>;
+
+/**
+ * Phase M2 — TG patient marked an inbox notification as read. The CRM-side
+ * notifications panel uses this to dim the unread counter live; no audit.
+ */
+export const NotificationReadPayload = z
+  .object({
+    sendId: z.string().min(1),
+    patientId: z.string().min(1),
+  })
+  .passthrough();
+export type NotificationReadEventPayload = z.infer<
+  typeof NotificationReadPayload
+>;
+
+/**
+ * Phase M2 — patient submitted their post-visit NPS score. CRM dashboards
+ * (KPI strip + NPS table) refresh on this; ratings are 0-10, an optional
+ * comment may be present. Score-only is the audit-relevant fact.
+ */
+export const NpsSubmittedPayload = z
+  .object({
+    appointmentId: z.string().min(1),
+    patientId: z.string().min(1),
+    score: z.number().int().min(0).max(10),
+    hasComment: z.boolean().optional(),
+  })
+  .passthrough();
+export type NpsSubmittedEventPayload = z.infer<typeof NpsSubmittedPayload>;
+
+/**
+ * Phase M2 — patient submitted their pre-visit questionnaire. Cabinet view
+ * uses this to show "пациент заполнил" tile before the appointment starts;
+ * we ship counts (not contents) so the cabinet can decide whether to refetch
+ * `appointment.preVisitData` only when the doctor actually opens the panel.
+ */
+export const PreVisitSubmittedPayload = z
+  .object({
+    appointmentId: z.string().min(1),
+    patientId: z.string().min(1),
+    complaintsLen: z.number().int().nonnegative(),
+    allergiesCount: z.number().int().nonnegative(),
+    medicationsCount: z.number().int().nonnegative(),
+  })
+  .passthrough();
+export type PreVisitSubmittedEventPayload = z.infer<
+  typeof PreVisitSubmittedPayload
+>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -367,6 +486,14 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("sickleave.issued", SickLeaveEventPayload),
   makeEvent("sickleave.cancelled", SickLeaveEventPayload),
   makeEvent("cds.override.recorded", CdsOverrideEventPayload),
+  makeEvent("visit-note.draftSaved", VisitNotePayload),
+  makeEvent("visit-note.finalized", VisitNotePayload),
+  makeEvent("patient.familyLinked", PatientFamilyPayload),
+  makeEvent("patient.familyUnlinked", PatientFamilyPayload),
+  makeEvent("patient.profileUpdated", PatientProfileUpdatedPayload),
+  makeEvent("notification.read", NotificationReadPayload),
+  makeEvent("nps.submitted", NpsSubmittedPayload),
+  makeEvent("previsit.submitted", PreVisitSubmittedPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

@@ -18,7 +18,15 @@ import type { Appointment, ConfirmationVia } from "@/generated/prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { dedupeKeyFor } from "@/lib/actions/types";
-import { publishEventSafe } from "@/server/realtime/publish";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type {
+  ActorRole,
+  EventEnvelopeInput,
+  Surface,
+} from "@/server/realtime/envelope";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 
 export type ConfirmInput = {
@@ -28,7 +36,43 @@ export type ConfirmInput = {
    *  paths (SMS_REPLY / TG_BUTTON) and for BOOKING_AUTO. */
   actorId: string | null;
   via: ConfirmationVia;
+  /**
+   * Surface that drove the confirmation. Cross-surface sync Phase A: stamped
+   * on the outbox envelope so downstream subscribers + audit trail know
+   * "this confirm came from CRM vs the SMS reply webhook vs the mini-app".
+   * Optional for backwards compat — derived from `via` if omitted.
+   */
+  surface?: Surface;
+  /** Cascade hint: when this confirm is caused by an upstream event (e.g. an
+   *  inbound SMS), the caller threads its correlationId through so the whole
+   *  chain is traceable. A new id is minted when omitted. */
+  correlationId?: string;
+  causedByEventId?: string;
 };
+
+/** Map `ConfirmationVia` to the surface that produced it. */
+function surfaceFromVia(via: ConfirmationVia): Surface {
+  switch (via) {
+    case "SMS_REPLY":
+      return "SMS_WEBHOOK";
+    case "TG_BUTTON":
+      return "TG_WEBHOOK";
+    case "INBOUND_CALL":
+      return "CALL_CENTER";
+    case "BOOKING_AUTO":
+      return "WORKER";
+    case "MANUAL_CRM":
+    default:
+      return "CRM";
+  }
+}
+
+/** Map `ConfirmationVia` + actorId to the actor role recorded in the envelope. */
+function actorRoleFor(via: ConfirmationVia, hasActor: boolean): ActorRole {
+  if (hasActor) return "RECEPTIONIST";
+  if (via === "SMS_REPLY" || via === "TG_BUTTON") return "PATIENT";
+  return "SYSTEM";
+}
 
 export type ConfirmResult =
   | { ok: true; appointment: Appointment; alreadyConfirmed: boolean }
@@ -70,7 +114,12 @@ export async function confirmAppointment(
   // Idempotency: if already confirmed, just close any stale confirm-call
   // Actions (defensive — usually closed at first flip) and return early.
   if (before.confirmedAt) {
-    await closeOpenConfirmActions(input.clinicId, input.appointmentId, now);
+    await closeOpenConfirmActions(
+      prisma,
+      input.clinicId,
+      input.appointmentId,
+      now,
+    );
     const fresh = await prisma.appointment.findUnique({
       where: { id: input.appointmentId },
     });
@@ -84,64 +133,119 @@ export async function confirmAppointment(
   const shouldFlipStatus =
     before.status === "BOOKED" && before.queueStatus === "BOOKED";
 
-  const after = await prisma.appointment.update({
-    where: { id: input.appointmentId },
-    data: {
-      confirmedAt: now,
-      confirmedBy: input.actorId,
-      confirmedVia: input.via,
-      ...(shouldFlipStatus
-        ? { status: "CONFIRMED", queueStatus: "CONFIRMED" }
-        : {}),
-    },
+  const surface = input.surface ?? surfaceFromVia(input.via);
+  const correlationId = input.correlationId ?? newCorrelationId();
+  const actorRole = actorRoleFor(input.via, !!input.actorId);
+  const actorLabel = input.actorId
+    ? `user:${input.actorId}`
+    : `confirm:${input.via}`;
+
+  // Single transaction: appointment update + close actions + audit row +
+  // two outbox rows. Either everything commits (delivery is the pumper's
+  // job) or nothing does (no ghost event for a write that didn't happen).
+  const { after, statusEventId } = await prisma.$transaction(async (tx) => {
+    const after = await tx.appointment.update({
+      where: { id: input.appointmentId },
+      data: {
+        confirmedAt: now,
+        confirmedBy: input.actorId,
+        confirmedVia: input.via,
+        ...(shouldFlipStatus
+          ? { status: "CONFIRMED", queueStatus: "CONFIRMED" }
+          : {}),
+      },
+    });
+
+    await closeOpenConfirmActions(
+      tx,
+      input.clinicId,
+      input.appointmentId,
+      now,
+    );
+
+    // Audit row stays direct + with the canonical APPOINTMENT_CONFIRMED
+    // action string so compliance dashboards keep their existing taxonomy.
+    // Phase F (TZ §11) will unify audit through the outbox; for the pilot
+    // we coexist.
+    await tx.auditLog.create({
+      data: {
+        clinicId: input.clinicId,
+        actorId: input.actorId,
+        actorRole: input.actorId ? null : "SYSTEM",
+        actorLabel: input.actorId ? null : `confirm:${input.via}`,
+        action: AUDIT_ACTION.APPOINTMENT_CONFIRMED,
+        entityType: "Appointment",
+        entityId: input.appointmentId,
+        meta: {
+          via: input.via,
+          statusBefore: before.status,
+          statusAfter: after.status,
+          statusFlipped: shouldFlipStatus,
+          correlationId,
+        } as never,
+        ip: null,
+        userAgent: null,
+        surface,
+        correlationId,
+      },
+    });
+
+    // Two events because consumers split on the kind — `queue.updated`
+    // drives the doctor-queue panel, `appointment.statusChanged` drives
+    // the appointments list & detail. Both flow through the outbox so SSE
+    // consumers never miss the pair (the pumper delivers them in createdAt
+    // order — queue.updated first because it was inserted first).
+    const baseEnvelope = {
+      correlationId,
+      causedByEventId: input.causedByEventId,
+      actor: {
+        role: actorRole,
+        userId: input.actorId,
+        patientId: null,
+        onBehalfOfPatientId: null,
+        label: actorLabel,
+      },
+      surface,
+      tenantScope: {
+        clinicId: input.clinicId,
+        doctorId: after.doctorId ?? undefined,
+        appointmentId: input.appointmentId,
+      },
+    } as const;
+
+    const queueEnvelope: EventEnvelopeInput = {
+      ...baseEnvelope,
+      type: "queue.updated",
+      payload: {
+        appointmentId: input.appointmentId,
+        doctorId: after.doctorId,
+        queueStatus: after.queueStatus,
+        previousStatus: before.queueStatus,
+      },
+    };
+    await publishViaOutbox(tx, queueEnvelope);
+
+    const statusEnvelope: EventEnvelopeInput = {
+      ...baseEnvelope,
+      type: "appointment.statusChanged",
+      payload: {
+        appointmentId: input.appointmentId,
+        doctorId: after.doctorId,
+        status: after.status,
+        previousStatus: before.status,
+      },
+    };
+    const { eventId: statusEventId } = await publishViaOutbox(
+      tx,
+      statusEnvelope,
+    );
+
+    return { after, statusEventId };
   });
 
-  await closeOpenConfirmActions(input.clinicId, input.appointmentId, now);
-
-  // Audit. We write directly (not via the request-scoped `audit()` helper)
-  // because webhook paths have no request session.
-  await prisma.auditLog.create({
-    data: {
-      clinicId: input.clinicId,
-      actorId: input.actorId,
-      actorRole: input.actorId ? null : "SYSTEM",
-      actorLabel: input.actorId ? null : `confirm:${input.via}`,
-      action: AUDIT_ACTION.APPOINTMENT_CONFIRMED,
-      entityType: "Appointment",
-      entityId: input.appointmentId,
-      meta: {
-        via: input.via,
-        statusBefore: before.status,
-        statusAfter: after.status,
-        statusFlipped: shouldFlipStatus,
-      } as never,
-      ip: null,
-      userAgent: null,
-    },
-  });
-
-  // Realtime fan-out: calendar tile recolor, reception queue pill update,
-  // action-center row removal. We emit two events because consumers split
-  // on the kind — `queue.updated` drives the doctor-queue panel, while
-  // `appointment.statusChanged` drives the appointments list & detail.
-  publishEventSafe(input.clinicId, {
-    type: "queue.updated",
-    payload: {
-      appointmentId: input.appointmentId,
-      doctorId: after.doctorId,
-      queueStatus: after.queueStatus,
-      previousStatus: before.queueStatus,
-    },
-  });
-  publishEventSafe(input.clinicId, {
-    type: "appointment.statusChanged",
-    payload: {
-      appointmentId: input.appointmentId,
-      doctorId: after.doctorId,
-      status: after.status,
-      previousStatus: before.status,
-    },
-  });
+  // Suppress unused-var warning until Phase F threads this id through
+  // follow-up cascades (notification.* events caused by the confirm).
+  void statusEventId;
 
   return { ok: true, appointment: after, alreadyConfirmed: false };
 }
@@ -153,7 +257,10 @@ export async function confirmAppointment(
  * We close instead of delete so the audit trail survives ("staff called at
  * 14:02, patient confirmed; task auto-closed at 14:05").
  */
+type ConfirmTx = Parameters<Parameters<typeof prisma["$transaction"]>[0]>[0];
+
 async function closeOpenConfirmActions(
+  tx: ConfirmTx | typeof prisma,
   clinicId: string,
   appointmentId: string,
   now: Date,
@@ -172,7 +279,7 @@ async function closeOpenConfirmActions(
     doctorName: "",
   });
 
-  await prisma.action.updateMany({
+  await tx.action.updateMany({
     where: {
       clinicId,
       dedupeKey,

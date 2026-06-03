@@ -166,8 +166,8 @@ vi.mock("@/server/patient/last-contacted", () => ({
 }));
 
 // Prisma surface. Only the methods the helper + detector + SMS route call.
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prismaMock: Record<string, unknown> = {
     appointment: {
       findUnique: vi.fn(
         async ({ where }: { where: { id: string } }) => {
@@ -437,8 +437,37 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     notificationSend: { create: vi.fn(async () => ({ id: "ns_1" })) },
-  },
-}));
+    // Phase B.2 — outbox surface for publishViaOutbox. Flatten envelope
+    // payloads into the legacy {clinicId, type, payload} shape that the
+    // publishEventSafe mock used, so call-site assertions keep working.
+    eventOutbox: {
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            clinicId: string;
+            envelope: { type: string; payload: Record<string, unknown> };
+          };
+        }) => {
+          state.publishes.push({
+            clinicId: data.clinicId,
+            type: data.envelope.type,
+            payload: data.envelope.payload,
+          });
+          return { id: "outbox_stub" };
+        },
+      ),
+    },
+  };
+  // Self-reference so the $transaction shim hands the same mocked surface to
+  // the callback (no dynamic re-import — that races with real Prisma loading
+  // in Promise.all paths).
+  prismaMock.$transaction = vi.fn(
+    async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => fn(prismaMock),
+  );
+  return { prisma: prismaMock };
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy imports — must come AFTER vi.mock declarations.
@@ -586,9 +615,8 @@ describe("A. Happy loop — TELEGRAM appointment 36h ahead", () => {
     expect(audit.meta.statusAfter).toBe("CONFIRMED");
     expect(audit.meta.statusFlipped).toBe(true);
 
-    // Realtime fan-out — both events.
-    const publish = await loadPublishMock();
-    expect(publish).toHaveBeenCalledTimes(2);
+    // Realtime fan-out — both envelopes land in the outbox (B.2 routing).
+    expect(state.publishes).toHaveLength(2);
     const types = state.publishes.map((p) => p.type).sort();
     expect(types).toEqual(["appointment.statusChanged", "queue.updated"]);
 

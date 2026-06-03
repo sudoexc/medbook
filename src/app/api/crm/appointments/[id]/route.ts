@@ -6,7 +6,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { ok, notFound, conflict, forbidden, diff } from "@/server/http";
+import { ok, notFound, conflict, forbidden, err, diff } from "@/server/http";
 import { UpdateAppointmentSchema } from "@/server/schemas/appointment";
 import {
   applyTime,
@@ -29,6 +29,10 @@ import {
   revertTargetFor,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
+import {
+  canRoleAdvanceTo,
+  type LifecycleRole,
+} from "@/lib/appointments/lifecycle";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 
 function idFromUrl(request: Request): string {
@@ -364,6 +368,18 @@ export const PATCH = createApiHandler(
           from: before.status,
           to: body.status,
         });
+      }
+      // Role-ownership: doctors drive IN_PROGRESS / COMPLETED. Mirrors
+      // queue-status route + the lifecycle UI; same predicate, same outcome.
+      if (ctx.kind === "TENANT") {
+        const role = ctx.role as LifecycleRole;
+        if (!canRoleAdvanceTo(role, body.status as AppointmentStatus)) {
+          return err("Forbidden", 403, {
+            reason: "role_cannot_advance_to",
+            target: body.status,
+            role,
+          });
+        }
       }
     }
 

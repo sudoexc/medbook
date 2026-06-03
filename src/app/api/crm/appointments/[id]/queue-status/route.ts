@@ -13,6 +13,10 @@ import {
   canTransition,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
+import {
+  canRoleAdvanceTo,
+  type LifecycleRole,
+} from "@/lib/appointments/lifecycle";
 import { confirmAppointment } from "@/server/appointments/confirm";
 
 function idFromUrl(request: Request): string {
@@ -43,6 +47,24 @@ export const PATCH = createApiHandler(
         from: before.queueStatus,
         to: body.queueStatus,
       });
+    }
+
+    // Role-ownership: doctors drive IN_PROGRESS / COMPLETED, reception drives
+    // the rest. Mirrors `STATE_OWNERS` in `lib/appointments/lifecycle.ts` so a
+    // stale tab or scripted call can't bypass the UI gate. NURSE is already
+    // excluded by `canMutateStatus` (read-only), so we only need to gate the
+    // intersection where the role is otherwise permitted but the target is
+    // not theirs to drive.
+    const tenantPreCheck = getTenant();
+    if (tenantPreCheck?.kind === "TENANT") {
+      const role = tenantPreCheck.role as LifecycleRole;
+      if (!canRoleAdvanceTo(role, body.queueStatus as AppointmentStatus)) {
+        return err("Forbidden", 403, {
+          reason: "role_cannot_advance_to",
+          target: body.queueStatus,
+          role,
+        });
+      }
     }
 
     // Confirmation is its own write — route through the single entry point so

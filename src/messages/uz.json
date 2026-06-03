@@ -1996,6 +1996,7 @@
     "ariaLabel": "Yozuvning hayot davri",
     "saving": "Saqlanmoqda…",
     "noShowTooEarly": "Qabul vaqti hali kelmadi",
+    "roleLocked": "Bu bosqichni shifokor o'zgartiradi",
     "offpath": {
       "NO_SHOW": "Kelmadi",
       "CANCELLED": "Bekor qilingan",

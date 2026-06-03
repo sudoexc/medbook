@@ -18,7 +18,7 @@
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { CheckIcon, Loader2Icon, XIcon } from "lucide-react";
+import { CheckIcon, LockIcon, Loader2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -39,6 +39,7 @@ import {
   canMutateStatus,
   getAllowedTransitionsAt,
   getStepStates,
+  isOwnershipLocked,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
@@ -162,6 +163,15 @@ export function AppointmentLifecycle({
           const isCurrent = state === "current";
           const isPassed = state === "passed";
           const isUnreachable = state === "unreachable";
+          // Role-ownership lock: this state is structurally for a different
+          // role (e.g. DOCTOR owns IN_PROGRESS / COMPLETED). We render the
+          // pill as a lock icon + title hint so the operator sees the step
+          // exists in the timeline but understands it isn't theirs to drive.
+          // Only meaningful when the step hasn't already been passed — once
+          // the doctor has done it, it shows ✓ as normal.
+          const isRoleLocked =
+            canMutate && state === "future" && isOwnershipLocked(role, step);
+          const roleLockedTitle = isRoleLocked ? t("roleLocked") : undefined;
 
           return (
             <React.Fragment key={step}>
@@ -171,7 +181,12 @@ export function AppointmentLifecycle({
                   disabled={!isClickable}
                   onClick={() => handleStepClick(step)}
                   aria-current={isCurrent ? "step" : undefined}
-                  aria-label={tStatus(step.toLowerCase() as never)}
+                  aria-label={
+                    roleLockedTitle
+                      ? `${tStatus(step.toLowerCase() as never)} — ${roleLockedTitle}`
+                      : tStatus(step.toLowerCase() as never)
+                  }
+                  title={roleLockedTitle}
                   className={cn(
                     "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
@@ -182,7 +197,10 @@ export function AppointmentLifecycle({
                       "border-success/50 bg-success/15 text-[color:var(--success)]",
                     state === "future" &&
                       !isUnreachable &&
+                      !isRoleLocked &&
                       "border-dashed border-border bg-background text-muted-foreground",
+                    isRoleLocked &&
+                      "border-dashed border-border/60 bg-muted/30 text-muted-foreground/70",
                     isUnreachable &&
                       "border-dashed border-border/60 bg-background/50 text-muted-foreground/60",
                     isClickable
@@ -192,6 +210,8 @@ export function AppointmentLifecycle({
                 >
                   {isPassed || isCurrent ? (
                     <CheckIcon className="size-3" />
+                  ) : isRoleLocked ? (
+                    <LockIcon className="size-3" aria-hidden />
                   ) : (
                     <span
                       className="inline-flex size-3 items-center justify-center text-[10px] font-bold tabular-nums"

@@ -12,23 +12,28 @@ import { describe, it, expect } from "vitest";
 import {
   LIFECYCLE_STEPS,
   canMutateStatus,
+  canRoleAdvanceTo,
   getAllowedTransitions,
   getAllowedTransitionsAt,
   getQuickActions,
   getStepStates,
+  isOwnershipLocked,
 } from "@/lib/appointments/lifecycle";
 
 describe("getAllowedTransitions", () => {
-  it("BOOKED → WAITING is valid for RECEPTIONIST", () => {
+  it("BOOKED → WAITING is valid for RECEPTIONIST; IN_PROGRESS is doctor-owned", () => {
     const next = getAllowedTransitions("BOOKED", "RECEPTIONIST");
     expect(next).toContain("WAITING");
-    expect(next).toContain("IN_PROGRESS");
+    expect(next).not.toContain("IN_PROGRESS"); // doctor-owned per STATE_OWNERS
+    expect(next).not.toContain("COMPLETED"); // doctor-owned per STATE_OWNERS
     expect(next).toContain("CANCELLED");
     expect(next).not.toContain("BOOKED"); // self-loop excluded
   });
 
-  it("BOOKED → WAITING is valid for DOCTOR", () => {
-    expect(getAllowedTransitions("BOOKED", "DOCTOR")).toContain("WAITING");
+  it("BOOKED → WAITING is valid for DOCTOR (full happy path is theirs)", () => {
+    const next = getAllowedTransitions("BOOKED", "DOCTOR");
+    expect(next).toContain("WAITING");
+    expect(next).toContain("IN_PROGRESS");
   });
 
   it("BOOKED → COMPLETED is forbidden (must pass through IN_PROGRESS)", () => {
@@ -97,7 +102,7 @@ describe("getAllowedTransitionsAt — NO_SHOW gating", () => {
     expect(allowedAfter).toContain("NO_SHOW");
   });
 
-  it("forward transitions remain available before the slot start", () => {
+  it("forward intake transitions remain available before the slot start for reception", () => {
     const start = new Date("2026-06-01T10:00:00.000Z");
     const before = new Date("2026-06-01T09:30:00.000Z");
     const allowed = getAllowedTransitionsAt(
@@ -106,7 +111,44 @@ describe("getAllowedTransitionsAt — NO_SHOW gating", () => {
       start,
       before,
     );
-    expect(allowed).toEqual(expect.arrayContaining(["WAITING", "IN_PROGRESS"]));
+    expect(allowed).toEqual(
+      expect.arrayContaining(["CONFIRMED", "WAITING"]),
+    );
+    // Doctor-owned states stay locked regardless of timing.
+    expect(allowed).not.toContain("IN_PROGRESS");
+    expect(allowed).not.toContain("COMPLETED");
+  });
+});
+
+describe("ownership — STATE_OWNERS", () => {
+  it("IN_PROGRESS and COMPLETED are doctor-owned", () => {
+    expect(canRoleAdvanceTo("DOCTOR", "IN_PROGRESS")).toBe(true);
+    expect(canRoleAdvanceTo("DOCTOR", "COMPLETED")).toBe(true);
+    expect(canRoleAdvanceTo("ADMIN", "IN_PROGRESS")).toBe(false);
+    expect(canRoleAdvanceTo("ADMIN", "COMPLETED")).toBe(false);
+    expect(canRoleAdvanceTo("RECEPTIONIST", "IN_PROGRESS")).toBe(false);
+    expect(canRoleAdvanceTo("RECEPTIONIST", "COMPLETED")).toBe(false);
+    expect(canRoleAdvanceTo("SUPER_ADMIN", "IN_PROGRESS")).toBe(false);
+    expect(canRoleAdvanceTo("SUPER_ADMIN", "COMPLETED")).toBe(false);
+  });
+
+  it("Confirmation, intake, and off-path states are open to all mutate roles", () => {
+    for (const role of ["ADMIN", "RECEPTIONIST", "DOCTOR"] as const) {
+      expect(canRoleAdvanceTo(role, "CONFIRMED")).toBe(true);
+      expect(canRoleAdvanceTo(role, "WAITING")).toBe(true);
+      expect(canRoleAdvanceTo(role, "NO_SHOW")).toBe(true);
+      expect(canRoleAdvanceTo(role, "CANCELLED")).toBe(true);
+      expect(canRoleAdvanceTo(role, "SKIPPED")).toBe(true);
+    }
+  });
+
+  it("isOwnershipLocked flags only ownership-restricted states", () => {
+    expect(isOwnershipLocked("ADMIN", "IN_PROGRESS")).toBe(true);
+    expect(isOwnershipLocked("ADMIN", "COMPLETED")).toBe(true);
+    expect(isOwnershipLocked("ADMIN", "WAITING")).toBe(false);
+    expect(isOwnershipLocked("ADMIN", "CANCELLED")).toBe(false);
+    expect(isOwnershipLocked("DOCTOR", "IN_PROGRESS")).toBe(false);
+    expect(isOwnershipLocked("DOCTOR", "COMPLETED")).toBe(false);
   });
 });
 

@@ -80,10 +80,66 @@ export function canMutateStatus(role: LifecycleRole): boolean {
 }
 
 /**
- * Allowed transitions from `current` for the given `role`. Returns at most
- * the per-status set declared in `appointment-transitions.ts`, filtered down
- * by role. Self-transition is never returned (it's a no-op and would render
- * as an enabled-but-meaningless button).
+ * State ownership — which roles can advance an appointment INTO this target.
+ * Anchors the role/action separation: who DRIVES the lifecycle, not who is
+ * merely co-present.
+ *
+ *   - IN_PROGRESS belongs to the doctor. Only the doctor knows they've
+ *     actually started the consultation — reception flipping it would
+ *     produce ghost in-session rows on the kiosk and the TV board.
+ *   - COMPLETED belongs to the doctor. Only the doctor knows the visit is
+ *     done; mistaken closure by reception would trigger premature payment
+ *     reminders and prevent the doctor from finishing notes.
+ *
+ * Targets not listed default to "any mutate-permitted role" — confirmation
+ * (CONFIRMED), intake (WAITING), and the off-path triplet (NO_SHOW /
+ * CANCELLED / SKIPPED) all belong to the front desk's authority.
+ *
+ * This applies on BOTH the drawer's lifecycle chain AND the server-side
+ * PATCH guards so a stale tab can't sneak past — see lifecycle middleware
+ * in `/api/crm/appointments/[id]` and `.../queue-status`.
+ */
+const STATE_OWNERS: Partial<
+  Record<AppointmentStatus, ReadonlySet<LifecycleRole>>
+> = {
+  IN_PROGRESS: new Set<LifecycleRole>(["DOCTOR"]),
+  COMPLETED: new Set<LifecycleRole>(["DOCTOR"]),
+};
+
+/**
+ * Returns true when `role` is allowed to advance an appointment into the
+ * `target` state. Pure: maps `target` → owner set; if the target has no
+ * owner restriction, any mutate-permitted role may advance to it.
+ *
+ * Server-side and client-side BOTH call this — keep the function side-
+ * effect-free so the same outcome is produced in both environments.
+ */
+export function canRoleAdvanceTo(
+  role: LifecycleRole,
+  target: AppointmentStatus,
+): boolean {
+  const owners = STATE_OWNERS[target];
+  return owners ? owners.has(role) : true;
+}
+
+/**
+ * True when the role is structurally locked out of `target` by ownership
+ * (as opposed to "not reachable yet from the current state"). Used by the
+ * UI to render a lock affordance on the chain pill so the operator knows
+ * "another role drives this" rather than "wait, you'll get there".
+ */
+export function isOwnershipLocked(
+  role: LifecycleRole,
+  target: AppointmentStatus,
+): boolean {
+  return STATE_OWNERS[target] !== undefined && !canRoleAdvanceTo(role, target);
+}
+
+/**
+ * Allowed transitions from `current` for the given `role`. Filters by:
+ *   1. self-loop excluded
+ *   2. legal in the state machine (canTransition)
+ *   3. role-ownership of the target (canRoleAdvanceTo)
  *
  * Pure: no side effects, no reads from globals. Safe to import in tests.
  */
@@ -102,7 +158,12 @@ export function getAllowedTransitions(
     "CANCELLED",
     "NO_SHOW",
   ];
-  return all.filter((s) => s !== current && canTransition(current, s));
+  return all.filter(
+    (s) =>
+      s !== current &&
+      canTransition(current, s) &&
+      canRoleAdvanceTo(role, s),
+  );
 }
 
 /**
@@ -185,11 +246,12 @@ export type QuickAction =
 
 /**
  * Lifecycle ownership by action — anchors the role/action separation enforced
- * below. Reception desks own intake (ARRIVED + NO_SHOW): they decide whether
- * the patient is in the room. Doctors own the consultation itself (START +
- * COMPLETE): they're the ones actually delivering care. Admins fall on the
- * reception side because the surface here IS reception — emergency overrides
- * are routed through the drawer's lifecycle chain, not these quick actions.
+ * below. Reception desks own intake (CONFIRM + ARRIVED + NO_SHOW): they decide
+ * whether the patient is on the phone or in the room. Doctors own the
+ * consultation itself (START + COMPLETE): they're the ones delivering care.
+ * Admins fall on the reception side because the surface here IS reception —
+ * the drawer chain enforces the same ownership via `STATE_OWNERS`, so there
+ * is no admin emergency-override path that bypasses this split.
  */
 const RECEPTION_ROLES = new Set<LifecycleRole>([
   "ADMIN",

@@ -12,12 +12,12 @@
  *      morning when the URL is clean.
  *   3. Empty (everything visible) — the default.
  *
- * Facet counts are derived from the FULL unfiltered row set on purpose.
- * Counting after cross-application of other filters would make options
- * disappear / drop to 0 mid-interaction, which is more confusing than helpful
- * for a triage tool. With independent counts the chips stay stable: "Иванова
- * (5)" always means "5 patients with Иванова in the day's risk list", not
- * "5 ∩ already-applied-filters".
+ * Facet counts CROSS-FILTER on the other two axes. Picking a service
+ * collapses the doctor list to those who have at-risk patients in that
+ * service, and updates the per-doctor counts to the in-service slice. The
+ * chip's own axis is excluded from its own filter (so deselect always
+ * stays one click away). Items that are currently selected are always
+ * shown — even with count 0 — so the user can clear them.
  */
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -284,27 +284,48 @@ export function useRiskTodayFilters(
   const facets = React.useMemo(() => {
     const safeRows = rows ?? [];
 
-    // Doctor facets — derived from the unfiltered row set. Stable order:
-    // descending count, then alphabetical (locale-aware) tiebreak so the
-    // most loaded doctors lead but the list is predictable.
+    // Predicates that each filter axis applies. Pulled out so each facet
+    // can compose "all OTHER axes" without re-implementing the logic.
+    const doctorSetAll = new Set(filters.doctorIds);
+    const reasonSetAll = new Set(filters.reasonKinds);
+    const serviceSetAll = new Set(filters.serviceIds);
+    const wantNoService = serviceSetAll.has("__none__");
+
+    const passesDoctor = (r: RiskTodayRow) =>
+      doctorSetAll.size === 0 || doctorSetAll.has(r.doctorId);
+    const passesReason = (r: RiskTodayRow) => {
+      if (reasonSetAll.size === 0) return true;
+      return r.reasons.some((x) => reasonSetAll.has(x.kind));
+    };
+    const passesService = (r: RiskTodayRow) => {
+      if (serviceSetAll.size === 0) return true;
+      if (wantNoService && !r.serviceId) return true;
+      return Boolean(r.serviceId && serviceSetAll.has(r.serviceId));
+    };
+
+    // Doctor facets — count rows that pass reason + service (not doctor).
+    // Selected doctors are always shown even with count 0 so the user can
+    // deselect them. Order: descending count, then alphabetical.
     const doctorAgg = new Map<
       string,
       { id: string; nameRu: string; nameUz: string; count: number }
     >();
     for (const r of safeRows) {
+      const inSlice = passesReason(r) && passesService(r);
       const prev = doctorAgg.get(r.doctorId);
       if (prev) {
-        prev.count += 1;
+        if (inSlice) prev.count += 1;
       } else {
         doctorAgg.set(r.doctorId, {
           id: r.doctorId,
           nameRu: r.doctorName.ru,
           nameUz: r.doctorName.uz,
-          count: 1,
+          count: inSlice ? 1 : 0,
         });
       }
     }
     const doctors: DoctorFacet[] = Array.from(doctorAgg.values())
+      .filter((d) => d.count > 0 || doctorSetAll.has(d.id))
       .map((d) => ({
         id: d.id,
         label: locale === "uz" ? d.nameUz : d.nameRu,
@@ -312,48 +333,50 @@ export function useRiskTodayFilters(
       }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
-    // Service facets — same shape. Rows without a service contribute to a
-    // synthetic "no-service" bucket only if any exist; otherwise we hide it
-    // to keep the dropdown tight.
+    // Service facets — count rows that pass doctor + reason (not service).
+    // Synthetic "no-service" bucket only if any sliced rows have no service
+    // OR it is already selected.
     const serviceAgg = new Map<
       string,
       { id: string; nameRu: string; nameUz: string; count: number }
     >();
     let noServiceCount = 0;
     for (const r of safeRows) {
+      const inSlice = passesDoctor(r) && passesReason(r);
       if (!r.serviceId || !r.serviceName) {
-        noServiceCount += 1;
+        if (inSlice) noServiceCount += 1;
         continue;
       }
       const prev = serviceAgg.get(r.serviceId);
       if (prev) {
-        prev.count += 1;
+        if (inSlice) prev.count += 1;
       } else {
         serviceAgg.set(r.serviceId, {
           id: r.serviceId,
           nameRu: r.serviceName.ru,
           nameUz: r.serviceName.uz,
-          count: 1,
+          count: inSlice ? 1 : 0,
         });
       }
     }
     const services: ServiceFacet[] = Array.from(serviceAgg.values())
+      .filter((s) => s.count > 0 || serviceSetAll.has(s.id))
       .map((s) => ({
         id: s.id,
         label: locale === "uz" ? s.nameUz : s.nameRu,
         count: s.count,
       }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-    if (noServiceCount > 0) {
+    if (noServiceCount > 0 || wantNoService) {
       services.push({ id: "__none__", label: "—", count: noServiceCount });
     }
 
-    // Reason facets — count rows that contain at least one reason of each
-    // kind. A row with both `high_risk` and `unconfirmed_24h` counts in
-    // both buckets — that matches user intent ("show everyone with X").
+    // Reason facets — count rows that pass doctor + service (not reason).
+    // A row with multiple reasons contributes to each of its buckets.
     const reasonAgg = new Map<ReasonKind, number>();
     for (const kind of REASON_KINDS) reasonAgg.set(kind, 0);
     for (const r of safeRows) {
+      if (!passesDoctor(r) || !passesService(r)) continue;
       const kinds = new Set(r.reasons.map((x) => x.kind));
       for (const k of kinds) {
         reasonAgg.set(k, (reasonAgg.get(k) ?? 0) + 1);
@@ -365,7 +388,7 @@ export function useRiskTodayFilters(
     }));
 
     return { doctors, services, reasons };
-  }, [rows, locale]);
+  }, [rows, locale, filters]);
 
   const filteredRows = React.useMemo(() => {
     const safeRows = rows ?? [];

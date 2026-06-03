@@ -4682,6 +4682,33 @@
           "unconfirmedSoon": "Не подтвердил · меньше часа",
           "noContactDays": "Не на связи {days, plural, one {# день} few {# дня} many {# дней} other {# дней}}",
           "noContactNever": "Ни разу не связывались"
+        },
+        "filteredCount": "Показано {visible} из {total}",
+        "filters": {
+          "reason": {
+            "highRisk": "Высокий риск",
+            "unconfirmed": "Не подтвердил",
+            "noContact": "Нет связи"
+          },
+          "doctor": {
+            "label": "Врач",
+            "all": "все",
+            "some": "{count, plural, one {# выбран} few {# выбрано} many {# выбрано} other {# выбрано}}",
+            "searchPlaceholder": "Поиск врача…",
+            "empty": "Никого не нашли",
+            "clear": "Сбросить"
+          },
+          "service": {
+            "label": "Сервис",
+            "all": "все",
+            "some": "{count, plural, one {# выбран} few {# выбрано} many {# выбрано} other {# выбрано}}",
+            "searchPlaceholder": "Поиск сервиса…",
+            "empty": "Сервисов не найдено",
+            "clear": "Сбросить"
+          },
+          "reset": "Сбросить",
+          "noMatchTitle": "Ничего не подошло под фильтр",
+          "noMatchHint": "Попробуй снять часть фильтров — выбранные ограничения вместе исключают всех сегодняшних пациентов."
         }
       },
       "responseTime": {

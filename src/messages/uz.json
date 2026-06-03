@@ -4682,6 +4682,33 @@
           "unconfirmedSoon": "Tasdiqlamadi · bir soatdan kam",
           "noContactDays": "Aloqa yo'q {days, plural, one {# kun} other {# kun}}",
           "noContactNever": "Hech qachon aloqaga chiqilmagan"
+        },
+        "filteredCount": "{total} dan {visible} ta ko'rsatildi",
+        "filters": {
+          "reason": {
+            "highRisk": "Yuqori xavf",
+            "unconfirmed": "Tasdiqlamadi",
+            "noContact": "Aloqa yo'q"
+          },
+          "doctor": {
+            "label": "Shifokor",
+            "all": "barchasi",
+            "some": "{count, plural, one {# tanlangan} other {# tanlangan}}",
+            "searchPlaceholder": "Shifokorni izlash…",
+            "empty": "Topilmadi",
+            "clear": "Tozalash"
+          },
+          "service": {
+            "label": "Xizmat",
+            "all": "barchasi",
+            "some": "{count, plural, one {# tanlangan} other {# tanlangan}}",
+            "searchPlaceholder": "Xizmatni izlash…",
+            "empty": "Xizmatlar topilmadi",
+            "clear": "Tozalash"
+          },
+          "reset": "Tozalash",
+          "noMatchTitle": "Filtrlar bo'yicha hech narsa topilmadi",
+          "noMatchHint": "Filtrlarning bir qismini olib tashlab ko'ring — tanlangan cheklovlar birgalikda bugungi barcha bemorlarni chiqarib tashlayapti."
         }
       },
       "responseTime": {

@@ -62,6 +62,8 @@ import {
   type RiskTodayResponse,
   type RiskTodayRow,
 } from "../_hooks/use-risk-today";
+import { useRiskTodayFilters } from "../_hooks/use-risk-today-filters";
+import { RiskTodayFiltersBar } from "./risk-today-filters";
 
 export interface RiskTodaySectionProps {
   /** Optional anchor id so a KPI tile can deep-link to the section. */
@@ -78,6 +80,14 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
   const handled = data?.totals.handledToday ?? 0;
   const total = data?.totals.total ?? 0;
   const loss = data?.totals.estimatedLossTiins ?? 0;
+
+  // Filters: three independent axes (doctor / category / service) combined
+  // with AND. Facets are derived from the unfiltered row set so chip counts
+  // stay stable while the user clicks.
+  const filtersApi = useRiskTodayFilters(data?.appointments, locale);
+  const visibleRows = filtersApi.filteredRows;
+  const visible = visibleRows.length;
+  const filterActive = filtersApi.activeCount > 0;
 
   // Progress is meaningful only when the day already had some risk. Before
   // the first detector run we don't want a misleading 0/0 displayed.
@@ -136,6 +146,9 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
         </div>
       </header>
 
+      {/* Filter toolbar — only when there's actually something to filter. */}
+      {open > 0 ? <RiskTodayFiltersBar api={filtersApi} /> : null}
+
       <div className="mt-4">
         {query.isLoading ? (
           <RiskSkeleton />
@@ -143,11 +156,17 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
           <ErrorState message={query.error.message} />
         ) : open === 0 ? (
           <EmptyState allDone={allDone} t={t} />
+        ) : visible === 0 ? (
+          <NoMatchState onReset={() => filtersApi.reset()} />
         ) : (
-          <RiskList
-            rows={data!.appointments}
-            locale={locale}
-          />
+          <>
+            {filterActive ? (
+              <p className="mb-2 text-xs text-muted-foreground">
+                {t("filteredCount", { visible, total: open })}
+              </p>
+            ) : null}
+            <RiskList rows={visibleRows} locale={locale} />
+          </>
         )}
       </div>
     </section>
@@ -232,6 +251,27 @@ function EmptyState({
       <p className="max-w-md text-xs text-muted-foreground">
         {allDone ? t("emptyAllDoneHint") : t("emptyHint")}
       </p>
+    </div>
+  );
+}
+
+function NoMatchState({ onReset }: { onReset: () => void }) {
+  const t = useTranslations("actionCenter.dashboard.riskToday.filters");
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
+      <p className="text-sm font-semibold text-foreground">
+        {t("noMatchTitle")}
+      </p>
+      <p className="max-w-md text-xs text-muted-foreground">
+        {t("noMatchHint")}
+      </p>
+      <button
+        type="button"
+        onClick={onReset}
+        className="mt-1 inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        {t("reset")}
+      </button>
     </div>
   );
 }

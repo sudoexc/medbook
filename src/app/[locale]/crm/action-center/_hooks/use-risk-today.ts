@@ -15,7 +15,9 @@ export type RiskTodayRow = {
   patientName: string;
   patientPhone: string | null;
   appointmentAt: string;
+  doctorId: string;
   doctorName: { ru: string; uz: string };
+  serviceId: string | null;
   serviceName: { ru: string; uz: string } | null;
   priceFinalTiins: number | null;
   status: "BOOKED" | "CONFIRMED" | "WAITING" | "IN_PROGRESS";

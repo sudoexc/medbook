@@ -48,7 +48,9 @@ export type RiskTodayRow = {
   patientName: string;
   patientPhone: string | null;
   appointmentAt: string;
+  doctorId: string;
   doctorName: { ru: string; uz: string };
+  serviceId: string | null;
   serviceName: { ru: string; uz: string } | null;
   priceFinalTiins: number | null;
   status: "BOOKED" | "CONFIRMED" | "WAITING" | "IN_PROGRESS";
@@ -167,8 +169,8 @@ export const GET = createApiListHandler(
             lastContactedAt: true,
           },
         },
-        doctor: { select: { nameRu: true, nameUz: true } },
-        primaryService: { select: { nameRu: true, nameUz: true } },
+        doctor: { select: { id: true, nameRu: true, nameUz: true } },
+        primaryService: { select: { id: true, nameRu: true, nameUz: true } },
       },
     });
     if (appts.length === 0) {
@@ -301,7 +303,9 @@ export const GET = createApiListHandler(
         patientName: ap.patient.fullName,
         patientPhone: ap.patient.phone || null,
         appointmentAt: ap.date.toISOString(),
+        doctorId: ap.doctor.id,
         doctorName: { ru: ap.doctor.nameRu, uz: ap.doctor.nameUz },
+        serviceId: ap.primaryService?.id ?? null,
         serviceName: ap.primaryService
           ? { ru: ap.primaryService.nameRu, uz: ap.primaryService.nameUz }
           : null,

@@ -1771,6 +1771,15 @@
             "title": "Отметить «Не пришёл»?",
             "description": "Пациент {patient} будет помечен как не пришедший. Действие необратимо без возврата в очередь вручную."
           }
+        },
+        "confirmedTooltip": "Подтверждено в {time} · {via}",
+        "confirmedTooltipNoVia": "Подтверждено в {time}",
+        "confirmedVia": {
+          "BOOKING_AUTO": "при записи",
+          "MANUAL_CRM": "в CRM",
+          "SMS_REPLY": "по SMS",
+          "TG_BUTTON": "через Telegram",
+          "INBOUND_CALL": "входящий звонок"
         }
       }
     },

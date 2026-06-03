@@ -361,6 +361,25 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
       { hour: "2-digit", minute: "2-digit", hour12: false },
     );
 
+    const confirmedTime = row.confirmedAt
+      ? new Date(row.confirmedAt).toLocaleTimeString(
+          locale === "uz" ? "uz-UZ" : "ru-RU",
+          { hour: "2-digit", minute: "2-digit", hour12: false },
+        )
+      : null;
+    const confirmedViaLabel = row.confirmedVia
+      ? t(`confirmedVia.${row.confirmedVia}`)
+      : null;
+    const confirmedTooltip =
+      confirmedTime && confirmedViaLabel
+        ? t("confirmedTooltip", {
+            time: confirmedTime,
+            via: confirmedViaLabel,
+          })
+        : confirmedTime
+          ? t("confirmedTooltipNoVia", { time: confirmedTime })
+          : undefined;
+
     return (
       <li
         ref={ref}
@@ -418,6 +437,17 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
         >
           {tStatus(row.queueStatus.toLowerCase() as never)}
         </Badge>
+
+        {confirmedTime ? (
+          <span
+            className="hidden h-6 shrink-0 items-center gap-1 rounded-md border border-info/30 bg-info/5 px-1.5 text-[10px] font-medium tabular-nums text-[color:var(--info)] md:inline-flex"
+            title={confirmedTooltip}
+            aria-label={confirmedTooltip}
+          >
+            <CheckIcon className="size-3" aria-hidden />
+            {confirmedTime}
+          </span>
+        ) : null}
 
         {primary ? (
           <Button

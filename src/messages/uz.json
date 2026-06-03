@@ -1771,6 +1771,15 @@
             "title": "“Kelmadi” deb belgilash?",
             "description": "{patient} kelmadi deb belgilanadi. Qo'lda qaytarmasangiz, amal qaytarilmaydi."
           }
+        },
+        "confirmedTooltip": "Tasdiqlangan: {time} · {via}",
+        "confirmedTooltipNoVia": "Tasdiqlangan: {time}",
+        "confirmedVia": {
+          "BOOKING_AUTO": "yozuv paytida",
+          "MANUAL_CRM": "CRM orqali",
+          "SMS_REPLY": "SMS orqali",
+          "TG_BUTTON": "Telegram orqali",
+          "INBOUND_CALL": "kiruvchi qo'ng'iroq"
         }
       }
     },

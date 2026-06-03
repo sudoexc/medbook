@@ -89,6 +89,14 @@ export type AppointmentRow = {
   comments: string | null;
   notes: string | null;
   cancelReason: string | null;
+  confirmedAt: string | null;
+  confirmedVia:
+    | "BOOKING_AUTO"
+    | "MANUAL_CRM"
+    | "SMS_REPLY"
+    | "TG_BUTTON"
+    | "INBOUND_CALL"
+    | null;
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;

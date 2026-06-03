@@ -562,6 +562,21 @@ export const AUDIT_ACTION = {
   // so we have a forensic record of which slice of PII left the system.
   // Distinct from PATIENT_DATA_EXPORT_* (those are DSAR per-patient JSON).
   CRM_EXPORT_REQUESTED: "CRM_EXPORT_REQUESTED",
+
+  // Reactivation campaigns. `entityType: "Campaign"`, `entityId:
+  // <campaignId>`.
+  //
+  //   CAMPAIGN_CREATED — DRAFT row was just inserted (no sends yet).
+  //   `meta` carries `{ name, channel, templateId, segment }`.
+  //
+  //   CAMPAIGN_LAUNCHED — DRAFT → SENDING transition. `meta` carries
+  //   `{ name, channel, templateId, segment, totalCount, sourceActionId? }`
+  //   so the audit row is enough to reconstruct who launched what,
+  //   for which audience, and from which Action Center card. `totalCount`
+  //   is the number of NotificationSend rows materialised at launch (after
+  //   consent-gate + recipient eligibility filtering).
+  CAMPAIGN_CREATED: "CAMPAIGN_CREATED",
+  CAMPAIGN_LAUNCHED: "CAMPAIGN_LAUNCHED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

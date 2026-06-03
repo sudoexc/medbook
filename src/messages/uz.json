@@ -2723,9 +2723,83 @@
       "title": "Yuborishlar",
       "subtitle": "Bemorlar segmentlari va ommaviy yuborish",
       "new": "Yangi yuborish",
+      "refresh": "Yangilash",
+      "loading": "Yuborishlar yuklanmoqda…",
       "empty": {
         "title": "Yuborishlar yo'q",
-        "description": "To'liq segment konstruktori 5-bosqichda paydo bo'ladi."
+        "description": "Bemorlarni qaytarish uchun nofaol bemorlarga birinchi yuborishni yarating."
+      },
+      "col": {
+        "name": "Nomi",
+        "segment": "Segment",
+        "channel": "Kanal",
+        "status": "Holat",
+        "sent": "Yuborildi",
+        "total": "Jami",
+        "startedAt": "Boshlangan"
+      }
+    },
+    "campaignsNew": {
+      "title": "Yangi reaktivatsiya yuborishi",
+      "subtitle": "Segment, shablon va kanalni tanlang — tizim auditoriyani yig'ib, xabarlarni jo'natadi.",
+      "namePattern": "{template} — {bucket}",
+      "step1": {
+        "title": "1. Bemorlar segmenti",
+        "subtitle": "Nofaollik oynasini tanlang — oxirgi tashrif undan oldinroq bo'lgan."
+      },
+      "bucketLabel": {
+        "90-180": "90–180 kun",
+        "180-365": "180–365 kun",
+        "365+": "365+ kun"
+      },
+      "step2": {
+        "title": "2. Kanal",
+        "subtitle": "Telegram — Telegram ulagan bemorlarga bepul; SMS — pullik, telefon raqami bor barchaga yetadi."
+      },
+      "channelLabel": {
+        "TG": "Telegram",
+        "SMS": "SMS"
+      },
+      "step3": {
+        "title": "3. Xabar shabloni",
+        "subtitle": "Tanlangan kanal uchun «Marketing» yoki «Eslatma» kategoriyasidagi faol shablonlarni ko'rsatamiz.",
+        "loading": "Shablonlar yuklanmoqda…",
+        "empty": "Bu kanal uchun mos shablon yo'q. Marketing shabloni yarating va qaytib keling.",
+        "createTemplate": "Shablon yaratish",
+        "placeholder": "Shablonni tanlang",
+        "previewTitle": "Ko'rinish"
+      },
+      "step4": {
+        "title": "4. Yuborish nomi",
+        "subtitle": "Faqat klinika xodimlariga yuborishlar jurnalida ko'rinadi.",
+        "placeholder": "Reaktivatsiya — aprel"
+      },
+      "audience": {
+        "title": "Auditoriya",
+        "loading": "Hisoblanmoqda…",
+        "error": "Auditoriyani yuklab bo'lmadi",
+        "empty": "Auditoriyani ko'rish uchun segment va kanalni tanlang.",
+        "eligible": "Xabar oladi",
+        "total": "Segmentda",
+        "tgReady": "Telegram bilan",
+        "smsReady": "Telefon bilan",
+        "noChannel": "Kanalsiz",
+        "optedOut": "Obunadan chiqqan",
+        "sample": "Misollar"
+      },
+      "launch": {
+        "title": "Ishga tushirish",
+        "description": "Xabarlar tugma bosilgach {channel} kanali orqali yuboriladi.",
+        "submit": "{count} bemor uchun ishga tushirish",
+        "submitting": "Ishga tushirilmoqda…",
+        "zero": "Yuborish uchun bemor yo'q",
+        "disclaimer": "Yuborish faqat marketing roziligi bor va oxirgi 30 kun ichida bunday xabar olmagan bemorlarga ketadi."
+      },
+      "toast": {
+        "success": "Yuborish boshlandi — navbatda {count} xabar",
+        "alreadyLaunched": "Bu yuborish allaqachon boshlangan",
+        "zeroSent": "Auditoriya bo'sh — yuborish jo'natishlarsiz yopildi",
+        "error": "Yuborishni boshlab bo'lmadi: {message}"
       }
     }
   },

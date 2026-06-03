@@ -100,6 +100,7 @@ export async function runActionEngine(
     run: () => Promise<ActionPayload[]>;
     severityFor?: (payload: ActionPayload, now: Date) => ActionSeverity;
     expiresAtFor?: (payload: ActionPayload, now: Date) => Date | null | undefined;
+    deeplinkPathFor?: (payload: ActionPayload) => string;
   };
 
   const specs: Spec[] = [
@@ -112,6 +113,11 @@ export async function runActionEngine(
     {
       type: "DORMANT_BATCH",
       run: () => detectDormantBatch(prisma, clinicId, now, config),
+      // Carry the bucket through the deeplink so the wizard opens pre-scoped.
+      deeplinkPathFor: (p) =>
+        `/crm/notifications/campaigns/new?segment=${
+          (p as Extract<ActionPayload, { type: "DORMANT_BATCH" }>).segment
+        }`,
     },
     {
       type: "UNCONFIRMED_24H",
@@ -194,9 +200,13 @@ export async function runActionEngine(
           : defaultSeverity(payload.type);
         const expiresAt =
           spec.expiresAtFor === undefined ? undefined : spec.expiresAtFor(payload, now);
+        const deeplinkPath = spec.deeplinkPathFor
+          ? spec.deeplinkPathFor(payload)
+          : undefined;
         const upsertResult = await upsertAction(prisma, clinicId, payload, {
           severity,
           ...(expiresAt !== undefined ? { expiresAt: expiresAt ?? null } : {}),
+          ...(deeplinkPath !== undefined ? { deeplinkPath } : {}),
         });
         if (upsertResult.created) {
           result.created += 1;

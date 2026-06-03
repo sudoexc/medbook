@@ -719,7 +719,13 @@ function ActionRowCard({
     row.deeplinkPath && row.deeplinkPath.length > 0
       ? row.deeplinkPath
       : defaultDeeplinkPath(row.type);
-  const href = localePath(deeplink);
+  // For the реактивация wizard the deeplink carries the bucket; we also need
+  // the action id so the launch endpoint can close this card on success.
+  const deeplinkWithActionId =
+    row.type === "DORMANT_BATCH"
+      ? `${deeplink}${deeplink.includes("?") ? "&" : "?"}actionId=${row.id}`
+      : deeplink;
+  const href = localePath(deeplinkWithActionId);
 
   const priceTiins = pricePerAction(row, avgVisitTiins);
   const priorityKey =

@@ -53,6 +53,10 @@ export const EVENT_TYPES = [
   "tg.message.new",
   "tg.takeover.incoming",
   "tg.conversation.updated",
+  // Cross-surface sync §7.10 — cold-start outbound thread by staff. Distinct
+  // from `tg.conversation.updated` because creation is auditable; the
+  // subsequent update event keeps the CRM inbox in sync per-row.
+  "conversation.created",
   // payments
   "payment.paid",
   "payment.due",
@@ -174,6 +178,20 @@ export const TgConversationUpdatedPayload = z
   .passthrough();
 export type TgConversationUpdatedEventPayload = z.infer<
   typeof TgConversationUpdatedPayload
+>;
+
+export const ConversationCreatedPayload = z
+  .object({
+    conversationId: z.string(),
+    patientId: z.string(),
+    channel: z.string(),
+    initiatorRole: z.string(),
+    initiatorUserId: z.string().nullable(),
+    assigneeUserId: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type ConversationCreatedEventPayload = z.infer<
+  typeof ConversationCreatedPayload
 >;
 
 export const PaymentPayload = z
@@ -468,6 +486,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("tg.message.new", TgMessagePayload),
   makeEvent("tg.takeover.incoming", TgTakeoverPayload),
   makeEvent("tg.conversation.updated", TgConversationUpdatedPayload),
+  makeEvent("conversation.created", ConversationCreatedPayload),
   makeEvent("payment.paid", PaymentPayload),
   makeEvent("payment.due", PaymentPayload),
   makeEvent("notification.sent", NotificationPayload),

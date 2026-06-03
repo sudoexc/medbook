@@ -577,6 +577,13 @@ export const AUDIT_ACTION = {
   //   consent-gate + recipient eligibility filtering).
   CAMPAIGN_CREATED: "CAMPAIGN_CREATED",
   CAMPAIGN_LAUNCHED: "CAMPAIGN_LAUNCHED",
+
+  // Cross-surface sync §7.10 — cold-start Conversation thread between staff
+  // and patient. `entityType: "Conversation"`, `entityId: <conversation.id>`.
+  // `meta` carries `{ patientId, channel, initiatorRole, initiatorUserId,
+  // assigneeUserId?, surface, correlationId }`. Closes the compliance gap
+  // where cold outbound threads landed in the inbox with no audit trail.
+  CONVERSATION_CREATED: "CONVERSATION_CREATED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

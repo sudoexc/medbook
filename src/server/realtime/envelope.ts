@@ -163,6 +163,9 @@ const EVENT_META_OVERRIDES: Partial<Record<EventType, EventMeta>> = {
   "patient.profileUpdated": { auditable: true, severity: "info" },
   "nps.submitted": { auditable: true, severity: "info" },
   "previsit.submitted": { auditable: true, severity: "info" },
+  // Cross-surface sync §7.10 — cold-start outbound conversation by staff is
+  // auditable per spec ("закрывает существующий compliance gap").
+  "conversation.created": { auditable: true, severity: "info" },
 };
 
 const DEFAULT_META: EventMeta = { auditable: false, severity: "info" };

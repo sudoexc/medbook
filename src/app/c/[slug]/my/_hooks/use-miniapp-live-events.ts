@@ -72,6 +72,7 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "payment.paid": [["miniapp", "documents"]],
   "eprescription.issued": [["miniapp", "medications"]],
   "eprescription.cancelled": [["miniapp", "medications"]],
+  "prescription.created": [["miniapp", "medications"]],
 };
 
 const LAST_EVENT_ID_KEY = "miniapp:sse:lastEventId";

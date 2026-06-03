@@ -147,6 +147,8 @@ const EVENT_META_OVERRIDES: Partial<Record<EventType, EventMeta>> = {
   "lab.result.received": { auditable: true, severity: "info" },
   "lab.order.created": { auditable: true, severity: "info" },
   "eprescription.issued": { auditable: true, severity: "info" },
+  // Cross-surface sync §7.11 — medication regimen audit.
+  "prescription.created": { auditable: true, severity: "info" },
   "eprescription.cancelled": { auditable: true, severity: "info" },
   "sickleave.issued": { auditable: true, severity: "info" },
   "sickleave.cancelled": { auditable: true, severity: "info" },

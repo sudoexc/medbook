@@ -77,6 +77,11 @@ export const EVENT_TYPES = [
   "lab.result.reviewed",
   // Phase G3 — new lab order created (front desk / nurse views can react).
   "lab.order.created",
+  // Cross-surface sync §7.11 — medication regimen prescribed by a doctor.
+  // Distinct from `eprescription.issued`: that's the formal e-Rx document
+  // for the pharmacy; this is the schedule/reminder row that drives the
+  // mini-app `/medications` page. Auditable per spec.
+  "prescription.created",
   // Phase G7 — clinical forms lifecycle. Issued/cancelled events let the
   // patient card and visit history refresh live; printed isn't broadcast
   // (paper handoff is a non-realtime concern).
@@ -319,6 +324,28 @@ export const EPrescriptionEventPayload = z
 export type EPrescriptionEventPayload = z.infer<typeof EPrescriptionEventPayload>;
 
 /**
+ * Cross-surface sync §7.11 — medication regimen written by a doctor. Drives
+ * mini-app `/medications` live-refresh. `drugName` + `dosage` are clinical
+ * metadata, not PII, so it's fine to surface on the envelope; encrypted
+ * `notes` deliberately stays off the wire.
+ */
+export const PrescriptionCreatedPayload = z
+  .object({
+    prescriptionId: z.string().min(1),
+    patientId: z.string().min(1),
+    doctorId: z.string().min(1),
+    caseId: z.string().min(1),
+    drugName: z.string().min(1),
+    dosage: z.string().min(1),
+    remindersEnabled: z.boolean(),
+    status: z.string().min(1),
+  })
+  .passthrough();
+export type PrescriptionCreatedEventPayload = z.infer<
+  typeof PrescriptionCreatedPayload
+>;
+
+/**
  * Phase G7 — sick-leave lifecycle. Same shape rules as the Rx payload.
  */
 export const SickLeaveEventPayload = z
@@ -500,6 +527,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("lab.result.received", LabResultEventPayload),
   makeEvent("lab.result.reviewed", LabResultEventPayload),
   makeEvent("lab.order.created", LabOrderCreatedPayload),
+  makeEvent("prescription.created", PrescriptionCreatedPayload),
   makeEvent("eprescription.issued", EPrescriptionEventPayload),
   makeEvent("eprescription.cancelled", EPrescriptionEventPayload),
   makeEvent("sickleave.issued", SickLeaveEventPayload),

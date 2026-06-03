@@ -73,6 +73,9 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "eprescription.issued": [["miniapp", "medications"]],
   "eprescription.cancelled": [["miniapp", "medications"]],
   "prescription.created": [["miniapp", "medications"]],
+  // Schedule change invalidates every cached slot query — the user may have
+  // been mid-booking and the picker needs to redraw with the new availability.
+  "doctor.scheduleChanged": [["miniapp", "slots"]],
 };
 
 const LAST_EVENT_ID_KEY = "miniapp:sse:lastEventId";

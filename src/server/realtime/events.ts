@@ -73,6 +73,10 @@ export const EVENT_TYPES = [
   // doctor surface (Phase 20 Wave 5a) — personal reminders + incoming labs
   "reminder.created",
   "reminder.updated",
+  // Cross-surface sync §7.7 — doctor weekly working-hours updated. Drives
+  // mini-app slot-picker invalidation, CRM calendar refresh, doctor cabinet
+  // `/schedule` self-refetch. Auditable per spec.
+  "doctor.scheduleChanged",
   "lab.result.received",
   "lab.result.reviewed",
   // Phase G3 — new lab order created (front desk / nurse views can react).
@@ -279,6 +283,24 @@ export const ReminderEventPayload = z
   })
   .passthrough();
 export type ReminderEventPayload = z.infer<typeof ReminderEventPayload>;
+
+/**
+ * Cross-surface sync §7.7 — doctor weekly working-hours replaced. Payload is
+ * the new entry count + whether anything actually changed, so subscribers can
+ * decide whether to do an expensive re-fetch (mini-app slot grid) or skip a
+ * noop. `entries` themselves are NOT on the wire — anyone interested re-reads
+ * `/api/crm/doctors/[id]/schedule`.
+ */
+export const DoctorScheduleChangedPayload = z
+  .object({
+    doctorId: z.string().min(1),
+    entryCount: z.number().int().nonnegative(),
+    previousEntryCount: z.number().int().nonnegative(),
+  })
+  .passthrough();
+export type DoctorScheduleChangedEventPayload = z.infer<
+  typeof DoctorScheduleChangedPayload
+>;
 
 export const LabResultEventPayload = z
   .object({
@@ -524,6 +546,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("case.soap-draft.refreshed", CaseSoapDraftRefreshedPayload),
   makeEvent("reminder.created", ReminderEventPayload),
   makeEvent("reminder.updated", ReminderEventPayload),
+  makeEvent("doctor.scheduleChanged", DoctorScheduleChangedPayload),
   makeEvent("lab.result.received", LabResultEventPayload),
   makeEvent("lab.result.reviewed", LabResultEventPayload),
   makeEvent("lab.order.created", LabOrderCreatedPayload),

@@ -584,6 +584,13 @@ export const AUDIT_ACTION = {
   // assigneeUserId?, surface, correlationId }`. Closes the compliance gap
   // where cold outbound threads landed in the inbox with no audit trail.
   CONVERSATION_CREATED: "CONVERSATION_CREATED",
+
+  // Cross-surface sync §7.7 — doctor weekly working-hours replaced via the
+  // schedule PUT endpoint (or the admin-edit equivalent). `entityType:
+  // "Doctor"`, `entityId: <doctorId>`. `meta` carries `{ entryCount,
+  // previousEntryCount, correlationId }`. Replaces the freeform
+  // `doctor.schedule.replace` action that PUT used to write.
+  DOCTOR_SCHEDULE_REPLACED: "DOCTOR_SCHEDULE_REPLACED",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

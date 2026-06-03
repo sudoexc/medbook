@@ -8,9 +8,9 @@
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
 import { ok, err, notFound, forbidden } from "@/server/http";
 import { ReplaceScheduleSchema } from "@/server/schemas/doctor";
+import { updateDoctorSchedule } from "@/server/doctors/update-schedule";
 
 function doctorIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -108,31 +108,24 @@ export const PUT = createApiHandler(
       });
     }
 
-    // Replace atomically
-    await prisma.$transaction([
-      prisma.doctorSchedule.deleteMany({ where: { doctorId } }),
-      prisma.doctorSchedule.createMany({
-        data: body.entries.map((e) => ({
-          doctorId,
-          weekday: e.weekday,
-          startTime: e.startTime,
-          endTime: e.endTime,
-          validFrom: e.validFrom ?? null,
-          validTo: e.validTo ?? null,
-          isActive: e.isActive ?? true,
-        })) as never,
-      }),
-    ]);
+    const actorId = ctx.kind === "TENANT" ? ctx.userId || null : null;
+    const actorRole = ctx.kind === "TENANT" && ctx.role === "DOCTOR"
+      ? "DOCTOR"
+      : "ADMIN";
+    const surface = actorRole === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
+
+    await updateDoctorSchedule({
+      clinicId: doctor.clinicId,
+      doctorId,
+      entries: body.entries,
+      actorId,
+      actorRole,
+      surface,
+    });
 
     const entries = await prisma.doctorSchedule.findMany({
       where: { doctorId },
       orderBy: [{ weekday: "asc" }, { startTime: "asc" }],
-    });
-    await audit(request, {
-      action: "doctor.schedule.replace",
-      entityType: "Doctor",
-      entityId: doctorId,
-      meta: { count: entries.length },
     });
     return ok({ entries });
   }

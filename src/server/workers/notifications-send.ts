@@ -25,9 +25,9 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { resolveAdapters } from "@/server/notifications/adapters";
+import { recordNotificationDelivery } from "@/server/notifications/record-delivery";
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
-import { publishEventSafe } from "@/server/realtime/publish";
 
 export const QUEUE_NAME = "notifications:send";
 export const JOB_NAME = "deliver";
@@ -97,27 +97,26 @@ async function deliver(job: DeliverJob): Promise<void> {
       const res = await adapters.inapp.send(send.id, send.body);
       const now = new Date();
       await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.notificationSend.update({
-          where: { id: send.id },
-          data: {
-            status: "DELIVERED",
+        recordNotificationDelivery({
+          send: {
+            id: send.id,
+            clinicId: send.clinicId,
+            patientId: send.patientId ?? null,
+            channel: "INAPP",
+            templateKey: send.template?.key ?? null,
+          },
+          outcome: {
+            kind: "delivered",
+            externalId: res.inboxId,
             sentAt: now,
             deliveredAt: now,
-            externalId: res.inboxId,
-            retryCount: { increment: 1 },
           },
         }),
       );
-      publishEventSafe(send.clinicId, {
-        type: "notification.sent",
-        payload: {
-          sendId: send.id,
-          channel: "INAPP" as unknown as "SMS" | "TG",
-          patientId: send.patientId ?? null,
-          templateKey: send.templateId ?? undefined,
-        },
-      });
     } catch (e) {
+      // INAPP failure stays a silent bare update (no event) — same as the
+      // pre-§7.8 behavior. INAPP is a local DB write so this branch is
+      // effectively dead code; if it fires the operator sees the FAILED row.
       const message = e instanceof Error ? e.message : String(e);
       await runWithTenant({ kind: "SYSTEM" }, () =>
         prisma.notificationSend.update({
@@ -143,19 +142,10 @@ async function deliver(job: DeliverJob): Promise<void> {
   }
 
   try {
+    let externalId: string;
     if (send.channel === "SMS") {
       const res = await adapters.sms.send(send.recipient, send.body);
-      await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.notificationSend.update({
-          where: { id: send.id },
-          data: {
-            status: "SENT",
-            sentAt: new Date(),
-            externalId: res.providerId,
-            retryCount: { increment: 1 },
-          },
-        }),
-      );
+      externalId = res.providerId;
     } else if (send.channel === "TG") {
       const chatId = send.recipient;
       // Stage 2.D — attach a "✅ Подтверждаю" inline keyboard for the two
@@ -183,54 +173,47 @@ async function deliver(job: DeliverJob): Promise<void> {
         send.body,
         replyMarkup ? { replyMarkup } : undefined,
       );
-      await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.notificationSend.update({
-          where: { id: send.id },
-          data: {
-            status: "SENT",
-            sentAt: new Date(),
-            externalId: String(res.messageId),
-            retryCount: { increment: 1 },
-          },
-        }),
-      );
+      externalId = String(res.messageId);
     } else {
       // Other channels (CALL/EMAIL/VISIT) not supported by adapters yet.
       throw new Error(`Channel ${send.channel} not yet implemented`);
     }
-    publishEventSafe(send.clinicId, {
-      type: "notification.sent",
-      payload: {
-        sendId: send.id,
-        channel: send.channel as "SMS" | "TG",
-        patientId: send.patientId ?? null,
-        templateKey: send.templateId ?? undefined,
-      },
-    });
+    await runWithTenant({ kind: "SYSTEM" }, () =>
+      recordNotificationDelivery({
+        send: {
+          id: send.id,
+          clinicId: send.clinicId,
+          patientId: send.patientId ?? null,
+          channel: send.channel as "SMS" | "TG",
+          templateKey: send.template?.key ?? null,
+        },
+        outcome: {
+          kind: "sent",
+          externalId,
+          sentAt: new Date(),
+        },
+      }),
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     const nextAttempt = send.retryCount + 1;
     if (nextAttempt >= MAX_ATTEMPTS) {
       await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.notificationSend.update({
-          where: { id: send.id },
-          data: {
-            status: "FAILED",
-            failedReason: message.slice(0, 500),
+        recordNotificationDelivery({
+          send: {
+            id: send.id,
+            clinicId: send.clinicId,
+            patientId: send.patientId ?? null,
+            channel: send.channel as "SMS" | "TG",
+            templateKey: send.template?.key ?? null,
+          },
+          outcome: {
+            kind: "failed",
+            failedReason: message,
             retryCount: nextAttempt,
           },
         }),
       );
-      publishEventSafe(send.clinicId, {
-        type: "notification.failed",
-        payload: {
-          sendId: send.id,
-          channel: send.channel as "SMS" | "TG",
-          patientId: send.patientId ?? null,
-          templateKey: send.templateId ?? undefined,
-          failedReason: message.slice(0, 200),
-        },
-      });
       return;
     }
     const delay = BACKOFF_MS[Math.min(nextAttempt, BACKOFF_MS.length - 1)];

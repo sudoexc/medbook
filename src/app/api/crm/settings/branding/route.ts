@@ -232,11 +232,10 @@ export async function PATCH(request: Request): Promise<Response> {
     if (body.brandColor && body.brandColor !== before.brandColor) {
       data.brandColor = body.brandColor;
     }
-    if (
-      body.brandSecondaryColor !== undefined &&
-      body.brandSecondaryColor !== before.brandSecondaryColor
-    ) {
-      data.brandSecondaryColor = body.brandSecondaryColor;
+    if (body.brandSecondaryColor !== undefined) {
+      const next =
+        body.brandSecondaryColor === "" ? null : body.brandSecondaryColor;
+      if (next !== before.brandSecondaryColor) data.brandSecondaryColor = next;
     }
     if (body.customSubdomain !== undefined) {
       const next = body.customSubdomain === "" ? null : body.customSubdomain;

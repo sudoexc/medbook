@@ -131,8 +131,10 @@ export const UpdateBrandingSchema = z
       .regex(/^#[0-9a-fA-F]{6}$/, "invalid_hex")
       .optional(),
     brandSecondaryColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/, "invalid_hex")
+      .union([
+        z.literal(""),
+        z.string().regex(/^#[0-9a-fA-F]{6}$/, "invalid_hex"),
+      ])
       .nullable()
       .optional(),
     customSubdomain: z.union([z.literal(""), SubdomainZ]).nullable().optional(),

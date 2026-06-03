@@ -102,9 +102,29 @@
 }
 
 /*
+ * Phase M5 — Brand tokens (shared by CRM and Mini App).
+ *
+ * Single source of truth for cross-surface brand colors. Changing
+ * `--brand-primary` here repaints BOTH the CRM calendar and the mini-app
+ * shell at once — which is the M5/M8 acceptance test in the overhaul TZ.
+ *
+ * The mini-app shell composes `--tg-accent` from `var(--brand-primary)` so
+ * Telegram's `themeParams.button_color` can never bleed the user's client
+ * accent over the NeuroFax mark (e.g. teal Desktop default).
+ */
+:root {
+  --brand-primary: #2353ff;
+  --brand-primary-foreground: #ffffff;
+  --brand-primary-soft: #e8efff;
+  --brand-success: #16c784;
+  --brand-danger: #ef4444;
+  --brand-warning: #f59e0b;
+}
+
+/*
  * Light theme tokens — matches mockups in docs/*.png.
  *
- * - Primary: bright blue (#2b6cff) drives CTAs, links, focus ring.
+ * - Primary: drives CTAs, links, focus ring (sourced from `--brand-primary`).
  * - Success: green (#16c784) drives "completed" badges, sidebar active state.
  * - Sidebar: white surface with green-soft active cell + green left rail.
  * - Page background is cool neutral (#f4f6fa); cards are pure white.
@@ -122,9 +142,9 @@
   --popover: #ffffff;
   --popover-foreground: #0f172a;
 
-  --primary: #2b6cff;
-  --primary-foreground: #ffffff;
-  --primary-soft: #e8efff;
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-primary-foreground);
+  --primary-soft: var(--brand-primary-soft);
 
   --secondary: #eff3f9;
   --secondary-foreground: #0f172a;
@@ -162,9 +182,9 @@
 
   --border: #e5e9f0;
   --input: #e5e9f0;
-  --ring: #2b6cff;
+  --ring: var(--brand-primary);
 
-  --chart-1: #2b6cff;
+  --chart-1: var(--brand-primary);
   --chart-2: #16c784;
   --chart-3: #f59e0b;
   --chart-4: #8b5cf6;

@@ -5,6 +5,7 @@ import * as React from "react";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useClinic } from "../_hooks/use-clinic";
+import { useMiniAppLiveEvents } from "../_hooks/use-miniapp-live-events";
 import { FamilySwitcher } from "./family-switcher";
 
 /**
@@ -22,6 +23,10 @@ export function MiniAppShell({
   const { themeParams, colorScheme } = useTelegramWebApp();
   const { state } = useMiniAppAuth();
   const { data: clinic } = useClinic(clinicSlug);
+  // Phase M3 — single SSE connection per page; the hook no-ops until auth
+  // resolves and silently reconnects on backgrounding (Last-Event-ID via
+  // `?since=` cold-start + browser-native Last-Event-ID warm reconnect).
+  useMiniAppLiveEvents();
 
   const bg = themeParams.bg_color ?? (colorScheme === "dark" ? "#17212b" : "#f4f4f5");
   const text = themeParams.text_color ?? (colorScheme === "dark" ? "#f5f5f5" : "#0a0a0a");
@@ -29,10 +34,13 @@ export function MiniAppShell({
   const sectionBg =
     themeParams.section_bg_color ??
     (colorScheme === "dark" ? "#232e3c" : "#ffffff");
-  // NeuroFax brand blue — hard-coded so the Mini App stays on-brand even
-  // when Telegram's `button_color` theme param would otherwise paint the
-  // UI in the user's default client colour (teal by default).
-  const accent = "#2353FF";
+  // Phase M5 — read brand token from CSS. CSS-var-of-CSS-var resolves at
+  // the consumer, so children that style with `var(--tg-accent)` still get
+  // the brand colour even though we set it via JS inline style. Telegram's
+  // `button_color` is intentionally NOT consulted — we don't want the
+  // user's client default (teal on macOS, blue on Android) to bleed over
+  // the NeuroFax mark.
+  const accent = "var(--brand-primary, #2353FF)";
 
   const lang =
     state.status === "ready"
@@ -154,6 +162,18 @@ function MiniAppStyles() {
         from { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.985); filter: blur(2px); }
         to   { opacity: 1; transform: none; filter: none; }
       }
+      @keyframes ma-pulse {
+        0%   { opacity: .55; }
+        50%  { opacity: .9; }
+        100% { opacity: .55; }
+      }
+      .ma-skeleton {
+        background: color-mix(in oklch, var(--tg-hint) 22%, transparent);
+        animation-name: ma-pulse;
+        animation-iteration-count: infinite;
+        animation-timing-function: ease-in-out;
+        will-change: opacity;
+      }
       .ma-aurora {
         position: absolute;
         border-radius: 9999px;
@@ -185,7 +205,7 @@ function MiniAppStyles() {
       }
       @media (prefers-reduced-motion: reduce) {
         .ma-aurora-a, .ma-aurora-b, .ma-aurora-c,
-        .ma-fade-up, .ma-step-enter {
+        .ma-fade-up, .ma-step-enter, .ma-skeleton {
           animation: none !important;
         }
       }

@@ -18,6 +18,7 @@ import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MEmpty, MSpinner } from "../mini-ui";
+import { SkeletonList } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
@@ -31,12 +32,12 @@ const INITIAL_VISIBLE = 5;
  */
 function iconForSpec(name: string): React.ComponentType<{ className?: string }> {
   const n = name.toLowerCase();
-  if (n.includes("невро") || n.includes("nevro")) return Brain;
-  if (n.includes("ортопед") || n.includes("ortoped")) return Bone;
-  if (n.includes("терапев") || n.includes("terapev")) return Stethoscope;
-  if (n.includes("лфк") || n.includes("lfk") || n.includes("гимнаст")) return Dumbbell;
-  if (n.includes("масса") || n.includes("massa")) return HandHelping;
-  if (n.includes("карди") || n.includes("kardi")) return HeartPulse;
+  if (n.includes("невро") || n.includes("nevro")) return Brain; // i18n-allow: db-matcher
+  if (n.includes("ортопед") || n.includes("ortoped")) return Bone; // i18n-allow: db-matcher
+  if (n.includes("терапев") || n.includes("terapev")) return Stethoscope; // i18n-allow: db-matcher
+  if (n.includes("лфк") || n.includes("lfk") || n.includes("гимнаст")) return Dumbbell; // i18n-allow: db-matcher
+  if (n.includes("масса") || n.includes("massa")) return HandHelping; // i18n-allow: db-matcher
+  if (n.includes("карди") || n.includes("kardi")) return HeartPulse; // i18n-allow: db-matcher
   return UserRound;
 }
 
@@ -101,7 +102,8 @@ export function ServicePicker() {
     return off;
   }, [tg, canContinue, goNext, t.book.continue]);
 
-  if (!hydrated || doctors.isLoading) return <MSpinner label={t.common.loading} />;
+  if (!hydrated) return <MSpinner label={t.common.loading} />;
+  if (doctors.isLoading) return <SkeletonList rows={5} variant="line" />;
   if (doctors.isError) return <MEmpty>{t.common.error}</MEmpty>;
 
   return (

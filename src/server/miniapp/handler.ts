@@ -88,7 +88,12 @@ export async function resolveMiniAppContext(
   request: Request,
   opts: { skipPatientUpsert?: boolean } = {},
 ): Promise<{ ok: true; ctx: MiniAppContext } | { ok: false; response: Response }> {
-  const initData = request.headers.get("x-telegram-init-data") ?? "";
+  // Phase M3 — EventSource can't set custom headers, so the SSE endpoint
+  // passes init-data through `?initData=` query as a fallback. The HMAC
+  // verify guards both paths identically; nothing else changes.
+  const headerInit = request.headers.get("x-telegram-init-data") ?? "";
+  const queryInit = new URL(request.url).searchParams.get("initData") ?? "";
+  const initData = headerInit || queryInit;
   const bypassRequested =
     process.env.NODE_ENV !== "production" &&
     request.headers.get("x-miniapp-dev-bypass") === "1";

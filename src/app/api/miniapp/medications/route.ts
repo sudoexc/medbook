@@ -17,53 +17,29 @@
  * Ownership: the active context (self or family link) MUST own the
  * prescriptions. We scope every find by `clinicId + effectivePatientId`.
  */
-import { z } from "zod";
-
 import { prisma } from "@/lib/prisma";
 import {
   daysRemaining,
   nextTickAt,
   parseSchedule,
 } from "@/lib/patient-experience/medication-schedule";
-import { forbidden, ok } from "@/server/http";
-import {
-  createMiniAppListHandler,
-  type MiniAppContext,
-} from "@/server/miniapp/handler";
+import { err, ok } from "@/server/http";
+import { createMiniAppListHandler } from "@/server/miniapp/handler";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
 
-const QuerySchema = z.object({
-  onBehalfOf: z.string().optional(),
-});
-
-function parseOnBehalfOf(request: Request): string | null {
-  const url = new URL(request.url);
-  const raw = url.searchParams.get("onBehalfOf");
-  const parsed = QuerySchema.safeParse({ onBehalfOf: raw ?? undefined });
-  if (!parsed.success) return null;
-  return parsed.data.onBehalfOf ?? null;
-}
-
-async function resolveEffectivePatient(
-  ctx: MiniAppContext,
-  onBehalfOf: string | null,
-): Promise<string | null> {
-  if (!onBehalfOf || onBehalfOf === ctx.patientId) return ctx.patientId;
-  const link = await prisma.patientFamily.findFirst({
-    where: {
-      clinicId: ctx.clinicId,
-      ownerPatientId: ctx.patientId,
-      linkedPatientId: onBehalfOf,
-    },
-    select: { id: true },
-  });
-  return link ? onBehalfOf : null;
-}
-
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
-  const onBehalfOf = parseOnBehalfOf(request);
-  const effectivePatientId = await resolveEffectivePatient(ctx, onBehalfOf);
-  if (!effectivePatientId) return forbidden();
+  const onBehalfOf = new URL(request.url).searchParams.get("onBehalfOf");
+  const acting = await resolveActivePatient({
+    ctx: {
+      clinicId: ctx.clinicId,
+      patientId: ctx.patientId,
+      preferredLang: ctx.patient.preferredLang,
+    },
+    onBehalfOf,
+  });
+  if (!acting.ok) return err(acting.reason, 403);
+  const effectivePatientId = acting.patientId;
 
   const clinic = await prisma.clinic.findUnique({
     where: { id: ctx.clinicId },

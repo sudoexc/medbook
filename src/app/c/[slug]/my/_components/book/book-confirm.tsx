@@ -76,6 +76,20 @@ export function BookConfirm() {
   const doctor = doctors.data?.find((d) => d.id === draft.doctorId) ?? null;
   const total = selectedServices.reduce((a, s) => a + s.priceBase, 0);
 
+  // Phase M4 — Mint one Idempotency-Key per confirmation-screen mount.
+  // The MainButton's `onClick` lives in TG's UI thread so a fast double-tap
+  // fires `submit()` twice before the first request returns; we want the
+  // second request to replay the first response instead of creating a
+  // duplicate booking. `useRef` keeps the key stable across re-renders, and
+  // crypto.randomUUID() is available in every Telegram WebView shell.
+  const idemKeyRef = React.useRef<string | null>(null);
+  if (idemKeyRef.current === null) {
+    idemKeyRef.current =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `mb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  }
+
   const canSubmit =
     !!draft.doctorId &&
     draft.serviceIds.length > 0 &&
@@ -96,6 +110,7 @@ export function BookConfirm() {
         patientPhone: phone.trim(),
         lang,
         onBehalfOf,
+        idempotencyKey: idemKeyRef.current ?? undefined,
       });
       tg.haptic.notification("success");
       // Persist case-attach choices (if any) so the done page can render

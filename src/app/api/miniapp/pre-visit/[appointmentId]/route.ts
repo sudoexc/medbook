@@ -16,11 +16,7 @@
  * Ownership: the patient must own the appointment OR be linked via
  * `PatientFamily` (active relationships only). Mismatch → 403.
  */
-import { z } from "zod";
-
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
-import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   PreVisitSubmissionSchema,
   parsePreVisitData,
@@ -32,16 +28,17 @@ import {
   createMiniAppListHandler,
   type MiniAppContext,
 } from "@/server/miniapp/handler";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
-/**
- * Resolve the on-behalf-of patient id and confirm the active context can
- * see the appointment. Returns the appointment row + the resolved
- * patientId, or `null` if access is denied.
- */
 async function loadAppointmentForContext(
   appointmentId: string,
   ctx: MiniAppContext,
-  onBehalfOf: string | null,
+  request: Request,
 ): Promise<
   | {
       kind: "ok";
@@ -56,25 +53,21 @@ async function loadAppointmentForContext(
         doctor: { nameRu: string; nameUz: string };
       };
       effectivePatientId: string;
+      isOnBehalfOf: boolean;
     }
   | { kind: "not_found" }
   | { kind: "forbidden" }
 > {
-  // Resolve "acting as" patient. If `onBehalfOf` is provided, verify the
-  // owner controls that family link in the same clinic.
-  let effectivePatientId = ctx.patientId;
-  if (onBehalfOf && onBehalfOf !== ctx.patientId) {
-    const link = await prisma.patientFamily.findFirst({
-      where: {
-        clinicId: ctx.clinicId,
-        ownerPatientId: ctx.patientId,
-        linkedPatientId: onBehalfOf,
-      },
-      select: { id: true },
-    });
-    if (!link) return { kind: "forbidden" };
-    effectivePatientId = onBehalfOf;
-  }
+  const onBehalfOf = new URL(request.url).searchParams.get("onBehalfOf");
+  const acting = await resolveActivePatient({
+    ctx: {
+      clinicId: ctx.clinicId,
+      patientId: ctx.patientId,
+      preferredLang: ctx.patient.preferredLang,
+    },
+    onBehalfOf,
+  });
+  if (!acting.ok) return { kind: "forbidden" };
 
   const appt = await prisma.appointment.findFirst({
     where: { id: appointmentId, clinicId: ctx.clinicId },
@@ -90,20 +83,13 @@ async function loadAppointmentForContext(
     },
   });
   if (!appt) return { kind: "not_found" };
-  if (appt.patientId !== effectivePatientId) return { kind: "forbidden" };
-  return { kind: "ok", appt, effectivePatientId };
-}
-
-const QuerySchema = z.object({
-  onBehalfOf: z.string().optional(),
-});
-
-function parseOnBehalfOf(request: Request): string | null {
-  const url = new URL(request.url);
-  const raw = url.searchParams.get("onBehalfOf");
-  const parsed = QuerySchema.safeParse({ onBehalfOf: raw ?? undefined });
-  if (!parsed.success) return null;
-  return parsed.data.onBehalfOf ?? null;
+  if (appt.patientId !== acting.patientId) return { kind: "forbidden" };
+  return {
+    kind: "ok",
+    appt,
+    effectivePatientId: acting.patientId,
+    isOnBehalfOf: acting.isOnBehalfOf,
+  };
 }
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
@@ -112,12 +98,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const appointmentId = segments[segments.length - 1] ?? "";
   if (!appointmentId) return err("missing_appointment_id", 400);
 
-  const onBehalfOf = parseOnBehalfOf(request);
-  const result = await loadAppointmentForContext(
-    appointmentId,
-    ctx,
-    onBehalfOf,
-  );
+  const result = await loadAppointmentForContext(appointmentId, ctx, request);
   if (result.kind === "not_found") return notFound();
   if (result.kind === "forbidden") return forbidden();
 
@@ -142,12 +123,7 @@ export const POST = createMiniAppHandler(
     const appointmentId = segments[segments.length - 1] ?? "";
     if (!appointmentId) return err("missing_appointment_id", 400);
 
-    const onBehalfOf = parseOnBehalfOf(request);
-    const loaded = await loadAppointmentForContext(
-      appointmentId,
-      ctx,
-      onBehalfOf,
-    );
+    const loaded = await loadAppointmentForContext(appointmentId, ctx, request);
     if (loaded.kind === "not_found") return notFound();
     if (loaded.kind === "forbidden") return forbidden();
 
@@ -165,7 +141,11 @@ export const POST = createMiniAppHandler(
     }
 
     // Stamp + write the JSON blob in one transaction so a partial write
-    // can never leave the dedupe column in a misleading state.
+    // can never leave the dedupe column in a misleading state. Phase M2 —
+    // publish `previsit.submitted` from the same tx; the envelope's
+    // EVENT_META is auditable so the outbox pumper materialises the
+    // AuditLog row (no more manual `audit()` call). Counts in the payload,
+    // not the contents, so the cabinet refetch is opt-in.
     const now = new Date();
     const blob: PreVisitData = {
       complaints: body.complaints,
@@ -178,25 +158,38 @@ export const POST = createMiniAppHandler(
       await tx.appointment.update({
         where: { id: loaded.appt.id },
         data: {
-          preVisitData: blob as never,
+          preVisitData: blob,
           preVisitSubmittedAt: now,
         },
       });
-    });
-
-    await audit(request, {
-      action: AUDIT_ACTION.PRE_VISIT_QUESTIONNAIRE_SUBMITTED,
-      entityType: "Appointment",
-      entityId: loaded.appt.id,
-      meta: {
-        patientId: loaded.effectivePatientId,
-        complaintsLen: body.complaints.length,
-        allergiesCount: body.allergies.length,
-        medicationsCount: body.medications.length,
-        notesLen: body.notes.length,
-        locale: blob.locale,
-        source: "tg-miniapp",
-      },
+      const envelope: EventEnvelopeInput = {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "PATIENT",
+          userId: null,
+          patientId: ctx.patientId,
+          onBehalfOfPatientId: loaded.isOnBehalfOf
+            ? loaded.effectivePatientId
+            : null,
+          label: `patient:${ctx.patientId}`,
+        },
+        surface: "MINIAPP",
+        tenantScope: {
+          clinicId: ctx.clinicId,
+          doctorId: undefined,
+          patientId: loaded.effectivePatientId,
+          appointmentId: loaded.appt.id,
+        },
+        type: "previsit.submitted",
+        payload: {
+          appointmentId: loaded.appt.id,
+          patientId: loaded.effectivePatientId,
+          complaintsLen: body.complaints.length,
+          allergiesCount: body.allergies.length,
+          medicationsCount: body.medications.length,
+        },
+      };
+      await publishViaOutbox(tx, envelope);
     });
 
     return ok({ ok: true, submittedAt: now });

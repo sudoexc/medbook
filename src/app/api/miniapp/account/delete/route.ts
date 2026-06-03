@@ -26,6 +26,7 @@ import { prisma } from "@/lib/prisma";
 
 import { ok, err } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
+import { withIdempotency } from "@/server/miniapp/idempotency";
 import { deletionScheduledFor } from "@/server/dsar/expiry";
 
 const BodySchema = z.object({
@@ -40,7 +41,15 @@ function digitsOnly(s: string): string {
 
 export const POST = createMiniAppHandler(
   { bodySchema: BodySchema },
-  async ({ request, body, ctx }) => {
+  async ({ request, body, ctx }) =>
+    // Phase M4 — Idempotency-Key replay. Account deletion already has its
+    // own "reuse existing PENDING/APPROVED job" branch, but a duplicate POST
+    // there still writes a fresh audit pair. Caching the response keeps the
+    // audit log clean and the second request just returns the original body.
+    withIdempotency(
+      request,
+      { clinicId: ctx.clinicId, patientId: ctx.patientId },
+      async () => {
     const me = await prisma.patient.findUnique({
       where: { id: ctx.patientId },
       select: { phone: true },
@@ -141,5 +150,6 @@ export const POST = createMiniAppHandler(
       mode: job.mode,
       reused: false,
     });
-  },
+      },
+    ),
 );

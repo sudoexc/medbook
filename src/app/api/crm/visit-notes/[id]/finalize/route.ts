@@ -13,9 +13,10 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound } from "@/server/http";
-import { publishEventSafe } from "@/server/realtime/publish";
-import { getTenant } from "@/lib/tenant-context";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
+import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -31,7 +32,21 @@ export const POST = createApiHandler(
 
     const note = await prisma.visitNote.findUnique({
       where: { id },
-      include: { appointment: { select: { id: true, status: true, completedAt: true, date: true, endDate: true } } },
+      include: {
+        appointment: {
+          select: {
+            id: true,
+            status: true,
+            completedAt: true,
+            date: true,
+            endDate: true,
+            queueStatus: true,
+            doctorId: true,
+            patientId: true,
+            cabinetId: true,
+          },
+        },
+      },
     });
     if (!note) return notFound();
 
@@ -45,6 +60,10 @@ export const POST = createApiHandler(
       return ok({ note, appointment: note.appointment, alreadyFinalized: true });
     }
 
+    const correlationId = newCorrelationId();
+    const actorUserId = ctx.userId || null;
+    const actorLabel = actorUserId ? `user:${actorUserId}` : "user:anonymous";
+
     const result = await prisma.$transaction(async (tx) => {
       const now = new Date();
       const updatedNote = await tx.visitNote.update({
@@ -53,6 +72,7 @@ export const POST = createApiHandler(
       });
 
       let updatedAppt = note.appointment;
+      let apptEventId: string | undefined;
       if (note.appointment.status !== "COMPLETED") {
         // Mirror /api/crm/appointments/[id] PATCH: shrink endDate when the
         // doctor closes the visit ahead of schedule so the freed tail is
@@ -71,9 +91,72 @@ export const POST = createApiHandler(
             endDate: newEnd,
             durationMin,
           },
-          select: { id: true, status: true, completedAt: true, date: true, endDate: true },
+          select: {
+            id: true,
+            status: true,
+            completedAt: true,
+            date: true,
+            endDate: true,
+            queueStatus: true,
+            doctorId: true,
+            patientId: true,
+            cabinetId: true,
+          },
         });
+        const { eventId } = await emitAppointmentChangeViaOutbox({
+          tx,
+          kind: "statusChanged",
+          before: {
+            status: note.appointment.status,
+            queueStatus: note.appointment.queueStatus,
+          },
+          after: {
+            id: updatedAppt.id,
+            doctorId: updatedAppt.doctorId,
+            patientId: updatedAppt.patientId,
+            cabinetId: updatedAppt.cabinetId,
+            status: updatedAppt.status,
+            queueStatus: updatedAppt.queueStatus,
+            date: updatedAppt.date,
+          },
+          clinicId: note.clinicId,
+          actorId: actorUserId,
+          actorRole: "DOCTOR",
+          actorLabel,
+          surface: "DOCTOR_CABINET",
+          correlationId,
+          alsoQueueUpdate: updatedAppt.queueStatus !== note.appointment.queueStatus,
+        });
+        apptEventId = eventId;
       }
+
+      const visitNoteEnvelope: EventEnvelopeInput = {
+        type: "visit-note.finalized",
+        correlationId,
+        causedByEventId: apptEventId,
+        actor: {
+          role: "DOCTOR",
+          userId: actorUserId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: actorLabel,
+        },
+        surface: "DOCTOR_CABINET",
+        tenantScope: {
+          clinicId: note.clinicId,
+          doctorId: note.doctorId,
+          patientId: note.patientId,
+          appointmentId: note.appointment.id,
+        },
+        payload: {
+          visitNoteId: updatedNote.id,
+          appointmentId: note.appointment.id,
+          doctorId: note.doctorId,
+          patientId: note.patientId,
+          finalizedAt: updatedNote.finalizedAt?.toISOString(),
+        },
+      };
+      await publishViaOutbox(tx, visitNoteEnvelope);
 
       return { note: updatedNote, appointment: updatedAppt };
     });
@@ -89,32 +172,8 @@ export const POST = createApiHandler(
       action: "visit_note.finalize",
       entityType: "VisitNote",
       entityId: id,
-      meta: { appointmentId: note.appointment.id },
+      meta: { appointmentId: note.appointment.id, correlationId },
     });
-
-    const tenant = getTenant();
-    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
-    if (clinicId) {
-      publishEventSafe(clinicId, {
-        type: "appointment.statusChanged",
-        payload: {
-          appointmentId: note.appointment.id,
-          doctorId: note.doctorId,
-          patientId: note.patientId,
-          status: "COMPLETED",
-          previousStatus: note.appointment.status,
-        },
-      });
-      publishEventSafe(clinicId, {
-        type: "queue.updated",
-        payload: {
-          appointmentId: note.appointment.id,
-          doctorId: note.doctorId,
-          queueStatus: "COMPLETED",
-          previousStatus: note.appointment.status,
-        },
-      });
-    }
 
     return ok(result);
   },

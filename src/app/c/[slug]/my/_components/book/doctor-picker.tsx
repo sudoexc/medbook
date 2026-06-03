@@ -9,6 +9,7 @@ import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MEmpty, MSpinner } from "../mini-ui";
+import { SkeletonList } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
@@ -81,7 +82,7 @@ export function DoctorPicker() {
         title={t.book.stepDoctor}
       />
       {doctors.isLoading ? (
-        <MSpinner />
+        <SkeletonList rows={4} variant="card" />
       ) : filtered.length === 0 ? (
         <MEmpty>{t.book.noDoctors}</MEmpty>
       ) : (

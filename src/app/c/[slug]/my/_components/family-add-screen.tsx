@@ -8,8 +8,8 @@ import {
   MCard,
   MHint,
   MSection,
-  MSpinner,
 } from "./mini-ui";
+import { SkeletonList } from "./skeleton";
 import { useT } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
@@ -104,7 +104,7 @@ export function FamilyAddScreen() {
     });
   }, [tg, add.isPending, canSubmit, onSubmit, t.family.saving, t.family.submit]);
 
-  if (family.isLoading) return <MSpinner label={t.common.loading} />;
+  if (family.isLoading) return <SkeletonList rows={3} variant="card" />;
 
   return (
     <div>

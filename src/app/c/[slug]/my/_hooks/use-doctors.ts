@@ -51,7 +51,7 @@ export function pickDefaultService(
   );
   if (nested.length > 0) {
     const consult = nested.find((l) =>
-      (l.service.category ?? "").toLowerCase().includes("консульт"),
+      (l.service.category ?? "").toLowerCase().includes("консульт"), // i18n-allow: db-matcher
     );
     if (consult) return consult.service.id;
     const cheapest = [...nested].sort(

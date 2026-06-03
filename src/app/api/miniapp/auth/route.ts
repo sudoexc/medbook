@@ -98,7 +98,7 @@ export async function POST(request: Request) {
               preferredLang: desiredLang,
               source: "TELEGRAM",
               segment: "NEW",
-            } as never,
+            },
           });
         });
       } catch (e) {

@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -89,16 +91,54 @@ export const PATCH = createApiHandler(
       data.patientHandoutMarkdown = body.patientHandoutMarkdown;
     }
 
-    const updated = await prisma.visitNote.update({
-      where: { id },
-      data: data as never,
+    const changedFields = Object.keys(data);
+    const correlationId = newCorrelationId();
+    const actorUserId = ctx.userId || null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.visitNote.update({
+        where: { id },
+        data: data as never,
+      });
+
+      // Skip the envelope when the autosave was a no-op — the editor sends a
+      // PATCH on every debounced keystroke even if nothing changed.
+      if (changedFields.length > 0) {
+        const envelope: EventEnvelopeInput = {
+          type: "visit-note.draftSaved",
+          correlationId,
+          actor: {
+            role: "DOCTOR",
+            userId: actorUserId,
+            patientId: null,
+            onBehalfOfPatientId: null,
+            label: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+          },
+          surface: "DOCTOR_CABINET",
+          tenantScope: {
+            clinicId: before.clinicId,
+            doctorId: before.doctorId,
+            patientId: before.patientId,
+            appointmentId: before.appointmentId ?? undefined,
+          },
+          payload: {
+            visitNoteId: row.id,
+            appointmentId: row.appointmentId ?? undefined,
+            doctorId: row.doctorId,
+            patientId: row.patientId,
+            changedFields,
+          },
+        };
+        await publishViaOutbox(tx, envelope);
+      }
+      return row;
     });
 
     await audit(request, {
       action: "visit_note.update",
       entityType: "VisitNote",
       entityId: id,
-      meta: { fields: Object.keys(data) },
+      meta: { fields: changedFields, correlationId },
     });
 
     return ok(updated);

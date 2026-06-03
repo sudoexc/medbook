@@ -8,8 +8,8 @@ import {
   MCard,
   MEmpty,
   MSection,
-  MSpinner,
 } from "./mini-ui";
+import { SkeletonList } from "./skeleton";
 import { useT } from "./mini-i18n";
 import { useDocuments } from "../_hooks/use-documents";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
@@ -37,7 +37,7 @@ export function DocumentsScreen() {
     <div>
       <h1 className="mb-4 text-xl font-bold">{t.documents.title}</h1>
       {docs.isLoading ? (
-        <MSpinner />
+        <SkeletonList rows={4} variant="card" />
       ) : docs.data && docs.data.length > 0 ? (
         <MSection>
           {docs.data.map((d) => (

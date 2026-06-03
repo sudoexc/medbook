@@ -20,8 +20,9 @@ import {
 import { fireTrigger } from "@/server/notifications/triggers";
 import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
-import { publishEventSafe } from "@/server/realtime/publish";
-import { getTenant } from "@/lib/tenant-context";
+import { cancelAppointment } from "@/server/appointments/cancel";
+import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { newCorrelationId } from "@/server/realtime/outbox";
 import { recordPatientView } from "@/server/audit/patient-view";
 import {
   canTransitionAt,
@@ -197,6 +198,20 @@ export const PATCH = createApiHandler(
         if (unkill && row.medicalCaseId) {
           await recomputeCaseAppointments(tx, row.medicalCaseId);
         }
+        const actorUserId = ctx.userId || null;
+        await emitAppointmentChangeViaOutbox({
+          tx,
+          kind: "statusChanged",
+          before,
+          after: row,
+          clinicId: ctx.clinicId,
+          actorId: actorUserId,
+          actorRole: "DOCTOR",
+          actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+          surface: "DOCTOR_CABINET",
+          correlationId: newCorrelationId(),
+          alsoQueueUpdate: row.queueStatus !== before.queueStatus,
+        });
         return row;
       });
 
@@ -214,32 +229,6 @@ export const PATCH = createApiHandler(
         },
       });
 
-      const tenant = getTenant();
-      const clinicId =
-        tenant?.kind === "TENANT" ? tenant.clinicId : null;
-      if (clinicId) {
-        publishEventSafe(clinicId, {
-          type: "appointment.statusChanged",
-          payload: {
-            appointmentId: id,
-            doctorId: revertedRow.doctorId,
-            patientId: revertedRow.patientId,
-            cabinetId: revertedRow.cabinetId,
-            status: revertedRow.status,
-            previousStatus: before.status,
-            date: revertedRow.date.toISOString(),
-          },
-        });
-        publishEventSafe(clinicId, {
-          type: "queue.updated",
-          payload: {
-            appointmentId: id,
-            doctorId: revertedRow.doctorId,
-            queueStatus: revertedRow.queueStatus,
-            previousStatus: before.queueStatus,
-          },
-        });
-      }
       return ok(revertedRow);
     }
 
@@ -286,26 +275,49 @@ export const PATCH = createApiHandler(
       const bumpToWaiting = fromStatus === "BOOKED";
       if (bumpToWaiting) callData.status = "WAITING";
 
-      const updatedRow = await prisma.appointment.update({
-        where: { id },
-        data: callData as never,
-        select: {
-          id: true,
-          status: true,
-          queueStatus: true,
-          calledAt: true,
-          date: true,
-          doctorId: true,
-          patientId: true,
-          cabinetId: true,
-          patient: { select: { fullName: true, telegramId: true } },
-          doctor: {
-            select: {
-              nameRu: true,
-              cabinet: { select: { number: true } },
+      const callCorrelationId = newCorrelationId();
+      const updatedRow = await prisma.$transaction(async (tx) => {
+        const row = await tx.appointment.update({
+          where: { id },
+          data: callData as never,
+          select: {
+            id: true,
+            status: true,
+            queueStatus: true,
+            calledAt: true,
+            date: true,
+            doctorId: true,
+            patientId: true,
+            cabinetId: true,
+            patient: { select: { fullName: true, telegramId: true } },
+            doctor: {
+              select: {
+                nameRu: true,
+                cabinet: { select: { number: true } },
+              },
             },
           },
-        },
+        });
+        // Only emit `statusChanged` when the bump actually flipped status —
+        // otherwise this is just a `calledAt` timestamp refresh and the
+        // queue lane is unchanged.
+        if (bumpToWaiting) {
+          const actorUserId = ctx.userId || null;
+          await emitAppointmentChangeViaOutbox({
+            tx,
+            kind: "statusChanged",
+            before,
+            after: row,
+            clinicId: ctx.clinicId,
+            actorId: actorUserId,
+            actorRole: "DOCTOR",
+            actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+            surface: "DOCTOR_CABINET",
+            correlationId: callCorrelationId,
+            alsoQueueUpdate: row.queueStatus !== before.queueStatus,
+          });
+        }
+        return row;
       });
 
       let notificationSent = false;
@@ -334,35 +346,10 @@ export const PATCH = createApiHandler(
           previousStatus: fromStatus,
           statusBumpedToWaiting: bumpToWaiting,
           notificationSent,
+          correlationId: callCorrelationId,
         },
       });
 
-      const tenant = getTenant();
-      const clinicId =
-        tenant?.kind === "TENANT" ? tenant.clinicId : null;
-      if (clinicId) {
-        publishEventSafe(clinicId, {
-          type: "appointment.statusChanged",
-          payload: {
-            appointmentId: id,
-            doctorId: updatedRow.doctorId,
-            patientId: updatedRow.patientId,
-            cabinetId: updatedRow.cabinetId,
-            status: updatedRow.status,
-            previousStatus: before.status,
-            date: updatedRow.date.toISOString(),
-          },
-        });
-        publishEventSafe(clinicId, {
-          type: "queue.updated",
-          payload: {
-            appointmentId: id,
-            doctorId: updatedRow.doctorId,
-            queueStatus: updatedRow.queueStatus,
-            previousStatus: before.queueStatus,
-          },
-        });
-      }
       return ok(updatedRow);
     }
 
@@ -507,6 +494,7 @@ export const PATCH = createApiHandler(
       (timeChanged && before.medicalCaseId !== null) ||
       caseChanged;
 
+    const patchCorrelationId = newCorrelationId();
     const txOut = await prisma.$transaction(async (tx) => {
       if (services !== undefined) {
         await tx.appointmentService.deleteMany({
@@ -556,6 +544,41 @@ export const PATCH = createApiHandler(
         recomputed || siblingRepriceNeeded
           ? await tx.appointment.findUniqueOrThrow({ where: { id } })
           : updated;
+
+      // Realtime fan-out via outbox so the appointment update + event row
+      // commit atomically. Same routing as the legacy publishEventSafe path:
+      //   - status flipped to CANCELLED → appointment.cancelled
+      //   - any other status flip       → appointment.statusChanged
+      //   - slot moved (time/doctor)    → appointment.moved
+      //   - otherwise                   → appointment.updated
+      if (ctx.kind === "TENANT") {
+        const statusChanged =
+          body.status !== undefined && body.status !== before.status;
+        const kind: "cancelled" | "statusChanged" | "moved" | "updated" =
+          body.status === "CANCELLED"
+            ? "cancelled"
+            : statusChanged
+              ? "statusChanged"
+              : timeChanged
+                ? "moved"
+                : "updated";
+        const actorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST";
+        const actorUserId = ctx.userId || null;
+        await emitAppointmentChangeViaOutbox({
+          tx,
+          kind,
+          before,
+          after: fresh,
+          clinicId: ctx.clinicId,
+          actorId: actorUserId,
+          actorRole,
+          actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+          surface: ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM",
+          correlationId: patchCorrelationId,
+          // Queue snapshot shifts on any status flip.
+          alsoQueueUpdate: statusChanged,
+        });
+      }
       return { after: fresh, recomputed };
     });
     const after = txOut.after;
@@ -643,67 +666,13 @@ export const PATCH = createApiHandler(
       );
     }
 
-    // Realtime fan-out. Pick the event type that best reflects the change:
-    //   - status transition  → appointment.statusChanged
-    //   - time/doctor move   → appointment.moved
-    //   - cancelled          → appointment.cancelled
-    //   - otherwise          → appointment.updated
-    const tenant = getTenant();
-    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
-    if (clinicId) {
-      const statusChanged =
-        body.status !== undefined && body.status !== before.status;
-      const basePayload = {
-        appointmentId: id,
-        doctorId: after.doctorId,
-        patientId: after.patientId,
-        cabinetId: after.cabinetId,
-        status: after.status,
-        previousStatus: before.status,
-        date: after.date.toISOString(),
-      };
-      if (body.status === "CANCELLED") {
-        publishEventSafe(clinicId, {
-          type: "appointment.cancelled",
-          payload: basePayload,
-        });
-      } else if (statusChanged) {
-        publishEventSafe(clinicId, {
-          type: "appointment.statusChanged",
-          payload: basePayload,
-        });
-      } else if (timeChanged) {
-        publishEventSafe(clinicId, {
-          type: "appointment.moved",
-          payload: basePayload,
-        });
-      } else {
-        publishEventSafe(clinicId, {
-          type: "appointment.updated",
-          payload: basePayload,
-        });
-      }
-      // Queue snapshot (shown on reception dashboard) typically shifts on
-      // any status change too.
-      if (statusChanged) {
-        publishEventSafe(clinicId, {
-          type: "queue.updated",
-          payload: {
-            appointmentId: id,
-            doctorId: after.doctorId,
-            queueStatus: after.queueStatus,
-            previousStatus: before.queueStatus,
-          },
-        });
-      }
-    }
     return ok(after);
   }
 );
 
 export const DELETE = createApiHandler(
   { roles: ["ADMIN", "RECEPTIONIST"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const id = idFromUrl(request);
     const before = await prisma.appointment.findUnique({ where: { id } });
     if (!before) return notFound();
@@ -744,52 +713,22 @@ export const DELETE = createApiHandler(
       // Body absent or not JSON — fine, cancelReason stays null.
     }
 
-    // Late-cancel signal — flagged in audit so reports can surface it. We do
-    // not block here because clinic policy varies; the data is what matters.
-    const lateCancelMinutes = Math.max(
-      0,
-      Math.round((before.date.getTime() - Date.now()) / 60_000),
-    );
+    const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
+    if (!clinicId) return forbidden();
+    const actorId = ctx.kind === "TENANT" ? ctx.userId || null : null;
 
-    const cancelled = await prisma.$transaction(async (tx) => {
-      const row = await tx.appointment.update({
-        where: { id },
-        data: {
-          status: "CANCELLED",
-          cancelledAt: new Date(),
-          cancelReason: cancelReason,
-        },
-      });
-      // Cancellation removes this visit as a candidate for the case's
-      // "first visit" anchor. Reprice every sibling so the next-earliest
-      // active visit flips back to full price (free-repeat now anchors on
-      // the new first).
-      if (row.medicalCaseId) {
-        await recomputeCaseAppointments(tx, row.medicalCaseId);
-      }
-      return row;
+    const result = await cancelAppointment({
+      appointmentId: id,
+      clinicId,
+      actorId,
+      reason: cancelReason,
+      surface: "CRM",
     });
-    await audit(request, {
-      action: "appointment.cancel",
-      entityType: "Appointment",
-      entityId: id,
-      meta: { before, after: cancelled, lateCancelMinutes },
-    });
-    fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
-
-    const tenant = getTenant();
-    const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
-    if (clinicId) {
-      publishEventSafe(clinicId, {
-        type: "appointment.cancelled",
-        payload: {
-          appointmentId: id,
-          doctorId: cancelled.doctorId,
-          patientId: cancelled.patientId,
-          cabinetId: cancelled.cabinetId,
-          status: cancelled.status,
-          date: cancelled.date.toISOString(),
-        },
+    if (!result.ok) {
+      if (result.reason === "not_found") return notFound();
+      return conflict(result.reason, {
+        from: before.status,
+        to: "CANCELLED",
       });
     }
     return ok({ id, cancelled: true });

@@ -4,6 +4,12 @@
  * Reschedule (startAt, doctorId?, serviceIds?) or cancel the patient's own
  * appointment. Both verbs are scoped to the authenticated patient — a
  * patient cannot touch another patient's rows.
+ *
+ * Phase M2 — both verbs now publish through the outbox:
+ *   • cancel → delegates to shared `cancelAppointment` (Phase B.2 kernel),
+ *     which emits `appointment.cancelled` + audit row.
+ *   • reschedule → emits `appointment.updated` + `queue.updated` envelopes
+ *     inside the same tx as the appointment row mutation.
  */
 import { z } from "zod";
 
@@ -15,6 +21,12 @@ import {
   detectConflicts,
 } from "@/server/services/appointments";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { cancelAppointment } from "@/server/appointments/cancel";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
 const PatchBody = z
   .object({
@@ -22,6 +34,7 @@ const PatchBody = z
     doctorId: z.string().optional(),
     serviceIds: z.array(z.string()).optional(),
     cancel: z.boolean().optional(),
+    cancelReason: z.string().max(500).optional(),
   })
   .refine(
     (v) => v.startAt || v.doctorId || v.serviceIds || v.cancel,
@@ -50,12 +63,22 @@ export const PATCH = createMiniAppHandler(
     }
 
     if (body.cancel) {
-      const cancelled = await prisma.appointment.update({
-        where: { id },
-        data: { status: "CANCELLED", cancelledAt: new Date() },
+      const result = await cancelAppointment({
+        appointmentId: id,
+        clinicId: ctx.clinicId,
+        actorId: null,
+        actorRole: "PATIENT",
+        actorPatientId: ctx.patientId,
+        actorLabel: `patient:${ctx.patientId}`,
+        surface: "MINIAPP",
+        reason: body.cancelReason ?? null,
       });
-      fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
-      return ok({ appointment: cancelled });
+      if (!result.ok) {
+        if (result.reason === "not_found") return notFound();
+        if (result.reason === "completed") return err("not_editable", 409);
+        return err("not_cancellable", 409);
+      }
+      return ok({ appointment: result.appointment });
     }
 
     const doctorId = body.doctorId ?? before.doctorId;
@@ -102,6 +125,7 @@ export const PATCH = createMiniAppHandler(
     const time = `${String(startAt.getHours()).padStart(2, "0")}:${String(
       startAt.getMinutes(),
     ).padStart(2, "0")}`;
+    const correlationId = newCorrelationId();
 
     const updated = await prisma.$transaction(async (tx) => {
       if (body.serviceIds) {
@@ -120,10 +144,10 @@ export const PATCH = createMiniAppHandler(
             serviceId: sid,
             priceSnap: priceMap.get(sid) ?? 0,
             quantity: 1,
-          })) as never,
+          })),
         });
       }
-      return tx.appointment.update({
+      const after = await tx.appointment.update({
         where: { id },
         data: {
           doctorId,
@@ -135,8 +159,60 @@ export const PATCH = createMiniAppHandler(
           priceBase,
           priceService: priceBase,
           priceFinal: priceBase,
-        } as never,
+        },
       });
+
+      // Phase M2 — emit reschedule envelopes from the same tx. The
+      // appointment.updated payload carries the previous date so subscribers
+      // can render a "moved from → to" diff; we follow it with queue.updated
+      // because the doctor's queue position may shift on a date change.
+      const baseEnvelope = {
+        correlationId,
+        actor: {
+          role: "PATIENT" as const,
+          userId: null,
+          patientId: ctx.patientId,
+          onBehalfOfPatientId: null,
+          label: `patient:${ctx.patientId}`,
+        },
+        surface: "MINIAPP" as const,
+        tenantScope: {
+          clinicId: ctx.clinicId,
+          doctorId: after.doctorId,
+          patientId: after.patientId,
+          appointmentId: after.id,
+        },
+      } as const;
+      const updatedEnvelope: EventEnvelopeInput = {
+        ...baseEnvelope,
+        type: "appointment.updated",
+        payload: {
+          appointmentId: after.id,
+          doctorId: after.doctorId,
+          patientId: after.patientId,
+          cabinetId: after.cabinetId,
+          status: after.status,
+          date: after.date.toISOString(),
+          previousDate: before.date.toISOString(),
+        },
+      };
+      const { eventId: updatedEventId } = await publishViaOutbox(
+        tx,
+        updatedEnvelope,
+      );
+      const queueEnvelope: EventEnvelopeInput = {
+        ...baseEnvelope,
+        causedByEventId: updatedEventId,
+        type: "queue.updated",
+        payload: {
+          appointmentId: after.id,
+          doctorId: after.doctorId,
+          queueStatus: after.queueStatus,
+        },
+      };
+      await publishViaOutbox(tx, queueEnvelope);
+
+      return after;
     });
 
     fireTrigger({ kind: "appointment.updated", appointmentId: id });
@@ -148,13 +224,22 @@ export const DELETE = createMiniAppHandler({}, async ({ request, ctx }) => {
   const id = idFromUrl(request);
   const before = await prisma.appointment.findFirst({
     where: { id, clinicId: ctx.clinicId, patientId: ctx.patientId },
+    select: { id: true },
   });
   if (!before) return notFound();
-  if (before.status === "CANCELLED") return ok({ appointment: before });
-  const cancelled = await prisma.appointment.update({
-    where: { id },
-    data: { status: "CANCELLED", cancelledAt: new Date() },
+  const result = await cancelAppointment({
+    appointmentId: id,
+    clinicId: ctx.clinicId,
+    actorId: null,
+    actorRole: "PATIENT",
+    actorPatientId: ctx.patientId,
+    actorLabel: `patient:${ctx.patientId}`,
+    surface: "MINIAPP",
   });
-  fireTrigger({ kind: "appointment.cancelled", appointmentId: id });
-  return ok({ appointment: cancelled });
+  if (!result.ok) {
+    if (result.reason === "not_found") return notFound();
+    if (result.reason === "completed") return err("not_editable", 409);
+    return err("not_cancellable", 409);
+  }
+  return ok({ appointment: result.appointment });
 });

@@ -17,34 +17,21 @@
 import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { computeProgress } from "@/server/services/treatment-plan";
 
-async function resolveActivePatientId(
-  request: Request,
-  ctx: { clinicId: string; patientId: string },
-): Promise<{ ok: true; patientId: string } | { ok: false; response: Response }> {
-  const url = new URL(request.url);
-  const onBehalfOf = url.searchParams.get("onBehalfOf");
-  if (!onBehalfOf || onBehalfOf === ctx.patientId) {
-    return { ok: true, patientId: ctx.patientId };
-  }
-  // Verify the owner has a PatientFamily link to that patient.
-  const link = await prisma.patientFamily.findFirst({
-    where: {
-      clinicId: ctx.clinicId,
-      ownerPatientId: ctx.patientId,
-      linkedPatientId: onBehalfOf,
-    },
-    select: { id: true },
-  });
-  if (!link) return { ok: false, response: err("forbidden_relative", 403) };
-  return { ok: true, patientId: onBehalfOf };
-}
-
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
-  const resolved = await resolveActivePatientId(request, ctx);
-  if (!resolved.ok) return resolved.response;
-  const patientId = resolved.patientId;
+  const onBehalfOf = new URL(request.url).searchParams.get("onBehalfOf");
+  const acting = await resolveActivePatient({
+    ctx: {
+      clinicId: ctx.clinicId,
+      patientId: ctx.patientId,
+      preferredLang: ctx.patient.preferredLang,
+    },
+    onBehalfOf,
+  });
+  if (!acting.ok) return err(acting.reason, 403);
+  const patientId = acting.patientId;
 
   const openCases = await prisma.medicalCase.findMany({
     where: { clinicId: ctx.clinicId, patientId, status: "OPEN" },

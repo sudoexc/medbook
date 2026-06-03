@@ -21,6 +21,11 @@ import {
   createMiniAppHandler,
   createMiniAppListHandler,
 } from "@/server/miniapp/handler";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
 const Body = z
   .object({
@@ -84,19 +89,51 @@ export const POST = createMiniAppHandler({ bodySchema: Body }, async ({ body, ct
     data.marketingOptOutSource = body.marketingOptOut ? "mini-app" : null;
     marketingOptOutChanged = true;
   }
+  // Phase M2 — `patient.profileUpdated` publishes through the outbox so the
+  // CRM patient card refreshes live. `changedFields` lets the subscriber
+  // decide what to invalidate; the field list is derived directly from `data`.
+  const changedFields = Object.keys(data);
   try {
-    const updated = await prisma.patient.update({
-      where: { id: ctx.patientId },
-      data,
-      select: {
-        id: true,
-        fullName: true,
-        phone: true,
-        phoneNormalized: true,
-        preferredLang: true,
-        consentMarketing: true,
-        marketingOptOut: true,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.patient.update({
+        where: { id: ctx.patientId },
+        data,
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          phoneNormalized: true,
+          preferredLang: true,
+          consentMarketing: true,
+          marketingOptOut: true,
+        },
+      });
+
+      if (changedFields.length > 0) {
+        const envelope: EventEnvelopeInput = {
+          correlationId: newCorrelationId(),
+          actor: {
+            role: "PATIENT",
+            userId: null,
+            patientId: ctx.patientId,
+            onBehalfOfPatientId: null,
+            label: `patient:${ctx.patientId}`,
+          },
+          surface: "MINIAPP",
+          tenantScope: {
+            clinicId: ctx.clinicId,
+            patientId: ctx.patientId,
+          },
+          type: "patient.profileUpdated",
+          payload: {
+            patientId: ctx.patientId,
+            changedFields,
+          },
+        };
+        await publishViaOutbox(tx, envelope);
+      }
+
+      return row;
     });
     if (marketingOptOutChanged) {
       try {

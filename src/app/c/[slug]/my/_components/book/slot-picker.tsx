@@ -8,6 +8,7 @@ import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MEmpty, MSpinner } from "../mini-ui";
+import { SkeletonBlock } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
@@ -172,7 +173,14 @@ export function SlotPicker() {
         })}
       </div>
       {slots.isLoading ? (
-        <MSpinner />
+        // Time slots: a 3-column grid of pill-shaped pulsing rectangles
+        // mirrors the real layout below so the page doesn't jump when data
+        // arrives.
+        <div className="grid grid-cols-3 gap-2">
+          {Array.from({ length: 9 }, (_, i) => (
+            <SkeletonBlock key={i} height={40} radius={10} />
+          ))}
+        </div>
       ) : allSlots.length > 0 ? (
         <>
           <div className="grid grid-cols-3 gap-2">

@@ -22,10 +22,9 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
-import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { normalizePhone } from "@/lib/phone";
 import { err, ok } from "@/server/http";
+import { allocatePatientNumber } from "@/server/services/patient-number";
 import {
   createMiniAppHandler,
   createMiniAppListHandler,
@@ -35,6 +34,11 @@ import {
   MAX_FAMILY_LINKS,
   validateFamilyAddition,
 } from "@/server/services/family";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
 export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
   const [self, links] = await Promise.all([
@@ -153,9 +157,11 @@ export const POST = createMiniAppHandler(
         const stubNormalized = normalizedPhone
           ? normalizedPhone
           : `family:${ctx.patientId}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        const patientNumber = await allocatePatientNumber(ctx.clinicId, tx);
         const created = await tx.patient.create({
           data: {
             clinicId: ctx.clinicId,
+            patientNumber,
             fullName: body.fullName.trim(),
             phone: rawPhone,
             phoneNormalized: stubNormalized,
@@ -164,7 +170,7 @@ export const POST = createMiniAppHandler(
             preferredLang: ctx.patient.preferredLang,
             // No telegramId for the relative — only the owner has the TG link.
             source: "TELEGRAM",
-          } as never,
+          },
           select: { id: true, fullName: true, phone: true, birthDate: true, gender: true },
         });
         linkedPatientId = created.id;
@@ -190,19 +196,34 @@ export const POST = createMiniAppHandler(
           },
         },
       });
-      return { link, createdNew };
-    });
 
-    await audit(request, {
-      action: AUDIT_ACTION.PATIENT_FAMILY_LINKED,
-      entityType: "PatientFamily",
-      entityId: result.link.id,
-      meta: {
-        ownerPatientId: ctx.patientId,
-        linkedPatientId: result.link.linkedPatientId,
-        relationship: body.relationship,
-        createdNew: result.createdNew,
-      },
+      // Phase M2 — `patient.familyLinked` envelope. Audited via EVENT_META
+      // (outbox pumper materialises the AuditLog row); no manual audit() call.
+      const envelope: EventEnvelopeInput = {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "PATIENT",
+          userId: null,
+          patientId: ctx.patientId,
+          onBehalfOfPatientId: null,
+          label: `patient:${ctx.patientId}`,
+        },
+        surface: "MINIAPP",
+        tenantScope: {
+          clinicId: ctx.clinicId,
+          patientId: ctx.patientId,
+        },
+        type: "patient.familyLinked",
+        payload: {
+          ownerPatientId: ctx.patientId,
+          linkedPatientId,
+          relationship: body.relationship,
+          createdNew,
+        },
+      };
+      await publishViaOutbox(tx, envelope);
+
+      return { link, createdNew };
     });
 
     return ok(

@@ -7,26 +7,14 @@
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { audit } from "@/lib/audit";
-import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err, conflict, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
 import {
   CreateAppointmentSchema,
   QueryAppointmentSchema,
 } from "@/server/schemas/appointment";
-import {
-  applyTime,
-  computeEndDate,
-  detectConflicts,
-} from "@/server/services/appointments";
-import {
-  recomputeAppointmentPrice,
-  recomputeCaseAppointments,
-} from "@/server/pricing/recompute-appointment-price";
-import { fireTrigger } from "@/server/notifications/triggers";
-import { publishEventSafe } from "@/server/realtime/publish";
-import { getTenant } from "@/lib/tenant-context";
+import { bookAppointment } from "@/server/appointments/book";
+import { newCorrelationId } from "@/server/realtime/outbox";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -158,312 +146,77 @@ export const GET = createApiListHandler(
   }
 );
 
+// Auto-confirm channels: the patient is either physically in the clinic
+// (WALKIN at the desk, KIOSK in the lobby) or had a live conversation with
+// reception/callcenter (PHONE). In all three cases the confirmation step
+// happened during booking itself — no need for a follow-up reminder Action.
+// TELEGRAM / WEBSITE bookings are remote/self-service and stay BOOKED until
+// the unconfirmed-window detector posts a confirm-call task.
+const AUTO_CONFIRM_CHANNELS = new Set<string>(["PHONE", "KIOSK", "WALKIN"]);
+
 export const POST = createApiHandler(
   {
     roles: ["ADMIN", "RECEPTIONIST"],
     bodySchema: CreateAppointmentSchema,
   },
-  async ({ request, body, ctx }) => {
-    const startAt = applyTime(body.date, body.time);
-    const endAt = computeEndDate(startAt, body.durationMin);
+  async ({ body, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
-    // Cabinet is derived from doctor.cabinetId — Phase 11 enforces a 1:1
-    // doctor↔cabinet binding, so the appointment always lands in the doctor's
-    // own room. The client can no longer choose; older callers that still
-    // send `cabinetId` had it stripped by the schema above.
-    const doctorRow = await prisma.doctor.findUnique({
-      where: { id: body.doctorId },
-      select: {
-        id: true,
-        cabinetId: true,
-        isActive: true,
-        cabinet: { select: { isActive: true } },
+    const actorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST";
+    const actorUserId = ctx.userId || null;
+
+    const result = await bookAppointment({
+      clinicId: ctx.clinicId,
+      patientId: body.patientId,
+      doctorId: body.doctorId,
+      startAt: body.date,
+      time: body.time ?? null,
+      serviceId: body.serviceId ?? null,
+      services: body.services,
+      durationMin: body.durationMin,
+      discountPct: body.discountPct,
+      discountAmount: body.discountAmount,
+      priceFinal: body.priceFinal ?? null,
+      medicalCaseId: body.medicalCaseId ?? null,
+      channel: body.channel,
+      notes: body.notes ?? null,
+      comments: body.comments ?? null,
+      leadId: body.leadId ?? null,
+      createdById: actorUserId,
+      autoConfirm: AUTO_CONFIRM_CHANNELS.has(body.channel),
+      actor: {
+        role: actorRole,
+        userId: actorUserId,
+        patientId: null,
+        onBehalfOfPatientId: null,
+        label: actorUserId ? `user:${actorUserId}` : "user:anonymous",
       },
+      surface: "CRM",
+      correlationId: newCorrelationId(),
     });
-    if (!doctorRow || !doctorRow.isActive) {
-      return err("DoctorInvalid", 422, { reason: "doctor_not_found" });
-    }
-    if (!doctorRow.cabinet?.isActive) {
-      return err("CabinetInactive", 422, { reason: "cabinet_inactive" });
-    }
-    const cabinetId: string = doctorRow.cabinetId;
 
-    // Compute base price from primary service if not provided.
-    let priceBase: number | null = null;
-    let priceService: number | null = null;
-    if (body.serviceId) {
-      const svc = await prisma.service.findUnique({
-        where: { id: body.serviceId },
-        select: { priceBase: true, durationMin: true },
-      });
-      priceBase = svc?.priceBase ?? null;
-      priceService = svc?.priceBase ?? null;
-    }
-    const priceFinal =
-      body.priceFinal ??
-      (priceBase !== null
-        ? Math.max(
-            0,
-            priceBase - (body.discountAmount ?? 0) -
-              Math.round(((body.discountPct ?? 0) * priceBase) / 100)
-          )
-        : null);
-
-    const createdById = ctx.kind === "TENANT" ? ctx.userId : null;
-
-    // Auto-confirm channels: the patient is either physically in the clinic
-    // (WALKIN at the desk, KIOSK in the lobby) or had a live conversation with
-    // reception/callcenter (PHONE). In all three cases the confirmation step
-    // happened during booking itself — no need for a follow-up reminder Action.
-    // TELEGRAM / WEBSITE bookings are remote/self-service and stay BOOKED until
-    // the unconfirmed-window detector posts a confirm-call task and the patient
-    // (or staff on their behalf) flips them via SMS-YES / TG-button / inbound
-    // call / manual CRM. Booking time becomes the confirmedAt for the auto
-    // path; the via flag distinguishes it from the four interactive paths.
-    const AUTO_CONFIRM_CHANNELS = new Set(["PHONE", "KIOSK", "WALKIN"]);
-    const autoConfirm = AUTO_CONFIRM_CHANNELS.has(body.channel);
-
-    // Conflict check + create run in one Serializable transaction so that
-    // concurrent bookings on the same slot can't both pass the overlap check.
-    // PostgreSQL raises a serialization error (P2034) on the loser; we
-    // surface that as a doctor_busy/cabinet_busy 409 just like a normal clash.
-    let txResult:
-      | {
-          kind: "ok";
-          appt: {
-            id: string;
-            doctorId: string;
-            patientId: string;
-            cabinetId: string | null;
-            status: string;
-            date: Date;
-            queueStatus: string;
-          };
-          recomputed: Awaited<ReturnType<typeof recomputeAppointmentPrice>> | null;
-        }
-      | { kind: "conflict"; reason: string; until?: string };
-    try {
-      txResult = await prisma.$transaction(
-        async (tx) => {
-        const c = await detectConflicts(
-          {
-            doctorId: body.doctorId,
-            cabinetId,
-            startAt,
-            endAt,
-          },
-          tx,
-        );
-        if (!c.ok) {
-          return { kind: "conflict" as const, reason: c.reason, until: c.until };
-        }
-        const appt = await tx.appointment.create({
-          data: {
-            patientId: body.patientId,
-            doctorId: body.doctorId,
-            cabinetId,
-            serviceId: body.serviceId ?? null,
-            medicalCaseId: body.medicalCaseId ?? null,
-            date: startAt,
-            time: body.time ?? null,
-            durationMin: body.durationMin,
-            endDate: endAt,
-            status: autoConfirm ? "CONFIRMED" : "BOOKED",
-            queueStatus: autoConfirm ? "CONFIRMED" : "BOOKED",
-            channel: body.channel,
-            leadId: body.leadId ?? null,
-            priceService,
-            priceBase,
-            discountPct: body.discountPct ?? 0,
-            discountAmount: body.discountAmount ?? 0,
-            priceFinal,
-            createdById,
-            comments: body.comments ?? null,
-            notes: body.notes ?? null,
-            ...(autoConfirm
-              ? {
-                  confirmedAt: new Date(),
-                  confirmedBy: createdById,
-                  confirmedVia: "BOOKING_AUTO",
-                }
-              : {}),
-          } as never,
-        });
-        if (body.services && body.services.length > 0) {
-          const svcRows = await tx.service.findMany({
-            where: { id: { in: body.services.map((s) => s.serviceId) } },
-            select: { id: true, priceBase: true },
-          });
-          const priceMap = new Map(svcRows.map((s) => [s.id, s.priceBase]));
-          await tx.appointmentService.createMany({
-            data: body.services.map((s) => ({
-              appointmentId: appt.id,
-              serviceId: s.serviceId,
-              priceSnap: s.priceOverride ?? priceMap.get(s.serviceId) ?? 0,
-              quantity: s.quantity ?? 1,
-            })) as never,
-          });
-        }
-        // Free-repeat pricing engine. Runs inside the same tx so a follow-up
-        // visit attached to a case at create time prices to 0 atomically with
-        // its row insert. The caller pinned `priceFinal` only for the
-        // case-less path; once a case is involved the policy decides.
-        //
-        // We reprice the WHOLE case (not just the new row) because a
-        // backdated insert can flip the chronological-first answer for an
-        // existing sibling. Without this, a previously-priced "first" stays
-        // at full price even though the newly inserted earlier appointment
-        // takes its place.
-        const recomputed = body.medicalCaseId
-          ? await recomputeAppointmentPrice(tx, appt.id)
-          : null;
-        if (body.medicalCaseId) {
-          await recomputeCaseAppointments(tx, body.medicalCaseId);
-        }
-        return { kind: "ok" as const, appt, recomputed };
-        },
-        { isolationLevel: "Serializable" },
-      );
-    } catch (e: unknown) {
-      // Postgres serialization / write conflict — Prisma 7 surfaces this as a
-      // DriverAdapterError with kind=TransactionWriteConflict / originalCode
-      // 40001 (or as P2034). The DB-level EXCLUDE constraint added in
-      // 20260429_appointment_no_overlap surfaces as SQLSTATE 23P01
-      // (exclusion_violation) — same outcome, just a different SQLSTATE.
-      const err = e as {
-        code?: string;
-        originalCode?: string;
-        kind?: string;
-        name?: string;
-        message?: string;
-      } | null;
-      // Prisma 7 + pg adapter surfaces concurrent-booking failures in three
-      // shapes that all mean "lost the race, retry would race again":
-      //   1. DriverAdapterError with originalCode/code "23P01" (EXCLUDE
-      //      constraint Appointment_doctor_no_overlap fired)
-      //   2. P2034 or originalCode "40001" — Serializable retry budget hit
-      //   3. DriverAdapterError whose message string carries either of the
-      //      above (Prisma sometimes wraps the original PG error and drops
-      //      the SQLSTATE — only the human message survives)
-      const msg = err?.message ?? "";
-      const isAdapterErr = err?.name === "DriverAdapterError";
-      const msgIndicatesConflict =
-        msg.includes("exclusion constraint") ||
-        msg.includes("Appointment_doctor_no_overlap") ||
-        msg.includes("Appointment_cabinet_no_overlap") ||
-        msg.includes("write conflict or a deadlock") ||
-        msg.includes("could not serialize access");
-      const isWriteConflict =
-        err?.code === "P2034" ||
-        err?.code === "40001" ||
-        err?.code === "23P01" ||
-        err?.originalCode === "40001" ||
-        err?.originalCode === "23P01" ||
-        err?.kind === "TransactionWriteConflict" ||
-        (isAdapterErr && msgIndicatesConflict) ||
-        msgIndicatesConflict;
-      if (isWriteConflict) {
-        const c = await detectConflicts({
-          doctorId: body.doctorId,
-          cabinetId,
-          startAt,
-          endAt,
-        });
-        if (!c.ok) {
-          return conflict(c.reason, c.until ? { until: c.until } : undefined);
-        }
-        return conflict("doctor_busy");
+    if (!result.ok) {
+      switch (result.reason) {
+        case "doctor_not_found":
+        case "doctor_inactive":
+          return err("DoctorInvalid", 422, { reason: "doctor_not_found" });
+        case "cabinet_inactive":
+          return err("CabinetInactive", 422, { reason: "cabinet_inactive" });
+        case "service_not_found":
+          return err("ServiceInvalid", 422, { reason: "service_not_found" });
+        case "doctor_busy":
+        case "cabinet_busy":
+          return conflict(
+            result.reason,
+            result.until ? { until: result.until } : undefined,
+          );
+        case "bad_start_at":
+          return err("BadStartAt", 400, { reason: "bad_start_at" });
       }
-      // Diagnostic: surface the exact shape of unhandled errors so the catch
-      // can be widened next time. Cheap noise — happens only on real 500s.
-      // eslint-disable-next-line no-console
-      console.error("[POST /appointments] uncaught error shape:", {
-        name: err?.name,
-        code: err?.code,
-        originalCode: err?.originalCode,
-        kind: err?.kind,
-        message: err?.message?.slice(0, 200),
-        ctorName: (e as { constructor?: { name?: string } } | null)?.constructor?.name,
-      });
-      throw e;
     }
-    if (txResult.kind === "conflict") {
-      return conflict(
-        txResult.reason,
-        txResult.until ? { until: txResult.until } : undefined,
-      );
-    }
-    const created = txResult.appt;
 
-    await audit(request, {
-      action: "appointment.create",
-      entityType: "Appointment",
-      entityId: created.id,
-      meta: { after: created },
-    });
-    // Auto-confirmed bookings get a second audit row so the confirmation
-    // analytics (avg time-to-confirm by channel, %-confirmed at booking time)
-    // can be sliced uniformly across all five confirm paths. The create row
-    // alone is generic and would force every report to special-case
-    // `channel ∈ {PHONE,KIOSK,WALKIN} && status === CONFIRMED` to count
-    // booking-time confirms.
-    if (autoConfirm) {
-      await audit(request, {
-        action: AUDIT_ACTION.APPOINTMENT_CONFIRMED,
-        entityType: "Appointment",
-        entityId: created.id,
-        meta: {
-          via: "BOOKING_AUTO",
-          statusBefore: "BOOKED",
-          statusAfter: "CONFIRMED",
-          statusFlipped: true,
-          channel: body.channel,
-        },
-      });
-    }
-    if (txResult.recomputed?.reason === "free_repeat") {
-      await audit(request, {
-        action: "appointment.free_repeat_applied",
-        entityType: "Appointment",
-        entityId: created.id,
-        meta: {
-          caseId: body.medicalCaseId,
-          daysFromFirst: txResult.recomputed.daysFromFirst,
-          savedAmount: txResult.recomputed.savedAmount,
-          trace: txResult.recomputed.trace,
-        },
-      });
-    }
-    // Phase 3a: fire notifications trigger (immediate + 24h/2h reminders).
-    fireTrigger({ kind: "appointment.created", appointmentId: created.id });
-
-    // Realtime: fan out to reception/calendar/appointments lists.
-    const tenant = getTenant();
-    const clinicId =
-      tenant?.kind === "TENANT" ? tenant.clinicId : null;
-    if (clinicId) {
-      publishEventSafe(clinicId, {
-        type: "appointment.created",
-        payload: {
-          appointmentId: created.id,
-          doctorId: created.doctorId,
-          patientId: created.patientId,
-          cabinetId: created.cabinetId,
-          status: created.status,
-          date: created.date.toISOString(),
-        },
-      });
-      publishEventSafe(clinicId, {
-        type: "queue.updated",
-        payload: {
-          appointmentId: created.id,
-          doctorId: created.doctorId,
-          queueStatus: created.queueStatus,
-        },
-      });
-    }
-    return ok(created, 201);
-  }
+    return ok(result.appointment, 201);
+  },
 );
 
 // Method-not-allowed hints for the other verbs handled by /[id] route.

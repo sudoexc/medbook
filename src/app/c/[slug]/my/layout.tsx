@@ -3,7 +3,9 @@ import type { Viewport } from "next";
 
 import { QueryProvider } from "@/components/providers/query-provider";
 import { MiniAppAuthProvider } from "./_components/miniapp-auth-provider";
+import { MiniAppErrorBoundary } from "./_components/error-boundary";
 import { MiniAppShell } from "./_components/mini-app-shell";
+import { MiniAppToastProvider } from "./_components/toast";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getFeatureFlags } from "@/server/platform/get-feature-flags";
@@ -76,9 +78,17 @@ export default async function MiniAppLayout(
       {brandStyle ? (
         <style dangerouslySetInnerHTML={{ __html: brandStyle }} />
       ) : null}
-      <MiniAppAuthProvider clinicSlug={slug}>
-        <MiniAppShell clinicSlug={slug}>{props.children}</MiniAppShell>
-      </MiniAppAuthProvider>
+      {/* Phase M4 — error boundary *outside* auth so a crash inside the
+          auth provider still renders the fallback UI. We stamp clinicSlug
+          on reports server-side; init-data is added inside the boundary
+          via the auth provider once it's available. */}
+      <MiniAppErrorBoundary context={{ clinicSlug: slug }}>
+        <MiniAppToastProvider>
+          <MiniAppAuthProvider clinicSlug={slug}>
+            <MiniAppShell clinicSlug={slug}>{props.children}</MiniAppShell>
+          </MiniAppAuthProvider>
+        </MiniAppToastProvider>
+      </MiniAppErrorBoundary>
     </QueryProvider>
   );
 }

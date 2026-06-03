@@ -19,44 +19,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { err, forbidden, notFound, ok } from "@/server/http";
-import {
-  createMiniAppHandler,
-  type MiniAppContext,
-} from "@/server/miniapp/handler";
+import { err, notFound, ok } from "@/server/http";
+import { createMiniAppHandler } from "@/server/miniapp/handler";
+import { resolveActivePatient } from "@/server/miniapp/active-patient";
 
 const ActionSchema = z.object({
   action: z.enum(["TAKEN", "SKIPPED", "SNOOZED"]),
   snoozeMinutes: z.number().int().min(5).max(240).optional(),
 });
-
-const QuerySchema = z.object({
-  onBehalfOf: z.string().optional(),
-});
-
-function parseOnBehalfOf(request: Request): string | null {
-  const url = new URL(request.url);
-  const raw = url.searchParams.get("onBehalfOf");
-  const parsed = QuerySchema.safeParse({ onBehalfOf: raw ?? undefined });
-  if (!parsed.success) return null;
-  return parsed.data.onBehalfOf ?? null;
-}
-
-async function resolveEffectivePatient(
-  ctx: MiniAppContext,
-  onBehalfOf: string | null,
-): Promise<string | null> {
-  if (!onBehalfOf || onBehalfOf === ctx.patientId) return ctx.patientId;
-  const link = await prisma.patientFamily.findFirst({
-    where: {
-      clinicId: ctx.clinicId,
-      ownerPatientId: ctx.patientId,
-      linkedPatientId: onBehalfOf,
-    },
-    select: { id: true },
-  });
-  return link ? onBehalfOf : null;
-}
 
 export const POST = createMiniAppHandler(
   { bodySchema: ActionSchema },
@@ -66,9 +36,16 @@ export const POST = createMiniAppHandler(
     const reminderSendId = segments[segments.length - 1] ?? "";
     if (!reminderSendId) return err("missing_id", 400);
 
-    const onBehalfOf = parseOnBehalfOf(request);
-    const effectivePatientId = await resolveEffectivePatient(ctx, onBehalfOf);
-    if (!effectivePatientId) return forbidden();
+    const acting = await resolveActivePatient({
+      ctx: {
+        clinicId: ctx.clinicId,
+        patientId: ctx.patientId,
+        preferredLang: ctx.patient.preferredLang,
+      },
+      onBehalfOf: url.searchParams.get("onBehalfOf"),
+    });
+    if (!acting.ok) return err(acting.reason, 403);
+    const effectivePatientId = acting.patientId;
 
     const reminder = await prisma.medicationReminderSend.findFirst({
       where: {
@@ -131,6 +108,7 @@ export const POST = createMiniAppHandler(
       meta: {
         prescriptionId: reminder.prescriptionId,
         patientId: effectivePatientId,
+        onBehalfOfPatientId: acting.isOnBehalfOf ? effectivePatientId : null,
         action: typedBody.action,
         snoozeMinutes:
           typedBody.action === "SNOOZED"

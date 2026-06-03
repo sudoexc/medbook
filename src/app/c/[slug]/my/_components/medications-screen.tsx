@@ -25,8 +25,8 @@ import {
   MCard,
   MEmpty,
   MSection,
-  MSpinner,
 } from "./mini-ui";
+import { SkeletonList } from "./skeleton";
 import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
@@ -221,7 +221,7 @@ export function MedicationsScreen() {
     [mark, tg],
   );
 
-  if (query.isLoading) return <MSpinner label={t.common.loading} />;
+  if (query.isLoading) return <SkeletonList rows={4} variant="card" />;
   if (query.isError || !query.data) return <MEmpty>{t.common.error}</MEmpty>;
 
   const data = query.data;

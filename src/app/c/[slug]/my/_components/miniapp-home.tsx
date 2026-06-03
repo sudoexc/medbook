@@ -16,6 +16,7 @@ import {
   formatDateISO,
   formatTimeISO,
 } from "./mini-ui";
+import { SkeletonList } from "./skeleton";
 import { InboxBanner } from "./inbox-banner";
 import { LanguagePickerScreen } from "./language-picker-screen";
 import { TreatmentPlanCard } from "./treatment-plan-card";
@@ -111,7 +112,7 @@ function HomeContent({ slug }: { slug: string }) {
       <div className="ma-fade-up" style={{ animationDelay: "60ms" }}>
         <MSection title={t.home.upcomingHeader}>
           {upcoming.isLoading ? (
-            <MSpinner />
+            <SkeletonList rows={1} variant="appointment" />
           ) : upcoming.data && upcoming.data.length > 0 ? (
             <MCard>
               <div className="flex items-start justify-between gap-3">

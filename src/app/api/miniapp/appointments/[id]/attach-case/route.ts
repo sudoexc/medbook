@@ -70,12 +70,12 @@ export const POST = createMiniAppHandler(
           primaryDoctorId: appt.doctorId,
           primaryComplaint: body.primaryComplaint?.trim() || null,
           status: "OPEN",
-        } as never,
+        },
         select: { id: true, title: true },
       });
       await prisma.appointment.update({
         where: { id: appt.id },
-        data: { medicalCaseId: created.id } as never,
+        data: { medicalCaseId: created.id },
       });
       return ok({ caseId: created.id, kind: "created", title: created.title });
     }
@@ -95,7 +95,7 @@ export const POST = createMiniAppHandler(
     }
     await prisma.appointment.update({
       where: { id: appt.id },
-      data: { medicalCaseId: target.id } as never,
+      data: { medicalCaseId: target.id },
     });
     return ok({ caseId: target.id, kind: "attached", title: target.title });
   },

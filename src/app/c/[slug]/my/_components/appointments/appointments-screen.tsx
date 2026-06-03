@@ -7,9 +7,9 @@ import {
   MCard,
   MEmpty,
   MSection,
-  MSpinner,
   formatDateISO,
 } from "../mini-ui";
+import { SkeletonList } from "../skeleton";
 import { useT } from "../mini-i18n";
 import { useAppointments, MiniAppAppointment } from "../../_hooks/use-appointments";
 import { useActiveContext } from "../../_hooks/use-active-context";
@@ -69,7 +69,7 @@ export function AppointmentsScreen() {
         ))}
       </div>
       {query.isLoading ? (
-        <MSpinner />
+        <SkeletonList rows={4} variant="appointment" />
       ) : query.data && query.data.length > 0 ? (
         <MSection>
           {query.data.map((appt) => (

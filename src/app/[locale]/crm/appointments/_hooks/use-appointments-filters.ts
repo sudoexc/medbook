@@ -70,6 +70,14 @@ function parse(sp: URLSearchParams): AppointmentsFilterState {
     if (!v) continue;
     if (key === "onlyUnpaid") {
       out.onlyUnpaid = v === "true" || v === "1";
+    } else if (key === "from" || key === "to") {
+      // The app convention scatters `?from=ai-rec`/`?from=losses` analytics
+      // attribution markers across CRM links. On this page `from`/`to` are
+      // date-range filters, so a non-date value would poison the API call
+      // (server returns 400 → tiles render zeroed-out rows). Drop anything
+      // that isn't a parseable date so the attribution tag is harmless.
+      const t = Date.parse(v);
+      if (!Number.isNaN(t)) out[key] = v;
     } else if (key === "sort") {
       if (v === "date" || v === "createdAt") out.sort = v;
     } else if (key === "dir") {

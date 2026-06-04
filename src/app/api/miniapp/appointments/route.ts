@@ -225,6 +225,7 @@ export const POST = createMiniAppHandler(
           date: result.appointment.date,
           endDate: result.appointment.endDate,
           time: result.appointment.time,
+          ticketCode: result.appointment.ticketCode,
           durationMin: result.appointment.durationMin,
           priceFinal: result.appointment.priceFinal,
           status: result.appointment.status,

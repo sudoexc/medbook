@@ -64,12 +64,20 @@ export function BookDone() {
   }, [id]);
   const attachCase = useAttachCase();
 
+  // The QR encodes the public scan URL `<origin>/t/<ticketCode>` — any phone
+  // camera resolves it to the queue-status page without our own scanner. The
+  // code is the source of truth (printed under the QR for manual entry), so
+  // we wait for `appointment.ticketCode` to land before painting.
+  const ticketCode = appointment?.ticketCode ?? null;
   React.useEffect(() => {
-    if (!id) return;
-    QRCode.toDataURL(`ticket:${clinicSlug}:${id}`, { width: 256, margin: 1 })
+    if (!ticketCode) return;
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+    const url = `${origin}/t/${ticketCode}`;
+    QRCode.toDataURL(url, { width: 256, margin: 1 })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(null));
-  }, [id, clinicSlug]);
+  }, [ticketCode]);
 
   React.useEffect(() => {
     const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
@@ -155,12 +163,14 @@ export function BookDone() {
             <MSpinner />
           </div>
         )}
-        {id ? (
+        {ticketCode ? (
           <div className="mt-3 text-center">
             <div className="text-xs uppercase tracking-wide" style={{ color: "var(--tg-hint)" }}>
               {t.done.ticketLabel}
             </div>
-            <div className="font-mono text-sm">{id.slice(-8)}</div>
+            <div className="font-mono text-lg font-semibold tracking-widest">
+              {ticketCode}
+            </div>
           </div>
         ) : null}
       </MCard>

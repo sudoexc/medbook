@@ -1674,6 +1674,12 @@ model Appointment {
   durationMin Int      @default(30)
   endDate     DateTime
 
+  // Human-readable globally-unique short code (Crockford base32, 6 chars)
+  // shown on the booking confirmation screen and encoded in the patient's
+  // QR. Nullable in the column so the backfill migration can populate
+  // existing rows; new rows are always set by `bookAppointment`.
+  ticketCode String? @unique
+
   status       AppointmentStatus @default(BOOKED)
   queueStatus  AppointmentStatus @default(BOOKED)
   queueOrder   Int?

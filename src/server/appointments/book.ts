@@ -38,11 +38,13 @@ import type { Appointment, ChannelType } from "@/generated/prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { tashkentComponents } from "@/lib/booking-validation";
 import {
   applyTime,
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { generateTicketCode } from "@/server/appointments/ticket-code";
 import {
   recomputeAppointmentPrice,
   recomputeCaseAppointments,
@@ -141,6 +143,7 @@ export type BookedAppointmentProjection = {
   date: Date;
   endDate: Date;
   time: string | null;
+  ticketCode: string | null;
   durationMin: number;
   priceBase: number | null;
   priceService: number | null;
@@ -285,11 +288,16 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
           )
         : null;
 
-  const time =
-    input.time ??
-    `${String(startAt.getHours()).padStart(2, "0")}:${String(
-      startAt.getMinutes(),
-    ).padStart(2, "0")}`;
+  // The display column must be Tashkent wall-clock, never server-local. Prod
+  // runs UTC and `startAt.getHours()` skews −5h there (08:00 visit was being
+  // saved as "03:00" → showed up as 3 AM on the patient's done screen).
+  const time = input.time ?? tashkentComponents(startAt).time;
+
+  // Mint the human-readable ticket code BEFORE the tx so the (very rare)
+  // collision retry doesn't fight Serializable isolation. The code is shown
+  // on the done screen and encoded in the QR; the booking row's PK stays the
+  // cuid.
+  const ticketCode = await generateTicketCode();
 
   const autoConfirm = input.autoConfirm === true;
   const now = new Date();
@@ -329,6 +337,7 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
             medicalCaseId: input.medicalCaseId ?? null,
             date: startAt,
             time,
+            ticketCode,
             durationMin,
             endDate: endAt,
             status: autoConfirm ? "CONFIRMED" : "BOOKED",
@@ -535,6 +544,7 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
           date: created.date,
           endDate: created.endDate,
           time: created.time,
+          ticketCode: created.ticketCode,
           durationMin: created.durationMin,
           priceBase: created.priceBase,
           priceService: created.priceService,

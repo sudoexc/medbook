@@ -11,6 +11,7 @@ export type MiniAppAppointment = {
   id: string;
   date: string;
   time: string | null;
+  ticketCode: string | null;
   durationMin: number;
   status: string;
   channel: string;

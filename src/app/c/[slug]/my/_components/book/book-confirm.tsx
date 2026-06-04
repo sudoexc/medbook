@@ -23,10 +23,12 @@ import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
 
 function applyTimeToDate(dateISO: string, time: string): string {
-  const [y, m, d] = dateISO.split("-").map((v) => Number.parseInt(v, 10));
-  const [h, min] = time.split(":").map((v) => Number.parseInt(v, 10));
-  const d2 = new Date(y, (m ?? 1) - 1, d ?? 1, h ?? 0, min ?? 0, 0, 0);
-  return d2.toISOString();
+  // The wizard picks a Tashkent wall-clock "HH:mm" against a YYYY-MM-DD;
+  // both inputs are TZ-agnostic until we anchor them. Construct the instant
+  // explicitly at +05:00 so the booking is identical whether the patient's
+  // device is in Tashkent, Bishkek, or Berlin — `new Date(y,m,d,h,min)` would
+  // honour the browser's local TZ and skew the booked instant for travellers.
+  return new Date(`${dateISO}T${time}:00+05:00`).toISOString();
 }
 
 export function BookConfirm() {

@@ -43,10 +43,11 @@ export function computeEndDate(start: Date, durationMin: number): Date {
  */
 export function applyTime(date: Date, time: string | null | undefined): Date {
   if (!time) return date;
-  const [h, m] = time.split(":").map((v) => Number.parseInt(v, 10));
-  const out = new Date(date);
-  out.setHours(h ?? 0, m ?? 0, 0, 0);
-  return out;
+  // Prod runs UTC; setHours() uses server-local TZ, which skews the booked
+  // instant by 5h vs. the Tashkent wall clock the picker emits. Rebuild via
+  // Tashkent calendar date + picked HH:mm at +05:00.
+  const { date: dateStr } = tashkentComponents(date);
+  return toTashkentDate(dateStr, time);
 }
 
 export async function detectConflicts(

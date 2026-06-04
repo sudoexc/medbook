@@ -172,6 +172,9 @@ export type BookResult =
         | "service_not_found"
         | "doctor_busy"
         | "cabinet_busy"
+        | "doctor_time_off"
+        | "outside_schedule"
+        | "in_past"
         | "bad_start_at";
       until?: string;
     };
@@ -584,9 +587,19 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
         endAt,
       });
       if (!c.ok) {
+        // detectConflicts returns "in_past" | "doctor_busy" | "cabinet_busy" |
+        // "doctor_time_off" | "outside_schedule" — all of which are in the
+        // BookResult union. Cast preserves the runtime value (was previously
+        // narrowed to doctor_busy|cabinet_busy, which dropped the other three
+        // and made the route handler's switch miss → 500).
         return {
           ok: false,
-          reason: c.reason as "doctor_busy" | "cabinet_busy",
+          reason: c.reason as
+            | "doctor_busy"
+            | "cabinet_busy"
+            | "doctor_time_off"
+            | "outside_schedule"
+            | "in_past",
           until: c.until,
         };
       }
@@ -605,7 +618,12 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   if (txResult.kind === "conflict") {
     return {
       ok: false,
-      reason: txResult.reason as "doctor_busy" | "cabinet_busy",
+      reason: txResult.reason as
+        | "doctor_busy"
+        | "cabinet_busy"
+        | "doctor_time_off"
+        | "outside_schedule"
+        | "in_past",
       until: txResult.until,
     };
   }

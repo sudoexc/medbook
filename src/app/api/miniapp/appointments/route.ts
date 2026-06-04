@@ -206,6 +206,9 @@ export const POST = createMiniAppHandler(
           return err("service_not_found", 404);
         case "doctor_busy":
         case "cabinet_busy":
+        case "doctor_time_off":
+        case "outside_schedule":
+        case "in_past":
           return conflict(
             result.reason,
             result.until ? { until: result.until } : undefined,

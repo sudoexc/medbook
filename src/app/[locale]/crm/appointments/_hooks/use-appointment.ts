@@ -87,6 +87,7 @@ function invalidateAppointmentSurfaces(
     qc.invalidateQueries({ queryKey: appointmentKey(appointmentId), ...opts });
   }
   qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
+  qc.invalidateQueries({ queryKey: ["appointments", "slots"], ...opts });
   qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
   qc.invalidateQueries({ queryKey: ["reception"], ...opts });
   qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });

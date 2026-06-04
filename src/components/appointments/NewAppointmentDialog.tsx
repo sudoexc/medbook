@@ -408,6 +408,7 @@ export function NewAppointmentDialog({
     onSuccess: async (created) => {
       const opts = { refetchType: "active" } as const;
       qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
+      qc.invalidateQueries({ queryKey: ["appointments", "slots"], ...opts });
       qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
       qc.invalidateQueries({ queryKey: ["reception"], ...opts });
       qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });

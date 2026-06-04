@@ -131,6 +131,9 @@ export function useBookAppointment() {
       qc.invalidateQueries({
         queryKey: ["miniapp", "appointments", clinicSlug],
       });
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "slots", clinicSlug],
+      });
     },
   });
 }
@@ -165,6 +168,9 @@ export function useAttachCase() {
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ["miniapp", "appointments", clinicSlug],
+      });
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "slots", clinicSlug],
       });
     },
   });
@@ -209,6 +215,9 @@ export function useCancelAppointment() {
       qc.invalidateQueries({
         queryKey: ["miniapp", "appointments", clinicSlug],
       });
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "slots", clinicSlug],
+      });
     },
   });
 }
@@ -236,6 +245,9 @@ export function useRescheduleAppointment() {
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ["miniapp", "appointments", clinicSlug],
+      });
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "slots", clinicSlug],
       });
     },
   });

@@ -68,7 +68,11 @@ export function SlotPicker({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as SlotsResponse;
     },
-    staleTime: 30_000,
+    // Live picker — never reuse a cached slot grid. A booking made in another
+    // tab / a just-cancelled appt would otherwise still appear free for up to
+    // staleTime and lead the user into a 409 doctor_busy after submit.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const slots = query.data?.slots ?? [];

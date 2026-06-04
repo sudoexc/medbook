@@ -74,6 +74,32 @@ export function PatientPicker({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Carry the search query into the inline new-patient form so the receptionist
+  // doesn't retype the name/phone they already entered. Pure digits / "+"
+  // prefix → phone, otherwise full name. Only fills empty fields so a
+  // half-completed form isn't clobbered by a second pass.
+  const openNewPatient = () => {
+    const trimmed = search.trim();
+    if (trimmed.length > 0) {
+      const hasLetters = /\p{L}/u.test(trimmed);
+      const digits = trimmed.replace(/\D/g, "");
+      const looksLikePhone =
+        !hasLetters && (trimmed.startsWith("+") || digits.length >= 3);
+      const seed: Partial<NewPatientForm> = looksLikePhone
+        ? !newPatientForm.phone.trim()
+          ? { phone: trimmed }
+          : {}
+        : !newPatientForm.fullName.trim()
+          ? { fullName: trimmed }
+          : {};
+      if (Object.keys(seed).length > 0) {
+        onChangeNewPatient({ ...newPatientForm, ...seed });
+      }
+    }
+    onToggleNew(true);
+    setOpen(false);
+  };
+
   return (
     <div className="grid gap-1.5">
       <Label>{t("label")}</Label>
@@ -156,10 +182,7 @@ export function PatientPicker({
               )}
               <button
                 type="button"
-                onClick={() => {
-                  onToggleNew(true);
-                  setOpen(false);
-                }}
+                onClick={openNewPatient}
                 className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary hover:bg-primary/5"
               >
                 <PlusIcon className="size-4" />
@@ -171,7 +194,7 @@ export function PatientPicker({
           {!disabled ? (
             <button
               type="button"
-              onClick={() => onToggleNew(true)}
+              onClick={openNewPatient}
               className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
             >
               <PlusIcon className="size-3.5" />

@@ -76,12 +76,12 @@ export function BookConfirm() {
   const doctor = doctors.data?.find((d) => d.id === draft.doctorId) ?? null;
   const total = selectedServices.reduce((a, s) => a + s.priceBase, 0);
 
-  // Phase M4 — Mint one Idempotency-Key per confirmation-screen mount.
-  // The MainButton's `onClick` lives in TG's UI thread so a fast double-tap
-  // fires `submit()` twice before the first request returns; we want the
-  // second request to replay the first response instead of creating a
-  // duplicate booking. `useRef` keeps the key stable across re-renders, and
-  // crypto.randomUUID() is available in every Telegram WebView shell.
+  // Phase M4 — Mint one Idempotency-Key per confirmation-screen mount. A fast
+  // double-tap on the in-page submit button can fire `submit()` twice before
+  // the first request returns; we want the second request to replay the first
+  // response instead of creating a duplicate booking. `useRef` keeps the key
+  // stable across re-renders, and crypto.randomUUID() is available in every
+  // Telegram WebView shell.
   const idemKeyRef = React.useRef<string | null>(null);
   if (idemKeyRef.current === null) {
     idemKeyRef.current =
@@ -157,17 +157,6 @@ export function BookConfirm() {
     );
     return off;
   }, [tg, router, clinicSlug]);
-
-  React.useEffect(() => {
-    const off = tg.setMainButton({
-      text: book.isPending ? t.book.bookInProgress : t.book.bookBtn,
-      active: canSubmit && !book.isPending,
-      progress: book.isPending,
-      visible: true,
-      onClick: submit,
-    });
-    return off;
-  }, [tg, canSubmit, book.isPending, submit, t.book.bookBtn, t.book.bookInProgress]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
   if (!draft.doctorId || !draft.date || !draft.time) {

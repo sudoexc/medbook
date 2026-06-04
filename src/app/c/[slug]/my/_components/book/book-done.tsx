@@ -76,16 +76,6 @@ export function BookDone() {
     return off;
   }, [tg, router, clinicSlug]);
 
-  React.useEffect(() => {
-    const off = tg.setMainButton({
-      text: t.done.goHome,
-      active: true,
-      visible: true,
-      onClick: () => router.push(`/c/${clinicSlug}/my`),
-    });
-    return off;
-  }, [tg, router, clinicSlug, t.done.goHome]);
-
   return (
     <div className="ma-step-enter">
       <MCard className="mb-4">

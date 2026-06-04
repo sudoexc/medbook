@@ -92,16 +92,6 @@ export function ServicePicker() {
     return off;
   }, [tg, router, clinicSlug]);
 
-  React.useEffect(() => {
-    const off = tg.setMainButton({
-      text: t.book.continue,
-      active: canContinue,
-      visible: true,
-      onClick: goNext,
-    });
-    return off;
-  }, [tg, canContinue, goNext, t.book.continue]);
-
   if (!hydrated) return <MSpinner label={t.common.loading} />;
   if (doctors.isLoading) return <SkeletonList rows={5} variant="line" />;
   if (doctors.isError) return <MEmpty>{t.common.error}</MEmpty>;

@@ -3,13 +3,11 @@
 import * as React from "react";
 
 import { MButton } from "../mini-ui";
-import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 
 /**
- * Sticky footer with the primary "Продолжить"-style CTA. In Telegram the
- * native MainButton renders the same action at the bottom of the WebView,
- * so we hide this inline copy there (and keep only the tagline strip).
- * Browser/dev context still shows the full inline button as a fallback.
+ * Sticky footer with the primary "Продолжить"-style CTA. Drawn in-page in both
+ * Telegram and browser contexts so the button matches the screen's visual
+ * language — we deliberately don't defer to TG's native MainButton anymore.
  */
 export function WizardFooter({
   primaryLabel,
@@ -24,17 +22,6 @@ export function WizardFooter({
   loading?: boolean;
   tagline?: string;
 }) {
-  const { isTelegramContext } = useTelegramWebApp();
-  if (isTelegramContext) {
-    return tagline ? (
-      <div
-        className="mt-6 px-2 py-3 text-center text-[11px]"
-        style={{ color: "var(--tg-hint)" }}
-      >
-        {tagline}
-      </div>
-    ) : null;
-  }
   return (
     <div className="sticky bottom-0 left-0 right-0 -mx-4 mt-6 border-t px-4 pb-4 pt-3"
       style={{

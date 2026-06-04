@@ -100,16 +100,6 @@ export function SlotPicker() {
     router.push(`/c/${clinicSlug}/my/book/confirm`);
   }, [canContinue, router, clinicSlug]);
 
-  React.useEffect(() => {
-    const off = tg.setMainButton({
-      text: t.book.continue,
-      active: canContinue,
-      visible: true,
-      onClick: goNext,
-    });
-    return off;
-  }, [tg, canContinue, goNext, t.book.continue]);
-
   if (!hydrated) return <MSpinner label={t.common.loading} />;
 
   const allSlots = slots.data?.slots ?? [];

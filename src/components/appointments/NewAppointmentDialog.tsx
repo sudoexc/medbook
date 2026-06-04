@@ -335,11 +335,25 @@ export function NewAppointmentDialog({
         if (!patientRes.ok) {
           const j = (await patientRes.json().catch(() => null)) as {
             error?: string;
+            reason?: string;
+            patientId?: string;
           } | null;
-          throw new Error(j?.error ?? `HTTP ${patientRes.status}`);
+          // Phone already in the clinic's patient base — the server hands back
+          // the existing id so we don't ask the receptionist to retype anything.
+          // Reuse it and proceed straight to booking.
+          if (
+            patientRes.status === 409 &&
+            j?.reason === "phone_already_exists" &&
+            j.patientId
+          ) {
+            resolvedPatientId = j.patientId;
+          } else {
+            throw new Error(j?.error ?? `HTTP ${patientRes.status}`);
+          }
+        } else {
+          const p = (await patientRes.json()) as { id: string };
+          resolvedPatientId = p.id;
         }
-        const p = (await patientRes.json()) as { id: string };
-        resolvedPatientId = p.id;
       }
       if (!resolvedPatientId) throw new Error("PATIENT_REQUIRED");
       if (!values.doctorId) throw new Error("DOCTOR_REQUIRED");

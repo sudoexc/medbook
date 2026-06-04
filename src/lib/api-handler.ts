@@ -261,9 +261,30 @@ export function createApiHandler<TBody = unknown>(
       return viewOnlyBlockResponse(ctx.impersonation.grantId);
     }
 
-    return runWithTenant(ctx, () =>
-      handler({ request, body: parsed.body, ctx })
-    );
+    try {
+      const resp = await runWithTenant(ctx, () =>
+        handler({ request, body: parsed.body, ctx })
+      );
+      if (!(resp instanceof Response)) {
+        console.error("[api-handler] handler returned non-Response", {
+          url: request.url,
+          method: request.method,
+          resp,
+        });
+        return json({ error: "internal_no_response" }, { status: 500 });
+      }
+      return resp;
+    } catch (e) {
+      const err = e as Error;
+      console.error("[api-handler] uncaught", {
+        url: request.url,
+        method: request.method,
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack?.split("\n").slice(0, 8).join("\n"),
+      });
+      return json({ error: "internal_error", message: err?.message }, { status: 500 });
+    }
   };
 }
 

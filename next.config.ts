@@ -62,6 +62,11 @@ const nextConfig: NextConfig = {
     "/api/**/*": [
       "node_modules/@aws-sdk/**/*",
       "node_modules/@smithy/**/*",
+      // `@aws-sdk/core` does a plain `require('@aws/lambda-invoke-store')`
+      // inside `submodules/client/index.js`. It is NOT under @aws-sdk — it's
+      // a separate `@aws/*` scope — and the tracer misses it without an
+      // explicit hint.
+      "node_modules/@aws/**/*",
     ],
   },
   // CI/CD runs tsc --noEmit + vitest as separate gates. next build's bundled

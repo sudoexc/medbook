@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
+  AlertOctagonIcon,
   CalendarCheck2Icon,
   CheckCircle2Icon,
   ClockIcon,
@@ -95,11 +96,11 @@ export function AppointmentsTiles({
       tone: "purple",
     },
     {
-      key: "late",
-      label: t("late"),
-      value: buckets.late,
-      hint: t("lateHint"),
-      icon: ClockIcon,
+      key: "overdue",
+      label: t("overdue"),
+      value: buckets.overdue,
+      hint: t("overdueHint"),
+      icon: AlertOctagonIcon,
       tone: "danger",
     },
     {

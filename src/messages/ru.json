@@ -544,9 +544,11 @@
       "actions": "Действия"
     },
     "risk": {
+      "overdue": "Ожидает решения",
       "high": "Высокий",
       "medium": "Средний",
-      "low": "Низкий"
+      "low": "Низкий",
+      "done": "Закрыта"
     },
     "cell": {
       "firstVisit": "Первичный приём",
@@ -556,8 +558,17 @@
       "noCabinet": "Без кабинета",
       "lateMin": "+{min} мин",
       "inMin": "Через {min} мин",
+      "overdueBadge": "Просрочена · {min} мин",
       "callAria": "Позвонить",
       "telegramAria": "Написать в Telegram"
+    },
+    "rowInline": {
+      "arrived": "Принять",
+      "arrivedAria": "Отметить, что пациент пришёл",
+      "reschedule": "Перенести",
+      "rescheduleAria": "Перенести приём",
+      "noShow": "Неявка",
+      "noShowAria": "Отметить как неявку"
     },
     "status": {
       "booked": "Записан",
@@ -625,12 +636,14 @@
       "soon": "Скоро",
       "unconfirmed": "Не подтверждены",
       "late": "Опоздания",
+      "overdue": "Просрочены",
       "arrived": "Прибыли",
       "allHint": "+{count} за сегодня",
       "needsAttentionHint": "Требуют действий",
       "soonHint": "В ближайший час",
       "unconfirmedHint": "Нужно подтвердить",
       "lateHint": "От 5 до 15 мин",
+      "overdueHint": "Прошло время — решить",
       "arrivedHint": "Готовы к приёму"
     },
     "kpiStrip": {

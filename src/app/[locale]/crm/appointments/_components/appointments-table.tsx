@@ -43,10 +43,18 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
 
 import {
+  isOverdue,
+  isRunningLate,
+  minutesPastStart,
+  riskBand,
+} from "@/lib/appointments/overdue";
+
+import {
   paymentStatusFor,
   type AppointmentRow,
   type AppointmentsListFilters,
 } from "../_hooks/use-appointments-list";
+import { useBulkStatus } from "../_hooks/use-appointment";
 
 const STATUS_VARIANT: Record<
   AppointmentRow["status"],
@@ -95,22 +103,20 @@ const COLS_TEMPLATE =
   "40px minmax(220px,1.6fr) minmax(180px,1.3fr) minmax(180px,1.4fr) 150px minmax(160px,1.2fr) 110px 120px 120px";
 
 /**
- * Compute the "row tone" — danger when overdue, warning when soon, none
- * otherwise. Used to tint the row background.
+ * Compute the "row tone" — danger when the scheduled window passed without
+ * action, warning when start is imminent, none otherwise. Used to tint the
+ * row background. Overdue check delegates to the shared helper so the
+ * lifecycle-sweep worker and this UI see the exact same definition.
  */
 function rowTone(
   row: AppointmentRow,
   now: number,
 ): "danger" | "warning" | null {
+  if (isOverdue(row, now) || isRunningLate(row, now)) return "danger";
   const startMs = new Date(row.date).getTime();
-  const fiveMin = 5 * 60 * 1000;
   const fifteenMin = 15 * 60 * 1000;
-  const isLate =
-    (row.status === "BOOKED" || row.status === "WAITING") &&
-    now - startMs > fiveMin;
-  if (isLate) return "danger";
   if (
-    row.status === "BOOKED" &&
+    (row.status === "BOOKED" || row.status === "CONFIRMED") &&
     startMs - now >= 0 &&
     startMs - now <= fifteenMin
   ) {
@@ -128,19 +134,7 @@ function formatTimeRange(row: AppointmentRow): string {
 }
 
 function lateMinutes(row: AppointmentRow, now: number): number {
-  const startMs = new Date(row.date).getTime();
-  return Math.max(0, Math.round((now - startMs) / 60000));
-}
-
-function riskScore(row: AppointmentRow, now: number): "high" | "medium" | "low" {
-  if (row.status === "NO_SHOW") return "high";
-  const startMs = new Date(row.date).getTime();
-  const diffMin = (now - startMs) / 60000;
-  if ((row.status === "BOOKED" || row.status === "WAITING") && diffMin > 15) {
-    return "high";
-  }
-  if (row.channel === "PHONE" || row.channel === "WEBSITE") return "medium";
-  return "low";
+  return minutesPastStart(row, now);
 }
 
 export function AppointmentsTable({
@@ -163,6 +157,7 @@ export function AppointmentsTable({
   const t = useTranslations("appointments");
   const locale = useLocale() as Locale;
   const router = useRouter();
+  const bulkStatus = useBulkStatus();
 
   // Single timestamp for the whole render so all row tone / delay calcs agree.
   // Refreshes whenever the rows list changes (i.e. new server data arrived).
@@ -312,13 +307,18 @@ export function AppointmentsTable({
         cell: ({ row }) => {
           const r = row.original;
           const tone = rowTone(r, now);
+          const overdue = isOverdue(r, now);
           const late = tone === "danger" ? lateMinutes(r, now) : 0;
           return (
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-foreground tabular-nums">
                 {formatTimeRange(r)}
               </span>
-              {late > 0 ? (
+              {overdue ? (
+                <span className="mt-0.5 inline-flex w-fit items-center rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-bold text-destructive">
+                  {t("cell.overdueBadge", { min: late })}
+                </span>
+              ) : late > 0 ? (
                 <span className="mt-0.5 inline-flex w-fit items-center rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-bold text-destructive">
                   {t("cell.lateMin", { min: late })}
                 </span>
@@ -365,21 +365,31 @@ export function AppointmentsTable({
         id: "risk",
         header: () => t("columns.riskNoShow"),
         cell: ({ row }) => {
-          const r = riskScore(row.original, now);
-          const label = t(`risk.${r}` as never);
+          const band = riskBand(row.original, now);
+          const label = t(`risk.${band}` as never);
+          // "overdue" is a needs-decision state, not a forecast — it gets the
+          // strongest tone and a leading dot to set it apart from the scalar
+          // high/medium/low bands.
           const cls =
-            r === "high"
-              ? "bg-destructive/10 text-destructive"
-              : r === "medium"
-                ? "bg-warning/15 text-warning"
-                : "bg-success/15 text-success";
+            band === "overdue"
+              ? "bg-destructive/15 text-destructive ring-1 ring-inset ring-destructive/30"
+              : band === "high"
+                ? "bg-destructive/10 text-destructive"
+                : band === "medium"
+                  ? "bg-warning/15 text-warning"
+                  : band === "done"
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-success/15 text-success";
           return (
             <span
               className={cn(
-                "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold",
                 cls,
               )}
             >
+              {band === "overdue" ? (
+                <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-destructive" />
+              ) : null}
               {label}
             </span>
           );
@@ -424,6 +434,62 @@ export function AppointmentsTable({
         cell: ({ row }) => {
           const r = row.original;
           const tel = r.patient.phone.replace(/\s/g, "");
+          // On overdue rows the receptionist needs a decision, not contact
+          // shortcuts. Surface Принять / Перенести / Неявка inline so the row
+          // can be cleared without opening the drawer.
+          if (isOverdue(r, now)) {
+            return (
+              <div className="flex items-center justify-end gap-1">
+                <button
+                  type="button"
+                  disabled={bulkStatus.isPending}
+                  aria-label={t("rowInline.arrivedAria")}
+                  title={t("rowInline.arrived")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    bulkStatus.mutate({ ids: [r.id], status: "WAITING" });
+                  }}
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-success/30 bg-success/10 px-2 text-[11px] font-semibold text-success transition-colors hover:bg-success/15 disabled:opacity-50"
+                >
+                  {t("rowInline.arrived")}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t("rowInline.rescheduleAria")}
+                  title={t("rowInline.reschedule")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRowSelect(r.id);
+                  }}
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  {t("rowInline.reschedule")}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkStatus.isPending}
+                  aria-label={t("rowInline.noShowAria")}
+                  title={t("rowInline.noShow")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    bulkStatus.mutate({ ids: [r.id], status: "NO_SHOW" });
+                  }}
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-2 text-[11px] font-semibold text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
+                >
+                  {t("rowInline.noShow")}
+                </button>
+                <RowMenu
+                  onOpen={() => onRowSelect(r.id)}
+                  onOpenPatient={() =>
+                    router.push(`/${locale}/crm/patients/${r.patient.id}`)
+                  }
+                  onCall={() => {
+                    window.location.href = `tel:${tel}`;
+                  }}
+                />
+              </div>
+            );
+          }
           return (
             <div className="flex items-center justify-end gap-1">
               <button
@@ -475,6 +541,7 @@ export function AppointmentsTable({
       selectedIds,
       onRowSelect,
       now,
+      bulkStatus,
     ],
   );
 

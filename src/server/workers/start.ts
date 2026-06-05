@@ -23,6 +23,7 @@ import { registerRevenueSchedulers } from "@/server/revenue/scheduler";
 import { startTgPollingWorkers } from "@/server/telegram/poll";
 
 import { startAnalyticsRefreshWorker } from "./analytics-refresh";
+import { startAppointmentLifecycleSweepWorker } from "./appointment-lifecycle-sweep";
 import { startDataExportWorker } from "./data-export";
 import { startScheduledReportsWorker } from "./scheduled-reports";
 import { registerDsarScheduler } from "./data-deletion";
@@ -49,6 +50,13 @@ async function main() {
   // Phase 9e — flip TRIAL→PAST_DUE for clinics whose 30-day trial elapsed.
   // Same 60s cadence as the notifications scheduler: cheap query, idempotent.
   const trialExpiry = startTrialExpirySchedulerWorker(60_000);
+
+  // Appointment lifecycle sweep — auto-flip stale CONFIRMED/BOOKED/SKIPPED
+  // rows to NO_SHOW once the scheduled end has passed by an hour. Definition
+  // of "stale" is shared with the CRM table via `src/lib/appointments/overdue`.
+  // 10-minute cadence: twice the UI grace, so a row is visibly "Просрочена"
+  // for at least one tick before the worker can act.
+  const lifecycleSweep = startAppointmentLifecycleSweepWorker(10 * 60_000);
 
   // Phase 13 Wave 2 — Action Center recompute every 15 minutes. Iterates
   // active clinics and fires the 10 detectors per clinic via runActionEngine.
@@ -137,6 +145,7 @@ async function main() {
     scheduler.stop();
     outboxPumper.stop();
     trialExpiry.stop();
+    lifecycleSweep.stop();
     actionEngine.stop();
     revenue.stop();
     preVisit.stop();

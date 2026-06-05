@@ -3,6 +3,7 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { isOverdue, isRunningLate } from "@/lib/appointments/overdue";
 
 /**
  * Denormalised row returned by `GET /api/crm/appointments` — see §6.2.
@@ -225,14 +226,17 @@ export function flattenAppointments(
 /**
  * Business-focused counts for the top tiles / smart tabs on the Записи page.
  *
- * - `needsAttention` — rows that are WAITING **or** BOOKED with start time
- *   already in the past (overdue).
- * - `soon` — BOOKED rows starting within the next 15 minutes.
- * - `unconfirmed` — BOOKED rows (until we have a dedicated confirmation
- *   field, BOOKED is treated as "not yet confirmed").
- * - `late` — BOOKED or WAITING rows more than 5 minutes past their start.
+ * - `needsAttention` — WAITING rows **or** any overdue row (status
+ *   BOOKED/CONFIRMED/SKIPPED whose end time has passed beyond the grace).
+ * - `soon` — BOOKED/CONFIRMED rows starting within the next 15 minutes.
+ * - `unconfirmed` — BOOKED rows (CONFIRMED is its own state now).
+ * - `late` — running-late rows (start passed, end window still open) for
+ *   pre-arrival statuses.
+ * - `overdue` — rows past their end window without resolution; the receptionist
+ *   needs to decide arrive/no-show/reschedule.
  * - `arrived` — IN_PROGRESS or COMPLETED rows.
  * - `needsCall` — BOOKED rows arriving via PHONE/TELEGRAM without any payment yet.
+ * - `riskNoShow` — NO_SHOW + overdue + running-late non-walkin rows.
  */
 export function tallyBuckets(
   rows: AppointmentRow[],
@@ -243,33 +247,34 @@ export function tallyBuckets(
   soon: number;
   unconfirmed: number;
   late: number;
+  overdue: number;
   arrived: number;
   needsCall: number;
   riskNoShow: number;
 } {
   const nowMs = now.getTime();
   const fifteenMin = 15 * 60 * 1000;
-  const fiveMin = 5 * 60 * 1000;
   let needsAttention = 0;
   let soon = 0;
   let unconfirmed = 0;
   let late = 0;
+  let overdue = 0;
   let arrived = 0;
   let needsCall = 0;
   let riskNoShow = 0;
   for (const r of rows) {
     const startMs = new Date(r.date).getTime();
-    const isLate =
-      (r.status === "BOOKED" || r.status === "WAITING") &&
-      nowMs - startMs > fiveMin;
+    const rowIsOverdue = isOverdue(r, nowMs);
+    const rowIsLate = isRunningLate(r, nowMs);
     const isSoon =
-      r.status === "BOOKED" &&
+      (r.status === "BOOKED" || r.status === "CONFIRMED") &&
       startMs - nowMs >= 0 &&
       startMs - nowMs <= fifteenMin;
-    if (r.status === "WAITING" || isLate) needsAttention += 1;
+    if (r.status === "WAITING" || rowIsOverdue) needsAttention += 1;
     if (isSoon) soon += 1;
     if (r.status === "BOOKED") unconfirmed += 1;
-    if (isLate) late += 1;
+    if (rowIsLate) late += 1;
+    if (rowIsOverdue) overdue += 1;
     if (r.status === "IN_PROGRESS" || r.status === "COMPLETED") arrived += 1;
     if (
       r.status === "BOOKED" &&
@@ -278,7 +283,11 @@ export function tallyBuckets(
     ) {
       needsCall += 1;
     }
-    if (r.status === "NO_SHOW" || (isLate && r.channel !== "WALKIN")) {
+    if (
+      r.status === "NO_SHOW" ||
+      rowIsOverdue ||
+      (rowIsLate && r.channel !== "WALKIN")
+    ) {
       riskNoShow += 1;
     }
   }
@@ -288,6 +297,7 @@ export function tallyBuckets(
     soon,
     unconfirmed,
     late,
+    overdue,
     arrived,
     needsCall,
     riskNoShow,
@@ -307,21 +317,16 @@ export function filterRowsByBucket(
   if (!bucket || bucket === "all") return rows;
   const nowMs = now.getTime();
   const fifteenMin = 15 * 60 * 1000;
-  const fiveMin = 5 * 60 * 1000;
   switch (bucket) {
     case "needs_attention":
-      return rows.filter((r) => {
-        const startMs = new Date(r.date).getTime();
-        const isLate =
-          (r.status === "BOOKED" || r.status === "WAITING") &&
-          nowMs - startMs > fiveMin;
-        return r.status === "WAITING" || isLate;
-      });
+      return rows.filter(
+        (r) => r.status === "WAITING" || isOverdue(r, nowMs),
+      );
     case "soon":
       return rows.filter((r) => {
         const startMs = new Date(r.date).getTime();
         return (
-          r.status === "BOOKED" &&
+          (r.status === "BOOKED" || r.status === "CONFIRMED") &&
           startMs - nowMs >= 0 &&
           startMs - nowMs <= fifteenMin
         );
@@ -329,13 +334,9 @@ export function filterRowsByBucket(
     case "unconfirmed":
       return rows.filter((r) => r.status === "BOOKED");
     case "late":
-      return rows.filter((r) => {
-        const startMs = new Date(r.date).getTime();
-        return (
-          (r.status === "BOOKED" || r.status === "WAITING") &&
-          nowMs - startMs > fiveMin
-        );
-      });
+      return rows.filter((r) => isRunningLate(r, nowMs));
+    case "overdue":
+      return rows.filter((r) => isOverdue(r, nowMs));
     case "arrived":
       return rows.filter(
         (r) => r.status === "IN_PROGRESS" || r.status === "COMPLETED",

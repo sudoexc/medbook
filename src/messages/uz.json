@@ -544,9 +544,11 @@
       "actions": "Amallar"
     },
     "risk": {
+      "overdue": "Qaror kutmoqda",
       "high": "Yuqori",
       "medium": "O'rta",
-      "low": "Past"
+      "low": "Past",
+      "done": "Yopilgan"
     },
     "cell": {
       "firstVisit": "Birlamchi qabul",
@@ -556,8 +558,17 @@
       "noCabinet": "Kabinetsiz",
       "lateMin": "+{min} daq.",
       "inMin": "{min} daq. qoldi",
+      "overdueBadge": "Muddati o'tdi · {min} daq.",
       "callAria": "Qo'ng'iroq qilish",
       "telegramAria": "Telegramga yozish"
+    },
+    "rowInline": {
+      "arrived": "Keldi",
+      "arrivedAria": "Bemor kelganini belgilash",
+      "reschedule": "Ko'chirish",
+      "rescheduleAria": "Qabulni ko'chirish",
+      "noShow": "Kelmadi",
+      "noShowAria": "Kelmagan deb belgilash"
     },
     "status": {
       "booked": "Yozilgan",
@@ -625,12 +636,14 @@
       "soon": "Yaqin",
       "unconfirmed": "Tasdiqlanmagan",
       "late": "Kechikkanlar",
+      "overdue": "Muddati o'tdi",
       "arrived": "Yetib kelganlar",
       "allHint": "Bugun uchun +{count}",
       "needsAttentionHint": "Choralar talab qilinadi",
       "soonHint": "Eng yaqin soatda",
       "unconfirmedHint": "Tasdiqlash kerak",
       "lateHint": "5–15 daqiqa",
+      "overdueHint": "Vaqti o'tdi — qaror kerak",
       "arrivedHint": "Qabulga tayyor"
     },
     "kpiStrip": {

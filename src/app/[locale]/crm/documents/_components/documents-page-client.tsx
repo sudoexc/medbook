@@ -188,7 +188,16 @@ export function DocumentsPageClient() {
                     key={d.id}
                     className="border-b border-border last:border-b-0"
                   >
-                    <td className="px-3 py-2 font-medium">{d.title}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{d.title}</span>
+                        {d.uploadedBy === null ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                            {t("patientUploadBadge")}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="px-3 py-2">
                       {d.patient ? (
                         <Link

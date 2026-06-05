@@ -13,11 +13,11 @@ import {
   UserRound,
 } from "lucide-react";
 
-import { useDoctors } from "../../_hooks/use-doctors";
+import { minDoctorPrice, useDoctors } from "../../_hooks/use-doctors";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
-import { MEmpty, MSpinner } from "../mini-ui";
+import { MEmpty, MSpinner, formatSum } from "../mini-ui";
 import { SkeletonList } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
@@ -46,6 +46,7 @@ type Spec = {
   labelRu: string;
   labelUz: string;
   count: number;
+  minPrice: number | null;
 };
 
 export function ServicePicker() {
@@ -64,15 +65,21 @@ export function ServicePicker() {
     for (const d of doctors.data) {
       const key = d.specializationRu.trim();
       if (!key) continue;
+      const docMin = minDoctorPrice(d.services);
       const existing = bucket.get(key);
       if (existing) {
         existing.count += 1;
+        if (docMin !== null) {
+          existing.minPrice =
+            existing.minPrice === null ? docMin : Math.min(existing.minPrice, docMin);
+        }
       } else {
         bucket.set(key, {
           key,
           labelRu: d.specializationRu,
           labelUz: d.specializationUz || d.specializationRu,
           count: 1,
+          minPrice: docMin,
         });
       }
     }
@@ -149,6 +156,21 @@ export function ServicePicker() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{label}</div>
+                  {s.minPrice !== null ? (
+                    <div
+                      className="mt-0.5 text-xs"
+                      style={{
+                        color: active
+                          ? "color-mix(in oklch, var(--tg-accent) 80%, var(--tg-hint))"
+                          : "var(--tg-hint)",
+                      }}
+                    >
+                      {t.book.priceFrom.replace(
+                        "{price}",
+                        formatSum(s.minPrice, t.common.currency),
+                      )}
+                    </div>
+                  ) : null}
                 </div>
                 {active ? <CheckCircle /> : null}
               </button>

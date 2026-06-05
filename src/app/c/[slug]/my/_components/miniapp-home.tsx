@@ -2,7 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Calendar, FileText, Gift, History, Pill, User } from "lucide-react";
+import {
+  Calendar,
+  CalendarPlus,
+  FileText,
+  Gift,
+  History,
+  MessageSquare,
+  Pill,
+  User,
+} from "lucide-react";
 
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useT } from "./mini-i18n";
@@ -17,6 +26,7 @@ import {
   formatTimeISO,
 } from "./mini-ui";
 import { SkeletonList } from "./skeleton";
+import { ClinicInfoCard } from "./clinic-info-card";
 import { InboxBanner } from "./inbox-banner";
 import { LanguagePickerScreen } from "./language-picker-screen";
 import { TreatmentPlanCard } from "./treatment-plan-card";
@@ -108,6 +118,7 @@ function HomeContent({ slug }: { slug: string }) {
         </p>
       </div>
       <InboxBanner />
+      <ClinicInfoCard slug={slug} />
       <TreatmentPlanCard slug={slug} />
       <div className="ma-fade-up" style={{ animationDelay: "60ms" }}>
         <MSection title={t.home.upcomingHeader}>
@@ -142,7 +153,7 @@ function HomeContent({ slug }: { slug: string }) {
               </div>
             </MCard>
           ) : (
-            <MEmpty>{t.home.noUpcoming}</MEmpty>
+            <MEmpty icon={CalendarPlus}>{t.home.noUpcoming}</MEmpty>
           )}
         </MSection>
       </div>
@@ -154,21 +165,21 @@ function HomeContent({ slug }: { slug: string }) {
           delay={120}
         />
         <CtaTile
+          href={`/c/${slug}/my/messages`}
+          label={t.home.ctaChat}
+          icon={MessageSquare}
+          delay={170}
+        />
+        <CtaTile
           href={`/c/${slug}/my/appointments`}
           label={t.home.ctaMyAppointments}
           icon={History}
-          delay={170}
+          delay={220}
         />
         <CtaTile
           href={`/c/${slug}/my/documents`}
           label={t.home.ctaDocuments}
           icon={FileText}
-          delay={220}
-        />
-        <CtaTile
-          href={`/c/${slug}/my/profile`}
-          label={t.home.ctaProfile}
-          icon={User}
           delay={270}
         />
         <CtaTile
@@ -178,10 +189,16 @@ function HomeContent({ slug }: { slug: string }) {
           delay={320}
         />
         <CtaTile
+          href={`/c/${slug}/my/profile`}
+          label={t.home.ctaProfile}
+          icon={User}
+          delay={370}
+        />
+        <CtaTile
           href={`/c/${slug}/my/refer`}
           label={t.home.ctaRefer}
           icon={Gift}
-          delay={370}
+          delay={420}
         />
       </div>
     </>

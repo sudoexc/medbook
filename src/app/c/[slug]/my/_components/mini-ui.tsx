@@ -56,10 +56,12 @@ export function MCard({
   return (
     <div
       {...rest}
-      className={`rounded-2xl p-4 shadow-sm ${className}`}
+      className={`rounded-2xl p-4 transition-transform duration-150 ${className}`}
       style={{
         backgroundColor: "var(--tg-section-bg)",
         color: "var(--tg-text)",
+        boxShadow:
+          "0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05)",
         ...(rest.style ?? {}),
       }}
     >
@@ -153,17 +155,26 @@ export function MSection({
   );
 }
 
-export function MEmpty({ children }: { children: React.ReactNode }) {
+export function MEmpty({
+  icon: Icon,
+  children,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
   return (
     <div
-      className="rounded-2xl border px-4 py-10 text-center text-sm"
+      className="flex flex-col items-center gap-3 rounded-2xl border px-4 py-10 text-center text-sm"
       style={{
         backgroundColor: "var(--tg-section-bg)",
         color: "var(--tg-hint)",
         borderColor: "color-mix(in oklch, var(--tg-hint) 25%, transparent)",
       }}
     >
-      {children}
+      {Icon ? (
+        <Icon className="h-16 w-16 opacity-25" aria-hidden />
+      ) : null}
+      <div className="max-w-[260px]">{children}</div>
     </div>
   );
 }

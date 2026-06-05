@@ -76,6 +76,15 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   // Schedule change invalidates every cached slot query — the user may have
   // been mid-booking and the picker needs to redraw with the new availability.
   "doctor.scheduleChanged": [["miniapp", "slots"]],
+  // Phase M3 — patient chat. Staff replies + thread lifecycle should wake the
+  // Mini App's messages screen without manual refresh. Both prefixes invalidate
+  // on `tg.message.new` so the conversation list re-sorts when a new message
+  // arrives in a thread the patient hasn't opened yet.
+  "tg.message.new": [
+    ["miniapp", "messages"],
+    ["miniapp", "conversations"],
+  ],
+  "tg.conversation.updated": [["miniapp", "conversations"]],
 };
 
 const LAST_EVENT_ID_KEY = "miniapp:sse:lastEventId";

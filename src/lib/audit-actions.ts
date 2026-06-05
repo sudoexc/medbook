@@ -591,6 +591,19 @@ export const AUDIT_ACTION = {
   // previousEntryCount, correlationId }`. Replaces the freeform
   // `doctor.schedule.replace` action that PUT used to write.
   DOCTOR_SCHEDULE_REPLACED: "DOCTOR_SCHEDULE_REPLACED",
+
+  // Phase 2 polish — patient uploaded a document via the Mini App documents
+  // screen (camera capture or file picker). `entityType: "Document"`,
+  // `entityId: <documentId>`. `meta` carries `{ patientId, sizeBytes,
+  // mimeType, type }`. `uploadedById` on the Document row is null (no User
+  // tied to a patient), which is how the CRM identifies patient uploads.
+  MINIAPP_DOCUMENT_UPLOADED: "MINIAPP_DOCUMENT_UPLOADED",
+
+  // Phase 2 polish — patient sent a chat message to the clinic via the Mini
+  // App messages screen. `entityType: "Message"`, `entityId: <messageId>`.
+  // `meta` carries `{ clinicId, patientId, conversationId, bytes }`. Mirrors
+  // the inbound TG/SMS webhook path but without an external platform leg.
+  MINIAPP_MESSAGE_SENT: "MINIAPP_MESSAGE_SENT",
 } as const;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTION;

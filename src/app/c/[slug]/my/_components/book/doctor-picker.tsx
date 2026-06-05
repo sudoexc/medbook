@@ -4,11 +4,15 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Star } from "lucide-react";
 
-import { pickDefaultService, useDoctors } from "../../_hooks/use-doctors";
+import {
+  minDoctorPrice,
+  pickDefaultService,
+  useDoctors,
+} from "../../_hooks/use-doctors";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
-import { MEmpty, MSpinner } from "../mini-ui";
+import { MEmpty, MSpinner, formatSum } from "../mini-ui";
 import { SkeletonList } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
@@ -87,6 +91,7 @@ export function DoctorPicker() {
                 : typeof d.rating === "string"
                   ? Number.parseFloat(d.rating)
                   : null;
+            const minPrice = minDoctorPrice(d.services);
             return (
               <button
                 key={d.id}
@@ -135,30 +140,43 @@ export function DoctorPicker() {
                   >
                     {t.book.experienceStub}
                   </div>
-                  {rating !== null && !Number.isNaN(rating) ? (
-                    <div className="mt-1.5 flex items-center gap-1">
-                      <Star
-                        className="h-3.5 w-3.5"
-                        style={{ color: "#F5A524", fill: "#F5A524" }}
-                      />
-                      <span className="text-xs font-semibold">{rating.toFixed(1)}</span>
-                      {d.reviewCount > 0 ? (
-                        <span
-                          className="text-xs"
-                          style={{ color: "var(--tg-hint)" }}
-                        >
-                          ({d.reviewCount})
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div
-                      className="mt-1.5 text-xs"
-                      style={{ color: "var(--tg-hint)" }}
-                    >
-                      {t.book.newDoctor}
-                    </div>
-                  )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {rating !== null && !Number.isNaN(rating) ? (
+                      <div className="flex items-center gap-1">
+                        <Star
+                          className="h-3.5 w-3.5"
+                          style={{ color: "#F5A524", fill: "#F5A524" }}
+                        />
+                        <span className="text-xs font-semibold">{rating.toFixed(1)}</span>
+                        {d.reviewCount > 0 ? (
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--tg-hint)" }}
+                          >
+                            ({d.reviewCount})
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--tg-hint)" }}
+                      >
+                        {t.book.newDoctor}
+                      </span>
+                    )}
+                    {minPrice !== null ? (
+                      <span
+                        className="text-xs font-semibold"
+                        style={{ color: "var(--tg-accent)" }}
+                      >
+                        {t.book.priceFrom.replace(
+                          "{price}",
+                          formatSum(minPrice, t.common.currency),
+                        )}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 {active ? <CheckCircle /> : null}
               </button>

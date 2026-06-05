@@ -19,6 +19,7 @@
  */
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Pill } from "lucide-react";
 
 import {
   MButton,
@@ -260,7 +261,7 @@ export function MedicationsScreen() {
 
       <MSection title={t.medications.scheduleTitle}>
         {prescriptions.length === 0 ? (
-          <MEmpty>{t.medications.empty}</MEmpty>
+          <MEmpty icon={Pill}>{t.medications.empty}</MEmpty>
         ) : (
           <div className="space-y-3">
             {prescriptions.map((rx) => (

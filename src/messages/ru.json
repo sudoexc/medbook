@@ -4451,6 +4451,7 @@
       "size": "Размер",
       "actions": "Действия"
     },
+    "patientUploadBadge": "От пациента",
     "types": {
       "CONSENT": "Согласие",
       "REFERRAL": "Направление",

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { CalendarCheck, History } from "lucide-react";
 
 import {
   MCard,
@@ -9,6 +10,7 @@ import {
   MSection,
   formatDateISO,
 } from "../mini-ui";
+import { getAppointmentTone } from "../mini-app-tokens";
 import { SkeletonList } from "../skeleton";
 import { useT } from "../mini-i18n";
 import {
@@ -92,6 +94,7 @@ export function AppointmentsScreen() {
           {query.data.map((appt) => {
             const cancellable =
               tab === "upcoming" && CANCELLABLE_STATUSES.has(appt.status);
+            const tone = getAppointmentTone(appt.status);
             return (
               <div key={appt.id} className="relative">
                 <button
@@ -102,7 +105,13 @@ export function AppointmentsScreen() {
                   }}
                   className="block w-full text-left"
                 >
-                  <MCard className="space-y-1">
+                  <MCard
+                    className="space-y-1"
+                    style={{
+                      borderLeft: `3px solid ${tone.border}`,
+                      backgroundImage: `linear-gradient(to right, ${tone.tint}, transparent 40%)`,
+                    }}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 pr-7">
                         <div className="truncate text-sm font-semibold">
@@ -119,7 +128,7 @@ export function AppointmentsScreen() {
                             : appt.doctor.specializationRu}
                         </div>
                       </div>
-                      <div className="shrink-0 text-right">
+                      <div className={`shrink-0 text-right ${cancellable ? "pr-9" : ""}`}>
                         <div className="text-sm font-semibold">
                           {formatDateISO(appt.date, lang)}
                         </div>
@@ -132,7 +141,10 @@ export function AppointmentsScreen() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs">
-                      <span style={{ color: "var(--tg-hint)" }}>
+                      <span
+                        className="font-medium"
+                        style={{ color: tone.label }}
+                      >
                         {t.appts.status[
                           appt.status as keyof typeof t.appts.status
                         ] ?? appt.status}
@@ -171,7 +183,9 @@ export function AppointmentsScreen() {
           })}
         </MSection>
       ) : (
-        <MEmpty>{tab === "upcoming" ? t.appts.emptyUpcoming : t.appts.emptyPast}</MEmpty>
+        <MEmpty icon={tab === "upcoming" ? CalendarCheck : History}>
+          {tab === "upcoming" ? t.appts.emptyUpcoming : t.appts.emptyPast}
+        </MEmpty>
       )}
       {selected ? (
         <AppointmentDetailDialog

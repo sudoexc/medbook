@@ -10,6 +10,9 @@ export type ClinicInfo = {
   addressRu: string | null;
   addressUz: string | null;
   phone: string | null;
+  email: string | null;
+  workdayStart: string;
+  workdayEnd: string;
   logoUrl: string | null;
   brandColor: string;
   tgBotUsername: string | null;

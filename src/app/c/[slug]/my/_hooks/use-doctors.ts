@@ -34,6 +34,26 @@ function linkServiceId(
 }
 
 /**
+ * Min positive priceBase across a doctor's services. Returns null when no
+ * priced service is linked (legacy flat shape, empty list, or all zeros).
+ * Used by the booking wizard to show "от X сум" hints upfront so a patient
+ * never gets sticker-shocked at the confirm step.
+ */
+export function minDoctorPrice(
+  links: MiniAppDoctor["services"],
+): number | null {
+  if (!links || links.length === 0) return null;
+  let min: number | null = null;
+  for (const l of links) {
+    if ("service" in l && l.service && typeof l.service.priceBase === "number") {
+      const p = l.service.priceBase;
+      if (p > 0 && (min === null || p < min)) min = p;
+    }
+  }
+  return min;
+}
+
+/**
  * Pick the default service for a doctor — the one we auto-assign to the
  * booking draft when the wizard advances past the doctor step (the API
  * still requires `serviceIds[]`, but the UX only asks the patient to pick

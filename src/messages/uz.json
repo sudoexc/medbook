@@ -4451,6 +4451,7 @@
       "size": "Hajmi",
       "actions": "Amallar"
     },
+    "patientUploadBadge": "Bemordan",
     "types": {
       "CONSENT": "Rozilik",
       "REFERRAL": "Yo‘llanma",

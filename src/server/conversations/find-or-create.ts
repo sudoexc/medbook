@@ -48,7 +48,9 @@ export type FindOrCreateConversationInput = {
   patientId: string;
   /** Who initiated the open — drives actor on the envelope + assignee. */
   initiatorRole: ActorRole;
-  initiatorUserId: string;
+  /** Staff `User.id`. Pass `null` when the patient opens the thread from the
+   *  Mini App (PATIENT actor role has no corresponding User row). */
+  initiatorUserId: string | null;
   /** When the initiator is a doctor, scopes the existing-thread lookup to
    *  threads tied to this doctor (appointment / assignee). Omit for reception. */
   doctorScopeId?: string | null;
@@ -61,6 +63,11 @@ export type FindOrCreateConversationInput = {
   correlationId?: string;
   causedByEventId?: string;
   actorLabel?: string;
+  /** Override channel selection on cold-start. Pass "TG" from the Mini App
+   *  (patient is already in the Telegram client) so staff replies route back
+   *  via the bot the patient sees, instead of falling through to SMS. Ignored
+   *  when an existing thread is returned. */
+  preferredChannel?: "SMS" | "TG";
 };
 
 export type FindOrCreateConversationResult =
@@ -89,7 +96,11 @@ export async function findOrCreateConversation(
         patientId: patient.id,
         OR: [
           { appointment: { doctorId: input.doctorScopeId } },
-          { assignedToId: input.initiatorUserId },
+          // Doctor-scope only applies when a staff initiator is set; the OR
+          // arm narrows by assignee in that case.
+          ...(input.initiatorUserId
+            ? [{ assignedToId: input.initiatorUserId }]
+            : []),
           { AND: [{ appointmentId: null }, { assignedToId: null }] },
         ],
       }
@@ -108,13 +119,22 @@ export async function findOrCreateConversation(
     };
   }
 
-  // 2) Cold start. SMS first (always sendable), TG fallback (works only when
-  //    patient has DM'd the bot before — outbound bot-init is blocked by
-  //    Telegram), 422-equivalent when neither is reachable.
+  // 2) Cold start. SMS first by default (always sendable), TG fallback (works
+  //    only when patient has DM'd the bot before — outbound bot-init is
+  //    blocked by Telegram), 422-equivalent when neither is reachable.
+  //    `preferredChannel` lets the Mini App pin TG even when phone is set —
+  //    the patient is right there in the bot, replying via SMS would feel
+  //    off.
+  const hasPhone = !!patient.phone && patient.phone.trim().length > 0;
+  const hasTg = !!patient.telegramId;
   let channel: "SMS" | "TG";
-  if (patient.phone && patient.phone.trim().length > 0) {
+  if (input.preferredChannel === "TG" && hasTg) {
+    channel = "TG";
+  } else if (input.preferredChannel === "SMS" && hasPhone) {
     channel = "SMS";
-  } else if (patient.telegramId) {
+  } else if (hasPhone) {
+    channel = "SMS";
+  } else if (hasTg) {
     channel = "TG";
   } else {
     return { ok: false, reason: "no_channel" };
@@ -127,7 +147,10 @@ export async function findOrCreateConversation(
       ? input.initiatorUserId
       : input.assigneeUserId;
   const actorLabel =
-    input.actorLabel ?? `user:${input.initiatorUserId}`;
+    input.actorLabel ??
+    (input.initiatorUserId
+      ? `user:${input.initiatorUserId}`
+      : `patient:${patient.id}`);
 
   const created = await prisma.$transaction(async (tx) => {
     const row = await tx.conversation.create({
@@ -179,7 +202,11 @@ export async function findOrCreateConversation(
       actor: {
         role: input.initiatorRole,
         userId: input.initiatorUserId,
-        patientId: null,
+        // When the patient opens the thread (Mini App), the actor IS the
+        // patient — surface that on the envelope so downstream policies can
+        // attribute the action correctly.
+        patientId:
+          input.initiatorRole === "PATIENT" ? patient.id : null,
         onBehalfOfPatientId: null,
         label: actorLabel,
       },

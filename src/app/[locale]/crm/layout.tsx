@@ -23,13 +23,17 @@ import { AUDIT_ACTION } from "@/lib/audit-actions"
  * the unit test in `tests/unit/branding-update.test.ts` can assert the
  * expected output without booting React.
  */
+// Reject anything that isn't a 3- or 6-digit hex literal so a malicious clinic
+// can't terminate the declaration and inject arbitrary CSS via `brandColor`.
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
+
 function renderBrandStyle(
   primary: string | null | undefined,
   secondary: string | null | undefined,
 ): string | null {
   const lines: string[] = []
-  if (primary) lines.push(`--brand-primary: ${primary};`)
-  if (secondary) lines.push(`--brand-secondary: ${secondary};`)
+  if (primary && HEX_COLOR.test(primary)) lines.push(`--brand-primary: ${primary};`)
+  if (secondary && HEX_COLOR.test(secondary)) lines.push(`--brand-secondary: ${secondary};`)
   if (lines.length === 0) return null
   return `:root{${lines.join("")}}`
 }

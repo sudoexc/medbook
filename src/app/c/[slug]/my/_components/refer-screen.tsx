@@ -16,6 +16,7 @@
  */
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Gift } from "lucide-react";
 
 import { MButton, MCard, MEmpty, MSection, MSpinner } from "./mini-ui";
 import { useT, useLang } from "./mini-i18n";
@@ -95,7 +96,7 @@ export function ReferScreen() {
           {t.refer.codeLabel}
         </div>
         <div
-          className="flex items-center justify-between rounded-xl border px-3 py-3"
+          className="flex items-center justify-between gap-2 rounded-xl border px-3 py-3"
           style={{
             borderColor:
               "color-mix(in oklch, var(--tg-hint) 25%, transparent)",
@@ -103,12 +104,12 @@ export function ReferScreen() {
           }}
         >
           <div
-            className="font-mono text-2xl font-bold tracking-widest"
+            className="min-w-0 flex-1 truncate font-mono text-xl font-bold tracking-wider"
             style={{ color: "var(--tg-accent)" }}
           >
             {data.code}
           </div>
-          <MButton variant="ghost" onClick={onCopy}>
+          <MButton variant="ghost" onClick={onCopy} className="shrink-0">
             {copied ? t.refer.copied : t.refer.copy}
           </MButton>
         </div>
@@ -129,7 +130,7 @@ export function ReferScreen() {
 
       <MSection title={t.refer.pendingTitle}>
         {data.pendingRewards.length === 0 ? (
-          <MEmpty>{t.refer.pendingEmpty}</MEmpty>
+          <MEmpty icon={Gift}>{t.refer.pendingEmpty}</MEmpty>
         ) : (
           <div className="space-y-2">
             {data.pendingRewards.map((r) => (

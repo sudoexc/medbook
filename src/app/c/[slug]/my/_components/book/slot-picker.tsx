@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 
 import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
+import { minDoctorPrice, useDoctors } from "../../_hooks/use-doctors";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
-import { MEmpty, MSpinner } from "../mini-ui";
+import { MEmpty, MSpinner, formatSum } from "../mini-ui";
 import { SkeletonBlock } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
@@ -48,6 +49,14 @@ export function SlotPicker() {
   const { draft, setDraft, hydrated } = useBookingDraft(clinicSlug);
   const tg = useTelegramWebApp();
   const [expanded, setExpanded] = React.useState(false);
+  const doctors = useDoctors(null);
+  const selectedDoctor = React.useMemo(
+    () => doctors.data?.find((d) => d.id === draft.doctorId) ?? null,
+    [doctors.data, draft.doctorId],
+  );
+  const selectedDoctorMinPrice = selectedDoctor
+    ? minDoctorPrice(selectedDoctor.services)
+    : null;
 
   const days = React.useMemo(() => {
     const arr: { iso: string; weekday: string; day: number; month: string }[] = [];
@@ -113,6 +122,60 @@ export function SlotPicker() {
         label={t.book.stepLabel.replace("{step}", "3").replace("{total}", "4")}
         title={t.book.stepSlot}
       />
+      {selectedDoctor ? (
+        <div
+          className="mb-4 flex items-center gap-3 rounded-2xl px-3 py-2.5"
+          style={{
+            backgroundColor: "var(--tg-section-bg)",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+          }}
+        >
+          {selectedDoctor.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={selectedDoctor.photoUrl}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded-xl object-cover"
+            />
+          ) : (
+            <div
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-semibold text-white"
+              style={{ backgroundColor: selectedDoctor.color }}
+            >
+              {(lang === "UZ" ? selectedDoctor.nameUz : selectedDoctor.nameRu).slice(0, 1)}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">
+              {lang === "UZ" ? selectedDoctor.nameUz : selectedDoctor.nameRu}
+            </div>
+            <div
+              className="truncate text-xs"
+              style={{ color: "var(--tg-hint)" }}
+            >
+              {lang === "UZ"
+                ? selectedDoctor.specializationUz
+                : selectedDoctor.specializationRu}
+            </div>
+          </div>
+          {selectedDoctorMinPrice !== null ? (
+            <div className="shrink-0 text-right">
+              <div
+                className="text-xs"
+                style={{ color: "var(--tg-hint)" }}
+              >
+                {t.book.priceFromLabel}
+              </div>
+              <div
+                className="text-sm font-semibold"
+                style={{ color: "var(--tg-accent)" }}
+              >
+                {formatSum(selectedDoctorMinPrice, t.common.currency)}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-2">
         {days.map((d) => {
           const active = selectedDate === d.iso;

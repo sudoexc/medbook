@@ -31,24 +31,30 @@ type Tunables = {
   radiusPx: number;
   // Default skeleton row gap (matches the typical card spacing).
   gapPx: number;
+  // Per-row pulse offset so the list feels like a wave instead of one giant
+  // synchronous heartbeat.
+  staggerMs: number;
 };
 
 export const SKELETON_TUNABLES: Tunables = {
   pulseSeconds: 1.4,
   radiusPx: 14,
   gapPx: 10,
+  staggerMs: 120,
 };
 
 export function SkeletonBlock({
   height = 16,
   width = "100%",
   radius = SKELETON_TUNABLES.radiusPx,
+  delayMs,
   className,
   style,
 }: {
   height?: number | string;
   width?: number | string;
   radius?: number;
+  delayMs?: number;
   className?: string;
   style?: React.CSSProperties;
 }) {
@@ -61,6 +67,7 @@ export function SkeletonBlock({
         height,
         borderRadius: radius,
         animationDuration: `${SKELETON_TUNABLES.pulseSeconds}s`,
+        animationDelay: delayMs != null ? `${delayMs}ms` : undefined,
         ...style,
       }}
     />
@@ -77,10 +84,12 @@ type Variant = "card" | "line" | "inbox" | "appointment";
 export function SkeletonList({
   rows = 4,
   variant = "card",
+  staggerMs = SKELETON_TUNABLES.staggerMs,
   className,
 }: {
   rows?: number;
   variant?: Variant;
+  staggerMs?: number;
   className?: string;
 }) {
   const items = Array.from({ length: rows }, (_, i) => i);
@@ -90,13 +99,26 @@ export function SkeletonList({
       style={{ gap: SKELETON_TUNABLES.gapPx }}
     >
       {items.map((i) => (
-        <SkeletonRow key={i} variant={variant} index={i} />
+        <SkeletonRow
+          key={i}
+          variant={variant}
+          index={i}
+          delayMs={i * staggerMs}
+        />
       ))}
     </div>
   );
 }
 
-function SkeletonRow({ variant, index }: { variant: Variant; index: number }) {
+function SkeletonRow({
+  variant,
+  index,
+  delayMs,
+}: {
+  variant: Variant;
+  index: number;
+  delayMs: number;
+}) {
   switch (variant) {
     case "line":
       return (
@@ -104,15 +126,16 @@ function SkeletonRow({ variant, index }: { variant: Variant; index: number }) {
           height={14}
           width={`${68 + ((index * 7) % 25)}%`}
           radius={6}
+          delayMs={delayMs}
         />
       );
     case "inbox":
       return (
         <div className="flex items-center gap-3 rounded-2xl bg-[var(--tg-section-bg)] p-3">
-          <SkeletonBlock height={36} width={36} radius={18} />
+          <SkeletonBlock height={36} width={36} radius={18} delayMs={delayMs} />
           <div className="flex flex-1 flex-col gap-2">
-            <SkeletonBlock height={12} width="60%" radius={4} />
-            <SkeletonBlock height={10} width="90%" radius={4} />
+            <SkeletonBlock height={12} width="60%" radius={4} delayMs={delayMs} />
+            <SkeletonBlock height={10} width="90%" radius={4} delayMs={delayMs} />
           </div>
         </div>
       );
@@ -120,23 +143,23 @@ function SkeletonRow({ variant, index }: { variant: Variant; index: number }) {
       return (
         <div className="flex flex-col gap-3 rounded-2xl bg-[var(--tg-section-bg)] p-4">
           <div className="flex items-center gap-3">
-            <SkeletonBlock height={44} width={44} radius={22} />
+            <SkeletonBlock height={44} width={44} radius={22} delayMs={delayMs} />
             <div className="flex flex-1 flex-col gap-2">
-              <SkeletonBlock height={14} width="55%" radius={4} />
-              <SkeletonBlock height={11} width="35%" radius={4} />
+              <SkeletonBlock height={14} width="55%" radius={4} delayMs={delayMs} />
+              <SkeletonBlock height={11} width="35%" radius={4} delayMs={delayMs} />
             </div>
           </div>
-          <SkeletonBlock height={1} width="100%" radius={0} />
-          <SkeletonBlock height={11} width="75%" radius={4} />
+          <SkeletonBlock height={1} width="100%" radius={0} delayMs={delayMs} />
+          <SkeletonBlock height={11} width="75%" radius={4} delayMs={delayMs} />
         </div>
       );
     case "card":
     default:
       return (
         <div className="flex flex-col gap-3 rounded-2xl bg-[var(--tg-section-bg)] p-4">
-          <SkeletonBlock height={14} width="65%" radius={4} />
-          <SkeletonBlock height={11} width="40%" radius={4} />
-          <SkeletonBlock height={11} width="85%" radius={4} />
+          <SkeletonBlock height={14} width="65%" radius={4} delayMs={delayMs} />
+          <SkeletonBlock height={11} width="40%" radius={4} delayMs={delayMs} />
+          <SkeletonBlock height={11} width="85%" radius={4} delayMs={delayMs} />
         </div>
       );
   }

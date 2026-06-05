@@ -94,7 +94,7 @@ export function ProfileScreen() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-xl border px-3 py-3 text-sm"
+              className="w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-[var(--tg-accent)] focus:ring-2 focus:ring-[var(--tg-accent)] focus:ring-offset-0"
               style={{
                 backgroundColor: "var(--tg-bg)",
                 borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
@@ -112,7 +112,7 @@ export function ProfileScreen() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+998 90 000 00 00"
-              className="w-full rounded-xl border px-3 py-3 text-sm"
+              className="w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-[var(--tg-accent)] focus:ring-2 focus:ring-[var(--tg-accent)] focus:ring-offset-0"
               style={{
                 backgroundColor: "var(--tg-bg)",
                 borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",

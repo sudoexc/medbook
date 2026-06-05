@@ -18,18 +18,27 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+// Reject anything that isn't a 3- or 6-digit hex literal so a malicious clinic
+// can't terminate the declaration and inject arbitrary CSS via `brandColor`.
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
 /**
  * Pure helper — given the brand colors, render the inline `<style>` body that
  * sets CSS custom properties on `:root`. Returns null when both inputs are
- * empty so we don't litter the DOM. Lifted out so it can be unit-tested.
+ * empty or invalid so we don't litter the DOM. Lifted out so it can be
+ * unit-tested.
  */
 function renderBrandStyle(
   primary: string | null | undefined,
   secondary: string | null | undefined,
 ): string | null {
   const parts: string[] = [];
-  if (primary) parts.push(`--brand-primary: ${primary};`);
-  if (secondary) parts.push(`--brand-secondary: ${secondary};`);
+  if (primary && HEX_COLOR.test(primary)) {
+    parts.push(`--brand-primary: ${primary};`);
+  }
+  if (secondary && HEX_COLOR.test(secondary)) {
+    parts.push(`--brand-secondary: ${secondary};`);
+  }
   if (parts.length === 0) return null;
   return `:root{${parts.join("")}}`;
 }

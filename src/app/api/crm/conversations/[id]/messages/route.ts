@@ -121,7 +121,19 @@ export const POST = createApiHandler(
     });
 
     let dispatched = msg;
-    if (conv.channel === "TG" && conv.externalId) {
+    // Mini-App in-band delivery: the conversation channel is "TG" (because the
+    // patient is in our TG bot/Mini App), but `externalId` (= bot chat_id) is
+    // null — meaning the patient hasn't DM'd the bot directly, only opened the
+    // Mini App. There is nothing to dispatch outward: the patient reads staff
+    // replies via the Mini App SSE stream, which already invalidates on
+    // `tg.message.new`. Marking the row `DELIVERED` clears the staff-side
+    // "hourglass" optimistic status the moment the POST returns.
+    if (conv.channel === "TG" && !conv.externalId) {
+      dispatched = await prisma.message.update({
+        where: { id: msg.id },
+        data: { status: "DELIVERED" },
+      });
+    } else if (conv.channel === "TG" && conv.externalId) {
       try {
         const inlineKeyboard = Array.isArray(body.buttons)
           ? (body.buttons as Array<

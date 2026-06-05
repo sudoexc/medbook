@@ -56,9 +56,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "REMINDER",
     bodyRu:
-      "{patient.firstName}, напоминаем: завтра в {appointment.time} вы записаны к {appointment.doctor} в {clinic.name}. Если планы изменились — отмените через приложение или позвоните {clinic.phone}.",
+      "{{patient.firstName}}, напоминаем: завтра в {{appointment.time}} вы записаны к {{appointment.doctor}} в {{clinic.name}}. Если планы изменились — отмените через приложение или позвоните {{clinic.phone}}.",
     bodyUz:
-      "{patient.firstName}, eslatamiz: ertaga soat {appointment.time} da {appointment.doctor} qabuliga yozilgansiz ({clinic.name}). Rejalar o'zgargan bo'lsa — ilovadan bekor qiling yoki {clinic.phone} ga qo'ng'iroq qiling.",
+      "{{patient.firstName}}, eslatamiz: ertaga soat {{appointment.time}} da {{appointment.doctor}} qabuliga yozilgansiz ({{clinic.name}}). Rejalar o'zgargan bo'lsa — ilovadan bekor qiling yoki {{clinic.phone}} ga qo'ng'iroq qiling.",
     trigger: "APPOINTMENT_BEFORE",
     triggerConfig: { offsetMin: -1440 },
     variables: COMMON_VARS,
@@ -70,9 +70,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "REMINDER",
     bodyRu:
-      "{patient.firstName}, через 5 часов в {appointment.time} — ваш приём у {appointment.doctor}. До встречи.",
+      "{{patient.firstName}}, через 5 часов в {{appointment.time}} — ваш приём у {{appointment.doctor}}. До встречи.",
     bodyUz:
-      "{patient.firstName}, 5 soatdan keyin soat {appointment.time} da — {appointment.doctor} bilan qabulingiz. Ko'rishguncha.",
+      "{{patient.firstName}}, 5 soatdan keyin soat {{appointment.time}} da — {{appointment.doctor}} bilan qabulingiz. Ko'rishguncha.",
     trigger: "APPOINTMENT_BEFORE",
     triggerConfig: { offsetMin: -300 },
     variables: COMMON_VARS,
@@ -84,9 +84,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "REMINDER",
     bodyRu:
-      "{patient.firstName}, через 3 часа в {appointment.time} ждём вас у {appointment.doctor}. Если что-то изменилось — отмените в приложении.",
+      "{{patient.firstName}}, через 3 часа в {{appointment.time}} ждём вас у {{appointment.doctor}}. Если что-то изменилось — отмените в приложении.",
     bodyUz:
-      "{patient.firstName}, 3 soatdan keyin {appointment.time} da {appointment.doctor} sizni kutmoqda. Reja o'zgarsa — ilovadan bekor qiling.",
+      "{{patient.firstName}}, 3 soatdan keyin {{appointment.time}} da {{appointment.doctor}} sizni kutmoqda. Reja o'zgarsa — ilovadan bekor qiling.",
     trigger: "APPOINTMENT_BEFORE",
     triggerConfig: { offsetMin: -180 },
     variables: COMMON_VARS,
@@ -98,9 +98,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "REMINDER",
     bodyRu:
-      "{patient.firstName}, через час в {appointment.time} — ваш приём у {appointment.doctor}. Выходите заранее.",
+      "{{patient.firstName}}, через час в {{appointment.time}} — ваш приём у {{appointment.doctor}}. Выходите заранее.",
     bodyUz:
-      "{patient.firstName}, bir soatdan keyin {appointment.time} da — {appointment.doctor} bilan qabulingiz. Oldindan yo'lga chiqing.",
+      "{{patient.firstName}}, bir soatdan keyin {{appointment.time}} da — {{appointment.doctor}} bilan qabulingiz. Oldindan yo'lga chiqing.",
     trigger: "APPOINTMENT_BEFORE",
     triggerConfig: { offsetMin: -60 },
     variables: COMMON_VARS,
@@ -114,9 +114,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "TRANSACTIONAL",
     bodyRu:
-      "{patient.firstName}, ваш приём {appointment.date} в {appointment.time} к {appointment.doctor} отменён. Извините за неудобство. Перезаписаться можно в приложении или по телефону {clinic.phone}.",
+      "{{patient.firstName}}, ваш приём {{appointment.date}} в {{appointment.time}} к {{appointment.doctor}} отменён. Извините за неудобство. Перезаписаться можно в приложении или по телефону {{clinic.phone}}.",
     bodyUz:
-      "{patient.firstName}, {appointment.date} kuni {appointment.time} dagi {appointment.doctor} bilan qabulingiz bekor qilindi. Noqulaylik uchun uzr. Qayta yozilish — ilovadan yoki {clinic.phone}.",
+      "{{patient.firstName}}, {{appointment.date}} kuni {{appointment.time}} dagi {{appointment.doctor}} bilan qabulingiz bekor qilindi. Noqulaylik uchun uzr. Qayta yozilish — ilovadan yoki {{clinic.phone}}.",
     trigger: "APPOINTMENT_CANCELLED",
     triggerConfig: { audience: "staff" },
     variables: COMMON_VARS,
@@ -128,9 +128,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "TRANSACTIONAL",
     bodyRu:
-      "Приём {appointment.date} в {appointment.time} отменён. Если передумаете — мы рядом, перезаписаться можно в любое время.",
+      "Приём {{appointment.date}} в {{appointment.time}} отменён. Если передумаете — мы рядом, перезаписаться можно в любое время.",
     bodyUz:
-      "{appointment.date} kuni {appointment.time} dagi qabul bekor qilindi. Fikringizni o'zgartirsangiz — biz yondamiz, istalgan vaqt qayta yozilishingiz mumkin.",
+      "{{appointment.date}} kuni {{appointment.time}} dagi qabul bekor qilindi. Fikringizni o'zgartirsangiz — biz yondamiz, istalgan vaqt qayta yozilishingiz mumkin.",
     trigger: "APPOINTMENT_CANCELLED",
     triggerConfig: { audience: "patient" },
     variables: COMMON_VARS,
@@ -144,9 +144,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "TRANSACTIONAL",
     bodyRu:
-      "{patient.firstName}, вас ждут в {clinic.name} — приём был назначен на {appointment.time} к {appointment.doctor}. Если опаздываете, позвоните {clinic.phone}, постараемся сохранить слот.",
+      "{{patient.firstName}}, вас ждут в {{clinic.name}} — приём был назначен на {{appointment.time}} к {{appointment.doctor}}. Если опаздываете, позвоните {{clinic.phone}}, постараемся сохранить слот.",
     bodyUz:
-      "{patient.firstName}, {clinic.name} da kutishyapti — qabul {appointment.time} ga {appointment.doctor} ga belgilangan edi. Kechiksangiz, {clinic.phone} ga qo'ng'iroq qiling, slotni saqlashga harakat qilamiz.",
+      "{{patient.firstName}}, {{clinic.name}} da kutishyapti — qabul {{appointment.time}} ga {{appointment.doctor}} ga belgilangan edi. Kechiksangiz, {{clinic.phone}} ga qo'ng'iroq qiling, slotni saqlashga harakat qilamiz.",
     trigger: "APPOINTMENT_RUNNING_LATE",
     triggerConfig: null,
     variables: COMMON_VARS,
@@ -160,9 +160,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     channel: "TG",
     category: "TRANSACTIONAL",
     bodyRu:
-      "{patient.firstName}, жаль, что приём {appointment.date} не состоялся. Хотите перенести? Подберём удобное время — откройте приложение или позвоните {clinic.phone}.",
+      "{{patient.firstName}}, жаль, что приём {{appointment.date}} не состоялся. Хотите перенести? Подберём удобное время — откройте приложение или позвоните {{clinic.phone}}.",
     bodyUz:
-      "{patient.firstName}, {appointment.date} dagi qabul bo'lib o'tmagani uchun afsus. Boshqa vaqtga ko'chiramizmi? Qulay vaqtni tanlaymiz — ilovani oching yoki {clinic.phone} ga qo'ng'iroq qiling.",
+      "{{patient.firstName}}, {{appointment.date}} dagi qabul bo'lib o'tmagani uchun afsus. Boshqa vaqtga ko'chiramizmi? Qulay vaqtni tanlaymiz — ilovani oching yoki {{clinic.phone}} ga qo'ng'iroq qiling.",
     trigger: "APPOINTMENT_MISSED",
     triggerConfig: null,
     variables: COMMON_VARS,

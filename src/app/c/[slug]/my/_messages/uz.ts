@@ -116,6 +116,20 @@ export const uzDict = {
     rescheduleSave: "Yangi vaqtni saqlash",
     paid: "To‘langan",
     unpaid: "To‘lanmagan",
+    cancelReason: {
+      title: "Nima uchun bekor qilyapsiz?",
+      subtitle:
+        "Bu klinikaga yaxshiroq ishlashga yordam beradi. Ko'rsatish shart emas.",
+      preset1: "Kela olmayman",
+      preset2: "Kasalman / o'zimni yomon his qilyapman",
+      preset3: "Boshqa vaqtga ko'chirmoqchiman",
+      rescheduleInsteadHint: "Ko'chirish qulayroqmi? Quyida tugma.",
+      rescheduleInstead: "Bekor qilish o'rniga ko'chirish",
+      customLabel: "Boshqa",
+      customPlaceholder: "Sababini yozing (ixtiyoriy)",
+      submit: "Yozuvni bekor qilish",
+      back: "Orqaga",
+    },
   },
   documents: {
     title: "Hujjatlar",

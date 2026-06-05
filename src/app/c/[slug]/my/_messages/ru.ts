@@ -116,6 +116,20 @@ export const ruDict = {
     rescheduleSave: "Сохранить новое время",
     paid: "Оплачено",
     unpaid: "Не оплачено",
+    cancelReason: {
+      title: "Почему отменяете?",
+      subtitle:
+        "Это поможет клинике лучше работать. Можно не указывать.",
+      preset1: "Не получится прийти",
+      preset2: "Болею / плохо себя чувствую",
+      preset3: "Хочу перенести на другое время",
+      rescheduleInsteadHint: "Удобнее перенести? Ниже кнопка.",
+      rescheduleInstead: "Перенести вместо отмены",
+      customLabel: "Другое",
+      customPlaceholder: "Опишите причину (необязательно)",
+      submit: "Отменить запись",
+      back: "Назад",
+    },
   },
   documents: {
     title: "Документы",

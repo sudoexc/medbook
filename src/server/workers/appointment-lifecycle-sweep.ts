@@ -30,7 +30,12 @@ import {
   canTransitionAt,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
-import { AUTO_NO_SHOW_GRACE_MIN } from "@/lib/appointments/overdue";
+import {
+  AUTO_NO_SHOW_GRACE_MIN,
+  isRunningLate,
+  minutesPastStart,
+} from "@/lib/appointments/overdue";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 export const QUEUE_NAME = "appointment-lifecycle-sweep";
 export const JOB_NAME = "scan";
@@ -156,6 +161,16 @@ async function tick(): Promise<void> {
         },
       });
 
+      // TZ-notifications-cancel-sync §8.2 — text the patient "sorry it
+      // didn't happen, want to reschedule?" Idempotent via the standard
+      // NotificationSend (appointmentId, templateId) unique key, so a
+      // duplicate auto-flip (impossible by status guard, but defensive)
+      // can't double-send.
+      fireTrigger({
+        kind: "appointment.no-show",
+        appointmentId: row.id,
+      });
+
       flipped += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -165,8 +180,52 @@ async function tick(): Promise<void> {
     }
   }
 
+  // TZ-notifications-cancel-sync §8.2 — running-late sub-pass. Same sweep
+  // tick, separate query window: BOOKED/CONFIRMED rows that crossed the
+  // 15-minute "late" threshold but haven't aged into auto-NO_SHOW yet. The
+  // text nudges the patient to call ahead so reception can hold the slot.
+  // We over-fetch (no template filter at SQL) and dedup downstream via
+  // NotificationSend(appointmentId, templateId) — the worker can't know
+  // which clinics have a running-late template seeded without an extra
+  // join. The pool is small (rows in the 15–60 min window per clinic).
+  const lateWindowStart = new Date(now.getTime() - 60 * 60_000);
+  const lateWindowEnd = new Date(now.getTime() - 15 * 60_000);
+  const lateCandidates = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findMany({
+      where: {
+        status: { in: ["BOOKED", "CONFIRMED"] as AppointmentStatus[] },
+        date: { gte: lateWindowStart, lt: lateWindowEnd },
+      },
+      select: {
+        id: true,
+        clinicId: true,
+        doctorId: true,
+        status: true,
+        date: true,
+        endDate: true,
+      },
+      take: 500,
+      orderBy: { date: "asc" },
+    }),
+  )) as SweepCandidate[];
+
+  let lateFired = 0;
+  for (const row of lateCandidates) {
+    // Double-check via the shared helper. `isRunningLate` excludes WAITING
+    // / IN_PROGRESS, and the >= 15-min gate keeps us aligned with the UI
+    // "Опаздывает" badge — patient gets the text at the same moment
+    // reception sees the orange chip.
+    if (!isRunningLate(row, now)) continue;
+    if (minutesPastStart(row, now) < 15) continue;
+    fireTrigger({
+      kind: "appointment.running-late",
+      appointmentId: row.id,
+    });
+    lateFired += 1;
+  }
+
   console.info(
-    `[lifecycle-sweep] tick ok flipped=${flipped}/${stale.length}`,
+    `[lifecycle-sweep] tick ok flipped=${flipped}/${stale.length} late=${lateFired}/${lateCandidates.length}`,
   );
 }
 

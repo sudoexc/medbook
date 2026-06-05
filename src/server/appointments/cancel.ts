@@ -106,6 +106,16 @@ export async function cancelAppointment(
     (input.actorId ? `user:${input.actorId}` : `cancel:${surface.toLowerCase()}`);
   const reason = input.reason?.trim() || null;
 
+  // TZ-notifications-cancel-sync §5.2 — extract the preset slug from the
+  // canonical reason format `"patient:<preset>"` or `"patient:custom: ..."`
+  // so analytics can group by intent without parsing free text on read.
+  const reasonPreset = (() => {
+    if (!reason) return null;
+    if (reason.startsWith("patient:custom:")) return "patient:custom";
+    if (reason.startsWith("patient:")) return reason.split(/[ :]/)[0] + ":" + reason.slice("patient:".length).split(/[ :]/)[0];
+    return null;
+  })();
+
   const { after } = await prisma.$transaction(async (tx) => {
     const after = await tx.appointment.update({
       where: { id: input.appointmentId },
@@ -123,6 +133,20 @@ export async function cancelAppointment(
       await recomputeCaseAppointments(tx, after.medicalCaseId);
     }
 
+    // TZ-notifications-cancel-sync §8.3 — kill every queued reminder for
+    // this appointment inside the same transaction. If the appointment is
+    // already gone, we shouldn't be paging the patient an hour later about
+    // a visit that won't happen. Idempotent on retry: rows already CANCELLED
+    // stay CANCELLED. fireTrigger downstream runs the same updateMany as a
+    // belt-and-braces guard for callers that bypass this kernel.
+    await tx.notificationSend.updateMany({
+      where: {
+        appointmentId: input.appointmentId,
+        status: "QUEUED",
+      },
+      data: { status: "CANCELLED" },
+    });
+
     // Legacy audit row — keeps APPOINTMENT_CANCELLED reports working until
     // Phase F unifies audit through the outbox pumper. Same coexistence
     // pattern as confirmAppointment.
@@ -137,6 +161,7 @@ export async function cancelAppointment(
         entityId: input.appointmentId,
         meta: {
           reason,
+          reasonPreset,
           lateCancelMinutes,
           statusBefore: before.status,
           correlationId,
@@ -180,10 +205,16 @@ export async function cancelAppointment(
     return { after };
   });
 
-  // Notification trigger — separate side-effect (sends the "sorry, your
-  // appointment was cancelled" SMS/TG). Outside the tx because it talks to
-  // the in-process scheduler, not the DB.
-  fireTrigger({ kind: "appointment.cancelled", appointmentId: after.id });
+  // TZ-notifications-cancel-sync §8.3 — surface-aware variant selection.
+  // Mini-app self-cancel gets the softer "we're around" text; everything
+  // else (CRM, call-centre, system worker) gets the apologetic "sorry,
+  // here's how to rebook" text. Outside the tx because trigger fan-out
+  // talks to the in-process scheduler, not the DB.
+  const cancelKind =
+    surface === "MINIAPP"
+      ? "appointment.cancelled.by-patient"
+      : "appointment.cancelled.by-staff";
+  fireTrigger({ kind: cancelKind, appointmentId: after.id });
 
   return {
     ok: true,

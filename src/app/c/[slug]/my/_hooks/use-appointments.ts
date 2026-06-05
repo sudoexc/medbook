@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useMiniAppFetch } from "./use-miniapp-api";
+import { useLiveEvents } from "@/hooks/use-live-events";
 
 export type MiniAppAppointment = {
   id: string;
@@ -181,15 +182,27 @@ export function useCancelAppointment() {
   const qc = useQueryClient();
   const { request, clinicSlug } = useMiniAppFetch();
   return useMutation({
-    mutationFn: async (id: string) => {
-      await request(`/api/miniapp/appointments/${id}`, { method: "DELETE" });
+    mutationFn: async (args: { id: string; reason?: string | null }) => {
+      const { id, reason } = args;
+      // Only send a body when the patient actually supplied a reason; the
+      // DELETE handler accepts both empty body and `{ reason }` shape per TZ.
+      const init: RequestInit =
+        reason != null
+          ? {
+              method: "DELETE",
+              body: JSON.stringify({ reason }),
+              headers: { "Content-Type": "application/json" },
+            }
+          : { method: "DELETE" };
+      await request(`/api/miniapp/appointments/${id}`, init);
       return id;
     },
     // Phase M4 — Optimistic update. The patient taps "Cancel" and expects the
     // row to disappear instantly; the server round-trip can take 200–800ms on
     // mobile. We mark the row as CANCELLED across every cached scope (upcoming
     // / past / per-relative variants) and roll back on error.
-    onMutate: async (id) => {
+    onMutate: async (vars) => {
+      const { id } = vars;
       await qc.cancelQueries({
         queryKey: ["miniapp", "appointments", clinicSlug],
       });
@@ -206,7 +219,7 @@ export function useCancelAppointment() {
       });
       return { snapshots };
     },
-    onError: (_err, _id, ctx) => {
+    onError: (_err, _vars, ctx) => {
       if (!ctx?.snapshots) return;
       for (const [key, value] of ctx.snapshots) {
         qc.setQueryData(key, value);
@@ -221,6 +234,40 @@ export function useCancelAppointment() {
       });
     },
   });
+}
+
+/**
+ * Subscribe the mini-app to the SSE event bus so cross-surface mutations
+ * (e.g. receptionist cancels in CRM while the patient has the mini-app open)
+ * land in ≤2 sec without a manual refetch. Per TZ §6.1.
+ *
+ * We invalidate both `appointments` (the list itself) and `slots` because
+ * a cancel / move frees up a slot the patient might be browsing in the
+ * reschedule picker. TanStack coalesces multiple invalidate calls into a
+ * single refetch — no extra debounce needed.
+ */
+export function useAppointmentsLiveSync(): void {
+  const qc = useQueryClient();
+  const { clinicSlug } = useMiniAppFetch();
+  useLiveEvents(
+    () => {
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "appointments", clinicSlug],
+      });
+      qc.invalidateQueries({
+        queryKey: ["miniapp", "slots", clinicSlug],
+      });
+    },
+    {
+      filter: [
+        "appointment.created",
+        "appointment.updated",
+        "appointment.statusChanged",
+        "appointment.cancelled",
+        "appointment.moved",
+      ],
+    },
+  );
 }
 
 export function useRescheduleAppointment() {

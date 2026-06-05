@@ -15,6 +15,7 @@ import {
   canRoleAdvanceTo,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 export const POST = createApiHandler(
   {
@@ -82,6 +83,19 @@ export const POST = createApiHandler(
       entityType: "Appointment",
       meta: { ids: body.ids, status: target, count: result.count },
     });
+
+    // TZ-notifications-cancel-sync §8.4 — manual NO_SHOW bulk action mirrors
+    // the auto-sweep path. Each just-flipped row gets a "sorry it didn't
+    // work out, want to reschedule?" text. Dedup with the auto-sweep is
+    // automatic via the NotificationSend unique key on (appointment,
+    // template). Fire-and-forget — text delivery cost shouldn't block the
+    // operator's bulk action response.
+    if (target === "NO_SHOW") {
+      for (const id of body.ids) {
+        fireTrigger({ kind: "appointment.no-show", appointmentId: id });
+      }
+    }
+
     return ok({ count: result.count });
   }
 );

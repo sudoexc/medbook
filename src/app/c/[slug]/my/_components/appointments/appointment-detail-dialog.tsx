@@ -16,6 +16,7 @@ import {
 import { useSlots } from "../../_hooks/use-slots";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { CancelReasonDialog } from "./cancel-reason-dialog";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -29,17 +30,20 @@ function applyTimeToDate(dateISO: string, time: string): string {
 export function AppointmentDetailDialog({
   appointment,
   onClose,
+  initialMode = "view",
 }: {
   appointment: MiniAppAppointment;
   onClose: () => void;
+  initialMode?: "view" | "reschedule";
 }) {
   const t = useT();
   const { state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const tg = useTelegramWebApp();
-  const [mode, setMode] = React.useState<"view" | "reschedule">("view");
+  const [mode, setMode] = React.useState<"view" | "reschedule">(initialMode);
   const [date, setDate] = React.useState<string | null>(null);
   const [time, setTime] = React.useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
 
   const cancel = useCancelAppointment();
   const reschedule = useRescheduleAppointment();
@@ -67,13 +71,12 @@ export function AppointmentDetailDialog({
     serviceIds: appointment.services.map((s) => s.service.id),
   });
 
-  const onCancel = async () => {
-    const ok = await tg.showConfirm(t.appts.cancelConfirm);
-    if (!ok) return;
+  const onCancelConfirm = async (reason: string | null) => {
     try {
-      await cancel.mutateAsync(appointment.id);
+      await cancel.mutateAsync({ id: appointment.id, reason });
       tg.haptic.notification("success");
       tg.showAlert(t.appts.cancelSuccess);
+      setCancelOpen(false);
       onClose();
     } catch (e) {
       tg.haptic.notification("error");
@@ -100,6 +103,7 @@ export function AppointmentDetailDialog({
   const editable = !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(appointment.status);
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm"
       onClick={onClose}
@@ -145,7 +149,11 @@ export function AppointmentDetailDialog({
               >
                 {t.appts.reschedule}
               </MButton>
-              <MButton variant="danger" onClick={onCancel} disabled={cancel.isPending}>
+              <MButton
+                variant="danger"
+                onClick={() => setCancelOpen(true)}
+                disabled={cancel.isPending}
+              >
                 {t.appts.cancel}
               </MButton>
             </div>
@@ -222,5 +230,16 @@ export function AppointmentDetailDialog({
         )}
       </div>
     </div>
+    <CancelReasonDialog
+      open={cancelOpen}
+      isPending={cancel.isPending}
+      onClose={() => setCancelOpen(false)}
+      onConfirm={onCancelConfirm}
+      onPickReschedule={() => {
+        setCancelOpen(false);
+        setMode("reschedule");
+      }}
+    />
+    </>
   );
 }

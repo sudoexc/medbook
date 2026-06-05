@@ -33,13 +33,39 @@ export const TRIGGER_KEYS = [
   // Stage 2.D — soft 3-day "gentle ping" reminder. Audience is restricted at
   // the materialiser (TELEGRAM/WEBSITE bookings still pending confirmation,
   // i.e. `confirmedAt IS NULL`). PHONE/KIOSK/WALKIN auto-confirm at booking
-  // and never see this template.
+  // and never see this template. RETIRED from the canonical scheduler band
+  // 2026-06-05 (TZ-notifications-cancel-sync §2) — slug stays for legacy
+  // templates an admin may keep as a dynamic-offset variant.
   "appointment.reminder-3d",
   "appointment.reminder-24h",
   "appointment.reminder-5h",
+  // TZ-notifications-cancel-sync §2 — day-of cascade replaces the 2h ping
+  // with a 3h + 1h pair. Existing per-clinic `-120` templates still resolve
+  // via `appointment.reminder-2h` slug but the canonical scheduler does not
+  // materialise them anymore.
+  "appointment.reminder-3h",
   "appointment.reminder-2h",
+  "appointment.reminder-1h",
+  // Legacy generic — left in place for backwards compatibility; new call
+  // sites should use `appointment.cancelled.by-staff` / `.by-patient`.
   "appointment.cancelled",
+  // TZ-notifications-cancel-sync §3 — surface-aware variants. Both map to
+  // the NotificationTrigger.APPOINTMENT_CANCELLED enum, distinguished by a
+  // `triggerConfig.audience` discriminator on the template row.
+  "appointment.cancelled.by-staff",
+  "appointment.cancelled.by-patient",
+  // TZ-notifications-cancel-sync §3 — fired by appointment-lifecycle-sweep
+  // when `isRunningLate(row, now)` and no NotificationSend exists for this
+  // (appointment, template) pair.
+  "appointment.running-late",
+  // TZ-notifications-cancel-sync §3 — fired by appointment-lifecycle-sweep
+  // (auto NO_SHOW path) AND by the CRM bulk-status route (manual NO_SHOW
+  // path). Same dedup key as every other reminder, so a clinic doesn't
+  // double-text a patient who got both auto + manual flips on the row.
+  "appointment.no-show",
   "birthday",
+  // Legacy slug for the same enum as `appointment.no-show`. Kept for the
+  // few inbound call sites that still pass the old kind.
   "no-show",
   "payment.due",
   "case.repeat-due",
@@ -272,14 +298,69 @@ function whereForTrigger(
         trigger: "APPOINTMENT_BEFORE",
         triggerConfig: { path: ["offsetMin"], equals: -300 },
       };
+    case "appointment.reminder-3h":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -180 },
+      };
     case "appointment.reminder-2h":
       return {
         trigger: "APPOINTMENT_BEFORE",
         triggerConfig: { path: ["offsetMin"], equals: -120 },
       };
+    case "appointment.reminder-1h":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -60 },
+      };
     case "appointment.cancelled":
-      // No dedicated enum value — fall back to slug match.
-      return { key: "appointment.cancelled" };
+      // Legacy slug — match by either the enum (preferred) or the slug for
+      // pre-2026-06-05 templates the clinic seeded by hand. Audience-less
+      // templates fire for any cancellation surface.
+      return {
+        OR: [
+          {
+            trigger: "APPOINTMENT_CANCELLED",
+            triggerConfig: { path: ["audience"], equals: "any" },
+          },
+          { trigger: "APPOINTMENT_CANCELLED", triggerConfig: { equals: {} } },
+          { key: "appointment.cancelled" },
+        ],
+      };
+    case "appointment.cancelled.by-staff":
+      // Prefer a staff-audience template; fall back to a generic one if the
+      // clinic only has a single template (default seed has both variants).
+      return {
+        OR: [
+          {
+            trigger: "APPOINTMENT_CANCELLED",
+            triggerConfig: { path: ["audience"], equals: "staff" },
+          },
+          {
+            trigger: "APPOINTMENT_CANCELLED",
+            triggerConfig: { path: ["audience"], equals: "any" },
+          },
+          { key: "appointment.cancelled" },
+        ],
+      };
+    case "appointment.cancelled.by-patient":
+      return {
+        OR: [
+          {
+            trigger: "APPOINTMENT_CANCELLED",
+            triggerConfig: { path: ["audience"], equals: "patient" },
+          },
+          {
+            trigger: "APPOINTMENT_CANCELLED",
+            triggerConfig: { path: ["audience"], equals: "any" },
+          },
+          { key: "appointment.cancelled" },
+        ],
+      };
+    case "appointment.running-late":
+      return { trigger: "APPOINTMENT_RUNNING_LATE" };
+    case "appointment.no-show":
+      return { trigger: "APPOINTMENT_MISSED" };
     case "birthday":
       return { trigger: "PATIENT_BIRTHDAY" };
     case "no-show":
@@ -650,18 +731,35 @@ export async function onAppointmentCreated(
 
 export async function onAppointmentCancelled(
   appointmentId: string,
+  variant: "by-staff" | "by-patient" | "generic" = "generic",
 ): Promise<void> {
-  await materializeForAppointment(
-    appointmentId,
-    "appointment.cancelled",
-    new Date(),
-  );
+  const key: TriggerKey =
+    variant === "by-staff"
+      ? "appointment.cancelled.by-staff"
+      : variant === "by-patient"
+        ? "appointment.cancelled.by-patient"
+        : "appointment.cancelled";
+  await materializeForAppointment(appointmentId, key, new Date());
 }
 
 export async function onAppointmentNoShow(
   appointmentId: string,
 ): Promise<void> {
-  await materializeForAppointment(appointmentId, "no-show", new Date());
+  await materializeForAppointment(
+    appointmentId,
+    "appointment.no-show",
+    new Date(),
+  );
+}
+
+export async function onAppointmentRunningLate(
+  appointmentId: string,
+): Promise<void> {
+  await materializeForAppointment(
+    appointmentId,
+    "appointment.running-late",
+    new Date(),
+  );
 }
 
 /**
@@ -697,7 +795,14 @@ export async function onNpsRequest(appointmentId: string): Promise<void> {
   );
 }
 
-/** Schedule the 3d / 24h / 5h / 2h reminder cascade for an appointment. */
+/**
+ * Schedule the day-of reminder cascade for an appointment.
+ *
+ * TZ-notifications-cancel-sync §2 — canonical bands are 24h / 5h / 3h / 1h.
+ * The legacy 3d "gentle ping" and 2h "almost time" pings are retired from
+ * the canonical scheduler but still resolvable via slug for any per-clinic
+ * template the admin chose to keep on dynamic-offset materialisation.
+ */
 export async function scheduleAppointmentReminders(
   appointmentId: string,
 ): Promise<void> {
@@ -705,18 +810,6 @@ export async function scheduleAppointmentReminders(
   if (!appt) return;
   const start = appt.date.getTime();
   const now = Date.now();
-  // Stage 2.D — T-3d "gentle ping" only for appointments that still need
-  // confirming. Auto-confirm channels (PHONE/KIOSK/WALKIN) stamp `confirmedAt`
-  // synchronously in the booking route before this scheduler runs, so the
-  // check below filters them out cleanly. TELEGRAM/WEBSITE bookings stay
-  // `confirmedAt: null` until the patient acts.
-  if (appt.confirmedAt === null && start - 72 * 60 * 60 * 1000 > now) {
-    await materializeForAppointment(
-      appointmentId,
-      "appointment.reminder-3d",
-      new Date(start - 72 * 60 * 60 * 1000),
-    );
-  }
   if (start - 24 * 60 * 60 * 1000 > now) {
     await materializeForAppointment(
       appointmentId,
@@ -731,11 +824,18 @@ export async function scheduleAppointmentReminders(
       new Date(start - 5 * 60 * 60 * 1000),
     );
   }
-  if (start - 2 * 60 * 60 * 1000 > now) {
+  if (start - 3 * 60 * 60 * 1000 > now) {
     await materializeForAppointment(
       appointmentId,
-      "appointment.reminder-2h",
-      new Date(start - 2 * 60 * 60 * 1000),
+      "appointment.reminder-3h",
+      new Date(start - 3 * 60 * 60 * 1000),
+    );
+  }
+  if (start - 60 * 60 * 1000 > now) {
+    await materializeForAppointment(
+      appointmentId,
+      "appointment.reminder-1h",
+      new Date(start - 60 * 60 * 1000),
     );
   }
 }
@@ -743,20 +843,25 @@ export async function scheduleAppointmentReminders(
 /**
  * Scheduler tick: materialise reminders whose time is approaching. Also
  * runs birthday and payment.due triggers once per tick.
+ *
+ * TZ-notifications-cancel-sync §2 — canonical bands are 24h / 5h / 3h / 1h.
+ * Each appointment falling inside a band is materialised exactly once per
+ * (appointmentId, templateId); a second tick that lands in the same band
+ * collapses to a no-op via the unique index. Band edges are slightly wider
+ * than the tick cadence (60s) so a tick that runs late doesn't skip a row.
  */
 export async function runScheduledTriggers(): Promise<{
-  reminders3d: number;
   reminders24h: number;
   reminders5h: number;
-  reminders2h: number;
+  reminders3h: number;
+  reminders1h: number;
   birthdays: number;
   paymentsDue: number;
   caseRepeats: number;
 }> {
   const now = new Date();
-  // Stage 2.D — widen horizon to 73h so the T-3d (-4320 min) "gentle ping"
-  // band lands inside the same scan. The 24/5/2h bands are unchanged.
-  const horizon = new Date(now.getTime() + 73 * 60 * 60 * 1000);
+  // 25h horizon covers every canonical band — the 24h ping is the farthest.
+  const horizon = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
   const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
@@ -769,41 +874,18 @@ export async function runScheduledTriggers(): Promise<{
     }),
   );
 
-  // Three windows of the reminder cascade. Each appointment whose distance
-  // to start falls inside a band gets exactly one materialization for that
-  // band per tick. Idempotency is enforced via (appointmentId, templateId)
-  // in materializeForAppointmentsBulk, so a second tick that lands in the
-  // same band is a no-op.
-  //
-  // Bands are chosen so a typical 60-second tick comfortably covers each
-  // one without missing or duplicating:
-  //   - 71–72h before  → 3d  reminder (gated on confirmedAt IS NULL)
+  // Bands chosen so a 60s tick comfortably covers each window:
   //   - 23–24h before  → 24h reminder
   //   -  4–5h  before  → 5h  reminder
-  //   -  1–2h  before  → 2h  reminder
-  const jobs3d: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  //   -  2–3h  before  → 3h  reminder (NEW — day-of cadence)
+  //   -  0–1h  before  → 1h  reminder (NEW — final "leaving soon")
   const jobs24h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   const jobs5h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
-  const jobs2h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  const jobs3h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  const jobs1h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const start = r.date.getTime();
     const until = start - Date.now();
-    // T-3d (-4320 min) "gentle ping" — only for appointments still pending
-    // confirmation. Auto-confirmed bookings (PHONE/KIOSK/WALKIN) carry a
-    // non-null `confirmedAt` and are skipped here to avoid spamming patients
-    // who have nothing to confirm. The same gate lives in the detector
-    // (`unconfirmed-24h.ts`).
-    if (
-      r.confirmedAt === null &&
-      until > 0 &&
-      until <= 72 * 60 * 60 * 1000 &&
-      until > 71 * 60 * 60 * 1000
-    ) {
-      jobs3d.push({
-        appointmentId: r.id,
-        scheduledFor: new Date(start - 72 * 60 * 60 * 1000),
-      });
-    }
     if (until > 0 && until <= 24 * 60 * 60 * 1000 && until > 23 * 60 * 60 * 1000) {
       jobs24h.push({
         appointmentId: r.id,
@@ -816,32 +898,38 @@ export async function runScheduledTriggers(): Promise<{
         scheduledFor: new Date(start - 5 * 60 * 60 * 1000),
       });
     }
-    if (until > 0 && until <= 2 * 60 * 60 * 1000 && until > 60 * 60 * 1000) {
-      jobs2h.push({
+    if (until > 0 && until <= 3 * 60 * 60 * 1000 && until > 2 * 60 * 60 * 1000) {
+      jobs3h.push({
         appointmentId: r.id,
-        scheduledFor: new Date(start - 2 * 60 * 60 * 1000),
+        scheduledFor: new Date(start - 3 * 60 * 60 * 1000),
+      });
+    }
+    if (until > 0 && until <= 60 * 60 * 1000) {
+      jobs1h.push({
+        appointmentId: r.id,
+        scheduledFor: new Date(start - 60 * 60 * 1000),
       });
     }
   }
-  const [res3d, res24, res5, res2] = await Promise.all([
-    materializeForAppointmentsBulk(jobs3d, "appointment.reminder-3d"),
+  const [res24, res5, res3, res1] = await Promise.all([
     materializeForAppointmentsBulk(jobs24h, "appointment.reminder-24h"),
     materializeForAppointmentsBulk(jobs5h, "appointment.reminder-5h"),
-    materializeForAppointmentsBulk(jobs2h, "appointment.reminder-2h"),
+    materializeForAppointmentsBulk(jobs3h, "appointment.reminder-3h"),
+    materializeForAppointmentsBulk(jobs1h, "appointment.reminder-1h"),
   ]);
-  const reminders3d = res3d.created;
   const reminders24h = res24.created;
   const reminders5h = res5.created;
-  const reminders2h = res2.created;
+  const reminders3h = res3.created;
+  const reminders1h = res1.created;
 
   const birthdays = await runBirthdays();
   const paymentsDue = await runPaymentsDue();
   const caseRepeats = await runCaseRepeatReminders();
   return {
-    reminders3d,
     reminders24h,
     reminders5h,
-    reminders2h,
+    reminders3h,
+    reminders1h,
     birthdays,
     paymentsDue,
     caseRepeats,
@@ -1392,8 +1480,23 @@ async function onReferralRewardEarned(payload: {
 
 export type FireTriggerPayload =
   | { kind: "appointment.created"; appointmentId: string }
+  // Generic cancel — legacy entrypoint. New call sites should pass the
+  // surface-aware variants below so the patient gets the right text.
   | { kind: "appointment.cancelled"; appointmentId: string }
+  // TZ-notifications-cancel-sync §8.3 — staff-initiated cancel (CRM, call
+  // centre, no-show worker). The text leans apologetic + offers rebooking.
+  | { kind: "appointment.cancelled.by-staff"; appointmentId: string }
+  // Patient-initiated cancel (mini-app self-cancel). Soft tone, no apology,
+  // a "we're around if you change your mind" closer.
+  | { kind: "appointment.cancelled.by-patient"; appointmentId: string }
+  // Legacy slug. Kept for callers still passing "noshow"; new code uses
+  // the canonical `appointment.no-show` kind below.
   | { kind: "appointment.noshow"; appointmentId: string }
+  | { kind: "appointment.no-show"; appointmentId: string }
+  // TZ-notifications-cancel-sync §3 — fired by the lifecycle-sweep worker
+  // sub-pass when a CONFIRMED/BOOKED row crosses `isRunningLate(now)`
+  // without anyone marking the patient arrived.
+  | { kind: "appointment.running-late"; appointmentId: string }
   | { kind: "appointment.updated"; appointmentId: string }
   | { kind: "payment.paid"; appointmentId: string | null }
   | {
@@ -1421,9 +1524,15 @@ export function fireTrigger(payload: FireTriggerPayload): void {
           await scheduleAppointmentReminders(payload.appointmentId);
           return;
         }
-        case "appointment.cancelled": {
+        case "appointment.cancelled":
+        case "appointment.cancelled.by-staff":
+        case "appointment.cancelled.by-patient": {
           // Cancel any pending reminders for this appointment so we don't
-          // send 24h/2h reminders for an appointment that's been cancelled.
+          // send 24h/5h/3h/1h reminders for an appointment that's been
+          // cancelled. The cancel kernel also runs this updateMany inside
+          // its transaction — running it again here is idempotent (rows
+          // already CANCELLED stay CANCELLED) and protects callers that
+          // bypass the kernel.
           await runWithTenant({ kind: "SYSTEM" }, () =>
             prisma.notificationSend.updateMany({
               where: {
@@ -1436,11 +1545,22 @@ export function fireTrigger(payload: FireTriggerPayload): void {
               data: { status: "CANCELLED" },
             }),
           );
-          await onAppointmentCancelled(payload.appointmentId);
+          const variant =
+            payload.kind === "appointment.cancelled.by-patient"
+              ? "by-patient"
+              : payload.kind === "appointment.cancelled.by-staff"
+                ? "by-staff"
+                : "generic";
+          await onAppointmentCancelled(payload.appointmentId, variant);
           return;
         }
-        case "appointment.noshow": {
+        case "appointment.noshow":
+        case "appointment.no-show": {
           await onAppointmentNoShow(payload.appointmentId);
+          return;
+        }
+        case "appointment.running-late": {
+          await onAppointmentRunningLate(payload.appointmentId);
           return;
         }
         case "appointment.updated": {

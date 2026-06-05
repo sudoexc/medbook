@@ -227,6 +227,26 @@ export const DELETE = createMiniAppHandler({}, async ({ request, ctx }) => {
     select: { id: true },
   });
   if (!before) return notFound();
+
+  // The patient may send `{ reason }` per TZ §5.3 to record WHY they cancelled.
+  // The body is optional — older clients (and the detail-dialog cancel button
+  // before the redesign) ship no body. We must NOT 400 on an empty body, just
+  // treat it as "no reason given".
+  let reason: string | null = null;
+  try {
+    const raw = await request.text();
+    if (raw.length > 0) {
+      const parsed = JSON.parse(raw) as { reason?: unknown };
+      if (typeof parsed.reason === "string") {
+        const trimmed = parsed.reason.trim().slice(0, 500);
+        reason = trimmed.length > 0 ? trimmed : null;
+      }
+    }
+  } catch {
+    // Malformed JSON — fall through with reason=null rather than rejecting,
+    // so the cancellation itself still goes through.
+  }
+
   const result = await cancelAppointment({
     appointmentId: id,
     clinicId: ctx.clinicId,
@@ -235,6 +255,7 @@ export const DELETE = createMiniAppHandler({}, async ({ request, ctx }) => {
     actorPatientId: ctx.patientId,
     actorLabel: `patient:${ctx.patientId}`,
     surface: "MINIAPP",
+    reason,
   });
   if (!result.ok) {
     if (result.reason === "not_found") return notFound();

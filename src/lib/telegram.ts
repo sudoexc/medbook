@@ -1,5 +1,6 @@
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const API_BASE = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
+const API = `${API_BASE}/bot${BOT_TOKEN}`;
 
 export async function sendMessage(chatId: string, text: string, options?: { parse_mode?: string; reply_markup?: unknown }) {
   const res = await fetch(`${API}/sendMessage`, {

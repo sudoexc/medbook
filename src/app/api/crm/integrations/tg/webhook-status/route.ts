@@ -50,7 +50,8 @@ export const GET = createApiListHandler(
       });
     }
     try {
-      const url = `https://api.telegram.org/bot${clinic.tgBotToken}/getWebhookInfo`;
+      const apiBase = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
+      const url = `${apiBase}/bot${clinic.tgBotToken}/getWebhookInfo`;
       const resp = await fetch(url, { method: "GET" });
       const json = (await resp.json().catch(() => null)) as
         | { ok: true; result: TgWebhookInfo }

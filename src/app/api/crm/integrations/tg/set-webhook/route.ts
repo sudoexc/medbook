@@ -44,7 +44,8 @@ export const POST = createApiHandler(
       return ok({ ok: true, url: webhookUrl, stub: true });
     }
 
-    const url = `https://api.telegram.org/bot${clinic.tgBotToken}/setWebhook`;
+    const apiBase = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
+    const url = `${apiBase}/bot${clinic.tgBotToken}/setWebhook`;
     const tgBody = {
       url: webhookUrl,
       ...(clinic.tgWebhookSecret

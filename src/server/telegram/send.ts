@@ -70,7 +70,7 @@ export type TgMessageResult = {
   date: number;
 };
 
-const API_ROOT = "https://api.telegram.org";
+const API_ROOT = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
 const MAX_ATTEMPTS = 12;
 const PER_ATTEMPT_TIMEOUT_MS = 8000;
 const BACKOFF_BASE_MS = 250;

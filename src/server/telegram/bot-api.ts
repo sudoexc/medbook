@@ -12,7 +12,7 @@
  * Telegram) short-circuit immediately — no retry on a real Telegram error.
  */
 
-const API_ROOT = "https://api.telegram.org";
+const API_ROOT = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
 // RU VPS → api.telegram.org reachability is partial (≈30% of TG IPs answer).
 // We keep a generous wall budget so the wizard doesn't fail on the first
 // unlucky DNS pick. 12 attempts × 8s ≈ 96s worst case, plus capped backoff.

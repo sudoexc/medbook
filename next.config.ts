@@ -52,23 +52,6 @@ const nextConfig: NextConfig = {
   // deploy that via Docker (see Dockerfile) — no `node_modules/` in the
   // final image. See `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`.
   output: "standalone",
-  // The MinIO adapter (`src/server/storage/minio.ts`) loads the AWS SDK via
-  // `await import("@aws-sdk/...")` at call time. Next's standalone tracer only
-  // follows static imports, so without these hints the runtime image is
-  // missing `node_modules/@aws-sdk` and the route throws
-  // "MinIO adapter: @aws-sdk/client-s3 ... not installed." in prod.
-  // `@smithy/*` is the transitive runtime layer that aws-sdk lazy-loads.
-  outputFileTracingIncludes: {
-    "/api/**/*": [
-      "node_modules/@aws-sdk/**/*",
-      "node_modules/@smithy/**/*",
-      // `@aws-sdk/core` does a plain `require('@aws/lambda-invoke-store')`
-      // inside `submodules/client/index.js`. It is NOT under @aws-sdk — it's
-      // a separate `@aws/*` scope — and the tracer misses it without an
-      // explicit hint.
-      "node_modules/@aws/**/*",
-    ],
-  },
   // CI/CD runs tsc --noEmit + vitest as separate gates. next build's bundled
   // typecheck duplicates that work and produces platform-divergent results
   // when the Prisma client type union is collapsed under different generated

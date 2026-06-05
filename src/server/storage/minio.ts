@@ -3,17 +3,15 @@
  *
  * Two modes, chosen by the presence of `MINIO_ENDPOINT`:
  *
- *   1. **S3 mode** (MINIO_ENDPOINT set)
- *      Uses `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`.
- *      Imported lazily so the dev mode works without installing the AWS SDK.
- *      When the SDK is missing we throw a helpful error pointing at
- *      `npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner`.
+ *   1. **S3 mode** (MINIO_ENDPOINT set) — uses `@aws-sdk/client-s3` +
+ *      `@aws-sdk/s3-request-presigner`.
+ *   2. **Stub mode** (MINIO_ENDPOINT empty) — writes objects under
+ *      `${os.tmpdir()}/medbook-uploads/<bucket>/<key>` and returns
+ *      `file://` URLs. Used for local `npm run dev` and unit tests.
  *
- *   2. **Stub mode** (MINIO_ENDPOINT empty)
- *      Writes objects under `${os.tmpdir()}/medbook-uploads/<bucket>/<key>`
- *      and returns `file://` URLs. Used for local `npm run dev` and for
- *      unit tests. Deletions / signed URLs are no-ops that return the local
- *      path.
+ * The S3 client is constructed lazily on first use so stub-mode runs never
+ * pay the construction cost, but the SDK modules themselves are statically
+ * imported so Next.js standalone tracing can follow the full dep graph.
  *
  * Public surface:
  *   - uploadObject(bucket, key, buffer, contentType) → { url, key }
@@ -27,6 +25,13 @@
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl as presignSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export type UploadResult = {
   /** Public-ish URL (presigned or file://). Callers can persist it. */
@@ -87,109 +92,48 @@ async function stubDelete(bucket: string, key: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// S3 / MinIO implementation (lazy-loaded)
+// S3 / MinIO implementation (client lazily constructed)
 // ---------------------------------------------------------------------------
 
-type S3ClientLike = {
-  send: (cmd: unknown) => Promise<unknown>;
-};
-
-type S3Module = {
-  S3Client: new (cfg: Record<string, unknown>) => S3ClientLike;
-  PutObjectCommand: new (input: Record<string, unknown>) => unknown;
-  DeleteObjectCommand: new (input: Record<string, unknown>) => unknown;
-  GetObjectCommand: new (input: Record<string, unknown>) => unknown;
-};
-
-type PresignerModule = {
-  getSignedUrl: (
-    client: S3ClientLike,
-    cmd: unknown,
-    opts: { expiresIn: number },
-  ) => Promise<string>;
-};
-
-let clientPromise: Promise<{
-  client: S3ClientLike;
-  s3: S3Module;
-  presigner: PresignerModule;
-}> | null = null;
-
+let cachedClient: S3Client | null = null;
 // Separate client for browser-facing presigned URLs. Uses MINIO_PUBLIC_URL as
 // the endpoint so the resulting URL contains the host the browser can reach
 // (e.g. https://neurofax.uz/files), not the docker-internal host (minio:9000).
-let publicClientPromise: Promise<S3ClientLike> | null = null;
+let cachedPublicClient: S3Client | null = null;
 
-// Use `Function`-wrapped dynamic imports so TypeScript doesn't try to
-// resolve the module at compile-time — these SDKs are optional runtime
-// dependencies (only required when MINIO_ENDPOINT is set).
-const dynamicImport = new Function("spec", "return import(spec)") as (
-  spec: string,
-) => Promise<unknown>;
-
-async function getClient() {
-  if (clientPromise) return clientPromise;
-  clientPromise = (async () => {
-    let s3: S3Module;
-    let presigner: PresignerModule;
-    try {
-      s3 = (await dynamicImport("@aws-sdk/client-s3")) as S3Module;
-      presigner = (await dynamicImport(
-        "@aws-sdk/s3-request-presigner",
-      )) as PresignerModule;
-    } catch (e) {
-      throw new Error(
-        "MinIO adapter: @aws-sdk/client-s3 / @aws-sdk/s3-request-presigner " +
-          "not installed. Run `npm install @aws-sdk/client-s3 " +
-          "@aws-sdk/s3-request-presigner` or unset MINIO_ENDPOINT to use " +
-          "the stub. Underlying error: " +
-          (e instanceof Error ? e.message : String(e)),
-      );
-    }
-    const endpoint = process.env.MINIO_ENDPOINT!;
-    const region = process.env.MINIO_REGION || "us-east-1";
-    const forcePathStyle =
-      (process.env.MINIO_FORCE_PATH_STYLE ?? "true") !== "false";
-    const client = new s3.S3Client({
-      endpoint,
-      region,
-      forcePathStyle,
-      credentials: {
-        accessKeyId: process.env.MINIO_ACCESS_KEY || "",
-        secretAccessKey: process.env.MINIO_SECRET_KEY || "",
-      },
-    });
-    return { client, s3, presigner };
-  })();
-  return clientPromise;
+function buildClient(endpoint: string): S3Client {
+  const region = process.env.MINIO_REGION || "us-east-1";
+  const forcePathStyle =
+    (process.env.MINIO_FORCE_PATH_STYLE ?? "true") !== "false";
+  return new S3Client({
+    endpoint,
+    region,
+    forcePathStyle,
+    credentials: {
+      accessKeyId: process.env.MINIO_ACCESS_KEY || "",
+      secretAccessKey: process.env.MINIO_SECRET_KEY || "",
+    },
+  });
 }
 
-async function getPublicClient(): Promise<S3ClientLike> {
-  if (publicClientPromise) return publicClientPromise;
-  publicClientPromise = (async () => {
-    const { s3 } = await getClient();
-    const publicEndpoint =
-      process.env.MINIO_PUBLIC_URL || process.env.MINIO_ENDPOINT!;
-    const region = process.env.MINIO_REGION || "us-east-1";
-    const forcePathStyle =
-      (process.env.MINIO_FORCE_PATH_STYLE ?? "true") !== "false";
-    return new s3.S3Client({
-      endpoint: publicEndpoint,
-      region,
-      forcePathStyle,
-      credentials: {
-        accessKeyId: process.env.MINIO_ACCESS_KEY || "",
-        secretAccessKey: process.env.MINIO_SECRET_KEY || "",
-      },
-    });
-  })();
-  return publicClientPromise;
+function getClient(): S3Client {
+  if (!cachedClient) cachedClient = buildClient(process.env.MINIO_ENDPOINT!);
+  return cachedClient;
+}
+
+function getPublicClient(): S3Client {
+  if (!cachedPublicClient) {
+    cachedPublicClient = buildClient(
+      process.env.MINIO_PUBLIC_URL || process.env.MINIO_ENDPOINT!,
+    );
+  }
+  return cachedPublicClient;
 }
 
 /** Testing only — drop cached SDK client so env changes take effect. */
 export function __resetStorageForTests(): void {
-  clientPromise = null;
-  publicClientPromise = null;
+  cachedClient = null;
+  cachedPublicClient = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,9 +150,8 @@ export async function uploadObject(
   if (isStubMode()) {
     return stubUpload(b, key, body, contentType);
   }
-  const { client, s3 } = await getClient();
-  await client.send(
-    new s3.PutObjectCommand({
+  await getClient().send(
+    new PutObjectCommand({
       Bucket: b,
       Key: key,
       Body: body,
@@ -228,10 +171,8 @@ export async function getSignedUrl(
   if (isStubMode()) {
     return stubSignedUrl(b, key);
   }
-  const { s3, presigner } = await getClient();
-  const publicClient = await getPublicClient();
-  const cmd = new s3.GetObjectCommand({ Bucket: b, Key: key });
-  return presigner.getSignedUrl(publicClient, cmd, { expiresIn });
+  const cmd = new GetObjectCommand({ Bucket: b, Key: key });
+  return presignSignedUrl(getPublicClient(), cmd, { expiresIn });
 }
 
 /**
@@ -248,14 +189,12 @@ export async function getSignedUploadUrl(
   if (isStubMode()) {
     return stubSignedUrl(b, key);
   }
-  const { s3, presigner } = await getClient();
-  const publicClient = await getPublicClient();
-  const cmd = new s3.PutObjectCommand({
+  const cmd = new PutObjectCommand({
     Bucket: b,
     Key: key,
     ContentType: contentType,
   });
-  return presigner.getSignedUrl(publicClient, cmd, { expiresIn });
+  return presignSignedUrl(getPublicClient(), cmd, { expiresIn });
 }
 
 export async function deleteObject(
@@ -266,8 +205,7 @@ export async function deleteObject(
   if (isStubMode()) {
     return stubDelete(b, key);
   }
-  const { client, s3 } = await getClient();
-  await client.send(new s3.DeleteObjectCommand({ Bucket: b, Key: key }));
+  await getClient().send(new DeleteObjectCommand({ Bucket: b, Key: key }));
 }
 
 // ---------------------------------------------------------------------------
@@ -277,9 +215,8 @@ export async function deleteObject(
 export async function pingStorage(): Promise<"ok" | "down" | "stub"> {
   if (isStubMode()) return "stub";
   try {
-    await getClient();
-    // Cheap probe: attempt to list via HeadBucket-like call. Use PutObject with
-    // a zero-byte sentinel under `_healthcheck/` so we don't require ListBucket.
+    // Cheap probe: PutObject with a zero-byte sentinel under `_healthcheck/`
+    // so we don't require ListBucket permission.
     await uploadObject(undefined, "_healthcheck/ping", Buffer.from(""), "text/plain");
     return "ok";
   } catch {

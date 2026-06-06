@@ -68,16 +68,17 @@ export function MiniAppShell({
       <MiniAppStyles />
       <MiniAppAurora />
       <header
-        className="sticky top-0 z-20 flex items-center gap-3 px-4 pb-3"
+        className="sticky top-0 z-20 flex flex-col items-center gap-1.5 px-4 pb-3"
         style={{
           backgroundColor: sectionBg,
           borderBottom: `1px solid ${hint}22`,
           // In Telegram fullscreen mode the system status bar + notch
           // overlap the top of the webview. `env(safe-area-inset-top)` is 0
           // on some clients (iMe, Desktop stub), so we `max()` it with a
-          // generous floor that clears the notch on iPhone 12+ reliably.
+          // generous floor that clears the Dynamic Island on iPhone 14 Pro+
+          // (≈59px) — the previous 2.75rem floor clipped it.
           paddingTop:
-            "max(env(safe-area-inset-top), 2.75rem)",
+            "max(env(safe-area-inset-top), 3.75rem)",
         }}
       >
         {clinic?.logoUrl ? (
@@ -85,22 +86,25 @@ export function MiniAppShell({
           <img
             src={clinic.logoUrl}
             alt=""
-            className="h-9 w-9 rounded-full object-cover"
+            className="h-10 w-10 rounded-full object-cover"
           />
         ) : (
           <div
-            className="grid h-9 w-9 place-items-center rounded-full text-sm font-semibold"
+            className="grid h-10 w-10 place-items-center rounded-full text-sm font-semibold"
             style={{ backgroundColor: accent, color: "#fff" }}
           >
             {clinicName?.slice(0, 1) ?? "C"}
           </div>
         )}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-semibold">
+        <div className="min-w-0 max-w-full text-center">
+          <div className="truncate text-base font-semibold leading-tight">
             {clinicName ?? clinicSlug}
           </div>
           {clinic?.addressRu ? (
-            <div className="truncate text-xs" style={{ color: hint }}>
+            <div
+              className="mt-0.5 truncate text-xs"
+              style={{ color: hint }}
+            >
               {lang === "uz" ? clinic.addressUz ?? clinic.addressRu : clinic.addressRu}
             </div>
           ) : null}

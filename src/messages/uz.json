@@ -1298,6 +1298,7 @@
       "uploaded": "{count} ta fayl yuklandi",
       "uploadError": "Yuklashda xatolik: {message}",
       "sign": "Imzolash",
+      "preview": "Ko'rish",
       "download": "Yuklab olish",
       "delete": "O'chirish",
       "deleteAria": "Hujjatni o'chirish",

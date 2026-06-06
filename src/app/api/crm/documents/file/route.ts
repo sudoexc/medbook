@@ -51,12 +51,17 @@ export const GET = createApiListHandler(
       .replace(/[^\x20-\x7E]/g, "_")
       .replace(/"/g, "");
     const utf8Name = encodeURIComponent(downloadName);
+    // `?download=1` forces a Save-As dialog (attachment); default `inline`
+    // lets PDFs/images render in a new tab for quick preview. Matches the
+    // Mini App route's behaviour so the two surfaces stay consistent.
+    const wantsDownload = url.searchParams.get("download") === "1";
+    const disposition = wantsDownload ? "attachment" : "inline";
     return new Response(fetched.body, {
       status: 200,
       headers: {
         "Content-Type":
           fetched.contentType ?? "application/octet-stream",
-        "Content-Disposition": `inline; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+        "Content-Disposition": `${disposition}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
         "Cache-Control": "private, max-age=60",
         ...(fetched.contentLength != null
           ? { "Content-Length": String(fetched.contentLength) }

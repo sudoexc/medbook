@@ -1298,6 +1298,7 @@
       "uploaded": "Загружено {count} файл(ов)",
       "uploadError": "Ошибка загрузки: {message}",
       "sign": "Подписать",
+      "preview": "Посмотреть",
       "download": "Скачать",
       "delete": "Удалить",
       "deleteAria": "Удалить документ",

@@ -4,6 +4,7 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   DownloadIcon,
+  EyeIcon,
   FileIcon,
   FileTextIcon,
   ImageIcon,
@@ -362,17 +363,32 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   {doc.fileUrl.startsWith("http") ||
                   doc.fileUrl.startsWith("/api/") ||
                   doc.fileUrl.startsWith("data:") ? (
-                    <a
-                      href={downloadHref(doc.fileUrl)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={cn(
-                        buttonVariants({ variant: "outline", size: "sm" }),
-                      )}
-                    >
-                      <DownloadIcon className="size-3" />
-                      {t("download")}
-                    </a>
+                    <>
+                      <a
+                        href={downloadHref(doc.fileUrl)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={cn(
+                          buttonVariants({ variant: "outline", size: "sm" }),
+                        )}
+                      >
+                        <EyeIcon className="size-3" />
+                        {t("preview")}
+                      </a>
+                      <a
+                        href={`${downloadHref(doc.fileUrl)}${
+                          doc.fileUrl.startsWith("data:") ? "" : "&download=1"
+                        }`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                        )}
+                      >
+                        <DownloadIcon className="size-3" />
+                        {t("download")}
+                      </a>
+                    </>
                   ) : (
                     <Button variant="outline" size="sm" disabled>
                       <DownloadIcon className="size-3" />

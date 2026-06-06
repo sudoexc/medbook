@@ -31,9 +31,6 @@ export function DocumentsScreen() {
   const upload = useUploadDocument();
   const tg = useTelegramWebApp();
 
-  const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-
   React.useEffect(() => {
     const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
     return off;
@@ -64,17 +61,10 @@ export function DocumentsScreen() {
         else tg.showAlert(t.documents.uploadErrorGeneric);
       }
     },
-    [upload, tg, t.documents],
+    [upload, tg, t.documents, state.status],
   );
 
-  const openCamera = () => {
-    tg.haptic.selection();
-    cameraInputRef.current?.click();
-  };
-  const openFilePicker = () => {
-    tg.haptic.selection();
-    fileInputRef.current?.click();
-  };
+  const disabled = upload.isPending || state.status !== "ready";
 
   return (
     <div>
@@ -92,36 +82,44 @@ export function DocumentsScreen() {
         >
           {t.documents.uploadHint}
         </p>
+        {/*
+          `<label htmlFor>` instead of `<button onClick={ref.current.click()}>`:
+          programmatic `.click()` on a hidden file input loses the user-gesture
+          context in iOS WebViews (especially third-party Telegram clients like
+          iMe), so the file picker silently never opens — exactly the symptom
+          we hit on iPhone. A label-for-input click is a native browser path
+          that doesn't need a JS-synthesised gesture.
+        */}
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={openCamera}
-            disabled={upload.isPending || state.status !== "ready"}
-            className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-60"
+          <label
+            htmlFor="miniapp-upload-camera"
+            className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98]"
             style={{
               backgroundColor: "var(--tg-accent)",
               color: "#fff",
+              opacity: disabled ? 0.6 : 1,
+              pointerEvents: disabled ? "none" : "auto",
             }}
           >
             <Camera className="h-4 w-4" />
             {upload.isPending ? t.documents.uploading : t.documents.uploadCamera}
-          </button>
-          <button
-            type="button"
-            onClick={openFilePicker}
-            disabled={upload.isPending || state.status !== "ready"}
-            className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-60"
+          </label>
+          <label
+            htmlFor="miniapp-upload-file"
+            className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98]"
             style={{
               backgroundColor: "color-mix(in oklch, var(--tg-accent) 12%, transparent)",
               color: "var(--tg-accent)",
+              opacity: disabled ? 0.6 : 1,
+              pointerEvents: disabled ? "none" : "auto",
             }}
           >
             <FolderOpen className="h-4 w-4" />
             {upload.isPending ? t.documents.uploading : t.documents.uploadFile}
-          </button>
+          </label>
         </div>
         <input
-          ref={cameraInputRef}
+          id="miniapp-upload-camera"
           type="file"
           accept="image/*"
           capture="environment"
@@ -129,17 +127,19 @@ export function DocumentsScreen() {
           onChange={(e) => {
             const files = e.target.files;
             e.target.value = "";
+            tg.haptic.selection();
             void handleFiles(files);
           }}
         />
         <input
-          ref={fileInputRef}
+          id="miniapp-upload-file"
           type="file"
           accept="image/*,application/pdf"
           className="sr-only"
           onChange={(e) => {
             const files = e.target.files;
             e.target.value = "";
+            tg.haptic.selection();
             void handleFiles(files);
           }}
         />

@@ -1,35 +1,22 @@
 /**
  * GET /api/crm/documents/file?key=<key> — serve document bytes.
  *
- * Two modes mirror the storage adapter:
- *   - Stub mode → read the file from the local stub root and stream it back.
- *   - MinIO/S3 mode → 302 to a short-lived presigned download URL.
+ * Stream the bytes through the app using the docker-internal MinIO endpoint.
+ * We can't redirect to a presigned URL: nginx's `/files/` location strips the
+ * prefix before forwarding to MinIO, so the canonical path the SDK signed
+ * doesn't match the path MinIO sees → `SignatureDoesNotMatch`. The miniapp
+ * proxy made the same call (see `/api/miniapp/documents/[id]/file/route.ts`).
  *
  * Tenant scoping: the key must begin with `clinics/<ctx.clinicId>/` so a
  * caller can only read their own clinic's documents. SUPER_ADMIN without
  * impersonation does not see any tenant data — they have to enter a clinic
  * first (matches the rest of /api/crm).
  */
-import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { err } from "@/server/http";
-import { getSignedUrl, isStubMode } from "@/server/storage/minio";
-
-function stubBucketRoot(): string {
-  const bucket = process.env.MINIO_BUCKET || "medbook";
-  return path.join(tmpdir(), "medbook-uploads", bucket);
-}
-
-function safeJoin(root: string, key: string): string | null {
-  const cleaned = key.replace(/\\/g, "/").replace(/\.\.(?:\/|$)/g, "");
-  const resolved = path.resolve(root, cleaned);
-  const normRoot = path.resolve(root) + path.sep;
-  if (!resolved.startsWith(normRoot)) return null;
-  return resolved;
-}
+import { fetchObject } from "@/server/storage/minio";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"] },
@@ -44,29 +31,37 @@ export const GET = createApiListHandler(
     const expectedPrefix = `clinics/${clinicId}/`;
     if (!key.startsWith(expectedPrefix)) return err("Forbidden", 403);
 
-    if (isStubMode()) {
-      const filePath = safeJoin(stubBucketRoot(), key);
-      if (!filePath) return err("BadKey", 400);
-      let bytes: Buffer;
-      try {
-        bytes = await fs.readFile(filePath);
-      } catch (e: unknown) {
-        const code = (e as NodeJS.ErrnoException)?.code;
-        if (code === "ENOENT") return err("NotFound", 404);
-        throw e;
-      }
-      const downloadName = path.basename(key);
-      return new Response(new Uint8Array(bytes), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "Content-Disposition": `inline; filename="${downloadName.replace(/"/g, "")}"`,
-          "Cache-Control": "private, max-age=60",
-        },
-      });
+    let fetched: Awaited<ReturnType<typeof fetchObject>>;
+    try {
+      fetched = await fetchObject(undefined, key);
+    } catch (e: unknown) {
+      const code = (e as NodeJS.ErrnoException)?.code;
+      if (code === "ENOENT") return err("NotFound", 404);
+      return err("StorageUnavailable", 502);
     }
+    if (!fetched.body) return err("EmptyBody", 502);
 
-    const signed = await getSignedUrl(undefined, key, 300);
-    return Response.redirect(signed, 302);
+    // Per RFC 6266: bare `filename=` must be ASCII; non-ASCII (e.g. Cyrillic
+    // titles) need `filename*=UTF-8''…` or the Response constructor throws
+    // with a ByteString error. The basename here is the storage key suffix
+    // (always ASCII), so a plain filename is safe — but we keep the fallback
+    // pattern explicit so future changes don't regress silently.
+    const downloadName = path.basename(key);
+    const asciiName = downloadName
+      .replace(/[^\x20-\x7E]/g, "_")
+      .replace(/"/g, "");
+    const utf8Name = encodeURIComponent(downloadName);
+    return new Response(fetched.body, {
+      status: 200,
+      headers: {
+        "Content-Type":
+          fetched.contentType ?? "application/octet-stream",
+        "Content-Disposition": `inline; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+        "Cache-Control": "private, max-age=60",
+        ...(fetched.contentLength != null
+          ? { "Content-Length": String(fetched.contentLength) }
+          : {}),
+      },
+    });
   },
 );

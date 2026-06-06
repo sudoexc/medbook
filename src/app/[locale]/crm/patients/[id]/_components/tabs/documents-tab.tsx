@@ -71,6 +71,21 @@ function typeIcon(type: PatientDocument["type"]) {
   return <FileIcon className="size-4" />;
 }
 
+/**
+ * Stored `fileUrl` is the raw MinIO URL (private bucket → AccessDenied on
+ * direct GET) or a signature `data:` URL. Route everything stored in MinIO
+ * through `/api/crm/documents/file` which streams via the internal endpoint
+ * and enforces tenant scoping. We extract the canonical S3 key from
+ * `/clinics/…` onwards, matching how it was written by the upload route.
+ */
+function downloadHref(fileUrl: string): string {
+  if (fileUrl.startsWith("data:")) return fileUrl;
+  const idx = fileUrl.indexOf("/clinics/");
+  if (idx < 0) return fileUrl;
+  const key = fileUrl.slice(idx + 1);
+  return `/api/crm/documents/file?key=${encodeURIComponent(key)}`;
+}
+
 export interface DocumentsTabProps {
   patient: Patient;
 }
@@ -346,7 +361,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   doc.fileUrl.startsWith("/api/") ||
                   doc.fileUrl.startsWith("data:") ? (
                     <a
-                      href={doc.fileUrl}
+                      href={downloadHref(doc.fileUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className={cn(

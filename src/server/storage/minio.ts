@@ -208,6 +208,42 @@ export async function deleteObject(
   await getClient().send(new DeleteObjectCommand({ Bucket: b, Key: key }));
 }
 
+/**
+ * Read an object as a streamable response. Uses the internal client so the
+ * fetch goes over the docker network (no presigning round-trip / nginx-rewrite
+ * signature mismatch). Caller is responsible for streaming the body back to
+ * the browser with the correct Content-Type / Content-Disposition.
+ */
+export type ObjectFetchResult = {
+  body: ReadableStream<Uint8Array> | null;
+  contentType: string | null;
+  contentLength: number | null;
+};
+
+export async function fetchObject(
+  bucket: string | undefined,
+  key: string,
+): Promise<ObjectFetchResult> {
+  const b = resolveBucket(bucket);
+  if (isStubMode()) {
+    const filePath = stubPath(b, key);
+    const bytes = await fs.readFile(filePath);
+    return {
+      body: new Response(new Uint8Array(bytes)).body,
+      contentType: "application/octet-stream",
+      contentLength: bytes.byteLength,
+    };
+  }
+  const out = await getClient().send(
+    new GetObjectCommand({ Bucket: b, Key: key }),
+  );
+  return {
+    body: (out.Body as ReadableStream<Uint8Array> | undefined) ?? null,
+    contentType: out.ContentType ?? null,
+    contentLength: out.ContentLength ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Health probe — used by /api/health.
 // ---------------------------------------------------------------------------

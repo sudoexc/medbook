@@ -21,7 +21,7 @@ import {
   createMiniAppListHandler,
   resolveMiniAppContext,
 } from "@/server/miniapp/handler";
-import { getSignedUrl, uploadObject } from "@/server/storage/minio";
+import { uploadObject } from "@/server/storage/minio";
 
 // 10 MB cap — covers a high-res phone photo (typical 3-5 MB) with room for
 // PDFs the patient might forward from an external clinic. Anything larger is
@@ -79,22 +79,15 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
   // The stored fileUrl is the bare `${MINIO_PUBLIC_URL}/${bucket}/${key}` —
   // unsigned, so a direct GET returns MinIO's `AccessDenied` XML (which
   // Telegram/Safari render as plain text, the classic "wtf is this" symptom).
-  // Re-sign at read time so the link the patient taps is a short-lived
-  // presigned download URL.
-  const pubPrefix = `${(process.env.MINIO_PUBLIC_URL || process.env.MINIO_ENDPOINT || "").replace(/\/$/, "")}/${process.env.MINIO_BUCKET || "medbook"}/`;
-  const signed = await Promise.all(
-    docs.map(async (d) => {
-      if (!d.fileUrl || !d.fileUrl.startsWith(pubPrefix)) return d;
-      const key = d.fileUrl.slice(pubPrefix.length);
-      try {
-        const url = await getSignedUrl(undefined, key, 600);
-        return { ...d, fileUrl: url };
-      } catch {
-        return d;
-      }
-    }),
-  );
-  return ok({ documents: signed });
+  // Presigning doesn't help because nginx's `/files/` location strips the
+  // prefix before forwarding to MinIO, breaking the canonical-path
+  // signature. Instead, swap each fileUrl for our own server-side stream
+  // route — auth-checked + served with the right Content-Type.
+  const proxied = docs.map((d) => ({
+    ...d,
+    fileUrl: `/api/miniapp/documents/${d.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`,
+  }));
+  return ok({ documents: proxied });
 });
 
 export async function POST(request: Request): Promise<Response> {

@@ -19,8 +19,14 @@ import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 export function DocumentsScreen() {
   const t = useT();
   const router = useRouter();
-  const { clinicSlug, state } = useMiniAppAuth();
+  const { clinicSlug, state, initData } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
+  // `<a target="_blank">` opens in a fresh tab without our custom headers,
+  // so we attach init-data via query — the server's `resolveMiniAppContext`
+  // already accepts it that way (precedent: SSE endpoint).
+  const fileLinkParam = initData
+    ? `&initData=${encodeURIComponent(initData)}`
+    : "";
   const docs = useDocuments();
   const upload = useUploadDocument();
   const tg = useTelegramWebApp();
@@ -180,7 +186,11 @@ export function DocumentsScreen() {
                   </div>
                   <div>
                     {!isPending ? (
-                      <a href={d.fileUrl} target="_blank" rel="noreferrer">
+                      <a
+                        href={`${d.fileUrl}${fileLinkParam}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
                         <MButton variant="secondary">{t.documents.open}</MButton>
                       </a>
                     ) : (

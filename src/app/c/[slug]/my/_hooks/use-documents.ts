@@ -66,10 +66,22 @@ export function useUploadDocument() {
       form.append("file", input.file);
       if (input.title) form.append("title", input.title);
       if (input.type) form.append("type", input.type);
+      // `miniAppFetchHeaders` defaults to `content-type: application/json`,
+      // which would clobber the `multipart/form-data; boundary=…` that fetch
+      // sets automatically for a FormData body — resulting in `formData()`
+      // throwing on the server and a 400 InvalidMultipart. Strip it so the
+      // browser owns Content-Type for this request.
+      const headers = {
+        ...(miniAppFetchHeaders(initData, isTelegramContext) as Record<
+          string,
+          string
+        >),
+      };
+      delete headers["content-type"];
       const res = await fetch(url.toString(), {
         method: "POST",
         body: form,
-        headers: miniAppFetchHeaders(initData, isTelegramContext),
+        headers,
         cache: "no-store",
       });
       const isJson = res.headers

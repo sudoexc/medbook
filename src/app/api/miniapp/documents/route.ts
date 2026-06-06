@@ -98,8 +98,23 @@ export async function POST(request: Request): Promise<Response> {
   let form: FormData;
   try {
     form = await request.formData();
-  } catch {
-    return err("InvalidMultipart", 400);
+  } catch (e) {
+    // Surface the parse failure: without it we can't tell whether the
+    // Content-Type lost its boundary (iMe-style client), the body
+    // truncated, or undici choked on a specific multipart edge case.
+    const reason = (e as Error)?.message?.slice(0, 200) ?? "unknown";
+    const ct = request.headers.get("content-type")?.slice(0, 200) ?? null;
+    const cl = request.headers.get("content-length");
+    console.error("[miniapp/documents POST] formData parse failed", {
+      reason,
+      contentType: ct,
+      contentLength: cl,
+    });
+    return err("InvalidMultipart", 400, {
+      reason,
+      contentType: ct,
+      contentLength: cl,
+    });
   }
 
   const file = form.get("file");

@@ -41,43 +41,26 @@ export function DocumentsScreen() {
     return off;
   }, [tg]);
 
-  // Temporary on-screen debug trail to diagnose iMe upload failure — we can't
-  // see the client console from here, and nginx logs show no POST is even
-  // being attempted, so this surfaces each step of the flow visibly.
-  const [debug, setDebug] = React.useState<string[]>([]);
-  const dlog = React.useCallback((msg: string) => {
-    const ts = new Date().toTimeString().slice(0, 8);
-    setDebug((p) => [...p.slice(-5), `${ts} ${msg}`]);
-  }, []);
-
   const handleFiles = React.useCallback(
     async (file: File | null) => {
-      dlog(`handleFiles: file=${file ? "yes" : "null"}`);
-      if (!file) {
-        dlog("→ no file, abort");
-        return;
-      }
-      if (state.status !== "ready") {
-        dlog(`→ status=${state.status}, abort`);
-        return;
-      }
-      dlog(`file: ${file.name || "(noname)"} ${file.type || "(notype)"} ${file.size}b`);
+      if (!file) return;
+      // Guard against a click that races the TG SDK boot — without an
+      // init-data header the server replies 401 and we'd show the
+      // confusing "uploadErrorGeneric" toast even though it's our fault.
+      if (state.status !== "ready") return;
       try {
-        dlog("calling mutateAsync…");
         await upload.mutateAsync({ file });
-        dlog("upload OK");
         tg.haptic.notification("success");
         tg.showAlert(t.documents.uploadSuccess);
       } catch (e) {
-        const err = e as Error & { status?: number; data?: { reason?: string } };
-        dlog(`upload FAILED: status=${err.status ?? "?"} msg=${err.message ?? "?"}`);
         tg.haptic.notification("error");
+        const err = e as Error & { status?: number; data?: { reason?: string } };
         if (err.status === 413) tg.showAlert(t.documents.uploadErrorTooLarge);
         else if (err.status === 415) tg.showAlert(t.documents.uploadErrorMime);
         else tg.showAlert(t.documents.uploadErrorGeneric);
       }
     },
-    [upload, tg, t.documents, state.status, dlog],
+    [upload, tg, t.documents, state.status],
   );
 
   const disabled = upload.isPending || state.status !== "ready";
@@ -139,6 +122,11 @@ export function DocumentsScreen() {
           `e.target.value = ""` empties it before the handler reads files[0],
           so we must capture the File object *before* the reset.
         */}
+        {/*
+          `FileList` is a *live* reference on iOS WebViews — resetting
+          `e.target.value = ""` empties it before the handler reads files[0],
+          so we must capture the File object *before* the reset.
+        */}
         <input
           id="miniapp-upload-camera"
           type="file"
@@ -148,12 +136,10 @@ export function DocumentsScreen() {
           onChange={(e) => {
             const input = e.currentTarget;
             const file = input.files?.[0] ?? null;
-            dlog(`camera onChange: file=${file?.name ?? "null"}`);
             input.value = "";
             tg.haptic.selection();
             void handleFiles(file);
           }}
-          onClick={() => dlog("camera input clicked")}
         />
         <input
           id="miniapp-upload-file"
@@ -163,27 +149,11 @@ export function DocumentsScreen() {
           onChange={(e) => {
             const input = e.currentTarget;
             const file = input.files?.[0] ?? null;
-            dlog(`file onChange: file=${file?.name ?? "null"}`);
             input.value = "";
             tg.haptic.selection();
             void handleFiles(file);
           }}
-          onClick={() => dlog("file input clicked")}
         />
-        {debug.length > 0 ? (
-          <div
-            className="mt-3 rounded-lg p-2 text-[10px] font-mono leading-tight"
-            style={{
-              backgroundColor: "color-mix(in oklch, var(--tg-hint) 12%, transparent)",
-              color: "var(--tg-text)",
-            }}
-          >
-            <div className="mb-1 font-semibold opacity-70">debug</div>
-            {debug.map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
-          </div>
-        ) : null}
       </MCard>
       {docs.isLoading ? (
         <SkeletonList rows={4} variant="card" />

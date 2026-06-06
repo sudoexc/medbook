@@ -16,6 +16,8 @@ export type MiniAppDocument = {
   mimeType: string | null;
   sizeBytes: number | null;
   createdAt: string;
+  /** Per-patient sequence: `#1` is the oldest, `#N` the newest upload. */
+  seq: number;
 };
 
 export function useDocuments() {

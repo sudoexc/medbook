@@ -76,6 +76,11 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
       createdAt: true,
     },
   });
+  // The patient only ever sees their own documents, so `seq` here is
+  // identical to the staff-side `seq` for the same row. We can derive
+  // it directly from the descending list: `seq = total - i` where `i`
+  // is the zero-based index in the desc-sorted slice.
+  const total = docs.length;
   // The stored fileUrl is the bare `${MINIO_PUBLIC_URL}/${bucket}/${key}` —
   // unsigned, so a direct GET returns MinIO's `AccessDenied` XML (which
   // Telegram/Safari render as plain text, the classic "wtf is this" symptom).
@@ -83,8 +88,9 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
   // prefix before forwarding to MinIO, breaking the canonical-path
   // signature. Instead, swap each fileUrl for our own server-side stream
   // route — auth-checked + served with the right Content-Type.
-  const proxied = docs.map((d) => ({
+  const proxied = docs.map((d, i) => ({
     ...d,
+    seq: total - i,
     fileUrl: `/api/miniapp/documents/${d.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`,
   }));
   return ok({ documents: proxied });

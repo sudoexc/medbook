@@ -21,11 +21,19 @@ import { formatDate, type Locale } from "@/lib/format";
 import type { Patient } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
 import { usePatientCommunications } from "../_hooks/use-patient-communications";
-import { usePatientDocuments } from "../_hooks/use-patient-documents";
+import {
+  documentDownloadHref,
+  usePatientDocuments,
+  type PatientDocument,
+} from "../_hooks/use-patient-documents";
 import {
   usePatientFamily,
   type PatientFamilyRelationship,
 } from "../_hooks/use-patient-family";
+import {
+  DocumentPreviewDialog,
+  type DocumentPreviewTarget,
+} from "./document-preview-dialog";
 import { TelegramInviteDialog } from "./telegram-invite-dialog";
 
 export interface PatientRightRailProps {
@@ -84,9 +92,22 @@ export function PatientRightRail({
   const t = useTranslations("patientCard.rightRail");
   const [nowMs] = React.useState(() => Date.now());
   const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [previewTarget, setPreviewTarget] =
+    React.useState<DocumentPreviewTarget | null>(null);
   const commsQ = usePatientCommunications(patient.id);
   const docsQ = usePatientDocuments(patient.id);
   const familyQ = usePatientFamily(patient.id);
+
+  const openDocumentPreview = React.useCallback((d: PatientDocument) => {
+    if (!d.fileUrl) return;
+    setPreviewTarget({
+      id: d.id,
+      title: d.title,
+      seq: d.seq,
+      previewUrl: documentDownloadHref(d.fileUrl),
+      mimeType: d.mimeType,
+    });
+  }, []);
 
   const comms = commsQ.data?.items ?? [];
   const docs = docsQ.data?.rows ?? [];
@@ -218,21 +239,21 @@ export function PatientRightRail({
                 <li key={d.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!d.fileUrl) return;
-                      window.open(d.fileUrl, "_blank", "noopener,noreferrer");
-                    }}
+                    onClick={() => openDocumentPreview(d)}
                     className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-2 py-1.5 text-left text-[12px] transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                       <Icon className="size-3.5" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-foreground">
-                        {d.title}
+                      <span className="flex items-center gap-1.5 font-medium text-foreground">
+                        <span className="shrink-0 rounded-sm bg-primary/10 px-1 text-[10px] font-semibold tabular-nums text-primary">
+                          #{d.seq}
+                        </span>
+                        <span className="truncate">{d.title}</span>
                       </span>
                       <span className="block truncate text-[10px] text-muted-foreground tabular-nums">
-                        {formatDate(d.createdAt, locale, "short")}
+                        {formatDate(d.createdAt, locale, "dayMonthTime")}
                         {d.sizeBytes ? ` · ${formatBytes(d.sizeBytes)}` : ""}
                       </span>
                     </span>
@@ -279,6 +300,14 @@ export function PatientRightRail({
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         patientId={patient.id}
+      />
+
+      <DocumentPreviewDialog
+        open={previewTarget !== null}
+        onOpenChange={(v) => {
+          if (!v) setPreviewTarget(null);
+        }}
+        target={previewTarget}
       />
     </div>
   );

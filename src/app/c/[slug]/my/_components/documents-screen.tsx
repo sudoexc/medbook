@@ -180,6 +180,16 @@ export function DocumentsScreen() {
                           style={{ backgroundColor: "#f59e0b" }}
                         />
                       ) : null}
+                      <span
+                        className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums"
+                        style={{
+                          backgroundColor:
+                            "color-mix(in oklch, var(--tg-accent) 14%, transparent)",
+                          color: "var(--tg-accent)",
+                        }}
+                      >
+                        #{d.seq}
+                      </span>
                       <div className="truncate text-sm font-semibold">{d.title}</div>
                     </div>
                     <div

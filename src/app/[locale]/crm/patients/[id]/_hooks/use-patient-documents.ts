@@ -27,7 +27,24 @@ export type PatientDocument = {
   sizeBytes: number | null;
   createdAt: string;
   uploadedBy: { id: string; name: string } | null;
+  /** Per-patient sequence: `#1` is the oldest, `#N` the newest upload. */
+  seq: number;
 };
+
+/**
+ * The stored `fileUrl` is either the raw MinIO URL (private bucket → direct
+ * GET fails with AccessDenied) or a base64 signature `data:` URL. The streaming
+ * route at `/api/crm/documents/file?key=…` is the only path with tenant scoping
+ * + the docker-internal MinIO endpoint, so route every persisted file through
+ * it. Signature data URLs are passed through unchanged.
+ */
+export function documentDownloadHref(fileUrl: string): string {
+  if (fileUrl.startsWith("data:")) return fileUrl;
+  const idx = fileUrl.indexOf("/clinics/");
+  if (idx < 0) return fileUrl;
+  const key = fileUrl.slice(idx + 1);
+  return `/api/crm/documents/file?key=${encodeURIComponent(key)}`;
+}
 
 export type DocumentsListResponse = {
   rows: PatientDocument[];

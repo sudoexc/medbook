@@ -46,6 +46,7 @@ import {
 
 import type { Patient } from "../../_hooks/use-patient";
 import {
+  documentDownloadHref,
   flattenDocuments,
   useCreateDocument,
   useDeleteDocument,
@@ -53,6 +54,10 @@ import {
   type DocumentTypeFilter,
   type PatientDocument,
 } from "../../_hooks/use-patient-documents";
+import {
+  DocumentPreviewDialog,
+  type DocumentPreviewTarget,
+} from "../document-preview-dialog";
 
 const DOC_TYPES = [
   "REFERRAL",
@@ -70,21 +75,6 @@ function typeIcon(type: PatientDocument["type"]) {
   if (type === "CONSENT" || type === "CONTRACT")
     return <PenToolIcon className="size-4" />;
   return <FileIcon className="size-4" />;
-}
-
-/**
- * Stored `fileUrl` is the raw MinIO URL (private bucket → AccessDenied on
- * direct GET) or a signature `data:` URL. Route everything stored in MinIO
- * through `/api/crm/documents/file` which streams via the internal endpoint
- * and enforces tenant scoping. We extract the canonical S3 key from
- * `/clinics/…` onwards, matching how it was written by the upload route.
- */
-function downloadHref(fileUrl: string): string {
-  if (fileUrl.startsWith("data:")) return fileUrl;
-  const idx = fileUrl.indexOf("/clinics/");
-  if (idx < 0) return fileUrl;
-  const key = fileUrl.slice(idx + 1);
-  return `/api/crm/documents/file?key=${encodeURIComponent(key)}`;
 }
 
 export interface DocumentsTabProps {
@@ -116,6 +106,19 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   const [uploading, setUploading] = React.useState(false);
   const [deleteTarget, setDeleteTarget] =
     React.useState<PatientDocument | null>(null);
+  const [previewTarget, setPreviewTarget] =
+    React.useState<DocumentPreviewTarget | null>(null);
+
+  const openDocumentPreview = React.useCallback((d: PatientDocument) => {
+    if (!d.fileUrl) return;
+    setPreviewTarget({
+      id: d.id,
+      title: d.title,
+      seq: d.seq,
+      previewUrl: documentDownloadHref(d.fileUrl),
+      mimeType: d.mimeType,
+    });
+  }, []);
 
   const docs = React.useMemo(() => flattenDocuments(q.data), [q.data]);
   const hasFilters = searchDebounced.trim().length > 0 || typeFilter !== "ALL";
@@ -333,8 +336,13 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-foreground">
-                  {doc.title}
+                <div className="flex items-center gap-1.5">
+                  <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+                    #{doc.seq}
+                  </span>
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {doc.title}
+                  </span>
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>
@@ -364,19 +372,16 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                   doc.fileUrl.startsWith("/api/") ||
                   doc.fileUrl.startsWith("data:") ? (
                     <>
-                      <a
-                        href={downloadHref(doc.fileUrl)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={cn(
-                          buttonVariants({ variant: "outline", size: "sm" }),
-                        )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openDocumentPreview(doc)}
                       >
                         <EyeIcon className="size-3" />
                         {t("preview")}
-                      </a>
+                      </Button>
                       <a
-                        href={`${downloadHref(doc.fileUrl)}${
+                        href={`${documentDownloadHref(doc.fileUrl)}${
                           doc.fileUrl.startsWith("data:") ? "" : "&download=1"
                         }`}
                         target="_blank"
@@ -435,6 +440,14 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
             mimeType: "image/png",
           });
         }}
+      />
+
+      <DocumentPreviewDialog
+        open={previewTarget !== null}
+        onOpenChange={(v) => {
+          if (!v) setPreviewTarget(null);
+        }}
+        target={previewTarget}
       />
 
       <AlertDialog

@@ -15,6 +15,33 @@ import {
   QueryDocumentSchema,
 } from "@/server/schemas/document";
 
+/**
+ * Per-patient sequence number — `#1` is the patient's oldest document,
+ * `#N` the newest. Stable across pagination/filtering because it depends
+ * only on (patientId, createdAt, id) which never change post-create.
+ * Computed via a correlated count rather than a window function so we only
+ * pay for the row ids actually being returned.
+ */
+async function attachSeq<T extends { id: string; patientId: string; createdAt: Date }>(
+  rows: T[],
+): Promise<Array<T & { seq: number }>> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const seqRows = await prisma.$queryRawUnsafe<Array<{ id: string; seq: bigint }>>(
+    `SELECT d.id,
+            (SELECT COUNT(*)
+               FROM "Document" d2
+              WHERE d2."patientId" = d."patientId"
+                AND (d2."createdAt" < d."createdAt"
+                     OR (d2."createdAt" = d."createdAt" AND d2."id" <= d."id")))::bigint AS seq
+       FROM "Document" d
+      WHERE d.id = ANY($1::text[])`,
+    ids,
+  );
+  const map = new Map(seqRows.map((r) => [r.id, Number(r.seq)] as const));
+  return rows.map((r) => ({ ...r, seq: map.get(r.id) ?? 0 }));
+}
+
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"] },
   async ({ request, ctx }) => {
@@ -102,7 +129,8 @@ export const GET = createApiListHandler(
       const next = rows.pop();
       nextCursor = next?.id ?? null;
     }
-    return ok({ rows, nextCursor });
+    const withSeq = await attachSeq(rows);
+    return ok({ rows: withSeq, nextCursor });
   }
 );
 

@@ -164,6 +164,8 @@ export const ruDict = {
     title: "Документы",
     empty: "Документы отсутствуют",
     open: "Открыть",
+    view: "Посмотреть",
+    download: "Скачать",
     pending: "Загружается",
     uploadedOn: "Загружен {date}",
     uploadCta: "Загрузить",

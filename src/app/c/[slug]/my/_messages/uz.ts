@@ -164,6 +164,8 @@ export const uzDict = {
     title: "Hujjatlar",
     empty: "Hujjatlar yo‘q",
     open: "Ochish",
+    view: "Ko‘rish",
+    download: "Yuklab olish",
     pending: "Yuklanmoqda",
     uploadedOn: "Yuklangan {date}",
     uploadCta: "Yuklash",

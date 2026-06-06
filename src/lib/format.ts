@@ -95,15 +95,22 @@ function formatInteger(n: number): string {
 // Dates
 // -----------------------------------------------------------------------------
 
-export type DateStyle = "short" | "long" | "time" | "relative";
+export type DateStyle =
+  | "short"
+  | "long"
+  | "time"
+  | "relative"
+  | "dayMonthTime";
 
 /**
  * Format a date/time value.
  *
- *   short    → "22.04.2026" (ru) / "22.04.2026" (uz)
- *   long     → "22 апреля 2026 г." (ru) / "22-aprel, 2026" (uz-ish)
- *   time     → "14:30"
- *   relative → "вчера в 14:00" / "kecha soat 14:00 da"
+ *   short        → "22.04.2026" (ru) / "22.04.2026" (uz)
+ *   long         → "22 апреля 2026 г." (ru) / "22-aprel, 2026" (uz-ish)
+ *   time         → "14:30"
+ *   relative     → "вчера в 14:00" / "kecha soat 14:00 da"
+ *   dayMonthTime → "6 июня, 15:45" / "6-iyun, 15:45" — for "uploaded on"
+ *                  labels where the year would just be noise.
  */
 export function formatDate(
   date: Date | string | number | null | undefined,
@@ -138,6 +145,19 @@ export function formatDate(
       minute: "2-digit",
       hour12: false,
     }).format(d);
+  }
+
+  if (style === "dayMonthTime") {
+    const day = new Intl.DateTimeFormat(tag, {
+      day: "numeric",
+      month: "long",
+    }).format(d);
+    const time = new Intl.DateTimeFormat(tag, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(d);
+    return `${day}, ${time}`;
   }
 
   // relative

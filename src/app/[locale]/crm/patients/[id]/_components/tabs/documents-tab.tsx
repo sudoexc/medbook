@@ -354,7 +354,9 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
                       : doc.type}
                   </span>
                   <span>·</span>
-                  <span>{formatDate(doc.createdAt, locale, "short")}</span>
+                  <span>
+                    {formatDate(doc.createdAt, locale, "dayMonthTime")}
+                  </span>
                 </div>
                 <div className="mt-2 flex gap-1">
                   {doc.fileUrl.startsWith("http") ||

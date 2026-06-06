@@ -68,9 +68,13 @@ export async function GET(
     const rawTitle = doc.title || "document";
     const asciiName = rawTitle.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
     const utf8Name = encodeURIComponent(rawTitle);
+    // `?download=1` forces a Save-As dialog (attachment) — the default is
+    // `inline` so PDFs/images render in the browser tab for quick preview.
+    const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
+    const disposition = wantsDownload ? "attachment" : "inline";
     const headers: Record<string, string> = {
       "Content-Type": contentType,
-      "Content-Disposition": `inline; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+      "Content-Disposition": `${disposition}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
       "Cache-Control": "private, max-age=60",
     };
     if (fetched.contentLength != null) {

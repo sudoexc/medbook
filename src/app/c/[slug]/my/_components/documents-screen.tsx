@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Camera, FolderOpen, Upload } from "lucide-react";
+import {
+  Camera,
+  Download as DownloadIcon,
+  Eye,
+  FolderOpen,
+  Upload,
+} from "lucide-react";
 
 import {
   MButton,
@@ -15,6 +21,7 @@ import { useT } from "./mini-i18n";
 import { useDocuments, useUploadDocument } from "../_hooks/use-documents";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
+import { formatDate } from "@/lib/format";
 
 export function DocumentsScreen() {
   const t = useT();
@@ -189,27 +196,51 @@ export function DocumentsScreen() {
                         ? t.documents.pending
                         : t.documents.uploadedOn.replace(
                             "{date}",
-                            new Date(d.createdAt).toLocaleDateString(
-                              lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
+                            formatDate(
+                              d.createdAt,
+                              lang === "UZ" ? "uz" : "ru",
+                              "dayMonthTime",
                             ),
                           )}
                     </div>
                   </div>
-                  <div>
-                    {!isPending ? (
+                </div>
+                {/*
+                  Two actions: preview (inline → opens in tab) and download
+                  (`?download=1` → server sets `attachment` so Telegram WebView
+                  triggers the native save sheet instead of a blank tab).
+                */}
+                <div className="mt-3 flex gap-2">
+                  {!isPending ? (
+                    <>
                       <a
                         href={`${d.fileUrl}${fileLinkParam}`}
                         target="_blank"
                         rel="noreferrer"
+                        className="flex-1"
                       >
-                        <MButton variant="secondary">{t.documents.open}</MButton>
+                        <MButton variant="secondary" className="w-full">
+                          <Eye className="mr-1 inline h-4 w-4" />
+                          {t.documents.view}
+                        </MButton>
                       </a>
-                    ) : (
-                      <MButton variant="ghost" disabled>
-                        {t.documents.open}
-                      </MButton>
-                    )}
-                  </div>
+                      <a
+                        href={`${d.fileUrl}${fileLinkParam}&download=1`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1"
+                      >
+                        <MButton variant="ghost" className="w-full">
+                          <DownloadIcon className="mr-1 inline h-4 w-4" />
+                          {t.documents.download}
+                        </MButton>
+                      </a>
+                    </>
+                  ) : (
+                    <MButton variant="ghost" disabled className="flex-1">
+                      {t.documents.view}
+                    </MButton>
+                  )}
                 </div>
               </MCard>
             );

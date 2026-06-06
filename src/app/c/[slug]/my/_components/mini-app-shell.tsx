@@ -67,47 +67,50 @@ export function MiniAppShell({
     >
       <MiniAppStyles />
       <MiniAppAurora />
+      {/* No `sticky`, no `sectionBg`, no border — the header sits inside the
+          page flow on the aurora gradient. Telegram chrome above already
+          carries the bot identity; this just adds an in-app brand moment. */}
       <header
-        className="sticky top-0 z-20 flex flex-col items-center gap-1.5 px-4 pb-3"
+        className="relative z-10 flex flex-col items-center gap-2.5 px-4 pb-5"
         style={{
-          backgroundColor: sectionBg,
-          borderBottom: `1px solid ${hint}22`,
-          // In Telegram fullscreen mode the system status bar + notch
-          // overlap the top of the webview. `env(safe-area-inset-top)` is 0
-          // on some clients (iMe, Desktop stub), so we `max()` it with a
-          // generous floor that clears the Dynamic Island on iPhone 14 Pro+
-          // (≈59px) — the previous 2.75rem floor clipped it.
-          paddingTop:
-            "max(env(safe-area-inset-top), 3.75rem)",
+          paddingTop: "max(env(safe-area-inset-top), 1.25rem)",
         }}
       >
-        {clinic?.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={clinic.logoUrl}
-            alt=""
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : (
+        <div className="relative">
+          {/* Soft accent halo behind the logo. */}
           <div
-            className="grid h-10 w-10 place-items-center rounded-full text-sm font-semibold"
-            style={{ backgroundColor: accent, color: "#fff" }}
-          >
-            {clinicName?.slice(0, 1) ?? "C"}
-          </div>
-        )}
-        <div className="min-w-0 max-w-full text-center">
-          <div className="truncate text-base font-semibold leading-tight">
-            {clinicName ?? clinicSlug}
-          </div>
-          {clinic?.addressRu ? (
+            aria-hidden
+            className="pointer-events-none absolute -inset-3 rounded-full blur-2xl opacity-60"
+            style={{ backgroundColor: accent }}
+          />
+          {clinic?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={clinic.logoUrl}
+              alt=""
+              className="relative h-12 w-12 rounded-full object-cover"
+              style={{
+                boxShadow: `0 0 0 1px ${hint}33, 0 6px 20px -4px ${accent}55`,
+              }}
+            />
+          ) : (
             <div
-              className="mt-0.5 truncate text-xs"
-              style={{ color: hint }}
+              className="relative grid h-12 w-12 place-items-center rounded-full text-lg font-bold"
+              style={{
+                backgroundColor: accent,
+                color: "#fff",
+                boxShadow: `0 0 0 1px ${hint}33, 0 6px 20px -4px ${accent}66`,
+              }}
             >
-              {lang === "uz" ? clinic.addressUz ?? clinic.addressRu : clinic.addressRu}
+              {(clinicName ?? clinicSlug).slice(0, 1).toUpperCase()}
             </div>
-          ) : null}
+          )}
+        </div>
+        <div
+          className="truncate text-[15px] font-semibold leading-tight"
+          style={{ letterSpacing: "-0.01em" }}
+        >
+          {clinicName ?? clinicSlug}
         </div>
       </header>
       <main className="relative z-10 mx-auto w-full max-w-[430px] px-4 pb-24 pt-4">

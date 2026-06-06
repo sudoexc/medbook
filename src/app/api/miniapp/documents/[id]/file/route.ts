@@ -60,9 +60,17 @@ export async function GET(
 
     const contentType =
       doc.mimeType || fetched.contentType || "application/octet-stream";
+    // HTTP header values are byte strings, so a Cyrillic title like
+    // "Фото от пациента" (the patient-upload default) crashes the Response
+    // constructor with a TypeError. Per RFC 6266 §5, use `filename*=UTF-8''…`
+    // for non-ASCII names, with an ASCII-safe `filename=` fallback for ancient
+    // clients.
+    const rawTitle = doc.title || "document";
+    const asciiName = rawTitle.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
+    const utf8Name = encodeURIComponent(rawTitle);
     const headers: Record<string, string> = {
       "Content-Type": contentType,
-      "Content-Disposition": `inline; filename="${(doc.title || "document").replace(/"/g, "")}"`,
+      "Content-Disposition": `inline; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
       "Cache-Control": "private, max-age=60",
     };
     if (fetched.contentLength != null) {

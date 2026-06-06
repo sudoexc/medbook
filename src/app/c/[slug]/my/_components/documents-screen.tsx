@@ -51,17 +51,16 @@ export function DocumentsScreen() {
   }, []);
 
   const handleFiles = React.useCallback(
-    async (files: FileList | null) => {
-      dlog(`handleFiles: files=${files?.length ?? "null"}`);
-      if (!files || files.length === 0) {
-        dlog("→ no files, abort");
+    async (file: File | null) => {
+      dlog(`handleFiles: file=${file ? "yes" : "null"}`);
+      if (!file) {
+        dlog("→ no file, abort");
         return;
       }
       if (state.status !== "ready") {
         dlog(`→ status=${state.status}, abort`);
         return;
       }
-      const file = files[0];
       dlog(`file: ${file.name || "(noname)"} ${file.type || "(notype)"} ${file.size}b`);
       try {
         dlog("calling mutateAsync…");
@@ -135,6 +134,11 @@ export function DocumentsScreen() {
             {upload.isPending ? t.documents.uploading : t.documents.uploadFile}
           </label>
         </div>
+        {/*
+          `FileList` is a *live* reference on iOS WebViews — resetting
+          `e.target.value = ""` empties it before the handler reads files[0],
+          so we must capture the File object *before* the reset.
+        */}
         <input
           id="miniapp-upload-camera"
           type="file"
@@ -142,11 +146,12 @@ export function DocumentsScreen() {
           capture="environment"
           className="sr-only"
           onChange={(e) => {
-            const files = e.target.files;
-            dlog(`camera onChange: files=${files?.length ?? "null"}`);
-            e.target.value = "";
+            const input = e.currentTarget;
+            const file = input.files?.[0] ?? null;
+            dlog(`camera onChange: file=${file?.name ?? "null"}`);
+            input.value = "";
             tg.haptic.selection();
-            void handleFiles(files);
+            void handleFiles(file);
           }}
           onClick={() => dlog("camera input clicked")}
         />
@@ -156,11 +161,12 @@ export function DocumentsScreen() {
           accept="image/*,application/pdf"
           className="sr-only"
           onChange={(e) => {
-            const files = e.target.files;
-            dlog(`file onChange: files=${files?.length ?? "null"}`);
-            e.target.value = "";
+            const input = e.currentTarget;
+            const file = input.files?.[0] ?? null;
+            dlog(`file onChange: file=${file?.name ?? "null"}`);
+            input.value = "";
             tg.haptic.selection();
-            void handleFiles(files);
+            void handleFiles(file);
           }}
           onClick={() => dlog("file input clicked")}
         />

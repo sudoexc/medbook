@@ -41,6 +41,10 @@ export function DocumentsScreen() {
   const handleFiles = React.useCallback(
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
+      // Guard against a click that races the TG SDK boot — without an
+      // init-data header the server replies 401 and we'd show the
+      // confusing "uploadErrorGeneric" toast even though it's our fault.
+      if (state.status !== "ready") return;
       const file = files[0];
       try {
         await upload.mutateAsync({ file });
@@ -86,7 +90,7 @@ export function DocumentsScreen() {
           <button
             type="button"
             onClick={openCamera}
-            disabled={upload.isPending}
+            disabled={upload.isPending || state.status !== "ready"}
             className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-60"
             style={{
               backgroundColor: "var(--tg-accent)",
@@ -99,7 +103,7 @@ export function DocumentsScreen() {
           <button
             type="button"
             onClick={openFilePicker}
-            disabled={upload.isPending}
+            disabled={upload.isPending || state.status !== "ready"}
             className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-60"
             style={{
               backgroundColor: "color-mix(in oklch, var(--tg-accent) 12%, transparent)",

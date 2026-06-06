@@ -20,8 +20,15 @@ export type MiniAppDocument = {
 
 export function useDocuments() {
   const { request, clinicSlug } = useMiniAppFetch();
+  const { state } = useMiniAppAuth();
+  // Wait until the auth provider has finished the init-data exchange —
+  // otherwise the very first render fires this fetch with an empty
+  // `x-telegram-init-data` header (SDK still booting), the server returns
+  // 401 `missing_init_data`, and the docs page renders empty until the
+  // user retries.
   return useQuery<MiniAppDocument[]>({
     queryKey: ["miniapp", "documents", clinicSlug],
+    enabled: state.status === "ready",
     queryFn: async ({ signal }) => {
       const body = await request<{ documents: MiniAppDocument[] }>(
         "/api/miniapp/documents",

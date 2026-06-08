@@ -1,4 +1,4 @@
-export type TemplateChannel = "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+export type TemplateChannel = "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 export type TemplateCategory = "REMINDER" | "MARKETING" | "TRANSACTIONAL";
 
 export type QueueStatus =

@@ -20,7 +20,7 @@ import { NotificationsKpiStrip } from "./notifications-kpi-strip";
 import { NotificationsActivityList } from "./notifications-activity-list";
 import { NotificationsDetailsRail } from "./notifications-details-rail";
 
-const CHANNELS: TemplateChannel[] = ["SMS", "TG", "EMAIL", "CALL", "VISIT", "INAPP"];
+const CHANNELS: TemplateChannel[] = ["TG", "EMAIL", "CALL", "VISIT", "INAPP"];
 
 function isChannel(v: string | null | undefined): v is TemplateChannel {
   return v !== null && v !== undefined && (CHANNELS as string[]).includes(v);
@@ -62,7 +62,11 @@ export function NotificationsPageClient() {
   const statsQuery = useNotificationsStats();
 
   const allRows = React.useMemo(
-    () => queueQuery.data?.rows ?? [],
+    // Drop legacy SMS rows — SMS channel is removed (see docs/TZ-sms-removal.md).
+    () =>
+      (queueQuery.data?.rows ?? []).filter(
+        (row) => (row.channel as string) !== "SMS",
+      ),
     [queueQuery.data],
   );
   const filteredRows = React.useMemo(

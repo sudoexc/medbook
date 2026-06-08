@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   MegaphoneIcon,
-  PhoneIcon,
   SendIcon,
   Users2Icon,
 } from "lucide-react";
@@ -59,7 +58,8 @@ export function NewCampaignWizard() {
   const [bucket, setBucket] = React.useState<DormantBucket>(
     initialBucket ?? "180-365",
   );
-  const [channel, setChannel] = React.useState<CampaignChannel>("TG");
+  // SMS removed — TG is the only supported campaign channel.
+  const channel: CampaignChannel = "TG";
   const [templateId, setTemplateId] = React.useState<string | null>(null);
   const [name, setName] = React.useState("");
   const [touchedName, setTouchedName] = React.useState(false);
@@ -188,46 +188,24 @@ export function NewCampaignWizard() {
                 </div>
               </section>
 
-              {/* Step 2 — channel */}
+              {/* Step 2 — channel (TG only — SMS removed) */}
               <section className="rounded-xl border border-border bg-card p-4">
                 <h3 className="text-sm font-semibold">{t("step2.title")}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t("step2.subtitle")}
                 </p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {(["TG", "SMS"] as const).map((c) => {
-                    const active = c === channel;
-                    const Icon = c === "TG" ? SendIcon : PhoneIcon;
-                    const ready =
-                      preview?.channelBreakdown[
-                        c === "TG" ? "tgReady" : "smsReady"
-                      ] ?? null;
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setChannel(c)}
-                        className={cn(
-                          "flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                          active
-                            ? "border-primary bg-primary/10"
-                            : "border-border bg-background hover:bg-muted/50",
-                        )}
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <Icon className="size-4" />
-                          <span className="font-medium">
-                            {t(`channelLabel.${c}` as const)}
-                          </span>
-                        </span>
-                        {ready !== null ? (
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {ready}
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-primary bg-primary/10 px-3 py-2 text-sm">
+                  <span className="inline-flex items-center gap-2">
+                    <SendIcon className="size-4" />
+                    <span className="font-medium">
+                      {t("channelLabel.TG")}
+                    </span>
+                  </span>
+                  {preview ? (
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {preview.channelBreakdown.tgReady}
+                    </span>
+                  ) : null}
                 </div>
               </section>
 
@@ -370,7 +348,6 @@ function AudienceCard({
           <dl className="grid grid-cols-2 gap-2 text-xs">
             <Stat label={t("total")} value={preview.total} />
             <Stat label={t("tgReady")} value={preview.channelBreakdown.tgReady} />
-            <Stat label={t("smsReady")} value={preview.channelBreakdown.smsReady} />
             <Stat label={t("noChannel")} value={preview.channelBreakdown.noChannel} />
             <Stat label={t("optedOut")} value={preview.channelBreakdown.optedOut} />
           </dl>

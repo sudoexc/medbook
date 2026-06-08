@@ -8,7 +8,6 @@ import {
   ExternalLinkIcon,
   InboxIcon,
   MailIcon,
-  MessageSquareIcon,
   PhoneIcon,
   RotateCcwIcon,
   SendIcon,
@@ -33,7 +32,6 @@ import {
 import type { QueueStatus, TemplateChannel } from "../_hooks/types";
 
 const CHANNEL_ICON: Record<TemplateChannel, LucideIcon> = {
-  SMS: MessageSquareIcon,
   TG: SendIcon,
   EMAIL: MailIcon,
   CALL: PhoneIcon,

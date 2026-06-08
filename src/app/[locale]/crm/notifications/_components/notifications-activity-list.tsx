@@ -5,7 +5,6 @@ import {
   BellIcon,
   InboxIcon,
   MailIcon,
-  MessageSquareIcon,
   PhoneIcon,
   SendIcon,
   type LucideIcon,
@@ -21,7 +20,6 @@ import type { QueueRow } from "../_hooks/use-queue";
 import type { QueueStatus, TemplateChannel } from "../_hooks/types";
 
 const CHANNEL_ICON: Record<TemplateChannel, LucideIcon> = {
-  SMS: MessageSquareIcon,
   TG: SendIcon,
   EMAIL: MailIcon,
   CALL: PhoneIcon,

@@ -44,7 +44,7 @@ import type { TemplateChannel } from "../_hooks/types";
 // Types — kept in sync with src/server/ai/marketing-copy.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Channel = "SMS" | "TG" | "EMAIL" | "PUSH" | "INAPP";
+type Channel = "TG" | "EMAIL" | "PUSH" | "INAPP";
 type Audience =
   | "reactivation"
   | "birthday"
@@ -87,7 +87,6 @@ type Props = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_MAX_BY_CHANNEL: Record<Channel, number> = {
-  SMS: 200,
   TG: 500,
   EMAIL: 2000,
   PUSH: 200,
@@ -116,13 +115,13 @@ function guessAudienceFromTrigger(key: string | null): Audience {
   return "general";
 }
 
-/** Editor uses TG/EMAIL/SMS/CALL/VISIT; the LLM only knows the message ones. */
+/** Editor uses TG/EMAIL/CALL/VISIT/INAPP; the LLM only knows the message ones. */
 function templateChannelToCopyChannel(c: TemplateChannel): Channel {
-  if (c === "SMS") return "SMS";
   if (c === "TG") return "TG";
   if (c === "EMAIL") return "EMAIL";
-  // CALL / VISIT aren't really "copy" channels; default to SMS sizing.
-  return "SMS";
+  if (c === "INAPP") return "INAPP";
+  // CALL / VISIT aren't really "copy" channels; default to TG sizing.
+  return "TG";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,7 +253,6 @@ export function AiCopySuggest({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="SMS">SMS</SelectItem>
                   <SelectItem value="TG">Telegram</SelectItem>
                   <SelectItem value="EMAIL">Email</SelectItem>
                   <SelectItem value="PUSH">Push</SelectItem>

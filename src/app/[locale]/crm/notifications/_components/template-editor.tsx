@@ -69,22 +69,12 @@ const EMPTY: FormState = {
   key: "",
   nameRu: "",
   nameUz: "",
-  channel: "SMS",
+  channel: "TG",
   category: "REMINDER",
   bodyRu: "",
   bodyUz: "",
   isActive: true,
 };
-
-// SMS sizing — UCS-2 (Cyrillic) caps a single segment at 70 chars,
-// concatenated parts at 67. We assume cyrillic to be conservative; mixed
-// strings will round up by at most one segment.
-function smsSegments(text: string): { chars: number; parts: number } {
-  const chars = text.length;
-  if (chars === 0) return { chars: 0, parts: 0 };
-  if (chars <= 70) return { chars, parts: 1 };
-  return { chars, parts: Math.ceil(chars / 67) };
-}
 
 function extractVars(template: string): string[] {
   const out: string[] = [];
@@ -240,7 +230,6 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
     () => extractVars(form.bodyRu).filter((v) => !allowedSet.has(v)),
     [form.bodyRu, allowedSet],
   );
-  const smsRu = smsSegments(form.bodyRu);
 
   const insertPlaceholder = (key: string) => {
     update("bodyRu", form.bodyRu + `{{${key}}}`);
@@ -296,7 +285,6 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="SMS">SMS</SelectItem>
               <SelectItem value="TG">Telegram</SelectItem>
               <SelectItem value="EMAIL">Email</SelectItem>
             </SelectContent>
@@ -363,16 +351,7 @@ export function TemplateEditor({ templates, selectedId, onSelectCreated }: Props
           placeholder={t("editor.bodyPlaceholder")}
         />
         <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          {form.channel === "SMS" ? (
-            <span>
-              {t("editor.smsCounter", {
-                chars: smsRu.chars,
-                parts: smsRu.parts,
-              })}
-            </span>
-          ) : (
-            <span />
-          )}
+          <span />
           {unknownVarsRu.length > 0 ? (
             <span className="text-destructive">
               {t("editor.unknownVar", { var: unknownVarsRu[0] })}

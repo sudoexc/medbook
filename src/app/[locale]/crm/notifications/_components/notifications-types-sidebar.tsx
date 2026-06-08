@@ -7,7 +7,6 @@ import {
   FilterIcon,
   InboxIcon,
   MailIcon,
-  MessageSquareIcon,
   PhoneIcon,
   SendIcon,
   type LucideIcon,
@@ -23,7 +22,6 @@ export type ChannelFilter = "all" | TemplateChannel;
 
 const CHANNEL_ICON: Record<ChannelFilter, LucideIcon> = {
   all: FilterIcon,
-  SMS: MessageSquareIcon,
   TG: SendIcon,
   EMAIL: MailIcon,
   CALL: PhoneIcon,
@@ -31,7 +29,7 @@ const CHANNEL_ICON: Record<ChannelFilter, LucideIcon> = {
   INAPP: InboxIcon,
 };
 
-const VISIBLE: ChannelFilter[] = ["all", "SMS", "TG", "EMAIL", "CALL", "INAPP"];
+const VISIBLE: ChannelFilter[] = ["all", "TG", "EMAIL", "CALL", "INAPP"];
 
 export function NotificationsTypesSidebar({
   rows,
@@ -49,7 +47,6 @@ export function NotificationsTypesSidebar({
   const counts = React.useMemo(() => {
     const out: Record<ChannelFilter, number> = {
       all: rows.length,
-      SMS: 0,
       TG: 0,
       EMAIL: 0,
       CALL: 0,

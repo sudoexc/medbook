@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 
 export type DormantBucket = "90-180" | "180-365" | "365+";
-export type CampaignChannel = "TG" | "SMS";
+export type CampaignChannel = "TG";
 
 export type CampaignRow = {
   id: string;

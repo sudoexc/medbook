@@ -8,10 +8,9 @@
  *
  * Body: none. Returns `{ conversationId, channel, created }`.
  *
- * Channel preference: TG (the patient is in the bot Mini App right now, so
- * staff replies should route back through the same conversation surface).
- * SMS fallback applies when the patient profile has no `telegramId` for some
- * reason.
+ * Channel: TG only — the patient is in the bot Mini App, so the kernel
+ * resolves to TG via `telegramId`. SMS was removed in Wave 1 of the
+ * SMS-removal plan, so there is no other channel to fall back to.
  */
 import { runWithTenant } from "@/lib/tenant-context";
 import { err, ok } from "@/server/http";
@@ -31,7 +30,6 @@ export async function POST(request: Request): Promise<Response> {
       initiatorUserId: null,
       assigneeUserId: null,
       surface: "MINIAPP",
-      preferredChannel: "TG",
     });
     if (!result.ok) {
       const reason = result.reason;

@@ -56,7 +56,7 @@ export const POST = createApiHandler(
     if (!result.ok) {
       if (result.reason === "patient_not_found") return notFound();
       return err("NoChannel", 422, {
-        reason: "patient_has_no_phone_or_telegram",
+        reason: "patient_has_no_telegram",
       });
     }
 

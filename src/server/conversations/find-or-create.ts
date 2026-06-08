@@ -7,10 +7,9 @@
  *
  *   1. Looks for an existing thread for `{ patientId, optional doctorId
  *      anti-leak filter }`. Returns it untouched when found.
- *   2. Cold-starts a new thread when none exists. SMS preferred when patient
- *      has a phone (outbound TG only works when the patient has previously
- *      messaged the bot — Telegram bot-init rule); TG fallback when phone is
- *      missing but telegramId is set; 422-equivalent `no_channel` otherwise.
+ *   2. Cold-starts a new thread when none exists. TG only — SMS was removed
+ *      in Wave 1 of the SMS-removal plan, so `telegramId` is the sole
+ *      reachable channel here; 422-equivalent `no_channel` otherwise.
  *   3. Inside the same transaction emits two envelopes via the outbox:
  *      - `conversation.created` (auditable per spec — closes compliance gap)
  *      - `tg.conversation.updated` (drives CRM inbox + doctor messages list
@@ -37,7 +36,6 @@ import type {
 } from "@/server/realtime/envelope";
 
 export type ConversationChannelLiteral =
-  | "SMS"
   | "TG"
   | "CALL"
   | "EMAIL"
@@ -63,11 +61,6 @@ export type FindOrCreateConversationInput = {
   correlationId?: string;
   causedByEventId?: string;
   actorLabel?: string;
-  /** Override channel selection on cold-start. Pass "TG" from the Mini App
-   *  (patient is already in the Telegram client) so staff replies route back
-   *  via the bot the patient sees, instead of falling through to SMS. Ignored
-   *  when an existing thread is returned. */
-  preferredChannel?: "SMS" | "TG";
 };
 
 export type FindOrCreateConversationResult =
@@ -83,7 +76,7 @@ export async function findOrCreateConversation(
 ): Promise<FindOrCreateConversationResult> {
   const patient = await prisma.patient.findFirst({
     where: { id: input.patientId, clinicId: input.clinicId },
-    select: { id: true, phone: true, telegramId: true },
+    select: { id: true, telegramId: true },
   });
   if (!patient) return { ok: false, reason: "patient_not_found" };
 
@@ -119,26 +112,13 @@ export async function findOrCreateConversation(
     };
   }
 
-  // 2) Cold start. SMS first by default (always sendable), TG fallback (works
-  //    only when patient has DM'd the bot before — outbound bot-init is
-  //    blocked by Telegram), 422-equivalent when neither is reachable.
-  //    `preferredChannel` lets the Mini App pin TG even when phone is set —
-  //    the patient is right there in the bot, replying via SMS would feel
-  //    off.
-  const hasPhone = !!patient.phone && patient.phone.trim().length > 0;
-  const hasTg = !!patient.telegramId;
-  let channel: "SMS" | "TG";
-  if (input.preferredChannel === "TG" && hasTg) {
-    channel = "TG";
-  } else if (input.preferredChannel === "SMS" && hasPhone) {
-    channel = "SMS";
-  } else if (hasPhone) {
-    channel = "SMS";
-  } else if (hasTg) {
-    channel = "TG";
-  } else {
+  // 2) Cold start. TG is the only outbound channel — patient must have DM'd
+  //    the bot before so the clinic can reply (Telegram bot-init rule).
+  //    Without `telegramId`, the thread can't be reached.
+  if (!patient.telegramId) {
     return { ok: false, reason: "no_channel" };
   }
+  const channel = "TG" as const;
 
   const surface = input.surface ?? "CRM";
   const correlationId = input.correlationId ?? newCorrelationId();

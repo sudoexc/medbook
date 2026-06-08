@@ -19,14 +19,14 @@
  * with explicit `clinicId` in every Prisma call.
  *
  * Event semantics vs the `Call` model:
- *   - ringing  → upsert Call(direction=IN, no endedAt)
- *   - answered → no schema column yet (duration will be computed at hangup).
- *                We record a tag `answered` and nothing else.
- *   - hangup   → set endedAt, durationSec (endedAt - createdAt).
- *   - missed   → set direction=MISSED + endedAt (no duration).
- *
- * TODO(prisma-schema-owner): add `status` + `startedAt` + `answeredAt` columns
- * so we don't have to collapse state into (direction, endedAt).
+ *   - ringing  → upsert Call(status=RINGING, startedAt=evt.ts, direction=IN).
+ *   - answered → status=ANSWERED, answeredAt=evt.ts. We still push the legacy
+ *                `tags.answered` for any read-path that hasn't migrated to
+ *                `status` yet — safe to drop once `deriveStatus()` is fully
+ *                replaced by reads of the new column.
+ *   - hangup   → set endedAt + durationSec (endedAt - startedAt). status is
+ *                ENDED if the call was previously answered, otherwise MISSED.
+ *   - missed   → status=MISSED + direction=MISSED + endedAt (no duration).
  *
  * TODO(admin-platform-builder): expose `ProviderConnection` settings UI so the
  * webhook secret can be rotated without a DB edit.
@@ -157,12 +157,14 @@ async function handleRinging(
       create: {
         clinicId,
         direction: "IN",
+        status: "RINGING",
         fromNumber: evt.from,
         toNumber: evt.to,
         sipCallId: evt.callId,
         patientId,
         operatorId: evt.operatorId ?? null,
         createdAt,
+        startedAt: createdAt,
         recordingUrl: evt.recordingUrl ?? null,
       },
       update: {
@@ -193,12 +195,15 @@ async function handleAnswered(clinicId: string, evt: SipEvent): Promise<void> {
         data: {
           clinicId,
           direction: "IN",
+          status: "ANSWERED",
           fromNumber: evt.from,
           toNumber: evt.to,
           sipCallId: evt.callId,
           operatorId: evt.operatorId ?? null,
           patientId: linked,
           tags: ["answered"],
+          startedAt: evt.timestamp,
+          answeredAt: evt.timestamp,
         },
       });
       return linked;
@@ -209,6 +214,8 @@ async function handleAnswered(clinicId: string, evt: SipEvent): Promise<void> {
     await prisma.call.update({
       where: { id: existing.id },
       data: {
+        status: "ANSWERED",
+        answeredAt: evt.timestamp,
         tags: nextTags,
         operatorId: evt.operatorId ?? existing.operatorId ?? undefined,
       },
@@ -224,20 +231,35 @@ async function handleHangup(clinicId: string, evt: SipEvent): Promise<{ dbId: st
   const result = await runWithTenant({ kind: "SYSTEM" }, async () => {
     const existing = await prisma.call.findUnique({
       where: { clinicId_sipCallId: { clinicId, sipCallId: evt.callId } },
-      select: { id: true, createdAt: true, endedAt: true, patientId: true },
+      select: {
+        id: true,
+        createdAt: true,
+        startedAt: true,
+        answeredAt: true,
+        endedAt: true,
+        status: true,
+        patientId: true,
+        tags: true,
+      },
     });
     if (!existing) return null;
     if (existing.endedAt) return { dbId: existing.id, patientId: existing.patientId };
     const endedAt = evt.timestamp;
+    const baseStart = existing.startedAt ?? existing.createdAt;
     const durationSec = Math.max(
       0,
-      Math.round((endedAt.getTime() - existing.createdAt.getTime()) / 1000),
+      Math.round((endedAt.getTime() - baseStart.getTime()) / 1000),
     );
+    const wasAnswered =
+      existing.status === "ANSWERED" ||
+      existing.answeredAt !== null ||
+      existing.tags.includes("answered");
     const updated = await prisma.call.update({
       where: { id: existing.id },
       data: {
         endedAt,
         durationSec,
+        status: wasAnswered ? "ENDED" : "MISSED",
         recordingUrl: evt.recordingUrl ?? undefined,
       },
       select: { id: true },
@@ -261,6 +283,7 @@ async function handleMissed(clinicId: string, evt: SipEvent): Promise<{ dbId: st
         where: { id: existing.id },
         data: {
           direction: "MISSED",
+          status: "MISSED",
           endedAt: evt.timestamp,
         },
         select: { id: true },
@@ -273,9 +296,11 @@ async function handleMissed(clinicId: string, evt: SipEvent): Promise<{ dbId: st
       data: {
         clinicId,
         direction: "MISSED",
+        status: "MISSED",
         fromNumber: evt.from,
         toNumber: evt.to,
         sipCallId: evt.callId,
+        startedAt: evt.timestamp,
         endedAt: evt.timestamp,
         patientId,
       },

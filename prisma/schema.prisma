@@ -168,6 +168,13 @@ enum CallDirection {
   MISSED
 }
 
+enum CallStatus {
+  RINGING
+  ANSWERED
+  ENDED
+  MISSED
+}
+
 enum DocumentType {
   REFERRAL
   PRESCRIPTION
@@ -2146,6 +2153,7 @@ model Call {
   clinicId      String
   clinic        Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   direction     CallDirection
+  status        CallStatus?
   fromNumber    String
   toNumber      String
   patientId     String?
@@ -2159,12 +2167,15 @@ model Call {
   tags          String[]
   sipCallId     String?
   createdAt     DateTime      @default(now())
+  startedAt     DateTime?
+  answeredAt    DateTime?
   endedAt       DateTime?
 
   @@unique([clinicId, sipCallId])
   @@index([clinicId, patientId, createdAt])
   @@index([clinicId, operatorId, createdAt])
   @@index([clinicId, direction, createdAt])
+  @@index([clinicId, status, createdAt])
 }
 
 model OnlineRequest {

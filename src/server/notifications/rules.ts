@@ -129,7 +129,16 @@ export function resolveChannels(
     chosen = [templateChannel as "TG" | "SMS" | "EMAIL" | "CALL" | "VISIT"];
   }
 
-  // If the patient has no telegramId, prefer SMS over TG by reordering.
+  // SMS removal kill-switch (Wave 1, see docs/TZ-sms-removal.md):
+  // strip SMS from the resolved channels even if old templates still list
+  // it. Old TG-less fallback ("prefer SMS over TG") is gone — TG-less
+  // patients silently get no automatic delivery in Wave 1; Wave 4 wires a
+  // PATIENT_NO_CHANNEL action to surface them to the operator.
+  chosen = chosen.filter((c) => c !== "SMS");
+
+  // Patient has no telegramId → demote TG so the remaining non-TG channels
+  // (EMAIL/CALL/VISIT) get a chance first. This preserves the prior intent
+  // without resurrecting SMS.
   if (!patient.telegramId) {
     chosen.sort((a, b) => {
       if (a === "TG" && b !== "TG") return 1;

@@ -110,12 +110,9 @@ below for a Phase 6/7 Redis swap.
 
 ### H3 — Legacy `@ts-nocheck` routes bypass tenancy injection
 
-**Files:**
+**Files (still on disk):**
 
-- `src/app/api/leads/route.ts`
-- `src/app/api/leads/[id]/route.ts`
-- `src/app/api/leads/[id]/book/route.ts`
-- `src/app/api/booking/route.ts`
+- `src/app/api/leads/route.ts` — POST is alive (landing-page lead-form); GET is dead but harmless
 - `src/app/api/kiosk/checkin/route.ts`
 - `src/app/api/kiosk/doctors/route.ts`
 - `src/app/api/queue/route.ts`
@@ -123,8 +120,14 @@ below for a Phase 6/7 Redis swap.
 - `src/app/api/queue/call/route.ts`
 - `src/app/api/queue/status/[id]/route.ts`
 - `src/app/api/tv-queue/route.ts`
-- `src/app/api/telegram/notify/route.ts`
-- `src/app/api/telegram/webhook/route.ts`
+- `src/app/api/telegram/notify/route.ts` — Vercel cron; TZ §11 marks it for replacement by BullMQ worker
+- `src/app/api/telegram/webhook/route.ts` — now returns 410 GONE only, no `@ts-nocheck`
+
+**Deleted:** `src/app/api/booking/route.ts`, `src/app/api/leads/[id]/route.ts`,
+`src/app/api/leads/[id]/book/route.ts` — confirmed zero callers in src/ (the
+landing form posts to `/api/leads` collection only), all three referenced
+single-tenant Prisma writes incompatible with the current schema. Removing
+them shrinks the H3 surface from 13 to 10 files.
 
 Each of these starts with `// @ts-nocheck` and calls `prisma.*` directly
 outside any `runWithTenant()` frame. That means the Prisma extension in

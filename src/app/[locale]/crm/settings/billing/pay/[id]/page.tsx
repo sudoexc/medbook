@@ -2,8 +2,10 @@
  * /[locale]/crm/settings/billing/pay/[id] — stub pay page.
  *
  * Server component fetches the invoice and hands it to the client. The
- * "Simulate payment" button is hidden in prod via
- * `NEXT_PUBLIC_BILLING_STUB`.
+ * "Simulate payment" button is hidden in prod by an AND of
+ * `NODE_ENV !== "production"` and `NEXT_PUBLIC_BILLING_STUB === "1"` —
+ * the API route mirrors the same gate, so prod can't be opened by a
+ * misconfigured env.
  */
 import { notFound, redirect } from "next/navigation";
 
@@ -55,7 +57,10 @@ export default async function BillingPayPage(props: {
   return (
     <PayStubClient
       locale={locale}
-      stubMode={process.env.NEXT_PUBLIC_BILLING_STUB === "1"}
+      stubMode={
+        process.env.NODE_ENV !== "production" &&
+        process.env.NEXT_PUBLIC_BILLING_STUB === "1"
+      }
       invoice={{
         id: invoice.id,
         number: invoice.number,

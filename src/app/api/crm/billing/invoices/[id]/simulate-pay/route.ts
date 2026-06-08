@@ -1,13 +1,16 @@
 /**
  * POST /api/crm/billing/invoices/[id]/simulate-pay — dev-only stub.
  *
- * Hidden behind `NEXT_PUBLIC_BILLING_STUB === "1"` AND the admin role.
- * Calls `markInvoicePaid` directly with a synthetic paymentRef so QA
- * can exercise the upgrade flow without provisioning Click/Payme creds.
+ * Hidden behind THREE conditions, all required:
+ *   1. `NODE_ENV !== "production"` — hardcoded prod kill-switch, so a
+ *      misconfigured prod env can never accidentally re-enable this route.
+ *   2. `NEXT_PUBLIC_BILLING_STUB === "1"` — explicit per-env opt-in for
+ *      QA / staging surfaces (also drives the UI button visibility).
+ *   3. Admin role — same boundary the rest of the billing surface uses.
  *
- * Returning 404 in prod (when the env flag is unset) keeps the
- * surface area small without a separate routing config — the route
- * exists, but a non-stub deployment will reject every call.
+ * Returns 404 (not 403) on any miss so the route looks nonexistent in
+ * prod. `markInvoicePaid` is called with a synthetic paymentRef so QA
+ * can exercise the upgrade flow without provisioning Click/Payme creds.
  */
 import { auth } from "@/lib/auth";
 import { runWithTenant, type TenantContext } from "@/lib/tenant-context";
@@ -24,6 +27,9 @@ function idFromUrl(request: Request): string {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (process.env.NODE_ENV === "production") {
+    return notFound();
+  }
   if (process.env.NEXT_PUBLIC_BILLING_STUB !== "1") {
     // Not a 403 — we want this to look like the route doesn't exist.
     return notFound();

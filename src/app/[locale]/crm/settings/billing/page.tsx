@@ -126,7 +126,9 @@ export default async function BillingPage(props: {
 
   const props2: BillingPageProps = {
     locale,
-    stubMode: process.env.NEXT_PUBLIC_BILLING_STUB === "1",
+    stubMode:
+      process.env.NODE_ENV !== "production" &&
+      process.env.NEXT_PUBLIC_BILLING_STUB === "1",
     subscription: {
       planId: data.sub.planId,
       planSlug: data.sub.plan.slug,

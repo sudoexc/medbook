@@ -64,7 +64,6 @@ const SECTION_KEY: Record<string, string> = {
   documents: "documents",
   "call-center": "callCenter",
   telegram: "telegram",
-  sms: "sms",
   notifications: "notifications",
   analytics: "analytics",
   settings: "settings",

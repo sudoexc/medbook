@@ -59,14 +59,12 @@ const SOURCE_OPTIONS = [
 
 export interface PatientHeaderProps {
   patient: Patient;
-  onOpenSmsDialog: () => void;
   onOpenDeleteDialog: () => void;
   onOpenNewAppointmentDialog: () => void;
 }
 
 export function PatientHeader({
   patient,
-  onOpenSmsDialog,
   onOpenDeleteDialog,
   onOpenNewAppointmentDialog,
 }: PatientHeaderProps) {
@@ -284,7 +282,6 @@ export function PatientHeader({
 
           <PatientQuickActions
             patient={patient}
-            onOpenSmsDialog={onOpenSmsDialog}
             onOpenDeleteDialog={onOpenDeleteDialog}
             onOpenNewAppointmentDialog={onOpenNewAppointmentDialog}
           />

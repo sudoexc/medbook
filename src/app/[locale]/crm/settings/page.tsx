@@ -9,7 +9,6 @@ import {
   DoorOpenIcon,
   FileTextIcon,
   GitBranchIcon,
-  MailIcon,
   PaletteIcon,
   PlugZapIcon,
   ScrollIcon,
@@ -26,7 +25,7 @@ interface CardSpec {
   /** Translation key under `settings.cards.{key}` (label + description). */
   key: string;
   /** Path appended to `/{locale}/crm` — may be a `settings/...` child or a
-   * top-level CRM route (e.g. `rooms`, `services`, `documents`, `sms`)
+   * top-level CRM route (e.g. `rooms`, `services`, `documents`)
    * relocated out of the main sidebar in Phase 11. */
   path: string;
   icon: LucideIcon;
@@ -37,7 +36,7 @@ const CLINIC_MANAGEMENT: CardSpec[] = [
   { key: "cabinets", path: "rooms", icon: DoorOpenIcon },
   { key: "services", path: "services", icon: SparklesIcon },
   { key: "documents", path: "documents", icon: FileTextIcon },
-  { key: "smsEmail", path: "sms", icon: MailIcon },
+  // SMS-Email tile removed in SMS removal Wave 2 (docs/TZ-sms-removal.md).
 ];
 
 const CORE_SETTINGS: CardSpec[] = [
@@ -96,7 +95,7 @@ function CardGrid({
  * to `/crm/settings/clinic`. With the sidebar cleanup we now use it as a true
  * landing page where ADMIN can pivot into clinic management surfaces — both
  * the existing settings sub-routes and the operational pages (rooms / services
- * / documents / sms) that were demoted from the main CRM sidebar.
+ * / documents) that were demoted from the main CRM sidebar.
  */
 export default async function SettingsIndexPage(props: {
   params: Promise<{ locale: string }>;

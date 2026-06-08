@@ -24,7 +24,6 @@ import { PatientRecommendationsCard } from "./patient-recommendations-card";
 import { PatientReferralCard } from "./patient-referral-card";
 import { PatientTimeline } from "./patient-timeline";
 import { PatientRightRail } from "./patient-right-rail";
-import { SmsDialog } from "./sms-dialog";
 import { DeletePatientDialog } from "./delete-patient-dialog";
 import { PatientCardSkeleton } from "./patient-card-skeleton";
 
@@ -79,7 +78,6 @@ export function PatientCardClient({ id }: { id: string }) {
   const apptsQ = usePatientAppointments(id);
 
   const queryClient = useQueryClient();
-  const [smsOpen, setSmsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [newApptOpen, setNewApptOpen] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>("overview");
@@ -173,7 +171,6 @@ export function PatientCardClient({ id }: { id: string }) {
           <PatientHero
             patient={patient}
             appointments={appointments}
-            onOpenSmsDialog={() => setSmsOpen(true)}
             onOpenDeleteDialog={() => setDeleteOpen(true)}
             onOpenNewAppointmentDialog={openNewAppointment}
           />
@@ -266,12 +263,6 @@ export function PatientCardClient({ id }: { id: string }) {
         </div>
       </aside>
 
-      <SmsDialog
-        open={smsOpen}
-        onOpenChange={setSmsOpen}
-        patientId={patient.id}
-        phone={patient.phone}
-      />
       <DeletePatientDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

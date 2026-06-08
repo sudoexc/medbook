@@ -6,7 +6,6 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarPlusIcon,
   DownloadIcon,
-  MessageSquareIcon,
   MoreHorizontalIcon,
   PhoneIcon,
   SendIcon,
@@ -30,7 +29,6 @@ import { TelegramInviteDialog } from "./telegram-invite-dialog";
 
 export interface PatientQuickActionsProps {
   patient: Patient;
-  onOpenSmsDialog: () => void;
   onOpenDeleteDialog: () => void;
   onOpenNewAppointmentDialog: () => void;
 }
@@ -44,7 +42,6 @@ export interface PatientQuickActionsProps {
  */
 export function PatientQuickActions({
   patient,
-  onOpenSmsDialog,
   onOpenDeleteDialog,
   onOpenNewAppointmentDialog,
 }: PatientQuickActionsProps) {
@@ -108,10 +105,6 @@ export function PatientQuickActions({
         <PhoneIcon className="size-4" />
         {t("call")}
       </a>
-      <Button size="sm" variant="outline" onClick={onOpenSmsDialog}>
-        <MessageSquareIcon className="size-4" />
-        {t("sms")}
-      </Button>
       {patient.telegramUsername || patient.telegramId ? (
         <Link
           href={`/${locale}/crm/telegram?patientId=${encodeURIComponent(patient.id)}`}

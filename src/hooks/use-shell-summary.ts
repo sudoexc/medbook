@@ -16,7 +16,6 @@ export type ShellSummary = {
   unread: {
     calls: number;
     telegram: number;
-    smsEmail: number;
     notifications: number;
   };
 };

@@ -2,7 +2,7 @@
  * /api/crm/shell-summary — counters that drive the persistent CRM chrome.
  *
  * The sidebar's donut + today-count and the topbar/sidebar channel badges
- * (calls, telegram, sms, notifications) used to be hardcoded mocks
+ * (calls, telegram, notifications) used to be hardcoded mocks
  * (`loadPercent = 83`, `todayCount = 128`, etc). This endpoint replaces
  * those with live data from the tenant-scoped DB. Kept thin on purpose —
  * it runs on every CRM page load, so we want one round-trip with cheap
@@ -59,7 +59,6 @@ export const GET = createApiListHandler(
       schedulesToday,
       missedCallsToday,
       tgUnread,
-      smsEmailUnread,
       failedNotificationsToday,
     ] = await Promise.all([
       // Today's appointments — every status, the sidebar wants raw volume.
@@ -97,13 +96,6 @@ export const GET = createApiListHandler(
           unreadCount: { gt: 0 },
         },
       }),
-      prisma.conversation.count({
-        where: {
-          channel: { in: ["SMS", "EMAIL"] },
-          status: "OPEN",
-          unreadCount: { gt: 0 },
-        },
-      }),
       // "Notifications" badge surfaces operational issues (FAILED today).
       // QUEUED is system-internal noise; FAILED is something staff can act on.
       prisma.notificationSend.count({
@@ -132,7 +124,6 @@ export const GET = createApiListHandler(
       unread: {
         calls: missedCallsToday,
         telegram: tgUnread,
-        smsEmail: smsEmailUnread,
         notifications: failedNotificationsToday,
       },
     });

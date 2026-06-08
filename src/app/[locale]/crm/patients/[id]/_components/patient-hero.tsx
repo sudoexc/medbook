@@ -6,7 +6,6 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarPlusIcon,
   CopyIcon,
-  MessageSquareIcon,
   MoreHorizontalIcon,
   PhoneIcon,
   SendIcon,
@@ -32,7 +31,6 @@ import { TelegramInviteDialog } from "./telegram-invite-dialog";
 export interface PatientHeroProps {
   patient: Patient;
   appointments: PatientAppointment[];
-  onOpenSmsDialog: () => void;
   onOpenDeleteDialog: () => void;
   onOpenNewAppointmentDialog: () => void;
 }
@@ -86,7 +84,6 @@ function relativeDays(at: string, nowMs: number, locale: string): string {
 export function PatientHero({
   patient,
   appointments,
-  onOpenSmsDialog,
   onOpenDeleteDialog,
   onOpenNewAppointmentDialog,
 }: PatientHeroProps) {
@@ -340,15 +337,6 @@ export function PatientHero({
         >
           <CalendarPlusIcon className="size-4" />
           {t("actionNewAppointment")}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-9 w-9"
-          onClick={onOpenSmsDialog}
-          aria-label={t("actionSmsAria")}
-        >
-          <MessageSquareIcon className="size-4" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

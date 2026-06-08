@@ -31,14 +31,8 @@ import {
 } from "@/lib/feature-flags"
 
 type BadgeTone = "danger" | "info" | "warning" | "success"
-/**
- * Keys into ShellSummary.unread — drives the live badge count for each nav item.
- *
- * `smsEmail` is intentionally retained even though the SMS page was demoted
- * out of the main sidebar in Phase 11 — the count is still surfaced on the
- * Settings → SMS card and may light up future surfaces.
- */
-type BadgeKey = "calls" | "telegram" | "smsEmail" | "notifications"
+/** Keys into ShellSummary.unread — drives the live badge count for each nav item. */
+type BadgeKey = "calls" | "telegram" | "notifications"
 
 /**
  * `feature` is the gate consumed by `computeVisibleNav` (Phase 9d). When set,
@@ -75,11 +69,12 @@ type NavGroup = {
 }
 
 /**
- * Phase 11 cleanup — `rooms`, `services`, `documents`, and `sms` are no longer
- * surfaced in the main CRM sidebar. They remain reachable via deeplinks from
- * the Settings overview (`/crm/settings`) and continue to live at their
- * original CRM paths (`/crm/rooms`, `/crm/services`, etc.) — only the menu
- * entry is removed, not the routes.
+ * Phase 11 cleanup — `rooms`, `services`, `documents` are no longer surfaced
+ * in the main CRM sidebar. They remain reachable via deeplinks from the
+ * Settings overview (`/crm/settings`) and continue to live at their original
+ * CRM paths (`/crm/rooms`, `/crm/services`, etc.) — only the menu entry is
+ * removed, not the routes. (`/crm/sms` was removed entirely in SMS removal
+ * Wave 2, see docs/TZ-sms-removal.md.)
  */
 export const CRM_NAV: NavGroup[] = [
   {

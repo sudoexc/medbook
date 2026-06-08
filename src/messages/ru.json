@@ -3226,7 +3226,6 @@
         "tgBotUsername": "TG бот (username)",
         "tgBotToken": "TG Bot Token",
         "tgWebhookSecret": "Webhook secret",
-        "smsSenderName": "SMS sender name",
         "active": "Клиника активна",
         "configured": "сохранено",
         "npsAlertThreshold": "Порог NPS-алерта",

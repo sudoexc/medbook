@@ -307,7 +307,6 @@ model Clinic {
   tgBotUsername              String?
   tgBotToken                 String?
   tgWebhookSecret            String?
-  smsSenderName              String?
   kioskPin                   String?
   active                     Boolean   @default(true)
   // Phase 16 Wave 2 — NPS alert threshold. When a PatientReview lands with

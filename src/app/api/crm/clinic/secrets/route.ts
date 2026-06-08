@@ -43,8 +43,6 @@ export const POST = createApiHandler(
       data.tgWebhookSecret = body.tgWebhookSecret || null;
       changed.push("tgWebhookSecret");
     }
-    // `smsSenderName` was removed from the schema in Wave 3 of
-    // `docs/TZ-sms-removal.md`. The DB column is dropped in Wave 5.
 
     if (changed.length === 0) return ok({ updated: false });
 

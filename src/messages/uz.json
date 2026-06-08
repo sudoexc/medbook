@@ -3226,7 +3226,6 @@
         "tgBotUsername": "TG bot (username)",
         "tgBotToken": "TG Bot Token",
         "tgWebhookSecret": "Webhook secret",
-        "smsSenderName": "SMS yuboruvchi nomi",
         "active": "Klinika faol",
         "configured": "saqlangan",
         "npsAlertThreshold": "NPS-ogohlantirish chegarasi",

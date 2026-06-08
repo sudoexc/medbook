@@ -83,14 +83,7 @@ export const UpsertProviderSchema = z.object({
 
 export type UpsertProvider = z.infer<typeof UpsertProviderSchema>;
 
-/**
- * Tokens/secrets re-entry for protected clinic fields.
- *
- * `smsSenderName` was dropped here in Wave 3 of `docs/TZ-sms-removal.md`.
- * The DB column lingers until the Wave 5 migration so stale rows are not
- * lost, but the field is no longer writable from any surface — a stale
- * client that still sends it will get a Zod `unrecognized_keys` error.
- */
+/** Tokens/secrets re-entry for protected clinic fields. */
 export const ClinicSecretsSchema = z.object({
   tgBotToken: z.string().max(400).optional().nullable(),
   tgBotUsername: z.string().max(100).optional().nullable(),

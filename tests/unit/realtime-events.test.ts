@@ -199,7 +199,7 @@ describe("notification.*", () => {
     const parsed = parseEvent(
       envelope("notification.sent", {
         sendId: "n1",
-        channel: "SMS",
+        channel: "TG",
       }),
     );
     expect(parsed.type).toBe("notification.sent");

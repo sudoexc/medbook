@@ -90,14 +90,14 @@ describe("computeVisibleNav (pure helper)", () => {
       {
         labelKey: "communications",
         items: [
-          { href: "sms" },
+          { href: "notifications" },
           { href: "telegram", feature: "hasTelegramInbox" as const },
         ],
       },
     ];
     const out = computeVisibleNav(groups, DEFAULT_FLAGS);
     expect(out[0]).toMatchObject({ labelKey: "communications" });
-    expect(out[0].items.map((i) => i.href)).toEqual(["sms"]);
+    expect(out[0].items.map((i) => i.href)).toEqual(["notifications"]);
   });
 
   it("does not mutate the input groups array", () => {
@@ -117,8 +117,9 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     // Pro-only items dropped.
     expect(hrefs.has("telegram")).toBe(false);
     expect(hrefs.has("call-center")).toBe(false);
-    // Basic-tier items still visible. Phase 11 demoted rooms/services/documents/sms
-    // out of the main sidebar — they're now reached via Settings.
+    // Basic-tier items still visible. Phase 11 demoted rooms/services/documents
+    // out of the main sidebar — they're now reached via Settings. SMS was
+    // removed entirely in Wave 2 of `docs/TZ-sms-removal.md`.
     expect(hrefs.has("reception")).toBe(true);
     expect(hrefs.has("patients")).toBe(true);
     expect(hrefs.has("calendar")).toBe(true);
@@ -149,8 +150,8 @@ describe("getVisibleCrmNav (CRM sidebar wiring)", () => {
     const visible = getVisibleCrmNav(DEFAULT_FLAGS);
     const comms = visible.find((g) => g.labelKey === "communications");
     expect(comms).toBeTruthy();
-    // Phase 11: only `notifications` remains ungated; call-center + telegram are
-    // Pro-only, sms was demoted to Settings.
+    // Phase 11: only `notifications` remains ungated; call-center + telegram
+    // are Pro-only. SMS was removed in Wave 2 of `docs/TZ-sms-removal.md`.
     expect(comms!.items.map((i) => i.href).sort()).toEqual(["notifications"]);
   });
 });

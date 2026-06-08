@@ -2,9 +2,12 @@
  * Phase 8b/c — triggerConfig sanitisation + defaulting helpers.
  *
  * Covers:
- *   - sanitizeTriggerConfig clamps offsetMin into [-72*60, -30]
- *   - resolveChannels honors triggerConfig.channels and re-orders TG↓SMS
- *     when patient has no telegramId
+ *   - sanitizeTriggerConfig clamps offsetMin into [-72*60, -30] and now only
+ *     accepts `TG` as a valid channel (Wave 3 of `docs/TZ-sms-removal.md`
+ *     narrowed the allow-list — EMAIL/CALL/VISIT are not exposed through the
+ *     trigger editor)
+ *   - resolveChannels honors triggerConfig.channels and demotes TG when the
+ *     patient has no telegramId
  *   - resolveOffsetMin returns the configured value, or fallback
  *   - isTriggerEnabled ANDs isActive with triggerConfig.enabled
  */
@@ -43,14 +46,17 @@ describe("sanitizeTriggerConfig", () => {
   });
 
   it("strips invalid channels and dedupes valid ones", () => {
+    // SMS / EMAIL / random strings are all filtered; TG is the only allowed
+    // channel after Wave 3 of `docs/TZ-sms-removal.md`. Duplicate TG entries
+    // collapse to one.
     const out = sanitizeTriggerConfig(
       { channels: ["TG", "SMS", "TG", "EMAIL"] },
       { kind: "other" },
     );
-    expect(out.channels).toEqual(["TG", "SMS"]);
+    expect(out.channels).toEqual(["TG"]);
   });
 
-  it("removes empty channels array", () => {
+  it("removes channels array when nothing valid remains", () => {
     const out = sanitizeTriggerConfig(
       { channels: ["EMAIL"] },
       { kind: "other" },
@@ -71,26 +77,26 @@ describe("sanitizeTriggerConfig", () => {
 describe("resolveChannels", () => {
   it("uses configured channels in order when patient has telegramId", () => {
     const out = resolveChannels(
-      "SMS",
-      { channels: ["TG", "SMS"] },
+      "TG",
+      { channels: ["TG", "EMAIL"] },
       { telegramId: "123" },
     );
-    expect(out).toEqual(["TG", "SMS"]);
+    expect(out).toEqual(["TG", "EMAIL"]);
   });
 
   it("demotes TG when patient has no telegramId", () => {
     const out = resolveChannels(
       "TG",
-      { channels: ["TG", "SMS"] },
+      { channels: ["TG", "EMAIL"] },
       { telegramId: null },
     );
-    expect(out[0]).toBe("SMS");
+    expect(out[0]).toBe("EMAIL");
     expect(out).toContain("TG");
   });
 
   it("falls back to template.channel when no config", () => {
-    const out = resolveChannels("SMS", null, { telegramId: "123" });
-    expect(out).toEqual(["SMS"]);
+    const out = resolveChannels("TG", null, { telegramId: "123" });
+    expect(out).toEqual(["TG"]);
   });
 
   it("falls back to template.channel when channels array is empty in config", () => {
@@ -100,6 +106,15 @@ describe("resolveChannels", () => {
       { telegramId: "123" },
     );
     expect(out).toEqual(["TG"]);
+  });
+
+  it("strips legacy template.channel=SMS down to an empty list", () => {
+    // Wave 3 of `docs/TZ-sms-removal.md` removed SMS as an active channel.
+    // Legacy template rows may still carry the literal until the Wave 5
+    // Prisma migration; the resolver returns [] for those so the materializer
+    // raises the PATIENT_NO_CHANNEL action instead of dispatching SMS.
+    const out = resolveChannels("SMS", null, { telegramId: "123" });
+    expect(out).toEqual([]);
   });
 });
 

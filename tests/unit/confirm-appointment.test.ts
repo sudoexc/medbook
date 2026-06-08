@@ -207,10 +207,13 @@ beforeEach(() => {
 // ----- tests ----------------------------------------------------------------
 
 describe("confirmAppointment — via values write the correct ConfirmationVia (S1)", () => {
+  // SMS_REPLY was removed from the new-confirmation matrix in Wave 3 of
+  // `docs/TZ-sms-removal.md`. The enum value remains in the DB column for
+  // historical reads (covered by `legacy-sms-readback.test.ts`); we just
+  // don't write new rows with that via.
   const vias = [
     "BOOKING_AUTO",
     "MANUAL_CRM",
-    "SMS_REPLY",
     "TG_BUTTON",
     "INBOUND_CALL",
   ] as const;
@@ -404,7 +407,7 @@ describe("confirmAppointment — idempotency: alreadyConfirmed branch (S5)", () 
         queueStatus: "CONFIRMED",
         confirmedAt: new Date("2026-05-31T09:00:00.000Z"),
         confirmedBy: "user_first",
-        confirmedVia: "SMS_REPLY",
+        confirmedVia: "TG_BUTTON",
       }),
     );
 
@@ -424,7 +427,7 @@ describe("confirmAppointment — idempotency: alreadyConfirmed branch (S5)", () 
     // The "fresh" row returned matches the second findUnique payload.
     expect(result.appointment.id).toBe("apt_1");
     expect(result.appointment.confirmedBy).toBe("user_first");
-    expect(result.appointment.confirmedVia).toBe("SMS_REPLY");
+    expect(result.appointment.confirmedVia).toBe("TG_BUTTON");
 
     const { prisma } = await import("@/lib/prisma");
     // No double-write.
@@ -478,7 +481,7 @@ describe("confirmAppointment — shouldFlipStatus matrix (S6)", () => {
       appointmentId: "apt_1",
       clinicId: "c1",
       actorId: "user_42",
-      via: "SMS_REPLY",
+      via: "TG_BUTTON",
     });
 
     const { prisma } = await import("@/lib/prisma");
@@ -501,7 +504,7 @@ describe("confirmAppointment — shouldFlipStatus matrix (S6)", () => {
       appointmentId: "apt_1",
       clinicId: "c1",
       actorId: "user_42",
-      via: "SMS_REPLY",
+      via: "TG_BUTTON",
     });
 
     const { prisma } = await import("@/lib/prisma");

@@ -12,9 +12,8 @@
  * dedupe key shape + status predicates or it goes red.
  *
  * The legacy SMS-YES branch (block B, plus the `loadSmsRoute` helper) was
- * removed in Wave 3 of `docs/TZ-sms-removal.md`; the remaining
- * `via: "SMS_REPLY"` usages exercise the helper directly (the via enum is
- * dropped in Wave 5 of the same plan).
+ * removed in Wave 3 of `docs/TZ-sms-removal.md`; the surviving scenarios
+ * exercise the helper directly through the TG / MANUAL_CRM vias.
  *
  * Style mirrors `tests/unit/detectors/unconfirmed-24h.test.ts` and
  * `tests/unit/appointment-reschedule-audit.test.ts` — vitest, `vi.mock` for
@@ -27,8 +26,9 @@ import { dedupeKeyFor } from "@/lib/actions/types";
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared in-memory state. One appointment is the system under test in most
 // scenarios; we mutate it across the helper + detector calls to assert end-
-// to-end behaviour. Scenario B (the SMS branch) also seeds clinic/patient/
-// provider rows.
+// to-end behaviour. The clinic/patient/provider/conversation rows were
+// seeded by the deleted SMS-YES scenario B; the mocks remain so the Prisma
+// surface stays complete, even though no surviving test populates them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Appointment = {
@@ -78,7 +78,7 @@ type PatientRow = {
 type ProviderRow = {
   clinicId: string;
   active: boolean;
-  kind: "SMS" | "TELEGRAM";
+  kind: "TELEGRAM";
   config: Record<string, unknown> | null;
 };
 type ConversationRow = {
@@ -168,7 +168,9 @@ vi.mock("@/server/patient/last-contacted", () => ({
   bumpPatientLastContact: vi.fn(async () => undefined),
 }));
 
-// Prisma surface. Only the methods the helper + detector + SMS route call.
+// Prisma surface. Only the methods the helper + detector call (the SMS
+// route used to live alongside this list; removed in Wave 3 of
+// `docs/TZ-sms-removal.md`).
 vi.mock("@/lib/prisma", () => {
   const prismaMock: Record<string, unknown> = {
     appointment: {
@@ -631,9 +633,8 @@ describe("A. Happy loop — TELEGRAM appointment 36h ahead", () => {
 
 // Block B (SMS-YES branch — webhook routes through the helper) lived here
 // and was removed in Wave 3 of `docs/TZ-sms-removal.md`. The webhook route
-// `src/app/api/sms/webhook/[clinicSlug]/route.ts` no longer exists; the
-// remaining `via: "SMS_REPLY"` usages below exercise the helper directly
-// and stay valid until the Prisma enum drop in Wave 5.
+// `src/app/api/sms/webhook/[clinicSlug]/route.ts` no longer exists. The gap
+// in the A → C scenario letters is intentional.
 
 describe("C. Late-YES — status already past BOOKED, only timestamp recorded", () => {
   it("records confirmedAt but does NOT downgrade status/queueStatus", async () => {
@@ -650,7 +651,7 @@ describe("C. Late-YES — status already past BOOKED, only timestamp recorded", 
       appointmentId: appt.id,
       clinicId: appt.clinicId,
       actorId: null,
-      via: "SMS_REPLY",
+      via: "TG_BUTTON",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
@@ -661,7 +662,7 @@ describe("C. Late-YES — status already past BOOKED, only timestamp recorded", 
       data: Record<string, unknown>;
     };
     expect(updateArgs.data.confirmedAt).toBeInstanceOf(Date);
-    expect(updateArgs.data.confirmedVia).toBe("SMS_REPLY");
+    expect(updateArgs.data.confirmedVia).toBe("TG_BUTTON");
     // Critical: `status` and `queueStatus` must NOT be present in the update
     // payload — the helper's `shouldFlipStatus` guard excluded the spread.
     expect(updateArgs.data).not.toHaveProperty("status");
@@ -747,7 +748,7 @@ describe("E. Idempotency contract — second caller hits alreadyConfirmed", () =
       appointmentId: appt.id,
       clinicId: appt.clinicId,
       actorId: null,
-      via: "SMS_REPLY",
+      via: "TG_BUTTON",
     });
 
     expect(first.ok).toBe(true);
@@ -869,7 +870,7 @@ describe("F. closeOpenConfirmActions — covers OPEN and SNOOZED, defensive on r
       appointmentId: appt.id,
       clinicId: appt.clinicId,
       actorId: null,
-      via: "SMS_REPLY",
+      via: "TG_BUTTON",
     });
     expect(r2.ok).toBe(true);
     if (!r2.ok) throw new Error("unreachable");

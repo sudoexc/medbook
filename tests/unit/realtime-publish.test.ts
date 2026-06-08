@@ -97,9 +97,11 @@ describe("publishEvent", () => {
       (e) => received.push(e),
     );
 
+    // Validation failure: `sendId` is required on NotificationPayload, and
+    // omitting it triggers the no-emit branch we're asserting against.
     const bad = {
       type: "notification.sent",
-      payload: { channel: "SMS" },
+      payload: { channel: "TG" },
     } as unknown as Parameters<typeof publishEvent>[1];
     await publishEvent(CLINIC, bad).catch(() => {});
 

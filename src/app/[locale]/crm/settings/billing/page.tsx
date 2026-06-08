@@ -114,7 +114,6 @@ export default async function BillingPage(props: {
       currency: p.currency,
       maxPatients: f.maxPatients,
       maxAppointmentsPerMonth: f.maxAppointmentsPerMonth,
-      maxSmsPerMonth: f.maxSmsPerMonth,
       hasTelegramInbox: f.hasTelegramInbox,
       hasCallCenter: f.hasCallCenter,
       hasAnalyticsPro: f.hasAnalyticsPro,
@@ -142,12 +141,10 @@ export default async function BillingPage(props: {
     flags: {
       maxPatients: flags.maxPatients,
       maxAppointmentsPerMonth: flags.maxAppointmentsPerMonth,
-      maxSmsPerMonth: flags.maxSmsPerMonth,
     },
     usage: {
       patientCount: data.usage.patientCount,
       appointmentCountThisMonth: data.usage.appointmentCountThisMonth,
-      smsCountThisMonth: data.usage.smsCountThisMonth,
     },
     plans: planRows,
     invoices: data.invoices.map((i) => ({

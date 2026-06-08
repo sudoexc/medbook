@@ -28,7 +28,6 @@ export interface BillingPagePlan {
   currency: string;
   maxPatients: number;
   maxAppointmentsPerMonth: number;
-  maxSmsPerMonth: number;
   hasTelegramInbox: boolean;
   hasCallCenter: boolean;
   hasAnalyticsPro: boolean;
@@ -64,12 +63,10 @@ export interface BillingPageProps {
   flags: {
     maxPatients: number;
     maxAppointmentsPerMonth: number;
-    maxSmsPerMonth: number;
   };
   usage: {
     patientCount: number;
     appointmentCountThisMonth: number;
-    smsCountThisMonth: number;
   };
   plans: BillingPagePlan[];
   /**
@@ -313,12 +310,6 @@ export function BillingClient(props: BillingPageProps) {
                 max={props.flags.maxAppointmentsPerMonth}
                 locale={localeKey}
               />
-              <UsageBar
-                label={t("usage.sms")}
-                current={props.usage.smsCountThisMonth}
-                max={props.flags.maxSmsPerMonth}
-                locale={localeKey}
-              />
             </div>
           </CardContent>
         </Card>
@@ -373,14 +364,6 @@ export function BillingClient(props: BillingPageProps) {
                           plan.maxAppointmentsPerMonth < 0
                             ? "∞"
                             : plan.maxAppointmentsPerMonth.toLocaleString(tag),
-                      })}
-                    </li>
-                    <li>
-                      {t("planPicker.features.sms", {
-                        n:
-                          plan.maxSmsPerMonth < 0
-                            ? "∞"
-                            : plan.maxSmsPerMonth.toLocaleString(tag),
                       })}
                     </li>
                     {plan.hasTelegramInbox ? <li>{t("planPicker.features.tg")}</li> : null}

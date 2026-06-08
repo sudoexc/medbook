@@ -8,7 +8,6 @@ import { intlLocale } from "@/lib/format";
 import {
   CheckCircle2Icon,
   CreditCardIcon,
-  MessageSquareIcon,
   PhoneIcon,
   PlugZapIcon,
   RefreshCwIcon,
@@ -46,7 +45,6 @@ import { TgConnectWizard } from "./tg-connect-wizard";
 
 type ProviderKind =
   | "TELEGRAM"
-  | "SMS"
   | "PAYME"
   | "CLICK"
   | "UZUM"
@@ -75,17 +73,11 @@ type ConfigFieldDef = {
  * mirror the i18n keys in ru.json / uz.json.
  */
 const VARIANTS: Partial<Record<ProviderKind, string[]>> = {
-  SMS: ["eskiz", "playmobile"],
   PAYME: ["payme", "click", "uzum"],
   OTHER: ["sip", "custom"],
 };
 
 const CONFIG_FIELDS: Record<ProviderKind, ConfigFieldDef[]> = {
-  SMS: [
-    { key: "baseUrl", type: "url", i18n: "smsBaseUrl" },
-    { key: "email", type: "text", required: true, i18n: "smsEmail" },
-    { key: "sender", type: "text", i18n: "smsSender" },
-  ],
   PAYME: [
     { key: "merchantId", type: "text", required: true, i18n: "merchantId" },
     { key: "mode", type: "select", options: ["test", "prod"], i18n: "mode" },
@@ -167,22 +159,6 @@ export function IntegrationsClient() {
       />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <IntegrationCard
-          kind="SMS"
-          icon={<MessageSquareIcon className="size-5" />}
-          title={t("integrations.cards.sms.title")}
-          description={t("integrations.cards.sms.description")}
-          conn={connsByKind.SMS ?? null}
-          onSetup={() => setEditKind("SMS")}
-          extra={
-            <SmsTestButton
-              smsConfigured={Boolean(
-                connsByKind.SMS?.active && connsByKind.SMS.hasSecret,
-              )}
-            />
-          }
-        />
-
         <IntegrationCard
           kind="TELEGRAM"
           icon={<SendIcon className="size-5" />}
@@ -599,83 +575,6 @@ function ProviderEditDialog({
           setPwOpen(false);
         }}
       />
-    </>
-  );
-}
-
-function SmsTestButton({ smsConfigured }: { smsConfigured: boolean }) {
-  const t = useTranslations("settings");
-  const [open, setOpen] = React.useState(false);
-  const [phone, setPhone] = React.useState("");
-  const [body, setBody] = React.useState(t("integrations.smsTestDefault"));
-  const mut = useMutation({
-    mutationFn: () =>
-      settingsFetch<{ adapter: string; real: boolean; providerId: string | null }>(
-        "/api/crm/integrations/sms/test",
-        {
-          method: "POST",
-          body: JSON.stringify({ phone, body }),
-        },
-      ),
-    onSuccess: (res) => {
-      toast.success(
-        res.real
-          ? t("integrations.smsTestSentReal", { adapter: res.adapter })
-          : t("integrations.smsTestSentLog"),
-      );
-      setOpen(false);
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  return (
-    <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-        <MessageSquareIcon className="size-4" />
-        {t("integrations.smsTest")}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("integrations.smsTest")}</DialogTitle>
-            <DialogDescription>
-              {smsConfigured
-                ? t("integrations.smsTestHintReal")
-                : t("integrations.smsTestHintLog")}
-            </DialogDescription>
-          </DialogHeader>
-          {smsConfigured ? (
-            <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
-              <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
-              <span>{t("integrations.smsTestWarning")}</span>
-            </div>
-          ) : null}
-          <div className="space-y-3 py-2">
-            <div>
-              <Label>{t("integrations.smsPhone")}</Label>
-              <Input
-                placeholder="+998 90 123 45 67"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>{t("integrations.smsBody")}</Label>
-              <Input value={body} onChange={(e) => setBody(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              onClick={() => mut.mutate()}
-              disabled={!phone || !body || mut.isPending}
-            >
-              {mut.isPending ? t("common.saving") : t("integrations.smsSend")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

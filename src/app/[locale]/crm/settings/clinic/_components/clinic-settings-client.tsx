@@ -35,7 +35,6 @@ type ClinicRow = {
   tgBotUsername: string | null;
   tgBotToken: string | null; // "***" when set
   tgWebhookSecret: string | null; // "***" when set
-  smsSenderName: string | null;
   active: boolean;
   // Phase 16 Patient Experience surface — exposed in the "Опыт пациента"
   // section. Stored as flat clinic columns; the API accepts each as an
@@ -98,7 +97,6 @@ export function ClinicSettingsClient() {
     tgBotToken?: string;
     tgBotUsername?: string;
     tgWebhookSecret?: string;
-    smsSenderName?: string;
   } | null>(null);
   const [pwOpen, setPwOpen] = React.useState(false);
 
@@ -573,22 +571,6 @@ export function ClinicSettingsClient() {
                   setSecretDraft({
                     ...(secretDraft ?? {}),
                     tgWebhookSecret: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor="smsSenderName">
-                {t("clinic.fields.smsSenderName")}
-              </Label>
-              <Input
-                id="smsSenderName"
-                placeholder="NEUROFAX"
-                defaultValue={form.smsSenderName ?? ""}
-                onChange={(e) =>
-                  setSecretDraft({
-                    ...(secretDraft ?? {}),
-                    smsSenderName: e.target.value,
                   })
                 }
               />

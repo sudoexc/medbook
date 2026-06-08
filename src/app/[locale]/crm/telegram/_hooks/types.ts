@@ -21,7 +21,7 @@ export type InboxAssignee = {
 export type InboxConversation = {
   id: string;
   clinicId: string;
-  channel: "TG" | "SMS" | "CALL" | "EMAIL" | "VISIT";
+  channel: "TG" | "CALL" | "EMAIL" | "VISIT";
   mode: ConversationMode;
   status: ConversationStatus;
   externalId: string | null;

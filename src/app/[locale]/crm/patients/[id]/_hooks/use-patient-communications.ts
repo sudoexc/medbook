@@ -28,7 +28,7 @@ export type CommunicationItem = {
   id: string;
   kind: CommunicationItemKind;
   at: string;
-  channel?: "SMS" | "TG" | "CALL" | "EMAIL" | "VISIT" | string;
+  channel?: "TG" | "CALL" | "EMAIL" | "VISIT" | string;
   direction?: "IN" | "OUT" | "MISSED" | string;
   title: string;
   body?: string | null;
@@ -45,7 +45,6 @@ export type CommunicationFilter =
   | "COMM"
   | "DOC"
   // Legacy filter values still used by older surfaces:
-  | "SMS"
   | "TG"
   | "CALL";
 
@@ -143,7 +142,6 @@ export function filterTimeline(
     if (filter === "DOC")
       return it.category === "DOC" || it.kind === "document";
     if (filter === "CALL") return it.kind === "call" || it.channel === "CALL";
-    if (filter === "SMS") return it.channel === "SMS";
     if (filter === "TG") return it.channel === "TG";
     return true;
   });

@@ -1,11 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import {
   CalendarClockIcon,
   CheckIcon,
-  SendIcon,
   UserXIcon,
   XIcon,
 } from "lucide-react";
@@ -41,7 +40,6 @@ export interface AppointmentsBulkBarProps {
  *  - «Пришёл» → bulk set queueStatus=WAITING (via POST /bulk-status)
  *  - «Не пришёл» → bulk set status=NO_SHOW
  *  - «Перенести» → placeholder (calc dialog lives in the calendar specialist)
- *  - «SMS напоминание» → POST /api/crm/communications/sms for each row (stub)
  */
 export function AppointmentsBulkBar({
   selectedIds,
@@ -51,9 +49,7 @@ export function AppointmentsBulkBar({
 }: AppointmentsBulkBarProps) {
   const t = useTranslations("appointments.bulk");
   const tConflict = useTranslations("appointments.drawer.conflict");
-  const locale = useLocale();
   const mutation = useBulkStatus();
-  const [sending, setSending] = React.useState(false);
 
   const onMutationError = React.useCallback(
     (err: Error) => {
@@ -112,38 +108,6 @@ export function AppointmentsBulkBar({
     );
   };
 
-  const sendSms = async () => {
-    setSending(true);
-    let ok = 0;
-    let fail = 0;
-    // Fan-out one POST per selected row. 409/500 → count as fail, continue.
-    const targets = rows.filter((r) => selectedSet.has(r.id));
-    for (const row of targets) {
-      try {
-        const res = await fetch(`/api/crm/communications/sms`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            patientId: row.patient.id,
-            text: t("smsTemplate", {
-              time: row.time ?? "",
-              doctor: locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu,
-            }),
-          }),
-        });
-        if (res.ok) ok++;
-        else fail++;
-      } catch {
-        fail++;
-      }
-    }
-    setSending(false);
-    if (ok > 0) toast.success(t("smsSent", { count: ok }));
-    if (fail > 0) toast.error(t("smsFailed", { count: fail }));
-    onClear();
-  };
-
   if (count === 0) return null;
 
   return (
@@ -189,16 +153,6 @@ export function AppointmentsBulkBar({
           disabled={mutation.isPending || !actions.canReschedule}
           disabledReason={
             !actions.canReschedule ? t("disabled.reschedule") : undefined
-          }
-        />
-
-        <BulkActionButton
-          icon={<SendIcon className="size-4" />}
-          label={t("sendSms")}
-          onClick={sendSms}
-          disabled={sending || !actions.canSendReminder}
-          disabledReason={
-            !actions.canSendReminder ? t("disabled.sendSms") : undefined
           }
         />
 

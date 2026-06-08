@@ -1,12 +1,10 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   CopyIcon,
-  MessageSquareIcon,
   MicOffIcon,
   PauseIcon,
   PhoneForwardedIcon,
@@ -40,11 +38,6 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
   const status = call ? deriveStatus(call) : null;
   const canEnd =
     Boolean(call) && status !== "ended" && status !== "missed";
-  const phone = call
-    ? call.direction === "OUT"
-      ? call.toNumber
-      : call.fromNumber
-    : "";
 
   const onHangup = async () => {
     if (!call) return;
@@ -86,12 +79,6 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
       toast.error(t("toasts.copyFailed"));
     }
   };
-
-  const smsHref = call?.patient
-    ? `/crm/patients/${call.patient.id}?sms=true`
-    : phone
-      ? `/crm/patients?new=true&phone=${encodeURIComponent(phone)}`
-      : "/crm/patients";
 
   const scripts = [
     { key: "greeting" as const, text: t("scripts.greeting") },
@@ -152,18 +139,6 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             onClick={onStub}
             title={t("toasts.sipUnavailable")}
           />
-          <Link
-            href={smsHref}
-            className={cn(
-              "flex flex-col items-center gap-1 rounded-lg border border-border bg-card p-2 text-center transition hover:bg-muted",
-              !call && "pointer-events-none opacity-50",
-            )}
-          >
-            <MessageSquareIcon className="size-5 text-primary" aria-hidden />
-            <span className="text-[11px] font-medium text-foreground">
-              {t("controls.sms")}
-            </span>
-          </Link>
         </div>
 
         <p className="mt-2 text-[11px] text-muted-foreground">

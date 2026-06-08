@@ -99,7 +99,7 @@ export type CallRow = {
 
 export type ConversationRow = {
   id: string;
-  channel: "SMS" | "TG" | "CALL" | "EMAIL" | "VISIT";
+  channel: "TG" | "CALL" | "EMAIL" | "VISIT";
   status: "OPEN" | "SNOOZED" | "CLOSED";
   unreadCount: number;
   lastMessageText: string | null;

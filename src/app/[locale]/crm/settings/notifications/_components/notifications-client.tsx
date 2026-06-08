@@ -31,13 +31,13 @@ type TemplateRow = {
   key: string;
   nameRu: string;
   nameUz: string;
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT";
   category: "REMINDER" | "MARKETING" | "TRANSACTIONAL";
   trigger: string;
   triggerConfig:
     | {
         offsetMin?: number | null;
-        channels?: Array<"TG" | "SMS"> | null;
+        channels?: Array<"TG"> | null;
         enabled?: boolean | null;
         days?: number | null;
       }
@@ -556,7 +556,7 @@ function RulesEditorPane({
   // Defaults for a fresh editor session.
   const initialOffsetMin = row.triggerConfig?.offsetMin ?? null;
   const initialChannels = (row.triggerConfig?.channels ?? null) as
-    | Array<"TG" | "SMS">
+    | Array<"TG">
     | null;
   const initialEnabled =
     row.triggerConfig?.enabled === false ? false : row.isActive;
@@ -564,7 +564,7 @@ function RulesEditorPane({
   const [offsetMin, setOffsetMin] = React.useState<number | null>(
     initialOffsetMin,
   );
-  const [channels, setChannels] = React.useState<Array<"TG" | "SMS"> | null>(
+  const [channels, setChannels] = React.useState<Array<"TG"> | null>(
     initialChannels,
   );
   const [enabled, setEnabled] = React.useState<boolean>(initialEnabled);
@@ -615,13 +615,13 @@ function RulesEditorPane({
     setOffsetMin(-Math.round(stepped * 60));
   };
 
-  const toggleChannel = (c: "TG" | "SMS") => {
+  const toggleChannel = (c: "TG") => {
     setChannels((prev) => {
       const cur = prev ? [...prev] : [];
       const idx = cur.indexOf(c);
       if (idx >= 0) cur.splice(idx, 1);
       else cur.push(c);
-      return cur.length === 0 ? null : (cur as Array<"TG" | "SMS">);
+      return cur.length === 0 ? null : (cur as Array<"TG">);
     });
   };
 
@@ -692,7 +692,7 @@ function RulesEditorPane({
             {t("notifications.rules.channelsHint")}
           </p>
           <div className="flex flex-wrap gap-2">
-            {(["TG", "SMS"] as const).map((c) => {
+            {(["TG"] as const).map((c) => {
               const checked = channels?.includes(c) ?? false;
               return (
                 <button
@@ -707,11 +707,7 @@ function RulesEditorPane({
                   )}
                   data-testid={`rules-ch-${c}`}
                 >
-                  {c === "TG" ? (
-                    <SendIcon className="size-3" />
-                  ) : (
-                    <MessageSquareIcon className="size-3" />
-                  )}
+                  <SendIcon className="size-3" />
                   {c}
                 </button>
               );

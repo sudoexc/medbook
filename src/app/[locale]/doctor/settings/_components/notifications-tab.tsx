@@ -160,8 +160,7 @@ export function NotificationsTab() {
         <MessageCircleIcon className="size-4 shrink-0" />
         <span>
           Канал <strong>Telegram</strong> работает, только если вы привязали
-          бота к своему аккаунту в разделе «Безопасность». SMS пока не
-          подключён.
+          бота к своему аккаунту в разделе «Безопасность».
         </span>
       </div>
     </div>

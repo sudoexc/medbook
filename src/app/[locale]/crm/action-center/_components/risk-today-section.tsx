@@ -13,7 +13,7 @@
  *   - explicit reason chips (high-risk / unconfirmed / no-contact) — no
  *     more guessing why a patient surfaced
  *   - composite risk score gauge for at-a-glance triage
- *   - inline CTAs: call, SMS, mark handled, snooze
+ *   - inline CTAs: call, mark handled, snooze
  *
  * `Mark handled` closes all the open Action rows attached to this
  * appointment (NO_SHOW_RISK_HIGH + UNCONFIRMED_24H), which is the same path
@@ -35,7 +35,6 @@ import {
   MessageCircleOffIcon,
   MoreHorizontalIcon,
   PhoneIcon,
-  SendIcon,
   ShieldCheckIcon,
   UserIcon,
 } from "lucide-react";
@@ -324,7 +323,6 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     : null;
 
   const handlePath = `/${locale}/crm/call-center?from=risk-today&patientId=${row.patientId}&phone=${encodeURIComponent(row.patientPhone ?? "")}`;
-  const smsPath = `/${locale}/crm/notifications?compose=sms&patientId=${row.patientId}&intent=confirm&from=risk-today`;
   const patientHref = `/${locale}/crm/patients/${row.patientId}`;
   const apptHref = `/${locale}/crm/appointments/${row.appointmentId}`;
 
@@ -475,14 +473,6 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
         >
           <PhoneIcon className="size-3.5" />
           <span className="hidden sm:inline">{t("ctaCall")}</span>
-        </Link>
-        <Link
-          href={smsPath}
-          className="inline-flex items-center gap-1 rounded-md bg-info px-2.5 py-1.5 text-xs font-semibold text-info-foreground transition-colors hover:brightness-95"
-          title={t("ctaSmsTitle")}
-        >
-          <SendIcon className="size-3.5" />
-          <span className="hidden sm:inline">{t("ctaSms")}</span>
         </Link>
         <button
           type="button"

@@ -5,7 +5,6 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   CheckIcon,
   InboxIcon,
-  MessageSquareIcon,
   PhoneIcon,
   SendIcon,
   StethoscopeIcon,
@@ -38,7 +37,6 @@ function channelIcon(item: CommunicationItem) {
   if (item.kind === "call" || item.channel === "CALL")
     return <PhoneIcon className="size-4" />;
   if (item.channel === "TG") return <SendIcon className="size-4" />;
-  if (item.channel === "SMS") return <MessageSquareIcon className="size-4" />;
   return <CheckIcon className="size-4" />;
 }
 
@@ -80,7 +78,6 @@ export function CommunicationsTab({ patient }: CommunicationsTabProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">{t("types.all")}</SelectItem>
-            <SelectItem value="SMS">{t("types.sms")}</SelectItem>
             <SelectItem value="TG">{t("types.tg")}</SelectItem>
             <SelectItem value="CALL">{t("types.call")}</SelectItem>
             <SelectItem value="VISIT">{t("types.visit")}</SelectItem>

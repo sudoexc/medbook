@@ -42,7 +42,7 @@ export type Patient = {
   photoUrl: string | null;
   telegramId: string | null;
   telegramUsername: string | null;
-  preferredChannel: "SMS" | "TG" | "CALL" | "EMAIL" | "VISIT";
+  preferredChannel: "TG" | "CALL" | "EMAIL" | "VISIT";
   preferredLang: "RU" | "UZ";
   source:
     | "WEBSITE"

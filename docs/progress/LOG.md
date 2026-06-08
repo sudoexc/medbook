@@ -2064,3 +2064,33 @@ Migration: `20260507190000_phase19_w4_impersonation`.
   4. Не выставлять `NEXT_PUBLIC_BILLING_STUB=1` в prod (это симулятор оплаты)
   5. Опционально: smoke-test self-signup через `/signup` на staging
 
+
+---
+
+## SMS Removal Initiative — ✅ DONE 2026-06-08
+
+Cross-cutting workstream выполнен по `docs/TZ-sms-removal.md`. Решение: канал SMS полностью убран из активного контура CRM/Mini App. Исторические rows (`Communication`, `NotificationSend`, `AuditLog` с `channel='SMS'`) остаются read-only для аудита, новые SMS-сообщения не создаются.
+
+**Контекст решения.** К Q2 2026 факт-чек: Eskiz/Playmobile активно не используется ни одной клиникой; legacy templates лежат в БД; UI содержит «мёртвые» CTA (Send SMS из карточки пациента, sidebar `/crm/sms`, SMS toggle в кампаниях, SMS dialog в action-center). Стоимость поддержки канала превышала его операционную ценность.
+
+### Waves
+
+- **Wave 1 (kill-switch).** Server-side `pickSms()` всегда возвращает `LogOnlyAdapter`; `resolveChannels()` фильтрует `SMS` из template-channels; `/api/crm/communications/sms` + `/api/crm/integrations/sms/test` отдают 410 Gone; `/api/sms/webhook/[clinicSlug]` — 200 OK no-op.
+- **Wave 2 (UI).** Удалён sidebar item `SMS-Email`, route `/crm/sms`, SMS dialog в карточке пациента, SMS-CTA в action/call-center, SMS toggle в templates editor и campaigns new. Mini App: `preferredChannel` селектор больше не показывает SMS опцию.
+- **Wave 3 (server cleanup).** Удалены route-файлы (`/api/sms/webhook/...`, `/api/crm/communications/sms`, `/api/crm/integrations/sms/test`), `src/server/notifications/adapters/sms*.ts`, `src/lib/sms-stop.ts`. Почищены `adapters/index.ts`, `rules.ts`, `triggers.ts`, `rate-limit.ts`, `workers/notifications-send.ts`, `campaigns/*.ts`, `billing/*.ts`, `ai/marketing-copy.ts`. SMS-тесты переписаны; добавлен `tests/unit/legacy-sms-readback.test.ts` (исторические rows читаются). Коммиты: `54f125b`, `03e848b`, `616d0e8`, `2995595`.
+- **Wave 4 (PATIENT_NO_CHANNEL compensator).** Добавлен `ActionType.PATIENT_NO_CHANNEL` в `src/lib/actions/types.ts`. Новый helper `src/server/notifications/no-channel-action.ts` — `recordPatientNoChannel({ clinicId, patientId, patientName, triggerKey, appointmentId?, appointmentAt? })` создаёт action через `upsertAction` с дедупом `(patientId, triggerKey, UTC-day)`. Wired в 5 skip-сайтов: `triggers.ts` (bulk materializer, single materializer, runCaseRepeatReminders), `workers/notifications-scheduler.ts` (no-channel branch, no-recipient branch). UI: action-center показывает Phone icon + «Call» CTA, deeplink `/crm/patients/<id>`, category «calls». i18n RU/UZ с ICU select между «с записью» и «без записи» вариантами body. 9 новых test cases в `tests/unit/notifications-no-channel-action.test.ts`. Коммит: `e8ae02f`.
+- **Wave 5 (schema cleanup).** Миграция `20260608130000_drop_sms_config`: `ALTER TABLE "Clinic" DROP COLUMN IF EXISTS "smsSenderName"` + `DELETE FROM "ProviderConnection" WHERE kind='SMS'`. Удалены оrphaned i18n entries `smsSenderName` (ru/uz). Enum values (`CommunicationChannel.SMS`, `ProviderKind.SMS`, `NotificationChannel.SMS`, `CommunicationKind.SMS_REPLY`) оставлены — на них завязаны исторические rows. Миграция идемпотентна. Коммит: `c1e4ce6`.
+- **Wave 6 (docs).** Этот раздел + апдейт `docs/TZ.md` (banner в шапке + правки в §2.2, §3, §6.5, §8.2), `docs/TZ-notifications-cancel-sync.md` (каскад напоминаний теперь TG-only + INAPP mirror), `docs/TZ-cross-surface-sync.md` (§7.2 SMS YES webhook + §7.8 SMS DLR retired), `docs/api/communications.md` (`POST /sms` retired), `docs/security/phase-7.md` (C1 → N/A surface removed), `docs/ROADMAP-11x.md` (SMS-Email menu item + billing SMS counter retired).
+
+### Acceptance criteria (из TZ §7)
+
+- `grep -ri 'sms' src/` возвращает только: (a) legacy комментарии, (b) historical enum-handler в read-path, (c) phone-normalization для звонков. ✓
+- CRM UI: нет видимых упоминаний SMS, кроме badge «архив» в исторических коммуникациях. ✓
+- Notification scheduler: при TG-less пациенте создаёт `PATIENT_NO_CHANNEL` action, а не silently-skips. ✓
+- Mini App: пациент с `preferredChannel=SMS` (legacy) видит default-UI как `preferredChannel=TG`. ✓
+- `npx tsc --noEmit` — clean ✓
+- Соседи на shared VPS (rtxshop, orientatravel) не задеты — smoke-test после деплоя.
+
+### Не деплоено
+
+Полная цепочка commits локально (см. `git log`). Деплой требует **отдельного явного запроса** + (для Wave 5) snapshot БД перед `migrate deploy`. Wave 5 необратима без `pg_restore`.

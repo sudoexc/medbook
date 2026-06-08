@@ -29,10 +29,12 @@ them requires schema/UX decisions outside this audit's scope.
 
 ## Critical
 
-### C1 — SMS webhook accepted any non-empty `x-sms-secret` header [fixed]
+### C1 — SMS webhook accepted any non-empty `x-sms-secret` header [fixed → N/A, surface removed]
+
+> **Q2 2026 update:** SMS-канал и webhook удалены целиком (см. `docs/TZ-sms-removal.md` Waves 1-3). Файл `src/app/api/sms/webhook/[clinicSlug]/route.ts` больше не существует — раздел сохраняется как историческая запись о найденной уязвимости и принятом тогда фиксе.
 
 **File:** `src/app/api/sms/webhook/[clinicSlug]/route.ts` (previously lines
-76-79)
+76-79, since deleted)
 
 **Before fix:**
 

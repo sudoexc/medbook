@@ -2,8 +2,20 @@
 
 > Документ описывает **полную систему управления клиникой** по макетам (папка `/Users/joe/Desktop/medbook/` — файлы `1 - Ресепшн.png` … `Telegram Web App.png`).
 > **Статус:** v2, решения по открытым вопросам приняты, цель — **production-версия "как на скринах"** (не MVP).
-> **Ключевые решения:** ru/uz; UZS + USD; **мультитенантная архитектура** (несколько клиник на одной инсталляции); текущий код (`/dashboard`, `/doctor`, `/receptionist`) сносим полностью; SMS/телефония/платежи — адаптеры-заглушки до выбора провайдеров; TG бот создаём новый; мед-интеграция не нужна.
+> **Ключевые решения:** ru/uz; UZS + USD; **мультитенантная архитектура** (несколько клиник на одной инсталляции); текущий код (`/dashboard`, `/doctor`, `/receptionist`) сносим полностью; телефония/платежи — адаптеры-заглушки до выбора провайдеров; TG бот создаём новый; мед-интеграция не нужна.
 > **Дата:** 2026-04-22
+>
+> ### ⚠️ Q2 2026 — SMS-канал удалён
+>
+> В июне 2026 принято решение полностью убрать SMS как канал коммуникации — см. `docs/TZ-sms-removal.md`. Любые упоминания SMS ниже (в матрице прав, сайдбаре `/sms`, действиях карточки пациента, шаблонах нотификаций, `Clinic.smsSenderName`, адаптере `§8.2`, рисках) относятся к историческому проектному решению. На текущей кодовой базе:
+>
+> - Sidebar item `/crm/sms` удалён; route отдаёт 404.
+> - В карточке пациента и action-center нет кнопок «Отправить SMS».
+> - Шаблоны notifications не поддерживают канал SMS; материализатор при отсутствии TG создаёт `PATIENT_NO_CHANNEL` action в `/crm/action-center`, и регистратура звонит вручную.
+> - Исторические rows `Communication.channel='SMS'` и `NotificationSend.channel='SMS'` остаются read-only — отображаются с пометкой «архив».
+> - `Clinic.smsSenderName` дропнут в Wave 5 миграции; `ProviderConnection WHERE kind='SMS'` — пуст.
+>
+> Sections §4 (Дизайн-система), §6 (Записи / Карточка пациента / Call Center), §6.9 (Уведомления), §8.2 (SMS-адаптер) считать применимыми к Telegram + INAPP + CALL каналам; SMS-блоки в них — исторические.
 
 ---
 
@@ -91,7 +103,7 @@ enum Role {
 | Call Center — диалоги | R all | R | RWUD | — | — |
 | Call Center — звонки | R all | R | RWUD | — | — |
 | Telegram inbox | R all + assign | RWU | RWU | — | — |
-| SMS | R all | RW | RW | — | — |
+| ~~SMS~~ — RETIRED Q2 2026 (см. `TZ-sms-removal.md`) | R archive | R archive | R archive | — | — |
 | Уведомления — шаблоны | RWUD | R | R | R | — |
 | Уведомления — отправить | W | W | W | — | — |
 | Уведомления — очередь | R | R ltd | R ltd | own | — |
@@ -146,7 +158,7 @@ neurofax.uz/
 │   │   ├── /call-center            ⭐ call-центр
 │   │   ├── /telegram               ⭐ Telegram inbox
 │   │   ├── /telegram/[conversationId]
-│   │   ├── /sms                    SMS inbox
+│   │   ├── ~~/sms~~                RETIRED Q2 2026 (TZ-sms-removal.md)
 │   │   ├── /notifications          ⭐ центр уведомлений
 │   │   ├── /notifications/templates
 │   │   ├── /analytics              аналитика (агрегат)
@@ -183,7 +195,7 @@ neurofax.uz/
 **Группа 2 — Коммуникации**
 - Call Center
 - Telegram
-- SMS
+- ~~SMS~~ — RETIRED Q2 2026 (см. `TZ-sms-removal.md`)
 - Уведомления
 
 **Группа 3 — Управление**
@@ -1301,7 +1313,8 @@ prisma.$use(async (params, next) => {
 │         📞 +998 90 123 45 67                           Следующий: 18.04.2026 │
 │         📧 muhammad@mail.uz                            Последний: 10.04.2026 │
 │                                                                              │
-│  [Записать]  [Позвонить]  [Написать в TG]  [SMS]  [+ Документ]  [⋯]         │
+│  [Записать]  [Позвонить]  [Написать в TG]  [+ Документ]  [⋯]                │
+│  ([SMS] — RETIRED Q2 2026, см. TZ-sms-removal.md)                           │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1313,7 +1326,7 @@ prisma.$use(async (params, next) => {
 2. **Медицина** (только DOCTOR видит полный объём)
 3. **Финансы**
 4. **Документы**
-5. **Коммуникации** (логи звонков, TG, SMS, уведомлений)
+5. **Коммуникации** (логи звонков, TG, уведомлений; исторические SMS — read-only «архив»)
 6. **История активности** (аудит)
 
 #### 6.5.3 Таб «Сводная» — блоки
@@ -2043,27 +2056,9 @@ Endpoint `GET /api/search?q=`. Возвращает сгруппировано. 
 - **Business API** — опционально, per-clinic: если клиника купила Premium-Business — можно подключить её аккаунт, чтобы бот выглядел как живая «Neurofax» без суффикса `bot`.
 - **Создание бота:** каждая клиника создаёт своего бота через BotFather, токен и secret кладёт в Clinic-настройки через UI `/admin/clinics/[id]/integrations` (шифрование at-rest).
 
-### 8.2 SMS (адаптер-заглушка)
+### 8.2 ~~SMS (адаптер-заглушка)~~ — RETIRED Q2 2026
 
-```ts
-interface SmsAdapter {
-  name: 'log-only' | 'eskiz' | 'playmobile' | ...;
-  send(phone: string, text: string, meta: { clinicId, notificationId }): Promise<{ externalId?: string }>;
-  // webhooks: провайдер → /api/sms/[providerSlug]/status → обновление Notification.status
-}
-```
-
-**Дефолтная реализация — `LogOnlyAdapter`:**
-- `send()` пишет `Notification.status = SENT` + лог в stdout + запись в `AuditLog`
-- Никуда реально не отправляет
-- UI показывает «отправлено», аналитика «доставляемости» считается 100%
-- Над списком уведомлений бейдж «DEV MODE» если активен log-only
-
-Реализации, которые добавятся позже:
-- `EskizAdapter` — Eskiz.uz, основной план для Узбекистана
-- `PlayMobileAdapter` — резерв
-
-Выбор — `Clinic.smsProvider: "log-only" | "eskiz" | "playmobile"`.
+> **Q2 2026:** канал и весь адаптерный слой удалены — см. `docs/TZ-sms-removal.md`. `SmsAdapter` интерфейс, `LogOnlyAdapter`, `EskizAdapter`, `PlayMobileAdapter`, `/api/sms/*` webhooks, `Clinic.smsSenderName`, `ProviderConnection.kind='SMS'` — всё убрано в Waves 1-5. Раздел сохраняется как историческая запись о принятом изначально решении. На текущем коде каналы коммуникации с пациентом: **Telegram (push) + INAPP (Mini App inbox) + CALL (call-центр)**. Если пациент TG не подключил — материализуется `PATIENT_NO_CHANNEL` action для регистратуры.
 
 ### 8.3 Платежи (адаптер-заглушка)
 

@@ -56,7 +56,7 @@
   - first cabinet
 - **Reschedule history → AuditLog**: при `Appointment.startTime/doctorId/cabinetId` change писать `AuditLog.action = 'APPOINTMENT_RESCHEDULED'` с `oldSlot/newSlot` в metadata.
 - **Menu cleanup**: переместить из основного `CRM_NAV` в Settings:
-  - SMS-Email (subitem of Settings → Communications)
+  - ~~SMS-Email (subitem of Settings → Communications)~~ — **CANCELLED** (SMS-канал удалён Q2 2026, см. `TZ-sms-removal.md`)
   - Documents (subitem of Settings → Knowledge Base)
   - Cabinets (subitem of Settings → Resources)
   - Services (subitem of Settings → Catalog)
@@ -490,7 +490,7 @@ E2e: drag запись на новое время → audit log имеет за�
 - **Self-signup**: публичный landing → email/phone → email confirm → choose plan (Free/Starter/Pro) → auto-create Clinic + ADMIN user → onboarding playbook (см. ниже).
 - **Onboarding playbooks**: при создании клиники — выбор шаблона (general / dental / neurology / pediatric / cosmetology). Playbook = pre-seeded services, doctors-template, notifications-templates, schedule-defaults. Скип-able (start blank).
 - **Self-service billing** (Stripe-style):
-  - `/crm/settings/billing`: current plan, usage (patients / appointments / SMS sent), upgrade button
+  - `/crm/settings/billing`: current plan, usage (patients / appointments / TG notifications sent), upgrade button (SMS counter retired Q2 2026, см. `TZ-sms-removal.md`)
   - Plan limits enforced (см. Phase 9b — есть Plan/Subscription, нужно добавить enforcement gates)
   - Payment via Click/Payme (UZ) integration или manual invoice
   - Invoice history + PDF

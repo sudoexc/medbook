@@ -33,12 +33,14 @@
 
 ## 2. Каскад напоминаний
 
+> **Обновление Q2 2026 (после `TZ-sms-removal.md` Waves 1-5):** канал SMS убран. Все триггеры ниже теперь идут только в TG (с in-app зеркалом для linked-TG пациентов). Если TG не подключён — материализуется `PATIENT_NO_CHANNEL` action в `/crm/action-center`, и регистратура звонит пациенту вручную (см. §3.6 TZ-sms-removal).
+
 | Offset | Кому когда | Канал | Замечание |
 |---|---|---|---|
-| **−1440 мин (24h)** | За день до приёма | TG → SMS fallback | Существует, оставляем |
-| **−300 мин (5h)** | Утром того же дня (если приём ≥ 5h) | TG → SMS fallback | Существует, оставляем |
-| **−180 мин (3h)** | **НОВЫЙ** — за 3 часа | TG → SMS fallback | Замещает функцию 2h-пинга |
-| **−60 мин (1h)** | **НОВЫЙ** — за час | TG → SMS fallback | Финальный «выходим скоро» |
+| **−1440 мин (24h)** | За день до приёма | TG (+INAPP mirror) | Существует, оставляем |
+| **−300 мин (5h)** | Утром того же дня (если приём ≥ 5h) | TG (+INAPP mirror) | Существует, оставляем |
+| **−180 мин (3h)** | **НОВЫЙ** — за 3 часа | TG (+INAPP mirror) | Замещает функцию 2h-пинга |
+| **−60 мин (1h)** | **НОВЫЙ** — за час | TG (+INAPP mirror) | Финальный «выходим скоро» |
 
 Выпиливаем из канонического списка `−4320` (3d) и `−120` (2h). Существующие per-clinic templates с этими offsetMin остаются в БД, но scheduler по ним не материализует — админ может перевести в кастом-каскад вручную.
 
@@ -50,21 +52,21 @@
 
 | TriggerKey | NotificationTrigger (enum) | Кто фаерит | Когда | Канал | Дедуп |
 |---|---|---|---|---|---|
-| `appointment.reminder-24h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−24h | TG/SMS | NotificationSend(appt+tpl) |
-| `appointment.reminder-5h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−5h | TG/SMS | -//- |
-| `appointment.reminder-3h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−3h | TG/SMS | -//- |
-| `appointment.reminder-1h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−1h | TG/SMS | -//- |
-| `appointment.cancelled.by-staff` | `APPOINTMENT_CANCELLED` (NEW) | `cancelAppointment` kernel, когда `surface ≠ MINIAPP` | сразу после flip | TG → SMS | NotificationSend(appt+tpl) |
+| `appointment.reminder-24h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−24h | TG (+INAPP) | NotificationSend(appt+tpl) |
+| `appointment.reminder-5h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−5h | TG (+INAPP) | -//- |
+| `appointment.reminder-3h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−3h | TG (+INAPP) | -//- |
+| `appointment.reminder-1h` | `APPOINTMENT_BEFORE` | scheduler tick | now ≥ date−1h | TG (+INAPP) | -//- |
+| `appointment.cancelled.by-staff` | `APPOINTMENT_CANCELLED` (NEW) | `cancelAppointment` kernel, когда `surface ≠ MINIAPP` | сразу после flip | TG (+INAPP) | NotificationSend(appt+tpl) |
 | `appointment.cancelled.by-patient` | `APPOINTMENT_CANCELLED` (NEW) | `cancelAppointment` kernel, когда `surface = MINIAPP` | сразу после flip | TG only | NotificationSend(appt+tpl) |
-| `appointment.running-late` | `APPOINTMENT_RUNNING_LATE` (NEW) | `appointment-lifecycle-sweep` | `isRunningLate(row, now)` && нет существующего send | TG → SMS | NotificationSend(appt+tpl) |
-| `appointment.no-show` | `APPOINTMENT_MISSED` (existing enum) | `appointment-lifecycle-sweep` после auto-flip, **и** `bulk-status` route при ручной NO_SHOW | сразу после flip | TG → SMS | NotificationSend(appt+tpl) |
+| `appointment.running-late` | `APPOINTMENT_RUNNING_LATE` (NEW) | `appointment-lifecycle-sweep` | `isRunningLate(row, now)` && нет существующего send | TG (+INAPP) | NotificationSend(appt+tpl) |
+| `appointment.no-show` | `APPOINTMENT_MISSED` (existing enum) | `appointment-lifecycle-sweep` после auto-flip, **и** `bulk-status` route при ручной NO_SHOW | сразу после flip | TG (+INAPP) | NotificationSend(appt+tpl) |
 
 Cancel при отмене:
 - Все будущие `NotificationSend` для этой записи со статусом `QUEUED` помечаются `CANCELLED` (через `cancel.ts`) — не спамим пациента напоминалкой о записи, которой уже нет.
 
 ## 4. Шаблоны текстов (черновик)
 
-Все плейсхолдеры: `{name}`, `{date}`, `{time}`, `{doctor}`, `{clinicPhone}`, `{clinicName}`. Тон — уважительный «вы», без эмодзи, ≤160 chars для SMS-совместимости (TG может быть длиннее, но один шаблон для обоих).
+Все плейсхолдеры: `{name}`, `{date}`, `{time}`, `{doctor}`, `{clinicPhone}`, `{clinicName}`. Тон — уважительный «вы», без эмодзи. Историческое ограничение ≤160 chars (SMS-совместимость) снято после `TZ-sms-removal.md`; для TG текст может быть произвольной длины, но шаблоны остаются короткими ради читаемости в пуш-нотификации.
 
 ### 4.1 `appointment.reminder-24h`
 

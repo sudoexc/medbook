@@ -36,7 +36,7 @@
 | G4 | Унифицированный actor identity | Аудит-запись для любого изменения `Appointment`, `VisitNote`, `Prescription` содержит: `actorRole`, `actorSurface`, `actorId`, `onBehalfOfPatientId?`, `correlationId` |
 | G5 | TOTP gate per-API | DOCTOR в `require2faForAll=true` клинике без TOTP не может вызвать `/api/crm/**` (403) |
 | G6 | Conflict-safe write на VisitNote | Параллельная запись двух акторов в один VisitNote → последний получает 409, не silent-overwrite |
-| G7 | Notification delivery telemetry | DLR webhook от SMS/TG → `notification.delivered` + `notification.read` события → CRM показывает delivery badge в реальном времени |
+| G7 | Notification delivery telemetry | DLR webhook от TG → `notification.delivered` + `notification.read` события → CRM показывает delivery badge в реальном времени (SMS-канал удалён в Q2 2026 — см. `TZ-sms-removal.md`) |
 | G8 | Slot/availability fan-out | Изменение расписания / `DoctorTimeOff` → mini-app пациента сразу видит обновлённую доступность |
 | G9 | Mock-free doctor cabinet | В `/doctor/**` нет ни одного `MOCK_*` импорта в продакшен-бандле |
 | G10 | Backwards-compatible миграция | Все изменения катятся фазами, каждая фаза самодостаточна, ни одна не разламывает работающую систему |
@@ -159,7 +159,7 @@
 export type EventEnvelope<P = unknown> = {
   // identity
   eventId: string;              // ulid, генерится в outbox insert
-  causedByEventId?: string;     // chain causality (e.g. SMS YES → confirm → notification)
+  causedByEventId?: string;     // chain causality (e.g. TG button YES → confirm → notification)
   correlationId: string;        // shared across cascade; первое событие в цепочке генерит, остальные наследуют
 
   // when
@@ -177,7 +177,7 @@ export type EventEnvelope<P = unknown> = {
     onBehalfOfPatientId: string | null;  // family scenario
     label: string;              // human-friendly: "Иванов И.И. (DOCTOR)", "patient:tg:…", "system:notification-worker"
   };
-  surface: Surface;             // 'CRM' | 'DOCTOR_CABINET' | 'MINIAPP' | 'SMS_WEBHOOK' | 'TG_WEBHOOK' | 'WORKER' | 'CALL_CENTER'
+  surface: Surface;             // 'CRM' | 'DOCTOR_CABINET' | 'MINIAPP' | 'TG_WEBHOOK' | 'WORKER' | 'CALL_CENTER' (SMS_WEBHOOK retired Q2 2026 per TZ-sms-removal.md)
 
   // scope (for SSE filtering)
   tenantScope: {
@@ -203,7 +203,7 @@ export type EventEnvelope<P = unknown> = {
 | `visit-note.reverted` | undo finalize | shared `revertVisit()` |
 | `prescription.created` | новый Rx | shared `prescribeMedication()` |
 | `prescription.paused` / `.resumed` / `.cancelled` | смена статуса | shared `updatePrescription()` |
-| `notification.delivered` | DLR webhook от SMS/TG | DLR handler |
+| `notification.delivered` | DLR webhook от TG (SMS DLR удалён Q2 2026 — см. TZ-sms-removal.md) | DLR handler |
 | `notification.read` | пациент открыл inbox-item / нажал TG-кнопку | inbox PATCH / TG webhook |
 | `doctor.scheduleChanged` | изменение `DoctorSchedule` | `/api/crm/doctors/[id]/schedule` |
 | `doctor.timeOffCreated` / `.timeOffRemoved` | `DoctorTimeOff` | соответствующие роуты |
@@ -454,20 +454,9 @@ es.onmessage = (e) => {
   - Кабинет врача `/my-day`, `/schedule` → refetch (если этот доктор)
   - Mini-app: пациент уже видит созданный appointment в response — invalidate не нужен, но `appointment.created` приходит для self-consistency
 
-### 7.2 Receptionist confirms via SMS YES webhook
+### 7.2 ~~Receptionist confirms via SMS YES webhook~~ — RETIRED
 
-- Триггер: `/api/sms/webhook` (DLR/inbound)
-- Shared: `confirmAppointment({ source: 'SMS_WEBHOOK', appointmentId, smsLogId })` (существующая, расширяется)
-- Записи: `Appointment.status=CONFIRMED`, `confirmedAt`, `confirmedVia='SMS'` + closeOpenConfirmActions + EventOutbox
-- Events:
-  - `appointment.confirmed` (auditable, actor.role=SYSTEM, surface=SMS_WEBHOOK)
-  - `queue.updated`
-  - `action.closed` (UNCONFIRMED_24H action закрыт)
-- Подписчики:
-  - CRM action-center → action исчезает
-  - CRM kanban → status badge меняется
-  - Кабинет врача → если это его аппойнтмент, очередь перерисовывается
-  - **Mini-app пациента → status badge меняется в реальном времени** (новое)
+> **Q2 2026:** этот флоу удалён вместе с SMS-каналом (см. `TZ-sms-removal.md` Waves 2-3). Pathway `/api/sms/webhook` больше не существует, `confirmedVia='SMS'` остаётся валидным только для исторических rows. Подтверждение визита теперь идёт через TG-кнопку (inline keyboard), голосовой звонок call-центра, или ручной flip регистратурой в CRM.
 
 ### 7.3 Doctor finalizes visit
 
@@ -536,16 +525,9 @@ es.onmessage = (e) => {
   - Кабинет врача `/schedule` → self-refetch
   - **Mini-app slot picker → invalidate все `slots` query keys** (новое); если пациент в процессе бронирования, видит обновлённые слоты
 
-### 7.8 SMS DLR webhook → delivery telemetry
+### 7.8 ~~SMS DLR webhook → delivery telemetry~~ — RETIRED
 
-- Триггер: SMS-провайдер шлёт DLR на `/api/sms/dlr`
-- Shared: `recordNotificationDelivery({ notificationSendId, status, providerCode })` (новая)
-- Записи: `NotificationSend.status='DELIVERED', deliveredAt` + EventOutbox
-- Events:
-  - `notification.delivered` (НЕ auditable; auditable только `notification.failed`)
-- Подписчики:
-  - CRM `/notifications` → row статус "Доставлено"
-  - Mini-app `/inbox` → если INAPP канал, тостовое уведомление пациенту
+> **Q2 2026:** удалено вместе с SMS-каналом (см. `TZ-sms-removal.md`). `/api/sms/dlr` route больше не существует; DLR от TG приходит через TG webhook и обновляет `NotificationSend.status='DELIVERED'` точно так же, как описано ниже.
 
 ### 7.9 Patient marks INAPP notification as read
 
@@ -610,7 +592,7 @@ model VisitNote {
 
 model Appointment {
   // … existing
-  confirmedVia String?                  // 'CRM' | 'SMS' | 'TG' | 'CALL' | 'KIOSK' | 'AUTO'  (уже частично есть)
+  confirmedVia String?                  // 'CRM' | 'TG' | 'CALL' | 'KIOSK' | 'AUTO' (SMS — legacy, не пишется после Q2 2026)
   cancelledBy  String?                  // 'patient' | 'staff' | 'system' | 'no-show'
 }
 
@@ -651,7 +633,7 @@ model PatientFamily {
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/miniapp/events` | GET (SSE) | Patient-scoped event stream |
-| `/api/sms/dlr` | POST | DLR webhook (delivery report) |
+| ~~`/api/sms/dlr`~~ | ~~POST~~ | ~~DLR webhook~~ — RETIRED Q2 2026 (см. `TZ-sms-removal.md`) |
 | `/api/crm/conversations/find-or-create` | POST | Unified cold-start (заменяет doctor-specific) |
 | `/api/crm/doctors/me/prescriptions` | POST | Real backend для prescription dialog |
 | `/api/crm/visit-notes/[id]/revert` | POST | Undo finalize (новый) |
@@ -834,7 +816,7 @@ Compliance-запросы "покажите всё что повлияло на 
 
 ### Phase E — Delivery telemetry + Schedule fan-out (1 неделя)
 
-- `/api/sms/dlr` endpoint
+- ~~`/api/sms/dlr` endpoint~~ — RETIRED Q2 2026 (см. `TZ-sms-removal.md`); DLR теперь только TG-канал
 - `notification.delivered` / `notification.read` события
 - `doctor.scheduleChanged`, `doctor.timeOffCreated/Removed`, `cabinet.changed`, `service.priceChanged` события
 - `prescription.created/paused/resumed/cancelled` события + новый `POST /api/crm/doctors/me/prescriptions` роут
@@ -909,7 +891,7 @@ Compliance-запросы "покажите всё что повлияло на 
 4. **VisitNote.draftSaved частота** — autosave на каждое нажатие клавиши + debounce 1.5с может дать 10-30 событий за визит. OK для нескольких докторов одновременно, но при 50 докторах одновременно (большая клиника) — 500-1500 SSE-frames в минуту на одну `/api/events` подписку. Решение: на сервере coalesce draftSaved события (если за 5 секунд для одного visitNoteId пришло несколько — отправить только последнее). Coalescing logic в pumper.
 5. **Outbox для legacy paths** — миграция всех publish-callsites одномоментно невозможна. Compatibility shim: `publishEventSafe()` оборачиваем, чтобы он ВСЕГДА писал в outbox (даже если caller не передал v2-поля; дополняем defaults). Это снимает требование переписать всё перед Phase A.
 6. **Mini-app session lifetime** — Telegram WebApp может жить часами в фоне; EventSource — час-два до reconnect от Telegram WebView. Стоит ли при wake-up делать full refetch или довериться replay? Решение: при `visibilitychange` → invalidate all queries + reopen SSE с last cursor → replay покрывает gap.
-7. **DLR webhook auth** — SMS-провайдеры (Eskiz, Playmobile) шлют DLR без аутентификации. Защита: IP whitelist + shared secret в query. Согласовать с инфраструктурой.
+7. ~~**DLR webhook auth** — SMS-провайдеры (Eskiz, Playmobile) шлют DLR без аутентификации.~~ — MOOT после `TZ-sms-removal.md` Q2 2026: SMS-канал удалён, DLR только от TG (с TG webhook secret).
 8. **Doctor SSE scope в командных приёмах** — если приём ведут два доктора (психотерапевт + психиатр на консилиуме) — оба должны видеть события друг друга? Сейчас scope строго `doctorId === sub.doctorId`. Возможное расширение: `doctorId IN session.consultantDoctorIds`. Открытый вопрос для UX.
 
 ---

@@ -13,7 +13,7 @@
  *   checks: {
  *     db:      { status: "ok" | "down" | "timeout", latencyMs?, error? },
  *     redis:   { status: "ok" | "not_configured" | "down" | "timeout", … },
- *     minio:   { status: "ok" | "stub" | "down" | "timeout", … },
+ *     minio:   { status: "ok" | "not_configured" | "down" | "timeout", … },
  *     workers: { status: "ok" | "idle", queues?: string[] }
  *   },
  *   generatedAt: string
@@ -27,7 +27,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 const CHECK_TIMEOUT_MS = 5_000;
 
 type Check = {
-  status: "ok" | "down" | "not_configured" | "stub" | "timeout" | "idle";
+  status: "ok" | "down" | "not_configured" | "timeout" | "idle";
   latencyMs?: number;
   error?: string;
   details?: string;
@@ -94,7 +94,10 @@ async function checkRedis(): Promise<Check> {
 
 async function checkMinio(): Promise<Check> {
   if (!process.env.MINIO_ENDPOINT) {
-    return { status: "stub", details: "MINIO_ENDPOINT unset — local /tmp fallback" };
+    return {
+      status: "not_configured",
+      details: "MINIO_ENDPOINT unset — local /tmp fallback",
+    };
   }
   const started = Date.now();
   try {

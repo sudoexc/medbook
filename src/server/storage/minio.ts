@@ -244,18 +244,3 @@ export async function fetchObject(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Health probe — used by /api/health.
-// ---------------------------------------------------------------------------
-
-export async function pingStorage(): Promise<"ok" | "down" | "stub"> {
-  if (isStubMode()) return "stub";
-  try {
-    // Cheap probe: PutObject with a zero-byte sentinel under `_healthcheck/`
-    // so we don't require ListBucket permission.
-    await uploadObject(undefined, "_healthcheck/ping", Buffer.from(""), "text/plain");
-    return "ok";
-  } catch {
-    return "down";
-  }
-}

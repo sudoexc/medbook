@@ -2,11 +2,12 @@
  * Phase 15 Wave 4 — Marketing copy generator.
  *
  * Use case: admin opens the notification template editor, asks the AI for
- * three SMS / TG / Email variants for a target audience (reactivation,
- * birthday, reminder, no-show, generic), picks one, then saves it as the
- * template body via the existing form. The pipeline here only produces the
- * variants — actual save remains a manual step (Wave 5+ may add direct save
- * with audit).
+ * three TG / Email / Push / In-App variants for a target audience
+ * (reactivation, birthday, reminder, no-show, generic), picks one, then
+ * saves it as the template body via the existing form. The pipeline here
+ * only produces the variants — actual save remains a manual step.
+ *
+ * The SMS variant was removed in Wave 3 of `docs/TZ-sms-removal.md`.
  *
  * Why a thin wrapper?
  *   - All proxy concerns (PII redaction, rate limit, cost, cache, audit) are
@@ -29,7 +30,7 @@
 
 import { callLLM, type LLMResponse } from "./llm";
 
-export type MarketingCopyChannel = "SMS" | "TG" | "EMAIL" | "PUSH" | "INAPP";
+export type MarketingCopyChannel = "TG" | "EMAIL" | "PUSH" | "INAPP";
 export type MarketingCopyAudience =
   | "reactivation"
   | "birthday"
@@ -45,7 +46,7 @@ export type MarketingCopyInput = {
   channel: MarketingCopyChannel;
   audience: MarketingCopyAudience;
   locale: MarketingCopyLocale;
-  /** Default by channel: SMS=200, TG=500, EMAIL=2000, PUSH=200, INAPP=300. */
+  /** Default by channel: TG=500, EMAIL=2000, PUSH=200, INAPP=300. */
   maxChars?: number;
   /** Default `friendly`. */
   tone?: MarketingCopyTone;
@@ -75,7 +76,6 @@ export const DEFAULT_MAX_CHARS_BY_CHANNEL: Record<
   MarketingCopyChannel,
   number
 > = {
-  SMS: 200,
   TG: 500,
   EMAIL: 2000,
   PUSH: 200,
@@ -211,7 +211,7 @@ function buildVariants(
   maxChars: number,
 ): MarketingCopyVariant[] {
   return rawVariants.map((text) => {
-    const charCount = [...text].length; // grapheme-ish but good enough for SMS counting.
+    const charCount = [...text].length; // grapheme-ish but good enough for char-limit counting.
     return {
       text,
       charCount,

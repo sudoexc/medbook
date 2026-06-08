@@ -16,11 +16,12 @@ export type FeatureFlags = {
   maxUsers: number;
   // Phase 19 Wave 1 — usage quotas. `-1` is the "unlimited" sentinel and is
   // honoured by `evaluateLimit` in `src/server/billing/plan-limits.ts`. The
-  // four numeric keys are evaluated against `getClinicUsage()`; the two
-  // booleans gate UI affordances (white-label theming, custom subdomain).
+  // numeric keys are evaluated against `getClinicUsage()`; the two booleans
+  // gate UI affordances (white-label theming, custom subdomain). The
+  // `maxSmsPerMonth` quota was deleted in Wave 3 of
+  // `docs/TZ-sms-removal.md` together with the underlying counter.
   maxPatients: number;
   maxAppointmentsPerMonth: number;
-  maxSmsPerMonth: number;
   maxStorageMb: number;
   hasWhiteLabel: boolean;
   hasCustomSubdomain: boolean;
@@ -38,7 +39,6 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   // CANCELLED, or `parsePlanFeatures` is given an unparseable value.
   maxPatients: 50,
   maxAppointmentsPerMonth: 100,
-  maxSmsPerMonth: 200,
   maxStorageMb: 500,
   hasWhiteLabel: false,
   hasCustomSubdomain: false,
@@ -74,7 +74,6 @@ export function parsePlanFeatures(raw: unknown): FeatureFlags {
     // values land on the basic-tier DEFAULT_FLAGS values.
     maxPatients: pickInt("maxPatients"),
     maxAppointmentsPerMonth: pickInt("maxAppointmentsPerMonth"),
-    maxSmsPerMonth: pickInt("maxSmsPerMonth"),
     maxStorageMb: pickInt("maxStorageMb"),
     hasWhiteLabel: pickBool("hasWhiteLabel"),
     hasCustomSubdomain: pickBool("hasCustomSubdomain"),
@@ -99,7 +98,6 @@ export const ENTERPRISE_FLAGS: FeatureFlags = {
   // white-label affordances are on for enterprise.
   maxPatients: -1,
   maxAppointmentsPerMonth: -1,
-  maxSmsPerMonth: -1,
   maxStorageMb: -1,
   hasWhiteLabel: true,
   hasCustomSubdomain: true,

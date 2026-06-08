@@ -24,6 +24,10 @@ import type { CampaignChannel, CampaignSegment } from "@/server/schemas/campaign
 import { enqueue } from "@/server/queue";
 import { QUEUE_NAME, JOB_NAME } from "@/server/workers/notifications-send";
 
+// The DB `Channel` enum still carries "SMS" until the Wave 5 migration
+// of `docs/TZ-sms-removal.md`. Legacy Campaign rows with channel="SMS"
+// remain readable, but the launcher refuses to start them (see status
+// guard below).
 type CampaignRow = {
   id: string;
   clinicId: string;
@@ -100,7 +104,6 @@ function buildBody(args: {
 
 function recipientFor(channel: CampaignChannel, patient: AudiencePatient): string | null {
   if (channel === "TG") return patient.telegramId;
-  if (channel === "SMS") return patient.phone;
   return null;
 }
 
@@ -136,7 +139,10 @@ export async function launchCampaign(args: {
       alreadyLaunched: true,
     };
   }
-  if (campaign.channel !== "TG" && campaign.channel !== "SMS") {
+  // Campaigns are TG-only after `docs/TZ-sms-removal.md` Wave 3.
+  // Legacy SMS rows that never finished launching get a clean refusal
+  // here instead of materialising sends the dispatcher can't deliver.
+  if (campaign.channel !== "TG") {
     throw Object.assign(
       new Error(`UnsupportedChannel:${campaign.channel}`),
       { status: 400 },

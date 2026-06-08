@@ -1,7 +1,7 @@
 /**
  * Phase 19 Wave 1 — usage tracking.
  *
- * `getClinicUsage(clinicId, now?)` returns a snapshot of the four numeric
+ * `getClinicUsage(clinicId, now?)` returns a snapshot of the numeric
  * dimensions that map onto the per-plan quotas declared in
  * `src/lib/feature-flags.ts`:
  *
@@ -11,10 +11,11 @@
  *                                  Booking-time count, not visit-time, so a
  *                                  cancelled appointment still counts (the
  *                                  clinic spent a slot reserving it).
- *   - smsCountThisMonth          — NotificationSend rows with channel=SMS in
- *                                  the same month window.
  *   - storageMb                  — sum of `Document.sizeBytes` divided by
  *                                  1 048 576, rounded to the nearest MB.
+ *
+ * The legacy `smsCountThisMonth` dimension was removed in Wave 3 of
+ * `docs/TZ-sms-removal.md` alongside `maxSmsPerMonth`.
  *
  * Tenant context: the helper runs inside `runWithTenant({ kind: "SYSTEM" })`
  * so the tenant-scope Prisma extension does not double-filter. Each query
@@ -29,7 +30,6 @@ import { runWithTenant } from "@/lib/tenant-context";
 export type UsageSnapshot = {
   patientCount: number;
   appointmentCountThisMonth: number;
-  smsCountThisMonth: number;
   storageMb: number;
   asOf: Date;
 };
@@ -63,30 +63,19 @@ export async function getClinicUsage(
   const { start, end } = monthWindow(now);
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const [
-      patientCount,
-      appointmentCountThisMonth,
-      smsCountThisMonth,
-      storageAgg,
-    ] = await Promise.all([
-      prisma.patient.count({
-        where: { clinicId, deletedAt: null },
-      }),
-      prisma.appointment.count({
-        where: { clinicId, createdAt: { gte: start, lt: end } },
-      }),
-      prisma.notificationSend.count({
-        where: {
-          clinicId,
-          channel: "SMS",
-          createdAt: { gte: start, lt: end },
-        },
-      }),
-      prisma.document.aggregate({
-        where: { clinicId },
-        _sum: { sizeBytes: true },
-      }),
-    ]);
+    const [patientCount, appointmentCountThisMonth, storageAgg] =
+      await Promise.all([
+        prisma.patient.count({
+          where: { clinicId, deletedAt: null },
+        }),
+        prisma.appointment.count({
+          where: { clinicId, createdAt: { gte: start, lt: end } },
+        }),
+        prisma.document.aggregate({
+          where: { clinicId },
+          _sum: { sizeBytes: true },
+        }),
+      ]);
 
     const sizeBytes = storageAgg._sum.sizeBytes ?? 0;
     const storageMb = Math.round(sizeBytes / BYTES_PER_MB);
@@ -94,7 +83,6 @@ export async function getClinicUsage(
     return {
       patientCount,
       appointmentCountThisMonth,
-      smsCountThisMonth,
       storageMb,
       asOf: now,
     };

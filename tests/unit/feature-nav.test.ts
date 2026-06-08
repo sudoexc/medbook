@@ -28,7 +28,6 @@ const PRO_FLAGS: FeatureFlags = {
   // Phase 19 Wave 1 — quotas + white-label. Mirror the seeded `pro` plan.
   maxPatients: 500,
   maxAppointmentsPerMonth: 2000,
-  maxSmsPerMonth: 5000,
   maxStorageMb: 10000,
   hasWhiteLabel: true,
   hasCustomSubdomain: false,

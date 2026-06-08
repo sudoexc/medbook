@@ -9,12 +9,12 @@
  *      Free plan, warn on Pro/Enterprise (warn-only — paying tenants are
  *      never blocked mid-flight; we surface the breach in the billing UI).
  *
- *   2. `ensurePatientLimit` / `ensureAppointmentLimit` / `ensureSmsLimit` —
- *      composers that fetch usage + flags + plan slug, run `evaluateLimit`,
- *      and emit the appropriate audit row when the result is `warn` or
- *      `block`. Auditing fires on every API entry that gets `ok: false` —
- *      we accept the noise; the alternative requires per-clinic state we
- *      don't have yet.
+ *   2. `ensurePatientLimit` / `ensureAppointmentLimit` — composers that
+ *      fetch usage + flags + plan slug, run `evaluateLimit`, and emit the
+ *      appropriate audit row when the result is `warn` or `block`. Auditing
+ *      fires on every API entry that gets `ok: false` — we accept the
+ *      noise; the alternative requires per-clinic state we don't have yet.
+ *      `ensureSmsLimit` was removed in Wave 3 of `docs/TZ-sms-removal.md`.
  *
  *   3. `ensureQuotaForApi(clinicId, quota)` — convenience wrapper that
  *      maps a `block` outcome onto a 402-style JSON Response. API handlers
@@ -40,7 +40,6 @@ import { getClinicUsage } from "@/server/billing/usage";
 export type NumericQuota =
   | "maxPatients"
   | "maxAppointmentsPerMonth"
-  | "maxSmsPerMonth"
   | "maxStorageMb";
 
 export type LimitCheckResult =
@@ -198,23 +197,15 @@ export async function ensureAppointmentLimit(
   );
 }
 
-export async function ensureSmsLimit(
-  clinicId: string,
-): Promise<LimitCheckResult> {
-  return ensureNumericQuota(
-    clinicId,
-    "maxSmsPerMonth",
-    (s) => s.smsCountThisMonth,
-  );
-}
+// `ensureSmsLimit` was deleted in Wave 3 of `docs/TZ-sms-removal.md`
+// together with `maxSmsPerMonth` and `smsCountThisMonth`.
 
 const QUOTA_DISPATCH: Record<
-  "maxPatients" | "maxAppointmentsPerMonth" | "maxSmsPerMonth",
+  "maxPatients" | "maxAppointmentsPerMonth",
   (clinicId: string) => Promise<LimitCheckResult>
 > = {
   maxPatients: ensurePatientLimit,
   maxAppointmentsPerMonth: ensureAppointmentLimit,
-  maxSmsPerMonth: ensureSmsLimit,
 };
 
 /**
@@ -230,7 +221,7 @@ const QUOTA_DISPATCH: Record<
  */
 export async function ensureQuotaForApi(
   clinicId: string,
-  quota: "maxPatients" | "maxAppointmentsPerMonth" | "maxSmsPerMonth",
+  quota: "maxPatients" | "maxAppointmentsPerMonth",
 ): Promise<Response | null> {
   const checker = QUOTA_DISPATCH[quota];
   const result = await checker(clinicId);

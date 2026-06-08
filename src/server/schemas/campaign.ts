@@ -11,7 +11,11 @@ import { z } from "zod";
 export const DormantBucketEnum = z.enum(["90-180", "180-365", "365+"]);
 export type DormantBucket = z.infer<typeof DormantBucketEnum>;
 
-export const CampaignChannelEnum = z.enum(["TG", "SMS"]);
+// "SMS" was dropped in Wave 3 of `docs/TZ-sms-removal.md`; campaigns
+// are TG-only now. Legacy Campaign rows with channel="SMS" stay in
+// the DB until the Wave 5 schema migration — the launcher refuses
+// to send them (the Prisma `channel` column still permits the value).
+export const CampaignChannelEnum = z.enum(["TG"]);
 export type CampaignChannel = z.infer<typeof CampaignChannelEnum>;
 
 export const DormantSegmentSchema = z.object({

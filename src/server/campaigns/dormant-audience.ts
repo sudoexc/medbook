@@ -10,8 +10,8 @@
  *   3. Patient is not soft-deleted (`deletedAt IS NULL`).
  *   4. Patient passes the marketing consent gate
  *      (`isAllowedToReceive(..., 'marketing')`).
- *   5. Patient has the relevant recipient address for the chosen channel
- *      (telegramId for TG, phoneNormalized for SMS).
+ *   5. Patient has a Telegram id (campaigns are TG-only after
+ *      `docs/TZ-sms-removal.md` Wave 3).
  *
  * The detector runs filter #1 + #2 against the WHOLE clinic, so the
  * audience returned here is always a subset. The detector's own cooldown
@@ -37,7 +37,6 @@ export type AudiencePatient = {
 
 export type AudienceChannelBreakdown = {
   tgReady: number;
-  smsReady: number;
   noChannel: number;
   optedOut: number;
 };
@@ -68,10 +67,11 @@ function bucketWindow(bucket: DormantBucket, now: Date): {
 /**
  * Resolve the patient list that matches a dormant bucket for a clinic.
  *
- * `channel` is used only for the channel-eligibility filter; the returned
- * `channelBreakdown` is always computed for both channels so the UI can show
- * "X via TG / Y via SMS / Z without any reachable channel" regardless of the
- * current pick.
+ * `channel` exists for forward-compat with future segment kinds; today
+ * the only campaign channel is "TG" (see
+ * `docs/TZ-sms-removal.md`). The returned `channelBreakdown` surfaces
+ * "X via TG / Y without any reachable channel / Z opted out" so the
+ * wizard preview can warn the operator before launch.
  */
 export async function resolveDormantAudience(args: {
   bucket: DormantBucket;
@@ -113,7 +113,7 @@ export async function resolveDormantAudience(args: {
       patients: [],
       total: 0,
       eligible: 0,
-      channelBreakdown: { tgReady: 0, smsReady: 0, noChannel: 0, optedOut: 0 },
+      channelBreakdown: { tgReady: 0, noChannel: 0, optedOut: 0 },
     };
   }
 
@@ -131,7 +131,6 @@ export async function resolveDormantAudience(args: {
 
   const breakdown: AudienceChannelBreakdown = {
     tgReady: 0,
-    smsReady: 0,
     noChannel: 0,
     optedOut: 0,
   };
@@ -150,17 +149,15 @@ export async function resolveDormantAudience(args: {
     }
 
     const hasTg = (p.telegramId ?? "").length > 0;
-    const hasSms = (p.phone ?? "").length > 0;
     if (hasTg) breakdown.tgReady += 1;
-    if (hasSms) breakdown.smsReady += 1;
-    if (!hasTg && !hasSms) {
+    if (!hasTg) {
       breakdown.noChannel += 1;
       continue;
     }
 
-    // Channel-specific eligibility for the resulting audience list.
+    // Channel-specific eligibility — TG is the only campaign channel
+    // after `docs/TZ-sms-removal.md` Wave 3.
     if (args.channel === "TG" && !hasTg) continue;
-    if (args.channel === "SMS" && !hasSms) continue;
 
     audience.push({
       id: p.id,

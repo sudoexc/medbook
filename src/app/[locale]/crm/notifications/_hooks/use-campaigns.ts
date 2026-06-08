@@ -59,7 +59,6 @@ export type DormantPreview = {
   eligible: number;
   channelBreakdown: {
     tgReady: number;
-    smsReady: number;
     noChannel: number;
     optedOut: number;
   };

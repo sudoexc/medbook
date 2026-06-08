@@ -29,7 +29,9 @@ import {
 import { LLMRateLimitError } from "@/server/ai/llm";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 
-const ChannelEnum = z.enum(["SMS", "TG", "EMAIL", "PUSH", "INAPP"]);
+// "SMS" was removed from this enum in Wave 3 of
+// `docs/TZ-sms-removal.md` together with the underlying generator.
+const ChannelEnum = z.enum(["TG", "EMAIL", "PUSH", "INAPP"]);
 const AudienceEnum = z.enum([
   "reactivation",
   "birthday",

@@ -36,7 +36,6 @@ const PRO_FEATURES = {
   // Phase 19 Wave 1 — quotas + white-label keys (mirror seeded `pro` plan).
   maxPatients: 500,
   maxAppointmentsPerMonth: 2000,
-  maxSmsPerMonth: 5000,
   maxStorageMb: 10000,
   hasWhiteLabel: true,
   hasCustomSubdomain: false,
@@ -51,7 +50,6 @@ const ENTERPRISE_FEATURES = {
   // Enterprise → unlimited (-1 sentinel) across the board.
   maxPatients: -1,
   maxAppointmentsPerMonth: -1,
-  maxSmsPerMonth: -1,
   maxStorageMb: -1,
   hasWhiteLabel: true,
   hasCustomSubdomain: true,
@@ -66,7 +64,6 @@ const BASIC_FEATURES = {
   // Basic-tier defaults; matches DEFAULT_FLAGS.
   maxPatients: 50,
   maxAppointmentsPerMonth: 100,
-  maxSmsPerMonth: 200,
   maxStorageMb: 500,
   hasWhiteLabel: false,
   hasCustomSubdomain: false,

@@ -70,7 +70,7 @@ describe("evaluateLimit", () => {
   });
 
   it("propagates the supplied quota key into the result", () => {
-    const r = evaluateLimit(100, 100, true, "maxSmsPerMonth");
-    if (r.ok === false) expect(r.quota).toBe("maxSmsPerMonth");
+    const r = evaluateLimit(100, 100, true, "maxAppointmentsPerMonth");
+    if (r.ok === false) expect(r.quota).toBe("maxAppointmentsPerMonth");
   });
 });

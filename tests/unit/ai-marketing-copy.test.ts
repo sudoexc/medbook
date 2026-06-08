@@ -43,7 +43,7 @@ function makeInput(
   return {
     clinicId: "clinic-1",
     userId: "user-1",
-    channel: "SMS",
+    channel: "TG",
     audience: "reactivation",
     locale: "ru",
     tone: "friendly",
@@ -127,7 +127,7 @@ describe("generateMarketingCopy — happy path", () => {
     });
 
     const result = await generateMarketingCopy(
-      makeInput({ channel: "SMS", maxChars: 200 }),
+      makeInput({ channel: "TG", maxChars: 200 }),
     );
 
     expect(result.variants).toHaveLength(3);
@@ -206,7 +206,7 @@ describe("generateMarketingCopy — over-limit variants", () => {
     });
 
     const result = await generateMarketingCopy(
-      makeInput({ channel: "SMS", maxChars: 200 }),
+      makeInput({ channel: "TG", maxChars: 200 }),
     );
 
     expect(result.variants).toHaveLength(3);
@@ -282,23 +282,8 @@ describe("generateMarketingCopy — variants count flows to prompt", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("generateMarketingCopy — default maxChars by channel", () => {
-  it("SMS defaults to 200", async () => {
-    let capturedSystem: string | undefined;
-    __setLLMOverridesForTesting({
-      countRecentUsage: async () => 0,
-      resolvePlanTier: async () => "basic",
-      recordUsage: async () => {},
-      recordAudit: async () => {},
-      invokeProvider: async (req) => {
-        capturedSystem = req.system;
-        return { text: "1. ok", toolCalls: [], inputTokens: 1, outputTokens: 1 };
-      },
-    });
-
-    await generateMarketingCopy(makeInput({ channel: "SMS" }));
-    expect(capturedSystem).toContain("Лимит: 200 символов");
-    expect(DEFAULT_MAX_CHARS_BY_CHANNEL.SMS).toBe(200);
-  });
+  // The "SMS defaults to 200" assertion was removed in Wave 3 of
+  // `docs/TZ-sms-removal.md` together with the SMS channel.
 
   it("TG defaults to 500", async () => {
     let capturedSystem: string | undefined;
@@ -350,7 +335,7 @@ describe("generateMarketingCopy — default maxChars by channel", () => {
     });
 
     await generateMarketingCopy(
-      makeInput({ channel: "SMS", maxChars: 90 }),
+      makeInput({ channel: "TG", maxChars: 90 }),
     );
     expect(capturedSystem).toContain("Лимит: 90 символов");
   });

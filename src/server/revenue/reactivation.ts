@@ -269,6 +269,8 @@ export async function enqueueReactivationFor(
     id: string;
     bodyRu: string;
     bodyUz: string;
+    // "SMS" survives in the DB-row union until the Wave 5 migration of
+    // `docs/TZ-sms-removal.md` strips it from the Prisma enum.
     channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   };
   const tpl = (await runWithTenant({ kind: "SYSTEM" }, () =>

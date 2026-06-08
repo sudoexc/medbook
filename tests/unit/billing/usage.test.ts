@@ -20,22 +20,18 @@ interface CapturedCall {
 interface State {
   patientWhere: CapturedCall["where"] | null;
   appointmentWhere: CapturedCall["where"] | null;
-  smsWhere: CapturedCall["where"] | null;
   documentWhere: CapturedCall["where"] | null;
   patientCount: number;
   appointmentCount: number;
-  smsCount: number;
   storageSumBytes: number;
 }
 
 const state: State = {
   patientWhere: null,
   appointmentWhere: null,
-  smsWhere: null,
   documentWhere: null,
   patientCount: 0,
   appointmentCount: 0,
-  smsCount: 0,
   storageSumBytes: 0,
 };
 
@@ -51,12 +47,6 @@ vi.mock("@/lib/prisma", () => ({
       count: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         state.appointmentWhere = where;
         return state.appointmentCount;
-      }),
-    },
-    notificationSend: {
-      count: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        state.smsWhere = where;
-        return state.smsCount;
       }),
     },
     document: {
@@ -82,11 +72,9 @@ import { getClinicUsage, monthWindow } from "@/server/billing/usage";
 beforeEach(() => {
   state.patientWhere = null;
   state.appointmentWhere = null;
-  state.smsWhere = null;
   state.documentWhere = null;
   state.patientCount = 0;
   state.appointmentCount = 0;
-  state.smsCount = 0;
   state.storageSumBytes = 0;
 });
 
@@ -118,10 +106,9 @@ describe("monthWindow", () => {
 });
 
 describe("getClinicUsage", () => {
-  it("aggregates patient + appointment + sms + storage", async () => {
+  it("aggregates patient + appointment + storage", async () => {
     state.patientCount = 42;
     state.appointmentCount = 10;
-    state.smsCount = 5;
     state.storageSumBytes = 3 * 1_048_576 + 524288; // 3.5 MB
 
     const now = new Date("2026-05-07T12:00:00.000Z");
@@ -129,7 +116,6 @@ describe("getClinicUsage", () => {
 
     expect(snap.patientCount).toBe(42);
     expect(snap.appointmentCountThisMonth).toBe(10);
-    expect(snap.smsCountThisMonth).toBe(5);
     // 3.5 → rounds to 4
     expect(snap.storageMb).toBe(4);
     expect(snap.asOf).toBe(now);
@@ -156,13 +142,6 @@ describe("getClinicUsage", () => {
     expect(where.createdAt.lt.toISOString()).toBe(
       "2026-06-01T00:00:00.000Z",
     );
-  });
-
-  it("filters NotificationSend by channel SMS", async () => {
-    await getClinicUsage("clinic-x", new Date("2026-05-15T00:00:00Z"));
-    const where = state.smsWhere as Record<string, unknown>;
-    expect(where.clinicId).toBe("clinic-x");
-    expect(where.channel).toBe("SMS");
   });
 
   it("storageMb rounds to nearest MB and returns 0 when no documents", async () => {

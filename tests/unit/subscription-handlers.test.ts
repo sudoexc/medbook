@@ -173,7 +173,6 @@ const PRO_FEATURES = {
   // Phase 19 Wave 1 — quotas + white-label.
   maxPatients: 500,
   maxAppointmentsPerMonth: 2000,
-  maxSmsPerMonth: 5000,
   maxStorageMb: 10000,
   hasWhiteLabel: true,
   hasCustomSubdomain: false,
@@ -186,7 +185,6 @@ const ENTERPRISE_FEATURES = {
   maxUsers: 500,
   maxPatients: -1,
   maxAppointmentsPerMonth: -1,
-  maxSmsPerMonth: -1,
   maxStorageMb: -1,
   hasWhiteLabel: true,
   hasCustomSubdomain: true,

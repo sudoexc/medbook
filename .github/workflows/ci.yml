@@ -56,6 +56,12 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: i18n parity (next-intl ru/uz)
+        run: npm run i18n:check
+
+      - name: i18n audit (mini-app inline strings)
+        run: npm run i18n:audit
+
       - name: Unit tests
         run: npx vitest run
 

@@ -11,11 +11,10 @@
  * via either the enum + triggerConfig path OR the slug path. This means
  * an admin who renames a row's `key` but keeps the enum still gets fires.
  *
- * Channels: TG is preferred — patients on the mini-app carry a telegramId
- * and almost all texts hit TG. SMS fallback happens implicitly when a row
- * is materialised with channel=SMS for non-TG patients (rules.ts path).
- * For per-trigger consistency we default every row to TG; the rules layer
- * downgrades to SMS automatically.
+ * Channels: TG is the only outbound channel after SMS removal (see
+ * `docs/TZ-sms-removal.md` Wave 3). Every seed row defaults to TG;
+ * non-TG patients are surfaced to the operator via the Wave 4
+ * PATIENT_NO_CHANNEL Action instead of an automatic downgrade.
  */
 
 import type {

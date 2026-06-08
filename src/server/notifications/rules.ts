@@ -31,9 +31,10 @@ export type TriggerConfigShape = {
   offsetMin?: number | null;
   /**
    * Channels to use, in order of preference. If unset, the legacy single
-   * `template.channel` column is used (TG → SMS fallback by default).
+   * `template.channel` column is used. After SMS removal (see
+   * `docs/TZ-sms-removal.md` Wave 3) the only meaningful entry is "TG".
    */
-  channels?: Array<"TG" | "SMS"> | null;
+  channels?: Array<"TG"> | null;
   /**
    * If set to `false`, the materializer skips the template even though
    * `template.isActive=true`. We keep this separate so an admin can
@@ -115,30 +116,32 @@ export function resolveChannels(
   templateChannel: string,
   triggerConfig: unknown,
   patient: { telegramId: string | null },
-): Array<"TG" | "SMS" | "EMAIL" | "CALL" | "VISIT"> {
+): Array<"TG" | "EMAIL" | "CALL" | "VISIT"> {
   const cfg =
     triggerConfig && typeof triggerConfig === "object"
       ? (triggerConfig as TriggerConfigShape)
       : {};
   const fromConfig = Array.isArray(cfg.channels) ? cfg.channels : null;
 
-  let chosen: Array<"TG" | "SMS" | "EMAIL" | "CALL" | "VISIT">;
+  let chosen: Array<"TG" | "EMAIL" | "CALL" | "VISIT">;
   if (fromConfig && fromConfig.length > 0) {
     chosen = [...fromConfig];
   } else {
-    chosen = [templateChannel as "TG" | "SMS" | "EMAIL" | "CALL" | "VISIT"];
+    // Legacy templates may still hold `channel: "SMS"` until the Wave 5
+    // Prisma migration drops the enum value. Filter it out so resolution
+    // never returns a SMS channel — Wave 4 surfaces such patients via the
+    // PATIENT_NO_CHANNEL Action instead.
+    const initial = templateChannel as
+      | "TG"
+      | "EMAIL"
+      | "CALL"
+      | "VISIT"
+      | "SMS";
+    chosen = initial === "SMS" ? [] : [initial];
   }
 
-  // SMS removal kill-switch (Wave 1, see docs/TZ-sms-removal.md):
-  // strip SMS from the resolved channels even if old templates still list
-  // it. Old TG-less fallback ("prefer SMS over TG") is gone — TG-less
-  // patients silently get no automatic delivery in Wave 1; Wave 4 wires a
-  // PATIENT_NO_CHANNEL action to surface them to the operator.
-  chosen = chosen.filter((c) => c !== "SMS");
-
   // Patient has no telegramId → demote TG so the remaining non-TG channels
-  // (EMAIL/CALL/VISIT) get a chance first. This preserves the prior intent
-  // without resurrecting SMS.
+  // (EMAIL/CALL/VISIT) get a chance first.
   if (!patient.telegramId) {
     chosen.sort((a, b) => {
       if (a === "TG" && b !== "TG") return 1;
@@ -191,7 +194,9 @@ export function resolveOffsetMin(
  * Rules:
  *   - offsetMin is clamped to the [-72*60, -30] minute range (i.e. 0.5h to 72h
  *     before the event); UI provides 0.5h step.
- *   - channels is restricted to ["TG","SMS"]; duplicates are de-duped.
+ *   - channels is restricted to ["TG"]; legacy "SMS" entries are silently
+ *     dropped (SMS removed in `docs/TZ-sms-removal.md` Wave 3); duplicates
+ *     are de-duped.
  *   - enabled is coerced to boolean; default true.
  *
  * Unknown keys are preserved so the editor can round-trip future fields
@@ -225,11 +230,11 @@ export function sanitizeTriggerConfig(
   }
 
   if (Array.isArray(incoming.channels)) {
-    const allowed: Array<"TG" | "SMS"> = [];
+    const allowed: Array<"TG"> = [];
     const seen = new Set<string>();
     for (const c of incoming.channels) {
       if (typeof c !== "string") continue;
-      if (c !== "TG" && c !== "SMS") continue;
+      if (c !== "TG") continue;
       if (seen.has(c)) continue;
       seen.add(c);
       allowed.push(c);

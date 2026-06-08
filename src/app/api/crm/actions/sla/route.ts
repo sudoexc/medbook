@@ -25,7 +25,7 @@ type BucketStat = { avgSeconds: number | null; samples: number };
 const WINDOW_DAYS = 7;
 
 async function avgLatency(
-  channels: Array<"TG" | "EMAIL" | "CALL" | "SMS" | "INAPP" | "VISIT">,
+  channels: Array<"TG" | "EMAIL" | "CALL" | "INAPP" | "VISIT">,
   since: Date,
 ): Promise<BucketStat> {
   const rows = await prisma.notificationSend.findMany({
@@ -56,7 +56,7 @@ export const GET = createApiListHandler(
     const [telegram, feedback, calls] = await Promise.all([
       avgLatency(["TG"], since),
       avgLatency(["EMAIL"], since),
-      avgLatency(["CALL", "SMS"], since),
+      avgLatency(["CALL"], since),
     ]);
 
     const totalSamples =

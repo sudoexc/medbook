@@ -8,7 +8,13 @@
  *
  * Counters returned per clinic:
  *   - appointments      (by createdAt)
- *   - smsSent           (NotificationSend channel=SMS, delivered OR sent)
+ *   - smsSent           (legacy historical counter — SMS was removed in
+ *                        `docs/TZ-sms-removal.md`. No new SMS rows are
+ *                        produced after Wave 3; once Wave 5 drops the
+ *                        enum literal this column returns 0 for all
+ *                        ranges past the migration date. Kept so the
+ *                        platform dashboard can still surface the legacy
+ *                        SMS bill against months that pre-date removal.)
  *   - tgMessages        (Message direction=OUT kind=TEXT/... in Conversation)
  *   - calls             (Call createdAt)
  *   - patients          (Patient createdAt — new patients acquired)
@@ -46,6 +52,10 @@ export const GET = createPlatformListHandler(async ({ request }) => {
       where: { createdAt: range },
       _count: { _all: true },
     }),
+    // Legacy historical SMS counter — see docstring above. The Prisma
+    // enum still carries "SMS" (drop scheduled for Wave 5 of
+    // `docs/TZ-sms-removal.md`), so this query continues to typecheck
+    // and surfaces pre-Wave-3 rows. After Wave 5 it returns 0.
     prisma.notificationSend.groupBy({
       by: ["clinicId"],
       where: {

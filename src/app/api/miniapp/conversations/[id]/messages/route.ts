@@ -5,7 +5,7 @@
  *      display. Throws 404 if the conversation isn't owned by this patient.
  * POST: append an inbound (`direction: "IN"`) Message authored by the
  *       patient. No outbound dispatch — the patient is already in the bot
- *       Mini App, so there is no TG/SMS leg to fire. We still publish
+ *       Mini App, so there is no TG leg to fire. We still publish
  *       `tg.message.new` so the CRM inbox lights up for staff.
  */
 import { z } from "zod";

@@ -61,7 +61,7 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
   type TplRow = {
     id: string;
     clinicId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT";
     bodyRu: string;
     bodyUz: string;
     triggerConfig: unknown;
@@ -183,7 +183,7 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
     patientId: string;
     appointmentId: string;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;

@@ -266,7 +266,7 @@ function buildContext(
 type FindTemplateResult = {
   templateId: string;
   body: string;
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 } | null;
 
 /**
@@ -417,7 +417,7 @@ async function findTemplateFor(
     body: lang === "uz" ? row.bodyUz : row.bodyRu,
     channel: row.channel as FindTemplateResult extends null
       ? never
-      : "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
+      : "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
   };
 }
 
@@ -447,10 +447,9 @@ async function alreadyScheduled(params: {
 }
 
 function pickRecipient(
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
   patient: { phone: string; telegramId: string | null },
 ): string | null {
-  if (channel === "SMS") return patient.phone;
   if (channel === "TG") return patient.telegramId;
   if (channel === "EMAIL") return patient.phone; // unused today
   return null;
@@ -461,7 +460,7 @@ async function createSend(params: {
   patientId: string;
   appointmentId?: string | null;
   templateId: string;
-  channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   recipient: string;
   body: string;
   scheduledFor: Date;
@@ -574,7 +573,7 @@ export async function materializeForAppointmentsBulk(
     patientId: string;
     appointmentId: string;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;
@@ -1018,7 +1017,7 @@ async function runBirthdays(): Promise<number> {
     patientId: string;
     appointmentId: null;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;
@@ -1117,7 +1116,7 @@ async function runPaymentsDue(): Promise<number> {
  *      the first visit — the patient is already coming back.
  *   5. Skip if a NotificationSend with this (caseId, templateId) already
  *      exists in any non-FAILED status (idempotency).
- *   6. Materialize the row (TG/SMS via channel resolver + parallel INAPP
+ *   6. Materialize the row (TG via channel resolver + parallel INAPP
  *      for TG-using patients).
  *
  * `daysBefore` defaults to 2; admins can override via the template's
@@ -1127,7 +1126,7 @@ async function runCaseRepeatReminders(): Promise<number> {
   type TplRow = {
     id: string;
     clinicId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     bodyRu: string;
     bodyUz: string;
     triggerConfig: unknown;
@@ -1230,7 +1229,7 @@ async function runCaseRepeatReminders(): Promise<number> {
     appointmentId: string | null;
     caseId: string;
     templateId: string;
-    channel: "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
     recipient: string;
     body: string;
     scheduledFor: Date;
@@ -1422,10 +1421,10 @@ async function onReferralRewardEarned(payload: {
       clinic: { name: clinic?.nameRu ?? "" },
     };
     const body = render(tpl.bodyRu, ctx);
-    const channel = tpl.channel as "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    const channel = tpl.channel as "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 
     const recipient =
-      channel === "SMS" || channel === "EMAIL"
+      channel === "EMAIL"
         ? referrer.phone
         : channel === "TG"
           ? referrer.telegramId

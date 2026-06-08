@@ -53,7 +53,7 @@ export type PlaybookService = {
 
 export type PlaybookTemplate = {
   trigger: TriggerKey;
-  channel: "TG" | "SMS" | "EMAIL" | "INAPP";
+  channel: "TG" | "EMAIL" | "INAPP";
   bodyRu: string;
   bodyUz: string;
 };
@@ -95,11 +95,12 @@ const RU_3D =
 const UZ_3D =
   "Eslatma: {{appointment.doctor}} qabuluvingiz {{appointment.date}} kuni soat {{appointment.time}} da. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.";
 
-// Stage 2.D — append the "reply YES to confirm" CTA. The TG channel also
-// surfaces an inline "✅ Подтверждаю" button (wired in notifications-send.ts),
-// so this trailing sentence is what survives on SMS-only fallbacks. We keep
-// both RU and UZ trigger words ("YES / ДА / HA") so the SMS reply webhook
-// (Stage 3.G) can match either language without a per-patient lookup.
+// Stage 2.D — append the "reply YES to confirm" CTA. The TG channel
+// surfaces an inline "✅ Подтверждаю" button (wired in notifications-send.ts).
+// The trailing sentence is a legacy artefact from the SMS-fallback era
+// (SMS removed in `docs/TZ-sms-removal.md` Wave 3); we keep both RU and
+// UZ trigger words ("YES / ДА / HA") because patients still type them
+// into the chat thread by reflex and the TG webhook tolerates the input.
 const RU_24H =
   "Напоминание: завтра в {{appointment.time}} у вас приём в {{clinic.name}} — {{appointment.doctor}}. Адрес: {{clinic.address}}. Чтобы подтвердить, ответьте YES (или ДА / HA).";
 const UZ_24H =

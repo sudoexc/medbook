@@ -6,7 +6,8 @@
  * has not yet been requested, we:
  *
  *   1. Materialise a notification through the `appointment.nps-request`
- *      trigger (TG/SMS + INAPP mirror).
+ *      trigger (TG + INAPP mirror). SMS was removed in
+ *      `docs/TZ-sms-removal.md` Wave 3.
  *   2. Stamp `Appointment.npsRequestedAt = now()` to dedupe future ticks.
  *
  * The 4–5h window mirrors the pre-visit worker's design — wide enough that

@@ -2,8 +2,10 @@
  * Per-patient notification rate limit.
  *
  * Current defaults (TZ §6.9):
- *   SMS: max 3 per hour per patient
  *   TG:  max 10 per minute per patient
+ *
+ * SMS was removed in Wave 3 of `docs/TZ-sms-removal.md`; the limiter's
+ * Channel union no longer includes it.
  *
  * Backend: in-memory sliding window Map today. When `REDIS_URL` is set,
  * `infrastructure-engineer` (Phase 6) can swap in a Redis INCR/EXPIRE
@@ -13,7 +15,7 @@
  * count remaining" algorithm. Cheap enough at clinic scale.
  */
 
-export type Channel = "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT";
+export type Channel = "TG" | "EMAIL" | "CALL" | "VISIT";
 
 export type RateLimitConfig = {
   windowMs: number;
@@ -21,7 +23,6 @@ export type RateLimitConfig = {
 };
 
 export const DEFAULT_LIMITS: Record<Channel, RateLimitConfig | null> = {
-  SMS: { windowMs: 60 * 60 * 1000, maxHits: 3 },
   TG: { windowMs: 60 * 1000, maxHits: 10 },
   EMAIL: { windowMs: 60 * 60 * 1000, maxHits: 20 },
   CALL: null,

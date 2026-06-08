@@ -215,6 +215,9 @@ export const PaymentPayload = z
   .passthrough();
 export type PaymentEventPayload = z.infer<typeof PaymentPayload>;
 
+// `"SMS"` retained on the read path so legacy outbox envelopes (envelopes
+// emitted before `docs/TZ-sms-removal.md` Wave 3) still parse when
+// replayed. New publishes only ever stamp TG / EMAIL / CALL / VISIT.
 export const NotificationPayload = z
   .object({
     sendId: z.string(),

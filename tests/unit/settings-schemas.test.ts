@@ -20,7 +20,6 @@ import {
   UpsertProviderSchema,
   ClinicSecretsSchema,
   ResetPasswordSchema,
-  TestSmsSchema,
 } from "@/server/schemas/settings";
 
 describe("CreateUserSchema", () => {
@@ -205,12 +204,20 @@ describe("UpsertProviderSchema", () => {
 
   it("accepts a secret change with currentPassword", () => {
     const r = UpsertProviderSchema.safeParse({
-      kind: "SMS",
-      label: "Eskiz",
+      kind: "PAYME",
+      label: "Main account",
       secret: "api-token",
       currentPassword: "hunter22",
     });
     expect(r.success).toBe(true);
+  });
+
+  it("rejects legacy SMS provider kind (removed in `docs/TZ-sms-removal.md`)", () => {
+    const r = UpsertProviderSchema.safeParse({
+      kind: "SMS",
+      label: "Eskiz",
+    });
+    expect(r.success).toBe(false);
   });
 
   it("rejects an unknown provider kind", () => {
@@ -238,16 +245,5 @@ describe("ResetPasswordSchema", () => {
   });
 });
 
-describe("TestSmsSchema", () => {
-  it("requires phone and body", () => {
-    expect(TestSmsSchema.safeParse({ phone: "", body: "x" }).success).toBe(
-      false,
-    );
-    expect(TestSmsSchema.safeParse({ phone: "+998", body: "" }).success).toBe(
-      false,
-    );
-    expect(
-      TestSmsSchema.safeParse({ phone: "+998901234567", body: "hi" }).success,
-    ).toBe(true);
-  });
-});
+// `TestSmsSchema` block removed in Wave 3 of `docs/TZ-sms-removal.md`
+// alongside the schema itself.

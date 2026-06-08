@@ -93,7 +93,7 @@ async function main() {
   //                          with remindersEnabled, fires when local-clock
   //                          hour matches an entry in `schedule.times[]`.
   //                          Inserts a `MedicationReminderSend` row + a
-  //                          push (TG/SMS + parallel INAPP). Idempotent via
+  //                          push (TG + parallel INAPP). Idempotent via
   //                          (prescriptionId, scheduledFor) unique key.
   const medicationReminder = startMedicationReminderWorker();
 

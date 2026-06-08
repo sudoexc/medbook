@@ -18,9 +18,10 @@
  *   • pre-deliver cancel ("patient already confirmed", status → CANCELLED).
  * These don't produce a cross-surface event, so they bypass the kernel.
  *
- * Surface defaults to WORKER; actor defaults to SYSTEM. The webhook variants
+ * Surface defaults to WORKER; actor defaults to SYSTEM. The webhook variant
  * (DLR-style provider callbacks landing on the worker) can override surface
- * to SMS_WEBHOOK / TG_WEBHOOK and pass through the upstream correlationId.
+ * to TG_WEBHOOK and pass through the upstream correlationId. (SMS_WEBHOOK
+ * is legacy — SMS removed in `docs/TZ-sms-removal.md`.)
  */
 
 import { prisma } from "@/lib/prisma";
@@ -34,7 +35,7 @@ import type {
   Surface,
 } from "@/server/realtime/envelope";
 
-export type NotificationChannel = "SMS" | "TG" | "INAPP" | "EMAIL" | "CALL" | "VISIT";
+export type NotificationChannel = "TG" | "INAPP" | "EMAIL" | "CALL" | "VISIT";
 
 /** Fields the kernel reads off the loaded `NotificationSend` row. */
 export type NotificationSendRef = {
@@ -49,7 +50,7 @@ export type NotificationSendRef = {
 export type RecordDeliveryOutcome =
   | {
       kind: "sent";
-      /** Provider-side id (SMS message id / TG message id). */
+      /** Provider-side id (TG message id). */
       externalId: string;
       sentAt: Date;
     }

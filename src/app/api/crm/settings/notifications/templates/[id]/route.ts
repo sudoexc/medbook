@@ -32,7 +32,7 @@ const PatchSchema = z.object({
   triggerConfig: z
     .object({
       offsetMin: z.number().int().optional().nullable(),
-      channels: z.array(z.enum(["TG", "SMS"])).optional().nullable(),
+      channels: z.array(z.enum(["TG"])).optional().nullable(),
       enabled: z.boolean().optional().nullable(),
       days: z.number().int().optional().nullable(),
     })
@@ -114,7 +114,7 @@ export const PATCH = createApiHandler(
 
       // Mirror channels[0] onto template.channel so the existing materializer
       // (which reads template.channel) picks the user's primary choice.
-      const cfg = data.triggerConfig as { channels?: Array<"TG" | "SMS"> };
+      const cfg = data.triggerConfig as { channels?: Array<"TG"> };
       if (Array.isArray(cfg.channels) && cfg.channels.length > 0) {
         data.channel = cfg.channels[0];
       }

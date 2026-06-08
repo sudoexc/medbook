@@ -1,7 +1,15 @@
 import { z } from "zod";
 
+/**
+ * Notification channel enum.
+ *
+ * "SMS" was dropped here in Wave 3 of `docs/TZ-sms-removal.md`. The
+ * NotificationTemplate/NotificationSend DB columns still carry the
+ * literal until the Wave 5 migration so historical rows remain
+ * intact — but no new SMS rows can be created through the API.
+ * Stale clients that still POST `channel: "SMS"` get a Zod error.
+ */
 export const NotificationChannelEnum = z.enum([
-  "SMS",
   "TG",
   "CALL",
   "EMAIL",

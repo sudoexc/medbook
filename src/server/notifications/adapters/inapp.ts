@@ -9,7 +9,7 @@
  *
  * The adapter is invoked from `notifications-send.ts` to keep the same
  * delivery contract (status transitions, externalId, retryCount) as the
- * SMS/TG adapters. It immediately stamps `deliveredAt` because there's no
+ * TG adapter. It immediately stamps `deliveredAt` because there's no
  * network round-trip — delivery is local DB write.
  *
  * Idempotency: if the worker re-runs with the same `sendId`, the row will
@@ -17,7 +17,7 @@
  * us. So we don't need internal dedupe.
  */
 export type InAppSendResult = {
-  /** Stable string used as `externalId`. Mirrors TG/SMS shape. */
+  /** Stable string used as `externalId`. Mirrors TG adapter shape. */
   inboxId: string;
 };
 

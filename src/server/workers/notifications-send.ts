@@ -134,7 +134,10 @@ async function deliver(job: DeliverJob): Promise<void> {
   }
 
   const limiter = getRateLimiter();
-  const ok = await limiter.check(send.patientId, send.channel as "SMS" | "TG");
+  // Channel is widened in the DB row but the limiter only models TG today.
+  // Legacy SMS rows fall through to the throw below — the limiter hit is a
+  // harmless rounding error against the TG bucket.
+  const ok = await limiter.check(send.patientId, "TG");
   if (!ok) {
     // Defer: push the job back by 60s. We don't count this against the
     // retry budget — rate limit is a policy decision, not a failure.
@@ -185,7 +188,7 @@ async function deliver(job: DeliverJob): Promise<void> {
           id: send.id,
           clinicId: send.clinicId,
           patientId: send.patientId ?? null,
-          channel: send.channel as "SMS" | "TG",
+          channel: send.channel as "TG",
           templateKey: send.template?.key ?? null,
         },
         outcome: {
@@ -205,7 +208,7 @@ async function deliver(job: DeliverJob): Promise<void> {
             id: send.id,
             clinicId: send.clinicId,
             patientId: send.patientId ?? null,
-            channel: send.channel as "SMS" | "TG",
+            channel: send.channel as "TG",
             templateKey: send.template?.key ?? null,
           },
           outcome: {

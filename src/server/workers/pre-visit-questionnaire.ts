@@ -6,8 +6,8 @@
  * has not yet been notified or submitted, we:
  *
  *   1. Materialise a notification through the
- *      `appointment.pre-visit-questionnaire` trigger (TG/SMS + INAPP for TG
- *      patients).
+ *      `appointment.pre-visit-questionnaire` trigger (TG + INAPP for TG
+ *      patients). SMS was removed in `docs/TZ-sms-removal.md` Wave 3.
  *   2. Stamp `Appointment.preVisitNotifiedAt = now()` so future ticks skip
  *      it.
  *

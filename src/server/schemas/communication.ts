@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+/**
+ * Communication channel enum.
+ *
+ * "SMS" is retained as a read-only literal so legacy Communication rows
+ * (manually logged before `docs/TZ-sms-removal.md`) remain queryable. The
+ * Wave 5 schema migration drops it from the underlying Prisma enum and
+ * this list will follow.
+ */
 export const CommunicationChannelEnum = z.enum([
   "SMS",
   "TG",
@@ -18,11 +26,8 @@ export const CreateCommunicationSchema = z.object({
   meta: z.unknown().optional(),
 });
 
-export const SendSmsSchema = z.object({
-  patientId: z.string().optional().nullable(),
-  phone: z.string().min(3).max(40),
-  body: z.string().min(1).max(1600),
-});
+// `SendSmsSchema` was deleted in Wave 3 of `docs/TZ-sms-removal.md`.
+// No route consumes it; the corresponding test gate is removed in Wave 3d.
 
 export const QueryCommunicationSchema = z.object({
   patientId: z.string().optional(),
@@ -35,4 +40,3 @@ export const QueryCommunicationSchema = z.object({
 });
 
 export type CreateCommunication = z.infer<typeof CreateCommunicationSchema>;
-export type SendSms = z.infer<typeof SendSmsSchema>;

@@ -2,7 +2,7 @@
  * Notification template engine.
  *
  * Supports `{{path.to.value}}` placeholder substitution with HTML-escape
- * (defence-in-depth — TG/SMS aren't HTML, but escape keeps accidental
+ * (defence-in-depth — TG isn't HTML, but escape keeps accidental
  * injection safe if the body ever gets rendered as HTML in the UI preview).
  *
  * Placeholder format: `{{a.b.c}}` — whitespace around the expression is

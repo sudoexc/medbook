@@ -1,9 +1,12 @@
 /**
  * Single entry point for "this appointment is now confirmed".
  *
- * Called from FIVE places — reception UI (queue-status PATCH), SMS reply
- * webhook, Telegram callback handler, inbound call (callcenter manual flip),
- * and the create route's auto-confirm fast-path for PHONE/KIOSK channels.
+ * Called from FOUR places — reception UI (queue-status PATCH), Telegram
+ * callback handler, inbound call (callcenter manual flip), and the create
+ * route's auto-confirm fast-path for PHONE/KIOSK channels. The SMS-reply
+ * webhook path was removed in `docs/TZ-sms-removal.md` Wave 3; the
+ * `SMS_REPLY` ConfirmationVia value is retained until the Wave 5 schema
+ * migration so historical confirms remain readable.
  * Centralising the write keeps the audit log uniform, guarantees the
  * confirm-call Actions get closed exactly once per appointment, and emits
  * one realtime event so calendar/reception/action-center all repaint
@@ -33,19 +36,19 @@ export type ConfirmInput = {
   appointmentId: string;
   clinicId: string;
   /** ID of the staff member who flipped the row. Null for patient-initiated
-   *  paths (SMS_REPLY / TG_BUTTON) and for BOOKING_AUTO. */
+   *  paths (TG_BUTTON; legacy SMS_REPLY) and for BOOKING_AUTO. */
   actorId: string | null;
   via: ConfirmationVia;
   /**
    * Surface that drove the confirmation. Cross-surface sync Phase A: stamped
    * on the outbox envelope so downstream subscribers + audit trail know
-   * "this confirm came from CRM vs the SMS reply webhook vs the mini-app".
+   * "this confirm came from CRM vs the TG webhook vs the mini-app".
    * Optional for backwards compat — derived from `via` if omitted.
    */
   surface?: Surface;
   /** Cascade hint: when this confirm is caused by an upstream event (e.g. an
-   *  inbound SMS), the caller threads its correlationId through so the whole
-   *  chain is traceable. A new id is minted when omitted. */
+   *  inbound TG callback), the caller threads its correlationId through so
+   *  the whole chain is traceable. A new id is minted when omitted. */
   correlationId?: string;
   causedByEventId?: string;
 };

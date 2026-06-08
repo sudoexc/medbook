@@ -17,9 +17,11 @@ const RoleEnum = z.enum([
   "NURSE",
   "CALL_OPERATOR",
 ]);
+// `"SMS"` was removed from this enum in Wave 3 of
+// `docs/TZ-sms-removal.md`. Legacy ProviderConnection rows are
+// deleted by the Wave 5 migration.
 const ProviderKindEnum = z.enum([
   "TELEGRAM",
-  "SMS",
   "PAYME",
   "CLICK",
   "UZUM",
@@ -27,9 +29,12 @@ const ProviderKindEnum = z.enum([
   "OTHER",
 ]);
 
-/** Provider "family" as surfaced in the UI — maps to one or more Prisma ProviderKind values. */
+/**
+ * Provider "family" as surfaced in the UI — maps to one or more Prisma
+ * ProviderKind values. The "SMS" family was dropped in Wave 3 of
+ * `docs/TZ-sms-removal.md`.
+ */
 export const ProviderFamilyEnum = z.enum([
-  "SMS",
   "TG",
   "PAYMENT",
   "TELEPHONY",
@@ -182,7 +187,6 @@ export type PatchSubscription = z.infer<typeof PatchSubscriptionSchema>;
  * Used by the integrations page to group rows.
  */
 export const FAMILY_KINDS: Record<ProviderFamily, string[]> = {
-  SMS: ["SMS"],
   TG: ["TELEGRAM"],
   PAYMENT: ["PAYME", "CLICK", "UZUM"],
   TELEPHONY: ["OTHER"], // telephony parked on OTHER with label="sip" until enum adds SIP

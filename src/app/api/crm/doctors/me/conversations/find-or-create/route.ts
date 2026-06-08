@@ -14,9 +14,11 @@
  * Used by the patients-table «Написать» action and the messages page when it
  * lands with `?patientId=<id>`.
  *
- * Why SMS first instead of TG (in the kernel):
- *   Outbound TG only works when the patient has previously messaged the bot
- *   (Telegram bot-init rule — bot can't initiate). SMS we can always send.
+ * Channel resolution (in the kernel):
+ *   TG-only since `docs/TZ-sms-removal.md` Wave 3. The kernel returns 422
+ *   `NoChannel` when the patient hasn't bound their Telegram account — the
+ *   UI then prompts the operator to invite them via the Mini App or place
+ *   a Call Center call instead.
  */
 import { z } from "zod";
 

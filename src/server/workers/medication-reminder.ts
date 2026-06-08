@@ -9,9 +9,10 @@
  *   2. INSERT a `MedicationReminderSend(prescriptionId, scheduledFor)` row
  *      with status PENDING. The unique constraint on
  *      (prescriptionId, scheduledFor) makes the second tick a no-op.
- *   3. Materialise a TG/SMS notification via the `medication.reminder`
+ *   3. Materialise a TG notification via the `medication.reminder`
  *      template, mirrored to INAPP for TG-eligible patients (same
- *      "free secondary touch" logic as appointment reminders).
+ *      "free secondary touch" logic as appointment reminders). SMS was
+ *      removed in `docs/TZ-sms-removal.md` Wave 3.
  *
  * The `MedicationReminderSend` row is the source of truth the patient
  * dashboard reads — they tap "Принял / Пропустил / Отложить" on it. The
@@ -38,7 +39,7 @@ export const JOB_NAME = "medication-reminder-tick";
 /** Hourly cadence — schedules are anchored to HH:00 in clinic TZ. */
 const TICK_INTERVAL_MS = 60 * 60 * 1000;
 
-type Channel = "SMS" | "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+type Channel = "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
 
 type ActivePrescription = {
   id: string;
@@ -88,7 +89,6 @@ function pickRecipient(
   channel: Channel,
   patient: { phone: string; telegramId: string | null },
 ): string | null {
-  if (channel === "SMS") return patient.phone;
   if (channel === "TG") return patient.telegramId;
   if (channel === "EMAIL") return patient.phone;
   return null;
@@ -230,7 +230,7 @@ export async function runMedicationReminderTick(
       });
 
       // Push side. INAPP always — the dashboard relies on it for the banner
-      // count. TG/SMS only if we have a recipient.
+      // count. TG only if we have a recipient.
       try {
         await prisma.notificationSend.create({
           data: {

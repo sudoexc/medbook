@@ -68,10 +68,11 @@ export const PATCH = createApiHandler(
     }
 
     // Confirmation is its own write — route through the single entry point so
-    // audit + Action close + realtime fan-out stay consistent across the five
-    // confirm paths (manual CRM / SMS reply / TG button / inbound call /
-    // booking auto-confirm). The helper handles its own audit + events; we
-    // just translate its result into the route's response shape.
+    // audit + Action close + realtime fan-out stay consistent across the four
+    // confirm paths (manual CRM / TG button / inbound call / booking auto-
+    // confirm). The SMS-reply path was removed in `docs/TZ-sms-removal.md`
+    // Wave 3. The helper handles its own audit + events; we just translate
+    // its result into the route's response shape.
     if (body.queueStatus === "CONFIRMED") {
       const tenant = getTenant();
       const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;

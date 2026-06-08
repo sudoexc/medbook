@@ -59,9 +59,11 @@ export type UpdateClinicSettings = z.infer<typeof UpdateClinicSettingsSchema>;
  * For Phase-4 we store base64 as a placeholder cipher — a proper KMS wrapping
  * will be added in Phase 6.
  */
+// `"SMS"` was removed from this enum in Wave 3 of
+// `docs/TZ-sms-removal.md`. Legacy ProviderConnection rows with
+// kind="SMS" remain in the DB until the Wave 5 migration deletes them.
 export const ProviderKindEnum = z.enum([
   "TELEGRAM",
-  "SMS",
   "PAYME",
   "CLICK",
   "UZUM",
@@ -83,12 +85,16 @@ export type UpsertProvider = z.infer<typeof UpsertProviderSchema>;
 
 /**
  * Tokens/secrets re-entry for protected clinic fields.
+ *
+ * `smsSenderName` was dropped here in Wave 3 of `docs/TZ-sms-removal.md`.
+ * The DB column lingers until the Wave 5 migration so stale rows are not
+ * lost, but the field is no longer writable from any surface — a stale
+ * client that still sends it will get a Zod `unrecognized_keys` error.
  */
 export const ClinicSecretsSchema = z.object({
   tgBotToken: z.string().max(400).optional().nullable(),
   tgBotUsername: z.string().max(100).optional().nullable(),
   tgWebhookSecret: z.string().max(200).optional().nullable(),
-  smsSenderName: z.string().max(100).optional().nullable(),
   currentPassword: z.string().min(1).max(200),
 });
 
@@ -104,15 +110,9 @@ export const ResetPasswordSchema = z.object({
 
 export type ResetPassword = z.infer<typeof ResetPasswordSchema>;
 
-/**
- * Test-SMS payload for the settings page.
- */
-export const TestSmsSchema = z.object({
-  phone: z.string().min(5).max(40),
-  body: z.string().min(1).max(500),
-});
-
-export type TestSms = z.infer<typeof TestSmsSchema>;
+// `TestSmsSchema` removed in Wave 3 of `docs/TZ-sms-removal.md` together
+// with the test-send button on the integrations page. The Telegram test
+// hook stays in place (separate schema).
 
 /**
  * Phase 19 Wave 4 — white-label branding self-edit (Pro / Enterprise plans).

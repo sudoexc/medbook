@@ -20,7 +20,6 @@ import {
 } from "@/server/schemas/patient";
 import { CreatePaymentSchema } from "@/server/schemas/payment";
 import { CreateDocumentSchema } from "@/server/schemas/document";
-import { SendSmsSchema } from "@/server/schemas/communication";
 import { CreateTemplateSchema } from "@/server/schemas/notification";
 
 describe("CreatePatientSchema", () => {
@@ -142,17 +141,24 @@ describe("CreateDocumentSchema", () => {
   });
 });
 
-describe("SendSmsSchema", () => {
-  it("requires phone and body", () => {
-    expect(SendSmsSchema.safeParse({ phone: "" }).success).toBe(false);
-    expect(
-      SendSmsSchema.safeParse({ phone: "+998901234567", body: "hi" }).success
-    ).toBe(true);
-  });
-});
+// `SendSmsSchema` block removed in Wave 3 of `docs/TZ-sms-removal.md`
+// alongside the schema itself.
 
 describe("CreateTemplateSchema", () => {
   it("accepts valid template", () => {
+    const r = CreateTemplateSchema.safeParse({
+      key: "reminder_24h",
+      nameRu: "Напоминание за 24ч",
+      nameUz: "24 soat oldin eslatma",
+      channel: "TG",
+      category: "REMINDER",
+      bodyRu: "Завтра в {{time}}",
+      bodyUz: "Ertaga {{time}}da",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects legacy SMS channel (removed in `docs/TZ-sms-removal.md`)", () => {
     const r = CreateTemplateSchema.safeParse({
       key: "reminder_24h",
       nameRu: "Напоминание за 24ч",
@@ -162,7 +168,7 @@ describe("CreateTemplateSchema", () => {
       bodyRu: "Завтра в {{time}}",
       bodyUz: "Ertaga {{time}}da",
     });
-    expect(r.success).toBe(true);
+    expect(r.success).toBe(false);
   });
 
   it("rejects invalid channel", () => {

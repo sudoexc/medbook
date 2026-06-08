@@ -6,6 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
+import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+
 import type { QueueStatus, TemplateChannel } from "./types";
 
 export type QueueRow = {
@@ -50,7 +52,21 @@ export function useQueue(status: QueueStatus | null) {
       return (await res.json()) as QueueResponse;
     },
     staleTime: 10_000,
-    refetchInterval: 30_000, // TODO(realtime-engineer): swap for SSE in Phase 3a.1
+    // SSE invalidation via `useNotificationsRealtime` (mounted by the page
+    // client) keeps this fresh on every `notification.*` event. 60s polling
+    // remains as a safety net for socket drops.
+    refetchInterval: 60_000,
+  });
+}
+
+/**
+ * Invalidate the notifications queue + stats on every `notification.*` event.
+ * Mount once from the page client.
+ */
+export function useNotificationsRealtime(): void {
+  useLiveQueryInvalidation({
+    events: ["notification.sent", "notification.failed", "notification.read"],
+    queryKey: ["notifications"],
   });
 }
 

@@ -8,7 +8,11 @@ import { BellIcon } from "lucide-react";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { SectionHeader } from "@/components/molecules/section-header";
 
-import { useQueue, useNotificationsStats } from "../_hooks/use-queue";
+import {
+  useQueue,
+  useNotificationsStats,
+  useNotificationsRealtime,
+} from "../_hooks/use-queue";
 import type { TemplateChannel } from "../_hooks/types";
 
 import { NotificationsSubNav } from "./notifications-sub-nav";
@@ -58,6 +62,7 @@ export function NotificationsPageClient() {
     router.replace(`?${sp.toString()}`, { scroll: false });
   };
 
+  useNotificationsRealtime();
   const queueQuery = useQueue(null);
   const statsQuery = useNotificationsStats();
 

@@ -13,18 +13,21 @@ import type {
  * `use-reception-live` — aggregates every live TanStack Query poll the
  * reception dashboard needs.
  *
- * Polling strategy (Phase 2c): `staleTime: 15s`, `refetchInterval: 30s`.
+ * Realtime model: `useReceptionRealtime` (below) wires SSE invalidation via
+ * `useLiveQueryInvalidation`. Polling stays on as a 60s safety net so a
+ * dropped EventSource that fails to reconnect still eventually catches up.
  *
- * TODO(realtime-engineer, Phase 3a): replace polling with SSE invalidation.
- * Subscribe to `clinic:{id}:reception`, `clinic:{id}:queue`,
- * `clinic:{id}:calls`, `clinic:{id}:conversations`, `clinic:{id}:cabinets`
- * and invalidate the corresponding query keys on push:
- *   - `appointment.{created|updated|queue-status|cancelled|moved}` →
- *       ["reception","dashboard"], ["reception","appointments","today"],
- *       ["reception","reminders"]
- *   - `call.incoming` / `call.updated` → ["reception","calls"]
- *   - `tg.message.new` / `conversation.updated` → ["reception","conversations"]
- *   - cabinets — piggyback on appointment.* / queue.updated (derived view)
+ * Event → query-key map:
+ *   - `appointment.{created|updated|statusChanged|cancelled|moved}` /
+ *     `queue.updated` → ["reception","dashboard"],
+ *     ["reception","appointments","today"], ["reception","cabinets"]
+ *   - `call.{incoming|answered|ended|missed}` → ["reception","calls"]
+ *   - `tg.message.new`, `tg.conversation.updated` →
+ *     ["reception","conversations"]
+ *
+ * Cabinets are a derived view of appointment status and piggyback on the
+ * appointment event stream — no dedicated `cabinet.occupancy.changed`
+ * publisher exists.
  */
 
 export type DashboardKpi = {

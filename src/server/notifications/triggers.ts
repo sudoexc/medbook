@@ -26,6 +26,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { isAllowedToReceive } from "./consent-gate";
+import { recordPatientNoChannel } from "./no-channel-action";
 import { render } from "./template";
 
 export const TRIGGER_KEYS = [
@@ -608,6 +609,18 @@ export async function materializeForAppointmentsBulk(
     }
     const recipient = pickRecipient(tpl.channel, appt.patient);
     if (!recipient) {
+      // Wave 4 of `docs/TZ-sms-removal.md` — surface the dropped signal so
+      // the operator can call the patient via the Call Center instead of
+      // losing it. Dedup is per (patient, trigger, UTC-day) so a busy
+      // patient produces one row per missed trigger per day.
+      await recordPatientNoChannel({
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        patientName: appt.patient.fullName,
+        triggerKey: trigger,
+        appointmentId: appt.id,
+        appointmentAt: appt.date,
+      });
       skipped += 1;
       continue;
     }
@@ -681,7 +694,18 @@ async function materializeForAppointment(
   });
   if (already) return { created: 0, skipped: 1 };
   const recipient = pickRecipient(tpl.channel, appt.patient);
-  if (!recipient) return { created: 0, skipped: 1 };
+  if (!recipient) {
+    // Wave 4 of `docs/TZ-sms-removal.md` — compensator for TG-less patients.
+    await recordPatientNoChannel({
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      patientName: appt.patient.fullName,
+      triggerKey: trigger,
+      appointmentId: appt.id,
+      appointmentAt: appt.date,
+    });
+    return { created: 0, skipped: 1 };
+  }
   const body = render(tpl.body, buildContext(appt, lang) as unknown as Record<string, unknown>);
   await createSend({
     clinicId: appt.clinicId,
@@ -1276,7 +1300,22 @@ async function runCaseRepeatReminders(): Promise<number> {
     if (now.getTime() >= deadline) continue; // window already closed
 
     const recipient = pickRecipient(tpl.channel, kase.patient);
-    if (!recipient) continue;
+    if (!recipient) {
+      // Wave 4 of `docs/TZ-sms-removal.md` — compensator for TG-less
+      // patients on the case-repeat band. `firstVisit` is the anchor row,
+      // not the upcoming visit (cases that already have a future BOOKED
+      // are skipped above), so we surface the case anchor date as the
+      // appointment context instead.
+      await recordPatientNoChannel({
+        clinicId: kase.clinicId,
+        patientId: kase.patientId,
+        patientName: kase.patient.fullName,
+        triggerKey: "case.repeat-due",
+        appointmentId: firstVisit.id,
+        appointmentAt: firstVisit.date,
+      });
+      continue;
+    }
 
     const daysLeft = Math.max(
       1,

@@ -134,6 +134,18 @@ function valuesFor(
         score: payload.score,
         commentPreview: payload.commentPreview,
       };
+    case "PATIENT_NO_CHANNEL":
+      return {
+        patientName: payload.patientName,
+        triggerKey: payload.triggerKey,
+        // Empty strings when no appointment context — the i18n string uses an
+        // ICU `select` to switch to a context-free wording in that case.
+        slotTime: payload.appointmentAt ? formatHM(payload.appointmentAt) : "",
+        slotDate: payload.appointmentAt
+          ? formatDM(payload.appointmentAt, locale)
+          : "",
+        hasAppointment: payload.appointmentAt ? "yes" : "no",
+      };
     default: {
       const _exhaustive: never = payload;
       throw new Error(

@@ -15,6 +15,7 @@ import {
   DoorOpenIcon,
   FrownIcon,
   HistoryIcon,
+  PhoneOffIcon,
   RotateCwIcon,
   UsersIcon,
   UsersRoundIcon,
@@ -35,6 +36,7 @@ export const ACTION_ICONS: Record<ActionType, LucideIcon> = {
   PAYMENT_OVERDUE: BanknoteIcon,
   LOW_DOCTOR_SCHEDULE: CalendarXIcon,
   LOW_NPS_RECEIVED: FrownIcon,
+  PATIENT_NO_CHANNEL: PhoneOffIcon,
 };
 
 /** Tailwind colour-token classes for severity dots, borders, and badge tones. */

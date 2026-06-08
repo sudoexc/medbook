@@ -31,6 +31,14 @@ export const ACTION_TYPES = [
   // `appointmentId` so resubmits on the same visit collapse onto the same
   // row. Severity 'high' by default; admins can dismiss after follow-up.
   "LOW_NPS_RECEIVED",
+  // Wave 4 of `docs/TZ-sms-removal.md` — TG-less patient compensator.
+  // Emitted by the notification materializer when `resolveChannels()`
+  // returns [] OR no recipient can be derived. Surfaces the dropped signal
+  // in /crm/action-center so the operator can call the patient via the
+  // Call Center instead of silently dropping the reminder. Dedupe keyed on
+  // (patientId, triggerKey, bucket=UTC-date) so each 24-hour window can
+  // produce at most one row per (patient, trigger).
+  "PATIENT_NO_CHANNEL",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -184,6 +192,33 @@ export type LowNpsReceivedPayload = {
   commentPreview: string;
 };
 
+/**
+ * Wave 4 of `docs/TZ-sms-removal.md` — PATIENT_NO_CHANNEL.
+ *
+ * Recorded when the notifications materializer cannot dispatch to a patient
+ * because they have no telegramId AND no other usable channel. Without SMS
+ * fallback, the reminder is silently lost; this Action gives the operator a
+ * task to reach out via the Call Center.
+ *
+ * `triggerKey` is the logical TriggerKey from
+ * `src/server/notifications/triggers.ts` (e.g. "appointment.reminder-24h").
+ * `bucket` is the UTC date `YYYY-MM-DD` of the skip; together with patientId
+ * + triggerKey it forms the 24h dedupe window. A new bucket the next day
+ * re-opens the Action if the patient remains unreachable.
+ */
+export type PatientNoChannelPayload = {
+  type: "PATIENT_NO_CHANNEL";
+  patientId: string;
+  patientName: string;
+  triggerKey: string;
+  /** Set when the trigger is appointment-scoped, else null. */
+  appointmentId: string | null;
+  /** ISO datetime of the appointment, when known. */
+  appointmentAt: string | null;
+  /** UTC YYYY-MM-DD bucket for the 24h dedupe window. */
+  bucket: string;
+};
+
 export type ActionPayload =
   | EmptySlotTomorrowPayload
   | DormantBatchPayload
@@ -195,7 +230,8 @@ export type ActionPayload =
   | IdleRoomPayload
   | PaymentOverduePayload
   | LowDoctorSchedulePayload
-  | LowNpsReceivedPayload;
+  | LowNpsReceivedPayload
+  | PatientNoChannelPayload;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -239,6 +275,8 @@ export function dedupeKeyFor(payload: ActionPayload): string {
       return `LOW_DOCTOR_SCHEDULE:doctorId=${payload.doctorId}`;
     case "LOW_NPS_RECEIVED":
       return `LOW_NPS_RECEIVED:appointmentId=${payload.appointmentId}`;
+    case "PATIENT_NO_CHANNEL":
+      return `PATIENT_NO_CHANNEL:patientId=${payload.patientId}:triggerKey=${payload.triggerKey}:bucket=${payload.bucket}`;
     default: {
       // Compile-time exhaustiveness guard.
       const _exhaustive: never = payload;
@@ -275,6 +313,7 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
     case "OVERDUE_FOLLOW_UP":
     case "DORMANT_BATCH":
     case "IDLE_ROOM":
+    case "PATIENT_NO_CHANNEL":
       return "medium";
     case "LOW_DOCTOR_SCHEDULE":
       return "low";
@@ -318,6 +357,11 @@ export function defaultDeeplinkPath(type: ActionType): string {
       // Deep-link to the action-center first; the row's payload carries
       // patientId so the front end can offer a "Open patient" jump.
       return "/crm/action-center";
+    case "PATIENT_NO_CHANNEL":
+      // Operator's first step is "call the patient". The Call Center has
+      // the queue + dialler — call sites override with /crm/patients/<id>
+      // when they want to land directly on the patient card.
+      return "/crm/call-center";
     default: {
       const _exhaustive: never = type;
       throw new Error(
@@ -346,6 +390,7 @@ export function defaultAssigneeRole(type: ActionType): "ADMIN" | "RECEPTIONIST" 
     case "DOCTOR_OVERLOAD":
     case "IDLE_ROOM":
     case "PAYMENT_OVERDUE":
+    case "PATIENT_NO_CHANNEL":
       return "RECEPTIONIST";
     default: {
       const _exhaustive: never = type;

@@ -22,6 +22,7 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
+import { recordPatientNoChannel } from "@/server/notifications/no-channel-action";
 import {
   isTriggerEnabled,
   resolveChannels,
@@ -214,12 +215,33 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
       });
       const channel = channels[0] as Insert["channel"] | undefined;
       if (!channel) {
+        // Wave 4 of `docs/TZ-sms-removal.md` — legacy template.channel=SMS
+        // resolves to []; surface the missed reminder as a PATIENT_NO_CHANNEL
+        // Action so the receptionist can call the patient.
+        await recordPatientNoChannel({
+          clinicId: appt.clinicId,
+          patientId: appt.patientId,
+          patientName: appt.patient.fullName,
+          triggerKey: "appointment.before",
+          appointmentId: appt.id,
+          appointmentAt: appt.date,
+        });
         skipped += 1;
         continue;
       }
       const recipient =
         channel === "TG" ? appt.patient.telegramId : appt.patient.phone;
       if (!recipient) {
+        // Same compensator path as above — recipient is null when the
+        // patient has no telegramId AND no other resolvable address.
+        await recordPatientNoChannel({
+          clinicId: appt.clinicId,
+          patientId: appt.patientId,
+          patientName: appt.patient.fullName,
+          triggerKey: "appointment.before",
+          appointmentId: appt.id,
+          appointmentAt: appt.date,
+        });
         skipped += 1;
         continue;
       }

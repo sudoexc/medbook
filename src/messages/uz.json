@@ -4665,6 +4665,11 @@
         "label": "Past tashrif bahosi",
         "title": "{patientName}: baho {score}/10 ({doctorName})",
         "body": "{commentPreview, select, , {Bemor bilan bog‘laning va tafsilotlarni so‘rang.} other{«{commentPreview}»}}"
+      },
+      "PATIENT_NO_CHANNEL": {
+        "label": "Aloqa kanali yo'q",
+        "title": "{patientName}: bildirishnoma yetkazilmadi",
+        "body": "{hasAppointment, select, yes {Yozuv {slotDate} kuni soat {slotTime} da. Bemorga qo'ng'iroq qiling — Telegram bog'lanmagan.} other {Trigger: {triggerKey}. Bemorga qo'ng'iroq qiling — Telegram bog'lanmagan.}}"
       }
     },
     "dashboard": {

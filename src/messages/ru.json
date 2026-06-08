@@ -4665,6 +4665,11 @@
         "label": "Низкая оценка визита",
         "title": "{patientName}: оценка {score}/10 ({doctorName})",
         "body": "{commentPreview, select, , {Свяжитесь с пациентом и узнайте подробности.} other{«{commentPreview}»}}"
+      },
+      "PATIENT_NO_CHANNEL": {
+        "label": "Нет канала связи",
+        "title": "{patientName}: уведомление не доставлено",
+        "body": "{hasAppointment, select, yes {Запись {slotDate} в {slotTime}. Позвоните пациенту — Telegram не привязан.} other {Triggers: {triggerKey}. Позвоните пациенту — Telegram не привязан.}}"
       }
     },
     "dashboard": {

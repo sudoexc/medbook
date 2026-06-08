@@ -102,6 +102,16 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     score: 3,
     commentPreview: "Долго ждал, врач торопился",
   },
+  // Wave 4 of `docs/TZ-sms-removal.md` — TG-less patient sample.
+  PATIENT_NO_CHANNEL: {
+    type: "PATIENT_NO_CHANNEL",
+    patientId: "p_7",
+    patientName: "Нурия Каримова",
+    triggerKey: "appointment.reminder-24h",
+    appointmentId: "apt_6",
+    appointmentAt: "2026-05-08T09:30:00.000Z",
+    bucket: "2026-05-07",
+  },
 };
 
 /**

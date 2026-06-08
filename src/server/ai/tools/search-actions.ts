@@ -41,6 +41,7 @@ const TYPE_LABEL_RU: Record<ActionType, string> = {
   PAYMENT_OVERDUE: "Просрочена оплата",
   LOW_DOCTOR_SCHEDULE: "Мало слотов у врача",
   LOW_NPS_RECEIVED: "Низкая оценка визита",
+  PATIENT_NO_CHANNEL: "Нет канала связи",
 };
 
 const TYPE_LABEL_UZ: Record<ActionType, string> = {
@@ -55,6 +56,7 @@ const TYPE_LABEL_UZ: Record<ActionType, string> = {
   PAYMENT_OVERDUE: "Kechiktirilgan to'lov",
   LOW_DOCTOR_SCHEDULE: "Slotlar kam",
   LOW_NPS_RECEIVED: "Past tashrif bahosi",
+  PATIENT_NO_CHANNEL: "Aloqa kanali yo'q",
 };
 
 export const searchActionsTool: Tool<SearchActionsInput> = {

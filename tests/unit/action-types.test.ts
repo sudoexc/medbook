@@ -117,12 +117,22 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     score: 3,
     commentPreview: "Долго ждал, врач торопился",
   },
+  // Wave 4 of `docs/TZ-sms-removal.md` — TG-less patient compensator sample.
+  PATIENT_NO_CHANNEL: {
+    type: "PATIENT_NO_CHANNEL",
+    patientId: "p_7",
+    patientName: "Нурия Каримова",
+    triggerKey: "appointment.reminder-24h",
+    appointmentId: "apt_6",
+    appointmentAt: "2026-05-08T09:30:00.000Z",
+    bucket: "2026-05-07",
+  },
 };
 
 describe("ACTION_TYPES surface", () => {
-  it("ACTION_TYPES has exactly 11 entries (Wave 1 + Phase 16 Wave 2)", () => {
-    expect(ACTION_TYPES.length).toBe(11);
-    expect(new Set(ACTION_TYPES).size).toBe(11);
+  it("ACTION_TYPES has exactly 12 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4)", () => {
+    expect(ACTION_TYPES.length).toBe(12);
+    expect(new Set(ACTION_TYPES).size).toBe(12);
   });
 
   it("ACTION_SEVERITIES + ACTION_STATUSES are non-empty and unique", () => {
@@ -331,6 +341,8 @@ describe("compile-time discriminated-union narrowing", () => {
         case "LOW_DOCTOR_SCHEDULE":
           return p.doctorName;
         case "LOW_NPS_RECEIVED":
+          return p.patientName;
+        case "PATIENT_NO_CHANNEL":
           return p.patientName;
         default: {
           const _exhaustive: never = p;

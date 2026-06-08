@@ -51,8 +51,9 @@ async function deliver(job: DeliverJob): Promise<void> {
   if (send.status !== "QUEUED") return;
 
   // Stage 2.D — no-spam guard for the confirm cascade. If the patient
-  // has already confirmed (any path: SMS_REPLY, TG_BUTTON, MANUAL_CRM,
-  // INBOUND_CALL, BOOKING_AUTO) by the time the worker fires, skip the
+  // has already confirmed (any path: TG_BUTTON, MANUAL_CRM, INBOUND_CALL,
+  // BOOKING_AUTO; SMS_REPLY is legacy/no longer emitted — SMS removed in
+  // `docs/TZ-sms-removal.md`) by the time the worker fires, skip the
   // send entirely. Same gate the detector uses (`confirmedAt IS NULL`),
   // applied to the three reminder keys that still ask "are you coming?".
   const templateKey = send.template?.key ?? null;
@@ -143,10 +144,7 @@ async function deliver(job: DeliverJob): Promise<void> {
 
   try {
     let externalId: string;
-    if (send.channel === "SMS") {
-      const res = await adapters.sms.send(send.recipient, send.body);
-      externalId = res.providerId;
-    } else if (send.channel === "TG") {
+    if (send.channel === "TG") {
       const chatId = send.recipient;
       // Stage 2.D — attach a "✅ Подтверждаю" inline keyboard for the two
       // confirm-CTA reminders (T-1d, T-2h). The callback_data shape is
@@ -175,8 +173,11 @@ async function deliver(job: DeliverJob): Promise<void> {
       );
       externalId = String(res.messageId);
     } else {
-      // Other channels (CALL/EMAIL/VISIT) not supported by adapters yet.
-      throw new Error(`Channel ${send.channel} not yet implemented`);
+      // Other channels cannot be dispatched: SMS is legacy (no adapter
+      // since `docs/TZ-sms-removal.md` Wave 3); CALL/EMAIL/VISIT have no
+      // adapters yet. Throwing surfaces the row as FAILED so the
+      // operator routes the patient through TG / call instead.
+      throw new Error(`Channel ${send.channel} not dispatchable`);
     }
     await runWithTenant({ kind: "SYSTEM" }, () =>
       recordNotificationDelivery({

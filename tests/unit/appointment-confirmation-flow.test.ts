@@ -1,17 +1,20 @@
 /**
- * Integration test for the five-path appointment confirmation flow.
+ * Integration test for the appointment confirmation flow.
  *
- * The flow lives at the seam of four systems:
+ * The flow lives at the seam of three systems:
  *   1. `src/server/appointments/confirm.ts`              — the central helper
  *   2. `src/server/actions/detectors/unconfirmed-24h.ts` — emits "needs confirming"
- *   3. `src/app/api/sms/webhook/[clinicSlug]/route.ts`   — inbound SMS reply path
- *   4. `src/server/realtime/publish.ts`                  — realtime fan-out
+ *   3. `src/server/realtime/publish.ts`                  — realtime fan-out
  *
  * A bug in any one of those silently corrupts the rest — the helper closes
- * the dedupe-keyed Action the detector wrote, and the SMS route fans through
- * the helper. This test exercises the loop end-to-end with a Prisma mock so
- * the four pieces have to agree on field names + dedupe key shape + status
- * predicates or it goes red.
+ * the dedupe-keyed Action the detector wrote. This test exercises the loop
+ * end-to-end with a Prisma mock so the pieces have to agree on field names +
+ * dedupe key shape + status predicates or it goes red.
+ *
+ * The legacy SMS-YES branch (block B, plus the `loadSmsRoute` helper) was
+ * removed in Wave 3 of `docs/TZ-sms-removal.md`; the remaining
+ * `via: "SMS_REPLY"` usages exercise the helper directly (the via enum is
+ * dropped in Wave 5 of the same plan).
  *
  * Style mirrors `tests/unit/detectors/unconfirmed-24h.test.ts` and
  * `tests/unit/appointment-reschedule-audit.test.ts` — vitest, `vi.mock` for
@@ -483,11 +486,6 @@ async function loadDetector() {
   return mod;
 }
 
-async function loadSmsRoute() {
-  const mod = await import("@/app/api/sms/webhook/[clinicSlug]/route");
-  return mod.POST;
-}
-
 async function loadPrismaMock() {
   const mod = await import("@/lib/prisma");
   return mod.prisma as unknown as {
@@ -631,108 +629,11 @@ describe("A. Happy loop — TELEGRAM appointment 36h ahead", () => {
   });
 });
 
-describe("B. SMS-YES branch — webhook routes through the helper", () => {
-  // Build the inbound payload the SMS route actually parses. Route reads JSON
-  // with the schema { from, to?, body, providerId?, externalId? } — verified
-  // against `src/app/api/sms/webhook/[clinicSlug]/route.ts` BodySchema.
-  function smsRequest(slug: string, body: string, from = "+998901234567"): Request {
-    return new Request(`http://test.local/api/sms/webhook/${slug}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ from, body }),
-    });
-  }
-
-  it("first YES confirms, second YES hits the alreadyConfirmed branch", async () => {
-    const now = new Date();
-    // Seed clinic + patient + appointment.
-    state.clinics.push({ id: "c1", slug: "neurofax" });
-    state.patients.push({
-      id: "p1",
-      clinicId: "c1",
-      phone: "+998901234567",
-      phoneNormalized: "+998901234567",
-      preferredLang: "RU",
-      marketingOptOut: false,
-    });
-    const appt = makeAppointment({
-      id: "apt_sms_1",
-      clinicId: "c1",
-      patientId: "p1",
-      date: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-    });
-    state.appointments.push(appt);
-
-    const POST = await loadSmsRoute();
-    const prisma = await loadPrismaMock();
-
-    // No webhook secret configured + dev-mode → accepted with a console warn.
-    const res1 = await POST(smsRequest("neurofax", "YES"));
-    expect(res1.status).toBe(200);
-
-    // Audit row created via the helper.
-    const confirmAudits = state.audits.filter(
-      (a) => a.action === "APPOINTMENT_CONFIRMED",
-    );
-    expect(confirmAudits).toHaveLength(1);
-    expect(confirmAudits[0]?.meta.via).toBe("SMS_REPLY");
-    expect(confirmAudits[0]?.actorId).toBeNull();
-    expect(confirmAudits[0]?.actorLabel).toBe("confirm:SMS_REPLY");
-
-    // Appointment row is now confirmed.
-    expect(state.appointments[0]?.confirmedAt).toBeInstanceOf(Date);
-    expect(state.appointments[0]?.confirmedVia).toBe("SMS_REPLY");
-    expect(state.appointments[0]?.status).toBe("CONFIRMED");
-
-    const updateCount = prisma.appointment.update.mock.calls.length;
-
-    // Second YES — provider retry. Route MUST return 200 (no provider
-    // retries). The helper finds the row already confirmed, so no second
-    // update call is issued.
-    const res2 = await POST(smsRequest("neurofax", "YES"));
-    expect(res2.status).toBe(200);
-
-    // The route's "find nearest unconfirmed" filters confirmedAt: null first.
-    // Since the row is now confirmed, the route won't even reach
-    // confirmAppointment on the second call → no extra audit row.
-    expect(
-      state.audits.filter((a) => a.action === "APPOINTMENT_CONFIRMED").length,
-    ).toBe(1);
-    expect(prisma.appointment.update.mock.calls.length).toBe(updateCount);
-  });
-
-  it("non-keyword body never invokes the helper", async () => {
-    state.clinics.push({ id: "c1", slug: "neurofax" });
-    state.patients.push({
-      id: "p1",
-      clinicId: "c1",
-      phone: "+998901234567",
-      phoneNormalized: "+998901234567",
-      preferredLang: "RU",
-      marketingOptOut: false,
-    });
-    const appt = makeAppointment({
-      id: "apt_sms_2",
-      clinicId: "c1",
-      patientId: "p1",
-      date: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    });
-    state.appointments.push(appt);
-
-    const POST = await loadSmsRoute();
-    const res = await POST(
-      new Request("http://test.local/api/sms/webhook/neurofax", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ from: "+998901234567", body: "hello there" }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    expect(state.audits.filter((a) => a.action === "APPOINTMENT_CONFIRMED"))
-      .toHaveLength(0);
-    expect(state.appointments[0]?.confirmedAt).toBeNull();
-  });
-});
+// Block B (SMS-YES branch — webhook routes through the helper) lived here
+// and was removed in Wave 3 of `docs/TZ-sms-removal.md`. The webhook route
+// `src/app/api/sms/webhook/[clinicSlug]/route.ts` no longer exists; the
+// remaining `via: "SMS_REPLY"` usages below exercise the helper directly
+// and stay valid until the Prisma enum drop in Wave 5.
 
 describe("C. Late-YES — status already past BOOKED, only timestamp recorded", () => {
   it("records confirmedAt but does NOT downgrade status/queueStatus", async () => {

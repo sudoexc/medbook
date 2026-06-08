@@ -26,14 +26,16 @@ export const AUDIT_ACTION = {
   // carries `{ reason, lateCancelMinutes, statusBefore, correlationId }`.
   APPOINTMENT_CANCELLED: "APPOINTMENT_CANCELLED",
 
-  // Wave 3.5 — appointment moved into confirmed state through one of the five
+  // Wave 3.5 — appointment moved into confirmed state through one of the
   // canonical paths (booking auto-confirm for PHONE/KIOSK, reception/callcenter
-  // manual flip, patient SMS-YES, Telegram button press, inbound call).
+  // manual flip, Telegram button press, inbound call). The historical
+  // SMS-YES path is legacy (no longer emitted) — SMS was removed in
+  // `docs/TZ-sms-removal.md`.
   // `entityType: "Appointment"`, `entityId: <appointmentId>`. `meta` carries
   // `{ via, statusBefore, statusAfter, statusFlipped }`. `statusFlipped: false`
   // means the audit row records the timestamp without changing status/queueStatus
-  // (already past BOOKED — e.g. late SMS-YES after the front desk moved them to
-  // WAITING).
+  // (already past BOOKED — e.g. late TG-confirm after the front desk moved
+  // them to WAITING).
   APPOINTMENT_CONFIRMED: "APPOINTMENT_CONFIRMED",
 
   // Phase 20 Wave 5d — doctor pressed "Вызвать пациента" on /my-day. Sets
@@ -198,9 +200,11 @@ export const AUDIT_ACTION = {
 
   // Phase 17 Wave 1 — patient flipped their marketing opt-out flag.
   // `entityType: "Patient"`, `entityId: <patientId>`. `meta` carries
-  // `{ source: 'mini-app' | 'sms-stop' | 'admin' | 'data-deletion',
+  // `{ source: 'mini-app' | 'admin' | 'data-deletion',
   //    optedOut: boolean, before: { marketingOptOut, marketingOptOutAt,
-  //    marketingOptOutSource } }`. The flag is honoured by every marketing
+  //    marketingOptOutSource } }`. The historical `'sms-stop'` source is
+  // legacy (no longer emitted) — SMS was removed in
+  // `docs/TZ-sms-removal.md`. The flag is honoured by every marketing
   // send-site via `isAllowedToReceive` (see
   // `src/server/notifications/consent-gate.ts`).
   MARKETING_OPT_OUT_CHANGED: "MARKETING_OPT_OUT_CHANGED",
@@ -602,7 +606,7 @@ export const AUDIT_ACTION = {
   // Phase 2 polish — patient sent a chat message to the clinic via the Mini
   // App messages screen. `entityType: "Message"`, `entityId: <messageId>`.
   // `meta` carries `{ clinicId, patientId, conversationId, bytes }`. Mirrors
-  // the inbound TG/SMS webhook path but without an external platform leg.
+  // the inbound TG webhook path but without an external platform leg.
   MINIAPP_MESSAGE_SENT: "MINIAPP_MESSAGE_SENT",
 } as const;
 

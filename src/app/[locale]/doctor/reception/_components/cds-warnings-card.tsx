@@ -213,8 +213,11 @@ function WarningRow({
   const [reasonNote, setReasonNote] = React.useState("");
   const create = useCreateCdsOverride();
 
+  const noteRequired = reason === "OTHER";
+  const noteMissing = noteRequired && !reasonNote.trim();
+
   const submit = () => {
-    if (!patientId || !reason) return;
+    if (!patientId || !reason || noteMissing) return;
     create.mutate(
       {
         patientId,
@@ -319,8 +322,14 @@ function WarningRow({
           <input
             value={reasonNote}
             onChange={(e) => setReasonNote(e.target.value)}
-            placeholder="комментарий (необязательно)"
-            className="h-7 rounded-md border border-border bg-background px-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            placeholder={
+              noteRequired ? "комментарий (обязательно)" : "комментарий (необязательно)"
+            }
+            aria-invalid={noteMissing}
+            className={cn(
+              "h-7 rounded-md border bg-background px-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/30",
+              noteMissing ? "border-destructive" : "border-border",
+            )}
           />
           {create.isError && (
             <p className="text-[10px] text-destructive">
@@ -347,7 +356,7 @@ function WarningRow({
               size="sm"
               className="h-6 px-2 text-[10px]"
               onClick={submit}
-              disabled={!reason || create.isPending}
+              disabled={!reason || noteMissing || create.isPending}
             >
               {create.isPending && (
                 <Loader2Icon className="mr-1 size-3 animate-spin" />

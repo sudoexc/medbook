@@ -179,6 +179,7 @@ enum DocumentType {
   REFERRAL
   PRESCRIPTION
   RESULT
+  CONCLUSION
   CONSENT
   CONTRACT
   RECEIPT
@@ -1906,6 +1907,9 @@ model VisitNote {
   ePrescriptions EPrescription[]
   sickLeaves     SickLeave[]
   cdsOverrides   CdsOverride[]
+  // The patient-facing CONCLUSION handout, generated on finalize. 1:1 —
+  // see Document.visitNoteId (@unique). Null until the worker renders it.
+  conclusionDocument Document?
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -1963,6 +1967,11 @@ model Document {
   patient       Patient      @relation(fields: [patientId], references: [id])
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  // Set only for auto-generated CONCLUSION handouts. Unique so the
+  // visit-note-handout worker can upsert idempotently — a re-run (sweep
+  // retry, redeploy) never plants a duplicate conclusion for the same note.
+  visitNoteId   String?      @unique
+  visitNote     VisitNote?   @relation(fields: [visitNoteId], references: [id], onDelete: SetNull)
   type          DocumentType
   title         String
   fileUrl       String

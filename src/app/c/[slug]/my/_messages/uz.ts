@@ -145,6 +145,7 @@ export const uzDict = {
     rescheduleSave: "Yangi vaqtni saqlash",
     paid: "To‘langan",
     unpaid: "To‘lanmagan",
+    conclusion: "Xulosa",
     cancelReason: {
       title: "Nima uchun bekor qilyapsiz?",
       subtitle:
@@ -178,6 +179,7 @@ export const uzDict = {
     uploadErrorMime: "Faqat foto va PDF qabul qilinadi",
     uploadErrorGeneric: "Faylni yuklab bo‘lmadi",
     types: {
+      CONCLUSION: "Xulosa",
       REFERRAL: "Yo‘llanma",
       PRESCRIPTION: "Retsept",
       RESULT: "Natijalar",

@@ -35,6 +35,7 @@ import { startPatientSummaryRefreshWorker } from "./patient-summary-refresh";
 import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
+import { startVisitNoteHandoutWorker } from "./visit-note-handout";
 import { startVoiceSoapWorker } from "./voice-soap";
 
 async function main() {
@@ -97,6 +98,18 @@ async function main() {
   //                          (prescriptionId, scheduledFor) unique key.
   const medicationReminder = startMedicationReminderWorker();
 
+  // Doctor cabinet P1.1 — Conclusion → patient delivery.
+  //   visit-note-handout   30s sweep — for every FINALIZED VisitNote that
+  //                        carries a patientHandoutMarkdown but no CONCLUSION
+  //                        document yet, render the handout to a PDF and upsert
+  //                        a Document(type=CONCLUSION) the patient opens in the
+  //                        Mini App. Idempotent on the @unique
+  //                        Document.visitNoteId. A durable sweep (not the
+  //                        best-effort event bus) so a worker restart or a
+  //                        dropped event can never deny a patient their
+  //                        clinical conclusion.
+  const visitNoteHandout = startVisitNoteHandoutWorker();
+
   // Phase 17 Wave 3 — DSAR (Data Subject Access Requests).
   //   dsar:export      drains export jobs (bundle PII → encrypt → MinIO →
   //                    deliver via TG bot). One worker per process; jobs
@@ -151,6 +164,7 @@ async function main() {
     preVisit.stop();
     postVisitNps.stop();
     medicationReminder.stop();
+    visitNoteHandout.stop();
     dsarScheduler.stop();
     analyticsRefresh.stop();
     scheduledReports.stop();

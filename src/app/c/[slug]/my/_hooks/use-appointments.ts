@@ -18,6 +18,7 @@ export type MiniAppAppointment = {
   channel: string;
   priceFinal: number | null;
   endDate: string;
+  conclusionUrl?: string | null;
   doctor: {
     id: string;
     nameRu: string;

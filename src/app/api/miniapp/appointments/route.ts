@@ -96,9 +96,19 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
         },
       },
       payments: { select: { id: true, amount: true, status: true, method: true } },
+      // P1.1 — a finalized visit note may carry an auto-generated CONCLUSION
+      // document. Surface a direct link so the patient can open it straight
+      // from the past-visit detail instead of hunting the documents list.
+      visitNote: { select: { conclusionDocument: { select: { id: true } } } },
     },
   });
-  return ok({ appointments: rows });
+  const appointments = rows.map(({ visitNote, ...row }) => ({
+    ...row,
+    conclusionUrl: visitNote?.conclusionDocument
+      ? `/api/miniapp/documents/${visitNote.conclusionDocument.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`
+      : null,
+  }));
+  return ok({ appointments });
 });
 
 export const POST = createMiniAppHandler(

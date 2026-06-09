@@ -37,8 +37,13 @@ export function AppointmentDetailDialog({
   initialMode?: "view" | "reschedule";
 }) {
   const t = useT();
-  const { state } = useMiniAppAuth();
+  const { state, initData } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
+  // `<a target="_blank">` opens without our custom headers, so the conclusion
+  // link carries init-data via query — same pattern as the documents screen.
+  const conclusionLinkParam = initData
+    ? `&initData=${encodeURIComponent(initData)}`
+    : "";
   const tg = useTelegramWebApp();
   const [mode, setMode] = React.useState<"view" | "reschedule">(initialMode);
   const [date, setDate] = React.useState<string | null>(null);
@@ -141,21 +146,36 @@ export function AppointmentDetailDialog({
           </div>
         </MCard>
         {mode === "view" ? (
-          editable ? (
+          appointment.conclusionUrl || editable ? (
             <div className="grid grid-cols-1 gap-2">
-              <MButton
-                variant="secondary"
-                onClick={() => setMode("reschedule")}
-              >
-                {t.appts.reschedule}
-              </MButton>
-              <MButton
-                variant="danger"
-                onClick={() => setCancelOpen(true)}
-                disabled={cancel.isPending}
-              >
-                {t.appts.cancel}
-              </MButton>
+              {appointment.conclusionUrl ? (
+                <a
+                  href={`${appointment.conclusionUrl}${conclusionLinkParam}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <MButton variant="primary" className="w-full">
+                    {t.appts.conclusion}
+                  </MButton>
+                </a>
+              ) : null}
+              {editable ? (
+                <>
+                  <MButton
+                    variant="secondary"
+                    onClick={() => setMode("reschedule")}
+                  >
+                    {t.appts.reschedule}
+                  </MButton>
+                  <MButton
+                    variant="danger"
+                    onClick={() => setCancelOpen(true)}
+                    disabled={cancel.isPending}
+                  >
+                    {t.appts.cancel}
+                  </MButton>
+                </>
+              ) : null}
             </div>
           ) : null
         ) : (

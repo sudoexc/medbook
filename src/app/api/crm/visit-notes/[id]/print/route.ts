@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
+import { renderHandoutHtml } from "@/server/visit-notes/render-handout";
 
 function idFromUrl(request: Request): string {
   // /api/crm/visit-notes/[id]/print — id is segment[-2].
@@ -56,77 +57,6 @@ function renderBody(markdown: string | null): string {
     return `<div class="empty">—</div>`;
   }
   return `<div class="body-md">${escapeHtml(markdown)}</div>`;
-}
-
-/**
- * Tiny safe Markdown renderer for the handout body.
- *
- * Supports only what the deterministic composer emits:
- *   - `# Heading 1` / `## Heading 2` at the start of a line
- *   - `**bold**`, `_italic_` inline (no nesting)
- *   - `- bullet` lines collected into a single <ul>
- *   - Blank-line-separated paragraphs
- *
- * Everything is escaped first, then re-marked, so user-typed HTML in the
- * editable handout cannot inject markup into the printed page.
- */
-function renderHandoutMarkdown(markdown: string | null): string {
-  const src = (markdown ?? "").trim();
-  if (!src) return `<p class="empty">—</p>`;
-
-  const inline = (s: string) =>
-    escapeHtml(s)
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(^|[\s(])_([^_]+)_(?=$|[\s.,;:!?)])/g, "$1<em>$2</em>");
-
-  const lines = src.replace(/\r\n/g, "\n").split("\n");
-  const out: string[] = [];
-  let bulletBuf: string[] = [];
-  let paragraphBuf: string[] = [];
-
-  const flushBullets = () => {
-    if (bulletBuf.length === 0) return;
-    out.push(`<ul class="md-list">${bulletBuf.join("")}</ul>`);
-    bulletBuf = [];
-  };
-  const flushParagraph = () => {
-    if (paragraphBuf.length === 0) return;
-    const text = paragraphBuf.join(" ").trim();
-    if (text) out.push(`<p>${inline(text)}</p>`);
-    paragraphBuf = [];
-  };
-
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (line.length === 0) {
-      flushParagraph();
-      flushBullets();
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      flushParagraph();
-      flushBullets();
-      out.push(`<h1 class="md-h1">${inline(line.slice(2))}</h1>`);
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      flushParagraph();
-      flushBullets();
-      out.push(`<h2 class="md-h2">${inline(line.slice(3))}</h2>`);
-      continue;
-    }
-    if (line.startsWith("- ")) {
-      flushParagraph();
-      bulletBuf.push(`<li>${inline(line.slice(2))}</li>`);
-      continue;
-    }
-    flushBullets();
-    paragraphBuf.push(line);
-  }
-  flushParagraph();
-  flushBullets();
-
-  return out.join("\n");
 }
 
 export const GET = createApiListHandler(
@@ -314,7 +244,7 @@ export const GET = createApiListHandler(
             };
 
       const handoutBody = note.patientHandoutMarkdown?.trim()
-        ? renderHandoutMarkdown(note.patientHandoutMarkdown)
+        ? renderHandoutHtml(note.patientHandoutMarkdown)
         : `<p class="empty">${escapeHtml(handoutLabels.emptyHint)}</p>`;
 
       const handoutHtml = `<!doctype html>

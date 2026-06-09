@@ -145,6 +145,7 @@ export const ruDict = {
     rescheduleSave: "Сохранить новое время",
     paid: "Оплачено",
     unpaid: "Не оплачено",
+    conclusion: "Заключение",
     cancelReason: {
       title: "Почему отменяете?",
       subtitle:
@@ -178,6 +179,7 @@ export const ruDict = {
     uploadErrorMime: "Поддерживаются фото и PDF",
     uploadErrorGeneric: "Не удалось загрузить файл",
     types: {
+      CONCLUSION: "Заключение",
       REFERRAL: "Направление",
       PRESCRIPTION: "Рецепт",
       RESULT: "Результаты",

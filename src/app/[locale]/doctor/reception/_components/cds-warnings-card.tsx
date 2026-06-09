@@ -46,23 +46,23 @@ const SEVERITY_STYLES: Record<
   { wrap: string; chip: string; label: string }
 > = {
   CONTRAINDICATED: {
-    wrap: "border-red-300 bg-red-50",
-    chip: "bg-red-100 text-red-800",
+    wrap: "border-destructive/40 bg-destructive/10",
+    chip: "bg-destructive/15 text-destructive",
     label: "Противопоказано",
   },
   MAJOR: {
-    wrap: "border-red-200 bg-red-50/60",
-    chip: "bg-red-100 text-red-700",
+    wrap: "border-destructive/30 bg-destructive/5",
+    chip: "bg-destructive/10 text-destructive",
     label: "Высокий риск",
   },
   MODERATE: {
-    wrap: "border-amber-200 bg-amber-50",
-    chip: "bg-amber-100 text-amber-800",
+    wrap: "border-warning/40 bg-warning/10",
+    chip: "bg-warning/20 text-[color:var(--warning)]",
     label: "Внимание",
   },
   MINOR: {
-    wrap: "border-blue-200 bg-blue-50",
-    chip: "bg-blue-100 text-blue-800",
+    wrap: "border-info/30 bg-info/10",
+    chip: "bg-info/15 text-[color:var(--info)]",
     label: "Информация",
   },
 };
@@ -132,16 +132,16 @@ export function CdsWarningsCard({
 
   if (result.warnings.length === 0) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
+      <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-[11px] text-[color:var(--success)]">
         <AlertOctagonIcon className="size-3 rotate-180" />
         Конфликтов и аллергий не выявлено
         {result.resolvedDrugs.length > 0 && (
-          <span className="text-emerald-600">
+          <span className="text-[color:var(--success)]/70">
             ({result.resolvedDrugs.length} назначений распознано)
           </span>
         )}
         {result.unresolvedLines.length > 0 && (
-          <span className="ml-auto text-emerald-600/70">
+          <span className="ml-auto text-[color:var(--success)]/60">
             {result.unresolvedLines.length} строк без сопоставления
           </span>
         )}
@@ -152,9 +152,9 @@ export function CdsWarningsCard({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground">
-        <ShieldAlertIcon className="size-3 text-red-600" />
+        <ShieldAlertIcon className="size-3 text-destructive" />
         Предупреждения CDS
-        <span className="rounded-md bg-red-100 px-1 text-[10px] font-semibold text-red-800">
+        <span className="rounded-md bg-destructive/15 px-1 text-[10px] font-semibold text-destructive">
           {result.warnings.length}
         </span>
       </div>
@@ -248,7 +248,7 @@ function WarningRow({
           "border-muted bg-muted/30 text-muted-foreground",
         )}
       >
-        <CheckCircle2Icon className="size-3 text-emerald-600" />
+        <CheckCircle2Icon className="size-3 text-[color:var(--success)]" />
         <span className="line-through">{warning.title}</span>
         <span className="ml-auto text-[10px] uppercase tracking-wide">
           override записан

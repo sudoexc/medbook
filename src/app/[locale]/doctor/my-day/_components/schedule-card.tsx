@@ -156,17 +156,18 @@ export function ScheduleCard() {
       <ul className="flex-1 divide-y divide-border/60 px-2">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <li
-              key={i}
-              className="flex items-center gap-3 px-3 py-3.5"
-            >
-              <Skeleton className="h-4 w-10" />
-              <Skeleton className="size-2 rounded-full" />
-              <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/3" />
+            <li key={i} className="flex items-center gap-3 px-3 py-4">
+              <div className="w-14 shrink-0">
+                <Skeleton className="h-5 w-11" />
               </div>
-              <Skeleton className="h-7 w-20" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+                <Skeleton className="size-2.5 rounded-full" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-2/5" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-9 w-24 shrink-0 rounded-lg" />
             </li>
           ))
         ) : entries.length === 0 ? (

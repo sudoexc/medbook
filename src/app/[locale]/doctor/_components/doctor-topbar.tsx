@@ -98,7 +98,7 @@ export function DoctorTopbar({
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
           placeholder="Поиск пациента, врача, записи, телефона, ФИО..."
-          className="h-11 w-full rounded-2xl border border-border bg-background pl-10 pr-20 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary/40 focus:ring-4 focus:ring-primary/10"
+          className="h-11 w-full rounded-2xl border border-border bg-background pl-10 pr-20 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         />
         <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
           {searchValue ? (

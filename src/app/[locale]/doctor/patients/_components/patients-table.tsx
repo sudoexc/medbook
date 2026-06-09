@@ -9,9 +9,12 @@ import {
   MessageSquareIcon,
   MoreHorizontalIcon,
   PhoneIcon,
+  SearchXIcon,
+  UsersIcon,
 } from "lucide-react";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { EmptyState } from "@/components/atoms/empty-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -178,10 +181,15 @@ export function PatientsTable() {
           Не удалось загрузить список пациентов
         </div>
       ) : isEmpty ? (
-        <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-          {filters.q
-            ? "Ничего не найдено по этому запросу."
-            : "У вас пока нет пациентов в этой группе."}
+        <div className="p-4">
+          <EmptyState
+            icon={filters.q ? <SearchXIcon /> : <UsersIcon />}
+            title={
+              filters.q
+                ? "Ничего не найдено по этому запросу."
+                : "У вас пока нет пациентов в этой группе."
+            }
+          />
         </div>
       ) : (
         <ul className="divide-y divide-border">

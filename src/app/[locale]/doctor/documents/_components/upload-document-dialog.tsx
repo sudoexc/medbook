@@ -2,9 +2,17 @@
 
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { SearchIcon, XIcon } from "lucide-react";
+import { SearchIcon } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 import { useDocumentsFilters } from "../_hooks/documents-context";
 import type { DocumentType } from "../_hooks/use-doctor-documents";
@@ -157,36 +165,21 @@ export function UploadDocumentDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
-      onClick={onClose}
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
-      >
-        <header className="flex items-start justify-between border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Загрузить документ
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Файл будет привязан к пациенту и доступен в его карте
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            onClick={onClose}
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <XIcon className="size-4" />
-          </button>
-        </header>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Загрузить документ</DialogTitle>
+          <DialogDescription>
+            Файл будет привязан к пациенту и доступен в его карте
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="space-y-4">
           {/* Patient picker */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-foreground">
@@ -310,35 +303,40 @@ export function UploadDocumentDialog({
           </div>
 
           {error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {error}
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <span className="min-w-0">{error}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={handleSubmit}
+                disabled={!canSubmit || submitting}
+                className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                Повторить
+              </Button>
             </div>
           ) : null}
         </div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <button
+        <DialogFooter>
+          <Button
             type="button"
+            variant="outline"
             onClick={onClose}
-            className="inline-flex h-9 items-center rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            disabled={submitting}
           >
             Отмена
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
-            className={cn(
-              "inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold transition-colors",
-              !canSubmit || submitting
-                ? "cursor-not-allowed bg-muted text-muted-foreground"
-                : "bg-primary text-primary-foreground hover:bg-primary/90",
-            )}
           >
             {submitting ? "Загрузка…" : "Загрузить"}
-          </button>
-        </footer>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

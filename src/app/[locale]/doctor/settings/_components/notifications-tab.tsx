@@ -70,7 +70,36 @@ export function NotificationsTab() {
   if (prefs.isLoading) {
     return (
       <div className="rounded-2xl border border-border bg-card p-6">
-        <Skeleton className="h-72 w-full" />
+        <Skeleton className="mb-1 h-4 w-40 rounded-md" />
+        <Skeleton className="mb-5 h-3 w-3/4 rounded-md" />
+
+        <div className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] items-center gap-3 border-b border-border pb-2">
+          <Skeleton className="h-3 w-16 rounded-md" />
+          {CHANNELS.map((c) => (
+            <Skeleton key={c.key} className="mx-auto h-3 w-12 rounded-md" />
+          ))}
+        </div>
+
+        <ul className="divide-y divide-border">
+          {EVENTS.map((e) => (
+            <li
+              key={e.key}
+              className="grid grid-cols-[minmax(0,1fr)_80px_80px_80px] items-center gap-3 py-3"
+            >
+              <div className="min-w-0 space-y-1.5">
+                <Skeleton className="h-4 w-32 rounded-md" />
+                <Skeleton className="h-3 w-56 rounded-md" />
+              </div>
+              {CHANNELS.map((c) => (
+                <div key={c.key} className="flex justify-center">
+                  <Skeleton className="h-5 w-9 rounded-full" />
+                </div>
+              ))}
+            </li>
+          ))}
+        </ul>
+
+        <Skeleton className="mt-4 h-10 w-full rounded-lg" />
       </div>
     );
   }

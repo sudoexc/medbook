@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
+import { Button } from "@/components/ui/button";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import { useFinalizeVisitNote, useVisitNote } from "../_hooks/use-visit-note";
@@ -161,11 +162,11 @@ export function ActivePatientCard() {
       )}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-4">
-        <button
+        <Button
           type="button"
+          size="lg"
           disabled={!visitNoteId || finalize.isPending || isFinalized}
           onClick={onFinalize}
-          className="motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
         >
           {finalize.isPending ? (
             <Loader2Icon className="size-4 animate-spin" />
@@ -173,24 +174,26 @@ export function ActivePatientCard() {
             <SquareCheckIcon className="size-4" />
           )}
           {isFinalized ? "Приём завершён" : "Завершить приём"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="lg"
           onClick={() => router.push(`/doctor/patients/${p.id}`)}
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           <HistoryIcon className="size-4 text-muted-foreground" />
           Открыть карту
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="lg"
           onClick={onPrint}
           disabled={!visitNoteId}
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-foreground/50"
         >
           <PrinterIcon className="size-4 text-muted-foreground" />
           Печать
-        </button>
+        </Button>
 
         <div className="ml-auto inline-flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

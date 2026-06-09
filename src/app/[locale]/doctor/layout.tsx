@@ -10,9 +10,10 @@ import { DoctorSidebar } from "./_components/doctor-sidebar";
 import { DoctorTopbar } from "./_components/doctor-topbar";
 
 // Doctor cabinet is paused (priority pivot 2026-05-18, feature freeze 2026-05-22).
-// Several screens still render MOCK_* fixtures (last-diagnosis, patient meta chips,
-// visits timeline, AI recos) — exposing them to real doctors would show fake
-// patient data. Bounce everyone to /crm until the cabinet is finished.
+// The P0.1 fake-data blocker is resolved — the live visit screens now read real
+// data (last-visit / last-diagnosis via useDoctorPatientVisits, meta chips via
+// real allergies/chronic, AI rail via patient-segments). Other unpause blockers
+// (P0.2 2FA-over-/api, P0.3 audit) remain, so we still bounce everyone to /crm.
 // Flip DOCTOR_CABINET_ENABLED=1 in env to re-enable for dev/preview.
 export default async function DoctorLayout({
   children,

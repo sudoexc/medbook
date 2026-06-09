@@ -184,8 +184,8 @@ export default async function VisitsPage({
           patientId={patientId}
           chronicConditions={data.chronic.map((c) => c.name)}
         />
-        <LastVisitCard />
-        <LastDiagnosisCard />
+        <LastVisitCard patientId={patientId} />
+        <LastDiagnosisCard patientId={patientId} />
       </aside>
     </div>
   );

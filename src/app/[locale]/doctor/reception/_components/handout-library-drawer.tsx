@@ -15,6 +15,7 @@
  * pane before commit so they can sanity-check.
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   BookOpenIcon,
   CheckIcon,
@@ -56,6 +57,7 @@ export function HandoutLibraryDrawer({
   diagnosisCode,
   onPick,
 }: Props) {
+  const t = useTranslations("doctor.receptionDialogs");
   const [query, setQuery] = React.useState("");
   const [debounced, setDebounced] = React.useState("");
   const [topicFilter, setTopicFilter] = React.useState<string | null>(null);
@@ -119,9 +121,9 @@ export function HandoutLibraryDrawer({
               <BookOpenIcon className="size-4" />
             </div>
             <div className="flex-1">
-              <DialogTitle className="text-base">Библиотека памяток</DialogTitle>
+              <DialogTitle className="text-base">{t("handout.title")}</DialogTitle>
               <DialogDescription className="text-xs">
-                Подберите готовый блок для пациента и вставьте в памятку.
+                {t("handout.description")}
               </DialogDescription>
             </div>
             {diagnosisCode && (
@@ -141,7 +143,7 @@ export function HandoutLibraryDrawer({
                 <input
                   autoFocus
                   type="text"
-                  placeholder="Поиск (давление, антибиотики…)"
+                  placeholder={t("handout.searchPlaceholder")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="h-8 w-full rounded-lg border border-border bg-card pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -160,21 +162,21 @@ export function HandoutLibraryDrawer({
                     )}
                   >
                     <FilterIcon className="size-2.5" />
-                    Все
+                    {t("handout.allTopics")}
                   </button>
-                  {topics.map((t) => (
+                  {topics.map((topic) => (
                     <button
-                      key={t}
+                      key={topic}
                       type="button"
-                      onClick={() => setTopicFilter(t === topicFilter ? null : t)}
+                      onClick={() => setTopicFilter(topic === topicFilter ? null : topic)}
                       className={cn(
                         "rounded-md border px-1.5 py-0.5 text-[10px] transition-colors",
-                        t === topicFilter
+                        topic === topicFilter
                           ? "border-primary/30 bg-primary/10 text-primary"
                           : "border-border bg-card text-muted-foreground hover:bg-muted",
                       )}
                     >
-                      {t}
+                      {topic}
                     </button>
                   ))}
                 </div>
@@ -183,21 +185,21 @@ export function HandoutLibraryDrawer({
 
             <div className="flex-1 overflow-y-auto px-2 py-2">
               {isLoading ? (
-                <p className="px-2 text-xs text-muted-foreground">Загрузка…</p>
+                <p className="px-2 text-xs text-muted-foreground">{t("common.loading")}</p>
               ) : filtered.length === 0 ? (
                 <p className="px-2 text-xs text-muted-foreground">
-                  Ничего не найдено.
+                  {t("handout.empty")}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-0.5">
-                  {filtered.map((t) => {
-                    const isPicked = selected?.id === t.id;
-                    const isPinned = pinned.has(t.code);
+                  {filtered.map((tpl) => {
+                    const isPicked = selected?.id === tpl.id;
+                    const isPinned = pinned.has(tpl.code);
                     return (
-                      <li key={t.id} className="group relative">
+                      <li key={tpl.id} className="group relative">
                         <button
                           type="button"
-                          onClick={() => setSelected(t)}
+                          onClick={() => setSelected(tpl)}
                           className={cn(
                             "flex w-full items-start gap-2 rounded-md border px-2 py-1.5 pr-7 text-left text-xs transition-colors",
                             isPicked
@@ -207,21 +209,21 @@ export function HandoutLibraryDrawer({
                         >
                           {isPinned ? (
                             <StarIcon className="mt-0.5 size-3 shrink-0 fill-amber-400 text-amber-500" />
-                          ) : t.matched ? (
+                          ) : tpl.matched ? (
                             <StarIcon className="mt-0.5 size-3 shrink-0 text-amber-500" />
                           ) : null}
                           <div className="flex-1">
                             <div className="font-semibold text-foreground">
-                              {t.titleRu}
+                              {tpl.titleRu}
                             </div>
-                            {t.summaryRu && (
+                            {tpl.summaryRu && (
                               <div className="text-[11px] text-muted-foreground">
-                                {t.summaryRu}
+                                {tpl.summaryRu}
                               </div>
                             )}
-                            {t.topic && (
+                            {tpl.topic && (
                               <div className="mt-0.5 inline-block rounded-sm bg-muted px-1 text-[9px] uppercase tracking-wide text-muted-foreground">
-                                {t.topic}
+                                {tpl.topic}
                               </div>
                             )}
                           </div>
@@ -230,9 +232,9 @@ export function HandoutLibraryDrawer({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggle(t.code);
+                            toggle(tpl.code);
                           }}
-                          title={isPinned ? "Снять из избранного" : "В избранное"}
+                          title={isPinned ? t("favorites.remove") : t("favorites.add")}
                           className={cn(
                             "absolute right-1 top-1 inline-flex size-5 items-center justify-center rounded-md transition-colors",
                             isPinned
@@ -259,8 +261,7 @@ export function HandoutLibraryDrawer({
           <div className="flex flex-col overflow-hidden">
             {!selected ? (
               <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-muted-foreground">
-                Выберите шаблон слева — здесь появится предпросмотр и
-                кнопки «Добавить» / «Заменить».
+                {t("handout.previewHint")}
               </div>
             ) : (
               <>
@@ -284,15 +285,15 @@ export function HandoutLibraryDrawer({
                 </pre>
                 <div className="flex items-center justify-end gap-2 border-t px-4 py-2">
                   <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-                    Отмена
+                    {t("actions.cancel")}
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleReplace} className="gap-1">
                     <ReplaceIcon className="size-3.5" />
-                    Заменить
+                    {t("handout.replace")}
                   </Button>
                   <Button size="sm" onClick={handleAppend} className="gap-1">
                     <PlusIcon className="size-3.5" />
-                    Добавить
+                    {t("handout.append")}
                   </Button>
                 </div>
               </>

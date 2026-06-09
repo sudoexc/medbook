@@ -12,6 +12,7 @@
  * catalog drawer to pull a curated DrugCatalog row when desired.
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   Loader2Icon,
   PillIcon,
@@ -71,6 +72,7 @@ export function EPrescriptionDialog({
   diagnosisName,
   seedItems,
 }: Props) {
+  const t = useTranslations("doctor.receptionDialogs");
   const [items, setItems] = React.useState<Draft[]>([]);
   const [notes, setNotes] = React.useState("");
   const [validForDays, setValidForDays] = React.useState(30);
@@ -133,21 +135,21 @@ export function EPrescriptionDialog({
       <DialogContent className="sm:max-w-2xl max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PillIcon className="size-4" /> Рецепт
+            <PillIcon className="size-4" /> {t("eprescription.title")}
           </DialogTitle>
           <DialogDescription>
-            Выпишите препараты пациенту. После сохранения откроется печатная форма с QR.
+            {t("eprescription.description")}
           </DialogDescription>
         </DialogHeader>
 
         {!patientId ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-            Откройте активный приём, чтобы выписать рецепт.
+            {t("eprescription.noPatientHint")}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             <div className="text-xs text-muted-foreground">
-              МКБ-10:{" "}
+              {t("common.icd10")}:{" "}
               <span className="font-medium text-foreground">
                 {diagnosisCode ?? "—"}
               </span>
@@ -173,7 +175,7 @@ export function EPrescriptionDialog({
                         onClick={() =>
                           setItems((prev) => prev.filter((p) => p.uid !== it.uid))
                         }
-                        title="Удалить позицию"
+                        title={t("eprescription.removeItem")}
                       >
                         <Trash2Icon className="size-3.5" />
                       </button>
@@ -181,34 +183,34 @@ export function EPrescriptionDialog({
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <InputField
-                      label="Препарат"
+                      label={t("eprescription.fields.drug")}
                       value={it.drugName}
                       onChange={(v) => updateItem(setItems, it.uid, { drugName: v })}
-                      placeholder="Парацетамол 500 мг"
+                      placeholder={t("eprescription.placeholders.drug")}
                       className="sm:col-span-2"
                     />
                     <InputField
-                      label="Доза"
+                      label={t("eprescription.fields.dose")}
                       value={it.dose}
                       onChange={(v) => updateItem(setItems, it.uid, { dose: v })}
-                      placeholder="1 таб."
+                      placeholder={t("eprescription.placeholders.dose")}
                     />
                     <InputField
-                      label="Частота"
+                      label={t("eprescription.fields.frequency")}
                       value={it.frequency}
                       onChange={(v) => updateItem(setItems, it.uid, { frequency: v })}
-                      placeholder="3 раза в день"
+                      placeholder={t("eprescription.placeholders.frequency")}
                     />
                     <InputField
-                      label="Путь"
+                      label={t("eprescription.fields.route")}
                       value={it.route ?? ""}
                       onChange={(v) =>
                         updateItem(setItems, it.uid, { route: v || null })
                       }
-                      placeholder="внутрь"
+                      placeholder={t("eprescription.placeholders.route")}
                     />
                     <InputField
-                      label="Длительность, дн."
+                      label={t("eprescription.fields.durationDays")}
                       value={it.durationDays != null ? String(it.durationDays) : ""}
                       onChange={(v) => {
                         const n = parseInt(v, 10);
@@ -216,16 +218,16 @@ export function EPrescriptionDialog({
                           durationDays: Number.isFinite(n) && n > 0 ? n : null,
                         });
                       }}
-                      placeholder="7"
+                      placeholder={t("eprescription.placeholders.durationDays")}
                       inputMode="numeric"
                     />
                     <InputField
-                      label="Инструкция (необязательно)"
+                      label={t("eprescription.fields.instructions")}
                       value={it.instructions ?? ""}
                       onChange={(v) =>
                         updateItem(setItems, it.uid, { instructions: v || null })
                       }
-                      placeholder="после еды"
+                      placeholder={t("eprescription.placeholders.instructions")}
                       className="sm:col-span-2"
                     />
                   </div>
@@ -239,12 +241,12 @@ export function EPrescriptionDialog({
               className="inline-flex items-center justify-center gap-1 rounded-md border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
             >
               <PlusIcon className="size-3.5" />
-              Добавить препарат
+              {t("eprescription.addDrug")}
             </button>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <InputField
-                label="Действителен, дн."
+                label={t("eprescription.fields.validForDays")}
                 value={String(validForDays)}
                 onChange={(v) => {
                   const n = parseInt(v, 10);
@@ -254,20 +256,21 @@ export function EPrescriptionDialog({
               />
               <label className="flex flex-col gap-1 text-xs">
                 <span className="font-medium text-muted-foreground">
-                  Примечания врача
+                  {t("eprescription.fields.doctorNotes")}
                 </span>
                 <textarea
                   className="min-h-[60px] resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="контроль через 7 дней"
+                  placeholder={t("eprescription.placeholders.doctorNotes")}
                 />
               </label>
             </div>
 
             {create.isError ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
-                Не удалось выписать рецепт: {(create.error as Error)?.message ?? "ошибка"}
+                {t("eprescription.submitError")}{" "}
+                {(create.error as Error)?.message ?? t("common.errorFallback")}
               </div>
             ) : null}
           </div>
@@ -280,7 +283,7 @@ export function EPrescriptionDialog({
             disabled={create.isPending}
           >
             <XIcon className="size-3.5" />
-            Отмена
+            {t("actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
             {create.isPending ? (
@@ -288,7 +291,7 @@ export function EPrescriptionDialog({
             ) : (
               <PrinterIcon className="size-3.5" />
             )}
-            Выписать и напечатать
+            {t("eprescription.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

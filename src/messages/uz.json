@@ -3280,6 +3280,11 @@
       "noOrphanDoctors": "Bo'sh shifokor kartalari yo'q. Avval «Shifokorlar» bo'limida shifokor yarating, so'ng hisobni bog'lang.",
       "doctorTakenError": "Ushbu shifokor kartasi allaqachon boshqa hisobga bog'langan.",
       "doctorRequiredError": "«Shifokor» roli uchun shifokor kartasini tanlash kerak.",
+      "orphanTitle": "Akkauntsiz shifokorlar",
+      "orphanHint": "Bu shifokorlar jadvalda bor, lekin kabinetga kira olmaydi — hali logini yo'q.",
+      "orphanCreateLogin": "Login yaratish",
+      "resetTooShort": "Kamida 8 ta belgi — yoki yaratish uchun bo'sh qoldiring.",
+      "emailEditHint": "Email o'zgartirilsa, tizimga kirish logini ham o'zgaradi.",
       "cols": {
         "name": "Ism",
         "email": "Email",
@@ -5241,5 +5246,1500 @@
     "updated": "Parol yangilandi",
     "invalidCurrent": "Joriy parol noto'g'ri",
     "currentRequired": "Joriy parolni kiriting"
+  },
+  "doctor": {
+    "reception": {
+      "common": {
+        "loading": "Yuklanmoqda…",
+        "consultation": "Konsultatsiya"
+      },
+      "page": {
+        "backToList": "Qabullar ro‘yxatiga"
+      },
+      "tabs": {
+        "session": "Qabul",
+        "history": "Tashriflar tarixi",
+        "documents": "Hujjatlar",
+        "labs": "Tahlillar",
+        "prescriptions": "Tayinlovlar"
+      },
+      "tabContent": {
+        "selectPatient": "Navbatdan faol bemorni tanlang."
+      },
+      "visitsFilters": {
+        "type": "Turi",
+        "diagnosis": "Tashxis",
+        "doctor": "Shifokor",
+        "all": "Hammasi",
+        "reset": "Tozalash"
+      },
+      "queue": {
+        "title": "Navbat",
+        "totalToday": "Bugun jami: {total}",
+        "inProgressBadge": "Qabulda: {name}",
+        "loading": "Navbat yuklanmoqda…",
+        "empty": "Navbatda bemorlar yo‘q.",
+        "open": "Ochish",
+        "defer": "Keyinga qoldirish",
+        "start": "Boshlash",
+        "switchConfirm": "Hozir qabulda {current}. {next}ga o‘tilsinmi?",
+        "status": {
+          "booked": "Yozilgan",
+          "waiting": "Kutmoqda",
+          "inProgress": "Qabulda",
+          "completed": "Yakunlangan",
+          "cancelled": "Bekor qilingan",
+          "noShow": "Kelmadi",
+          "skipped": "O‘tkazib yuborilgan"
+        }
+      },
+      "activePatient": {
+        "noActiveTitle": "Faol bemor yo‘q",
+        "noActiveHint": "Tashrif kartasini ochish uchun navbatdan qabulni boshlang.",
+        "visitFinished": "Tashrif yakunlandi",
+        "activePatient": "Faol bemor",
+        "ageLabel": "Yoshi",
+        "ageYears": "{age} yosh",
+        "phoneLabel": "Telefon",
+        "typeLabel": "Turi",
+        "scheduledLabel": "Rejalashtirilgan",
+        "cabinet": "{number}-xona",
+        "diagnosisLabel": "Tashxis",
+        "finishVisit": "Tashrifni yakunlash",
+        "openChart": "Kartani ochish",
+        "print": "Chop etish",
+        "visitMode": "Tashrif rejimi",
+        "modeFinished": "yakunlangan",
+        "modeActive": "faol"
+      },
+      "recentFiles": {
+        "title": "So‘nggi fayllar",
+        "selectPatient": "Fayllarni ko‘rish uchun bemorni tanlang.",
+        "empty": "Hozircha fayllar yo‘q.",
+        "download": "Yuklab olish",
+        "sizeBytes": "{value} B",
+        "sizeKb": "{value} KB",
+        "sizeMb": "{value} MB",
+        "sizeGb": "{value} GB"
+      },
+      "drafts": {
+        "title": "Xulosa qoralamalari",
+        "empty": "Hozircha qoralamalar yo‘q.",
+        "noDiagnosis": "Tashxissiz",
+        "openAll": "Hammasini ochish"
+      },
+      "historyDocs": {
+        "tab": "Hujjatlar",
+        "selectPatient": "Hujjatlarni ko‘rish uchun bemorni tanlang.",
+        "empty": "Hozircha hujjatlar yo‘q."
+      },
+      "lastVisit": {
+        "title": "So‘nggi tashrif",
+        "loadError": "Yuklab bo‘lmadi.",
+        "emptyTitle": "Hozircha tashriflar yo‘q",
+        "emptyDescription": "Tarix birinchi qabuldan keyin paydo bo‘ladi.",
+        "doctorLabel": "Shifokor",
+        "statusLabel": "Holati",
+        "statusCompleted": "Yakunlangan",
+        "openLast": "So‘nggisini ochish",
+        "noConclusion": "Xulosasiz",
+        "typeConsultation": "Konsultatsiya",
+        "typeRepeat": "Takroriy"
+      },
+      "lastDiagnosis": {
+        "title": "So‘nggi tashxis",
+        "loadError": "Yuklab bo‘lmadi.",
+        "emptyTitle": "Hozircha tashxislar yo‘q",
+        "emptyDescription": "Tashxis birinchi xulosadan keyin paydo bo‘ladi.",
+        "establishedLabel": "Qo‘yilgan"
+      },
+      "aiSummary": {
+        "title": "AI-xulosa",
+        "refresh": "Yangilash",
+        "collapse": "Yig‘ish",
+        "historySummary": "Tarix bo‘yicha xulosa",
+        "selectPatient": "Xulosani ko‘rish uchun bemorni tanlang.",
+        "analyzing": "AI hali tashrifni tahlil qilmoqda",
+        "keyTrends": "Asosiy tendensiyalar"
+      },
+      "aiRail": {
+        "assistantTitle": "AI-yordamchi",
+        "selectActivePatient": "Xulosa olish uchun faol bemorni tanlang.",
+        "summaryUnavailable": "Xulosa mavjud emas.",
+        "clarifyingTitle": "Aniqlovchi savollar",
+        "refresh": "Yangilash",
+        "generate": "Yaratish",
+        "startVisitHint": "Maslahatlarni olish uchun tashrifni boshlang.",
+        "clarifyingHint": "Aniqlovchi savollarni olish uchun «Yaratish»ni bosing.",
+        "clarifyingFallback": "Zaxira savollar ro‘yxati.",
+        "icd10Title": "ICD-10 maslahatlari",
+        "icd10Hint": "ICD-10 kodlarini olish uchun «Yaratish»ni bosing.",
+        "icd10NoData": "Mos kodlar yo‘q.",
+        "applyDiagnosis": "Tashxis sifatida qo‘llash",
+        "warningsTitle": "Ogohlantirishlar",
+        "warningsStartHint": "Ogohlantirishlarni ko‘rish uchun tashrifni boshlang.",
+        "warningsEmpty": "Ogohlantirishlar yo‘q.",
+        "smartBuilderTitle": "Aqlli konstruktor",
+        "smartBuilderSubtitle": "Tashrif ma’lumotlaridan xulosa tuzish",
+        "toneLikely": "ehtimol",
+        "tonePossible": "mumkin"
+      },
+      "fields": {
+        "complaints": {
+          "label": "Shikoyatlar",
+          "placeholder": "Bemor shikoyatlarini yozing…"
+        },
+        "anamnesis": {
+          "label": "Anamnez",
+          "placeholder": "Kasallik va hayot anamnezi…"
+        },
+        "examination": {
+          "label": "Ko‘rik",
+          "placeholder": "Obyektiv ko‘rik ma’lumotlari…"
+        },
+        "prescriptions": {
+          "label": "Tayinlovlar",
+          "placeholder": "Dori qo‘shing…"
+        },
+        "advice": {
+          "label": "Tavsiyalar",
+          "placeholder": "Bemorga tavsiyalar…"
+        }
+      },
+      "editor": {
+        "tabConclusion": "Xulosa",
+        "tabHandout": "Bemorga eslatma",
+        "autosaveLabel": "Avto-saqlash",
+        "conclusionPlaceholder": "Xulosani kiriting…",
+        "conclusionPlaceholderEmpty": "Xulosa tuzish uchun tashrif maydonlarini to‘ldiring.",
+        "handoutComposedHint": "Eslatma tashrif maydonlaridan tuzildi.",
+        "library": "Kutubxona",
+        "rebuild": "Qayta tuzish",
+        "build": "Tuzish",
+        "print": "Chop etish",
+        "handoutLabel": "Bemorga eslatma",
+        "handoutPlaceholder": "Bemor uchun eslatmani kiriting…",
+        "handoutPlaceholderNoFields": "Eslatma tuzish uchun tashrif maydonlarini to‘ldiring.",
+        "handoutPlaceholderEmpty": "Eslatma hozircha bo‘sh.",
+        "saving": "Saqlanmoqda…",
+        "savedAt": "{time} da saqlandi",
+        "noChanges": "O‘zgarishlar yo‘q",
+        "stats": "{chars} belgi, {words} so‘z",
+        "finalizedBadge": "Yakunlangan"
+      },
+      "structured": {
+        "title": "Qabul ma’lumotlari",
+        "labOrder": "Tahlillar",
+        "labOrderTitle": "Tahlillarni tayinlash",
+        "rx": "Retsept",
+        "rxTitle": "Retsept yozish",
+        "sickLeave": "Kasallik varaqasi",
+        "sickLeaveTitle": "Kasallik varaqasini berish",
+        "refer": "Yo‘llanma",
+        "referTitle": "Yo‘llanma yaratish",
+        "empty": "Maydon bo‘sh.",
+        "catalog": "Katalog",
+        "catalogTitle": "Katalogni ochish",
+        "builder": "Konstruktor",
+        "add": "Qo‘shish",
+        "presetTitle": "Shablondan qo‘shish",
+        "presetTitleWithTemplate": "Protokol shablonidan qo‘shish",
+        "remove": "O‘chirish"
+      },
+      "diagnosis": {
+        "title": "Tashxis",
+        "searchPlaceholder": "ICD-10 bo‘yicha qidiruv…",
+        "reset": "Tozalash",
+        "applyProtocolTitle": "Protokolni qo‘llash",
+        "applyStandard": "Standartni qo‘llash"
+      },
+      "cds": {
+        "checking": "Mosligi tekshirilmoqda…",
+        "noConflicts": "Nizolar topilmadi",
+        "recognizedCount": "aniqlandi: {count}",
+        "unmatchedCount": "aniqlanmadi: {count}",
+        "warningsTitle": "Ogohlantirishlar",
+        "unresolvedNote": "{count, plural, other {# qator aniqlanmadi}}",
+        "overrideRecorded": "Hisobga olindi",
+        "acknowledge": "Hisobga oldim",
+        "overrideReason": "Sabab",
+        "commentRequired": "Sababni ko‘rsating",
+        "commentOptional": "Izoh (ixtiyoriy)",
+        "saveError": "Saqlab bo‘lmadi: {message}",
+        "errorFallback": "noma’lum xatolik",
+        "cancel": "Bekor qilish",
+        "save": "Saqlash",
+        "severity": {
+          "contraindicated": "Qarshi ko‘rsatma",
+          "major": "Jiddiy",
+          "moderate": "O‘rtacha",
+          "minor": "Yengil"
+        },
+        "reasons": {
+          "CLINICALLY_JUSTIFIED": "Klinik asoslangan",
+          "PATIENT_INFORMED": "Bemor xabardor qilingan",
+          "ALTERNATIVES_TRIED": "Muqobillar sinab ko‘rilgan",
+          "FALSE_POSITIVE": "Noto‘g‘ri ishga tushish",
+          "OTHER": "Boshqa"
+        }
+      }
+    },
+    "receptionDialogs": {
+      "actions": {
+        "apply": "Qo‘llash",
+        "cancel": "Bekor qilish",
+        "close": "Yopish",
+        "remove": "Olib tashlash"
+      },
+      "common": {
+        "icd10": "XKT-10",
+        "loading": "Yuklanmoqda…",
+        "errorFallback": "xatolik"
+      },
+      "favorites": {
+        "add": "Sevimlilarga",
+        "remove": "Sevimlilardan olib tashlash"
+      },
+      "applyProtocol": {
+        "fallbackSummary": "Shablon barcha tuzilmaviy maydonlarga qo‘llanadi.",
+        "conclusionAddendum": "Xulosaga qo‘shimcha",
+        "footerHint": "Maydonlardagi mavjud ma’lumotlar saqlanadi, takrorlar qo‘shilmaydi.",
+        "labsHint": "G3’da laboratoriya moduliga bog‘lanadi",
+        "sections": {
+          "complaints": "Shikoyatlar",
+          "anamnesis": "Anamnez",
+          "examination": "Ko‘rik",
+          "prescriptions": "Tayinlovlar",
+          "advice": "Tavsiyalar",
+          "recommendedLabs": "Tavsiya etilgan tahlillar"
+        }
+      },
+      "catalog": {
+        "title": "Dorilar katalogi",
+        "description": "XBN, brend yoki toifa bo‘yicha qidiruv. Dorini tanlash uni tayinlovlarga qo‘shadi.",
+        "searchPlaceholder": "Qidiruv: «bisoprolol», «konkor», «amoksitsillin»…",
+        "showAll": "Hammasini ko‘rsatish",
+        "favoritesOnly": "Faqat sevimlilar",
+        "notFound": "Hech narsa topilmadi",
+        "typeToSearch": "Dori nomini kiriting",
+        "selectDrug": "Chapdan dorini tanlang",
+        "pregnancyCategory": "Homiladorlik toifasi",
+        "addToPrescriptions": "Tayinlovlarga qo‘shish",
+        "sections": {
+          "forms": "Chiqarilish shakllari",
+          "standardDoses": "Standart dozalar",
+          "contraindications": "Qarshi ko‘rsatmalar",
+          "sideEffects": "Nojo‘ya ta’sirlar",
+          "brands": "Savdo nomlari"
+        },
+        "dosing": {
+          "adult": "Kattalarga:",
+          "pediatric": "Bolalarga:",
+          "elderly": "Keksalarga:",
+          "renal": "SBK’da:"
+        },
+        "categories": {
+          "antibiotic": "Antibiotik",
+          "analgesic": "Analgetik",
+          "antipyretic": "Isitma tushiruvchi",
+          "nsaid": "NYaQV",
+          "antihistamine": "Antigistamin",
+          "gi": "OIT",
+          "cardio": "Yurak-qon tomir",
+          "respiratory": "Nafas a’zolari",
+          "vitamin": "Vitamin/BAD",
+          "sedative": "Tinchlantiruvchi",
+          "endocrine": "Endokrin",
+          "diuretic": "Diuretik",
+          "antiemetic": "Qusishga qarshi",
+          "antispasmodic": "Spazmolitik",
+          "steroid": "Steroid",
+          "topical": "Tashqi",
+          "eyeEar": "Oftalmo/LOR",
+          "urology": "Urologiya",
+          "neurological": "Nevrologiya",
+          "psychiatric": "Psixiatriya",
+          "antifungal": "Zamburug‘ga qarshi",
+          "antiviral": "Virusga qarshi",
+          "hormonal": "Gormonal",
+          "dermatological": "Dermatologiya",
+          "hematology": "Gematologiya",
+          "ophthalmic": "Oftalmologiya",
+          "gynecology": "Ginekologiya",
+          "vaccine": "Vaksina",
+          "other": "Boshqa"
+        },
+        "forms": {
+          "tab": "Tab",
+          "cap": "Kaps",
+          "syrup": "Sirop",
+          "powder": "Kukun",
+          "inhal": "Ing",
+          "injIm": "m/i",
+          "injIv": "v/i",
+          "dropsOral": "Tomchi",
+          "dropsEye": "Ko‘z tomchi",
+          "dropsEar": "Quloq tomchi",
+          "suppRect": "Shamlar",
+          "gel": "Gel",
+          "cream": "Krem",
+          "oint": "Malham"
+        }
+      },
+      "dosageBuilder": {
+        "title": "Tayinlov konstruktori",
+        "description": "Dori va parametrlarni tanlang — retsept uchun ibora avtomatik shakllanadi.",
+        "drug": "Dori",
+        "drugSearchPlaceholder": "Nomi yoki brendi bo‘yicha qidiruv (Paratsetamol, Sumamed…)",
+        "changeDrug": "Dorini almashtirish",
+        "form": "Shakli",
+        "dose": "Doza",
+        "customDose": "O‘zga…",
+        "customDosePlaceholder": "Masalan: 250 mg, 1/2 tabletka, 2,5 ml",
+        "frequency": "Qabul chastotasi",
+        "timingLabel": "Qachon qabul qilish",
+        "duration": "Davomiyligi",
+        "defaultDuration": "5 kun",
+        "durationPlaceholder": "O‘z qiymatingiz",
+        "noteLabel": "Izoh (ixtiyoriy)",
+        "notePlaceholder": "Masalan: harorat 38,5 dan yuqori bo‘lganda",
+        "preview": "Ko‘rinishi",
+        "addToPrescriptions": "Tayinlovlarga qo‘shish",
+        "timing": {
+          "beforeMeal": "Ovqatdan oldin",
+          "afterMeal": "Ovqatdan keyin",
+          "withMeal": "Ovqat vaqtida",
+          "empty": "Och qoringa",
+          "morning": "Ertalab",
+          "evening": "Kechqurun",
+          "bedtime": "Uxlashdan oldin",
+          "any": "Farqi yo‘q"
+        }
+      },
+      "eprescription": {
+        "title": "Retsept",
+        "description": "Bemorga dorilarni yozib bering. Saqlangach QR bilan bosma shakl ochiladi.",
+        "noPatientHint": "Retsept yozish uchun faol qabulni oching.",
+        "removeItem": "Qatorni o‘chirish",
+        "addDrug": "Dori qo‘shish",
+        "submit": "Yozish va chop etish",
+        "submitError": "Retsept yozib bo‘lmadi:",
+        "fields": {
+          "drug": "Dori",
+          "dose": "Doza",
+          "frequency": "Chastota",
+          "route": "Yo‘li",
+          "durationDays": "Davomiyligi, kun",
+          "instructions": "Ko‘rsatma (ixtiyoriy)",
+          "validForDays": "Amal qilish muddati, kun",
+          "doctorNotes": "Shifokor izohlari"
+        },
+        "placeholders": {
+          "drug": "Paratsetamol 500 mg",
+          "dose": "1 tab.",
+          "frequency": "kuniga 3 marta",
+          "route": "ichish",
+          "durationDays": "7",
+          "instructions": "ovqatdan keyin",
+          "doctorNotes": "7 kundan keyin nazorat"
+        }
+      },
+      "handout": {
+        "title": "Eslatmalar kutubxonasi",
+        "description": "Bemor uchun tayyor blokni tanlang va eslatmaga qo‘ying.",
+        "searchPlaceholder": "Qidiruv (bosim, antibiotiklar…)",
+        "allTopics": "Hammasi",
+        "empty": "Hech narsa topilmadi.",
+        "previewHint": "Chapdan shablonni tanlang — bu yerda ko‘rinishi va «Qo‘shish» / «Almashtirish» tugmalari paydo bo‘ladi.",
+        "replace": "Almashtirish",
+        "append": "Qo‘shish"
+      },
+      "labOrder": {
+        "title": "Laboratoriya arizasi",
+        "description": "Testlar yoki panellarni tanlang → QR bilan yo‘llanma yaratamiz.",
+        "searchPlaceholder": "Kod yoki nom bo‘yicha qidiruv (CBC, glyukoza, tireoid panel…)",
+        "loadingCatalog": "Katalog yuklanmoqda…",
+        "panels": "Panellar",
+        "tests": "Testlar",
+        "testsEmpty": "Hech narsa topilmadi. Boshqa so‘rov bilan urinib ko‘ring.",
+        "testCount": "{count, plural, other {# test}}",
+        "recommended": "★ tavsiya etiladi",
+        "turnaroundHours": "{hours}s",
+        "urgency": "Shoshilinchlik",
+        "urgencyRoutine": "Rejali",
+        "urgencyUrgent": "Shoshilinch",
+        "urgencyStat": "CITO",
+        "basket": "Savat",
+        "basketEmpty": "Bo‘sh — chapdan panel va/yoki testlarni tanlang.",
+        "detailsLoadOnPrint": "tafsilotlar chop etishda yuklanadi",
+        "notesLabel": "Laborant uchun izoh",
+        "notesPlaceholder": "Masalan: bemor och qoringa",
+        "footerHint": "Yaratilgach QR bilan bosma yo‘llanma ochiladi.",
+        "noPatientHint": "Ariza yaratish uchun faol qabulni oching.",
+        "submit": "Yaratish va chop etish",
+        "createError": "Buyurtmani yaratib bo‘lmadi"
+      },
+      "referral": {
+        "title": "Yo‘llanma",
+        "description": "Bemorni hamkasbga yoki tashqi klinikaga yo‘llang. Bemor yo‘llanmani shaxsiy kabinetida oladi.",
+        "noPatientHint": "Yo‘llanma rasmiylashtirish uchun faol qabulni oching.",
+        "modeInternal": "Klinikadagi hamkasbga",
+        "modeExternal": "Tashqi klinikaga",
+        "doctorLabel": "Shifokor",
+        "selectDoctor": "Shifokorni tanlang",
+        "noColleagues": "Mavjud hamkasblar yo‘q — tashqi yo‘llanmadan foydalaning.",
+        "clinicSpecialty": "Klinika / mutaxassislik",
+        "externalPlaceholder": "Respublika kardiomarkazi · kardiolog",
+        "reasonLabel": "Yo‘llanma sababi",
+        "reasonPlaceholder": "Masalan: ritm buzilishi bo‘yicha kardiolog maslahati",
+        "submitError": "Yo‘llanma rasmiylashtirib bo‘lmadi:",
+        "submit": "Yo‘llash"
+      },
+      "sickLeave": {
+        "title": "Mehnatga layoqatsizlik varaqasi",
+        "description": "Ishdan ozod qilish. Saqlangach bosma shakl ochiladi.",
+        "noPatientHint": "Varaqa yozish uchun faol qabulni oching.",
+        "regimenLabel": "Tartib",
+        "from": "Dan",
+        "to": "Gacha",
+        "calendarDays": "Kalendar kunlari:",
+        "restrictionsLabel": "Tavsiyalar / cheklovlar",
+        "restrictionsPlaceholder": "jismoniy zo‘riqishlardan saqlanish",
+        "notesLabel": "Izohlar",
+        "submitError": "Varaqa yozib bo‘lmadi:",
+        "submit": "Yozish va chop etish",
+        "regimens": {
+          "outpatient": {
+            "label": "Ambulator",
+            "hint": "uyda davolanish"
+          },
+          "hospital": {
+            "label": "Statsionar",
+            "hint": "kechayu kunduz"
+          },
+          "home": {
+            "label": "Yotoq tartibi",
+            "hint": "qat’iy tartib"
+          }
+        }
+      }
+    },
+    "patients": {
+      "title": "Bemorlar",
+      "subtitle": "Bemorlar bazasini boshqarish va kuzatuvni rejalashtirish",
+      "loadingMore": "Yana yuklanmoqda…",
+      "tabs": {
+        "all": "Barcha bemorlar",
+        "active": "Faol",
+        "new": "Yangilar",
+        "watch": "Nazoratda",
+        "returned": "Qaytganlar",
+        "dormant": "Ancha kelmaganlar"
+      },
+      "actions": {
+        "export": "Eksport",
+        "configureView": "Ko‘rinishni sozlash",
+        "write": "Yozish",
+        "call": "Qo‘ng‘iroq qilish",
+        "moreActions": "Yana amallar",
+        "openCard": "Kartani ochish",
+        "visitHistory": "Tashriflar tarixi",
+        "documents": "Hujjatlar"
+      },
+      "filters": {
+        "searchPlaceholder": "F.I.Sh. yoki telefon bo‘yicha qidirish...",
+        "allDiagnoses": "Barcha tashxislar",
+        "allStatuses": "Barcha holatlar",
+        "age": "Yosh",
+        "visitPeriod": "Tashrif davri",
+        "filters": "Filtrlar"
+      },
+      "table": {
+        "loading": "Bemorlar yuklanmoqda…",
+        "loadError": "Bemorlar ro‘yxatini yuklab bo‘lmadi",
+        "empty": "Bu guruhda hozircha bemorlaringiz yo‘q.",
+        "emptySearch": "Ushbu so‘rov bo‘yicha hech narsa topilmadi.",
+        "ageShort": "{age} yosh",
+        "columns": {
+          "patient": "Bemor",
+          "age": "Yosh",
+          "phone": "Telefon",
+          "lastVisit": "Oxirgi tashrif",
+          "lastDiagnosis": "Oxirgi tashxis",
+          "status": "Holat",
+          "nextAppointment": "Keyingi qabul",
+          "actions": "Amallar"
+        },
+        "status": {
+          "inAppointment": "Qabulda",
+          "onWatch": "Nazoratda",
+          "new": "Yangi",
+          "dormant": "Ancha kelmagan"
+        }
+      },
+      "pagination": {
+        "shown": "{total} tadan {loaded} tasi ko‘rsatildi",
+        "loadMore": "Yana yuklash"
+      },
+      "toast": {
+        "noChannel": "Bemor bilan aloqa kanali yo‘q",
+        "noChannelDescription": "Yozish uchun telefon yoki Telegram qo‘shing.",
+        "chatFailed": "Chatni ochib bo‘lmadi"
+      },
+      "aiAssistant": {
+        "title": "AI-yordamchi",
+        "collapse": "Yig‘ish",
+        "needAttention": "E’tibor talab qiladi",
+        "loadError": "Tavsiyalarni yuklab bo‘lmadi.",
+        "empty": "Hozircha hech kim e’tibor talab qilmaydi. Bemorlarning segmentlari o‘zgarganda tavsiyalar paydo bo‘ladi.",
+        "cohorts": {
+          "dormant": "Klinikaga ancha kelmaganlar",
+          "watch": "Nazorat tashrifiga muhtoj",
+          "returned": "Yaqinda qaytganlar",
+          "new": "Yangi bemorlar"
+        }
+      },
+      "segmentation": {
+        "title": "Baza segmentatsiyasi",
+        "reset": "Tozalash",
+        "loadError": "Segmentatsiyani yuklab bo‘lmadi.",
+        "empty": "Hozircha yakunlangan tashrifli bemorlar yo‘q. Paydo bo‘lgach, bu yerda segmentlar bo‘yicha taqsimot ochiladi.",
+        "totalPatients": "Jami bemorlar"
+      },
+      "selectedCard": {
+        "emptyPrompt": "Tafsilotlarni ko‘rish uchun chapdagi ro‘yxatdan bemorni tanlang.",
+        "loadError": "Bemorni yuklab bo‘lmadi.",
+        "ageWithSep": "{age} yosh · ",
+        "status": {
+          "inAppointment": "Qabulda",
+          "appointmentSet": "Qabul belgilangan",
+          "active": "Faol"
+        },
+        "rows": {
+          "nextAppointment": "Keyingi qabul",
+          "allergies": "Allergiyalar",
+          "chronic": "Surunkali",
+          "lastDocument": "Oxirgi hujjat",
+          "segment": "Segment"
+        }
+      },
+      "detail": {
+        "allPatients": "Barcha bemorlar",
+        "notFound": "Bemor topilmadi yoki siz u bilan qabullar o‘tkazmagansiz.",
+        "backToList": "Bemorlar ro‘yxatiga qaytish",
+        "ageWithSep": "{age} yosh · ",
+        "allergyTag": "Allergiya: {substance}",
+        "tabs": {
+          "overview": "Umumiy",
+          "visits": "Tashriflar tarixi",
+          "documents": "Hujjatlar",
+          "labs": "Tahlillar",
+          "prescriptions": "Tayinlovlar"
+        }
+      },
+      "overview": {
+        "contacts": "Kontaktlar",
+        "name": "Ism",
+        "phone": "Telefon",
+        "birthDate": "Tug‘ilgan sana",
+        "segment": "Segment",
+        "nextAppointment": "Keyingi qabul",
+        "statusLabel": "Holat: {status}",
+        "noAppointments": "Rejalashtirilgan qabullar yo‘q.",
+        "allergies": "Allergiyalar",
+        "notSpecified": "Ko‘rsatilmagan.",
+        "chronicConditions": "Surunkali kasalliklar"
+      },
+      "visits": {
+        "loading": "Tashriflar yuklanmoqda…",
+        "loadError": "Tashriflarni yuklab bo‘lmadi.",
+        "empty": "Hozircha yakunlangan tashriflar yo‘q.",
+        "noDiagnosis": "Tashxissiz",
+        "durationMin": "{min} daq.",
+        "type": {
+          "repeat": "Takroriy",
+          "consultation": "Konsultatsiya"
+        }
+      },
+      "documents": {
+        "loading": "Hujjatlar yuklanmoqda…",
+        "loadError": "Hujjatlarni yuklab bo‘lmadi.",
+        "empty": "Hozircha hujjatlar yo‘q.",
+        "open": "Ochish",
+        "bytes": {
+          "b": "B",
+          "kb": "KB",
+          "mb": "MB"
+        }
+      },
+      "labs": {
+        "loading": "Tahlillar yuklanmoqda…",
+        "loadError": "Tahlillarni yuklab bo‘lmadi.",
+        "empty": "Hozircha tahlillar yo‘q.",
+        "ref": "ref. {range}",
+        "fromColleague": "hamkasbdan",
+        "reviewedOn": "tekshirildi {date}",
+        "markReviewed": "Ko‘rib chiqildi",
+        "flag": {
+          "normal": "norma",
+          "high": "yuqori",
+          "low": "past",
+          "critical": "kritik"
+        }
+      },
+      "prescriptions": {
+        "loading": "Tayinlovlar yuklanmoqda…",
+        "loadError": "Tayinlovlarni yuklab bo‘lmadi.",
+        "empty": "Hozircha tayinlovlar yo‘q.",
+        "emptyActive": "Faol tayinlovlar yo‘q.",
+        "prescribedOn": "Tayinlangan {date}",
+        "remindersOn": " · eslatmalar yoq.",
+        "tabs": {
+          "active": "Faol",
+          "all": "Barchasi"
+        }
+      }
+    },
+    "myDay": {
+      "type": {
+        "consultation": "Konsultatsiya",
+        "repeat": "Takroriy qabul",
+        "reserve": "Zaxira",
+        "break": "Tushlik"
+      },
+      "status": {
+        "planned": "Rejalashtirilgan",
+        "alreadyVisited": "Bo'lib o'tgan",
+        "noShow": "Kelmadi",
+        "cancelled": "Bekor qilingan",
+        "inProgress": "Qabul davom etmoqda",
+        "called": "Chaqirilgan"
+      },
+      "tags": {
+        "active": "Faol bemor",
+        "firstVisit": "Birlamchi qabul",
+        "vip": "VIP",
+        "new": "Yangi"
+      },
+      "quickActions": {
+        "title": "Tezkor amallar",
+        "newVisit": "Yangi yozuv",
+        "openPatientCard": "Bemor kartasini ochish",
+        "createConclusion": "Xulosa yaratish",
+        "referToLabs": "Tahlillarga yo'llanma",
+        "documentTemplates": "Hujjat shablonlari"
+      },
+      "tasks": {
+        "title": "Bugungi vazifalar",
+        "empty": "Vazifalar yo'q",
+        "allDone": "Bugunga hammasi bajarildi"
+      },
+      "recentPatients": {
+        "title": "So'nggi bemorlar",
+        "empty": "So'nggi bemorlar yo'q",
+        "openCardAria": "Kartani ochish: {name}",
+        "allPatients": "Barcha bemorlar"
+      },
+      "referrals": {
+        "title": "Kiruvchi yo'llanmalar",
+        "subtitle": "Hamkasblar tomonidan menga yo'llangan bemorlar",
+        "empty": "Yangi yo'llanmalar yo'q",
+        "openCardAria": "{name}: bemor kartasini ochish",
+        "fromDoctor": "{name}dan",
+        "fallback": "Yo'llanma",
+        "allPatients": "Barcha bemorlar"
+      },
+      "results": {
+        "title": "Mening yangi natijalarim",
+        "subtitle": "Mening tayinlovlarim bo'yicha laboratoriya, hali ko'rilmagan",
+        "empty": "Yangi natijalar yo'q",
+        "openLabsAria": "{test} — {patient}: tahlillarni ochish",
+        "flagCritical": "kritik",
+        "flagHigh": "yuqori",
+        "flagLow": "past",
+        "flagNew": "yangi",
+        "showAll": "Barcha natijalarni ko'rsatish"
+      },
+      "drafts": {
+        "title": "Xulosa qoralamalari",
+        "empty": "Qoralamalar yo'q",
+        "continueAria": "Davom etish: {title} — {patient}",
+        "continue": "Davom etish",
+        "allDrafts": "Barcha qoralamalar"
+      },
+      "ai": {
+        "title": "AI-yordamchi",
+        "settingsAria": "AI sozlamalari",
+        "collapseAria": "Yig'ish",
+        "summaryTitle": "Bugun uchun xulosa",
+        "totalAppointments": "Jami qabullar",
+        "consultations": "Konsultatsiyalar",
+        "repeats": "Takroriy qabullar",
+        "completed": "Yakunlangan",
+        "dayPlan": "Kunlik reja",
+        "comingSoon": "AI-tahlil tez orada",
+        "comingSoonHint": "Modelni ulaganimizda ogohlantirishlar va tavsiyalar paydo bo'ladi"
+      },
+      "reminders": {
+        "title": "Eslatmalar",
+        "empty": "Faol eslatmalar yo'q",
+        "itemAria": "Eslatma: {title}",
+        "noPatient": "bemorsiz",
+        "now": "hozir",
+        "inMinutes": "{n} daqiqadan so'ng",
+        "hoursAgo": "{n} soat oldin",
+        "inHours": "{n} soatdan so'ng",
+        "daysAgo": "{n} kun oldin",
+        "inDays": "{n} kundan so'ng",
+        "all": "Barcha eslatmalar",
+        "allWithOverflow": "Yana {count} — barcha eslatmalar"
+      },
+      "upcoming": {
+        "title": "Yaqin bemorlar",
+        "empty": "Bugunga boshqa bemorlar yo'q",
+        "openCardAria": "Kartani ochish: {name}",
+        "callAria": "Qo'ng'iroq qilish: {name}",
+        "noPhone": "Telefon ko'rsatilmagan",
+        "showAll": "Hammasini ko'rsatish",
+        "moreHidden": "· yana {count}",
+        "now": "hozir",
+        "durationMin": "{n} daqiqa",
+        "inMinutes": "{n} daqiqadan so'ng",
+        "inHours": "{h} soatdan so'ng",
+        "inHoursMinutes": "{h} soat {m} daqiqadan so'ng"
+      },
+      "schedule": {
+        "subtitle": "Shifokor jadvali",
+        "today": "Bugun",
+        "yesterday": "Kecha",
+        "tomorrow": "Ertaga",
+        "prevDay": "Oldingi kun",
+        "nextDay": "Keyingi kun",
+        "emptyToday": "Bugunga yozuvlar yo'q",
+        "emptyDay": "Bu kunga yozuvlar yo'q",
+        "showWholeDay": "Butun kunni ko'rsatish",
+        "unspecified": "Ko'rsatilmagan",
+        "durationMin": "{n} daqiqa",
+        "finish": "Yakunlash",
+        "call": "Chaqirish",
+        "startVisit": "Qabulni boshlash",
+        "revertReopen": "Qabulni qayta ochish",
+        "revertToPlanned": "Rejalashtirilganlarga qaytarish",
+        "revertRestore": "Qabulni tiklash"
+      },
+      "current": {
+        "title": "Joriy bemor",
+        "noneActive": "Hozir hech kim qabul qilinmayapti",
+        "noneActiveHint": "Keyingi bemor kabinetga kirganda — u shu yerda paydo bo'ladi",
+        "currentVisit": "Joriy qabul",
+        "nextPatient": "Keyingi bemor",
+        "ageYears": "{count, plural, other {# yosh}}",
+        "timerElapsed": "Davom etmoqda: {time}",
+        "timerWaiting": "Kutmoqda: {time}",
+        "timerUntil": "{time} dan so'ng",
+        "startsAt": "Boshlanishi {time}",
+        "calledAgo": "{ago} chaqirilgan",
+        "secondsAgo": "{n} soniya oldin",
+        "minutesAgo": "{n} daqiqa oldin",
+        "complaints": "Shikoyatlar",
+        "lastVisit": "So'nggi tashrif",
+        "openVisit": "Tashrifni ochish",
+        "firstVisit": "Birlamchi qabul",
+        "lastDiagnosis": "So'nggi tashxis",
+        "viewHistory": "Tarixni ko'rish",
+        "noData": "Ma'lumot yo'q",
+        "callPatient": "Bemorni chaqirish",
+        "startVisit": "Qabulni boshlash",
+        "finishVisit": "Qabulni yakunlash",
+        "openPatientCard": "Bemor kartasini ochish",
+        "moreActions": "Boshqa amallar",
+        "stepBackWaiting": "Bir qadam orqaga: kutmoqda",
+        "stepBackBooked": "Bir qadam orqaga: rejalashtirilgan",
+        "callAgain": "Qayta chaqirish",
+        "startWithoutRecall": "Qayta chaqirmasdan boshlash",
+        "startWithoutCall": "Chaqirmasdan boshlash",
+        "registerArrivalOnly": "Faqat kelganini qayd etish",
+        "noShow": "Kelmadi",
+        "cancelVisit": "Qabulni bekor qilish"
+      },
+      "statusToast": {
+        "called": "Bemor chaqirildi",
+        "reverted": "Bir qadam orqaga qaytarildi",
+        "waiting": "Bemor navbatda",
+        "inProgress": "Qabul boshlandi",
+        "completed": "Qabul yakunlandi",
+        "noShow": "Belgilandi: kelmadi",
+        "cancelled": "Qabul bekor qilindi",
+        "errTooEarly": "Juda erta — qabul hali boshlanmasligi kerak edi",
+        "errInvalidTransition": "Bu holat o‘zgarishiga ruxsat yo‘q",
+        "errNotRevertable": "Bu holatni bekor qilib bo‘lmaydi",
+        "errRevertMismatch": "Nimaga qaytarishni aniqlab bo‘lmadi",
+        "errCallFailed": "Bemorni chaqirib bo‘lmadi",
+        "errRevertFailed": "Qadamni bekor qilib bo‘lmadi",
+        "errUpdateFailed": "Holatni yangilab bo‘lmadi"
+      }
+    },
+    "visits": {
+      "title": "Tashriflar tarixi",
+      "actions": {
+        "backToPatients": "Bemorlar ro‘yxatiga",
+        "exportCsv": "CSV eksport",
+        "backToHistory": "Tashriflar tarixiga",
+        "printPdf": "Chop etish / PDF",
+        "open": "Ochish",
+        "moreActions": "Boshqa amallar"
+      },
+      "status": {
+        "finalized": "Yakunlangan",
+        "draft": "Qoralama"
+      },
+      "header": {
+        "statusInReception": "Qabulda",
+        "statusCompleted": "Yakunlangan",
+        "activeReception": "Faol qabul",
+        "patient": "Bemor",
+        "age": "Yoshi",
+        "ageValue": "{age, plural, other {# yosh}} ({birth})",
+        "phone": "Telefon",
+        "appointmentType": "Qabul turi",
+        "status": "Holati",
+        "lastVisit": "Oxirgi tashrif",
+        "cardNumber": "Karta №"
+      },
+      "meta": {
+        "notSpecified": "ko‘rsatilmagan",
+        "allergies": "Allergiyalar:",
+        "chronic": "Surunkali kasalliklar:",
+        "showMore": "Ko‘proq ko‘rsatish"
+      },
+      "note": {
+        "date": "Sana",
+        "time": "Vaqt",
+        "appointmentType": "Qabul turi",
+        "finalizedAt": "Yakunlangan",
+        "aiGenerated": "AI ishtirokida shakllantirilgan",
+        "diagnosisIcd10": "Tashxis (XKK-10)",
+        "complaints": "Shikoyatlar",
+        "anamnesis": "Anamnez",
+        "examination": "Ko‘rik",
+        "prescriptions": "Tayinlovlar",
+        "advice": "Tavsiyalar",
+        "bodyText": "Xulosa matni"
+      },
+      "timeline": {
+        "title": "Tashriflar tasmasi",
+        "scrollBack": "Orqaga aylantirish",
+        "scrollForward": "Oldinga aylantirish",
+        "loading": "Tarix yuklanmoqda…",
+        "empty": "Hali yakunlangan tashriflar yo‘q.",
+        "visitCount": "{count, plural, other {# tashrif}}"
+      },
+      "type": {
+        "consultation": "Konsultatsiya",
+        "repeat": "Takroriy qabul"
+      },
+      "table": {
+        "dateTime": "Sana va vaqt",
+        "appointmentType": "Qabul turi",
+        "diagnosis": "Tashxis",
+        "treatment": "Davolash va tavsiyalar",
+        "documents": "Hujjatlar",
+        "doctor": "Shifokor",
+        "actions": "Amallar",
+        "loading": "Tashriflar yuklanmoqda…",
+        "error": "Tashriflarni yuklab bo‘lmadi",
+        "empty": "Hozircha yakunlangan tashriflar yo‘q.",
+        "diagnosisNotSpecified": "Tashxis ko‘rsatilmagan",
+        "diagnosisInfo": "Tashxis haqida batafsil",
+        "conclusion": "Xulosa",
+        "noConclusion": "Xulosa yo‘q",
+        "loadMore": "Ko‘proq ko‘rsatish"
+      },
+      "menu": {
+        "openVisit": "Tashrifni ochish",
+        "idCopied": "ID nusxalandi",
+        "copyFailed": "Nusxalab bo‘lmadi",
+        "copyVisitId": "Tashrif ID sini nusxalash",
+        "openPatientCard": "Bemor kartasini ochish",
+        "printConclusion": "Xulosani chop etish"
+      }
+    },
+    "settings": {
+      "title": "Sozlamalar",
+      "subtitle": "Shaxsiy ma'lumotlar, PDF uchun imzo, bildirishnoma kanallari va xavfsizlik holati.",
+      "tabs": {
+        "profile": "Profil",
+        "signature": "Imzo",
+        "presets": "Shablonlar",
+        "notifications": "Bildirishnomalar",
+        "security": "Xavfsizlik"
+      },
+      "actions": {
+        "save": "Saqlash",
+        "cancel": "Bekor qilish",
+        "retry": "Qayta urinish",
+        "edit": "Tahrirlash",
+        "delete": "O'chirish",
+        "saveError": "Saqlab bo'lmadi"
+      },
+      "profile": {
+        "loadError": "Profilni yuklab bo'lmadi.",
+        "saved": "Profil yangilandi",
+        "nameLabel": "Tizimdagi ism (hamkasblar uchun)",
+        "phoneLabel": "Telefon",
+        "emailLabel": "Email (faqat o'qish uchun)",
+        "roleLabel": "Rol",
+        "fullNameRuLabel": "F.I.O. (ruscha)",
+        "fullNameUzLabel": "F.I.O. (o'zbekcha)",
+        "specializationRuLabel": "Mutaxassislik (ruscha)",
+        "specializationUzLabel": "Mutaxassislik (o'zbekcha)",
+        "bioRuLabel": "Biografiya (ruscha)",
+        "bioUzLabel": "Biografiya (o'zbekcha)"
+      },
+      "signature": {
+        "heading": "Shifokor imzosi",
+        "subheading": "Xulosalarni PDF'da chop etishda qo'yiladi. PNG yoki JPG, 1 MB gacha. Shaffof PNG tavsiya etiladi.",
+        "uploading": "Yuklanmoqda…",
+        "dropzone": "Faylni torting yoki bosing",
+        "formatHint": "PNG / JPG · 1 MB gacha",
+        "currentAlt": "Joriy imzo",
+        "empty": "Imzo yuklanmagan",
+        "replace": "Almashtirish",
+        "upload": "Yuklash",
+        "removeAria": "Imzoni o'chirish",
+        "saved": "Imzo saqlandi",
+        "removed": "Imzo o'chirildi",
+        "errorFormat": "Faqat PNG yoki JPG",
+        "errorTooLarge": "Fayl 1 MB dan katta",
+        "uploadError": "Yuklab bo'lmadi",
+        "removeError": "O'chirib bo'lmadi"
+      },
+      "notifications": {
+        "loadError": "Sozlamalarni yuklab bo'lmadi.",
+        "heading": "Kanallar va hodisalar",
+        "subheading": "Har bir hodisa turi uchun bildirishnomalarni qaysi kanallar orqali olishni tanlang. O'zgarishlar avtomatik saqlanadi.",
+        "eventColumn": "Hodisa",
+        "telegramHint": "<strong>Telegram</strong> kanali faqat siz «Xavfsizlik» bo'limida botni o'z hisobingizga bog'lagan bo'lsangiz ishlaydi.",
+        "channels": {
+          "inApp": "Tizimda",
+          "email": "Email",
+          "telegram": "Telegram"
+        },
+        "events": {
+          "appointmentCreated": {
+            "label": "Yangi qabul",
+            "description": "Registratura sizga bugun yoki keyinroqqa qabul qo'shganda"
+          },
+          "messageNew": {
+            "label": "Yangi xabar",
+            "description": "Bemorlar va hamkasblardan suhbatlardagi xabarlar"
+          },
+          "labResultReceived": {
+            "label": "Tahlil natijasi",
+            "description": "Tayinlangan tekshiruv natijasi kelganda"
+          },
+          "reminderDue": {
+            "label": "Eslatma",
+            "description": "Siz yaratgan eslatma vaqti kelganda"
+          }
+        }
+      },
+      "security": {
+        "loadError": "Xavfsizlik holatini yuklab bo'lmadi.",
+        "heading": "Xavfsizlik holati",
+        "subheading": "Parol, 2FA va seanslarni boshqarish — «Mening xavfsizligim» bo'limida. Bu yerda faqat holat ko'rsatiladi.",
+        "passwordSet": "Parol o'rnatilgan",
+        "passwordChangeRequired": "Parolni almashtirish talab etiladi",
+        "passwordNotSet": "Parol o'rnatilmagan",
+        "twoFactorOn": "Ikki bosqichli avtorizatsiya yoqilgan",
+        "twoFactorOff": "Ikki bosqichli avtorizatsiya o'chirilgan",
+        "activeSessions": "Faol seanslar",
+        "lastLogin": "Oxirgi kirish",
+        "never": "hech qachon",
+        "cta": "Xavfsizlik sozlamalariga o'tish"
+      },
+      "presets": {
+        "intro": "Shablonlar qabul maydoni ostida kichik chiplar shaklida paydo bo'ladi. Chipni bossangiz, qiymat maydonga qo'shiladi va (agar shablon berilgan bo'lsa) xulosaga matn qo'shiladi.",
+        "add": "Qo'shish",
+        "empty": "Hozircha shablonlar yo'q. Birinchisini yaratish uchun «Qo'shish» tugmasini bosing.",
+        "templateBadge": "shablon",
+        "deleteConfirm": "«{label}» shabloni o'chirilsinmi?",
+        "deleted": "Shablon o'chirildi",
+        "deleteError": "O'chirib bo'lmadi",
+        "saved": "Shablon saqlandi",
+        "added": "Shablon qo'shildi",
+        "addError": "Qo'shib bo'lmadi",
+        "fields": {
+          "COMPLAINTS": {
+            "label": "Shikoyatlar",
+            "hint": "Tez-tez uchraydigan shikoyatlar — bosh og'rig'i, bosh aylanishi, uyqusizlik"
+          },
+          "ANAMNESIS": {
+            "label": "Anamnez",
+            "hint": "Tipik anamnestik ma'lumotlar"
+          },
+          "EXAMINATION": {
+            "label": "Ko'rik",
+            "hint": "Ko'rikning shablon qatorlari — o'zgarishsiz, hushida va h.k."
+          },
+          "PRESCRIPTIONS": {
+            "label": "Tayinlovlar",
+            "hint": "Doza va sxema bilan tez-tez tayinlanadigan dorilar"
+          },
+          "ADVICE": {
+            "label": "Tavsiyalar",
+            "hint": "Standart tavsiyalar — rejim, parhez, jismoniy yuklama"
+          }
+        },
+        "editor": {
+          "nameRequired": "Chip nomini kiriting",
+          "chipNameLabel": "Chip nomi",
+          "chipNamePlaceholder": "Masalan: Bosh og'rig'i",
+          "fieldValueLabel": "Maydonga nima qo'shiladi",
+          "fieldValuePlaceholder": "Masalan: Bosh og'rig'i, bosuvchi, > 1 hafta",
+          "unlink": "ajratish",
+          "sameAsName": "= nom",
+          "noteTemplateLabel": "Xulosaga shablon matni <optional>— ixtiyoriy</optional>",
+          "noteTemplatePlaceholder": "Masalan: Bosh og'rig'i — bosuvchi, peshona-tepa sohasida, > 1 hafta, qusishsiz, yorug'likdan qo'rqish o'rtacha."
+        }
+      }
+    },
+    "messages": {
+      "title": "Xabarlar",
+      "searchPlaceholder": "Xabarlar bo‘yicha qidirish...",
+      "filters": {
+        "all": "Hammasi",
+        "unread": "O‘qilmaganlar",
+        "channelAll": "Hammasi"
+      },
+      "channels": {
+        "TG": "Telegram",
+        "SMS": "SMS",
+        "CALL": "Qo‘ng‘iroq",
+        "EMAIL": "Email",
+        "VISIT": "Tashrif"
+      },
+      "threads": {
+        "loading": "Yuklanmoqda…",
+        "error": "Yuklab bo‘lmadi",
+        "empty": "Sizda hozircha xabarlar yo‘q.",
+        "emptyFiltered": "Hech narsa topilmadi.",
+        "loadMore": "Yana ko‘rsatish",
+        "loadingMore": "Yuklanmoqda…",
+        "noName": "Nomsiz"
+      },
+      "relative": {
+        "now": "hozir",
+        "minutes": "{n} daq",
+        "yesterday": "kecha",
+        "today": "Bugun"
+      },
+      "chat": {
+        "selectThread": "Chapdan suhbatni tanlang",
+        "loading": "Xabarlar yuklanmoqda…",
+        "error": "Xabarlarni yuklab bo‘lmadi",
+        "empty": "Hozircha xabarlar yo‘q",
+        "loadingHistory": "Yuklanmoqda…",
+        "showHistory": "Yuqoridagi tarixni ko‘rsatish",
+        "patientBadge": "Bemor",
+        "channelFallback": "Kanal: {channel}",
+        "actions": {
+          "favorite": "Sevimlilarga",
+          "info": "Ma’lumot",
+          "more": "Yana"
+        }
+      },
+      "composer": {
+        "tab": "Xabar",
+        "inputPlaceholder": "Xabar yozing…  (Enter — yuborish, Shift+Enter — yangi qator)",
+        "send": "Yuborish",
+        "sending": "Yuborilmoqda…",
+        "sendError": "Yuborib bo‘lmadi"
+      },
+      "context": {
+        "title": "Bemor konteksti",
+        "noPatient": "Bu suhbat bemor bilan bog‘lanmagan",
+        "loading": "Yuklanmoqda…",
+        "error": "Yuklashda xatolik",
+        "age": "{count, plural, other {# yosh}}",
+        "ageUnknown": "yosh —",
+        "allergies": "Allergiyalar",
+        "chronic": "Surunkali kasalliklar",
+        "notSpecified": "ko‘rsatilmagan",
+        "nextAppointment": "Keyingi qabul",
+        "notScheduled": "belgilanmagan",
+        "lastDocument": "Oxirgi hujjat"
+      },
+      "toast": {
+        "noChannelTitle": "Bemor bilan aloqa kanali yo‘q",
+        "noChannelDescription": "Yozish uchun telefon yoki Telegram qo‘shing.",
+        "openChatFailed": "Chatni ochib bo‘lmadi"
+      }
+    },
+    "notifications": {
+      "title": "Bildirishnomalar",
+      "subtitle": "Eslatmalar va vazifalar: bugun va keyinroq bajarish kerak bo‘lgan ishlar.",
+      "loadError": "Eslatmalarni yuklab bo‘lmadi.",
+      "retry": "Qayta urinish",
+      "loading": "Yuklanmoqda…",
+      "loadMore": "Yana ko‘rsatish",
+      "loadMoreCount": "Yana ko‘rsatish ({count})",
+      "refreshing": "Yangilanmoqda…",
+      "confirmDelete": "Eslatma o‘chirilsinmi?",
+      "tabs": {
+        "active": "Dolzarb",
+        "done": "Bajarilgan",
+        "archive": "Arxiv"
+      },
+      "create": {
+        "trigger": "Eslatma yaratish",
+        "title": "Yangi eslatma",
+        "description": "O‘zingiz uchun eslatma — tanlangan vaqtda «Dolzarb» bo‘limida paydo bo‘ladi.",
+        "titleLabel": "Sarlavha",
+        "titlePlaceholder": "Masalan: bemorga qo‘ng‘iroq qilish",
+        "bodyLabel": "Tavsif (ixtiyoriy)",
+        "bodyPlaceholder": "Tafsilotlar — nima qilish kerak, kontekst",
+        "remindAtLabel": "Eslatish vaqti",
+        "patientLabel": "Bemor (ixtiyoriy)",
+        "success": "Eslatma yaratildi",
+        "error": "Yaratib bo‘lmadi"
+      },
+      "actions": {
+        "cancel": "Bekor qilish",
+        "create": "Yaratish"
+      },
+      "empty": {
+        "activeTitle": "Dolzarb eslatmalar yo‘q",
+        "activeHint": "O‘zingiz uchun eslatma yarating — qo‘ng‘iroq qilish, natijani tekshirish, tahlillarni qayta buyurtma qilish.",
+        "done": "So‘nggi 30 kun ichida hech narsa bajarilgan deb belgilanmadi.",
+        "archive": "So‘nggi 30 kun ichida arxiv bo‘sh."
+      },
+      "time": {
+        "now": "hozir",
+        "inMinutes": "{n} daqiqadan so‘ng",
+        "overdueMinutes": "{n} daqiqa kechikdi",
+        "inHours": "{n} soatdan so‘ng",
+        "overdueHours": "{n} soat kechikdi",
+        "todayAt": "bugun soat {time}",
+        "tomorrowAt": "ertaga soat {time}"
+      },
+      "toast": {
+        "done": "Tayyor",
+        "reopened": "Dolzarbga qaytarildi",
+        "snoozed": "Kechiktirildi: {label}",
+        "deleted": "O‘chirildi",
+        "error": "Xatolik"
+      },
+      "status": {
+        "PENDING": "Dolzarb",
+        "SNOOZED": "Kechiktirilgan",
+        "DONE": "Bajarilgan",
+        "DISMISSED": "Arxivda"
+      },
+      "snooze": {
+        "heading": "Kechiktirish",
+        "preset1h": "1 soatga",
+        "preset1hLabel": "1 soat",
+        "preset4h": "4 soatga",
+        "preset4hLabel": "4 soat",
+        "presetTomorrow": "Ertaga 9:00 gacha",
+        "presetTomorrowLabel": "ertaga 9:00"
+      },
+      "row": {
+        "markDone": "Tayyor",
+        "reopen": "Qaytarish",
+        "actions": "Amallar",
+        "openPatient": "Bemorni ochish",
+        "delete": "O‘chirish"
+      },
+      "picker": {
+        "searchPlaceholder": "Bemorni qidirish…",
+        "searching": "Qidirilmoqda…",
+        "noResults": "Hech narsa topilmadi"
+      }
+    },
+    "conclusions": {
+      "title": "Xulosalar",
+      "subtitle": "Yakunlangan qabullar va faol qoralamalar.",
+      "noDiagnosis": "Tashxissiz",
+      "list": {
+        "searchPlaceholder": "Tashxis yoki bemor bo‘yicha qidirish…",
+        "tabFinalized": "Yakunlangan",
+        "tabDrafts": "Qoralamalar",
+        "loading": "Yuklanmoqda…",
+        "emptyFinalized": "Hozircha yakunlangan xulosalar yo‘q.",
+        "emptyDrafts": "Hozircha qoralamalar yo‘q.",
+        "loadingMore": "Yana yuklanmoqda…"
+      },
+      "detail": {
+        "backToList": "Ro‘yxatga qaytish",
+        "loading": "Xulosa yuklanmoqda…",
+        "loadError": "Xulosani yuklab bo‘lmadi.",
+        "finalizedAt": "Yakunlangan · {date}",
+        "statusDraft": "Qoralama",
+        "remainingExpired": "muddati tugadi",
+        "remainingHoursMinutes": "{h} soat {m} daqiqa",
+        "remainingMinutes": "{m} daqiqa",
+        "editAvailable": "Tahrirlash hali mumkin: {remaining}",
+        "editWindowClosed": "Tahrirlash oynasi yopildi",
+        "print": "Chop etish",
+        "openInReception": "Qabulda ochish",
+        "bodyHeading": "Xulosa",
+        "edit": "Tahrirlash",
+        "readOnly": "Faqat ko‘rish",
+        "cancel": "Bekor qilish",
+        "save": "Saqlash",
+        "bodyEmpty": "Xulosa matni bo‘sh.",
+        "structuredFields": "Tuzilgan maydonlar",
+        "complaints": "Shikoyatlar",
+        "anamnesis": "Anamnez",
+        "examination": "Ko‘rik",
+        "prescriptions": "Tayinlovlar",
+        "advice": "Tavsiyalar",
+        "info": "Ma’lumotlar",
+        "patient": "Bemor",
+        "startedAt": "Boshlangan",
+        "finalizedAtLabel": "Yakunlangan",
+        "updatedAt": "Yangilangan",
+        "ai": "AI",
+        "aiGenerated": "yaratilgan"
+      }
+    },
+    "documents": {
+      "header": {
+        "title": "Hujjatlar",
+        "subtitle": "Bemorlaringiz va qabullaringizning hujjatlari"
+      },
+      "actions": {
+        "upload": "Yuklash"
+      },
+      "tabs": {
+        "all": "Barcha hujjatlar",
+        "referral": "Yo‘llanmalar",
+        "prescription": "Retseptlar",
+        "result": "Natijalar",
+        "consent": "Roziliklar",
+        "contract": "Shartnomalar",
+        "receipt": "Cheklar",
+        "other": "Boshqa"
+      },
+      "filters": {
+        "searchPlaceholder": "Nomi yoki bemor bo‘yicha qidirish...",
+        "reset": "Tozalash"
+      },
+      "type": {
+        "referral": "Yo‘llanma",
+        "prescription": "Retsept",
+        "result": "Natija",
+        "consent": "Rozilik",
+        "contract": "Shartnoma",
+        "receipt": "Chek",
+        "other": "Boshqa"
+      },
+      "size": {
+        "bytes": "{n} B",
+        "kb": "{n} KB",
+        "mb": "{n} MB",
+        "gb": "{n} GB"
+      },
+      "table": {
+        "colTitle": "Nomi",
+        "colPatient": "Bemor",
+        "colType": "Turi",
+        "colDate": "Sana",
+        "colSize": "Hajmi",
+        "loading": "Hujjatlar yuklanmoqda…",
+        "error": "Hujjatlarni yuklab bo‘lmadi",
+        "empty": "Sizda hozircha hujjatlar yo‘q.",
+        "emptyFiltered": "Hech narsa topilmadi.",
+        "loadMore": "Yana yuklash",
+        "loadingMore": "Yuklanmoqda…"
+      },
+      "row": {
+        "uploadedBy": "yuklagan: {name}",
+        "moreActions": "Boshqa amallar",
+        "closeMenu": "Menyuni yopish",
+        "download": "Yuklab olish",
+        "delete": "O‘chirish",
+        "deleting": "O‘chirilmoqda…",
+        "deleteConfirm": "«{title}» hujjati o‘chirilsinmi?",
+        "deleteError": "O‘chirib bo‘lmadi: {detail}"
+      },
+      "upload": {
+        "title": "Hujjat yuklash",
+        "description": "Fayl bemorga biriktiriladi va uning kartasida mavjud bo‘ladi",
+        "patientLabel": "Bemor",
+        "change": "O‘zgartirish",
+        "patientSearchPlaceholder": "F.I.Sh. yoki telefonni kiriting…",
+        "searching": "Qidirilmoqda…",
+        "noPatients": "Hech kim topilmadi",
+        "typeLabel": "Hujjat turi",
+        "fileLabel": "Fayl",
+        "filePicked": "{name} · {size} KB",
+        "titleLabel": "Nomi",
+        "titlePlaceholder": "Masalan: Bosh miya MRT",
+        "retry": "Qayta urinish",
+        "cancel": "Bekor qilish",
+        "submitting": "Yuklanmoqda…",
+        "genericError": "Yuklab bo‘lmadi"
+      }
+    },
+    "schedule": {
+      "agenda": {
+        "backToMyDay": "Mening kunim",
+        "title": "Jadval",
+        "today": "Bugun",
+        "prevDay": "Oldingi kun",
+        "nextDay": "Keyingi kun",
+        "print": "Chop etish",
+        "loadError": "Jadvalni yuklab bo‘lmadi. Sahifani yangilab ko‘ring.",
+        "empty": "Bu kunga yozuvlar yo‘q",
+        "emptyHint": "Yangi yozuv paydo bo‘lganda, u shu yerda avtomatik ko‘rinadi.",
+        "minutes": "{n} daqiqa",
+        "unnamed": "Ko‘rsatilmagan",
+        "relative": {
+          "today": "Bugun",
+          "yesterday": "Kecha",
+          "tomorrow": "Ertaga"
+        },
+        "status": {
+          "inProgress": "Qabul ketmoqda",
+          "done": "Yakunlandi",
+          "noShow": "Kelmadi",
+          "cancelled": "Bekor qilindi"
+        },
+        "type": {
+          "consultation": "Konsultatsiya",
+          "repeat": "Takroriy qabul",
+          "reserve": "Zaxira",
+          "break": "Tushlik"
+        }
+      },
+      "summary": {
+        "total": "Jami",
+        "consultations": "Konsultatsiyalar",
+        "repeats": "Takroriy",
+        "completed": "Yakunlandi",
+        "dayPlan": "Bajarilishi"
+      }
+    },
+    "analytics": {
+      "page": {
+        "title": "Mening statistikam",
+        "subtitle": "Tanlangan davr uchun klinik KPI: qabullar, tayinlovlar, CDS override auditi."
+      },
+      "dashboard": {
+        "loadError": "Tahlilni yuklab bo‘lmadi: {message}",
+        "errorFallback": "xatolik",
+        "computing": "Ko‘rsatkichlar hisoblanmoqda…",
+        "footnote": "Ko‘rsatkichlar har 30 soniyada avtomatik yangilanadi. CDS override — bu siz tizim ogohlantirishiga qaramay tayinlovni davom ettirgan holatlar; sifat jamoasi ularni alohida hisobotda ko‘radi."
+      },
+      "toolbar": {
+        "period": "Davr",
+        "presetDays": "{days, plural, other {# kun}}",
+        "refresh": "Yangilash"
+      },
+      "kpi": {
+        "completedAppointments": "Yakunlangan qabullar",
+        "finalizedNotes": "Yakunlangan xulosalar",
+        "protocolApplied": "Protokol qo‘llanildi",
+        "protocolAppliedHint": "xulosalarning {pct}%",
+        "rxIssued": "Retseptlar yozildi",
+        "slIssued": "Kasallik varaqalari yozildi",
+        "labOrdersIssued": "Lab. so‘rovlari",
+        "labResultsReviewed": "Tahlillar ko‘rib chiqildi",
+        "cdsOverrides": "CDS override",
+        "cdsOverridesPresent": "sifat jamoasi tekshiradi",
+        "cdsOverridesNone": "bittasi ham yo‘q — a’lo"
+      },
+      "daily": {
+        "title": "Kunlar bo‘yicha hajm",
+        "legendRx": "Rx",
+        "legendSl": "Kasallik varaqasi",
+        "legendLabs": "Lab.",
+        "legendOverride": "Override"
+      }
+    },
+    "references": {
+      "page": {
+        "title": "XKT-10 ma’lumotnomasi",
+        "subtitle": "Kod yoki tashxis bo‘yicha qidiruv. Qatorga bosish — buferga nusxalaydi."
+      },
+      "icd10": {
+        "searchPlaceholder": "Kod yoki tashxis bo‘yicha qidiruv…",
+        "clear": "Tozalash",
+        "searching": "Qidirilmoqda…",
+        "searchError": "Qidiruv xatosi",
+        "foundCount": "Topildi: {count}",
+        "clickToCopy": "Bosing — buferga nusxalash",
+        "emptyQuery": "«{query}» so‘rovi bo‘yicha hech narsa topilmadi.",
+        "unmapped": "Boblar bo‘yicha tasniflanmagan: {count, plural, other {# kod}}.",
+        "copied": "Nusxalandi",
+        "copyFailed": "Nusxalab bo‘lmadi",
+        "chapters": {
+          "A00-B99": "Yuqumli va parazitar kasalliklar",
+          "C00-D48": "Yangi o‘simtalar (neoplazmalar)",
+          "D50-D89": "Qon va immun tizimi kasalliklari",
+          "E00-E90": "Endokrin va modda almashinuvi kasalliklari",
+          "F00-F99": "Ruhiy va xulq-atvor buzilishlari",
+          "G00-G99": "Asab tizimi kasalliklari",
+          "H00-H59": "Ko‘z kasalliklari",
+          "H60-H95": "Quloq kasalliklari",
+          "I00-I99": "Qon aylanish tizimi kasalliklari",
+          "J00-J99": "Nafas olish a’zolari kasalliklari",
+          "K00-K93": "Hazm a’zolari kasalliklari",
+          "L00-L99": "Teri va teri osti kletchatkasi kasalliklari",
+          "M00-M99": "Suyak-mushak tizimi",
+          "N00-N99": "Siydik-tanosil tizimi",
+          "R00-R99": "Alomatlar va belgilar",
+          "S00-T98": "Jarohatlar va zaharlanishlar",
+          "Z00-Z99": "Sog‘liq omillari va shifokorga murojaat"
+        }
+      }
+    },
+    "nav": {
+      "brand": {
+        "homeAria": "Neurofax — bosh sahifa",
+        "tagline": "Aqlli klinika"
+      },
+      "groups": {
+        "workspace": "Ish maydoni",
+        "communications": "Kommunikatsiyalar",
+        "settings": "Sozlamalar"
+      },
+      "sidebar": {
+        "myDay": "Mening kunim",
+        "reception": "Qabul",
+        "patients": "Bemorlar",
+        "visits": "Tashriflar tarixi",
+        "documents": "Hujjatlar",
+        "conclusions": "Xulosalar",
+        "messages": "Xabarlar",
+        "analytics": "Mening statistikam",
+        "notifications": "Bildirishnomalar",
+        "references": "Ma’lumotnomalar",
+        "settings": "Sozlamalar"
+      },
+      "footer": {
+        "todayRecords": "bugungi yozuvlar"
+      },
+      "collapse": {
+        "expand": "Yoyish",
+        "collapse": "Yig‘ish"
+      },
+      "topbar": {
+        "searchPlaceholder": "Bemor, shifokor, yozuv, telefon, F.I.Sh. bo‘yicha qidiruv...",
+        "clearSearch": "Qidiruvni tozalash",
+        "newAppointment": "Yangi yozuv",
+        "moreActions": "Qo‘shimcha amallar",
+        "calls": "Qo‘ng‘iroqlar",
+        "notifications": "Bildirishnomalar",
+        "profileMenu": "Profil menyusi",
+        "signOut": "Chiqish",
+        "lightTheme": "Yorug‘ mavzu",
+        "darkTheme": "Qorong‘i mavzu",
+        "theme": "Mavzu"
+      }
+    }
   }
 }

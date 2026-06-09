@@ -3280,6 +3280,11 @@
       "noOrphanDoctors": "Нет свободных карточек врачей. Сначала создайте врача в разделе «Врачи», затем привяжите аккаунт.",
       "doctorTakenError": "Эта карточка врача уже привязана к другому аккаунту.",
       "doctorRequiredError": "Для роли «Врач» нужно выбрать карточку врача.",
+      "orphanTitle": "Врачи без аккаунта",
+      "orphanHint": "Эти врачи есть в расписании, но не могут войти в кабинет — у них ещё нет логина.",
+      "orphanCreateLogin": "Создать логин",
+      "resetTooShort": "Минимум 8 символов — или оставьте пустым для генерации.",
+      "emailEditHint": "Изменение email меняет логин для входа.",
       "cols": {
         "name": "Имя",
         "email": "Email",
@@ -5241,5 +5246,1500 @@
     "updated": "Пароль обновлён",
     "invalidCurrent": "Неверный текущий пароль",
     "currentRequired": "Введите текущий пароль"
+  },
+  "doctor": {
+    "reception": {
+      "common": {
+        "loading": "Загрузка…",
+        "consultation": "Консультация"
+      },
+      "page": {
+        "backToList": "К списку приёмов"
+      },
+      "tabs": {
+        "session": "Приём",
+        "history": "История визитов",
+        "documents": "Документы",
+        "labs": "Анализы",
+        "prescriptions": "Назначения"
+      },
+      "tabContent": {
+        "selectPatient": "Выберите активного пациента из очереди."
+      },
+      "visitsFilters": {
+        "type": "Тип",
+        "diagnosis": "Диагноз",
+        "doctor": "Врач",
+        "all": "Все",
+        "reset": "Сбросить"
+      },
+      "queue": {
+        "title": "Очередь",
+        "totalToday": "Всего сегодня: {total}",
+        "inProgressBadge": "На приёме: {name}",
+        "loading": "Загрузка очереди…",
+        "empty": "В очереди нет пациентов.",
+        "open": "Открыть",
+        "defer": "Отложить",
+        "start": "Начать",
+        "switchConfirm": "Сейчас на приёме {current}. Переключиться на {next}?",
+        "status": {
+          "booked": "Записан",
+          "waiting": "Ожидает",
+          "inProgress": "На приёме",
+          "completed": "Завершён",
+          "cancelled": "Отменён",
+          "noShow": "Не пришёл",
+          "skipped": "Пропущен"
+        }
+      },
+      "activePatient": {
+        "noActiveTitle": "Нет активного пациента",
+        "noActiveHint": "Начните приём из очереди, чтобы открыть карту визита.",
+        "visitFinished": "Визит завершён",
+        "activePatient": "Активный пациент",
+        "ageLabel": "Возраст",
+        "ageYears": "{age} лет",
+        "phoneLabel": "Телефон",
+        "typeLabel": "Тип",
+        "scheduledLabel": "Запланировано",
+        "cabinet": "Кабинет {number}",
+        "diagnosisLabel": "Диагноз",
+        "finishVisit": "Завершить визит",
+        "openChart": "Открыть карту",
+        "print": "Печать",
+        "visitMode": "Режим визита",
+        "modeFinished": "завершён",
+        "modeActive": "активен"
+      },
+      "recentFiles": {
+        "title": "Недавние файлы",
+        "selectPatient": "Выберите пациента, чтобы увидеть файлы.",
+        "empty": "Файлов пока нет.",
+        "download": "Скачать",
+        "sizeBytes": "{value} Б",
+        "sizeKb": "{value} КБ",
+        "sizeMb": "{value} МБ",
+        "sizeGb": "{value} ГБ"
+      },
+      "drafts": {
+        "title": "Черновики заключений",
+        "empty": "Черновиков пока нет.",
+        "noDiagnosis": "Без диагноза",
+        "openAll": "Открыть все"
+      },
+      "historyDocs": {
+        "tab": "Документы",
+        "selectPatient": "Выберите пациента, чтобы увидеть документы.",
+        "empty": "Документов пока нет."
+      },
+      "lastVisit": {
+        "title": "Последний визит",
+        "loadError": "Не удалось загрузить.",
+        "emptyTitle": "Визитов пока нет",
+        "emptyDescription": "История появится после первого приёма.",
+        "doctorLabel": "Врач",
+        "statusLabel": "Статус",
+        "statusCompleted": "Завершён",
+        "openLast": "Открыть последний",
+        "noConclusion": "Без заключения",
+        "typeConsultation": "Консультация",
+        "typeRepeat": "Повторный"
+      },
+      "lastDiagnosis": {
+        "title": "Последний диагноз",
+        "loadError": "Не удалось загрузить.",
+        "emptyTitle": "Диагнозов пока нет",
+        "emptyDescription": "Диагноз появится после первого заключения.",
+        "establishedLabel": "Установлен"
+      },
+      "aiSummary": {
+        "title": "AI-сводка",
+        "refresh": "Обновить",
+        "collapse": "Свернуть",
+        "historySummary": "Сводка по истории",
+        "selectPatient": "Выберите пациента, чтобы увидеть сводку.",
+        "analyzing": "AI ещё анализирует визит",
+        "keyTrends": "Ключевые тенденции"
+      },
+      "aiRail": {
+        "assistantTitle": "AI-ассистент",
+        "selectActivePatient": "Выберите активного пациента, чтобы получить сводку.",
+        "summaryUnavailable": "Сводка недоступна.",
+        "clarifyingTitle": "Уточняющие вопросы",
+        "refresh": "Обновить",
+        "generate": "Сгенерировать",
+        "startVisitHint": "Начните визит, чтобы получить подсказки.",
+        "clarifyingHint": "Нажмите «Сгенерировать», чтобы получить уточняющие вопросы.",
+        "clarifyingFallback": "Запасной список вопросов.",
+        "icd10Title": "Подсказки МКБ-10",
+        "icd10Hint": "Нажмите «Сгенерировать», чтобы получить коды МКБ-10.",
+        "icd10NoData": "Нет подходящих кодов.",
+        "applyDiagnosis": "Применить как диагноз",
+        "warningsTitle": "Предупреждения",
+        "warningsStartHint": "Начните визит, чтобы увидеть предупреждения.",
+        "warningsEmpty": "Предупреждений нет.",
+        "smartBuilderTitle": "Умный конструктор",
+        "smartBuilderSubtitle": "Собрать заключение из данных визита",
+        "toneLikely": "вероятно",
+        "tonePossible": "возможно"
+      },
+      "fields": {
+        "complaints": {
+          "label": "Жалобы",
+          "placeholder": "Опишите жалобы пациента…"
+        },
+        "anamnesis": {
+          "label": "Анамнез",
+          "placeholder": "Анамнез заболевания и жизни…"
+        },
+        "examination": {
+          "label": "Осмотр",
+          "placeholder": "Данные объективного осмотра…"
+        },
+        "prescriptions": {
+          "label": "Назначения",
+          "placeholder": "Добавьте препарат…"
+        },
+        "advice": {
+          "label": "Рекомендации",
+          "placeholder": "Рекомендации пациенту…"
+        }
+      },
+      "editor": {
+        "tabConclusion": "Заключение",
+        "tabHandout": "Памятка пациенту",
+        "autosaveLabel": "Автосохранение",
+        "conclusionPlaceholder": "Введите заключение…",
+        "conclusionPlaceholderEmpty": "Заполните поля визита, чтобы собрать заключение.",
+        "handoutComposedHint": "Памятка собрана из полей визита.",
+        "library": "Библиотека",
+        "rebuild": "Пересобрать",
+        "build": "Собрать",
+        "print": "Печать",
+        "handoutLabel": "Памятка пациенту",
+        "handoutPlaceholder": "Введите памятку для пациента…",
+        "handoutPlaceholderNoFields": "Заполните поля визита, чтобы собрать памятку.",
+        "handoutPlaceholderEmpty": "Памятка пока пуста.",
+        "saving": "Сохранение…",
+        "savedAt": "Сохранено в {time}",
+        "noChanges": "Нет изменений",
+        "stats": "{chars} симв., {words} слов",
+        "finalizedBadge": "Финализировано"
+      },
+      "structured": {
+        "title": "Данные приёма",
+        "labOrder": "Анализы",
+        "labOrderTitle": "Назначить анализы",
+        "rx": "Рецепт",
+        "rxTitle": "Выписать рецепт",
+        "sickLeave": "Больничный",
+        "sickLeaveTitle": "Выдать больничный лист",
+        "refer": "Направление",
+        "referTitle": "Создать направление",
+        "empty": "Поле пусто.",
+        "catalog": "Каталог",
+        "catalogTitle": "Открыть каталог",
+        "builder": "Конструктор",
+        "add": "Добавить",
+        "presetTitle": "Добавить из шаблона",
+        "presetTitleWithTemplate": "Добавить из шаблона протокола",
+        "remove": "Удалить"
+      },
+      "diagnosis": {
+        "title": "Диагноз",
+        "searchPlaceholder": "Поиск по МКБ-10…",
+        "reset": "Сбросить",
+        "applyProtocolTitle": "Применить протокол",
+        "applyStandard": "Применить стандарт"
+      },
+      "cds": {
+        "checking": "Проверка совместимости…",
+        "noConflicts": "Конфликтов не найдено",
+        "recognizedCount": "распознано: {count}",
+        "unmatchedCount": "не распознано: {count}",
+        "warningsTitle": "Предупреждения",
+        "unresolvedNote": "{count, plural, one {# строка не распознана} few {# строки не распознаны} other {# строк не распознаны}}",
+        "overrideRecorded": "Учтено",
+        "acknowledge": "Я учёл",
+        "overrideReason": "Причина",
+        "commentRequired": "Укажите причину",
+        "commentOptional": "Комментарий (необязательно)",
+        "saveError": "Не удалось сохранить: {message}",
+        "errorFallback": "неизвестная ошибка",
+        "cancel": "Отмена",
+        "save": "Сохранить",
+        "severity": {
+          "contraindicated": "Противопоказано",
+          "major": "Серьёзное",
+          "moderate": "Умеренное",
+          "minor": "Незначительное"
+        },
+        "reasons": {
+          "CLINICALLY_JUSTIFIED": "Клинически обосновано",
+          "PATIENT_INFORMED": "Пациент проинформирован",
+          "ALTERNATIVES_TRIED": "Альтернативы пробовали",
+          "FALSE_POSITIVE": "Ложное срабатывание",
+          "OTHER": "Другое"
+        }
+      }
+    },
+    "receptionDialogs": {
+      "actions": {
+        "apply": "Применить",
+        "cancel": "Отмена",
+        "close": "Закрыть",
+        "remove": "Убрать"
+      },
+      "common": {
+        "icd10": "МКБ-10",
+        "loading": "Загрузка…",
+        "errorFallback": "ошибка"
+      },
+      "favorites": {
+        "add": "В избранное",
+        "remove": "Снять из избранного"
+      },
+      "applyProtocol": {
+        "fallbackSummary": "Применит шаблон ко всем структурированным полям.",
+        "conclusionAddendum": "Дополнение к заключению",
+        "footerHint": "Существующие данные в полях сохранятся, дубликаты не добавляются.",
+        "labsHint": "будут привязаны к лабораторному модулю в G3",
+        "sections": {
+          "complaints": "Жалобы",
+          "anamnesis": "Анамнез",
+          "examination": "Осмотр",
+          "prescriptions": "Назначения",
+          "advice": "Рекомендации",
+          "recommendedLabs": "Рекомендуемые лабы"
+        }
+      },
+      "catalog": {
+        "title": "Каталог препаратов",
+        "description": "Поиск по МНН, бренду или категории. Выбор препарата добавляет его в назначения.",
+        "searchPlaceholder": "Поиск: «бисопролол», «конкор», «амоксициллин»…",
+        "showAll": "Показать все",
+        "favoritesOnly": "Только избранное",
+        "notFound": "Ничего не найдено",
+        "typeToSearch": "Введите название препарата",
+        "selectDrug": "Выберите препарат слева",
+        "pregnancyCategory": "Категория беременности",
+        "addToPrescriptions": "Добавить в назначения",
+        "sections": {
+          "forms": "Формы выпуска",
+          "standardDoses": "Стандартные дозы",
+          "contraindications": "Противопоказания",
+          "sideEffects": "Побочные эффекты",
+          "brands": "Торговые названия"
+        },
+        "dosing": {
+          "adult": "Взрослым:",
+          "pediatric": "Детям:",
+          "elderly": "Пожилым:",
+          "renal": "При ХБП:"
+        },
+        "categories": {
+          "antibiotic": "Антибиотик",
+          "analgesic": "Анальгетик",
+          "antipyretic": "Жаропонижающее",
+          "nsaid": "НПВС",
+          "antihistamine": "Антигистамин",
+          "gi": "ЖКТ",
+          "cardio": "Сердечно-сосудистое",
+          "respiratory": "Дыхательное",
+          "vitamin": "Витамин/БАД",
+          "sedative": "Седативное",
+          "endocrine": "Эндокринное",
+          "diuretic": "Диуретик",
+          "antiemetic": "Противорвотное",
+          "antispasmodic": "Спазмолитик",
+          "steroid": "Стероид",
+          "topical": "Наружное",
+          "eyeEar": "Офтальмо/ЛОР",
+          "urology": "Урология",
+          "neurological": "Неврология",
+          "psychiatric": "Психиатрия",
+          "antifungal": "Противогрибковое",
+          "antiviral": "Противовирусное",
+          "hormonal": "Гормональное",
+          "dermatological": "Дерматология",
+          "hematology": "Гематология",
+          "ophthalmic": "Офтальмология",
+          "gynecology": "Гинекология",
+          "vaccine": "Вакцина",
+          "other": "Прочее"
+        },
+        "forms": {
+          "tab": "Таб",
+          "cap": "Капс",
+          "syrup": "Сироп",
+          "powder": "Пор",
+          "inhal": "Инг",
+          "injIm": "в/м",
+          "injIv": "в/в",
+          "dropsOral": "Капли",
+          "dropsEye": "Глаз. капли",
+          "dropsEar": "Уш. капли",
+          "suppRect": "Свечи",
+          "gel": "Гель",
+          "cream": "Крем",
+          "oint": "Мазь"
+        }
+      },
+      "dosageBuilder": {
+        "title": "Конструктор назначения",
+        "description": "Выберите препарат и параметры — фраза для рецепта соберётся автоматически.",
+        "drug": "Препарат",
+        "drugSearchPlaceholder": "Поиск по названию или бренду (Парацетамол, Сумамед…)",
+        "changeDrug": "Сменить препарат",
+        "form": "Форма",
+        "dose": "Доза",
+        "customDose": "Своя…",
+        "customDosePlaceholder": "Например: 250 мг, 1/2 таблетки, 2,5 мл",
+        "frequency": "Кратность",
+        "timingLabel": "Когда принимать",
+        "duration": "Длительность",
+        "defaultDuration": "5 дней",
+        "durationPlaceholder": "Своё значение",
+        "noteLabel": "Примечание (необязательно)",
+        "notePlaceholder": "Например: при температуре выше 38,5",
+        "preview": "Превью",
+        "addToPrescriptions": "Добавить в назначения",
+        "timing": {
+          "beforeMeal": "До еды",
+          "afterMeal": "После еды",
+          "withMeal": "Во время еды",
+          "empty": "Натощак",
+          "morning": "Утром",
+          "evening": "Вечером",
+          "bedtime": "На ночь",
+          "any": "Не важно"
+        }
+      },
+      "eprescription": {
+        "title": "Рецепт",
+        "description": "Выпишите препараты пациенту. После сохранения откроется печатная форма с QR.",
+        "noPatientHint": "Откройте активный приём, чтобы выписать рецепт.",
+        "removeItem": "Удалить позицию",
+        "addDrug": "Добавить препарат",
+        "submit": "Выписать и напечатать",
+        "submitError": "Не удалось выписать рецепт:",
+        "fields": {
+          "drug": "Препарат",
+          "dose": "Доза",
+          "frequency": "Частота",
+          "route": "Путь",
+          "durationDays": "Длительность, дн.",
+          "instructions": "Инструкция (необязательно)",
+          "validForDays": "Действителен, дн.",
+          "doctorNotes": "Примечания врача"
+        },
+        "placeholders": {
+          "drug": "Парацетамол 500 мг",
+          "dose": "1 таб.",
+          "frequency": "3 раза в день",
+          "route": "внутрь",
+          "durationDays": "7",
+          "instructions": "после еды",
+          "doctorNotes": "контроль через 7 дней"
+        }
+      },
+      "handout": {
+        "title": "Библиотека памяток",
+        "description": "Подберите готовый блок для пациента и вставьте в памятку.",
+        "searchPlaceholder": "Поиск (давление, антибиотики…)",
+        "allTopics": "Все",
+        "empty": "Ничего не найдено.",
+        "previewHint": "Выберите шаблон слева — здесь появится предпросмотр и кнопки «Добавить» / «Заменить».",
+        "replace": "Заменить",
+        "append": "Добавить"
+      },
+      "labOrder": {
+        "title": "Лабораторная заявка",
+        "description": "Подберите тесты или панели → создаём направление с QR.",
+        "searchPlaceholder": "Поиск по коду или названию (CBC, глюкоза, тиреоидная панель…)",
+        "loadingCatalog": "Загружаем каталог…",
+        "panels": "Панели",
+        "tests": "Тесты",
+        "testsEmpty": "Ничего не найдено. Попробуйте другой запрос.",
+        "testCount": "{count, plural, one {# тест} few {# теста} other {# тестов}}",
+        "recommended": "★ рекомендуется",
+        "turnaroundHours": "{hours}ч",
+        "urgency": "Срочность",
+        "urgencyRoutine": "Плановый",
+        "urgencyUrgent": "Срочно",
+        "urgencyStat": "CITO",
+        "basket": "Корзина",
+        "basketEmpty": "Пусто — выберите панели и/или тесты слева.",
+        "detailsLoadOnPrint": "детали загрузятся при печати",
+        "notesLabel": "Примечание для лаборанта",
+        "notesPlaceholder": "Например: пациент натощак",
+        "footerHint": "После создания откроется печатное направление с QR.",
+        "noPatientHint": "Откройте активный приём, чтобы создать заявку.",
+        "submit": "Создать и распечатать",
+        "createError": "Не удалось создать заявку"
+      },
+      "referral": {
+        "title": "Направление",
+        "description": "Направьте пациента к коллеге или во внешнюю клинику. Пациент получит направление в личном кабинете.",
+        "noPatientHint": "Откройте активный приём, чтобы оформить направление.",
+        "modeInternal": "Коллеге в клинике",
+        "modeExternal": "Во внешнюю клинику",
+        "doctorLabel": "Врач",
+        "selectDoctor": "Выберите врача",
+        "noColleagues": "Нет доступных коллег — используйте внешнее направление.",
+        "clinicSpecialty": "Клиника / специальность",
+        "externalPlaceholder": "Республиканский кардиоцентр · кардиолог",
+        "reasonLabel": "Причина направления",
+        "reasonPlaceholder": "Например: консультация кардиолога по поводу нарушения ритма",
+        "submitError": "Не удалось оформить направление:",
+        "submit": "Направить"
+      },
+      "sickLeave": {
+        "title": "Лист нетрудоспособности",
+        "description": "Освобождение от работы. После сохранения откроется печатная форма.",
+        "noPatientHint": "Откройте активный приём, чтобы выписать лист.",
+        "regimenLabel": "Режим",
+        "from": "С",
+        "to": "По",
+        "calendarDays": "Календарных дней:",
+        "restrictionsLabel": "Рекомендации / ограничения",
+        "restrictionsPlaceholder": "избегать физических нагрузок",
+        "notesLabel": "Примечания",
+        "submitError": "Не удалось выписать лист:",
+        "submit": "Выписать и напечатать",
+        "regimens": {
+          "outpatient": {
+            "label": "Амбулаторно",
+            "hint": "лечение дома"
+          },
+          "hospital": {
+            "label": "Стационар",
+            "hint": "круглосуточно"
+          },
+          "home": {
+            "label": "Постельный",
+            "hint": "строгий режим"
+          }
+        }
+      }
+    },
+    "patients": {
+      "title": "Пациенты",
+      "subtitle": "Управление базой пациентов и планирование наблюдения",
+      "loadingMore": "Загружаем ещё…",
+      "tabs": {
+        "all": "Все пациенты",
+        "active": "Активные",
+        "new": "Новые",
+        "watch": "На контроле",
+        "returned": "Вернулись",
+        "dormant": "Давно не были"
+      },
+      "actions": {
+        "export": "Экспорт",
+        "configureView": "Настроить вид",
+        "write": "Написать",
+        "call": "Позвонить",
+        "moreActions": "Ещё действия",
+        "openCard": "Открыть карточку",
+        "visitHistory": "История визитов",
+        "documents": "Документы"
+      },
+      "filters": {
+        "searchPlaceholder": "Поиск по ФИО или телефону...",
+        "allDiagnoses": "Все диагнозы",
+        "allStatuses": "Все статусы",
+        "age": "Возраст",
+        "visitPeriod": "Период визита",
+        "filters": "Фильтры"
+      },
+      "table": {
+        "loading": "Загружаем пациентов…",
+        "loadError": "Не удалось загрузить список пациентов",
+        "empty": "У вас пока нет пациентов в этой группе.",
+        "emptySearch": "Ничего не найдено по этому запросу.",
+        "ageShort": "{age} лет",
+        "columns": {
+          "patient": "Пациент",
+          "age": "Возраст",
+          "phone": "Телефон",
+          "lastVisit": "Последний визит",
+          "lastDiagnosis": "Последний диагноз",
+          "status": "Статус",
+          "nextAppointment": "Следующий приём",
+          "actions": "Действия"
+        },
+        "status": {
+          "inAppointment": "На приёме",
+          "onWatch": "На контроле",
+          "new": "Новый",
+          "dormant": "Давно не был"
+        }
+      },
+      "pagination": {
+        "shown": "Показано {loaded} из {total} пациентов",
+        "loadMore": "Загрузить ещё"
+      },
+      "toast": {
+        "noChannel": "Нет канала связи с пациентом",
+        "noChannelDescription": "Добавьте телефон или Telegram, чтобы написать.",
+        "chatFailed": "Не удалось открыть чат"
+      },
+      "aiAssistant": {
+        "title": "AI-помощник",
+        "collapse": "Свернуть",
+        "needAttention": "Требуют внимания",
+        "loadError": "Не удалось загрузить подсказки.",
+        "empty": "Сейчас никто не требует внимания. Подсказки появятся, когда у пациентов изменятся сегменты.",
+        "cohorts": {
+          "dormant": "Давно не посещали клинику",
+          "watch": "Нуждаются в контрольном визите",
+          "returned": "Недавно вернулись",
+          "new": "Новые пациенты"
+        }
+      },
+      "segmentation": {
+        "title": "Сегментация базы",
+        "reset": "Сбросить",
+        "loadError": "Не удалось загрузить сегментацию.",
+        "empty": "Пока нет пациентов с завершёнными визитами. Когда появятся, тут раскроется разбивка по сегментам.",
+        "totalPatients": "Всего пациентов"
+      },
+      "selectedCard": {
+        "emptyPrompt": "Выберите пациента из списка слева, чтобы увидеть детали.",
+        "loadError": "Не удалось загрузить пациента.",
+        "ageWithSep": "{age} лет · ",
+        "status": {
+          "inAppointment": "На приёме",
+          "appointmentSet": "Назначен приём",
+          "active": "Активный"
+        },
+        "rows": {
+          "nextAppointment": "Следующий приём",
+          "allergies": "Аллергии",
+          "chronic": "Хроника",
+          "lastDocument": "Последний документ",
+          "segment": "Сегмент"
+        }
+      },
+      "detail": {
+        "allPatients": "Все пациенты",
+        "notFound": "Пациент не найден или вы не имели приёмов с ним.",
+        "backToList": "Назад к списку пациентов",
+        "ageWithSep": "{age} лет · ",
+        "allergyTag": "Аллергия: {substance}",
+        "tabs": {
+          "overview": "Обзор",
+          "visits": "История визитов",
+          "documents": "Документы",
+          "labs": "Анализы",
+          "prescriptions": "Назначения"
+        }
+      },
+      "overview": {
+        "contacts": "Контакты",
+        "name": "Имя",
+        "phone": "Телефон",
+        "birthDate": "Дата рождения",
+        "segment": "Сегмент",
+        "nextAppointment": "Следующий приём",
+        "statusLabel": "Статус: {status}",
+        "noAppointments": "Запланированных приёмов нет.",
+        "allergies": "Аллергии",
+        "notSpecified": "Не указаны.",
+        "chronicConditions": "Хронические заболевания"
+      },
+      "visits": {
+        "loading": "Загружаем визиты…",
+        "loadError": "Не удалось загрузить визиты.",
+        "empty": "Завершённых визитов пока нет.",
+        "noDiagnosis": "Без диагноза",
+        "durationMin": "{min} мин",
+        "type": {
+          "repeat": "Повторный",
+          "consultation": "Консультация"
+        }
+      },
+      "documents": {
+        "loading": "Загружаем документы…",
+        "loadError": "Не удалось загрузить документы.",
+        "empty": "Документов пока нет.",
+        "open": "Открыть",
+        "bytes": {
+          "b": "Б",
+          "kb": "КБ",
+          "mb": "МБ"
+        }
+      },
+      "labs": {
+        "loading": "Загружаем анализы…",
+        "loadError": "Не удалось загрузить анализы.",
+        "empty": "Анализов пока нет.",
+        "ref": "реф. {range}",
+        "fromColleague": "от коллеги",
+        "reviewedOn": "проверено {date}",
+        "markReviewed": "Просмотрено",
+        "flag": {
+          "normal": "норма",
+          "high": "выше",
+          "low": "ниже",
+          "critical": "критич."
+        }
+      },
+      "prescriptions": {
+        "loading": "Загружаем назначения…",
+        "loadError": "Не удалось загрузить назначения.",
+        "empty": "Назначений пока нет.",
+        "emptyActive": "Активных назначений нет.",
+        "prescribedOn": "Назначено {date}",
+        "remindersOn": " · напоминания вкл.",
+        "tabs": {
+          "active": "Активные",
+          "all": "Все"
+        }
+      }
+    },
+    "myDay": {
+      "type": {
+        "consultation": "Консультация",
+        "repeat": "Повторный приём",
+        "reserve": "Резерв",
+        "break": "Обед"
+      },
+      "status": {
+        "planned": "Запланирован",
+        "alreadyVisited": "Уже был",
+        "noShow": "Не пришёл",
+        "cancelled": "Отменён",
+        "inProgress": "Идёт приём",
+        "called": "Вызван"
+      },
+      "tags": {
+        "active": "Активный пациент",
+        "firstVisit": "Первичный приём",
+        "vip": "VIP",
+        "new": "Новый"
+      },
+      "quickActions": {
+        "title": "Быстрые действия",
+        "newVisit": "Новая запись",
+        "openPatientCard": "Открыть карту пациента",
+        "createConclusion": "Создать заключение",
+        "referToLabs": "Направление на анализы",
+        "documentTemplates": "Шаблоны документов"
+      },
+      "tasks": {
+        "title": "Задачи на сегодня",
+        "empty": "Задач нет",
+        "allDone": "Всё сделано на сегодня"
+      },
+      "recentPatients": {
+        "title": "Недавние пациенты",
+        "empty": "Недавних пациентов нет",
+        "openCardAria": "Открыть карту: {name}",
+        "allPatients": "Все пациенты"
+      },
+      "referrals": {
+        "title": "Входящие направления",
+        "subtitle": "Пациенты, направленные ко мне коллегами",
+        "empty": "Новых направлений нет",
+        "openCardAria": "{name}: открыть карту пациента",
+        "fromDoctor": "от {name}",
+        "fallback": "Направление",
+        "allPatients": "Все пациенты"
+      },
+      "results": {
+        "title": "Мои новые результаты",
+        "subtitle": "Лабы по моим назначениям, ещё не просмотренные",
+        "empty": "Новых результатов нет",
+        "openLabsAria": "{test} — {patient}: открыть анализы",
+        "flagCritical": "критич.",
+        "flagHigh": "выше",
+        "flagLow": "ниже",
+        "flagNew": "новый",
+        "showAll": "Показать все результаты"
+      },
+      "drafts": {
+        "title": "Черновики заключений",
+        "empty": "Черновиков нет",
+        "continueAria": "Продолжить: {title} — {patient}",
+        "continue": "Продолжить",
+        "allDrafts": "Все черновики"
+      },
+      "ai": {
+        "title": "AI-помощник",
+        "settingsAria": "Настройки AI",
+        "collapseAria": "Свернуть",
+        "summaryTitle": "Сводка на сегодня",
+        "totalAppointments": "Всего приёмов",
+        "consultations": "Консультаций",
+        "repeats": "Повторных приёмов",
+        "completed": "Завершено",
+        "dayPlan": "План на день",
+        "comingSoon": "AI-анализ скоро",
+        "comingSoonHint": "Алерты и рекомендации появятся, когда подключим модель"
+      },
+      "reminders": {
+        "title": "Напоминания",
+        "empty": "Активных напоминаний нет",
+        "itemAria": "Напоминание: {title}",
+        "noPatient": "без пациента",
+        "now": "сейчас",
+        "inMinutes": "через {n} мин",
+        "hoursAgo": "{n} ч назад",
+        "inHours": "через {n} ч",
+        "daysAgo": "{n} дн назад",
+        "inDays": "через {n} дн",
+        "all": "Все напоминания",
+        "allWithOverflow": "Ещё {count} — все напоминания"
+      },
+      "upcoming": {
+        "title": "Ближайшие пациенты",
+        "empty": "Других пациентов на сегодня нет",
+        "openCardAria": "Открыть карту: {name}",
+        "callAria": "Позвонить: {name}",
+        "noPhone": "Телефон не указан",
+        "showAll": "Показать всех",
+        "moreHidden": "· ещё {count}",
+        "now": "сейчас",
+        "durationMin": "{n} мин",
+        "inMinutes": "через {n} мин",
+        "inHours": "через {h} ч",
+        "inHoursMinutes": "через {h} ч {m} мин"
+      },
+      "schedule": {
+        "subtitle": "Расписание врача",
+        "today": "Сегодня",
+        "yesterday": "Вчера",
+        "tomorrow": "Завтра",
+        "prevDay": "Предыдущий день",
+        "nextDay": "Следующий день",
+        "emptyToday": "На сегодня записей нет",
+        "emptyDay": "Записей на этот день нет",
+        "showWholeDay": "Показать весь день",
+        "unspecified": "Не указано",
+        "durationMin": "{n} мин",
+        "finish": "Завершить",
+        "call": "Вызвать",
+        "startVisit": "Начать приём",
+        "revertReopen": "Открыть приём заново",
+        "revertToPlanned": "Вернуть в запланированные",
+        "revertRestore": "Восстановить приём"
+      },
+      "current": {
+        "title": "Текущий пациент",
+        "noneActive": "Сейчас никто не принимается",
+        "noneActiveHint": "Когда следующий пациент войдёт в кабинет — он появится здесь",
+        "currentVisit": "Текущий приём",
+        "nextPatient": "Следующий пациент",
+        "ageYears": "{count, plural, one {# год} few {# года} other {# лет}}",
+        "timerElapsed": "Идёт: {time}",
+        "timerWaiting": "Ожидает: {time}",
+        "timerUntil": "Через {time}",
+        "startsAt": "Начало в {time}",
+        "calledAgo": "Вызван {ago}",
+        "secondsAgo": "{n} сек назад",
+        "minutesAgo": "{n} мин назад",
+        "complaints": "Жалобы",
+        "lastVisit": "Последний визит",
+        "openVisit": "Открыть визит",
+        "firstVisit": "Первичный приём",
+        "lastDiagnosis": "Последний диагноз",
+        "viewHistory": "Смотреть историю",
+        "noData": "Нет данных",
+        "callPatient": "Вызвать пациента",
+        "startVisit": "Начать приём",
+        "finishVisit": "Завершить приём",
+        "openPatientCard": "Открыть карту пациента",
+        "moreActions": "Ещё действия",
+        "stepBackWaiting": "Шаг назад: ожидает",
+        "stepBackBooked": "Шаг назад: запланирован",
+        "callAgain": "Вызвать ещё раз",
+        "startWithoutRecall": "Начать без повторного вызова",
+        "startWithoutCall": "Начать без вызова",
+        "registerArrivalOnly": "Только зарегистрировать прибытие",
+        "noShow": "Не пришёл",
+        "cancelVisit": "Отменить приём"
+      },
+      "statusToast": {
+        "called": "Пациент вызван",
+        "reverted": "Шаг назад выполнен",
+        "waiting": "Пациент в ожидании",
+        "inProgress": "Приём начат",
+        "completed": "Приём завершён",
+        "noShow": "Отмечено: не пришёл",
+        "cancelled": "Приём отменён",
+        "errTooEarly": "Слишком рано — приём ещё не должен был начаться",
+        "errInvalidTransition": "Этот переход статуса не разрешён",
+        "errNotRevertable": "Этот статус нельзя отменить",
+        "errRevertMismatch": "Не удалось определить, к чему откатить",
+        "errCallFailed": "Не удалось вызвать пациента",
+        "errRevertFailed": "Не удалось отменить шаг",
+        "errUpdateFailed": "Не удалось обновить статус"
+      }
+    },
+    "visits": {
+      "title": "История визитов",
+      "actions": {
+        "backToPatients": "К списку пациентов",
+        "exportCsv": "Экспорт CSV",
+        "backToHistory": "К истории визитов",
+        "printPdf": "Печать / PDF",
+        "open": "Открыть",
+        "moreActions": "Ещё действия"
+      },
+      "status": {
+        "finalized": "Финализировано",
+        "draft": "Черновик"
+      },
+      "header": {
+        "statusInReception": "На приёме",
+        "statusCompleted": "Завершено",
+        "activeReception": "Активный приём",
+        "patient": "Пациент",
+        "age": "Возраст",
+        "ageValue": "{age, plural, one {# год} few {# года} other {# лет}} ({birth})",
+        "phone": "Телефон",
+        "appointmentType": "Тип приёма",
+        "status": "Статус",
+        "lastVisit": "Последний визит",
+        "cardNumber": "№ карты"
+      },
+      "meta": {
+        "notSpecified": "не указано",
+        "allergies": "Аллергии:",
+        "chronic": "Хронические:",
+        "showMore": "Показать ещё"
+      },
+      "note": {
+        "date": "Дата",
+        "time": "Время",
+        "appointmentType": "Тип приёма",
+        "finalizedAt": "Финализировано",
+        "aiGenerated": "Сформировано с участием AI",
+        "diagnosisIcd10": "Диагноз (МКБ-10)",
+        "complaints": "Жалобы",
+        "anamnesis": "Анамнез",
+        "examination": "Осмотр",
+        "prescriptions": "Назначения",
+        "advice": "Рекомендации",
+        "bodyText": "Текст заключения"
+      },
+      "timeline": {
+        "title": "Лента визитов",
+        "scrollBack": "Прокрутить назад",
+        "scrollForward": "Прокрутить вперёд",
+        "loading": "Загружаем историю…",
+        "empty": "Ещё нет завершённых визитов.",
+        "visitCount": "{count, plural, one {# визит} few {# визита} other {# визитов}}"
+      },
+      "type": {
+        "consultation": "Консультация",
+        "repeat": "Повторный приём"
+      },
+      "table": {
+        "dateTime": "Дата и время",
+        "appointmentType": "Тип приёма",
+        "diagnosis": "Диагноз",
+        "treatment": "Лечение и рекомендации",
+        "documents": "Документы",
+        "doctor": "Врач",
+        "actions": "Действия",
+        "loading": "Загружаем визиты…",
+        "error": "Не удалось загрузить визиты",
+        "empty": "Завершённых визитов пока нет.",
+        "diagnosisNotSpecified": "Диагноз не указан",
+        "diagnosisInfo": "Подробнее о диагнозе",
+        "conclusion": "Заключение",
+        "noConclusion": "Нет заключения",
+        "loadMore": "Показать ещё"
+      },
+      "menu": {
+        "openVisit": "Открыть визит",
+        "idCopied": "ID скопирован",
+        "copyFailed": "Не удалось скопировать",
+        "copyVisitId": "Копировать ID визита",
+        "openPatientCard": "Открыть карту пациента",
+        "printConclusion": "Печать заключения"
+      }
+    },
+    "settings": {
+      "title": "Настройки",
+      "subtitle": "Личные данные, подпись для PDF, каналы уведомлений и статус безопасности.",
+      "tabs": {
+        "profile": "Профиль",
+        "signature": "Подпись",
+        "presets": "Шаблоны",
+        "notifications": "Уведомления",
+        "security": "Безопасность"
+      },
+      "actions": {
+        "save": "Сохранить",
+        "cancel": "Отменить",
+        "retry": "Повторить",
+        "edit": "Редактировать",
+        "delete": "Удалить",
+        "saveError": "Не удалось сохранить"
+      },
+      "profile": {
+        "loadError": "Не удалось загрузить профиль.",
+        "saved": "Профиль обновлён",
+        "nameLabel": "Имя в системе (для коллег)",
+        "phoneLabel": "Телефон",
+        "emailLabel": "Email (readonly)",
+        "roleLabel": "Роль",
+        "fullNameRuLabel": "ФИО (русский)",
+        "fullNameUzLabel": "ФИО (узбекский)",
+        "specializationRuLabel": "Специализация (русский)",
+        "specializationUzLabel": "Специализация (узбекский)",
+        "bioRuLabel": "Биография (русский)",
+        "bioUzLabel": "Биография (узбекский)"
+      },
+      "signature": {
+        "heading": "Подпись врача",
+        "subheading": "Подставляется в PDF-печать заключений. PNG или JPG до 1 МБ. Рекомендуем прозрачный PNG.",
+        "uploading": "Загружаем…",
+        "dropzone": "Перетащите файл или нажмите",
+        "formatHint": "PNG / JPG · до 1 МБ",
+        "currentAlt": "Текущая подпись",
+        "empty": "Подпись не загружена",
+        "replace": "Заменить",
+        "upload": "Загрузить",
+        "removeAria": "Удалить подпись",
+        "saved": "Подпись сохранена",
+        "removed": "Подпись удалена",
+        "errorFormat": "Только PNG или JPG",
+        "errorTooLarge": "Файл больше 1 МБ",
+        "uploadError": "Не удалось загрузить",
+        "removeError": "Не удалось удалить"
+      },
+      "notifications": {
+        "loadError": "Не удалось загрузить настройки.",
+        "heading": "Каналы и события",
+        "subheading": "Выберите, через какие каналы получать уведомления для каждого типа событий. Изменения сохраняются автоматически.",
+        "eventColumn": "Событие",
+        "telegramHint": "Канал <strong>Telegram</strong> работает, только если вы привязали бота к своему аккаунту в разделе «Безопасность».",
+        "channels": {
+          "inApp": "В системе",
+          "email": "Email",
+          "telegram": "Telegram"
+        },
+        "events": {
+          "appointmentCreated": {
+            "label": "Новый приём",
+            "description": "Когда регистратура добавила вам приём на сегодня или позже"
+          },
+          "messageNew": {
+            "label": "Новое сообщение",
+            "description": "Сообщения от пациентов и коллег в чатах"
+          },
+          "labResultReceived": {
+            "label": "Результат анализа",
+            "description": "Когда поступил результат назначенного исследования"
+          },
+          "reminderDue": {
+            "label": "Напоминание",
+            "description": "Когда наступило время для созданного вами напоминания"
+          }
+        }
+      },
+      "security": {
+        "loadError": "Не удалось загрузить статус безопасности.",
+        "heading": "Статус безопасности",
+        "subheading": "Управление паролем, 2FA и сессиями — в разделе «Моя безопасность». Здесь показываем только статус.",
+        "passwordSet": "Пароль установлен",
+        "passwordChangeRequired": "Требуется смена пароля",
+        "passwordNotSet": "Пароль не задан",
+        "twoFactorOn": "Двухфакторная авторизация включена",
+        "twoFactorOff": "Двухфакторная авторизация выключена",
+        "activeSessions": "Активные сессии",
+        "lastLogin": "Последний вход",
+        "never": "никогда",
+        "cta": "Перейти в настройки безопасности"
+      },
+      "presets": {
+        "intro": "Шаблоны появляются как маленькие чипы под полем приёма. Клик по чипу добавляет значение в поле и (если задан шаблон) дописывает текст в заключение.",
+        "add": "Добавить",
+        "empty": "Пока нет шаблонов. Нажмите «Добавить», чтобы создать первый.",
+        "templateBadge": "шаблон",
+        "deleteConfirm": "Удалить шаблон «{label}»?",
+        "deleted": "Шаблон удалён",
+        "deleteError": "Не удалось удалить",
+        "saved": "Шаблон сохранён",
+        "added": "Шаблон добавлен",
+        "addError": "Не удалось добавить",
+        "fields": {
+          "COMPLAINTS": {
+            "label": "Жалобы",
+            "hint": "Частые жалобы — головная боль, головокружение, бессонница"
+          },
+          "ANAMNESIS": {
+            "label": "Анамнез",
+            "hint": "Типовые анамнестические данные"
+          },
+          "EXAMINATION": {
+            "label": "Осмотр",
+            "hint": "Шаблонные строки осмотра — без особенностей, в сознании, и т.д."
+          },
+          "PRESCRIPTIONS": {
+            "label": "Назначения",
+            "hint": "Часто назначаемые препараты с дозировкой и схемой"
+          },
+          "ADVICE": {
+            "label": "Рекомендации",
+            "hint": "Стандартные рекомендации — режим, диета, физнагрузка"
+          }
+        },
+        "editor": {
+          "nameRequired": "Укажите название чипа",
+          "chipNameLabel": "Название чипа",
+          "chipNamePlaceholder": "Напр.: Головная боль",
+          "fieldValueLabel": "Что добавлять в поле",
+          "fieldValuePlaceholder": "Напр.: Головная боль, давящая, > 1 нед",
+          "unlink": "отвязать",
+          "sameAsName": "= название",
+          "noteTemplateLabel": "Шаблонный текст в заключение <optional>— необязательно</optional>",
+          "noteTemplatePlaceholder": "Напр.: Головная боль — давящая, в лобно-теменной области, > 1 нед, без рвоты, светобоязнь умеренная."
+        }
+      }
+    },
+    "messages": {
+      "title": "Сообщения",
+      "searchPlaceholder": "Поиск по сообщениям...",
+      "filters": {
+        "all": "Все",
+        "unread": "Непрочитанные",
+        "channelAll": "Все"
+      },
+      "channels": {
+        "TG": "Telegram",
+        "SMS": "SMS",
+        "CALL": "Звонок",
+        "EMAIL": "Email",
+        "VISIT": "Визит"
+      },
+      "threads": {
+        "loading": "Загружаем…",
+        "error": "Не удалось загрузить",
+        "empty": "У вас пока нет сообщений.",
+        "emptyFiltered": "Ничего не найдено.",
+        "loadMore": "Показать ещё",
+        "loadingMore": "Загрузка…",
+        "noName": "Без имени"
+      },
+      "relative": {
+        "now": "сейчас",
+        "minutes": "{n} мин",
+        "yesterday": "вчера",
+        "today": "Сегодня"
+      },
+      "chat": {
+        "selectThread": "Выберите диалог слева",
+        "loading": "Загружаем сообщения…",
+        "error": "Не удалось загрузить сообщения",
+        "empty": "Сообщений пока нет",
+        "loadingHistory": "Загрузка…",
+        "showHistory": "Показать историю выше",
+        "patientBadge": "Пациент",
+        "channelFallback": "Канал: {channel}",
+        "actions": {
+          "favorite": "В избранное",
+          "info": "Информация",
+          "more": "Ещё"
+        }
+      },
+      "composer": {
+        "tab": "Сообщение",
+        "inputPlaceholder": "Напишите сообщение…  (Enter — отправить, Shift+Enter — новая строка)",
+        "send": "Отправить",
+        "sending": "Отправка…",
+        "sendError": "Не удалось отправить"
+      },
+      "context": {
+        "title": "Контекст пациента",
+        "noPatient": "Этот диалог не связан с пациентом",
+        "loading": "Загружаем…",
+        "error": "Ошибка загрузки",
+        "age": "{count, plural, one {# год} few {# года} other {# лет}}",
+        "ageUnknown": "возраст —",
+        "allergies": "Аллергии",
+        "chronic": "Хронические",
+        "notSpecified": "не указано",
+        "nextAppointment": "Следующий приём",
+        "notScheduled": "не назначен",
+        "lastDocument": "Последний документ"
+      },
+      "toast": {
+        "noChannelTitle": "Нет канала связи с пациентом",
+        "noChannelDescription": "Добавьте телефон или Telegram, чтобы написать.",
+        "openChatFailed": "Не удалось открыть чат"
+      }
+    },
+    "notifications": {
+      "title": "Уведомления",
+      "subtitle": "Напоминания и задачи: то, что нужно сделать сегодня и позже.",
+      "loadError": "Не удалось загрузить напоминания.",
+      "retry": "Повторить",
+      "loading": "Загружаем…",
+      "loadMore": "Показать ещё",
+      "loadMoreCount": "Показать ещё ({count})",
+      "refreshing": "Обновляем…",
+      "confirmDelete": "Удалить напоминание?",
+      "tabs": {
+        "active": "Актуальные",
+        "done": "Выполненные",
+        "archive": "Архив"
+      },
+      "create": {
+        "trigger": "Создать напоминание",
+        "title": "Новое напоминание",
+        "description": "Заметка для себя — появится в «Актуальных» в выбранное время.",
+        "titleLabel": "Заголовок",
+        "titlePlaceholder": "Например: позвонить пациенту",
+        "bodyLabel": "Описание (опционально)",
+        "bodyPlaceholder": "Детали — что нужно сделать, контекст",
+        "remindAtLabel": "Напомнить",
+        "patientLabel": "Пациент (опционально)",
+        "success": "Напоминание создано",
+        "error": "Не удалось создать"
+      },
+      "actions": {
+        "cancel": "Отмена",
+        "create": "Создать"
+      },
+      "empty": {
+        "activeTitle": "Нет актуальных напоминаний",
+        "activeHint": "Создайте заметку для себя — позвонить, проверить результат, перезаказать анализы.",
+        "done": "За последние 30 дней ничего не отмечено как выполненное.",
+        "archive": "За последние 30 дней архив пуст."
+      },
+      "time": {
+        "now": "сейчас",
+        "inMinutes": "через {n} мин",
+        "overdueMinutes": "просрочено {n} мин",
+        "inHours": "через {n} ч",
+        "overdueHours": "просрочено {n} ч",
+        "todayAt": "сегодня в {time}",
+        "tomorrowAt": "завтра в {time}"
+      },
+      "toast": {
+        "done": "Готово",
+        "reopened": "Возвращено в актуальные",
+        "snoozed": "Отложено: {label}",
+        "deleted": "Удалено",
+        "error": "Ошибка"
+      },
+      "status": {
+        "PENDING": "Актуально",
+        "SNOOZED": "Отложено",
+        "DONE": "Выполнено",
+        "DISMISSED": "В архиве"
+      },
+      "snooze": {
+        "heading": "Отложить",
+        "preset1h": "На 1 час",
+        "preset1hLabel": "1 час",
+        "preset4h": "На 4 часа",
+        "preset4hLabel": "4 часа",
+        "presetTomorrow": "До завтра 9:00",
+        "presetTomorrowLabel": "завтра 9:00"
+      },
+      "row": {
+        "markDone": "Готово",
+        "reopen": "Вернуть",
+        "actions": "Действия",
+        "openPatient": "Открыть пациента",
+        "delete": "Удалить"
+      },
+      "picker": {
+        "searchPlaceholder": "Поиск пациента…",
+        "searching": "Поиск…",
+        "noResults": "Ничего не найдено"
+      }
+    },
+    "conclusions": {
+      "title": "Заключения",
+      "subtitle": "Финализированные приёмы и активные черновики.",
+      "noDiagnosis": "Без диагноза",
+      "list": {
+        "searchPlaceholder": "Поиск по диагнозу или пациенту…",
+        "tabFinalized": "Финализированы",
+        "tabDrafts": "Черновики",
+        "loading": "Загружаем…",
+        "emptyFinalized": "Финализированных заключений пока нет.",
+        "emptyDrafts": "Черновиков пока нет.",
+        "loadingMore": "Загружаем ещё…"
+      },
+      "detail": {
+        "backToList": "Назад к списку",
+        "loading": "Загружаем заключение…",
+        "loadError": "Не удалось загрузить заключение.",
+        "finalizedAt": "Финализировано · {date}",
+        "statusDraft": "Черновик",
+        "remainingExpired": "истёк",
+        "remainingHoursMinutes": "{h} ч {m} мин",
+        "remainingMinutes": "{m} мин",
+        "editAvailable": "Правка ещё доступна: {remaining}",
+        "editWindowClosed": "Окно правки закрыто",
+        "print": "Печать",
+        "openInReception": "Открыть в приёме",
+        "bodyHeading": "Заключение",
+        "edit": "Изменить",
+        "readOnly": "Только просмотр",
+        "cancel": "Отменить",
+        "save": "Сохранить",
+        "bodyEmpty": "Текст заключения пуст.",
+        "structuredFields": "Структурированные поля",
+        "complaints": "Жалобы",
+        "anamnesis": "Анамнез",
+        "examination": "Осмотр",
+        "prescriptions": "Назначения",
+        "advice": "Рекомендации",
+        "info": "Сведения",
+        "patient": "Пациент",
+        "startedAt": "Начат",
+        "finalizedAtLabel": "Финализирован",
+        "updatedAt": "Обновлён",
+        "ai": "AI",
+        "aiGenerated": "сгенерировано"
+      }
+    },
+    "documents": {
+      "header": {
+        "title": "Документы",
+        "subtitle": "Документы ваших пациентов и приёмов"
+      },
+      "actions": {
+        "upload": "Загрузить"
+      },
+      "tabs": {
+        "all": "Все документы",
+        "referral": "Направления",
+        "prescription": "Рецепты",
+        "result": "Результаты",
+        "consent": "Согласия",
+        "contract": "Договоры",
+        "receipt": "Чеки",
+        "other": "Прочее"
+      },
+      "filters": {
+        "searchPlaceholder": "Поиск по названию или пациенту...",
+        "reset": "Сбросить"
+      },
+      "type": {
+        "referral": "Направление",
+        "prescription": "Рецепт",
+        "result": "Результат",
+        "consent": "Согласие",
+        "contract": "Договор",
+        "receipt": "Чек",
+        "other": "Прочее"
+      },
+      "size": {
+        "bytes": "{n} Б",
+        "kb": "{n} КБ",
+        "mb": "{n} МБ",
+        "gb": "{n} ГБ"
+      },
+      "table": {
+        "colTitle": "Название",
+        "colPatient": "Пациент",
+        "colType": "Тип",
+        "colDate": "Дата",
+        "colSize": "Размер",
+        "loading": "Загружаем документы…",
+        "error": "Не удалось загрузить документы",
+        "empty": "У вас пока нет документов.",
+        "emptyFiltered": "Ничего не найдено.",
+        "loadMore": "Загрузить ещё",
+        "loadingMore": "Загрузка…"
+      },
+      "row": {
+        "uploadedBy": "загрузил: {name}",
+        "moreActions": "Ещё действия",
+        "closeMenu": "Закрыть меню",
+        "download": "Скачать",
+        "delete": "Удалить",
+        "deleting": "Удаление…",
+        "deleteConfirm": "Удалить документ «{title}»?",
+        "deleteError": "Не удалось удалить: {detail}"
+      },
+      "upload": {
+        "title": "Загрузить документ",
+        "description": "Файл будет привязан к пациенту и доступен в его карте",
+        "patientLabel": "Пациент",
+        "change": "Изменить",
+        "patientSearchPlaceholder": "Введите ФИО или телефон…",
+        "searching": "Поиск…",
+        "noPatients": "Никого не найдено",
+        "typeLabel": "Тип документа",
+        "fileLabel": "Файл",
+        "filePicked": "{name} · {size} КБ",
+        "titleLabel": "Название",
+        "titlePlaceholder": "Например: МРТ головного мозга",
+        "retry": "Повторить",
+        "cancel": "Отмена",
+        "submitting": "Загрузка…",
+        "genericError": "Не удалось загрузить"
+      }
+    },
+    "schedule": {
+      "agenda": {
+        "backToMyDay": "Мой день",
+        "title": "Расписание",
+        "today": "Сегодня",
+        "prevDay": "Предыдущий день",
+        "nextDay": "Следующий день",
+        "print": "Печать",
+        "loadError": "Не удалось загрузить расписание. Попробуйте обновить страницу.",
+        "empty": "Записей на этот день нет",
+        "emptyHint": "Когда появится новая запись, она автоматически возникнет здесь.",
+        "minutes": "{n} мин",
+        "unnamed": "Не указано",
+        "relative": {
+          "today": "Сегодня",
+          "yesterday": "Вчера",
+          "tomorrow": "Завтра"
+        },
+        "status": {
+          "inProgress": "Идёт приём",
+          "done": "Завершён",
+          "noShow": "Не пришёл",
+          "cancelled": "Отменён"
+        },
+        "type": {
+          "consultation": "Консультация",
+          "repeat": "Повторный приём",
+          "reserve": "Резерв",
+          "break": "Обед"
+        }
+      },
+      "summary": {
+        "total": "Всего",
+        "consultations": "Консультаций",
+        "repeats": "Повторных",
+        "completed": "Завершено",
+        "dayPlan": "Выполнение"
+      }
+    },
+    "analytics": {
+      "page": {
+        "title": "Моя статистика",
+        "subtitle": "Клинические KPI за выбранный период: приёмы, назначения, override-аудит CDS."
+      },
+      "dashboard": {
+        "loadError": "Не удалось загрузить аналитику: {message}",
+        "errorFallback": "ошибка",
+        "computing": "Считаем показатели…",
+        "footnote": "Показатели обновляются автоматически каждые 30 секунд. Override CDS — это случаи, когда вы продолжили назначение, несмотря на предупреждение системы; квалити-команда видит их в отдельном отчёте."
+      },
+      "toolbar": {
+        "period": "Период",
+        "presetDays": "{days, plural, one {# день} few {# дня} other {# дней}}",
+        "refresh": "Обновить"
+      },
+      "kpi": {
+        "completedAppointments": "Завершённых приёмов",
+        "finalizedNotes": "Финализированных заключений",
+        "protocolApplied": "Протокол применён",
+        "protocolAppliedHint": "{pct}% от заключений",
+        "rxIssued": "Рецептов выписано",
+        "slIssued": "Б/л выписано",
+        "labOrdersIssued": "Лаб. заявок",
+        "labResultsReviewed": "Анализы просмотрены",
+        "cdsOverrides": "CDS overrides",
+        "cdsOverridesPresent": "квалити проверит",
+        "cdsOverridesNone": "ни одного — отлично"
+      },
+      "daily": {
+        "title": "Объём по дням",
+        "legendRx": "Rx",
+        "legendSl": "Б/л",
+        "legendLabs": "Лаб.",
+        "legendOverride": "Override"
+      }
+    },
+    "references": {
+      "page": {
+        "title": "Справочник МКБ-10",
+        "subtitle": "Поиск по коду или диагнозу. Клик по строке — копирует в буфер."
+      },
+      "icd10": {
+        "searchPlaceholder": "Поиск по коду или диагнозу…",
+        "clear": "Очистить",
+        "searching": "Ищем…",
+        "searchError": "Ошибка поиска",
+        "foundCount": "Найдено: {count}",
+        "clickToCopy": "Клик — скопировать в буфер",
+        "emptyQuery": "Ничего не найдено по запросу «{query}».",
+        "unmapped": "Не классифицированы по главам: {count, plural, one {# код} few {# кода} other {# кодов}}.",
+        "copied": "Скопировано",
+        "copyFailed": "Не удалось скопировать",
+        "chapters": {
+          "A00-B99": "Инфекционные и паразитарные болезни",
+          "C00-D48": "Новообразования",
+          "D50-D89": "Болезни крови и иммунной системы",
+          "E00-E90": "Эндокринные, болезни обмена",
+          "F00-F99": "Психические и поведенческие расстройства",
+          "G00-G99": "Болезни нервной системы",
+          "H00-H59": "Болезни глаза",
+          "H60-H95": "Болезни уха",
+          "I00-I99": "Болезни системы кровообращения",
+          "J00-J99": "Болезни органов дыхания",
+          "K00-K93": "Болезни органов пищеварения",
+          "L00-L99": "Болезни кожи и подкожной клетчатки",
+          "M00-M99": "Костно-мышечная система",
+          "N00-N99": "Мочеполовая система",
+          "R00-R99": "Симптомы и признаки",
+          "S00-T98": "Травмы и отравления",
+          "Z00-Z99": "Факторы здоровья и обращения к врачу"
+        }
+      }
+    },
+    "nav": {
+      "brand": {
+        "homeAria": "Neurofax — главная",
+        "tagline": "Умная клиника"
+      },
+      "groups": {
+        "workspace": "Рабочее пространство",
+        "communications": "Коммуникации",
+        "settings": "Настройки"
+      },
+      "sidebar": {
+        "myDay": "Мой день",
+        "reception": "Приём",
+        "patients": "Пациенты",
+        "visits": "История визитов",
+        "documents": "Документы",
+        "conclusions": "Заключения",
+        "messages": "Сообщения",
+        "analytics": "Моя статистика",
+        "notifications": "Уведомления",
+        "references": "Справочники",
+        "settings": "Настройки"
+      },
+      "footer": {
+        "todayRecords": "записей сегодня"
+      },
+      "collapse": {
+        "expand": "Развернуть",
+        "collapse": "Свернуть"
+      },
+      "topbar": {
+        "searchPlaceholder": "Поиск пациента, врача, записи, телефона, ФИО...",
+        "clearSearch": "Очистить поиск",
+        "newAppointment": "Новая запись",
+        "moreActions": "Дополнительные действия",
+        "calls": "Звонки",
+        "notifications": "Уведомления",
+        "profileMenu": "Меню профиля",
+        "signOut": "Выйти",
+        "lightTheme": "Светлая тема",
+        "darkTheme": "Тёмная тема",
+        "theme": "Тема"
+      }
+    }
   }
 }

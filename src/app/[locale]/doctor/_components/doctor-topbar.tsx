@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { signOut } from "next-auth/react";
+import { useTranslations } from "next-intl";
 import {
   BellIcon,
   ChevronDownIcon,
@@ -66,6 +67,7 @@ export function DoctorTopbar({
   doctorAvatarUrl,
   userEmail,
 }: DoctorTopbarProps) {
+  const t = useTranslations("doctor.nav");
   const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => {
     setNow(new Date());
@@ -97,7 +99,7 @@ export function DoctorTopbar({
           ref={searchRef}
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
-          placeholder="Поиск пациента, врача, записи, телефона, ФИО..."
+          placeholder={t("topbar.searchPlaceholder")}
           className="h-11 w-full rounded-2xl border border-border bg-background pl-10 pr-20 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         />
         <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
@@ -105,7 +107,7 @@ export function DoctorTopbar({
             <button
               type="button"
               onClick={() => setSearchValue("")}
-              aria-label="Очистить поиск"
+              aria-label={t("topbar.clearSearch")}
               className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <XIcon className="size-3.5" />
@@ -124,7 +126,7 @@ export function DoctorTopbar({
           className="motion-press inline-flex items-center gap-2 rounded-l-xl px-4 text-sm font-semibold transition-colors hover:bg-primary/90"
         >
           <PlusIcon className="size-4" />
-          Новая запись
+          {t("topbar.newAppointment")}
           <span className="ml-1 inline-flex h-5 items-center rounded-md bg-white/20 px-1.5 text-[11px] font-semibold tabular-nums">
             F2
           </span>
@@ -132,7 +134,7 @@ export function DoctorTopbar({
         <span aria-hidden className="my-2 w-px bg-white/20" />
         <button
           type="button"
-          aria-label="Дополнительные действия"
+          aria-label={t("topbar.moreActions")}
           className="motion-press inline-flex items-center justify-center rounded-r-xl px-2 transition-colors hover:bg-primary/90"
         >
           <ChevronDownIcon className="size-4" />
@@ -152,9 +154,9 @@ export function DoctorTopbar({
       {/* Comms icon buttons */}
       <div className="ml-2 flex items-center gap-3">
         <ThemeToggleButton />
-        <TopbarIconButton icon={PhoneIcon} label="Звонки" />
+        <TopbarIconButton icon={PhoneIcon} label={t("topbar.calls")} />
         <TopbarIconButton icon={SendIcon} label="Telegram" />
-        <TopbarIconButton icon={BellIcon} label="Уведомления" badge={3} />
+        <TopbarIconButton icon={BellIcon} label={t("topbar.notifications")} badge={3} />
       </div>
 
       {/* Doctor profile — dropdown with sign out. */}
@@ -162,7 +164,7 @@ export function DoctorTopbar({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label="Меню профиля"
+            aria-label={t("topbar.profileMenu")}
             className="motion-press ml-2 flex items-center gap-3 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted"
           >
             <AvatarWithStatus
@@ -195,7 +197,7 @@ export function DoctorTopbar({
             className="text-destructive focus:text-destructive"
           >
             <LogOutIcon className="size-4" />
-            Выйти
+            {t("topbar.signOut")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -204,14 +206,15 @@ export function DoctorTopbar({
 }
 
 function ThemeToggleButton() {
+  const t = useTranslations("doctor.nav");
   const { resolvedTheme, setTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const Icon = isDark ? SunIcon : MoonIcon;
   return (
     <button
       type="button"
-      aria-label={isDark ? "Светлая тема" : "Тёмная тема"}
-      title={isDark ? "Светлая тема" : "Тёмная тема"}
+      aria-label={isDark ? t("topbar.lightTheme") : t("topbar.darkTheme")}
+      title={isDark ? t("topbar.lightTheme") : t("topbar.darkTheme")}
       onClick={() => setTheme(isDark ? "light" : "dark")}
       className={cn(
         "motion-press group relative flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-colors hover:bg-muted",
@@ -221,7 +224,7 @@ function ThemeToggleButton() {
         <Icon className="size-5 text-muted-foreground group-hover:text-foreground" />
       </span>
       <span className="text-[10px] font-medium text-muted-foreground group-hover:text-foreground">
-        Тема
+        {t("topbar.theme")}
       </span>
     </button>
   );

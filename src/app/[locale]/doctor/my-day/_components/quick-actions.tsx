@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   FileTextIcon,
   FlaskConicalIcon,
@@ -12,7 +13,7 @@ import {
 
 type Action = {
   id: string;
-  label: string;
+  labelKey: string;
   shortcut: string;
   icon: LucideIcon;
   href: string;
@@ -23,35 +24,35 @@ type Action = {
 const ACTIONS: Action[] = [
   {
     id: "new",
-    label: "Новая запись",
+    labelKey: "quickActions.newVisit",
     shortcut: "F2",
     icon: PlusIcon,
     href: "/doctor/reception?new=1",
   },
   {
     id: "patient",
-    label: "Открыть карту пациента",
+    labelKey: "quickActions.openPatientCard",
     shortcut: "F3",
     icon: UserSearchIcon,
     href: "/doctor/patients",
   },
   {
     id: "conclusion",
-    label: "Создать заключение",
+    labelKey: "quickActions.createConclusion",
     shortcut: "F4",
     icon: FileTextIcon,
     href: "/doctor/conclusions?new=1",
   },
   {
     id: "analysis",
-    label: "Направление на анализы",
+    labelKey: "quickActions.referToLabs",
     shortcut: "F5",
     icon: FlaskConicalIcon,
     href: "/doctor/documents?new=referral",
   },
   {
     id: "template",
-    label: "Шаблоны документов",
+    labelKey: "quickActions.documentTemplates",
     shortcut: "F6",
     icon: LayersIcon,
     href: "/doctor/documents?tab=templates",
@@ -59,11 +60,13 @@ const ACTIONS: Action[] = [
 ];
 
 export function QuickActions() {
+  const t = useTranslations("doctor.myDay");
+
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Быстрые действия
+          {t("quickActions.title")}
         </div>
       </header>
 
@@ -80,7 +83,7 @@ export function QuickActions() {
                   <Icon className="size-3.5" />
                 </span>
                 <span className="flex-1 truncate text-sm font-medium text-foreground">
-                  {a.label}
+                  {t(a.labelKey)}
                 </span>
                 <kbd className="inline-flex h-5 items-center rounded border border-border bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground tabular-nums">
                   {a.shortcut}

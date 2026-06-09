@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDownIcon, SlidersHorizontalIcon, UploadIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -9,39 +10,40 @@ import type { DoctorPatientTab } from "../_hooks/use-my-patients";
 
 const TABS: Array<{
   key: DoctorPatientTab;
-  label: string;
+  labelKey: string;
   highlight?: "danger";
 }> = [
-  { key: "all", label: "Все пациенты" },
-  { key: "active", label: "Активные" },
-  { key: "new", label: "Новые" },
-  { key: "watch", label: "На контроле" },
-  { key: "returned", label: "Вернулись" },
-  { key: "dormant", label: "Давно не были", highlight: "danger" },
+  { key: "all", labelKey: "tabs.all" },
+  { key: "active", labelKey: "tabs.active" },
+  { key: "new", labelKey: "tabs.new" },
+  { key: "watch", labelKey: "tabs.watch" },
+  { key: "returned", labelKey: "tabs.returned" },
+  { key: "dormant", labelKey: "tabs.dormant", highlight: "danger" },
 ];
 
 export function PatientsHeader() {
+  const t = useTranslations("doctor.patients");
   const { filters, setTab } = usePatientsFilters();
   const active = filters.tab ?? "all";
 
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Пациенты</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Управление базой пациентов и планирование наблюдения
+          {t("subtitle")}
         </p>
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border">
         <nav className="flex flex-wrap items-center gap-1">
-          {TABS.map((t) => {
-            const isActive = t.key === active;
+          {TABS.map((tab) => {
+            const isActive = tab.key === active;
             return (
               <button
-                key={t.key}
+                key={tab.key}
                 type="button"
-                onClick={() => setTab(t.key)}
+                onClick={() => setTab(tab.key)}
                 className={cn(
                   "relative inline-flex items-center gap-2 px-3 py-2.5 text-sm transition-colors",
                   isActive
@@ -49,7 +51,7 @@ export function PatientsHeader() {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <span>{t.label}</span>
+                <span>{t(tab.labelKey)}</span>
                 {isActive ? (
                   <span
                     aria-hidden
@@ -67,7 +69,7 @@ export function PatientsHeader() {
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             <UploadIcon className="size-4 text-muted-foreground" />
-            Экспорт
+            {t("actions.export")}
             <ChevronDownIcon className="size-3.5 text-muted-foreground" />
           </button>
           <button
@@ -75,7 +77,7 @@ export function PatientsHeader() {
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             <SlidersHorizontalIcon className="size-4 text-muted-foreground" />
-            Настроить вид
+            {t("actions.configureView")}
           </button>
         </div>
       </div>

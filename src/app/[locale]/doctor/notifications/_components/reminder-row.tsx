@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   BellIcon,
   CheckCircle2Icon,
@@ -49,36 +50,46 @@ function plusHoursIso(hours: number): string {
  * "12 мая 14:00". Always relative to wall-clock `now`. Re-rendered every
  * minute by the page's `useNowTick` so labels don't go stale.
  */
-function formatRelative(iso: string, now: Date): string {
-  const t = new Date(iso).getTime();
-  const diffMin = Math.round((t - now.getTime()) / 60_000);
+function formatRelative(
+  iso: string,
+  now: Date,
+  t: (key: string, values?: Record<string, string | number>) => string,
+  locale: string,
+): string {
+  const bcp47 = locale === "uz" ? "uz-Latn" : "ru-RU";
+  const ts = new Date(iso).getTime();
+  const diffMin = Math.round((ts - now.getTime()) / 60_000);
 
-  if (diffMin >= -1 && diffMin <= 1) return "сейчас";
+  if (diffMin >= -1 && diffMin <= 1) return t("time.now");
 
-  if (diffMin > 0 && diffMin < 60) return `через ${diffMin} мин`;
+  if (diffMin > 0 && diffMin < 60) return t("time.inMinutes", { n: diffMin });
   if (diffMin < 0 && diffMin > -60) {
-    return `просрочено ${Math.abs(diffMin)} мин`;
+    return t("time.overdueMinutes", { n: Math.abs(diffMin) });
   }
   if (diffMin > 0 && diffMin < 24 * 60) {
     const h = Math.round(diffMin / 60);
-    return `через ${h} ч`;
+    return t("time.inHours", { n: h });
   }
   if (diffMin < 0 && diffMin > -24 * 60) {
     const h = Math.round(Math.abs(diffMin) / 60);
-    return `просрочено ${h} ч`;
+    return t("time.overdueHours", { n: h });
   }
 
   const d = new Date(iso);
   const sameDay = d.toDateString() === now.toDateString();
   if (sameDay) {
-    return `сегодня в ${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+    return t("time.todayAt", {
+      time: d.toLocaleTimeString(bcp47, { hour: "2-digit", minute: "2-digit" }),
+    });
   }
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (d.toDateString() === tomorrow.toDateString()) {
-    return `завтра в ${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+    return t("time.tomorrowAt", {
+      time: d.toLocaleTimeString(bcp47, { hour: "2-digit", minute: "2-digit" }),
+    });
   }
-  return d.toLocaleString("ru-RU", {
+  return d.toLocaleString(bcp47, {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -86,26 +97,11 @@ function formatRelative(iso: string, now: Date): string {
   });
 }
 
-const STATUS_BADGE: Record<
-  Reminder["status"],
-  { label: string; tone: string }
-> = {
-  PENDING: {
-    label: "Актуально",
-    tone: "bg-primary/10 text-primary",
-  },
-  SNOOZED: {
-    label: "Отложено",
-    tone: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  },
-  DONE: {
-    label: "Выполнено",
-    tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  },
-  DISMISSED: {
-    label: "В архиве",
-    tone: "bg-muted text-muted-foreground",
-  },
+const STATUS_TONE: Record<Reminder["status"], string> = {
+  PENDING: "bg-primary/10 text-primary",
+  SNOOZED: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  DONE: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  DISMISSED: "bg-muted text-muted-foreground",
 };
 
 export function ReminderRow({
@@ -117,28 +113,29 @@ export function ReminderRow({
   locale: string;
   now: Date;
 }) {
+  const t = useTranslations("doctor.notifications");
   const patch = usePatchReminder();
   const remove = useDeleteReminder();
 
   const isPending = reminder.status === "PENDING" || reminder.status === "SNOOZED";
   const isOverdue = isPending && new Date(reminder.remindAt).getTime() < now.getTime();
-  const badge = STATUS_BADGE[reminder.status];
+  const badgeTone = STATUS_TONE[reminder.status];
 
   const markDone = async () => {
     try {
       await patch.mutateAsync({ id: reminder.id, status: "DONE" });
-      toast.success("Готово");
+      toast.success(t("toast.done"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ошибка");
+      toast.error(e instanceof Error ? e.message : t("toast.error"));
     }
   };
 
   const reopen = async () => {
     try {
       await patch.mutateAsync({ id: reminder.id, status: "PENDING" });
-      toast.success("Возвращено в актуальные");
+      toast.success(t("toast.reopened"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ошибка");
+      toast.error(e instanceof Error ? e.message : t("toast.error"));
     }
   };
 
@@ -155,19 +152,19 @@ export function ReminderRow({
         status: "SNOOZED",
         remindAt,
       });
-      toast.success(`Отложено: ${label}`);
+      toast.success(t("toast.snoozed", { label }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ошибка");
+      toast.error(e instanceof Error ? e.message : t("toast.error"));
     }
   };
 
   const dismiss = async () => {
-    if (!window.confirm("Удалить напоминание?")) return;
+    if (!window.confirm(t("confirmDelete"))) return;
     try {
       await remove.mutateAsync(reminder.id);
-      toast.success("Удалено");
+      toast.success(t("toast.deleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Ошибка");
+      toast.error(e instanceof Error ? e.message : t("toast.error"));
     }
   };
 
@@ -194,10 +191,10 @@ export function ReminderRow({
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-              badge.tone,
+              badgeTone,
             )}
           >
-            {badge.label}
+            {t(`status.${reminder.status}`)}
           </span>
         </div>
         {reminder.body ? (
@@ -214,7 +211,7 @@ export function ReminderRow({
             )}
           >
             <ClockIcon className="size-3" />
-            {formatRelative(reminder.remindAt, now)}
+            {formatRelative(reminder.remindAt, now, t, locale)}
           </span>
           {reminder.patientFullName && reminder.patientId ? (
             <Link
@@ -244,7 +241,7 @@ export function ReminderRow({
             ) : (
               <CheckCircle2Icon className="mr-1 size-3.5" />
             )}
-            Готово
+            {t("row.markDone")}
           </Button>
         ) : (
           <Button
@@ -255,7 +252,7 @@ export function ReminderRow({
             onClick={reopen}
           >
             <RotateCcwIcon className="mr-1 size-3.5" />
-            Вернуть
+            {t("row.reopen")}
           </Button>
         )}
 
@@ -265,7 +262,7 @@ export function ReminderRow({
               type="button"
               size="icon"
               variant="ghost"
-              aria-label="Действия"
+              aria-label={t("row.actions")}
               disabled={busy}
             >
               <MoreVerticalIcon className="size-4" />
@@ -275,18 +272,24 @@ export function ReminderRow({
             {isPending ? (
               <>
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Отложить
+                  {t("snooze.heading")}
                 </DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => void snooze("1h", "1 час")}>
-                  На 1 час
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void snooze("4h", "4 часа")}>
-                  На 4 часа
+                <DropdownMenuItem
+                  onClick={() => void snooze("1h", t("snooze.preset1hLabel"))}
+                >
+                  {t("snooze.preset1h")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => void snooze("tomorrow", "завтра 9:00")}
+                  onClick={() => void snooze("4h", t("snooze.preset4hLabel"))}
                 >
-                  До завтра 9:00
+                  {t("snooze.preset4h")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void snooze("tomorrow", t("snooze.presetTomorrowLabel"))
+                  }
+                >
+                  {t("snooze.presetTomorrow")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -294,7 +297,7 @@ export function ReminderRow({
             {reminder.patientId ? (
               <DropdownMenuItem asChild>
                 <Link href={`/${locale}/doctor/patients/${reminder.patientId}`}>
-                  Открыть пациента
+                  {t("row.openPatient")}
                 </Link>
               </DropdownMenuItem>
             ) : null}
@@ -304,7 +307,7 @@ export function ReminderRow({
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2Icon className="mr-2 size-3.5" />
-                Удалить
+                {t("row.delete")}
               </DropdownMenuItem>
             ) : null}
           </DropdownMenuContent>

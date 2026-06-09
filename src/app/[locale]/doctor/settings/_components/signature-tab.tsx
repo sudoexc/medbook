@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   ImageIcon,
   Loader2Icon,
@@ -44,6 +45,7 @@ async function uploadSignature(file: File): Promise<{ fileUrl: string }> {
 }
 
 export function SignatureTab() {
+  const t = useTranslations("doctor.settings");
   const profile = useDoctorProfile();
   const setSignature = useSetDoctorSignature();
   const removeSignature = useRemoveDoctorSignature();
@@ -56,20 +58,20 @@ export function SignatureTab() {
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      toast.error("Только PNG или JPG");
+      toast.error(t("signature.errorFormat"));
       return;
     }
     if (file.size > MAX_BYTES) {
-      toast.error("Файл больше 1 МБ");
+      toast.error(t("signature.errorTooLarge"));
       return;
     }
     setUploading(true);
     try {
       const uploaded = await uploadSignature(file);
       await setSignature.mutateAsync(uploaded.fileUrl);
-      toast.success("Подпись сохранена");
+      toast.success(t("signature.saved"));
     } catch (e) {
-      toast.error("Не удалось загрузить");
+      toast.error(t("signature.uploadError"));
       console.error(e);
     } finally {
       setUploading(false);
@@ -100,11 +102,10 @@ export function SignatureTab() {
   return (
     <div className="rounded-2xl border border-border bg-card p-6">
       <div className="mb-1 text-sm font-semibold text-foreground">
-        Подпись врача
+        {t("signature.heading")}
       </div>
       <p className="mb-5 text-xs text-muted-foreground">
-        Подставляется в PDF-печать заключений. PNG или JPG до 1 МБ. Рекомендуем
-        прозрачный PNG.
+        {t("signature.subheading")}
       </p>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_auto] md:items-start">
@@ -136,9 +137,9 @@ export function SignatureTab() {
             <UploadIcon className="size-6 text-muted-foreground" />
           )}
           <div className="text-sm font-medium text-foreground">
-            {uploading ? "Загружаем…" : "Перетащите файл или нажмите"}
+            {uploading ? t("signature.uploading") : t("signature.dropzone")}
           </div>
-          <div className="text-xs text-muted-foreground">PNG / JPG · до 1 МБ</div>
+          <div className="text-xs text-muted-foreground">{t("signature.formatHint")}</div>
         </label>
 
         <div className="flex flex-col items-stretch gap-2 md:w-56">
@@ -147,13 +148,13 @@ export function SignatureTab() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={signatureUrl}
-                alt="Текущая подпись"
+                alt={t("signature.currentAlt")}
                 className="max-h-full max-w-full object-contain"
               />
             ) : (
               <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
                 <ImageIcon className="size-5" />
-                Подпись не загружена
+                {t("signature.empty")}
               </div>
             )}
           </div>
@@ -165,7 +166,7 @@ export function SignatureTab() {
               onClick={onPick}
               disabled={uploading}
             >
-              {signatureUrl ? "Заменить" : "Загрузить"}
+              {signatureUrl ? t("signature.replace") : t("signature.upload")}
             </Button>
             {signatureUrl ? (
               <Button
@@ -173,12 +174,12 @@ export function SignatureTab() {
                 variant="ghost"
                 onClick={() => {
                   removeSignature.mutate(undefined, {
-                    onSuccess: () => toast.success("Подпись удалена"),
-                    onError: () => toast.error("Не удалось удалить"),
+                    onSuccess: () => toast.success(t("signature.removed")),
+                    onError: () => toast.error(t("signature.removeError")),
                   });
                 }}
                 disabled={removeSignature.isPending}
-                aria-label="Удалить подпись"
+                aria-label={t("signature.removeAria")}
               >
                 <Trash2Icon className="size-4" />
               </Button>

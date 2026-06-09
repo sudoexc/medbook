@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeftIcon, UploadIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -117,6 +118,8 @@ export default async function VisitsPage({
 
   if (!data) notFound();
 
+  const t = await getTranslations("doctor.visits");
+
   return (
     <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
       <div className="flex min-w-0 flex-1 flex-col gap-4 xl:gap-5">
@@ -125,7 +128,7 @@ export default async function VisitsPage({
           className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
         >
           <ArrowLeftIcon className="size-4" />
-          К списку пациентов
+          {t("actions.backToPatients")}
         </Link>
 
         <PatientHeaderLive
@@ -156,7 +159,7 @@ export default async function VisitsPage({
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-bold text-foreground">История визитов</h1>
+          <h1 className="text-xl font-bold text-foreground">{t("title")}</h1>
           {/*
            * Anchor with `download` so the browser triggers a save dialog
            * instead of navigating; the endpoint already sets
@@ -168,7 +171,7 @@ export default async function VisitsPage({
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             <UploadIcon className="size-4 text-muted-foreground" />
-            Экспорт CSV
+            {t("actions.exportCsv")}
           </a>
         </div>
 

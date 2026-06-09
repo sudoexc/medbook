@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   ChevronDownIcon,
   ClipboardListIcon,
@@ -32,45 +33,19 @@ import {
 
 type FieldDef = {
   key: PresetField;
-  label: string;
   Icon: LucideIcon;
-  hint: string;
 };
 
 const FIELDS: FieldDef[] = [
-  {
-    key: "COMPLAINTS",
-    label: "Жалобы",
-    Icon: ClipboardListIcon,
-    hint: "Частые жалобы — головная боль, головокружение, бессонница",
-  },
-  {
-    key: "ANAMNESIS",
-    label: "Анамнез",
-    Icon: ScrollTextIcon,
-    hint: "Типовые анамнестические данные",
-  },
-  {
-    key: "EXAMINATION",
-    label: "Осмотр",
-    Icon: StethoscopeIcon,
-    hint: "Шаблонные строки осмотра — без особенностей, в сознании, и т.д.",
-  },
-  {
-    key: "PRESCRIPTIONS",
-    label: "Назначения",
-    Icon: PillIcon,
-    hint: "Часто назначаемые препараты с дозировкой и схемой",
-  },
-  {
-    key: "ADVICE",
-    label: "Рекомендации",
-    Icon: WandSparklesIcon,
-    hint: "Стандартные рекомендации — режим, диета, физнагрузка",
-  },
+  { key: "COMPLAINTS", Icon: ClipboardListIcon },
+  { key: "ANAMNESIS", Icon: ScrollTextIcon },
+  { key: "EXAMINATION", Icon: StethoscopeIcon },
+  { key: "PRESCRIPTIONS", Icon: PillIcon },
+  { key: "ADVICE", Icon: WandSparklesIcon },
 ];
 
 export function PresetsTab() {
+  const t = useTranslations("doctor.settings");
   const presetsQuery = useDoctorPresets();
   const rows = presetsQuery.data ?? [];
 
@@ -99,9 +74,7 @@ export function PresetsTab() {
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        Шаблоны появляются как маленькие чипы под полем приёма. Клик по чипу
-        добавляет значение в поле и (если задан шаблон) дописывает текст в
-        заключение.
+        {t("presets.intro")}
       </div>
 
       {FIELDS.map((f) => (
@@ -118,6 +91,7 @@ function FieldSection({
   def: FieldDef;
   rows: DoctorPresetRow[];
 }) {
+  const t = useTranslations("doctor.settings");
   const [open, setOpen] = React.useState(true);
   const [adding, setAdding] = React.useState(false);
   const Icon = def.Icon;
@@ -134,12 +108,14 @@ function FieldSection({
           </span>
           <div className="leading-tight">
             <div className="text-sm font-semibold text-foreground">
-              {def.label}
+              {t(`presets.fields.${def.key}.label`)}
               <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                 {rows.length}
               </span>
             </div>
-            <div className="text-[11px] text-muted-foreground">{def.hint}</div>
+            <div className="text-[11px] text-muted-foreground">
+              {t(`presets.fields.${def.key}.hint`)}
+            </div>
           </div>
         </div>
         <div className="inline-flex items-center gap-2">
@@ -153,7 +129,7 @@ function FieldSection({
             className="motion-press inline-flex h-8 items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
           >
             <PlusIcon className="size-3.5" />
-            Добавить
+            {t("presets.add")}
           </button>
           <ChevronDownIcon
             className={cn(
@@ -174,7 +150,7 @@ function FieldSection({
           )}
           {rows.length === 0 && !adding ? (
             <p className="py-3 text-center text-xs text-muted-foreground">
-              Пока нет шаблонов. Нажмите «Добавить», чтобы создать первый.
+              {t("presets.empty")}
             </p>
           ) : (
             rows.map((r) => <PresetRow key={r.id} row={r} />)
@@ -186,6 +162,7 @@ function FieldSection({
 }
 
 function PresetRow({ row }: { row: DoctorPresetRow }) {
+  const t = useTranslations("doctor.settings");
   const [editing, setEditing] = React.useState(false);
   const del = useDeletePreset();
 
@@ -200,10 +177,10 @@ function PresetRow({ row }: { row: DoctorPresetRow }) {
   }
 
   const handleDelete = () => {
-    if (!confirm(`Удалить шаблон «${row.label}»?`)) return;
+    if (!confirm(t("presets.deleteConfirm", { label: row.label }))) return;
     del.mutate(row.id, {
-      onSuccess: () => toast.success("Шаблон удалён"),
-      onError: () => toast.error("Не удалось удалить"),
+      onSuccess: () => toast.success(t("presets.deleted")),
+      onError: () => toast.error(t("presets.deleteError")),
     });
   };
 
@@ -222,7 +199,7 @@ function PresetRow({ row }: { row: DoctorPresetRow }) {
           {row.noteTemplate && (
             <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
               <WandSparklesIcon className="size-2.5 text-primary/70" />
-              шаблон
+              {t("presets.templateBadge")}
             </span>
           )}
         </div>
@@ -236,7 +213,7 @@ function PresetRow({ row }: { row: DoctorPresetRow }) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          aria-label="Редактировать"
+          aria-label={t("actions.edit")}
           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <PencilIcon className="size-3.5" />
@@ -245,7 +222,7 @@ function PresetRow({ row }: { row: DoctorPresetRow }) {
           type="button"
           onClick={handleDelete}
           disabled={del.isPending}
-          aria-label="Удалить"
+          aria-label={t("actions.delete")}
           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
         >
           {del.isPending ? (
@@ -268,6 +245,7 @@ function PresetEditor({
   initial?: DoctorPresetRow;
   onClose: () => void;
 }) {
+  const t = useTranslations("doctor.settings");
   const [label, setLabel] = React.useState(initial?.label ?? "");
   const [fieldValue, setFieldValue] = React.useState(
     initial?.fieldValue ?? initial?.label ?? "",
@@ -292,7 +270,7 @@ function PresetEditor({
     const l = label.trim();
     const v = (valueLinked ? l : fieldValue.trim()) || l;
     if (!l || !v) {
-      toast.error("Укажите название чипа");
+      toast.error(t("presets.editor.nameRequired"));
       return;
     }
     const payload = {
@@ -303,20 +281,20 @@ function PresetEditor({
     if (initial) {
       update.mutate(payload, {
         onSuccess: () => {
-          toast.success("Шаблон сохранён");
+          toast.success(t("presets.saved"));
           onClose();
         },
-        onError: () => toast.error("Не удалось сохранить"),
+        onError: () => toast.error(t("actions.saveError")),
       });
     } else {
       create.mutate(
         { field, ...payload },
         {
           onSuccess: () => {
-            toast.success("Шаблон добавлен");
+            toast.success(t("presets.added"));
             onClose();
           },
-          onError: () => toast.error("Не удалось добавить"),
+          onError: () => toast.error(t("presets.addError")),
         },
       );
     }
@@ -327,19 +305,19 @@ function PresetEditor({
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Название чипа
+            {t("presets.editor.chipNameLabel")}
           </span>
           <input
             value={label}
             onChange={(e) => handleLabelChange(e.target.value)}
-            placeholder="Напр.: Головная боль"
+            placeholder={t("presets.editor.chipNamePlaceholder")}
             className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             autoFocus
           />
         </label>
         <label className="flex flex-col gap-1">
           <span className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <span>Что добавлять в поле</span>
+            <span>{t("presets.editor.fieldValueLabel")}</span>
             <button
               type="button"
               onClick={() => {
@@ -351,14 +329,14 @@ function PresetEditor({
               }}
               className="font-normal normal-case tracking-normal text-primary hover:underline"
             >
-              {valueLinked ? "отвязать" : "= название"}
+              {valueLinked ? t("presets.editor.unlink") : t("presets.editor.sameAsName")}
             </button>
           </span>
           <input
             value={fieldValue}
             onChange={(e) => setFieldValue(e.target.value)}
             disabled={valueLinked}
-            placeholder="Напр.: Головная боль, давящая, > 1 нед"
+            placeholder={t("presets.editor.fieldValuePlaceholder")}
             className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
           />
         </label>
@@ -366,12 +344,18 @@ function PresetEditor({
 
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Шаблонный текст в заключение <span className="font-normal normal-case tracking-normal text-muted-foreground">— необязательно</span>
+          {t.rich("presets.editor.noteTemplateLabel", {
+            optional: (chunks) => (
+              <span className="font-normal normal-case tracking-normal text-muted-foreground">
+                {chunks}
+              </span>
+            ),
+          })}
         </span>
         <textarea
           value={noteTemplate}
           onChange={(e) => setNoteTemplate(e.target.value)}
-          placeholder="Напр.: Головная боль — давящая, в лобно-теменной области, > 1 нед, без рвоты, светобоязнь умеренная."
+          placeholder={t("presets.editor.noteTemplatePlaceholder")}
           rows={3}
           className="resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
@@ -384,7 +368,7 @@ function PresetEditor({
           className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <XIcon className="size-3.5" />
-          Отмена
+          {t("actions.cancel")}
         </button>
         <button
           type="button"
@@ -397,7 +381,7 @@ function PresetEditor({
           ) : (
             <SaveIcon className="size-3.5" />
           )}
-          Сохранить
+          {t("actions.save")}
         </button>
       </div>
     </div>

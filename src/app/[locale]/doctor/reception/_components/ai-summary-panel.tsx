@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2Icon,
@@ -39,6 +40,7 @@ export function AISummaryPanel({
   patientId: string | null;
   chronicConditions?: string[];
 }) {
+  const t = useTranslations("doctor.reception");
   const summary = useQuery<SummaryResponse>({
     queryKey: ["doctor", "patient-summary", patientId],
     enabled: !!patientId,
@@ -54,9 +56,9 @@ export function AISummaryPanel({
   });
 
   const paragraphs = React.useMemo(() => {
-    const t = summary.data?.text?.trim();
-    if (!t) return [];
-    return t
+    const txt = summary.data?.text?.trim();
+    if (!txt) return [];
+    return txt
       .split(/\n\s*\n/)
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
@@ -70,13 +72,13 @@ export function AISummaryPanel({
             <SparklesIcon className="size-3.5" />
           </span>
           <span className="text-[15px] font-semibold text-foreground">
-            AI-помощник
+            {t("aiSummary.title")}
           </span>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Обновить"
+            aria-label={t("aiSummary.refresh")}
             onClick={() => summary.refetch()}
             disabled={!patientId || summary.isFetching}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
@@ -89,7 +91,7 @@ export function AISummaryPanel({
           </button>
           <button
             type="button"
-            aria-label="Свернуть"
+            aria-label={t("aiSummary.collapse")}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ChevronUpIcon className="size-3.5" />
@@ -100,21 +102,15 @@ export function AISummaryPanel({
       <div className="space-y-4 px-5 pb-4">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            AI-сводка истории пациента
+            {t("aiSummary.historySummary")}
           </div>
           <div className="mt-1.5 space-y-2 text-xs leading-relaxed text-foreground">
             {!patientId ? (
-              <EmptyHint label="Выберите пациента, чтобы открыть сводку." />
+              <EmptyHint label={t("aiSummary.selectPatient")} />
             ) : summary.isLoading ? (
               <SummarySkeleton />
             ) : paragraphs.length === 0 ? (
-              <EmptyHint
-                label={
-                  summary.data?.pendingRefresh
-                    ? "AI ещё анализирует визит"
-                    : "AI ещё анализирует визит"
-                }
-              />
+              <EmptyHint label={t("aiSummary.analyzing")} />
             ) : (
               paragraphs.map((p, i) => <p key={i}>{p}</p>)
             )}
@@ -124,7 +120,7 @@ export function AISummaryPanel({
         {chronicConditions.length > 0 && (
           <div>
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Ключевые тенденции
+              {t("aiSummary.keyTrends")}
             </div>
             <ul className="space-y-1.5">
               {chronicConditions.map((label, i) => (

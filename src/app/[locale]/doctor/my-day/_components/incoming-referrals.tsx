@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ArrowRightIcon, Share2Icon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +17,7 @@ function formatDate(iso: string): string {
 }
 
 export function IncomingReferrals() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -25,10 +27,10 @@ export function IncomingReferrals() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Входящие направления
+          {t("referrals.title")}
         </div>
         <div className="text-[11px] text-muted-foreground">
-          Пациенты, направленные ко мне коллегами
+          {t("referrals.subtitle")}
         </div>
       </header>
 
@@ -46,14 +48,14 @@ export function IncomingReferrals() {
           ))
         ) : !rows || rows.length === 0 ? (
           <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-            Новых направлений нет
+            {t("referrals.empty")}
           </li>
         ) : (
           rows.map((r) => (
             <li key={r.id}>
               <Link
                 href={`/${locale}/doctor/patients/${r.patientId}`}
-                aria-label={`${r.patientName}: открыть карту пациента`}
+                aria-label={t("referrals.openCardAria", { name: r.patientName })}
                 className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -64,7 +66,9 @@ export function IncomingReferrals() {
                     {r.patientName}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {r.fromDoctorName ? `от ${r.fromDoctorName}` : "Направление"}
+                    {r.fromDoctorName
+                      ? t("referrals.fromDoctor", { name: r.fromDoctorName })
+                      : t("referrals.fallback")}
                     {r.diagnosisCode ? ` · ${r.diagnosisCode}` : ""}
                   </div>
                 </div>
@@ -84,7 +88,7 @@ export function IncomingReferrals() {
           href={`/${locale}/doctor/patients`}
           className="motion-press inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          Все пациенты
+          {t("referrals.allPatients")}
           <ArrowRightIcon className="size-4" />
         </Link>
       </footer>

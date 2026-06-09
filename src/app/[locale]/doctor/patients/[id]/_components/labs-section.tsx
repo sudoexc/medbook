@@ -8,6 +8,8 @@ import {
   UserIcon,
 } from "lucide-react";
 
+import { useTranslations } from "next-intl";
+
 import { cn } from "@/lib/utils";
 import {
   flattenLabs,
@@ -42,12 +44,13 @@ const FLAG_TONE: Record<NonNullable<DoctorPatientLabRow["flag"]>, string> = {
   CRITICAL: "bg-destructive/15 text-destructive",
 };
 
-const FLAG_LABEL: Record<NonNullable<DoctorPatientLabRow["flag"]>, string> = {
-  NORMAL: "норма",
-  HIGH: "выше",
-  LOW: "ниже",
-  CRITICAL: "критич.",
-};
+const FLAG_LABEL_KEY: Record<NonNullable<DoctorPatientLabRow["flag"]>, string> =
+  {
+    NORMAL: "labs.flag.normal",
+    HIGH: "labs.flag.high",
+    LOW: "labs.flag.low",
+    CRITICAL: "labs.flag.critical",
+  };
 
 async function markReviewed(id: string): Promise<void> {
   await fetch(`/api/crm/doctors/me/labs/${id}`, {
@@ -59,6 +62,7 @@ async function markReviewed(id: string): Promise<void> {
 }
 
 export function LabsSection({ patientId }: { patientId: string }) {
+  const t = useTranslations("doctor.patients");
   const list = useDoctorPatientLabs(patientId);
   const rows = flattenLabs(list.data);
   // Track in-flight "REVIEWED" requests so the row dims while waiting for
@@ -89,7 +93,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-12 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        Загружаем анализы…
+        {t("labs.loading")}
       </div>
     );
   }
@@ -97,7 +101,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
   if (list.isError) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-destructive">
-        Не удалось загрузить анализы.
+        {t("labs.loadError")}
       </div>
     );
   }
@@ -105,7 +109,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
   if (rows.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-        Анализов пока нет.
+        {t("labs.empty")}
       </div>
     );
   }
@@ -153,7 +157,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
                   </span>
                   {r.refRange ? (
                     <span className="text-xs text-muted-foreground">
-                      реф. {r.refRange}
+                      {t("labs.ref", { range: r.refRange })}
                     </span>
                   ) : null}
                   {r.flag ? (
@@ -163,7 +167,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
                         FLAG_TONE[r.flag],
                       )}
                     >
-                      {FLAG_LABEL[r.flag]}
+                      {t(FLAG_LABEL_KEY[r.flag])}
                     </span>
                   ) : null}
                 </div>
@@ -172,13 +176,13 @@ export function LabsSection({ patientId }: { patientId: string }) {
                   {!r.orderedByMe ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">
                       <UserIcon className="size-3" />
-                      от коллеги
+                      {t("labs.fromColleague")}
                     </span>
                   ) : null}
                   {isReviewed && r.reviewedAt ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
                       <CheckIcon className="size-3" />
-                      проверено {ruDate(r.reviewedAt)}
+                      {t("labs.reviewedOn", { date: ruDate(r.reviewedAt) })}
                     </span>
                   ) : null}
                 </div>
@@ -197,7 +201,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
                   )}
                 >
                   <CheckIcon className="size-3.5" />
-                  Просмотрено
+                  {t("labs.markReviewed")}
                 </button>
               ) : null}
             </li>
@@ -208,7 +212,7 @@ export function LabsSection({ patientId }: { patientId: string }) {
       {list.isFetchingNextPage && (
         <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
           <Loader2Icon className="size-3 animate-spin" />
-          Загружаем ещё…
+          {t("loadingMore")}
         </div>
       )}
     </section>

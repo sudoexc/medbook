@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDownIcon, Loader2Icon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../_hooks/use-my-patients";
 
 export function PatientsPagination() {
+  const t = useTranslations("doctor.patients");
   const { filters } = usePatientsFilters();
   const query = useMyPatients(filters);
   const rows = flattenDoctorPatients(query.data);
@@ -18,14 +20,12 @@ export function PatientsPagination() {
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card px-5 py-3">
       <div className="text-xs text-muted-foreground tabular-nums">
-        {total !== null ? (
-          <>
-            Показано {loadedCount} из{" "}
-            {total.toLocaleString("ru-RU").replace(",", " ")} пациентов
-          </>
-        ) : (
-          "—"
-        )}
+        {total !== null
+          ? t("pagination.shown", {
+              loaded: loadedCount,
+              total: total.toLocaleString("ru-RU").replace(",", " "),
+            })
+          : "—"}
       </div>
 
       <div className="flex items-center gap-2">
@@ -41,7 +41,7 @@ export function PatientsPagination() {
             ) : (
               <ChevronDownIcon className="size-4 text-muted-foreground" />
             )}
-            Загрузить ещё
+            {t("pagination.loadMore")}
           </button>
         ) : null}
       </div>

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   CalendarIcon,
   CheckCircle2Icon,
@@ -24,11 +25,13 @@ import type {
 } from "../_hooks/use-doctor-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 
-const TYPE_LABEL: Record<ScheduleType, string> = {
-  consultation: "Консультация",
-  repeat: "Повторный приём",
-  reserve: "Резерв",
-  break: "Обед",
+type MyDayTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
+
+const TYPE_LABEL_KEY: Record<ScheduleType, string> = {
+  consultation: "type.consultation",
+  repeat: "type.repeat",
+  reserve: "type.reserve",
+  break: "type.break",
 };
 
 function toIsoDate(d: Date): string {
@@ -60,11 +63,15 @@ function daysBetween(a: Date, b: Date): number {
  * so the doctor can tell at a glance which day they're paging through
  * without re-reading the date string each time.
  */
-function relativeLabel(view: Date, today: Date): string | null {
+function relativeLabel(
+  view: Date,
+  today: Date,
+  t: MyDayTranslate,
+): string | null {
   const delta = daysBetween(view, today);
-  if (delta === 0) return "Сегодня";
-  if (delta === -1) return "Вчера";
-  if (delta === 1) return "Завтра";
+  if (delta === 0) return t("schedule.today");
+  if (delta === -1) return t("schedule.yesterday");
+  if (delta === 1) return t("schedule.tomorrow");
   return null;
 }
 
@@ -77,6 +84,7 @@ function fullDateLabel(view: Date): string {
 }
 
 export function ScheduleCard() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -90,7 +98,7 @@ export function ScheduleCard() {
   const { data, isLoading } = useDoctorSchedule(dateKey);
   const entries = data?.entries ?? [];
 
-  const rel = relativeLabel(viewDate, today);
+  const rel = relativeLabel(viewDate, today, t);
   const dateLine = fullDateLabel(viewDate);
 
   // Index of the first "next-up" slot — primary action target. Only the
@@ -117,7 +125,7 @@ export function ScheduleCard() {
             {rel ? `${rel} · ${dateLine}` : dateLine}
           </div>
           <div className="text-xs text-muted-foreground">
-            Расписание врача
+            {t("schedule.subtitle")}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -132,11 +140,11 @@ export function ScheduleCard() {
                 : "text-foreground hover:bg-muted",
             )}
           >
-            Сегодня
+            {t("schedule.today")}
           </button>
           <button
             type="button"
-            aria-label="Предыдущий день"
+            aria-label={t("schedule.prevDay")}
             onClick={() => setViewDate((d) => addDays(d, -1))}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -144,7 +152,7 @@ export function ScheduleCard() {
           </button>
           <button
             type="button"
-            aria-label="Следующий день"
+            aria-label={t("schedule.nextDay")}
             onClick={() => setViewDate((d) => addDays(d, 1))}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -172,7 +180,7 @@ export function ScheduleCard() {
           ))
         ) : entries.length === 0 ? (
           <li className="px-5 py-12 text-center text-sm text-muted-foreground">
-            {isToday ? "На сегодня записей нет" : "Записей на этот день нет"}
+            {isToday ? t("schedule.emptyToday") : t("schedule.emptyDay")}
           </li>
         ) : (
           entries
@@ -195,7 +203,7 @@ export function ScheduleCard() {
           className="motion-press inline-flex w-full items-center justify-center gap-2 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
           <CalendarIcon className="size-4" />
-          Показать весь день
+          {t("schedule.showWholeDay")}
           {entries.length > 10 ? (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold">
               +{entries.length - 10}
@@ -218,6 +226,7 @@ function ScheduleRow({
   isToday: boolean;
   isNextUpcoming: boolean;
 }) {
+  const t = useTranslations("doctor.myDay");
   const mutation = useAppointmentStatusMutation(dateKey);
   const isBreak = entry.type === "break";
   const isReserve = entry.type === "reserve";
@@ -268,11 +277,14 @@ function ScheduleRow({
               : "text-foreground",
           )}
         >
-          {entry.patientName ?? (isBreak ? "Обед" : "Не указано")}
+          {entry.patientName ??
+            (isBreak ? t("type.break") : t("schedule.unspecified"))}
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {TYPE_LABEL[entry.type]}
-          {entry.durationMin ? ` · ${entry.durationMin} мин` : ""}
+          {t(TYPE_LABEL_KEY[entry.type])}
+          {entry.durationMin
+            ? ` · ${t("schedule.durationMin", { n: entry.durationMin })}`
+            : ""}
         </div>
       </div>
       <RowAction
@@ -320,6 +332,7 @@ function RowAction({
   ) => void;
   onCall: () => void;
 }) {
+  const t = useTranslations("doctor.myDay");
   const isBreak = entry.type === "break";
   const isReserve = entry.type === "reserve";
 
@@ -328,7 +341,7 @@ function RowAction({
       <div className="shrink-0 text-right">
         {entry.durationMin ? (
           <span className="text-xs text-muted-foreground tabular-nums">
-            {entry.durationMin} мин
+            {t("schedule.durationMin", { n: entry.durationMin })}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
@@ -345,35 +358,35 @@ function RowAction({
     if (entry.status === "upcoming") {
       return (
         <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-          Запланирован
+          {t("status.planned")}
         </span>
       );
     }
     if (entry.status === "done") {
       return (
         <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-          Уже был
+          {t("status.alreadyVisited")}
         </span>
       );
     }
     if (entry.status === "no_show") {
       return (
         <span className="inline-flex shrink-0 items-center rounded-full bg-warning/15 px-2.5 py-1 text-[11px] font-semibold text-warning">
-          Не пришёл
+          {t("status.noShow")}
         </span>
       );
     }
     if (entry.status === "cancelled") {
       return (
         <span className="inline-flex shrink-0 items-center rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">
-          Отменён
+          {t("status.cancelled")}
         </span>
       );
     }
     if (entry.status === "in_progress") {
       return (
         <span className="inline-flex shrink-0 items-center rounded-full bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success">
-          Идёт приём
+          {t("status.inProgress")}
         </span>
       );
     }
@@ -383,7 +396,7 @@ function RowAction({
     return (
       <div className="flex shrink-0 items-center gap-2">
         <span className="inline-flex items-center rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-          Идёт приём
+          {t("status.inProgress")}
         </span>
         <button
           type="button"
@@ -396,7 +409,7 @@ function RowAction({
           ) : (
             <CheckCircle2Icon className="size-4" />
           )}
-          Завершить
+          {t("schedule.finish")}
         </button>
       </div>
     );
@@ -406,14 +419,14 @@ function RowAction({
     return (
       <div className="flex shrink-0 items-center gap-1">
         <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-          Уже был
+          {t("status.alreadyVisited")}
         </span>
         <RevertButton
           isPending={isPending}
           /* The doctor's primary "oops" recovery — most common case is
              clicking "Завершить" on the wrong row. */
           onClick={() => onFire("IN_PROGRESS", { revert: true })}
-          tooltip="Открыть приём заново"
+          tooltip={t("schedule.revertReopen")}
         />
       </div>
     );
@@ -423,12 +436,12 @@ function RowAction({
     return (
       <div className="flex shrink-0 items-center gap-1">
         <span className="inline-flex items-center rounded-full bg-warning/15 px-2.5 py-1 text-[11px] font-semibold text-warning">
-          Не пришёл
+          {t("status.noShow")}
         </span>
         <RevertButton
           isPending={isPending}
           onClick={() => onFire("BOOKED", { revert: true })}
-          tooltip="Вернуть в запланированные"
+          tooltip={t("schedule.revertToPlanned")}
         />
       </div>
     );
@@ -438,12 +451,12 @@ function RowAction({
     return (
       <div className="flex shrink-0 items-center gap-1">
         <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">
-          Отменён
+          {t("status.cancelled")}
         </span>
         <RevertButton
           isPending={isPending}
           onClick={() => onFire("BOOKED", { revert: true })}
-          tooltip="Восстановить приём"
+          tooltip={t("schedule.revertRestore")}
         />
       </div>
     );
@@ -473,7 +486,7 @@ function RowAction({
         ) : (
           <MegaphoneIcon className="size-4" />
         )}
-        Вызвать
+        {t("schedule.call")}
       </button>
     );
   }
@@ -486,7 +499,7 @@ function RowAction({
     <div className="flex shrink-0 items-center gap-2">
       <span className="inline-flex items-center gap-1 rounded-full bg-violet/15 px-2 py-1 text-[11px] font-semibold text-violet">
         <MegaphoneIcon className="size-3" />
-        Вызван
+        {t("status.called")}
       </span>
       <button
         type="button"
@@ -499,7 +512,7 @@ function RowAction({
         ) : (
           <PlayIcon className="size-4" />
         )}
-        Начать приём
+        {t("schedule.startVisit")}
       </button>
     </div>
   );

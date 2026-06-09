@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -18,12 +19,12 @@ type TabKey =
   | "notifications"
   | "security";
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "profile", label: "Профиль" },
-  { key: "signature", label: "Подпись" },
-  { key: "presets", label: "Шаблоны" },
-  { key: "notifications", label: "Уведомления" },
-  { key: "security", label: "Безопасность" },
+const TABS: Array<{ key: TabKey; labelKey: string }> = [
+  { key: "profile", labelKey: "tabs.profile" },
+  { key: "signature", labelKey: "tabs.signature" },
+  { key: "presets", labelKey: "tabs.presets" },
+  { key: "notifications", labelKey: "tabs.notifications" },
+  { key: "security", labelKey: "tabs.security" },
 ];
 
 function tabFromParam(raw: string | null): TabKey {
@@ -39,6 +40,7 @@ function tabFromParam(raw: string | null): TabKey {
 }
 
 export function SettingsTabs() {
+  const t = useTranslations("doctor.settings");
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
   const router = useRouter();
@@ -60,19 +62,19 @@ export function SettingsTabs() {
   return (
     <div className="flex flex-col gap-4">
       <div className="inline-flex w-fit rounded-xl border border-border bg-card p-0.5">
-        {TABS.map((t) => (
+        {TABS.map((item) => (
           <button
-            key={t.key}
+            key={item.key}
             type="button"
-            onClick={() => setTabAndUrl(t.key)}
+            onClick={() => setTabAndUrl(item.key)}
             className={cn(
               "motion-press rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors",
-              tab === t.key
+              tab === item.key
                 ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {t.label}
+            {t(item.labelKey)}
           </button>
         ))}
       </div>

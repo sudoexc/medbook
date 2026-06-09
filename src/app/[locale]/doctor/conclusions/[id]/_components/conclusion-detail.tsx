@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   CheckIcon,
   FileTextIcon,
@@ -36,12 +37,15 @@ function editableWindowEndsAt(finalizedAt: string | null): number | null {
   return new Date(finalizedAt).getTime() + EDIT_WINDOW_MS;
 }
 
-function formatRemaining(ms: number): string {
-  if (ms <= 0) return "истёк";
+function formatRemaining(
+  ms: number,
+  tr: (key: string, values?: Record<string, string | number>) => string,
+): string {
+  if (ms <= 0) return tr("detail.remainingExpired");
   const h = Math.floor(ms / (60 * 60 * 1000));
   const m = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
-  if (h > 0) return `${h} ч ${m} мин`;
-  return `${m} мин`;
+  if (h > 0) return tr("detail.remainingHoursMinutes", { h, m });
+  return tr("detail.remainingMinutes", { m });
 }
 
 export function ConclusionDetail({
@@ -51,6 +55,7 @@ export function ConclusionDetail({
   noteId: string;
   locale: string;
 }) {
+  const tr = useTranslations("doctor.conclusions");
   const noteQuery = useVisitNote(noteId);
   const patch = usePatchVisitNote(noteId);
   const note = noteQuery.data ?? null;
@@ -81,7 +86,7 @@ export function ConclusionDetail({
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-12 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        Загружаем заключение…
+        {tr("detail.loading")}
       </div>
     );
   }
@@ -89,7 +94,7 @@ export function ConclusionDetail({
   if (noteQuery.isError || !note) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-        Не удалось загрузить заключение.
+        {tr("detail.loadError")}
       </div>
     );
   }
@@ -119,12 +124,12 @@ export function ConclusionDetail({
             <div className="truncate text-sm font-semibold text-foreground">
               {note.diagnosisCode
                 ? `${note.diagnosisCode} · ${note.diagnosisName ?? ""}`
-                : "Без диагноза"}
+                : tr("noDiagnosis")}
             </div>
             <div className="text-xs text-muted-foreground">
               {note.status === "FINALIZED"
-                ? `Финализировано · ${formatDateTime(note.finalizedAt)}`
-                : "Черновик"}
+                ? tr("detail.finalizedAt", { date: formatDateTime(note.finalizedAt) })
+                : tr("detail.statusDraft")}
             </div>
           </div>
         </div>
@@ -132,13 +137,13 @@ export function ConclusionDetail({
         <div className="flex items-center gap-2">
           {isFinalized && canEdit && remainingMs != null && (
             <span className="hidden text-xs text-muted-foreground sm:inline">
-              Правка ещё доступна: {formatRemaining(remainingMs)}
+              {tr("detail.editAvailable", { remaining: formatRemaining(remainingMs, tr) })}
             </span>
           )}
           {isFinalized && !canEdit && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <LockIcon className="size-3" />
-              Окно правки закрыто
+              {tr("detail.editWindowClosed")}
             </span>
           )}
           <a
@@ -148,7 +153,7 @@ export function ConclusionDetail({
             className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
             <PrinterIcon className="size-4" />
-            Печать
+            {tr("detail.print")}
           </a>
           {note.status === "DRAFT" && (
             <Link
@@ -156,7 +161,7 @@ export function ConclusionDetail({
               className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <PencilIcon className="size-4" />
-              Открыть в приёме
+              {tr("detail.openInReception")}
             </Link>
           )}
         </div>
@@ -165,7 +170,7 @@ export function ConclusionDetail({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] xl:gap-5">
         <section className="flex min-h-[480px] flex-col rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 text-xs">
-            <span className="font-medium text-foreground">Заключение</span>
+            <span className="font-medium text-foreground">{tr("detail.bodyHeading")}</span>
             {!editing ? (
               <button
                 type="button"
@@ -174,7 +179,7 @@ export function ConclusionDetail({
                 className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:opacity-50"
               >
                 <PencilIcon className="size-3" />
-                {canEdit ? "Изменить" : "Только просмотр"}
+                {canEdit ? tr("detail.edit") : tr("detail.readOnly")}
               </button>
             ) : (
               <div className="inline-flex items-center gap-2">
@@ -184,7 +189,7 @@ export function ConclusionDetail({
                   disabled={patch.isPending}
                   className="text-xs font-medium text-muted-foreground hover:text-foreground"
                 >
-                  Отменить
+                  {tr("detail.cancel")}
                 </button>
                 <button
                   type="button"
@@ -197,7 +202,7 @@ export function ConclusionDetail({
                   ) : (
                     <CheckIcon className="size-3" />
                   )}
-                  Сохранить
+                  {tr("detail.save")}
                 </button>
               </div>
             )}
@@ -216,27 +221,27 @@ export function ConclusionDetail({
                 !note.bodyMarkdown && "text-muted-foreground",
               )}
             >
-              {note.bodyMarkdown || "Текст заключения пуст."}
+              {note.bodyMarkdown || tr("detail.bodyEmpty")}
             </pre>
           )}
         </section>
 
         <aside className="flex flex-col gap-4">
-          <DetailCard title="Структурированные поля">
-            <ChipGroup label="Жалобы" items={note.complaints} />
-            <ChipGroup label="Анамнез" items={note.anamnesis} />
-            <ChipGroup label="Осмотр" items={note.examination} />
-            <ChipGroup label="Назначения" items={note.prescriptions} />
-            <ChipGroup label="Рекомендации" items={note.advice} />
+          <DetailCard title={tr("detail.structuredFields")}>
+            <ChipGroup label={tr("detail.complaints")} items={note.complaints} />
+            <ChipGroup label={tr("detail.anamnesis")} items={note.anamnesis} />
+            <ChipGroup label={tr("detail.examination")} items={note.examination} />
+            <ChipGroup label={tr("detail.prescriptions")} items={note.prescriptions} />
+            <ChipGroup label={tr("detail.advice")} items={note.advice} />
           </DetailCard>
 
-          <DetailCard title="Сведения">
-            <Row k="Пациент" v={note.patient?.fullName ?? "—"} />
-            <Row k="Начат" v={formatDateTime(note.startedAt)} />
-            <Row k="Финализирован" v={formatDateTime(note.finalizedAt)} />
-            <Row k="Обновлён" v={formatDateTime(note.updatedAt)} />
+          <DetailCard title={tr("detail.info")}>
+            <Row k={tr("detail.patient")} v={note.patient?.fullName ?? "—"} />
+            <Row k={tr("detail.startedAt")} v={formatDateTime(note.startedAt)} />
+            <Row k={tr("detail.finalizedAtLabel")} v={formatDateTime(note.finalizedAt)} />
+            <Row k={tr("detail.updatedAt")} v={formatDateTime(note.updatedAt)} />
             {note.aiGenerated && (
-              <Row k="AI" v={note.aiModel ?? "сгенерировано"} />
+              <Row k={tr("detail.ai")} v={note.aiModel ?? tr("detail.aiGenerated")} />
             )}
           </DetailCard>
         </aside>

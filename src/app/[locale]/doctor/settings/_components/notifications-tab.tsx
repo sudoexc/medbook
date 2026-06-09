@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   BellIcon,
   MailIcon,
@@ -26,37 +27,20 @@ type EventKey =
   | "labResultReceived"
   | "reminderDue";
 
-const EVENTS: Array<{ key: EventKey; label: string; description: string }> = [
-  {
-    key: "appointmentCreated",
-    label: "Новый приём",
-    description: "Когда регистратура добавила вам приём на сегодня или позже",
-  },
-  {
-    key: "messageNew",
-    label: "Новое сообщение",
-    description: "Сообщения от пациентов и коллег в чатах",
-  },
-  {
-    key: "labResultReceived",
-    label: "Результат анализа",
-    description: "Когда поступил результат назначенного исследования",
-  },
-  {
-    key: "reminderDue",
-    label: "Напоминание",
-    description: "Когда наступило время для созданного вами напоминания",
-  },
+const EVENTS: Array<{ key: EventKey }> = [
+  { key: "appointmentCreated" },
+  { key: "messageNew" },
+  { key: "labResultReceived" },
+  { key: "reminderDue" },
 ];
 
 const CHANNELS: Array<{
   key: Channel;
-  label: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { key: "inApp", label: "В системе", icon: BellIcon },
-  { key: "email", label: "Email", icon: MailIcon },
-  { key: "telegram", label: "Telegram", icon: SendIcon },
+  { key: "inApp", icon: BellIcon },
+  { key: "email", icon: MailIcon },
+  { key: "telegram", icon: SendIcon },
 ];
 
 function fieldName(event: EventKey, channel: Channel): keyof DoctorNotificationPref {
@@ -64,6 +48,7 @@ function fieldName(event: EventKey, channel: Channel): keyof DoctorNotificationP
 }
 
 export function NotificationsTab() {
+  const t = useTranslations("doctor.settings");
   const prefs = useDoctorNotificationPrefs();
   const patch = usePatchDoctorNotificationPrefs();
 
@@ -107,13 +92,13 @@ export function NotificationsTab() {
   if (prefs.isError || !prefs.data) {
     return (
       <div className="rounded-2xl border border-border bg-card p-6 text-sm text-destructive">
-        Не удалось загрузить настройки.
+        {t("notifications.loadError")}
         <button
           type="button"
           onClick={() => prefs.refetch()}
           className="ml-1 underline"
         >
-          Повторить
+          {t("actions.retry")}
         </button>
       </div>
     );
@@ -125,7 +110,7 @@ export function NotificationsTab() {
     patch.mutate(
       { [field]: next } as Partial<DoctorNotificationPref>,
       {
-        onError: () => toast.error("Не удалось сохранить"),
+        onError: () => toast.error(t("actions.saveError")),
       },
     );
   };
@@ -133,11 +118,10 @@ export function NotificationsTab() {
   return (
     <div className="rounded-2xl border border-border bg-card p-6">
       <div className="mb-1 text-sm font-semibold text-foreground">
-        Каналы и события
+        {t("notifications.heading")}
       </div>
       <p className="mb-5 text-xs text-muted-foreground">
-        Выберите, через какие каналы получать уведомления для каждого типа
-        событий. Изменения сохраняются автоматически.
+        {t("notifications.subheading")}
       </p>
 
       <div
@@ -146,11 +130,11 @@ export function NotificationsTab() {
           "grid-cols-[minmax(0,1fr)_80px_80px_80px]",
         )}
       >
-        <div>Событие</div>
+        <div>{t("notifications.eventColumn")}</div>
         {CHANNELS.map((c) => (
           <div key={c.key} className="flex flex-col items-center gap-1">
             <c.icon className="size-3.5" />
-            {c.label}
+            {t(`notifications.channels.${c.key}`)}
           </div>
         ))}
       </div>
@@ -163,10 +147,10 @@ export function NotificationsTab() {
           >
             <div className="min-w-0">
               <div className="text-sm font-medium text-foreground">
-                {e.label}
+                {t(`notifications.events.${e.key}.label`)}
               </div>
               <div className="text-xs text-muted-foreground">
-                {e.description}
+                {t(`notifications.events.${e.key}.description`)}
               </div>
             </div>
             {CHANNELS.map((c) => {
@@ -176,7 +160,7 @@ export function NotificationsTab() {
                   <Switch
                     checked={checked}
                     onCheckedChange={(v) => onToggle(e.key, c.key, v)}
-                    aria-label={`${e.label} → ${c.label}`}
+                    aria-label={`${t(`notifications.events.${e.key}.label`)} → ${t(`notifications.channels.${c.key}`)}`}
                   />
                 </div>
               );
@@ -188,8 +172,9 @@ export function NotificationsTab() {
       <div className="mt-4 flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <MessageCircleIcon className="size-4 shrink-0" />
         <span>
-          Канал <strong>Telegram</strong> работает, только если вы привязали
-          бота к своему аккаунту в разделе «Безопасность».
+          {t.rich("notifications.telegramHint", {
+            strong: (chunks) => <strong>{chunks}</strong>,
+          })}
         </span>
       </div>
     </div>

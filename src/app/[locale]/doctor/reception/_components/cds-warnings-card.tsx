@@ -14,6 +14,7 @@
  * row collapses to a muted bar so the doctor can scan past it.
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
@@ -36,34 +37,33 @@ import {
   type CdsWarningKind,
 } from "../_hooks/use-cds-drug-check";
 import {
-  OVERRIDE_REASON_LABELS,
   useCreateCdsOverride,
   type CdsOverrideReason,
 } from "../_hooks/use-cds-overrides";
 
 const SEVERITY_STYLES: Record<
   CdsSeverity,
-  { wrap: string; chip: string; label: string }
+  { wrap: string; chip: string; labelKey: string }
 > = {
   CONTRAINDICATED: {
     wrap: "border-destructive/40 bg-destructive/10",
     chip: "bg-destructive/15 text-destructive",
-    label: "Противопоказано",
+    labelKey: "cds.severity.contraindicated",
   },
   MAJOR: {
     wrap: "border-destructive/30 bg-destructive/5",
     chip: "bg-destructive/10 text-destructive",
-    label: "Высокий риск",
+    labelKey: "cds.severity.major",
   },
   MODERATE: {
     wrap: "border-warning/40 bg-warning/10",
     chip: "bg-warning/20 text-[color:var(--warning)]",
-    label: "Внимание",
+    labelKey: "cds.severity.moderate",
   },
   MINOR: {
     wrap: "border-info/30 bg-info/10",
     chip: "bg-info/15 text-[color:var(--info)]",
-    label: "Информация",
+    labelKey: "cds.severity.minor",
   },
 };
 
@@ -97,6 +97,7 @@ export function CdsWarningsCard({
   appointmentId,
   visitNoteId,
 }: Props) {
+  const t = useTranslations("doctor.reception");
   const query = useCdsDrugCheck({ patientId, prescriptions, diagnosisCode });
   const [acknowledged, setAcknowledged] = React.useState<Set<string>>(
     () => new Set(),
@@ -119,7 +120,7 @@ export function CdsWarningsCard({
     return (
       <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
         <Loader2Icon className="size-3 animate-spin" />
-        Проверка взаимодействий и аллергий…
+        {t("cds.checking")}
       </div>
     );
   }
@@ -134,15 +135,15 @@ export function CdsWarningsCard({
     return (
       <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-[11px] text-[color:var(--success)]">
         <AlertOctagonIcon className="size-3 rotate-180" />
-        Конфликтов и аллергий не выявлено
+        {t("cds.noConflicts")}
         {result.resolvedDrugs.length > 0 && (
           <span className="text-[color:var(--success)]/70">
-            ({result.resolvedDrugs.length} назначений распознано)
+            {t("cds.recognizedCount", { count: result.resolvedDrugs.length })}
           </span>
         )}
         {result.unresolvedLines.length > 0 && (
           <span className="ml-auto text-[color:var(--success)]/60">
-            {result.unresolvedLines.length} строк без сопоставления
+            {t("cds.unmatchedCount", { count: result.unresolvedLines.length })}
           </span>
         )}
       </div>
@@ -153,7 +154,7 @@ export function CdsWarningsCard({
     <div className="flex flex-col gap-1.5">
       <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground">
         <ShieldAlertIcon className="size-3 text-destructive" />
-        Предупреждения CDS
+        {t("cds.warningsTitle")}
         <span className="rounded-md bg-destructive/15 px-1 text-[10px] font-semibold text-destructive">
           {result.warnings.length}
         </span>
@@ -178,9 +179,7 @@ export function CdsWarningsCard({
       {result.unresolvedLines.length > 0 && (
         <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           <InfoIcon className="size-2.5" />
-          {result.unresolvedLines.length} строк{" "}
-          {result.unresolvedLines.length === 1 ? "не распознана" : "не распознаны"} —
-          CDS пропустил их (введите через каталог).
+          {t("cds.unresolvedNote", { count: result.unresolvedLines.length })}
         </p>
       )}
     </div>
@@ -206,6 +205,7 @@ function WarningRow({
   acknowledged,
   onAcknowledged,
 }: WarningRowProps) {
+  const t = useTranslations("doctor.reception");
   const style = SEVERITY_STYLES[warning.severity];
   const Icon = KIND_ICONS[warning.kind];
   const [picking, setPicking] = React.useState(false);
@@ -251,7 +251,7 @@ function WarningRow({
         <CheckCircle2Icon className="size-3 text-[color:var(--success)]" />
         <span className="line-through">{warning.title}</span>
         <span className="ml-auto text-[10px] uppercase tracking-wide">
-          override записан
+          {t("cds.overrideRecorded")}
         </span>
       </li>
     );
@@ -269,7 +269,7 @@ function WarningRow({
                 style.chip,
               )}
             >
-              {style.label}
+              {t(style.labelKey)}
             </span>
             <span className="text-xs font-semibold text-foreground">
               {warning.title}
@@ -285,14 +285,14 @@ function WarningRow({
             className="h-6 px-2 text-[10px] font-semibold"
             onClick={() => setPicking(true)}
           >
-            Я учёл
+            {t("cds.acknowledge")}
           </Button>
         )}
       </div>
       {picking && (
         <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-border/80 bg-background/70 p-2">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Причина override
+            {t("cds.overrideReason")}
           </div>
           <div className="flex flex-wrap gap-1">
             {(
@@ -315,7 +315,7 @@ function WarningRow({
                     : "border-border bg-background hover:bg-muted/60 text-muted-foreground",
                 )}
               >
-                {OVERRIDE_REASON_LABELS[r]}
+                {t(`cds.reasons.${r}`)}
               </button>
             ))}
           </div>
@@ -323,7 +323,9 @@ function WarningRow({
             value={reasonNote}
             onChange={(e) => setReasonNote(e.target.value)}
             placeholder={
-              noteRequired ? "комментарий (обязательно)" : "комментарий (необязательно)"
+              noteRequired
+                ? t("cds.commentRequired")
+                : t("cds.commentOptional")
             }
             aria-invalid={noteMissing}
             className={cn(
@@ -333,7 +335,9 @@ function WarningRow({
           />
           {create.isError && (
             <p className="text-[10px] text-destructive">
-              Не удалось сохранить: {(create.error as Error)?.message ?? "ошибка"}
+              {t("cds.saveError", {
+                message: (create.error as Error)?.message ?? t("cds.errorFallback"),
+              })}
             </p>
           )}
           <div className="flex items-center justify-end gap-2">
@@ -349,7 +353,7 @@ function WarningRow({
               }}
               disabled={create.isPending}
             >
-              Отмена
+              {t("cds.cancel")}
             </Button>
             <Button
               type="button"
@@ -361,7 +365,7 @@ function WarningRow({
               {create.isPending && (
                 <Loader2Icon className="mr-1 size-3 animate-spin" />
               )}
-              Сохранить
+              {t("cds.save")}
             </Button>
           </div>
         </div>

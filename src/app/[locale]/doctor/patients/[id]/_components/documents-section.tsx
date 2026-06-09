@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { FileTextIcon, Loader2Icon, DownloadIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   flattenDocuments,
@@ -28,16 +29,25 @@ function ruDate(iso: string): string {
   return `${d.getDate()} ${RU_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function formatBytes(n: number | null): string {
+function formatBytes(
+  n: number | null,
+  units: { b: string; kb: string; mb: string },
+): string {
   if (!n) return "";
-  if (n < 1024) return `${n} Б`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
-  return `${(n / 1024 / 1024).toFixed(1)} МБ`;
+  if (n < 1024) return `${n} ${units.b}`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} ${units.kb}`;
+  return `${(n / 1024 / 1024).toFixed(1)} ${units.mb}`;
 }
 
 export function DocumentsSection({ patientId }: { patientId: string }) {
+  const t = useTranslations("doctor.patients");
   const list = useDoctorPatientDocuments(patientId);
   const rows = flattenDocuments(list.data);
+  const byteUnits = {
+    b: t("documents.bytes.b"),
+    kb: t("documents.bytes.kb"),
+    mb: t("documents.bytes.mb"),
+  };
 
   const sentinel = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
@@ -63,7 +73,7 @@ export function DocumentsSection({ patientId }: { patientId: string }) {
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-12 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        Загружаем документы…
+        {t("documents.loading")}
       </div>
     );
   }
@@ -71,7 +81,7 @@ export function DocumentsSection({ patientId }: { patientId: string }) {
   if (list.isError) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-destructive">
-        Не удалось загрузить документы.
+        {t("documents.loadError")}
       </div>
     );
   }
@@ -79,7 +89,7 @@ export function DocumentsSection({ patientId }: { patientId: string }) {
   if (rows.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-        Документов пока нет.
+        {t("documents.empty")}
       </div>
     );
   }
@@ -91,7 +101,7 @@ export function DocumentsSection({ patientId }: { patientId: string }) {
           const meta = [
             d.type,
             d.uploadedBy?.name,
-            formatBytes(d.sizeBytes),
+            formatBytes(d.sizeBytes, byteUnits),
           ].filter(Boolean);
           return (
             <li
@@ -115,7 +125,7 @@ export function DocumentsSection({ patientId }: { patientId: string }) {
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="Открыть"
+                aria-label={t("documents.open")}
               >
                 <DownloadIcon className="size-4" />
               </a>
@@ -127,7 +137,7 @@ export function DocumentsSection({ patientId }: { patientId: string }) {
       {list.isFetchingNextPage && (
         <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
           <Loader2Icon className="size-3 animate-spin" />
-          Загружаем ещё…
+          {t("loadingMore")}
         </div>
       )}
     </section>

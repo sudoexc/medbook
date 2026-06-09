@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 
 import type { DoctorPatientSummary } from "../../_hooks/use-doctor-patient-summary";
 
@@ -27,23 +28,28 @@ function ruDateTime(iso: string): string {
 }
 
 export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) {
+  const t = useTranslations("doctor.patients");
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold text-foreground">Контакты</h2>
+        <h2 className="text-sm font-semibold text-foreground">
+          {t("overview.contacts")}
+        </h2>
         <dl className="mt-3 space-y-2 text-sm">
-          <Row label="Имя" value={summary.fullName} />
-          <Row label="Телефон" value={summary.phone} mono />
+          <Row label={t("overview.name")} value={summary.fullName} />
+          <Row label={t("overview.phone")} value={summary.phone} mono />
           {summary.birthDate ? (
-            <Row label="Дата рождения" value={ruDateTime(summary.birthDate).split(",")[0] ?? "—"} mono />
+            <Row label={t("overview.birthDate")} value={ruDateTime(summary.birthDate).split(",")[0] ?? "—"} mono />
           ) : null}
-          {summary.segment ? <Row label="Сегмент" value={summary.segment} /> : null}
+          {summary.segment ? (
+            <Row label={t("overview.segment")} value={summary.segment} />
+          ) : null}
         </dl>
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground">
-          Следующий приём
+          {t("overview.nextAppointment")}
         </h2>
         {summary.upcomingAppointment ? (
           <div className="mt-3 space-y-1.5 text-sm">
@@ -51,7 +57,9 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
               {ruDateTime(summary.upcomingAppointment.date)}
             </div>
             <div className="text-muted-foreground">
-              Статус: {summary.upcomingAppointment.status}
+              {t("overview.statusLabel", {
+                status: summary.upcomingAppointment.status,
+              })}
             </div>
             {summary.upcomingAppointment.doctor ? (
               <div className="text-muted-foreground">
@@ -63,15 +71,19 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
           </div>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">
-            Запланированных приёмов нет.
+            {t("overview.noAppointments")}
           </p>
         )}
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold text-foreground">Аллергии</h2>
+        <h2 className="text-sm font-semibold text-foreground">
+          {t("overview.allergies")}
+        </h2>
         {summary.allergies.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">Не указаны.</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {t("overview.notSpecified")}
+          </p>
         ) : (
           <ul className="mt-3 space-y-1.5 text-sm">
             {summary.allergies.map((a) => (
@@ -88,10 +100,12 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-semibold text-foreground">
-          Хронические заболевания
+          {t("overview.chronicConditions")}
         </h2>
         {summary.chronicConditions.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">Не указаны.</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {t("overview.notSpecified")}
+          </p>
         ) : (
           <ul className="mt-3 space-y-1.5 text-sm text-foreground">
             {summary.chronicConditions.map((c) => (

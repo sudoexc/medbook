@@ -73,10 +73,5 @@ export function useCreateCdsOverride() {
   });
 }
 
-export const OVERRIDE_REASON_LABELS: Record<CdsOverrideReason, string> = {
-  CLINICALLY_JUSTIFIED: "Клинически обосновано",
-  PATIENT_INFORMED: "Пациент проинформирован",
-  ALTERNATIVES_TRIED: "Альтернативы пробовали",
-  FALSE_POSITIVE: "Ложное срабатывание",
-  OTHER: "Другое",
-};
+// Override-reason labels are resolved at render time via i18n
+// (doctor.reception.cds.reasons.<CdsOverrideReason>), keyed by the enum value.

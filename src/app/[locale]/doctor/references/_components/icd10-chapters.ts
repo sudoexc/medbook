@@ -1,29 +1,30 @@
 import type { Icd10Entry } from "@/server/icd10/data";
 
+// `label` is intentionally not stored here — chapter titles are resolved at
+// render time via i18n (doctor.references.icd10.chapters.<id>), keyed by `id`.
 export type Icd10Chapter = {
   id: string;
   range: string;
-  label: string;
 };
 
 export const ICD10_CHAPTERS: Icd10Chapter[] = [
-  { id: "A00-B99", range: "A00–B99", label: "Инфекционные и паразитарные болезни" },
-  { id: "C00-D48", range: "C00–D48", label: "Новообразования" },
-  { id: "D50-D89", range: "D50–D89", label: "Болезни крови и иммунной системы" },
-  { id: "E00-E90", range: "E00–E90", label: "Эндокринные, болезни обмена" },
-  { id: "F00-F99", range: "F00–F99", label: "Психические и поведенческие расстройства" },
-  { id: "G00-G99", range: "G00–G99", label: "Болезни нервной системы" },
-  { id: "H00-H59", range: "H00–H59", label: "Болезни глаза" },
-  { id: "H60-H95", range: "H60–H95", label: "Болезни уха" },
-  { id: "I00-I99", range: "I00–I99", label: "Болезни системы кровообращения" },
-  { id: "J00-J99", range: "J00–J99", label: "Болезни органов дыхания" },
-  { id: "K00-K93", range: "K00–K93", label: "Болезни органов пищеварения" },
-  { id: "L00-L99", range: "L00–L99", label: "Болезни кожи и подкожной клетчатки" },
-  { id: "M00-M99", range: "M00–M99", label: "Костно-мышечная система" },
-  { id: "N00-N99", range: "N00–N99", label: "Мочеполовая система" },
-  { id: "R00-R99", range: "R00–R99", label: "Симптомы и признаки" },
-  { id: "S00-T98", range: "S00–T98", label: "Травмы и отравления" },
-  { id: "Z00-Z99", range: "Z00–Z99", label: "Факторы здоровья и обращения к врачу" },
+  { id: "A00-B99", range: "A00–B99" },
+  { id: "C00-D48", range: "C00–D48" },
+  { id: "D50-D89", range: "D50–D89" },
+  { id: "E00-E90", range: "E00–E90" },
+  { id: "F00-F99", range: "F00–F99" },
+  { id: "G00-G99", range: "G00–G99" },
+  { id: "H00-H59", range: "H00–H59" },
+  { id: "H60-H95", range: "H60–H95" },
+  { id: "I00-I99", range: "I00–I99" },
+  { id: "J00-J99", range: "J00–J99" },
+  { id: "K00-K93", range: "K00–K93" },
+  { id: "L00-L99", range: "L00–L99" },
+  { id: "M00-M99", range: "M00–M99" },
+  { id: "N00-N99", range: "N00–N99" },
+  { id: "R00-R99", range: "R00–R99" },
+  { id: "S00-T98", range: "S00–T98" },
+  { id: "Z00-Z99", range: "Z00–Z99" },
 ];
 
 export function chapterIdFor(code: string): string | null {

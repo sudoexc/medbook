@@ -11,6 +11,7 @@
  * channel.
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   CheckIcon,
   ClipboardListIcon,
@@ -48,6 +49,7 @@ export function ApplyProtocolDialog({
   protocol,
   onApply,
 }: Props) {
+  const t = useTranslations("doctor.receptionDialogs");
   if (!protocol) return null;
 
   return (
@@ -66,7 +68,7 @@ export function ApplyProtocolDialog({
                 </DialogDescription>
               ) : (
                 <DialogDescription className="text-xs">
-                  Применит шаблон ко всем структурированным полям.
+                  {t("applyProtocol.fallbackSummary")}
                 </DialogDescription>
               )}
             </div>
@@ -79,42 +81,42 @@ export function ApplyProtocolDialog({
         <div className="max-h-[55vh] space-y-3 overflow-y-auto border-y px-5 py-3 text-xs">
           <PreviewSection
             Icon={ClipboardListIcon}
-            label="Жалобы"
+            label={t("applyProtocol.sections.complaints")}
             items={protocol.complaintsTemplate}
           />
           <PreviewSection
             Icon={ScrollTextIcon}
-            label="Анамнез"
+            label={t("applyProtocol.sections.anamnesis")}
             items={protocol.anamnesisTemplate}
           />
           <PreviewSection
             Icon={StethoscopeIcon}
-            label="Осмотр"
+            label={t("applyProtocol.sections.examination")}
             items={protocol.examinationTemplate}
           />
           <PreviewSection
             Icon={PillIcon}
-            label="Назначения"
+            label={t("applyProtocol.sections.prescriptions")}
             items={protocol.prescriptionsTemplate}
           />
           <PreviewSection
             Icon={WandSparklesIcon}
-            label="Рекомендации"
+            label={t("applyProtocol.sections.advice")}
             items={protocol.adviceTemplate}
           />
           {protocol.recommendedLabs.length > 0 ? (
             <PreviewSection
               Icon={TestTube2Icon}
-              label="Рекомендуемые лабы"
+              label={t("applyProtocol.sections.recommendedLabs")}
               items={protocol.recommendedLabs}
-              hint="будут привязаны к лабораторному модулю в G3"
+              hint={t("applyProtocol.labsHint")}
             />
           ) : null}
           {protocol.conclusionTemplateMd ? (
             <div>
               <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-foreground">
                 <FileTextIcon className="size-3" />
-                Дополнение к заключению
+                {t("applyProtocol.conclusionAddendum")}
               </div>
               <pre className="whitespace-pre-wrap rounded-md border bg-muted/40 p-2 font-sans text-[11px] leading-snug text-muted-foreground">
                 {protocol.conclusionTemplateMd}
@@ -125,15 +127,15 @@ export function ApplyProtocolDialog({
 
         <DialogFooter className="flex-row justify-between gap-2 px-5 py-3">
           <p className="text-[11px] text-muted-foreground">
-            Существующие данные в полях сохранятся, дубликаты не добавляются.
+            {t("applyProtocol.footerHint")}
           </p>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-              Отмена
+              {t("actions.cancel")}
             </Button>
             <Button size="sm" onClick={() => onApply(protocol)}>
               <CheckIcon className="mr-1 size-3.5" />
-              Применить
+              {t("actions.apply")}
             </Button>
           </div>
         </DialogFooter>

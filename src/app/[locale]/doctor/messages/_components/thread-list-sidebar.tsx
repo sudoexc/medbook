@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { MessageSquareIcon, SearchIcon } from "lucide-react";
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -16,13 +17,17 @@ import {
   type ConversationRow,
 } from "../_hooks/use-conversations";
 
-const CHANNEL_CHIPS: Array<{ key: "all" | ConversationChannel; label: string }> = [
-  { key: "all", label: "Все" },
-  { key: "TG", label: "Telegram" },
-  { key: "SMS", label: "SMS" },
+const CHANNEL_CHIPS: Array<{
+  key: "all" | ConversationChannel;
+  labelKey: string;
+}> = [
+  { key: "all", labelKey: "filters.channelAll" },
+  { key: "TG", labelKey: "channels.TG" },
+  { key: "SMS", labelKey: "channels.SMS" },
 ];
 
 export function ThreadListSidebar() {
+  const t = useTranslations("doctor.messages");
   const { filters, selectedId, setSelectedId, setQ, setChannel, setUnread } =
     useMessagesContext();
   const [rawQ, setRawQ] = React.useState("");
@@ -42,7 +47,7 @@ export function ThreadListSidebar() {
     <aside className="flex w-[340px] shrink-0 flex-col gap-3">
       <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border bg-card">
         <div className="px-5 pt-4">
-          <h1 className="text-xl font-bold text-foreground">Сообщения</h1>
+          <h1 className="text-xl font-bold text-foreground">{t("title")}</h1>
 
           <div className="mt-3 flex items-center gap-2">
             <button
@@ -55,7 +60,7 @@ export function ThreadListSidebar() {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              Все
+              {t("filters.all")}
               {!filters.unread ? (
                 <span
                   aria-hidden
@@ -73,7 +78,7 @@ export function ThreadListSidebar() {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              Непрочитанные
+              {t("filters.unread")}
               {filters.unread ? (
                 <span
                   aria-hidden
@@ -98,7 +103,7 @@ export function ThreadListSidebar() {
                       : "border border-border bg-background text-foreground hover:bg-muted",
                   )}
                 >
-                  {c.label}
+                  {t(c.labelKey)}
                 </button>
               );
             })}
@@ -114,7 +119,7 @@ export function ThreadListSidebar() {
                   setRawQ(e.target.value);
                   setQ(e.target.value);
                 }}
-                placeholder="Поиск по сообщениям..."
+                placeholder={t("searchPlaceholder")}
                 className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
               />
             </label>
@@ -124,17 +129,17 @@ export function ThreadListSidebar() {
         <div className="mt-2 flex-1 overflow-y-auto px-2 pb-2">
           {query.isLoading ? (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-              Загружаем…
+              {t("threads.loading")}
             </div>
           ) : query.isError ? (
             <div className="px-3 py-6 text-center text-xs text-destructive">
-              Не удалось загрузить
+              {t("threads.error")}
             </div>
           ) : rows.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">
               {filters.q || filters.channel || filters.unread
-                ? "Ничего не найдено."
-                : "У вас пока нет сообщений."}
+                ? t("threads.emptyFiltered")
+                : t("threads.empty")}
             </div>
           ) : (
             <ul>
@@ -158,7 +163,9 @@ export function ThreadListSidebar() {
               disabled={query.isFetchingNextPage}
               className="inline-flex w-full items-center justify-center text-sm font-semibold text-primary transition-colors hover:underline disabled:opacity-60"
             >
-              {query.isFetchingNextPage ? "Загрузка…" : "Показать ещё"}
+              {query.isFetchingNextPage
+                ? t("threads.loadingMore")
+                : t("threads.loadMore")}
             </button>
           </div>
         ) : null}
@@ -174,12 +181,12 @@ const CHANNEL_TONE: Record<ConversationChannel, string> = {
   EMAIL: "bg-muted text-muted-foreground",
   VISIT: "bg-success/10 text-success",
 };
-const CHANNEL_LABEL: Record<ConversationChannel, string> = {
-  TG: "Telegram",
-  SMS: "SMS",
-  CALL: "Звонок",
-  EMAIL: "Email",
-  VISIT: "Визит",
+const CHANNEL_LABEL_KEY: Record<ConversationChannel, string> = {
+  TG: "channels.TG",
+  SMS: "channels.SMS",
+  CALL: "channels.CALL",
+  EMAIL: "channels.EMAIL",
+  VISIT: "channels.VISIT",
 };
 
 function ThreadRow({
@@ -191,9 +198,10 @@ function ThreadRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const title = conversationTitle(conv);
-  const initials = conversationInitials(conv);
-  const when = formatRelative(conv.lastMessageAt);
+  const t = useTranslations("doctor.messages");
+  const title = conversationTitle(conv, t);
+  const initials = conversationInitials(conv, t);
+  const when = formatRelative(conv.lastMessageAt, t);
   return (
     <li>
       <button
@@ -236,7 +244,7 @@ function ThreadRow({
                   CHANNEL_TONE[conv.channel],
                 )}
               >
-                {CHANNEL_LABEL[conv.channel]}
+                {t(CHANNEL_LABEL_KEY[conv.channel])}
               </span>
             </div>
             {when ? (
@@ -262,14 +270,17 @@ function ThreadRow({
   );
 }
 
-function formatRelative(iso: string | null): string | null {
+function formatRelative(
+  iso: string | null,
+  t: (key: string, values?: Record<string, string | number | Date>) => string,
+): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return "сейчас";
-  if (diffMin < 60) return `${diffMin} мин`;
+  if (diffMin < 1) return t("relative.now");
+  if (diffMin < 60) return t("relative.minutes", { n: diffMin });
   const diffHr = Math.floor(diffMin / 60);
   if (
     d.getFullYear() === now.getFullYear() &&
@@ -280,7 +291,7 @@ function formatRelative(iso: string | null): string | null {
     const mm = String(d.getMinutes()).padStart(2, "0");
     return `${hh}:${mm}`;
   }
-  if (diffHr < 48) return "вчера";
+  if (diffHr < 48) return t("relative.yesterday");
   const day = d.getDate();
   const month = d.getMonth() + 1;
   return `${day}.${String(month).padStart(2, "0")}`;

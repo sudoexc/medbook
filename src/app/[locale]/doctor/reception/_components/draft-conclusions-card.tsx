@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -16,6 +17,7 @@ type DraftRow = {
 };
 
 export function DraftConclusionsCard() {
+  const t = useTranslations("doctor.reception");
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
 
@@ -36,16 +38,16 @@ export function DraftConclusionsCard() {
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border border-border bg-card">
       <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <h3 className="truncate text-sm font-semibold text-foreground">Черновики</h3>
+        <h3 className="truncate text-sm font-semibold text-foreground">{t("drafts.title")}</h3>
       </header>
 
       {q.isLoading ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Загружаем…
+          {t("common.loading")}
         </p>
       ) : (q.data ?? []).length === 0 ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Черновиков нет.
+          {t("drafts.empty")}
         </p>
       ) : (
         <ul className="divide-y divide-border">
@@ -64,7 +66,7 @@ export function DraftConclusionsCard() {
                 <div className="truncate text-xs text-muted-foreground">
                   {d.diagnosisCode
                     ? `${d.diagnosisCode} · ${d.diagnosisName ?? ""}`
-                    : "Без диагноза"}{" "}
+                    : t("drafts.noDiagnosis")}{" "}
                   · {new Date(d.updatedAt).toLocaleString("ru-RU", {
                     day: "2-digit",
                     month: "2-digit",
@@ -84,7 +86,7 @@ export function DraftConclusionsCard() {
           href={`/${locale}/doctor/conclusions`}
           className="text-xs font-medium text-primary hover:underline"
         >
-          Открыть все заключения
+          {t("drafts.openAll")}
         </Link>
       </div>
     </section>

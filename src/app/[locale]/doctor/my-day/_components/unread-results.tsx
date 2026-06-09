@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ArrowRightIcon, FileTextIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,6 +28,7 @@ const FLAG_TONE: Record<string, string> = {
 };
 
 export function UnreadResults() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -38,10 +40,10 @@ export function UnreadResults() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Мои новые результаты
+          {t("results.title")}
         </div>
         <div className="text-[11px] text-muted-foreground">
-          Лабы по моим назначениям, ещё не просмотренные
+          {t("results.subtitle")}
         </div>
       </header>
 
@@ -59,14 +61,17 @@ export function UnreadResults() {
           ))
         ) : !rows || rows.length === 0 ? (
           <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-            Новых результатов нет
+            {t("results.empty")}
           </li>
         ) : (
           rows.map((r) => (
             <li key={r.id}>
               <Link
                 href={`/${locale}/doctor/patients/${r.patientId}?tab=labs`}
-                aria-label={`${r.testName} — ${r.patientShort}: открыть анализы`}
+                aria-label={t("results.openLabsAria", {
+                  test: r.testName,
+                  patient: r.patientShort,
+                })}
                 className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
@@ -92,14 +97,14 @@ export function UnreadResults() {
                       )}
                     >
                       {r.flag === "CRITICAL"
-                        ? "критич."
+                        ? t("results.flagCritical")
                         : r.flag === "HIGH"
-                          ? "выше"
-                          : "ниже"}
+                          ? t("results.flagHigh")
+                          : t("results.flagLow")}
                     </span>
                   ) : r.isNew ? (
                     <span className="mt-1 inline-flex items-center rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
-                      новый
+                      {t("results.flagNew")}
                     </span>
                   ) : null}
                 </div>
@@ -114,7 +119,7 @@ export function UnreadResults() {
           href={`/${locale}/doctor/conclusions`}
           className="motion-press inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          Показать все результаты
+          {t("results.showAll")}
           <ArrowRightIcon className="size-4" />
         </Link>
       </footer>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Loader2Icon, SaveIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ function toForm(p: DoctorProfile): FormState {
 }
 
 export function ProfileTab() {
+  const t = useTranslations("doctor.settings");
   const profile = useDoctorProfile();
   const patch = usePatchDoctorProfile();
 
@@ -103,13 +105,13 @@ export function ProfileTab() {
   if (profile.isError || !profile.data) {
     return (
       <div className="rounded-2xl border border-border bg-card p-6 text-sm text-destructive">
-        Не удалось загрузить профиль.
+        {t("profile.loadError")}
         <button
           type="button"
           onClick={() => profile.refetch()}
           className="ml-1 underline"
         >
-          Повторить
+          {t("actions.retry")}
         </button>
       </div>
     );
@@ -122,8 +124,8 @@ export function ProfileTab() {
   const onSave = () => {
     if (!isDirty) return;
     patch.mutate(changed, {
-      onSuccess: () => toast.success("Профиль обновлён"),
-      onError: () => toast.error("Не удалось сохранить"),
+      onSuccess: () => toast.success(t("profile.saved")),
+      onError: () => toast.error(t("actions.saveError")),
     });
   };
 
@@ -140,7 +142,7 @@ export function ProfileTab() {
       className="rounded-2xl border border-border bg-card p-6"
     >
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <Field id="name" label="Имя в системе (для коллег)">
+        <Field id="name" label={t("profile.nameLabel")}>
           <Input
             id="name"
             value={form.name}
@@ -148,7 +150,7 @@ export function ProfileTab() {
             maxLength={200}
           />
         </Field>
-        <Field id="phone" label="Телефон">
+        <Field id="phone" label={t("profile.phoneLabel")}>
           <Input
             id="phone"
             type="tel"
@@ -159,14 +161,14 @@ export function ProfileTab() {
           />
         </Field>
 
-        <Field id="email" label="Email (readonly)">
+        <Field id="email" label={t("profile.emailLabel")}>
           <Input id="email" value={server.email} disabled />
         </Field>
-        <Field id="role" label="Роль">
+        <Field id="role" label={t("profile.roleLabel")}>
           <Input id="role" value={server.role} disabled />
         </Field>
 
-        <Field id="nameRu" label="ФИО (русский)">
+        <Field id="nameRu" label={t("profile.fullNameRuLabel")}>
           <Input
             id="nameRu"
             value={form.nameRu}
@@ -174,7 +176,7 @@ export function ProfileTab() {
             maxLength={200}
           />
         </Field>
-        <Field id="nameUz" label="ФИО (узбекский)">
+        <Field id="nameUz" label={t("profile.fullNameUzLabel")}>
           <Input
             id="nameUz"
             value={form.nameUz}
@@ -183,7 +185,7 @@ export function ProfileTab() {
           />
         </Field>
 
-        <Field id="specializationRu" label="Специализация (русский)">
+        <Field id="specializationRu" label={t("profile.specializationRuLabel")}>
           <Input
             id="specializationRu"
             value={form.specializationRu}
@@ -193,7 +195,7 @@ export function ProfileTab() {
             maxLength={200}
           />
         </Field>
-        <Field id="specializationUz" label="Специализация (узбекский)">
+        <Field id="specializationUz" label={t("profile.specializationUzLabel")}>
           <Input
             id="specializationUz"
             value={form.specializationUz}
@@ -206,7 +208,7 @@ export function ProfileTab() {
 
         <Field
           id="bioRu"
-          label="Биография (русский)"
+          label={t("profile.bioRuLabel")}
           className="md:col-span-2"
         >
           <Textarea
@@ -219,7 +221,7 @@ export function ProfileTab() {
         </Field>
         <Field
           id="bioUz"
-          label="Биография (узбекский)"
+          label={t("profile.bioUzLabel")}
           className="md:col-span-2"
         >
           <Textarea
@@ -239,7 +241,7 @@ export function ProfileTab() {
           onClick={onReset}
           disabled={!isDirty || patch.isPending}
         >
-          Отменить
+          {t("actions.cancel")}
         </Button>
         <Button
           type="submit"
@@ -250,7 +252,7 @@ export function ProfileTab() {
           ) : (
             <SaveIcon className="mr-1.5 size-4" />
           )}
-          Сохранить
+          {t("actions.save")}
         </Button>
       </div>
     </form>

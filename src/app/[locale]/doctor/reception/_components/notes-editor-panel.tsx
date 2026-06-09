@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   BookOpenIcon,
   CheckIcon,
@@ -54,16 +55,17 @@ function removeSnippet(body: string, snippet: string): string {
 }
 
 export function NotesEditorPanel() {
+  const t = useTranslations("doctor.reception");
   const [tab, setTab] = React.useState<EditorTab>("conclusion");
 
   return (
     <section className="flex min-h-[640px] flex-col rounded-2xl border border-border bg-card">
       <div className="flex items-center gap-1 border-b border-border px-2 py-2">
         <TabButton active={tab === "conclusion"} onClick={() => setTab("conclusion")}>
-          Заключение
+          {t("editor.tabConclusion")}
         </TabButton>
         <TabButton active={tab === "handout"} onClick={() => setTab("handout")}>
-          Памятка пациенту
+          {t("editor.tabHandout")}
         </TabButton>
       </div>
 
@@ -100,6 +102,7 @@ function TabButton({
 // ── Conclusion (clinical bodyMarkdown) ────────────────────────────────
 
 function ConclusionEditor() {
+  const t = useTranslations("doctor.reception");
   const {
     visitNoteId,
     bodyInjectVersion,
@@ -169,7 +172,7 @@ function ConclusionEditor() {
       return;
     }
     setDirty(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         await patch.mutateAsync({ bodyMarkdown: draft });
         lastSentRef.current = draft;
@@ -179,7 +182,7 @@ function ConclusionEditor() {
         // keep dirty so the user sees something's wrong
       }
     }, AUTOSAVE_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, note?.id, isFinalized]);
 
@@ -191,7 +194,7 @@ function ConclusionEditor() {
         pending={patch.isPending || dirty}
         savedAt={savedAt}
         updatedAt={note?.updatedAt ?? null}
-        label="Markdown · автосохранение каждые 1,5 секунды"
+        label={t("editor.autosaveLabel")}
       />
 
       <textarea
@@ -200,8 +203,8 @@ function ConclusionEditor() {
         disabled={!note || isFinalized}
         placeholder={
           note
-            ? "Жалобы, анамнез, статус, диагноз, назначения, рекомендации…"
-            : "Откройте активный приём, чтобы начать запись."
+            ? t("editor.conclusionPlaceholder")
+            : t("editor.conclusionPlaceholderEmpty")
         }
         className="flex-1 resize-none border-0 bg-transparent px-5 py-4 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
       />
@@ -214,6 +217,7 @@ function ConclusionEditor() {
 // ── Handout (patient-facing) ──────────────────────────────────────────
 
 function HandoutEditor() {
+  const t = useTranslations("doctor.reception");
   const { visitNoteId } = useReceptionContext();
   const noteQuery = useVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
@@ -249,7 +253,7 @@ function HandoutEditor() {
       return;
     }
     setDirty(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         await patch.mutateAsync({ patientHandoutMarkdown: draft });
         lastSentRef.current = draft;
@@ -259,7 +263,7 @@ function HandoutEditor() {
         // surface stays dirty until next attempt
       }
     }, AUTOSAVE_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, note?.id, isFinalized]);
 
@@ -310,7 +314,7 @@ function HandoutEditor() {
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <SparklesIcon className="size-3.5 text-primary" />
-          Памятка собирается из структурированных полей слева
+          {t("editor.handoutComposedHint")}
         </div>
         <div className="inline-flex items-center gap-1.5">
           <button
@@ -320,7 +324,7 @@ function HandoutEditor() {
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <BookOpenIcon className="size-3.5" />
-            Библиотека
+            {t("editor.library")}
           </button>
           <button
             type="button"
@@ -329,7 +333,7 @@ function HandoutEditor() {
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SparklesIcon className="size-3.5" />
-            {draft ? "Пересобрать" : "Сформировать"}
+            {draft ? t("editor.rebuild") : t("editor.build")}
           </button>
           <a
             href={
@@ -344,7 +348,7 @@ function HandoutEditor() {
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
           >
             <PrinterIcon className="size-3.5" />
-            Печать
+            {t("editor.print")}
           </a>
         </div>
       </div>
@@ -353,7 +357,7 @@ function HandoutEditor() {
         pending={patch.isPending || dirty}
         savedAt={savedAt}
         updatedAt={note?.updatedAt ?? null}
-        label="Markdown · отдельная памятка для пациента, без МКБ"
+        label={t("editor.handoutLabel")}
       />
 
       <textarea
@@ -363,9 +367,9 @@ function HandoutEditor() {
         placeholder={
           note
             ? hasStructured
-              ? 'Нажмите "Сформировать", чтобы собрать памятку из жалоб, назначений и рекомендаций. Текст можно редактировать вручную.'
-              : "Сначала добавьте жалобы / назначения / рекомендации в левой колонке."
-            : "Откройте активный приём."
+              ? t("editor.handoutPlaceholder")
+              : t("editor.handoutPlaceholderNoFields")
+            : t("editor.handoutPlaceholderEmpty")
         }
         className="flex-1 resize-none border-0 bg-transparent px-5 py-4 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
       />
@@ -395,6 +399,7 @@ function SaveStatusBar({
   updatedAt: string | null;
   label: string;
 }) {
+  const t = useTranslations("doctor.reception");
   return (
     <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-xs">
       <span className="text-muted-foreground">{label}</span>
@@ -402,7 +407,7 @@ function SaveStatusBar({
         {pending ? (
           <>
             <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
-            <span className="text-muted-foreground">Сохраняем…</span>
+            <span className="text-muted-foreground">{t("editor.saving")}</span>
           </>
         ) : savedAt || updatedAt ? (
           <>
@@ -410,12 +415,15 @@ function SaveStatusBar({
               <CheckIcon className="size-3" />
             </span>
             <span className="text-muted-foreground">
-              Сохранено ·{" "}
-              {formatSavedAt(savedAt ?? (updatedAt ? new Date(updatedAt).getTime() : null))}
+              {t("editor.savedAt", {
+                time: formatSavedAt(
+                  savedAt ?? (updatedAt ? new Date(updatedAt).getTime() : null),
+                ),
+              })}
             </span>
           </>
         ) : (
-          <span className="text-muted-foreground">Без изменений</span>
+          <span className="text-muted-foreground">{t("editor.noChanges")}</span>
         )}
       </span>
     </div>
@@ -431,14 +439,18 @@ function StatsFooter({
   words: number;
   isFinalized: boolean;
 }) {
+  const t = useTranslations("doctor.reception");
   return (
     <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
       <span className="tabular-nums">
-        ~ {chars.toLocaleString("ru-RU")} символов · {words.toLocaleString("ru-RU")} слов
+        {t("editor.stats", {
+          chars: chars.toLocaleString("ru-RU"),
+          words: words.toLocaleString("ru-RU"),
+        })}
       </span>
       {isFinalized && (
         <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Заключение зафиксировано
+          {t("editor.finalizedBadge")}
         </span>
       )}
     </div>

@@ -100,7 +100,12 @@ export function flattenConversations(
   return out;
 }
 
-export function conversationTitle(c: ConversationRow): string {
+// `t` is threaded in (not read via useTranslations) so these stay plain
+// functions usable outside React — the only localized output is the
+// no-name fallback (doctor.messages.threads.noName).
+type Translate = (key: string) => string;
+
+export function conversationTitle(c: ConversationRow, t: Translate): string {
   if (c.patient) return c.patient.fullName;
   const first = c.contactFirstName?.trim() || "";
   const last = c.contactLastName?.trim() || "";
@@ -108,11 +113,11 @@ export function conversationTitle(c: ConversationRow): string {
   if (full) return full;
   if (c.contactUsername) return `@${c.contactUsername}`;
   if (c.externalId) return c.externalId;
-  return "Без имени";
+  return t("threads.noName");
 }
 
-export function conversationInitials(c: ConversationRow): string {
-  const title = conversationTitle(c);
+export function conversationInitials(c: ConversationRow, t: Translate): string {
+  const title = conversationTitle(c, t);
   const parts = title.replace("@", "").trim().split(/\s+/).slice(0, 2);
   return parts
     .map((p) => p[0]?.toUpperCase() ?? "")

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 
@@ -19,14 +20,14 @@ import type { DocumentType } from "../_hooks/use-doctor-documents";
 
 type PatientLite = { id: string; fullName: string; phone: string };
 
-const TYPES: Array<{ value: DocumentType; label: string }> = [
-  { value: "REFERRAL", label: "Направление" },
-  { value: "PRESCRIPTION", label: "Рецепт" },
-  { value: "RESULT", label: "Результат" },
-  { value: "CONSENT", label: "Согласие" },
-  { value: "CONTRACT", label: "Договор" },
-  { value: "RECEIPT", label: "Чек" },
-  { value: "OTHER", label: "Прочее" },
+const TYPES: Array<{ value: DocumentType; labelKey: string }> = [
+  { value: "REFERRAL", labelKey: "type.referral" },
+  { value: "PRESCRIPTION", labelKey: "type.prescription" },
+  { value: "RESULT", labelKey: "type.result" },
+  { value: "CONSENT", labelKey: "type.consent" },
+  { value: "CONTRACT", labelKey: "type.contract" },
+  { value: "RECEIPT", labelKey: "type.receipt" },
+  { value: "OTHER", labelKey: "type.other" },
 ];
 
 export function UploadDocumentDialog({
@@ -36,6 +37,7 @@ export function UploadDocumentDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const t = useTranslations("doctor.documents");
   const { filters } = useDocumentsFilters();
   const queryClient = useQueryClient();
 
@@ -72,7 +74,7 @@ export function UploadDocumentDialog({
       return;
     }
     const ac = new AbortController();
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       setSearching(true);
       try {
         const qs = new URLSearchParams({ q: term, limit: "10" });
@@ -90,7 +92,7 @@ export function UploadDocumentDialog({
       }
     }, 250);
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       ac.abort();
     };
   }, [patientQuery, patient, open]);
@@ -158,7 +160,7 @@ export function UploadDocumentDialog({
       });
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить");
+      setError(e instanceof Error ? e.message : t("upload.genericError"));
     } finally {
       setSubmitting(false);
     }
@@ -173,9 +175,9 @@ export function UploadDocumentDialog({
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Загрузить документ</DialogTitle>
+          <DialogTitle>{t("upload.title")}</DialogTitle>
           <DialogDescription>
-            Файл будет привязан к пациенту и доступен в его карте
+            {t("upload.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -183,7 +185,7 @@ export function UploadDocumentDialog({
           {/* Patient picker */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-foreground">
-              Пациент
+              {t("upload.patientLabel")}
             </label>
             {patient ? (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2">
@@ -200,7 +202,7 @@ export function UploadDocumentDialog({
                   onClick={() => setPatient(null)}
                   className="text-xs font-medium text-primary hover:underline"
                 >
-                  Изменить
+                  {t("upload.change")}
                 </button>
               </div>
             ) : (
@@ -210,18 +212,18 @@ export function UploadDocumentDialog({
                   type="search"
                   value={patientQuery}
                   onChange={(e) => setPatientQuery(e.target.value)}
-                  placeholder="Введите ФИО или телефон…"
+                  placeholder={t("upload.patientSearchPlaceholder")}
                   className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
                 />
                 {patientQuery.trim().length >= 2 ? (
                   <div className="mt-1 max-h-48 overflow-auto rounded-lg border border-border bg-popover">
                     {searching ? (
                       <div className="px-3 py-2 text-xs text-muted-foreground">
-                        Поиск…
+                        {t("upload.searching")}
                       </div>
                     ) : patientResults.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-muted-foreground">
-                        Никого не найдено
+                        {t("upload.noPatients")}
                       </div>
                     ) : (
                       <ul>
@@ -256,16 +258,16 @@ export function UploadDocumentDialog({
           {/* Type */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-foreground">
-              Тип документа
+              {t("upload.typeLabel")}
             </label>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as DocumentType)}
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
             >
-              {TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              {TYPES.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
                 </option>
               ))}
             </select>
@@ -274,7 +276,7 @@ export function UploadDocumentDialog({
           {/* File */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-foreground">
-              Файл
+              {t("upload.fileLabel")}
             </label>
             <input
               type="file"
@@ -283,7 +285,10 @@ export function UploadDocumentDialog({
             />
             {file ? (
               <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                {file.name} · {(file.size / 1024).toFixed(1)} КБ
+                {t("upload.filePicked", {
+                  name: file.name,
+                  size: (file.size / 1024).toFixed(1),
+                })}
               </div>
             ) : null}
           </div>
@@ -291,13 +296,13 @@ export function UploadDocumentDialog({
           {/* Title */}
           <div>
             <label className="mb-1 block text-xs font-semibold text-foreground">
-              Название
+              {t("upload.titleLabel")}
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Например: МРТ головного мозга"
+              placeholder={t("upload.titlePlaceholder")}
               className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
             />
           </div>
@@ -313,7 +318,7 @@ export function UploadDocumentDialog({
                 disabled={!canSubmit || submitting}
                 className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
-                Повторить
+                {t("upload.retry")}
               </Button>
             </div>
           ) : null}
@@ -326,14 +331,14 @@ export function UploadDocumentDialog({
             onClick={onClose}
             disabled={submitting}
           >
-            Отмена
+            {t("upload.cancel")}
           </Button>
           <Button
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
           >
-            {submitting ? "Загрузка…" : "Загрузить"}
+            {submitting ? t("upload.submitting") : t("actions.upload")}
           </Button>
         </DialogFooter>
       </DialogContent>

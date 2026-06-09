@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Loader2Icon, PillIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export function PrescriptionsSection({ patientId }: { patientId: string }) {
+  const t = useTranslations("doctor.patients");
   const [status, setStatus] = React.useState<"active" | "all">("active");
   const list = useDoctorPatientPrescriptions(patientId, { status });
   const rows = flattenPrescriptions(list.data);
@@ -66,27 +68,27 @@ export function PrescriptionsSection({ patientId }: { patientId: string }) {
     <div className="flex flex-col gap-3">
       <div className="inline-flex self-start rounded-xl border border-border bg-card p-0.5">
         <TabBtn active={status === "active"} onClick={() => setStatus("active")}>
-          Активные
+          {t("prescriptions.tabs.active")}
         </TabBtn>
         <TabBtn active={status === "all"} onClick={() => setStatus("all")}>
-          Все
+          {t("prescriptions.tabs.all")}
         </TabBtn>
       </div>
 
       {list.isLoading ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-12 text-sm text-muted-foreground">
           <Loader2Icon className="size-4 animate-spin" />
-          Загружаем назначения…
+          {t("prescriptions.loading")}
         </div>
       ) : list.isError ? (
         <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-destructive">
-          Не удалось загрузить назначения.
+          {t("prescriptions.loadError")}
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
           {status === "active"
-            ? "Активных назначений нет."
-            : "Назначений пока нет."}
+            ? t("prescriptions.emptyActive")
+            : t("prescriptions.empty")}
         </div>
       ) : (
         <section className="rounded-2xl border border-border bg-card">
@@ -123,8 +125,10 @@ export function PrescriptionsSection({ patientId }: { patientId: string }) {
                     </div>
                   ) : null}
                   <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-                    Назначено {ruDate(r.createdAt)}
-                    {r.remindersEnabled ? " · напоминания вкл." : ""}
+                    {t("prescriptions.prescribedOn", {
+                      date: ruDate(r.createdAt),
+                    })}
+                    {r.remindersEnabled ? t("prescriptions.remindersOn") : ""}
                   </div>
                 </div>
               </li>
@@ -134,7 +138,7 @@ export function PrescriptionsSection({ patientId }: { patientId: string }) {
           {list.isFetchingNextPage && (
             <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
               <Loader2Icon className="size-3 animate-spin" />
-              Загружаем ещё…
+              {t("loadingMore")}
             </div>
           )}
         </section>

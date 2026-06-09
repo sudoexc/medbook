@@ -1,4 +1,5 @@
 import { CalendarIcon, ClockIcon, SparklesIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 type Note = {
   id: string;
@@ -47,7 +48,8 @@ function hhmm(iso: string): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-export function VisitNoteReadOnly({ note }: { note: Note }) {
+export async function VisitNoteReadOnly({ note }: { note: Note }) {
+  const t = await getTranslations("doctor.visits");
   const appt = note.appointment;
   return (
     <article className="flex flex-col gap-4">
@@ -55,33 +57,33 @@ export function VisitNoteReadOnly({ note }: { note: Note }) {
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
           {appt && (
             <>
-              <Meta icon={<CalendarIcon className="size-4" />} label="Дата">
+              <Meta icon={<CalendarIcon className="size-4" />} label={t("note.date")}>
                 {ruDate(appt.date)}
               </Meta>
-              <Meta icon={<ClockIcon className="size-4" />} label="Время">
+              <Meta icon={<ClockIcon className="size-4" />} label={t("note.time")}>
                 {hhmm(appt.date)}–{hhmm(appt.endDate)}
               </Meta>
               {appt.serviceName && (
-                <Meta label="Тип приёма">{appt.serviceName}</Meta>
+                <Meta label={t("note.appointmentType")}>{appt.serviceName}</Meta>
               )}
             </>
           )}
           {note.finalizedAt && (
-            <Meta label="Финализировано">
+            <Meta label={t("note.finalizedAt")}>
               {ruDate(note.finalizedAt)} · {hhmm(note.finalizedAt)}
             </Meta>
           )}
           {note.aiGenerated && (
             <span className="inline-flex items-center gap-1.5 rounded-md bg-violet/10 px-2 py-1 text-[11px] font-semibold text-violet">
               <SparklesIcon className="size-3.5" />
-              Сформировано с участием AI
+              {t("note.aiGenerated")}
             </span>
           )}
         </div>
       </section>
 
       {(note.diagnosisCode || note.diagnosisName) && (
-        <Block title="Диагноз (МКБ-10)">
+        <Block title={t("note.diagnosisIcd10")}>
           <div className="flex items-baseline gap-2">
             {note.diagnosisCode && (
               <span className="font-mono text-base font-bold text-primary">
@@ -97,23 +99,23 @@ export function VisitNoteReadOnly({ note }: { note: Note }) {
         </Block>
       )}
 
-      <Block title="Жалобы">
+      <Block title={t("note.complaints")}>
         <Chips items={note.complaints} />
       </Block>
-      <Block title="Анамнез">
+      <Block title={t("note.anamnesis")}>
         <Chips items={note.anamnesis} />
       </Block>
-      <Block title="Осмотр">
+      <Block title={t("note.examination")}>
         <Chips items={note.examination} />
       </Block>
-      <Block title="Назначения">
+      <Block title={t("note.prescriptions")}>
         <Chips items={note.prescriptions} />
       </Block>
-      <Block title="Рекомендации">
+      <Block title={t("note.advice")}>
         <Chips items={note.advice} />
       </Block>
 
-      <Block title="Текст заключения">
+      <Block title={t("note.bodyText")}>
         {note.bodyMarkdown && note.bodyMarkdown.trim().length > 0 ? (
           <pre className="whitespace-pre-wrap rounded-lg border border-border bg-background px-4 py-3 font-sans text-sm leading-relaxed text-foreground">
             {note.bodyMarkdown}

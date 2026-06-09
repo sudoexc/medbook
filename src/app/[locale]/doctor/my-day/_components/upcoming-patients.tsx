@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { PhoneIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -15,9 +16,11 @@ import {
   type UpcomingPatient,
 } from "../_hooks/use-doctor-today";
 
-const TYPE_LABEL: Record<UpcomingPatient["type"], string> = {
-  consultation: "Консультация",
-  repeat: "Повторный приём",
+type MyDayTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
+
+const TYPE_LABEL_KEY: Record<UpcomingPatient["type"], string> = {
+  consultation: "type.consultation",
+  repeat: "type.repeat",
 };
 
 /**
@@ -33,17 +36,18 @@ function formatRelative(
   startAtMs: number,
   nowMs: number,
   durationMin: number,
+  t: MyDayTranslate,
 ): string {
   const diffMin = Math.round((startAtMs - nowMs) / 60000);
-  if (diffMin < -1) return `${durationMin} мин`;
-  if (diffMin <= 0) return "сейчас";
-  if (diffMin > 240) return `${durationMin} мин`;
-  if (diffMin < 60) return `через ${diffMin} мин`;
+  if (diffMin < -1) return t("upcoming.durationMin", { n: durationMin });
+  if (diffMin <= 0) return t("upcoming.now");
+  if (diffMin > 240) return t("upcoming.durationMin", { n: durationMin });
+  if (diffMin < 60) return t("upcoming.inMinutes", { n: diffMin });
   const hours = Math.floor(diffMin / 60);
   const mins = diffMin % 60;
   return mins > 0
-    ? `через ${hours} ч ${mins} мин`
-    : `через ${hours} ч`;
+    ? t("upcoming.inHoursMinutes", { h: hours, m: mins })
+    : t("upcoming.inHours", { h: hours });
 }
 
 /**
@@ -73,6 +77,7 @@ function useMinuteClock(): number {
 type Slice = { upcoming: UpcomingPatient[]; total: number };
 
 export function UpcomingPatients() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -90,7 +95,7 @@ export function UpcomingPatients() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Ближайшие пациенты
+          {t("upcoming.title")}
         </div>
       </header>
 
@@ -111,12 +116,12 @@ export function UpcomingPatients() {
           ))
         ) : upcoming.length === 0 ? (
           <li className="px-5 py-10 text-center text-sm text-muted-foreground">
-            Других пациентов на сегодня нет
+            {t("upcoming.empty")}
           </li>
         ) : (
           upcoming.map((p) => {
             const startAtMs = new Date(p.startAt).getTime();
-            const relative = formatRelative(startAtMs, nowMs, p.durationMin);
+            const relative = formatRelative(startAtMs, nowMs, p.durationMin, t);
             const imminent =
               startAtMs - nowMs <= 15 * 60_000 && startAtMs - nowMs >= 0;
             const patientHref = `/${locale}/doctor/patients/${p.patientId}`;
@@ -134,7 +139,7 @@ export function UpcomingPatients() {
                 */}
                 <Link
                   href={patientHref}
-                  aria-label={`Открыть карту: ${p.shortName}`}
+                  aria-label={t("upcoming.openCardAria", { name: p.shortName })}
                   className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <div className="relative w-12 shrink-0">
@@ -162,14 +167,14 @@ export function UpcomingPatients() {
                     {p.shortName}
                   </div>
                   <div className="truncate text-[11px] text-muted-foreground">
-                    {TYPE_LABEL[p.type]}
+                    {t(TYPE_LABEL_KEY[p.type])}
                   </div>
                 </div>
                 {p.phone ? (
                   <a
                     href={`tel:${p.phone}`}
                     onClick={(e) => e.stopPropagation()}
-                    aria-label={`Позвонить: ${p.shortName}`}
+                    aria-label={t("upcoming.callAria", { name: p.shortName })}
                     className="motion-press relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <PhoneIcon className="size-4" />
@@ -178,7 +183,7 @@ export function UpcomingPatients() {
                   <span
                     aria-hidden
                     className="relative z-10 flex h-8 w-8 items-center justify-center text-muted-foreground/40"
-                    title="Телефон не указан"
+                    title={t("upcoming.noPhone")}
                   >
                     <PhoneIcon className="size-4" />
                   </span>
@@ -194,7 +199,7 @@ export function UpcomingPatients() {
           href={`/${locale}/doctor/reception`}
           className="motion-press inline-flex w-full items-center justify-center gap-2 rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          Показать всех
+          {t("upcoming.showAll")}
           {total > 0 ? (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold">
               {total}
@@ -202,7 +207,7 @@ export function UpcomingPatients() {
           ) : null}
           {hidden > 0 ? (
             <span className="text-[11px] font-normal text-muted-foreground">
-              · ещё {hidden}
+              {t("upcoming.moreHidden", { count: hidden })}
             </span>
           ) : null}
         </Link>

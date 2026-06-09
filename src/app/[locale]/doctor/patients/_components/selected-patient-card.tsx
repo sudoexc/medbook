@@ -10,6 +10,8 @@ import {
   PhoneIcon,
 } from "lucide-react";
 
+import { useTranslations } from "next-intl";
+
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { toast } from "sonner";
 
@@ -67,19 +69,20 @@ function initials(fullName: string): string {
 }
 
 function statusFromSummary(s: DoctorPatientSummary): {
-  label: string;
+  labelKey: string;
   tone: "active" | "watch" | "muted";
 } {
   if (s.upcomingAppointment?.status === "IN_PROGRESS") {
-    return { label: "На приёме", tone: "active" };
+    return { labelKey: "selectedCard.status.inAppointment", tone: "active" };
   }
   if (s.upcomingAppointment) {
-    return { label: "Назначен приём", tone: "watch" };
+    return { labelKey: "selectedCard.status.appointmentSet", tone: "watch" };
   }
-  return { label: "Активный", tone: "muted" };
+  return { labelKey: "selectedCard.status.active", tone: "muted" };
 }
 
 export function SelectedPatientCard() {
+  const t = useTranslations("doctor.patients");
   const { selectedPatientId } = usePatientsFilters();
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
@@ -90,7 +93,7 @@ export function SelectedPatientCard() {
   if (!selectedPatientId) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-6 text-center text-sm text-muted-foreground">
-        Выберите пациента из списка слева, чтобы увидеть детали.
+        {t("selectedCard.emptyPrompt")}
       </section>
     );
   }
@@ -117,7 +120,7 @@ export function SelectedPatientCard() {
   if (summary.isError || !summary.data) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-6 text-center text-sm text-destructive">
-        Не удалось загрузить пациента.
+        {t("selectedCard.loadError")}
       </section>
     );
   }
@@ -139,18 +142,18 @@ export function SelectedPatientCard() {
         },
       );
       if (res.status === 422) {
-        toast.error("Нет канала связи с пациентом", {
-          description: "Добавьте телефон или Telegram, чтобы написать.",
+        toast.error(t("toast.noChannel"), {
+          description: t("toast.noChannelDescription"),
         });
         return;
       }
       if (!res.ok) {
-        toast.error("Не удалось открыть чат");
+        toast.error(t("toast.chatFailed"));
         return;
       }
       router.push(`/${locale}/doctor/messages?patientId=${p.id}`);
     } catch {
-      toast.error("Не удалось открыть чат");
+      toast.error(t("toast.chatFailed"));
     }
   };
 
@@ -181,30 +184,30 @@ export function SelectedPatientCard() {
                     : "font-medium text-muted-foreground"
               }
             >
-              {status.label}
+              {t(status.labelKey)}
             </span>
           </div>
         </div>
       </div>
 
       <div className="mt-2 text-xs text-muted-foreground tabular-nums">
-        {age !== null ? `${age} лет · ` : ""}
+        {age !== null ? t("selectedCard.ageWithSep", { age }) : ""}
         {p.phone}
       </div>
 
       <div className="mt-4 space-y-2 text-xs">
         {p.upcomingAppointment ? (
           <Row
-            label="Следующий приём"
+            label={t("selectedCard.rows.nextAppointment")}
             value={ruDateTime(p.upcomingAppointment.date)}
             mono
           />
         ) : (
-          <Row label="Следующий приём" value="—" />
+          <Row label={t("selectedCard.rows.nextAppointment")} value="—" />
         )}
         {p.allergies.length > 0 ? (
           <Row
-            label="Аллергии"
+            label={t("selectedCard.rows.allergies")}
             value={
               <span className="line-clamp-2 text-foreground">
                 {p.allergies.map((a) => a.substance).join(", ")}
@@ -214,7 +217,7 @@ export function SelectedPatientCard() {
         ) : null}
         {p.chronicConditions.length > 0 ? (
           <Row
-            label="Хроника"
+            label={t("selectedCard.rows.chronic")}
             value={
               <span className="line-clamp-2 text-foreground">
                 {p.chronicConditions.map((c) => c.name).join(", ")}
@@ -224,7 +227,7 @@ export function SelectedPatientCard() {
         ) : null}
         {p.lastDocument ? (
           <Row
-            label="Последний документ"
+            label={t("selectedCard.rows.lastDocument")}
             value={
               <span className="line-clamp-1 text-foreground">
                 {p.lastDocument.title}
@@ -232,38 +235,40 @@ export function SelectedPatientCard() {
             }
           />
         ) : null}
-        {p.segment ? <Row label="Сегмент" value={p.segment} /> : null}
+        {p.segment ? (
+          <Row label={t("selectedCard.rows.segment")} value={p.segment} />
+        ) : null}
       </div>
 
       <Link
         href={detailHref}
         className="motion-press mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-background py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
       >
-        Открыть карточку
+        {t("actions.openCard")}
         <ChevronRightIcon className="size-4" />
       </Link>
 
       <div className="mt-3 grid grid-cols-3 gap-1.5">
         <button
           type="button"
-          aria-label="Написать"
-          title="Написать"
+          aria-label={t("actions.write")}
+          title={t("actions.write")}
           onClick={onWrite}
           className="flex h-10 items-center justify-center rounded-lg border border-border bg-background text-primary transition-colors hover:bg-primary/5"
         >
           <MessageSquareIcon className="size-4" />
         </button>
         <a
-          aria-label="Позвонить"
-          title="Позвонить"
+          aria-label={t("actions.call")}
+          title={t("actions.call")}
           href={`tel:${p.phone}`}
           className="flex h-10 items-center justify-center rounded-lg border border-border bg-background text-primary transition-colors hover:bg-primary/5"
         >
           <PhoneIcon className="size-4" />
         </a>
         <Link
-          aria-label="История визитов"
-          title="История визитов"
+          aria-label={t("actions.visitHistory")}
+          title={t("actions.visitHistory")}
           href={`${detailHref}?tab=visits`}
           className="flex h-10 items-center justify-center rounded-lg border border-border bg-background text-primary transition-colors hover:bg-primary/5"
         >

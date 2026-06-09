@@ -9,6 +9,8 @@ import {
   UserPlusIcon,
 } from "lucide-react";
 
+import { useTranslations } from "next-intl";
+
 import { cn } from "@/lib/utils";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
@@ -32,37 +34,38 @@ import {
 // order. `active` is excluded — those patients need no follow-up nudge.
 const ACTIONABLE: Array<{
   key: Exclude<SegmentKey, "active">;
-  label: string;
+  labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
   tone: string;
 }> = [
   {
     key: "dormant",
-    label: "Давно не посещали клинику",
+    labelKey: "aiAssistant.cohorts.dormant",
     icon: CalendarOffIcon,
     tone: "bg-destructive/10 text-destructive",
   },
   {
     key: "watch",
-    label: "Нуждаются в контрольном визите",
+    labelKey: "aiAssistant.cohorts.watch",
     icon: CalendarClockIcon,
     tone: "bg-warning/10 text-warning",
   },
   {
     key: "returned",
-    label: "Недавно вернулись",
+    labelKey: "aiAssistant.cohorts.returned",
     icon: RotateCcwIcon,
     tone: "bg-info/10 text-info",
   },
   {
     key: "new",
-    label: "Новые пациенты",
+    labelKey: "aiAssistant.cohorts.new",
     icon: UserPlusIcon,
     tone: "bg-success/10 text-success",
   },
 ];
 
 export function AiAssistantPanel() {
+  const t = useTranslations("doctor.patients");
   const { data, isLoading, isError } = useDoctorPatientSegments();
   const { filters, setTab } = usePatientsFilters();
 
@@ -81,13 +84,13 @@ export function AiAssistantPanel() {
         <div className="flex items-center gap-2">
           <SparklesIcon className="size-4 text-primary" />
           <span className="text-[15px] font-semibold text-foreground">
-            AI-помощник
+            {t("aiAssistant.title")}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            aria-label="Свернуть"
+            aria-label={t("aiAssistant.collapse")}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ChevronUpIcon className="size-4" />
@@ -97,7 +100,7 @@ export function AiAssistantPanel() {
 
       <div className="mt-4 flex items-center justify-between rounded-xl bg-primary/5 px-3 py-2.5">
         <span className="text-xs font-semibold text-primary">
-          Требуют внимания
+          {t("aiAssistant.needAttention")}
         </span>
         {isLoading ? (
           <span className="h-5 w-6 animate-pulse rounded-md bg-primary/20" />
@@ -123,12 +126,11 @@ export function AiAssistantPanel() {
         </ul>
       ) : isError ? (
         <p className="mt-3 px-2 py-4 text-center text-xs text-destructive">
-          Не удалось загрузить подсказки.
+          {t("aiAssistant.loadError")}
         </p>
       ) : items.length === 0 ? (
         <p className="mt-3 px-2 py-4 text-center text-xs text-muted-foreground">
-          Сейчас никто не требует внимания. Подсказки появятся, когда у
-          пациентов изменятся сегменты.
+          {t("aiAssistant.empty")}
         </p>
       ) : (
         <ul className="mt-3 space-y-1">
@@ -155,7 +157,7 @@ export function AiAssistantPanel() {
                     <Icon className="size-3.5" />
                   </span>
                   <span className="flex-1 text-xs text-foreground">
-                    {r.label}
+                    {t(r.labelKey)}
                   </span>
                   <span className="text-xs font-semibold text-muted-foreground tabular-nums">
                     {r.count}

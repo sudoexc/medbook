@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
@@ -62,6 +63,7 @@ function useElapsed(startedAt: string | null): string {
 }
 
 export function ActivePatientCard() {
+  const t = useTranslations("doctor.reception");
   const { activeAppointment, visitNoteId } = useReceptionContext();
   const router = useRouter();
   const noteQuery = useVisitNote(visitNoteId);
@@ -72,10 +74,10 @@ export function ActivePatientCard() {
     return (
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="text-base font-bold text-foreground">
-          Активный приём отсутствует
+          {t("activePatient.noActiveTitle")}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Откройте очередь и нажмите «Начать», чтобы запустить консультацию.
+          {t("activePatient.noActiveHint")}
         </p>
       </section>
     );
@@ -117,33 +119,35 @@ export function ActivePatientCard() {
             <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs">
               <span className="size-1.5 rounded-full bg-success" />
               <span className="font-medium text-success">
-                {isFinalized ? "Приём завершён" : "Активный пациент"}
+                {isFinalized
+                  ? t("activePatient.visitFinished")
+                  : t("activePatient.activePatient")}
               </span>
             </div>
           </div>
         </div>
 
         {age !== null && (
-          <MetaCell label="Возраст">
-            <span className="tabular-nums">{age} лет</span>
+          <MetaCell label={t("activePatient.ageLabel")}>
+            <span className="tabular-nums">{t("activePatient.ageYears", { age })}</span>
           </MetaCell>
         )}
-        <MetaCell label="Телефон">
+        <MetaCell label={t("activePatient.phoneLabel")}>
           <span className="inline-flex items-center gap-1.5 tabular-nums">
             {p.phone}
             <PhoneIcon className="size-3.5 text-muted-foreground" />
           </span>
         </MetaCell>
-        <MetaCell label="Тип приёма">
-          {activeAppointment.primaryService?.nameRu ?? "Консультация"}
+        <MetaCell label={t("activePatient.typeLabel")}>
+          {activeAppointment.primaryService?.nameRu ?? t("common.consultation")}
         </MetaCell>
-        <MetaCell label="Запись на">
+        <MetaCell label={t("activePatient.scheduledLabel")}>
           <div className="tabular-nums">
             {formatRange(activeAppointment.date, activeAppointment.endDate)}
           </div>
           {activeAppointment.cabinet?.number && (
             <div className="text-xs text-muted-foreground">
-              Кабинет {activeAppointment.cabinet.number}
+              {t("activePatient.cabinet", { number: activeAppointment.cabinet.number })}
             </div>
           )}
         </MetaCell>
@@ -153,7 +157,7 @@ export function ActivePatientCard() {
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-5 py-3 text-sm">
           <div className="inline-flex min-w-0 items-center gap-1.5">
             <AlertTriangleIcon className="size-4 shrink-0 text-muted-foreground" />
-            <span className="font-semibold text-foreground">Диагноз:</span>
+            <span className="font-semibold text-foreground">{t("activePatient.diagnosisLabel")}</span>
             <span className="truncate text-muted-foreground">
               {note.diagnosisCode} · {note.diagnosisName}
             </span>
@@ -173,7 +177,9 @@ export function ActivePatientCard() {
           ) : (
             <SquareCheckIcon className="size-4" />
           )}
-          {isFinalized ? "Приём завершён" : "Завершить приём"}
+          {isFinalized
+            ? t("activePatient.visitFinished")
+            : t("activePatient.finishVisit")}
         </Button>
         <Button
           type="button"
@@ -182,7 +188,7 @@ export function ActivePatientCard() {
           onClick={() => router.push(`/doctor/patients/${p.id}`)}
         >
           <HistoryIcon className="size-4 text-muted-foreground" />
-          Открыть карту
+          {t("activePatient.openChart")}
         </Button>
         <Button
           type="button"
@@ -192,19 +198,21 @@ export function ActivePatientCard() {
           disabled={!visitNoteId}
         >
           <PrinterIcon className="size-4 text-muted-foreground" />
-          Печать
+          {t("activePatient.print")}
         </Button>
 
         <div className="ml-auto inline-flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Режим приёма
+            {t("activePatient.visitMode")}
           </div>
           <div>
             <div className="inline-flex items-center gap-1.5 text-sm">
               <span className="size-1.5 rounded-full bg-success" />
-              <span className="text-foreground">Консультация</span>
+              <span className="text-foreground">{t("common.consultation")}</span>
               <span className="font-semibold text-success">
-                {isFinalized ? "завершена" : "активна"}
+                {isFinalized
+                  ? t("activePatient.modeFinished")
+                  : t("activePatient.modeActive")}
               </span>
             </div>
             <div className="text-base font-bold text-foreground tabular-nums">

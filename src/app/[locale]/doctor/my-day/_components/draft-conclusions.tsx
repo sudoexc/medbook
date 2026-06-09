@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ChevronRightIcon, FileEditIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ function formatTime(iso: string): string {
 }
 
 export function DraftConclusions() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -29,7 +31,7 @@ export function DraftConclusions() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Черновики заключений
+          {t("drafts.title")}
         </div>
       </header>
 
@@ -52,14 +54,17 @@ export function DraftConclusions() {
           ))
         ) : !rows || rows.length === 0 ? (
           <li className="col-span-full px-5 py-8 text-center text-sm text-muted-foreground">
-            Черновиков нет
+            {t("drafts.empty")}
           </li>
         ) : (
           rows.map((d) => (
             <li key={d.id}>
               <Link
                 href={`/${locale}/doctor/conclusions/${d.id}`}
-                aria-label={`Продолжить: ${d.title} — ${d.patientShort}`}
+                aria-label={t("drafts.continueAria", {
+                  title: d.title,
+                  patient: d.patientShort,
+                })}
                 className="flex flex-col gap-2 rounded-xl border border-border bg-muted/20 px-3 py-2.5 transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-start gap-2">
@@ -80,7 +85,7 @@ export function DraftConclusions() {
                     {formatTime(d.updatedAt)}
                   </span>
                   <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary">
-                    Продолжить
+                    {t("drafts.continue")}
                     <ChevronRightIcon className="size-3" />
                   </span>
                 </div>
@@ -95,7 +100,7 @@ export function DraftConclusions() {
           href={`/${locale}/doctor/conclusions?status=draft`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          Все черновики
+          {t("drafts.allDrafts")}
         </Link>
       </footer>
     </section>

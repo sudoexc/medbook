@@ -17,6 +17,7 @@ import {
   UserIcon,
 } from "lucide-react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import {
@@ -84,11 +85,6 @@ type Response = {
 const TYPE_BADGE: Record<VisitRow["type"], string> = {
   consultation: "bg-success/15 text-success",
   repeat: "bg-violet/15 text-violet",
-};
-
-const TYPE_LABEL: Record<VisitRow["type"], string> = {
-  consultation: "Консультация",
-  repeat: "Повторный приём",
 };
 
 export function VisitsList({
@@ -160,6 +156,7 @@ function TimelineCard({
   total: number;
   loading: boolean;
 }) {
+  const t = useTranslations("doctor.visits");
   // Reverse to render chronologically left → right (oldest first).
   const points = [...rows].reverse();
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
@@ -172,13 +169,13 @@ function TimelineCard({
   return (
     <section className="rounded-2xl border border-border bg-card px-5 py-4">
       <div className="mb-4 text-[15px] font-semibold text-foreground">
-        Лента визитов
+        {t("timeline.title")}
       </div>
 
       <div className="flex items-center gap-4">
         <button
           type="button"
-          aria-label="Прокрутить назад"
+          aria-label={t("timeline.scrollBack")}
           onClick={() => scrollBy(-300)}
           disabled={points.length === 0}
           className="motion-press flex h-8 w-8 shrink-0 items-center justify-center self-start rounded-full bg-muted text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
@@ -196,11 +193,11 @@ function TimelineCard({
           />
           {loading ? (
             <div className="py-2 text-center text-xs text-muted-foreground">
-              Загружаем историю…
+              {t("timeline.loading")}
             </div>
           ) : points.length === 0 ? (
             <div className="py-2 text-center text-xs text-muted-foreground">
-              Ещё нет завершённых визитов.
+              {t("timeline.empty")}
             </div>
           ) : (
             <ul className="relative grid auto-cols-fr grid-flow-col">
@@ -226,7 +223,7 @@ function TimelineCard({
                       {shortDate(p.date)}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {TYPE_LABEL[p.type]}
+                      {t(`type.${p.type}`)}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {p.doctorName.split(" ")[0] ?? ""}
@@ -240,7 +237,7 @@ function TimelineCard({
 
         <button
           type="button"
-          aria-label="Прокрутить вперёд"
+          aria-label={t("timeline.scrollForward")}
           onClick={() => scrollBy(300)}
           disabled={points.length === 0}
           className="motion-press flex h-8 w-8 shrink-0 items-center justify-center self-start rounded-full bg-muted text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
@@ -250,21 +247,12 @@ function TimelineCard({
 
         <div className="flex shrink-0 flex-col items-end gap-0.5 self-start pt-1">
           <span className="text-[11px] text-muted-foreground tabular-nums">
-            {total} визит{plural(total)}
+            {t("timeline.visitCount", { count: total })}
           </span>
         </div>
       </div>
     </section>
   );
-}
-
-function plural(n: number): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m100 >= 11 && m100 <= 14) return "ов";
-  if (m10 === 1) return "";
-  if (m10 >= 2 && m10 <= 4) return "а";
-  return "ов";
 }
 
 function TableCard({
@@ -288,6 +276,7 @@ function TableCard({
   fetchingMore: boolean;
   onLoadMore: () => void;
 }) {
+  const t = useTranslations("doctor.visits");
   const router = useRouter();
   // After dropping the «Сравнить» column the action cell is narrower.
   const GRID =
@@ -302,28 +291,28 @@ function TableCard({
         )}
       >
         <div className="flex items-center gap-1">
-          Дата и время
+          {t("table.dateTime")}
           <ArrowDownIcon className="size-3" />
         </div>
-        <div>Тип приёма</div>
-        <div>Диагноз</div>
-        <div>Лечение и рекомендации</div>
-        <div>Документы</div>
-        <div>Врач</div>
-        <div className="text-right">Действия</div>
+        <div>{t("table.appointmentType")}</div>
+        <div>{t("table.diagnosis")}</div>
+        <div>{t("table.treatment")}</div>
+        <div>{t("table.documents")}</div>
+        <div>{t("table.doctor")}</div>
+        <div className="text-right">{t("table.actions")}</div>
       </div>
 
       {loading ? (
         <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-          Загружаем визиты…
+          {t("table.loading")}
         </div>
       ) : error ? (
         <div className="px-5 py-10 text-center text-sm text-destructive">
-          Не удалось загрузить визиты
+          {t("table.error")}
         </div>
       ) : empty ? (
         <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-          Завершённых визитов пока нет.
+          {t("table.empty")}
         </div>
       ) : (
         <ul className="divide-y divide-border">
@@ -353,7 +342,7 @@ function TableCard({
                       TYPE_BADGE[v.type],
                     )}
                   >
-                    {TYPE_LABEL[v.type]}
+                    {t(`type.${v.type}`)}
                   </span>
                 </div>
 
@@ -372,13 +361,13 @@ function TableCard({
                       </>
                     ) : (
                       <div className="text-xs text-muted-foreground">
-                        Диагноз не указан
+                        {t("table.diagnosisNotSpecified")}
                       </div>
                     )}
                   </div>
                   <button
                     type="button"
-                    aria-label="Подробнее о диагнозе"
+                    aria-label={t("table.diagnosisInfo")}
                     className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
                   >
                     <InfoIcon className="size-3.5" />
@@ -406,7 +395,7 @@ function TableCard({
                       <FileTextIcon className="size-4 text-info" />
                       <div className="text-left">
                         <div className="text-[10px] uppercase text-muted-foreground">
-                          Заключение
+                          {t("table.conclusion")}
                         </div>
                         <div className="font-medium text-foreground tabular-nums">
                           {v.visitNoteId?.slice(-6).toUpperCase() ?? ""}
@@ -415,7 +404,7 @@ function TableCard({
                     </Link>
                   ) : (
                     <span className="text-xs text-muted-foreground">
-                      Нет заключения
+                      {t("table.noConclusion")}
                     </span>
                   )}
                 </div>
@@ -434,13 +423,13 @@ function TableCard({
                     href={`/${locale}/doctor/visits/${patientId}/${v.id}`}
                     className="motion-press inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                   >
-                    Открыть
+                    {t("actions.open")}
                   </Link>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        aria-label="Ещё действия"
+                        aria-label={t("actions.moreActions")}
                         className="flex h-9 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <MoreVerticalIcon className="size-4" />
@@ -455,20 +444,20 @@ function TableCard({
                         }
                       >
                         <ExternalLinkIcon className="mr-2 size-3.5" />
-                        Открыть визит
+                        {t("menu.openVisit")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(v.id);
-                            toast.success("ID скопирован");
+                            toast.success(t("menu.idCopied"));
                           } catch {
-                            toast.error("Не удалось скопировать");
+                            toast.error(t("menu.copyFailed"));
                           }
                         }}
                       >
                         <CopyIcon className="mr-2 size-3.5" />
-                        Копировать ID визита
+                        {t("menu.copyVisitId")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() =>
@@ -476,7 +465,7 @@ function TableCard({
                         }
                       >
                         <UserIcon className="mr-2 size-3.5" />
-                        Открыть карту пациента
+                        {t("menu.openPatientCard")}
                       </DropdownMenuItem>
                       {v.visitNoteId ? (
                         <>
@@ -491,7 +480,7 @@ function TableCard({
                             }
                           >
                             <PrinterIcon className="mr-2 size-3.5" />
-                            Печать заключения
+                            {t("menu.printConclusion")}
                           </DropdownMenuItem>
                         </>
                       ) : null}
@@ -515,7 +504,7 @@ function TableCard({
             {fetchingMore ? (
               <Loader2Icon className="size-4 animate-spin" />
             ) : null}
-            Показать ещё
+            {t("table.loadMore")}
           </button>
         </footer>
       ) : null}

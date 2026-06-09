@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangleIcon,
@@ -32,6 +33,7 @@ type WarningTone = ReceptionWarning["tone"];
 type DiagnosisHintTone = "likely" | "possible";
 
 export function ActiveAIRail() {
+  const t = useTranslations("doctor.reception");
   const { activeAppointment, visitNoteId, bumpBodyInject } = useReceptionContext();
   const note = useVisitNote(visitNoteId).data ?? null;
   const isFinalized = note?.status === "FINALIZED";
@@ -98,36 +100,36 @@ export function ActiveAIRail() {
     <aside className="flex w-[320px] shrink-0 flex-col gap-4 xl:gap-5">
       <Section
         icon={SparklesIcon}
-        title="AI помощник"
+        title={t("aiRail.assistantTitle")}
         accent="primary"
         actionDisabled={!patientId}
       >
         {!patientId ? (
-          <p className="text-sm text-muted-foreground">Выберите активного пациента.</p>
+          <p className="text-sm text-muted-foreground">{t("aiRail.selectActivePatient")}</p>
         ) : summary.isLoading ? (
-          <p className="text-sm text-muted-foreground">Загружаем…</p>
+          <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
         ) : summary.data?.text ? (
           <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">
             {summary.data.text}
           </p>
         ) : (
-          <p className="text-sm text-muted-foreground">Резюме пока недоступно.</p>
+          <p className="text-sm text-muted-foreground">{t("aiRail.summaryUnavailable")}</p>
         )}
       </Section>
 
       <Section
         icon={HelpCircleIcon}
-        title="Уточняющие вопросы"
+        title={t("aiRail.clarifyingTitle")}
         onAction={hasNote ? onAskClarifying : undefined}
-        actionLabel={clarifying.data ? "Обновить" : "Сгенерировать"}
+        actionLabel={clarifying.data ? t("aiRail.refresh") : t("aiRail.generate")}
         actionBusy={clarifying.isPending}
         actionDisabled={!hasNote}
       >
         {!hasNote ? (
-          <p className="text-sm text-muted-foreground">Начните приём, чтобы получить подсказки.</p>
+          <p className="text-sm text-muted-foreground">{t("aiRail.startVisitHint")}</p>
         ) : !clarifying.data ? (
           <p className="text-xs text-muted-foreground">
-            Нажмите «Сгенерировать», чтобы спросить AI о следующих вопросах.
+            {t("aiRail.clarifyingHint")}
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
@@ -140,7 +142,7 @@ export function ActiveAIRail() {
               </li>
             ))}
             {clarifying.data.fromFallback && (
-              <li className="text-[11px] text-muted-foreground">Общий список — LLM не отвечает.</li>
+              <li className="text-[11px] text-muted-foreground">{t("aiRail.clarifyingFallback")}</li>
             )}
           </ul>
         )}
@@ -148,21 +150,21 @@ export function ActiveAIRail() {
 
       <Section
         icon={FilePlus2Icon}
-        title="Подсказки МКБ-10"
+        title={t("aiRail.icd10Title")}
         onAction={hasNote ? onSuggestIcd10 : undefined}
-        actionLabel={icd10.data ? "Обновить" : "Сгенерировать"}
+        actionLabel={icd10.data ? t("aiRail.refresh") : t("aiRail.generate")}
         actionBusy={icd10.isPending}
         actionDisabled={!hasNote}
       >
         {!hasNote ? (
-          <p className="text-sm text-muted-foreground">Начните приём, чтобы получить подсказки.</p>
+          <p className="text-sm text-muted-foreground">{t("aiRail.startVisitHint")}</p>
         ) : !icd10.data ? (
           <p className="text-xs text-muted-foreground">
-            Нажмите «Сгенерировать», чтобы получить ранжированные коды по жалобам и осмотру.
+            {t("aiRail.icd10Hint")}
           </p>
         ) : icd10.data.suggestions.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            Недостаточно данных — заполните жалобы или осмотр.
+            {t("aiRail.icd10NoData")}
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
@@ -187,7 +189,7 @@ export function ActiveAIRail() {
                   onClick={() => onPickIcd10(h)}
                   disabled={isFinalized || patch.isPending}
                   className="inline-flex h-7 shrink-0 items-center rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/15 disabled:opacity-50"
-                  title="Применить этот диагноз"
+                  title={t("aiRail.applyDiagnosis")}
                 >
                   +
                 </button>
@@ -197,13 +199,13 @@ export function ActiveAIRail() {
         )}
       </Section>
 
-      <Section icon={AlertTriangleIcon} title="Предупреждения">
+      <Section icon={AlertTriangleIcon} title={t("aiRail.warningsTitle")}>
         {!hasNote ? (
-          <p className="text-sm text-muted-foreground">Начните приём, чтобы увидеть проверки.</p>
+          <p className="text-sm text-muted-foreground">{t("aiRail.warningsStartHint")}</p>
         ) : warnings.isLoading ? (
-          <p className="text-xs text-muted-foreground">Загружаем…</p>
+          <p className="text-xs text-muted-foreground">{t("common.loading")}</p>
         ) : (warnings.data?.warnings ?? []).length === 0 ? (
-          <p className="text-xs text-muted-foreground">Предупреждений нет.</p>
+          <p className="text-xs text-muted-foreground">{t("aiRail.warningsEmpty")}</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {warnings.data!.warnings.map((w) => (
@@ -229,10 +231,10 @@ export function ActiveAIRail() {
           </span>
           <div>
             <div className="text-sm font-semibold text-foreground">
-              Умный конструктор
+              {t("aiRail.smartBuilderTitle")}
             </div>
             <div className="text-xs text-muted-foreground">
-              собрать заключение из полей
+              {t("aiRail.smartBuilderSubtitle")}
             </div>
           </div>
         </div>
@@ -261,6 +263,7 @@ function Section({
   actionDisabled?: boolean;
   children: React.ReactNode;
 }) {
+  const t = useTranslations("doctor.reception");
   return (
     <section
       className={cn(
@@ -292,7 +295,7 @@ function Section({
             ) : (
               <RefreshCwIcon className="size-3" />
             )}
-            {actionLabel ?? "Обновить"}
+            {actionLabel ?? t("aiRail.refresh")}
           </button>
         )}
       </div>
@@ -302,16 +305,17 @@ function Section({
 }
 
 function ToneBadge({ tone }: { tone: DiagnosisHintTone }) {
+  const t = useTranslations("doctor.reception");
   if (tone === "likely") {
     return (
       <span className="inline-flex h-5 items-center rounded-full bg-success/15 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-success">
-        Вероятно
+        {t("aiRail.toneLikely")}
       </span>
     );
   }
   return (
     <span className="inline-flex h-5 items-center rounded-full bg-muted px-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-      Возможно
+      {t("aiRail.tonePossible")}
     </span>
   );
 }

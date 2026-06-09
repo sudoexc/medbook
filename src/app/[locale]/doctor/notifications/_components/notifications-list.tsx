@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { BellIcon, BellOffIcon, Loader2Icon, PlusIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -19,11 +20,7 @@ import { CreateReminderDialog } from "./create-reminder-dialog";
 
 type TabKey = "active" | "done" | "archive";
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "active", label: "Актуальные" },
-  { key: "done", label: "Выполненные" },
-  { key: "archive", label: "Архив" },
-];
+const TAB_KEYS: TabKey[] = ["active", "done", "archive"];
 
 function tabFromParam(raw: string | null): TabKey {
   if (raw === "done" || raw === "archive") return raw;
@@ -79,6 +76,7 @@ function useNowTick(): Date {
 }
 
 export function NotificationsList() {
+  const tr = useTranslations("doctor.notifications");
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
   const router = useRouter();
@@ -147,21 +145,21 @@ export function NotificationsList() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-xl border border-border bg-card p-0.5">
-          {TABS.map((t) => (
+          {TAB_KEYS.map((key) => (
             <TabBtn
-              key={t.key}
-              active={tab === t.key}
-              onClick={() => setTabAndUrl(t.key)}
-              count={tabCounts[t.key]}
+              key={key}
+              active={tab === key}
+              onClick={() => setTabAndUrl(key)}
+              count={tabCounts[key]}
             >
-              {t.label}
+              {tr(`tabs.${key}`)}
             </TabBtn>
           ))}
         </div>
 
         <Button type="button" onClick={() => setCreateOpen(true)}>
           <PlusIcon className="mr-1.5 size-4" />
-          Создать напоминание
+          {tr("create.trigger")}
         </Button>
       </div>
 
@@ -182,13 +180,13 @@ export function NotificationsList() {
           </ul>
         ) : list.isError ? (
           <div className="px-4 py-12 text-center text-sm text-destructive">
-            Не удалось загрузить напоминания.
+            {tr("loadError")}
             <button
               type="button"
               className="ml-1 underline"
               onClick={() => list.refetch()}
             >
-              Повторить
+              {tr("retry")}
             </button>
           </div>
         ) : rows.length === 0 ? (
@@ -217,12 +215,12 @@ export function NotificationsList() {
                   {list.isFetchingNextPage ? (
                     <>
                       <Loader2Icon className="mr-1.5 size-3 animate-spin" />
-                      Загружаем…
+                      {tr("loading")}
                     </>
                   ) : tab === "active" && rows.length < expectedForTab ? (
-                    <>Показать ещё ({expectedForTab - rows.length})</>
+                    <>{tr("loadMoreCount", { count: expectedForTab - rows.length })}</>
                   ) : (
-                    <>Показать ещё</>
+                    <>{tr("loadMore")}</>
                   )}
                 </Button>
               </div>
@@ -232,7 +230,7 @@ export function NotificationsList() {
         {list.isFetching && !list.isLoading && !list.isFetchingNextPage ? (
           <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
             <Loader2Icon className="size-3 animate-spin" />
-            Обновляем…
+            {tr("refreshing")}
           </div>
         ) : null}
       </section>
@@ -286,6 +284,7 @@ function EmptyState({
   tab: TabKey;
   onCreate: () => void;
 }) {
+  const t = useTranslations("doctor.notifications");
   if (tab === "active") {
     return (
       <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
@@ -293,15 +292,14 @@ function EmptyState({
           <BellIcon className="size-5" />
         </span>
         <div className="text-sm font-medium text-foreground">
-          Нет актуальных напоминаний
+          {t("empty.activeTitle")}
         </div>
         <p className="max-w-sm text-xs text-muted-foreground">
-          Создайте заметку для себя — позвонить, проверить результат,
-          перезаказать анализы.
+          {t("empty.activeHint")}
         </p>
         <Button type="button" size="sm" onClick={onCreate}>
           <PlusIcon className="mr-1.5 size-4" />
-          Создать напоминание
+          {t("create.trigger")}
         </Button>
       </div>
     );
@@ -312,9 +310,7 @@ function EmptyState({
         <BellOffIcon className="size-5" />
       </span>
       <div className="text-sm text-muted-foreground">
-        {tab === "done"
-          ? "За последние 30 дней ничего не отмечено как выполненное."
-          : "За последние 30 дней архив пуст."}
+        {tab === "done" ? t("empty.done") : t("empty.archive")}
       </div>
     </div>
   );

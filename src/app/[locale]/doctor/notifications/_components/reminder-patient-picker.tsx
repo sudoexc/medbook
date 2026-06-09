@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { SearchIcon, XIcon } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ export function ReminderPatientPicker({
   onChange: (next: PickedPatient | null) => void;
   disabled?: boolean;
 }) {
+  const t = useTranslations("doctor.notifications");
   const [search, setSearch] = React.useState("");
   const [debounced, setDebounced] = React.useState("");
   const [open, setOpen] = React.useState(false);
@@ -101,7 +103,7 @@ export function ReminderPatientPicker({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Поиск пациента…"
+          placeholder={t("picker.searchPlaceholder")}
           className="pl-8"
           disabled={disabled}
         />
@@ -111,11 +113,11 @@ export function ReminderPatientPicker({
         <div className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-md">
           {hits.isLoading ? (
             <div className="px-3 py-2 text-xs text-muted-foreground">
-              Поиск…
+              {t("picker.searching")}
             </div>
           ) : (hits.data ?? []).length === 0 ? (
             <div className="px-3 py-2 text-xs text-muted-foreground">
-              Ничего не найдено
+              {t("picker.noResults")}
             </div>
           ) : (
             <ul>

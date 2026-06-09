@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -19,6 +20,7 @@ function formatDate(iso: string): string {
 }
 
 export function RecentPatients() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -30,7 +32,7 @@ export function RecentPatients() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Недавние пациенты
+          {t("recentPatients.title")}
         </div>
       </header>
 
@@ -48,14 +50,14 @@ export function RecentPatients() {
           ))
         ) : !rows || rows.length === 0 ? (
           <li className="col-span-full px-5 py-8 text-center text-sm text-muted-foreground">
-            Недавних пациентов нет
+            {t("recentPatients.empty")}
           </li>
         ) : (
           rows.map((p) => (
             <li key={p.id}>
               <Link
                 href={`/${locale}/doctor/patients/${p.id}`}
-                aria-label={`Открыть карту: ${p.shortName}`}
+                aria-label={t("recentPatients.openCardAria", { name: p.shortName })}
                 className="flex h-full flex-col items-center gap-2 rounded-xl border border-border bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <AvatarWithStatus
@@ -82,7 +84,7 @@ export function RecentPatients() {
           href={`/${locale}/doctor/patients`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          Все пациенты
+          {t("recentPatients.allPatients")}
         </Link>
       </footer>
     </section>

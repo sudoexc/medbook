@@ -10,6 +10,7 @@
  * no chart libraries — so the bundle doesn't grow for a single screen.
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   ActivityIcon,
   CalendarRangeIcon,
@@ -33,12 +34,12 @@ import {
   type DoctorAnalyticsDaily,
 } from "../_hooks/use-doctor-analytics";
 
-type Preset = { label: string; days: number };
+type Preset = { days: number };
 
 const PRESETS: Preset[] = [
-  { label: "7 дней", days: 7 },
-  { label: "30 дней", days: 30 },
-  { label: "90 дней", days: 90 },
+  { days: 7 },
+  { days: 30 },
+  { days: 90 },
 ];
 
 function todayYMD(): string {
@@ -59,6 +60,7 @@ function fromPreset(days: number): { from: string; to: string } {
 }
 
 export function AnalyticsDashboard() {
+  const t = useTranslations("doctor.analytics");
   const [presetDays, setPresetDays] = React.useState<number | null>(30);
   const [customFrom, setCustomFrom] = React.useState<string>(() =>
     toYMD(addDays(new Date(), -29)),
@@ -90,14 +92,16 @@ export function AnalyticsDashboard() {
 
       {query.isError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          Не удалось загрузить аналитику: {(query.error as Error)?.message ?? "ошибка"}
+          {t("dashboard.loadError", {
+            message: (query.error as Error)?.message ?? t("dashboard.errorFallback"),
+          })}
         </div>
       )}
 
       {!data && query.isLoading && (
         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           <Loader2Icon className="size-4 animate-spin" />
-          Считаем показатели…
+          {t("dashboard.computing")}
         </div>
       )}
 
@@ -106,9 +110,7 @@ export function AnalyticsDashboard() {
           <KpiGrid kpis={data.kpis} />
           <DailyVolumeCard daily={data.daily} />
           <p className="text-[11px] text-muted-foreground">
-            Показатели обновляются автоматически каждые 30&nbsp;секунд.
-            Override CDS — это случаи, когда вы продолжили назначение, несмотря на
-            предупреждение системы; квалити-команда видит их в отдельном отчёте.
+            {t("dashboard.footnote")}
           </p>
         </>
       )}
@@ -137,11 +139,12 @@ function RangeToolbar({
   isFetching: boolean;
   rangeLabel: string | null;
 }) {
+  const t = useTranslations("doctor.analytics");
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card p-2">
       <div className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <CalendarRangeIcon className="size-3" />
-        Период
+        {t("toolbar.period")}
       </div>
       {PRESETS.map((p) => (
         <button
@@ -155,7 +158,7 @@ function RangeToolbar({
               : "border-border bg-background text-muted-foreground hover:bg-muted/60",
           )}
         >
-          {p.label}
+          {t("toolbar.presetDays", { days: p.days })}
         </button>
       ))}
       <div className="flex items-center gap-1 text-xs">
@@ -195,7 +198,7 @@ function RangeToolbar({
         <RefreshCwIcon
           className={cn("size-3.5", isFetching && "animate-spin")}
         />
-        Обновить
+        {t("toolbar.refresh")}
       </Button>
     </div>
   );
@@ -224,54 +227,58 @@ function KpiGrid({
     labResultsReviewed: number;
   };
 }) {
+  const t = useTranslations("doctor.analytics");
   const tiles: KpiTile[] = [
     {
-      label: "Завершённых приёмов",
+      label: t("kpi.completedAppointments"),
       value: kpis.completedAppointments,
       icon: StethoscopeIcon,
       tone: "neutral",
     },
     {
-      label: "Финализированных заключений",
+      label: t("kpi.finalizedNotes"),
       value: kpis.finalizedNotes,
       icon: FileTextIcon,
       tone: "neutral",
     },
     {
-      label: "Протокол применён",
+      label: t("kpi.protocolApplied"),
       value: kpis.protocolApplied,
-      hint: `${kpis.protocolAppliedPct}% от заключений`,
+      hint: t("kpi.protocolAppliedHint", { pct: kpis.protocolAppliedPct }),
       icon: ClipboardCheckIcon,
       tone: "good",
     },
     {
-      label: "Рецептов выписано",
+      label: t("kpi.rxIssued"),
       value: kpis.rxIssued,
       icon: PillIcon,
       tone: "neutral",
     },
     {
-      label: "Б/л выписано",
+      label: t("kpi.slIssued"),
       value: kpis.slIssued,
       icon: ScrollIcon,
       tone: "neutral",
     },
     {
-      label: "Лаб. заявок",
+      label: t("kpi.labOrdersIssued"),
       value: kpis.labOrdersIssued,
       icon: FlaskConicalIcon,
       tone: "neutral",
     },
     {
-      label: "Анализы просмотрены",
+      label: t("kpi.labResultsReviewed"),
       value: kpis.labResultsReviewed,
       icon: ActivityIcon,
       tone: "good",
     },
     {
-      label: "CDS overrides",
+      label: t("kpi.cdsOverrides"),
       value: kpis.cdsOverrides,
-      hint: kpis.cdsOverrides > 0 ? "квалити проверит" : "ни одного — отлично",
+      hint:
+        kpis.cdsOverrides > 0
+          ? t("kpi.cdsOverridesPresent")
+          : t("kpi.cdsOverridesNone"),
       icon: ShieldAlertIcon,
       tone: kpis.cdsOverrides > 0 ? "warn" : "good",
     },
@@ -330,6 +337,8 @@ function DailyVolumeCard({ daily }: { daily: DoctorAnalyticsDaily[] }) {
     return p;
   }, [daily]);
 
+  const t = useTranslations("doctor.analytics");
+
   if (daily.length === 0) {
     return null;
   }
@@ -339,7 +348,7 @@ function DailyVolumeCard({ daily }: { daily: DoctorAnalyticsDaily[] }) {
       <div className="flex items-center gap-2">
         <TrendingUpIcon className="size-3.5 text-muted-foreground" />
         <div className="text-xs font-semibold uppercase tracking-wide text-foreground">
-          Объём по дням
+          {t("daily.title")}
         </div>
         <Legend />
       </div>
@@ -353,12 +362,21 @@ function DailyVolumeCard({ daily }: { daily: DoctorAnalyticsDaily[] }) {
 }
 
 function DayColumn({ day, peak }: { day: DoctorAnalyticsDaily; peak: number }) {
+  const t = useTranslations("doctor.analytics");
   const total = day.rx + day.sl + day.labs + day.overrides;
   const heightPct = (n: number) => (peak > 0 ? Math.round((n / peak) * 100) : 0);
 
   const dayLabel = day.date.slice(8); // "DD"
   return (
-    <div className="group flex flex-col items-center gap-0.5" title={tooltip(day)}>
+    <div
+      className="group flex flex-col items-center gap-0.5"
+      title={tooltip(day, {
+        rx: t("daily.legendRx"),
+        sl: t("daily.legendSl"),
+        labs: t("daily.legendLabs"),
+        overrides: t("daily.legendOverride"),
+      })}
+    >
       <div className="flex h-16 w-full items-end gap-px">
         <Bar pct={heightPct(day.rx)} color="bg-sky-400" />
         <Bar pct={heightPct(day.sl)} color="bg-amber-400" />
@@ -388,23 +406,27 @@ function Bar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-function tooltip(day: DoctorAnalyticsDaily): string {
+function tooltip(
+  day: DoctorAnalyticsDaily,
+  labels: { rx: string; sl: string; labs: string; overrides: string },
+): string {
   return (
     `${day.date}` +
-    ` · Rx: ${day.rx}` +
-    ` · Б/л: ${day.sl}` +
-    ` · Лаб.: ${day.labs}` +
-    ` · Override: ${day.overrides}`
+    ` · ${labels.rx}: ${day.rx}` +
+    ` · ${labels.sl}: ${day.sl}` +
+    ` · ${labels.labs}: ${day.labs}` +
+    ` · ${labels.overrides}: ${day.overrides}`
   );
 }
 
 function Legend() {
+  const t = useTranslations("doctor.analytics");
   return (
     <div className="ml-auto flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-      <LegendDot color="bg-sky-400" label="Rx" />
-      <LegendDot color="bg-amber-400" label="Б/л" />
-      <LegendDot color="bg-emerald-400" label="Лаб." />
-      <LegendDot color="bg-red-400" label="Override" />
+      <LegendDot color="bg-sky-400" label={t("daily.legendRx")} />
+      <LegendDot color="bg-amber-400" label={t("daily.legendSl")} />
+      <LegendDot color="bg-emerald-400" label={t("daily.legendLabs")} />
+      <LegendDot color="bg-red-400" label={t("daily.legendOverride")} />
     </div>
   );
 }

@@ -14,6 +14,8 @@ import {
   PhoneIcon,
 } from "lucide-react";
 
+import { useTranslations } from "next-intl";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { toast } from "sonner";
@@ -27,11 +29,15 @@ import { PrescriptionsSection } from "./prescriptions-section";
 import { LabsSection } from "./labs-section";
 
 const TABS = [
-  { value: "overview", label: "Обзор", Icon: InfoIcon },
-  { value: "visits", label: "История визитов", Icon: HistoryIcon },
-  { value: "documents", label: "Документы", Icon: FilesIcon },
-  { value: "labs", label: "Анализы", Icon: FlaskConicalIcon },
-  { value: "prescriptions", label: "Назначения", Icon: ClipboardListIcon },
+  { value: "overview", labelKey: "detail.tabs.overview", Icon: InfoIcon },
+  { value: "visits", labelKey: "detail.tabs.visits", Icon: HistoryIcon },
+  { value: "documents", labelKey: "detail.tabs.documents", Icon: FilesIcon },
+  { value: "labs", labelKey: "detail.tabs.labs", Icon: FlaskConicalIcon },
+  {
+    value: "prescriptions",
+    labelKey: "detail.tabs.prescriptions",
+    Icon: ClipboardListIcon,
+  },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
@@ -69,6 +75,7 @@ export function PatientDetail({
   locale: string;
   patientId: string;
 }) {
+  const t = useTranslations("doctor.patients");
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
@@ -103,16 +110,16 @@ export function PatientDetail({
         },
       );
       if (res.status === 422) {
-        toast.error("Нет канала связи с пациентом");
+        toast.error(t("toast.noChannel"));
         return;
       }
       if (!res.ok) {
-        toast.error("Не удалось открыть чат");
+        toast.error(t("toast.chatFailed"));
         return;
       }
       router.push(`/${locale}/doctor/messages?patientId=${patientId}`);
     } catch {
-      toast.error("Не удалось открыть чат");
+      toast.error(t("toast.chatFailed"));
     }
   };
 
@@ -131,13 +138,13 @@ export function PatientDetail({
     return (
       <div className="flex flex-col items-center gap-3 p-12 text-center">
         <p className="text-sm text-muted-foreground">
-          Пациент не найден или вы не имели приёмов с ним.
+          {t("detail.notFound")}
         </p>
         <Link
           href={`/${locale}/doctor/patients`}
           className="text-sm font-medium text-primary hover:underline"
         >
-          Назад к списку пациентов
+          {t("detail.backToList")}
         </Link>
       </div>
     );
@@ -154,7 +161,7 @@ export function PatientDetail({
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeftIcon className="size-4" />
-          Все пациенты
+          {t("detail.allPatients")}
         </Link>
       </div>
 
@@ -166,7 +173,7 @@ export function PatientDetail({
               {p.fullName}
             </h1>
             <div className="mt-1 text-sm text-muted-foreground tabular-nums">
-              {age !== null ? `${age} лет · ` : ""}
+              {age !== null ? t("detail.ageWithSep", { age }) : ""}
               {p.phone}
               {p.segment ? ` · ${p.segment}` : ""}
             </div>
@@ -178,7 +185,7 @@ export function PatientDetail({
                     className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive"
                     title={a.severity}
                   >
-                    Аллергия: {a.substance}
+                    {t("detail.allergyTag", { substance: a.substance })}
                   </span>
                 ))}
                 {p.chronicConditions.map((c) => (
@@ -199,14 +206,14 @@ export function PatientDetail({
               className="motion-press inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               <MessageSquareIcon className="size-4" />
-              Написать
+              {t("actions.write")}
             </button>
             <a
               href={`tel:${p.phone}`}
               className="motion-press inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               <PhoneIcon className="size-4" />
-              Позвонить
+              {t("actions.call")}
             </a>
           </div>
         </div>
@@ -214,10 +221,10 @@ export function PatientDetail({
 
       <Tabs value={tab} onValueChange={onTabChange} className="gap-4">
         <TabsList className="self-start">
-          {TABS.map(({ value, label, Icon }) => (
+          {TABS.map(({ value, labelKey, Icon }) => (
             <TabsTrigger key={value} value={value}>
               <Icon className="size-4" />
-              {label}
+              {t(labelKey)}
             </TabsTrigger>
           ))}
         </TabsList>

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { ChevronRightIcon, FileTextIcon, Loader2Icon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   flattenVisits,
@@ -36,6 +37,7 @@ export function VisitsSection({
   patientId: string;
   locale: string;
 }) {
+  const t = useTranslations("doctor.patients");
   const list = useDoctorPatientVisits(patientId);
   const rows = flattenVisits(list.data);
 
@@ -63,7 +65,7 @@ export function VisitsSection({
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-12 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        Загружаем визиты…
+        {t("visits.loading")}
       </div>
     );
   }
@@ -71,7 +73,7 @@ export function VisitsSection({
   if (list.isError) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-destructive">
-        Не удалось загрузить визиты.
+        {t("visits.loadError")}
       </div>
     );
   }
@@ -79,7 +81,7 @@ export function VisitsSection({
   if (rows.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-        Завершённых визитов пока нет.
+        {t("visits.empty")}
       </div>
     );
   }
@@ -104,12 +106,14 @@ export function VisitsSection({
                       {v.diagnosisName ? ` · ${v.diagnosisName}` : ""}
                     </>
                   ) : (
-                    "Без диагноза"
+                    t("visits.noDiagnosis")
                   )}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {ruDate(v.date)} · {v.durationMin} мин ·{" "}
-                  {v.type === "repeat" ? "Повторный" : "Консультация"}
+                  {ruDate(v.date)} · {t("visits.durationMin", { min: v.durationMin })} ·{" "}
+                  {v.type === "repeat"
+                    ? t("visits.type.repeat")
+                    : t("visits.type.consultation")}
                   {v.serviceName ? ` · ${v.serviceName}` : ""}
                 </div>
               </div>
@@ -122,7 +126,7 @@ export function VisitsSection({
       {list.isFetchingNextPage && (
         <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
           <Loader2Icon className="size-3 animate-spin" />
-          Загружаем ещё…
+          {t("loadingMore")}
         </div>
       )}
     </section>

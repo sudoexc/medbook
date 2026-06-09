@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClockIcon, Loader2Icon, PhoneCallIcon } from "lucide-react";
 
@@ -22,28 +23,32 @@ const ACTIVE_STATUSES = new Set([
   "IN_PROGRESS",
 ]);
 
-function STATUS_LABEL(s: QueueAppointment["status"]): string {
+function STATUS_LABEL(
+  s: QueueAppointment["status"],
+  t: (key: string) => string,
+): string {
   switch (s) {
     case "BOOKED":
-      return "Запланирован";
+      return t("queue.status.booked");
     case "WAITING":
-      return "Отложен";
+      return t("queue.status.waiting");
     case "IN_PROGRESS":
-      return "На приёме";
+      return t("queue.status.inProgress");
     case "COMPLETED":
-      return "Завершён";
+      return t("queue.status.completed");
     case "CANCELLED":
-      return "Отменён";
+      return t("queue.status.cancelled");
     case "NO_SHOW":
-      return "Не пришёл";
+      return t("queue.status.noShow");
     case "SKIPPED":
-      return "Пропущен";
+      return t("queue.status.skipped");
     default:
       return s;
   }
 }
 
 export function QueueCard() {
+  const t = useTranslations("doctor.reception");
   const { queue, queueLoading, setPickAppointmentId } = useReceptionContext();
   const qc = useQueryClient();
 
@@ -75,7 +80,10 @@ export function QueueCard() {
     // If another visit is active, switch the previous one to WAITING first.
     if (inProgress && inProgress.id !== row.id) {
       const confirmSwitch = window.confirm(
-        `Сейчас активен приём ${inProgress.patient.fullName}. Отложить его и начать с пациентом ${row.patient.fullName}?`,
+        t("queue.switchConfirm", {
+          current: inProgress.patient.fullName,
+          next: row.patient.fullName,
+        }),
       );
       if (!confirmSwitch) return;
       await setStatus.mutateAsync({ id: inProgress.id, status: "WAITING" });
@@ -92,26 +100,28 @@ export function QueueCard() {
     <section className="flex min-w-0 flex-col rounded-2xl border border-border bg-card">
       <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-foreground">Очередь</h3>
+          <h3 className="truncate text-sm font-semibold text-foreground">{t("queue.title")}</h3>
           <div className="mt-0.5 truncate text-xs text-muted-foreground tabular-nums">
-            Всего сегодня: {total}
+            {t("queue.totalToday", { total })}
           </div>
         </div>
         {inProgress && (
           <span className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-success/10 px-2 text-xs font-semibold text-success">
             <PhoneCallIcon className="size-3.5" />
-            На приёме: {inProgress.patient.fullName.split(/\s+/)[0]}
+            {t("queue.inProgressBadge", {
+              name: inProgress.patient.fullName.split(/\s+/)[0],
+            })}
           </span>
         )}
       </header>
 
       {queueLoading ? (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Загружаем очередь…
+          {t("queue.loading")}
         </div>
       ) : rows.length === 0 ? (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          На сегодня очередь пуста.
+          {t("queue.empty")}
         </div>
       ) : (
         <ul className="divide-y divide-border">
@@ -143,7 +153,7 @@ export function QueueCard() {
                     <ClockIcon className="size-3" />
                     <span className="tabular-nums">{formatTime(p.date)}</span>
                     <span>·</span>
-                    <span>{STATUS_LABEL(p.status)}</span>
+                    <span>{STATUS_LABEL(p.status, t)}</span>
                   </div>
                 </div>
                 {isActive ? (
@@ -152,7 +162,7 @@ export function QueueCard() {
                     onClick={() => setPickAppointmentId(p.id)}
                     className="inline-flex h-7 items-center rounded-lg bg-success/10 px-2.5 text-xs font-semibold text-success transition-colors hover:bg-success/15"
                   >
-                    Открыть
+                    {t("queue.open")}
                   </button>
                 ) : (
                   <div className="inline-flex shrink-0 items-center gap-1.5">
@@ -163,7 +173,7 @@ export function QueueCard() {
                         onClick={() => onDefer(p)}
                         className="inline-flex h-7 items-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
                       >
-                        Отложить
+                        {t("queue.defer")}
                       </button>
                     )}
                     <button
@@ -175,7 +185,7 @@ export function QueueCard() {
                       {setStatus.isPending && (
                         <Loader2Icon className="size-3 animate-spin" />
                       )}
-                      Начать
+                      {t("queue.start")}
                     </button>
                   </div>
                 )}

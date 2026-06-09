@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { VisitsSection } from "../../patients/[id]/_components/visits-section";
 import { DocumentsSection } from "../../patients/[id]/_components/documents-section";
 import { PrescriptionsSection } from "../../patients/[id]/_components/prescriptions-section";
@@ -23,6 +25,7 @@ import { StructuredFieldsPanel } from "./structured-fields-panel";
  * have a `patient.id`.
  */
 export function SessionTabContent({ locale }: { locale: string }) {
+  const t = useTranslations("doctor.reception");
   const { activeTab, activeAppointment } = useReceptionContext();
   const patientId = activeAppointment?.patient.id ?? null;
 
@@ -38,7 +41,7 @@ export function SessionTabContent({ locale }: { locale: string }) {
   if (!patientId) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-        Выберите активного пациента из очереди.
+        {t("tabContent.selectPatient")}
       </div>
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
@@ -66,6 +67,7 @@ type Snapshot = {
  */
 export function useAppointmentStatusMutation(dateKey: string | null) {
   const qc = useQueryClient();
+  const t = useTranslations("doctor.myDay");
 
   return useMutation<unknown, Error, StatusMutationArgs, Snapshot>({
     mutationFn: async ({ appointmentId, toStatus, revert, call }) => {
@@ -214,11 +216,11 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       if (snapshot?.schedule && dateKey) {
         qc.setQueryData(doctorScheduleKey(dateKey), snapshot.schedule);
       }
-      toast.error(messageFor(args, err.message));
+      toast.error(messageFor(args, err.message, t));
     },
 
     onSuccess: (_data, args) => {
-      const label = successFor(args);
+      const label = successFor(args, t);
       if (label) toast.success(label);
     },
 
@@ -234,39 +236,47 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
   });
 }
 
-function successFor(args: StatusMutationArgs): string | null {
-  if (args.call) return "Пациент вызван";
-  if (args.revert) return "Шаг назад выполнен";
+type Translate = (key: string) => string;
+
+function successFor(args: StatusMutationArgs, t: Translate): string | null {
+  if (args.call) return t("statusToast.called");
+  if (args.revert) return t("statusToast.reverted");
   switch (args.toStatus) {
     case "WAITING":
-      return "Пациент в ожидании";
+      return t("statusToast.waiting");
     case "IN_PROGRESS":
-      return "Приём начат";
+      return t("statusToast.inProgress");
     case "COMPLETED":
-      return "Приём завершён";
+      return t("statusToast.completed");
     case "NO_SHOW":
-      return "Отмечено: не пришёл";
+      return t("statusToast.noShow");
     case "CANCELLED":
-      return "Приём отменён";
+      return t("statusToast.cancelled");
     default:
       return null;
   }
 }
 
-function messageFor(args: StatusMutationArgs, raw: string): string {
+function messageFor(
+  args: StatusMutationArgs,
+  raw: string,
+  t: Translate,
+): string {
   // Surface the most common server-side rejections as plain language.
   if (raw === "too_early_for_no_show") {
-    return "Слишком рано — приём ещё не должен был начаться";
+    return t("statusToast.errTooEarly");
   }
   if (raw === "invalid_transition") {
-    return "Этот переход статуса не разрешён";
+    return t("statusToast.errInvalidTransition");
   }
   if (raw === "not_revertable") {
-    return "Этот статус нельзя отменить";
+    return t("statusToast.errNotRevertable");
   }
   if (raw === "revert_target_mismatch") {
-    return "Не удалось определить, к чему откатить";
+    return t("statusToast.errRevertMismatch");
   }
-  if (args.call) return "Не удалось вызвать пациента";
-  return args.revert ? "Не удалось отменить шаг" : "Не удалось обновить статус";
+  if (args.call) return t("statusToast.errCallFailed");
+  return args.revert
+    ? t("statusToast.errRevertFailed")
+    : t("statusToast.errUpdateFailed");
 }

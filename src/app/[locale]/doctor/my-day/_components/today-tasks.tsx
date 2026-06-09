@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,8 @@ import {
 } from "../_hooks/use-doctor-today";
 
 export function TodayTasks() {
+  const t = useTranslations("doctor.myDay");
+
   const { data: actionItems, isLoading } = useDoctorToday<ActionItem[]>(
     (d) => d.actionItems,
   );
@@ -21,7 +24,7 @@ export function TodayTasks() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Задачи на сегодня
+          {t("tasks.title")}
         </div>
       </header>
 
@@ -36,11 +39,11 @@ export function TodayTasks() {
           ))
         ) : !actionItems || actionItems.length === 0 ? (
           <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-            Задач нет
+            {t("tasks.empty")}
           </li>
         ) : !hasAnyWork ? (
           <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-            Всё сделано на сегодня
+            {t("tasks.allDone")}
           </li>
         ) : (
           actionItems.map((item) => {

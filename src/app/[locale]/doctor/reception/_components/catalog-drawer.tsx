@@ -14,6 +14,7 @@
  * that produces one chip per pick.
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangleIcon,
@@ -64,53 +65,56 @@ type DrugDetail = {
   brands: DrugBrand[];
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  ANTIBIOTIC: "Антибиотик",
-  ANALGESIC: "Анальгетик",
-  ANTIPYRETIC: "Жаропонижающее",
-  NSAID: "НПВС",
-  ANTIHISTAMINE: "Антигистамин",
-  GI: "ЖКТ",
-  CARDIO: "Сердечно-сосудистое",
-  RESPIRATORY: "Дыхательное",
-  VITAMIN: "Витамин/БАД",
-  SEDATIVE: "Седативное",
-  ENDOCRINE: "Эндокринное",
-  DIURETIC: "Диуретик",
-  ANTIEMETIC: "Противорвотное",
-  ANTISPASMODIC: "Спазмолитик",
-  STEROID: "Стероид",
-  TOPICAL: "Наружное",
-  EYE_EAR: "Офтальмо/ЛОР",
-  UROLOGY: "Урология",
-  NEUROLOGICAL: "Неврология",
-  PSYCHIATRIC: "Психиатрия",
-  ANTIFUNGAL: "Противогрибковое",
-  ANTIVIRAL: "Противовирусное",
-  HORMONAL: "Гормональное",
-  DERMATOLOGICAL: "Дерматология",
-  HEMATOLOGY: "Гематология",
-  OPHTHALMIC: "Офтальмология",
-  GYNECOLOGY: "Гинекология",
-  VACCINE: "Вакцина",
-  OTHER: "Прочее",
+// Enum → i18n key suffix under `catalog.categories.*`. Display labels live in
+// the message catalog; this map only routes the server enum to its key.
+const CATEGORY_KEY: Record<string, string> = {
+  ANTIBIOTIC: "antibiotic",
+  ANALGESIC: "analgesic",
+  ANTIPYRETIC: "antipyretic",
+  NSAID: "nsaid",
+  ANTIHISTAMINE: "antihistamine",
+  GI: "gi",
+  CARDIO: "cardio",
+  RESPIRATORY: "respiratory",
+  VITAMIN: "vitamin",
+  SEDATIVE: "sedative",
+  ENDOCRINE: "endocrine",
+  DIURETIC: "diuretic",
+  ANTIEMETIC: "antiemetic",
+  ANTISPASMODIC: "antispasmodic",
+  STEROID: "steroid",
+  TOPICAL: "topical",
+  EYE_EAR: "eyeEar",
+  UROLOGY: "urology",
+  NEUROLOGICAL: "neurological",
+  PSYCHIATRIC: "psychiatric",
+  ANTIFUNGAL: "antifungal",
+  ANTIVIRAL: "antiviral",
+  HORMONAL: "hormonal",
+  DERMATOLOGICAL: "dermatological",
+  HEMATOLOGY: "hematology",
+  OPHTHALMIC: "ophthalmic",
+  GYNECOLOGY: "gynecology",
+  VACCINE: "vaccine",
+  OTHER: "other",
 };
 
-const FORM_LABELS: Record<string, string> = {
-  TAB: "Таб",
-  CAP: "Капс",
-  SYRUP: "Сироп",
-  POWDER: "Пор",
-  INHAL: "Инг",
-  INJ_IM: "в/м",
-  INJ_IV: "в/в",
-  DROPS_ORAL: "Капли",
-  DROPS_EYE: "Глаз. капли",
-  DROPS_EAR: "Уш. капли",
-  SUPP_RECT: "Свечи",
-  GEL: "Гель",
-  CREAM: "Крем",
-  OINT: "Мазь",
+// Enum → i18n key suffix under `catalog.forms.*`.
+const FORM_KEY: Record<string, string> = {
+  TAB: "tab",
+  CAP: "cap",
+  SYRUP: "syrup",
+  POWDER: "powder",
+  INHAL: "inhal",
+  INJ_IM: "injIm",
+  INJ_IV: "injIv",
+  DROPS_ORAL: "dropsOral",
+  DROPS_EYE: "dropsEye",
+  DROPS_EAR: "dropsEar",
+  SUPP_RECT: "suppRect",
+  GEL: "gel",
+  CREAM: "cream",
+  OINT: "oint",
 };
 
 const PREGNANCY_TONE: Record<DrugDetail["pregnancyCat"], string> = {
@@ -121,6 +125,35 @@ const PREGNANCY_TONE: Record<DrugDetail["pregnancyCat"], string> = {
   X: "bg-red-200 text-red-900 font-bold",
   UNKNOWN: "bg-muted text-muted-foreground",
 };
+
+// Resolve a server category enum to its localized label, falling back to the
+// raw enum string for codes not yet in the catalog.
+function useCategoryLabel() {
+  const t = useTranslations("doctor.receptionDialogs");
+  return React.useCallback(
+    (category: string) => {
+      const key = CATEGORY_KEY[category];
+      return key && t.has(`catalog.categories.${key}`)
+        ? t(`catalog.categories.${key}`)
+        : category;
+    },
+    [t],
+  );
+}
+
+// Resolve a server form enum to its localized short label.
+function useFormLabel() {
+  const t = useTranslations("doctor.receptionDialogs");
+  return React.useCallback(
+    (form: string) => {
+      const key = FORM_KEY[form];
+      return key && t.has(`catalog.forms.${key}`)
+        ? t(`catalog.forms.${key}`)
+        : form;
+    },
+    [t],
+  );
+}
 
 async function fetchDrugs(q: string): Promise<DrugDetail[]> {
   const url = `/api/crm/catalogs/drugs?q=${encodeURIComponent(q)}&limit=60`;
@@ -141,6 +174,8 @@ type Props = {
 };
 
 export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
+  const t = useTranslations("doctor.receptionDialogs");
+  const categoryLabel = useCategoryLabel();
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = React.useState(false);
@@ -206,9 +241,9 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
         showCloseButton={false}
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>Каталог препаратов</DialogTitle>
+          <DialogTitle>{t("catalog.title")}</DialogTitle>
           <DialogDescription>
-            Поиск по МНН, бренду или категории. Выбор препарата добавляет его в назначения.
+            {t("catalog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -220,13 +255,13 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск: «бисопролол», «конкор», «амоксициллин»…"
+              placeholder={t("catalog.searchPlaceholder")}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
             <button
               type="button"
               onClick={() => setFavoritesOnly((v) => !v)}
-              title={favoritesOnly ? "Показать все" : "Только избранное"}
+              title={favoritesOnly ? t("catalog.showAll") : t("catalog.favoritesOnly")}
               className={cn(
                 "inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[11px] transition-colors",
                 favoritesOnly
@@ -246,7 +281,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
               type="button"
               onClick={() => onOpenChange(false)}
               className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Закрыть"
+              aria-label={t("actions.close")}
             >
               <XIcon className="size-4" />
             </button>
@@ -257,13 +292,13 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
             <div className="w-1/2 overflow-y-auto border-r">
               {drugsQuery.isLoading && rows.length === 0 ? (
                 <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-                  Загрузка…
+                  {t("common.loading")}
                 </div>
               ) : rows.length === 0 ? (
                 <div className="px-4 py-8 text-center text-xs text-muted-foreground">
                   {query.trim()
-                    ? "Ничего не найдено"
-                    : "Введите название препарата"}
+                    ? t("catalog.notFound")
+                    : t("catalog.typeToSearch")}
                 </div>
               ) : (
                 <ul className="p-1">
@@ -289,7 +324,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                               <span className="truncate">{d.nameRu}</span>
                             </span>
                             <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {CATEGORY_LABELS[d.category] ?? d.category}
+                              {categoryLabel(d.category)}
                             </span>
                           </div>
                           {d.brands.length > 0 ? (
@@ -304,7 +339,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                             e.stopPropagation();
                             toggle(d.id);
                           }}
-                          title={isPinned ? "Снять из избранного" : "В избранное"}
+                          title={isPinned ? t("favorites.remove") : t("favorites.add")}
                           className={cn(
                             "absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-md transition-colors",
                             isPinned
@@ -332,7 +367,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                 <DrugDetailView drug={selected} onPick={() => handlePick(selected)} />
               ) : (
                 <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-muted-foreground">
-                  Выберите препарат слева
+                  {t("catalog.selectDrug")}
                 </div>
               )}
             </div>
@@ -350,6 +385,9 @@ function DrugDetailView({
   drug: DrugDetail;
   onPick: () => void;
 }) {
+  const t = useTranslations("doctor.receptionDialogs");
+  const categoryLabel = useCategoryLabel();
+  const formLabel = useFormLabel();
   return (
     <>
       <div className="flex items-start gap-3 border-b px-4 py-3">
@@ -365,7 +403,7 @@ function DrugDetailView({
           ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-              {CATEGORY_LABELS[drug.category] ?? drug.category}
+              {categoryLabel(drug.category)}
             </span>
             {drug.atcCode ? (
               <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] uppercase text-muted-foreground">
@@ -377,7 +415,7 @@ function DrugDetailView({
                 "rounded-md px-1.5 py-0.5 text-[10px] uppercase",
                 PREGNANCY_TONE[drug.pregnancyCat],
               )}
-              title="Категория беременности"
+              title={t("catalog.pregnancyCategory")}
             >
               <BabyIcon className="mr-0.5 inline size-2.5" />
               {drug.pregnancyCat}
@@ -397,12 +435,12 @@ function DrugDetailView({
 
       <div className="flex-1 space-y-3 px-4 py-3 text-xs">
         {drug.forms.length > 0 ? (
-          <Section title="Формы выпуска">
+          <Section title={t("catalog.sections.forms")}>
             <ul className="space-y-0.5">
               {drug.forms.map((f) => (
                 <li key={f.form}>
                   <span className="font-medium text-foreground">
-                    {FORM_LABELS[f.form] ?? f.form}
+                    {formLabel(f.form)}
                   </span>
                   {": "}
                   <span className="text-muted-foreground">
@@ -419,11 +457,11 @@ function DrugDetailView({
           drug.defaultDosing.pediatric ||
           drug.defaultDosing.elderly ||
           drug.defaultDosing.renal) ? (
-          <Section title="Стандартные дозы">
+          <Section title={t("catalog.sections.standardDoses")}>
             <ul className="space-y-1">
               {drug.defaultDosing.adult ? (
                 <li>
-                  <span className="font-medium text-foreground">Взрослым:</span>{" "}
+                  <span className="font-medium text-foreground">{t("catalog.dosing.adult")}</span>{" "}
                   <span className="text-muted-foreground">
                     {drug.defaultDosing.adult}
                   </span>
@@ -431,7 +469,7 @@ function DrugDetailView({
               ) : null}
               {drug.defaultDosing.pediatric ? (
                 <li>
-                  <span className="font-medium text-foreground">Детям:</span>{" "}
+                  <span className="font-medium text-foreground">{t("catalog.dosing.pediatric")}</span>{" "}
                   <span className="text-muted-foreground">
                     {drug.defaultDosing.pediatric}
                   </span>
@@ -439,7 +477,7 @@ function DrugDetailView({
               ) : null}
               {drug.defaultDosing.elderly ? (
                 <li>
-                  <span className="font-medium text-foreground">Пожилым:</span>{" "}
+                  <span className="font-medium text-foreground">{t("catalog.dosing.elderly")}</span>{" "}
                   <span className="text-muted-foreground">
                     {drug.defaultDosing.elderly}
                   </span>
@@ -447,7 +485,7 @@ function DrugDetailView({
               ) : null}
               {drug.defaultDosing.renal ? (
                 <li>
-                  <span className="font-medium text-foreground">При ХБП:</span>{" "}
+                  <span className="font-medium text-foreground">{t("catalog.dosing.renal")}</span>{" "}
                   <span className="text-muted-foreground">
                     {drug.defaultDosing.renal}
                   </span>
@@ -459,7 +497,7 @@ function DrugDetailView({
 
         {drug.contraindications.length > 0 ? (
           <Section
-            title="Противопоказания"
+            title={t("catalog.sections.contraindications")}
             Icon={AlertTriangleIcon}
             tone="warn"
           >
@@ -475,7 +513,7 @@ function DrugDetailView({
         ) : null}
 
         {drug.sideEffects.length > 0 ? (
-          <Section title="Побочные эффекты">
+          <Section title={t("catalog.sections.sideEffects")}>
             <ul className="space-y-0.5 text-muted-foreground">
               {drug.sideEffects.map((c) => (
                 <li key={c} className="flex gap-1.5">
@@ -488,7 +526,7 @@ function DrugDetailView({
         ) : null}
 
         {drug.brands.length > 0 ? (
-          <Section title="Торговые названия">
+          <Section title={t("catalog.sections.brands")}>
             <div className="flex flex-wrap gap-1">
               {drug.brands.map((b) => (
                 <span
@@ -506,7 +544,7 @@ function DrugDetailView({
       <div className="border-t bg-muted/40 px-4 py-2.5">
         <Button onClick={onPick} className="w-full" size="sm">
           <CheckIcon className="mr-1 size-3.5" />
-          Добавить в назначения
+          {t("catalog.addToPrescriptions")}
         </Button>
       </div>
     </>

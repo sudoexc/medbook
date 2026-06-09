@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   ChevronDownIcon,
   CopyIcon,
@@ -31,13 +32,16 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
-async function copyDiagnosis(entry: Icd10Entry) {
+async function copyDiagnosis(
+  entry: Icd10Entry,
+  messages: { copied: string; copyFailed: string },
+) {
   const text = `${entry.code} — ${entry.nameRu}`;
   try {
     await navigator.clipboard.writeText(text);
-    toast.success("Скопировано", { description: text });
+    toast.success(messages.copied, { description: text });
   } catch {
-    toast.error("Не удалось скопировать");
+    toast.error(messages.copyFailed);
   }
 }
 
@@ -72,10 +76,16 @@ function Row({
   entry: Icd10Entry;
   term: string;
 }) {
+  const t = useTranslations("doctor.references");
   return (
     <button
       type="button"
-      onClick={() => copyDiagnosis(entry)}
+      onClick={() =>
+        copyDiagnosis(entry, {
+          copied: t("icd10.copied"),
+          copyFailed: t("icd10.copyFailed"),
+        })
+      }
       className="motion-press group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60"
     >
       <span className="w-16 shrink-0 text-xs font-semibold text-foreground tabular-nums">
@@ -90,6 +100,7 @@ function Row({
 }
 
 export function Icd10Browser() {
+  const t = useTranslations("doctor.references");
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
   const searching = debouncedQ.trim().length >= 2;
@@ -129,13 +140,13 @@ export function Icd10Browser() {
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Поиск по коду или диагнозу…"
+          placeholder={t("icd10.searchPlaceholder")}
           className="h-11 w-full rounded-xl border border-border bg-card pl-10 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
         />
         {q ? (
           <button
             type="button"
-            aria-label="Очистить"
+            aria-label={t("icd10.clear")}
             onClick={() => setQ("")}
             className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -151,19 +162,19 @@ export function Icd10Browser() {
               {isFetching ? (
                 <>
                   <Loader2Icon className="mr-1.5 inline size-3 animate-spin" />
-                  Ищем…
+                  {t("icd10.searching")}
                 </>
               ) : isError ? (
-                <span className="text-destructive">Ошибка поиска</span>
+                <span className="text-destructive">{t("icd10.searchError")}</span>
               ) : (
-                <>Найдено: {data?.length ?? 0}</>
+                <>{t("icd10.foundCount", { count: data?.length ?? 0 })}</>
               )}
             </span>
-            <span>Клик — скопировать в буфер</span>
+            <span>{t("icd10.clickToCopy")}</span>
           </div>
           {!isFetching && !isError && (data?.length ?? 0) === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              Ничего не найдено по запросу «{debouncedQ}».
+              {t("icd10.emptyQuery", { query: debouncedQ })}
             </div>
           ) : (
             <ul className="space-y-0.5">
@@ -196,7 +207,7 @@ export function Icd10Browser() {
                     {ch.range}
                   </span>
                   <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-                    {ch.label}
+                    {t(`icd10.chapters.${ch.id}`)}
                   </span>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {entries.length}
@@ -229,7 +240,7 @@ export function Icd10Browser() {
             if (unmapped.length === 0) return null;
             return (
               <section className="rounded-2xl border border-warning/40 bg-warning/5 px-5 py-3 text-xs text-warning">
-                Не классифицированы по главам: {unmapped.length} код(ов).
+                {t("icd10.unmapped", { count: unmapped.length })}
               </section>
             );
           })()}

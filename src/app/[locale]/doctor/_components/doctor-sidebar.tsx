@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   BarChart3Icon,
   BellIcon,
@@ -26,41 +27,43 @@ import { useDoctorSidebarStats } from "../_hooks/use-doctor-sidebar-stats";
 
 type NavItem = {
   href: string;
-  label: string;
+  // Translation key suffix under `sidebar.*`; resolved at render via `t`.
+  labelKey: string;
   icon: LucideIcon;
   badge?: number;
 };
 
 type NavGroup = {
-  label?: string;
+  // Translation key suffix under `groups.*`; resolved at render via `t`.
+  labelKey?: string;
   items: NavItem[];
 };
 
 const DOCTOR_NAV: NavGroup[] = [
   {
-    label: "Рабочее пространство",
+    labelKey: "groups.workspace",
     items: [
-      { href: "my-day", label: "Мой день", icon: SunIcon },
-      { href: "reception", label: "Приём", icon: ClipboardCheckIcon },
-      { href: "patients", label: "Пациенты", icon: UsersIcon },
-      { href: "visits", label: "История визитов", icon: HistoryIcon },
-      { href: "documents", label: "Документы", icon: FilesIcon },
-      { href: "conclusions", label: "Заключения", icon: FileTextIcon },
-      { href: "messages", label: "Сообщения", icon: MessageSquareIcon },
-      { href: "analytics", label: "Моя статистика", icon: BarChart3Icon },
+      { href: "my-day", labelKey: "sidebar.myDay", icon: SunIcon },
+      { href: "reception", labelKey: "sidebar.reception", icon: ClipboardCheckIcon },
+      { href: "patients", labelKey: "sidebar.patients", icon: UsersIcon },
+      { href: "visits", labelKey: "sidebar.visits", icon: HistoryIcon },
+      { href: "documents", labelKey: "sidebar.documents", icon: FilesIcon },
+      { href: "conclusions", labelKey: "sidebar.conclusions", icon: FileTextIcon },
+      { href: "messages", labelKey: "sidebar.messages", icon: MessageSquareIcon },
+      { href: "analytics", labelKey: "sidebar.analytics", icon: BarChart3Icon },
     ],
   },
   {
-    label: "Коммуникации",
+    labelKey: "groups.communications",
     items: [
-      { href: "notifications", label: "Уведомления", icon: BellIcon },
+      { href: "notifications", labelKey: "sidebar.notifications", icon: BellIcon },
     ],
   },
   {
-    label: "Настройки",
+    labelKey: "groups.settings",
     items: [
-      { href: "references", label: "Справочники", icon: BookOpenIcon },
-      { href: "settings", label: "Настройки", icon: SettingsIcon },
+      { href: "references", labelKey: "sidebar.references", icon: BookOpenIcon },
+      { href: "settings", labelKey: "sidebar.settings", icon: SettingsIcon },
     ],
   },
 ];
@@ -116,6 +119,7 @@ function DonutGauge({
 const COLLAPSED_STORAGE_KEY = "doctor:sidebar:collapsed";
 
 export function DoctorSidebar() {
+  const t = useTranslations("doctor.nav");
   const pathname = usePathname() ?? "";
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
@@ -162,7 +166,7 @@ export function DoctorSidebar() {
     >
       <Link
         href={`/${locale}/doctor/my-day`}
-        aria-label="Neurofax — главная"
+        aria-label={t("brand.homeAria")}
         title={collapsed ? "Neurofax" : undefined}
         className={cn(
           "motion-press flex h-16 shrink-0 items-center gap-2.5 outline-none transition-colors hover:bg-sidebar-accent/40 focus-visible:ring-2 focus-visible:ring-ring",
@@ -176,7 +180,7 @@ export function DoctorSidebar() {
           <div className="leading-tight">
             <div className="text-sm font-semibold text-foreground">Neurofax</div>
             <div className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
-              Умная клиника
+              {t("brand.tagline")}
             </div>
           </div>
         )}
@@ -190,9 +194,9 @@ export function DoctorSidebar() {
       >
         {DOCTOR_NAV.map((group, gi) => (
           <div key={gi} className={cn(gi > 0 && "mt-4")}>
-            {group.label && !collapsed ? (
+            {group.labelKey && !collapsed ? (
               <div className="mb-1 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
-                {group.label}
+                {t(group.labelKey)}
               </div>
             ) : null}
             <ul className="space-y-1">
@@ -205,6 +209,7 @@ export function DoctorSidebar() {
                   pathname === bare ||
                   pathname.startsWith(bare + "/");
                 const Icon = item.icon;
+                const label = t(item.labelKey);
                 // `badgeByHref` lookup wins over the static `item.badge`
                 // so the sidebar nav stays a pure constant (easy to grep)
                 // while the live numbers come from the hook.
@@ -215,7 +220,7 @@ export function DoctorSidebar() {
                     <Link
                       href={full}
                       aria-current={active ? "page" : undefined}
-                      title={collapsed ? item.label : undefined}
+                      title={collapsed ? label : undefined}
                       className={cn(
                         "motion-press group relative flex items-center rounded-lg text-sm transition-colors",
                         collapsed
@@ -243,13 +248,13 @@ export function DoctorSidebar() {
                       {collapsed ? (
                         badge > 0 ? (
                           <span
-                            aria-label={`${item.label}: ${badge}`}
+                            aria-label={`${label}: ${badge}`}
                             className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
                           />
                         ) : null
                       ) : (
                         <>
-                          <span className="flex-1 truncate">{item.label}</span>
+                          <span className="flex-1 truncate">{label}</span>
                           {badge > 0 ? (
                             <span
                               className={cn(
@@ -292,7 +297,7 @@ export function DoctorSidebar() {
                 {todayCount}
               </div>
               <div className="text-[11px] font-medium text-muted-foreground">
-                записей сегодня
+                {t("footer.todayRecords")}
               </div>
             </div>
           )}
@@ -301,8 +306,8 @@ export function DoctorSidebar() {
           type="button"
           onClick={toggleCollapsed}
           aria-pressed={collapsed}
-          aria-label={collapsed ? "Развернуть" : "Свернуть"}
-          title={collapsed ? "Развернуть" : "Свернуть"}
+          aria-label={collapsed ? t("collapse.expand") : t("collapse.collapse")}
+          title={collapsed ? t("collapse.expand") : t("collapse.collapse")}
           className={cn(
             "motion-press mt-2 flex w-full items-center justify-center rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
             !collapsed && "gap-1.5",
@@ -313,7 +318,7 @@ export function DoctorSidebar() {
           ) : (
             <>
               <ChevronsLeftIcon className="size-3.5" />
-              Свернуть
+              {t("collapse.collapse")}
             </>
           )}
         </button>

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
@@ -28,6 +29,7 @@ export function MessagesProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const t = useTranslations("doctor.messages");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [channel, setChannelState] = React.useState<
@@ -86,20 +88,20 @@ export function MessagesProvider({
         );
         if (cancelled) return;
         if (res.status === 422) {
-          toast.error("Нет канала связи с пациентом", {
-            description: "Добавьте телефон или Telegram, чтобы написать.",
+          toast.error(t("toast.noChannelTitle"), {
+            description: t("toast.noChannelDescription"),
           });
           return;
         }
         if (!res.ok) {
-          toast.error("Не удалось открыть чат");
+          toast.error(t("toast.openChatFailed"));
           return;
         }
         const data = (await res.json()) as { conversationId: string };
         if (cancelled) return;
         setSelectedId(data.conversationId);
       } catch {
-        if (!cancelled) toast.error("Не удалось открыть чат");
+        if (!cancelled) toast.error(t("toast.openChatFailed"));
       } finally {
         if (!cancelled) {
           const next = new URLSearchParams(searchParams.toString());
@@ -113,7 +115,7 @@ export function MessagesProvider({
     return () => {
       cancelled = true;
     };
-  }, [searchParams, router]);
+  }, [searchParams, router, t]);
 
   const value = React.useMemo<MessagesContextValue>(
     () => ({

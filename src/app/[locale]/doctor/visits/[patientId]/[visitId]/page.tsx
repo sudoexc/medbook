@@ -5,6 +5,7 @@ import {
   PrinterIcon,
   StethoscopeIcon,
 } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -97,6 +98,8 @@ export default async function VisitDetailPage({
 
   if (!data) notFound();
 
+  const t = await getTranslations("doctor.visits");
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5 p-4 xl:p-6">
       <div className="flex items-center justify-between gap-3">
@@ -105,11 +108,11 @@ export default async function VisitDetailPage({
           className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
         >
           <ArrowLeftIcon className="size-4" />
-          К истории визитов
+          {t("actions.backToHistory")}
         </Link>
         <PrintVisitButton visitNoteId={data.note.id}>
           <PrinterIcon className="size-4" />
-          Печать / PDF
+          {t("actions.printPdf")}
         </PrintVisitButton>
       </div>
 
@@ -126,7 +129,11 @@ export default async function VisitDetailPage({
               {data.doctor.nameRu} · {data.doctor.specializationRu}
             </p>
           </div>
-          <StatusBadge status={data.note.status} />
+          <StatusBadge
+            status={data.note.status}
+            finalizedLabel={t("status.finalized")}
+            draftLabel={t("status.draft")}
+          />
         </div>
       </header>
 
@@ -164,7 +171,15 @@ export default async function VisitDetailPage({
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({
+  status,
+  finalizedLabel,
+  draftLabel,
+}: {
+  status: string;
+  finalizedLabel: string;
+  draftLabel: string;
+}) {
   const isFinalized = status === "FINALIZED";
   return (
     <span
@@ -174,7 +189,7 @@ function StatusBadge({ status }: { status: string }) {
           : "bg-warning/15 text-warning"
       }`}
     >
-      {isFinalized ? "Финализировано" : "Черновик"}
+      {isFinalized ? finalizedLabel : draftLabel}
     </span>
   );
 }

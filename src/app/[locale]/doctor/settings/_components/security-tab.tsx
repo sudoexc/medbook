@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   ArrowRightIcon,
   CheckCircle2Icon,
@@ -16,8 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSecuritySummary } from "../_hooks/use-doctor-security-summary";
 
-function fmtDateRu(iso: string | null): string {
-  if (!iso) return "никогда";
+function fmtDateRu(iso: string | null, neverLabel: string): string {
+  if (!iso) return neverLabel;
   const d = new Date(iso);
   return d.toLocaleString("ru-RU", {
     day: "numeric",
@@ -29,6 +30,7 @@ function fmtDateRu(iso: string | null): string {
 }
 
 export function SecurityTab({ locale }: { locale: string }) {
+  const t = useTranslations("doctor.settings");
   const sec = useDoctorSecuritySummary();
 
   if (sec.isLoading) {
@@ -42,7 +44,7 @@ export function SecurityTab({ locale }: { locale: string }) {
   if (sec.isError || !sec.data) {
     return (
       <div className="rounded-2xl border border-border bg-card p-6 text-sm text-destructive">
-        Не удалось загрузить статус безопасности.
+        {t("security.loadError")}
       </div>
     );
   }
@@ -53,40 +55,39 @@ export function SecurityTab({ locale }: { locale: string }) {
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-6">
         <div className="mb-1 text-sm font-semibold text-foreground">
-          Статус безопасности
+          {t("security.heading")}
         </div>
         <p className="mb-5 text-xs text-muted-foreground">
-          Управление паролем, 2FA и сессиями — в разделе «Моя безопасность».
-          Здесь показываем только статус.
+          {t("security.subheading")}
         </p>
 
         <ul className="space-y-2">
           <Row
             ok={d.passwordSet && !d.mustChangePassword}
-            okText="Пароль установлен"
+            okText={t("security.passwordSet")}
             warnText={
               d.mustChangePassword
-                ? "Требуется смена пароля"
-                : "Пароль не задан"
+                ? t("security.passwordChangeRequired")
+                : t("security.passwordNotSet")
             }
             icon={KeyRoundIcon}
           />
           <Row
             ok={d.twoFactorEnabled}
-            okText="Двухфакторная авторизация включена"
-            warnText="Двухфакторная авторизация выключена"
+            okText={t("security.twoFactorOn")}
+            warnText={t("security.twoFactorOff")}
             icon={d.twoFactorEnabled ? ShieldCheckIcon : ShieldOffIcon}
           />
           <li className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
-            <span className="text-foreground">Активные сессии</span>
+            <span className="text-foreground">{t("security.activeSessions")}</span>
             <span className="font-semibold tabular-nums">
               {d.activeSessions}
             </span>
           </li>
           <li className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
-            <span className="text-foreground">Последний вход</span>
+            <span className="text-foreground">{t("security.lastLogin")}</span>
             <span className="text-muted-foreground">
-              {fmtDateRu(d.lastLoginAt)}
+              {fmtDateRu(d.lastLoginAt, t("security.never"))}
             </span>
           </li>
         </ul>
@@ -95,7 +96,7 @@ export function SecurityTab({ locale }: { locale: string }) {
           href={`/${locale}/crm/me/security`}
           className="motion-press mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Перейти в настройки безопасности
+          {t("security.cta")}
           <ArrowRightIcon className="size-4" />
         </Link>
       </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { DownloadIcon, FileIcon } from "lucide-react";
 
@@ -14,15 +15,18 @@ type DocRow = {
   createdAt: string;
 };
 
-function formatSize(b: number | null): string {
+function formatSize(b: number | null, t: (key: string, values?: Record<string, string | number>) => string): string {
   if (!b) return "—";
-  if (b < 1024) return `${b} Б`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} КБ`;
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} МБ`;
-  return `${(b / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
+  if (b < 1024) return t("recentFiles.sizeBytes", { value: b });
+  if (b < 1024 * 1024)
+    return t("recentFiles.sizeKb", { value: (b / 1024).toFixed(1) });
+  if (b < 1024 * 1024 * 1024)
+    return t("recentFiles.sizeMb", { value: (b / (1024 * 1024)).toFixed(1) });
+  return t("recentFiles.sizeGb", { value: (b / (1024 * 1024 * 1024)).toFixed(1) });
 }
 
 export function RecentFilesCard() {
+  const t = useTranslations("doctor.reception");
   const { activeAppointment } = useReceptionContext();
   const patientId = activeAppointment?.patient.id ?? null;
 
@@ -51,21 +55,21 @@ export function RecentFilesCard() {
     <section className="flex min-w-0 flex-col rounded-2xl border border-border bg-card">
       <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h3 className="truncate text-sm font-semibold text-foreground">
-          Недавние файлы
+          {t("recentFiles.title")}
         </h3>
       </header>
 
       {!patientId ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Выберите пациента.
+          {t("recentFiles.selectPatient")}
         </p>
       ) : q.isLoading ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Загружаем…
+          {t("common.loading")}
         </p>
       ) : (q.data ?? []).length === 0 ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Файлов нет.
+          {t("recentFiles.empty")}
         </p>
       ) : (
         <ul className="divide-y divide-border">
@@ -87,7 +91,7 @@ export function RecentFilesCard() {
                     month: "2-digit",
                     year: "numeric",
                   })}
-                  {f.fileSize ? `, ${formatSize(f.fileSize)}` : ""}
+                  {f.fileSize ? `, ${formatSize(f.fileSize, t)}` : ""}
                 </div>
               </div>
               {f.fileUrl ? (
@@ -95,7 +99,7 @@ export function RecentFilesCard() {
                   href={f.fileUrl}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="Скачать"
+                  aria-label={t("recentFiles.download")}
                   className="inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                 >
                   <DownloadIcon className="size-4" />

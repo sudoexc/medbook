@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { BellIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +11,13 @@ import {
   type RemindersBlock,
 } from "../_hooks/use-doctor-today";
 
-function formatRemindAt(iso: string, now: Date): {
+type RemindTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
+
+function formatRemindAt(
+  iso: string,
+  now: Date,
+  t: RemindTranslate,
+): {
   rel: string;
   abs: string;
 } {
@@ -25,19 +32,20 @@ function formatRemindAt(iso: string, now: Date): {
   }).format(target);
 
   if (Math.abs(diffMin) < 60) {
-    if (diffMin <= 0) return { rel: "сейчас", abs };
-    return { rel: `через ${diffMin} мин`, abs };
+    if (diffMin <= 0) return { rel: t("reminders.now"), abs };
+    return { rel: t("reminders.inMinutes", { n: diffMin }), abs };
   }
   const diffH = Math.round(diffMs / (60 * 60_000));
   if (Math.abs(diffH) < 24) {
-    if (diffH < 0) return { rel: `${-diffH} ч назад`, abs };
-    return { rel: `через ${diffH} ч`, abs };
+    if (diffH < 0) return { rel: t("reminders.hoursAgo", { n: -diffH }), abs };
+    return { rel: t("reminders.inHours", { n: diffH }), abs };
   }
-  if (diffMs < 0) return { rel: `${absDays} дн назад`, abs };
-  return { rel: `через ${absDays} дн`, abs };
+  if (diffMs < 0) return { rel: t("reminders.daysAgo", { n: absDays }), abs };
+  return { rel: t("reminders.inDays", { n: absDays }), abs };
 }
 
 export function Reminders() {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
@@ -55,7 +63,7 @@ export function Reminders() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
         <div className="text-[15px] font-semibold text-foreground">
-          Напоминания
+          {t("reminders.title")}
         </div>
         {!isLoading && total > 0 ? (
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
@@ -78,11 +86,11 @@ export function Reminders() {
           ))
         ) : items.length === 0 ? (
           <li className="px-5 py-8 text-center text-sm text-muted-foreground">
-            Активных напоминаний нет
+            {t("reminders.empty")}
           </li>
         ) : (
           items.map((r) => {
-            const { rel, abs } = formatRemindAt(r.remindAt, now);
+            const { rel, abs } = formatRemindAt(r.remindAt, now, t);
             // Patient-bound reminders deep-link to the patient card so the
             // doctor can take action in context; unbound reminders fall back
             // to the central notifications inbox where the reminder lives.
@@ -94,7 +102,7 @@ export function Reminders() {
               <li key={r.id}>
                 <Link
                   href={href}
-                  aria-label={`Напоминание: ${r.title}`}
+                  aria-label={t("reminders.itemAria", { title: r.title })}
                   className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -105,7 +113,7 @@ export function Reminders() {
                       {r.title}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {r.patientShort ?? "без пациента"}
+                      {r.patientShort ?? t("reminders.noPatient")}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
@@ -128,7 +136,9 @@ export function Reminders() {
           href={`/${locale}/doctor/notifications`}
           className="motion-press inline-flex w-full items-center justify-center rounded-lg py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
         >
-          {overflow > 0 ? `Ещё ${overflow} — все напоминания` : "Все напоминания"}
+          {overflow > 0
+            ? t("reminders.allWithOverflow", { count: overflow })
+            : t("reminders.all")}
         </Link>
       </footer>
     </section>

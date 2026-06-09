@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   CalendarIcon,
@@ -54,6 +55,7 @@ function ageFromBirth(iso: string | null): number | null {
 }
 
 export function PatientContextPanel() {
+  const t = useTranslations("doctor.messages");
   const { selectedId, filters } = useMessagesContext();
   const router = useRouter();
   const params = useParams<{ locale: string }>();
@@ -87,19 +89,19 @@ export function PatientContextPanel() {
           <div className="inline-flex items-center gap-2">
             <TagIcon className="size-4 text-muted-foreground" />
             <span className="text-sm font-semibold text-foreground">
-              Контекст пациента
+              {t("context.title")}
             </span>
           </div>
         </header>
 
         {!patientId ? (
           <p className="text-xs text-muted-foreground">
-            Этот диалог не связан с пациентом
+            {t("context.noPatient")}
           </p>
         ) : summaryQuery.isLoading ? (
-          <p className="text-xs text-muted-foreground">Загружаем…</p>
+          <p className="text-xs text-muted-foreground">{t("context.loading")}</p>
         ) : summaryQuery.isError || !summary ? (
-          <p className="text-xs text-destructive">Ошибка загрузки</p>
+          <p className="text-xs text-destructive">{t("context.error")}</p>
         ) : (
           <>
             <button
@@ -114,8 +116,10 @@ export function PatientContextPanel() {
                   {summary.fullName}
                 </div>
                 <div className="truncate text-xs text-muted-foreground tabular-nums">
-                  {age !== null ? `${age} лет` : "возраст —"} ·{" "}
-                  {summary.phone}
+                  {age !== null
+                    ? t("context.age", { count: age })
+                    : t("context.ageUnknown")}{" "}
+                  · {summary.phone}
                 </div>
               </div>
               <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -130,10 +134,10 @@ export function PatientContextPanel() {
                     ? "text-destructive"
                     : "text-warning"
               }
-              label="Аллергии"
+              label={t("context.allergies")}
               value={
                 summary.allergies.length === 0
-                  ? "не указано"
+                  ? t("context.notSpecified")
                   : summary.allergies.map((a) => a.substance).join(", ")
               }
             />
@@ -145,10 +149,10 @@ export function PatientContextPanel() {
                   ? "text-muted-foreground"
                   : "text-warning"
               }
-              label="Хронические"
+              label={t("context.chronic")}
               value={
                 summary.chronicConditions.length === 0
-                  ? "не указано"
+                  ? t("context.notSpecified")
                   : summary.chronicConditions.map((c) => c.name).join(", ")
               }
             />
@@ -157,7 +161,7 @@ export function PatientContextPanel() {
               <Row
                 icon={CalendarIcon}
                 tone="text-info"
-                label="Следующий приём"
+                label={t("context.nextAppointment")}
                 value={new Date(
                   summary.upcomingAppointment.date,
                 ).toLocaleString("ru-RU", {
@@ -171,8 +175,8 @@ export function PatientContextPanel() {
               <Row
                 icon={CalendarIcon}
                 tone="text-muted-foreground"
-                label="Следующий приём"
-                value="не назначен"
+                label={t("context.nextAppointment")}
+                value={t("context.notScheduled")}
               />
             )}
 
@@ -180,7 +184,7 @@ export function PatientContextPanel() {
               <Row
                 icon={FileTextIcon}
                 tone="text-foreground"
-                label="Последний документ"
+                label={t("context.lastDocument")}
                 value={summary.lastDocument.title}
               />
             ) : null}

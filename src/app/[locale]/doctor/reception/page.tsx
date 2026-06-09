@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ArrowLeftIcon } from "lucide-react";
 
 import { ActiveAIRail } from "./_components/active-ai-rail";
@@ -17,6 +18,7 @@ export default async function ReceptionPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+  const t = await getTranslations("doctor.reception");
   return (
     <ReceptionProvider>
       <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
@@ -26,7 +28,7 @@ export default async function ReceptionPage({
             className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
             <ArrowLeftIcon className="size-4" />
-            К списку приёмов
+            {t("page.backToList")}
           </Link>
 
           <ActivePatientCard />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import {
   ChevronUpIcon,
   SettingsIcon,
@@ -19,6 +20,7 @@ import {
  * placeholder ("AI-помощник готовится").
  */
 export function AIAssistant() {
+  const t = useTranslations("doctor.myDay");
   const { data: summary, isLoading } = useDoctorToday<DaySummary>(
     (d) => d.daySummary,
   );
@@ -31,20 +33,20 @@ export function AIAssistant() {
             <SparklesIcon className="size-3.5" />
           </span>
           <span className="text-[15px] font-semibold text-foreground">
-            AI-помощник
+            {t("ai.title")}
           </span>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Настройки AI"
+            aria-label={t("ai.settingsAria")}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <SettingsIcon className="size-3.5" />
           </button>
           <button
             type="button"
-            aria-label="Свернуть"
+            aria-label={t("ai.collapseAria")}
             className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ChevronUpIcon className="size-3.5" />
@@ -55,7 +57,7 @@ export function AIAssistant() {
       <div className="space-y-4 px-5 pb-4">
         <div>
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Сводка на сегодня
+            {t("ai.summaryTitle")}
           </div>
           {isLoading || !summary ? (
             <div className="space-y-1.5">
@@ -66,20 +68,23 @@ export function AIAssistant() {
           ) : (
             <dl className="space-y-1.5 text-sm">
               <SummaryRow
-                label="Всего приёмов"
+                label={t("ai.totalAppointments")}
                 value={summary.totalAppointments}
               />
               <SummaryRow
-                label="Консультаций"
+                label={t("ai.consultations")}
                 value={summary.consultations}
               />
               <SummaryRow
-                label="Повторных приёмов"
+                label={t("ai.repeats")}
                 value={summary.repeats}
               />
-              <SummaryRow label="Завершено" value={summary.completedCount} />
               <SummaryRow
-                label="План на день"
+                label={t("ai.completed")}
+                value={summary.completedCount}
+              />
+              <SummaryRow
+                label={t("ai.dayPlan")}
                 value={`${summary.dayPlanPercent}%`}
                 tone={summary.dayPlanPercent >= 100 ? "success" : undefined}
               />
@@ -92,10 +97,10 @@ export function AIAssistant() {
             <SparklesIcon className="size-4" />
           </div>
           <div className="text-xs font-semibold text-foreground">
-            AI-анализ скоро
+            {t("ai.comingSoon")}
           </div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            Алерты и рекомендации появятся, когда подключим модель
+            {t("ai.comingSoonHint")}
           </div>
         </div>
       </div>

@@ -109,7 +109,9 @@ async function postOrder(input: CreateLabOrderInput): Promise<CreatedLabOrder> {
     } catch {
       // swallow
     }
-    throw new Error(`Не удалось создать заявку (${res.status}) ${detail}`);
+    // Non-localized: the dialog renders a translated message
+    // (doctor.receptionDialogs.labOrder.createError); status/detail kept for logs.
+    throw new Error(`lab_order_create_failed (${res.status}) ${detail}`);
   }
   return (await res.json()) as CreatedLabOrder;
 }

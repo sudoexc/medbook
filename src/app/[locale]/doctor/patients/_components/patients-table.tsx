@@ -13,6 +13,8 @@ import {
   UsersIcon,
 } from "lucide-react";
 
+import { useTranslations } from "next-intl";
+
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { EmptyState } from "@/components/atoms/empty-state";
 import {
@@ -79,20 +81,22 @@ function initials(fullName: string): string {
 type StatusTone = "active" | "watch" | "dormant";
 
 function deriveStatus(row: DoctorPatientRow): {
-  label: string;
+  labelKey: string;
   tone: StatusTone;
 } {
-  if (row.hasActiveAppointment) return { label: "На приёме", tone: "active" };
+  if (row.hasActiveAppointment)
+    return { labelKey: "table.status.inAppointment", tone: "active" };
   if (row.nextAppointmentWithMeAt)
-    return { label: "На контроле", tone: "watch" };
-  if (!row.lastVisitWithMeAt) return { label: "Новый", tone: "active" };
+    return { labelKey: "table.status.onWatch", tone: "watch" };
+  if (!row.lastVisitWithMeAt)
+    return { labelKey: "table.status.new", tone: "active" };
   // Visit was >90 days ago and nothing booked → давно не был.
   const last = new Date(row.lastVisitWithMeAt).getTime();
   const ninetyDays = 90 * 24 * 60 * 60 * 1000;
   if (Date.now() - last > ninetyDays) {
-    return { label: "Давно не был", tone: "dormant" };
+    return { labelKey: "table.status.dormant", tone: "dormant" };
   }
-  return { label: "На контроле", tone: "watch" };
+  return { labelKey: "table.status.onWatch", tone: "watch" };
 }
 
 const STATUS_BADGE: Record<StatusTone, string> = {
@@ -102,6 +106,7 @@ const STATUS_BADGE: Record<StatusTone, string> = {
 };
 
 export function PatientsTable() {
+  const t = useTranslations("doctor.patients");
   const { filters, selectedPatientId, setSelectedPatientId } =
     usePatientsFilters();
   const query = useMyPatients(filters);
@@ -139,18 +144,18 @@ export function PatientsTable() {
         },
       );
       if (res.status === 422) {
-        toast.error("Нет канала связи с пациентом", {
-          description: "Добавьте телефон или Telegram, чтобы написать.",
+        toast.error(t("toast.noChannel"), {
+          description: t("toast.noChannelDescription"),
         });
         return;
       }
       if (!res.ok) {
-        toast.error("Не удалось открыть чат");
+        toast.error(t("toast.chatFailed"));
         return;
       }
       router.push(`/${locale}/doctor/messages?patientId=${id}`);
     } catch {
-      toast.error("Не удалось открыть чат");
+      toast.error(t("toast.chatFailed"));
     }
   };
 
@@ -162,33 +167,29 @@ export function PatientsTable() {
           "border-b border-border bg-muted/30 px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
         )}
       >
-        <div>Пациент</div>
-        <div>Возраст</div>
-        <div>Телефон</div>
-        <div>Последний визит</div>
-        <div>Последний диагноз</div>
-        <div>Статус</div>
-        <div>Следующий приём</div>
-        <div className="text-right">Действия</div>
+        <div>{t("table.columns.patient")}</div>
+        <div>{t("table.columns.age")}</div>
+        <div>{t("table.columns.phone")}</div>
+        <div>{t("table.columns.lastVisit")}</div>
+        <div>{t("table.columns.lastDiagnosis")}</div>
+        <div>{t("table.columns.status")}</div>
+        <div>{t("table.columns.nextAppointment")}</div>
+        <div className="text-right">{t("table.columns.actions")}</div>
       </div>
 
       {isInitialLoading ? (
         <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-          Загружаем пациентов…
+          {t("table.loading")}
         </div>
       ) : query.isError ? (
         <div className="px-5 py-10 text-center text-sm text-destructive">
-          Не удалось загрузить список пациентов
+          {t("table.loadError")}
         </div>
       ) : isEmpty ? (
         <div className="p-4">
           <EmptyState
             icon={filters.q ? <SearchXIcon /> : <UsersIcon />}
-            title={
-              filters.q
-                ? "Ничего не найдено по этому запросу."
-                : "У вас пока нет пациентов в этой группе."
-            }
+            title={filters.q ? t("table.emptySearch") : t("table.empty")}
           />
         </div>
       ) : (
@@ -234,7 +235,7 @@ export function PatientsTable() {
                 </div>
 
                 <div className="text-sm text-foreground tabular-nums">
-                  {age !== null ? `${age} лет` : "—"}
+                  {age !== null ? t("table.ageShort", { age }) : "—"}
                 </div>
 
                 <div className="flex items-center gap-1.5 text-sm text-foreground tabular-nums">
@@ -281,7 +282,7 @@ export function PatientsTable() {
                       STATUS_BADGE[status.tone],
                     )}
                   >
-                    {status.label}
+                    {t(status.labelKey)}
                   </span>
                 </div>
 
@@ -303,7 +304,7 @@ export function PatientsTable() {
                 <div className="flex items-center justify-end gap-1.5">
                   <button
                     type="button"
-                    aria-label="Написать"
+                    aria-label={t("actions.write")}
                     onClick={(e) => {
                       e.stopPropagation();
                       void onWrite(p.id);
@@ -316,7 +317,7 @@ export function PatientsTable() {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        aria-label="Ещё действия"
+                        aria-label={t("actions.moreActions")}
                         onClick={(e) => e.stopPropagation()}
                         className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
@@ -334,7 +335,7 @@ export function PatientsTable() {
                         }}
                       >
                         <EyeIcon className="mr-2 size-4" />
-                        Открыть карточку
+                        {t("actions.openCard")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() =>
@@ -344,7 +345,7 @@ export function PatientsTable() {
                         }
                       >
                         <HistoryIcon className="mr-2 size-4" />
-                        История визитов
+                        {t("actions.visitHistory")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() =>
@@ -354,7 +355,7 @@ export function PatientsTable() {
                         }
                       >
                         <FileTextIcon className="mr-2 size-4" />
-                        Документы
+                        {t("actions.documents")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

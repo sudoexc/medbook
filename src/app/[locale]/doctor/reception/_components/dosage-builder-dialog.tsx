@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { PillIcon, SearchIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -65,15 +66,17 @@ const TIMING_ORDER: Timing[] = [
   "any",
 ];
 
-const TIMING_DISPLAY_RU: Record<Timing, string> = {
-  before_meal: "До еды",
-  after_meal: "После еды",
-  with_meal: "Во время еды",
-  empty: "Натощак",
-  morning: "Утром",
-  evening: "Вечером",
-  bedtime: "На ночь",
-  any: "Не важно",
+// Timing → i18n key suffix under `dosageBuilder.timing.*`. The display labels
+// live in the message catalog; this map only routes the enum to its key.
+const TIMING_KEY: Record<Timing, string> = {
+  before_meal: "beforeMeal",
+  after_meal: "afterMeal",
+  with_meal: "withMeal",
+  empty: "empty",
+  morning: "morning",
+  evening: "evening",
+  bedtime: "bedtime",
+  any: "any",
 };
 
 /**
@@ -82,6 +85,8 @@ const TIMING_DISPLAY_RU: Record<Timing, string> = {
  * composed string up so the caller can drop it into prescriptions[].
  */
 export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
+  const t = useTranslations("doctor.receptionDialogs");
+  const defaultDuration = t("dosageBuilder.defaultDuration");
   const [query, setQuery] = React.useState("");
   const [drugId, setDrugId] = React.useState<string | null>(null);
   const [form, setForm] = React.useState<DrugForm | null>(null);
@@ -89,7 +94,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
   const [customDose, setCustomDose] = React.useState(false);
   const [frequency, setFrequency] = React.useState<Frequency>("3x_day");
   const [timing, setTiming] = React.useState<Timing>("after_meal");
-  const [duration, setDuration] = React.useState("5 дней");
+  const [duration, setDuration] = React.useState(defaultDuration);
   const [note, setNote] = React.useState("");
 
   const reset = React.useCallback(() => {
@@ -100,9 +105,9 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
     setCustomDose(false);
     setFrequency("3x_day");
     setTiming("after_meal");
-    setDuration("5 дней");
+    setDuration(defaultDuration);
     setNote("");
-  }, []);
+  }, [defaultDuration]);
 
   // Reset whenever the dialog closes — next open is a fresh prescription.
   React.useEffect(() => {
@@ -142,11 +147,10 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PillIcon className="size-5 text-primary" />
-            Конструктор назначения
+            {t("dosageBuilder.title")}
           </DialogTitle>
           <DialogDescription>
-            Выберите препарат и параметры — фраза для рецепта соберётся
-            автоматически.
+            {t("dosageBuilder.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -174,7 +178,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
           {/* ── 2. Form ── */}
           {drug && drug.forms.length > 0 && (
-            <Section label="Форма">
+            <Section label={t("dosageBuilder.form")}>
               <ChipRow>
                 {drug.forms.map((variant) => (
                   <Chip
@@ -195,7 +199,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
           {/* ── 3. Dose ── */}
           {drug && form && (
-            <Section label="Доза">
+            <Section label={t("dosageBuilder.dose")}>
               <ChipRow>
                 {(currentVariant?.doses ?? []).map((d) => (
                   <Chip
@@ -216,7 +220,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
                     setDose("");
                   }}
                 >
-                  Своя…
+                  {t("dosageBuilder.customDose")}
                 </Chip>
               </ChipRow>
               {customDose && (
@@ -224,7 +228,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
                   autoFocus
                   value={dose}
                   onChange={(e) => setDose(e.target.value)}
-                  placeholder="Например: 250 мг, 1/2 таблетки, 2,5 мл"
+                  placeholder={t("dosageBuilder.customDosePlaceholder")}
                   className="mt-2 h-9"
                 />
               )}
@@ -233,7 +237,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
           {/* ── 4. Frequency ── */}
           {drug && form && (
-            <Section label="Кратность">
+            <Section label={t("dosageBuilder.frequency")}>
               <ChipRow>
                 {FREQ_ORDER.map((f) => (
                   <Chip
@@ -250,15 +254,15 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
           {/* ── 5. Timing ── */}
           {drug && form && (
-            <Section label="Когда принимать">
+            <Section label={t("dosageBuilder.timingLabel")}>
               <ChipRow>
-                {TIMING_ORDER.map((t) => (
+                {TIMING_ORDER.map((tm) => (
                   <Chip
-                    key={t}
-                    active={timing === t}
-                    onClick={() => setTiming(t)}
+                    key={tm}
+                    active={timing === tm}
+                    onClick={() => setTiming(tm)}
                   >
-                    {TIMING_DISPLAY_RU[t]}
+                    {t(`dosageBuilder.timing.${TIMING_KEY[tm]}`)}
                   </Chip>
                 ))}
               </ChipRow>
@@ -267,7 +271,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
           {/* ── 6. Duration ── */}
           {drug && form && (
-            <Section label="Длительность">
+            <Section label={t("dosageBuilder.duration")}>
               <ChipRow>
                 {DURATION_QUICK_PICKS.map((d) => (
                   <Chip
@@ -282,7 +286,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
               <Input
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
-                placeholder="Своё значение"
+                placeholder={t("dosageBuilder.durationPlaceholder")}
                 className="mt-2 h-9"
               />
             </Section>
@@ -290,11 +294,11 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
           {/* ── 7. Optional note ── */}
           {drug && form && (
-            <Section label="Примечание (необязательно)">
+            <Section label={t("dosageBuilder.noteLabel")}>
               <Input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Например: при температуре выше 38,5"
+                placeholder={t("dosageBuilder.notePlaceholder")}
                 className="h-9"
               />
             </Section>
@@ -304,7 +308,7 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
           {composed && (
             <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-primary/70">
-                Превью
+                {t("dosageBuilder.preview")}
               </div>
               <div className="mt-1 text-sm font-medium text-foreground">
                 {composed}
@@ -315,10 +319,10 @@ export function DosageBuilderDialog({ open, onOpenChange, onAdd }: Props) {
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Отмена
+            {t("actions.cancel")}
           </Button>
           <Button disabled={!canSubmit} onClick={submit}>
-            Добавить в назначения
+            {t("dosageBuilder.addToPrescriptions")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -341,6 +345,7 @@ function DrugPicker({
   onPick: (d: Drug) => void;
   onClear: () => void;
 }) {
+  const t = useTranslations("doctor.receptionDialogs");
   const [focused, setFocused] = React.useState(false);
   const hits = React.useMemo(
     () => (focused || query ? searchDrugs(query, 40) : []),
@@ -367,7 +372,7 @@ function DrugPicker({
           <button
             type="button"
             onClick={onClear}
-            aria-label="Сменить препарат"
+            aria-label={t("dosageBuilder.changeDrug")}
             className="inline-flex size-7 items-center justify-center rounded-full text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary"
           >
             <XIcon className="size-3.5" />
@@ -380,14 +385,14 @@ function DrugPicker({
   return (
     <div className="relative">
       <Label className="mb-1 block text-xs font-medium text-muted-foreground">
-        Препарат
+        {t("dosageBuilder.drug")}
       </Label>
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Поиск по названию или бренду (Парацетамол, Сумамед…)"
+          placeholder={t("dosageBuilder.drugSearchPlaceholder")}
           className="h-10 pl-9"
           autoFocus
           onFocus={() => setFocused(true)}

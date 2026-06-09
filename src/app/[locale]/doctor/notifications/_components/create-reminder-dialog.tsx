@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { Loader2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ export function CreateReminderDialog({
   open: boolean;
   onOpenChange: (next: boolean) => void;
 }) {
+  const t = useTranslations("doctor.notifications");
   const create = useCreateReminder();
   const [title, setTitle] = React.useState("");
   const [body, setBody] = React.useState("");
@@ -80,10 +82,10 @@ export function CreateReminderDialog({
         remindAt: remindAtIso,
         patientId: patient?.id ?? null,
       });
-      toast.success("Напоминание создано");
+      toast.success(t("create.success"));
       onOpenChange(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Не удалось создать";
+      const msg = err instanceof Error ? err.message : t("create.error");
       toast.error(msg);
     }
   };
@@ -93,38 +95,36 @@ export function CreateReminderDialog({
       <DialogContent>
         <form onSubmit={onSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Новое напоминание</DialogTitle>
-            <DialogDescription>
-              Заметка для себя — появится в «Актуальных» в выбранное время.
-            </DialogDescription>
+            <DialogTitle>{t("create.title")}</DialogTitle>
+            <DialogDescription>{t("create.description")}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5">
-            <Label htmlFor="reminder-title">Заголовок</Label>
+            <Label htmlFor="reminder-title">{t("create.titleLabel")}</Label>
             <Input
               id="reminder-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Например: позвонить пациенту"
+              placeholder={t("create.titlePlaceholder")}
               maxLength={200}
               autoFocus
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="reminder-body">Описание (опционально)</Label>
+            <Label htmlFor="reminder-body">{t("create.bodyLabel")}</Label>
             <Textarea
               id="reminder-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Детали — что нужно сделать, контекст"
+              placeholder={t("create.bodyPlaceholder")}
               rows={3}
               maxLength={5000}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="reminder-at">Напомнить</Label>
+            <Label htmlFor="reminder-at">{t("create.remindAtLabel")}</Label>
             <Input
               id="reminder-at"
               type="datetime-local"
@@ -134,19 +134,19 @@ export function CreateReminderDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Пациент (опционально)</Label>
+            <Label>{t("create.patientLabel")}</Label>
             <ReminderPatientPicker value={patient} onChange={setPatient} />
           </div>
 
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>
-              Отмена
+              {t("actions.cancel")}
             </DialogClose>
             <Button type="submit" disabled={!canSubmit}>
               {create.isPending ? (
                 <Loader2Icon className="mr-1.5 size-4 animate-spin" />
               ) : null}
-              Создать
+              {t("actions.create")}
             </Button>
           </DialogFooter>
         </form>

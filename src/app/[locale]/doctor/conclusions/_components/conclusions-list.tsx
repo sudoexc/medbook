@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   ChevronRightIcon,
   FileTextIcon,
@@ -25,6 +26,7 @@ function statusFromParam(raw: string | null): StatusFilter {
 }
 
 export function ConclusionsList() {
+  const tr = useTranslations("doctor.conclusions");
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
   const router = useRouter();
@@ -82,17 +84,17 @@ export function ConclusionsList() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по диагнозу или пациенту…"
+            placeholder={tr("list.searchPlaceholder")}
             className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
           />
         </div>
 
         <div className="inline-flex rounded-xl border border-border bg-card p-0.5">
           <TabBtn active={status === "FINALIZED"} onClick={() => setStatusAndUrl("FINALIZED")}>
-            Финализированы
+            {tr("list.tabFinalized")}
           </TabBtn>
           <TabBtn active={status === "DRAFT"} onClick={() => setStatusAndUrl("DRAFT")}>
-            Черновики
+            {tr("list.tabDrafts")}
           </TabBtn>
         </div>
       </div>
@@ -101,13 +103,13 @@ export function ConclusionsList() {
         {list.isLoading ? (
           <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-muted-foreground">
             <Loader2Icon className="size-4 animate-spin" />
-            Загружаем…
+            {tr("list.loading")}
           </div>
         ) : rows.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
             {status === "FINALIZED"
-              ? "Финализированных заключений пока нет."
-              : "Черновиков пока нет."}
+              ? tr("list.emptyFinalized")
+              : tr("list.emptyDrafts")}
           </div>
         ) : (
           <ul className="divide-y divide-border">
@@ -120,7 +122,7 @@ export function ConclusionsList() {
         {list.isFetchingNextPage && (
           <div className="flex items-center justify-center gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
             <Loader2Icon className="size-3 animate-spin" />
-            Загружаем ещё…
+            {tr("list.loadingMore")}
           </div>
         )}
       </section>
@@ -154,6 +156,7 @@ function TabBtn({
 }
 
 function ConclusionRowItem({ row, locale }: { row: ConclusionRow; locale: string }) {
+  const tr = useTranslations("doctor.conclusions");
   const date = row.finalizedAt ?? row.updatedAt;
   const formatted = new Date(date).toLocaleString("ru-RU", {
     day: "2-digit",
@@ -183,7 +186,7 @@ function ConclusionRowItem({ row, locale }: { row: ConclusionRow; locale: string
                 {row.diagnosisName ? ` · ${row.diagnosisName}` : ""}
               </>
             ) : (
-              "Без диагноза"
+              tr("noDiagnosis")
             )}
           </div>
         </div>

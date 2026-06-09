@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   DownloadIcon,
   FileTextIcon,
@@ -44,22 +45,26 @@ function ruDate(iso: string): { date: string; time: string } {
   return { date: `${day} ${month} ${year}`, time: `${hh}:${mm}` };
 }
 
-function formatSize(bytes: number | null): string {
+function formatSize(
+  bytes: number | null,
+  t: (key: string, values?: Record<string, string | number>) => string,
+): string {
   if (bytes == null) return "—";
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
+  if (bytes < 1024) return t("size.bytes", { n: bytes });
+  if (bytes < 1024 * 1024) return t("size.kb", { n: (bytes / 1024).toFixed(1) });
+  if (bytes < 1024 * 1024 * 1024)
+    return t("size.mb", { n: (bytes / (1024 * 1024)).toFixed(1) });
+  return t("size.gb", { n: (bytes / (1024 * 1024 * 1024)).toFixed(1) });
 }
 
-const TYPE_LABEL: Record<DocumentType, string> = {
-  REFERRAL: "Направление",
-  PRESCRIPTION: "Рецепт",
-  RESULT: "Результат",
-  CONSENT: "Согласие",
-  CONTRACT: "Договор",
-  RECEIPT: "Чек",
-  OTHER: "Прочее",
+const TYPE_LABEL_KEY: Record<DocumentType, string> = {
+  REFERRAL: "type.referral",
+  PRESCRIPTION: "type.prescription",
+  RESULT: "type.result",
+  CONSENT: "type.consent",
+  CONTRACT: "type.contract",
+  RECEIPT: "type.receipt",
+  OTHER: "type.other",
 };
 
 const TYPE_TONE: Record<DocumentType, string> = {
@@ -76,6 +81,7 @@ const GRID =
   "grid grid-cols-[minmax(0,1.7fr)_minmax(0,1.2fr)_130px_140px_90px_44px] gap-3";
 
 export function DocumentsTable() {
+  const t = useTranslations("doctor.documents");
   const { filters } = useDocumentsFilters();
   const query = useDoctorDocuments(filters);
   const rows = flattenDoctorDocuments(query.data);
@@ -91,27 +97,27 @@ export function DocumentsTable() {
           "items-center border-b border-border bg-muted/30 px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
         )}
       >
-        <div>Название</div>
-        <div>Пациент</div>
-        <div>Тип</div>
-        <div>Дата</div>
-        <div>Размер</div>
+        <div>{t("table.colTitle")}</div>
+        <div>{t("table.colPatient")}</div>
+        <div>{t("table.colType")}</div>
+        <div>{t("table.colDate")}</div>
+        <div>{t("table.colSize")}</div>
         <div className="text-right">…</div>
       </div>
 
       {isInitialLoading ? (
         <div className="px-5 py-10 text-center text-sm text-muted-foreground">
-          Загружаем документы…
+          {t("table.loading")}
         </div>
       ) : query.isError ? (
         <div className="px-5 py-10 text-center text-sm text-destructive">
-          Не удалось загрузить документы
+          {t("table.error")}
         </div>
       ) : isEmpty ? (
         <div className="px-5 py-10 text-center text-sm text-muted-foreground">
           {filters.q || filters.type
-            ? "Ничего не найдено."
-            : "У вас пока нет документов."}
+            ? t("table.emptyFiltered")
+            : t("table.empty")}
         </div>
       ) : (
         <>
@@ -129,7 +135,9 @@ export function DocumentsTable() {
                 disabled={query.isFetchingNextPage}
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {query.isFetchingNextPage ? "Загрузка…" : "Загрузить ещё"}
+                {query.isFetchingNextPage
+                  ? t("table.loadingMore")
+                  : t("table.loadMore")}
               </button>
             </div>
           ) : null}
@@ -140,6 +148,7 @@ export function DocumentsTable() {
 }
 
 function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
+  const t = useTranslations("doctor.documents");
   const { filters } = useDocumentsFilters();
   const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -148,7 +157,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
 
   const handleDelete = async () => {
     if (busy) return;
-    if (!confirm(`Удалить документ «${doc.title}»?`)) return;
+    if (!confirm(t("row.deleteConfirm", { title: doc.title }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/crm/documents/${doc.id}`, {
@@ -157,7 +166,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
       });
       if (!res.ok) {
         const txt = await res.text();
-        alert(`Не удалось удалить: ${txt || res.status}`);
+        alert(t("row.deleteError", { detail: txt || res.status }));
         return;
       }
       await queryClient.invalidateQueries({
@@ -199,7 +208,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
         </div>
         {doc.uploadedBy ? (
           <div className="truncate text-xs text-muted-foreground">
-            загрузил: {doc.uploadedBy.name}
+            {t("row.uploadedBy", { name: doc.uploadedBy.name })}
           </div>
         ) : null}
       </div>
@@ -211,7 +220,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
             TYPE_TONE[doc.type],
           )}
         >
-          {TYPE_LABEL[doc.type]}
+          {t(TYPE_LABEL_KEY[doc.type])}
         </span>
       </div>
 
@@ -223,13 +232,13 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
       </div>
 
       <div className="text-sm text-foreground tabular-nums">
-        {formatSize(doc.sizeBytes)}
+        {formatSize(doc.sizeBytes, t)}
       </div>
 
       <div className="relative flex justify-end">
         <button
           type="button"
-          aria-label="Ещё действия"
+          aria-label={t("row.moreActions")}
           onClick={() => setMenuOpen((v) => !v)}
           className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -239,7 +248,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
           <>
             <button
               type="button"
-              aria-label="Закрыть меню"
+              aria-label={t("row.closeMenu")}
               onClick={() => setMenuOpen(false)}
               className="fixed inset-0 z-10 cursor-default"
             />
@@ -250,7 +259,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-foreground transition-colors hover:bg-muted"
               >
                 <DownloadIcon className="size-4 text-muted-foreground" />
-                Скачать
+                {t("row.download")}
               </button>
               <button
                 type="button"
@@ -259,7 +268,7 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
               >
                 <Trash2Icon className="size-4" />
-                {busy ? "Удаление…" : "Удалить"}
+                {busy ? t("row.deleting") : t("row.delete")}
               </button>
             </div>
           </>

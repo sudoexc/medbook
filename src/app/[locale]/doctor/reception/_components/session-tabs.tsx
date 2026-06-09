@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { cn } from "@/lib/utils";
 
 import {
@@ -7,15 +9,16 @@ import {
   type ReceptionTab,
 } from "../_hooks/reception-context";
 
-const TABS: ReadonlyArray<{ key: ReceptionTab; label: string }> = [
-  { key: "session", label: "Приём" },
-  { key: "history", label: "История визитов" },
-  { key: "documents", label: "Документы" },
-  { key: "labs", label: "Анализы" },
-  { key: "prescriptions", label: "Назначения" },
+const TABS: ReadonlyArray<{ key: ReceptionTab; labelKey: string }> = [
+  { key: "session", labelKey: "tabs.session" },
+  { key: "history", labelKey: "tabs.history" },
+  { key: "documents", labelKey: "tabs.documents" },
+  { key: "labs", labelKey: "tabs.labs" },
+  { key: "prescriptions", labelKey: "tabs.prescriptions" },
 ];
 
 export function SessionTabs() {
+  const tr = useTranslations("doctor.reception");
   const { activeTab, setActiveTab, activeAppointment } = useReceptionContext();
   // "История визитов / Документы / Назначения" require a selected patient.
   // Without one, we disable the non-session tabs so a misclick doesn't
@@ -45,7 +48,7 @@ export function SessionTabs() {
               isDisabled && "cursor-not-allowed opacity-50 hover:text-muted-foreground",
             )}
           >
-            {t.label}
+            {tr(t.labelKey)}
             {isActive && (
               <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />
             )}

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
@@ -35,6 +36,7 @@ import {
 } from "../_hooks/use-conversation-messages";
 
 export function ChatPanel() {
+  const t = useTranslations("doctor.messages");
   const { filters, selectedId } = useMessagesContext();
   const queryClient = useQueryClient();
   const convQuery = useDoctorConversations(filters);
@@ -98,7 +100,7 @@ export function ChatPanel() {
     return (
       <section className="flex min-w-0 flex-1 items-center justify-center rounded-2xl border border-border bg-card">
         <div className="text-sm text-muted-foreground">
-          Выберите диалог слева
+          {t("chat.selectThread")}
         </div>
       </section>
     );
@@ -114,15 +116,15 @@ export function ChatPanel() {
       >
         {messagesQuery.isLoading ? (
           <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-            Загружаем сообщения…
+            {t("chat.loading")}
           </div>
         ) : messagesQuery.isError ? (
           <div className="px-2 py-6 text-center text-sm text-destructive">
-            Не удалось загрузить сообщения
+            {t("chat.error")}
           </div>
         ) : messages.length === 0 ? (
           <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-            Сообщений пока нет
+            {t("chat.empty")}
           </div>
         ) : (
           <>
@@ -135,8 +137,8 @@ export function ChatPanel() {
                   className="rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
                 >
                   {messagesQuery.isFetchingNextPage
-                    ? "Загрузка…"
-                    : "Показать историю выше"}
+                    ? t("chat.loadingHistory")
+                    : t("chat.showHistory")}
                 </button>
               </div>
             ) : null}
@@ -167,8 +169,9 @@ export function ChatPanel() {
 }
 
 function ChatHeader({ conv }: { conv: ConversationRow }) {
-  const title = conversationTitle(conv);
-  const initials = conversationInitials(conv);
+  const t = useTranslations("doctor.messages");
+  const title = conversationTitle(conv, t);
+  const initials = conversationInitials(conv, t);
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
       <div className="flex min-w-0 items-center gap-3">
@@ -180,7 +183,7 @@ function ChatHeader({ conv }: { conv: ConversationRow }) {
             </span>
             {conv.patient ? (
               <span className="inline-flex shrink-0 items-center rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
-                Пациент
+                {t("chat.patientBadge")}
               </span>
             ) : null}
           </div>
@@ -190,19 +193,19 @@ function ChatHeader({ conv }: { conv: ConversationRow }) {
             ) : conv.contactUsername ? (
               <span>@{conv.contactUsername}</span>
             ) : (
-              <span>Канал: {conv.channel}</span>
+              <span>{t("chat.channelFallback", { channel: conv.channel })}</span>
             )}
           </div>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <IconBtn aria="В избранное">
+        <IconBtn aria={t("chat.actions.favorite")}>
           <StarIcon className="size-4" />
         </IconBtn>
-        <IconBtn aria="Информация">
+        <IconBtn aria={t("chat.actions.info")}>
           <InfoIcon className="size-4" />
         </IconBtn>
-        <IconBtn aria="Ещё">
+        <IconBtn aria={t("chat.actions.more")}>
           <MoreHorizontalIcon className="size-4" />
         </IconBtn>
       </div>
@@ -263,6 +266,7 @@ function MessageBubble({ m }: { m: MessageRow }) {
 }
 
 function DaySeparator({ date }: { date: Date }) {
+  const t = useTranslations("doctor.messages");
   const today = new Date();
   let label: string;
   const sameYearMonthDay = (a: Date, b: Date) =>
@@ -270,11 +274,11 @@ function DaySeparator({ date }: { date: Date }) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
   if (sameYearMonthDay(date, today)) {
-    label = "Сегодня";
+    label = t("relative.today");
   } else {
     const y = new Date(today);
     y.setDate(today.getDate() - 1);
-    if (sameYearMonthDay(date, y)) label = "Вчера";
+    if (sameYearMonthDay(date, y)) label = t("relative.yesterday");
     else
       label = date.toLocaleDateString("ru-RU", {
         day: "2-digit",
@@ -292,6 +296,7 @@ function DaySeparator({ date }: { date: Date }) {
 }
 
 function Composer({ conversationId }: { conversationId: string }) {
+  const t = useTranslations("doctor.messages");
   const queryClient = useQueryClient();
   const { filters } = useMessagesContext();
   const [text, setText] = React.useState("");
@@ -327,7 +332,7 @@ function Composer({ conversationId }: { conversationId: string }) {
         }),
       ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось отправить");
+      setError(e instanceof Error ? e.message : t("composer.sendError"));
     } finally {
       setSending(false);
     }
@@ -341,7 +346,7 @@ function Composer({ conversationId }: { conversationId: string }) {
           className="relative inline-flex items-center gap-1.5 pb-2 text-sm font-semibold text-primary"
         >
           <MessageSquareIcon className="size-4" />
-          Сообщение
+          {t("composer.tab")}
           <span
             aria-hidden
             className="absolute inset-x-0 -bottom-px h-0.5 bg-primary"
@@ -359,7 +364,7 @@ function Composer({ conversationId }: { conversationId: string }) {
               void handleSend();
             }
           }}
-          placeholder="Напишите сообщение…  (Enter — отправить, Shift+Enter — новая строка)"
+          placeholder={t("composer.inputPlaceholder")}
           rows={2}
           className="w-full resize-none rounded-lg bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
         />
@@ -384,7 +389,7 @@ function Composer({ conversationId }: { conversationId: string }) {
           )}
         >
           <SendIcon className="size-4" />
-          {sending ? "Отправка…" : "Отправить"}
+          {sending ? t("composer.sending") : t("composer.send")}
         </button>
       </div>
     </div>

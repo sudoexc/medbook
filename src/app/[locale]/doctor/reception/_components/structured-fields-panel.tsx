@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   BookOpenIcon,
   ClipboardListIcon,
@@ -57,51 +58,52 @@ type ArrayKey =
 
 type FieldDef = {
   key: ArrayKey;
-  label: string;
+  labelKey: string;
   Icon: LucideIcon;
-  placeholder: string;
+  placeholderKey: string;
   presetField: PresetField;
 };
 
 const FIELDS: FieldDef[] = [
   {
     key: "complaints",
-    label: "Жалобы",
+    labelKey: "fields.complaints.label",
     Icon: ClipboardListIcon,
-    placeholder: "Например: головная боль",
+    placeholderKey: "fields.complaints.placeholder",
     presetField: "COMPLAINTS",
   },
   {
     key: "anamnesis",
-    label: "Анамнез",
+    labelKey: "fields.anamnesis.label",
     Icon: ScrollTextIcon,
-    placeholder: "Например: стресс, нарушение сна",
+    placeholderKey: "fields.anamnesis.placeholder",
     presetField: "ANAMNESIS",
   },
   {
     key: "examination",
-    label: "Осмотр",
+    labelKey: "fields.examination.label",
     Icon: StethoscopeIcon,
-    placeholder: "Например: сознание ясное",
+    placeholderKey: "fields.examination.placeholder",
     presetField: "EXAMINATION",
   },
   {
     key: "prescriptions",
-    label: "Назначения",
+    labelKey: "fields.prescriptions.label",
     Icon: PillIcon,
-    placeholder: "Например: Мексидол 125 мг",
+    placeholderKey: "fields.prescriptions.placeholder",
     presetField: "PRESCRIPTIONS",
   },
   {
     key: "advice",
-    label: "Рекомендации",
+    labelKey: "fields.advice.label",
     Icon: WandSparklesIcon,
-    placeholder: "Например: режим сна",
+    placeholderKey: "fields.advice.placeholder",
     presetField: "ADVICE",
   },
 ];
 
 export function StructuredFieldsPanel() {
+  const t = useTranslations("doctor.reception");
   const {
     visitNoteId,
     requestBodyAppend,
@@ -229,13 +231,13 @@ export function StructuredFieldsPanel() {
     <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">
-          Структурированные поля
+          {t("structured.title")}
         </h2>
         <div className="inline-flex items-center gap-2">
           {patch.isPending && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2Icon className="size-3 animate-spin" />
-              Сохраняем…
+              {t("editor.saving")}
             </span>
           )}
           {note && !isFinalized && (
@@ -247,37 +249,37 @@ export function StructuredFieldsPanel() {
                   setLabOrderOpen(true);
                 }}
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title="Создать направление в лабораторию"
+                title={t("structured.labOrderTitle")}
               >
                 <FlaskConicalIcon className="size-3" />
-                Лаб. заявка
+                {t("structured.labOrder")}
               </button>
               <button
                 type="button"
                 onClick={() => setRxOpen(true)}
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title="Выписать рецепт"
+                title={t("structured.rxTitle")}
               >
                 <PillIcon className="size-3" />
-                Рецепт
+                {t("structured.rx")}
               </button>
               <button
                 type="button"
                 onClick={() => setSickLeaveOpen(true)}
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title="Выписать лист нетрудоспособности"
+                title={t("structured.sickLeaveTitle")}
               >
                 <ScrollIcon className="size-3" />
-                Б/л
+                {t("structured.sickLeave")}
               </button>
               <button
                 type="button"
                 onClick={() => setReferOpen(true)}
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title="Направить пациента к коллеге или во внешнюю клинику"
+                title={t("structured.referTitle")}
               >
                 <Share2Icon className="size-3" />
-                Направить
+                {t("structured.refer")}
               </button>
             </>
           )}
@@ -286,7 +288,7 @@ export function StructuredFieldsPanel() {
 
       {!note ? (
         <p className="text-xs text-muted-foreground">
-          Откройте активный приём, чтобы начать заполнение.
+          {t("structured.empty")}
         </p>
       ) : (
         <div className="flex flex-col gap-2">
@@ -419,6 +421,7 @@ function ChipFieldCard({
   /** Opens the searchable drug catalog drawer (Phase G1). */
   onOpenCatalog?: () => void;
 }) {
+  const t = useTranslations("doctor.reception");
   const [adding, setAdding] = React.useState(false);
   const [draft, setDraft] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement | null>(null);
@@ -453,7 +456,7 @@ function ChipFieldCard({
           <span className="inline-flex size-5 items-center justify-center rounded-md bg-muted text-muted-foreground">
             <Icon className="size-3" />
           </span>
-          <span className="text-xs font-semibold text-foreground">{def.label}</span>
+          <span className="text-xs font-semibold text-foreground">{t(def.labelKey)}</span>
           {value.length > 0 && (
             <span className="rounded-md bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
               {value.length}
@@ -467,10 +470,10 @@ function ChipFieldCard({
               disabled={disabled}
               onClick={onOpenCatalog}
               className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
-              title="Каталог препаратов"
+              title={t("structured.catalogTitle")}
             >
               <BookOpenIcon className="size-3" />
-              Каталог
+              {t("structured.catalog")}
             </button>
           )}
           {onOpenBuilder && (
@@ -481,12 +484,12 @@ function ChipFieldCard({
               className="inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
             >
               <SlidersHorizontalIcon className="size-3" />
-              Конструктор
+              {t("structured.builder")}
             </button>
           )}
           <button
             type="button"
-            aria-label="Добавить"
+            aria-label={t("structured.add")}
             disabled={disabled || adding}
             onClick={() => setAdding(true)}
             className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
@@ -505,8 +508,8 @@ function ChipFieldCard({
               onClick={() => onPresetClick(p)}
               title={
                 p.noteTemplate
-                  ? `Добавить + дописать в заключение`
-                  : "Добавить в поле"
+                  ? t("structured.presetTitleWithTemplate")
+                  : t("structured.presetTitle")
               }
               className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
             >
@@ -542,7 +545,7 @@ function ChipFieldCard({
                 setDraft("");
               }
             }}
-            placeholder={def.placeholder}
+            placeholder={t(def.placeholderKey)}
             className="inline-flex h-6 min-w-[160px] items-center rounded-md border border-primary/40 bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20"
           />
         ) : (
@@ -555,7 +558,7 @@ function ChipFieldCard({
               className="inline-flex h-6 items-center gap-1 rounded-md border border-dashed border-border px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <PlusIcon className="size-3" />
-              Добавить
+              {t("structured.add")}
             </button>
           )
         )}
@@ -571,6 +574,7 @@ function Chip({
   label: string;
   onRemove?: () => void;
 }) {
+  const t = useTranslations("doctor.reception");
   return (
     <span
       className={cn(
@@ -581,7 +585,7 @@ function Chip({
       {onRemove && (
         <button
           type="button"
-          aria-label="Удалить"
+          aria-label={t("structured.remove")}
           onClick={onRemove}
           className="ml-0.5 inline-flex size-3.5 items-center justify-center rounded-sm text-primary/60 transition-colors hover:bg-primary/15 hover:text-primary"
         >
@@ -603,6 +607,7 @@ function DiagnosisCard({
   onChange: (code: string | null, name: string | null) => void;
   onRequestApplyProtocol: (protocol: ClinicalProtocolRow) => void;
 }) {
+  const t = useTranslations("doctor.reception");
   const [query, setQuery] = React.useState("");
   const [focused, setFocused] = React.useState(false);
   const hits = useIcd10Search(query);
@@ -618,7 +623,7 @@ function DiagnosisCard({
           <span className="inline-flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
             <FileTextIcon className="size-4" />
           </span>
-          <span className="text-sm font-semibold text-foreground">Диагноз</span>
+          <span className="text-sm font-semibold text-foreground">{t("diagnosis.title")}</span>
         </div>
       </div>
 
@@ -628,7 +633,7 @@ function DiagnosisCard({
           <input
             type="text"
             disabled={disabled}
-            placeholder="Поиск по МКБ-10 (код или название)..."
+            placeholder={t("diagnosis.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
@@ -669,7 +674,7 @@ function DiagnosisCard({
               {!disabled && (
                 <button
                   type="button"
-                  aria-label="Сбросить диагноз"
+                  aria-label={t("diagnosis.reset")}
                   onClick={() => onChange(null, null)}
                   className="ml-auto inline-flex size-5 items-center justify-center rounded-full text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary"
                 >
@@ -684,11 +689,11 @@ function DiagnosisCard({
                     key={p.id}
                     type="button"
                     onClick={() => onRequestApplyProtocol(p)}
-                    title={p.summaryRu ?? "Применить шаблон протокола"}
+                    title={p.summaryRu ?? t("diagnosis.applyProtocolTitle")}
                     className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
                   >
                     <WandSparklesIcon className="size-3" />
-                    Применить стандарт
+                    {t("diagnosis.applyStandard")}
                     <span className="rounded-md bg-primary/15 px-1 font-mono text-[10px]">
                       {p.diagnosisCodePrefix}
                     </span>

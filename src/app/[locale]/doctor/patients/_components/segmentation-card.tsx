@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { cn } from "@/lib/utils";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
@@ -37,10 +39,11 @@ function Header({
   activeTab?: SegmentKey | null;
   onClear?: () => void;
 }) {
+  const t = useTranslations("doctor.patients");
   return (
     <div className="mb-3 flex items-center justify-between gap-2">
       <span className="text-[15px] font-semibold text-foreground">
-        Сегментация базы
+        {t("segmentation.title")}
       </span>
       {activeTab && onClear ? (
         <button
@@ -48,7 +51,7 @@ function Header({
           onClick={onClear}
           className="text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          Сбросить
+          {t("segmentation.reset")}
         </button>
       ) : null}
     </div>
@@ -56,6 +59,7 @@ function Header({
 }
 
 export function SegmentationCard() {
+  const t = useTranslations("doctor.patients");
   const { data, isLoading, isError } = useDoctorPatientSegments();
   const { filters, setTab } = usePatientsFilters();
   const activeTab: SegmentKey | null =
@@ -81,7 +85,7 @@ export function SegmentationCard() {
           </ul>
         </div>
         <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs">
-          <span className="text-muted-foreground">Всего пациентов</span>
+          <span className="text-muted-foreground">{t("segmentation.totalPatients")}</span>
           <span className="h-3 w-8 animate-pulse rounded bg-muted" />
         </div>
       </section>
@@ -93,7 +97,7 @@ export function SegmentationCard() {
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <Header />
         <div className="py-6 text-center text-xs text-destructive">
-          Не удалось загрузить сегментацию.
+          {t("segmentation.loadError")}
         </div>
       </section>
     );
@@ -121,8 +125,7 @@ export function SegmentationCard() {
             />
           </svg>
           <p className="text-xs text-muted-foreground">
-            Пока нет пациентов с завершёнными визитами. Когда появятся, тут
-            раскроется разбивка по сегментам.
+            {t("segmentation.empty")}
           </p>
         </div>
       </section>
@@ -223,7 +226,7 @@ export function SegmentationCard() {
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs">
-        <span className="text-muted-foreground">Всего пациентов</span>
+        <span className="text-muted-foreground">{t("segmentation.totalPatients")}</span>
         <span className="font-semibold text-foreground tabular-nums">
           {data.total.toLocaleString("ru-RU").replace(",", " ")}
         </span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { StethoscopeIcon } from "lucide-react";
 
 import { EmptyState } from "@/components/atoms/empty-state";
@@ -37,6 +38,7 @@ function longDate(iso: string): string {
  * note yet). Same shared `useDoctorPatientVisits` source as the visits list.
  */
 export function LastDiagnosisCard({ patientId }: { patientId: string }) {
+  const t = useTranslations("doctor.reception");
   const query = useDoctorPatientVisits(patientId);
   const rows = flattenVisits(query.data);
   const withDiagnosis =
@@ -46,7 +48,7 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="mb-3 text-[15px] font-semibold text-foreground">
-          Последний диагноз
+          {t("lastDiagnosis.title")}
         </div>
         <Skeleton className="h-4 w-48" />
         <div className="mt-3 space-y-1.5">
@@ -61,10 +63,10 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="mb-3 text-[15px] font-semibold text-foreground">
-          Последний диагноз
+          {t("lastDiagnosis.title")}
         </div>
         <p className="text-xs text-destructive">
-          Не удалось загрузить диагноз.
+          {t("lastDiagnosis.loadError")}
         </p>
       </section>
     );
@@ -74,12 +76,12 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="mb-3 text-[15px] font-semibold text-foreground">
-          Последний диагноз
+          {t("lastDiagnosis.title")}
         </div>
         <EmptyState
           icon={<StethoscopeIcon />}
-          title="Диагноз не указан"
-          description="В завершённых визитах ещё нет установленного диагноза."
+          title={t("lastDiagnosis.emptyTitle")}
+          description={t("lastDiagnosis.emptyDescription")}
           className="border-0 bg-transparent px-0 py-4"
         />
       </section>
@@ -89,7 +91,7 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
   return (
     <section className="rounded-2xl border border-border bg-card px-5 py-4">
       <div className="mb-3 text-[15px] font-semibold text-foreground">
-        Последний диагноз
+        {t("lastDiagnosis.title")}
       </div>
 
       <div className="text-sm font-bold text-foreground">
@@ -100,7 +102,7 @@ export function LastDiagnosisCard({ patientId }: { patientId: string }) {
       </div>
 
       <div className="mt-3 space-y-1.5 text-xs">
-        <Row label="Установлен" value={longDate(withDiagnosis.date)} />
+        <Row label={t("lastDiagnosis.establishedLabel")} value={longDate(withDiagnosis.date)} />
       </div>
     </section>
   );

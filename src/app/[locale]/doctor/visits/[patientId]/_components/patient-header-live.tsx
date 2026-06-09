@@ -1,6 +1,7 @@
 "use client";
 
 import { PhoneIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -64,11 +65,12 @@ type Props = {
 };
 
 export function PatientHeaderLive(props: Props) {
+  const t = useTranslations("doctor.visits");
   const age = props.birthDateIso ? ageFromBirthIso(props.birthDateIso) : null;
   const birth = props.birthDateIso ? ddmmyyyy(props.birthDateIso) : null;
   const status = props.hasActiveAppointment
-    ? { tone: "success" as const, label: "На приёме" }
-    : { tone: "muted" as const, label: "Завершено" };
+    ? { tone: "success" as const, label: t("header.statusInReception") }
+    : { tone: "muted" as const, label: t("header.statusCompleted") };
 
   return (
     <section className="rounded-2xl border border-border bg-card px-5 py-4">
@@ -98,17 +100,23 @@ export function PatientHeaderLive(props: Props) {
                 props.hasActiveAppointment ? "bg-success" : "bg-muted-foreground/50",
               )}
             />
-            {props.hasActiveAppointment ? "Активный приём" : "Пациент"}
+            {props.hasActiveAppointment
+              ? t("header.activeReception")
+              : t("header.patient")}
           </span>
         </div>
 
         <div className="ml-auto grid grid-cols-2 items-center gap-x-7 gap-y-2 md:grid-cols-3 xl:grid-cols-6">
           <Field
-            label="Возраст"
-            value={age !== null && birth ? `${age} лет (${birth})` : "—"}
+            label={t("header.age")}
+            value={
+              age !== null && birth
+                ? t("header.ageValue", { age, birth })
+                : "—"
+            }
           />
           <Field
-            label="Телефон"
+            label={t("header.phone")}
             value={
               <span className="inline-flex items-center gap-1">
                 {props.phone}
@@ -116,9 +124,9 @@ export function PatientHeaderLive(props: Props) {
               </span>
             }
           />
-          <Field label="Тип приёма" value="—" />
+          <Field label={t("header.appointmentType")} value="—" />
           <Field
-            label="Статус"
+            label={t("header.status")}
             value={
               <span className="inline-flex items-center gap-1.5">
                 <span
@@ -132,14 +140,14 @@ export function PatientHeaderLive(props: Props) {
             }
           />
           <Field
-            label="Последний визит"
+            label={t("header.lastVisit")}
             value={
               props.lastVisit
                 ? ruShort(props.lastVisit.dateIso, props.lastVisit.time)
                 : "—"
             }
           />
-          <Field label="№ карты" value={props.cardNumber} />
+          <Field label={t("header.cardNumber")} value={props.cardNumber} />
         </div>
       </div>
     </section>

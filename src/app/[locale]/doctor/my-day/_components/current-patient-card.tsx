@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   CheckCircle2Icon,
   ChevronRightIcon,
@@ -37,11 +38,13 @@ import {
 } from "../_hooks/use-doctor-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 
-const TAG_LABEL: Record<PatientTag, string> = {
-  active: "Активный пациент",
-  first_visit: "Первичный приём",
-  vip: "VIP",
-  new: "Новый",
+type MyDayTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
+
+const TAG_LABEL_KEY: Record<PatientTag, string> = {
+  active: "tags.active",
+  first_visit: "tags.firstVisit",
+  vip: "tags.vip",
+  new: "tags.new",
 };
 
 const TAG_CLASS: Record<PatientTag, string> = {
@@ -76,10 +79,10 @@ function formatHHMM(iso: string): string {
 }
 
 /** "30 сек назад" / "2 мин назад" — only used by the «Вызван …» hint. */
-function formatCalledAgo(seconds: number): string {
-  if (seconds < 60) return `${seconds} сек назад`;
+function formatCalledAgo(seconds: number, t: MyDayTranslate): string {
+  if (seconds < 60) return t("current.secondsAgo", { n: seconds });
   const minutes = Math.floor(seconds / 60);
-  return `${minutes} мин назад`;
+  return t("current.minutesAgo", { n: minutes });
 }
 
 /** YYYY-MM-DD for today's local date — matches the schedule cache key. */
@@ -92,6 +95,7 @@ function todayDateKey(): string {
 }
 
 export function CurrentPatientCard() {
+  const t = useTranslations("doctor.myDay");
   const { data: p, isLoading } = useDoctorToday<CurrentPatient | null>(
     (d) => d.current,
   );
@@ -101,7 +105,7 @@ export function CurrentPatientCard() {
       <section className="flex flex-col rounded-2xl border border-border bg-card">
         <header className="px-5 pt-4 pb-2">
           <div className="text-[15px] font-semibold text-foreground">
-            Текущий пациент
+            {t("current.title")}
           </div>
         </header>
         <div className="flex flex-col gap-3 px-5 pb-3">
@@ -125,7 +129,7 @@ export function CurrentPatientCard() {
       <section className="flex flex-col rounded-2xl border border-border bg-card">
         <header className="px-5 pt-4 pb-2">
           <div className="text-[15px] font-semibold text-foreground">
-            Текущий пациент
+            {t("current.title")}
           </div>
         </header>
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-5 py-10 text-center">
@@ -133,10 +137,10 @@ export function CurrentPatientCard() {
             <UserIcon className="size-5" />
           </div>
           <div className="text-sm font-medium text-foreground">
-            Сейчас никто не принимается
+            {t("current.noneActive")}
           </div>
           <div className="text-xs text-muted-foreground">
-            Когда следующий пациент войдёт в кабинет — он появится здесь
+            {t("current.noneActiveHint")}
           </div>
         </div>
       </section>
@@ -147,6 +151,7 @@ export function CurrentPatientCard() {
 }
 
 function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
+  const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
   const dateKey = React.useMemo(todayDateKey, []);
@@ -173,7 +178,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
   if (p.status === "IN_PROGRESS" && startedAtMs) {
     const elapsedSec = Math.max(0, Math.floor((now - startedAtMs) / 1000));
     timer = {
-      label: `Идёт: ${formatHHMMSS(elapsedSec)}`,
+      label: t("current.timerElapsed", { time: formatHHMMSS(elapsedSec) }),
       tone: "active",
     };
   } else if (p.status === "WAITING") {
@@ -184,8 +189,8 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
     timer = {
       label:
         waitingSec > 0
-          ? `Ожидает: ${formatHHMMSS(waitingSec)}`
-          : `Начало в ${formatHHMM(p.startsAt)}`,
+          ? t("current.timerWaiting", { time: formatHHMMSS(waitingSec) })
+          : t("current.startsAt", { time: formatHHMM(p.startsAt) }),
       tone: waitingSec > 60 ? "late" : "neutral",
     };
   } else {
@@ -194,8 +199,8 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
     timer = {
       label:
         untilStartSec > 0
-          ? `Через ${formatHHMMSS(untilStartSec)}`
-          : `Начало в ${formatHHMM(p.startsAt)}`,
+          ? t("current.timerUntil", { time: formatHHMMSS(untilStartSec) })
+          : t("current.startsAt", { time: formatHHMM(p.startsAt) }),
       tone: "neutral",
     };
   }
@@ -221,21 +226,21 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
     const isPreVisit = p.status === "BOOKED" || p.status === "WAITING";
     if (isPreVisit && !p.calledAt) {
       return {
-        label: "Вызвать пациента",
+        label: t("current.callPatient"),
         Icon: MegaphoneIcon,
         action: { kind: "call" },
       };
     }
     if (isPreVisit && p.calledAt) {
       return {
-        label: "Начать приём",
+        label: t("current.startVisit"),
         Icon: PlayIcon,
         action: { kind: "status", toStatus: "IN_PROGRESS" },
       };
     }
     if (p.status === "IN_PROGRESS") {
       return {
-        label: "Завершить приём",
+        label: t("current.finishVisit"),
         Icon: CheckCircle2Icon,
         action: { kind: "status", toStatus: "COMPLETED" },
       };
@@ -277,8 +282,8 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
       <header className="px-5 pt-4 pb-2">
         <div className="text-[15px] font-semibold text-foreground">
           {p.status === "IN_PROGRESS"
-            ? "Текущий приём"
-            : "Следующий пациент"}
+            ? t("current.currentVisit")
+            : t("current.nextPatient")}
         </div>
       </header>
 
@@ -301,7 +306,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
               {p.fullName}
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              {p.age !== null ? `${p.age} лет` : "—"}
+              {p.age !== null ? t("current.ageYears", { count: p.age }) : "—"}
               {birthLabel ? ` (${birthLabel})` : ""}
             </div>
             <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
@@ -321,7 +326,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                   TAG_CLASS[tag],
                 )}
               >
-                {TAG_LABEL[tag]}
+                {t(TAG_LABEL_KEY[tag])}
               </span>
             ))}
           </div>
@@ -346,7 +351,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
           {calledSecondsAgo !== null && p.status !== "IN_PROGRESS" ? (
             <div className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-violet/15 px-2.5 py-1 text-xs font-semibold text-violet">
               <MegaphoneIcon className="size-3" />
-              Вызван {formatCalledAgo(calledSecondsAgo)}
+              {t("current.calledAgo", { ago: formatCalledAgo(calledSecondsAgo, t) })}
             </div>
           ) : null}
         </div>
@@ -355,7 +360,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
       {p.complaints ? (
         <div className="mx-5 rounded-xl border border-border bg-muted/30 px-3.5 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Жалобы
+            {t("current.complaints")}
           </div>
           <div className="mt-1 text-xs leading-relaxed text-foreground">
             {p.complaints}
@@ -366,7 +371,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
       <div className="grid grid-cols-2 gap-3 px-5 py-4">
         <div className="rounded-xl border border-border bg-card px-3 py-2.5">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Последний визит
+            {t("current.lastVisit")}
           </div>
           {p.lastVisit ? (
             <>
@@ -380,19 +385,19 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 href={`/${locale}/doctor/visits/${p.patientId}`}
                 className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
               >
-                Открыть визит
+                {t("current.openVisit")}
                 <ChevronRightIcon className="size-3" />
               </Link>
             </>
           ) : (
             <div className="mt-2 text-xs text-muted-foreground">
-              Первичный приём
+              {t("current.firstVisit")}
             </div>
           )}
         </div>
         <div className="rounded-xl border border-border bg-card px-3 py-2.5">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Последний диагноз
+            {t("current.lastDiagnosis")}
           </div>
           {p.lastDiagnosis.codes.length > 0 ? (
             <>
@@ -412,13 +417,13 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 href={`/${locale}/doctor/visits/${p.patientId}`}
                 className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
               >
-                Смотреть историю
+                {t("current.viewHistory")}
                 <ChevronRightIcon className="size-3" />
               </Link>
             </>
           ) : (
             <div className="mt-2 text-xs text-muted-foreground">
-              Нет данных
+              {t("current.noData")}
             </div>
           )}
         </div>
@@ -429,7 +434,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
           href={`/${locale}/doctor/patients/${p.patientId}`}
           className="motion-press inline-flex flex-1 items-center justify-center rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
         >
-          Открыть карту пациента
+          {t("current.openPatientCard")}
         </Link>
         {primary ? (
           <button
@@ -450,7 +455,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label="Ещё действия"
+              aria-label={t("current.moreActions")}
               disabled={mutation.isPending}
               className="motion-press flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
             >
@@ -465,7 +470,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                   className="gap-2"
                 >
                   <RotateCcwIcon className="size-4" />
-                  Шаг назад: ожидает
+                  {t("current.stepBackWaiting")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -477,7 +482,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                   className="gap-2"
                 >
                   <RotateCcwIcon className="size-4" />
-                  Шаг назад: запланирован
+                  {t("current.stepBackBooked")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -490,14 +495,14 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                   className="gap-2"
                 >
                   <MegaphoneIcon className="size-4" />
-                  Вызвать ещё раз
+                  {t("current.callAgain")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => fire("IN_PROGRESS")}
                   className="gap-2"
                 >
                   <PlayIcon className="size-4" />
-                  Начать без повторного вызова
+                  {t("current.startWithoutRecall")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -509,7 +514,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 className="gap-2"
               >
                 <PlayIcon className="size-4" />
-                Начать без вызова
+                {t("current.startWithoutCall")}
               </DropdownMenuItem>
             ) : null}
             {p.status === "BOOKED" ? (
@@ -518,7 +523,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 className="gap-2"
               >
                 <UserCheckIcon className="size-4" />
-                Только зарегистрировать прибытие
+                {t("current.registerArrivalOnly")}
               </DropdownMenuItem>
             ) : null}
             {p.status === "BOOKED" || p.status === "WAITING" ? (
@@ -527,7 +532,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 className="gap-2"
               >
                 <UserXIcon className="size-4" />
-                Не пришёл
+                {t("current.noShow")}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem
@@ -535,7 +540,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
               className="gap-2 text-destructive focus:text-destructive"
             >
               <XIcon className="size-4" />
-              Отменить приём
+              {t("current.cancelVisit")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

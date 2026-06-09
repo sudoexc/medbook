@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowRightIcon, CalendarOffIcon } from "lucide-react";
@@ -36,9 +37,9 @@ function hhmm(iso: string): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-const TYPE_LABEL = {
-  consultation: "Консультация",
-  repeat: "Повторный приём",
+const TYPE_LABEL_KEY = {
+  consultation: "lastVisit.typeConsultation",
+  repeat: "lastVisit.typeRepeat",
 } as const;
 
 /**
@@ -50,6 +51,7 @@ const TYPE_LABEL = {
  * so this rides the cached query with no extra round-trip.
  */
 export function LastVisitCard({ patientId }: { patientId: string }) {
+  const t = useTranslations("doctor.reception");
   const params = useParams<{ locale: string }>();
   const locale = params?.locale ?? "ru";
 
@@ -61,7 +63,7 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="mb-3 text-[15px] font-semibold text-foreground">
-          Последний визит
+          {t("lastVisit.title")}
         </div>
         <div className="space-y-2">
           <Skeleton className="h-4 w-40" />
@@ -77,10 +79,10 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="mb-3 text-[15px] font-semibold text-foreground">
-          Последний визит
+          {t("lastVisit.title")}
         </div>
         <p className="text-xs text-destructive">
-          Не удалось загрузить последний визит.
+          {t("lastVisit.loadError")}
         </p>
       </section>
     );
@@ -90,12 +92,12 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
     return (
       <section className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="mb-3 text-[15px] font-semibold text-foreground">
-          Последний визит
+          {t("lastVisit.title")}
         </div>
         <EmptyState
           icon={<CalendarOffIcon />}
-          title="Нет завершённых визитов"
-          description="Как только приём будет завершён, он появится здесь."
+          title={t("lastVisit.emptyTitle")}
+          description={t("lastVisit.emptyDescription")}
           className="border-0 bg-transparent px-0 py-4"
         />
       </section>
@@ -106,10 +108,10 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
     <section className="rounded-2xl border border-border bg-card px-5 py-4">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="text-[15px] font-semibold text-foreground">
-          Последний визит
+          {t("lastVisit.title")}
         </div>
         <span className="inline-flex items-center rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
-          {TYPE_LABEL[last.type]}
+          {t(TYPE_LABEL_KEY[last.type])}
         </span>
       </div>
 
@@ -117,13 +119,13 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
         <div className="text-sm font-semibold text-foreground tabular-nums">
           {longDate(last.date)}, {hhmm(last.date)} — {hhmm(last.endDate)}
         </div>
-        <Row label="Врач" value={last.doctorName} />
+        <Row label={t("lastVisit.doctorLabel")} value={last.doctorName} />
         <Row
-          label="Статус"
+          label={t("lastVisit.statusLabel")}
           value={
             <span className="inline-flex items-center gap-1.5">
               <span className="size-1.5 rounded-full bg-success" />
-              Завершён
+              {t("lastVisit.statusCompleted")}
             </span>
           }
         />
@@ -134,12 +136,12 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
           href={`/${locale}/doctor/visits/${patientId}/${last.id}`}
           className="motion-press mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-background py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
         >
-          Открыть последний визит
+          {t("lastVisit.openLast")}
           <ArrowRightIcon className="size-4" />
         </Link>
       ) : (
         <div className="mt-4 rounded-xl border border-dashed border-border py-2 text-center text-xs text-muted-foreground">
-          Заключение не оформлено
+          {t("lastVisit.noConclusion")}
         </div>
       )}
     </section>

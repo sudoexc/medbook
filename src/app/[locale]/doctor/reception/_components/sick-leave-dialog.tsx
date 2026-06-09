@@ -8,6 +8,7 @@
  * HTML opens in a new tab with auto window.print().
  */
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import {
   CalendarIcon,
   Loader2Icon,
@@ -41,10 +42,12 @@ type Props = {
   diagnosisName: string | null;
 };
 
-const REGIMENS: { value: Regimen; label: string; hint: string }[] = [
-  { value: "OUTPATIENT", label: "Амбулаторно", hint: "лечение дома" },
-  { value: "HOSPITAL", label: "Стационар", hint: "круглосуточно" },
-  { value: "HOME", label: "Постельный", hint: "строгий режим" },
+// `value` is the enum literal sent to the server; `key` routes to the
+// localized label/hint under `sickLeave.regimens.*`.
+const REGIMENS: { value: Regimen; key: string }[] = [
+  { value: "OUTPATIENT", key: "outpatient" },
+  { value: "HOSPITAL", key: "hospital" },
+  { value: "HOME", key: "home" },
 ];
 
 export function SickLeaveDialog({
@@ -56,6 +59,7 @@ export function SickLeaveDialog({
   diagnosisCode,
   diagnosisName,
 }: Props) {
+  const t = useTranslations("doctor.receptionDialogs");
   const [regimen, setRegimen] = React.useState<Regimen>("OUTPATIENT");
   const [periodFrom, setPeriodFrom] = React.useState("");
   const [periodTo, setPeriodTo] = React.useState("");
@@ -118,21 +122,21 @@ export function SickLeaveDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <StethoscopeIcon className="size-4" /> Лист нетрудоспособности
+            <StethoscopeIcon className="size-4" /> {t("sickLeave.title")}
           </DialogTitle>
           <DialogDescription>
-            Освобождение от работы. После сохранения откроется печатная форма.
+            {t("sickLeave.description")}
           </DialogDescription>
         </DialogHeader>
 
         {!patientId ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-            Откройте активный приём, чтобы выписать лист.
+            {t("sickLeave.noPatientHint")}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             <div className="text-xs text-muted-foreground">
-              МКБ-10:{" "}
+              {t("common.icd10")}:{" "}
               <span className="font-medium text-foreground">
                 {diagnosisCode ?? "—"}
               </span>
@@ -143,7 +147,7 @@ export function SickLeaveDialog({
 
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                Режим
+                {t("sickLeave.regimenLabel")}
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {REGIMENS.map((r) => (
@@ -158,38 +162,38 @@ export function SickLeaveDialog({
                         : "border-border text-muted-foreground hover:bg-muted/50",
                     )}
                   >
-                    <span className="font-semibold">{r.label}</span>
-                    <span className="text-[10px] text-muted-foreground">{r.hint}</span>
+                    <span className="font-semibold">{t(`sickLeave.regimens.${r.key}.label`)}</span>
+                    <span className="text-[10px] text-muted-foreground">{t(`sickLeave.regimens.${r.key}.hint`)}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <DateField label="С" value={periodFrom} onChange={setPeriodFrom} />
-              <DateField label="По" value={periodTo} onChange={setPeriodTo} />
+              <DateField label={t("sickLeave.from")} value={periodFrom} onChange={setPeriodFrom} />
+              <DateField label={t("sickLeave.to")} value={periodTo} onChange={setPeriodTo} />
             </div>
             {days > 0 && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <CalendarIcon className="size-3" />
-                Календарных дней: <b className="text-foreground">{days}</b>
+                {t("sickLeave.calendarDays")} <b className="text-foreground">{days}</b>
               </div>
             )}
 
             <label className="flex flex-col gap-1 text-xs">
               <span className="font-medium text-muted-foreground">
-                Рекомендации / ограничения
+                {t("sickLeave.restrictionsLabel")}
               </span>
               <textarea
                 className="min-h-[60px] resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 value={restrictions}
                 onChange={(e) => setRestrictions(e.target.value)}
-                placeholder="избегать физических нагрузок"
+                placeholder={t("sickLeave.restrictionsPlaceholder")}
               />
             </label>
 
             <label className="flex flex-col gap-1 text-xs">
-              <span className="font-medium text-muted-foreground">Примечания</span>
+              <span className="font-medium text-muted-foreground">{t("sickLeave.notesLabel")}</span>
               <textarea
                 className="min-h-[44px] resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 value={notes}
@@ -199,7 +203,8 @@ export function SickLeaveDialog({
 
             {create.isError ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
-                Не удалось выписать лист: {(create.error as Error)?.message ?? "ошибка"}
+                {t("sickLeave.submitError")}{" "}
+                {(create.error as Error)?.message ?? t("common.errorFallback")}
               </div>
             ) : null}
           </div>
@@ -212,7 +217,7 @@ export function SickLeaveDialog({
             disabled={create.isPending}
           >
             <XIcon className="size-3.5" />
-            Отмена
+            {t("actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
             {create.isPending ? (
@@ -220,7 +225,7 @@ export function SickLeaveDialog({
             ) : (
               <PrinterIcon className="size-3.5" />
             )}
-            Выписать и напечатать
+            {t("sickLeave.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

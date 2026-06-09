@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -20,11 +21,14 @@ import type {
   ScheduleType,
 } from "../../my-day/_hooks/use-doctor-today";
 
-const TYPE_LABEL: Record<ScheduleType, string> = {
-  consultation: "Консультация",
-  repeat: "Повторный приём",
-  reserve: "Резерв",
-  break: "Обед",
+// Maps a schedule entry type to its translation key suffix under
+// `agenda.type.*`. Kept as a constant so the mapping stays greppable;
+// the human-readable label is resolved at render time via `t`.
+const TYPE_LABEL_KEY: Record<ScheduleType, string> = {
+  consultation: "consultation",
+  repeat: "repeat",
+  reserve: "reserve",
+  break: "break",
 };
 
 const HOUR_START = 8;
@@ -61,11 +65,14 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round(ms / (24 * 60 * 60 * 1000));
 }
 
-function relativeLabel(view: Date, today: Date): string | null {
+// Returns the translation key suffix under `agenda.relative.*` for the
+// view date relative to today, or null when it's neither yesterday/today/
+// tomorrow (the caller then falls back to the full date label).
+function relativeLabelKey(view: Date, today: Date): string | null {
   const delta = daysBetween(view, today);
-  if (delta === 0) return "Сегодня";
-  if (delta === -1) return "Вчера";
-  if (delta === 1) return "Завтра";
+  if (delta === 0) return "today";
+  if (delta === -1) return "yesterday";
+  if (delta === 1) return "tomorrow";
   return null;
 }
 
@@ -161,35 +168,38 @@ function layoutSlots(
   return { slots: layouts, totalRows };
 }
 
+// Returns the translation key suffix under `agenda.status.*` plus the tone
+// classes for the entry's status badge, or null when no badge applies.
 function statusBadge(entry: ScheduleEntry): {
-  label: string;
+  labelKey: string;
   className: string;
 } | null {
   if (entry.status === "in_progress") {
     return {
-      label: "Идёт приём",
+      labelKey: "inProgress",
       className: "bg-success/15 text-success",
     };
   }
   if (entry.status === "done") {
     return {
-      label: "Завершён",
+      labelKey: "done",
       className: "bg-muted text-muted-foreground",
     };
   }
   if (entry.status === "no_show") {
     return {
-      label: "Не пришёл",
+      labelKey: "noShow",
       className: "bg-warning/15 text-warning",
     };
   }
   if (entry.status === "cancelled") {
-    return { label: "Отменён", className: "bg-destructive/10 text-destructive" };
+    return { labelKey: "cancelled", className: "bg-destructive/10 text-destructive" };
   }
   return null;
 }
 
 export function AgendaShell({ locale }: { locale: string }) {
+  const t = useTranslations("doctor.schedule");
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -230,7 +240,8 @@ export function AgendaShell({ locale }: { locale: string }) {
     (_, i) => hourStart + i,
   );
 
-  const rel = relativeLabel(viewDate, today);
+  const relKey = relativeLabelKey(viewDate, today);
+  const rel = relKey ? t(`agenda.relative.${relKey}`) : null;
 
   return (
     <div className="flex flex-col gap-4 p-4 xl:gap-5 xl:p-6">
@@ -240,7 +251,7 @@ export function AgendaShell({ locale }: { locale: string }) {
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeftIcon className="size-4" />
-          Мой день
+          {t("agenda.backToMyDay")}
         </Link>
       </div>
 
@@ -249,7 +260,7 @@ export function AgendaShell({ locale }: { locale: string }) {
           <div>
             <h1 className="flex items-center gap-2 text-xl font-semibold text-foreground">
               <CalendarIcon className="size-5 text-primary" />
-              Расписание
+              {t("agenda.title")}
             </h1>
             <div className="mt-1 text-sm text-muted-foreground">
               {rel ? `${rel} · ${fullDateLabel(viewDate)}` : fullDateLabel(viewDate)}
@@ -267,11 +278,11 @@ export function AgendaShell({ locale }: { locale: string }) {
                   : "text-foreground hover:bg-muted",
               )}
             >
-              Сегодня
+              {t("agenda.today")}
             </button>
             <button
               type="button"
-              aria-label="Предыдущий день"
+              aria-label={t("agenda.prevDay")}
               onClick={() => setViewDate((d) => addDays(d, -1))}
               className="motion-press flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -279,7 +290,7 @@ export function AgendaShell({ locale }: { locale: string }) {
             </button>
             <button
               type="button"
-              aria-label="Следующий день"
+              aria-label={t("agenda.nextDay")}
               onClick={() => setViewDate((d) => addDays(d, 1))}
               className="motion-press flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -291,31 +302,31 @@ export function AgendaShell({ locale }: { locale: string }) {
               className="motion-press inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               <PrinterIcon className="size-4" />
-              Печать
+              {t("agenda.print")}
             </button>
           </div>
         </header>
 
         {summary && summary.totalAppointments > 0 ? (
           <div className="flex flex-wrap gap-2 border-b border-border px-5 py-3 text-xs">
-            <SummaryChip label="Всего" value={summary.totalAppointments} />
+            <SummaryChip label={t("summary.total")} value={summary.totalAppointments} />
             <SummaryChip
-              label="Консультаций"
+              label={t("summary.consultations")}
               value={summary.consultations}
               tone="primary"
             />
             <SummaryChip
-              label="Повторных"
+              label={t("summary.repeats")}
               value={summary.repeats}
               tone="violet"
             />
             <SummaryChip
-              label="Завершено"
+              label={t("summary.completed")}
               value={summary.completedCount}
               tone="success"
             />
             <SummaryChip
-              label="Выполнение"
+              label={t("summary.dayPlan")}
               value={`${summary.dayPlanPercent}%`}
               tone="success"
             />
@@ -331,15 +342,15 @@ export function AgendaShell({ locale }: { locale: string }) {
             </div>
           ) : isError ? (
             <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-              Не удалось загрузить расписание. Попробуйте обновить страницу.
+              {t("agenda.loadError")}
             </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-5 py-16 text-center">
               <div className="text-sm font-medium text-muted-foreground">
-                Записей на этот день нет
+                {t("agenda.empty")}
               </div>
               <div className="text-xs text-muted-foreground">
-                Когда появится новая запись, она автоматически возникнет здесь.
+                {t("agenda.emptyHint")}
               </div>
             </div>
           ) : (
@@ -416,7 +427,7 @@ export function AgendaShell({ locale }: { locale: string }) {
                         </span>
                         {e.durationMin ? (
                           <span className="text-muted-foreground">
-                            · {e.durationMin} мин
+                            · {t("agenda.minutes", { n: e.durationMin })}
                           </span>
                         ) : null}
                       </div>
@@ -427,17 +438,19 @@ export function AgendaShell({ locale }: { locale: string }) {
                             badge.className,
                           )}
                         >
-                          {badge.label}
+                          {t(`agenda.status.${badge.labelKey}`)}
                         </span>
                       ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-foreground">
                         {e.patientName ??
-                          (e.type === "break" ? "Обед" : "Не указано")}
+                          (e.type === "break"
+                            ? t("agenda.type.break")
+                            : t("agenda.unnamed"))}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {TYPE_LABEL[e.type]}
+                        {t(`agenda.type.${TYPE_LABEL_KEY[e.type]}`)}
                       </div>
                     </div>
                   </div>

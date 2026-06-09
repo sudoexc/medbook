@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRightIcon, FileTextIcon } from "lucide-react";
 
@@ -17,6 +18,7 @@ type HistoryRow = {
 };
 
 export function HistoryDocsCard() {
+  const t = useTranslations("doctor.reception");
   const { activeAppointment } = useReceptionContext();
   const patientId = activeAppointment?.patient.id ?? null;
 
@@ -54,7 +56,7 @@ export function HistoryDocsCard() {
             tab === "visits" ? "text-foreground" : "text-muted-foreground",
           )}
         >
-          История визитов
+          {t("historyDocs.tab")}
           <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
             {history.data?.length ?? 0}
           </span>
@@ -64,15 +66,15 @@ export function HistoryDocsCard() {
 
       {!patientId ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Выберите пациента, чтобы увидеть историю.
+          {t("historyDocs.selectPatient")}
         </p>
       ) : history.isLoading ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Загружаем…
+          {t("common.loading")}
         </p>
       ) : (history.data ?? []).length === 0 ? (
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          Завершённых визитов пока нет.
+          {t("historyDocs.empty")}
         </p>
       ) : (
         <ul className="divide-y divide-border">
@@ -86,7 +88,7 @@ export function HistoryDocsCard() {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-foreground">
-                  {d.primaryService?.nameRu ?? "Консультация"}
+                  {d.primaryService?.nameRu ?? t("common.consultation")}
                 </div>
                 <div className="text-xs text-muted-foreground tabular-nums">
                   {new Date(d.date).toLocaleDateString("ru-RU", {

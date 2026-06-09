@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   isMandatory2faRole,
+  isTotpEnrollmentExemptPath,
   requiresTotpEnrollment,
 } from "@/server/auth/security-policy";
 import type { Role } from "@/lib/tenant-context";
@@ -61,5 +62,28 @@ describe("requiresTotpEnrollment", () => {
         requiresTotpEnrollment({ role: r, clinicRequire2faForAll: true }),
       ).toBe(true);
     }
+  });
+});
+
+describe("isTotpEnrollmentExemptPath", () => {
+  it.each([
+    "/api/crm/me/totp/enroll",
+    "/api/crm/me/totp/verify",
+    "/api/crm/me/totp/disable",
+    "/api/crm/me/totp/recovery-codes/regenerate",
+    "/api/crm/auth/totp-required",
+  ])("exempts the enrolment endpoint %s", (path) => {
+    expect(isTotpEnrollmentExemptPath(path)).toBe(true);
+  });
+
+  it.each([
+    "/api/crm/patients",
+    "/api/crm/visit-notes/abc/finalize",
+    "/api/crm/me/profile",
+    // Adjacent-but-different paths must NOT inherit the exemption.
+    "/api/crm/me/totp-export",
+    "/api/crm/auth/totp-required-extra",
+  ])("does not exempt %s", (path) => {
+    expect(isTotpEnrollmentExemptPath(path)).toBe(false);
   });
 });

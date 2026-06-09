@@ -47,3 +47,26 @@ export function requiresTotpEnrollment(args: {
   if (isMandatory2faRole(args.role)) return true;
   return args.clinicRequire2faForAll;
 }
+
+/**
+ * Endpoints that must stay reachable even when the caller still owes TOTP
+ * enrolment — otherwise the API-layer MFA gate in `createApiHandler` would lock
+ * a user out of the very flow that lets them enrol. Lives next to the predicate
+ * the gate already uses so the exempt set is one unit-testable source of truth.
+ *
+ *   /api/crm/me/totp/**          — enroll, verify, disable, recovery-codes
+ *   /api/crm/auth/totp-required  — pre-flight "do I still need 2FA?" probe
+ *
+ * Matching is exact-or-subpath (not a bare `startsWith`) so a future unrelated
+ * route like `/api/crm/me/totp-export` can't silently inherit the exemption.
+ */
+const TOTP_ENROLLMENT_EXEMPT_PREFIXES = [
+  "/api/crm/me/totp",
+  "/api/crm/auth/totp-required",
+] as const;
+
+export function isTotpEnrollmentExemptPath(pathname: string): boolean {
+  return TOTP_ENROLLMENT_EXEMPT_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}

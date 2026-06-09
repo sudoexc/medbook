@@ -20,6 +20,11 @@ import type { ImpersonationStamp, Role, TenantContext } from "./tenant-context";
 import { readActiveBranchFromCookieHeader } from "@/server/platform/branch-cookie";
 import { AUDIT_ACTION } from "./audit-actions";
 import { isViewOnlySafe, viewOnlyBlockResponse } from "./view-only";
+import {
+  is2faDisabled,
+  isTotpEnrollmentExemptPath,
+  requiresTotpEnrollment,
+} from "@/server/auth/security-policy";
 
 // Re-export the pure helper so existing imports `from "@/lib/api-handler"`
 // still resolve (the unit tests import it directly from `./view-only`).
@@ -194,6 +199,63 @@ async function parseBody<TBody>(
 }
 
 /**
+ * Doctor-cabinet P0.2 — MFA enrolment gate at the API layer.
+ *
+ * `src/proxy.ts` forces TOTP enrolment for `require2faForAll` clinics (and for
+ * the always-mandatory ADMIN/SUPER_ADMIN roles), but its matcher excludes
+ * `/api`. A user who still owes enrolment could therefore bypass the page
+ * redirect by hitting CRM endpoints directly — curl, a script, or a stale SPA
+ * tab — and read or mutate patient data without a second factor. This mirrors
+ * the proxy check on the shared API path so the bypass is closed.
+ *
+ * Out of scope: platform SUPER_ADMIN and grant-based impersonation. Their 2FA
+ * is enforced at the platform-login / grant layer, and forcing enrolment onto a
+ * synthesised impersonated identity is meaningless. Returns `null` to let the
+ * request proceed, or a 403 Response to block it.
+ */
+async function enforceTotpEnrollment(
+  request: Request,
+  ctx: TenantContext,
+): Promise<Response | null> {
+  if (ctx.kind !== "TENANT" || ctx.impersonation) return null;
+  if (is2faDisabled()) return null;
+
+  // Exempt the enrolment endpoints themselves — otherwise a user who still owes
+  // enrolment could never reach the API that lets them enrol (chicken-and-egg).
+  if (isTotpEnrollmentExemptPath(new URL(request.url).pathname)) return null;
+
+  // `User` is tenant-scoped by the Prisma extension; read the caller's own row
+  // under a SYSTEM context (same as the proxy) so the PK lookup isn't subject
+  // to clinic scoping while we're still outside `runWithTenant(ctx, …)`.
+  const { prisma } = await import("./prisma");
+  const me = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: {
+        totpEnabledAt: true,
+        clinic: { select: { require2faForAll: true } },
+      },
+    }),
+  );
+
+  const mustEnroll = requiresTotpEnrollment({
+    role: ctx.role,
+    clinicRequire2faForAll: me?.clinic?.require2faForAll ?? false,
+  });
+  if (mustEnroll && !me?.totpEnabledAt) {
+    return json(
+      {
+        error: "MFA_REQUIRED",
+        message:
+          "Two-factor authentication must be enabled before accessing this resource.",
+      },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
+/**
  * Create an API handler that expects a JSON request body.
  *
  * Example:
@@ -260,6 +322,9 @@ export function createApiHandler<TBody = unknown>(
       await emitViewAsBlocked(request, ctx);
       return viewOnlyBlockResponse(ctx.impersonation.grantId);
     }
+
+    const mfaResp = await enforceTotpEnrollment(request, ctx);
+    if (mfaResp) return mfaResp;
 
     try {
       const resp = await runWithTenant(ctx, () =>
@@ -334,6 +399,9 @@ export function createApiListHandler(
       await emitViewAsBlocked(request, ctx);
       return viewOnlyBlockResponse(ctx.impersonation.grantId);
     }
+
+    const mfaResp = await enforceTotpEnrollment(request, ctx);
+    if (mfaResp) return mfaResp;
 
     return runWithTenant(ctx, () => handler({ request, ctx }));
   };

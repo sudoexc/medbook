@@ -63,3 +63,38 @@ export const APPOINTMENT_STATUS_TONES: Record<string, AppointmentStatusTone> = {
 export function getAppointmentTone(status: string): AppointmentStatusTone {
   return APPOINTMENT_STATUS_TONES[status] ?? APPOINTMENT_STATUS_TONES.BOOKED;
 }
+
+/**
+ * Lab-result flag tones — a coloured pill + tinted value next to each result
+ * so the patient reads "out of range" at a glance, without a number-literate
+ * eye. Cool = below range, warm = above, red = critical; we reuse the same
+ * hex constants as the appointment palette to keep the Mini App to one set of
+ * accent colours. The patient only ever sees REVIEWED rows, so a scary flag
+ * has already passed the doctor's eye.
+ */
+export const LAB_FLAG_TONES: Record<string, AppointmentStatusTone> = {
+  NORMAL: {
+    border: "#10b981",
+    tint: "color-mix(in oklch, #10b981 8%, transparent)",
+    label: "#059669",
+  },
+  LOW: {
+    border: "#0ea5e9",
+    tint: "color-mix(in oklch, #0ea5e9 10%, transparent)",
+    label: "#0369a1",
+  },
+  HIGH: {
+    border: "#f59e0b",
+    tint: "color-mix(in oklch, #f59e0b 12%, transparent)",
+    label: "#b45309",
+  },
+  CRITICAL: {
+    border: "#ef4444",
+    tint: "color-mix(in oklch, #ef4444 12%, transparent)",
+    label: "#b91c1c",
+  },
+};
+
+export function getLabFlagTone(flag: string): AppointmentStatusTone {
+  return LAB_FLAG_TONES[flag] ?? LAB_FLAG_TONES.NORMAL;
+}

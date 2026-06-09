@@ -6,6 +6,7 @@ import {
   Calendar,
   CalendarPlus,
   FileText,
+  FlaskConical,
   Gift,
   History,
   MessageSquare,
@@ -189,16 +190,22 @@ function HomeContent({ slug }: { slug: string }) {
           delay={320}
         />
         <CtaTile
+          href={`/c/${slug}/my/labs`}
+          label={t.home.ctaLabs}
+          icon={FlaskConical}
+          delay={370}
+        />
+        <CtaTile
           href={`/c/${slug}/my/profile`}
           label={t.home.ctaProfile}
           icon={User}
-          delay={370}
+          delay={420}
         />
         <CtaTile
           href={`/c/${slug}/my/refer`}
           label={t.home.ctaRefer}
           icon={Gift}
-          delay={420}
+          delay={470}
         />
       </div>
     </>

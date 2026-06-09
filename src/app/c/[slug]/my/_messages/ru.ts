@@ -25,6 +25,7 @@ export const ruDict = {
     ctaDocuments: "Документы",
     ctaProfile: "Профиль",
     ctaMedications: "Мои лекарства",
+    ctaLabs: "Анализы",
     ctaRefer: "Пригласить друга",
     ctaChat: "Чат с клиникой",
     upcomingHeader: "Ближайшая запись",
@@ -311,6 +312,20 @@ export const ruDict = {
       taken: "Принял",
       skipped: "Пропустил",
       snooze: "+30 мин",
+    },
+  },
+  labs: {
+    title: "Анализы",
+    subtitle:
+      "Результаты, проверенные вашим врачом. Если что-то непонятно — напишите в клинику.",
+    empty: "Пока нет проверенных результатов",
+    refRange: "Норма: {range}",
+    reviewedOn: "Проверено {date}",
+    flags: {
+      NORMAL: "Норма",
+      LOW: "Понижен",
+      HIGH: "Повышен",
+      CRITICAL: "Критический",
     },
   },
   refer: {

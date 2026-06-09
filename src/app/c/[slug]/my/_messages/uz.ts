@@ -25,6 +25,7 @@ export const uzDict = {
     ctaDocuments: "Hujjatlar",
     ctaProfile: "Profil",
     ctaMedications: "Mening dorilarim",
+    ctaLabs: "Tahlillar",
     ctaRefer: "Do‘stni taklif qilish",
     ctaChat: "Klinika bilan chat",
     upcomingHeader: "Yaqinlashayotgan yozuv",
@@ -311,6 +312,20 @@ export const uzDict = {
       taken: "Qabul qildim",
       skipped: "O‘tkazib yubordim",
       snooze: "+30 daq.",
+    },
+  },
+  labs: {
+    title: "Tahlillar",
+    subtitle:
+      "Shifokoringiz tekshirgan natijalar. Biror narsa tushunarsiz bo‘lsa — klinikaga yozing.",
+    empty: "Hozircha tekshirilgan natijalar yo‘q",
+    refRange: "Norma: {range}",
+    reviewedOn: "Tekshirildi {date}",
+    flags: {
+      NORMAL: "Norma",
+      LOW: "Past",
+      HIGH: "Yuqori",
+      CRITICAL: "Kritik",
     },
   },
   refer: {

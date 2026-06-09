@@ -73,6 +73,9 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "eprescription.issued": [["miniapp", "medications"]],
   "eprescription.cancelled": [["miniapp", "medications"]],
   "prescription.created": [["miniapp", "medications"]],
+  // P1.2 — a doctor flipping a lab result to REVIEWED makes it visible to the
+  // patient for the first time, so refresh the labs screen without a manual pull.
+  "lab.result.reviewed": [["miniapp", "labs"]],
   // Schedule change invalidates every cached slot query — the user may have
   // been mid-booking and the picker needs to redraw with the new availability.
   "doctor.scheduleChanged": [["miniapp", "slots"]],

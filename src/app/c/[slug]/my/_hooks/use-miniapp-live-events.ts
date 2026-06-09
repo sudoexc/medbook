@@ -76,6 +76,11 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   // P1.2 — a doctor flipping a lab result to REVIEWED makes it visible to the
   // patient for the first time, so refresh the labs screen without a manual pull.
   "lab.result.reviewed": [["miniapp", "labs"]],
+  // P2.1 — a new referral surfaces to the patient as a REFERRAL document (PDF
+  // rendered async by the worker), so refresh the documents list. The event may
+  // arrive slightly before the PDF lands; the refetch is cheap and the document
+  // appears on the next poll/refresh regardless.
+  "referral.created": [["miniapp", "documents"]],
   // Schedule change invalidates every cached slot query — the user may have
   // been mid-booking and the picker needs to redraw with the new availability.
   "doctor.scheduleChanged": [["miniapp", "slots"]],

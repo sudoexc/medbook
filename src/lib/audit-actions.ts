@@ -553,6 +553,14 @@ export const AUDIT_ACTION = {
   SICK_LEAVE_PRINTED: "SICK_LEAVE_PRINTED",
   SICK_LEAVE_CANCELLED: "SICK_LEAVE_CANCELLED",
 
+  // P2.1 — clinical referral (направление) authored by a doctor. Distinct from
+  // the marketing REFERRAL_CODE_* family above (entityType "ReferralCode"):
+  // here `entityType: "Referral"`, `entityId: <referral.id>`. CREATED meta
+  // carries `{ patientId, fromDoctorId, toDoctorId?, externalTo?, visitNoteId?,
+  // diagnosisCode? }`. Sole audit source for the row (the SSE event is
+  // non-auditable), carrying request IP/UA.
+  REFERRAL_CREATED: "REFERRAL_CREATED",
+
   // Phase G8 — CDS override audit. Doctor kept a prescription despite an
   // active CDS warning and gave a reason. `entityType: "CdsOverride"`,
   // `entityId: <override.id>`. `meta` carries `{ patientId, doctorId,

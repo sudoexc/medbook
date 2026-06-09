@@ -426,6 +426,7 @@ model Clinic {
   ePrescriptions           EPrescription[]
   sickLeaves               SickLeave[]
   cdsOverrides             CdsOverride[]
+  referrals                Referral[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -740,6 +741,8 @@ model User {
   ePrescriptions              EPrescription[]         @relation("DoctorEPrescriptions")
   sickLeaves                  SickLeave[]             @relation("DoctorSickLeaves")
   cdsOverrides                CdsOverride[]           @relation("DoctorCdsOverrides")
+  referralsFrom               Referral[]              @relation("ReferralFromDoctor")
+  referralsTo                 Referral[]              @relation("ReferralToDoctor")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -1650,6 +1653,7 @@ model Patient {
   ePrescriptions            EPrescription[]
   sickLeaves                SickLeave[]
   cdsOverrides              CdsOverride[]
+  referrals                 Referral[]
 
   @@unique([clinicId, phoneNormalized])
   @@unique([clinicId, patientNumber])
@@ -1764,7 +1768,11 @@ model Appointment {
   updatedAt      DateTime        @updatedAt
   eprescriptions EPrescription[]
   sickLeaves     SickLeave[]
-  cdsOverrides   CdsOverride[]
+
+  // A referral can name this appointment as the booked follow-up. Not @unique
+  // (one slot could, in theory, fulfil more than one referral), so it's a list.
+  scheduledReferrals Referral[]    @relation("ReferralScheduledAppointment")
+  cdsOverrides       CdsOverride[]
 
   @@index([clinicId, date])
   @@index([clinicId, doctorId, date])
@@ -1902,14 +1910,16 @@ model VisitNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  labResults     LabResult[]
-  labOrders      LabOrder[]
-  ePrescriptions EPrescription[]
-  sickLeaves     SickLeave[]
-  cdsOverrides   CdsOverride[]
+  labResults         LabResult[]
+  labOrders          LabOrder[]
+  ePrescriptions     EPrescription[]
+  sickLeaves         SickLeave[]
+  cdsOverrides       CdsOverride[]
   // The patient-facing CONCLUSION handout, generated on finalize. 1:1 —
   // see Document.visitNoteId (@unique). Null until the worker renders it.
   conclusionDocument Document?
+  // Referrals authored from this visit (snapshot the visit's diagnosis).
+  referrals          Referral[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -1972,6 +1982,10 @@ model Document {
   // retry, redeploy) never plants a duplicate conclusion for the same note.
   visitNoteId   String?      @unique
   visitNote     VisitNote?   @relation(fields: [visitNoteId], references: [id], onDelete: SetNull)
+  // Set only for auto-generated REFERRAL PDFs. Unique so the referral-pdf
+  // worker upserts idempotently — same guarantee as visitNoteId above.
+  referralId    String?      @unique
+  referral      Referral?    @relation(fields: [referralId], references: [id], onDelete: SetNull)
   type          DocumentType
   title         String
   fileUrl       String
@@ -1983,6 +1997,60 @@ model Document {
 
   @@index([clinicId, patientId, createdAt])
   @@index([clinicId, type])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Referrals (направления) — a doctor sends a patient onward, either to an
+// internal colleague (toDoctorId) or an outside clinic/specialty (externalTo,
+// free text). diagnosisCode/diagnosisName are snapshotted from the originating
+// visit so the referral stays truthful even if the note is later re-coded.
+// A REFERRAL Document PDF is rendered async and linked 1:1 via Document.referralId.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ReferralStatus {
+  PENDING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model Referral {
+  id           String     @id @default(cuid())
+  clinicId     String
+  clinic       Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id])
+  // Author. Points at User (not Doctor) — the mutation gate is "is this the
+  // assigned user?", mirroring LabResult.doctorId / Reminder.doctorId.
+  fromDoctorId String
+  fromDoctor   User       @relation("ReferralFromDoctor", fields: [fromDoctorId], references: [id])
+  // Internal target colleague (optional). Null for an external referral.
+  toDoctorId   String?
+  toDoctor     User?      @relation("ReferralToDoctor", fields: [toDoctorId], references: [id])
+  // External clinic / specialty as free text, used when toDoctorId is null.
+  externalTo   String?
+  // Originating visit (optional — a referral can be raised outside a visit).
+  visitNoteId  String?
+  visitNote    VisitNote? @relation(fields: [visitNoteId], references: [id], onDelete: SetNull)
+
+  reason        String         @db.Text
+  diagnosisCode String? // ICD-10 snapshot at the moment of referral
+  diagnosisName String?
+  status        ReferralStatus @default(PENDING)
+
+  // The follow-up appointment booked off this referral, if any.
+  scheduledAppointmentId String?
+  scheduledAppointment   Appointment? @relation("ReferralScheduledAppointment", fields: [scheduledAppointmentId], references: [id], onDelete: SetNull)
+
+  // The rendered PDF handout (1:1, async). Back-side of Document.referralId.
+  document Document?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId, toDoctorId, status])
+  @@index([clinicId, fromDoctorId, status])
+  @@index([patientId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

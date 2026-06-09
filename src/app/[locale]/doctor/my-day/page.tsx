@@ -1,6 +1,7 @@
 import { AIAssistant } from "./_components/ai-assistant";
 import { CurrentPatientCard } from "./_components/current-patient-card";
 import { DraftConclusions } from "./_components/draft-conclusions";
+import { IncomingReferrals } from "./_components/incoming-referrals";
 import { QuickActions } from "./_components/quick-actions";
 import { RecentPatients } from "./_components/recent-patients";
 import { Reminders } from "./_components/reminders";
@@ -19,6 +20,8 @@ export default function MyDayPage() {
 
         <TodayTasks />
         <UnreadResults />
+        <IncomingReferrals />
+
         <Reminders />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:col-span-3 xl:gap-5">

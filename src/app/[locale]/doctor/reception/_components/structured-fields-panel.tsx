@@ -11,6 +11,7 @@ import {
   PlusIcon,
   ScrollTextIcon,
   SearchIcon,
+  Share2Icon,
   SlidersHorizontalIcon,
   ScrollIcon,
   StethoscopeIcon,
@@ -44,6 +45,7 @@ import { CdsWarningsCard } from "./cds-warnings-card";
 import { DosageBuilderDialog } from "./dosage-builder-dialog";
 import { EPrescriptionDialog } from "./e-prescription-dialog";
 import { LabOrderDialog } from "./lab-order-dialog";
+import { ReferralDialog } from "./referral-dialog";
 import { SickLeaveDialog } from "./sick-leave-dialog";
 
 type ArrayKey =
@@ -117,6 +119,7 @@ export function StructuredFieldsPanel() {
   const [labOrderInitial, setLabOrderInitial] = React.useState<string[]>([]);
   const [rxOpen, setRxOpen] = React.useState(false);
   const [sickLeaveOpen, setSickLeaveOpen] = React.useState(false);
+  const [referOpen, setReferOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
 
@@ -267,6 +270,15 @@ export function StructuredFieldsPanel() {
                 <ScrollIcon className="size-3" />
                 Б/л
               </button>
+              <button
+                type="button"
+                onClick={() => setReferOpen(true)}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                title="Направить пациента к коллеге или во внешнюю клинику"
+              >
+                <Share2Icon className="size-3" />
+                Направить
+              </button>
             </>
           )}
         </div>
@@ -355,6 +367,15 @@ export function StructuredFieldsPanel() {
         onOpenChange={setSickLeaveOpen}
         patientId={activeAppointment?.patient.id ?? null}
         appointmentId={activeAppointment?.id ?? null}
+        visitNoteId={visitNoteId}
+        diagnosisCode={note?.diagnosisCode ?? null}
+        diagnosisName={note?.diagnosisName ?? null}
+      />
+
+      <ReferralDialog
+        open={referOpen}
+        onOpenChange={setReferOpen}
+        patientId={activeAppointment?.patient.id ?? null}
         visitNoteId={visitNoteId}
         diagnosisCode={note?.diagnosisCode ?? null}
         diagnosisName={note?.diagnosisName ?? null}

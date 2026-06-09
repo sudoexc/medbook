@@ -35,6 +35,7 @@ import { startPatientSummaryRefreshWorker } from "./patient-summary-refresh";
 import { startPostVisitNpsWorker } from "./post-visit-nps";
 import { startPreVisitQuestionnaireWorker } from "./pre-visit-questionnaire";
 import { startTrialExpirySchedulerWorker } from "./trial-expiry-scheduler";
+import { startReferralDocumentWorker } from "./referral-document";
 import { startVisitNoteHandoutWorker } from "./visit-note-handout";
 import { startVoiceSoapWorker } from "./voice-soap";
 
@@ -110,6 +111,15 @@ async function main() {
   //                        clinical conclusion.
   const visitNoteHandout = startVisitNoteHandoutWorker();
 
+  // Doctor cabinet P2.1 — Referral → patient document delivery.
+  //   referral-document   30s sweep — for every Referral that has no REFERRAL
+  //                        Document yet, render the направление to a PDF and
+  //                        upsert a Document(type=REFERRAL) the patient opens in
+  //                        the Mini App and carries to the next clinic.
+  //                        Idempotent on the @unique Document.referralId; durable
+  //                        for the same reason as visit-note-handout.
+  const referralDocument = startReferralDocumentWorker();
+
   // Phase 17 Wave 3 — DSAR (Data Subject Access Requests).
   //   dsar:export      drains export jobs (bundle PII → encrypt → MinIO →
   //                    deliver via TG bot). One worker per process; jobs
@@ -165,6 +175,7 @@ async function main() {
     postVisitNps.stop();
     medicationReminder.stop();
     visitNoteHandout.stop();
+    referralDocument.stop();
     dsarScheduler.stop();
     analyticsRefresh.stop();
     scheduledReports.stop();

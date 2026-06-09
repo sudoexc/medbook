@@ -31,6 +31,7 @@ const PATIENT_FACING: ReadonlyArray<EventType> = [
   "eprescription.issued",
   "eprescription.cancelled",
   "lab.result.reviewed",
+  "referral.created",
 ];
 
 describe("MINIAPP_INVALIDATION_MAP", () => {

@@ -93,6 +93,12 @@ export const EVENT_TYPES = [
   "eprescription.cancelled",
   "sickleave.issued",
   "sickleave.cancelled",
+  // P2.1 — clinical referral authored by a doctor. Reaches the patient Mini App
+  // (documents refresh once the PDF renders) and the target doctor's incoming
+  // queue. Audited via the explicit `audit()` call in the route, so it stays
+  // out of EVENT_META_OVERRIDES (non-auditable) — same single-source rule as
+  // `lab.result.reviewed`.
+  "referral.created",
   // Phase G8 — CDS override recorded. Lets a future quality dashboard refresh
   // its KPI tiles the moment a doctor justifies a flagged warning. Tenant
   // scope is the clinic; no PHI in the payload.
@@ -385,6 +391,22 @@ export const SickLeaveEventPayload = z
 export type SickLeaveEventPayload = z.infer<typeof SickLeaveEventPayload>;
 
 /**
+ * P2.1 — clinical referral created. Ids + flags only (no PHI on the wire):
+ * `toDoctorId` is set for an internal hand-off, null for an external one, so a
+ * listening cabinet queue can decide "is this for me?" without a re-read. The
+ * patient surface uses it to refresh the documents list once the PDF lands.
+ */
+export const ReferralCreatedPayload = z
+  .object({
+    referralId: z.string().min(1),
+    fromDoctorId: z.string().min(1),
+    toDoctorId: z.string().min(1).nullable().optional(),
+    patientId: z.string().min(1),
+  })
+  .passthrough();
+export type ReferralCreatedPayload = z.infer<typeof ReferralCreatedPayload>;
+
+/**
  * Phase G8 — CDS override recorded. Carries the override id plus a small
  * snapshot of the warning (kind + severity) so dashboards can update their
  * counters without a fetch. No PHI: the warning detail lives on the row.
@@ -558,6 +580,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("eprescription.cancelled", EPrescriptionEventPayload),
   makeEvent("sickleave.issued", SickLeaveEventPayload),
   makeEvent("sickleave.cancelled", SickLeaveEventPayload),
+  makeEvent("referral.created", ReferralCreatedPayload),
   makeEvent("cds.override.recorded", CdsOverrideEventPayload),
   makeEvent("visit-note.draftSaved", VisitNotePayload),
   makeEvent("visit-note.finalized", VisitNotePayload),

@@ -10,6 +10,7 @@ import {
   PlusIcon,
   Trash2Icon,
   UserCogIcon,
+  UserPlusIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -90,9 +91,25 @@ export function UsersSettingsClient() {
   });
 
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [presetDoctor, setPresetDoctor] = React.useState<DoctorRow | null>(null);
   const [editRow, setEditRow] = React.useState<UserRow | null>(null);
   const [deleteRow, setDeleteRow] = React.useState<UserRow | null>(null);
   const [resetRow, setResetRow] = React.useState<UserRow | null>(null);
+
+  // Doctor cards that exist in the schedule but have no login yet. Surfaced as
+  // an onboarding checklist so an admin provisioning a clinic can see at a
+  // glance who still can't sign in — the data (Doctor.userId) was previously
+  // only reachable from inside the create dialog.
+  const orphanDoctorsQuery = useQuery({
+    queryKey: ["settings", "users", "orphan-doctors"],
+    queryFn: () =>
+      settingsFetch<{ rows: DoctorRow[]; nextCursor: string | null }>(
+        `/api/crm/doctors?limit=200`,
+      ),
+  });
+  const orphanDoctors = (orphanDoctorsQuery.data?.rows ?? []).filter(
+    (d) => d.userId === null && d.isActive,
+  );
 
   const rows = listQuery.data?.rows ?? [];
   const total = listQuery.data?.total ?? rows.length;
@@ -104,7 +121,12 @@ export function UsersSettingsClient() {
         title={t("users.title")}
         subtitle={t("users.subtitle")}
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button
+            onClick={() => {
+              setPresetDoctor(null);
+              setCreateOpen(true);
+            }}
+          >
             <PlusIcon className="size-4" />
             {t("users.addUser")}
           </Button>
@@ -131,6 +153,51 @@ export function UsersSettingsClient() {
           ))}
         </select>
       </div>
+
+      {orphanDoctors.length > 0 ? (
+        <div className="rounded-lg border border-warning/40 bg-warning/5 p-3">
+          <div className="flex items-center gap-2">
+            <UserPlusIcon className="size-4 text-warning" />
+            <span className="text-sm font-medium text-foreground">
+              {t("users.orphanTitle")}
+            </span>
+            <Badge variant="outline" className="border-warning/40 text-warning">
+              {orphanDoctors.length}
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("users.orphanHint")}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {orphanDoctors.map((d) => (
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-1.5"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{d.nameRu}</div>
+                  {d.specializationRu ? (
+                    <div className="truncate text-xs text-muted-foreground">
+                      {d.specializationRu}
+                    </div>
+                  ) : null}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setPresetDoctor(d);
+                    setCreateOpen(true);
+                  }}
+                >
+                  <KeyRoundIcon className="size-4" />
+                  {t("users.orphanCreateLogin")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
         <table className="w-full text-sm">
@@ -234,7 +301,11 @@ export function UsersSettingsClient() {
 
       <CreateUserDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        presetDoctor={presetDoctor}
+        onOpenChange={(v) => {
+          setCreateOpen(v);
+          if (!v) setPresetDoctor(null);
+        }}
         onCreated={() => {
           qc.invalidateQueries({ queryKey: ["settings", "users"] });
         }}
@@ -291,16 +362,19 @@ type DoctorRow = {
   id: string;
   nameRu: string;
   nameUz: string;
+  specializationRu: string | null;
   userId: string | null;
   isActive: boolean;
 };
 
 function CreateUserDialog({
   open,
+  presetDoctor,
   onOpenChange,
   onCreated,
 }: {
   open: boolean;
+  presetDoctor: DoctorRow | null;
   onOpenChange: (v: boolean) => void;
   onCreated: () => void;
 }) {
@@ -324,6 +398,22 @@ function CreateUserDialog({
     login: string;
     password: string;
   } | null>(null);
+
+  // When opened from the "doctors without a login" list, seed the form so the
+  // admin only types the email + password. Plain "Add user" passes no preset
+  // and keeps the default RECEPTIONIST form.
+  React.useEffect(() => {
+    if (open && presetDoctor) {
+      setForm({
+        email: "",
+        name: presetDoctor.nameRu,
+        role: "DOCTOR",
+        phone: "",
+        password: "",
+        doctorId: presetDoctor.id,
+      });
+    }
+  }, [open, presetDoctor]);
 
   const doctorsQuery = useQuery({
     queryKey: ["settings", "users", "orphan-doctors"],
@@ -603,11 +693,13 @@ function EditUserDialog({
   const t = useTranslations("settings");
   const [form, setForm] = React.useState<{
     name: string;
+    email: string;
     role: Role;
     phone: string;
     active: boolean;
   }>({
     name: row.name,
+    email: row.email,
     role: row.role,
     phone: row.phone ?? "",
     active: row.active,
@@ -618,6 +710,7 @@ function EditUserDialog({
         method: "PATCH",
         body: JSON.stringify({
           name: form.name,
+          email: form.email,
           role: form.role,
           phone: form.phone || null,
           active: form.active,
@@ -657,6 +750,19 @@ function EditUserDialog({
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
+          </div>
+          <div>
+            <Label>{t("users.cols.email")}</Label>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(e) =>
+                setForm({ ...form, email: e.target.value.toLowerCase() })
+              }
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("users.emailEditHint")}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -704,7 +810,7 @@ function EditUserDialog({
           </Button>
           <Button
             onClick={onSave}
-            disabled={mut.isPending || !form.name}
+            disabled={mut.isPending || !form.name || !form.email}
           >
             {mut.isPending ? t("common.saving") : t("common.save")}
           </Button>
@@ -816,6 +922,11 @@ function ResetPasswordDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // A typed-but-too-short password used to be silently swapped for a random
+  // one. Block submit and explain instead — empty (generate) and >=8 (set)
+  // stay valid.
+  const tooShort = password.length > 0 && password.length < 8;
+
   return (
     <Dialog open onOpenChange={(v: boolean) => !v && onClose()}>
       <DialogContent className="max-w-md">
@@ -862,6 +973,11 @@ function ResetPasswordDialog({
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("users.resetBlankHint")}
               </p>
+              {tooShort ? (
+                <p className="mt-1 text-xs text-destructive">
+                  {t("users.resetTooShort")}
+                </p>
+              ) : null}
             </div>
           </div>
         )}
@@ -876,7 +992,7 @@ function ResetPasswordDialog({
                   password.length >= 8 ? { newPassword: password } : {},
                 )
               }
-              disabled={mut.isPending}
+              disabled={mut.isPending || tooShort}
             >
               {mut.isPending ? t("common.saving") : t("users.resetConfirm")}
             </Button>

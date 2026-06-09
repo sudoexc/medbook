@@ -43,6 +43,17 @@ export const PATCH = createApiHandler(
     });
     if (!before) return notFound();
 
+    // Email is globally unique on User — a change that collides with another
+    // account must surface a clean 409, not a raw Prisma unique-constraint 500.
+    if (body.email && body.email !== before.email) {
+      const clash = await prisma.user.findUnique({
+        where: { email: body.email },
+      });
+      if (clash && clash.id !== id) {
+        return err("conflict", 409, { reason: "email_taken" });
+      }
+    }
+
     // Block role-elevation into SUPER_ADMIN from the tenant endpoint.
     if (body.role === "SUPER_ADMIN") {
       return err("Forbidden", 403, { reason: "cannot_elevate_super_admin" });

@@ -38,6 +38,8 @@ export type CdsResult = {
 type Args = {
   patientId: string | null;
   prescriptions: string[];
+  /** Ф2 — ids from structured rows; checked by id, no text resolution. */
+  drugIds?: string[];
   diagnosisCode: string | null;
 };
 
@@ -49,6 +51,7 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
     body: JSON.stringify({
       patientId: args.patientId,
       prescriptions: args.prescriptions,
+      drugIds: args.drugIds ?? [],
       diagnosisCode: args.diagnosisCode ?? null,
     }),
   });
@@ -59,14 +62,17 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
 }
 
 export function useCdsDrugCheck(args: Args) {
+  const drugIds = args.drugIds ?? [];
   const enabled =
-    !!args.patientId && args.prescriptions.length > 0;
+    !!args.patientId &&
+    (args.prescriptions.length > 0 || drugIds.length > 0);
   return useQuery({
     queryKey: [
       "cds-drug-check",
       args.patientId,
       args.diagnosisCode,
       args.prescriptions.join("|"),
+      drugIds.join("|"),
     ],
     queryFn: () => fetchCheck(args),
     enabled,

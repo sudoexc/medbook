@@ -1,18 +1,34 @@
 /**
- * Drug catalog for the dosage builder.
+ * Static drug catalog — seed data for the `Drug` / `DrugBrand` tables.
  *
- * Hand-curated list of the most commonly prescribed medications in
- * Uzbekistan general practice. Each drug declares its available forms +
- * a few sensible default doses per form, so the picker can pre-fill
- * realistic values.
+ * Lived in `src/lib/catalogs/drugs.ts` while the dosage builder read it at
+ * runtime; since Ф2 (TZ-smart-constructor) the UI is DB-backed, so the list
+ * now exists only to feed `seed-drugs.ts` (merged with `_drug-data.ts`).
  *
- * This is intentionally static (no DB): catalogs change slowly and we
- * want the dosage builder to work offline. Doctor-specific frequency
- * data (their most-used drug + dose) will be layered on top later from
- * `VisitNote.prescriptions[]` history.
+ * Hand-curated: the most commonly prescribed medications in Uzbekistan
+ * general practice, with realistic forms and default doses per form.
  */
 
-import type { DrugForm } from "./dosage";
+export type DrugForm =
+  | "TAB"
+  | "CAP"
+  | "SYRUP"
+  | "DROPS_ORAL"
+  | "DROPS_NASAL"
+  | "DROPS_EYE"
+  | "DROPS_EAR"
+  | "INJ_IM"
+  | "INJ_IV"
+  | "INJ_SC"
+  | "OINT"
+  | "CREAM"
+  | "GEL"
+  | "SUPP_RECT"
+  | "SUPP_VAG"
+  | "POWDER"
+  | "INHAL"
+  | "SPRAY"
+  | "PATCH";
 
 export type DrugFormVariant = {
   form: DrugForm;
@@ -54,28 +70,6 @@ export type DrugCategory =
   | "EYE_EAR"
   | "UROLOGY"
   | "OTHER";
-
-export const DRUG_CATEGORY_LABELS_RU: Record<DrugCategory, string> = {
-  ANTIBIOTIC: "Антибиотики",
-  ANALGESIC: "Обезболивающие",
-  ANTIPYRETIC: "Жаропонижающие",
-  NSAID: "НПВС",
-  ANTIHISTAMINE: "Антигистаминные",
-  GI: "ЖКТ",
-  CARDIO: "Сердечно-сосудистые",
-  RESPIRATORY: "Дыхательная система",
-  VITAMIN: "Витамины и БАДы",
-  SEDATIVE: "Седативные",
-  ENDOCRINE: "Эндокринные",
-  DIURETIC: "Диуретики",
-  ANTIEMETIC: "Противорвотные",
-  ANTISPASMODIC: "Спазмолитики",
-  STEROID: "Стероиды",
-  TOPICAL: "Наружные средства",
-  EYE_EAR: "Офтальмо/Отология",
-  UROLOGY: "Урология",
-  OTHER: "Прочее",
-};
 
 export const DRUGS: Drug[] = [
   // ─── Antibiotics ──────────────────────────────────────────
@@ -700,35 +694,3 @@ export const DRUGS: Drug[] = [
     forms: [{ form: "DROPS_EAR", doses: ["1 флакон"] }],
   },
 ];
-
-/** Lookup index by id. */
-export const DRUGS_BY_ID: Record<string, Drug> = Object.fromEntries(
-  DRUGS.map((d) => [d.id, d]),
-);
-
-/**
- * Case-insensitive substring search across nameRu, nameUz, intl, brands.
- * Returns up to `limit` matches, exact prefix hits first.
- */
-export function searchDrugs(query: string, limit = 30): Drug[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return DRUGS.slice(0, limit);
-
-  const exact: Drug[] = [];
-  const prefix: Drug[] = [];
-  const contains: Drug[] = [];
-
-  for (const d of DRUGS) {
-    const haystack = [d.nameRu, d.nameUz, d.intl, ...(d.brands ?? [])]
-      .filter(Boolean)
-      .map((s) => (s as string).toLowerCase());
-    if (haystack.some((h) => h === q)) {
-      exact.push(d);
-    } else if (haystack.some((h) => h.startsWith(q))) {
-      prefix.push(d);
-    } else if (haystack.some((h) => h.includes(q))) {
-      contains.push(d);
-    }
-  }
-  return [...exact, ...prefix, ...contains].slice(0, limit);
-}

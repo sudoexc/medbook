@@ -1,5 +1,5 @@
 /**
- * Clinical enrichment for the static drug catalog in `src/lib/catalogs/drugs.ts`.
+ * Clinical enrichment for the static drug catalog in `_drug-catalog.ts`.
  *
  * Keyed by `Drug.id` from the static catalog. The seed script merges these
  * fields with the base record (forms, names, brands) and writes them into

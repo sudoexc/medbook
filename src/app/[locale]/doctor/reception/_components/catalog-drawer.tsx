@@ -6,12 +6,9 @@
  * Opens as a side panel from the prescriptions field. Search hits
  * `GET /api/crm/catalogs/drugs?q=`; clicking a result reveals a detail
  * panel with forms, indications, contraindications, side effects,
- * pregnancy category, and a one-click "insert into prescriptions"
- * action that drops a sensible default line (RU name + first-form dose).
- *
- * Distinct from the existing DosageBuilderDialog: the builder composes a
- * fully-structured single line; the catalog is a reference + bulk lookup
- * that produces one chip per pick.
+ * pregnancy category, and a one-click "insert into prescriptions" action.
+ * Ф2 — the pick hands the full drug record to the caller, which builds a
+ * structured VisitPrescription row (form/strength/instruction auto-filled).
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -42,7 +39,7 @@ import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
 // Mirror of the API response shape (kept inline — small, evolves together).
 type DrugForm = { form: string; strengths: string[] };
 type DrugBrand = { id: string; name: string; manufacturer: string | null };
-type DrugDetail = {
+export type DrugDetail = {
   id: string;
   inn: string;
   nameRu: string;
@@ -167,10 +164,10 @@ type Props = {
   open: boolean;
   onOpenChange: (next: boolean) => void;
   /**
-   * Called when the user picks a drug. The string is the default
-   * prescription line — caller pushes it into the prescriptions array.
+   * Called when the user picks a drug. Ф2 — the caller builds a structured
+   * VisitPrescription draft from the full drug record (forms/defaultDosing).
    */
-  onPick: (line: string) => void;
+  onPick: (drug: DrugDetail) => void;
 };
 
 export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
@@ -225,12 +222,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   const handlePick = (drug: DrugDetail) => {
-    const firstForm = drug.forms[0];
-    const dose = firstForm?.strengths?.[0];
-    const line = dose
-      ? `${drug.nameRu} ${dose}${drug.defaultDosing?.adult ? ` — ${drug.defaultDosing.adult}` : ""}`
-      : drug.nameRu;
-    onPick(line);
+    onPick(drug);
     onOpenChange(false);
   };
 

@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
+import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 import { renderHandoutHtml } from "@/server/visit-notes/render-handout";
 
 function idFromUrl(request: Request): string {
@@ -88,6 +89,7 @@ export const GET = createApiListHandler(
           },
         },
         appointment: { select: { id: true, date: true, time: true } },
+        visitPrescriptions: { orderBy: { sortOrder: "asc" } },
       },
     });
     if (!note) return notFound();
@@ -777,7 +779,12 @@ export const GET = createApiListHandler(
 
     <section class="block">
       <h3>${escapeHtml(labels.prescriptions)}</h3>
-      ${renderChips(note.prescriptions)}
+      ${renderChips([
+        ...formatPrescriptionLines(note.visitPrescriptions, locale, {
+          withInstruction: true,
+        }),
+        ...note.prescriptions,
+      ])}
     </section>
 
     <section class="block">

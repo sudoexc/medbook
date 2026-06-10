@@ -34,8 +34,13 @@ export type ResolvedDrug = {
   nameRu: string;
   atcCode: string | null;
   pregnancyCat: "A" | "B" | "C" | "D" | "X" | "UNKNOWN";
-  /** Index into the original prescriptions[] array that resolved here. */
+  /**
+   * Index into the original prescriptions[] array that resolved here.
+   * -1 for drugs pinned directly by id (Ф2 structured rows).
+   */
   lineIndex: number;
+  /** Brand names — used for allergy substance matching ("Конкор" → bisoprolol). */
+  brandNames?: string[];
 };
 
 export type CdsWarning = {
@@ -51,6 +56,12 @@ export type CdsCheckInput = {
   clinicId: string;
   patientId: string;
   prescriptionLines: string[];
+  /**
+   * Ф2 — drug ids from structured prescription rows. These skip text
+   * resolution entirely: the row was picked from the catalog, so the id is
+   * authoritative. Free-text/custom rows still go through prescriptionLines.
+   */
+  drugIds?: string[];
   diagnosisCode: string | null;
 };
 
@@ -77,6 +88,27 @@ function normaliseToken(s: string): string {
 function firstToken(line: string): string {
   const t = normaliseToken(line).split(" ")[0];
   return t ?? "";
+}
+
+type DrugPick = {
+  id: string;
+  inn: string;
+  nameRu: string;
+  atcCode: string | null;
+  pregnancyCat: ResolvedDrug["pregnancyCat"];
+  brands: { name: string }[];
+};
+
+function toResolved(d: DrugPick, lineIndex: number): ResolvedDrug {
+  return {
+    id: d.id,
+    inn: d.inn,
+    nameRu: d.nameRu,
+    atcCode: d.atcCode,
+    pregnancyCat: d.pregnancyCat,
+    lineIndex,
+    brandNames: d.brands.map((b) => b.name),
+  };
 }
 
 /**
@@ -129,42 +161,21 @@ async function resolveDrugs(
     // 1) INN as the first token
     const innHit = byInn.get(firstToken(line));
     if (innHit) {
-      resolved.push({
-        id: innHit.id,
-        inn: innHit.inn,
-        nameRu: innHit.nameRu,
-        atcCode: innHit.atcCode,
-        pregnancyCat: innHit.pregnancyCat,
-        lineIndex: idx,
-      });
+      resolved.push(toResolved(innHit, idx));
       return;
     }
 
     // 2) nameRu starts-with on the line text
     const nameHit = byNamePrefix.find((n) => normalised.startsWith(n.prefix));
     if (nameHit) {
-      resolved.push({
-        id: nameHit.drug.id,
-        inn: nameHit.drug.inn,
-        nameRu: nameHit.drug.nameRu,
-        atcCode: nameHit.drug.atcCode,
-        pregnancyCat: nameHit.drug.pregnancyCat,
-        lineIndex: idx,
-      });
+      resolved.push(toResolved(nameHit.drug, idx));
       return;
     }
 
     // 3) brand starts-with
     const brandHit = byBrand.find((b) => normalised.startsWith(b.brand));
     if (brandHit) {
-      resolved.push({
-        id: brandHit.drug.id,
-        inn: brandHit.drug.inn,
-        nameRu: brandHit.drug.nameRu,
-        atcCode: brandHit.drug.atcCode,
-        pregnancyCat: brandHit.drug.pregnancyCat,
-        lineIndex: idx,
-      });
+      resolved.push(toResolved(brandHit.drug, idx));
       return;
     }
 
@@ -193,7 +204,39 @@ function ageFromBirthDate(birthDate: Date | null): number | null {
 export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult> {
   const { clinicId, patientId, prescriptionLines, diagnosisCode } = input;
 
-  const { resolved, unresolved } = await resolveDrugs(prescriptionLines);
+  const { resolved: textResolved, unresolved } =
+    await resolveDrugs(prescriptionLines);
+
+  // Ф2 — id-pinned drugs from structured rows resolve directly, no text
+  // matching. They take precedence in the dedupe below.
+  const pinnedIds = [...new Set(input.drugIds ?? [])];
+  const pinnedDrugs =
+    pinnedIds.length > 0
+      ? await prisma.drug.findMany({
+          where: { id: { in: pinnedIds } },
+          select: {
+            id: true,
+            inn: true,
+            nameRu: true,
+            atcCode: true,
+            pregnancyCat: true,
+            brands: { select: { name: true } },
+          },
+        })
+      : [];
+
+  const seenIds = new Set<string>();
+  const resolved: ResolvedDrug[] = [];
+  for (const d of pinnedDrugs) {
+    seenIds.add(d.id);
+    resolved.push(toResolved(d, -1));
+  }
+  for (const d of textResolved) {
+    if (seenIds.has(d.id)) continue;
+    seenIds.add(d.id);
+    resolved.push(d);
+  }
+
   if (resolved.length === 0) {
     return { warnings: [], resolvedDrugs: [], unresolvedLines: unresolved };
   }
@@ -232,12 +275,17 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
       const inn = normaliseToken(drug.inn);
       const nameRu = normaliseToken(drug.nameRu);
       // Match if the allergy substance string contains, or is contained in,
-      // either the INN or the RU name. Cheap & forgiving.
+      // the INN, the RU name or any brand name ("Конкор" → bisoprolol).
+      // Cheap & forgiving.
       const matches =
         inn.includes(sub) ||
         sub.includes(inn) ||
         nameRu.includes(sub) ||
-        sub.includes(nameRu);
+        sub.includes(nameRu) ||
+        (drug.brandNames ?? []).some((b) => {
+          const nb = normaliseToken(b);
+          return !!nb && (nb.includes(sub) || sub.includes(nb));
+        });
       if (matches) {
         const severityFromAllergy =
           allergy.severity === "SEVERE"

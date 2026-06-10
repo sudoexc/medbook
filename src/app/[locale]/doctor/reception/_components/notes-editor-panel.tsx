@@ -15,6 +15,7 @@ import {
   composePatientHandout,
   type HandoutLocale,
 } from "@/lib/catalogs/handout-composer";
+import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
@@ -309,7 +310,13 @@ function HandoutEditor() {
       visitDate: note.appointment?.date ? new Date(note.appointment.date) : new Date(),
       diagnosisName: note.diagnosisName,
       complaints: note.complaints,
-      prescriptions: note.prescriptions,
+      // Ф2 — structured rows first (with how-to-take text), then legacy lines.
+      prescriptions: [
+        ...formatPrescriptionLines(note.visitPrescriptions ?? [], locale, {
+          withInstruction: true,
+        }),
+        ...note.prescriptions,
+      ],
       advice: note.advice,
       guide: guide
         ? {
@@ -328,6 +335,7 @@ function HandoutEditor() {
     !!note &&
     ((note.complaints?.length ?? 0) > 0 ||
       (note.prescriptions?.length ?? 0) > 0 ||
+      (note.visitPrescriptions?.length ?? 0) > 0 ||
       (note.advice?.length ?? 0) > 0 ||
       !!note.diagnosisName);
 

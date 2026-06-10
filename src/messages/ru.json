@@ -5513,6 +5513,39 @@
           "FALSE_POSITIVE": "Ложное срабатывание",
           "OTHER": "Другое"
         }
+      },
+      "rx": {
+        "custom": "Свой препарат",
+        "customName": "Название",
+        "customDose": "Доза / схема",
+        "add": "Добавить",
+        "searchPlaceholder": "Препарат: название, МНН или бренд…",
+        "suggestTitle": "Часто назначают при {code}",
+        "empty": "Добавьте препарат через поиск или «Свой препарат»",
+        "legacyTitle": "Текстовые строки",
+        "manualBadge": "вручную",
+        "remindOn": "Напоминания пациенту включены",
+        "remindOff": "Без напоминаний",
+        "deleteRow": "Удалить назначение",
+        "dose": "Доза",
+        "timesLabel": "Время приёма",
+        "times": {
+          "MORNING": "Утро",
+          "NOON": "День",
+          "EVENING": "Вечер",
+          "NIGHT": "Ночь"
+        },
+        "mealLabel": "Приём пищи",
+        "meal": {
+          "BEFORE_MEAL": "До еды",
+          "WITH_MEAL": "Во время еды",
+          "AFTER_MEAL": "После еды",
+          "EMPTY_STOMACH": "Натощак",
+          "NO_MATTER": "Не важно"
+        },
+        "duration": "Длительность, дн.",
+        "instruction": "Как принимать",
+        "instructionPlaceholder": "Текст для памятки пациенту…"
       }
     },
     "receptionDialogs": {

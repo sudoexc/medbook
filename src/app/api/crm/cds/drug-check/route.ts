@@ -17,6 +17,8 @@ import { ok, err } from "@/server/http";
 const BodySchema = z.object({
   patientId: z.string().min(1),
   prescriptions: z.array(z.string().min(1)).max(50),
+  // Ф2 — ids from structured prescription rows (resolved without text match).
+  drugIds: z.array(z.string().min(1)).max(50).optional(),
   diagnosisCode: z.string().trim().nullish(),
 });
 
@@ -29,6 +31,7 @@ export const POST = createApiHandler(
       clinicId: ctx.clinicId,
       patientId: body.patientId,
       prescriptionLines: body.prescriptions,
+      drugIds: body.drugIds ?? [],
       diagnosisCode: body.diagnosisCode ?? null,
     });
 

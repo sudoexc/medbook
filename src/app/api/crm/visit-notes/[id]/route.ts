@@ -35,6 +35,7 @@ export const GET = createApiListHandler(
           },
         },
         clinic: { select: { nameRu: true, nameUz: true } },
+        visitPrescriptions: { orderBy: { sortOrder: "asc" } },
       },
     });
     if (!note) return notFound();
@@ -92,13 +93,45 @@ export const PATCH = createApiHandler(
     }
 
     const changedFields = Object.keys(data);
+    const rxRows = body.visitPrescriptions;
+    if (rxRows !== undefined) changedFields.push("visitPrescriptions");
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Ф2 — structured prescriptions: replace-all, consistent with the
+      // autosave model (the editor always sends the full current list).
+      // Runs before the note update so the returned include is fresh.
+      if (rxRows !== undefined) {
+        await tx.visitPrescription.deleteMany({
+          where: { visitNoteId: id },
+        });
+        if (rxRows.length > 0) {
+          await tx.visitPrescription.createMany({
+            data: rxRows.map((r, i) => ({
+              visitNoteId: id,
+              drugId: r.drugId ?? null,
+              displayName: r.displayName,
+              form: r.form ?? null,
+              strength: r.strength ?? null,
+              dose: r.dose,
+              timesOfDay: r.timesOfDay,
+              mealRelation: r.mealRelation,
+              durationDays: r.durationDays ?? null,
+              instructionRu: r.instructionRu ?? null,
+              instructionUz: r.instructionUz ?? null,
+              remindPatient: r.remindPatient,
+              sortOrder: i,
+              // clinicId is injected by the tenant extension at runtime.
+            })) as never,
+          });
+        }
+      }
+
       const row = await tx.visitNote.update({
         where: { id },
         data: data as never,
+        include: { visitPrescriptions: { orderBy: { sortOrder: "asc" } } },
       });
 
       // Skip the envelope when the autosave was a no-op — the editor sends a

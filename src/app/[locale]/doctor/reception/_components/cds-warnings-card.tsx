@@ -78,6 +78,8 @@ const KIND_ICONS: Record<CdsWarningKind, React.ComponentType<{ className?: strin
 type Props = {
   patientId: string | null;
   prescriptions: string[];
+  /** Ф2 — ids of catalog-picked structured rows. */
+  drugIds?: string[];
   diagnosisCode: string | null;
   // G8 — contextual ids forwarded to the override mutation. Optional so the
   // card still renders in the future patient drawer (no active visit there).
@@ -93,12 +95,18 @@ function warningKey(w: CdsWarning): string {
 export function CdsWarningsCard({
   patientId,
   prescriptions,
+  drugIds = [],
   diagnosisCode,
   appointmentId,
   visitNoteId,
 }: Props) {
   const t = useTranslations("doctor.reception");
-  const query = useCdsDrugCheck({ patientId, prescriptions, diagnosisCode });
+  const query = useCdsDrugCheck({
+    patientId,
+    prescriptions,
+    drugIds,
+    diagnosisCode,
+  });
   const [acknowledged, setAcknowledged] = React.useState<Set<string>>(
     () => new Set(),
   );
@@ -111,7 +119,9 @@ export function CdsWarningsCard({
     });
   }, []);
 
-  if (!patientId || prescriptions.length === 0) return null;
+  if (!patientId || (prescriptions.length === 0 && drugIds.length === 0)) {
+    return null;
+  }
 
   const result = query.data;
   const showSpinner = query.isFetching && !result;

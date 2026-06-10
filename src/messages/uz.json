@@ -5513,6 +5513,39 @@
           "FALSE_POSITIVE": "Noto‘g‘ri ishga tushish",
           "OTHER": "Boshqa"
         }
+      },
+      "rx": {
+        "custom": "Qo‘lda kiritish",
+        "customName": "Nomi",
+        "customDose": "Doza / sxema",
+        "add": "Qo‘shish",
+        "searchPlaceholder": "Dori: nomi, XBN yoki brend…",
+        "suggestTitle": "{code} uchun ko‘p tayinlanadi",
+        "empty": "Qidiruv yoki «Qo‘lda kiritish» orqali dori qo‘shing",
+        "legacyTitle": "Matnli qatorlar",
+        "manualBadge": "qo‘lda",
+        "remindOn": "Bemorga eslatmalar yoqilgan",
+        "remindOff": "Eslatmalarsiz",
+        "deleteRow": "Tayinlovni o‘chirish",
+        "dose": "Doza",
+        "timesLabel": "Qabul vaqti",
+        "times": {
+          "MORNING": "Ertalab",
+          "NOON": "Kunduzi",
+          "EVENING": "Kechqurun",
+          "NIGHT": "Tunda"
+        },
+        "mealLabel": "Ovqatlanish",
+        "meal": {
+          "BEFORE_MEAL": "Ovqatdan oldin",
+          "WITH_MEAL": "Ovqat bilan",
+          "AFTER_MEAL": "Ovqatdan keyin",
+          "EMPTY_STOMACH": "Och qoringa",
+          "NO_MATTER": "Farqi yo‘q"
+        },
+        "duration": "Davomiyligi, kun",
+        "instruction": "Qanday qabul qilish",
+        "instructionPlaceholder": "Bemor eslatmasi uchun matn…"
       }
     },
     "receptionDialogs": {

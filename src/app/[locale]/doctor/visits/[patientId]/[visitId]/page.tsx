@@ -8,6 +8,7 @@ import {
 import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
+import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
@@ -67,6 +68,7 @@ export default async function VisitDetailPage({
           anamnesis: true,
           examination: true,
           prescriptions: true,
+          visitPrescriptions: { orderBy: { sortOrder: "asc" } },
           advice: true,
           bodyMarkdown: true,
           aiGenerated: true,
@@ -152,7 +154,14 @@ export default async function VisitDetailPage({
           complaints: data.note.complaints,
           anamnesis: data.note.anamnesis,
           examination: data.note.examination,
-          prescriptions: data.note.prescriptions,
+          prescriptions: [
+            ...formatPrescriptionLines(
+              data.note.visitPrescriptions,
+              locale === "uz" ? "uz" : "ru",
+              { withInstruction: true },
+            ),
+            ...data.note.prescriptions,
+          ],
           advice: data.note.advice,
           bodyMarkdown: data.note.bodyMarkdown,
           aiGenerated: data.note.aiGenerated,

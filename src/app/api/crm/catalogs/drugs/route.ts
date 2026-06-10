@@ -44,6 +44,16 @@ export const GET = createApiListHandler(
     if (q.category) where.category = q.category;
     if (q.atc) where.atcCode = { startsWith: q.atc, mode: "insensitive" };
     if (q.indication) where.indications = { has: q.indication };
+    if (q.forDiagnosis && q.forDiagnosis.trim()) {
+      // "G43.0" → ["G43", "G43.", "G43.0"] — catalog indications are stored
+      // as ICD prefixes of varying depth, so match any prefix of the code.
+      const code = q.forDiagnosis.trim().toUpperCase();
+      const prefixes = new Set<string>();
+      for (let len = 3; len <= code.length; len += 1) {
+        prefixes.add(code.slice(0, len));
+      }
+      where.indications = { hasSome: [...prefixes] };
+    }
 
     if (q.q && q.q.trim()) {
       const term = q.q.trim();

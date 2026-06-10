@@ -5,7 +5,7 @@
  * directions, so don't duplicate the reverse. Keep pairs tight — only
  * include interactions that are clinically actionable for an outpatient
  * doctor (no theoretical-only entries). Drug ids match the static catalog
- * in `src/lib/catalogs/drugs.ts` / `_drug-data.ts`.
+ * in `_drug-catalog.ts` / `_drug-data.ts`.
  */
 export type InteractionSeed = {
   a: string;

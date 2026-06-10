@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
-  BookOpenIcon,
   ClipboardListIcon,
   FileTextIcon,
   FlaskConicalIcon,
@@ -13,7 +12,6 @@ import {
   ScrollTextIcon,
   SearchIcon,
   Share2Icon,
-  SlidersHorizontalIcon,
   ScrollIcon,
   StethoscopeIcon,
   WandSparklesIcon,
@@ -22,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
@@ -39,13 +38,17 @@ import {
   useVisitNote,
   type VisitNotePatch,
   type VisitNoteRow,
+  type VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import { DiagnosisGuideCard } from "./diagnosis-guide-card";
-import { DosageBuilderDialog } from "./dosage-builder-dialog";
 import { EPrescriptionDialog } from "./e-prescription-dialog";
+import {
+  draftFromDrug,
+  PrescriptionConstructor,
+} from "./prescription-constructor";
 import { LabOrderDialog } from "./lab-order-dialog";
 import { ReferralDialog } from "./referral-dialog";
 import { SickLeaveDialog } from "./sick-leave-dialog";
@@ -116,7 +119,6 @@ export function StructuredFieldsPanel() {
   const presetsQuery = useDoctorPresets();
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
-  const [builderOpen, setBuilderOpen] = React.useState(false);
   const [catalogOpen, setCatalogOpen] = React.useState(false);
   const [labOrderOpen, setLabOrderOpen] = React.useState(false);
   const [labOrderInitial, setLabOrderInitial] = React.useState<string[]>([]);
@@ -142,14 +144,44 @@ export function StructuredFieldsPanel() {
     return map;
   }, [presetsQuery.data]);
 
-  const handleAddPrescription = React.useCallback(
-    (line: string) => {
-      if (!note || isFinalized) return;
-      const current = note.prescriptions ?? [];
-      if (current.includes(line)) return;
-      applyPatch({ prescriptions: [...current, line] });
+  // CDS v2 inputs: catalog-picked rows go by id (authoritative), custom rows
+  // and legacy text lines keep the best-effort text match.
+  const rxStructured = note?.visitPrescriptions ?? [];
+  const cdsDrugIds = React.useMemo(
+    () =>
+      rxStructured
+        .map((r) => r.drugId)
+        .filter((id): id is string => !!id),
+    [rxStructured],
+  );
+  const legacyPrescriptions = note?.prescriptions;
+  const cdsTextLines = React.useMemo(
+    () => [
+      ...(legacyPrescriptions ?? []),
+      ...rxStructured
+        .filter((r) => !r.drugId)
+        .map((r) => formatPrescriptionLine(r, "ru")),
+    ],
+    [legacyPrescriptions, rxStructured],
+  );
+
+  // Ф2 — structured rows replace-all save + catalog pick → structured draft.
+  const saveRxRows = React.useCallback(
+    (rows: VisitPrescriptionDraft[]) => {
+      applyPatch({ visitPrescriptions: rows });
     },
-    [note, isFinalized, applyPatch],
+    [applyPatch],
+  );
+
+  const handleCatalogPick = React.useCallback(
+    (drug: Parameters<typeof draftFromDrug>[0]) => {
+      if (!note) return;
+      const drafts = (note.visitPrescriptions ?? []).map(
+        ({ id: _id, sortOrder: _s, ...rest }) => rest,
+      );
+      applyPatch({ visitPrescriptions: [...drafts, draftFromDrug(drug)] });
+    },
+    [note, applyPatch],
   );
 
   const handlePresetClick = React.useCallback(
@@ -295,25 +327,34 @@ export function StructuredFieldsPanel() {
         <div className="flex flex-col gap-2">
           {FIELDS.map((f) => (
             <React.Fragment key={f.key}>
-              <ChipFieldCard
-                def={f}
-                value={note[f.key] ?? []}
-                presets={presetsByField[f.presetField] ?? []}
-                disabled={isFinalized}
-                onChange={(next) => applyPatch({ [f.key]: next } as VisitNotePatch)}
-                onPresetClick={(preset) => handlePresetClick(f, preset)}
-                onRemoveChip={(chip) => handleRemoveChip(f, chip)}
-                onOpenBuilder={
-                  f.key === "prescriptions" ? () => setBuilderOpen(true) : undefined
-                }
-                onOpenCatalog={
-                  f.key === "prescriptions" ? () => setCatalogOpen(true) : undefined
-                }
-              />
+              {f.key === "prescriptions" ? (
+                <PrescriptionConstructor
+                  note={note}
+                  disabled={isFinalized}
+                  presets={presetsByField[f.presetField] ?? []}
+                  onSaveRows={saveRxRows}
+                  onPresetClick={(preset) => handlePresetClick(f, preset)}
+                  onRemoveLegacyChip={(chip) => handleRemoveChip(f, chip)}
+                  onOpenCatalog={() => setCatalogOpen(true)}
+                />
+              ) : (
+                <ChipFieldCard
+                  def={f}
+                  value={note[f.key] ?? []}
+                  presets={presetsByField[f.presetField] ?? []}
+                  disabled={isFinalized}
+                  onChange={(next) =>
+                    applyPatch({ [f.key]: next } as VisitNotePatch)
+                  }
+                  onPresetClick={(preset) => handlePresetClick(f, preset)}
+                  onRemoveChip={(chip) => handleRemoveChip(f, chip)}
+                />
+              )}
               {f.key === "prescriptions" && (
                 <CdsWarningsCard
                   patientId={activeAppointment?.patient.id ?? null}
-                  prescriptions={note.prescriptions ?? []}
+                  prescriptions={cdsTextLines}
+                  drugIds={cdsDrugIds}
                   diagnosisCode={note.diagnosisCode ?? null}
                   appointmentId={activeAppointment?.id ?? null}
                   visitNoteId={visitNoteId}
@@ -342,16 +383,10 @@ export function StructuredFieldsPanel() {
         </div>
       )}
 
-      <DosageBuilderDialog
-        open={builderOpen}
-        onOpenChange={setBuilderOpen}
-        onAdd={handleAddPrescription}
-      />
-
       <CatalogDrawer
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
-        onPick={handleAddPrescription}
+        onPick={handleCatalogPick}
       />
 
       <LabOrderDialog
@@ -372,7 +407,10 @@ export function StructuredFieldsPanel() {
         visitNoteId={visitNoteId}
         diagnosisCode={note?.diagnosisCode ?? null}
         diagnosisName={note?.diagnosisName ?? null}
-        seedItems={note?.prescriptions ?? []}
+        seedItems={[
+          ...rxStructured.map((r) => formatPrescriptionLine(r, "ru")),
+          ...(note?.prescriptions ?? []),
+        ]}
       />
 
       <SickLeaveDialog
@@ -414,8 +452,6 @@ function ChipFieldCard({
   onChange,
   onPresetClick,
   onRemoveChip,
-  onOpenBuilder,
-  onOpenCatalog,
 }: {
   def: FieldDef;
   value: string[];
@@ -424,13 +460,6 @@ function ChipFieldCard({
   onChange: (next: string[]) => void;
   onPresetClick: (preset: DoctorPresetRow) => void;
   onRemoveChip: (chip: string) => void;
-  /**
-   * When provided, renders a "Конструктор" button next to the "+" — used by
-   * the prescriptions field to open the structured dosage builder modal.
-   */
-  onOpenBuilder?: () => void;
-  /** Opens the searchable drug catalog drawer (Phase G1). */
-  onOpenCatalog?: () => void;
 }) {
   const t = useTranslations("doctor.reception");
   const [adding, setAdding] = React.useState(false);
@@ -475,29 +504,6 @@ function ChipFieldCard({
           )}
         </div>
         <div className="inline-flex items-center gap-1">
-          {onOpenCatalog && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onOpenCatalog}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
-              title={t("structured.catalogTitle")}
-            >
-              <BookOpenIcon className="size-3" />
-              {t("structured.catalog")}
-            </button>
-          )}
-          {onOpenBuilder && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={onOpenBuilder}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
-            >
-              <SlidersHorizontalIcon className="size-3" />
-              {t("structured.builder")}
-            </button>
-          )}
           <button
             type="button"
             aria-label={t("structured.add")}

@@ -931,9 +931,10 @@ model Drug {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
-  brands          DrugBrand[]
-  interactionsAsA DrugInteraction[] @relation("DrugA")
-  interactionsAsB DrugInteraction[] @relation("DrugB")
+  brands             DrugBrand[]
+  interactionsAsA    DrugInteraction[]   @relation("DrugA")
+  interactionsAsB    DrugInteraction[]   @relation("DrugB")
+  visitPrescriptions VisitPrescription[]
 
   @@index([category, active])
   @@index([atcCode])
@@ -1975,9 +1976,51 @@ model VisitNote {
   conclusionDocument Document?
   // Referrals authored from this visit (snapshot the visit's diagnosis).
   referrals          Referral[]
+  // Ф2 (TZ-smart-constructor) — structured prescription rows on the Drug
+  // catalog. `prescriptions String[]` above stays as read-only legacy.
+  visitPrescriptions VisitPrescription[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
+}
+
+// Ф2 (TZ-smart-constructor) — structured prescriptions.
+enum MealRelation {
+  BEFORE_MEAL
+  WITH_MEAL
+  AFTER_MEAL
+  EMPTY_STOMACH
+  NO_MATTER
+}
+
+model VisitPrescription {
+  id          String    @id @default(cuid())
+  clinicId    String
+  visitNoteId String
+  visitNote   VisitNote @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
+  // null = manual entry outside the catalog (free-text fallback is a hard
+  // requirement — the catalog never blocks prescribing).
+  drugId      String?
+  drug        Drug?     @relation(fields: [drugId], references: [id])
+  // Snapshot («Конкор (бисопролол)») so print stays stable across catalog edits.
+  displayName String
+  form        String? // from Drug.forms
+  strength    String? // "5 мг"
+  dose        String // "1 таб", "10 мл"
+  // MORNING | NOON | EVENING | NIGHT
+  timesOfDay    String[]     @default([])
+  mealRelation  MealRelation @default(NO_MATTER)
+  durationDays  Int?
+  // Auto-filled from Drug.defaultDosing / the guide, then hand-editable.
+  instructionRu String?      @db.Text
+  instructionUz String?      @db.Text
+  // Bridge into patient reminders (Ф6).
+  remindPatient Boolean      @default(true)
+  sortOrder     Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([clinicId, visitNoteId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

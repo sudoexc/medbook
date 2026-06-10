@@ -2,6 +2,42 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+export type VisitPrescriptionTimeOfDay =
+  | "MORNING"
+  | "NOON"
+  | "EVENING"
+  | "NIGHT";
+
+export type VisitPrescriptionMealRelation =
+  | "BEFORE_MEAL"
+  | "WITH_MEAL"
+  | "AFTER_MEAL"
+  | "EMPTY_STOMACH"
+  | "NO_MATTER";
+
+// Ф2 — structured prescription row as stored. The PATCH payload sends drafts
+// (no id/sortOrder — replace-all, sortOrder = array index server-side).
+export type VisitPrescriptionRow = {
+  id: string;
+  drugId: string | null;
+  displayName: string;
+  form: string | null;
+  strength: string | null;
+  dose: string;
+  timesOfDay: VisitPrescriptionTimeOfDay[];
+  mealRelation: VisitPrescriptionMealRelation;
+  durationDays: number | null;
+  instructionRu: string | null;
+  instructionUz: string | null;
+  remindPatient: boolean;
+  sortOrder: number;
+};
+
+export type VisitPrescriptionDraft = Omit<
+  VisitPrescriptionRow,
+  "id" | "sortOrder"
+>;
+
 export type VisitNoteRow = {
   id: string;
   clinicId: string;
@@ -26,6 +62,8 @@ export type VisitNoteRow = {
   aiTokens: number | null;
   createdAt: string;
   updatedAt: string;
+  // Ф2 — included by GET and PATCH (PATCH returns the fresh replace-all set).
+  visitPrescriptions?: VisitPrescriptionRow[];
   // Included by the GET endpoint, omitted from PATCH responses.
   patient?: { id: string; fullName: string } | null;
   appointment?: { id: string; date: string; status: string } | null;
@@ -87,6 +125,7 @@ export type VisitNotePatch = Partial<{
   diagnosisName: string | null;
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
+  visitPrescriptions: VisitPrescriptionDraft[];
 }>;
 
 export function usePatchVisitNote(noteId: string | null) {
@@ -104,7 +143,12 @@ export function usePatchVisitNote(noteId: string | null) {
       return (await res.json()) as VisitNoteRow;
     },
     onSuccess: (row) => {
-      qc.setQueryData(visitNoteKey(row.id), row);
+      // Merge over the cached GET row — the PATCH response carries the fresh
+      // scalar fields + visitPrescriptions but omits the patient/appointment/
+      // doctor/clinic includes; a plain replace would blank them until refetch.
+      qc.setQueryData<VisitNoteRow>(visitNoteKey(row.id), (prev) =>
+        prev ? { ...prev, ...row } : row,
+      );
       qc.invalidateQueries({ queryKey: ["doctor", "reception", "warnings", row.id] });
     },
   });

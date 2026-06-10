@@ -1,6 +1,6 @@
 /**
  * Seeds the Drug + DrugBrand tables from the static catalog in
- * `src/lib/catalogs/drugs.ts`, merged with clinical enrichment in
+ * `_drug-catalog.ts`, merged with clinical enrichment in
  * `_drug-data.ts`.
  *
  * Idempotent: wipes Drug rows (and brand rows by FK cascade) for the seeded
@@ -15,7 +15,7 @@ import "dotenv/config";
 import { Prisma, PrismaClient, type DrugCategory } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { DRUGS } from "../src/lib/catalogs/drugs";
+import { DRUGS } from "./_drug-catalog";
 import { DRUG_ENRICHMENT } from "./_drug-data";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });

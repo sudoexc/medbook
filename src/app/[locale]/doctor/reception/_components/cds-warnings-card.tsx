@@ -24,14 +24,17 @@ import {
   InfoIcon,
   LayersIcon,
   Loader2Icon,
+  PlusIcon,
   ShieldAlertIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import {
   useCdsDrugCheck,
+  type CdsResolvedDrug,
   type CdsSeverity,
   type CdsWarning,
   type CdsWarningKind,
@@ -40,6 +43,10 @@ import {
   useCreateCdsOverride,
   type CdsOverrideReason,
 } from "../_hooks/use-cds-overrides";
+import {
+  useRecordAllergy,
+  type AllergySeverity,
+} from "../_hooks/use-patient-history";
 
 const SEVERITY_STYLES: Record<
   CdsSeverity,
@@ -143,19 +150,25 @@ export function CdsWarningsCard({
 
   if (result.warnings.length === 0) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-[11px] text-[color:var(--success)]">
-        <AlertOctagonIcon className="size-3 rotate-180" />
-        {t("cds.noConflicts")}
-        {result.resolvedDrugs.length > 0 && (
-          <span className="text-[color:var(--success)]/70">
-            {t("cds.recognizedCount", { count: result.resolvedDrugs.length })}
-          </span>
-        )}
-        {result.unresolvedLines.length > 0 && (
-          <span className="ml-auto text-[color:var(--success)]/60">
-            {t("cds.unmatchedCount", { count: result.unresolvedLines.length })}
-          </span>
-        )}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-[11px] text-[color:var(--success)]">
+          <AlertOctagonIcon className="size-3 rotate-180" />
+          {t("cds.noConflicts")}
+          {result.resolvedDrugs.length > 0 && (
+            <span className="text-[color:var(--success)]/70">
+              {t("cds.recognizedCount", { count: result.resolvedDrugs.length })}
+            </span>
+          )}
+          {result.unresolvedLines.length > 0 && (
+            <span className="ml-auto text-[color:var(--success)]/60">
+              {t("cds.unmatchedCount", { count: result.unresolvedLines.length })}
+            </span>
+          )}
+        </div>
+        <AllergyQuickRecord
+          patientId={patientId}
+          suggestions={result.resolvedDrugs}
+        />
       </div>
     );
   }
@@ -192,6 +205,163 @@ export function CdsWarningsCard({
           {t("cds.unresolvedNote", { count: result.unresolvedLines.length })}
         </p>
       )}
+      <AllergyQuickRecord
+        patientId={patientId}
+        suggestions={result.resolvedDrugs}
+      />
+    </div>
+  );
+}
+
+const ALLERGY_SEVERITIES: AllergySeverity[] = ["MILD", "MODERATE", "SEVERE"];
+
+/**
+ * Ф7 — «записать аллергию» в один клик. Новая PatientAllergy сразу
+ * инвалидирует CDS-проверку, так что конфликт подсветится без перезагрузки.
+ */
+function AllergyQuickRecord({
+  patientId,
+  suggestions,
+}: {
+  patientId: string | null;
+  suggestions: CdsResolvedDrug[];
+}) {
+  const t = useTranslations("doctor.reception");
+  const [open, setOpen] = React.useState(false);
+  const [substance, setSubstance] = React.useState("");
+  const [severity, setSeverity] = React.useState<AllergySeverity>("MODERATE");
+  const record = useRecordAllergy(patientId);
+
+  const innSuggestions = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const d of suggestions) {
+      const v = d.inn.trim();
+      if (!v || seen.has(v.toLowerCase())) continue;
+      seen.add(v.toLowerCase());
+      out.push(v);
+    }
+    return out.slice(0, 6);
+  }, [suggestions]);
+
+  if (!patientId) return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-6 w-fit items-center gap-1 rounded-md border border-dashed border-border px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+      >
+        <PlusIcon className="size-2.5" />
+        {t("cds.recordAllergy")}
+      </button>
+    );
+  }
+
+  const reset = () => {
+    setOpen(false);
+    setSubstance("");
+    setSeverity("MODERATE");
+  };
+
+  const submit = () => {
+    const v = substance.trim();
+    if (!v || record.isPending) return;
+    record.mutate(
+      { substance: v, severity },
+      {
+        onSuccess: () => {
+          toast.success(t("cds.allergySaved", { substance: v }));
+          reset();
+        },
+        onError: () => toast.error(t("cds.errorFallback")),
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-border/80 bg-background/70 p-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {t("cds.recordAllergy")}
+      </div>
+      <input
+        value={substance}
+        autoFocus
+        onChange={(e) => setSubstance(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          } else if (e.key === "Escape") {
+            reset();
+          }
+        }}
+        placeholder={t("cds.allergySubstancePlaceholder")}
+        className="h-7 rounded-md border border-border bg-background px-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+      />
+      {innSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {innSuggestions.map((inn) => (
+            <button
+              key={inn}
+              type="button"
+              onClick={() => setSubstance(inn)}
+              className={cn(
+                "rounded-md border px-2 py-0.5 text-[11px] transition-colors",
+                substance === inn
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border bg-background text-muted-foreground hover:bg-muted/60",
+              )}
+            >
+              {inn}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-1">
+        {ALLERGY_SEVERITIES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSeverity(s)}
+            className={cn(
+              "rounded-md border px-2 py-0.5 text-[11px] transition-colors",
+              severity === s
+                ? s === "SEVERE"
+                  ? "border-destructive bg-destructive/10 text-destructive"
+                  : "border-primary bg-primary/10 text-foreground"
+                : "border-border bg-background text-muted-foreground hover:bg-muted/60",
+            )}
+          >
+            {t(`cds.allergySeverity.${s}`)}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-[10px]"
+          onClick={reset}
+          disabled={record.isPending}
+        >
+          {t("cds.cancel")}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="h-6 px-2 text-[10px]"
+          onClick={submit}
+          disabled={!substance.trim() || record.isPending}
+        >
+          {record.isPending && (
+            <Loader2Icon className="mr-1 size-3 animate-spin" />
+          )}
+          {t("cds.save")}
+        </Button>
+      </div>
     </div>
   );
 }

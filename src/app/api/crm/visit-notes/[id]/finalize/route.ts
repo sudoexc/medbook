@@ -144,6 +144,34 @@ export const POST = createApiHandler(
         apptEventId = eventId;
       }
 
+      // Ф7 — карточка пациента наполняется сама: диагноз приёма становится
+      // (или снова становится) ACTIVE в PatientDiagnosis. diagnosedAt
+      // существующей записи не трогаем — дата первичной постановки ценнее.
+      const existingDx = await tx.patientDiagnosis.findFirst({
+        where: { patientId: note.patientId, icd10Code: note.diagnosisCode },
+        select: { id: true },
+      });
+      const patientDiagnosis = existingDx
+        ? await tx.patientDiagnosis.update({
+            where: { id: existingDx.id },
+            data: {
+              status: "ACTIVE",
+              ...(note.diagnosisName ? { label: note.diagnosisName } : {}),
+            },
+            select: { id: true },
+          })
+        : await tx.patientDiagnosis.create({
+            data: {
+              clinicId: note.clinicId,
+              patientId: note.patientId,
+              icd10Code: note.diagnosisCode,
+              label: note.diagnosisName ?? note.diagnosisCode ?? "",
+              diagnosedAt: now,
+              status: "ACTIVE",
+            },
+            select: { id: true },
+          });
+
       const visitNoteEnvelope: EventEnvelopeInput = {
         type: "visit-note.finalized",
         correlationId,
@@ -172,7 +200,11 @@ export const POST = createApiHandler(
       };
       await publishViaOutbox(tx, visitNoteEnvelope);
 
-      return { note: updatedNote, appointment: updatedAppt };
+      return {
+        note: updatedNote,
+        appointment: updatedAppt,
+        patientDiagnosisId: patientDiagnosis.id,
+      };
     });
 
     if (note.appointment.status !== "COMPLETED") {
@@ -190,10 +222,11 @@ export const POST = createApiHandler(
         appointmentId: note.appointment.id,
         correlationId,
         documentNumber: result.note.documentNumber,
+        patientDiagnosisId: result.patientDiagnosisId,
       },
     });
 
-    return ok(result);
+    return ok({ note: result.note, appointment: result.appointment });
   },
 );
 

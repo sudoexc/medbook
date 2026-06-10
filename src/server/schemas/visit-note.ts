@@ -37,6 +37,9 @@ export type VisitPrescriptionItemInput = z.infer<
   typeof VisitPrescriptionItemSchema
 >;
 
+// Ф7 — динамика состояния относительно прошлого визита.
+export const VisitDynamicsEnum = z.enum(["IMPROVED", "STABLE", "WORSE"]);
+
 export const UpdateVisitNoteSchema = z.object({
   complaints: ChipArray.optional(),
   anamnesis: ChipArray.optional(),
@@ -49,6 +52,8 @@ export const UpdateVisitNoteSchema = z.object({
   patientHandoutMarkdown: z.string().max(64_000).nullable().optional(),
   followUpDays: z.number().int().min(1).max(365).nullable().optional(),
   followUpNote: z.string().max(500).nullable().optional(),
+  dynamics: VisitDynamicsEnum.nullable().optional(),
+  dynamicsNote: z.string().max(500).nullable().optional(),
   // Replace-all semantics, consistent with the autosave model: the editor
   // always sends the full current list (sortOrder = array index).
   visitPrescriptions: z.array(VisitPrescriptionItemSchema).max(30).optional(),

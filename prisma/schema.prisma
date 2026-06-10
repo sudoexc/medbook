@@ -2000,6 +2000,11 @@ model VisitNote {
   // finalize worker hasn't mirrored remindPatient rows into Prescription yet.
   medicationsBridgedAt DateTime?
 
+  // Ф7 — состояние vs прошлый визит: IMPROVED | STABLE | WORSE. String not
+  // enum (как PatientAllergy.severity) — новые градации без миграции.
+  dynamics     String?
+  dynamicsNote String?
+
   // Free-form rich body in Markdown. The notes editor on the right is the
   // canonical source; the structured chips are the parsed/derived view.
   bodyMarkdown String? @db.Text

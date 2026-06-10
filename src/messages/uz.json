@@ -5624,7 +5624,11 @@
         "searchPlaceholder": "ICD-10 bo‘yicha qidiruv…",
         "reset": "Tozalash",
         "applyProtocolTitle": "Protokolni qo‘llash",
-        "applyStandard": "Standartni qo‘llash"
+        "applyStandard": "Standartni qo‘llash",
+        "toChronic": "Surunkaliga qo‘shish",
+        "toChronicDone": "Surunkalilarga qo‘shildi",
+        "toChronicError": "Saqlab bo‘lmadi",
+        "toChronicTitle": "Tashxisni bemorning surunkali kasalliklariga qo‘shish"
       },
       "guide": {
         "title": "Bilimlar bazasi",
@@ -5666,6 +5670,9 @@
         "errorFallback": "noma’lum xatolik",
         "cancel": "Bekor qilish",
         "save": "Saqlash",
+        "recordAllergy": "Allergiyani yozish",
+        "allergySubstancePlaceholder": "Modda (XPN) yoki dori…",
+        "allergySaved": "Allergiya yozildi: {substance}",
         "severity": {
           "contraindicated": "Qarshi ko‘rsatma",
           "major": "Jiddiy",
@@ -5678,6 +5685,11 @@
           "ALTERNATIVES_TRIED": "Muqobillar sinab ko‘rilgan",
           "FALSE_POSITIVE": "Noto‘g‘ri ishga tushish",
           "OTHER": "Boshqa"
+        },
+        "allergySeverity": {
+          "MILD": "Yengil",
+          "MODERATE": "O‘rtacha",
+          "SEVERE": "Og‘ir"
         }
       },
       "rx": {
@@ -5712,6 +5724,23 @@
         "duration": "Davomiyligi, kun",
         "instruction": "Qanday qabul qilish",
         "instructionPlaceholder": "Bemor eslatmasi uchun matn…"
+      },
+      "copyForward": {
+        "title": "Oldingi qabul — {date}",
+        "titleNoDate": "Oldingi qabul",
+        "button": "Oldingi qabuldan davom etish",
+        "applied": "Oldingi qabuldan ko‘chirildi",
+        "nothingToCopy": "Ko‘chiradigan narsa yo‘q — hammasi yozuvda bor",
+        "carried": "Oldingi qabuldan",
+        "rxCount": "{count} tayinlov"
+      },
+      "dynamics": {
+        "label": "Dinamika",
+        "sinceDate": "{date} qabulidan beri",
+        "improved": "Yaxshilanish",
+        "stable": "Barqaror",
+        "worse": "Yomonlashish",
+        "notePlaceholder": "Dinamika bo‘yicha izoh…"
       }
     },
     "receptionDialogs": {

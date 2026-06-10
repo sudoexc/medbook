@@ -6,8 +6,11 @@ import {
   BookmarkPlusIcon,
   CalendarCheckIcon,
   ClipboardListIcon,
+  CopyPlusIcon,
   FileTextIcon,
   FlaskConicalIcon,
+  HeartPulseIcon,
+  HistoryIcon,
   Loader2Icon,
   PillIcon,
   PlusIcon,
@@ -20,6 +23,7 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
@@ -43,6 +47,11 @@ import {
   type VisitNoteRow,
   type VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
+import {
+  usePreviousVisit,
+  type PreviousVisitRow,
+} from "../_hooks/use-previous-visit";
+import { useAddChronicCondition } from "../_hooks/use-patient-history";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
@@ -121,8 +130,18 @@ export function StructuredFieldsPanel() {
   const noteQuery = useVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
   const presetsQuery = useDoctorPresets();
+  const previousQuery = usePreviousVisit(visitNoteId);
+  const previous = previousQuery.data ?? null;
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
+  // Ф7 — чипы, принесённые copy-forward'ом: помечены «из прошлого визита»
+  // до первого редактирования соответствующего поля.
+  const [carried, setCarried] = React.useState<
+    Partial<Record<ArrayKey, Set<string>>>
+  >({});
+  const clearCarried = React.useCallback((key: ArrayKey) => {
+    setCarried((prev) => (prev[key]?.size ? { ...prev, [key]: undefined } : prev));
+  }, []);
   const [catalogOpen, setCatalogOpen] = React.useState(false);
   const [labOrderOpen, setLabOrderOpen] = React.useState(false);
   const [labOrderInitial, setLabOrderInitial] = React.useState<string[]>([]);
@@ -192,6 +211,7 @@ export function StructuredFieldsPanel() {
   const handlePresetClick = React.useCallback(
     (def: FieldDef, preset: DoctorPresetRow) => {
       if (!note || isFinalized) return;
+      clearCarried(def.key);
       const arr = note[def.key] ?? [];
       if (!arr.includes(preset.fieldValue)) {
         applyPatch({ [def.key]: [...arr, preset.fieldValue] } as VisitNotePatch);
@@ -200,8 +220,56 @@ export function StructuredFieldsPanel() {
         requestBodyAppend(preset.noteTemplate);
       }
     },
-    [note, isFinalized, applyPatch, requestBodyAppend],
+    [note, isFinalized, applyPatch, requestBodyAppend, clearCarried],
   );
+
+  // Ф7 — copy-forward: переносит диагноз (если ещё не выбран), чипы
+  // complaints/anamnesis и структурные назначения из прошлого визита.
+  // Не автоматом — врач решает кнопкой; повторный клик — no-op.
+  const handleCopyForward = React.useCallback(() => {
+    if (!note || isFinalized || !previous) return;
+    const patchData: VisitNotePatch = {};
+
+    const freshComplaints = previous.complaints.filter(
+      (c) => !(note.complaints ?? []).includes(c),
+    );
+    const freshAnamnesis = previous.anamnesis.filter(
+      (c) => !(note.anamnesis ?? []).includes(c),
+    );
+    if (freshComplaints.length > 0) {
+      patchData.complaints = [...(note.complaints ?? []), ...freshComplaints];
+    }
+    if (freshAnamnesis.length > 0) {
+      patchData.anamnesis = [...(note.anamnesis ?? []), ...freshAnamnesis];
+    }
+    if (!note.diagnosisCode && previous.diagnosisCode) {
+      patchData.diagnosisCode = previous.diagnosisCode;
+      patchData.diagnosisName = previous.diagnosisName;
+    }
+    if (previous.visitPrescriptions.length > 0) {
+      const existing = (note.visitPrescriptions ?? []).map(
+        ({ id: _id, sortOrder: _s, ...rest }) => rest,
+      );
+      const seen = new Set(existing.map((r) => `${r.displayName}|${r.dose}`));
+      const fresh = previous.visitPrescriptions
+        .map(({ id: _id, sortOrder: _s, ...rest }) => rest)
+        .filter((r) => !seen.has(`${r.displayName}|${r.dose}`));
+      if (fresh.length > 0) {
+        patchData.visitPrescriptions = [...existing, ...fresh];
+      }
+    }
+
+    if (Object.keys(patchData).length === 0) {
+      toast.info(t("copyForward.nothingToCopy"));
+      return;
+    }
+    applyPatch(patchData);
+    setCarried({
+      complaints: new Set(freshComplaints),
+      anamnesis: new Set(freshAnamnesis),
+    });
+    toast.success(t("copyForward.applied"));
+  }, [note, isFinalized, previous, applyPatch, t]);
 
   const handleApplyProtocol = React.useCallback(
     (protocol: ClinicalProtocolRow) => {
@@ -270,6 +338,7 @@ export function StructuredFieldsPanel() {
   const handleRemoveChip = React.useCallback(
     (def: FieldDef, chip: string) => {
       if (!note || isFinalized) return;
+      clearCarried(def.key);
       const arr = note[def.key] ?? [];
       applyPatch({
         [def.key]: arr.filter((c) => c !== chip),
@@ -285,7 +354,7 @@ export function StructuredFieldsPanel() {
         requestBodyRemove(preset.noteTemplate);
       }
     },
-    [note, isFinalized, applyPatch, presetsByField, requestBodyRemove],
+    [note, isFinalized, applyPatch, presetsByField, requestBodyRemove, clearCarried],
   );
 
   return (
@@ -364,6 +433,13 @@ export function StructuredFieldsPanel() {
         </p>
       ) : (
         <div className="flex flex-col gap-2">
+          {previous && !isFinalized && (
+            <CopyForwardCard
+              previous={previous}
+              pending={patch.isPending}
+              onApply={handleCopyForward}
+            />
+          )}
           {FIELDS.map((f) => (
             <React.Fragment key={f.key}>
               {f.key === "prescriptions" ? (
@@ -382,9 +458,11 @@ export function StructuredFieldsPanel() {
                   value={note[f.key] ?? []}
                   presets={presetsByField[f.presetField] ?? []}
                   disabled={isFinalized}
-                  onChange={(next) =>
-                    applyPatch({ [f.key]: next } as VisitNotePatch)
-                  }
+                  carried={carried[f.key]}
+                  onChange={(next) => {
+                    clearCarried(f.key);
+                    applyPatch({ [f.key]: next } as VisitNotePatch);
+                  }}
                   onPresetClick={(preset) => handlePresetClick(f, preset)}
                   onRemoveChip={(chip) => handleRemoveChip(f, chip)}
                 />
@@ -497,11 +575,75 @@ export function StructuredFieldsPanel() {
   );
 }
 
+/**
+ * Ф7 — copy-forward. Видна только когда у пациента есть прошлый FINALIZED
+ * визит у этого врача и текущая запись ещё в DRAFT. Не автоматом — врач
+ * решает кнопкой.
+ */
+function CopyForwardCard({
+  previous,
+  pending,
+  onApply,
+}: {
+  previous: PreviousVisitRow;
+  pending: boolean;
+  onApply: () => void;
+}) {
+  const t = useTranslations("doctor.reception");
+  const fmt = useFormatter();
+  const date = previous.finalizedAt ? new Date(previous.finalizedAt) : null;
+  const rxCount = previous.visitPrescriptions.length;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <HistoryIcon className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">
+            {date
+              ? t("copyForward.title", {
+                  date: fmt.dateTime(date, {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  }),
+                })
+              : t("copyForward.titleNoDate")}
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {previous.diagnosisCode && (
+              <span className="font-mono font-semibold text-primary/80">
+                {previous.diagnosisCode}{" "}
+              </span>
+            )}
+            {previous.diagnosisName ?? "—"}
+            {rxCount > 0 && (
+              <span> · {t("copyForward.rxCount", { count: rxCount })}</span>
+            )}
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={onApply}
+        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-primary/30 bg-card px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+      >
+        <CopyPlusIcon className="size-3" />
+        {t("copyForward.button")}
+      </button>
+    </div>
+  );
+}
+
 function ChipFieldCard({
   def,
   value,
   presets,
   disabled,
+  carried,
   onChange,
   onPresetClick,
   onRemoveChip,
@@ -510,6 +652,7 @@ function ChipFieldCard({
   value: string[];
   presets: DoctorPresetRow[];
   disabled: boolean;
+  carried?: Set<string>;
   onChange: (next: string[]) => void;
   onPresetClick: (preset: DoctorPresetRow) => void;
   onRemoveChip: (chip: string) => void;
@@ -597,6 +740,7 @@ function ChipFieldCard({
           <Chip
             key={chip}
             label={chip}
+            fromPast={carried?.has(chip) ?? false}
             onRemove={disabled ? undefined : () => onRemoveChip(chip)}
           />
         ))}
@@ -639,18 +783,23 @@ function ChipFieldCard({
 
 function Chip({
   label,
+  fromPast,
   onRemove,
 }: {
   label: string;
+  fromPast?: boolean;
   onRemove?: () => void;
 }) {
   const t = useTranslations("doctor.reception");
   return (
     <span
+      title={fromPast ? t("copyForward.carried") : undefined}
       className={cn(
         "inline-flex h-6 items-center gap-0.5 rounded-md border border-primary/20 bg-primary/10 px-1.5 text-[11px] font-medium text-primary",
+        fromPast && "border-dashed border-primary/50 bg-primary/5",
       )}
     >
+      {fromPast && <HistoryIcon className="size-2.5 text-primary/60" />}
       {label}
       {onRemove && (
         <button
@@ -798,6 +947,30 @@ function DiagnosisCard({
   const hits = useIcd10Search(query);
   const protocolsQuery = useClinicalProtocols(note.diagnosisCode);
   const protocols = protocolsQuery.data ?? [];
+  // Ф7 — «в хронические»: один клик копирует диагноз в карточку пациента.
+  const chronic = useAddChronicCondition(note.patientId);
+  const [chronicSaved, setChronicSaved] = React.useState(false);
+  React.useEffect(() => {
+    setChronicSaved(false);
+  }, [note.diagnosisCode]);
+
+  const handleToChronic = () => {
+    const name = note.diagnosisName ?? note.diagnosisCode;
+    if (!name) return;
+    chronic.mutate(
+      {
+        name,
+        notes: note.diagnosisCode ? `МКБ-10: ${note.diagnosisCode}` : null,
+      },
+      {
+        onSuccess: () => {
+          setChronicSaved(true);
+          toast.success(t("diagnosis.toChronicDone"));
+        },
+        onError: () => toast.error(t("diagnosis.toChronicError")),
+      },
+    );
+  };
 
   const rows = hits.data ?? [];
 
@@ -867,7 +1040,7 @@ function DiagnosisCard({
                 </button>
               )}
             </div>
-            {!disabled && protocols.length > 0 && (
+            {!disabled && (
               <div className="flex flex-wrap gap-1.5">
                 {protocols.map((p) => (
                   <button
@@ -884,6 +1057,22 @@ function DiagnosisCard({
                     </span>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  disabled={chronic.isPending || chronicSaved}
+                  onClick={handleToChronic}
+                  title={t("diagnosis.toChronicTitle")}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-60"
+                >
+                  {chronic.isPending ? (
+                    <Loader2Icon className="size-3 animate-spin" />
+                  ) : (
+                    <HeartPulseIcon className="size-3" />
+                  )}
+                  {chronicSaved
+                    ? t("diagnosis.toChronicDone")
+                    : t("diagnosis.toChronic")}
+                </button>
               </div>
             )}
           </>

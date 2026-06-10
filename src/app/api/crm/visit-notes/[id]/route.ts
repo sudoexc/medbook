@@ -93,6 +93,8 @@ export const PATCH = createApiHandler(
     }
     if (body.followUpDays !== undefined) data.followUpDays = body.followUpDays;
     if (body.followUpNote !== undefined) data.followUpNote = body.followUpNote;
+    if (body.dynamics !== undefined) data.dynamics = body.dynamics;
+    if (body.dynamicsNote !== undefined) data.dynamicsNote = body.dynamicsNote;
 
     const changedFields = Object.keys(data);
     const rxRows = body.visitPrescriptions;

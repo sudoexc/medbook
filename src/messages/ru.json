@@ -5624,7 +5624,11 @@
         "searchPlaceholder": "Поиск по МКБ-10…",
         "reset": "Сбросить",
         "applyProtocolTitle": "Применить протокол",
-        "applyStandard": "Применить стандарт"
+        "applyStandard": "Применить стандарт",
+        "toChronic": "В хронические",
+        "toChronicDone": "Добавлено в хронические",
+        "toChronicError": "Не удалось сохранить",
+        "toChronicTitle": "Добавить диагноз в хронические заболевания пациента"
       },
       "guide": {
         "title": "База знаний",
@@ -5666,6 +5670,9 @@
         "errorFallback": "неизвестная ошибка",
         "cancel": "Отмена",
         "save": "Сохранить",
+        "recordAllergy": "Записать аллергию",
+        "allergySubstancePlaceholder": "Вещество (МНН) или препарат…",
+        "allergySaved": "Аллергия записана: {substance}",
         "severity": {
           "contraindicated": "Противопоказано",
           "major": "Серьёзное",
@@ -5678,6 +5685,11 @@
           "ALTERNATIVES_TRIED": "Альтернативы пробовали",
           "FALSE_POSITIVE": "Ложное срабатывание",
           "OTHER": "Другое"
+        },
+        "allergySeverity": {
+          "MILD": "Лёгкая",
+          "MODERATE": "Средняя",
+          "SEVERE": "Тяжёлая"
         }
       },
       "rx": {
@@ -5712,6 +5724,23 @@
         "duration": "Длительность, дн.",
         "instruction": "Как принимать",
         "instructionPlaceholder": "Текст для памятки пациенту…"
+      },
+      "copyForward": {
+        "title": "Прошлый визит — {date}",
+        "titleNoDate": "Прошлый визит",
+        "button": "Продолжить от прошлого визита",
+        "applied": "Скопировано из прошлого визита",
+        "nothingToCopy": "Нечего копировать — всё уже в записи",
+        "carried": "Из прошлого визита",
+        "rxCount": "{count} назнач."
+      },
+      "dynamics": {
+        "label": "Динамика",
+        "sinceDate": "с визита {date}",
+        "improved": "Улучшение",
+        "stable": "Стабильно",
+        "worse": "Ухудшение",
+        "notePlaceholder": "Комментарий к динамике…"
       }
     },
     "receptionDialogs": {

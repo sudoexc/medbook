@@ -1,18 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
   FilesIcon,
   HistoryIcon,
   Loader2Icon,
+  MinusIcon,
   PhoneIcon,
   PrinterIcon,
   SquareCheckIcon,
+  TrendingDownIcon,
+  TrendingUpIcon,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +29,14 @@ import {
 } from "@/components/ui/dialog";
 
 import { useReceptionContext } from "../_hooks/reception-context";
-import { useFinalizeVisitNote, useVisitNote } from "../_hooks/use-visit-note";
+import { usePreviousVisit } from "../_hooks/use-previous-visit";
+import {
+  useFinalizeVisitNote,
+  usePatchVisitNote,
+  useVisitNote,
+  type VisitNotePatch,
+  type VisitNoteRow,
+} from "../_hooks/use-visit-note";
 
 function ageFromBirth(iso: string | null | undefined): number | null {
   if (!iso) return null;
@@ -77,6 +88,9 @@ export function ActivePatientCard() {
   const router = useRouter();
   const noteQuery = useVisitNote(visitNoteId);
   const finalize = useFinalizeVisitNote(visitNoteId);
+  const patch = usePatchVisitNote(visitNoteId);
+  const previousQuery = usePreviousVisit(visitNoteId);
+  const previous = previousQuery.data ?? null;
   const elapsed = useElapsed(activeAppointment?.startedAt ?? null);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
@@ -221,6 +235,15 @@ export function ActivePatientCard() {
         </div>
       )}
 
+      {note && previous && (!isFinalized || note.dynamics) && (
+        <DynamicsRow
+          note={note}
+          previousFinalizedAt={previous.finalizedAt}
+          disabled={isFinalized}
+          onChange={(p) => patch.mutate(p)}
+        />
+      )}
+
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-4">
         <span
           title={
@@ -343,6 +366,117 @@ export function ActivePatientCard() {
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+const DYNAMICS_OPTIONS = [
+  {
+    value: "IMPROVED",
+    labelKey: "dynamics.improved",
+    Icon: TrendingUpIcon,
+    activeCls: "border-success/40 bg-success/10 text-success",
+  },
+  {
+    value: "STABLE",
+    labelKey: "dynamics.stable",
+    Icon: MinusIcon,
+    activeCls: "border-border bg-muted text-foreground",
+  },
+  {
+    value: "WORSE",
+    labelKey: "dynamics.worse",
+    Icon: TrendingDownIcon,
+    activeCls: "border-destructive/40 bg-destructive/10 text-destructive",
+  },
+] as const;
+
+/**
+ * Ф7 — динамика vs прошлый визит. Сегмент-контрол показывается только когда
+ * у пациента есть прошлый FINALIZED визит у этого врача; печатается строкой
+ * «Динамика: улучшение» в заключении.
+ */
+function DynamicsRow({
+  note,
+  previousFinalizedAt,
+  disabled,
+  onChange,
+}: {
+  note: VisitNoteRow;
+  previousFinalizedAt: string | null;
+  disabled: boolean;
+  onChange: (patch: VisitNotePatch) => void;
+}) {
+  const t = useTranslations("doctor.reception");
+  const fmt = useFormatter();
+  const [noteDraft, setNoteDraft] = React.useState(note.dynamicsNote ?? "");
+
+  React.useEffect(() => {
+    setNoteDraft(note.dynamicsNote ?? "");
+  }, [note.dynamicsNote]);
+
+  const commitNote = () => {
+    const v = noteDraft.trim();
+    if (v === (note.dynamicsNote ?? "")) return;
+    onChange({ dynamicsNote: v || null });
+  };
+
+  const prevDate = previousFinalizedAt ? new Date(previousFinalizedAt) : null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-5 py-3">
+      <div className="inline-flex items-center gap-1.5 text-sm">
+        <span className="font-semibold text-foreground">
+          {t("dynamics.label")}
+        </span>
+        {prevDate && (
+          <span className="text-xs text-muted-foreground">
+            {t("dynamics.sinceDate", {
+              date: fmt.dateTime(prevDate, { day: "numeric", month: "long" }),
+            })}
+          </span>
+        )}
+      </div>
+      <div className="inline-flex items-center gap-1">
+        {DYNAMICS_OPTIONS.map(({ value, labelKey, Icon, activeCls }) => {
+          const active = note.dynamics === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange({ dynamics: active ? null : value })}
+              className={cn(
+                "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-60",
+                active
+                  ? activeCls
+                  : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <Icon className="size-3" />
+              {t(labelKey)}
+            </button>
+          );
+        })}
+      </div>
+      {note.dynamics && (
+        <input
+          type="text"
+          disabled={disabled}
+          value={noteDraft}
+          maxLength={500}
+          onChange={(e) => setNoteDraft(e.target.value)}
+          onBlur={commitNote}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitNote();
+            }
+          }}
+          placeholder={t("dynamics.notePlaceholder")}
+          className="h-7 min-w-[220px] flex-1 rounded-md border border-border bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+        />
+      )}
+    </div>
   );
 }
 

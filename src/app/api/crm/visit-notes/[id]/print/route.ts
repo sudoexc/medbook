@@ -27,10 +27,15 @@ import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 import {
+  diffTreatments,
+  formatTreatmentDiff,
+} from "@/lib/catalogs/treatment-diff";
+import {
   buildMedicationGrid,
   renderHandoutHtml,
   renderMedicationGridHtml,
 } from "@/server/visit-notes/render-handout";
+import { findPreviousFinalizedVisit } from "@/server/visit-notes/previous-visit";
 
 function idFromUrl(request: Request): string {
   // /api/crm/visit-notes/[id]/print — id is segment[-2].
@@ -222,6 +227,11 @@ export const GET = createApiListHandler(
             referralReason: "Yoʻllanma sababi",
             packageTitle: "Hujjatlar toʻplami",
             followUp: "Nazorat tashrifi",
+            dynamics: "Dinamika",
+            dynamicsImproved: "Yaxshilanish",
+            dynamicsStable: "Barqaror",
+            dynamicsWorse: "Yomonlashish",
+            treatmentChanges: "Davolashdagi oʻzgarishlar",
           }
         : {
             title: "Заключение по приёму",
@@ -259,6 +269,11 @@ export const GET = createApiListHandler(
             referralReason: "Причина направления",
             packageTitle: "Пакет документов",
             followUp: "Контрольный визит",
+            dynamics: "Динамика",
+            dynamicsImproved: "Улучшение",
+            dynamicsStable: "Стабильно",
+            dynamicsWorse: "Ухудшение",
+            treatmentChanges: "Изменения в лечении",
           };
 
     const patientGender =
@@ -360,6 +375,43 @@ export const GET = createApiListHandler(
               : `через ${note.followUpDays} дн. · ≈ ${dateStr}`;
           })()
         : null;
+
+    // ── Ф7 — динамика + детерминированный дифф лечения ────────────────
+    const dynamicsValue =
+      note.dynamics === "IMPROVED"
+        ? labels.dynamicsImproved
+        : note.dynamics === "STABLE"
+          ? labels.dynamicsStable
+          : note.dynamics === "WORSE"
+            ? labels.dynamicsWorse
+            : null;
+    const dynamicsSection = dynamicsValue
+      ? `<section class="block">
+      <h3>${escapeHtml(labels.dynamics)}</h3>
+      <div><strong>${escapeHtml(dynamicsValue)}</strong>${note.dynamicsNote?.trim() ? ` — ${escapeHtml(note.dynamicsNote.trim())}` : ""}</div>
+    </section>`
+      : "";
+
+    // Дифф считается против прошлого FINALIZED визита того же врача; для
+    // легаси-визитов без структурных строк не печатаем шум «всё добавлено».
+    const previousVisit = await findPreviousFinalizedVisit(note);
+    const diffLines =
+      previousVisit && previousVisit.visitPrescriptions.length > 0
+        ? formatTreatmentDiff(
+            diffTreatments(
+              previousVisit.visitPrescriptions,
+              note.visitPrescriptions,
+            ),
+            locale,
+          )
+        : [];
+    const treatmentDiffSection =
+      diffLines.length > 0
+        ? `<section class="block">
+      <h3>${escapeHtml(labels.treatmentChanges)}</h3>
+      ${renderChips(diffLines)}
+    </section>`
+        : "";
 
     // ── Ф5 fragments shared by all print types ────────────────────────
     const medGridTable =
@@ -516,6 +568,15 @@ export const GET = createApiListHandler(
       ? `<section><h2 class="md-h2">${escapeHtml(labels.followUp)}</h2><p><strong>${escapeHtml(followUpLine)}</strong></p></section>`
       : "";
 
+    // Ф7 — дифф рендерится при печати (как сетка приёма), а не вшивается в
+    // markdown памятки: данные всегда свежие, двойной печати не бывает.
+    const handoutDiffSection =
+      diffLines.length > 0
+        ? `<section><h2 class="md-h2">${escapeHtml(labels.treatmentChanges)}</h2><ul class="md-list">${diffLines
+            .map((l) => `<li>${escapeHtml(l)}</li>`)
+            .join("")}</ul></section>`
+        : "";
+
     const handoutInner = `${renderHeader(escapeHtml(handoutLabels.title))}
 
     <div class="quick-meta">
@@ -527,6 +588,8 @@ export const GET = createApiListHandler(
     <article>${handoutBody}</article>
 
     ${handoutGridSection}
+
+    ${handoutDiffSection}
 
     ${handoutFollowUpSection}
 
@@ -741,6 +804,8 @@ export const GET = createApiListHandler(
       <div>${diagnosisLine}</div>
     </section>
 
+    ${dynamicsSection}
+
     <section class="block">
       <h3>${escapeHtml(labels.complaints)}</h3>
       ${renderChips(note.complaints)}
@@ -767,6 +832,8 @@ export const GET = createApiListHandler(
     </section>
 
     ${clinicalGridSection}
+
+    ${treatmentDiffSection}
 
     <section class="block">
       <h3>${escapeHtml(labels.advice)}</h3>

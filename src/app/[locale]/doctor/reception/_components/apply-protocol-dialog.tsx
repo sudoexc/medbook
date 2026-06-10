@@ -1,18 +1,21 @@
 "use client";
 
 /**
- * Phase G2 — protocol apply dialog.
+ * Phase G2 / Ф3 — protocol apply dialog.
  *
  * Shows the protocol's full bundle (complaints/anamnesis/exam/prescriptions/
  * advice + recommended labs + conclusion preview) before the doctor commits.
- * On confirm: merges each template array into the corresponding visit-note
- * field (preserving existing chips, no duplicates), and appends the
- * conclusion markdown to the editor body via the reception body-append
- * channel.
+ * Ф3: structured `prescriptionItems` render via the shared line formatter;
+ * the legacy free-text lines show only when there are no structured items —
+ * mirroring the apply semantics. On confirm: merges each template array into
+ * the corresponding visit-note field (preserving existing chips, no
+ * duplicates), appends structured rows to the prescription constructor, and
+ * appends the conclusion markdown to the editor body.
  */
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
+  CalendarClockIcon,
   CheckIcon,
   ClipboardListIcon,
   FileTextIcon,
@@ -33,8 +36,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
 
-import type { ClinicalProtocolRow } from "../_hooks/use-clinical-protocols";
+import {
+  protocolItemToDraft,
+  type ClinicalProtocolRow,
+} from "../_hooks/use-clinical-protocols";
 
 type Props = {
   open: boolean;
@@ -50,7 +57,13 @@ export function ApplyProtocolDialog({
   onApply,
 }: Props) {
   const t = useTranslations("doctor.receptionDialogs");
+  const locale = useLocale() === "uz" ? "uz" : "ru";
   if (!protocol) return null;
+
+  const items = protocol.prescriptionItems ?? [];
+  const itemLines = items.map((it) =>
+    formatPrescriptionLine(protocolItemToDraft(it), locale),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -72,9 +85,20 @@ export function ApplyProtocolDialog({
                 </DialogDescription>
               )}
             </div>
-            <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold text-muted-foreground">
-              {protocol.diagnosisCodePrefix}
-            </span>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold text-muted-foreground">
+                {protocol.diagnosisCodePrefix}
+              </span>
+              {protocol.doctorId ? (
+                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  {t("applyProtocol.scopePersonal")}
+                </span>
+              ) : protocol.clinicId ? (
+                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  {t("applyProtocol.scopeClinic")}
+                </span>
+              ) : null}
+            </div>
           </div>
         </DialogHeader>
 
@@ -94,11 +118,20 @@ export function ApplyProtocolDialog({
             label={t("applyProtocol.sections.examination")}
             items={protocol.examinationTemplate}
           />
-          <PreviewSection
-            Icon={PillIcon}
-            label={t("applyProtocol.sections.prescriptions")}
-            items={protocol.prescriptionsTemplate}
-          />
+          {itemLines.length > 0 ? (
+            <PreviewSection
+              Icon={PillIcon}
+              label={t("applyProtocol.sections.rxItems")}
+              items={itemLines}
+              hint={t("applyProtocol.rxItemsHint")}
+            />
+          ) : (
+            <PreviewSection
+              Icon={PillIcon}
+              label={t("applyProtocol.sections.prescriptions")}
+              items={protocol.prescriptionsTemplate}
+            />
+          )}
           <PreviewSection
             Icon={WandSparklesIcon}
             label={t("applyProtocol.sections.advice")}
@@ -111,6 +144,12 @@ export function ApplyProtocolDialog({
               items={protocol.recommendedLabs}
               hint={t("applyProtocol.labsHint")}
             />
+          ) : null}
+          {protocol.followUpDays ? (
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
+              <CalendarClockIcon className="size-3" />
+              {t("applyProtocol.followUp", { days: protocol.followUpDays })}
+            </div>
           ) : null}
           {protocol.conclusionTemplateMd ? (
             <div>

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
+  BookmarkPlusIcon,
   ClipboardListIcon,
   FileTextIcon,
   FlaskConicalIcon,
@@ -30,6 +31,7 @@ import {
 } from "../_hooks/use-doctor-presets";
 import { useIcd10Search } from "../_hooks/use-icd10";
 import {
+  protocolItemToDraft,
   useClinicalProtocols,
   type ClinicalProtocolRow,
 } from "../_hooks/use-clinical-protocols";
@@ -51,6 +53,7 @@ import {
 } from "./prescription-constructor";
 import { LabOrderDialog } from "./lab-order-dialog";
 import { ReferralDialog } from "./referral-dialog";
+import { SaveProtocolDialog } from "./save-protocol-dialog";
 import { SickLeaveDialog } from "./sick-leave-dialog";
 
 type ArrayKey =
@@ -127,6 +130,7 @@ export function StructuredFieldsPanel() {
   const [referOpen, setReferOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
+  const [saveProtocolOpen, setSaveProtocolOpen] = React.useState(false);
 
   const applyPatch = React.useCallback(
     (p: VisitNotePatch) => {
@@ -212,19 +216,37 @@ export function StructuredFieldsPanel() {
         }
         return out;
       };
-      applyPatch({
+      const patch: VisitNotePatch = {
         complaints: mergeUnique(note.complaints ?? [], protocol.complaintsTemplate),
         anamnesis: mergeUnique(note.anamnesis ?? [], protocol.anamnesisTemplate),
         examination: mergeUnique(
           note.examination ?? [],
           protocol.examinationTemplate,
         ),
-        prescriptions: mergeUnique(
+        advice: mergeUnique(note.advice ?? [], protocol.adviceTemplate),
+      };
+      // Ф3 — structured items append to the prescription constructor
+      // (dedup by name+dose so a double-apply is a no-op); the legacy
+      // free-text lines are the fallback for protocols that predate it.
+      const items = (protocol.prescriptionItems ?? []).map(protocolItemToDraft);
+      if (items.length > 0) {
+        const existing = (note.visitPrescriptions ?? []).map(
+          ({ id: _id, sortOrder: _s, ...rest }) => rest,
+        );
+        const seen = new Set(existing.map((r) => `${r.displayName}|${r.dose}`));
+        const fresh = items.filter(
+          (r) => !seen.has(`${r.displayName}|${r.dose}`),
+        );
+        if (fresh.length > 0) {
+          patch.visitPrescriptions = [...existing, ...fresh];
+        }
+      } else {
+        patch.prescriptions = mergeUnique(
           note.prescriptions ?? [],
           protocol.prescriptionsTemplate,
-        ),
-        advice: mergeUnique(note.advice ?? [], protocol.adviceTemplate),
-      });
+        );
+      }
+      applyPatch(patch);
       if (protocol.conclusionTemplateMd && protocol.conclusionTemplateMd.trim()) {
         requestBodyAppend(protocol.conclusionTemplateMd);
       }
@@ -315,6 +337,17 @@ export function StructuredFieldsPanel() {
                 {t("structured.refer")}
               </button>
             </>
+          )}
+          {note && (
+            <button
+              type="button"
+              onClick={() => setSaveProtocolOpen(true)}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={t("structured.saveProtocolTitle")}
+            >
+              <BookmarkPlusIcon className="size-3" />
+              {t("structured.saveProtocol")}
+            </button>
           )}
         </div>
       </div>
@@ -439,6 +472,12 @@ export function StructuredFieldsPanel() {
         }}
         protocol={protocolToApply}
         onApply={handleApplyProtocol}
+      />
+
+      <SaveProtocolDialog
+        open={saveProtocolOpen}
+        onOpenChange={setSaveProtocolOpen}
+        note={note}
       />
     </section>
   );

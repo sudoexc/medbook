@@ -5459,7 +5459,9 @@
         "add": "Qo‘shish",
         "presetTitle": "Shablondan qo‘shish",
         "presetTitleWithTemplate": "Protokol shablonidan qo‘shish",
-        "remove": "O‘chirish"
+        "remove": "O‘chirish",
+        "saveProtocol": "Protokolga",
+        "saveProtocolTitle": "Qabulni shaxsiy protokol sifatida saqlash"
       },
       "diagnosis": {
         "title": "Tashxis",
@@ -5575,8 +5577,13 @@
           "examination": "Ko‘rik",
           "prescriptions": "Tayinlovlar",
           "advice": "Tavsiyalar",
-          "recommendedLabs": "Tavsiya etilgan tahlillar"
-        }
+          "recommendedLabs": "Tavsiya etilgan tahlillar",
+          "rxItems": "Tayinlovlar (konstruktor)"
+        },
+        "rxItemsHint": "Qatorlar tayinlovlar konstruktoriga qo‘shiladi",
+        "followUp": "Nazorat {days} kundan keyin",
+        "scopePersonal": "Shaxsiy",
+        "scopeClinic": "Klinika"
       },
       "catalog": {
         "title": "Dorilar katalogi",
@@ -5786,6 +5793,18 @@
             "hint": "qat’iy tartib"
           }
         }
+      },
+      "saveProtocol": {
+        "title": "Protokol sifatida saqlash",
+        "description": "Joriy yozuv shaxsiy protokolingizga aylanadi: shu tashxisda hammasi bir tugma bilan qo‘llanadi.",
+        "nameLabel": "Protokol nomi",
+        "namePlaceholder": "Masalan: Migren — asosiy sxema",
+        "prefixLabel": "XKT-10 kodi (prefiks)",
+        "prefixHint": "Shu prefiks bilan boshlanadigan barcha kodlar uchun ishlaydi",
+        "empty": "Yozuv bo‘sh — saqlash uchun hech narsa yo‘q",
+        "success": "Protokol saqlandi",
+        "successHint": "{prefix} tashxisida «Standartni qo‘llash» tugmasi paydo bo‘ladi",
+        "save": "Saqlash"
       }
     },
     "patients": {

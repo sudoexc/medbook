@@ -996,10 +996,19 @@ model DrugBrand {
 //
 // Match is by `diagnosisCodePrefix` against the chosen ICD-10 code — "I10"
 // matches all I10.* subcodes. Higher specificity wins (longer prefix first).
-// Curated globally for now; per-clinic overrides ride in via the same overlay
-// table planned in G6.
+//
+// Ф3 (TZ-smart-constructor) — three ownership scopes via nullable columns
+// (same cross-tenant pattern as DiagnosisGuide; listed in
+// MODELS_WITHOUT_TENANT, routes scope manually):
+//   clinicId null + doctorId null  → curated global seed
+//   clinicId set  + doctorId null  → clinic-own (ADMIN manages)
+//   clinicId set  + doctorId set   → doctor-personal («сохранить как протокол»)
+// Apply priority: personal → clinic → global; within a scope longest
+// prefix, then sortOrder.
 model ClinicalProtocol {
   id                    String   @id @default(cuid())
+  clinicId              String?
+  doctorId              String?
   /**
    * ICD-10 prefix this protocol activates for, e.g. "I10", "E11", "K21".
    */
@@ -1020,9 +1029,18 @@ model ClinicalProtocol {
   anamnesisTemplate     String[] @default([])
   examinationTemplate   String[] @default([])
   /**
-   * Free-text lines (e.g. "Бисопролол 5 мг — по 1 таб утром").
+   * Legacy free-text lines (e.g. "Бисопролол 5 мг — по 1 таб утром").
+   * Fallback only — used when `prescriptionItems` is empty (Ф3).
    */
   prescriptionsTemplate String[] @default([])
+  /**
+   * Ф3 — structured prescription drafts, the VisitPrescriptionDraft shape:
+   * [{drugId?, displayName, form?, strength?, dose, timesOfDay[],
+   *   mealRelation, durationDays?, instructionRu?, instructionUz?,
+   *   remindPatient}]. Applying a protocol appends these as
+   * VisitPrescription rows; «сохранить как протокол» writes them back.
+   */
+  prescriptionItems     Json?
   adviceTemplate        String[] @default([])
   /**
    * Lab order codes — populated in G3 when LabTest catalog lands.
@@ -1033,6 +1051,14 @@ model ClinicalProtocol {
    */
   conclusionTemplateMd  String?
   /**
+   * Ф3 — link to the DiagnosisGuide this protocol pairs with (guide.code).
+   */
+  guideCode             String?
+  /**
+   * Ф3 — suggested follow-up interval surfaced on apply.
+   */
+  followUpDays          Int?
+  /**
    * Sort hint when multiple protocols share a prefix.
    */
   sortOrder             Int      @default(0)
@@ -1041,6 +1067,8 @@ model ClinicalProtocol {
   updatedAt             DateTime @updatedAt
 
   @@index([diagnosisCodePrefix, active])
+  @@index([clinicId, active])
+  @@index([doctorId, active])
 }
 
 // Phase G5 — patient handout library. Curated Markdown snippets the doctor

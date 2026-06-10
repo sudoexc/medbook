@@ -32,6 +32,26 @@ export const MODELS_WITHOUT_TENANT: ReadonlySet<string> = new Set([
   // clinic-own rows. Routes filter `clinicId IN (null, ctx.clinicId)`
   // manually; auto-injection would hide every global guide.
   "DiagnosisGuide",
+  // Ф3 fix: these G1–G5 global catalogs never had a clinicId column, but
+  // were missing here — so under a TENANT context the extension injected
+  // `clinicId` into `where`, Prisma rejected the unknown argument and every
+  // catalog route 500'd (the UIs degrade to empty states, which is why it
+  // went unnoticed). Keep ALL no-clinicId models listed; the invariant is
+  // pinned by tests/unit/tenant-allowlist.test.ts.
+  "Plan",
+  "ClinicSignupToken",
+  "Drug",
+  "DrugInteraction",
+  "DrugBrand",
+  // Cross-tenant by design since Ф3 (global seed + clinic + personal rows,
+  // scoped manually in routes — same pattern as DiagnosisGuide).
+  "ClinicalProtocol",
+  "HandoutTemplate",
+  // Keyed by doctorId — tenancy implied by the Doctor row.
+  "DoctorFavorite",
+  "LabTest",
+  "LabPanel",
+  "LabPanelTest",
 ]);
 
 /**

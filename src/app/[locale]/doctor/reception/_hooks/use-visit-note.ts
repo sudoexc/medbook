@@ -11,6 +11,7 @@ export type VisitNoteRow = {
   status: "DRAFT" | "FINALIZED";
   startedAt: string | null;
   finalizedAt: string | null;
+  documentNumber: string | null;
   complaints: string[];
   anamnesis: string[];
   examination: string[];

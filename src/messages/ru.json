@@ -3203,6 +3203,7 @@
       "sections": {
         "info": "Основное",
         "locale": "Локаль и рабочий день",
+        "documents": "Документы и печать",
         "patientExperience": "Опыт пациента",
         "secrets": "Секреты и токены"
       },
@@ -3233,7 +3234,12 @@
         "referralRewardPercent": "Скидка для реферера, %",
         "referralRewardPercentHint": "Скидка применяется к следующему визиту реферера после первого визита приведённого друга. 0 — отключено.",
         "medicationRemindersEnabled": "Напоминания о лекарствах",
-        "medicationRemindersEnabledHint": "Включает почасовой воркер: рассылает push-уведомления по графику приёма из карточки случая."
+        "medicationRemindersEnabledHint": "Включает почасовой воркер: рассылает push-уведомления по графику приёма из карточки случая.",
+        "documentNumberPrefix": "Префикс номера документа",
+        "documentNumberPrefixHint": "Например NF — заключения получат номера вида NF-2026-000123. Пусто — префикс из адреса клиники (slug).",
+        "letterhead": "Фирменный бланк (шапка)",
+        "letterheadHint": "PNG, SVG или JPEG до 512 КБ. Печатается в шапке заключений вместо текстового заголовка.",
+        "letterheadRemove": "Убрать бланк"
       },
       "secretsHint": "Изменения токенов и секретов требуют ввод текущего пароля. Пустое поле — не менять.",
       "saveSecrets": "Сохранить секреты",
@@ -5310,7 +5316,16 @@
         "print": "Печать",
         "visitMode": "Режим визита",
         "modeFinished": "завершён",
-        "modeActive": "активен"
+        "modeActive": "активен",
+        "finalizeNeedsDiagnosis": "Финализация недоступна: укажите диагноз",
+        "confirmEmptyTitle": "Завершить визит с пустыми разделами?",
+        "confirmEmptyHint": "Эти разделы останутся пустыми в заключении:",
+        "confirmEmptyConfirm": "Завершить всё равно",
+        "confirmEmptyCancel": "Вернуться к приёму",
+        "emptyComplaints": "Жалобы",
+        "emptyAdvice": "Рекомендации",
+        "emptyHandout": "Памятка пациента",
+        "docNumber": "№ заключения"
       },
       "recentFiles": {
         "title": "Недавние файлы",

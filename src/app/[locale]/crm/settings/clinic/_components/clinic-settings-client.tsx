@@ -3,7 +3,13 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { SaveIcon, ShieldCheckIcon } from "lucide-react";
+import {
+  FileTextIcon,
+  Loader2Icon,
+  SaveIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageContainer } from "@/components/molecules/page-container";
@@ -47,6 +53,9 @@ type ClinicRow = {
   require2faForAll: boolean;
   sessionIdleTimeoutMinutes: number;
   planSlug: "basic" | "pro" | "enterprise" | string;
+  // Ф0 (TZ-smart-constructor) — printed-document settings.
+  letterheadUrl: string | null;
+  documentNumberPrefix: string | null;
 };
 
 const TIMEZONES = ["Asia/Tashkent", "Asia/Samarkand"];
@@ -100,6 +109,46 @@ export function ClinicSettingsClient() {
   } | null>(null);
   const [pwOpen, setPwOpen] = React.useState(false);
 
+  // Ф0 — letterhead travels as multipart, so raw fetch (the browser must set
+  // the boundary; settingsFetch pins content-type to JSON).
+  const letterheadUpload = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("letterhead", file);
+      const res = await fetch("/api/crm/settings/letterhead", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { letterheadUrl: string };
+    },
+    onSuccess: ({ letterheadUrl }) => {
+      setForm((f) => (f ? { ...f, letterheadUrl } : f));
+      toast.success(t("common.saved"));
+      qc.invalidateQueries({ queryKey: ["settings", "clinic"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const letterheadRemove = useMutation({
+    mutationFn: () =>
+      settingsFetch<{ letterheadUrl: null }>("/api/crm/settings/letterhead", {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      setForm((f) => (f ? { ...f, letterheadUrl: null } : f));
+      toast.success(t("common.saved"));
+      qc.invalidateQueries({ queryKey: ["settings", "clinic"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (clinicQuery.isLoading || !form) {
     return (
       <PageContainer>
@@ -149,6 +198,10 @@ export function ClinicSettingsClient() {
     // gets cleared on the next save without touching the schema.
     payload.currency = "UZS";
     payload.secondaryCurrency = null;
+    // Ф0 — empty prefix means "derive from slug"; the schema regex rejects
+    // "", so normalise to null here.
+    const prefix = (form.documentNumberPrefix ?? "").trim();
+    payload.documentNumberPrefix = prefix === "" ? null : prefix;
     saveMutation.mutate(payload);
   };
 
@@ -348,6 +401,83 @@ export function ClinicSettingsClient() {
                   setForm({ ...form, brandColor: e.target.value })
                 }
               />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-border bg-card p-5 lg:col-span-2">
+          <div className="flex items-center gap-2">
+            <FileTextIcon className="size-4 text-primary" />
+            <h3 className="text-sm font-semibold">
+              {t("clinic.sections.documents")}
+            </h3>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="documentNumberPrefix">
+                {t("clinic.fields.documentNumberPrefix")}
+              </Label>
+              <Input
+                id="documentNumberPrefix"
+                placeholder="NF"
+                maxLength={12}
+                value={form.documentNumberPrefix ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    documentNumberPrefix: e.target.value
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9-]/g, ""),
+                  })
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("clinic.fields.documentNumberPrefixHint")}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="letterhead">
+                {t("clinic.fields.letterhead")}
+              </Label>
+              {form.letterheadUrl ? (
+                <div className="mt-2 space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={form.letterheadUrl}
+                    alt={t("clinic.fields.letterhead")}
+                    className="max-h-24 w-full rounded-md border border-border bg-white object-contain p-2"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={letterheadRemove.isPending}
+                    onClick={() => letterheadRemove.mutate()}
+                  >
+                    {letterheadRemove.isPending ? (
+                      <Loader2Icon className="size-4 animate-spin" />
+                    ) : (
+                      <Trash2Icon className="size-4" />
+                    )}
+                    {t("clinic.fields.letterheadRemove")}
+                  </Button>
+                </div>
+              ) : null}
+              <Input
+                id="letterhead"
+                type="file"
+                accept="image/png,image/svg+xml,image/jpeg"
+                className="mt-2"
+                disabled={letterheadUpload.isPending}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) letterheadUpload.mutate(file);
+                  e.target.value = "";
+                }}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("clinic.fields.letterheadHint")}
+              </p>
             </div>
           </div>
         </section>

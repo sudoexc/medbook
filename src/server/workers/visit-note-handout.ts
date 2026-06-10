@@ -50,6 +50,7 @@ type SweepNote = {
   appointmentId: string | null;
   status: string;
   patientHandoutMarkdown: string | null;
+  documentNumber: string | null;
   finalizedAt: Date | null;
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string; nameUz: string } | null;
@@ -111,6 +112,7 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     doctorName,
     patientName: note.patient.fullName,
     visitDateLabel,
+    documentNumber: note.documentNumber,
     handoutMarkdown: note.patientHandoutMarkdown ?? "",
     locale,
     generatedAt: now,
@@ -137,6 +139,7 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
       visitNoteId: note.id,
       type: "CONCLUSION",
       title,
+      number: note.documentNumber,
       fileUrl: uploaded.url,
       mimeType: "application/pdf",
       sizeBytes: pdf.length,
@@ -145,6 +148,7 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     update: {
       fileUrl: uploaded.url,
       title,
+      number: note.documentNumber,
       mimeType: "application/pdf",
       sizeBytes: pdf.length,
     },
@@ -173,6 +177,7 @@ export async function runVisitNoteHandoutTick(
         appointmentId: true,
         status: true,
         patientHandoutMarkdown: true,
+        documentNumber: true,
         finalizedAt: true,
         patient: { select: { fullName: true, preferredLang: true } },
         doctor: { select: { nameRu: true, nameUz: true } },

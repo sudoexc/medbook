@@ -367,6 +367,13 @@ model Clinic {
   // outside of schema migrations.
   onboardedAt                DateTime?
   onboardingPlaybook         String?
+  // Smart-constructor Ф0 — printed-document branding. `letterheadUrl` is a
+  // full-width header image for printed conclusions/handouts (fallback: the
+  // text header built from name/address/logo). `documentNumberPrefix` seeds
+  // human-readable document numbers ("NF-2026-000123"); null derives the
+  // prefix from the clinic slug.
+  letterheadUrl              String?
+  documentNumberPrefix       String?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
@@ -378,6 +385,7 @@ model Clinic {
   services                 Service[]
   payments                 Payment[]
   documents                Document[]
+  documentCounters         DocumentCounter[]
   communications           Communication[]
   conversations            Conversation[]
   messages                 Message[]
@@ -1878,6 +1886,11 @@ model VisitNote {
   startedAt   DateTime?
   finalizedAt DateTime?
 
+  // Ф0 — human-readable conclusion number ("NF-2026-000123"), allocated
+  // atomically inside the finalize transaction via DocumentCounter. Printed
+  // in the conclusion header; copied to Document.number by the handout worker.
+  documentNumber String?
+
   // Structured fields. Stored as String[] so chips can be added/removed
   // without rewriting the whole array shape in the editor.
   complaints    String[] @default([])
@@ -1969,6 +1982,22 @@ model Payment {
 // Documents
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Per-clinic, per-year monotonic counters behind human-readable document
+// numbers ("NF-2026-000123"). One row per (clinic, year, kind); allocation is
+// createMany(skipDuplicates) + atomic increment — see
+// src/server/services/document-number.ts.
+model DocumentCounter {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  year      Int
+  kind      String
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([clinicId, year, kind])
+}
+
 model Document {
   id            String       @id @default(cuid())
   clinicId      String
@@ -1988,6 +2017,9 @@ model Document {
   referral      Referral?    @relation(fields: [referralId], references: [id], onDelete: SetNull)
   type          DocumentType
   title         String
+  // Ф0 — human-readable number ("NF-2026-000123"). For CONCLUSION documents
+  // this is copied from VisitNote.documentNumber by the handout worker.
+  number        String?
   fileUrl       String
   mimeType      String?
   sizeBytes     Int?

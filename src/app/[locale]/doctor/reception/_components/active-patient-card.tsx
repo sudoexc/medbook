@@ -14,6 +14,14 @@ import {
 
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import { useFinalizeVisitNote, useVisitNote } from "../_hooks/use-visit-note";
@@ -69,6 +77,7 @@ export function ActivePatientCard() {
   const noteQuery = useVisitNote(visitNoteId);
   const finalize = useFinalizeVisitNote(visitNoteId);
   const elapsed = useElapsed(activeAppointment?.startedAt ?? null);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   if (!activeAppointment) {
     return (
@@ -90,9 +99,32 @@ export function ActivePatientCard() {
   const note = noteQuery.data;
   const isFinalized = note?.status === "FINALIZED";
 
-  const onFinalize = async () => {
+  // Ф0 — finalize gate. No diagnosis → button stays disabled (the API
+  // backstops with 400 DIAGNOSIS_REQUIRED). Empty sections don't block but
+  // must be explicitly confirmed so an empty conclusion is never an accident.
+  const hasDiagnosis = Boolean(note?.diagnosisCode);
+  const emptySections = !note
+    ? []
+    : [
+        note.complaints.length === 0 ? t("activePatient.emptyComplaints") : null,
+        note.advice.length === 0 ? t("activePatient.emptyAdvice") : null,
+        !note.patientHandoutMarkdown?.trim()
+          ? t("activePatient.emptyHandout")
+          : null,
+      ].filter((s): s is string => s !== null);
+
+  const doFinalize = async () => {
     if (!visitNoteId || finalize.isPending || isFinalized) return;
     await finalize.mutateAsync();
+  };
+
+  const onFinalize = async () => {
+    if (!visitNoteId || finalize.isPending || isFinalized || !hasDiagnosis) return;
+    if (emptySections.length > 0) {
+      setConfirmOpen(true);
+      return;
+    }
+    await doFinalize();
   };
 
   const onPrint = () => {
@@ -162,25 +194,49 @@ export function ActivePatientCard() {
               {note.diagnosisCode} · {note.diagnosisName}
             </span>
           </div>
+          {note.documentNumber && (
+            <div className="inline-flex items-center gap-1.5">
+              <span className="font-semibold text-foreground">
+                {t("activePatient.docNumber")}
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {note.documentNumber}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-4">
-        <Button
-          type="button"
-          size="lg"
-          disabled={!visitNoteId || finalize.isPending || isFinalized}
-          onClick={onFinalize}
+        <span
+          title={
+            note && !hasDiagnosis && !isFinalized
+              ? t("activePatient.finalizeNeedsDiagnosis")
+              : undefined
+          }
         >
-          {finalize.isPending ? (
-            <Loader2Icon className="size-4 animate-spin" />
-          ) : (
-            <SquareCheckIcon className="size-4" />
-          )}
-          {isFinalized
-            ? t("activePatient.visitFinished")
-            : t("activePatient.finishVisit")}
-        </Button>
+          <Button
+            type="button"
+            size="lg"
+            disabled={
+              !visitNoteId ||
+              !note ||
+              finalize.isPending ||
+              isFinalized ||
+              !hasDiagnosis
+            }
+            onClick={onFinalize}
+          >
+            {finalize.isPending ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <SquareCheckIcon className="size-4" />
+            )}
+            {isFinalized
+              ? t("activePatient.visitFinished")
+              : t("activePatient.finishVisit")}
+          </Button>
+        </span>
         <Button
           type="button"
           variant="outline"
@@ -221,6 +277,47 @@ export function ActivePatientCard() {
           </div>
         </div>
       </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("activePatient.confirmEmptyTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("activePatient.confirmEmptyHint")}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-1.5">
+            {emptySections.map((section) => (
+              <li
+                key={section}
+                className="flex items-center gap-2 text-sm text-foreground"
+              >
+                <AlertTriangleIcon className="size-4 shrink-0 text-amber-500" />
+                {section}
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              {t("activePatient.confirmEmptyCancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={finalize.isPending}
+              onClick={async () => {
+                setConfirmOpen(false);
+                await doFinalize();
+              }}
+            >
+              {t("activePatient.confirmEmptyConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

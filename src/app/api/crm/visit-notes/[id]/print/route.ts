@@ -112,6 +112,7 @@ export const GET = createApiListHandler(
               addressUz: true,
               phone: true,
               logoUrl: true,
+              letterheadUrl: true,
               brandColor: true,
             },
           })
@@ -167,6 +168,8 @@ export const GET = createApiListHandler(
             genderM: "Erkak",
             genderF: "Ayol",
             aiGenerated: "AI yordamida tayyorlangan",
+            date: "Sana",
+            signature: "Imzo",
           }
         : {
             title: "Заключение по приёму",
@@ -193,6 +196,8 @@ export const GET = createApiListHandler(
             genderM: "Муж.",
             genderF: "Жен.",
             aiGenerated: "Сформировано с участием AI",
+            date: "Дата",
+            signature: "Подпись",
           };
 
     const patientGender =
@@ -217,6 +222,66 @@ export const GET = createApiListHandler(
 
     const generatedAt = new Date();
     const isFinalized = note.status === "FINALIZED";
+
+    // Ф0 — document number (allocated at finalize) + letterhead header.
+    // The letterhead image, when configured, replaces the text header on
+    // every printed artifact; the document title + № move below it.
+    const numberHtml = note.documentNumber
+      ? `<div class="doc-number">№ ${escapeHtml(note.documentNumber)}</div>`
+      : "";
+    const renderHeader = (titleInner: string): string =>
+      clinic?.letterheadUrl
+        ? `<header class="letterhead">
+      <img src="${escapeHtml(clinic.letterheadUrl)}" alt="${escapeHtml(clinicName)}" />
+      <div class="letterhead-row"><h2>${titleInner}</h2>${numberHtml}</div>
+    </header>`
+        : `<header class="header">
+      ${
+        clinic?.logoUrl
+          ? `<img class="logo" src="${escapeHtml(clinic.logoUrl)}" alt="" />`
+          : `<div class="logo" aria-hidden="true"></div>`
+      }
+      <div>
+        <h1 class="clinic-name">${escapeHtml(clinicName)}</h1>
+        <div class="clinic-meta">
+          ${clinicAddress ? escapeHtml(clinicAddress) : ""}
+          ${clinic?.phone ? ` · ${escapeHtml(formatPhone(clinic.phone))}` : ""}
+        </div>
+      </div>
+      <div class="doc-title">
+        <h2>${titleInner}</h2>
+        ${numberHtml}
+      </div>
+    </header>`;
+    const letterheadCss = `
+    .letterhead {
+      border-bottom: 2px solid var(--brand);
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+    }
+    .letterhead img { width: 100%; display: block; }
+    .letterhead-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .letterhead-row h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .doc-number {
+      margin-top: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a1f2e;
+      white-space: nowrap;
+    }`;
 
     // ── Patient-facing handout branch ─────────────────────────────────
     if (printType === "handout") {
@@ -409,6 +474,7 @@ export const GET = createApiListHandler(
       justify-content: space-between;
       gap: 12px;
     }
+    ${letterheadCss}
     @page {
       size: A4 portrait;
       margin: 16mm;
@@ -420,23 +486,7 @@ export const GET = createApiListHandler(
     <button onclick="window.print()">${escapeHtml(handoutLabels.print)}</button>
   </div>
   <div class="page">
-    <header class="header">
-      ${
-        clinic?.logoUrl
-          ? `<img class="logo" src="${escapeHtml(clinic.logoUrl)}" alt="" />`
-          : `<div class="logo" aria-hidden="true"></div>`
-      }
-      <div>
-        <h1 class="clinic-name">${escapeHtml(clinicName)}</h1>
-        <div class="clinic-meta">
-          ${clinicAddress ? escapeHtml(clinicAddress) : ""}
-          ${clinic?.phone ? ` · ${escapeHtml(formatPhone(clinic.phone))}` : ""}
-        </div>
-      </div>
-      <div class="doc-title">
-        <h2>${escapeHtml(handoutLabels.title)}</h2>
-      </div>
-    </header>
+    ${renderHeader(escapeHtml(handoutLabels.title))}
 
     <div class="quick-meta">
       <span>${escapeHtml(handoutLabels.patient)}<strong>${escapeHtml(note.patient.fullName)}</strong></span>
@@ -663,6 +713,7 @@ export const GET = createApiListHandler(
       font-size: 11px;
       color: #525866;
     }
+    ${letterheadCss}
     @page {
       size: A4 portrait;
       margin: 14mm;
@@ -674,23 +725,7 @@ export const GET = createApiListHandler(
     <button onclick="window.print()">${escapeHtml(labels.print)}</button>
   </div>
   <div class="page">
-    <header class="header">
-      ${
-        clinic?.logoUrl
-          ? `<img class="logo" src="${escapeHtml(clinic.logoUrl)}" alt="" />`
-          : `<div class="logo" aria-hidden="true"></div>`
-      }
-      <div>
-        <h1 class="clinic-name">${escapeHtml(clinicName)}</h1>
-        <div class="clinic-meta">
-          ${clinicAddress ? escapeHtml(clinicAddress) : ""}
-          ${clinic?.phone ? ` · ${escapeHtml(formatPhone(clinic.phone))}` : ""}
-        </div>
-      </div>
-      <div class="doc-title">
-        <h2>${escapeHtml(labels.title)}${note.aiGenerated ? `<span class="ai-tag">${escapeHtml(labels.aiGenerated)}</span>` : ""}</h2>
-      </div>
-    </header>
+    ${renderHeader(`${escapeHtml(labels.title)}${note.aiGenerated ? `<span class="ai-tag">${escapeHtml(labels.aiGenerated)}</span>` : ""}`)}
 
     <div class="meta-grid">
       <div class="row"><span class="k">${escapeHtml(labels.patient)}</span><span class="v">${escapeHtml(note.patient.fullName)}</span></div>
@@ -756,8 +791,8 @@ export const GET = createApiListHandler(
     </section>
 
     <div class="signature">
-      <div class="slot">${escapeHtml(labels.doctor)}: ${escapeHtml(doctorName ?? "")}</div>
-      <div class="slot">${escapeHtml(labels.patient)}: ${escapeHtml(note.patient.fullName)}</div>
+      <div class="slot">${escapeHtml(labels.doctor)}: ${escapeHtml(doctorName ?? "")}${doctorSpec ? `, ${escapeHtml(doctorSpec)}` : ""}</div>
+      <div class="slot">${escapeHtml(labels.date)}: ${escapeHtml(formatDate(note.finalizedAt ?? generatedAt, locale, "short"))} · ${escapeHtml(labels.signature)}: ____________</div>
     </div>
 
     <footer>

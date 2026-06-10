@@ -3203,6 +3203,7 @@
       "sections": {
         "info": "Asosiy",
         "locale": "Tilga va ish kuniga sozlash",
+        "documents": "Hujjatlar va chop etish",
         "patientExperience": "Bemor tajribasi",
         "secrets": "Tokenlar va maxfiy sozlamalar"
       },
@@ -3233,7 +3234,12 @@
         "referralRewardPercent": "Referer chegirmasi, %",
         "referralRewardPercentHint": "Kelgan do'stning birinchi tashrifidan keyin refererga keyingi tashrifda chegirma beriladi. 0 — o'chiq.",
         "medicationRemindersEnabled": "Dori eslatmalari",
-        "medicationRemindersEnabledHint": "Soatlik worker yoqiladi: kasalik kartasidagi qabul jadvali bo'yicha push-eslatmalarni yuboradi."
+        "medicationRemindersEnabledHint": "Soatlik worker yoqiladi: kasalik kartasidagi qabul jadvali bo'yicha push-eslatmalarni yuboradi.",
+        "documentNumberPrefix": "Hujjat raqami prefiksi",
+        "documentNumberPrefixHint": "Masalan NF — xulosalar NF-2026-000123 ko'rinishidagi raqam oladi. Bo'sh bo'lsa — prefiks klinika slugidan olinadi.",
+        "letterhead": "Firma blanki (sarlavha)",
+        "letterheadHint": "PNG, SVG yoki JPEG, 512 KB gacha. Xulosalar sarlavhasida matn o'rniga chop etiladi.",
+        "letterheadRemove": "Blankni olib tashlash"
       },
       "secretsHint": "Tokenlar va maxfiy sozlamalarni o'zgartirish uchun joriy parolni kiriting. Bo'sh maydon — o'zgarmaydi.",
       "saveSecrets": "Maxfiy sozlamalarni saqlash",
@@ -5310,7 +5316,16 @@
         "print": "Chop etish",
         "visitMode": "Tashrif rejimi",
         "modeFinished": "yakunlangan",
-        "modeActive": "faol"
+        "modeActive": "faol",
+        "finalizeNeedsDiagnosis": "Yakunlash uchun tashxis kiriting",
+        "confirmEmptyTitle": "Bo‘sh bo‘limlar bilan yakunlaysizmi?",
+        "confirmEmptyHint": "Quyidagi bo‘limlar xulosada bo‘sh qoladi:",
+        "confirmEmptyConfirm": "Baribir yakunlash",
+        "confirmEmptyCancel": "Qabulga qaytish",
+        "emptyComplaints": "Shikoyatlar",
+        "emptyAdvice": "Tavsiyalar",
+        "emptyHandout": "Bemor eslatmasi",
+        "docNumber": "Xulosa №"
       },
       "recentFiles": {
         "title": "So‘nggi fayllar",

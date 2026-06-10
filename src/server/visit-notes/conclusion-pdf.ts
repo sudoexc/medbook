@@ -35,6 +35,8 @@ export interface ConclusionPdfInput {
   patientName: string;
   /** Pre-formatted visit date (+ optional time), localised by the caller. */
   visitDateLabel: string;
+  /** Ф0 — human-readable document number ("NF-2026-000123"), if allocated. */
+  documentNumber?: string | null;
   handoutMarkdown: string;
   locale?: "ru" | "uz";
   generatedAt?: Date;
@@ -164,6 +166,7 @@ export async function renderConclusionPdf(
     doc.fontSize(10).fillColor("#525866").text(`${key}: `, { continued: true });
     doc.fillColor("#1a1f2e").text(value);
   };
+  if (input.documentNumber) metaLine("№", input.documentNumber);
   metaLine(labels.patient, input.patientName);
   if (input.doctorName) metaLine(labels.doctor, input.doctorName);
   metaLine(labels.visitDate, input.visitDateLabel);

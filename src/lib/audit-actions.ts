@@ -447,6 +447,12 @@ export const AUDIT_ACTION = {
   //   row when nothing changed (the PATCH no-ops).
   BRANDING_CHANGED: "BRANDING_CHANGED",
   //
+  //   CLINIC_LETTERHEAD_CHANGED — Ф0 (TZ-smart-constructor): admin uploaded
+  //   or cleared the letterhead shown on printed conclusions. `entityType:
+  //   "Clinic"`, `entityId: <clinicId>`. `meta` carries `{ letterheadUrl }`
+  //   (null when cleared). Not plan-gated, unlike BRANDING_CHANGED.
+  CLINIC_LETTERHEAD_CHANGED: "CLINIC_LETTERHEAD_CHANGED",
+  //
   //   SUPER_ADMIN_IMPERSONATE_STARTED — clinic-switcher cookie set with a
   //   reason + mode. `entityType: "ImpersonationGrant"`, `entityId:
   //   <grantId>`. `meta` carries `{ clinicId, mode, expiresAt, reason }`.

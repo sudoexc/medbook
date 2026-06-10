@@ -49,6 +49,18 @@ export const UpdateClinicSettingsSchema = z.object({
   // Phase 17 Wave 2 — Per-clinic idle-session timeout in minutes. Bound is
   // [5, 240]; 30 is the default.
   sessionIdleTimeoutMinutes: z.number().int().min(5).max(240).optional(),
+  // Ф0 (TZ-smart-constructor) — letterhead image for printed conclusions.
+  // The file itself is uploaded via /api/crm/settings/letterhead; this field
+  // exists so PATCH can clear it and the audit diff records the change.
+  letterheadUrl: z.string().url().optional().nullable(),
+  // Ф0 — clinic prefix for document numbers ("NF-2026-000123"). Empty/null
+  // falls back to a prefix derived from the slug.
+  documentNumberPrefix: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9-]{1,12}$/)
+    .optional()
+    .nullable(),
 });
 
 export type UpdateClinicSettings = z.infer<typeof UpdateClinicSettingsSchema>;

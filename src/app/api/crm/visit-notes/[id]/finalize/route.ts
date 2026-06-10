@@ -17,6 +17,7 @@ import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { allocateDocumentNumber } from "@/server/services/document-number";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -60,15 +61,28 @@ export const POST = createApiHandler(
       return ok({ note, appointment: note.appointment, alreadyFinalized: true });
     }
 
+    // Ф0 — a conclusion without a diagnosis is legally void. Hard gate; the
+    // UI disables the button too, this is the API backstop. Empty sections
+    // (complaints/advice/handout) are allowed but confirmed client-side.
+    if (!note.diagnosisCode) {
+      return err("DIAGNOSIS_REQUIRED", 400);
+    }
+
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
     const actorLabel = actorUserId ? `user:${actorUserId}` : "user:anonymous";
 
     const result = await prisma.$transaction(async (tx) => {
       const now = new Date();
+      // Ф0 — allocate the human-readable conclusion number inside the same
+      // transaction so an aborted finalize never burns a number. Re-finalize
+      // after the 24h-edit reopen keeps the original number.
+      const documentNumber =
+        note.documentNumber ??
+        (await allocateDocumentNumber(note.clinicId, "CONCLUSION", tx, now));
       const updatedNote = await tx.visitNote.update({
         where: { id },
-        data: { status: "FINALIZED", finalizedAt: now },
+        data: { status: "FINALIZED", finalizedAt: now, documentNumber },
       });
 
       let updatedAppt = note.appointment;
@@ -172,7 +186,11 @@ export const POST = createApiHandler(
       action: "visit_note.finalize",
       entityType: "VisitNote",
       entityId: id,
-      meta: { appointmentId: note.appointment.id, correlationId },
+      meta: {
+        appointmentId: note.appointment.id,
+        correlationId,
+        documentNumber: result.note.documentNumber,
+      },
     });
 
     return ok(result);

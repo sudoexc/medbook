@@ -61,6 +61,7 @@ export const COMPOSITE_TENANT_UNIQUES: ReadonlySet<string> = new Set([
   "Message.clinicId_externalId",
   "Call.clinicId_sipCallId",
   "Branch.clinicId_slug",
+  "DocumentCounter.clinicId_year_kind",
 ]);
 
 /**

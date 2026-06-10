@@ -57,6 +57,8 @@ export type VisitNoteRow = {
   diagnosisName: string | null;
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
+  followUpDays: number | null;
+  followUpNote: string | null;
   aiGenerated: boolean;
   aiModel: string | null;
   aiTokens: number | null;
@@ -125,6 +127,8 @@ export type VisitNotePatch = Partial<{
   diagnosisName: string | null;
   bodyMarkdown: string | null;
   patientHandoutMarkdown: string | null;
+  followUpDays: number | null;
+  followUpNote: string | null;
   visitPrescriptions: VisitPrescriptionDraft[];
 }>;
 

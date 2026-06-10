@@ -365,7 +365,9 @@ export const PrescriptionCreatedPayload = z
     prescriptionId: z.string().min(1),
     patientId: z.string().min(1),
     doctorId: z.string().min(1),
-    caseId: z.string().min(1),
+    // Null for rows bridged from the visit-note constructor (Ф6) — those
+    // have no MedicalCase; consumers only key invalidation off the type.
+    caseId: z.string().min(1).nullable(),
     drugName: z.string().min(1),
     dosage: z.string().min(1),
     remindersEnabled: z.boolean(),

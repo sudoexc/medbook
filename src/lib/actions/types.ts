@@ -39,6 +39,11 @@ export const ACTION_TYPES = [
   // (patientId, triggerKey, bucket=UTC-date) so each 24-hour window can
   // produce at most one row per (patient, trigger).
   "PATIENT_NO_CHANNEL",
+  // Ф6 (TZ-smart-constructor) — follow-up visit task. Emitted by the
+  // medication-bridge sweep when a finalized VisitNote carries
+  // `followUpDays`. Dedupe keyed off visitNoteId — one task per visit no
+  // matter how many sweep retries happen.
+  "VISIT_FOLLOW_UP_DUE",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -219,6 +224,27 @@ export type PatientNoChannelPayload = {
   bucket: string;
 };
 
+/**
+ * Ф6 (TZ-smart-constructor) — «позвать на контроль».
+ *
+ * The doctor sets `VisitNote.followUpDays` (prefilled from the diagnosis
+ * guide / protocol); on finalize the bridge worker computes the due date and
+ * emits this task so reception calls the patient and books the control
+ * visit. `dueDate` is the clinic-local calendar day `YYYY-MM-DD`.
+ */
+export type VisitFollowUpDuePayload = {
+  type: "VISIT_FOLLOW_UP_DUE";
+  visitNoteId: string;
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  doctorName: string;
+  /** Clinic-local YYYY-MM-DD when the control visit becomes due. */
+  dueDate: string;
+  /** Doctor's free-text follow-up note, empty string when none. */
+  followUpNote: string;
+};
+
 export type ActionPayload =
   | EmptySlotTomorrowPayload
   | DormantBatchPayload
@@ -231,7 +257,8 @@ export type ActionPayload =
   | PaymentOverduePayload
   | LowDoctorSchedulePayload
   | LowNpsReceivedPayload
-  | PatientNoChannelPayload;
+  | PatientNoChannelPayload
+  | VisitFollowUpDuePayload;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -277,6 +304,8 @@ export function dedupeKeyFor(payload: ActionPayload): string {
       return `LOW_NPS_RECEIVED:appointmentId=${payload.appointmentId}`;
     case "PATIENT_NO_CHANNEL":
       return `PATIENT_NO_CHANNEL:patientId=${payload.patientId}:triggerKey=${payload.triggerKey}:bucket=${payload.bucket}`;
+    case "VISIT_FOLLOW_UP_DUE":
+      return `VISIT_FOLLOW_UP_DUE:visitNoteId=${payload.visitNoteId}`;
     default: {
       // Compile-time exhaustiveness guard.
       const _exhaustive: never = payload;
@@ -314,6 +343,7 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
     case "DORMANT_BATCH":
     case "IDLE_ROOM":
     case "PATIENT_NO_CHANNEL":
+    case "VISIT_FOLLOW_UP_DUE":
       return "medium";
     case "LOW_DOCTOR_SCHEDULE":
       return "low";
@@ -362,6 +392,9 @@ export function defaultDeeplinkPath(type: ActionType): string {
       // the queue + dialler — call sites override with /crm/patients/<id>
       // when they want to land directly on the patient card.
       return "/crm/call-center";
+    case "VISIT_FOLLOW_UP_DUE":
+      // The bridge worker overrides with /crm/patients/<id>.
+      return "/crm/patients";
     default: {
       const _exhaustive: never = type;
       throw new Error(
@@ -391,6 +424,7 @@ export function defaultAssigneeRole(type: ActionType): "ADMIN" | "RECEPTIONIST" 
     case "IDLE_ROOM":
     case "PAYMENT_OVERDUE":
     case "PATIENT_NO_CHANNEL":
+    case "VISIT_FOLLOW_UP_DUE":
       return "RECEPTIONIST";
     default: {
       const _exhaustive: never = type;

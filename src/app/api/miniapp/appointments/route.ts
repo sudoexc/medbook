@@ -99,7 +99,15 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       // P1.1 — a finalized visit note may carry an auto-generated CONCLUSION
       // document. Surface a direct link so the patient can open it straight
       // from the past-visit detail instead of hunting the documents list.
-      visitNote: { select: { conclusionDocument: { select: { id: true } } } },
+      // Ф6 — followUpDays/finalizedAt feed the «book a control visit» CTA
+      // (date only; the doctor's followUpNote is reception-internal).
+      visitNote: {
+        select: {
+          followUpDays: true,
+          finalizedAt: true,
+          conclusionDocument: { select: { id: true } },
+        },
+      },
     },
   });
   const appointments = rows.map(({ visitNote, ...row }) => ({
@@ -107,6 +115,13 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     conclusionUrl: visitNote?.conclusionDocument
       ? `/api/miniapp/documents/${visitNote.conclusionDocument.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`
       : null,
+    followUpAt:
+      visitNote?.followUpDays != null && visitNote.followUpDays > 0
+        ? new Date(
+            (visitNote.finalizedAt ?? row.date).getTime() +
+              visitNote.followUpDays * 24 * 60 * 60 * 1000,
+          ).toISOString()
+        : null,
   }));
   return ok({ appointments });
 });

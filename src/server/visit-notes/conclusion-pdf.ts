@@ -45,6 +45,8 @@ export interface ConclusionPdfInput {
   prescriptions?: PrescriptionLikeRow[] | null;
   /** Ф5 — public /v/[token] URL; when set, a QR block is drawn at the end. */
   verifyUrl?: string | null;
+  /** Ф6 — pre-formatted control-visit line ("через 10 дн. · ≈ 20.06.2026"). */
+  followUpLine?: string | null;
   locale?: "ru" | "uz";
   generatedAt?: Date;
   brandColor?: string | null;
@@ -58,6 +60,7 @@ const LABELS = {
     visitDate: "Дата приёма",
     generated: "Подготовлено",
     grid: "Схема приёма",
+    followUp: "Контрольный визит",
     verify: "Проверка подлинности документа — отсканируйте QR-код",
   },
   uz: {
@@ -67,6 +70,7 @@ const LABELS = {
     visitDate: "Tashrif sanasi",
     generated: "Tayyorlandi",
     grid: "Qabul jadvali",
+    followUp: "Nazorat tashrifi",
     verify: "Hujjat haqiqiyligini tekshirish — QR kodni skanerlang",
   },
 } as const;
@@ -304,6 +308,21 @@ export async function renderConclusionPdf(
         false,
       );
     }
+  }
+
+  // Ф6 — control-visit line (date only; the reception note stays internal).
+  if (input.followUpLine && input.followUpLine.trim()) {
+    doc.moveDown(0.5);
+    if (doc.y + 36 > doc.page.height - doc.page.margins.bottom) doc.addPage();
+    doc
+      .fontSize(12)
+      .fillColor("#1a1f2e")
+      .text(labels.followUp, left, doc.y, { width: usableWidth });
+    doc.moveDown(0.1);
+    doc
+      .fontSize(11)
+      .fillColor("#1a1f2e")
+      .text(input.followUpLine.trim(), left, doc.y, { width: usableWidth });
   }
 
   // Ф5 — QR verification block (public, PII-free /v/[token] page).

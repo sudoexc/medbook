@@ -147,6 +147,7 @@ export const ruDict = {
     paid: "Оплачено",
     unpaid: "Не оплачено",
     conclusion: "Заключение",
+    followUpCta: "Записаться на контроль ~{date}",
     cancelReason: {
       title: "Почему отменяете?",
       subtitle:

@@ -31,7 +31,7 @@ type PrescriptionRow = {
   notes: string | null;
   status: string;
   remindersEnabled: boolean;
-  caseId: string;
+  caseId: string | null;
   createdAt: string;
   updatedAt: string;
 };

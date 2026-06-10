@@ -127,12 +127,23 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     appointmentAt: "2026-05-08T09:30:00.000Z",
     bucket: "2026-05-07",
   },
+  // Ф6 (TZ-smart-constructor) — control-visit call task sample.
+  VISIT_FOLLOW_UP_DUE: {
+    type: "VISIT_FOLLOW_UP_DUE",
+    visitNoteId: "vn_1",
+    patientId: "p_8",
+    patientName: "Шахноза Юсупова",
+    doctorId: "doc_7",
+    doctorName: "Алиев А.А.",
+    dueDate: "2026-06-20",
+    followUpNote: "Контроль ОАК",
+  },
 };
 
 describe("ACTION_TYPES surface", () => {
-  it("ACTION_TYPES has exactly 12 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4)", () => {
-    expect(ACTION_TYPES.length).toBe(12);
-    expect(new Set(ACTION_TYPES).size).toBe(12);
+  it("ACTION_TYPES has exactly 13 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6)", () => {
+    expect(ACTION_TYPES.length).toBe(13);
+    expect(new Set(ACTION_TYPES).size).toBe(13);
   });
 
   it("ACTION_SEVERITIES + ACTION_STATUSES are non-empty and unique", () => {
@@ -343,6 +354,8 @@ describe("compile-time discriminated-union narrowing", () => {
         case "LOW_NPS_RECEIVED":
           return p.patientName;
         case "PATIENT_NO_CHANNEL":
+          return p.patientName;
+        case "VISIT_FOLLOW_UP_DUE":
           return p.patientName;
         default: {
           const _exhaustive: never = p;

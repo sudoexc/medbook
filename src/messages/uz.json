@@ -4680,6 +4680,11 @@
         "label": "Aloqa kanali yo'q",
         "title": "{patientName}: bildirishnoma yetkazilmadi",
         "body": "{hasAppointment, select, yes {Yozuv {slotDate} kuni soat {slotTime} da. Bemorga qo'ng'iroq qiling — Telegram bog'lanmagan.} other {Trigger: {triggerKey}. Bemorga qo'ng'iroq qiling — Telegram bog'lanmagan.}}"
+      },
+      "VISIT_FOLLOW_UP_DUE": {
+        "label": "Nazorat tashrifi",
+        "title": "{patientName}: nazorat ~{dueDate} ({doctorName})",
+        "body": "{followUpNote, select, , {Bemorga qo'ng'iroq qiling va nazorat qabuliga yozing.} other{«{followUpNote}» — qo'ng'iroq qilib, nazoratga yozing.}}"
       }
     },
     "dashboard": {
@@ -5480,12 +5485,20 @@
         "chipsTitle": "Tavsiyalarga",
         "chipTitle": "Tavsiyalarga qo‘shish",
         "followUpHint": "Nazorat qabuli — odatda {days} kundan keyin",
+        "followUpApply": "Belgilash",
         "sections": {
           "whatToDo": "Nima qilish kerak",
           "care": "Parvarish va tartib",
           "lifestyle": "Turmush tarzi va parhez",
           "redFlags": "Zudlik bilan shifokorga, agar…"
         }
+      },
+      "followUp": {
+        "title": "Nazorat tashrifi",
+        "daysShort": "{days} kun",
+        "clear": "Tozalash",
+        "notePlaceholder": "Qabulxona uchun izoh…",
+        "dueOn": "≈ {date}"
       },
       "cds": {
         "checking": "Mosligi tekshirilmoqda…",

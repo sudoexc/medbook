@@ -31,6 +31,10 @@ import { newVerifyToken } from "@/server/clinical-forms/numbering";
 import { getQueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
 import { renderConclusionPdf } from "@/server/visit-notes/conclusion-pdf";
+import { serializePrescriptionForWrite } from "@/server/prescription/cipher-fields";
+import { upsertAction } from "@/server/actions/repository";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
+import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
 export const QUEUE_NAME = "doctor:visit-note-handout";
 export const JOB_NAME = "visit-note-handout-tick";
@@ -53,6 +57,7 @@ type SweepNote = {
   patientHandoutMarkdown: string | null;
   documentNumber: string | null;
   finalizedAt: Date | null;
+  followUpDays: number | null;
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string; nameUz: string } | null;
   appointment: { date: Date; time: string | null } | null;
@@ -126,6 +131,21 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
   const verifyUrl = baseUrl ? `${baseUrl}/v/${verifyToken}` : null;
 
+  // Ф6 — control-visit line, anchored on finalizedAt (same as the bridge).
+  const followUpLine =
+    note.followUpDays != null && note.followUpDays > 0
+      ? (() => {
+          const due = new Date(
+            (note.finalizedAt ?? now).getTime() +
+              note.followUpDays * 24 * 60 * 60 * 1000,
+          );
+          const dateStr = formatDate(due, locale, "short");
+          return locale === "uz"
+            ? `${note.followUpDays} kundan keyin · ≈ ${dateStr}`
+            : `через ${note.followUpDays} дн. · ≈ ${dateStr}`;
+        })()
+      : null;
+
   const pdf = await renderConclusionPdf({
     clinicName,
     clinicAddress,
@@ -137,6 +157,7 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     handoutMarkdown: note.patientHandoutMarkdown ?? "",
     prescriptions: note.visitPrescriptions,
     verifyUrl,
+    followUpLine,
     locale,
     generatedAt: now,
     brandColor: clinic?.brandColor ?? null,
@@ -206,6 +227,7 @@ export async function runVisitNoteHandoutTick(
         patientHandoutMarkdown: true,
         documentNumber: true,
         finalizedAt: true,
+        followUpDays: true,
         patient: { select: { fullName: true, preferredLang: true } },
         doctor: { select: { nameRu: true, nameUz: true } },
         appointment: { select: { date: true, time: true } },
@@ -244,6 +266,296 @@ export async function runVisitNoteHandoutTick(
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Ф6 (TZ-smart-constructor) — мост finalize → Mini App.
+//
+// Mirrors VisitPrescription rows with `remindPatient=true` into the existing
+// `Prescription` model so the Mini App medication dashboard + reminder worker
+// pick them up with zero reception effort. Same durable-sweep rationale as
+// the handout above, but with its own convergence anchor
+// (`VisitNote.medicationsBridgedAt IS NULL`) because the handout anchor
+// requires a non-empty handout — a note can carry prescriptions without one.
+//
+// Row idempotency is the `@@unique([visitNoteId, visitNoteSortOrder])` upsert;
+// the follow-up Action dedupes on `visitNoteId`; so a partial failure simply
+// re-runs to convergence on the next tick.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Clinic-overridable slot → clock mapping (TZ Ф6 defaults). */
+export const DEFAULT_SLOT_TIMES: Readonly<Record<string, string>> = {
+  MORNING: "08:00",
+  NOON: "13:00",
+  EVENING: "19:00",
+  NIGHT: "22:00",
+};
+
+const SLOT_ORDER = ["MORNING", "NOON", "EVENING", "NIGHT"] as const;
+
+/**
+ * Merge `Clinic.medicationSlotTimes` (Json, may be partial/garbage) over the
+ * defaults. Pure — unit-tested without a database.
+ */
+export function resolveSlotTimes(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = { ...DEFAULT_SLOT_TIMES };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const slot of SLOT_ORDER) {
+    const v = (raw as Record<string, unknown>)[slot];
+    if (typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v)) {
+      out[slot] = v;
+    }
+  }
+  return out;
+}
+
+/**
+ * Translate a VisitPrescription's slots into the reminder-worker schedule
+ * shape `{times, days, startsAt}`. Slot order is canonical (morning→night)
+ * regardless of the input array order. Pure — unit-tested.
+ */
+export function buildBridgeSchedule(
+  vp: { timesOfDay: string[]; durationDays: number | null },
+  slotTimes: Record<string, string>,
+  startsAt: Date,
+): { times: string[]; days: number | null; startsAt: string } {
+  const times = SLOT_ORDER.filter((s) => vp.timesOfDay.includes(s)).map(
+    (s) => slotTimes[s],
+  );
+  return {
+    times,
+    days: vp.durationDays ?? null,
+    startsAt: startsAt.toISOString(),
+  };
+}
+
+/** Clinic-local YYYY-MM-DD for the follow-up due date. */
+function localDateKey(d: Date, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+type BridgeNote = {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  doctorId: string;
+  finalizedAt: Date | null;
+  followUpDays: number | null;
+  followUpNote: string | null;
+  patient: { fullName: string; preferredLang: string };
+  doctor: { nameRu: string } | null;
+  visitPrescriptions: Array<{
+    displayName: string;
+    strength: string | null;
+    dose: string;
+    timesOfDay: string[];
+    durationDays: number | null;
+    instructionRu: string | null;
+    instructionUz: string | null;
+    remindPatient: boolean;
+    sortOrder: number;
+  }>;
+};
+
+async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: note.clinicId },
+    select: {
+      medicationRemindersEnabled: true,
+      medicationSlotTimes: true,
+      timezone: true,
+    },
+  });
+  const slotTimes = resolveSlotTimes(clinic?.medicationSlotTimes);
+  const locale = note.patient.preferredLang === "UZ" ? "uz" : "ru";
+  const startsAt = note.finalizedAt ?? now;
+  const rows = note.visitPrescriptions.filter((vp) => vp.remindPatient);
+
+  const correlationId = newCorrelationId();
+  await prisma.$transaction(async (tx) => {
+    for (const vp of rows) {
+      const schedule = buildBridgeSchedule(vp, slotTimes, startsAt);
+      const dosage = vp.strength ? `${vp.dose} (${vp.strength})` : vp.dose;
+      const instruction =
+        locale === "uz"
+          ? (vp.instructionUz ?? vp.instructionRu)
+          : (vp.instructionRu ?? vp.instructionUz);
+      // Same encryption boundary as the CRM prescribe kernel — notes are
+      // PII-adjacent free text and must be ciphered at rest.
+      const { notes } = serializePrescriptionForWrite({
+        notes: instruction ?? null,
+      });
+      const remindersEnabled =
+        Boolean(clinic?.medicationRemindersEnabled) && schedule.times.length > 0;
+
+      const where = {
+        visitNoteId_visitNoteSortOrder: {
+          visitNoteId: note.id,
+          visitNoteSortOrder: vp.sortOrder,
+        },
+      };
+      const existing = await tx.prescription.findUnique({
+        where,
+        select: { id: true },
+      });
+      const row = await tx.prescription.upsert({
+        where,
+        create: {
+          clinicId: note.clinicId,
+          caseId: null,
+          visitNoteId: note.id,
+          visitNoteSortOrder: vp.sortOrder,
+          patientId: note.patientId,
+          doctorId: note.doctorId,
+          drugName: vp.displayName,
+          dosage,
+          schedule,
+          notes,
+          status: "ACTIVE",
+          remindersEnabled,
+        },
+        update: {
+          drugName: vp.displayName,
+          dosage,
+          schedule,
+          notes,
+          remindersEnabled,
+        },
+      });
+
+      // Only freshly-created rows announce themselves — re-runs after a
+      // partial failure shouldn't re-spam the Mini App invalidation.
+      if (!existing) {
+        const envelope: EventEnvelopeInput = {
+          type: "prescription.created",
+          correlationId,
+          actor: {
+            role: "SYSTEM",
+            userId: null,
+            patientId: null,
+            onBehalfOfPatientId: null,
+            label: "system:medication-bridge",
+          },
+          surface: "WORKER",
+          tenantScope: {
+            clinicId: note.clinicId,
+            doctorId: note.doctorId,
+            patientId: note.patientId,
+          },
+          payload: {
+            prescriptionId: row.id,
+            patientId: note.patientId,
+            doctorId: note.doctorId,
+            caseId: null,
+            drugName: row.drugName,
+            dosage: row.dosage,
+            remindersEnabled: row.remindersEnabled,
+            status: row.status,
+          },
+        };
+        await publishViaOutbox(tx, envelope);
+      }
+    }
+  });
+
+  // Follow-up reception task — idempotent via the Action dedupeKey, so it
+  // lives outside the row transaction (a retry converges either way).
+  if (note.followUpDays != null && note.followUpDays > 0) {
+    const due = new Date(
+      startsAt.getTime() + note.followUpDays * 24 * 60 * 60 * 1000,
+    );
+    const dueDate = localDateKey(due, clinic?.timezone || "Asia/Tashkent");
+    await upsertAction(
+      prisma,
+      note.clinicId,
+      {
+        type: "VISIT_FOLLOW_UP_DUE",
+        visitNoteId: note.id,
+        patientId: note.patientId,
+        patientName: note.patient.fullName,
+        doctorId: note.doctorId,
+        doctorName: note.doctor?.nameRu ?? "—",
+        dueDate,
+        followUpNote: note.followUpNote?.trim() ?? "",
+      },
+      {
+        deeplinkPath: `/crm/patients/${note.patientId}`,
+        // Keep the card around for a week past due, then auto-expire.
+        expiresAt: new Date(due.getTime() + 7 * 24 * 60 * 60 * 1000),
+      },
+    );
+  }
+
+  // Stamp LAST — anything above failing leaves the note in the sweep.
+  await prisma.visitNote.update({
+    where: { id: note.id },
+    data: { medicationsBridgedAt: now },
+  });
+}
+
+export async function runMedicationBridgeTick(
+  now: Date = new Date(),
+): Promise<{ scanned: number; bridged: number }> {
+  const since = new Date(now.getTime() - BACKFILL_WINDOW_MS);
+
+  return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const notes = (await prisma.visitNote.findMany({
+      where: {
+        status: "FINALIZED",
+        finalizedAt: { gte: since },
+        medicationsBridgedAt: null,
+        patient: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        clinicId: true,
+        patientId: true,
+        doctorId: true,
+        finalizedAt: true,
+        followUpDays: true,
+        followUpNote: true,
+        patient: { select: { fullName: true, preferredLang: true } },
+        doctor: { select: { nameRu: true } },
+        visitPrescriptions: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            displayName: true,
+            strength: true,
+            dose: true,
+            timesOfDay: true,
+            durationDays: true,
+            instructionRu: true,
+            instructionUz: true,
+            remindPatient: true,
+            sortOrder: true,
+          },
+        },
+      },
+      orderBy: { finalizedAt: "asc" },
+      take: BATCH,
+    })) as BridgeNote[];
+
+    let bridged = 0;
+    for (const note of notes) {
+      try {
+        await bridgeNote(note, now);
+        bridged += 1;
+      } catch (err) {
+        console.error(`[medication-bridge] note ${note.id} failed`, err);
+      }
+    }
+
+    return { scanned: notes.length, bridged };
+  });
+}
+
 /** Start the worker (idempotent). */
 export function startVisitNoteHandoutWorker(
   intervalMs: number = TICK_INTERVAL_MS,
@@ -257,6 +569,11 @@ export function startVisitNoteHandoutWorker(
         await runVisitNoteHandoutTick();
       } catch (err) {
         console.error("[visit-note-handout] tick failed", err);
+      }
+      try {
+        await runMedicationBridgeTick();
+      } catch (err) {
+        console.error("[medication-bridge] tick failed", err);
       }
     },
   );

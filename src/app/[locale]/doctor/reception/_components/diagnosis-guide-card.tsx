@@ -76,10 +76,12 @@ export function DiagnosisGuideCard({
   note,
   disabled,
   onMergeAdvice,
+  onSetFollowUpDays,
 }: {
   note: VisitNoteRow;
   disabled: boolean;
   onMergeAdvice: (chips: string[]) => void;
+  onSetFollowUpDays: (days: number) => void;
 }) {
   const t = useTranslations("doctor.reception");
   const rawLocale = useLocale();
@@ -109,6 +111,8 @@ export function DiagnosisGuideCard({
     requestHandoutAppend(`${handoutSectionTitle(locale, def.key)}\n${text}`);
   };
 
+  const defaultFollowUpDays = guide.defaultFollowUpDays;
+
   const insertAll = () => {
     if (newChips.length > 0) onMergeAdvice(newChips);
     if (sections.length > 0) {
@@ -117,6 +121,10 @@ export function DiagnosisGuideCard({
           .map((s) => `${handoutSectionTitle(locale, s.def.key)}\n${s.text}`)
           .join("\n\n"),
       );
+    }
+    // Ф6 — prefill the control visit unless the doctor already set one.
+    if (defaultFollowUpDays != null && note.followUpDays == null) {
+      onSetFollowUpDays(defaultFollowUpDays);
     }
   };
 
@@ -238,10 +246,19 @@ export function DiagnosisGuideCard({
         </div>
       )}
 
-      {guide.defaultFollowUpDays != null && (
-        <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      {defaultFollowUpDays != null && (
+        <p className="mt-2 inline-flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <CalendarClockIcon className="size-3" />
-          {t("guide.followUpHint", { days: guide.defaultFollowUpDays })}
+          {t("guide.followUpHint", { days: defaultFollowUpDays })}
+          {!disabled && note.followUpDays !== defaultFollowUpDays && (
+            <button
+              type="button"
+              onClick={() => onSetFollowUpDays(defaultFollowUpDays)}
+              className="inline-flex h-5 items-center rounded-md border border-primary/30 bg-primary/5 px-1.5 font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              {t("guide.followUpApply")}
+            </button>
+          )}
         </p>
       )}
     </div>

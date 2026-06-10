@@ -4680,6 +4680,11 @@
         "label": "Нет канала связи",
         "title": "{patientName}: уведомление не доставлено",
         "body": "{hasAppointment, select, yes {Запись {slotDate} в {slotTime}. Позвоните пациенту — Telegram не привязан.} other {Triggers: {triggerKey}. Позвоните пациенту — Telegram не привязан.}}"
+      },
+      "VISIT_FOLLOW_UP_DUE": {
+        "label": "Контрольный визит",
+        "title": "{patientName}: контроль ~{dueDate} ({doctorName})",
+        "body": "{followUpNote, select, , {Позвоните пациенту и запишите на контрольный приём.} other{«{followUpNote}» — позвоните и запишите на контроль.}}"
       }
     },
     "dashboard": {
@@ -5480,12 +5485,20 @@
         "chipsTitle": "В рекомендации",
         "chipTitle": "Добавить в рекомендации",
         "followUpHint": "Контрольный приём — обычно через {days} дн.",
+        "followUpApply": "Назначить",
         "sections": {
           "whatToDo": "Что делать",
           "care": "Уход и режим",
           "lifestyle": "Образ жизни и диета",
           "redFlags": "Срочно к врачу, если…"
         }
+      },
+      "followUp": {
+        "title": "Контрольный визит",
+        "daysShort": "{days} дн.",
+        "clear": "Сбросить",
+        "notePlaceholder": "Комментарий для регистратуры…",
+        "dueOn": "≈ {date}"
       },
       "cds": {
         "checking": "Проверка совместимости…",

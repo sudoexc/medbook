@@ -112,6 +112,17 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     appointmentAt: "2026-05-08T09:30:00.000Z",
     bucket: "2026-05-07",
   },
+  // Ф6 (TZ-smart-constructor) — control-visit call task sample.
+  VISIT_FOLLOW_UP_DUE: {
+    type: "VISIT_FOLLOW_UP_DUE",
+    visitNoteId: "vn_1",
+    patientId: "p_8",
+    patientName: "Шахноза Юсупова",
+    doctorId: "doc_7",
+    doctorName: "Алиев А.А.",
+    dueDate: "2026-06-20",
+    followUpNote: "Контроль ОАК",
+  },
 };
 
 /**

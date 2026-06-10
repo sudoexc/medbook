@@ -147,6 +147,7 @@ export const uzDict = {
     paid: "To‘langan",
     unpaid: "To‘lanmagan",
     conclusion: "Xulosa",
+    followUpCta: "Nazorat qabuliga yozilish ~{date}",
     cancelReason: {
       title: "Nima uchun bekor qilyapsiz?",
       subtitle:

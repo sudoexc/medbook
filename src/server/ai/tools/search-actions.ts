@@ -42,6 +42,7 @@ const TYPE_LABEL_RU: Record<ActionType, string> = {
   LOW_DOCTOR_SCHEDULE: "Мало слотов у врача",
   LOW_NPS_RECEIVED: "Низкая оценка визита",
   PATIENT_NO_CHANNEL: "Нет канала связи",
+  VISIT_FOLLOW_UP_DUE: "Пора на контрольный визит",
 };
 
 const TYPE_LABEL_UZ: Record<ActionType, string> = {
@@ -57,6 +58,7 @@ const TYPE_LABEL_UZ: Record<ActionType, string> = {
   LOW_DOCTOR_SCHEDULE: "Slotlar kam",
   LOW_NPS_RECEIVED: "Past tashrif bahosi",
   PATIENT_NO_CHANNEL: "Aloqa kanali yo'q",
+  VISIT_FOLLOW_UP_DUE: "Nazorat tashrifi vaqti keldi",
 };
 
 export const searchActionsTool: Tool<SearchActionsInput> = {

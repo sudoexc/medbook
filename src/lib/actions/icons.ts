@@ -9,6 +9,7 @@
 import {
   AlertTriangleIcon,
   BanknoteIcon,
+  CalendarCheckIcon,
   CalendarClockIcon,
   CalendarXIcon,
   ClockIcon,
@@ -37,6 +38,7 @@ export const ACTION_ICONS: Record<ActionType, LucideIcon> = {
   LOW_DOCTOR_SCHEDULE: CalendarXIcon,
   LOW_NPS_RECEIVED: FrownIcon,
   PATIENT_NO_CHANNEL: PhoneOffIcon,
+  VISIT_FOLLOW_UP_DUE: CalendarCheckIcon,
 };
 
 /** Tailwind colour-token classes for severity dots, borders, and badge tones. */

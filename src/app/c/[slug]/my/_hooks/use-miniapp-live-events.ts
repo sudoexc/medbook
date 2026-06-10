@@ -73,6 +73,9 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "eprescription.issued": [["miniapp", "medications"]],
   "eprescription.cancelled": [["miniapp", "medications"]],
   "prescription.created": [["miniapp", "medications"]],
+  // Ф6 — finalize stamps followUpDays + (via the bridge worker) the
+  // conclusion link, both rendered on the past-appointments cards.
+  "visit-note.finalized": [["miniapp", "appointments"]],
   // P1.2 — a doctor flipping a lab result to REVIEWED makes it visible to the
   // patient for the first time, so refresh the labs screen without a manual pull.
   "lab.result.reviewed": [["miniapp", "labs"]],

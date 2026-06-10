@@ -146,6 +146,13 @@ function valuesFor(
           : "",
         hasAppointment: payload.appointmentAt ? "yes" : "no",
       };
+    case "VISIT_FOLLOW_UP_DUE":
+      return {
+        patientName: payload.patientName,
+        doctorName: payload.doctorName,
+        dueDate: formatDM(payload.dueDate, locale),
+        followUpNote: payload.followUpNote,
+      };
     default: {
       const _exhaustive: never = payload;
       throw new Error(

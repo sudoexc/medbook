@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import {
   BookmarkPlusIcon,
+  CalendarCheckIcon,
   ClipboardListIcon,
   FileTextIcon,
   FlaskConicalIcon,
@@ -246,6 +247,11 @@ export function StructuredFieldsPanel() {
           protocol.prescriptionsTemplate,
         );
       }
+      // Ф6 — prefill the control visit from the protocol unless the doctor
+      // already set one by hand.
+      if (protocol.followUpDays != null && note.followUpDays == null) {
+        patch.followUpDays = protocol.followUpDays;
+      }
       applyPatch(patch);
       if (protocol.conclusionTemplateMd && protocol.conclusionTemplateMd.trim()) {
         requestBodyAppend(protocol.conclusionTemplateMd);
@@ -412,7 +418,15 @@ export function StructuredFieldsPanel() {
               if (next.length === 0) return;
               applyPatch({ advice: [...current, ...next] });
             }}
+            onSetFollowUpDays={(days) => applyPatch({ followUpDays: days })}
           />
+          {(!isFinalized || note.followUpDays != null) && (
+            <FollowUpCard
+              note={note}
+              disabled={isFinalized}
+              onChange={applyPatch}
+            />
+          )}
         </div>
       )}
 
@@ -649,6 +663,121 @@ function Chip({
         </button>
       )}
     </span>
+  );
+}
+
+const FOLLOW_UP_PRESETS = [3, 7, 10, 14, 30];
+
+/**
+ * Ф6 — «Контрольный визит». Days + note feed VisitNote.followUpDays /
+ * followUpNote; after finalize the bridge worker turns them into a
+ * VISIT_FOLLOW_UP_DUE action for the reception desk.
+ */
+function FollowUpCard({
+  note,
+  disabled,
+  onChange,
+}: {
+  note: VisitNoteRow;
+  disabled: boolean;
+  onChange: (patch: VisitNotePatch) => void;
+}) {
+  const t = useTranslations("doctor.reception");
+  const fmt = useFormatter();
+  const days = note.followUpDays;
+  const [noteDraft, setNoteDraft] = React.useState(note.followUpNote ?? "");
+
+  React.useEffect(() => {
+    setNoteDraft(note.followUpNote ?? "");
+  }, [note.followUpNote]);
+
+  const commitNote = () => {
+    const v = noteDraft.trim();
+    if (v === (note.followUpNote ?? "")) return;
+    onChange({ followUpNote: v || null });
+  };
+
+  const due =
+    days != null && days > 0
+      ? new Date(Date.now() + days * 86_400_000)
+      : null;
+
+  return (
+    <div className="rounded-xl border border-border bg-background p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-2">
+          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <CalendarCheckIcon className="size-4" />
+          </span>
+          <span className="text-sm font-semibold text-foreground">
+            {t("followUp.title")}
+          </span>
+        </div>
+        {due && (
+          <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+            {t("followUp.dueOn", {
+              date: fmt.dateTime(due, { day: "numeric", month: "long" }),
+            })}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1">
+        {FOLLOW_UP_PRESETS.map((d) => {
+          const active = days === d;
+          return (
+            <button
+              key={d}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange({ followUpDays: active ? null : d })}
+              className={cn(
+                "inline-flex h-6 items-center rounded-md border px-1.5 text-[11px] font-medium transition-colors disabled:opacity-50",
+                active
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
+              )}
+            >
+              {t("followUp.daysShort", { days: d })}
+            </button>
+          );
+        })}
+        {days != null && !FOLLOW_UP_PRESETS.includes(days) && (
+          <span className="inline-flex h-6 items-center rounded-md border border-primary/30 bg-primary/10 px-1.5 text-[11px] font-medium text-primary">
+            {t("followUp.daysShort", { days })}
+          </span>
+        )}
+        {days != null && !disabled && (
+          <button
+            type="button"
+            aria-label={t("followUp.clear")}
+            onClick={() => onChange({ followUpDays: null, followUpNote: null })}
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <XIcon className="size-3" />
+          </button>
+        )}
+      </div>
+
+      {days != null && (
+        <input
+          type="text"
+          disabled={disabled}
+          value={noteDraft}
+          maxLength={500}
+          onChange={(e) => setNoteDraft(e.target.value)}
+          onBlur={commitNote}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitNote();
+            }
+          }}
+          placeholder={t("followUp.notePlaceholder")}
+          className="mt-2 h-8 w-full rounded-lg border border-border bg-card px-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+        />
+      )}
+    </div>
   );
 }
 

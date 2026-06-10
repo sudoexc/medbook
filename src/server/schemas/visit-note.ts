@@ -47,6 +47,8 @@ export const UpdateVisitNoteSchema = z.object({
   diagnosisName: z.string().max(500).nullable().optional(),
   bodyMarkdown: z.string().max(64_000).nullable().optional(),
   patientHandoutMarkdown: z.string().max(64_000).nullable().optional(),
+  followUpDays: z.number().int().min(1).max(365).nullable().optional(),
+  followUpNote: z.string().max(500).nullable().optional(),
   // Replace-all semantics, consistent with the autosave model: the editor
   // always sends the full current list (sortOrder = array index).
   visitPrescriptions: z.array(VisitPrescriptionItemSchema).max(30).optional(),

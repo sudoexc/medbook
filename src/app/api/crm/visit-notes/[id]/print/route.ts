@@ -221,6 +221,7 @@ export const GET = createApiListHandler(
             referralTo: "Kimga",
             referralReason: "Yoʻllanma sababi",
             packageTitle: "Hujjatlar toʻplami",
+            followUp: "Nazorat tashrifi",
           }
         : {
             title: "Заключение по приёму",
@@ -257,6 +258,7 @@ export const GET = createApiListHandler(
             referralTo: "Кому",
             referralReason: "Причина направления",
             packageTitle: "Пакет документов",
+            followUp: "Контрольный визит",
           };
 
     const patientGender =
@@ -341,6 +343,23 @@ export const GET = createApiListHandler(
       color: #1a1f2e;
       white-space: nowrap;
     }`;
+
+    // ── Ф6 — control-visit line (clinical + handout) ───────────────────
+    // Due date anchors on finalizedAt when present (matches the bridge
+    // worker), otherwise "now" as the draft-print estimate.
+    const followUpLine =
+      note.followUpDays != null && note.followUpDays > 0
+        ? (() => {
+            const due = new Date(
+              (note.finalizedAt ?? generatedAt).getTime() +
+                note.followUpDays * 86_400_000,
+            );
+            const dateStr = formatDate(due, locale, "short");
+            return locale === "uz"
+              ? `${note.followUpDays} kundan keyin · ≈ ${dateStr}`
+              : `через ${note.followUpDays} дн. · ≈ ${dateStr}`;
+          })()
+        : null;
 
     // ── Ф5 fragments shared by all print types ────────────────────────
     const medGridTable =
@@ -492,6 +511,11 @@ export const GET = createApiListHandler(
       ? `<section><h2 class="md-h2">${escapeHtml(labels.gridTitle)}</h2>${medGridTable}</section>`
       : "";
 
+    // Patient-facing: date only, the reception note stays internal.
+    const handoutFollowUpSection = followUpLine
+      ? `<section><h2 class="md-h2">${escapeHtml(labels.followUp)}</h2><p><strong>${escapeHtml(followUpLine)}</strong></p></section>`
+      : "";
+
     const handoutInner = `${renderHeader(escapeHtml(handoutLabels.title))}
 
     <div class="quick-meta">
@@ -503,6 +527,8 @@ export const GET = createApiListHandler(
     <article>${handoutBody}</article>
 
     ${handoutGridSection}
+
+    ${handoutFollowUpSection}
 
     <div class="signature">
       <div class="slot">${escapeHtml(handoutLabels.doctor)}: ${escapeHtml(doctorName ?? "")}</div>
@@ -746,6 +772,15 @@ export const GET = createApiListHandler(
       <h3>${escapeHtml(labels.advice)}</h3>
       ${renderChips(note.advice)}
     </section>
+
+    ${
+      followUpLine
+        ? `<section class="block">
+      <h3>${escapeHtml(labels.followUp)}</h3>
+      <div><strong>${escapeHtml(followUpLine)}</strong>${note.followUpNote?.trim() ? ` — ${escapeHtml(note.followUpNote.trim())}` : ""}</div>
+    </section>`
+        : ""
+    }
 
     <section class="block">
       <h3>${escapeHtml(labels.bodySection)}</h3>

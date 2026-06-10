@@ -91,6 +91,8 @@ export const PATCH = createApiHandler(
     if (body.patientHandoutMarkdown !== undefined) {
       data.patientHandoutMarkdown = body.patientHandoutMarkdown;
     }
+    if (body.followUpDays !== undefined) data.followUpDays = body.followUpDays;
+    if (body.followUpNote !== undefined) data.followUpNote = body.followUpNote;
 
     const changedFields = Object.keys(data);
     const rxRows = body.visitPrescriptions;

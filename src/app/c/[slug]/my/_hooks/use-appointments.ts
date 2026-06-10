@@ -19,6 +19,8 @@ export type MiniAppAppointment = {
   priceFinal: number | null;
   endDate: string;
   conclusionUrl?: string | null;
+  /** Ф6 — ISO date the doctor scheduled the control visit for (≈ estimate). */
+  followUpAt?: string | null;
   doctor: {
     id: string;
     nameRu: string;

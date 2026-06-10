@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck, History } from "lucide-react";
+import { CalendarCheck, CalendarPlus, History } from "lucide-react";
 
 import {
   MCard,
@@ -20,6 +20,7 @@ import {
   MiniAppAppointment,
 } from "../../_hooks/use-appointments";
 import { useActiveContext } from "../../_hooks/use-active-context";
+import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
@@ -44,6 +45,25 @@ export function AppointmentsScreen() {
     React.useState<MiniAppAppointment | null>(null);
   const cancel = useCancelAppointment();
   const query = useAppointments(tab, onBehalfOf);
+  const { setDraft } = useBookingDraft(clinicSlug);
+
+  // Ф6 — «записаться на контроль»: seed the booking wizard with the same
+  // doctor and jump straight to the slot-adjacent step. The wizard is
+  // specialty-first, so specialization must be seeded too or /book/doctor
+  // bounces back to /book/service.
+  const bookFollowUp = React.useCallback(
+    (appt: MiniAppAppointment) => {
+      setDraft({
+        specialization: appt.doctor.specializationRu.trim() || null,
+        serviceIds: [],
+        doctorId: appt.doctor.id,
+        date: null,
+        time: null,
+      });
+      router.push(`/c/${clinicSlug}/my/book/doctor`);
+    },
+    [setDraft, router, clinicSlug],
+  );
   // SSE — invalidate caches when CRM / other surfaces mutate this patient's
   // appointments (TZ §6.1). Mounted at the screen level so it stays alive
   // while the patient is on this view.
@@ -95,6 +115,14 @@ export function AppointmentsScreen() {
             const cancellable =
               tab === "upcoming" && CANCELLABLE_STATUSES.has(appt.status);
             const tone = getAppointmentTone(appt.status);
+            // CTA stays visible for a week past the target date — mirrors
+            // the VISIT_FOLLOW_UP_DUE action expiry on the CRM side.
+            const showFollowUp =
+              tab === "past" &&
+              appt.status === "COMPLETED" &&
+              !!appt.followUpAt &&
+              new Date(appt.followUpAt).getTime() >
+                Date.now() - 7 * 24 * 60 * 60 * 1000;
             return (
               <div key={appt.id} className="relative">
                 <button
@@ -159,6 +187,24 @@ export function AppointmentsScreen() {
                     </div>
                   </MCard>
                 </button>
+                {showFollowUp ? (
+                  <button
+                    type="button"
+                    onClick={() => bookFollowUp(appt)}
+                    className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium"
+                    style={{
+                      backgroundColor:
+                        "color-mix(in oklch, var(--tg-accent) 12%, transparent)",
+                      color: "var(--tg-accent)",
+                    }}
+                  >
+                    <CalendarPlus className="h-4 w-4" />
+                    {t.appts.followUpCta.replace(
+                      "{date}",
+                      formatDateISO(appt.followUpAt!, lang),
+                    )}
+                  </button>
+                ) : null}
                 {cancellable ? (
                   <button
                     type="button"

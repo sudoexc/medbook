@@ -334,6 +334,10 @@ model Clinic {
   // independent so we don't lose existing setup if the master toggle is
   // flipped temporarily.
   medicationRemindersEnabled Boolean   @default(true)
+  // Ф6 (TZ-smart-constructor) — clinic mapping of prescription time-of-day
+  // slots to clock times for reminders, e.g. {"MORNING":"08:00","NOON":"13:00",
+  // "EVENING":"19:00","NIGHT":"22:00"}. Null = built-in defaults.
+  medicationSlotTimes        Json?
   // Phase 17 Wave 2 — when true, every staff role in the clinic must enrol
   // TOTP, not just ADMIN/SUPER_ADMIN. Plan-gated: only Pro / Enterprise
   // plans can flip this on (Basic UI shows it disabled with an upsell hint).
@@ -1975,6 +1979,15 @@ model VisitNote {
   diagnosisCode String?
   diagnosisName String?
 
+  // Ф6 (TZ-smart-constructor) — follow-up plan. Prefilled from the diagnosis
+  // guide / protocol, hand-editable. On finalize: printed in the conclusion,
+  // surfaces a booking nudge in the Mini App, and spawns a reception Action.
+  followUpDays Int?
+  followUpNote String?
+  // Ф6 — convergence anchor for the medication-bridge sweep: null = the
+  // finalize worker hasn't mirrored remindPatient rows into Prescription yet.
+  medicationsBridgedAt DateTime?
+
   // Free-form rich body in Markdown. The notes editor on the right is the
   // canonical source; the structured chips are the parsed/derived view.
   bodyMarkdown String? @db.Text
@@ -2007,6 +2020,8 @@ model VisitNote {
   // Ф2 (TZ-smart-constructor) — structured prescription rows on the Drug
   // catalog. `prescriptions String[]` above stays as read-only legacy.
   visitPrescriptions VisitPrescription[]
+  // Ф6 — Mini App reminder courses mirrored from visitPrescriptions.
+  bridgedPrescriptions Prescription[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -2794,8 +2809,16 @@ model Prescription {
   id               String      @id @default(cuid())
   clinicId         String
   clinic           Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  caseId           String
-  case             MedicalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // Optional since Ф6 (TZ-smart-constructor): rows bridged from the visit
+  // constructor have no MedicalCase — they anchor on visitNoteId instead.
+  caseId           String?
+  case             MedicalCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // Ф6 — provenance of bridged rows. (visitNoteId, visitNoteSortOrder)
+  // mirrors the source VisitPrescription row so the finalize sweep upserts
+  // idempotently instead of duplicating courses on re-runs.
+  visitNoteId        String?
+  visitNote          VisitNote? @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
+  visitNoteSortOrder Int?
   // Denormalized for query speed (Wave 3 reminder query: "all active
   // prescriptions for patient X").
   patientId        String
@@ -2819,6 +2842,7 @@ model Prescription {
 
   reminderSends MedicationReminderSend[]
 
+  @@unique([visitNoteId, visitNoteSortOrder])
   @@index([clinicId, patientId, status])
   @@index([clinicId, caseId])
 }

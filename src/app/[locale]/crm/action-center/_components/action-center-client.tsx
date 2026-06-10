@@ -445,6 +445,7 @@ const ACTION_CTA: Record<
   LOW_DOCTOR_SCHEDULE: { cta: "ctaOpen", tone: "info", Icon: CalendarCheck2Icon },
   LOW_NPS_RECEIVED: { cta: "ctaCallback", tone: "pink", Icon: PhoneIcon },
   PATIENT_NO_CHANNEL: { cta: "ctaCall", tone: "warning", Icon: PhoneIcon },
+  VISIT_FOLLOW_UP_DUE: { cta: "ctaCall", tone: "info", Icon: CalendarCheck2Icon },
 };
 
 // Type helper so TypeScript knows the keys are valid i18n paths.
@@ -479,6 +480,7 @@ const CATEGORY_MAP: Record<ActionType, CategoryKey> = {
   OVERDUE_FOLLOW_UP: "calls",
   LOW_NPS_RECEIVED: "calls",
   PATIENT_NO_CHANNEL: "calls",
+  VISIT_FOLLOW_UP_DUE: "calls",
   EMPTY_SLOT_TOMORROW: "slots",
   IDLE_ROOM: "slots",
   LOW_DOCTOR_SCHEDULE: "slots",

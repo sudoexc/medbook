@@ -76,31 +76,46 @@ function joinHuman(parts: string[], locale: PrescriptionLocale): string {
   return `${parts.slice(0, -1).join(", ")} ${and} ${parts[parts.length - 1]}`;
 }
 
+// Skip strength in the head when the dose already carries it
+// ("Конкор 5 мг — 5 мг" → "Конкор — 5 мг").
+export function formatPrescriptionHead(
+  row: Pick<PrescriptionLikeRow, "displayName" | "strength" | "dose">,
+): string {
+  const strength = row.strength?.trim() || null;
+  const dose = row.dose.trim();
+  return strength && dose !== strength && !row.displayName.includes(strength)
+    ? `${row.displayName} ${strength}`
+    : row.displayName;
+}
+
+export function formatMealLabel(
+  mealRelation: string,
+  locale: PrescriptionLocale,
+): string {
+  return MEAL_LABELS[locale][mealRelation] ?? "";
+}
+
+export function formatDurationDays(
+  durationDays: number | null | undefined,
+  locale: PrescriptionLocale,
+): string {
+  if (durationDays == null) return "";
+  return locale === "uz" ? `${durationDays} kun` : `${durationDays} дн.`;
+}
+
 export function formatPrescriptionLine(
   row: PrescriptionLikeRow,
   locale: PrescriptionLocale,
   opts?: { withInstruction?: boolean },
 ): string {
-  const strength = row.strength?.trim() || null;
   const dose = row.dose.trim();
-
-  // Skip strength in the head when the dose already carries it
-  // ("Конкор 5 мг — 5 мг" → "Конкор — 5 мг").
-  const head =
-    strength && dose !== strength && !row.displayName.includes(strength)
-      ? `${row.displayName} ${strength}`
-      : row.displayName;
+  const head = formatPrescriptionHead(row);
 
   const times = TIME_ORDER.filter((t) => row.timesOfDay.includes(t)).map(
     (t) => TIME_LABELS[locale][t],
   );
-  const meal = MEAL_LABELS[locale][row.mealRelation] ?? "";
-  const duration =
-    row.durationDays != null
-      ? locale === "uz"
-        ? `${row.durationDays} kun`
-        : `${row.durationDays} дн.`
-      : "";
+  const meal = formatMealLabel(row.mealRelation, locale);
+  const duration = formatDurationDays(row.durationDays, locale);
 
   const schedule = [dose, joinHuman(times, locale), meal, duration]
     .filter(Boolean)

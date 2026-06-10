@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { formatDate } from "@/lib/format";
 
+import { newVerifyToken } from "@/server/clinical-forms/numbering";
 import { getQueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
 import { renderReferralPdf } from "@/server/referrals/referral-pdf";
@@ -84,6 +85,16 @@ async function generateReferralDocument(
 
   const dateLabel = formatDate(ref.createdAt, locale, "short");
 
+  // Ф5 — QR verification. Preserve an already-issued token (a printed QR
+  // must survive re-renders); mint one only when the document has none yet.
+  const existing = await prisma.document.findUnique({
+    where: { referralId: ref.id },
+    select: { verifyToken: true },
+  });
+  const verifyToken = existing?.verifyToken ?? newVerifyToken();
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
+  const verifyUrl = baseUrl ? `${baseUrl}/v/${verifyToken}` : null;
+
   const pdf = await renderReferralPdf({
     clinicName,
     clinicAddress,
@@ -95,6 +106,7 @@ async function generateReferralDocument(
     diagnosisCode: ref.diagnosisCode,
     diagnosisName: ref.diagnosisName,
     reason: ref.reason,
+    verifyUrl,
     locale,
     generatedAt: now,
     brandColor: clinic?.brandColor ?? null,
@@ -109,7 +121,9 @@ async function generateReferralDocument(
       ? `Yo‘llanma — ${dateLabel}`
       : `Направление от ${dateLabel}`;
 
-  // Upsert on the @unique referralId — the idempotency anchor.
+  // Upsert on the @unique referralId — the idempotency anchor. verifyToken
+  // is either the preserved existing one or the freshly-minted one embedded
+  // in this very PDF, so update never invalidates a printed QR.
   await prisma.document.upsert({
     where: { referralId: ref.id },
     create: {
@@ -118,6 +132,7 @@ async function generateReferralDocument(
       referralId: ref.id,
       type: "REFERRAL",
       title,
+      verifyToken,
       fileUrl: uploaded.url,
       mimeType: "application/pdf",
       sizeBytes: pdf.length,
@@ -126,6 +141,7 @@ async function generateReferralDocument(
     update: {
       fileUrl: uploaded.url,
       title,
+      verifyToken,
       mimeType: "application/pdf",
       sizeBytes: pdf.length,
     },

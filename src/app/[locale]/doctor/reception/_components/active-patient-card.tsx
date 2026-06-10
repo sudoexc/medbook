@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
+  FilesIcon,
   HistoryIcon,
   Loader2Icon,
   PhoneIcon,
@@ -127,13 +128,26 @@ export function ActivePatientCard() {
     await doFinalize();
   };
 
+  // Print endpoint returns self-contained HTML with a sticky print bar.
+  // We open it in a new tab so the editor state isn't lost; the doctor
+  // hits Cmd/Ctrl+P (or the button in the HTML) to land a PDF. No ?lang —
+  // Ф5: the route defaults to the patient's preferredLang, and the page
+  // itself has a RU/UZ switcher.
   const onPrint = () => {
     if (!visitNoteId) return;
-    // Print endpoint returns self-contained HTML with a sticky print bar.
-    // We open it in a new tab so the editor state isn't lost; the doctor
-    // hits Cmd/Ctrl+P (or the button in the HTML) to land a PDF.
     window.open(
-      `/api/crm/visit-notes/${visitNoteId}/print?lang=ru`,
+      `/api/crm/visit-notes/${visitNoteId}/print`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
+  // Ф5 — one button prints the whole visit package: conclusion + handout +
+  // issued e-prescriptions + referrals, page-broken for a single Cmd+P.
+  const onPrintPackage = () => {
+    if (!visitNoteId) return;
+    window.open(
+      `/api/crm/visit-notes/${visitNoteId}/print?type=package`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -255,6 +269,16 @@ export function ActivePatientCard() {
         >
           <PrinterIcon className="size-4 text-muted-foreground" />
           {t("activePatient.print")}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          onClick={onPrintPackage}
+          disabled={!visitNoteId}
+        >
+          <FilesIcon className="size-4 text-muted-foreground" />
+          {t("activePatient.printPackage")}
         </Button>
 
         <div className="ml-auto inline-flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-2">

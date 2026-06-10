@@ -16,6 +16,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 
 export interface ReferralPdfInput {
   clinicName: string;
@@ -31,6 +32,8 @@ export interface ReferralPdfInput {
   diagnosisCode?: string | null;
   diagnosisName?: string | null;
   reason: string;
+  /** Ф5 — public /v/[token] URL; when set, a QR block is drawn at the end. */
+  verifyUrl?: string | null;
   locale?: "ru" | "uz";
   generatedAt?: Date;
   brandColor?: string | null;
@@ -46,6 +49,7 @@ const LABELS = {
     date: "Дата",
     reason: "Причина направления",
     generated: "Подготовлено",
+    verify: "Проверка подлинности документа — отсканируйте QR-код",
   },
   uz: {
     title: "Yo‘llanma",
@@ -56,6 +60,7 @@ const LABELS = {
     date: "Sana",
     reason: "Yo‘llanma sababi",
     generated: "Tayyorlandi",
+    verify: "Hujjat haqiqiyligini tekshirish — QR kodni skanerlang",
   },
 } as const;
 
@@ -176,6 +181,39 @@ export async function renderReferralPdf(input: ReferralPdfInput): Promise<Buffer
   doc.fontSize(11).fillColor("#1a1f2e").text(input.reason.trim(), {
     width: usableWidth,
   });
+
+  // Ф5 — QR verification block (public, PII-free /v/[token] page).
+  if (input.verifyUrl) {
+    const qrPng = await QRCode.toBuffer(input.verifyUrl, {
+      margin: 0,
+      width: 256,
+      errorCorrectionLevel: "M",
+    });
+    const qrSize = 56;
+    doc.moveDown(0.8);
+    if (doc.y + qrSize + 16 > doc.page.height - doc.page.margins.bottom) {
+      doc.addPage();
+    }
+    const qrY = doc.y;
+    doc.image(qrPng, left + usableWidth - qrSize, qrY, {
+      width: qrSize,
+      height: qrSize,
+    });
+    doc
+      .fontSize(8)
+      .fillColor("#525866")
+      .text(labels.verify, left, qrY + 4, {
+        width: usableWidth - qrSize - 12,
+      });
+    doc
+      .fontSize(7.5)
+      .fillColor("#8b909b")
+      .text(input.verifyUrl, left, doc.y + 2, {
+        width: usableWidth - qrSize - 12,
+      });
+    doc.y = Math.max(doc.y, qrY + qrSize);
+    doc.x = left;
+  }
 
   // Footer.
   doc.moveDown(1.2);

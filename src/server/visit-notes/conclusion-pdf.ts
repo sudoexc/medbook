@@ -21,8 +21,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 
+import type { PrescriptionLikeRow } from "@/lib/catalogs/prescription-format";
 import {
+  buildMedicationGrid,
   parseHandoutBlocks,
   stripInlineMarkers,
 } from "@/server/visit-notes/render-handout";
@@ -38,6 +41,10 @@ export interface ConclusionPdfInput {
   /** Ф0 — human-readable document number ("NF-2026-000123"), if allocated. */
   documentNumber?: string | null;
   handoutMarkdown: string;
+  /** Ф5 — structured rows for the medication intake grid (may be empty). */
+  prescriptions?: PrescriptionLikeRow[] | null;
+  /** Ф5 — public /v/[token] URL; when set, a QR block is drawn at the end. */
+  verifyUrl?: string | null;
   locale?: "ru" | "uz";
   generatedAt?: Date;
   brandColor?: string | null;
@@ -50,6 +57,8 @@ const LABELS = {
     doctor: "Врач",
     visitDate: "Дата приёма",
     generated: "Подготовлено",
+    grid: "Схема приёма",
+    verify: "Проверка подлинности документа — отсканируйте QR-код",
   },
   uz: {
     title: "Bemor uchun eslatma",
@@ -57,6 +66,8 @@ const LABELS = {
     doctor: "Shifokor",
     visitDate: "Tashrif sanasi",
     generated: "Tayyorlandi",
+    grid: "Qabul jadvali",
+    verify: "Hujjat haqiqiyligini tekshirish — QR kodni skanerlang",
   },
 } as const;
 
@@ -209,6 +220,125 @@ export async function renderConclusionPdf(
     }
   }
 
+  // Ф5 — medication intake grid (shared model with the print route).
+  const gridRows = input.prescriptions ?? [];
+  if (gridRows.length > 0) {
+    const grid = buildMedicationGrid(gridRows, locale);
+    const bottomY = () => doc.page.height - doc.page.margins.bottom;
+    const cols: Array<{ w: number; align: "left" | "center" }> = [
+      { w: usableWidth * 0.34, align: "left" },
+      ...grid.headers.times.map(() => ({
+        w: usableWidth * 0.09,
+        align: "center" as const,
+      })),
+      { w: usableWidth * 0.16, align: "left" },
+      { w: usableWidth * 0.14, align: "left" },
+    ];
+
+    const drawGridRow = (
+      texts: string[],
+      note: string,
+      header: boolean,
+    ): void => {
+      const size = header ? 8 : 9;
+      doc.fontSize(size);
+      let maxH = 0;
+      texts.forEach((t, i) => {
+        const h = doc.heightOfString(t || " ", { width: cols[i].w - 6 });
+        if (h > maxH) maxH = h;
+      });
+      let noteH = 0;
+      if (note) {
+        doc.fontSize(7.5);
+        noteH = doc.heightOfString(note, { width: cols[0].w - 6 }) + 1;
+      }
+      const rowH = maxH + noteH + 6;
+      if (doc.y + rowH > bottomY()) doc.addPage();
+      const y = doc.y;
+      let x = left;
+      texts.forEach((t, i) => {
+        doc
+          .fontSize(size)
+          .fillColor(header ? "#525866" : "#1a1f2e")
+          .text(t, x + 3, y, { width: cols[i].w - 6, align: cols[i].align });
+        x += cols[i].w;
+      });
+      if (note) {
+        doc
+          .fontSize(7.5)
+          .fillColor("#666")
+          .text(note, left + 3, y + maxH + 1, { width: cols[0].w - 6 });
+      }
+      const lineY = y + rowH - 2;
+      doc
+        .moveTo(left, lineY)
+        .lineTo(left + usableWidth, lineY)
+        .strokeColor(header ? "#9aa0ab" : "#e3e6ea")
+        .lineWidth(header ? 0.8 : 0.5)
+        .stroke();
+      doc.y = lineY + 4;
+      doc.x = left;
+    };
+
+    doc.moveDown(0.4);
+    if (doc.y + 60 > bottomY()) doc.addPage();
+    doc
+      .fontSize(12)
+      .fillColor("#1a1f2e")
+      .text(labels.grid, left, doc.y, { width: usableWidth });
+    doc.moveDown(0.3);
+    drawGridRow(
+      [
+        grid.headers.drug,
+        ...grid.headers.times,
+        grid.headers.meal,
+        grid.headers.duration,
+      ],
+      "",
+      true,
+    );
+    for (const row of grid.rows) {
+      drawGridRow(
+        [row.name, ...row.cells, row.meal, row.duration],
+        row.note,
+        false,
+      );
+    }
+  }
+
+  // Ф5 — QR verification block (public, PII-free /v/[token] page).
+  if (input.verifyUrl) {
+    const qrPng = await QRCode.toBuffer(input.verifyUrl, {
+      margin: 0,
+      width: 256,
+      errorCorrectionLevel: "M",
+    });
+    const qrSize = 56;
+    doc.moveDown(0.8);
+    if (doc.y + qrSize + 16 > doc.page.height - doc.page.margins.bottom) {
+      doc.addPage();
+    }
+    const qrY = doc.y;
+    doc.image(qrPng, left + usableWidth - qrSize, qrY, {
+      width: qrSize,
+      height: qrSize,
+    });
+    doc
+      .fontSize(8)
+      .fillColor("#525866")
+      .text(labels.verify, left, qrY + 4, {
+        width: usableWidth - qrSize - 12,
+      });
+    doc
+      .fontSize(7.5)
+      .fillColor("#8b909b")
+      .text(input.verifyUrl, left, doc.y + 2, {
+        width: usableWidth - qrSize - 12,
+      });
+    doc.y = Math.max(doc.y, qrY + qrSize);
+    doc.x = left;
+  }
+
   // Footer.
   doc.moveDown(1.2);
   doc
@@ -216,6 +346,8 @@ export async function renderConclusionPdf(
     .fillColor("#8b909b")
     .text(
       `${labels.generated}: ${formatGeneratedAt(generatedAt, locale)}  ·  ${input.clinicName}`,
+      left,
+      doc.y,
       { width: usableWidth },
     );
 

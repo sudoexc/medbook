@@ -27,6 +27,7 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { formatDate } from "@/lib/format";
 
+import { newVerifyToken } from "@/server/clinical-forms/numbering";
 import { getQueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
 import { renderConclusionPdf } from "@/server/visit-notes/conclusion-pdf";
@@ -55,6 +56,16 @@ type SweepNote = {
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string; nameUz: string } | null;
   appointment: { date: Date; time: string | null } | null;
+  visitPrescriptions: Array<{
+    displayName: string;
+    strength: string | null;
+    dose: string;
+    timesOfDay: string[];
+    mealRelation: string;
+    durationDays: number | null;
+    instructionRu: string | null;
+    instructionUz: string | null;
+  }>;
 };
 
 /**
@@ -105,6 +116,16 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     formatDate(visitDate, locale, "short") +
     (note.appointment?.time ? ` · ${note.appointment.time}` : "");
 
+  // Ф5 — QR verification. Preserve an already-issued token (a printed QR
+  // must survive re-renders); mint one only when the document has none yet.
+  const existing = await prisma.document.findUnique({
+    where: { visitNoteId: note.id },
+    select: { verifyToken: true },
+  });
+  const verifyToken = existing?.verifyToken ?? newVerifyToken();
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
+  const verifyUrl = baseUrl ? `${baseUrl}/v/${verifyToken}` : null;
+
   const pdf = await renderConclusionPdf({
     clinicName,
     clinicAddress,
@@ -114,6 +135,8 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     visitDateLabel,
     documentNumber: note.documentNumber,
     handoutMarkdown: note.patientHandoutMarkdown ?? "",
+    prescriptions: note.visitPrescriptions,
+    verifyUrl,
     locale,
     generatedAt: now,
     brandColor: clinic?.brandColor ?? null,
@@ -129,7 +152,9 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
       ? `Xulosa — ${formatDate(visitDate, "uz", "short")}`
       : `Заключение от ${formatDate(visitDate, "ru", "short")}`;
 
-  // Upsert on the @unique visitNoteId — the idempotency anchor.
+  // Upsert on the @unique visitNoteId — the idempotency anchor. verifyToken
+  // is either the preserved existing one or the freshly-minted one embedded
+  // in this very PDF, so update never invalidates a printed QR.
   await prisma.document.upsert({
     where: { visitNoteId: note.id },
     create: {
@@ -140,6 +165,7 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
       type: "CONCLUSION",
       title,
       number: note.documentNumber,
+      verifyToken,
       fileUrl: uploaded.url,
       mimeType: "application/pdf",
       sizeBytes: pdf.length,
@@ -149,6 +175,7 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
       fileUrl: uploaded.url,
       title,
       number: note.documentNumber,
+      verifyToken,
       mimeType: "application/pdf",
       sizeBytes: pdf.length,
     },
@@ -182,6 +209,19 @@ export async function runVisitNoteHandoutTick(
         patient: { select: { fullName: true, preferredLang: true } },
         doctor: { select: { nameRu: true, nameUz: true } },
         appointment: { select: { date: true, time: true } },
+        visitPrescriptions: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            displayName: true,
+            strength: true,
+            dose: true,
+            timesOfDay: true,
+            mealRelation: true,
+            durationDays: true,
+            instructionRu: true,
+            instructionUz: true,
+          },
+        },
       },
       orderBy: { finalizedAt: "asc" },
       take: BATCH,

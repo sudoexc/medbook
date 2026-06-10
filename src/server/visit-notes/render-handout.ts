@@ -21,6 +21,14 @@
  *   - `**bold**`, `_italic_` inline (no nesting)
  */
 
+import {
+  formatDurationDays,
+  formatMealLabel,
+  formatPrescriptionHead,
+  type PrescriptionLikeRow,
+  type PrescriptionLocale,
+} from "@/lib/catalogs/prescription-format";
+
 export type HandoutBlock =
   | { kind: "h1"; text: string }
   | { kind: "h2"; text: string }
@@ -112,6 +120,105 @@ export function parseHandoutBlocks(markdown: string | null): HandoutBlock[] {
   flushBullets();
 
   return blocks;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ф5 — medication intake grid («сетка приёма»).
+//
+// One deterministic model built from structured VisitPrescription rows,
+// consumed by both print surfaces: the print route renders it as an HTML
+// table, the conclusion-PDF worker draws the same rows with pdfkit. Column
+// order is fixed (morning/noon/evening/night) and mirrored in the headers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MedicationGridRow = {
+  /** Drug head ("Конкор 5 мг"); carries the dose when no time slot is set. */
+  name: string;
+  /** Locale-resolved instruction line, "" when absent. */
+  note: string;
+  /** Dose per fixed slot [morning, noon, evening, night]; "" = not taken. */
+  cells: [string, string, string, string];
+  meal: string;
+  duration: string;
+};
+
+export type MedicationGrid = {
+  headers: {
+    drug: string;
+    times: [string, string, string, string];
+    meal: string;
+    duration: string;
+  };
+  rows: MedicationGridRow[];
+};
+
+const GRID_TIME_ORDER = ["MORNING", "NOON", "EVENING", "NIGHT"] as const;
+
+const GRID_HEADERS: Record<PrescriptionLocale, MedicationGrid["headers"]> = {
+  ru: {
+    drug: "Препарат",
+    times: ["Утро", "День", "Вечер", "Ночь"],
+    meal: "Еда",
+    duration: "Курс",
+  },
+  uz: {
+    drug: "Dori",
+    times: ["Ertalab", "Kunduzi", "Kechqurun", "Tunda"],
+    meal: "Ovqat",
+    duration: "Kurs",
+  },
+};
+
+export function buildMedicationGrid(
+  rows: readonly PrescriptionLikeRow[],
+  locale: PrescriptionLocale,
+): MedicationGrid {
+  return {
+    headers: GRID_HEADERS[locale],
+    rows: rows.map((row) => {
+      const dose = row.dose.trim();
+      const cells = GRID_TIME_ORDER.map((t) =>
+        row.timesOfDay.includes(t) ? dose : "",
+      ) as MedicationGridRow["cells"];
+      const head = formatPrescriptionHead(row);
+      const note =
+        (locale === "uz"
+          ? row.instructionUz?.trim() || row.instructionRu?.trim()
+          : row.instructionRu?.trim()) ?? "";
+      return {
+        // No slot selected (e.g. "по требованию") — keep the dose visible
+        // by folding it into the name column.
+        name: cells.every((c) => c === "") && dose ? `${head} — ${dose}` : head,
+        note,
+        cells,
+        meal: formatMealLabel(row.mealRelation, locale),
+        duration: formatDurationDays(row.durationDays, locale),
+      };
+    }),
+  };
+}
+
+/** Table HTML for the print route; styling via `.med-grid` classes there. */
+export function renderMedicationGridHtml(grid: MedicationGrid): string {
+  if (grid.rows.length === 0) return "";
+  const h = grid.headers;
+  const head = [
+    `<th class="med-drug">${escapeHtml(h.drug)}</th>`,
+    ...h.times.map((t) => `<th class="med-slot">${escapeHtml(t)}</th>`),
+    `<th class="med-meal">${escapeHtml(h.meal)}</th>`,
+    `<th class="med-duration">${escapeHtml(h.duration)}</th>`,
+  ].join("");
+  const body = grid.rows
+    .map((row) => {
+      const name = row.note
+        ? `${escapeHtml(row.name)}<div class="med-note">${escapeHtml(row.note)}</div>`
+        : escapeHtml(row.name);
+      return `<tr><td class="med-drug">${name}</td>${row.cells
+        .map((c) => `<td class="med-slot">${escapeHtml(c)}</td>`)
+        .join("")}<td class="med-meal">${escapeHtml(row.meal)}</td><td class="med-duration">${escapeHtml(row.duration)}</td></tr>`;
+    })
+    .join("");
+  return `<table class="med-grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 /**

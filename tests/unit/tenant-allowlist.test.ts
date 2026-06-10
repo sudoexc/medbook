@@ -42,6 +42,9 @@ describe("tenant allowlist vs schema", () => {
   });
 
   it("parses the schema (sanity)", () => {
-    expect(modelsWithoutClinicId()).toContain("Drug");
+    // Drug gained a nullable clinicId in Ф4 (clinic-local rows), so the
+    // canary is Plan — platform-level, will never carry clinicId.
+    expect(modelsWithoutClinicId()).toContain("Plan");
+    expect(modelsWithoutClinicId()).not.toContain("Drug");
   });
 });

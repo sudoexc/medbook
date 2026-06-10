@@ -932,6 +932,10 @@ model Drug {
   // Hide from search without deleting (preserves historical references in
   // VisitNote.prescriptions[]).
   active            Boolean           @default(true)
+  // Ф4 — null for the curated global catalog; set when a clinic adds its own
+  // drug. Cross-tenant by design (Drug is in MODELS_WITHOUT_TENANT); routes
+  // filter `clinicId IN (null, ctx.clinicId)` manually, like DiagnosisGuide.
+  clinicId          String?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -942,6 +946,7 @@ model Drug {
 
   @@index([category, active])
   @@index([atcCode])
+  @@index([clinicId, active])
 }
 
 // Phase G4 — drug-drug interaction registry. Pairs of drugs that should not
@@ -1089,6 +1094,9 @@ model HandoutTemplate {
   summaryRu     String?
   // Markdown body that appends to the handout draft.
   bodyMd        String   @db.Text
+  // Ф4 — Uzbek body. Null falls back to bodyMd (RU) at insert time; the
+  // picker offers the UZ variant when present.
+  bodyMdUz      String?  @db.Text
   // ICD-10 prefixes this handout applies to. Empty = general (always shown
   // under the "Общее" tab).
   matchPrefixes String[] @default([])
@@ -1096,10 +1104,14 @@ model HandoutTemplate {
   topic         String?
   sortOrder     Int      @default(0)
   active        Boolean  @default(true)
+  // Ф4 — null for the global library; set for clinic-own handouts. Same
+  // cross-tenant convention as DiagnosisGuide / Drug.
+  clinicId      String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([active, sortOrder])
+  @@index([clinicId, active])
 }
 
 // Ф1 (TZ-smart-constructor) — diagnosis knowledge base. When the doctor sets

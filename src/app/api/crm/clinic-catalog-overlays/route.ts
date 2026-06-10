@@ -14,18 +14,43 @@
  */
 import { z } from "zod";
 
+import { Prisma } from "@/generated/prisma/client";
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import {
+  OVERLAY_OVERRIDES_MAX_JSON,
+  isOverridableEntityType,
+  sanitizeOverrides,
+} from "@/server/catalog/clinic-overlay";
 import { err, ok } from "@/server/http";
 
-const ENTITY_TYPES = ["DRUG", "PROTOCOL", "HANDOUT", "LAB_TEST", "LAB_PANEL"] as const;
+const ENTITY_TYPES = [
+  "DRUG",
+  "PROTOCOL",
+  "HANDOUT",
+  "LAB_TEST",
+  "LAB_PANEL",
+  "GUIDE",
+] as const;
 
 const PostSchema = z.object({
   entityType: z.enum(ENTITY_TYPES),
   entityCode: z.string().trim().min(1).max(120),
-  hideGlobal: z.boolean().default(true),
+  // Omitted = keep the existing flag (or `false` on create when overrides
+  // are supplied, `true` on a bare hide-create — the G6 behaviour).
+  hideGlobal: z.boolean().optional(),
+  // Ф4 — whitelisted field patch merged over the global row at read time.
+  // `null` clears a previously stored override.
+  overrides: z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .optional()
+    .refine(
+      (v) => v == null || JSON.stringify(v).length <= OVERLAY_OVERRIDES_MAX_JSON,
+      { message: "overrides payload too large" },
+    ),
 });
 
 const DeleteSchema = z.object({
@@ -61,6 +86,30 @@ export const POST = createApiHandler(
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
+    // Overrides only make sense for entity types with a field whitelist.
+    if (
+      body.overrides != null &&
+      !isOverridableEntityType(body.entityType)
+    ) {
+      return err("OverridesNotSupported", 400, {
+        reason: "entity_type_not_overridable",
+      });
+    }
+    const sanitized =
+      body.overrides != null && isOverridableEntityType(body.entityType)
+        ? sanitizeOverrides(body.entityType, body.overrides)
+        : null;
+    // `overrides` present in the body (even null/{}) = caller manages the
+    // patch; undefined = legacy hide-only call, leave the column untouched.
+    const touchOverrides = body.overrides !== undefined;
+    const overridesData = touchOverrides
+      ? {
+          overridesJson: sanitized
+            ? (sanitized as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+        }
+      : {};
+
     const existing = await prisma.clinicCatalogOverlay.findUnique({
       where: {
         clinicId_entityType_entityCode: {
@@ -74,7 +123,11 @@ export const POST = createApiHandler(
     if (existing) {
       const updated = await prisma.clinicCatalogOverlay.update({
         where: { id: existing.id },
-        data: { hideGlobal: body.hideGlobal, updatedById: ctx.userId },
+        data: {
+          hideGlobal: body.hideGlobal ?? existing.hideGlobal,
+          ...overridesData,
+          updatedById: ctx.userId,
+        },
       });
       await audit(request, {
         action: AUDIT_ACTION.CATALOG_OVERLAY_UPDATED,
@@ -83,7 +136,9 @@ export const POST = createApiHandler(
         meta: {
           targetEntityType: body.entityType,
           entityCode: body.entityCode,
-          hideGlobal: body.hideGlobal,
+          hideGlobal: updated.hideGlobal,
+          hasOverrides: sanitized != null,
+          overrideFields: sanitized ? Object.keys(sanitized) : [],
         },
       });
       return ok({ overlay: updated });
@@ -94,7 +149,9 @@ export const POST = createApiHandler(
         clinicId: ctx.clinicId,
         entityType: body.entityType,
         entityCode: body.entityCode,
-        hideGlobal: body.hideGlobal,
+        // A pure override-create must not hide the row it patches.
+        hideGlobal: body.hideGlobal ?? sanitized == null,
+        ...overridesData,
         createdById: ctx.userId,
       },
     });
@@ -105,7 +162,9 @@ export const POST = createApiHandler(
       meta: {
         targetEntityType: body.entityType,
         entityCode: body.entityCode,
-        hideGlobal: body.hideGlobal,
+        hideGlobal: created.hideGlobal,
+        hasOverrides: sanitized != null,
+        overrideFields: sanitized ? Object.keys(sanitized) : [],
       },
     });
     return ok({ overlay: created });

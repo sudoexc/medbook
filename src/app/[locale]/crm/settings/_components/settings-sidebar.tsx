@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import {
   BadgeCheckIcon,
   BellRingIcon,
+  BookOpenIcon,
   BuildingIcon,
   CoinsIcon,
   CreditCardIcon,
@@ -33,6 +34,7 @@ interface NavItem {
     | "cabinets"
     | "exchangeRates"
     | "roles"
+    | "knowledge"
     | "audit"
     | "integrations"
     | "notifications"
@@ -51,6 +53,8 @@ const NAV: NavItem[] = [
   { key: "cabinets", href: "cabinets", icon: DoorOpenIcon },
   { key: "exchangeRates", href: "exchange-rates", icon: CoinsIcon },
   { key: "roles", href: "roles", icon: BadgeCheckIcon },
+  // Ф4 (TZ-smart-constructor) — editable knowledge catalogs.
+  { key: "knowledge", href: "knowledge", icon: BookOpenIcon },
   { key: "audit", href: "audit", icon: ScrollIcon },
   { key: "integrations", href: "integrations", icon: PlugZapIcon },
   { key: "notifications", href: "notifications", icon: BellRingIcon },

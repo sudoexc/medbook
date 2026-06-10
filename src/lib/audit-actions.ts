@@ -533,6 +533,21 @@ export const AUDIT_ACTION = {
   CATALOG_OVERLAY_UPDATED: "CATALOG_OVERLAY_UPDATED",
   CATALOG_OVERLAY_DELETED: "CATALOG_OVERLAY_DELETED",
 
+  // Ф4 (TZ-smart-constructor) — clinic-local knowledge-base rows managed in
+  // /crm/settings/knowledge. `entityType` is the catalog model name
+  // ("Drug" / "DiagnosisGuide" / "HandoutTemplate"), `entityId` the row id.
+  // DELETED = soft-deactivate (active=false); rows stay referenceable from
+  // historical visit notes.
+  KNOWLEDGE_DRUG_CREATED: "KNOWLEDGE_DRUG_CREATED",
+  KNOWLEDGE_DRUG_UPDATED: "KNOWLEDGE_DRUG_UPDATED",
+  KNOWLEDGE_DRUG_DELETED: "KNOWLEDGE_DRUG_DELETED",
+  KNOWLEDGE_GUIDE_CREATED: "KNOWLEDGE_GUIDE_CREATED",
+  KNOWLEDGE_GUIDE_UPDATED: "KNOWLEDGE_GUIDE_UPDATED",
+  KNOWLEDGE_GUIDE_DELETED: "KNOWLEDGE_GUIDE_DELETED",
+  KNOWLEDGE_HANDOUT_CREATED: "KNOWLEDGE_HANDOUT_CREATED",
+  KNOWLEDGE_HANDOUT_UPDATED: "KNOWLEDGE_HANDOUT_UPDATED",
+  KNOWLEDGE_HANDOUT_DELETED: "KNOWLEDGE_HANDOUT_DELETED",
+
   // Phase G6 — Doctor pinned / unpinned a catalog entry as a favourite.
   // `entityType: "DoctorFavorite"`, `entityId: <favorite.id>`. `meta`
   // carries `{ userId, targetEntityType, entityCode }`. Unpins still log a

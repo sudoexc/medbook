@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import {
   BadgeCheckIcon,
   BellRingIcon,
+  BookOpenIcon,
   BuildingIcon,
   CoinsIcon,
   CreditCardIcon,
@@ -36,6 +37,8 @@ const CLINIC_MANAGEMENT: CardSpec[] = [
   { key: "cabinets", path: "rooms", icon: DoorOpenIcon },
   { key: "services", path: "services", icon: SparklesIcon },
   { key: "documents", path: "documents", icon: FileTextIcon },
+  // Ф4 (TZ-smart-constructor) — editable knowledge catalogs.
+  { key: "knowledge", path: "settings/knowledge", icon: BookOpenIcon },
   // SMS-Email tile removed in SMS removal Wave 2 (docs/TZ-sms-removal.md).
 ];
 

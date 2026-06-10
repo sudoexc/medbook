@@ -9,6 +9,7 @@ export type HandoutTemplateRow = {
   titleUz: string | null;
   summaryRu: string | null;
   bodyMd: string;
+  bodyMdUz: string | null;
   matchPrefixes: string[];
   topic: string | null;
   sortOrder: number;

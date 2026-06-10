@@ -3183,6 +3183,7 @@
       "cabinets": "Kabinetlar",
       "exchangeRates": "Valyuta kurslari",
       "roles": "Rollar va ruxsatlar",
+      "knowledge": "Bilimlar bazasi",
       "audit": "Audit jurnali",
       "integrations": "Integratsiyalar",
       "notifications": "Bildirishnomalar",
@@ -3476,6 +3477,10 @@
       "documents": {
         "title": "Hujjatlar kutubxonasi",
         "description": "Shablonlar va bemor fayllari."
+      },
+      "knowledge": {
+        "title": "Bilimlar bazasi",
+        "description": "Dorilar, yo'riqnomalar, protokollar va eslatmalar — yashirish, o'zgartirish yoki o'zinikini qo'shish."
       },
       "smsEmail": {
         "title": "SMS / Email",
@@ -3846,6 +3851,151 @@
         "statusLabel": "Holat",
         "statusOn": "Yoqilgan",
         "statusOff": "O'chirilgan"
+      }
+    },
+    "knowledge": {
+      "title": "Bilimlar bazasi",
+      "subtitle": "Klinikangizning dorilari, tashxis bo'yicha yo'riqnomalari, protokollari va eslatmalari",
+      "tabs": {
+        "drugs": "Dorilar",
+        "guides": "Tashxis yo'riqnomalari",
+        "protocols": "Protokollar",
+        "handouts": "Eslatmalar"
+      },
+      "searchPlaceholder": "Qidirish…",
+      "loading": "Yuklanmoqda…",
+      "columns": {
+        "origin": "Manba",
+        "actions": "Amallar"
+      },
+      "badges": {
+        "clinic": "Klinika",
+        "overridden": "O'zgartirilgan",
+        "hidden": "Yashirilgan"
+      },
+      "actions": {
+        "edit": "Tahrirlash",
+        "hide": "Klinika uchun yashirish",
+        "show": "Ko'rsatish",
+        "delete": "O'chirish",
+        "cancel": "Bekor qilish",
+        "save": "Saqlash",
+        "saving": "Saqlanmoqda…",
+        "resetOverride": "O'zgarishlarni bekor qilish"
+      },
+      "toasts": {
+        "created": "Yozuv qo'shildi",
+        "saved": "Saqlandi",
+        "deactivated": "Yozuv o'chirildi",
+        "hidden": "Klinika uchun yashirildi",
+        "shown": "Shifokorlarga yana ko'rinadi",
+        "overrideSaved": "Klinika uchun o'zgarishlar saqlandi",
+        "overrideReset": "Global versiya qaytarildi"
+      },
+      "errors": {
+        "innTaken": "Bunday XPN bilan dori katalogda allaqachon bor — global yozuvni tahrirlang"
+      },
+      "hints": {
+        "linePerItem": "Har bir band alohida qatorda",
+        "icdPerLine": "KXT-10 kodlari, har biri alohida qatorda"
+      },
+      "overrideNote": "Global yozuv. O'zgarishlarni faqat sizning klinikangiz ko'radi — asl nusxaga tegmaymiz.",
+      "drugs": {
+        "add": "Dori qo'shish",
+        "empty": "Dorilar topilmadi",
+        "editTitle": "Klinika dorisi",
+        "overrideTitle": "Klinika uchun o'zgartirish",
+        "deleteTitle": "Dorini o'chirish?",
+        "columns": {
+          "name": "Nomi",
+          "inn": "XPN",
+          "category": "Toifa"
+        },
+        "fields": {
+          "inn": "XPN",
+          "atcCode": "ATX kodi",
+          "category": "Toifa",
+          "nameRu": "Nomi (RU)",
+          "nameUz": "Nomi (UZ)",
+          "forms": "Chiqarilish shakllari",
+          "formsHint": "Qator = shakl, ikki nuqtadan keyin dozalar: «TAB: 5 mg, 10 mg»",
+          "indications": "Ko'rsatmalar (KXT-10)",
+          "contraindications": "Qarshi ko'rsatmalar",
+          "sideEffects": "Nojo'ya ta'sirlar",
+          "dosingAdult": "Doza: kattalar",
+          "dosingPediatric": "Doza: bolalar",
+          "dosingRenal": "Doza: buyrak yetishmovchiligi",
+          "rxOnly": "Faqat retsept bo'yicha"
+        }
+      },
+      "guides": {
+        "add": "Yo'riqnoma qo'shish",
+        "empty": "Yo'riqnomalar topilmadi",
+        "editTitle": "Klinika yo'riqnomasi",
+        "overrideTitle": "Klinika uchun o'zgartirish",
+        "deleteTitle": "Yo'riqnomani o'chirish?",
+        "followUpDays": "{days} kun",
+        "columns": {
+          "prefix": "KXT-10",
+          "title": "Nomi",
+          "followUp": "Nazorat"
+        },
+        "fields": {
+          "matchPrefix": "KXT-10 prefiksi",
+          "matchPrefixHint": "Masalan G43 — barcha G43.* uchun ishlaydi",
+          "titleRu": "Nomi (RU)",
+          "titleUz": "Nomi (UZ)",
+          "whatToDoRu": "Nima qilish kerak (RU)",
+          "whatToDoUz": "Nima qilish kerak (UZ)",
+          "careRu": "Parvarish (RU)",
+          "careUz": "Parvarish (UZ)",
+          "lifestyleRu": "Turmush tarzi (RU)",
+          "lifestyleUz": "Turmush tarzi (UZ)",
+          "redFlagsRu": "Xavfli belgilar (RU)",
+          "redFlagsUz": "Xavfli belgilar (UZ)",
+          "adviceChips": "Maslahat-chiplar",
+          "followUpDays": "Nazorat tashrifi, kun"
+        }
+      },
+      "handouts": {
+        "add": "Eslatma qo'shish",
+        "empty": "Eslatmalar topilmadi",
+        "editTitle": "Klinika eslatmasi",
+        "overrideTitle": "Klinika uchun o'zgartirish",
+        "deleteTitle": "Eslatmani o'chirish?",
+        "columns": {
+          "title": "Nomi",
+          "topic": "Mavzu",
+          "prefixes": "KXT-10"
+        },
+        "fields": {
+          "titleRu": "Nomi (RU)",
+          "titleUz": "Nomi (UZ)",
+          "summaryRu": "Qisqacha tavsif",
+          "topic": "Mavzu",
+          "matchPrefixes": "Tashxislarga bog'lash (KXT-10)",
+          "bodyMd": "Matn (RU, Markdown)",
+          "bodyMdUz": "Matn (UZ, Markdown)"
+        }
+      },
+      "protocols": {
+        "add": "Protokol qo'shish",
+        "empty": "Klinika protokollari hali yo'q",
+        "editTitle": "Klinika protokoli",
+        "scopeHint": "Bu yerda faqat klinika protokollari. Shaxsiy protokollarni shifokorlar o'z kabinetida yuritadi, globallari — faqat o'qish uchun.",
+        "itemsHint": "Protokol ichidagi tayinlovlar qabuldan to'ldiriladi — shifokor kabinetidagi «Qabulni protokol sifatida saqlash».",
+        "columns": {
+          "name": "Nomi",
+          "items": "Tayinlovlar",
+          "active": "Faol"
+        },
+        "fields": {
+          "nameRu": "Nomi (RU)",
+          "nameUz": "Nomi (UZ)",
+          "summaryRu": "Qisqacha tavsif",
+          "adviceTemplate": "Tavsiyalar",
+          "recommendedLabs": "Tavsiya etiladigan tahlillar"
+        }
       }
     }
   },

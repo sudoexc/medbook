@@ -62,6 +62,9 @@ export function HandoutLibraryDrawer({
   const [debounced, setDebounced] = React.useState("");
   const [topicFilter, setTopicFilter] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<HandoutTemplateRow | null>(null);
+  // Ф4 — templates may carry an UZ body; the toggle controls both the
+  // preview and which language Append/Replace inserts.
+  const [lang, setLang] = React.useState<"ru" | "uz">("ru");
 
   React.useEffect(() => {
     const id = window.setTimeout(() => setDebounced(query), 150);
@@ -74,6 +77,7 @@ export function HandoutLibraryDrawer({
       setDebounced("");
       setTopicFilter(null);
       setSelected(null);
+      setLang("ru");
     }
   }, [open]);
 
@@ -101,14 +105,19 @@ export function HandoutLibraryDrawer({
     return [...pin, ...rest];
   }, [topicFilter, templates, pinned]);
 
+  const activeBody =
+    selected && lang === "uz" && selected.bodyMdUz
+      ? selected.bodyMdUz
+      : selected?.bodyMd ?? "";
+
   const handleAppend = () => {
     if (!selected) return;
-    onPick(selected.bodyMd, "APPEND");
+    onPick(activeBody, "APPEND");
     onOpenChange(false);
   };
   const handleReplace = () => {
     if (!selected) return;
-    onPick(selected.bodyMd, "REPLACE");
+    onPick(activeBody, "REPLACE");
     onOpenChange(false);
   };
 
@@ -199,7 +208,10 @@ export function HandoutLibraryDrawer({
                       <li key={tpl.id} className="group relative">
                         <button
                           type="button"
-                          onClick={() => setSelected(tpl)}
+                          onClick={() => {
+                            setSelected(tpl);
+                            setLang("ru");
+                          }}
                           className={cn(
                             "flex w-full items-start gap-2 rounded-md border px-2 py-1.5 pr-7 text-left text-xs transition-colors",
                             isPicked
@@ -276,12 +288,33 @@ export function HandoutLibraryDrawer({
                       </div>
                     )}
                   </div>
-                  <code className="rounded-md bg-muted px-1 font-mono text-[10px] text-muted-foreground">
-                    {selected.code}
-                  </code>
+                  <div className="flex items-center gap-2">
+                    {selected.bodyMdUz ? (
+                      <div className="inline-flex overflow-hidden rounded-md border border-border">
+                        {(["ru", "uz"] as const).map((l) => (
+                          <button
+                            key={l}
+                            type="button"
+                            onClick={() => setLang(l)}
+                            className={cn(
+                              "px-1.5 py-0.5 text-[10px] font-semibold uppercase transition-colors",
+                              lang === l
+                                ? "bg-primary/10 text-primary"
+                                : "bg-card text-muted-foreground hover:bg-muted",
+                            )}
+                          >
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <code className="rounded-md bg-muted px-1 font-mono text-[10px] text-muted-foreground">
+                      {selected.code}
+                    </code>
+                  </div>
                 </div>
                 <pre className="flex-1 overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-relaxed text-foreground">
-                  {selected.bodyMd}
+                  {activeBody}
                 </pre>
                 <div className="flex items-center justify-end gap-2 border-t px-4 py-2">
                   <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>

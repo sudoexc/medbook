@@ -16,7 +16,10 @@ import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { loadHiddenCodes } from "@/server/catalog/clinic-overlay";
+import {
+  applyClinicOverlay,
+  loadClinicOverlays,
+} from "@/server/catalog/clinic-overlay";
 import { ok, parseQuery } from "@/server/http";
 
 const QuerySchema = z.object({
@@ -29,7 +32,11 @@ export const GET = createApiListHandler(
     const parsed = parseQuery(request, QuerySchema);
     if (!parsed.ok) return parsed.response;
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
-    const hidden = await loadHiddenCodes(clinicId, "GUIDE");
+    const includeHidden =
+      new URL(request.url).searchParams.get("includeHidden") === "1" &&
+      ctx.kind === "TENANT" &&
+      ctx.role === "ADMIN";
+    const overlays = await loadClinicOverlays(clinicId, "GUIDE");
 
     const visible = await prisma.diagnosisGuide.findMany({
       where: {
@@ -38,9 +45,31 @@ export const GET = createApiListHandler(
       },
       orderBy: [{ matchPrefix: "asc" }, { sortOrder: "asc" }],
     });
-    const rows = visible.filter(
-      (g) => g.clinicId !== null || !hidden.has(g.code),
-    );
+    const rows = visible
+      .filter(
+        (g) =>
+          g.clinicId !== null ||
+          includeHidden ||
+          !overlays.hidden.has(g.code),
+      )
+      .map((g) =>
+        g.clinicId === null
+          ? {
+              ...applyClinicOverlay(
+                g as unknown as Record<string, unknown>,
+                g.code,
+                overlays,
+                "GUIDE",
+              ),
+              hiddenByClinic: overlays.hidden.has(g.code),
+            }
+          : { ...g, clinicOverridden: false, hiddenByClinic: false },
+      ) as Array<
+      (typeof visible)[number] & {
+        clinicOverridden: boolean;
+        hiddenByClinic: boolean;
+      }
+    >;
 
     const icd = parsed.value.icd?.trim().toUpperCase();
     if (!icd) {

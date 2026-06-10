@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   BookOpenIcon,
   CheckIcon,
@@ -11,9 +11,16 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { composePatientHandoutRu } from "@/lib/catalogs/handout-composer";
+import {
+  composePatientHandout,
+  type HandoutLocale,
+} from "@/lib/catalogs/handout-composer";
 
 import { useReceptionContext } from "../_hooks/reception-context";
+import {
+  pickGuideText,
+  useDiagnosisGuide,
+} from "../_hooks/use-diagnosis-guide";
 import { usePatchVisitNote, useVisitNote } from "../_hooks/use-visit-note";
 import { HandoutLibraryDrawer } from "./handout-library-drawer";
 
@@ -218,11 +225,15 @@ function ConclusionEditor() {
 
 function HandoutEditor() {
   const t = useTranslations("doctor.reception");
-  const { visitNoteId } = useReceptionContext();
+  const rawLocale = useLocale();
+  const locale: HandoutLocale = rawLocale === "uz" ? "uz" : "ru";
+  const { visitNoteId, handoutAppendRequest } = useReceptionContext();
   const noteQuery = useVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
+  const guideQuery = useDiagnosisGuide(note?.diagnosisCode);
+  const guide = guideQuery.data?.[0] ?? null;
 
   const [draft, setDraft] = React.useState<string>("");
   const hydratedFor = React.useRef<string | null>(null);
@@ -236,6 +247,20 @@ function HandoutEditor() {
     hydratedAt.current = Date.now();
     setDraft(note.patientHandoutMarkdown ?? "");
   }, [note]);
+
+  // One-shot append channel — «Вставить в памятку» from the diagnosis guide
+  // card (Ф1). Same contract as the conclusion's bodyAppendRequest.
+  const lastAppendNonce = React.useRef<number>(0);
+  React.useEffect(() => {
+    if (!note || isFinalized) return;
+    if (!handoutAppendRequest) return;
+    if (handoutAppendRequest.nonce === lastAppendNonce.current) return;
+    lastAppendNonce.current = handoutAppendRequest.nonce;
+    setDraft((d) => {
+      const sep = d.trim() ? "\n\n" : "";
+      return d + sep + handoutAppendRequest.text;
+    });
+  }, [handoutAppendRequest, note, isFinalized]);
 
   const [savedAt, setSavedAt] = React.useState<number | null>(null);
   const [dirty, setDirty] = React.useState(false);
@@ -269,20 +294,34 @@ function HandoutEditor() {
 
   const generate = React.useCallback(() => {
     if (!note) return;
-    const composed = composePatientHandoutRu({
+    const composed = composePatientHandout({
+      locale,
       patientName: note.patient?.fullName ?? null,
       doctorName: note.doctor?.user?.name ?? null,
       doctorSpecialty:
-        note.doctor?.specializationRu ?? note.doctor?.specializationUz ?? null,
-      clinicName: note.clinic?.nameRu ?? note.clinic?.nameUz ?? null,
+        locale === "uz"
+          ? note.doctor?.specializationUz ?? note.doctor?.specializationRu ?? null
+          : note.doctor?.specializationRu ?? note.doctor?.specializationUz ?? null,
+      clinicName:
+        locale === "uz"
+          ? note.clinic?.nameUz ?? note.clinic?.nameRu ?? null
+          : note.clinic?.nameRu ?? note.clinic?.nameUz ?? null,
       visitDate: note.appointment?.date ? new Date(note.appointment.date) : new Date(),
       diagnosisName: note.diagnosisName,
       complaints: note.complaints,
       prescriptions: note.prescriptions,
       advice: note.advice,
+      guide: guide
+        ? {
+            whatToDo: pickGuideText(locale, guide.whatToDoRu, guide.whatToDoUz),
+            care: pickGuideText(locale, guide.careRu, guide.careUz),
+            lifestyle: pickGuideText(locale, guide.lifestyleRu, guide.lifestyleUz),
+            redFlags: pickGuideText(locale, guide.redFlagsRu, guide.redFlagsUz),
+          }
+        : null,
     });
     if (composed) setDraft(composed);
-  }, [note]);
+  }, [note, guide, locale]);
 
   const { chars, words } = statsOf(draft);
   const hasStructured =

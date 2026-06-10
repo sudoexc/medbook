@@ -27,6 +27,11 @@ export const MODELS_WITHOUT_TENANT: ReadonlySet<string> = new Set([
   // userId only; tenancy is implied by the User row. No clinicId column,
   // so the auto-injector must stay out of it.
   "DoctorNotificationPref",
+  // Ф1 (TZ-smart-constructor): knowledge-base guides are cross-tenant by
+  // design — `clinicId` is null for the curated global seed, set for
+  // clinic-own rows. Routes filter `clinicId IN (null, ctx.clinicId)`
+  // manually; auto-injection would hide every global guide.
+  "DiagnosisGuide",
 ]);
 
 /**

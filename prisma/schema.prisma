@@ -1069,6 +1069,47 @@ model HandoutTemplate {
   @@index([active, sortOrder])
 }
 
+// Ф1 (TZ-smart-constructor) — diagnosis knowledge base. When the doctor sets
+// an ICD-10 code, the longest-matching guide surfaces under the diagnosis
+// with structured patient-facing blocks (what to do / care / lifestyle /
+// red flags) in RU+UZ, ready-made advice chips and a default follow-up.
+// Structured blocks (not one blob) so print composes per-section and the
+// doctor can insert pieces selectively.
+//
+// `clinicId` is null for the curated global seed; a clinic can add its own
+// guides (Ф4). Cross-tenant reads by design → listed in
+// MODELS_WITHOUT_TENANT, routes filter `clinicId IN (null, ctx.clinicId)`
+// manually. Prefix match follows the ClinicalProtocol convention: longest
+// `matchPrefix` wins.
+model DiagnosisGuide {
+  id                  String   @id @default(cuid())
+  clinicId            String?
+  // Stable slug ("g43-migraine") — overlay + favorites key (CatalogEntityType.GUIDE).
+  code                String
+  // ICD-10 prefix, e.g. "G43" or "G43.0".
+  matchPrefix         String
+  titleRu             String
+  titleUz             String?
+  whatToDoRu          String?  @db.Text
+  whatToDoUz          String?  @db.Text
+  careRu              String?  @db.Text
+  careUz              String?  @db.Text
+  lifestyleRu         String?  @db.Text
+  lifestyleUz         String?  @db.Text
+  redFlagsRu          String?  @db.Text
+  redFlagsUz          String?  @db.Text
+  // Ready-made chips for the advice field ("Спать 7–8 часов", …).
+  adviceChips         String[] @default([])
+  defaultFollowUpDays Int?
+  sortOrder           Int      @default(0)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([clinicId, code])
+  @@index([matchPrefix, active])
+}
+
 // Phase G6 — Clinic overlay + doctor favorites.
 //
 // `ClinicCatalogOverlay` lets a clinic hide a global catalog entry (drug,
@@ -1091,6 +1132,7 @@ enum CatalogEntityType {
   HANDOUT
   LAB_TEST
   LAB_PANEL
+  GUIDE
 }
 
 model ClinicCatalogOverlay {

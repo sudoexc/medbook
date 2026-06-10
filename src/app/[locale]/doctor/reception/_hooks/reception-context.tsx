@@ -54,6 +54,13 @@ type ReceptionContextValue = {
    */
   bodyRemoveRequest: { text: string; nonce: number } | null;
   requestBodyRemove: (text: string) => void;
+  /**
+   * Same one-shot append contract as `bodyAppendRequest`, but targeting the
+   * patient handout editor (Ф1 — «Вставить в памятку» from the diagnosis
+   * guide card). Consumed by HandoutEditor in NotesEditorPanel.
+   */
+  handoutAppendRequest: { text: string; nonce: number } | null;
+  requestHandoutAppend: (text: string) => void;
   activeTab: ReceptionTab;
   setActiveTab: (t: ReceptionTab) => void;
 };
@@ -128,6 +135,15 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
     setBodyRemoveRequest({ text: trimmed, nonce: Date.now() });
   }, []);
 
+  const [handoutAppendRequest, setHandoutAppendRequest] = React.useState<
+    { text: string; nonce: number } | null
+  >(null);
+  const requestHandoutAppend = React.useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setHandoutAppendRequest({ text: trimmed, nonce: Date.now() });
+  }, []);
+
   const [activeTab, setActiveTab] = React.useState<ReceptionTab>("session");
 
   // Realtime — when any appointment status changes in this clinic, refetch
@@ -176,6 +192,8 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       requestBodyAppend,
       bodyRemoveRequest,
       requestBodyRemove,
+      handoutAppendRequest,
+      requestHandoutAppend,
       activeTab,
       setActiveTab,
     }),
@@ -193,6 +211,8 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       requestBodyAppend,
       bodyRemoveRequest,
       requestBodyRemove,
+      handoutAppendRequest,
+      requestHandoutAppend,
       activeTab,
     ],
   );

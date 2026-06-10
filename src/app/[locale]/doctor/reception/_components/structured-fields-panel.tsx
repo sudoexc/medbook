@@ -43,6 +43,7 @@ import {
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
+import { DiagnosisGuideCard } from "./diagnosis-guide-card";
 import { DosageBuilderDialog } from "./dosage-builder-dialog";
 import { EPrescriptionDialog } from "./e-prescription-dialog";
 import { LabOrderDialog } from "./lab-order-dialog";
@@ -327,6 +328,16 @@ export function StructuredFieldsPanel() {
               applyPatch({ diagnosisCode: code, diagnosisName: name })
             }
             onRequestApplyProtocol={(p) => setProtocolToApply(p)}
+          />
+          <DiagnosisGuideCard
+            note={note}
+            disabled={isFinalized}
+            onMergeAdvice={(chips) => {
+              const current = note.advice ?? [];
+              const next = chips.filter((c) => !current.includes(c));
+              if (next.length === 0) return;
+              applyPatch({ advice: [...current, ...next] });
+            }}
           />
         </div>
       )}

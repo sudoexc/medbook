@@ -5468,6 +5468,22 @@
         "applyProtocolTitle": "Protokolni qo‘llash",
         "applyStandard": "Standartni qo‘llash"
       },
+      "guide": {
+        "title": "Bilimlar bazasi",
+        "insert": "Eslatmaga",
+        "insertTitle": "Bo‘limni bemor eslatmasiga qo‘shish",
+        "insertAll": "Hammasini qo‘shish",
+        "insertAllTitle": "Maslahatlar va barcha bo‘limlarni eslatmaga qo‘shish",
+        "chipsTitle": "Tavsiyalarga",
+        "chipTitle": "Tavsiyalarga qo‘shish",
+        "followUpHint": "Nazorat qabuli — odatda {days} kundan keyin",
+        "sections": {
+          "whatToDo": "Nima qilish kerak",
+          "care": "Parvarish va tartib",
+          "lifestyle": "Turmush tarzi va parhez",
+          "redFlags": "Zudlik bilan shifokorga, agar…"
+        }
+      },
       "cds": {
         "checking": "Mosligi tekshirilmoqda…",
         "noConflicts": "Nizolar topilmadi",

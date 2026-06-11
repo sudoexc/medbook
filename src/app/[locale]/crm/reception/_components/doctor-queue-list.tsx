@@ -162,8 +162,28 @@ export function DoctorQueueList({
           </span>
         ) : null}
         <span role="columnheader">{t("status")}</span>
-        <span role="columnheader" className="sr-only">
-          {t("addAppointment")}
+        {/* Колонка действий — `auto`-трек: в шапке рендерим невидимый клон
+            содержимого строки, иначе её auto-ширина (sr-only ≈ 0) не совпадает
+            со строками (кнопка+шеврон) и все колонки съезжают. */}
+        <span role="columnheader">
+          <span className="sr-only">{t("addAppointment")}</span>
+          <span
+            className="invisible flex h-0 items-center justify-end gap-1.5 overflow-hidden"
+            aria-hidden
+          >
+            {onAddAppointment ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 text-xs"
+                tabIndex={-1}
+              >
+                <PlusIcon className="size-3.5" />
+                {t("addAppointment")}
+              </Button>
+            ) : null}
+            <ChevronDownIcon className="size-4" />
+          </span>
         </span>
       </div>
 

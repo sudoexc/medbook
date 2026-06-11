@@ -94,7 +94,20 @@ export function DiagnosisGuideCard({
     whatToDo: true,
   });
 
-  if (!note.diagnosisCode || !guide) return null;
+  if (!note.diagnosisCode) return null;
+
+  // Нет гайда под код — не исчезаем молча, а говорим, где его завести.
+  if (!guide) {
+    if (disabled || guideQuery.isPending) return null;
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2">
+        <BookOpenIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {t("guide.empty", { code: note.diagnosisCode })}
+        </p>
+      </div>
+    );
+  }
 
   const title =
     locale === "uz" ? guide.titleUz?.trim() || guide.titleRu : guide.titleRu;

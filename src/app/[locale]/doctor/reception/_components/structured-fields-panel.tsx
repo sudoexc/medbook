@@ -367,11 +367,11 @@ export function StructuredFieldsPanel() {
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-foreground">
           {t("structured.title")}
         </h2>
-        <div className="inline-flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
           {patch.isPending && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2Icon className="size-3 animate-spin" />

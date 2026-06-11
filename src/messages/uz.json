@@ -5632,6 +5632,7 @@
       },
       "guide": {
         "title": "Bilimlar bazasi",
+        "empty": "{code} uchun bilimlar bazasida kartochka yo‘q. O‘zingiznikini qo‘shish: Sozlamalar → Bilimlar bazasi.",
         "insert": "Eslatmaga",
         "insertTitle": "Bo‘limni bemor eslatmasiga qo‘shish",
         "insertAll": "Hammasini qo‘shish",

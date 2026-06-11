@@ -2005,6 +2005,10 @@ model VisitNote {
   dynamics     String?
   dynamicsNote String?
 
+  // Ф8 — карта тела: [{ x, y, view: FRONT|BACK, label? }], координаты
+  // нормированы 0..1 относительно SVG-фигуры. Пустой массив = точек нет.
+  bodyMap Json?
+
   // Free-form rich body in Markdown. The notes editor on the right is the
   // canonical source; the structured chips are the parsed/derived view.
   bodyMarkdown String? @db.Text

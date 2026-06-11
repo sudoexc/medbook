@@ -53,6 +53,7 @@ import {
 } from "../_hooks/use-previous-visit";
 import { useAddChronicCondition } from "../_hooks/use-patient-history";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
+import { BodyMapCard } from "./body-map-card";
 import { CatalogDrawer } from "./catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import { DiagnosisGuideCard } from "./diagnosis-guide-card";
@@ -257,6 +258,13 @@ export function StructuredFieldsPanel() {
       if (fresh.length > 0) {
         patchData.visitPrescriptions = [...existing, ...fresh];
       }
+    }
+    // Ф8 — точки карты тела переносятся, если врач ещё не ставил свои.
+    if (
+      (note.bodyMap ?? []).length === 0 &&
+      (previous.bodyMap?.length ?? 0) > 0
+    ) {
+      patchData.bodyMap = previous.bodyMap ?? [];
     }
 
     if (Object.keys(patchData).length === 0) {
@@ -465,6 +473,13 @@ export function StructuredFieldsPanel() {
                   }}
                   onPresetClick={(preset) => handlePresetClick(f, preset)}
                   onRemoveChip={(chip) => handleRemoveChip(f, chip)}
+                />
+              )}
+              {f.key === "examination" && (
+                <BodyMapCard
+                  points={note.bodyMap ?? []}
+                  disabled={isFinalized}
+                  onChange={(pointsNext) => applyPatch({ bodyMap: pointsNext })}
                 />
               )}
               {f.key === "prescriptions" && (

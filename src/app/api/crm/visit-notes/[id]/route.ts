@@ -95,6 +95,9 @@ export const PATCH = createApiHandler(
     if (body.followUpNote !== undefined) data.followUpNote = body.followUpNote;
     if (body.dynamics !== undefined) data.dynamics = body.dynamics;
     if (body.dynamicsNote !== undefined) data.dynamicsNote = body.dynamicsNote;
+    // Ф8 — replace-all, как visitPrescriptions; очистка = пустой массив
+    // (plain null в Json-колонку Prisma не принимает).
+    if (body.bodyMap !== undefined) data.bodyMap = body.bodyMap;
 
     const changedFields = Object.keys(data);
     const rxRows = body.visitPrescriptions;

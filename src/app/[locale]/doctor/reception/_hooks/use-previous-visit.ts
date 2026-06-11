@@ -9,7 +9,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 
-import type { VisitPrescriptionRow } from "./use-visit-note";
+import type { BodyMapPoint, VisitPrescriptionRow } from "./use-visit-note";
 
 export type PreviousVisitRow = {
   id: string;
@@ -19,6 +19,7 @@ export type PreviousVisitRow = {
   complaints: string[];
   anamnesis: string[];
   dynamics: "IMPROVED" | "STABLE" | "WORSE" | null;
+  bodyMap: BodyMapPoint[] | null;
   visitPrescriptions: VisitPrescriptionRow[];
 };
 

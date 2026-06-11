@@ -30,6 +30,7 @@ import {
   diffTreatments,
   formatTreatmentDiff,
 } from "@/lib/catalogs/treatment-diff";
+import { renderBodyMapSvg, type BodyMapPointLike } from "@/lib/body-map";
 import {
   buildMedicationGrid,
   renderHandoutHtml,
@@ -232,6 +233,9 @@ export const GET = createApiListHandler(
             dynamicsStable: "Barqaror",
             dynamicsWorse: "Yomonlashish",
             treatmentChanges: "Davolashdagi oʻzgarishlar",
+            bodyMap: "Tana xaritasi",
+            bodyMapFront: "Old tomondan",
+            bodyMapBack: "Orqa tomondan",
           }
         : {
             title: "Заключение по приёму",
@@ -274,6 +278,9 @@ export const GET = createApiListHandler(
             dynamicsStable: "Стабильно",
             dynamicsWorse: "Ухудшение",
             treatmentChanges: "Изменения в лечении",
+            bodyMap: "Карта тела",
+            bodyMapFront: "Спереди",
+            bodyMapBack: "Сзади",
           };
 
     const patientGender =
@@ -413,6 +420,45 @@ export const GET = createApiListHandler(
     </section>`
         : "";
 
+    // ── Ф8 — карта тела: пины в секции осмотра ─────────────────────────
+    // Json-колонка — фильтруем мусор на чтении вместо доверия типу.
+    const bodyMapPoints = (
+      Array.isArray(note.bodyMap) ? note.bodyMap : []
+    ).filter((p): p is BodyMapPointLike => {
+      if (typeof p !== "object" || p === null) return false;
+      const o = p as Record<string, unknown>;
+      return (
+        typeof o.x === "number" &&
+        typeof o.y === "number" &&
+        (o.view === "FRONT" || o.view === "BACK")
+      );
+    });
+    const bodyMapSection =
+      bodyMapPoints.length > 0
+        ? `<section class="block">
+      <h3>${escapeHtml(labels.bodyMap)}</h3>
+      <div class="body-map">
+        ${(["FRONT", "BACK"] as const)
+          .filter((v) => bodyMapPoints.some((p) => p.view === v))
+          .map(
+            (v) =>
+              `<figure class="body-map-figure">${renderBodyMapSvg(bodyMapPoints, v)}<figcaption>${escapeHtml(
+                v === "FRONT" ? labels.bodyMapFront : labels.bodyMapBack,
+              )}</figcaption></figure>`,
+          )
+          .join("")}
+        <ol class="body-map-legend">
+          ${bodyMapPoints
+            .map(
+              (p, i) =>
+                `<li><span class="n">${i + 1}</span> ${escapeHtml(p.label?.trim() || "—")}</li>`,
+            )
+            .join("")}
+        </ol>
+      </div>
+    </section>`
+        : "";
+
     // ── Ф5 fragments shared by all print types ────────────────────────
     const medGridTable =
       note.visitPrescriptions.length > 0
@@ -482,7 +528,31 @@ export const GET = createApiListHandler(
     .verify { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
     .verify img { width: 64px; height: 64px; }
     .verify-title { font-weight: 600; font-size: 10px; color: #525866; }
-    .verify-url { font-size: 9px; color: #8b909b; word-break: break-all; }`;
+    .verify-url { font-size: 9px; color: #8b909b; word-break: break-all; }
+    .body-map { display: flex; gap: 20px; align-items: flex-start; }
+    .body-map-figure { margin: 0; text-align: center; }
+    .body-map-figure figcaption {
+      font-size: 9px;
+      color: #8b909b;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .body-map-legend { list-style: none; margin: 0; padding: 0; font-size: 11px; }
+    .body-map-legend li { margin: 3px 0; display: flex; gap: 6px; align-items: baseline; }
+    .body-map-legend .n {
+      display: inline-flex;
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+    }`;
 
     // Shared by the standalone handout page and the package assembly.
     const quickMetaMdCss = `
@@ -820,6 +890,8 @@ export const GET = createApiListHandler(
       <h3>${escapeHtml(labels.examination)}</h3>
       ${renderChips(note.examination)}
     </section>
+
+    ${bodyMapSection}
 
     <section class="block">
       <h3>${escapeHtml(labels.prescriptions)}</h3>

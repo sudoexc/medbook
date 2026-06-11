@@ -38,6 +38,17 @@ export type VisitPrescriptionDraft = Omit<
   "id" | "sortOrder"
 >;
 
+// Ф8 — точка на карте тела; координаты нормированы 0..1 внутри viewBox
+// SVG-фигуры. Сохраняется replace-all в VisitNote.bodyMap (Json).
+export type BodyMapView = "FRONT" | "BACK";
+
+export type BodyMapPoint = {
+  x: number;
+  y: number;
+  view: BodyMapView;
+  label?: string;
+};
+
 export type VisitNoteRow = {
   id: string;
   clinicId: string;
@@ -61,6 +72,7 @@ export type VisitNoteRow = {
   followUpNote: string | null;
   dynamics: "IMPROVED" | "STABLE" | "WORSE" | null;
   dynamicsNote: string | null;
+  bodyMap: BodyMapPoint[] | null;
   aiGenerated: boolean;
   aiModel: string | null;
   aiTokens: number | null;
@@ -133,6 +145,7 @@ export type VisitNotePatch = Partial<{
   followUpNote: string | null;
   dynamics: "IMPROVED" | "STABLE" | "WORSE" | null;
   dynamicsNote: string | null;
+  bodyMap: BodyMapPoint[];
   visitPrescriptions: VisitPrescriptionDraft[];
 }>;
 

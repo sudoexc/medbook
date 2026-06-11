@@ -5741,6 +5741,17 @@
         "stable": "Barqaror",
         "worse": "Yomonlashish",
         "notePlaceholder": "Dinamika bo‘yicha izoh…"
+      },
+      "bodyMap": {
+        "title": "Tana xaritasi",
+        "open": "Tanada belgilash",
+        "close": "Yashirish",
+        "front": "Old tomondan",
+        "back": "Orqa tomondan",
+        "hint": "Nuqta qo‘yish uchun figuraga bosing",
+        "noLabel": "Izohsiz",
+        "labelPlaceholder": "Nuqta izohi…",
+        "removePoint": "Nuqtani o‘chirish"
       }
     },
     "receptionDialogs": {

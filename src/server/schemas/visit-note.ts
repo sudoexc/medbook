@@ -40,6 +40,20 @@ export type VisitPrescriptionItemInput = z.infer<
 // Ф7 — динамика состояния относительно прошлого визита.
 export const VisitDynamicsEnum = z.enum(["IMPROVED", "STABLE", "WORSE"]);
 
+// Ф8 — карта тела. Координаты нормированы 0..1 относительно SVG-фигуры,
+// view — какая проекция (спереди/сзади). Пустой массив = точек нет;
+// клиент шлёт replace-all, как и visitPrescriptions.
+export const BodyMapViewEnum = z.enum(["FRONT", "BACK"]);
+
+export const BodyMapPointSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  view: BodyMapViewEnum,
+  label: z.string().max(120).optional(),
+});
+
+export type BodyMapPointInput = z.infer<typeof BodyMapPointSchema>;
+
 export const UpdateVisitNoteSchema = z.object({
   complaints: ChipArray.optional(),
   anamnesis: ChipArray.optional(),
@@ -54,6 +68,7 @@ export const UpdateVisitNoteSchema = z.object({
   followUpNote: z.string().max(500).nullable().optional(),
   dynamics: VisitDynamicsEnum.nullable().optional(),
   dynamicsNote: z.string().max(500).nullable().optional(),
+  bodyMap: z.array(BodyMapPointSchema).max(40).optional(),
   // Replace-all semantics, consistent with the autosave model: the editor
   // always sends the full current list (sortOrder = array index).
   visitPrescriptions: z.array(VisitPrescriptionItemSchema).max(30).optional(),

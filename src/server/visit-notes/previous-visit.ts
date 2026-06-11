@@ -31,6 +31,7 @@ export async function findPreviousFinalizedVisit(note: {
       complaints: true,
       anamnesis: true,
       dynamics: true,
+      bodyMap: true,
       visitPrescriptions: { orderBy: { sortOrder: "asc" } },
     },
   });

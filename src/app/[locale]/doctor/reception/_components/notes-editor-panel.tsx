@@ -65,6 +65,30 @@ function removeSnippet(body: string, snippet: string): string {
 export function NotesEditorPanel() {
   const t = useTranslations("doctor.reception");
   const [tab, setTab] = React.useState<EditorTab>("conclusion");
+  const { bodyAppendRequest, handoutAppendRequest } = useReceptionContext();
+
+  // Вставка из левых карточек должна быть видна сразу — переключаем таб на
+  // редактор, в который ушёл текст. Сами редакторы смонтированы оба (hidden),
+  // иначе append-канал скрытого таба молча терял бы все вставки кроме
+  // последней, а несохранённый draft умирал бы при переключении.
+  const lastBodyNonce = React.useRef(0);
+  React.useEffect(() => {
+    if (!bodyAppendRequest || bodyAppendRequest.nonce === lastBodyNonce.current)
+      return;
+    lastBodyNonce.current = bodyAppendRequest.nonce;
+    setTab("conclusion");
+  }, [bodyAppendRequest]);
+
+  const lastHandoutNonce = React.useRef(0);
+  React.useEffect(() => {
+    if (
+      !handoutAppendRequest ||
+      handoutAppendRequest.nonce === lastHandoutNonce.current
+    )
+      return;
+    lastHandoutNonce.current = handoutAppendRequest.nonce;
+    setTab("handout");
+  }, [handoutAppendRequest]);
 
   return (
     <section className="flex min-h-[640px] flex-col rounded-2xl border border-border bg-card">
@@ -77,7 +101,12 @@ export function NotesEditorPanel() {
         </TabButton>
       </div>
 
-      {tab === "conclusion" ? <ConclusionEditor /> : <HandoutEditor />}
+      <div className={cn("flex flex-1 flex-col", tab !== "conclusion" && "hidden")}>
+        <ConclusionEditor />
+      </div>
+      <div className={cn("flex flex-1 flex-col", tab !== "handout" && "hidden")}>
+        <HandoutEditor />
+      </div>
     </section>
   );
 }

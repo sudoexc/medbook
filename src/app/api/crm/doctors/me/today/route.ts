@@ -54,7 +54,7 @@ type CurrentPatient = {
   patientId: string;
   /**
    * Raw appointment status — the doctor surface picks the primary CTA off
-   * this. `current` is surfaced for BOOKED-imminent / WAITING / IN_PROGRESS;
+   * this. `current` is surfaced for BOOKED/CONFIRMED-imminent / WAITING / IN_PROGRESS;
    * the UI branches accordingly so each state has a distinct primary action.
    */
   status: AppointmentStatus;
@@ -449,7 +449,13 @@ export const GET = createApiListHandler(
     if (!currentSource) {
       const upcomingSoon = todayAppts.find((a) => {
         const ms = a.date.getTime() - now.getTime();
-        return a.status === "BOOKED" && ms >= 0 && ms <= 15 * 60_000;
+        // CRM bookings auto-confirm, so CONFIRMED is the default pre-visit
+        // state — without it the doctor never sees the imminent patient card.
+        return (
+          (a.status === "BOOKED" || a.status === "CONFIRMED") &&
+          ms >= 0 &&
+          ms <= 15 * 60_000
+        );
       });
       currentSource = upcomingSoon;
     }

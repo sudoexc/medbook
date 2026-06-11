@@ -176,6 +176,7 @@ export const PATCH = createApiHandler(
       // and we don't store the original anyway — re-completing will reshrink).
       const revertData: Record<string, unknown> = {
         status: expected,
+        queueStatus: expected,
       };
       if (fromStatus === "IN_PROGRESS") {
         revertData.startedAt = null;
@@ -238,7 +239,7 @@ export const PATCH = createApiHandler(
 
     // ──────────────────────────────────────────────────────────────────────
     // Doctor-initiated "Вызвать пациента" — sets calledAt = now(), bumps
-    // BOOKED → WAITING when applicable, fires the patient-facing Telegram
+    // BOOKED/CONFIRMED → WAITING when applicable, fires the patient-facing Telegram
     // notification ("Проходите в кабинет N"). The call is distinct from the
     // status transition: the appointment is NOT IN_PROGRESS yet — that
     // happens when the doctor presses "Начать приём" after the patient
@@ -276,8 +277,16 @@ export const PATCH = createApiHandler(
       const callData: Record<string, unknown> = {
         calledAt: new Date(),
       };
-      const bumpToWaiting = fromStatus === "BOOKED";
-      if (bumpToWaiting) callData.status = "WAITING";
+      // CRM bookings are auto-CONFIRMED at creation, so the call must bump
+      // CONFIRMED too — otherwise the default booking never reaches WAITING
+      // when the doctor drives the flow. Both columns move together: the
+      // reception board reads `queueStatus`, the doctor surface reads `status`.
+      const bumpToWaiting =
+        fromStatus === "BOOKED" || fromStatus === "CONFIRMED";
+      if (bumpToWaiting) {
+        callData.status = "WAITING";
+        callData.queueStatus = "WAITING";
+      }
 
       const callCorrelationId = newCorrelationId();
       const updatedRow = await prisma.$transaction(async (tx) => {
@@ -426,6 +435,13 @@ export const PATCH = createApiHandler(
     }
 
     const data: Record<string, unknown> = { ...body };
+    // Keep the queue column in lockstep with status — the reception board
+    // reads `queueStatus` while the doctor's my-day mutation only sends
+    // `status`. The queue-status route already writes both; without this
+    // mirror the «Кабинеты и врачи» list never sees doctor-driven flips.
+    if (body.status !== undefined && body.queueStatus === undefined) {
+      data.queueStatus = body.status;
+    }
     if (timeChanged) {
       data.date = startAt;
       data.endDate = endAt;

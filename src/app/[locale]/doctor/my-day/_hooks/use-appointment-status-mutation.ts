@@ -123,7 +123,10 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
             ? {
                 ...cur,
                 calledAt: nowIso,
-                status: cur.status === "BOOKED" ? "WAITING" : cur.status,
+                status:
+                  cur.status === "BOOKED" || cur.status === "CONFIRMED"
+                    ? "WAITING"
+                    : cur.status,
               }
             : cur;
           // Schedule entry's `status` is a mapped category ("upcoming" /

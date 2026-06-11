@@ -218,12 +218,17 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
   type PrimaryAction =
     | { kind: "call" }
     | { kind: "status"; toStatus: StatusTarget };
+  // CONFIRMED counts as pre-visit too: CRM bookings auto-confirm, so the
+  // doctor's default starting point is CONFIRMED, not BOOKED.
+  const isPreVisit =
+    p.status === "BOOKED" ||
+    p.status === "CONFIRMED" ||
+    p.status === "WAITING";
   const primary: {
     label: string;
     Icon: typeof PlayIcon;
     action: PrimaryAction;
   } | null = (() => {
-    const isPreVisit = p.status === "BOOKED" || p.status === "WAITING";
     if (isPreVisit && !p.calledAt) {
       return {
         label: t("current.callPatient"),
@@ -487,8 +492,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 <DropdownMenuSeparator />
               </>
             ) : null}
-            {(p.status === "BOOKED" || p.status === "WAITING") &&
-            p.calledAt ? (
+            {isPreVisit && p.calledAt ? (
               <>
                 <DropdownMenuItem
                   onSelect={() => fireCall()}
@@ -507,8 +511,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 <DropdownMenuSeparator />
               </>
             ) : null}
-            {(p.status === "BOOKED" || p.status === "WAITING") &&
-            !p.calledAt ? (
+            {isPreVisit && !p.calledAt ? (
               <DropdownMenuItem
                 onSelect={() => fire("IN_PROGRESS")}
                 className="gap-2"
@@ -517,7 +520,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 {t("current.startWithoutCall")}
               </DropdownMenuItem>
             ) : null}
-            {p.status === "BOOKED" ? (
+            {p.status === "BOOKED" || p.status === "CONFIRMED" ? (
               <DropdownMenuItem
                 onSelect={() => fire("WAITING")}
                 className="gap-2"
@@ -526,7 +529,7 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 {t("current.registerArrivalOnly")}
               </DropdownMenuItem>
             ) : null}
-            {p.status === "BOOKED" || p.status === "WAITING" ? (
+            {isPreVisit ? (
               <DropdownMenuItem
                 onSelect={() => fire("NO_SHOW")}
                 className="gap-2"

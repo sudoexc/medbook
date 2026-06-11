@@ -121,6 +121,7 @@ export async function cancelAppointment(
       where: { id: input.appointmentId },
       data: {
         status: "CANCELLED",
+        queueStatus: "CANCELLED",
         cancelledAt: now,
         cancelReason: reason,
       },

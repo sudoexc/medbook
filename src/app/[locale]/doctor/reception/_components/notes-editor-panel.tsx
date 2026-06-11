@@ -5,7 +5,9 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   BookOpenIcon,
   CheckIcon,
+  EyeIcon,
   Loader2Icon,
+  PencilLineIcon,
   PrinterIcon,
   SparklesIcon,
 } from "lucide-react";
@@ -223,10 +225,71 @@ function ConclusionEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, note?.id, isFinalized]);
 
+  // Live-предпросмотр листа: тот же print-роут в iframe (?embed=1 — без
+  // панели печати и без audit-шума). key по updatedAt — превью само
+  // перерисовывается после каждого автосейва, в т.ч. правок в левой панели.
+  const [view, setView] = React.useState<"edit" | "preview">("edit");
+
+  const showPreview = React.useCallback(async () => {
+    if (dirty && note && !isFinalized) {
+      // Дожимаем несохранённый текст до показа, иначе превью отстаёт на
+      // один дебаунс и врач видит «пустой» лист.
+      try {
+        await patch.mutateAsync({ bodyMarkdown: draft });
+        lastSentRef.current = draft;
+        setSavedAt(Date.now());
+        setDirty(false);
+      } catch {
+        // покажем превью по последней сохранённой версии
+      }
+    }
+    setView("preview");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, draft, note?.id, isFinalized]);
+
   const { chars, words } = statsOf(draft);
 
   return (
     <div className="flex flex-1 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border px-4 py-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <EyeIcon className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate">{t("editor.previewHint")}</span>
+        </div>
+        <div className="inline-flex shrink-0 items-center gap-1.5">
+          <div className="inline-flex items-center rounded-lg border border-border bg-background p-0.5">
+            <ViewToggleButton
+              active={view === "edit"}
+              onClick={() => setView("edit")}
+              Icon={PencilLineIcon}
+            >
+              {t("editor.viewText")}
+            </ViewToggleButton>
+            <ViewToggleButton
+              active={view === "preview"}
+              onClick={showPreview}
+              disabled={!note}
+              Icon={EyeIcon}
+            >
+              {t("editor.viewPreview")}
+            </ViewToggleButton>
+          </div>
+          <a
+            href={note ? `/api/crm/visit-notes/${note.id}/print` : "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={!note}
+            onClick={(e) => {
+              if (!note) e.preventDefault();
+            }}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
+          >
+            <PrinterIcon className="size-3.5" />
+            {t("editor.print")}
+          </a>
+        </div>
+      </div>
+
       <SaveStatusBar
         pending={patch.isPending || dirty}
         savedAt={savedAt}
@@ -234,20 +297,62 @@ function ConclusionEditor() {
         label={t("editor.autosaveLabel")}
       />
 
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        disabled={!note || isFinalized}
-        placeholder={
-          note
-            ? t("editor.conclusionPlaceholder")
-            : t("editor.conclusionPlaceholderEmpty")
-        }
-        className="flex-1 resize-none border-0 bg-transparent px-5 py-4 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
-      />
+      {view === "preview" && note ? (
+        <iframe
+          key={`${note.id}:${note.updatedAt}`}
+          src={`/api/crm/visit-notes/${note.id}/print?embed=1`}
+          title={t("editor.viewPreview")}
+          className="flex-1 w-full border-0 bg-white"
+        />
+      ) : (
+        <>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={!note || isFinalized}
+            placeholder={
+              note
+                ? t("editor.conclusionPlaceholder")
+                : t("editor.conclusionPlaceholderEmpty")
+            }
+            className="flex-1 resize-none border-0 bg-transparent px-5 py-4 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
+          />
 
-      <StatsFooter chars={chars} words={words} isFinalized={isFinalized} />
+          <StatsFooter chars={chars} words={words} isFinalized={isFinalized} />
+        </>
+      )}
     </div>
+  );
+}
+
+function ViewToggleButton({
+  active,
+  onClick,
+  disabled,
+  Icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  Icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        active
+          ? "bg-primary/10 text-primary"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icon className="size-3" />
+      {children}
+    </button>
   );
 }
 

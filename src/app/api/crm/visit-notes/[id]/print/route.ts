@@ -60,6 +60,12 @@ function pickPrintType(request: Request): "clinical" | "handout" | "package" {
   return "clinical";
 }
 
+// ?embed=1 — live-предпросмотр в iframe редактора: без панели печати и без
+// audit-записи (иначе каждый автосейв плодил бы visit_note.print в журнале).
+function pickEmbed(request: Request): boolean {
+  return new URL(request.url).searchParams.get("embed") === "1";
+}
+
 function escapeHtml(input: string | null | undefined): string {
   if (input === null || input === undefined) return "";
   return String(input)
@@ -108,6 +114,7 @@ export const GET = createApiListHandler(
     const id = idFromUrl(request);
     const explicitLocale = pickLocale(request);
     const printType = pickPrintType(request);
+    const embed = pickEmbed(request);
 
     const note = await prisma.visitNote.findUnique({
       where: { id },
@@ -804,22 +811,28 @@ export const GET = createApiListHandler(
   </style>
 </head>
 <body>
-  <div class="print-bar no-print">
+  ${
+    embed
+      ? ""
+      : `<div class="print-bar no-print">
     ${langSwitchHtml}
     <button onclick="window.print()">${escapeHtml(handoutLabels.print)}</button>
-  </div>
+  </div>`
+  }
   <div class="page">
     ${handoutInner}
   </div>
 </body>
 </html>`;
 
-      await audit(request, {
-        action: "visit_note.print",
-        entityType: "VisitNote",
-        entityId: id,
-        meta: { locale, status: note.status, type: "handout" },
-      });
+      if (!embed) {
+        await audit(request, {
+          action: "visit_note.print",
+          entityType: "VisitNote",
+          entityId: id,
+          meta: { locale, status: note.status, type: "handout" },
+        });
+      }
 
       return new Response(handoutHtml, {
         status: 200,
@@ -1143,10 +1156,14 @@ export const GET = createApiListHandler(
   </style>
 </head>
 <body>
-  <div class="print-bar no-print">
+  ${
+    embed
+      ? ""
+      : `<div class="print-bar no-print">
     ${langSwitchHtml}
     <button onclick="window.print()">${escapeHtml(labels.print)}</button>
-  </div>
+  </div>`
+  }
   <div class="page">
     ${inner}
   </div>
@@ -1289,18 +1306,20 @@ export const GET = createApiListHandler(
         ...refFragments,
       ].join("\n");
 
-      await audit(request, {
-        action: "visit_note.print",
-        entityType: "VisitNote",
-        entityId: id,
-        meta: {
-          locale,
-          status: note.status,
-          type: "package",
-          rxCount: rxs.length,
-          referralCount: refs.length,
-        },
-      });
+      if (!embed) {
+        await audit(request, {
+          action: "visit_note.print",
+          entityType: "VisitNote",
+          entityId: id,
+          meta: {
+            locale,
+            status: note.status,
+            type: "package",
+            rxCount: rxs.length,
+            referralCount: refs.length,
+          },
+        });
+      }
 
       return new Response(
         wrapDoc(
@@ -1319,12 +1338,14 @@ export const GET = createApiListHandler(
       );
     }
 
-    await audit(request, {
-      action: "visit_note.print",
-      entityType: "VisitNote",
-      entityId: id,
-      meta: { locale, status: note.status, type: "clinical" },
-    });
+    if (!embed) {
+      await audit(request, {
+        action: "visit_note.print",
+        entityType: "VisitNote",
+        entityId: id,
+        meta: { locale, status: note.status, type: "clinical" },
+      });
+    }
 
     return new Response(
       wrapDoc(`${labels.title} — ${note.patient.fullName}`, clinicalInner),

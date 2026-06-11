@@ -44,7 +44,6 @@ export type CurrentPatient = {
   phone: string;
   avatarUrl: string | null;
   tags: PatientTag[];
-  appointmentRange: string;
   startsAt: string;
   endsAt: string;
   startedAt: string | null;

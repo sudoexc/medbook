@@ -337,8 +337,10 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
           </div>
         ) : null}
 
+        {/* Formatted client-side: the server runs in UTC, so a server-built
+            range string would be off by the clinic's UTC offset. */}
         <div className="text-xs text-muted-foreground">
-          {p.appointmentRange}
+          {formatHHMM(p.startsAt)} — {formatHHMM(p.endsAt)}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

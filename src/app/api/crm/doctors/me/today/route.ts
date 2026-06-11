@@ -64,7 +64,6 @@ type CurrentPatient = {
   phone: string;
   avatarUrl: string | null;
   tags: PatientTag[];
-  appointmentRange: string;
   /** Scheduled start (ISO). Frontend computes "через X мин" before start. */
   startsAt: string;
   /** Scheduled end (ISO). Backstop for the slot-end timer. */
@@ -466,7 +465,6 @@ export const GET = createApiListHandler(
       const endAt = new Date(
         currentSource.date.getTime() + currentSource.durationMin * 60_000,
       );
-      const range = `${formatHHMM(currentSource.date)} — ${formatHHMM(endAt)}`;
       const secondsLeft = Math.max(
         0,
         Math.floor((endAt.getTime() - now.getTime()) / 1000),
@@ -504,7 +502,6 @@ export const GET = createApiListHandler(
           segment: p.segment,
           lastVisitAt: p.lastVisitAt,
         }),
-        appointmentRange: range,
         startsAt: currentSource.date.toISOString(),
         endsAt: endAt.toISOString(),
         startedAt: currentSource.startedAt

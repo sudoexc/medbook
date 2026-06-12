@@ -16,6 +16,7 @@ import { useActiveContext } from "../_hooks/use-active-context";
 import { useMedications } from "../_hooks/use-medications";
 import { useLabs } from "../_hooks/use-labs";
 import { MCard, MSpinner, formatTimeISO } from "./mini-ui";
+import { MA_ACCENTS } from "./mini-app-tokens";
 import { HomeHero } from "./home-hero";
 import { ClinicInfoCard } from "./clinic-info-card";
 import { InboxBanner } from "./inbox-banner";
@@ -101,7 +102,7 @@ function BentoTile({
         tall
           ? "flex min-h-[116px] flex-col justify-between"
           : "flex min-h-[64px] flex-row items-center gap-3"
-      } rounded-2xl p-4 text-left transition active:scale-[0.98]`}
+      } rounded-2xl p-4 text-left ma-press active:scale-[0.98]`}
       style={{
         backgroundColor: "var(--tg-section-bg)",
         color: "var(--tg-text)",
@@ -223,7 +224,7 @@ function HomeContent({ slug }: { slug: string }) {
       <Link
         href={`/c/${slug}/my/book/service`}
         onClick={() => tg.haptic.selection()}
-        className={`${animate ? "ma-fade-up " : ""}mb-5 flex min-h-[52px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-semibold text-white transition active:scale-[0.98]`}
+        className={`${animate ? "ma-fade-up " : ""}mb-5 flex min-h-[52px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-semibold text-white ma-press active:scale-[0.98]`}
         style={{
           backgroundColor: "var(--tg-accent)",
           boxShadow:
@@ -235,14 +236,14 @@ function HomeContent({ slug }: { slug: string }) {
         {t.home.ctaBook}
       </Link>
       <InboxBanner />
-      <TreatmentPlanCard slug={slug} />
+      <TreatmentPlanCard slug={slug} animate={animate} />
       <div className="grid grid-cols-2 gap-3">
         <BentoTile
           href={`/c/${slug}/my/medications`}
           title={t.home.bento.meds}
           hint={medsHint}
           icon={Pill}
-          color="#f59e0b"
+          color={MA_ACCENTS.warning}
           tall
           delay={120}
           animate={animate}
@@ -252,7 +253,7 @@ function HomeContent({ slug }: { slug: string }) {
           title={t.home.bento.labs}
           hint={labsHint}
           icon={FlaskConical}
-          color="#0ea5e9"
+          color={MA_ACCENTS.info}
           tall
           delay={160}
           animate={animate}
@@ -271,13 +272,13 @@ function HomeContent({ slug }: { slug: string }) {
           title={t.home.bento.refer}
           hint={t.home.bento.referHint}
           icon={Gift}
-          color="#FF7BA1"
+          color={MA_ACCENTS.pink}
           delay={240}
           animate={animate}
         />
       </div>
       <div className="mt-5">
-        <ClinicInfoCard slug={slug} />
+        <ClinicInfoCard slug={slug} animate={animate} />
       </div>
     </>
   );

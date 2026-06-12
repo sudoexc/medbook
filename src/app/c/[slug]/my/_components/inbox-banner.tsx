@@ -41,7 +41,7 @@ export function InboxBanner() {
           tg.haptic.selection();
           setOpen((v) => !v);
         }}
-        className="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left transition active:scale-[0.99]"
+        className="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left ma-press active:scale-[0.99]"
         style={{
           backgroundColor: "var(--tg-section-bg)",
           color: "var(--tg-text)",
@@ -84,7 +84,7 @@ export function InboxBanner() {
                 type="button"
                 onClick={() => markRead.mutate(item.id)}
                 disabled={markRead.isPending}
-                className="shrink-0 rounded-full p-1 transition active:scale-95"
+                className="shrink-0 rounded-full p-1 ma-press active:scale-95"
                 style={{ color: "var(--tg-hint)" }}
                 aria-label={t.inbox.markRead}
               >

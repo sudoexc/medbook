@@ -202,7 +202,7 @@ export function SlotPicker() {
                 setDraft({ date: d.iso, time: null });
                 setExpanded(false);
               }}
-              className="flex min-h-[68px] min-w-[68px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl px-3 py-2 text-xs transition active:scale-[0.98]"
+              className="flex min-h-[68px] min-w-[68px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl px-3 py-2 text-xs ma-press active:scale-[0.98]"
               style={
                 active
                   ? {
@@ -262,7 +262,7 @@ export function SlotPicker() {
                     tg.haptic.selection();
                     setDraft({ time: slot });
                   }}
-                  className="min-h-[48px] rounded-xl px-2 py-2 text-sm font-semibold transition active:scale-[0.98]"
+                  className="min-h-[48px] rounded-xl px-2 py-2 text-sm font-semibold ma-press active:scale-[0.98]"
                   style={
                     active
                       ? { backgroundColor: "var(--tg-accent)", color: "#fff" }

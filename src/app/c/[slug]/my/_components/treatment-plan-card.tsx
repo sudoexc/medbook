@@ -25,7 +25,13 @@ import { MCard, MSection, MSpinner } from "./mini-ui";
  * Hidden, not errored, on 4xx — Mini App home should never show a red banner
  * just because no plan exists.
  */
-export function TreatmentPlanCard({ slug }: { slug: string }) {
+export function TreatmentPlanCard({
+  slug,
+  animate,
+}: {
+  slug: string;
+  animate?: boolean;
+}) {
   const t = useT();
   const lang = useLang();
   const { onBehalfOf } = useActiveContext();
@@ -61,7 +67,10 @@ export function TreatmentPlanCard({ slug }: { slug: string }) {
   }`;
 
   return (
-    <div className="ma-fade-up" style={{ animationDelay: "30ms" }}>
+    <div
+      className={animate ? "ma-fade-up" : undefined}
+      style={animate ? { animationDelay: "30ms" } : undefined}
+    >
       <MSection title={t.treatmentPlan.title}>
         <MCard>
           <div className="flex items-start gap-3">
@@ -130,7 +139,7 @@ export function TreatmentPlanCard({ slug }: { slug: string }) {
           {!progress.completed && !progress.nextVisitAt ? (
             <Link
               href={bookHref}
-              className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl px-4 text-sm font-semibold text-white transition active:scale-[0.98]"
+              className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl px-4 text-sm font-semibold text-white ma-press active:scale-[0.98]"
               style={{ backgroundColor: "var(--tg-accent)" }}
             >
               {t.treatmentPlan.bookCta}

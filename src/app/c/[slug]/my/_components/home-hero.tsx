@@ -45,13 +45,14 @@ import {
   type MiniAppQueueStatus,
 } from "../_hooks/use-queue-status";
 import { formatDateISO, formatTimeISO } from "./mini-ui";
+import { MA_ACCENTS } from "./mini-app-tokens";
 import { TicketSheet } from "./ticket-sheet";
 import type { Dict } from "./mini-i18n";
 
 const HOUR_MS = 3_600_000;
-const GREEN = "#10b981";
-const ORANGE = "#f59e0b";
-const SALMON = "#ff8a65";
+const GREEN = MA_ACCENTS.success;
+const ORANGE = MA_ACCENTS.warning;
+const SALMON = MA_ACCENTS.salmon;
 
 function isSameLocalDay(iso: string, ref: Date): boolean {
   const d = new Date(iso);
@@ -230,7 +231,7 @@ function QueueHero({
       className="block w-full text-left"
     >
       <div
-        className="ma-fade-in rounded-3xl p-5 transition active:scale-[0.99]"
+        className="ma-fade-in rounded-3xl p-5 ma-press active:scale-[0.99]"
         style={heroSurface(color)}
       >
         <HeroCaption
@@ -296,7 +297,7 @@ function InProgressHero({
       className="block w-full text-left"
     >
       <div
-        className="ma-fade-in rounded-3xl p-5 transition active:scale-[0.99]"
+        className="ma-fade-in rounded-3xl p-5 ma-press active:scale-[0.99]"
         style={heroSurface(GREEN)}
       >
         <HeroCaption label={t.home.hero.inProgressLabel} color={GREEN} live />
@@ -376,7 +377,7 @@ function AppointmentHero({
       className="block"
     >
       <div
-        className="ma-fade-in rounded-3xl p-5 transition active:scale-[0.99]"
+        className="ma-fade-in rounded-3xl p-5 ma-press active:scale-[0.99]"
         style={
           isToday
             ? heroSurface("var(--tg-accent)")
@@ -431,7 +432,7 @@ function AppointmentHero({
           type="button"
           disabled={checkin.isPending}
           onClick={onCheckIn}
-          className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
+          className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white ma-press active:scale-[0.98] disabled:opacity-60"
           style={{ backgroundColor: "var(--tg-accent)" }}
         >
           <MapPin className="h-4 w-4" aria-hidden />
@@ -481,7 +482,7 @@ function MedsHero({
             },
           );
         }}
-        className="mt-3.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
+        className="mt-3.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white ma-press active:scale-[0.98] disabled:opacity-60"
         style={{ backgroundColor: GREEN }}
       >
         <Check className="h-4 w-4" />
@@ -502,7 +503,7 @@ function ResultsHero({ slug, appt }: { slug: string; appt: MiniAppAppointment })
       className="block"
     >
       <div
-        className="ma-fade-in rounded-3xl p-5 transition active:scale-[0.99]"
+        className="ma-fade-in rounded-3xl p-5 ma-press active:scale-[0.99]"
         style={heroSurface(GREEN)}
       >
         <HeroCaption label={t.home.hero.resultsLabel} color={GREEN} />
@@ -578,7 +579,7 @@ function SlimRow({
     <Link
       href={href}
       onClick={() => tg.haptic.selection()}
-      className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 transition active:scale-[0.99]"
+      className="flex items-center gap-3 rounded-2xl px-3.5 py-2.5 ma-press active:scale-[0.99]"
       style={{
         backgroundColor: "var(--tg-section-bg)",
         boxShadow: "var(--ma-card-shadow)",

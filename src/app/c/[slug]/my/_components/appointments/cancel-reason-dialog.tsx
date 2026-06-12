@@ -105,7 +105,7 @@ export function CancelReasonDialog({
                 key={p.id}
                 type="button"
                 onClick={() => setPreset(p.id)}
-                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition active:scale-[0.99]"
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm ma-press active:scale-[0.99]"
                 style={{
                   backgroundColor: "var(--tg-section-bg)",
                   color: "var(--tg-text)",
@@ -134,7 +134,7 @@ export function CancelReasonDialog({
           <button
             type="button"
             onClick={() => setPreset("custom")}
-            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition active:scale-[0.99]"
+            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm ma-press active:scale-[0.99]"
             style={{
               backgroundColor: "var(--tg-section-bg)",
               color: "var(--tg-text)",

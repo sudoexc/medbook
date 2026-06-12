@@ -127,6 +127,18 @@ export function MiniAppShell({
           "--tg-section-bg": sectionBg,
           "--tg-accent": accent,
           "--ma-card-shadow": cardShadow,
+          // Semantic status colours — same palette as the tone() pairs in
+          // mini-app-tokens.ts. Text vars are contrast-safe on the section bg
+          // in both schemes; *-solid are fills for white text (deeper in dark
+          // so they don't glow). Screens must use these instead of raw hex.
+          "--ma-success": "light-dark(#059669, #34d399)",
+          "--ma-success-bg":
+            "light-dark(color-mix(in oklch, #10b981 12%, transparent), color-mix(in oklch, #10b981 20%, transparent))",
+          "--ma-success-solid": "light-dark(#059669, #047857)",
+          "--ma-danger": "light-dark(#b91c1c, #f87171)",
+          "--ma-danger-solid": "light-dark(#ef4444, #dc2626)",
+          "--ma-warning": "light-dark(#b45309, #fbbf24)",
+          "--ma-info": "light-dark(#0369a1, #38bdf8)",
         } as React.CSSProperties
       }
     >
@@ -383,10 +395,19 @@ function MiniAppStyles() {
         opacity: .45;
       }
       .ma-fade-up {
-        animation: ma-fade-up .55s cubic-bezier(.2,.8,.2,1) both;
+        animation: ma-fade-up .32s cubic-bezier(.2,.8,.2,1) both;
       }
       .ma-step-enter {
-        animation: ma-step-enter .42s cubic-bezier(.2,.8,.2,1) both;
+        animation: ma-step-enter .36s cubic-bezier(.2,.8,.2,1) both;
+      }
+      /* Touch feedback: press snaps instantly (~1 frame), release eases out.
+         Pair with Tailwind active:scale-* — this only owns the timing. */
+      .ma-press {
+        transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .15s ease,
+          background-color .15s ease, color .15s ease, border-color .15s ease;
+      }
+      .ma-press:active {
+        transition-duration: .06s;
       }
       @keyframes ma-fade-in {
         from { opacity: 0; }
@@ -480,6 +501,9 @@ function MiniAppStyles() {
         }
         .ma-draw {
           stroke-dashoffset: 0;
+        }
+        .ma-press {
+          transition: none !important;
         }
       }
     `}</style>

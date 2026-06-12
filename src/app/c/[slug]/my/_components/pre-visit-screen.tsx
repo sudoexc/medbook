@@ -16,7 +16,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  MButton,
   MCard,
   MEmpty,
   MHint,
@@ -156,7 +155,10 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
       {submittedAt ? (
         <MCard
           className="mb-4 text-sm"
-          style={{ color: "#15803d", backgroundColor: "#ecfdf5" }}
+          style={{
+            color: "var(--ma-success)",
+            backgroundColor: "var(--ma-success-bg)",
+          }}
         >
           {t.preVisit.thankYou}{" "}
           <span style={{ color: "var(--tg-hint)" }}>
@@ -230,7 +232,7 @@ export function PreVisitScreen({ appointmentId }: { appointmentId: string }) {
       </MSection>
 
       {errMsg ? (
-        <MCard className="mb-3 text-sm" style={{ color: "#b91c1c" }}>
+        <MCard className="mb-3 text-sm" style={{ color: "var(--ma-danger)" }}>
           {errMsg}
         </MCard>
       ) : null}
@@ -258,7 +260,7 @@ function Field({
         style={{ color: "var(--tg-hint)" }}
       >
         {label}
-        {required ? <span style={{ color: "#dc2626" }}> *</span> : null}
+        {required ? <span style={{ color: "var(--ma-danger)" }}> *</span> : null}
       </div>
       {children}
       {hint ? (

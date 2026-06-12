@@ -111,7 +111,7 @@ export function FamilyAddScreen() {
       <h1 className="mb-4 text-xl font-bold">{t.family.formTitle}</h1>
 
       {familyFull ? (
-        <MCard className="mb-3 text-sm" style={{ color: "#b91c1c" }}>
+        <MCard className="mb-3 text-sm" style={{ color: "var(--ma-danger)" }}>
           {t.family.maxReached}
         </MCard>
       ) : null}
@@ -181,7 +181,7 @@ export function FamilyAddScreen() {
       </MSection>
 
       {errMsg ? (
-        <MCard className="mb-3 text-sm" style={{ color: "#b91c1c" }}>
+        <MCard className="mb-3 text-sm" style={{ color: "var(--ma-danger)" }}>
           {errMsg}
         </MCard>
       ) : null}

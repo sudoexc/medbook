@@ -324,7 +324,7 @@ export function AccountDeleteScreen() {
               ) : confirmationOk ? (
                 <MHint>{t.account.deleteConfirmHelp}</MHint>
               ) : (
-                <p className="text-xs" style={{ color: "#dc2626" }}>
+                <p className="text-xs" style={{ color: "var(--ma-danger)" }}>
                   {t.account.deleteConfirmMismatch}
                 </p>
               )}

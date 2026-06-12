@@ -202,7 +202,7 @@ export function MessagesScreen() {
             onClick={() => void handleSend()}
             disabled={!conversationId || send.isPending || draft.trim() === ""}
             aria-label={t.chat.send}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition active:scale-[0.95] disabled:opacity-50"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full ma-press active:scale-[0.95] disabled:opacity-50"
             style={{ backgroundColor: "var(--tg-accent)", color: "#fff" }}
           >
             <Send className="h-5 w-5" />

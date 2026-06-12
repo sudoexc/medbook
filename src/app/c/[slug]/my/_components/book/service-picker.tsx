@@ -132,7 +132,7 @@ export function ServicePicker() {
                     time: null,
                   });
                 }}
-                className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition active:scale-[0.99]"
+                className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left ma-press active:scale-[0.99]"
                 style={{
                   backgroundColor: active
                     ? "color-mix(in oklch, var(--tg-accent) 8%, var(--tg-section-bg))"
@@ -180,7 +180,7 @@ export function ServicePicker() {
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition active:scale-[0.99]"
+              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left ma-press active:scale-[0.99]"
               style={{
                 backgroundColor: "var(--tg-section-bg)",
                 color: "var(--tg-hint)",

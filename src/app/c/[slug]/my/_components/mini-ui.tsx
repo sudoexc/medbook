@@ -23,7 +23,7 @@ export function MButton({
   ...rest
 }: ButtonProps) {
   const base =
-    "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100";
+    "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold ma-press active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100";
   const variants = {
     primary: "text-white",
     secondary: "border text-[var(--tg-text)]",
@@ -37,8 +37,7 @@ export function MButton({
     style.borderColor = "color-mix(in oklch, var(--tg-hint) 40%, transparent)";
     style.backgroundColor = "var(--tg-section-bg)";
   } else if (variant === "danger") {
-    // Slightly deeper red in dark so the fill doesn't glow against the bg.
-    style.backgroundColor = "light-dark(#ef4444, #dc2626)";
+    style.backgroundColor = "var(--ma-danger-solid)";
   }
   return (
     <button
@@ -91,7 +90,7 @@ export function MListItem({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex min-h-[56px] w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition active:scale-[0.99] disabled:opacity-50 ${
+      className={`flex min-h-[56px] w-full items-center gap-3 rounded-xl px-4 py-3 text-left ma-press active:scale-[0.99] disabled:opacity-50 ${
         active ? "ring-2 ring-offset-0" : ""
       } ${className}`}
       style={{

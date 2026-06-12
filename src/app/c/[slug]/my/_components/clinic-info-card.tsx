@@ -15,22 +15,18 @@ import { useT, useLang } from "./mini-i18n";
  * is preferred for tel:/mailto:/maps so Telegram routes through its browser
  * shim — falling back to a plain <a> when the WebApp SDK isn't ready (dev).
  */
-export function ClinicInfoCard({ slug }: { slug: string }) {
+export function ClinicInfoCard({
+  slug,
+  animate,
+}: {
+  slug: string;
+  animate?: boolean;
+}) {
   const t = useT();
   const lang = useLang();
   const tg = useTelegramWebApp();
   const { state } = useMiniAppAuth();
   const { data: clinic } = useClinic(slug);
-
-  if (!clinic) return null;
-
-  const address = lang === "UZ" ? clinic.addressUz ?? clinic.addressRu : clinic.addressRu;
-  const clinicName = lang === "UZ" ? clinic.nameUz ?? clinic.nameRu : clinic.nameRu;
-  const phone = clinic.phone;
-  const email = clinic.email;
-  const hours = clinic.workdayStart && clinic.workdayEnd
-    ? `${clinic.workdayStart}–${clinic.workdayEnd}`
-    : null;
 
   const open = React.useCallback(
     (href: string) => {
@@ -49,6 +45,16 @@ export function ClinicInfoCard({ slug }: { slug: string }) {
     },
     [tg],
   );
+
+  if (!clinic) return null;
+
+  const address = lang === "UZ" ? clinic.addressUz ?? clinic.addressRu : clinic.addressRu;
+  const clinicName = lang === "UZ" ? clinic.nameUz ?? clinic.nameRu : clinic.nameRu;
+  const phone = clinic.phone;
+  const email = clinic.email;
+  const hours = clinic.workdayStart && clinic.workdayEnd
+    ? `${clinic.workdayStart}–${clinic.workdayEnd}`
+    : null;
 
   const onCall = phone
     ? () => open(`tel:${phone.replace(/\s+/g, "")}`)
@@ -69,8 +75,8 @@ export function ClinicInfoCard({ slug }: { slug: string }) {
 
   return (
     <div
-      className="ma-fade-up mb-5"
-      style={{ animationDelay: "30ms" }}
+      className={animate ? "ma-fade-up mb-5" : "mb-5"}
+      style={animate ? { animationDelay: "30ms" } : undefined}
     >
       <div
         className="text-xs font-semibold uppercase tracking-wide mb-2 px-1"
@@ -166,7 +172,7 @@ function ActionPill({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition active:scale-95"
+      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ma-press active:scale-95"
       style={{
         borderColor: "color-mix(in oklch, var(--tg-accent) 35%, transparent)",
         color: "var(--tg-accent)",

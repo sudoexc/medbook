@@ -14,6 +14,7 @@ import {
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MButton, MCard, MSpinner, formatDateISO } from "../mini-ui";
+import { MA_ACCENTS } from "../mini-app-tokens";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 
 function readCaseChoices(appointmentId: string): CaseAttachChoice[] | null {
@@ -102,11 +103,11 @@ export function BookDone() {
             <div
               aria-hidden
               className="ma-ring absolute inset-0 rounded-full"
-              style={{ backgroundColor: "#22C55E" }}
+              style={{ backgroundColor: MA_ACCENTS.success }}
             />
             <div
               className="ma-check-pop relative grid h-10 w-10 place-items-center rounded-full text-white"
-              style={{ backgroundColor: "#22C55E" }}
+              style={{ backgroundColor: MA_ACCENTS.success }}
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3}>
                 <path className="ma-draw" d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />

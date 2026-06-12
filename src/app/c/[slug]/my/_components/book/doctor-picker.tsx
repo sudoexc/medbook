@@ -13,6 +13,7 @@ import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MEmpty, MSpinner, formatSum } from "../mini-ui";
+import { MA_ACCENTS } from "../mini-app-tokens";
 import { SkeletonList } from "../skeleton";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
@@ -100,7 +101,7 @@ export function DoctorPicker() {
                   tg.haptic.selection();
                   setDraft({ doctorId: d.id, date: null, time: null });
                 }}
-                className="flex w-full items-start gap-3 rounded-2xl p-3 text-left transition active:scale-[0.99]"
+                className="flex w-full items-start gap-3 rounded-2xl p-3 text-left ma-press active:scale-[0.99]"
                 style={{
                   backgroundColor: active
                     ? "color-mix(in oklch, var(--tg-accent) 8%, var(--tg-section-bg))"
@@ -145,7 +146,10 @@ export function DoctorPicker() {
                       <div className="flex items-center gap-1">
                         <Star
                           className="h-3.5 w-3.5"
-                          style={{ color: "#F5A524", fill: "#F5A524" }}
+                          style={{
+                            color: MA_ACCENTS.warning,
+                            fill: MA_ACCENTS.warning,
+                          }}
                         />
                         <span className="text-xs font-semibold">{rating.toFixed(1)}</span>
                         {d.reviewCount > 0 ? (

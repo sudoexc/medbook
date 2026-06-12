@@ -18,9 +18,10 @@ import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useQueueStatus } from "../_hooks/use-queue-status";
 import { type MiniAppAppointment } from "../_hooks/use-appointments";
 import { formatTimeISO } from "./mini-ui";
+import { MA_ACCENTS } from "./mini-app-tokens";
 
-const GREEN = "#10b981";
-const SALMON = "#ff8a65";
+const GREEN = MA_ACCENTS.success;
+const SALMON = MA_ACCENTS.salmon;
 
 function ruPlural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
@@ -166,7 +167,7 @@ export function TicketSheet({
           type="button"
           aria-label={t.common.close}
           onClick={requestClose}
-          className="grid h-9 w-9 place-items-center rounded-full transition active:scale-95"
+          className="grid h-9 w-9 place-items-center rounded-full ma-press active:scale-95"
           style={{
             backgroundColor:
               "color-mix(in oklch, var(--tg-hint) 14%, transparent)",

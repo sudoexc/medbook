@@ -119,8 +119,8 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
         <MCard
           className="mb-4 text-sm"
           style={{
-            color: "#15803d",
-            backgroundColor: "#ecfdf5",
+            color: "var(--ma-success)",
+            backgroundColor: "var(--ma-success-bg)",
           }}
         >
           {wasLow ? t.nps.thankYouLow : t.nps.thankYou}
@@ -172,7 +172,7 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
                       setScore(n);
                       tg.haptic.selection();
                     }}
-                    className="min-h-[44px] rounded-xl border text-sm font-semibold transition active:scale-[0.98]"
+                    className="min-h-[44px] rounded-xl border text-sm font-semibold ma-press active:scale-[0.98]"
                     style={{
                       backgroundColor: active
                         ? "var(--tg-accent)"
@@ -216,7 +216,7 @@ export function NpsScreen({ appointmentId }: { appointmentId: string }) {
       </MSection>
 
       {errMsg ? (
-        <MCard className="mb-3 text-sm" style={{ color: "#b91c1c" }}>
+        <MCard className="mb-3 text-sm" style={{ color: "var(--ma-danger)" }}>
           {errMsg}
         </MCard>
       ) : null}

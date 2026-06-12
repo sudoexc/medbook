@@ -17,6 +17,7 @@ import {
   MSection,
 } from "./mini-ui";
 import { SkeletonList } from "./skeleton";
+import { MA_ACCENTS } from "./mini-app-tokens";
 import { useT } from "./mini-i18n";
 import { useDocuments, useUploadDocument } from "../_hooks/use-documents";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
@@ -99,7 +100,7 @@ export function DocumentsScreen() {
         <div className="mt-3 grid grid-cols-2 gap-2">
           <label
             htmlFor="miniapp-upload-camera"
-            className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98]"
+            className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ma-press active:scale-[0.98]"
             style={{
               backgroundColor: "var(--tg-accent)",
               color: "#fff",
@@ -112,7 +113,7 @@ export function DocumentsScreen() {
           </label>
           <label
             htmlFor="miniapp-upload-file"
-            className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.98]"
+            className="flex cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ma-press active:scale-[0.98]"
             style={{
               backgroundColor: "color-mix(in oklch, var(--tg-accent) 12%, transparent)",
               color: "var(--tg-accent)",
@@ -124,11 +125,6 @@ export function DocumentsScreen() {
             {upload.isPending ? t.documents.uploading : t.documents.uploadFile}
           </label>
         </div>
-        {/*
-          `FileList` is a *live* reference on iOS WebViews — resetting
-          `e.target.value = ""` empties it before the handler reads files[0],
-          so we must capture the File object *before* the reset.
-        */}
         {/*
           `FileList` is a *live* reference on iOS WebViews — resetting
           `e.target.value = ""` empties it before the handler reads files[0],
@@ -177,7 +173,7 @@ export function DocumentsScreen() {
                         <span
                           aria-hidden
                           className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full"
-                          style={{ backgroundColor: "#f59e0b" }}
+                          style={{ backgroundColor: MA_ACCENTS.warning }}
                         />
                       ) : null}
                       <span
@@ -200,7 +196,9 @@ export function DocumentsScreen() {
                     </div>
                     <div
                       className="mt-1 text-xs"
-                      style={{ color: isPending ? "#b45309" : "var(--tg-hint)" }}
+                      style={{
+                        color: isPending ? "var(--ma-warning)" : "var(--tg-hint)",
+                      }}
                     >
                       {isPending
                         ? t.documents.pending

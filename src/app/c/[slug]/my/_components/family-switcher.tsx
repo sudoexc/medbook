@@ -41,7 +41,7 @@ export function FamilySwitcher({ slug }: { slug: string }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex min-h-[36px] flex-1 items-center gap-2 rounded-full px-3 py-1.5 text-left text-sm transition active:scale-[0.99]"
+          className="flex min-h-[36px] flex-1 items-center gap-2 rounded-full px-3 py-1.5 text-left text-sm ma-press active:scale-[0.99]"
           style={{
             backgroundColor:
               "color-mix(in oklch, var(--tg-section-bg) 80%, transparent)",
@@ -71,7 +71,7 @@ export function FamilySwitcher({ slug }: { slug: string }) {
         {!hasFamily ? (
           <Link
             href={`/c/${slug}/my/family/add`}
-            className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-white transition active:scale-[0.98]"
+            className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-white ma-press active:scale-[0.98]"
             style={{ backgroundColor: "var(--tg-accent)" }}
           >
             <Plus className="h-4 w-4" />
@@ -180,7 +180,7 @@ function Row({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition active:scale-[0.99]"
+      className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ma-press active:scale-[0.99]"
       style={{
         backgroundColor: active
           ? "color-mix(in oklch, var(--tg-accent) 14%, var(--tg-section-bg))"

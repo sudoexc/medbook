@@ -75,3 +75,17 @@ export const LAB_FLAG_TONES: Record<string, AppointmentStatusTone> = {
 export function getLabFlagTone(flag: string): AppointmentStatusTone {
   return LAB_FLAG_TONES[flag] ?? LAB_FLAG_TONES.NORMAL;
 }
+
+/**
+ * Solid accent hexes for icon fills, live dots, and color-mix tints — the
+ * places that want a scheme-stable base colour rather than a text-safe pair.
+ * For text, use the shell vars instead: --ma-success / --ma-danger /
+ * --ma-warning / --ma-info (and *-solid / --ma-success-bg for fills).
+ */
+export const MA_ACCENTS = {
+  success: "#10b981",
+  warning: "#f59e0b",
+  info: "#0ea5e9",
+  salmon: "#ff8a65",
+  pink: "#FF7BA1",
+} as const;

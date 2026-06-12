@@ -179,9 +179,9 @@ function MiniAppToastViewport(): React.ReactElement | null {
           style={{
             backgroundColor:
               e.level === "error"
-                ? "#dc2626"
+                ? "var(--ma-danger-solid)"
                 : e.level === "success"
-                  ? "#16a34a"
+                  ? "var(--ma-success-solid)"
                   : "var(--tg-section-bg)",
             color: e.level === "info" ? "var(--tg-text)" : "#fff",
             border:

@@ -75,6 +75,16 @@ export function SlotPicker() {
   }, [lang]);
 
   const selectedDate = draft.date ?? days[0].iso;
+  const stripRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Keep the active day visible — matters when the draft restores a date
+  // that sits beyond the first viewport of the strip.
+  React.useEffect(() => {
+    const el = stripRef.current?.querySelector<HTMLElement>(
+      `[data-iso="${selectedDate}"]`,
+    );
+    el?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [selectedDate]);
   const slots = useSlots({
     doctorId: draft.doctorId,
     date: selectedDate,
@@ -176,19 +186,23 @@ export function SlotPicker() {
           ) : null}
         </div>
       ) : null}
-      <div className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-2">
+      <div
+        ref={stripRef}
+        className="-mx-1 mb-5 flex snap-x snap-proximity gap-2 overflow-x-auto px-1 pb-2"
+      >
         {days.map((d) => {
           const active = selectedDate === d.iso;
           return (
             <button
               key={d.iso}
+              data-iso={d.iso}
               type="button"
               onClick={() => {
                 tg.haptic.selection();
                 setDraft({ date: d.iso, time: null });
                 setExpanded(false);
               }}
-              className="flex min-h-[68px] min-w-[68px] shrink-0 flex-col items-center justify-center rounded-2xl px-3 py-2 text-xs transition active:scale-[0.98]"
+              className="flex min-h-[68px] min-w-[68px] shrink-0 snap-start flex-col items-center justify-center rounded-2xl px-3 py-2 text-xs transition active:scale-[0.98]"
               style={
                 active
                   ? {
@@ -236,7 +250,8 @@ export function SlotPicker() {
         </div>
       ) : allSlots.length > 0 ? (
         <>
-          <div className="grid grid-cols-3 gap-2">
+          {/* key={selectedDate} replays the crossfade when the day flips. */}
+          <div key={selectedDate} className="ma-fade-in grid grid-cols-3 gap-2">
             {visibleSlots.map((slot) => {
               const active = draft.time === slot;
               return (

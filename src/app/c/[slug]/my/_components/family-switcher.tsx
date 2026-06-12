@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, Plus, User2 } from "lucide-react";
 
 import { useT } from "./mini-i18n";
+import { MSheet } from "./mini-ui";
 import { useFamily, type FamilyMember, type FamilyPatient } from "../_hooks/use-family";
 import { useActiveContext } from "../_hooks/use-active-context";
 
@@ -116,83 +117,51 @@ function SwitcherSheet({
 }) {
   const t = useT();
 
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-end justify-center"
-      onClick={onClose}
-    >
-      <div
-        aria-hidden
-        className="absolute inset-0"
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-      />
-      <div
-        role="dialog"
-        aria-modal
-        onClick={(e) => e.stopPropagation()}
-        className="ma-fade-up relative w-full max-w-[430px] rounded-t-2xl px-3 pb-6 pt-3"
-        style={{
-          backgroundColor: "var(--tg-bg)",
-          color: "var(--tg-text)",
-          paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)",
-        }}
-      >
-        <div
-          aria-hidden
-          className="mx-auto mb-3 h-1 w-10 rounded-full"
-          style={{
-            backgroundColor:
-              "color-mix(in oklch, var(--tg-hint) 40%, transparent)",
-          }}
-        />
-        <div className="space-y-1">
-          <Row
-            name={t.family.self}
-            sub={self.phone}
-            active={selfActive}
-            onClick={() => onPick(self.id)}
-          />
-          {members.map((m) => (
+    <MSheet onClose={onClose}>
+      {(requestClose) => (
+        <>
+          <div className="space-y-1">
             <Row
-              key={m.linkId}
-              name={m.patient.fullName}
-              sub={t.family.relationship[m.relationship]}
-              active={!selfActive && m.patient.id === activeId}
-              onClick={() => onPick(m.patient.id)}
+              name={t.family.self}
+              sub={self.phone}
+              active={selfActive}
+              onClick={() => onPick(self.id)}
             />
-          ))}
-        </div>
-        {members.length < (5) ? (
-          <Link
-            href={`/c/${slug}/my/family/add`}
-            onClick={onClose}
-            className="mt-3 flex min-h-[48px] items-center justify-center gap-2 rounded-2xl text-sm font-semibold"
-            style={{
-              backgroundColor: "var(--tg-accent)",
-              color: "#fff",
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            {t.family.add}
-          </Link>
-        ) : (
-          <p
-            className="mt-3 text-center text-xs"
-            style={{ color: "var(--tg-hint)" }}
-          >
-            {t.family.maxReached}
-          </p>
-        )}
-      </div>
-    </div>
+            {members.map((m) => (
+              <Row
+                key={m.linkId}
+                name={m.patient.fullName}
+                sub={t.family.relationship[m.relationship]}
+                active={!selfActive && m.patient.id === activeId}
+                onClick={() => onPick(m.patient.id)}
+              />
+            ))}
+          </div>
+          {members.length < 5 ? (
+            <Link
+              href={`/c/${slug}/my/family/add`}
+              onClick={requestClose}
+              className="mt-3 flex min-h-[48px] items-center justify-center gap-2 rounded-2xl text-sm font-semibold"
+              style={{
+                backgroundColor: "var(--tg-accent)",
+                color: "#fff",
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              {t.family.add}
+            </Link>
+          ) : (
+            <p
+              className="mt-3 text-center text-xs"
+              style={{ color: "var(--tg-hint)" }}
+            >
+              {t.family.maxReached}
+            </p>
+          )}
+        </>
+      )}
+    </MSheet>
   );
 }
 

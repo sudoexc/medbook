@@ -28,6 +28,8 @@ export type ToastEntry = {
   id: string;
   level: ToastLevel;
   message: string;
+  /** Exit animation is playing; the entry unmounts ~220ms later. */
+  leaving?: boolean;
 };
 
 type ToastContextValue = {
@@ -57,7 +59,7 @@ export function MiniAppToastProvider({
     new Map(),
   );
 
-  const dismiss = React.useCallback((id: string) => {
+  const remove = React.useCallback((id: string) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     const t = timers.current.get(id);
     if (t) {
@@ -65,6 +67,23 @@ export function MiniAppToastProvider({
       timers.current.delete(id);
     }
   }, []);
+
+  // Two-phase dismiss: flag the entry as leaving so the exit animation
+  // plays, then actually remove it once the animation has finished.
+  const dismiss = React.useCallback(
+    (id: string) => {
+      setEntries((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, leaving: true } : e)),
+      );
+      const t = timers.current.get(id);
+      if (t) clearTimeout(t);
+      timers.current.set(
+        id,
+        setTimeout(() => remove(id), 220),
+      );
+    },
+    [remove],
+  );
 
   const push = React.useCallback<ToastContextValue["push"]>(
     (level, message) => {
@@ -154,7 +173,7 @@ function MiniAppToastViewport(): React.ReactElement | null {
           key={e.id}
           type="button"
           onClick={() => ctx.dismiss(e.id)}
-          className="ma-fade-up pointer-events-auto w-full max-w-[28rem] rounded-2xl px-4 py-3 text-sm font-medium shadow-lg"
+          className={`${e.leaving ? "ma-toast-out" : "ma-fade-up"} pointer-events-auto w-full max-w-[28rem] rounded-2xl px-4 py-3 text-sm font-medium shadow-lg`}
           style={{
             backgroundColor:
               e.level === "error"

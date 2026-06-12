@@ -95,6 +95,8 @@ export type TgWebApp = {
   requestContact?: (cb?: (ok: boolean) => void) => void;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
+  onEvent?: (eventType: string, cb: () => void) => void;
+  offEvent?: (eventType: string, cb: () => void) => void;
 };
 
 declare global {
@@ -144,6 +146,27 @@ export type UseTelegramWebAppResult = {
 export function useTelegramWebApp(): UseTelegramWebAppResult {
   const [ready, setReady] = React.useState(false);
   const [tg, setTg] = React.useState<TgWebApp | null>(null);
+  // Bumped on Telegram's `themeChanged` — themeParams/colorScheme mutate in
+  // place on the WebApp object, so a state tick is enough for consumers to
+  // re-read fresh values on the next render.
+  const [, setThemeVersion] = React.useState(0);
+  // Outside Telegram we fall back to the OS scheme instead of forcing light.
+  const [mediaDark, setMediaDark] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!tg?.onEvent) return;
+    const onTheme = () => setThemeVersion((v) => v + 1);
+    tg.onEvent("themeChanged", onTheme);
+    return () => tg.offEvent?.("themeChanged", onTheme);
+  }, [tg]);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setMediaDark(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setMediaDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -270,7 +293,7 @@ export function useTelegramWebApp(): UseTelegramWebAppResult {
     initDataUnsafe: tg?.initDataUnsafe ?? {},
     user: tg?.initDataUnsafe?.user ?? null,
     themeParams: tg?.themeParams ?? {},
-    colorScheme: tg?.colorScheme ?? "light",
+    colorScheme: tg?.colorScheme ?? (mediaDark ? "dark" : "light"),
     tg,
     showAlert,
     showConfirm,

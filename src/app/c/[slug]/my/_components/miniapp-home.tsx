@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Calendar,
   CalendarPlus,
+  ChevronRight,
   FileText,
   FlaskConical,
   Gift,
@@ -34,30 +35,49 @@ import { TreatmentPlanCard } from "./treatment-plan-card";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { OpenInTelegramFallback } from "./open-in-telegram-fallback";
 
+function daysUntil(dateISO: string): number {
+  const d = new Date(dateISO);
+  d.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - now.getTime()) / 86_400_000);
+}
+
 function CtaTile({
   href,
   label,
   icon: Icon,
   delay,
+  animate,
+  wide,
 }: {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   delay?: number;
+  animate?: boolean;
+  wide?: boolean;
 }) {
+  const tg = useTelegramWebApp();
   return (
     <Link
       href={href}
-      className="ma-fade-up flex min-h-[112px] flex-col justify-between rounded-2xl p-4 text-left transition active:scale-[0.98]"
+      onClick={() => tg.haptic.selection()}
+      className={`${animate ? "ma-fade-up " : ""}${
+        wide
+          ? "col-span-2 flex min-h-[64px] flex-row items-center gap-3"
+          : "flex min-h-[112px] flex-col justify-between"
+      } rounded-2xl p-4 text-left transition active:scale-[0.98]`}
       style={{
         backgroundColor: "var(--tg-section-bg)",
         color: "var(--tg-text)",
-        animationDelay: delay != null ? `${delay}ms` : undefined,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        animationDelay:
+          animate && delay != null ? `${delay}ms` : undefined,
+        boxShadow: "var(--ma-card-shadow, 0 1px 2px rgba(0,0,0,0.04))",
       }}
     >
       <span style={{ color: "var(--tg-accent)" }}>
-        <Icon className="h-6 w-6" />
+        <Icon className={wide ? "h-5 w-5" : "h-6 w-6"} />
       </span>
       <span className="text-base font-semibold leading-tight">{label}</span>
     </Link>
@@ -104,13 +124,48 @@ function HomeContent({ slug }: { slug: string }) {
   const { state } = useMiniAppAuth();
   const { onBehalfOf } = useActiveContext();
   const upcoming = useAppointments("upcoming", onBehalfOf);
+  const tg = useTelegramWebApp();
   const patient = state.status === "ready" ? state.patient : null;
   const firstName = patient?.fullName?.split(" ")[0] ?? "";
   const lang = patient?.preferredLang ?? "RU";
 
+  // The entrance stagger plays once per session — re-mounting home on every
+  // back-navigation used to replay the full second of fade-ups, which made
+  // the app feel slower than it is. HomeContent only mounts client-side
+  // (auth state starts as "loading"), so sessionStorage is safe to read in
+  // the initializer.
+  const [animate] = React.useState(() => {
+    try {
+      return sessionStorage.getItem("ma:introPlayed") !== "1";
+    } catch {
+      return false;
+    }
+  });
+  React.useEffect(() => {
+    try {
+      sessionStorage.setItem("ma:introPlayed", "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const next = upcoming.data && upcoming.data.length > 0 ? upcoming.data[0] : null;
+  const nextTime = next ? next.time ?? formatTimeISO(next.date) : "";
+  const nextDiff = next ? daysUntil(next.date) : 0;
+  const nextChip = next
+    ? nextDiff <= 0
+      ? t.home.todayAt.replace("{time}", nextTime)
+      : nextDiff === 1
+        ? t.home.tomorrowAt.replace("{time}", nextTime)
+        : t.home.inDays.replace("{n}", String(nextDiff))
+    : "";
+
   return (
     <>
-      <div className="ma-fade-up mb-5" style={{ animationDelay: "0ms" }}>
+      <div
+        className={`${animate ? "ma-fade-up " : ""}mb-5`}
+        style={animate ? { animationDelay: "0ms" } : undefined}
+      >
         <h1 className="text-2xl font-bold leading-tight">
           {t.home.greeting.replace("{name}", firstName)}
         </h1>
@@ -121,91 +176,146 @@ function HomeContent({ slug }: { slug: string }) {
       <InboxBanner />
       <ClinicInfoCard slug={slug} />
       <TreatmentPlanCard slug={slug} />
-      <div className="ma-fade-up" style={{ animationDelay: "60ms" }}>
+      <div
+        className={animate ? "ma-fade-up" : undefined}
+        style={animate ? { animationDelay: "40ms" } : undefined}
+      >
         <MSection title={t.home.upcomingHeader}>
           {upcoming.isLoading ? (
             <SkeletonList rows={1} variant="appointment" />
-          ) : upcoming.data && upcoming.data.length > 0 ? (
-            <MCard>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-base font-semibold">
-                    {lang === "UZ"
-                      ? upcoming.data[0].doctor.nameUz
-                      : upcoming.data[0].doctor.nameRu}
+          ) : next ? (
+            <Link
+              href={`/c/${slug}/my/appointments`}
+              onClick={() => tg.haptic.selection()}
+              className="block"
+            >
+              <MCard className="transition active:scale-[0.99]">
+                <div className="flex items-center gap-3">
+                  {next.doctor.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={next.doctor.photoUrl}
+                      alt=""
+                      className="h-12 w-12 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-base font-semibold text-white"
+                      style={{ backgroundColor: "var(--tg-accent)" }}
+                    >
+                      {(lang === "UZ"
+                        ? next.doctor.nameUz
+                        : next.doctor.nameRu
+                      ).slice(0, 1)}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-base font-semibold">
+                      {lang === "UZ" ? next.doctor.nameUz : next.doctor.nameRu}
+                    </div>
+                    <div
+                      className="truncate text-xs"
+                      style={{ color: "var(--tg-hint)" }}
+                    >
+                      {lang === "UZ"
+                        ? next.doctor.specializationUz
+                        : next.doctor.specializationRu}
+                    </div>
+                    <div
+                      className="mt-1 text-xs font-medium"
+                      style={{ color: "var(--tg-accent)" }}
+                    >
+                      {formatDateISO(next.date, lang)} · {nextTime}
+                    </div>
                   </div>
-                  <div
-                    className="mt-0.5 text-xs"
-                    style={{ color: "var(--tg-hint)" }}
-                  >
-                    {lang === "UZ"
-                      ? upcoming.data[0].doctor.specializationUz
-                      : upcoming.data[0].doctor.specializationRu}
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span
+                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      style={{
+                        backgroundColor:
+                          "color-mix(in oklch, var(--tg-accent) 12%, transparent)",
+                        color: "var(--tg-accent)",
+                      }}
+                    >
+                      {nextChip}
+                    </span>
+                    <ChevronRight
+                      className="h-4 w-4"
+                      style={{ color: "var(--tg-hint)" }}
+                    />
                   </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-sm font-semibold">
-                    {formatDateISO(upcoming.data[0].date, lang)}
-                  </div>
-                  <div className="text-xs" style={{ color: "var(--tg-accent)" }}>
-                    {upcoming.data[0].time ?? formatTimeISO(upcoming.data[0].date)}
-                  </div>
-                </div>
-              </div>
-            </MCard>
+              </MCard>
+            </Link>
           ) : (
             <MEmpty icon={CalendarPlus}>{t.home.noUpcoming}</MEmpty>
           )}
         </MSection>
       </div>
+      <Link
+        href={`/c/${slug}/my/book/service`}
+        onClick={() => tg.haptic.selection()}
+        className={`${animate ? "ma-fade-up " : ""}mb-5 flex min-h-[52px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-semibold text-white transition active:scale-[0.98]`}
+        style={{
+          backgroundColor: "var(--tg-accent)",
+          boxShadow:
+            "0 6px 16px color-mix(in oklch, var(--tg-accent) 35%, transparent)",
+          animationDelay: animate ? "80ms" : undefined,
+        }}
+      >
+        <Calendar className="h-5 w-5" />
+        {t.home.ctaBook}
+      </Link>
       <div className="grid grid-cols-2 gap-3">
-        <CtaTile
-          href={`/c/${slug}/my/book/service`}
-          label={t.home.ctaBook}
-          icon={Calendar}
-          delay={120}
-        />
         <CtaTile
           href={`/c/${slug}/my/messages`}
           label={t.home.ctaChat}
           icon={MessageSquare}
-          delay={170}
+          delay={120}
+          animate={animate}
         />
         <CtaTile
           href={`/c/${slug}/my/appointments`}
           label={t.home.ctaMyAppointments}
           icon={History}
-          delay={220}
+          delay={160}
+          animate={animate}
         />
         <CtaTile
           href={`/c/${slug}/my/documents`}
           label={t.home.ctaDocuments}
           icon={FileText}
-          delay={270}
+          delay={200}
+          animate={animate}
         />
         <CtaTile
           href={`/c/${slug}/my/medications`}
           label={t.home.ctaMedications}
           icon={Pill}
-          delay={320}
+          delay={240}
+          animate={animate}
         />
         <CtaTile
           href={`/c/${slug}/my/labs`}
           label={t.home.ctaLabs}
           icon={FlaskConical}
-          delay={370}
+          delay={280}
+          animate={animate}
         />
         <CtaTile
           href={`/c/${slug}/my/profile`}
           label={t.home.ctaProfile}
           icon={User}
-          delay={420}
+          delay={320}
+          animate={animate}
         />
         <CtaTile
           href={`/c/${slug}/my/refer`}
           label={t.home.ctaRefer}
           icon={Gift}
-          delay={470}
+          delay={360}
+          animate={animate}
+          wide
         />
       </div>
     </>

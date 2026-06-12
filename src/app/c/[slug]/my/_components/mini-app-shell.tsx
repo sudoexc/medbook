@@ -20,7 +20,7 @@ export function MiniAppShell({
   clinicSlug: string;
   children: React.ReactNode;
 }) {
-  const { themeParams, colorScheme } = useTelegramWebApp();
+  const { themeParams, colorScheme, tg } = useTelegramWebApp();
   const { state } = useMiniAppAuth();
   const { data: clinic } = useClinic(clinicSlug);
   // Phase M3 — single SSE connection per page; the hook no-ops until auth
@@ -42,6 +42,38 @@ export function MiniAppShell({
   // the NeuroFax mark.
   const accent = "var(--brand-primary, #2353FF)";
 
+  const isDark = colorScheme === "dark";
+  // Light shadows are invisible on a dark bg; dark cards separate from the
+  // page with a faint inner ring + deeper drop instead.
+  const cardShadow = isDark
+    ? "0 0 0 1px rgba(255,255,255,0.06), 0 8px 24px rgba(0,0,0,0.35)"
+    : "0 1px 2px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.05)";
+
+  // Keep the native Telegram chrome (header strip + behind-keyboard area) in
+  // the page colour, otherwise fullscreen mode shows a seam above the aurora.
+  React.useEffect(() => {
+    if (!tg) return;
+    try {
+      tg.setHeaderColor?.(bg);
+      tg.setBackgroundColor?.(bg);
+    } catch {
+      // Older clients without the API — the default chrome is acceptable.
+    }
+  }, [tg, bg]);
+
+  // The aurora layers are large blurred composited surfaces; pause their
+  // drift while the app is backgrounded so they don't burn GPU/battery.
+  React.useEffect(() => {
+    const onVis = () => {
+      document.documentElement.classList.toggle("ma-paused", document.hidden);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      document.documentElement.classList.remove("ma-paused");
+    };
+  }, []);
+
   const lang =
     state.status === "ready"
       ? state.patient.preferredLang.toLowerCase()
@@ -56,12 +88,15 @@ export function MiniAppShell({
         {
           backgroundColor: bg,
           color: text,
+          // Drives CSS `light-dark()` in tokens + native form controls.
+          colorScheme,
           // Expose theme colours to child CSS.
           "--tg-bg": bg,
           "--tg-text": text,
           "--tg-hint": hint,
           "--tg-section-bg": sectionBg,
           "--tg-accent": accent,
+          "--ma-card-shadow": cardShadow,
         } as React.CSSProperties
       }
     >
@@ -210,10 +245,83 @@ function MiniAppStyles() {
       .ma-step-enter {
         animation: ma-step-enter .42s cubic-bezier(.2,.8,.2,1) both;
       }
+      @keyframes ma-fade-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      .ma-fade-in {
+        animation: ma-fade-in .25s ease-out both;
+      }
+      @keyframes ma-sheet-in {
+        from { transform: translate3d(0, 100%, 0); }
+        to   { transform: none; }
+      }
+      @keyframes ma-sheet-out {
+        from { transform: none; }
+        to   { transform: translate3d(0, 100%, 0); }
+      }
+      .ma-sheet-in {
+        animation: ma-sheet-in .32s cubic-bezier(.2,.8,.2,1) both;
+      }
+      .ma-sheet-out {
+        animation: ma-sheet-out .24s cubic-bezier(.4,0,.8,.4) both;
+      }
+      @keyframes ma-backdrop-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes ma-backdrop-out {
+        from { opacity: 1; }
+        to   { opacity: 0; }
+      }
+      .ma-backdrop-in {
+        animation: ma-backdrop-in .25s ease-out both;
+      }
+      .ma-backdrop-out {
+        animation: ma-backdrop-out .22s ease-in both;
+      }
+      @keyframes ma-toast-out {
+        from { opacity: 1; transform: none; }
+        to   { opacity: 0; transform: translate3d(0, 10px, 0) scale(.97); }
+      }
+      .ma-toast-out {
+        animation: ma-toast-out .22s ease-in both;
+      }
+      @keyframes ma-check-pop {
+        0%   { opacity: 0; transform: scale(.4); }
+        65%  { opacity: 1; transform: scale(1.12); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      .ma-check-pop {
+        animation: ma-check-pop .5s cubic-bezier(.2,.8,.2,1) both;
+      }
+      .ma-draw {
+        stroke-dasharray: 24;
+        stroke-dashoffset: 24;
+        animation: ma-draw .45s cubic-bezier(.2,.8,.2,1) .25s forwards;
+      }
+      @keyframes ma-draw {
+        to { stroke-dashoffset: 0; }
+      }
+      @keyframes ma-ring {
+        0%   { opacity: .5; transform: scale(.6); }
+        100% { opacity: 0; transform: scale(1.6); }
+      }
+      .ma-ring {
+        animation: ma-ring .9s ease-out .15s both;
+      }
+      .ma-paused .ma-aurora {
+        animation-play-state: paused;
+      }
       @media (prefers-reduced-motion: reduce) {
         .ma-aurora-a, .ma-aurora-b, .ma-aurora-c,
-        .ma-fade-up, .ma-step-enter, .ma-skeleton {
+        .ma-fade-up, .ma-step-enter, .ma-skeleton, .ma-fade-in,
+        .ma-sheet-in, .ma-sheet-out, .ma-backdrop-in, .ma-backdrop-out,
+        .ma-toast-out, .ma-check-pop, .ma-draw, .ma-ring {
           animation: none !important;
+        }
+        .ma-draw {
+          stroke-dashoffset: 0;
         }
       }
     `}</style>

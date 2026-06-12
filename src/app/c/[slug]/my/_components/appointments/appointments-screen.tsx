@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarCheck, CalendarPlus, History } from "lucide-react";
 
 import {
+  MButton,
   MCard,
   MEmpty,
   MSection,
@@ -86,22 +88,31 @@ export function AppointmentsScreen() {
         <h1 className="text-xl font-bold">{t.appts.title}</h1>
       </div>
       <div
-        className="mb-4 flex rounded-xl p-1"
+        className="relative mb-4 flex rounded-xl p-1"
         style={{ backgroundColor: "var(--tg-section-bg)" }}
       >
+        {/* Sliding indicator: width = half the content box, shifted by its
+            own width when the second tab is active. */}
+        <div
+          aria-hidden
+          className="absolute bottom-1 top-1 w-[calc(50%-4px)] rounded-lg"
+          style={{
+            left: 4,
+            backgroundColor: "var(--tg-accent)",
+            transform: tab === "past" ? "translateX(100%)" : "translateX(0)",
+            transition: "transform .28s cubic-bezier(.2,.8,.2,1)",
+          }}
+        />
         {(["upcoming", "past"] as const).map((k) => (
           <button
             key={k}
             type="button"
-            onClick={() => setTab(k)}
-            className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
-              tab === k ? "shadow-sm" : ""
-            }`}
-            style={
-              tab === k
-                ? { backgroundColor: "var(--tg-accent)", color: "#fff" }
-                : { color: "var(--tg-text)" }
-            }
+            onClick={() => {
+              tg.haptic.selection();
+              setTab(k);
+            }}
+            className="relative z-10 flex-1 rounded-lg py-2 text-sm font-medium transition-colors duration-200"
+            style={{ color: tab === k ? "#fff" : "var(--tg-text)" }}
           >
             {k === "upcoming" ? t.appts.tabUpcoming : t.appts.tabPast}
           </button>
@@ -110,6 +121,8 @@ export function AppointmentsScreen() {
       {query.isLoading ? (
         <SkeletonList rows={4} variant="appointment" />
       ) : query.data && query.data.length > 0 ? (
+        // key={tab} remounts the list per tab so the crossfade replays.
+        <div key={tab} className="ma-fade-in">
         <MSection>
           {query.data.map((appt) => {
             const cancellable =
@@ -128,6 +141,7 @@ export function AppointmentsScreen() {
                 <button
                   type="button"
                   onClick={() => {
+                    tg.haptic.selection();
                     setSelectedMode("view");
                     setSelected(appt);
                   }}
@@ -228,10 +242,22 @@ export function AppointmentsScreen() {
             );
           })}
         </MSection>
+        </div>
       ) : (
-        <MEmpty icon={tab === "upcoming" ? CalendarCheck : History}>
-          {tab === "upcoming" ? t.appts.emptyUpcoming : t.appts.emptyPast}
-        </MEmpty>
+        <div key={tab} className="ma-fade-in">
+          <MEmpty
+            icon={tab === "upcoming" ? CalendarCheck : History}
+            action={
+              tab === "upcoming" ? (
+                <Link href={`/c/${clinicSlug}/my/book/service`}>
+                  <MButton variant="primary">{t.home.ctaBook}</MButton>
+                </Link>
+              ) : undefined
+            }
+          >
+            {tab === "upcoming" ? t.appts.emptyUpcoming : t.appts.emptyPast}
+          </MEmpty>
+        </div>
       )}
       {selected ? (
         <AppointmentDetailDialog

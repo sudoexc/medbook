@@ -5,6 +5,7 @@ import * as React from "react";
 import {
   MButton,
   MCard,
+  MSheet,
   formatDateISO,
 } from "../mini-ui";
 import { useT } from "../mini-i18n";
@@ -109,20 +110,14 @@ export function AppointmentDetailDialog({
 
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[430px] rounded-t-2xl p-4 pb-8"
-        style={{ backgroundColor: "var(--tg-bg)", color: "var(--tg-text)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <MSheet onClose={onClose} ariaLabel={t.appts.detailTitle}>
+      {(requestClose) => (
+        <>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t.appts.detailTitle}</h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="rounded-lg px-3 py-2 text-sm"
             style={{ color: "var(--tg-hint)" }}
           >
@@ -248,8 +243,9 @@ export function AppointmentDetailDialog({
             </MButton>
           </div>
         )}
-      </div>
-    </div>
+        </>
+      )}
+    </MSheet>
     <CancelReasonDialog
       open={cancelOpen}
       isPending={cancel.isPending}

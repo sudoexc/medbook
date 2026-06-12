@@ -7,6 +7,12 @@
  * paint a 2-3px left border on cards plus a faint background wash. They're
  * deliberately desaturated so they sit alongside the Telegram theme without
  * fighting it.
+ *
+ * Every value is scheme-aware via CSS `light-dark()` — the shell sets
+ * `color-scheme` on the root from Telegram's colorScheme, so labels stay
+ * readable on dark backgrounds (the old light-only #b45309-style labels
+ * dropped to ~3:1 contrast in dark themes) and tints get a higher mix
+ * percentage where 6-8% would vanish against a dark section bg.
  */
 export type AppointmentStatusTone = {
   /** Solid accent for the 3px left strip on the card. */
@@ -17,47 +23,34 @@ export type AppointmentStatusTone = {
   label: string;
 };
 
+function tone(
+  border: string,
+  base: string,
+  lightPct: number,
+  darkPct: number,
+  labelLight: string,
+  labelDark: string,
+): AppointmentStatusTone {
+  return {
+    border,
+    tint: `light-dark(color-mix(in oklch, ${base} ${lightPct}%, transparent), color-mix(in oklch, ${base} ${darkPct}%, transparent))`,
+    label: `light-dark(${labelLight}, ${labelDark})`,
+  };
+}
+
 export const APPOINTMENT_STATUS_TONES: Record<string, AppointmentStatusTone> = {
-  BOOKED: {
-    border: "#2353FF",
-    tint: "color-mix(in oklch, #2353FF 8%, transparent)",
-    label: "#2353FF",
-  },
-  CONFIRMED: {
-    border: "#10b981",
-    tint: "color-mix(in oklch, #10b981 8%, transparent)",
-    label: "#059669",
-  },
-  WAITING: {
-    border: "#f59e0b",
-    tint: "color-mix(in oklch, #f59e0b 10%, transparent)",
-    label: "#b45309",
-  },
-  IN_PROGRESS: {
-    border: "#0ea5e9",
-    tint: "color-mix(in oklch, #0ea5e9 8%, transparent)",
-    label: "#0369a1",
-  },
+  BOOKED: tone("#2353FF", "#2353FF", 8, 16, "#2353FF", "#8FA8FF"),
+  CONFIRMED: tone("#10b981", "#10b981", 8, 16, "#059669", "#34d399"),
+  WAITING: tone("#f59e0b", "#f59e0b", 10, 18, "#b45309", "#fbbf24"),
+  IN_PROGRESS: tone("#0ea5e9", "#0ea5e9", 8, 16, "#0369a1", "#38bdf8"),
   COMPLETED: {
     border: "color-mix(in oklch, var(--tg-hint) 50%, transparent)",
     tint: "transparent",
     label: "var(--tg-hint)",
   },
-  CANCELLED: {
-    border: "#ef4444",
-    tint: "color-mix(in oklch, #ef4444 6%, transparent)",
-    label: "#b91c1c",
-  },
-  NO_SHOW: {
-    border: "#a855f7",
-    tint: "color-mix(in oklch, #a855f7 6%, transparent)",
-    label: "#7e22ce",
-  },
-  SKIPPED: {
-    border: "#94a3b8",
-    tint: "color-mix(in oklch, #94a3b8 8%, transparent)",
-    label: "#475569",
-  },
+  CANCELLED: tone("#ef4444", "#ef4444", 6, 14, "#b91c1c", "#f87171"),
+  NO_SHOW: tone("#a855f7", "#a855f7", 6, 14, "#7e22ce", "#c084fc"),
+  SKIPPED: tone("#94a3b8", "#94a3b8", 8, 14, "#475569", "#cbd5e1"),
 };
 
 export function getAppointmentTone(status: string): AppointmentStatusTone {
@@ -73,26 +66,10 @@ export function getAppointmentTone(status: string): AppointmentStatusTone {
  * has already passed the doctor's eye.
  */
 export const LAB_FLAG_TONES: Record<string, AppointmentStatusTone> = {
-  NORMAL: {
-    border: "#10b981",
-    tint: "color-mix(in oklch, #10b981 8%, transparent)",
-    label: "#059669",
-  },
-  LOW: {
-    border: "#0ea5e9",
-    tint: "color-mix(in oklch, #0ea5e9 10%, transparent)",
-    label: "#0369a1",
-  },
-  HIGH: {
-    border: "#f59e0b",
-    tint: "color-mix(in oklch, #f59e0b 12%, transparent)",
-    label: "#b45309",
-  },
-  CRITICAL: {
-    border: "#ef4444",
-    tint: "color-mix(in oklch, #ef4444 12%, transparent)",
-    label: "#b91c1c",
-  },
+  NORMAL: tone("#10b981", "#10b981", 8, 16, "#059669", "#34d399"),
+  LOW: tone("#0ea5e9", "#0ea5e9", 10, 18, "#0369a1", "#38bdf8"),
+  HIGH: tone("#f59e0b", "#f59e0b", 12, 20, "#b45309", "#fbbf24"),
+  CRITICAL: tone("#ef4444", "#ef4444", 12, 20, "#b91c1c", "#f87171"),
 };
 
 export function getLabFlagTone(flag: string): AppointmentStatusTone {

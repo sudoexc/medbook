@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { MButton } from "../mini-ui";
+import { MButton, MSheet } from "../mini-ui";
 import { useT } from "../mini-i18n";
 
 /**
@@ -78,22 +78,16 @@ export function CancelReasonDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[430px] rounded-t-2xl p-4 pb-8"
-        style={{ backgroundColor: "var(--tg-bg)", color: "var(--tg-text)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <MSheet onClose={onClose} ariaLabel={t.appts.cancelReason.title}>
+      {(requestClose) => (
+        <>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">
             {t.appts.cancelReason.title}
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="rounded-lg px-3 py-2 text-sm"
             style={{ color: "var(--tg-hint)" }}
           >
@@ -205,11 +199,12 @@ export function CancelReasonDialog({
           >
             {t.appts.cancelReason.submit}
           </MButton>
-          <MButton variant="ghost" block onClick={onClose}>
+          <MButton variant="ghost" block onClick={requestClose}>
             {t.appts.cancelReason.back}
           </MButton>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </MSheet>
   );
 }

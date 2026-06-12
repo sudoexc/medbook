@@ -30,6 +30,9 @@ export const uzDict = {
     ctaChat: "Klinika bilan chat",
     upcomingHeader: "Yaqinlashayotgan yozuv",
     noUpcoming: "Hozircha rejalashtirilgan yozuvlar yo‘q",
+    todayAt: "bugun soat {time} da",
+    tomorrowAt: "ertaga soat {time} da",
+    inDays: "{n} kundan keyin",
   },
   chat: {
     title: "Klinika bilan chat",

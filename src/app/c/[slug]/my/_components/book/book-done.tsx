@@ -84,17 +84,33 @@ export function BookDone() {
     return off;
   }, [tg, router, clinicSlug]);
 
+  // Success haptic exactly once — the booking just landed, let the phone
+  // confirm it physically along with the checkmark pop.
+  const hapticFired = React.useRef(false);
+  React.useEffect(() => {
+    if (hapticFired.current || !tg.isTelegramContext) return;
+    hapticFired.current = true;
+    tg.haptic.notification("success");
+  }, [tg]);
+
   return (
     <div className="ma-step-enter">
       <MCard className="mb-4">
         <div className="flex items-start gap-3">
-          <div
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white"
-            style={{ backgroundColor: "#22C55E" }}
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3}>
-              <path d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <div className="relative h-10 w-10 shrink-0">
+            <div
+              aria-hidden
+              className="ma-ring absolute inset-0 rounded-full"
+              style={{ backgroundColor: "#22C55E" }}
+            />
+            <div
+              className="ma-check-pop relative grid h-10 w-10 place-items-center rounded-full text-white"
+              style={{ backgroundColor: "#22C55E" }}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3}>
+                <path className="ma-draw" d="M5 12l4 4L19 6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold">{t.done.title}</div>
@@ -157,7 +173,7 @@ export function BookDone() {
       <MCard className="mb-4 flex flex-col items-center">
         {qrDataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={qrDataUrl} alt="" className="h-48 w-48 rounded-xl bg-white p-2" />
+          <img src={qrDataUrl} alt="" className="ma-fade-in h-48 w-48 rounded-xl bg-white p-2" />
         ) : (
           <div className="flex h-48 w-48 items-center justify-center">
             <MSpinner />

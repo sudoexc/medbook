@@ -30,6 +30,9 @@ export const ruDict = {
     ctaChat: "Чат с клиникой",
     upcomingHeader: "Ближайшая запись",
     noUpcoming: "Нет запланированных записей",
+    todayAt: "сегодня в {time}",
+    tomorrowAt: "завтра в {time}",
+    inDays: "через {n} дн.",
   },
   chat: {
     title: "Чат с клиникой",

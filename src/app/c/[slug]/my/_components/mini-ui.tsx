@@ -28,7 +28,7 @@ export function MButton({
     primary: "text-white",
     secondary: "border text-[var(--tg-text)]",
     ghost: "text-[var(--tg-accent)]",
-    danger: "text-white bg-red-500",
+    danger: "text-white",
   } as const;
   const style: React.CSSProperties = {};
   if (variant === "primary") {
@@ -36,6 +36,9 @@ export function MButton({
   } else if (variant === "secondary") {
     style.borderColor = "color-mix(in oklch, var(--tg-hint) 40%, transparent)";
     style.backgroundColor = "var(--tg-section-bg)";
+  } else if (variant === "danger") {
+    // Slightly deeper red in dark so the fill doesn't glow against the bg.
+    style.backgroundColor = "light-dark(#ef4444, #dc2626)";
   }
   return (
     <button
@@ -61,7 +64,7 @@ export function MCard({
         backgroundColor: "var(--tg-section-bg)",
         color: "var(--tg-text)",
         boxShadow:
-          "0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05)",
+          "var(--ma-card-shadow, 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05))",
         ...(rest.style ?? {}),
       }}
     >
@@ -155,12 +158,86 @@ export function MSection({
   );
 }
 
+/**
+ * Bottom sheet with animated enter/exit. Children may be a render-prop that
+ * receives `requestClose` — call it instead of the parent's `onClose` so the
+ * slide-down animation plays before the sheet unmounts. Plain `onClose`
+ * still works for programmatic closes after a mutation (instant unmount).
+ */
+export function MSheet({
+  onClose,
+  ariaLabel,
+  children,
+}: {
+  onClose: () => void;
+  ariaLabel?: string;
+  children: React.ReactNode | ((requestClose: () => void) => React.ReactNode);
+}) {
+  const [closing, setClosing] = React.useState(false);
+  const requestClose = React.useCallback(() => setClosing(true), []);
+
+  React.useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(onClose, 240);
+    return () => clearTimeout(t);
+  }, [closing, onClose]);
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") requestClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [requestClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      role="presentation"
+      onClick={requestClose}
+    >
+      <div
+        aria-hidden
+        className={`absolute inset-0 bg-black/45 backdrop-blur-sm ${
+          closing ? "ma-backdrop-out" : "ma-backdrop-in"
+        }`}
+      />
+      <div
+        role="dialog"
+        aria-modal
+        aria-label={ariaLabel}
+        onClick={(e) => e.stopPropagation()}
+        className={`relative w-full max-w-[430px] rounded-t-2xl px-4 pt-3 ${
+          closing ? "ma-sheet-out" : "ma-sheet-in"
+        }`}
+        style={{
+          backgroundColor: "var(--tg-bg)",
+          color: "var(--tg-text)",
+          paddingBottom: "max(env(safe-area-inset-bottom), 1.5rem)",
+        }}
+      >
+        <div
+          aria-hidden
+          className="mx-auto mb-3 h-1 w-10 rounded-full"
+          style={{
+            backgroundColor:
+              "color-mix(in oklch, var(--tg-hint) 40%, transparent)",
+          }}
+        />
+        {typeof children === "function" ? children(requestClose) : children}
+      </div>
+    </div>
+  );
+}
+
 export function MEmpty({
   icon: Icon,
   children,
+  action,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
     <div
@@ -175,6 +252,7 @@ export function MEmpty({
         <Icon className="h-16 w-16 opacity-25" aria-hidden />
       ) : null}
       <div className="max-w-[260px]">{children}</div>
+      {action ? <div className="mt-1">{action}</div> : null}
     </div>
   );
 }

@@ -1726,6 +1726,10 @@
     "newAppointment": "+ Новая запись",
     "liveBadge": "Обновляется",
     "autoRefresh": "Обновляется автоматически",
+    "live": {
+      "patientArrived": "Пациент на месте",
+      "fallbackName": "Пациент"
+    },
     "doctorsPanel": {
       "title": "Кабинеты и врачи",
       "day": "День",

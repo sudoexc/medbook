@@ -240,6 +240,26 @@ export function useCancelAppointment() {
 }
 
 /**
+ * Wave 3c — «Я на месте». Publishes the auditable `patient.arrived` signal;
+ * the appointment status does not change (intake stays a receptionist
+ * action), so there is nothing to invalidate optimistically.
+ */
+export function useCheckInAppointment() {
+  const { request } = useMiniAppFetch();
+  return useMutation({
+    mutationFn: async (args: { id: string; onBehalfOf?: string | null }) => {
+      await request(`/api/miniapp/appointments/${args.id}/checkin`, {
+        method: "POST",
+        searchParams: args.onBehalfOf
+          ? { onBehalfOf: args.onBehalfOf }
+          : undefined,
+      });
+      return args.id;
+    },
+  });
+}
+
+/**
  * Subscribe the mini-app to the SSE event bus so cross-surface mutations
  * (e.g. receptionist cancels in CRM while the patient has the mini-app open)
  * land in ≤2 sec without a manual refetch. Per TZ §6.1.

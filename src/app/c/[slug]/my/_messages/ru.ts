@@ -53,6 +53,8 @@ export const ruDict = {
       emptyHint:
         "Записей на ближайшие дни нет. Если что-то беспокоит — мы рядом.",
       swipeHint: "Свайпните вверх — ваш талон",
+      checkinCta: "Я на месте",
+      checkinDone: "Вы отметились — вас встретят",
     },
     bento: {
       meds: "Лекарства",
@@ -173,6 +175,17 @@ export const ruDict = {
     time: "Время",
     codeLabel: "Код",
   },
+  visit: {
+    title: "Что сказал врач",
+    diagnosis: "Диагноз",
+    followUp: "Контрольный визит ~{date}",
+    openPdf: "Открыть заключение (PDF)",
+    bookFollowUp: "Записаться на контроль",
+    docNumber: "Заключение № {number}",
+    notReadyTitle: "Заключение готовится",
+    notReadyHint:
+      "Врач ещё оформляет заключение. Загляните сюда чуть позже — обычно это занимает несколько минут.",
+  },
   appts: {
     title: "Мои записи",
     tabUpcoming: "Предстоящие",
@@ -200,6 +213,9 @@ export const ruDict = {
     unpaid: "Не оплачено",
     conclusion: "Заключение",
     followUpCta: "Записаться на контроль ~{date}",
+    bookAgain: "Записаться снова",
+    addCalendar: "Добавить в календарь",
+    route: "Маршрут",
     cancelReason: {
       title: "Почему отменяете?",
       subtitle:

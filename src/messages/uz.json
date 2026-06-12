@@ -1726,6 +1726,10 @@
     "newAppointment": "+ Yangi yozilish",
     "liveBadge": "Yangilanmoqda",
     "autoRefresh": "Avtomatik yangilanadi",
+    "live": {
+      "patientArrived": "Bemor keldi",
+      "fallbackName": "Bemor"
+    },
     "doctorsPanel": {
       "title": "Kabinetlar va shifokorlar",
       "day": "Kun",

@@ -118,6 +118,10 @@ export const EVENT_TYPES = [
   "notification.read",
   "nps.submitted",
   "previsit.submitted",
+  // Wave 3c — patient tapped «Я на месте» in the Mini App. A signal to the
+  // reception desk, NOT a status change: intake (Пришёл → WAITING) stays
+  // owned by the receptionist per `appointment-transitions`.
+  "patient.arrived",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -529,6 +533,24 @@ export type PreVisitSubmittedEventPayload = z.infer<
   typeof PreVisitSubmittedPayload
 >;
 
+/**
+ * Wave 3c — patient self-reported arrival from the Mini App. `patientName`
+ * rides on the envelope (same precedent as `TgMessagePayload.contactName`)
+ * so the reception toast can greet without an extra fetch; the receptionist
+ * still marks «Пришёл» manually after verifying.
+ */
+export const PatientArrivedPayload = z
+  .object({
+    appointmentId: z.string().min(1),
+    patientId: z.string().min(1),
+    patientName: z.string().optional(),
+    doctorId: z.string().nullable().optional(),
+    /** "HH:mm" scheduled time so the toast can say when they're expected. */
+    time: z.string().optional(),
+  })
+  .passthrough();
+export type PatientArrivedEventPayload = z.infer<typeof PatientArrivedPayload>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -592,6 +614,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("notification.read", NotificationReadPayload),
   makeEvent("nps.submitted", NpsSubmittedPayload),
   makeEvent("previsit.submitted", PreVisitSubmittedPayload),
+  makeEvent("patient.arrived", PatientArrivedPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

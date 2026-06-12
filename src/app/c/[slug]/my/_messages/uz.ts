@@ -53,6 +53,8 @@ export const uzDict = {
       emptyHint:
         "Yaqin kunlarga yozuvlar yo‘q. Biror narsa bezovta qilsa — biz yoningizdamiz.",
       swipeHint: "Tepaga suring — talon",
+      checkinCta: "Men keldim",
+      checkinDone: "Belgilandi — sizni kutib olishadi",
     },
     bento: {
       meds: "Dorilar",
@@ -173,6 +175,17 @@ export const uzDict = {
     time: "Vaqt",
     codeLabel: "Kod",
   },
+  visit: {
+    title: "Shifokor nima dedi",
+    diagnosis: "Tashxis",
+    followUp: "Nazorat qabuli ~{date}",
+    openPdf: "Xulosani ochish (PDF)",
+    bookFollowUp: "Nazorat qabuliga yozilish",
+    docNumber: "Xulosa № {number}",
+    notReadyTitle: "Xulosa tayyorlanmoqda",
+    notReadyHint:
+      "Shifokor xulosani hali rasmiylashtirmoqda. Birozdan keyin qayta kiring — odatda bu bir necha daqiqa oladi.",
+  },
   appts: {
     title: "Mening yozuvlarim",
     tabUpcoming: "Kutilayotgan",
@@ -200,6 +213,9 @@ export const uzDict = {
     unpaid: "To‘lanmagan",
     conclusion: "Xulosa",
     followUpCta: "Nazorat qabuliga yozilish ~{date}",
+    bookAgain: "Qayta yozilish",
+    addCalendar: "Kalendarga qo‘shish",
+    route: "Yo‘nalish",
     cancelReason: {
       title: "Nima uchun bekor qilyapsiz?",
       subtitle:

@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ChevronUp,
   FileText,
+  MapPin,
   Pill,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ import { useT, useLang } from "./mini-i18n";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import {
   useAppointments,
+  useCheckInAppointment,
   type MiniAppAppointment,
 } from "../_hooks/use-appointments";
 import { useActiveContext } from "../_hooks/use-active-context";
@@ -330,7 +332,41 @@ function AppointmentHero({
       : capitalize(t.home.inDays.replace("{n}", String(diff)));
   const spec =
     lang === "UZ" ? appt.doctor.specializationUz : appt.doctor.specializationRu;
+  const { onBehalfOf } = useActiveContext();
+  const checkin = useCheckInAppointment();
+  // Wave 3c — «Я на месте». Session-scoped done-state: the signal is
+  // fire-once per visit, no server round-trip needed to restore it.
+  const [arrived, setArrived] = React.useState(false);
+  React.useEffect(() => {
+    try {
+      setArrived(sessionStorage.getItem(`ma:arrived:${appt.id}`) === "1");
+    } catch {
+      /* sessionStorage unavailable — button stays tappable */
+    }
+  }, [appt.id]);
+  const onCheckIn = () => {
+    tg.haptic.selection();
+    checkin.mutate(
+      { id: appt.id, onBehalfOf },
+      {
+        onSuccess: () => {
+          tg.haptic.notification("success");
+          setArrived(true);
+          try {
+            sessionStorage.setItem(`ma:arrived:${appt.id}`, "1");
+          } catch {
+            /* ignore */
+          }
+        },
+        onError: () => {
+          tg.haptic.notification("error");
+          tg.showAlert(t.common.error);
+        },
+      },
+    );
+  };
   return (
+    <>
     <Link
       href={`/c/${slug}/my/appointments`}
       onClick={() => tg.haptic.selection()}
@@ -374,6 +410,33 @@ function AppointmentHero({
         />
       </div>
     </Link>
+    {/* Sibling, not nested in the Link — interactive elements don't stack. */}
+    {isToday ? (
+      arrived ? (
+        <div
+          className="mt-2 flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-semibold"
+          style={{
+            backgroundColor: `color-mix(in oklch, ${GREEN} 14%, transparent)`,
+            color: GREEN,
+          }}
+        >
+          <Check className="h-4 w-4" aria-hidden />
+          {t.home.hero.checkinDone}
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={checkin.isPending}
+          onClick={onCheckIn}
+          className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
+          style={{ backgroundColor: "var(--tg-accent)" }}
+        >
+          <MapPin className="h-4 w-4" aria-hidden />
+          {t.home.hero.checkinCta}
+        </button>
+      )
+    ) : null}
+    </>
   );
 }
 
@@ -425,15 +488,13 @@ function MedsHero({
   );
 }
 
-function ResultsHero({ appt }: { appt: MiniAppAppointment }) {
+function ResultsHero({ slug, appt }: { slug: string; appt: MiniAppAppointment }) {
   const t = useT();
   const lang = useLang();
   const tg = useTelegramWebApp();
   return (
-    <a
-      href={appt.conclusionUrl ?? "#"}
-      target="_blank"
-      rel="noreferrer"
+    <Link
+      href={`/c/${slug}/my/visit/${appt.id}`}
       onClick={() => tg.haptic.selection()}
       className="block"
     >
@@ -469,7 +530,7 @@ function ResultsHero({ appt }: { appt: MiniAppAppointment }) {
           <ChevronRight className="ml-auto h-4 w-4 shrink-0" />
         </div>
       </div>
-    </a>
+    </Link>
   );
 }
 
@@ -683,7 +744,7 @@ export function HomeHero({
       hero = <MedsHero reminder={dueReminder!} onBehalfOf={onBehalfOf} />;
       break;
     case "results":
-      hero = <ResultsHero appt={freshConclusion!} />;
+      hero = <ResultsHero slug={slug} appt={freshConclusion!} />;
       break;
     case "soon":
       hero = <AppointmentHero slug={slug} appt={nextUpcoming!} now={now} />;
@@ -733,7 +794,7 @@ export function HomeHero({
   } else if (primary !== "results" && freshConclusion) {
     secondary = (
       <SlimRow
-        href={`/c/${slug}/my/documents`}
+        href={`/c/${slug}/my/visit/${freshConclusion.id}`}
         icon={FileText}
         color={GREEN}
         text={t.home.hero.resultsTitle}

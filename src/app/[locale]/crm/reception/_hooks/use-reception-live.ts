@@ -1,8 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+import { useLiveEvents } from "@/hooks/use-live-events";
 
 import type {
   AppointmentRow,
@@ -375,6 +378,7 @@ export function useAiQueueScores() {
  * event types; TanStack Query then refetches as needed.
  */
 export function useReceptionRealtime(): void {
+  const t = useTranslations("reception");
   useLiveQueryInvalidation({
     events: [
       "appointment.created",
@@ -383,6 +387,9 @@ export function useReceptionRealtime(): void {
       "appointment.cancelled",
       "appointment.moved",
       "queue.updated",
+      // Wave 3c — mini-app self check-in. No status change, but the desk
+      // list may render an "arrived" hint derived from fresh data.
+      "patient.arrived",
     ],
     queryKeys: [
       ["reception", "dashboard"],
@@ -402,6 +409,21 @@ export function useReceptionRealtime(): void {
     events: ["tg.message.new", "tg.conversation.updated"],
     queryKey: ["reception", "conversations"],
   });
+  // Self check-in deserves an active ping, not just a silent refetch — the
+  // receptionist should look up and greet the person who just walked in.
+  useLiveEvents(
+    (event) => {
+      if (event.type !== "patient.arrived") return;
+      const name =
+        event.payload.patientName?.trim() || t("live.fallbackName");
+      toast(t("live.patientArrived"), {
+        description: event.payload.time
+          ? `${name} · ${event.payload.time}`
+          : name,
+      });
+    },
+    { filter: ["patient.arrived"] },
+  );
 }
 
 export function computeUpcomingReminders(

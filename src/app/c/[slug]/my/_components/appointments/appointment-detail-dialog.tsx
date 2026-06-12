@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { CalendarPlus, FileText, MapPin, Repeat } from "lucide-react";
 
 import {
   MButton,
@@ -15,6 +18,8 @@ import {
   useRescheduleAppointment,
 } from "../../_hooks/use-appointments";
 import { useSlots } from "../../_hooks/use-slots";
+import { useBookingDraft } from "../../_hooks/use-booking-draft";
+import { useClinic } from "../../_hooks/use-clinic";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { CancelReasonDialog } from "./cancel-reason-dialog";
@@ -38,7 +43,8 @@ export function AppointmentDetailDialog({
   initialMode?: "view" | "reschedule";
 }) {
   const t = useT();
-  const { state, initData } = useMiniAppAuth();
+  const router = useRouter();
+  const { state, initData, clinicSlug } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   // `<a target="_blank">` opens without our custom headers, so the conclusion
   // link carries init-data via query — same pattern as the documents screen.
@@ -46,6 +52,8 @@ export function AppointmentDetailDialog({
     ? `&initData=${encodeURIComponent(initData)}`
     : "";
   const tg = useTelegramWebApp();
+  const { setDraft } = useBookingDraft(clinicSlug);
+  const { data: clinic } = useClinic(clinicSlug);
   const [mode, setMode] = React.useState<"view" | "reschedule">(initialMode);
   const [date, setDate] = React.useState<string | null>(null);
   const [time, setTime] = React.useState<string | null>(null);
@@ -107,6 +115,59 @@ export function AppointmentDetailDialog({
   };
 
   const editable = !["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(appointment.status);
+  const completed = appointment.status === "COMPLETED";
+
+  // tg.openLink routes through Telegram's browser shim; plain href fallback
+  // keeps dev (regular browser) working — same pattern as ClinicInfoCard.
+  const openExternal = (href: string) => {
+    if (typeof window !== "undefined" && window.Telegram?.WebApp?.openLink) {
+      try {
+        window.Telegram.WebApp.openLink(href);
+        tg.haptic.impact("light");
+        return;
+      } catch {
+        // fall through to anchor
+      }
+    }
+    window.location.href = href;
+  };
+
+  const onAddCalendar = () => {
+    const qs = `clinicSlug=${encodeURIComponent(clinicSlug)}${
+      initData ? `&initData=${encodeURIComponent(initData)}` : ""
+    }`;
+    openExternal(
+      `${window.location.origin}/api/miniapp/appointments/${appointment.id}/ics?${qs}`,
+    );
+  };
+
+  const clinicName = clinic
+    ? (lang === "UZ" ? clinic.nameUz : clinic.nameRu) || clinic.nameRu
+    : null;
+  const clinicAddress = clinic
+    ? (lang === "UZ" ? (clinic.addressUz ?? clinic.addressRu) : clinic.addressRu)
+    : null;
+  const onRoute =
+    clinicName && clinicAddress
+      ? () =>
+          openExternal(
+            `https://yandex.com/maps/?text=${encodeURIComponent(`${clinicName}, ${clinicAddress}`)}`,
+          )
+      : null;
+
+  // Wave 3c — «Записаться снова»: same wizard seeding as the follow-up CTA
+  // (specialty-first wizard needs specialization or /book/doctor bounces).
+  const bookAgain = () => {
+    tg.haptic.selection();
+    setDraft({
+      specialization: appointment.doctor.specializationRu.trim() || null,
+      serviceIds: [],
+      doctorId: appointment.doctor.id,
+      date: null,
+      time: null,
+    });
+    router.push(`/c/${clinicSlug}/my/book/doctor`);
+  };
 
   return (
     <>
@@ -141,9 +202,21 @@ export function AppointmentDetailDialog({
           </div>
         </MCard>
         {mode === "view" ? (
-          appointment.conclusionUrl || editable ? (
+          appointment.conclusionUrl || editable || completed ? (
             <div className="grid grid-cols-1 gap-2">
-              {appointment.conclusionUrl ? (
+              {completed ? (
+                <Link
+                  href={`/c/${clinicSlug}/my/visit/${appointment.id}`}
+                  onClick={() => tg.haptic.selection()}
+                >
+                  <MButton variant="primary" className="w-full">
+                    <span className="inline-flex items-center gap-2">
+                      <FileText className="h-4 w-4" aria-hidden />
+                      {t.visit.title}
+                    </span>
+                  </MButton>
+                </Link>
+              ) : appointment.conclusionUrl ? (
                 <a
                   href={`${appointment.conclusionUrl}${conclusionLinkParam}`}
                   target="_blank"
@@ -154,8 +227,34 @@ export function AppointmentDetailDialog({
                   </MButton>
                 </a>
               ) : null}
+              {completed ? (
+                <MButton variant="secondary" onClick={bookAgain}>
+                  <span className="inline-flex items-center gap-2">
+                    <Repeat className="h-4 w-4" aria-hidden />
+                    {t.appts.bookAgain}
+                  </span>
+                </MButton>
+              ) : null}
               {editable ? (
                 <>
+                  <div
+                    className={`grid gap-2 ${onRoute ? "grid-cols-2" : "grid-cols-1"}`}
+                  >
+                    <MButton variant="secondary" onClick={onAddCalendar}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden />
+                        {t.appts.addCalendar}
+                      </span>
+                    </MButton>
+                    {onRoute ? (
+                      <MButton variant="secondary" onClick={onRoute}>
+                        <span className="inline-flex items-center gap-1.5">
+                          <MapPin className="h-4 w-4 shrink-0" aria-hidden />
+                          {t.appts.route}
+                        </span>
+                      </MButton>
+                    ) : null}
+                  </div>
                   <MButton
                     variant="secondary"
                     onClick={() => setMode("reschedule")}

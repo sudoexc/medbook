@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CalendarPlus } from "lucide-react";
 import QRCode from "qrcode";
 
 import {
@@ -41,7 +42,7 @@ function clearCaseChoices(appointmentId: string) {
 export function BookDone() {
   const t = useT();
   const router = useRouter();
-  const { clinicSlug, state } = useMiniAppAuth();
+  const { clinicSlug, state, initData } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const search = useSearchParams();
   const id = search.get("id");
@@ -283,6 +284,36 @@ export function BookDone() {
         </MCard>
       ) : null}
       <div className="mt-4 grid grid-cols-1 gap-2">
+        {id ? (
+          <MButton
+            block
+            variant="secondary"
+            onClick={() => {
+              // Wave 3c — .ics download. tg.openLink routes through Telegram's
+              // browser shim; auth rides on `?initData=` since a link
+              // navigation can't carry our custom header.
+              const qs = `clinicSlug=${encodeURIComponent(clinicSlug)}${
+                initData ? `&initData=${encodeURIComponent(initData)}` : ""
+              }`;
+              const href = `${window.location.origin}/api/miniapp/appointments/${id}/ics?${qs}`;
+              if (window.Telegram?.WebApp?.openLink) {
+                try {
+                  window.Telegram.WebApp.openLink(href);
+                  tg.haptic.impact("light");
+                  return;
+                } catch {
+                  /* fall through to anchor */
+                }
+              }
+              window.location.href = href;
+            }}
+          >
+            <span className="inline-flex items-center gap-2">
+              <CalendarPlus className="h-4 w-4" aria-hidden />
+              {t.done.addCalendar}
+            </span>
+          </MButton>
+        ) : null}
         <Link href={`/c/${clinicSlug}/my/appointments`}>
           <MButton block variant="secondary">
             {t.done.viewMine}

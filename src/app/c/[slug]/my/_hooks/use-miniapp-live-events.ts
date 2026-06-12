@@ -55,7 +55,12 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "appointment.statusChanged": [["miniapp", "appointments"]],
   "appointment.cancelled": [["miniapp", "appointments"]],
   "appointment.moved": [["miniapp", "appointments"]],
-  "queue.updated": [["miniapp", "appointments"]],
+  "queue.updated": [
+    ["miniapp", "appointments"],
+    // Wave 3a — home-hero live queue card polls /api/queue/status/:id under
+    // the ["miniapp","queue",…] key; a queue shift must move the hero in ≤2s.
+    ["miniapp", "queue"],
+  ],
   "notification.sent": [["miniapp", "inbox"]],
   "notification.read": [["miniapp", "inbox"]],
   "patient.profileUpdated": [["miniapp", "profile"]],

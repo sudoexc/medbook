@@ -4,85 +4,25 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Calendar,
-  CalendarPlus,
-  ChevronRight,
   FileText,
   FlaskConical,
   Gift,
-  History,
-  MessageSquare,
   Pill,
-  User,
 } from "lucide-react";
 
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useT } from "./mini-i18n";
-import { useAppointments } from "../_hooks/use-appointments";
 import { useActiveContext } from "../_hooks/use-active-context";
-import {
-  MCard,
-  MEmpty,
-  MSection,
-  MSpinner,
-  formatDateISO,
-  formatTimeISO,
-} from "./mini-ui";
-import { SkeletonList } from "./skeleton";
+import { useMedications } from "../_hooks/use-medications";
+import { useLabs } from "../_hooks/use-labs";
+import { MCard, MSpinner, formatTimeISO } from "./mini-ui";
+import { HomeHero } from "./home-hero";
 import { ClinicInfoCard } from "./clinic-info-card";
 import { InboxBanner } from "./inbox-banner";
 import { LanguagePickerScreen } from "./language-picker-screen";
 import { TreatmentPlanCard } from "./treatment-plan-card";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { OpenInTelegramFallback } from "./open-in-telegram-fallback";
-
-function daysUntil(dateISO: string): number {
-  const d = new Date(dateISO);
-  d.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - now.getTime()) / 86_400_000);
-}
-
-function CtaTile({
-  href,
-  label,
-  icon: Icon,
-  delay,
-  animate,
-  wide,
-}: {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  delay?: number;
-  animate?: boolean;
-  wide?: boolean;
-}) {
-  const tg = useTelegramWebApp();
-  return (
-    <Link
-      href={href}
-      onClick={() => tg.haptic.selection()}
-      className={`${animate ? "ma-fade-up " : ""}${
-        wide
-          ? "col-span-2 flex min-h-[64px] flex-row items-center gap-3"
-          : "flex min-h-[112px] flex-col justify-between"
-      } rounded-2xl p-4 text-left transition active:scale-[0.98]`}
-      style={{
-        backgroundColor: "var(--tg-section-bg)",
-        color: "var(--tg-text)",
-        animationDelay:
-          animate && delay != null ? `${delay}ms` : undefined,
-        boxShadow: "var(--ma-card-shadow, 0 1px 2px rgba(0,0,0,0.04))",
-      }}
-    >
-      <span style={{ color: "var(--tg-accent)" }}>
-        <Icon className={wide ? "h-5 w-5" : "h-6 w-6"} />
-      </span>
-      <span className="text-base font-semibold leading-tight">{label}</span>
-    </Link>
-  );
-}
 
 export function MiniAppHome() {
   const { state, clinicSlug } = useMiniAppAuth();
@@ -119,15 +59,97 @@ export function MiniAppHome() {
   return <HomeContent slug={clinicSlug} />;
 }
 
+function greetingTemplate(t: ReturnType<typeof useT>, hour: number): string {
+  if (hour >= 5 && hour < 11) return t.home.greetingMorning;
+  if (hour >= 11 && hour < 17) return t.home.greetingDay;
+  if (hour >= 17 && hour < 23) return t.home.greetingEvening;
+  return t.home.greetingNight;
+}
+
+function formatShortDate(iso: string, lang: "RU" | "UZ"): string {
+  return new Date(iso).toLocaleDateString(
+    lang === "UZ" ? "uz-Latn-UZ" : "ru-RU",
+    { day: "2-digit", month: "2-digit" },
+  );
+}
+
+function BentoTile({
+  href,
+  title,
+  hint,
+  icon: Icon,
+  color,
+  tall,
+  delay,
+  animate,
+}: {
+  href: string;
+  title: string;
+  hint?: string | null;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  tall?: boolean;
+  delay?: number;
+  animate?: boolean;
+}) {
+  const tg = useTelegramWebApp();
+  return (
+    <Link
+      href={href}
+      onClick={() => tg.haptic.selection()}
+      className={`${animate ? "ma-fade-up " : ""}${
+        tall
+          ? "flex min-h-[116px] flex-col justify-between"
+          : "flex min-h-[64px] flex-row items-center gap-3"
+      } rounded-2xl p-4 text-left transition active:scale-[0.98]`}
+      style={{
+        backgroundColor: "var(--tg-section-bg)",
+        color: "var(--tg-text)",
+        boxShadow: "var(--ma-card-shadow, 0 1px 2px rgba(0,0,0,0.04))",
+        animationDelay: animate && delay != null ? `${delay}ms` : undefined,
+      }}
+    >
+      <span
+        className={`grid shrink-0 place-items-center rounded-full ${
+          tall ? "h-9 w-9" : "h-8 w-8"
+        }`}
+        style={{
+          backgroundColor: `color-mix(in oklch, ${color} 14%, transparent)`,
+          color,
+        }}
+      >
+        <Icon className={tall ? "h-5 w-5" : "h-4 w-4"} />
+      </span>
+      <span className={tall ? "" : "min-w-0 flex-1"}>
+        <span className="block text-[15px] font-semibold leading-tight">
+          {title}
+        </span>
+        {hint ? (
+          <span
+            className="mt-0.5 block truncate text-xs"
+            style={{ color: "var(--tg-hint)" }}
+          >
+            {hint}
+          </span>
+        ) : null}
+      </span>
+    </Link>
+  );
+}
+
 function HomeContent({ slug }: { slug: string }) {
   const t = useT();
   const { state } = useMiniAppAuth();
   const { onBehalfOf } = useActiveContext();
-  const upcoming = useAppointments("upcoming", onBehalfOf);
+  const meds = useMedications(onBehalfOf);
+  const labs = useLabs();
   const tg = useTelegramWebApp();
   const patient = state.status === "ready" ? state.patient : null;
   const firstName = patient?.fullName?.split(" ")[0] ?? "";
   const lang = patient?.preferredLang ?? "RU";
+  // Frozen per mount — react-hooks/purity forbids Date.now() in render; the
+  // greeting doesn't need to flip while the screen is open.
+  const [now] = React.useState(() => Date.now());
 
   // The entrance stagger plays once per session — re-mounting home on every
   // back-navigation used to replay the full second of fade-ups, which made
@@ -149,16 +171,37 @@ function HomeContent({ slug }: { slug: string }) {
     }
   }, []);
 
-  const next = upcoming.data && upcoming.data.length > 0 ? upcoming.data[0] : null;
-  const nextTime = next ? next.time ?? formatTimeISO(next.date) : "";
-  const nextDiff = next ? daysUntil(next.date) : 0;
-  const nextChip = next
-    ? nextDiff <= 0
-      ? t.home.todayAt.replace("{time}", nextTime)
-      : nextDiff === 1
-        ? t.home.tomorrowAt.replace("{time}", nextTime)
-        : t.home.inDays.replace("{n}", String(nextDiff))
-    : "";
+  // Bento previews — data inside navigation (П12).
+  const nextDose = React.useMemo(() => {
+    const list = meds.data?.prescriptions ?? [];
+    const candidates = list
+      .filter((p) => p.status === "ACTIVE" && p.nextDoseAt)
+      .map((p) => p.nextDoseAt!)
+      .sort();
+    return candidates[0] ?? null;
+  }, [meds.data]);
+  const medsHint = meds.data
+    ? nextDose
+      ? new Date(nextDose).getDate() === new Date(now).getDate()
+        ? t.home.bento.medsNext.replace(
+            "{time}",
+            formatTimeISO(nextDose),
+          )
+        : t.home.bento.medsNextDate.replace(
+            "{date}",
+            formatShortDate(nextDose, lang),
+          )
+      : t.home.bento.medsNone
+    : null;
+  const lastLab = labs.data?.[0] ?? null;
+  const labsHint = labs.data
+    ? lastLab?.reviewedAt
+      ? t.home.bento.labsLast.replace(
+          "{date}",
+          formatShortDate(lastLab.reviewedAt, lang),
+        )
+      : t.home.bento.labsNone
+    : null;
 
   return (
     <>
@@ -167,91 +210,17 @@ function HomeContent({ slug }: { slug: string }) {
         style={animate ? { animationDelay: "0ms" } : undefined}
       >
         <h1 className="text-2xl font-bold leading-tight">
-          {t.home.greeting.replace("{name}", firstName)}
+          {greetingTemplate(t, new Date(now).getHours()).replace(
+            "{name}",
+            firstName,
+          )}
         </h1>
         <p className="mt-1 text-sm" style={{ color: "var(--tg-hint)" }}>
           {t.home.subtitle}
         </p>
       </div>
       <InboxBanner />
-      <ClinicInfoCard slug={slug} />
-      <TreatmentPlanCard slug={slug} />
-      <div
-        className={animate ? "ma-fade-up" : undefined}
-        style={animate ? { animationDelay: "40ms" } : undefined}
-      >
-        <MSection title={t.home.upcomingHeader}>
-          {upcoming.isLoading ? (
-            <SkeletonList rows={1} variant="appointment" />
-          ) : next ? (
-            <Link
-              href={`/c/${slug}/my/appointments`}
-              onClick={() => tg.haptic.selection()}
-              className="block"
-            >
-              <MCard className="transition active:scale-[0.99]">
-                <div className="flex items-center gap-3">
-                  {next.doctor.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={next.doctor.photoUrl}
-                      alt=""
-                      className="h-12 w-12 shrink-0 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-base font-semibold text-white"
-                      style={{ backgroundColor: "var(--tg-accent)" }}
-                    >
-                      {(lang === "UZ"
-                        ? next.doctor.nameUz
-                        : next.doctor.nameRu
-                      ).slice(0, 1)}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-base font-semibold">
-                      {lang === "UZ" ? next.doctor.nameUz : next.doctor.nameRu}
-                    </div>
-                    <div
-                      className="truncate text-xs"
-                      style={{ color: "var(--tg-hint)" }}
-                    >
-                      {lang === "UZ"
-                        ? next.doctor.specializationUz
-                        : next.doctor.specializationRu}
-                    </div>
-                    <div
-                      className="mt-1 text-xs font-medium"
-                      style={{ color: "var(--tg-accent)" }}
-                    >
-                      {formatDateISO(next.date, lang)} · {nextTime}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    <span
-                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                      style={{
-                        backgroundColor:
-                          "color-mix(in oklch, var(--tg-accent) 12%, transparent)",
-                        color: "var(--tg-accent)",
-                      }}
-                    >
-                      {nextChip}
-                    </span>
-                    <ChevronRight
-                      className="h-4 w-4"
-                      style={{ color: "var(--tg-hint)" }}
-                    />
-                  </div>
-                </div>
-              </MCard>
-            </Link>
-          ) : (
-            <MEmpty icon={CalendarPlus}>{t.home.noUpcoming}</MEmpty>
-          )}
-        </MSection>
-      </div>
+      <HomeHero slug={slug} animate={animate} />
       <Link
         href={`/c/${slug}/my/book/service`}
         onClick={() => tg.haptic.selection()}
@@ -266,57 +235,49 @@ function HomeContent({ slug }: { slug: string }) {
         <Calendar className="h-5 w-5" />
         {t.home.ctaBook}
       </Link>
+      <TreatmentPlanCard slug={slug} />
       <div className="grid grid-cols-2 gap-3">
-        <CtaTile
-          href={`/c/${slug}/my/messages`}
-          label={t.home.ctaChat}
-          icon={MessageSquare}
+        <BentoTile
+          href={`/c/${slug}/my/medications`}
+          title={t.home.bento.meds}
+          hint={medsHint}
+          icon={Pill}
+          color="#f59e0b"
+          tall
           delay={120}
           animate={animate}
         />
-        <CtaTile
-          href={`/c/${slug}/my/appointments`}
-          label={t.home.ctaMyAppointments}
-          icon={History}
+        <BentoTile
+          href={`/c/${slug}/my/labs`}
+          title={t.home.bento.labs}
+          hint={labsHint}
+          icon={FlaskConical}
+          color="#0ea5e9"
+          tall
           delay={160}
           animate={animate}
         />
-        <CtaTile
+        <BentoTile
           href={`/c/${slug}/my/documents`}
-          label={t.home.ctaDocuments}
+          title={t.home.bento.docs}
+          hint={t.home.bento.docsHint}
           icon={FileText}
+          color="var(--tg-accent)"
           delay={200}
           animate={animate}
         />
-        <CtaTile
-          href={`/c/${slug}/my/medications`}
-          label={t.home.ctaMedications}
-          icon={Pill}
+        <BentoTile
+          href={`/c/${slug}/my/refer`}
+          title={t.home.bento.refer}
+          hint={t.home.bento.referHint}
+          icon={Gift}
+          color="#FF7BA1"
           delay={240}
           animate={animate}
         />
-        <CtaTile
-          href={`/c/${slug}/my/labs`}
-          label={t.home.ctaLabs}
-          icon={FlaskConical}
-          delay={280}
-          animate={animate}
-        />
-        <CtaTile
-          href={`/c/${slug}/my/profile`}
-          label={t.home.ctaProfile}
-          icon={User}
-          delay={320}
-          animate={animate}
-        />
-        <CtaTile
-          href={`/c/${slug}/my/refer`}
-          label={t.home.ctaRefer}
-          icon={Gift}
-          delay={360}
-          animate={animate}
-          wide
-        />
+      </div>
+      <div className="mt-5">
+        <ClinicInfoCard slug={slug} />
       </div>
     </>
   );

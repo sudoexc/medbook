@@ -65,7 +65,6 @@ export function AccountDeleteScreen() {
   // the pending branch directly. We also bootstrap optimistically by
   // probing the delete endpoint with a no-op call when the screen
   // mounts: the server is idempotent and will return any active job.
-  // (Same shape as Mini App refer screen using lazy state.)
   React.useEffect(() => {
     return tg.setBackButton(() => router.push(`/c/${clinicSlug}/my/profile`));
   }, [tg, router, clinicSlug]);

@@ -66,8 +66,6 @@ export const ruDict = {
       labsNone: "результатов пока нет",
       docs: "Документы",
       docsHint: "справки и заключения",
-      refer: "Пригласить друга",
-      referHint: "бонус другу, скидка вам",
     },
   },
   tabs: {
@@ -396,25 +394,6 @@ export const ruDict = {
       HIGH: "Повышен",
       CRITICAL: "Критический",
     },
-  },
-  refer: {
-    title: "Пригласите друга",
-    subtitle:
-      "Отправьте код другу — после его первого визита вы получите скидку {percent}% на следующий приём.",
-    codeLabel: "Ваш код",
-    copy: "Копировать",
-    copied: "Скопировано",
-    useCount: "Уже использовано: {n}",
-    shareCta: "Поделиться в Telegram",
-    shareText:
-      "Привет! Я хожу в эту клинику и рекомендую — по моему коду {code} вы получите бонус, а я скидку −{percent}%.",
-    pendingTitle: "Скидки к применению",
-    pendingEmpty: "Пока нет активных скидок — пригласите друга!",
-    pendingBadge: "В ожидании",
-    expiresAt: "сгорает {date}",
-    historyTitle: "История",
-    expiredFooter: "Ещё {n} скидок сгорело по сроку",
-    unknownFriend: "Друг",
   },
   account: {
     sectionTitle: "Управление данными",

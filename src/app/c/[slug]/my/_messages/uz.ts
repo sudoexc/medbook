@@ -66,8 +66,6 @@ export const uzDict = {
       labsNone: "natijalar hali yo‘q",
       docs: "Hujjatlar",
       docsHint: "ma’lumotnoma va xulosalar",
-      refer: "Do‘stni taklif qilish",
-      referHint: "do‘stga bonus, sizga chegirma",
     },
   },
   tabs: {
@@ -396,25 +394,6 @@ export const uzDict = {
       HIGH: "Yuqori",
       CRITICAL: "Kritik",
     },
-  },
-  refer: {
-    title: "Do‘stingizni taklif qiling",
-    subtitle:
-      "Kodni do‘stingizga yuboring — uning birinchi tashrifidan so‘ng siz keyingi qabulga {percent}% chegirma olasiz.",
-    codeLabel: "Sizning kodingiz",
-    copy: "Nusxalash",
-    copied: "Nusxalandi",
-    useCount: "Qo‘llanilgan: {n} marta",
-    shareCta: "Telegram orqali ulashish",
-    shareText:
-      "Salom! Men bu klinikaga qatnayman — mening {code} kodim bilan siz bonus olasiz, men esa −{percent}% chegirma.",
-    pendingTitle: "Qo‘llanish kutayotgan chegirmalar",
-    pendingEmpty: "Hozircha faol chegirma yo‘q — do‘stingizni taklif qiling!",
-    pendingBadge: "Kutilmoqda",
-    expiresAt: "muddati: {date}",
-    historyTitle: "Tarix",
-    expiredFooter: "Yana {n} chegirma muddati o‘tgan",
-    unknownFriend: "Do‘st",
   },
   account: {
     sectionTitle: "Ma'lumotlarni boshqarish",

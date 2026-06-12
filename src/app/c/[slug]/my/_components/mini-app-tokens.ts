@@ -87,5 +87,4 @@ export const MA_ACCENTS = {
   warning: "#f59e0b",
   info: "#0ea5e9",
   salmon: "#ff8a65",
-  pink: "#FF7BA1",
 } as const;

@@ -6,7 +6,6 @@ import {
   Calendar,
   FileText,
   FlaskConical,
-  Gift,
   Pill,
 } from "lucide-react";
 
@@ -81,6 +80,7 @@ function BentoTile({
   icon: Icon,
   color,
   tall,
+  wide,
   delay,
   animate,
 }: {
@@ -90,6 +90,7 @@ function BentoTile({
   icon: React.ComponentType<{ className?: string }>;
   color: string;
   tall?: boolean;
+  wide?: boolean;
   delay?: number;
   animate?: boolean;
 }) {
@@ -98,7 +99,7 @@ function BentoTile({
     <Link
       href={href}
       onClick={() => tg.haptic.selection()}
-      className={`${animate ? "ma-fade-up " : ""}${
+      className={`${animate ? "ma-fade-up " : ""}${wide ? "col-span-2 " : ""}${
         tall
           ? "flex min-h-[116px] flex-col justify-between"
           : "flex min-h-[64px] flex-row items-center gap-3"
@@ -264,16 +265,8 @@ function HomeContent({ slug }: { slug: string }) {
           hint={t.home.bento.docsHint}
           icon={FileText}
           color="var(--tg-accent)"
+          wide
           delay={200}
-          animate={animate}
-        />
-        <BentoTile
-          href={`/c/${slug}/my/refer`}
-          title={t.home.bento.refer}
-          hint={t.home.bento.referHint}
-          icon={Gift}
-          color={MA_ACCENTS.pink}
-          delay={240}
           animate={animate}
         />
       </div>

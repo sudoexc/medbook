@@ -52,6 +52,7 @@ export const ruDict = {
       emptyTitle: "Всё спокойно",
       emptyHint:
         "Записей на ближайшие дни нет. Если что-то беспокоит — мы рядом.",
+      swipeHint: "Свайпните вверх — ваш талон",
     },
     bento: {
       meds: "Лекарства",
@@ -162,6 +163,15 @@ export const ruDict = {
     reminderOn: "Напоминание включено",
     reminderOff: "Напоминание выключено",
     ticketLabel: "Код записи",
+  },
+  ticket: {
+    title: "Ваш талон",
+    caption: "Электронный талон",
+    showAtReception: "Покажите QR на ресепшн — вас отметят мгновенно",
+    doctor: "Врач",
+    cabinet: "Кабинет",
+    time: "Время",
+    codeLabel: "Код",
   },
   appts: {
     title: "Мои записи",

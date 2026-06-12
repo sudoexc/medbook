@@ -52,6 +52,7 @@ export const uzDict = {
       emptyTitle: "Hammasi joyida",
       emptyHint:
         "Yaqin kunlarga yozuvlar yo‘q. Biror narsa bezovta qilsa — biz yoningizdamiz.",
+      swipeHint: "Tepaga suring — talon",
     },
     bento: {
       meds: "Dorilar",
@@ -162,6 +163,15 @@ export const uzDict = {
     reminderOn: "Eslatma yoqildi",
     reminderOff: "Eslatma o‘chirildi",
     ticketLabel: "Yozuv kodi",
+  },
+  ticket: {
+    title: "Sizning taloningiz",
+    caption: "Elektron talon",
+    showAtReception: "QR kodni qabulxonada ko‘rsating — sizni darhol belgilashadi",
+    doctor: "Shifokor",
+    cabinet: "Xona",
+    time: "Vaqt",
+    codeLabel: "Kod",
   },
   appts: {
     title: "Mening yozuvlarim",

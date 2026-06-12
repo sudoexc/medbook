@@ -458,6 +458,13 @@ function MiniAppStyles() {
       .ma-ping {
         animation: ma-ping 1.8s cubic-bezier(0, 0, .2, 1) infinite;
       }
+      @keyframes ma-nudge-up {
+        0%, 100% { transform: translateY(0); opacity: .7; }
+        50%      { transform: translateY(-3px); opacity: 1; }
+      }
+      .ma-nudge-up {
+        animation: ma-nudge-up 1.8s ease-in-out infinite;
+      }
       .ma-paused .ma-aurora {
         animation-play-state: paused;
       }
@@ -465,7 +472,8 @@ function MiniAppStyles() {
         .ma-aurora-a, .ma-aurora-b, .ma-aurora-c,
         .ma-fade-up, .ma-step-enter, .ma-skeleton, .ma-fade-in,
         .ma-sheet-in, .ma-sheet-out, .ma-backdrop-in, .ma-backdrop-out,
-        .ma-toast-out, .ma-check-pop, .ma-draw, .ma-ring, .ma-ping {
+        .ma-toast-out, .ma-check-pop, .ma-draw, .ma-ring, .ma-ping,
+        .ma-nudge-up {
           animation: none !important;
         }
         .ma-draw {

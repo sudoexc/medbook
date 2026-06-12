@@ -21,6 +21,7 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
+  ChevronUp,
   FileText,
   Pill,
 } from "lucide-react";
@@ -42,6 +43,7 @@ import {
   type MiniAppQueueStatus,
 } from "../_hooks/use-queue-status";
 import { formatDateISO, formatTimeISO } from "./mini-ui";
+import { TicketSheet } from "./ticket-sheet";
 import type { Dict } from "./mini-i18n";
 
 const HOUR_MS = 3_600_000;
@@ -166,17 +168,18 @@ function DoctorRow({
 }
 
 function QueueHero({
-  slug,
   appt,
   q,
+  onOpenTicket,
 }: {
-  slug: string;
   appt: MiniAppAppointment;
   q: MiniAppQueueStatus;
+  onOpenTicket: () => void;
 }) {
   const t = useT();
   const lang = useLang();
   const tg = useTelegramWebApp();
+  const touchStart = React.useRef<{ x: number; y: number } | null>(null);
   const ahead = Math.max(0, q.position - 1);
   const isNext = ahead === 0;
   const color = isNext ? SALMON : "var(--tg-accent)";
@@ -195,11 +198,34 @@ function QueueHero({
       : q.etaMinutes <= 25
         ? t.home.hero.etaMid
         : t.home.hero.etaLong;
+  const open = () => {
+    tg.haptic.selection();
+    onOpenTicket();
+  };
   return (
-    <Link
-      href={`/c/${slug}/my/appointments`}
-      onClick={() => tg.haptic.selection()}
-      className="block"
+    <button
+      type="button"
+      onClick={open}
+      onTouchStart={(e) => {
+        touchStart.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
+      }}
+      onTouchMove={(e) => {
+        if (!touchStart.current) return;
+        const dy = e.touches[0].clientY - touchStart.current.y;
+        const dx = Math.abs(e.touches[0].clientX - touchStart.current.x);
+        // Swipe-up = open ticket; tap and text affordance duplicate it (П5).
+        if (dy < -48 && dx < 40) {
+          touchStart.current = null;
+          open();
+        }
+      }}
+      onTouchEnd={() => {
+        touchStart.current = null;
+      }}
+      className="block w-full text-left"
     >
       <div
         className="ma-fade-in rounded-3xl p-5 transition active:scale-[0.99]"
@@ -234,28 +260,38 @@ function QueueHero({
           cabinet={q.cabinet ?? appt.cabinet?.number ?? null}
           t={t}
         />
+        <div
+          className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold"
+          style={{ color }}
+        >
+          <ChevronUp className="ma-nudge-up h-4 w-4" aria-hidden />
+          {t.home.hero.swipeHint}
+        </div>
       </div>
-    </Link>
+    </button>
   );
 }
 
 function InProgressHero({
-  slug,
   appt,
   cabinet,
+  onOpenTicket,
 }: {
-  slug: string;
   appt: MiniAppAppointment;
   cabinet: string | null;
+  onOpenTicket: () => void;
 }) {
   const t = useT();
   const lang = useLang();
   const tg = useTelegramWebApp();
   return (
-    <Link
-      href={`/c/${slug}/my/appointments`}
-      onClick={() => tg.haptic.selection()}
-      className="block"
+    <button
+      type="button"
+      onClick={() => {
+        tg.haptic.selection();
+        onOpenTicket();
+      }}
+      className="block w-full text-left"
     >
       <div
         className="ma-fade-in rounded-3xl p-5 transition active:scale-[0.99]"
@@ -267,7 +303,7 @@ function InProgressHero({
         </div>
         <DoctorRow appt={appt} lang={lang} cabinet={cabinet} t={t} />
       </div>
-    </Link>
+    </button>
   );
 }
 
@@ -529,6 +565,8 @@ export function HomeHero({
   // Frozen per mount — react-hooks/purity forbids Date.now() in render.
   const [now] = React.useState(() => Date.now());
   const nowDate = React.useMemo(() => new Date(now), [now]);
+  const [ticketOpen, setTicketOpen] = React.useState(false);
+  const openTicket = React.useCallback(() => setTicketOpen(true), []);
 
   const queueAppt =
     upcoming.data?.find(
@@ -619,14 +657,16 @@ export function HomeHero({
   let hero: React.ReactNode;
   switch (primary) {
     case "queue":
-      hero = <QueueHero slug={slug} appt={queueAppt!} q={queue.data!} />;
+      hero = (
+        <QueueHero appt={queueAppt!} q={queue.data!} onOpenTicket={openTicket} />
+      );
       break;
     case "inprogress":
       hero = (
         <InProgressHero
-          slug={slug}
           appt={queueAppt!}
           cabinet={queue.data?.cabinet ?? queueAppt!.cabinet?.number ?? null}
+          onOpenTicket={openTicket}
         />
       );
       break;
@@ -705,6 +745,9 @@ export function HomeHero({
     <div className={wrapperClass} style={wrapperStyle}>
       {hero}
       {secondary ? <div className="mt-2">{secondary}</div> : null}
+      {ticketOpen && queueAppt ? (
+        <TicketSheet appt={queueAppt} onClose={() => setTicketOpen(false)} />
+      ) : null}
     </div>
   );
 }

@@ -219,7 +219,6 @@ function HomeContent({ slug }: { slug: string }) {
           {t.home.subtitle}
         </p>
       </div>
-      <InboxBanner />
       <HomeHero slug={slug} animate={animate} />
       <Link
         href={`/c/${slug}/my/book/service`}
@@ -235,6 +234,7 @@ function HomeContent({ slug }: { slug: string }) {
         <Calendar className="h-5 w-5" />
         {t.home.ctaBook}
       </Link>
+      <InboxBanner />
       <TreatmentPlanCard slug={slug} />
       <div className="grid grid-cols-2 gap-3">
         <BentoTile

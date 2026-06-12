@@ -67,17 +67,12 @@ export function ProfileScreen() {
     }
   };
 
+  // Profile is a tab-bar screen — the native MainButton would stack a second
+  // bottom bar under the tabs, so the save CTA lives inline in the form.
   React.useEffect(() => {
-    const off = tg.setMainButton({
-      text: t.profile.saveBtn,
-      active: !update.isPending,
-      progress: update.isPending,
-      visible: true,
-      onClick: onSave,
-    });
+    const off = tg.setMainButton({ visible: false });
     return off;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tg, update.isPending, name, phone, lang, consent, marketingAllowed]);
+  }, [tg]);
 
   if (profile.isLoading) return <MSpinner label={t.common.loading} />;
 
@@ -164,6 +159,22 @@ export function ProfileScreen() {
           <MHint>{t.profile.marketingHint}</MHint>
         </MCard>
       </MSection>
+      <MButton
+        block
+        variant="primary"
+        type="button"
+        onClick={onSave}
+        disabled={update.isPending}
+        className="mb-2"
+      >
+        {update.isPending ? (
+          <span
+            className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+            aria-hidden
+          />
+        ) : null}
+        {t.profile.saveBtn}
+      </MButton>
       {/* Phase 17 Wave 3 — DSAR controls. */}
       <AccountDsarSection clinicSlug={clinicSlug} />
       <MHint>

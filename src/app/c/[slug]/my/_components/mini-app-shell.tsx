@@ -12,9 +12,11 @@ import { useClinic } from "../_hooks/use-clinic";
 import { useMiniAppLiveEvents } from "../_hooks/use-miniapp-live-events";
 import { FamilySwitcher } from "./family-switcher";
 
-// Focused flows own the bottom edge (wizard footer, NPS/pre-visit CTAs), so
-// the tab bar steps aside there.
-const TABBAR_HIDDEN_RE = /\/my\/(book|pre-visit|nps)(\/|$)/;
+// Focused flows own the bottom edge (wizard footer, NPS/pre-visit CTAs,
+// native MainButton on account-delete / family-add), so the tab bar steps
+// aside there.
+const TABBAR_HIDDEN_RE =
+  /\/my\/(book|pre-visit|nps|account\/delete|family\/add)(\/|$)/;
 // Bar content height; safe-area inset is added on top of this.
 const TABBAR_OFFSET = "calc(3.75rem + max(env(safe-area-inset-bottom), 0.5rem))";
 

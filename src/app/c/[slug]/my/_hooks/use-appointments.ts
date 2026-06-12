@@ -18,6 +18,8 @@ export type MiniAppAppointment = {
   channel: string;
   priceFinal: number | null;
   endDate: string;
+  /** Wave 3c — stamped once when the patient taps «Я на месте». */
+  arrivedAt?: string | null;
   conclusionUrl?: string | null;
   /** Ф6 — ISO date the doctor scheduled the control visit for (≈ estimate). */
   followUpAt?: string | null;

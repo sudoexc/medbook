@@ -52,6 +52,7 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
       doctorId: true,
       date: true,
       status: true,
+      arrivedAt: true,
       patient: { select: { fullName: true } },
     },
   });
@@ -60,6 +61,9 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
   if (!CHECKINABLE.has(appt.status)) {
     return err("not_checkinable", 409, { reason: "not_checkinable" });
   }
+  // Idempotent: re-entering the Mini App resets client state, so a second
+  // tap must not spam the desk with another patient.arrived toast.
+  if (appt.arrivedAt) return ok({ ok: true, already: true });
 
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
@@ -98,6 +102,13 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
       time,
     },
   };
+  // Atomic claim: only the request that flips arrivedAt from null publishes,
+  // so two simultaneous taps still yield exactly one desk toast.
+  const claimed = await prisma.appointment.updateMany({
+    where: { id: appt.id, arrivedAt: null },
+    data: { arrivedAt: new Date() },
+  });
+  if (claimed.count === 0) return ok({ ok: true, already: true });
   await publishViaOutbox(prisma, envelope);
 
   return ok({ ok: true });

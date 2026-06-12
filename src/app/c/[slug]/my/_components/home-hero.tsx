@@ -334,16 +334,19 @@ function AppointmentHero({
     lang === "UZ" ? appt.doctor.specializationUz : appt.doctor.specializationRu;
   const { onBehalfOf } = useActiveContext();
   const checkin = useCheckInAppointment();
-  // Wave 3c — «Я на месте». Session-scoped done-state: the signal is
-  // fire-once per visit, no server round-trip needed to restore it.
-  const [arrived, setArrived] = React.useState(false);
+  // Wave 3c — «Я на месте». The server's arrivedAt is the source of truth
+  // (survives Mini App restarts and is idempotent server-side);
+  // sessionStorage only covers the optimistic gap until the appointments
+  // query refetches.
+  const [arrivedLocal, setArrivedLocal] = React.useState(false);
   React.useEffect(() => {
     try {
-      setArrived(sessionStorage.getItem(`ma:arrived:${appt.id}`) === "1");
+      setArrivedLocal(sessionStorage.getItem(`ma:arrived:${appt.id}`) === "1");
     } catch {
       /* sessionStorage unavailable — button stays tappable */
     }
   }, [appt.id]);
+  const arrived = Boolean(appt.arrivedAt) || arrivedLocal;
   const onCheckIn = () => {
     tg.haptic.selection();
     checkin.mutate(
@@ -351,7 +354,7 @@ function AppointmentHero({
       {
         onSuccess: () => {
           tg.haptic.notification("success");
-          setArrived(true);
+          setArrivedLocal(true);
           try {
             sessionStorage.setItem(`ma:arrived:${appt.id}`, "1");
           } catch {

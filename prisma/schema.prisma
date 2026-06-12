@@ -1791,6 +1791,11 @@ model Appointment {
   status       AppointmentStatus @default(BOOKED)
   queueStatus  AppointmentStatus @default(BOOKED)
   queueOrder   Int?
+  // Wave 3c — patient tapped «Я на месте» in the Mini App. Idempotency
+  // anchor for self check-in (one patient.arrived event per visit) and the
+  // cross-session source of truth for the "you're checked in" pill. NOT a
+  // status change: intake (→ WAITING) stays a receptionist action.
+  arrivedAt    DateTime?
   calledAt     DateTime?
   startedAt    DateTime?
   completedAt  DateTime?

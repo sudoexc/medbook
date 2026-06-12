@@ -151,7 +151,6 @@ export function useShowToast(): (level: ToastLevel, message: string) => void {
     // Outside the provider — still safe to call. Falls back to console
     // so failure cases during boot don't crash the page.
     return (level, message) => {
-      // eslint-disable-next-line no-console
       console[level === "error" ? "error" : "log"]("[miniapp:toast]", message);
     };
   }
@@ -165,7 +164,10 @@ function MiniAppToastViewport(): React.ReactElement | null {
     <div
       className="pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-4"
       style={{
-        bottom: "max(env(safe-area-inset-bottom), 1.25rem)",
+        // --ma-tabbar-offset is set on <html> by the shell (this viewport
+        // portals outside the shell subtree); 0px when the bar is hidden.
+        bottom:
+          "calc(var(--ma-tabbar-offset, 0px) + max(env(safe-area-inset-bottom), 1.25rem))",
       }}
     >
       {ctx.entries.map((e) => (

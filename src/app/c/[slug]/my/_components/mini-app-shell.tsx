@@ -1,12 +1,22 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { CalendarDays, Home, MessageCircle, UserRound } from "lucide-react";
 
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
+import { useT } from "./mini-i18n";
 import { useClinic } from "../_hooks/use-clinic";
 import { useMiniAppLiveEvents } from "../_hooks/use-miniapp-live-events";
 import { FamilySwitcher } from "./family-switcher";
+
+// Focused flows own the bottom edge (wizard footer, NPS/pre-visit CTAs), so
+// the tab bar steps aside there.
+const TABBAR_HIDDEN_RE = /\/my\/(book|pre-visit|nps)(\/|$)/;
+// Bar content height; safe-area inset is added on top of this.
+const TABBAR_OFFSET = "calc(3.75rem + max(env(safe-area-inset-bottom), 0.5rem))";
 
 /**
  * Top-level Mini App shell. Applies Telegram theme colours to the root and
@@ -23,6 +33,11 @@ export function MiniAppShell({
   const { themeParams, colorScheme, tg } = useTelegramWebApp();
   const { state } = useMiniAppAuth();
   const { data: clinic } = useClinic(clinicSlug);
+  const pathname = usePathname() ?? "";
+  const base = `/c/${clinicSlug}/my`;
+  const isHome = pathname === base || pathname === `${base}/`;
+  const showTabBar =
+    state.status === "ready" && !TABBAR_HIDDEN_RE.test(pathname);
   // Phase M3 — single SSE connection per page; the hook no-ops until auth
   // resolves and silently reconnects on backgrounding (Last-Event-ID via
   // `?since=` cold-start + browser-native Last-Event-ID warm reconnect).
@@ -60,6 +75,19 @@ export function MiniAppShell({
       // Older clients without the API — the default chrome is acceptable.
     }
   }, [tg, bg]);
+
+  // The offset lives on <html> (not the shell root) because the toast
+  // viewport portals outside the shell subtree and still needs to float
+  // above the tab bar.
+  React.useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--ma-tabbar-offset",
+      showTabBar ? TABBAR_OFFSET : "0px",
+    );
+    return () => {
+      document.documentElement.style.removeProperty("--ma-tabbar-offset");
+    };
+  }, [showTabBar]);
 
   // The aurora layers are large blurred composited surfaces; pause their
   // drift while the app is backgrounded so they don't burn GPU/battery.
@@ -102,57 +130,170 @@ export function MiniAppShell({
     >
       <MiniAppStyles />
       <MiniAppAurora />
-      {/* No `sticky`, no `sectionBg`, no border — the header sits inside the
-          page flow on the aurora gradient. Telegram chrome above already
-          carries the bot identity; this just adds an in-app brand moment. */}
-      <header
-        className="relative z-10 flex flex-col items-center gap-2.5 px-4 pb-5"
-        style={{
-          paddingTop: "max(env(safe-area-inset-top), 1.25rem)",
-        }}
-      >
-        <div className="relative">
-          {/* Soft accent halo behind the logo. */}
+      {/* Home gets the full brand moment (logo halo on the aurora); inner
+          screens get a slim one-row header so content starts ~70px higher.
+          Telegram chrome above already carries the bot identity. */}
+      {isHome ? (
+        <header
+          className="relative z-10 flex flex-col items-center gap-2.5 px-4 pb-5"
+          style={{
+            paddingTop: "max(env(safe-area-inset-top), 1.25rem)",
+          }}
+        >
+          <div className="relative">
+            {/* Soft accent halo behind the logo. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-3 rounded-full blur-2xl opacity-60"
+              style={{ backgroundColor: accent }}
+            />
+            {clinic?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={clinic.logoUrl}
+                alt=""
+                className="relative h-12 w-12 rounded-full object-cover"
+                style={{
+                  boxShadow: `0 0 0 1px ${hint}33, 0 6px 20px -4px ${accent}55`,
+                }}
+              />
+            ) : (
+              <div
+                className="relative grid h-12 w-12 place-items-center rounded-full text-lg font-bold"
+                style={{
+                  backgroundColor: accent,
+                  color: "#fff",
+                  boxShadow: `0 0 0 1px ${hint}33, 0 6px 20px -4px ${accent}66`,
+                }}
+              >
+                {(clinicName ?? clinicSlug).slice(0, 1).toUpperCase()}
+              </div>
+            )}
+          </div>
           <div
-            aria-hidden
-            className="pointer-events-none absolute -inset-3 rounded-full blur-2xl opacity-60"
-            style={{ backgroundColor: accent }}
-          />
+            className="truncate text-[15px] font-semibold leading-tight"
+            style={{ letterSpacing: "-0.01em" }}
+          >
+            {clinicName ?? clinicSlug}
+          </div>
+        </header>
+      ) : (
+        <header
+          className="relative z-10 flex items-center justify-center gap-2 px-4 pb-3"
+          style={{
+            paddingTop: "max(env(safe-area-inset-top), 0.75rem)",
+          }}
+        >
           {clinic?.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={clinic.logoUrl}
               alt=""
-              className="relative h-12 w-12 rounded-full object-cover"
-              style={{
-                boxShadow: `0 0 0 1px ${hint}33, 0 6px 20px -4px ${accent}55`,
-              }}
+              className="h-6 w-6 shrink-0 rounded-full object-cover"
             />
           ) : (
             <div
-              className="relative grid h-12 w-12 place-items-center rounded-full text-lg font-bold"
-              style={{
-                backgroundColor: accent,
-                color: "#fff",
-                boxShadow: `0 0 0 1px ${hint}33, 0 6px 20px -4px ${accent}66`,
-              }}
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white"
+              style={{ backgroundColor: accent }}
             >
               {(clinicName ?? clinicSlug).slice(0, 1).toUpperCase()}
             </div>
           )}
-        </div>
-        <div
-          className="truncate text-[15px] font-semibold leading-tight"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          {clinicName ?? clinicSlug}
-        </div>
-      </header>
-      <main className="relative z-10 mx-auto w-full max-w-[430px] px-4 pb-24 pt-4">
+          <div
+            className="truncate text-sm font-semibold leading-tight"
+            style={{ letterSpacing: "-0.01em" }}
+          >
+            {clinicName ?? clinicSlug}
+          </div>
+        </header>
+      )}
+      <main
+        className="relative z-10 mx-auto w-full max-w-[430px] px-4 pt-4"
+        style={{
+          paddingBottom: showTabBar
+            ? `calc(${TABBAR_OFFSET} + 2rem)`
+            : "6rem",
+        }}
+      >
         {state.status === "ready" ? <FamilySwitcher slug={clinicSlug} /> : null}
         {children}
       </main>
+      {showTabBar ? (
+        <MiniAppTabBar base={base} pathname={pathname} />
+      ) : null}
     </div>
+  );
+}
+
+function MiniAppTabBar({
+  base,
+  pathname,
+}: {
+  base: string;
+  pathname: string;
+}) {
+  const t = useT();
+  const tg = useTelegramWebApp();
+  const tabs = [
+    { href: base, label: t.tabs.home, icon: Home, exact: true },
+    {
+      href: `${base}/appointments`,
+      label: t.tabs.appointments,
+      icon: CalendarDays,
+    },
+    { href: `${base}/messages`, label: t.tabs.chat, icon: MessageCircle },
+    { href: `${base}/profile`, label: t.tabs.profile, icon: UserRound },
+  ];
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-30"
+      style={{
+        backgroundColor: "color-mix(in oklch, var(--tg-bg) 86%, transparent)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        borderTop:
+          "1px solid color-mix(in oklch, var(--tg-hint) 16%, transparent)",
+        paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)",
+      }}
+    >
+      <div className="mx-auto grid h-[3.75rem] max-w-[430px] grid-cols-4 px-2">
+        {tabs.map(({ href, label, icon: Icon, exact }) => {
+          const active = exact ? pathname === href : pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => {
+                if (!active) tg.haptic.selection();
+              }}
+              className="flex flex-col items-center justify-center gap-0.5"
+              style={{
+                color: active ? "var(--tg-accent)" : "var(--tg-hint)",
+                transition: "color .2s ease",
+              }}
+            >
+              <span
+                className="flex h-7 w-12 items-center justify-center rounded-full"
+                style={{
+                  backgroundColor: active
+                    ? "color-mix(in oklch, var(--tg-accent) 14%, transparent)"
+                    : "transparent",
+                  transition: "background-color .2s ease",
+                }}
+              >
+                <Icon
+                  className="h-[22px] w-[22px]"
+                  strokeWidth={active ? 2.2 : 1.8}
+                />
+              </span>
+              <span className="text-[10px] font-semibold leading-none">
+                {label}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 

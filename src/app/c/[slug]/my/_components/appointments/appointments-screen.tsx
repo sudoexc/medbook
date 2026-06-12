@@ -48,6 +48,9 @@ export function AppointmentsScreen() {
   const cancel = useCancelAppointment();
   const query = useAppointments(tab, onBehalfOf);
   const { setDraft } = useBookingDraft(clinicSlug);
+  // Frozen per mount — react-hooks/purity forbids Date.now() in render, and
+  // the follow-up CTA cutoff doesn't need to tick while the screen is open.
+  const [now] = React.useState(() => Date.now());
 
   // Ф6 — «записаться на контроль»: seed the booking wizard with the same
   // doctor and jump straight to the slot-adjacent step. The wizard is
@@ -135,7 +138,7 @@ export function AppointmentsScreen() {
               appt.status === "COMPLETED" &&
               !!appt.followUpAt &&
               new Date(appt.followUpAt).getTime() >
-                Date.now() - 7 * 24 * 60 * 60 * 1000;
+                now - 7 * 24 * 60 * 60 * 1000;
             return (
               <div key={appt.id} className="relative">
                 <button

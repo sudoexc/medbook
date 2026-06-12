@@ -114,7 +114,12 @@ export function MessagesScreen() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] flex-col">
+    <div
+      className="flex flex-col"
+      style={{
+        height: "calc(100dvh - var(--ma-tabbar-offset, 0px) - 2rem)",
+      }}
+    >
       <div className="mb-3">
         <h1 className="text-xl font-bold leading-tight">{t.chat.title}</h1>
         <p className="mt-1 text-xs" style={{ color: "var(--tg-hint)" }}>
@@ -168,8 +173,11 @@ export function MessagesScreen() {
       </div>
 
       <div
-        className="sticky bottom-0 -mx-4 border-t px-4 py-3"
+        className="sticky -mx-4 border-t px-4 py-3"
         style={{
+          // Sits flush on top of the tab bar; falls back to the viewport
+          // bottom on screens where the bar is hidden.
+          bottom: "var(--ma-tabbar-offset, 0px)",
           backgroundColor: "var(--tg-bg)",
           borderColor: "color-mix(in oklch, var(--tg-hint) 25%, transparent)",
         }}

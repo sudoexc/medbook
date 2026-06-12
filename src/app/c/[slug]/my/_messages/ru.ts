@@ -34,6 +34,12 @@ export const ruDict = {
     tomorrowAt: "завтра в {time}",
     inDays: "через {n} дн.",
   },
+  tabs: {
+    home: "Главная",
+    appointments: "Записи",
+    chat: "Чат",
+    profile: "Профиль",
+  },
   chat: {
     title: "Чат с клиникой",
     subtitle: "Напишите регистратуре — ответим в течение рабочего дня",

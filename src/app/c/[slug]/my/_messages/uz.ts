@@ -34,6 +34,12 @@ export const uzDict = {
     tomorrowAt: "ertaga soat {time} da",
     inDays: "{n} kundan keyin",
   },
+  tabs: {
+    home: "Asosiy",
+    appointments: "Yozuvlar",
+    chat: "Chat",
+    profile: "Profil",
+  },
   chat: {
     title: "Klinika bilan chat",
     subtitle: "Qabulxonaga yozing — ish kuni davomida javob beramiz",

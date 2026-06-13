@@ -102,6 +102,13 @@ async function loginRequest(
   }
   const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
 
+  // Credentials sign-in. Depending on the NextAuth/runtime config this answers
+  // with either a JSON 200 ({url}) or a 302 redirect to the callbackUrl — both
+  // mean success. We must NOT follow that redirect: the post-login landing can
+  // itself redirect (locale + auth middleware), and the request context would
+  // chase that chain into "Max redirect count exceeded". So cap redirects and
+  // treat the freshly-set session cookie as the authoritative success signal —
+  // a *failed* credential sign-in instead redirects to an `...?error=` URL.
   const signinRes = await req.post(
     `${BASE_URL}/api/auth/callback/credentials`,
     {
@@ -113,13 +120,23 @@ async function loginRequest(
         redirect: "false",
         json: "true",
       },
+      maxRedirects: 0,
       failOnStatusCode: false,
     },
   );
-  if (!signinRes.ok()) {
-    const text = await signinRes.text();
+
+  const status = signinRes.status();
+  const location = signinRes.headers()["location"] ?? "";
+  if (status >= 400 || /[?&]error=/.test(location)) {
+    const detail = location || (await signinRes.text());
+    throw new Error(`signIn failed for ${user.email}: ${status} ${detail}`);
+  }
+
+  const { cookies } = await req.storageState();
+  const hasSession = cookies.some((c) => c.name.includes("session-token"));
+  if (!hasSession) {
     throw new Error(
-      `signIn failed for ${user.email}: ${signinRes.status()} ${text}`,
+      `signIn for ${user.email} set no session cookie (status ${status}, location "${location}")`,
     );
   }
 }
@@ -134,6 +151,8 @@ export const as = {
     loginAs(page, NEUROFAX.doctors[0], opts),
   receptionist: (page: Page, opts?: LoginOpts) =>
     loginAs(page, NEUROFAX.receptionist, opts),
+  callOperator: (page: Page, opts?: LoginOpts) =>
+    loginAs(page, NEUROFAX.callOperator, opts),
   superAdmin: (page: Page, opts?: LoginOpts) =>
     loginAs(page, SUPER_ADMIN, opts),
   otherClinicAdmin: (page: Page, opts?: LoginOpts) =>

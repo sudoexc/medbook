@@ -4,7 +4,7 @@
  * Guarantees the following layout in the current DB:
  *   - Clinic "neurofax"      (primary — most tests run here)
  *   - Clinic "demo-clinic"   (used by tenancy-isolation tests)
- *   - Each clinic has: ADMIN, RECEPTIONIST, 3 DOCTORs (users linked)
+ *   - Each clinic has: ADMIN, RECEPTIONIST, CALL_OPERATOR, 3 DOCTORs (users linked)
  *   - 1 SUPER_ADMIN (super@neurofax.uz)
  *   - 10 services, 10 cabinets, 5 patients, 5 appointments-today per clinic
  *   - FX rate today (1 USD = 12700 UZS)
@@ -114,6 +114,7 @@ async function main() {
   const adminHash = await bcrypt.hash("admin", 10);
   const doctorHash = await bcrypt.hash("doctor", 10);
   const receptHash = await bcrypt.hash("recept", 10);
+  const operatorHash = await bcrypt.hash("operator", 10);
 
   // SUPER_ADMIN
   await prisma.user.upsert({
@@ -211,6 +212,16 @@ async function main() {
       where: { email: receptEmail },
       update: { name: `${cs.nameRu} — Ресепшн`, passwordHash: receptHash, role: "RECEPTIONIST", clinicId: clinic.id, active: true },
       create: { email: receptEmail, name: `${cs.nameRu} — Ресепшн`, passwordHash: receptHash, role: "RECEPTIONIST", clinicId: clinic.id },
+    });
+
+    // CALL_OPERATOR — call-center agent. Mirrors RECEPTIONIST scope per the
+    // permission matrix (read/write/update on Appointment) so booking-RBAC
+    // specs can exercise the call-center path.
+    const operatorEmail = `operator@${cs.slug === "neurofax" ? "neurofax.uz" : "demo-clinic.uz"}`;
+    await prisma.user.upsert({
+      where: { email: operatorEmail },
+      update: { name: `${cs.nameRu} — Колл-центр`, passwordHash: operatorHash, role: "CALL_OPERATOR", clinicId: clinic.id, active: true },
+      create: { email: operatorEmail, name: `${cs.nameRu} — Колл-центр`, passwordHash: operatorHash, role: "CALL_OPERATOR", clinicId: clinic.id },
     });
 
     // 10 Cabinets — created before doctors so each doctor can be bound to

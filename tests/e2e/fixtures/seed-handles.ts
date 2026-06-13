@@ -27,6 +27,7 @@ export interface SeededClinic {
   nameUz: string;
   admin: SeededUser;
   receptionist: SeededUser;
+  callOperator: SeededUser;
   doctors: SeededUser[];
 }
 
@@ -51,6 +52,11 @@ export const NEUROFAX: SeededClinic = {
     email: "recept@neurofax.uz",
     password: "recept",
     role: "RECEPTIONIST",
+  },
+  callOperator: {
+    email: "operator@neurofax.uz",
+    password: "operator",
+    role: "CALL_OPERATOR",
   },
   doctors: [
     {
@@ -84,6 +90,11 @@ export const DEMO_CLINIC: SeededClinic = {
     email: "recept@demo-clinic.uz",
     password: "recept",
     role: "RECEPTIONIST",
+  },
+  callOperator: {
+    email: "operator@demo-clinic.uz",
+    password: "operator",
+    role: "CALL_OPERATOR",
   },
   doctors: [
     {

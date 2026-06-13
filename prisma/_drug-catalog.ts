@@ -69,6 +69,16 @@ export type DrugCategory =
   | "TOPICAL"
   | "EYE_EAR"
   | "UROLOGY"
+  | "NEUROLOGICAL"
+  | "PSYCHIATRIC"
+  | "ANTIFUNGAL"
+  | "ANTIVIRAL"
+  | "HORMONAL"
+  | "DERMATOLOGICAL"
+  | "HEMATOLOGY"
+  | "OPHTHALMIC"
+  | "GYNECOLOGY"
+  | "VACCINE"
   | "OTHER";
 
 export const DRUGS: Drug[] = [
@@ -692,5 +702,924 @@ export const DRUGS: Drug[] = [
     brands: ["Отипакс"],
     category: "EYE_EAR",
     forms: [{ form: "DROPS_EAR", doses: ["1 флакон"] }],
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  //  Расширенный каталог (v2) — неврологический уклон + ВОП
+  // ═══════════════════════════════════════════════════════════
+
+  // ─── Противоэпилептические ────────────────────────────────
+  {
+    id: "carbamazepine",
+    nameRu: "Карбамазепин",
+    intl: "Carbamazepine",
+    brands: ["Финлепсин", "Тегретол"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["200 мг", "400 мг (ретард)", "100 мг"] },
+    ],
+  },
+  {
+    id: "valproate",
+    nameRu: "Вальпроевая кислота",
+    intl: "Valproic acid",
+    brands: ["Депакин", "Конвулекс"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["300 мг", "500 мг (хроно)"] },
+      { form: "SYRUP", doses: ["57,64 мг/мл"] },
+    ],
+  },
+  {
+    id: "lamotrigine",
+    nameRu: "Ламотриджин",
+    intl: "Lamotrigine",
+    brands: ["Ламиктал", "Конвульсан"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["25 мг", "50 мг", "100 мг"] }],
+  },
+  {
+    id: "levetiracetam",
+    nameRu: "Леветирацетам",
+    intl: "Levetiracetam",
+    brands: ["Кеппра", "Леветинол"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["250 мг", "500 мг", "1000 мг"] },
+      { form: "SYRUP", doses: ["100 мг/мл"] },
+    ],
+  },
+  {
+    id: "topiramate",
+    nameRu: "Топирамат",
+    intl: "Topiramate",
+    brands: ["Топамакс", "Топсавер"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["25 мг", "50 мг", "100 мг"] },
+      { form: "CAP", doses: ["15 мг", "25 мг"] },
+    ],
+  },
+  {
+    id: "gabapentin",
+    nameRu: "Габапентин",
+    intl: "Gabapentin",
+    brands: ["Нейронтин", "Габагамма", "Конвалис"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "CAP", doses: ["300 мг", "400 мг"] },
+      { form: "TAB", doses: ["600 мг", "800 мг"] },
+    ],
+  },
+  {
+    id: "pregabalin",
+    nameRu: "Прегабалин",
+    intl: "Pregabalin",
+    brands: ["Лирика", "Прегабио"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "CAP", doses: ["75 мг", "150 мг", "300 мг"] }],
+  },
+  {
+    id: "phenobarbital",
+    nameRu: "Фенобарбитал",
+    intl: "Phenobarbital",
+    brands: ["Люминал"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["50 мг", "100 мг"] }],
+  },
+
+  // ─── Мигрень и миорелаксанты ──────────────────────────────
+  {
+    id: "sumatriptan",
+    nameRu: "Суматриптан",
+    intl: "Sumatriptan",
+    brands: ["Имигран", "Сумамигрен", "Амигренин"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["50 мг", "100 мг"] },
+      { form: "SPRAY", doses: ["20 мг/доза"] },
+    ],
+  },
+  {
+    id: "tolperisone",
+    nameRu: "Толперизон",
+    intl: "Tolperisone",
+    brands: ["Мидокалм", "Калмирекс"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["50 мг", "150 мг"] },
+      { form: "INJ_IM", doses: ["100 мг/мл"] },
+    ],
+  },
+  {
+    id: "tizanidine",
+    nameRu: "Тизанидин",
+    intl: "Tizanidine",
+    brands: ["Сирдалуд", "Тизалуд"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["2 мг", "4 мг"] }],
+  },
+  {
+    id: "baclofen",
+    nameRu: "Баклофен",
+    intl: "Baclofen",
+    brands: ["Баклосан"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["10 мг", "25 мг"] }],
+  },
+
+  // ─── Сосудистые, ноотропы, вестибулотропики ───────────────
+  {
+    id: "piracetam",
+    nameRu: "Пирацетам",
+    intl: "Piracetam",
+    brands: ["Ноотропил", "Луцетам"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["800 мг", "1200 мг"] },
+      { form: "CAP", doses: ["400 мг"] },
+      { form: "INJ_IV", doses: ["200 мг/мл"] },
+    ],
+  },
+  {
+    id: "citicoline",
+    nameRu: "Цитиколин",
+    intl: "Citicoline",
+    brands: ["Цераксон", "Нейпилепт"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "INJ_IV", doses: ["500 мг/4 мл", "1000 мг/4 мл"] },
+      { form: "DROPS_ORAL", doses: ["100 мг/мл"] },
+    ],
+  },
+  {
+    id: "vinpocetine",
+    nameRu: "Винпоцетин",
+    intl: "Vinpocetine",
+    brands: ["Кавинтон"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["5 мг", "10 мг"] },
+      { form: "INJ_IV", doses: ["5 мг/мл"] },
+    ],
+  },
+  {
+    id: "cinnarizine",
+    nameRu: "Циннаризин",
+    intl: "Cinnarizine",
+    brands: ["Стугерон"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["25 мг", "75 мг"] }],
+  },
+  {
+    id: "betahistine",
+    nameRu: "Бетагистин",
+    intl: "Betahistine",
+    brands: ["Бетасерк", "Вестибо", "Тагиста"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["8 мг", "16 мг", "24 мг"] }],
+  },
+  {
+    id: "mexidol",
+    nameRu: "Этилметилгидроксипиридина сукцинат",
+    intl: "Ethylmethylhydroxypyridine succinate",
+    brands: ["Мексидол", "Мексиприм"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["125 мг"] },
+      { form: "INJ_IV", doses: ["50 мг/мл"] },
+    ],
+  },
+  {
+    id: "nicergoline",
+    nameRu: "Ницерголин",
+    intl: "Nicergoline",
+    brands: ["Сермион"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["10 мг", "30 мг"] }],
+  },
+  {
+    id: "pentoxifylline",
+    nameRu: "Пентоксифиллин",
+    intl: "Pentoxifylline",
+    brands: ["Трентал", "Вазонит"],
+    category: "CARDIO",
+    forms: [
+      { form: "TAB", doses: ["100 мг", "400 мг (ретард)"] },
+      { form: "INJ_IV", doses: ["20 мг/мл"] },
+    ],
+  },
+  {
+    id: "phenibut",
+    nameRu: "Аминофенилмасляная кислота",
+    intl: "Aminophenylbutyric acid",
+    brands: ["Ноофен", "Анвифен", "Фенибут"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["250 мг"] }],
+  },
+
+  // ─── Паркинсонизм и деменция ──────────────────────────────
+  {
+    id: "levodopa_carbidopa",
+    nameRu: "Леводопа + карбидопа",
+    intl: "Levodopa + Carbidopa",
+    brands: ["Наком", "Синемет", "Тидомет"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["250 мг + 25 мг", "100 мг + 25 мг"] }],
+  },
+  {
+    id: "pramipexole",
+    nameRu: "Прамипексол",
+    intl: "Pramipexole",
+    brands: ["Мирапекс", "Прамипекс"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["0,25 мг", "1 мг", "1,5 мг (пролонг)"] }],
+  },
+  {
+    id: "memantine",
+    nameRu: "Мемантин",
+    intl: "Memantine",
+    brands: ["Акатинол Мемантин", "Меманталь"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["10 мг", "20 мг"] }],
+  },
+  {
+    id: "donepezil",
+    nameRu: "Донепезил",
+    intl: "Donepezil",
+    brands: ["Алзепил", "Яснал"],
+    category: "NEUROLOGICAL",
+    forms: [{ form: "TAB", doses: ["5 мг", "10 мг"] }],
+  },
+
+  // ─── Невропатия и витамины группы B ───────────────────────
+  {
+    id: "milgamma",
+    nameRu: "Витамины B1 + B6 + B12",
+    intl: "Thiamine + Pyridoxine + Cyanocobalamin",
+    brands: ["Мильгамма", "Комбилипен", "Нейробион"],
+    category: "VITAMIN",
+    forms: [
+      { form: "INJ_IM", doses: ["2 мл"] },
+      { form: "TAB", doses: ["100 мг (бенфотиамин)"] },
+    ],
+  },
+  {
+    id: "thioctic_acid",
+    nameRu: "Тиоктовая кислота",
+    intl: "Thioctic acid",
+    brands: ["Тиоктацид", "Берлитион", "Октолипен"],
+    category: "NEUROLOGICAL",
+    forms: [
+      { form: "TAB", doses: ["300 мг", "600 мг"] },
+      { form: "INJ_IV", doses: ["300 мг/12 мл", "600 мг/24 мл"] },
+    ],
+  },
+
+  // ─── Антидепрессанты ──────────────────────────────────────
+  {
+    id: "amitriptyline",
+    nameRu: "Амитриптилин",
+    intl: "Amitriptyline",
+    brands: ["Саротен"],
+    category: "PSYCHIATRIC",
+    forms: [
+      { form: "TAB", doses: ["10 мг", "25 мг"] },
+      { form: "INJ_IM", doses: ["10 мг/мл"] },
+    ],
+  },
+  {
+    id: "sertraline",
+    nameRu: "Сертралин",
+    intl: "Sertraline",
+    brands: ["Золофт", "Асентра", "Стимулотон"],
+    category: "PSYCHIATRIC",
+    forms: [{ form: "TAB", doses: ["50 мг", "100 мг"] }],
+  },
+  {
+    id: "escitalopram",
+    nameRu: "Эсциталопрам",
+    intl: "Escitalopram",
+    brands: ["Ципралекс", "Селектра", "Эленфакс"],
+    category: "PSYCHIATRIC",
+    forms: [{ form: "TAB", doses: ["5 мг", "10 мг", "20 мг"] }],
+  },
+  {
+    id: "venlafaxine",
+    nameRu: "Венлафаксин",
+    intl: "Venlafaxine",
+    brands: ["Велаксин", "Венлаксор"],
+    category: "PSYCHIATRIC",
+    forms: [
+      { form: "TAB", doses: ["37,5 мг", "75 мг"] },
+      { form: "CAP", doses: ["75 мг (пролонг)", "150 мг (пролонг)"] },
+    ],
+  },
+  {
+    id: "duloxetine",
+    nameRu: "Дулоксетин",
+    intl: "Duloxetine",
+    brands: ["Симбалта", "Дулоксента"],
+    category: "PSYCHIATRIC",
+    forms: [{ form: "CAP", doses: ["30 мг", "60 мг"] }],
+  },
+
+  // ─── Анксиолитики и седативные ────────────────────────────
+  {
+    id: "tofisopam",
+    nameRu: "Тофизопам",
+    intl: "Tofisopam",
+    brands: ["Грандаксин"],
+    category: "PSYCHIATRIC",
+    forms: [{ form: "TAB", doses: ["50 мг"] }],
+  },
+  {
+    id: "hydroxyzine",
+    nameRu: "Гидроксизин",
+    intl: "Hydroxyzine",
+    brands: ["Атаракс"],
+    category: "PSYCHIATRIC",
+    forms: [
+      { form: "TAB", doses: ["25 мг"] },
+      { form: "SYRUP", doses: ["2 мг/мл"] },
+    ],
+  },
+  {
+    id: "afobazole",
+    nameRu: "Фабомотизол",
+    intl: "Fabomotizole",
+    brands: ["Афобазол"],
+    category: "PSYCHIATRIC",
+    forms: [{ form: "TAB", doses: ["10 мг"] }],
+  },
+  {
+    id: "diazepam",
+    nameRu: "Диазепам",
+    intl: "Diazepam",
+    brands: ["Реланиум", "Сибазон", "Седуксен"],
+    category: "PSYCHIATRIC",
+    forms: [
+      { form: "TAB", doses: ["5 мг"] },
+      { form: "INJ_IV", doses: ["5 мг/мл"] },
+    ],
+  },
+  {
+    id: "phenazepam",
+    nameRu: "Бромдигидрохлорфенилбензодиазепин",
+    intl: "Bromdihydrochlorphenylbenzodiazepine",
+    brands: ["Феназепам", "Элзепам"],
+    category: "PSYCHIATRIC",
+    forms: [{ form: "TAB", doses: ["0,5 мг", "1 мг", "2,5 мг"] }],
+  },
+
+  // ─── Антибиотики (дополнительно) ──────────────────────────
+  {
+    id: "cefuroxime",
+    nameRu: "Цефуроксим",
+    intl: "Cefuroxime",
+    brands: ["Зиннат", "Аксетин"],
+    category: "ANTIBIOTIC",
+    forms: [
+      { form: "TAB", doses: ["250 мг", "500 мг"] },
+      { form: "INJ_IM", doses: ["750 мг", "1,5 г"] },
+    ],
+  },
+  {
+    id: "nitrofurantoin",
+    nameRu: "Нитрофурантоин",
+    intl: "Nitrofurantoin",
+    brands: ["Фурадонин"],
+    category: "ANTIBIOTIC",
+    forms: [{ form: "TAB", doses: ["50 мг", "100 мг"] }],
+  },
+  {
+    id: "fosfomycin",
+    nameRu: "Фосфомицин",
+    intl: "Fosfomycin",
+    brands: ["Монурал", "Фосфорал"],
+    category: "ANTIBIOTIC",
+    forms: [{ form: "POWDER", doses: ["3 г"] }],
+  },
+  {
+    id: "co_trimoxazole",
+    nameRu: "Ко-тримоксазол",
+    intl: "Sulfamethoxazole + Trimethoprim",
+    brands: ["Бисептол", "Бактрим"],
+    category: "ANTIBIOTIC",
+    forms: [
+      { form: "TAB", doses: ["480 мг", "960 мг"] },
+      { form: "SYRUP", doses: ["240 мг/5 мл"] },
+    ],
+  },
+  {
+    id: "moxifloxacin",
+    nameRu: "Моксифлоксацин",
+    intl: "Moxifloxacin",
+    brands: ["Авелокс", "Вигамокс"],
+    category: "ANTIBIOTIC",
+    forms: [
+      { form: "TAB", doses: ["400 мг"] },
+      { form: "DROPS_EYE", doses: ["5 мг/мл"] },
+    ],
+  },
+  {
+    id: "gentamicin",
+    nameRu: "Гентамицин",
+    intl: "Gentamicin",
+    category: "ANTIBIOTIC",
+    forms: [
+      { form: "INJ_IM", doses: ["80 мг/2 мл", "40 мг/мл"] },
+      { form: "DROPS_EYE", doses: ["3 мг/мл"] },
+    ],
+  },
+
+  // ─── Противогрибковые ─────────────────────────────────────
+  {
+    id: "fluconazole",
+    nameRu: "Флуконазол",
+    intl: "Fluconazole",
+    brands: ["Дифлюкан", "Флюкостат", "Микосист"],
+    category: "ANTIFUNGAL",
+    forms: [{ form: "CAP", doses: ["50 мг", "100 мг", "150 мг"] }],
+  },
+  {
+    id: "terbinafine",
+    nameRu: "Тербинафин",
+    intl: "Terbinafine",
+    brands: ["Ламизил", "Тербизил", "Экзифин"],
+    category: "ANTIFUNGAL",
+    forms: [
+      { form: "TAB", doses: ["250 мг"] },
+      { form: "CREAM", doses: ["1%"] },
+    ],
+  },
+  {
+    id: "clotrimazole",
+    nameRu: "Клотримазол",
+    intl: "Clotrimazole",
+    brands: ["Кандид", "Канестен"],
+    category: "ANTIFUNGAL",
+    forms: [
+      { form: "CREAM", doses: ["1%"] },
+      { form: "SUPP_VAG", doses: ["100 мг", "500 мг"] },
+    ],
+  },
+  {
+    id: "itraconazole",
+    nameRu: "Итраконазол",
+    intl: "Itraconazole",
+    brands: ["Орунгал", "Ирунин", "Румикоз"],
+    category: "ANTIFUNGAL",
+    forms: [{ form: "CAP", doses: ["100 мг"] }],
+  },
+
+  // ─── Противовирусные ──────────────────────────────────────
+  {
+    id: "valacyclovir",
+    nameRu: "Валацикловир",
+    intl: "Valaciclovir",
+    brands: ["Валтрекс", "Валвир", "Валцикон"],
+    category: "ANTIVIRAL",
+    forms: [{ form: "TAB", doses: ["500 мг", "1000 мг"] }],
+  },
+  {
+    id: "oseltamivir",
+    nameRu: "Осельтамивир",
+    intl: "Oseltamivir",
+    brands: ["Тамифлю", "Номидес"],
+    category: "ANTIVIRAL",
+    forms: [
+      { form: "CAP", doses: ["30 мг", "45 мг", "75 мг"] },
+      { form: "POWDER", doses: ["12 мг/мл"] },
+    ],
+  },
+  {
+    id: "umifenovir",
+    nameRu: "Умифеновир",
+    intl: "Umifenovir",
+    brands: ["Арбидол"],
+    category: "ANTIVIRAL",
+    forms: [
+      { form: "TAB", doses: ["50 мг"] },
+      { form: "CAP", doses: ["100 мг", "200 мг"] },
+    ],
+  },
+
+  // ─── НПВС (дополнительно) ──────────────────────────────────
+  {
+    id: "meloxicam",
+    nameRu: "Мелоксикам",
+    intl: "Meloxicam",
+    brands: ["Мовалис", "Амелотекс", "Артрозан"],
+    category: "NSAID",
+    forms: [
+      { form: "TAB", doses: ["7,5 мг", "15 мг"] },
+      { form: "INJ_IM", doses: ["10 мг/мл"] },
+    ],
+  },
+  {
+    id: "naproxen",
+    nameRu: "Напроксен",
+    intl: "Naproxen",
+    brands: ["Налгезин", "Санапрокс"],
+    category: "NSAID",
+    forms: [{ form: "TAB", doses: ["250 мг", "275 мг", "550 мг"] }],
+  },
+  {
+    id: "ketoprofen",
+    nameRu: "Кетопрофен",
+    intl: "Ketoprofen",
+    brands: ["Кетонал", "ОКИ", "Фламакс"],
+    category: "NSAID",
+    forms: [
+      { form: "CAP", doses: ["50 мг"] },
+      { form: "TAB", doses: ["100 мг", "150 мг (ретард)"] },
+      { form: "INJ_IM", doses: ["50 мг/мл"] },
+      { form: "GEL", doses: ["2,5%"] },
+    ],
+  },
+  {
+    id: "celecoxib",
+    nameRu: "Целекоксиб",
+    intl: "Celecoxib",
+    brands: ["Целебрекс", "Дилакса"],
+    category: "NSAID",
+    forms: [{ form: "CAP", doses: ["100 мг", "200 мг"] }],
+  },
+
+  // ─── Анальгетики ──────────────────────────────────────────
+  {
+    id: "metamizole",
+    nameRu: "Метамизол натрия",
+    intl: "Metamizole sodium",
+    brands: ["Анальгин", "Баралгин М"],
+    category: "ANALGESIC",
+    forms: [
+      { form: "TAB", doses: ["500 мг"] },
+      { form: "INJ_IM", doses: ["500 мг/мл"] },
+    ],
+  },
+  {
+    id: "tramadol",
+    nameRu: "Трамадол",
+    intl: "Tramadol",
+    brands: ["Трамал"],
+    category: "ANALGESIC",
+    forms: [
+      { form: "CAP", doses: ["50 мг"] },
+      { form: "INJ_IM", doses: ["50 мг/мл"] },
+    ],
+  },
+
+  // ─── Антигистаминные (дополнительно) ──────────────────────
+  {
+    id: "fexofenadine",
+    nameRu: "Фексофенадин",
+    intl: "Fexofenadine",
+    brands: ["Аллегра", "Фексадин", "Фексофаст"],
+    category: "ANTIHISTAMINE",
+    forms: [{ form: "TAB", doses: ["120 мг", "180 мг"] }],
+  },
+  {
+    id: "levocetirizine",
+    nameRu: "Левоцетиризин",
+    intl: "Levocetirizine",
+    brands: ["Ксизал", "Супрастинекс", "Зодак Экспресс"],
+    category: "ANTIHISTAMINE",
+    forms: [
+      { form: "TAB", doses: ["5 мг"] },
+      { form: "DROPS_ORAL", doses: ["5 мг/мл"] },
+    ],
+  },
+
+  // ─── ЖКТ (дополнительно) ──────────────────────────────────
+  {
+    id: "rabeprazole",
+    nameRu: "Рабепразол",
+    intl: "Rabeprazole",
+    brands: ["Париет", "Зульбекс", "Рабиет"],
+    category: "GI",
+    forms: [{ form: "TAB", doses: ["10 мг", "20 мг"] }],
+  },
+  {
+    id: "pancreatin",
+    nameRu: "Панкреатин",
+    intl: "Pancreatin",
+    brands: ["Креон", "Мезим Форте", "Панзинорм"],
+    category: "GI",
+    forms: [
+      { form: "CAP", doses: ["10000 ЕД", "25000 ЕД"] },
+      { form: "TAB", doses: ["10000 ЕД", "3500 ЕД"] },
+    ],
+  },
+  {
+    id: "ursodeoxycholic",
+    nameRu: "Урсодезоксихолевая кислота",
+    intl: "Ursodeoxycholic acid",
+    brands: ["Урсосан", "Урсофальк", "Урдокса"],
+    category: "GI",
+    forms: [
+      { form: "CAP", doses: ["250 мг"] },
+      { form: "TAB", doses: ["500 мг"] },
+    ],
+  },
+  {
+    id: "lactulose",
+    nameRu: "Лактулоза",
+    intl: "Lactulose",
+    brands: ["Дюфалак", "Нормазе", "Порталак"],
+    category: "GI",
+    forms: [{ form: "SYRUP", doses: ["667 мг/мл"] }],
+  },
+  {
+    id: "bismuth",
+    nameRu: "Висмута трикалия дицитрат",
+    intl: "Bismuth subcitrate",
+    brands: ["Де-Нол", "Новобисмол"],
+    category: "GI",
+    forms: [{ form: "TAB", doses: ["120 мг"] }],
+  },
+
+  // ─── Кардиология (дополнительно) ──────────────────────────
+  {
+    id: "metoprolol",
+    nameRu: "Метопролол",
+    intl: "Metoprolol",
+    brands: ["Эгилок", "Беталок ЗОК", "Метокард"],
+    category: "CARDIO",
+    forms: [
+      { form: "TAB", doses: ["25 мг", "50 мг", "100 мг"] },
+      { form: "INJ_IV", doses: ["1 мг/мл"] },
+    ],
+  },
+  {
+    id: "nebivolol",
+    nameRu: "Небиволол",
+    intl: "Nebivolol",
+    brands: ["Небилет", "Бинелол", "Небиватор"],
+    category: "CARDIO",
+    forms: [{ form: "TAB", doses: ["5 мг"] }],
+  },
+  {
+    id: "valsartan",
+    nameRu: "Валсартан",
+    intl: "Valsartan",
+    brands: ["Диован", "Вальсакор", "Нортиван"],
+    category: "CARDIO",
+    forms: [{ form: "TAB", doses: ["80 мг", "160 мг"] }],
+  },
+  {
+    id: "ramipril",
+    nameRu: "Рамиприл",
+    intl: "Ramipril",
+    brands: ["Хартил", "Амприлан", "Тритаце"],
+    category: "CARDIO",
+    forms: [{ form: "TAB", doses: ["2,5 мг", "5 мг", "10 мг"] }],
+  },
+  {
+    id: "rosuvastatin",
+    nameRu: "Розувастатин",
+    intl: "Rosuvastatin",
+    brands: ["Крестор", "Розукард", "Мертенил"],
+    category: "CARDIO",
+    forms: [{ form: "TAB", doses: ["5 мг", "10 мг", "20 мг", "40 мг"] }],
+  },
+  {
+    id: "nitroglycerin",
+    nameRu: "Нитроглицерин",
+    intl: "Glyceryl trinitrate",
+    brands: ["Нитроминт", "Нитроспрей"],
+    category: "CARDIO",
+    forms: [
+      { form: "TAB", doses: ["0,5 мг (под язык)"] },
+      { form: "SPRAY", doses: ["0,4 мг/доза"] },
+    ],
+  },
+  {
+    id: "amiodarone",
+    nameRu: "Амиодарон",
+    intl: "Amiodarone",
+    brands: ["Кордарон", "Амиокордин"],
+    category: "CARDIO",
+    forms: [
+      { form: "TAB", doses: ["200 мг"] },
+      { form: "INJ_IV", doses: ["50 мг/мл"] },
+    ],
+  },
+  {
+    id: "spironolactone",
+    nameRu: "Спиронолактон",
+    intl: "Spironolactone",
+    brands: ["Верошпирон", "Спиронол"],
+    category: "DIURETIC",
+    forms: [{ form: "TAB", doses: ["25 мг", "50 мг", "100 мг"] }],
+  },
+
+  // ─── Дыхательная система (дополнительно) ──────────────────
+  {
+    id: "montelukast",
+    nameRu: "Монтелукаст",
+    intl: "Montelukast",
+    brands: ["Сингуляр", "Монтелар", "Алмонт"],
+    category: "RESPIRATORY",
+    forms: [{ form: "TAB", doses: ["4 мг (жев.)", "5 мг (жев.)", "10 мг"] }],
+  },
+  {
+    id: "budesonide",
+    nameRu: "Будесонид",
+    intl: "Budesonide",
+    brands: ["Пульмикорт", "Тафен Назаль", "Бенакорт"],
+    category: "RESPIRATORY",
+    forms: [
+      { form: "INHAL", doses: ["0,25 мг/мл", "0,5 мг/мл"] },
+      { form: "SPRAY", doses: ["50 мкг/доза", "100 мкг/доза"] },
+    ],
+  },
+  {
+    id: "xylometazoline",
+    nameRu: "Ксилометазолин",
+    intl: "Xylometazoline",
+    brands: ["Отривин", "Галазолин", "Тизин"],
+    category: "RESPIRATORY",
+    forms: [
+      { form: "DROPS_NASAL", doses: ["0,05%", "0,1%"] },
+      { form: "SPRAY", doses: ["0,1%"] },
+    ],
+  },
+
+  // ─── Эндокринология / метаболизм (дополнительно) ──────────
+  {
+    id: "gliclazide",
+    nameRu: "Гликлазид",
+    intl: "Gliclazide",
+    brands: ["Диабетон МВ", "Глидиаб", "Диабефарм"],
+    category: "ENDOCRINE",
+    forms: [{ form: "TAB", doses: ["30 мг (МВ)", "60 мг (МВ)", "80 мг"] }],
+  },
+  {
+    id: "sitagliptin",
+    nameRu: "Ситаглиптин",
+    intl: "Sitagliptin",
+    brands: ["Янувия", "Яситара"],
+    category: "ENDOCRINE",
+    forms: [{ form: "TAB", doses: ["25 мг", "50 мг", "100 мг"] }],
+  },
+  {
+    id: "thiamazole",
+    nameRu: "Тиамазол",
+    intl: "Thiamazole",
+    brands: ["Мерказолил", "Тирозол"],
+    category: "ENDOCRINE",
+    forms: [{ form: "TAB", doses: ["5 мг", "10 мг"] }],
+  },
+  {
+    id: "allopurinol",
+    nameRu: "Аллопуринол",
+    intl: "Allopurinol",
+    brands: ["Аллопуринол-ЭГИС", "Пуринол"],
+    category: "ENDOCRINE",
+    forms: [{ form: "TAB", doses: ["100 мг", "300 мг"] }],
+  },
+
+  // ─── Урология ─────────────────────────────────────────────
+  {
+    id: "tamsulosin",
+    nameRu: "Тамсулозин",
+    intl: "Tamsulosin",
+    brands: ["Омник", "Фокусин", "Тамсулон"],
+    category: "UROLOGY",
+    forms: [{ form: "CAP", doses: ["0,4 мг"] }],
+  },
+  {
+    id: "sildenafil",
+    nameRu: "Силденафил",
+    intl: "Sildenafil",
+    brands: ["Виагра", "Силденафил-СЗ", "Динамико"],
+    category: "UROLOGY",
+    forms: [{ form: "TAB", doses: ["25 мг", "50 мг", "100 мг"] }],
+  },
+
+  // ─── Дерматология / офтальмология / антисептики ───────────
+  {
+    id: "mometasone",
+    nameRu: "Мометазон",
+    intl: "Mometasone",
+    brands: ["Элоком", "Назонекс", "Момат"],
+    category: "DERMATOLOGICAL",
+    forms: [
+      { form: "CREAM", doses: ["0,1%"] },
+      { form: "OINT", doses: ["0,1%"] },
+      { form: "SPRAY", doses: ["50 мкг/доза"] },
+    ],
+  },
+  {
+    id: "betamethasone",
+    nameRu: "Бетаметазон",
+    intl: "Betamethasone",
+    brands: ["Целестодерм", "Дипроспан", "Акридерм"],
+    category: "DERMATOLOGICAL",
+    forms: [
+      { form: "CREAM", doses: ["0,05%", "0,1%"] },
+      { form: "INJ_IM", doses: ["7 мг/мл (депо)"] },
+    ],
+  },
+  {
+    id: "olopatadine",
+    nameRu: "Олопатадин",
+    intl: "Olopatadine",
+    brands: ["Опатанол", "Олофрин"],
+    category: "OPHTHALMIC",
+    forms: [{ form: "DROPS_EYE", doses: ["1 мг/мл", "2 мг/мл"] }],
+  },
+  {
+    id: "miramistin",
+    nameRu: "Бензилдиметил-аммония хлорид",
+    intl: "Benzyldimethyl ammonium chloride",
+    brands: ["Мирамистин"],
+    category: "TOPICAL",
+    forms: [{ form: "SPRAY", doses: ["0,01%"] }],
+  },
+
+  // ─── Гематология / гемостаз ───────────────────────────────
+  {
+    id: "tranexamic",
+    nameRu: "Транексамовая кислота",
+    intl: "Tranexamic acid",
+    brands: ["Транексам", "Трамикс"],
+    category: "HEMATOLOGY",
+    forms: [
+      { form: "TAB", doses: ["250 мг", "500 мг"] },
+      { form: "INJ_IV", doses: ["50 мг/мл"] },
+    ],
+  },
+  {
+    id: "rivaroxaban",
+    nameRu: "Ривароксабан",
+    intl: "Rivaroxaban",
+    brands: ["Ксарелто"],
+    category: "HEMATOLOGY",
+    forms: [{ form: "TAB", doses: ["10 мг", "15 мг", "20 мг"] }],
+  },
+  {
+    id: "warfarin",
+    nameRu: "Варфарин",
+    intl: "Warfarin",
+    brands: ["Варфарин Никомед", "Варфарекс"],
+    category: "HEMATOLOGY",
+    forms: [{ form: "TAB", doses: ["2,5 мг"] }],
+  },
+
+  // ─── Противорвотные ───────────────────────────────────────
+  {
+    id: "ondansetron",
+    nameRu: "Ондансетрон",
+    intl: "Ondansetron",
+    brands: ["Зофран", "Латран", "Эметрон"],
+    category: "ANTIEMETIC",
+    forms: [
+      { form: "TAB", doses: ["4 мг", "8 мг"] },
+      { form: "INJ_IV", doses: ["2 мг/мл"] },
+    ],
+  },
+
+  // ─── Гинекология / гормоны ────────────────────────────────
+  {
+    id: "dydrogesterone",
+    nameRu: "Дидрогестерон",
+    intl: "Dydrogesterone",
+    brands: ["Дюфастон"],
+    category: "GYNECOLOGY",
+    forms: [{ form: "TAB", doses: ["10 мг"] }],
+  },
+  {
+    id: "progesterone",
+    nameRu: "Прогестерон",
+    intl: "Progesterone (micronized)",
+    brands: ["Утрожестан", "Ипрожин"],
+    category: "GYNECOLOGY",
+    forms: [
+      { form: "CAP", doses: ["100 мг", "200 мг"] },
+      { form: "SUPP_VAG", doses: ["100 мг", "200 мг"] },
+    ],
+  },
+
+  // ─── Витамины / электролиты (дополнительно) ───────────────
+  {
+    id: "cyanocobalamin",
+    nameRu: "Цианокобаламин (B12)",
+    intl: "Cyanocobalamin",
+    category: "VITAMIN",
+    forms: [{ form: "INJ_IM", doses: ["500 мкг/мл", "200 мкг/мл"] }],
+  },
+  {
+    id: "potassium_mg_asparaginate",
+    nameRu: "Калия и магния аспарагинат",
+    intl: "Potassium + Magnesium aspartate",
+    brands: ["Панангин", "Аспаркам"],
+    category: "CARDIO",
+    forms: [
+      { form: "TAB", doses: ["1 таб."] },
+      { form: "INJ_IV", doses: ["10 мл"] },
+    ],
   },
 ];

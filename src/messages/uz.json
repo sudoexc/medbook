@@ -6957,8 +6957,8 @@
     },
     "references": {
       "page": {
-        "title": "XKT-10 ma’lumotnomasi",
-        "subtitle": "Kod yoki tashxis bo‘yicha qidiruv. Qatorga bosish — buferga nusxalaydi."
+        "title": "Ma‘lumotnoma",
+        "subtitle": "Kasalliklar va dorilar — klinika bazasidan qidiruv va ko‘rish."
       },
       "icd10": {
         "searchPlaceholder": "Kod yoki tashxis bo‘yicha qidiruv…",
@@ -6986,10 +6986,27 @@
           "L00-L99": "Teri va teri osti kletchatkasi kasalliklari",
           "M00-M99": "Suyak-mushak tizimi",
           "N00-N99": "Siydik-tanosil tizimi",
+          "O00-O99": "Homiladorlik, tug‘ish va tug‘ruqdan keyingi davr",
           "R00-R99": "Alomatlar va belgilar",
           "S00-T98": "Jarohatlar va zaharlanishlar",
           "Z00-Z99": "Sog‘liq omillari va shifokorga murojaat"
         }
+      },
+      "tabs": {
+        "diseases": "Kasalliklar",
+        "drugs": "Dorilar"
+      },
+      "drugs": {
+        "searchPlaceholder": "Nomi, XBN yoki brend bo‘yicha qidiruv…",
+        "clear": "Tozalash",
+        "loading": "Dorilar bazasi yuklanmoqda…",
+        "loadError": "Dorilar bazasini yuklab bo‘lmadi",
+        "retry": "Qayta urinish",
+        "empty": "Dorilar bazasi bo‘sh",
+        "foundCount": "Topildi: {count}",
+        "clickForDetails": "Bosing — batafsil",
+        "emptyQuery": "«{query}» bo‘yicha hech narsa topilmadi",
+        "detailDescription": "Shakllari, dozalari, qarshi ko‘rsatmalari va brendlari."
       }
     },
     "nav": {

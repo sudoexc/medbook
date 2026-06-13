@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 
-import { Icd10Browser } from "./_components/icd10-browser";
+import { ReferencesTabs } from "./_components/references-tabs";
 
 export default async function ReferencesPage() {
   const t = await getTranslations("doctor.references");
@@ -17,7 +17,7 @@ export default async function ReferencesPage() {
         </div>
       </div>
 
-      <Icd10Browser />
+      <ReferencesTabs />
     </div>
   );
 }

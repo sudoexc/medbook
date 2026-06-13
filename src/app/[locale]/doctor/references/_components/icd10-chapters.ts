@@ -22,6 +22,7 @@ export const ICD10_CHAPTERS: Icd10Chapter[] = [
   { id: "L00-L99", range: "L00–L99" },
   { id: "M00-M99", range: "M00–M99" },
   { id: "N00-N99", range: "N00–N99" },
+  { id: "O00-O99", range: "O00–O99" },
   { id: "R00-R99", range: "R00–R99" },
   { id: "S00-T98", range: "S00–T98" },
   { id: "Z00-Z99", range: "Z00–Z99" },
@@ -60,6 +61,8 @@ export function chapterIdFor(code: string): string | null {
       return "M00-M99";
     case "N":
       return "N00-N99";
+    case "O":
+      return "O00-O99";
     case "R":
       return "R00-R99";
     case "S":

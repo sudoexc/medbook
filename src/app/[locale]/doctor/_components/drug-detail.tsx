@@ -1,13 +1,8 @@
 "use client";
 
-/**
- * Shared drug record presentation — the rich detail card plus the
- * server-enum → localized-label plumbing. Used by both the reception
- * catalog drawer (⌘K, with an "add to prescriptions" footer) and the
- * references drug browser (read-only, no footer). Labels live under the
- * `doctor.receptionDialogs.catalog.*` message subtree so the two surfaces
- * stay in sync.
- */
+// Shared drug presentation card used by the reception catalog drawer (with an
+// "add to prescriptions" footer) and the read-only references browser. Labels
+// resolve under `doctor.receptionDialogs.catalog.*` so both surfaces stay in sync.
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { AlertTriangleIcon, BabyIcon, PillIcon } from "lucide-react";
@@ -92,6 +87,19 @@ export const FORM_KEY: Record<string, string> = {
   OINT: "oint",
 };
 
+export function RxBadge({ rxOnly }: { rxOnly: boolean }) {
+  return (
+    <span
+      className={cn(
+        "rounded-md px-1.5 py-0.5 text-[10px] uppercase",
+        rxOnly ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800",
+      )}
+    >
+      {rxOnly ? "Rx" : "OTC"}
+    </span>
+  );
+}
+
 export const PREGNANCY_TONE: Record<DrugDetail["pregnancyCat"], string> = {
   A: "bg-emerald-100 text-emerald-800",
   B: "bg-emerald-100 text-emerald-800",
@@ -173,15 +181,7 @@ export function DrugDetailView({
               <BabyIcon className="mr-0.5 inline size-2.5" />
               {drug.pregnancyCat}
             </span>
-            {!drug.rxOnly ? (
-              <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] uppercase text-emerald-800">
-                OTC
-              </span>
-            ) : (
-              <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] uppercase text-blue-800">
-                Rx
-              </span>
-            )}
+            <RxBadge rxOnly={drug.rxOnly} />
           </div>
         </div>
       </div>
@@ -254,27 +254,13 @@ export function DrugDetailView({
             Icon={AlertTriangleIcon}
             tone="warn"
           >
-            <ul className="space-y-0.5 text-muted-foreground">
-              {drug.contraindications.map((c) => (
-                <li key={c} className="flex gap-1.5">
-                  <span className="select-none">•</span>
-                  <span>{c}</span>
-                </li>
-              ))}
-            </ul>
+            <BulletList items={drug.contraindications} />
           </Section>
         ) : null}
 
         {drug.sideEffects.length > 0 ? (
           <Section title={t("catalog.sections.sideEffects")}>
-            <ul className="space-y-0.5 text-muted-foreground">
-              {drug.sideEffects.map((c) => (
-                <li key={c} className="flex gap-1.5">
-                  <span className="select-none">•</span>
-                  <span>{c}</span>
-                </li>
-              ))}
-            </ul>
+            <BulletList items={drug.sideEffects} />
           </Section>
         ) : null}
 
@@ -298,6 +284,19 @@ export function DrugDetailView({
         <div className="border-t bg-muted/40 px-4 py-2.5">{footer}</div>
       ) : null}
     </>
+  );
+}
+
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-0.5 text-muted-foreground">
+      {items.map((c) => (
+        <li key={c} className="flex gap-1.5">
+          <span className="select-none">•</span>
+          <span>{c}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

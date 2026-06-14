@@ -22,12 +22,15 @@ import {
 } from "@/components/ui/dialog";
 
 import { useDrugCatalog } from "../_hooks/use-drug-catalog";
+import { useDebounced } from "../_hooks/use-debounced";
 import {
   DrugDetailView,
   PREGNANCY_TONE,
+  RxBadge,
   useCategoryLabel,
   type DrugDetail,
 } from "../../_components/drug-detail";
+import { Highlight } from "./highlight";
 
 const SEARCH_DEBOUNCE_MS = 150;
 
@@ -66,23 +69,15 @@ const CATEGORY_ORDER = [
   "OTHER",
 ];
 
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = React.useState(value);
-  React.useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
-
-function matches(d: DrugDetail, term: string): boolean {
-  const t = term.toLowerCase();
+// `lower` is the search term already lower-cased once by the caller, so the
+// per-row filter pass doesn't re-lower the invariant term for every drug.
+function matches(d: DrugDetail, lower: string): boolean {
   return (
-    d.nameRu.toLowerCase().includes(t) ||
-    (d.nameUz?.toLowerCase().includes(t) ?? false) ||
-    d.inn.toLowerCase().includes(t) ||
-    d.id.toLowerCase().includes(t) ||
-    d.brands.some((b) => b.name.toLowerCase().includes(t))
+    d.nameRu.toLowerCase().includes(lower) ||
+    (d.nameUz?.toLowerCase().includes(lower) ?? false) ||
+    d.inn.toLowerCase().includes(lower) ||
+    d.id.toLowerCase().includes(lower) ||
+    d.brands.some((b) => b.name.toLowerCase().includes(lower))
   );
 }
 
@@ -103,25 +98,6 @@ function orderedCategories(grouped: Map<string, DrugDetail[]>): string[] {
   const known = CATEGORY_ORDER.filter((c) => present.has(c));
   const extra = [...present].filter((c) => !CATEGORY_ORDER.includes(c)).sort();
   return [...known, ...extra];
-}
-
-function Highlight({ text, term }: { text: string; term: string }) {
-  if (!term) return <>{text}</>;
-  const safe = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = text.split(new RegExp(`(${safe})`, "gi"));
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.toLowerCase() === term.toLowerCase() ? (
-          <mark key={i} className="rounded bg-warning/30 px-0.5 text-foreground">
-            {p}
-          </mark>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
-    </>
-  );
 }
 
 function DrugRow({
@@ -177,16 +153,7 @@ function DrugRow({
         >
           {drug.pregnancyCat}
         </span>
-        <span
-          className={cn(
-            "rounded-md px-1.5 py-0.5 text-[10px] uppercase",
-            drug.rxOnly
-              ? "bg-blue-100 text-blue-800"
-              : "bg-emerald-100 text-emerald-800",
-          )}
-        >
-          {drug.rxOnly ? "Rx" : "OTC"}
-        </span>
+        <RxBadge rxOnly={drug.rxOnly} />
       </span>
     </button>
   );
@@ -206,10 +173,11 @@ export function DrugBrowser() {
   const grouped = React.useMemo(() => groupByCategory(rows), [rows]);
   const categories = React.useMemo(() => orderedCategories(grouped), [grouped]);
 
-  const filtered = React.useMemo(
-    () => (searching ? rows.filter((d) => matches(d, term)) : []),
-    [rows, searching, term],
-  );
+  const filtered = React.useMemo(() => {
+    if (!searching) return [];
+    const lower = term.toLowerCase();
+    return rows.filter((d) => matches(d, lower));
+  }, [rows, searching, term]);
 
   // Open the biggest category by default so first paint isn't a wall of
   // collapsed headers. Recomputed when the data first lands.

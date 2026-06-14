@@ -14,7 +14,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { ICD10_ENTRIES, type Icd10Entry } from "@/server/icd10/data";
 
+import { useDebounced } from "../_hooks/use-debounced";
 import { useIcd10Search } from "../_hooks/use-icd10-search";
+import { Highlight } from "./highlight";
 import {
   ICD10_CHAPTERS,
   chapterIdFor,
@@ -22,15 +24,6 @@ import {
 } from "./icd10-chapters";
 
 const SEARCH_DEBOUNCE_MS = 200;
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = React.useState(value);
-  React.useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
 
 async function copyDiagnosis(
   entry: Icd10Entry,
@@ -43,30 +36,6 @@ async function copyDiagnosis(
   } catch {
     toast.error(messages.copyFailed);
   }
-}
-
-/**
- * Highlights case-insensitive matches of `term` inside `text` using <mark>.
- * Returns the original string if term is empty so chapter view doesn't fire
- * a render-time regex per row.
- */
-function Highlight({ text, term }: { text: string; term: string }) {
-  if (!term) return <>{text}</>;
-  const safe = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = text.split(new RegExp(`(${safe})`, "gi"));
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.toLowerCase() === term.toLowerCase() ? (
-          <mark key={i} className="rounded bg-warning/30 px-0.5 text-foreground">
-            {p}
-          </mark>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
-    </>
-  );
 }
 
 function Row({

@@ -37,8 +37,6 @@ import {
 } from "../../_components/drug-detail";
 import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
 
-export type { DrugDetail };
-
 async function fetchDrugs(q: string): Promise<DrugDetail[]> {
   const url = `/api/crm/catalogs/drugs?q=${encodeURIComponent(q)}&limit=60`;
   const res = await fetch(url, { credentials: "include" });

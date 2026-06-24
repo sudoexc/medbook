@@ -63,6 +63,16 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       remindersEnabled: true,
       createdAt: true,
       doctor: { select: { id: true, nameRu: true, nameUz: true } },
+      // Ф6 — prescriptions bridged from a finalized visit carry the source
+      // VisitNote; the patient-facing visit is keyed by its appointmentId
+      // (route /my/visit/:appointmentId). Null for ad-hoc prescriptions.
+      visitNote: {
+        select: {
+          appointmentId: true,
+          diagnosisName: true,
+          appointment: { select: { date: true } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 50,
@@ -88,6 +98,13 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       status: rx.status,
       remindersEnabled: rx.remindersEnabled,
       doctor: rx.doctor,
+      visit: rx.visitNote
+        ? {
+            appointmentId: rx.visitNote.appointmentId,
+            date: rx.visitNote.appointment.date.toISOString(),
+            diagnosis: rx.visitNote.diagnosisName ?? null,
+          }
+        : null,
       nextDoseAt: next?.toISOString() ?? null,
       daysRemaining: remaining,
     };

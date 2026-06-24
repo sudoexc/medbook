@@ -18,8 +18,9 @@
  * reminder push side is dark.
  */
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pill } from "lucide-react";
+import { ChevronRight, Pill, Stethoscope } from "lucide-react";
 
 import {
   MButton,
@@ -133,13 +134,24 @@ function ReminderCard({
 function ScheduleRow({
   rx,
   tz,
+  slug,
 }: {
   rx: MedicationsPrescription;
   tz: string;
+  slug: string;
 }) {
   const t = useT();
   const lang = useLang();
   const isPaused = rx.status === "PAUSED";
+  const visit = rx.visit;
+  const visitLabel = visit
+    ? visit.date
+      ? t.medications.visitLabel.replace(
+          "{date}",
+          formatLocalDate(visit.date, lang, tz),
+        )
+      : t.medications.visitLabelNoDate
+    : null;
   return (
     <MCard className="space-y-1">
       <div className="flex items-start justify-between gap-2">
@@ -184,6 +196,19 @@ function ScheduleRow({
           {rx.notes}
         </div>
       )}
+      {visit ? (
+        <Link
+          href={`/c/${slug}/my/visit/${visit.appointmentId}`}
+          className="mt-2 flex items-center gap-1.5 text-xs font-medium ma-press active:scale-[0.99]"
+          style={{ color: "var(--tg-accent)" }}
+        >
+          <Stethoscope className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="truncate">
+            {visit.diagnosis ? `${visitLabel} · ${visit.diagnosis}` : visitLabel}
+          </span>
+          <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" aria-hidden />
+        </Link>
+      ) : null}
     </MCard>
   );
 }
@@ -265,7 +290,7 @@ export function MedicationsScreen() {
         ) : (
           <div className="space-y-3">
             {prescriptions.map((rx) => (
-              <ScheduleRow key={rx.id} rx={rx} tz={tz} />
+              <ScheduleRow key={rx.id} rx={rx} tz={tz} slug={clinicSlug} />
             ))}
           </div>
         )}

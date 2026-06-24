@@ -375,6 +375,8 @@ export const ruDict = {
     daysLeft: "осталось {n} д.",
     statusPaused: "Пауза",
     snoozedBadge: "Отложено",
+    visitLabel: "Визит {date}",
+    visitLabelNoDate: "Визит",
     actions: {
       taken: "Принял",
       skipped: "Пропустил",

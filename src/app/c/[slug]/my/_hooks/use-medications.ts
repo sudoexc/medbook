@@ -29,6 +29,12 @@ export type MedicationsPrescription = {
   status: "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELLED";
   remindersEnabled: boolean;
   doctor: { id: string; nameRu: string; nameUz: string } | null;
+  /** The visit this prescription was issued at; null for ad-hoc scripts. */
+  visit: {
+    appointmentId: string;
+    date: string | null;
+    diagnosis: string | null;
+  } | null;
   nextDoseAt: string | null;
   daysRemaining: number | null;
 };

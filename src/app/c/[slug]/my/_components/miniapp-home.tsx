@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Calendar,
   FileText,
-  FlaskConical,
   Pill,
 } from "lucide-react";
 
@@ -13,7 +12,6 @@ import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useT } from "./mini-i18n";
 import { useActiveContext } from "../_hooks/use-active-context";
 import { useMedications } from "../_hooks/use-medications";
-import { useLabs } from "../_hooks/use-labs";
 import { MCard, MSpinner, formatTimeISO } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { HomeHero } from "./home-hero";
@@ -144,7 +142,6 @@ function HomeContent({ slug }: { slug: string }) {
   const { state } = useMiniAppAuth();
   const { onBehalfOf } = useActiveContext();
   const meds = useMedications(onBehalfOf);
-  const labs = useLabs();
   const tg = useTelegramWebApp();
   const patient = state.status === "ready" ? state.patient : null;
   const firstName = patient?.fullName?.split(" ")[0] ?? "";
@@ -195,15 +192,6 @@ function HomeContent({ slug }: { slug: string }) {
           )
       : t.home.bento.medsNone
     : null;
-  const lastLab = labs.data?.[0] ?? null;
-  const labsHint = labs.data
-    ? lastLab?.reviewedAt
-      ? t.home.bento.labsLast.replace(
-          "{date}",
-          formatShortDate(lastLab.reviewedAt, lang),
-        )
-      : t.home.bento.labsNone
-    : null;
 
   return (
     <>
@@ -250,23 +238,13 @@ function HomeContent({ slug }: { slug: string }) {
           animate={animate}
         />
         <BentoTile
-          href={`/c/${slug}/my/labs`}
-          title={t.home.bento.labs}
-          hint={labsHint}
-          icon={FlaskConical}
-          color={MA_ACCENTS.info}
-          tall
-          delay={160}
-          animate={animate}
-        />
-        <BentoTile
           href={`/c/${slug}/my/documents`}
           title={t.home.bento.docs}
           hint={t.home.bento.docsHint}
           icon={FileText}
           color="var(--tg-accent)"
-          wide
-          delay={200}
+          tall
+          delay={160}
           animate={animate}
         />
       </div>

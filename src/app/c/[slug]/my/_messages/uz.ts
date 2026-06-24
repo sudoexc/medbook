@@ -375,6 +375,8 @@ export const uzDict = {
     daysLeft: "qoldi {n} kun",
     statusPaused: "Pauza",
     snoozedBadge: "Keyinga qoldirilgan",
+    visitLabel: "Tashrif {date}",
+    visitLabelNoDate: "Tashrif",
     actions: {
       taken: "Qabul qildim",
       skipped: "O‘tkazib yubordim",

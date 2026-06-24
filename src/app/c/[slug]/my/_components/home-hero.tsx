@@ -6,7 +6,7 @@
  * One card answers the patient's question of the moment, resolved in
  * priority order:
  *
- *   queue (live)  →  in-progress  →  visit today  →  med due now
+ *   queue (live)  →  visit today  →  med due now
  *   →  fresh conclusion  →  next visit  →  calm-empty
  *
  * Queue numbers come from the public QR endpoint (`useQueueStatus`) — 20s
@@ -270,41 +270,6 @@ function QueueHero({
           <ChevronUp className="ma-nudge-up h-4 w-4" aria-hidden />
           {t.home.hero.swipeHint}
         </div>
-      </div>
-    </button>
-  );
-}
-
-function InProgressHero({
-  appt,
-  cabinet,
-  onOpenTicket,
-}: {
-  appt: MiniAppAppointment;
-  cabinet: string | null;
-  onOpenTicket: () => void;
-}) {
-  const t = useT();
-  const lang = useLang();
-  const tg = useTelegramWebApp();
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        tg.haptic.selection();
-        onOpenTicket();
-      }}
-      className="block w-full text-left"
-    >
-      <div
-        className="ma-fade-in rounded-3xl p-5 ma-press active:scale-[0.99]"
-        style={heroSurface(GREEN)}
-      >
-        <HeroCaption label={t.home.hero.inProgressLabel} color={GREEN} live />
-        <div className="mt-2.5 text-[26px] font-extrabold leading-tight tracking-tight">
-          {t.home.hero.inProgressTitle}
-        </div>
-        <DoctorRow appt={appt} lang={lang} cabinet={cabinet} t={t} />
       </div>
     </button>
   );
@@ -698,21 +663,17 @@ export function HomeHero({
 
   type Primary =
     | "queue"
-    | "inprogress"
     | "today"
     | "meds"
     | "results"
     | "soon"
     | "empty";
 
+  // The live queue card owns the "waiting" moment; once the doctor starts the
+  // visit (IN_PROGRESS) we fall through to the calm today-appointment card
+  // rather than a redundant "your visit has started" banner.
   let primary: Primary;
   if (queueAppt && queue.data?.status === "WAITING") primary = "queue";
-  else if (
-    queueAppt &&
-    (queue.data?.status === "IN_PROGRESS" ||
-      (!queue.data && queueAppt.status === "IN_PROGRESS"))
-  )
-    primary = "inprogress";
   else if (queueAppt || todayAppt) primary = "today";
   else if (dueReminder) primary = "meds";
   else if (freshConclusion) primary = "results";
@@ -724,15 +685,6 @@ export function HomeHero({
     case "queue":
       hero = (
         <QueueHero appt={queueAppt!} q={queue.data!} onOpenTicket={openTicket} />
-      );
-      break;
-    case "inprogress":
-      hero = (
-        <InProgressHero
-          appt={queueAppt!}
-          cabinet={queue.data?.cabinet ?? queueAppt!.cabinet?.number ?? null}
-          onOpenTicket={openTicket}
-        />
       );
       break;
     case "today":

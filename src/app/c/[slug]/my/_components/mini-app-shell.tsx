@@ -229,7 +229,7 @@ export function MiniAppShell({
             : "6rem",
         }}
       >
-        {state.status === "ready" ? <FamilySwitcher slug={clinicSlug} /> : null}
+        {state.status === "ready" ? <FamilySwitcher /> : null}
         {children}
       </main>
       {showTabBar ? (

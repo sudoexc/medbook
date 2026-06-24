@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { ChevronDown, Plus, User2 } from "lucide-react";
+import { ChevronDown, User2 } from "lucide-react";
 
 import { useT } from "./mini-i18n";
 import { MSheet } from "./mini-ui";
@@ -10,30 +9,27 @@ import { useFamily, type FamilyMember, type FamilyPatient } from "../_hooks/use-
 import { useActiveContext } from "../_hooks/use-active-context";
 
 /**
- * Compact "act on behalf of" picker that lives at the top of every Mini App
- * page. Tapping it opens a sheet listing self + linked relatives (with an
- * "Add relative" CTA at the bottom). The selection is written back into the
- * URL via `useActiveContext`, so refresh + booking flow + treatment plan all
- * stay in sync without a separate global store.
+ * Compact "act on behalf of" picker at the top of every Mini App page.
+ * Tapping it opens a sheet listing self + linked relatives; the selection is
+ * written back into the URL via `useActiveContext`, so refresh + booking flow
+ * + treatment plan all stay in sync without a separate global store.
  *
- * Renders nothing while the family query is still loading — the shell would
- * otherwise jump as the bar appears post-fetch. Renders only the "Add" pill
- * if the user has zero relatives (no point showing a switcher with one row).
+ * Renders nothing until the family query resolves, and nothing when the user
+ * has no linked relatives — a one-row switcher with no one to switch to is
+ * just noise, and adding relatives is no longer offered from the home.
  */
-export function FamilySwitcher({ slug }: { slug: string }) {
+export function FamilySwitcher() {
   const t = useT();
   const { data, isLoading } = useFamily();
   const { onBehalfOf, setOnBehalfOf } = useActiveContext();
   const [open, setOpen] = React.useState(false);
 
-  if (isLoading || !data) return null;
+  if (isLoading || !data || data.members.length === 0) return null;
 
-  const activePatient: FamilyPatient =
-    onBehalfOf
-      ? data.members.find((m) => m.patient.id === onBehalfOf)?.patient ?? data.self
-      : data.self;
+  const activePatient: FamilyPatient = onBehalfOf
+    ? data.members.find((m) => m.patient.id === onBehalfOf)?.patient ?? data.self
+    : data.self;
   const isSelf = activePatient.id === data.self.id;
-  const hasFamily = data.members.length > 0;
 
   return (
     <>
@@ -61,28 +57,12 @@ export function FamilySwitcher({ slug }: { slug: string }) {
           <span className="min-w-0 flex-1 truncate font-semibold">
             {isSelf ? t.family.self : firstName(activePatient.fullName)}
           </span>
-          {hasFamily ? (
-            <ChevronDown
-              className="h-4 w-4 opacity-60"
-              aria-hidden
-            />
-          ) : null}
+          <ChevronDown className="h-4 w-4 opacity-60" aria-hidden />
         </button>
-        {!hasFamily ? (
-          <Link
-            href={`/c/${slug}/my/family/add`}
-            className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-white ma-press active:scale-[0.98]"
-            style={{ backgroundColor: "var(--tg-accent)" }}
-          >
-            <Plus className="h-4 w-4" />
-            {t.family.add}
-          </Link>
-        ) : null}
       </div>
 
-      {open && hasFamily ? (
+      {open ? (
         <SwitcherSheet
-          slug={slug}
           self={data.self}
           members={data.members}
           activeId={activePatient.id}
@@ -99,7 +79,6 @@ export function FamilySwitcher({ slug }: { slug: string }) {
 }
 
 function SwitcherSheet({
-  slug,
   self,
   members,
   activeId,
@@ -107,7 +86,6 @@ function SwitcherSheet({
   onClose,
   onPick,
 }: {
-  slug: string;
   self: FamilyPatient;
   members: FamilyMember[];
   activeId: string;
@@ -119,47 +97,24 @@ function SwitcherSheet({
 
   return (
     <MSheet onClose={onClose}>
-      {(requestClose) => (
-        <>
-          <div className="space-y-1">
+      {() => (
+        <div className="space-y-1">
+          <Row
+            name={t.family.self}
+            sub={self.phone}
+            active={selfActive}
+            onClick={() => onPick(self.id)}
+          />
+          {members.map((m) => (
             <Row
-              name={t.family.self}
-              sub={self.phone}
-              active={selfActive}
-              onClick={() => onPick(self.id)}
+              key={m.linkId}
+              name={m.patient.fullName}
+              sub={t.family.relationship[m.relationship]}
+              active={!selfActive && m.patient.id === activeId}
+              onClick={() => onPick(m.patient.id)}
             />
-            {members.map((m) => (
-              <Row
-                key={m.linkId}
-                name={m.patient.fullName}
-                sub={t.family.relationship[m.relationship]}
-                active={!selfActive && m.patient.id === activeId}
-                onClick={() => onPick(m.patient.id)}
-              />
-            ))}
-          </div>
-          {members.length < 5 ? (
-            <Link
-              href={`/c/${slug}/my/family/add`}
-              onClick={requestClose}
-              className="mt-3 flex min-h-[48px] items-center justify-center gap-2 rounded-2xl text-sm font-semibold"
-              style={{
-                backgroundColor: "var(--tg-accent)",
-                color: "#fff",
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              {t.family.add}
-            </Link>
-          ) : (
-            <p
-              className="mt-3 text-center text-xs"
-              style={{ color: "var(--tg-hint)" }}
-            >
-              {t.family.maxReached}
-            </p>
-          )}
-        </>
+          ))}
+        </div>
       )}
     </MSheet>
   );

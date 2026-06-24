@@ -31,7 +31,23 @@ type SharedSource = {
   refCount: number;
   retryAttempt: number;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  /**
+   * Deferred-close handle. When the last subscriber unmounts we don't drop
+   * the socket immediately — a route transition unmounts the old page's
+   * hooks a tick before the new page's hooks mount, and tearing the socket
+   * down in that gap loses any event published mid-transition. We wait out a
+   * short grace window and only close if nobody re-subscribed.
+   */
+  idleCloseTimer: ReturnType<typeof setTimeout> | null;
 };
+
+/**
+ * How long the shared EventSource stays open after the last subscriber
+ * leaves. Covers SPA navigation between CRM pages (reception → telegram →
+ * calendar) without a reconnect flap. Short enough that a truly-closed tab
+ * still releases the socket promptly.
+ */
+const IDLE_CLOSE_GRACE_MS = 5_000;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof EventSource !== "undefined";
@@ -56,6 +72,7 @@ function getShared(): SharedSource {
       refCount: 0,
       retryAttempt: 0,
       retryTimer: null,
+      idleCloseTimer: null,
     };
   }
   return shared;
@@ -122,6 +139,10 @@ function openConnection(): void {
 function closeConnectionIfIdle(): void {
   const s = getShared();
   if (s.refCount > 0) return;
+  if (s.idleCloseTimer) {
+    clearTimeout(s.idleCloseTimer);
+    s.idleCloseTimer = null;
+  }
   if (s.retryTimer) {
     clearTimeout(s.retryTimer);
     s.retryTimer = null;
@@ -133,6 +154,30 @@ function closeConnectionIfIdle(): void {
       /* ignore */
     }
     s.es = null;
+  }
+}
+
+/**
+ * Schedule an idle close after the grace window. A no-op if a close is
+ * already pending or someone is still subscribed. Cancelled by the next
+ * subscriber via `cancelIdleClose`.
+ */
+function scheduleIdleClose(): void {
+  const s = getShared();
+  if (s.refCount > 0) return;
+  if (s.idleCloseTimer) return;
+  s.idleCloseTimer = setTimeout(() => {
+    s.idleCloseTimer = null;
+    closeConnectionIfIdle();
+  }, IDLE_CLOSE_GRACE_MS);
+}
+
+/** A new subscriber arrived — keep the warm socket. */
+function cancelIdleClose(): void {
+  const s = getShared();
+  if (s.idleCloseTimer) {
+    clearTimeout(s.idleCloseTimer);
+    s.idleCloseTimer = null;
   }
 }
 
@@ -165,9 +210,18 @@ export function useLiveEvents(
     if (!enabled) return;
     if (!isBrowser() || isTestEnv()) return;
 
-    const filterSet: Set<EventType> | null = filter
-      ? new Set(filter)
-      : null;
+    // Rebuild the type filter from the stable `filterKey` string, NOT the
+    // `filter` array — callers pass an inline literal, so its identity
+    // changes every render. Depending on the array would re-run this effect
+    // on every render: when several subscribers re-render in one commit React
+    // flushes all their cleanups before any re-create, so `refCount` hits 0
+    // and the shared EventSource is torn down and reopened. Events published
+    // in that reconnect gap are lost (no Last-Event-ID replay) — exactly the
+    // "reception/telegram didn't update until I refreshed" symptom.
+    const filterSet: Set<EventType> | null =
+      filterKey === "*"
+        ? null
+        : (new Set(filterKey.split("|")) as Set<EventType>);
 
     const listener: Listener = (event) => {
       if (filterSet && !filterSet.has(event.type)) return;
@@ -175,6 +229,7 @@ export function useLiveEvents(
     };
 
     const s = getShared();
+    cancelIdleClose();
     s.listeners.add(listener);
     s.refCount += 1;
     openConnection();
@@ -182,11 +237,9 @@ export function useLiveEvents(
     return () => {
       s.listeners.delete(listener);
       s.refCount = Math.max(0, s.refCount - 1);
-      if (s.refCount === 0) closeConnectionIfIdle();
+      if (s.refCount === 0) scheduleIdleClose();
     };
-    // `filterKey` captures any change to the filter set; `cbRef` shields
-    // us from callback churn.
-  }, [enabled, filterKey, filter]);
+  }, [enabled, filterKey]);
 }
 
 /** Test-only: close the shared connection. Safe to no-op in prod. */

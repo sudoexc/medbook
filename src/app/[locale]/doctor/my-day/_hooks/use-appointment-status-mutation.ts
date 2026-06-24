@@ -113,11 +113,12 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
         ? qc.getQueryData<DoctorSchedule>(doctorScheduleKey(dateKey))
         : undefined;
 
-      // Call branch is a state-on-row stamp (`calledAt` + maybe WAITING),
-      // not a forward status flip — branched separately so the regular
-      // path stays readable.
+      // The call now *starts* the visit in one step, so optimistically flip
+      // the row straight into IN_PROGRESS (calledAt + startedAt stamped) to
+      // match the server write — no intermediate "called/waiting" state.
       if (call) {
         const nowIso = new Date().toISOString();
+        const startedStatus = scheduleStatusOf("IN_PROGRESS");
         if (today) {
           const cur = today.current;
           const currentMatches =
@@ -126,20 +127,16 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
             ? {
                 ...cur,
                 calledAt: nowIso,
-                status:
-                  cur.status === "BOOKED" || cur.status === "CONFIRMED"
-                    ? "WAITING"
-                    : cur.status,
+                startedAt: nowIso,
+                status: "IN_PROGRESS",
               }
             : cur;
-          // Schedule entry's `status` is a mapped category ("upcoming" /
-          // "in_progress" / …). BOOKED and WAITING both map to "upcoming",
-          // so the BOOKED → WAITING server bump doesn't change the row's
-          // schedule status — we only stamp `calledAt`.
           const next: DoctorToday = {
             ...today,
             schedule: today.schedule.map((e: ScheduleEntry) =>
-              e.id === appointmentId ? { ...e, calledAt: nowIso } : e,
+              e.id === appointmentId
+                ? { ...e, calledAt: nowIso, status: startedStatus }
+                : e,
             ),
             current: nextCurrent,
           };
@@ -149,7 +146,9 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
           const next: DoctorSchedule = {
             ...schedule,
             entries: schedule.entries.map((e) =>
-              e.id === appointmentId ? { ...e, calledAt: nowIso } : e,
+              e.id === appointmentId
+                ? { ...e, calledAt: nowIso, status: startedStatus }
+                : e,
             ),
           };
           qc.setQueryData(doctorScheduleKey(dateKey), next);
@@ -245,7 +244,7 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
 type Translate = (key: string) => string;
 
 function successFor(args: StatusMutationArgs, t: Translate): string | null {
-  if (args.call) return t("statusToast.called");
+  if (args.call) return t("statusToast.inProgress");
   if (args.revert) return t("statusToast.reverted");
   switch (args.toStatus) {
     case "WAITING":

@@ -10,7 +10,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Loader2Icon,
-  MegaphoneIcon,
   PlayIcon,
   RotateCcwIcon,
 } from "lucide-react";
@@ -462,59 +461,30 @@ function RowAction({
     );
   }
 
-  // upcoming — the 3-step clinic workflow lives here as a per-row CTA:
-  //   - !calledAt → «Вызвать» (stamps calledAt + Telegram пациенту)
-  //   -  calledAt → «Начать приём» (with a small "Вызван" badge)
-  // Only the first upcoming row gets the bold primary style; everything
-  // else is outlined (still clickable — handy when the doctor wants to
-  // start out-of-order or call someone earlier than the queue suggests).
-  if (!entry.calledAt) {
-    return (
-      <button
-        type="button"
-        disabled={isPending}
-        onClick={onCall}
-        className={cn(
-          "motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60",
-          isNextUpcoming
-            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-            : "border border-border bg-background text-foreground hover:bg-muted",
-        )}
-      >
-        {isPending ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <MegaphoneIcon className="size-4" />
-        )}
-        {t("schedule.call")}
-      </button>
-    );
-  }
-
-  // After the call, «Начать приём» is intentionally outline-styled even
-  // on the next-upcoming row — visually distinct from the primary «Вызвать»
-  // it just replaced, so the doctor doesn't accidentally double-click into
-  // IN_PROGRESS while they're waiting on the patient.
+  // upcoming — calling the patient in *starts* their visit in a single click
+  // (server stamps calledAt, fires the patient Telegram, and flips straight to
+  // IN_PROGRESS). Only the first upcoming row gets the bold primary style;
+  // everything else is outlined but still clickable, so the doctor can start
+  // out-of-order when the next patient isn't ready.
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <span className="inline-flex items-center gap-1 rounded-full bg-violet/15 px-2 py-1 text-[11px] font-semibold text-violet">
-        <MegaphoneIcon className="size-3" />
-        {t("status.called")}
-      </span>
-      <button
-        type="button"
-        disabled={isPending}
-        onClick={() => onFire("IN_PROGRESS")}
-        className="motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
-      >
-        {isPending ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <PlayIcon className="size-4" />
-        )}
-        {t("schedule.startVisit")}
-      </button>
-    </div>
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={onCall}
+      className={cn(
+        "motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60",
+        isNextUpcoming
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "border border-border bg-background text-foreground hover:bg-muted",
+      )}
+    >
+      {isPending ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <PlayIcon className="size-4" />
+      )}
+      {t("schedule.startVisit")}
+    </button>
   );
 }
 

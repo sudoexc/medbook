@@ -9,7 +9,6 @@ import {
   ChevronRightIcon,
   ClockIcon,
   Loader2Icon,
-  MegaphoneIcon,
   MoreHorizontalIcon,
   PhoneIcon,
   PlayIcon,
@@ -37,8 +36,6 @@ import {
   type PatientTag,
 } from "../_hooks/use-doctor-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
-
-type MyDayTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
 
 const TAG_LABEL_KEY: Record<PatientTag, string> = {
   active: "tags.active",
@@ -76,13 +73,6 @@ function formatHHMM(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
-}
-
-/** "30 сек назад" / "2 мин назад" — only used by the «Вызван …» hint. */
-function formatCalledAgo(seconds: number, t: MyDayTranslate): string {
-  if (seconds < 60) return t("current.secondsAgo", { n: seconds });
-  const minutes = Math.floor(seconds / 60);
-  return t("current.minutesAgo", { n: minutes });
 }
 
 /** YYYY-MM-DD for today's local date — matches the schedule cache key. */
@@ -209,12 +199,12 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
 
   type StatusTarget = Parameters<typeof mutation.mutate>[0]["toStatus"];
 
-  // Three-step clinic workflow surfaced as one rotating primary CTA:
-  //   1. BOOKED/WAITING + !calledAt → «Вызвать пациента» (stamps calledAt
-  //      server-side + fires the patient-facing Telegram "проходите в
-  //      кабинет"; BOOKED gets bumped to WAITING in the same write)
-  //   2. BOOKED/WAITING +  calledAt → «Начать приём» (status → IN_PROGRESS)
-  //   3. IN_PROGRESS            → «Завершить приём» (status → COMPLETED)
+  // Two-step clinic workflow surfaced as one rotating primary CTA:
+  //   1. pre-visit   → «Начать приём» — the call branch stamps calledAt, fires
+  //      the patient Telegram "вас вызывают", and moves straight to
+  //      IN_PROGRESS in one write. Calling the patient in *is* starting the
+  //      visit; there is no separate "call then start" step.
+  //   2. IN_PROGRESS → «Завершить приём» (status → COMPLETED)
   type PrimaryAction =
     | { kind: "call" }
     | { kind: "status"; toStatus: StatusTarget };
@@ -229,18 +219,11 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
     Icon: typeof PlayIcon;
     action: PrimaryAction;
   } | null = (() => {
-    if (isPreVisit && !p.calledAt) {
-      return {
-        label: t("current.callPatient"),
-        Icon: MegaphoneIcon,
-        action: { kind: "call" },
-      };
-    }
-    if (isPreVisit && p.calledAt) {
+    if (isPreVisit) {
       return {
         label: t("current.startVisit"),
         Icon: PlayIcon,
-        action: { kind: "status", toStatus: "IN_PROGRESS" },
+        action: { kind: "call" },
       };
     }
     if (p.status === "IN_PROGRESS") {
@@ -274,13 +257,6 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
     if (primary.action.kind === "call") fireCall();
     else fire(primary.action.toStatus);
   };
-
-  // Seconds since the doctor pressed «Вызвать» — used for the small
-  // "Вызван N сек назад" hint. Recomputed every tick via the parent's
-  // 1Hz setTick.
-  const calledSecondsAgo = p.calledAt
-    ? Math.max(0, Math.floor((now - new Date(p.calledAt).getTime()) / 1000))
-    : null;
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
@@ -355,12 +331,6 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
             <ClockIcon className="size-3.5" />
             {timer.label}
           </div>
-          {calledSecondsAgo !== null && p.status !== "IN_PROGRESS" ? (
-            <div className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-violet/15 px-2.5 py-1 text-xs font-semibold text-violet">
-              <MegaphoneIcon className="size-3" />
-              {t("current.calledAgo", { ago: formatCalledAgo(calledSecondsAgo, t) })}
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -493,34 +463,6 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
-            ) : null}
-            {isPreVisit && p.calledAt ? (
-              <>
-                <DropdownMenuItem
-                  onSelect={() => fireCall()}
-                  className="gap-2"
-                >
-                  <MegaphoneIcon className="size-4" />
-                  {t("current.callAgain")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => fire("IN_PROGRESS")}
-                  className="gap-2"
-                >
-                  <PlayIcon className="size-4" />
-                  {t("current.startWithoutRecall")}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            ) : null}
-            {isPreVisit && !p.calledAt ? (
-              <DropdownMenuItem
-                onSelect={() => fire("IN_PROGRESS")}
-                className="gap-2"
-              >
-                <PlayIcon className="size-4" />
-                {t("current.startWithoutCall")}
-              </DropdownMenuItem>
             ) : null}
             {p.status === "BOOKED" || p.status === "CONFIRMED" ? (
               <DropdownMenuItem

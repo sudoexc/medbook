@@ -293,19 +293,33 @@ export const PATCH = createApiHandler(
         });
       }
 
-      const callData: Record<string, unknown> = {
-        calledAt: new Date(),
-      };
-      // CRM bookings are auto-CONFIRMED at creation, so the call must bump
-      // CONFIRMED too — otherwise the default booking never reaches WAITING
-      // when the doctor drives the flow. Both columns move together: the
-      // reception board reads `queueStatus`, the doctor surface reads `status`.
-      const bumpToWaiting =
-        fromStatus === "BOOKED" || fromStatus === "CONFIRMED";
-      if (bumpToWaiting) {
-        callData.status = "WAITING";
-        callData.queueStatus = "WAITING";
+      // One patient at a time: calling a patient in now *starts* their visit
+      // (calledAt + IN_PROGRESS in a single click), so it must obey the same
+      // single-active-visit rule as the forward path — a doctor can't pull a
+      // second patient onto the table until the current one is fully closed.
+      const active = await findOtherActiveVisit({
+        clinicId: ctx.clinicId,
+        doctorId: before.doctorId,
+        excludeAppointmentId: id,
+      });
+      if (active) {
+        return conflict("another_visit_in_progress", {
+          activeAppointmentId: active.id,
+          activePatientName: active.patientName,
+        });
       }
+
+      // «Вызвать» === «Начать приём»: stamp calledAt (still fires the patient
+      // Telegram "вас вызывают") and move straight into IN_PROGRESS so the
+      // doctor doesn't need a separate start click. Both status columns move
+      // together — reception reads `queueStatus`, the doctor surface `status`.
+      const calledAt = new Date();
+      const callData: Record<string, unknown> = {
+        calledAt,
+        status: "IN_PROGRESS",
+        queueStatus: "IN_PROGRESS",
+        startedAt: calledAt,
+      };
 
       const callCorrelationId = newCorrelationId();
       const updatedRow = await prisma.$transaction(async (tx) => {
@@ -338,25 +352,22 @@ export const PATCH = createApiHandler(
             },
           },
         });
-        // Only emit `statusChanged` when the bump actually flipped status —
-        // otherwise this is just a `calledAt` timestamp refresh and the
-        // queue lane is unchanged.
-        if (bumpToWaiting) {
-          const actorUserId = ctx.userId || null;
-          await emitAppointmentChangeViaOutbox({
-            tx,
-            kind: "statusChanged",
-            before,
-            after: row,
-            clinicId: ctx.clinicId,
-            actorId: actorUserId,
-            actorRole: "DOCTOR",
-            actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
-            surface: "DOCTOR_CABINET",
-            correlationId: callCorrelationId,
-            alsoQueueUpdate: row.queueStatus !== before.queueStatus,
-          });
-        }
+        // The call always flips status into IN_PROGRESS now, so always emit
+        // the `statusChanged` event (drives the queue board + doctor surface).
+        const actorUserId = ctx.userId || null;
+        await emitAppointmentChangeViaOutbox({
+          tx,
+          kind: "statusChanged",
+          before,
+          after: row,
+          clinicId: ctx.clinicId,
+          actorId: actorUserId,
+          actorRole: "DOCTOR",
+          actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+          surface: "DOCTOR_CABINET",
+          correlationId: callCorrelationId,
+          alsoQueueUpdate: row.queueStatus !== before.queueStatus,
+        });
         return row;
       });
 
@@ -384,7 +395,7 @@ export const PATCH = createApiHandler(
         meta: {
           doctorUserId: ctx.userId,
           previousStatus: fromStatus,
-          statusBumpedToWaiting: bumpToWaiting,
+          startedVisit: true,
           notificationSent,
           correlationId: callCorrelationId,
         },

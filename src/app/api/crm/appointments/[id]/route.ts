@@ -172,6 +172,23 @@ export const PATCH = createApiHandler(
           got: body.status,
         });
       }
+      // Reverting COMPLETED → IN_PROGRESS re-opens the visit, so it must obey
+      // the same single-active-visit rule as the forward "Начать приём" path —
+      // otherwise a doctor can complete one patient, start the next, then
+      // revert the first and end up with two visits live at once.
+      if (expected === "IN_PROGRESS") {
+        const active = await findOtherActiveVisit({
+          clinicId: ctx.clinicId,
+          doctorId: before.doctorId,
+          excludeAppointmentId: id,
+        });
+        if (active) {
+          return conflict("another_visit_in_progress", {
+            activeAppointmentId: active.id,
+            activePatientName: active.patientName,
+          });
+        }
+      }
       // Build a tight data set — revert only flips status and clears the
       // matching timestamp. We deliberately do NOT touch endDate / durationMin
       // (the COMPLETED branch may have shrunk them; restoring is best-effort

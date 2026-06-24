@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Home, MessageCircle, UserRound } from "lucide-react";
+import { CalendarDays, Home, UserRound } from "lucide-react";
 
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
@@ -233,59 +233,28 @@ export function MiniAppShell({
         {children}
       </main>
       {showTabBar ? (
-        <MiniAppTabBar
-          base={base}
-          pathname={pathname}
-          botUsername={clinic?.tgBotUsername ?? null}
-        />
+        <MiniAppTabBar base={base} pathname={pathname} />
       ) : null}
     </div>
   );
 }
 
-type TabIcon = React.ComponentType<{ className?: string; strokeWidth?: number }>;
-type TabItem = { label: string; icon: TabIcon } & (
-  | { href: string; exact?: boolean }
-  | { onClick: () => void }
-);
-
 function MiniAppTabBar({
   base,
   pathname,
-  botUsername,
 }: {
   base: string;
   pathname: string;
-  botUsername: string | null;
 }) {
   const t = useT();
   const tg = useTelegramWebApp();
-
-  // Chat is handled by the clinic's Telegram bot, not an in-app thread — the
-  // tab opens the bot chat so replies land where staff actually watch them.
-  const openBot = React.useCallback(() => {
-    tg.haptic.selection();
-    if (!botUsername) return;
-    const url = `https://t.me/${botUsername}`;
-    if (window.Telegram?.WebApp?.openTelegramLink) {
-      try {
-        window.Telegram.WebApp.openTelegramLink(url);
-        return;
-      } catch {
-        // fall through to a plain navigation
-      }
-    }
-    window.open(url, "_blank");
-  }, [tg, botUsername]);
-
-  const tabs: TabItem[] = [
+  const tabs = [
     { href: base, label: t.tabs.home, icon: Home, exact: true },
     {
       href: `${base}/appointments`,
       label: t.tabs.appointments,
       icon: CalendarDays,
     },
-    { onClick: openBot, label: t.tabs.chat, icon: MessageCircle },
     { href: `${base}/profile`, label: t.tabs.profile, icon: UserRound },
   ];
   return (
@@ -300,22 +269,22 @@ function MiniAppTabBar({
         paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)",
       }}
     >
-      <div className="mx-auto grid h-[3.75rem] max-w-[430px] grid-cols-4 px-2">
-        {tabs.map((tab) => {
-          const { label, icon: Icon } = tab;
-          const isLink = "href" in tab;
-          const active = isLink
-            ? tab.exact
-              ? pathname === tab.href
-              : pathname.startsWith(tab.href)
-            : false;
-          const className = "flex flex-col items-center justify-center gap-0.5";
-          const style: React.CSSProperties = {
-            color: active ? "var(--tg-accent)" : "var(--tg-hint)",
-            transition: "color .2s ease",
-          };
-          const inner = (
-            <>
+      <div className="mx-auto grid h-[3.75rem] max-w-[430px] grid-cols-3 px-2">
+        {tabs.map(({ href, label, icon: Icon, exact }) => {
+          const active = exact ? pathname === href : pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => {
+                if (!active) tg.haptic.selection();
+              }}
+              className="flex flex-col items-center justify-center gap-0.5"
+              style={{
+                color: active ? "var(--tg-accent)" : "var(--tg-hint)",
+                transition: "color .2s ease",
+              }}
+            >
               <span
                 className="flex h-7 w-12 items-center justify-center rounded-full"
                 style={{
@@ -333,33 +302,7 @@ function MiniAppTabBar({
               <span className="text-[10px] font-semibold leading-none">
                 {label}
               </span>
-            </>
-          );
-          if (isLink) {
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                onClick={() => {
-                  if (!active) tg.haptic.selection();
-                }}
-                className={className}
-                style={style}
-              >
-                {inner}
-              </Link>
-            );
-          }
-          return (
-            <button
-              key={label}
-              type="button"
-              onClick={tab.onClick}
-              className={className}
-              style={style}
-            >
-              {inner}
-            </button>
+            </Link>
           );
         })}
       </div>

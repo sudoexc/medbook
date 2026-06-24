@@ -16,7 +16,7 @@ import {
 } from "@/server/schemas/message";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
-import { sendMessage, sendPhoto } from "@/server/telegram/send";
+import { sendMessage, sendPhoto, sendDocumentUrl } from "@/server/telegram/send";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
 function conversationIdFromUrl(request: Request): string {
@@ -89,11 +89,20 @@ export const POST = createApiHandler(
     const senderId = ctx.kind === "TENANT" ? ctx.userId : null;
 
     const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    const imageCount = attachments.filter((a) => a.kind === "image").length;
+    const fileCount = attachments.length - imageCount;
+    const attachmentPreview = (): string => {
+      if (imageCount > 0 && fileCount === 0)
+        return imageCount === 1 ? "📷 Фото" : `📷 Фото: ${imageCount}`;
+      if (fileCount > 0 && imageCount === 0)
+        return fileCount === 1 ? "📎 Файл" : `📎 Файлы: ${fileCount}`;
+      return `📎 Вложения: ${attachments.length}`;
+    };
     const previewText =
       body.body && body.body.length > 0
         ? body.body
         : attachments.length > 0
-          ? `📷 ${attachments.length === 1 ? "Фото" : `${attachments.length} фото`}`
+          ? attachmentPreview()
           : "";
 
     const msg = await prisma.$transaction(async (tx) => {
@@ -155,23 +164,27 @@ export const POST = createApiHandler(
             ? u
             : `${publicBase}${u.startsWith("/") ? u : `/${u}`}`;
 
-        const imageAttachments = attachments.filter((a) => a.kind === "image");
-
         let lastResult: { message_id: number } | null = null;
-        if (imageAttachments.length > 0) {
-          for (let i = 0; i < imageAttachments.length; i++) {
-            const att = imageAttachments[i];
-            const isLast = i === imageAttachments.length - 1;
+        if (attachments.length > 0) {
+          // Caption rides on the first attachment; the inline keyboard on the
+          // last. Images → sendPhoto, everything else → sendDocument (by URL).
+          for (let i = 0; i < attachments.length; i++) {
+            const att = attachments[i];
+            const isLast = i === attachments.length - 1;
             const caption =
               i === 0 && body.body && body.body.length > 0 ? body.body : undefined;
             const opts = isLast ? replyMarkup : {};
-            const r = await sendPhoto(
-              conv.clinic,
-              conv.externalId,
-              absolute(att.url),
-              caption,
-              opts,
-            );
+            const url = absolute(att.url);
+            const r =
+              att.kind === "image"
+                ? await sendPhoto(conv.clinic, conv.externalId, url, caption, opts)
+                : await sendDocumentUrl(
+                    conv.clinic,
+                    conv.externalId,
+                    url,
+                    caption,
+                    opts,
+                  );
             if (r && typeof r === "object" && "message_id" in r) {
               lastResult = r as { message_id: number };
             }

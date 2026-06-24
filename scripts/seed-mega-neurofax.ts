@@ -208,7 +208,7 @@ async function main() {
 
   // ── 2. SEED patients ──────────────────────────────────────────────────────
   console.log("┌─ SEED patients");
-  const PATIENT_COUNT = 150;
+  const PATIENT_COUNT = 260;
   const segDistribution = [
     ...Array(10).fill("VIP"),
     ...Array(60).fill("ACTIVE"),
@@ -404,7 +404,7 @@ async function main() {
 
   // Past 30 days: ~25 appts/day
   for (let d = -30; d <= -1; d++) {
-    const apptCount = 15 + rand(15);
+    const apptCount = 24 + rand(16);
     for (let i = 0; i < apptCount; i++) {
       const patient = pick(patients);
       // CHURN рerely visit; NEW have none in past; VIP/ACTIVE most of the volume
@@ -421,7 +421,7 @@ async function main() {
   }
   // Today: ~30 appointments with live-feel statuses
   const currentHour = new Date().getHours();
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 52; i++) {
     const patient = pick(patients.filter((p) => p.segment !== "CHURN"));
     const apptHour = 9 + rand(9);
     const status: any =
@@ -433,7 +433,7 @@ async function main() {
   }
   // Future 14 days: ~20 appts/day
   for (let d = 1; d <= 14; d++) {
-    const apptCount = 15 + rand(10);
+    const apptCount = 22 + rand(12);
     for (let i = 0; i < apptCount; i++) {
       const patient = pick(patients.filter((p) => p.segment !== "CHURN"));
       await tryPlace({ patientId: patient.id, segment: patient.segment, dayOffset: d, statusBias: ["BOOKED"] });
@@ -512,7 +512,7 @@ async function main() {
         await prisma.appointment.update({ where: { id: la.id }, data: { medicalCaseId: c.id } });
       }
       caseN++;
-      if (caseN >= 90) break;
+      if (caseN >= 170) break;
     }
   }
   console.log(`  ✓ medical cases: +${caseN}\n`);
@@ -520,7 +520,7 @@ async function main() {
   // ── 8. Calls (~80) + Leads (~15) ──────────────────────────────────────────
   console.log("┌─ SEED calls + leads");
   let callN = 0;
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 170; i++) {
     const patient = chance(0.8) ? pick(patients) : null;
     const direction = pick(["IN", "OUT", "MISSED"] as const);
     const minutesAgo = rand(60 * 24 * 7);
@@ -552,7 +552,7 @@ async function main() {
     callN++;
   }
   let leadN = 0;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 40; i++) {
     const useUz = chance(0.7);
     const first = useUz ? pick(FIRST_MALE_UZ.concat(FIRST_FEM_UZ)) : pick(FIRST_MALE_RU.concat(FIRST_FEM_RU));
     const last = useUz ? pick(LAST_UZ) : pick(LAST_RU);
@@ -632,14 +632,14 @@ async function main() {
       });
       notifN++;
     }
-    if (notifN >= 320) break;
+    if (notifN >= 760) break;
   }
   console.log(`  ✓ notification sends: +${notifN}\n`);
 
   // ── 10. Actions for Action Center ────────────────────────────────────────
   console.log("┌─ SEED action center");
   let actionN = 0;
-  for (let i = 0; i < 35; i++) {
+  for (let i = 0; i < 70; i++) {
     const t = pick(ACTION_TYPES);
     const p = pick(patients);
     try {
@@ -664,7 +664,7 @@ async function main() {
   // ── 11. Documents (~50) ──────────────────────────────────────────────────
   console.log("┌─ SEED documents");
   let docN = 0;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 130; i++) {
     const a = pick(appointments.filter((x) => x.status === "COMPLETED"));
     if (!a) break;
     await prisma.document.create({
@@ -688,7 +688,7 @@ async function main() {
   // ── 12. Conversations + messages (~10) ────────────────────────────────────
   console.log("┌─ SEED conversations");
   let convN = 0, msgN = 0;
-  const vipPatients = patients.filter((p) => p.segment === "VIP" || p.segment === "ACTIVE").slice(0, 10);
+  const vipPatients = patients.filter((p) => p.segment === "VIP" || p.segment === "ACTIVE").slice(0, 30);
   for (const p of vipPatients) {
     const conv = await prisma.conversation.create({
       data: {
@@ -729,7 +729,7 @@ async function main() {
   // ── 13. PatientReviews (~25) ──────────────────────────────────────────────
   console.log("┌─ SEED reviews");
   let reviewN = 0;
-  for (const p of pickN(patients.filter((x) => x.segment !== "CHURN"), 25)) {
+  for (const p of pickN(patients.filter((x) => x.segment !== "CHURN"), 70)) {
     const score = chance(0.7) ? 10 : chance(0.7) ? 8 : 6;
     await prisma.patientReview.create({
       data: {

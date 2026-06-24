@@ -39,6 +39,10 @@ import {
 
 export const QUEUE_NAME = "notifications:scheduler";
 export const JOB_NAME = "tick";
+// Lightweight dispatch loop — same queue, distinct job key. Runs far more
+// often than the 60s materialisation tick so "send now" sends (broadcasts,
+// just-due reminders) leave within seconds instead of waiting up to a minute.
+export const DISPATCH_JOB = "dispatch";
 
 export type TickResult = {
   triggered: Awaited<ReturnType<typeof runScheduledTriggers>>;
@@ -299,10 +303,13 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
   return { created: toInsert.length, skipped };
 }
 
-async function tick(): Promise<void> {
-  const triggered = await runScheduledTriggers();
-  const dynamic = await runDynamicReminders();
-
+/**
+ * Pick QUEUED rows whose `scheduledFor` has elapsed and hand them to the
+ * send worker. Cheap, indexed query — safe to run on a tight interval. The
+ * send worker's `status !== "QUEUED"` guard makes a re-dispatch idempotent
+ * (a row flips to SENT well within one dispatch interval).
+ */
+async function dispatchDue(): Promise<number> {
   const now = new Date();
   const due = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.findMany({
@@ -314,20 +321,45 @@ async function tick(): Promise<void> {
   for (const s of due) {
     await enqueue(SEND_QUEUE, SEND_JOB, { sendId: s.id });
   }
+  return due.length;
+}
+
+async function dispatchTick(): Promise<void> {
+  const n = await dispatchDue();
+  if (n > 0) console.info(`[scheduler] fast-dispatch ${n}`);
+}
+
+async function tick(): Promise<void> {
+  const triggered = await runScheduledTriggers();
+  const dynamic = await runDynamicReminders();
+  const dispatched = await dispatchDue();
 
   console.info(
-    `[scheduler] tick ok triggered=${JSON.stringify(triggered)} dynamic=${JSON.stringify(dynamic)} dispatched=${due.length}`,
+    `[scheduler] tick ok triggered=${JSON.stringify(triggered)} dynamic=${JSON.stringify(dynamic)} dispatched=${dispatched}`,
   );
 }
 
 export function startNotificationsSchedulerWorker(
   intervalMs = 60_000,
+  dispatchIntervalMs = 5_000,
 ): { stop: () => void } {
   const q = getQueue();
   q.registerWorker(QUEUE_NAME, JOB_NAME, tick);
   const handle = q.repeat(QUEUE_NAME, JOB_NAME, {}, intervalMs);
-  console.info(`[worker] notifications-scheduler registered every ${intervalMs}ms`);
-  return handle;
+
+  // Fast dispatch loop — drains just-queued sends within seconds.
+  q.registerWorker(QUEUE_NAME, DISPATCH_JOB, dispatchTick);
+  const dispatchHandle = q.repeat(QUEUE_NAME, DISPATCH_JOB, {}, dispatchIntervalMs);
+
+  console.info(
+    `[worker] notifications-scheduler registered every ${intervalMs}ms (dispatch every ${dispatchIntervalMs}ms)`,
+  );
+  return {
+    stop: () => {
+      handle.stop();
+      dispatchHandle.stop();
+    },
+  };
 }
 
 export { tick as _tickForTests };

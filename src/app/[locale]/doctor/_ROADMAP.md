@@ -227,6 +227,23 @@ Right rail wires to existing `src/server/ai/llm.ts`:
 
 # Unpause readiness checklist (2026-05-30)
 
+> **⚠️ SUPERSEDED 2026-06-19 (пунч-лист Wave B).** Все блокеры P0/P1 ниже —
+> **закрыты в коде**, секция оставлена как исторический след аудита. Источник
+> правды по готовности — `docs/TZ-doctor-cabinet.md` §5 (DoD). Код-верификация
+> 2026-06-19, `tsc` + `i18n:check` зелёные. Ретракция протухших утверждений:
+> - «P0 fake data / MOCK_» → **закрыто**: `grep MOCK_` по `/doctor/**` — только в
+>   `_*.md`-доках, в исходниках чисто.
+> - «P0 security: createApiHandler has no TOTP check» → **неверно сейчас**:
+>   `enforceTotpEnrollment` (`src/lib/api-handler.ts:216,326,403`) → `MFA_REQUIRED`.
+> - «P1 audit: find-or-create never calls audit()» → **закрыто**: роут делегирует
+>   в кернел, аудит в `src/server/conversations/find-or-create.ts:161`
+>   (`AUDIT_ACTION.CONVERSATION_CREATED`).
+> - «P1 i18n: 66+ components raw Cyrillic» → **протухло**: `i18n:check` в парности
+>   (ru/uz), `doctor.*` namespace заполнен. Счётчик «66» больше не актуален.
+>
+> Остаётся только деплой-гейт: флип `DOCTOR_CABINET_ENABLED=1` (staging→smoke→прод) —
+> по явной команде, не в этом скоупе.
+
 > Doctor cabinet was paused 2026-05-18 (priority pivot) and gated off behind
 > `DOCTOR_CABINET_ENABLED=1` env in `src/app/[locale]/doctor/layout.tsx`.
 > Default-off layout redirect bounces all `/doctor/*` traffic to `/crm`. Before

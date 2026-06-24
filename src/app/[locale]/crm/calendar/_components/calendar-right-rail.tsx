@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 import { MoneyText } from "@/components/atoms/money-text";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
@@ -180,6 +182,7 @@ export function CalendarRightRail({
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-border bg-card/30 p-3">
       {/* AI recommendations */}
+      <InDevelopment active={!AI_ENABLED}>
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -237,6 +240,7 @@ export function CalendarRightRail({
           })}
         </ul>
       </section>
+      </InDevelopment>
 
       {/* Unconfirmed */}
       <section>

@@ -23,8 +23,8 @@ export function useDrugCatalog() {
       const j = (await res.json()) as Response;
       return j.rows;
     },
-    // Admin-managed reference data — rarely changes within a session, so don't
-    // refetch on every window focus.
+    // Admin-managed reference data, rarely changes within a session.
     staleTime: 10 * 60_000,
+    gcTime: 15 * 60_000,
   });
 }

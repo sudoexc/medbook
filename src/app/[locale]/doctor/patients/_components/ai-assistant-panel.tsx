@@ -12,6 +12,8 @@ import {
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 
 import { usePatientsFilters } from "../_hooks/patients-context";
 import {
@@ -79,6 +81,7 @@ export function AiAssistantPanel() {
   const total = items.reduce((sum, a) => sum + a.count, 0);
 
   return (
+    <InDevelopment active={!AI_ENABLED}>
     <section className="rounded-2xl border border-border bg-card px-5 py-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -169,5 +172,6 @@ export function AiAssistantPanel() {
         </ul>
       )}
     </section>
+    </InDevelopment>
   );
 }

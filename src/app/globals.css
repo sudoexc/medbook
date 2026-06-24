@@ -332,6 +332,18 @@
   animation: tg-row-pulse 2.5s ease-out;
 }
 
+/* TG inbox: right rail slides in from the edge when toggled open. */
+@keyframes tg-rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* TG inbox: when the operator clicks a topic chip in the right rail, the
    chat pane scrolls to the first matching message and pulses a soft yellow
    highlight around the bubble so the matched message is easy to spot. */

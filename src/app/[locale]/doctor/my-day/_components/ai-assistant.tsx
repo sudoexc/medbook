@@ -1,11 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import {
-  ChevronUpIcon,
-  SettingsIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { ChevronUpIcon, ClipboardListIcon } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -16,8 +12,7 @@ import {
 
 /**
  * No-AI-v1: alerts + recommendations are reserved for a future worker. This
- * card currently renders the numeric day summary (real counts) + the
- * placeholder ("AI-помощник готовится").
+ * card renders the numeric day summary (real counts).
  */
 export function AIAssistant() {
   const t = useTranslations("doctor.myDay");
@@ -29,36 +24,24 @@ export function AIAssistant() {
     <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet text-white">
-            <SparklesIcon className="size-3.5" />
+          <span className="flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <ClipboardListIcon className="size-3.5" />
           </span>
           <span className="text-[15px] font-semibold text-foreground">
-            {t("ai.title")}
+            {t("ai.summaryTitle")}
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label={t("ai.settingsAria")}
-            className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <SettingsIcon className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label={t("ai.collapseAria")}
-            className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ChevronUpIcon className="size-3.5" />
-          </button>
-        </div>
+        <button
+          type="button"
+          aria-label={t("ai.collapseAria")}
+          className="motion-press flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronUpIcon className="size-3.5" />
+        </button>
       </header>
 
       <div className="space-y-4 px-5 pb-4">
         <div>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("ai.summaryTitle")}
-          </div>
           {isLoading || !summary ? (
             <div className="space-y-1.5">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -90,18 +73,6 @@ export function AIAssistant() {
               />
             </dl>
           )}
-        </div>
-
-        <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-3.5 py-4 text-center">
-          <div className="mx-auto mb-1.5 flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <SparklesIcon className="size-4" />
-          </div>
-          <div className="text-xs font-semibold text-foreground">
-            {t("ai.comingSoon")}
-          </div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {t("ai.comingSoonHint")}
-          </div>
         </div>
       </div>
     </section>

@@ -11,12 +11,30 @@ import {
   FileTextIcon,
   PaperclipIcon,
   XIcon,
-  ImageIcon,
-  HeadsetIcon,
+  SmileIcon,
+  ZapIcon,
+  CalendarPlusIcon,
+  TagIcon,
+  PhoneIcon,
+  CheckIcon,
+  MessageCircleIcon,
+  MessageSquareTextIcon,
+  PencilIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
+
 import { cn } from "@/lib/utils";
+import {
+  CHAT_ACCEPT_ATTR,
+  CHAT_ALLOWED_MIME,
+  CHAT_MAX_ATTACHMENTS,
+  CHAT_MAX_BYTES,
+  chatAttachmentKind,
+  formatBytes,
+} from "@/lib/chat-attachments";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -32,8 +50,21 @@ import {
   useSendMessage,
   type ChatAttachment,
 } from "../_hooks/use-send-message";
-import { useTakeover } from "../_hooks/use-takeover";
-import { useComposerInsert } from "../_hooks/use-tg-events";
+import {
+  useComposerInsert,
+  dispatchOpenAppointment,
+} from "../_hooks/use-tg-events";
+import {
+  useCannedResponses,
+  useCreateCanned,
+  useUpdateCanned,
+  useDeleteCanned,
+  type CannedResponse,
+  type CannedLang,
+} from "../_hooks/use-canned";
+import { useClinicInfo } from "../_hooks/use-conversation-meta";
+import { fillPlaceholders, firstNameOf } from "../_lib/placeholders";
+import { FileTypeIcon } from "./file-icon";
 
 export interface MessageComposerProps {
   conversation: InboxConversation;
@@ -59,15 +90,6 @@ type LocalAttachment = {
   remote?: ChatAttachment;
   errorMessage?: string;
 };
-
-const ALLOWED_MIME = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
-const MAX_BYTES = 10 * 1024 * 1024;
-const MAX_ATTACHMENTS = 10;
 
 export function MessageComposer({ conversation }: MessageComposerProps) {
   const t = useTranslations("tgInbox.composer");
@@ -97,8 +119,6 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     });
   });
   const send = useSendMessage();
-  const takeover = useTakeover();
-  const isTakeover = conversation.mode === "takeover";
 
   React.useEffect(() => {
     return () => {
@@ -107,6 +127,14 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     // intentionally only on unmount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-grow the textarea up to a cap; beyond that it scrolls internally.
+  React.useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, [text]);
 
   const uploadingCount = attachments.filter(
     (a) => a.status === "uploading",
@@ -147,6 +175,7 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
         }
         const data = (await res.json()) as {
           url: string;
+          kind?: "image" | "file";
           mimeType: string;
           sizeBytes: number;
           name: string;
@@ -158,7 +187,7 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
                   ...a,
                   status: "ready",
                   remote: {
-                    kind: "image",
+                    kind: data.kind ?? chatAttachmentKind(data.mimeType),
                     url: data.url,
                     mimeType: data.mimeType,
                     sizeBytes: data.sizeBytes,
@@ -188,11 +217,11 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
       const accepted: { id: string; file: File; previewUrl: string }[] = [];
       let rejected = 0;
       for (const file of list) {
-        if (!ALLOWED_MIME.has(file.type)) {
+        if (!CHAT_ALLOWED_MIME.has(file.type)) {
           rejected += 1;
           continue;
         }
-        if (file.size > MAX_BYTES) {
+        if (file.size > CHAT_MAX_BYTES) {
           rejected += 1;
           continue;
         }
@@ -207,14 +236,14 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
       }
       if (accepted.length === 0) return;
       setAttachments((prev) => {
-        const remaining = MAX_ATTACHMENTS - prev.length;
+        const remaining = CHAT_MAX_ATTACHMENTS - prev.length;
         if (remaining <= 0) {
-          toast.error(t("upload.tooMany", { max: MAX_ATTACHMENTS }));
+          toast.error(t("upload.tooMany", { max: CHAT_MAX_ATTACHMENTS }));
           return prev;
         }
         const slice = accepted.slice(0, remaining);
         if (accepted.length > remaining) {
-          toast.error(t("upload.tooMany", { max: MAX_ATTACHMENTS }));
+          toast.error(t("upload.tooMany", { max: CHAT_MAX_ATTACHMENTS }));
         }
         const next: LocalAttachment[] = [
           ...prev,
@@ -262,10 +291,36 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     }
   };
 
-  const onPickTemplate = (tpl: Template) => {
-    const body = locale === "uz" ? tpl.bodyUz : tpl.bodyRu;
+  const appendText = React.useCallback((body: string) => {
     setText((prev) => (prev ? `${prev}\n${body}` : body));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+
+  const onPickTemplate = (tpl: Template) => {
+    appendText(locale === "uz" ? tpl.bodyUz : tpl.bodyRu);
   };
+
+  const insertEmoji = React.useCallback((emoji: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      setText((prev) => prev + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      const caret = start + emoji.length;
+      el.setSelectionRange(caret, caret);
+    });
+  }, []);
 
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
@@ -319,130 +374,155 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
       {isDragOver ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
           <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-card px-3 py-2 text-sm font-medium text-primary shadow-sm">
-            <ImageIcon className="size-4" />
+            <PaperclipIcon className="size-4" />
             {t("upload.dropHere")}
           </div>
         </div>
       ) : null}
 
-      {buttonRows.length > 0 ? (
-        <InlineButtonsEditor rows={buttonRows} onChange={setButtonRows} />
-      ) : null}
-
-      {attachments.length > 0 ? (
-        <div className="flex flex-wrap gap-2 border-b border-border bg-muted/20 p-3">
-          {attachments.map((a) => (
-            <div
-              key={a.id}
-              className="relative size-20 overflow-hidden rounded-md border border-border bg-background"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={a.previewUrl}
-                alt={a.file.name}
-                className={cn(
-                  "size-full object-cover",
-                  a.status !== "ready" && "opacity-60",
-                )}
-              />
-              {a.status === "uploading" ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/40">
-                  <Loader2Icon className="size-5 animate-spin text-foreground" />
-                </div>
-              ) : null}
-              {a.status === "error" ? (
-                <div
-                  className="absolute inset-0 flex items-center justify-center bg-destructive/30 text-[10px] font-semibold text-destructive-foreground"
-                  title={a.errorMessage}
-                >
-                  !
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => removeAttachment(a.id)}
-                className="absolute right-0.5 top-0.5 inline-flex size-5 items-center justify-center rounded-full bg-foreground/70 text-background transition-colors hover:bg-foreground"
-                aria-label={t("upload.remove")}
-              >
-                <XIcon className="size-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-muted/10 px-3 py-1.5">
-        <TemplatePicker onPick={onPickTemplate} />
-        <ToolbarChip
-          icon={<PaperclipIcon className="size-3.5" />}
-          label={t("upload.label")}
-          onClick={() => fileInputRef.current?.click()}
-          aria-label={t("upload.attach")}
-        />
-        <ToolbarChip
-          icon={<PlusIcon className="size-3.5" />}
-          label={t("inlineButtons.label")}
-          onClick={() =>
-            setButtonRows((prev) =>
-              prev.length === 0 ? [[{ text: "", callback_data: "" }]] : prev,
-            )
-          }
-          aria-label={t("inlineButtons.add")}
-        />
-        <span className="ml-auto" />
-        <ToolbarChip
-          icon={
-            takeover.isPending ? (
-              <Loader2Icon className="size-3.5 animate-spin" />
-            ) : (
-              <HeadsetIcon className="size-3.5" />
-            )
-          }
-          label={isTakeover ? t("transfer.toBot") : t("transfer.toOperator")}
-          onClick={() =>
-            takeover.mutate({
-              conversationId: conversation.id,
-              mode: isTakeover ? "bot" : "takeover",
-            })
-          }
-          variant={isTakeover ? "warning" : "primary"}
-          disabled={takeover.isPending}
-          aria-label={
-            isTakeover ? t("transfer.toBot") : t("transfer.toOperator")
-          }
-        />
-      </div>
-
-      <div className="flex items-end gap-2 p-3">
-        <Textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          placeholder={t("placeholder")}
-          className="min-h-[52px] max-h-[220px] flex-1 resize-y"
-          aria-label={t("textareaAria")}
-        />
-        <Button
-          type="button"
-          onClick={onSend}
-          disabled={!canSend}
-          aria-label={t("sendAria")}
-        >
-          {send.isPending || uploadingCount > 0 ? (
-            <Loader2Icon className="size-3 animate-spin" />
-          ) : (
-            <SendIcon className="size-3" />
+      <div className="p-2.5 sm:p-3">
+        <div
+          className={cn(
+            "overflow-hidden rounded-[20px] border border-border/70 bg-card shadow-sm",
+            "transition-[border-color,box-shadow] duration-[var(--motion-dur-base)] ease-out",
+            "focus-within:border-primary/40 focus-within:shadow-md focus-within:shadow-primary/5",
           )}
-          {t("send")}
-        </Button>
+        >
+          {buttonRows.length > 0 ? (
+            <InlineButtonsEditor rows={buttonRows} onChange={setButtonRows} />
+          ) : null}
+
+          {attachments.length > 0 ? (
+            <div className="flex flex-wrap gap-2 border-b border-border/60 bg-muted/20 p-3">
+              {attachments.map((a) => {
+                const isImage = a.file.type.startsWith("image/");
+                return (
+                  <div
+                    key={a.id}
+                    className={cn(
+                      "relative overflow-hidden rounded-xl border border-border/70 bg-background",
+                      isImage
+                        ? "size-20"
+                        : "flex h-16 w-52 items-center gap-2 p-2",
+                    )}
+                  >
+                    {isImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={a.previewUrl}
+                        alt={a.file.name}
+                        className={cn(
+                          "size-full object-cover",
+                          a.status !== "ready" && "opacity-60",
+                        )}
+                      />
+                    ) : (
+                      <>
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <FileTypeIcon nameOrExt={a.file.name} className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1 pr-4">
+                          <div
+                            className="truncate text-xs font-medium"
+                            title={a.file.name}
+                          >
+                            {a.file.name}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {formatBytes(a.file.size)}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    {a.status === "uploading" ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+                        <Loader2Icon className="size-5 animate-spin text-foreground" />
+                      </div>
+                    ) : null}
+                    {a.status === "error" ? (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center bg-destructive/30 text-[10px] font-semibold text-destructive-foreground"
+                        title={a.errorMessage}
+                      >
+                        !
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(a.id)}
+                      className="absolute right-0.5 top-0.5 inline-flex size-5 items-center justify-center rounded-full bg-foreground/70 text-background transition-colors hover:bg-foreground"
+                      aria-label={t("upload.remove")}
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <Textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            placeholder={t("placeholder")}
+            rows={1}
+            className="min-h-[46px] max-h-[180px] resize-none overflow-y-auto border-0 bg-transparent px-3.5 py-3 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+            aria-label={t("textareaAria")}
+          />
+
+          <div className="flex items-center gap-0.5 px-2 pb-2">
+            <QuickActions conversation={conversation} onInsert={appendText} />
+            <CannedPicker conversation={conversation} onInsert={appendText} />
+            <TemplatePicker onPick={onPickTemplate} />
+            <EmojiPicker onPick={insertEmoji} />
+            <IconAction
+              icon={<PaperclipIcon className="size-[18px]" />}
+              iconClassName="motion-safe:group-hover:-rotate-12"
+              label={t("upload.attach")}
+              onClick={() => fileInputRef.current?.click()}
+            />
+            <IconAction
+              icon={<PlusIcon className="size-[18px]" />}
+              iconClassName="motion-safe:group-hover:rotate-90"
+              label={t("inlineButtons.add")}
+              active={buttonRows.length > 0}
+              onClick={() =>
+                setButtonRows((prev) =>
+                  prev.length === 0 ? [[{ text: "", callback_data: "" }]] : prev,
+                )
+              }
+            />
+
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={!canSend}
+              aria-label={t("sendAria")}
+              className={cn(
+                "ml-auto inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm",
+                "transition-[transform,background-color,box-shadow,opacity] duration-[var(--motion-dur-fast)] ease-out",
+                "hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 motion-safe:hover:-translate-y-px active:translate-y-0 active:scale-95",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                "disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none",
+              )}
+            >
+              {send.isPending || uploadingCount > 0 ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <SendIcon className="size-4 -translate-x-px" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept={CHAT_ACCEPT_ATTR}
         multiple
         className="hidden"
         onChange={(e) => {
@@ -454,41 +534,234 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
   );
 }
 
-function ToolbarChip({
+type IconActionProps = Omit<
+  React.ComponentPropsWithoutRef<"button">,
+  "onClick"
+> & {
+  icon: React.ReactNode;
+  label: string;
+  onClick?: () => void;
+  variant?: "default" | "primary";
+  active?: boolean;
+  iconClassName?: string;
+};
+
+/** Icon-only round affordance for the composer action bar (messenger style). */
+const IconAction = React.forwardRef<HTMLButtonElement, IconActionProps>(
+  function IconAction(
+    { icon, label, onClick, disabled, variant = "default", active, iconClassName, className, ...rest },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={label}
+        aria-label={label}
+        className={cn(
+          "group inline-flex size-9 items-center justify-center rounded-full text-muted-foreground",
+          "transition-[transform,background-color,color,box-shadow] duration-[var(--motion-dur-fast)] ease-out",
+          "hover:bg-muted hover:text-foreground motion-safe:hover:-translate-y-px active:translate-y-0 active:scale-95",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-1 focus-visible:ring-offset-card",
+          variant === "primary" && "text-primary hover:bg-primary/10 hover:text-primary",
+          active && "bg-primary/10 text-primary",
+          "disabled:pointer-events-none disabled:opacity-40",
+          className,
+        )}
+        {...rest}
+      >
+        <span
+          className={cn(
+            "inline-flex items-center transition-transform duration-[var(--motion-dur-base)] ease-out motion-safe:group-hover:scale-110 motion-safe:group-active:scale-90",
+            iconClassName,
+          )}
+        >
+          {icon}
+        </span>
+      </button>
+    );
+  },
+);
+
+function QuickActions({
+  conversation,
+  onInsert,
+}: {
+  conversation: InboxConversation;
+  onInsert: (text: string) => void;
+}) {
+  const t = useTranslations("tgInbox.composer.quick");
+  const [open, setOpen] = React.useState(false);
+  const callable = conversation.patient?.phone
+    ? conversation.patient.phone.replace(/\s/g, "")
+    : null;
+
+  const close = () => setOpen(false);
+
+  const onBook = () => {
+    if (!conversation.patientId) {
+      toast.error(t("needPatient"));
+      close();
+      return;
+    }
+    dispatchOpenAppointment({ conversationId: conversation.id });
+    close();
+  };
+
+  const insert = (text: string) => {
+    onInsert(text);
+    close();
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <IconAction
+          variant="primary"
+          icon={<ZapIcon className="size-[18px]" />}
+          iconClassName={cn(
+            "motion-safe:group-hover:rotate-[-8deg]",
+            open && "motion-safe:scale-110",
+          )}
+          label={t("label")}
+          active={open}
+          aria-expanded={open}
+        />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[300px] p-2">
+        <div className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("title")}
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <QuickCard
+            icon={<CalendarPlusIcon className="size-4" />}
+            label={t("book")}
+            onClick={onBook}
+          />
+          {callable ? (
+            <QuickCard
+              icon={<PhoneIcon className="size-4" />}
+              label={t("call")}
+              href={`tel:${callable}`}
+              onNavigate={close}
+            />
+          ) : (
+            <QuickCard
+              icon={<PhoneIcon className="size-4" />}
+              label={t("call")}
+              disabled
+            />
+          )}
+          <QuickCard
+            icon={<TagIcon className="size-4" />}
+            label={t("price")}
+            onClick={() => insert(t("priceText"))}
+          />
+          <QuickCard
+            icon={<CheckIcon className="size-4" />}
+            label={t("confirm")}
+            onClick={() => insert(t("confirmText"))}
+          />
+          <QuickCard
+            icon={<MessageCircleIcon className="size-4" />}
+            label={t("askPhone")}
+            onClick={() => insert(t("askPhoneText"))}
+            className="col-span-2"
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function QuickCard({
   icon,
   label,
   onClick,
+  href,
+  onNavigate,
   disabled,
-  variant = "default",
-  "aria-label": ariaLabel,
+  className,
 }: {
   icon: React.ReactNode;
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
+  href?: string;
+  onNavigate?: () => void;
   disabled?: boolean;
-  variant?: "default" | "primary" | "warning";
-  "aria-label"?: string;
+  className?: string;
 }) {
+  const base =
+    "motion-hover-lift motion-press group flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2 text-left text-[12px] font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 disabled:pointer-events-none";
+  const inner = (
+    <>
+      <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-[transform,background-color] duration-[var(--motion-dur-base)] ease-out motion-safe:group-hover:scale-110 group-hover:bg-primary/15">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 leading-tight">{label}</span>
+    </>
+  );
+  if (href) {
+    return (
+      <a href={href} onClick={onNavigate} className={cn(base, className)}>
+        {inner}
+      </a>
+    );
+  }
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={ariaLabel}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors",
-        variant === "default" &&
-          "border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
-        variant === "primary" &&
-          "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15",
-        variant === "warning" &&
-          "border-warning/40 bg-warning/10 text-[color:var(--warning)] hover:bg-warning/15",
+        base,
         "disabled:cursor-not-allowed disabled:opacity-50",
+        className,
       )}
     >
-      <span className="inline-flex items-center">{icon}</span>
-      <span>{label}</span>
+      {inner}
     </button>
+  );
+}
+
+const EMOJIS = [
+  "👍", "🙏", "😊", "🤝", "✅", "❤️", "🎉", "👏",
+  "💪", "🙌", "😉", "🤗", "👌", "🔥", "⭐", "💯",
+  "✨", "🫶", "🙂", "😇", "🤔", "👋", "📋", "📅",
+  "⏰", "📞", "📍", "💊", "🩺", "🏥", "💉", "🧪",
+];
+
+function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
+  const t = useTranslations("tgInbox.composer");
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <IconAction
+          icon={<SmileIcon className="size-[18px]" />}
+          iconClassName="motion-safe:group-hover:rotate-12"
+          label={t("emoji.label")}
+          active={open}
+          aria-expanded={open}
+        />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[280px] p-2">
+        <div className="grid grid-cols-8 gap-0.5">
+          {EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => onPick(emoji)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-lg leading-none transition-[transform,background-color] duration-[var(--motion-dur-fast)] ease-out hover:bg-muted motion-safe:hover:scale-125 active:scale-95"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -514,14 +787,12 @@ function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={t("template.label")}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[12px] font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-        >
-          <FileTextIcon className="size-3.5" />
-          {t("template.label")}
-        </button>
+        <IconAction
+          icon={<FileTextIcon className="size-[18px]" />}
+          label={t("template.label")}
+          active={open}
+          aria-expanded={open}
+        />
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-0" align="start">
         <div className="border-b border-border px-3 py-2 text-xs font-semibold">
@@ -563,6 +834,281 @@ function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
         </ScrollArea>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function CannedPicker({
+  conversation,
+  onInsert,
+}: {
+  conversation: InboxConversation;
+  onInsert: (text: string) => void;
+}) {
+  const t = useTranslations("tgInbox.composer.canned");
+  const locale = useLocale();
+  const role = useCurrentRole();
+  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+  const [open, setOpen] = React.useState(false);
+  const [lang, setLang] = React.useState<CannedLang>(
+    locale === "uz" ? "UZ" : "RU",
+  );
+  const [manage, setManage] = React.useState(false);
+
+  const listQ = useCannedResponses(open);
+  const clinicQ = useClinicInfo(open);
+
+  const items = React.useMemo(
+    () => (listQ.data?.rows ?? []).filter((c) => c.lang === lang),
+    [listQ.data, lang],
+  );
+
+  const onPick = (c: CannedResponse) => {
+    const name = conversation.patient?.fullName ?? "";
+    const clinic = clinicQ.data;
+    const filled = fillPlaceholders(c.body, {
+      firstName: firstNameOf(name),
+      name,
+      clinic: clinic ? (c.lang === "UZ" ? clinic.nameUz : clinic.nameRu) : "",
+      phone: clinic?.phone ?? "",
+      address: clinic
+        ? (c.lang === "UZ" ? clinic.addressUz : clinic.addressRu) ?? ""
+        : "",
+    });
+    onInsert(filled);
+    setOpen(false);
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setManage(false);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <IconAction
+          icon={<MessageSquareTextIcon className="size-[18px]" />}
+          label={t("label")}
+          active={open}
+          aria-expanded={open}
+        />
+      </PopoverTrigger>
+      <PopoverContent className="w-[340px] p-0" align="start">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+          <span className="text-xs font-semibold">{t("title")}</span>
+          <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+              {(["RU", "UZ"] as CannedLang[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setLang(l)}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
+                    lang === l
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            {isAdmin ? (
+              <Button
+                variant={manage ? "secondary" : "ghost"}
+                size="icon-xs"
+                onClick={() => setManage((v) => !v)}
+                aria-label={t("manage")}
+                title={t("manage")}
+              >
+                <PencilIcon className="size-3.5" />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {manage ? (
+          <CannedManager lang={lang} items={items} isLoading={listQ.isLoading} />
+        ) : (
+          <ScrollArea className="max-h-[320px]">
+            {listQ.isLoading ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                <Loader2Icon className="mx-auto size-4 animate-spin" />
+              </div>
+            ) : items.length === 0 ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                {t("empty")}
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {items.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => onPick(c)}
+                      className="block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted"
+                    >
+                      <div className="font-medium">{c.title}</div>
+                      <div className="line-clamp-2 text-muted-foreground">
+                        {c.body}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CannedManager({
+  lang,
+  items,
+  isLoading,
+}: {
+  lang: CannedLang;
+  items: CannedResponse[];
+  isLoading: boolean;
+}) {
+  const t = useTranslations("tgInbox.composer.canned");
+  const create = useCreateCanned();
+  const update = useUpdateCanned();
+  const del = useDeleteCanned();
+
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [title, setTitle] = React.useState("");
+  const [body, setBody] = React.useState("");
+
+  const reset = () => {
+    setEditingId(null);
+    setTitle("");
+    setBody("");
+  };
+
+  const startEdit = (c: CannedResponse) => {
+    setEditingId(c.id);
+    setTitle(c.title);
+    setBody(c.body);
+  };
+
+  const canSave = title.trim().length > 0 && body.trim().length > 0;
+  const isSaving = create.isPending || update.isPending;
+
+  const onSave = async () => {
+    if (!canSave) return;
+    try {
+      if (editingId) {
+        await update.mutateAsync({ id: editingId, title: title.trim(), body: body.trim() });
+        toast.success(t("saved"));
+      } else {
+        await create.mutateAsync({ title: title.trim(), body: body.trim(), lang });
+        toast.success(t("created"));
+      }
+      reset();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("saveError"));
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    try {
+      await del.mutateAsync(id);
+      if (editingId === id) reset();
+      toast.success(t("deleted"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("saveError"));
+    }
+  };
+
+  return (
+    <div className="flex flex-col">
+      <div className="space-y-1.5 border-b border-border bg-muted/20 p-2.5">
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={t("titlePlaceholder")}
+          className="h-8 text-xs"
+          aria-label={t("titlePlaceholder")}
+        />
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder={t("bodyPlaceholder")}
+          rows={3}
+          className="min-h-[60px] resize-none text-xs"
+          aria-label={t("bodyPlaceholder")}
+        />
+        <div className="flex items-center justify-end gap-1.5">
+          {editingId ? (
+            <Button variant="ghost" size="xs" onClick={reset} disabled={isSaving}>
+              {t("cancel")}
+            </Button>
+          ) : null}
+          <Button size="xs" onClick={onSave} disabled={!canSave || isSaving}>
+            {isSaving ? (
+              <Loader2Icon className="size-3 animate-spin" />
+            ) : editingId ? (
+              <CheckIcon className="size-3" />
+            ) : (
+              <PlusIcon className="size-3" />
+            )}
+            {editingId ? t("save") : t("add")}
+          </Button>
+        </div>
+      </div>
+      <ScrollArea className="max-h-[220px]">
+        {isLoading ? (
+          <div className="p-4 text-center text-xs text-muted-foreground">
+            <Loader2Icon className="mx-auto size-4 animate-spin" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="p-4 text-center text-xs text-muted-foreground">
+            {t("empty")}
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {items.map((c) => (
+              <li
+                key={c.id}
+                className={cn(
+                  "flex items-start gap-1.5 px-2.5 py-2",
+                  editingId === c.id && "bg-primary/5",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium">{c.title}</div>
+                  <div className="line-clamp-1 text-[11px] text-muted-foreground">
+                    {c.body}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => startEdit(c)}
+                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={t("edit")}
+                >
+                  <PencilIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(c.id)}
+                  disabled={del.isPending}
+                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                  aria-label={t("delete")}
+                >
+                  <Trash2Icon className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ScrollArea>
+    </div>
   );
 }
 

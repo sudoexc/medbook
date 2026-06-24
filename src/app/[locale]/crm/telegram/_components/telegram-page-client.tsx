@@ -6,7 +6,7 @@ import { Link } from "@/i18n/navigation";
 
 import { EmptyState } from "@/components/atoms/empty-state";
 import { Button } from "@/components/ui/button";
-import { SendIcon, SettingsIcon } from "lucide-react";
+import { SendIcon, SettingsIcon, HistoryIcon } from "lucide-react";
 
 import {
   useConversations,
@@ -14,10 +14,18 @@ import {
   useSelectedConversationId,
   flattenConversations,
 } from "../_hooks/use-conversations";
+import type {
+  BroadcastHistoryItem,
+  BroadcastSegment,
+} from "../_hooks/use-broadcast";
 import { useTgInboxAlerts } from "../_hooks/use-tg-inbox-alerts";
 import { ConversationList } from "./conversation-list";
 import { ChatPane } from "./chat-pane";
 import { ChatRightRail } from "./chat-right-rail";
+import { AutoMessagesDialog } from "./auto-messages-dialog";
+import { BroadcastDialog } from "./broadcast-dialog";
+import { BroadcastHistory } from "./broadcast-history";
+import { TelegramStatsBar } from "./telegram-stats-bar";
 
 /**
  * 3-column Telegram inbox layout.
@@ -30,12 +38,29 @@ import { ChatRightRail } from "./chat-right-rail";
  */
 export function TelegramPageClient({
   botConfigured,
+  canManageAutoMessages = false,
+  canBroadcast = false,
 }: {
   botConfigured: boolean;
+  canManageAutoMessages?: boolean;
+  canBroadcast?: boolean;
 }) {
   const t = useTranslations("tgInbox");
   const { filters, setFilters } = useConversationsFilters();
   const [selectedId, setSelectedId] = useSelectedConversationId();
+  const [railOpen, setRailOpen] = React.useState(true);
+  const [composeOpen, setComposeOpen] = React.useState(false);
+  const [composePrefill, setComposePrefill] = React.useState<{
+    segment: BroadcastSegment;
+    body: string;
+  } | null>(null);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+
+  const onRepeatBroadcast = React.useCallback((item: BroadcastHistoryItem) => {
+    setComposePrefill({ segment: item.segment, body: item.body ?? "" });
+    setHistoryOpen(false);
+    setComposeOpen(true);
+  }, []);
   const { pulsedIds } = useTgInboxAlerts({
     activeId: selectedId,
     onSelect: setSelectedId,
@@ -90,12 +115,43 @@ export function TelegramPageClient({
         />
       </div>
 
-      {/* Desktop 3-column inbox */}
-      <div className="hidden min-h-0 flex-1 xl:flex">
+      {/* Desktop: overview bar + 3-column inbox */}
+      <div className="hidden min-h-0 flex-1 flex-col xl:flex">
+        <TelegramStatsBar />
+        <div className="flex min-h-0 flex-1">
         <aside
-          className="flex w-[320px] shrink-0 flex-col border-r border-border bg-card"
+          className="flex w-[320px] shrink-0 flex-col border-r border-border/60 bg-card"
           aria-label={t("list.ariaLabel")}
         >
+          {canBroadcast || canManageAutoMessages ? (
+            <div className="space-y-1 border-b border-border/60 p-2">
+              {canBroadcast ? (
+                <>
+                  <Button
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setComposePrefill(null);
+                      setComposeOpen(true);
+                    }}
+                  >
+                    <SendIcon aria-hidden />
+                    {t("broadcast.trigger")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setHistoryOpen(true)}
+                  >
+                    <HistoryIcon aria-hidden />
+                    {t("broadcastHistory.trigger")}
+                  </Button>
+                </>
+              ) : null}
+              {canManageAutoMessages ? <AutoMessagesDialog /> : null}
+            </div>
+          ) : null}
           <ConversationList
             rows={rows}
             selectedId={selectedId}
@@ -117,16 +173,38 @@ export function TelegramPageClient({
           className="flex min-w-0 flex-1 flex-col bg-background"
           aria-label={t("chat.ariaLabel")}
         >
-          <ChatPane conversation={selected} />
+          <ChatPane
+            conversation={selected}
+            railOpen={railOpen}
+            onToggleRail={() => setRailOpen((v) => !v)}
+          />
         </section>
 
-        <aside
-          className="flex w-[340px] shrink-0 flex-col border-l border-border bg-card"
-          aria-label={t("rail.ariaLabel")}
-        >
-          <ChatRightRail conversation={selected} />
-        </aside>
+        {railOpen ? (
+          <aside
+            className="flex w-[340px] shrink-0 flex-col border-l border-border/60 bg-card motion-safe:animate-[tg-rail-in_var(--motion-dur-base)_var(--motion-ease-out)]"
+            aria-label={t("rail.ariaLabel")}
+          >
+            <ChatRightRail conversation={selected} />
+          </aside>
+        ) : null}
+        </div>
       </div>
+
+      {canBroadcast ? (
+        <>
+          <BroadcastDialog
+            open={composeOpen}
+            onOpenChange={setComposeOpen}
+            prefill={composePrefill}
+          />
+          <BroadcastHistory
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+            onRepeat={onRepeatBroadcast}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

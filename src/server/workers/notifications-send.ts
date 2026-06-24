@@ -37,6 +37,21 @@ const BACKOFF_MS = [60_000, 300_000, 1_800_000];
 
 export type DeliverJob = { sendId: string };
 
+/**
+ * Telegram hard-fail errors that mean the patient can no longer receive the
+ * bot's messages — they blocked it, deleted their account, or the chat is gone.
+ * Used as a fallback block signal for patients whose `my_chat_member` update we
+ * never saw (e.g. blocks predating Layer 2).
+ */
+function isTgBlockedError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("bot was blocked") ||
+    m.includes("user is deactivated") ||
+    m.includes("chat not found")
+  );
+}
+
 async function deliver(job: DeliverJob): Promise<void> {
   const send = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.findUnique({
@@ -105,6 +120,7 @@ async function deliver(job: DeliverJob): Promise<void> {
             patientId: send.patientId ?? null,
             channel: "INAPP",
             templateKey: send.template?.key ?? null,
+            campaignId: send.campaignId ?? null,
           },
           outcome: {
             kind: "delivered",
@@ -190,6 +206,7 @@ async function deliver(job: DeliverJob): Promise<void> {
           patientId: send.patientId ?? null,
           channel: send.channel as "TG",
           templateKey: send.template?.key ?? null,
+          campaignId: send.campaignId ?? null,
         },
         outcome: {
           kind: "sent",
@@ -200,6 +217,24 @@ async function deliver(job: DeliverJob): Promise<void> {
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+
+    // Fallback block tracking — if Telegram says the bot is blocked, stamp the
+    // patient so reachability counters and broadcast audience drop them even
+    // when no `my_chat_member` update arrived. Best-effort; guarded so it only
+    // writes once. Scoped by clinicId because SYSTEM ctx disables auto-scoping.
+    if (send.channel === "TG" && send.patientId && isTgBlockedError(message)) {
+      try {
+        await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.patient.updateMany({
+            where: { id: send.patientId!, clinicId: send.clinicId, tgBlockedAt: null },
+            data: { tgBlockedAt: new Date() },
+          }),
+        );
+      } catch {
+        // Ignore — delivery bookkeeping below remains the source of truth.
+      }
+    }
+
     const nextAttempt = send.retryCount + 1;
     if (nextAttempt >= MAX_ATTEMPTS) {
       await runWithTenant({ kind: "SYSTEM" }, () =>
@@ -210,6 +245,7 @@ async function deliver(job: DeliverJob): Promise<void> {
             patientId: send.patientId ?? null,
             channel: send.channel as "TG",
             templateKey: send.template?.key ?? null,
+            campaignId: send.campaignId ?? null,
           },
           outcome: {
             kind: "failed",

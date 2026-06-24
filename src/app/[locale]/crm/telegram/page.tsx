@@ -39,5 +39,13 @@ export default async function TelegramInboxPage() {
     botConfigured = Boolean(clinic?.tgBotToken);
   }
 
-  return <TelegramPageClient botConfigured={botConfigured} />;
+  const isAdmin = session?.user?.role === "ADMIN";
+
+  return (
+    <TelegramPageClient
+      botConfigured={botConfigured}
+      canManageAutoMessages={isAdmin}
+      canBroadcast={isAdmin}
+    />
+  );
 }

@@ -20,7 +20,13 @@ export const GET = createApiListHandler(
     if (q.channel) where.channel = q.channel;
     if (q.status) where.status = q.status;
     if (q.mode) where.mode = q.mode;
-    if (q.assignedToId) where.assignedToId = q.assignedToId;
+    // `assignedToId=me` is the "Мои" inbox filter — resolve it to the caller's
+    // user id server-side (the client has no session id to pass).
+    if (q.assignedToId === "me") {
+      where.assignedToId = ctx.kind === "TENANT" ? ctx.userId : "__none__";
+    } else if (q.assignedToId) {
+      where.assignedToId = q.assignedToId;
+    }
     if (q.patientId) where.patientId = q.patientId;
     if (q.unread) where.unreadCount = { gt: 0 };
 
@@ -82,7 +88,15 @@ export const GET = createApiListHandler(
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
-        patient: { select: { id: true, fullName: true, phone: true, photoUrl: true } },
+        patient: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            photoUrl: true,
+            tgBlockedAt: true,
+          },
+        },
         assignedTo: { select: { id: true, name: true } },
       },
     });

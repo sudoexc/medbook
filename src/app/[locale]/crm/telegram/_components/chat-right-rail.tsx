@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ActivityIcon,
   BadgeCheckIcon,
   CalendarPlusIcon,
   ChevronRightIcon,
@@ -18,8 +19,10 @@ import {
   PlusIcon,
   SendIcon,
   SparklesIcon,
+  TagIcon,
   UserIcon,
   UserPlusIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,11 +43,13 @@ import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDi
 
 import type { InboxConversation, InboxMessage } from "../_hooks/types";
 import { conversationsKey } from "../_hooks/use-conversations";
+import { useUpdateConversationMeta } from "../_hooks/use-conversation-meta";
 import { flattenMessages, useTgMessages } from "../_hooks/use-tg-messages";
 import { useMarkConversationRead } from "../_hooks/use-mark-read";
 import {
   dispatchChatFind,
   dispatchComposerInsert,
+  useOpenAppointment,
 } from "../_hooks/use-tg-events";
 
 export interface ChatRightRailProps {
@@ -63,6 +68,60 @@ type PatientDetails = {
   isVerified?: boolean;
 };
 
+/** Server-side clinical KPIs from /api/crm/patients/[id]/stats. */
+type PatientClinicalStats = {
+  segment: string | null;
+  visitsCount: number;
+  lastVisitAt: string | null;
+  birthDate: string | null;
+  noShowCount: number;
+  totalAppointments: number;
+  noShowPct: number;
+  avgCheck: number;
+};
+
+const KNOWN_SEGMENTS = new Set(["NEW", "ACTIVE", "DORMANT", "VIP", "CHURN"]);
+
+function segmentTone(segment: string): string {
+  switch (segment) {
+    case "VIP":
+      return "bg-info/15 text-[color:var(--info)]";
+    case "ACTIVE":
+      return "bg-success/15 text-[color:var(--success)]";
+    case "DORMANT":
+      return "bg-warning/15 text-[color:var(--warning)]";
+    case "CHURN":
+      return "bg-destructive/15 text-destructive";
+    default:
+      return "bg-primary/10 text-primary";
+  }
+}
+
+function ageFromBirth(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const d = new Date(birthDate);
+  if (!Number.isFinite(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age;
+}
+
+function relativeVisit(at: string | null, locale: string): string | null {
+  if (!at) return null;
+  const then = new Date(at).getTime();
+  if (!Number.isFinite(then)) return null;
+  const diffDays = Math.round((Date.now() - then) / (24 * 60 * 60 * 1000));
+  const rtf = new Intl.RelativeTimeFormat(locale === "uz" ? "uz" : "ru", {
+    numeric: "auto",
+  });
+  if (diffDays < 30) return rtf.format(-diffDays, "day");
+  const months = Math.round(diffDays / 30);
+  if (months < 12) return rtf.format(-months, "month");
+  return rtf.format(-Math.round(diffDays / 365), "year");
+}
+
 export function ChatRightRail({ conversation }: ChatRightRailProps) {
   const t = useTranslations("tgInbox.rail");
 
@@ -80,8 +139,9 @@ export function ChatRightRail({ conversation }: ChatRightRailProps) {
 
   if (!conversation.patientId) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         <CreatePatientForm conversation={conversation} />
+        <TagsCard conversation={conversation} />
       </div>
     );
   }
@@ -93,6 +153,9 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
   const t = useTranslations("tgInbox.rail");
   const locale = useLocale();
   const [dialogOpen, setDialogOpen] = React.useState(false);
+
+  // The composer's "Записать на приём" quick action opens this same dialog.
+  useOpenAppointment(conversation.id, () => setDialogOpen(true));
 
   const detailsQuery = useQuery<PatientDetails>({
     queryKey: ["patient-mini", conversation.patientId],
@@ -108,6 +171,20 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
     staleTime: 30_000,
   });
 
+  const statsQuery = useQuery<PatientClinicalStats>({
+    queryKey: ["patient-clinical-stats", conversation.patientId],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(
+        `/api/crm/patients/${conversation.patientId}/stats`,
+        { credentials: "include", signal },
+      );
+      if (!res.ok) throw new Error(`Load failed: ${res.status}`);
+      return (await res.json()) as PatientClinicalStats;
+    },
+    enabled: Boolean(conversation.patientId),
+    staleTime: 60_000,
+  });
+
   const messagesQuery = useTgMessages(conversation.id);
   const messages = React.useMemo(
     () => flattenMessages(messagesQuery.data?.pages),
@@ -115,6 +192,9 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
   );
 
   const p = detailsQuery.data;
+  const stats = statsQuery.data;
+  const age = ageFromBirth(stats?.birthDate ?? null);
+  const segment = stats?.segment ?? p?.segment ?? null;
   const displayName =
     p?.fullName ?? conversation.patient?.fullName ?? t("anonymous");
   const phone = p?.phone ?? conversation.patient?.phone ?? null;
@@ -133,6 +213,8 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         externalId={conversation.externalId}
         username={conversation.contactUsername}
         isVerified={Boolean(p?.isVerified)}
+        segment={segment}
+        age={age}
         isLoading={detailsQuery.isLoading}
       />
 
@@ -143,12 +225,20 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         patientId={patientId}
       />
 
+      <ClinicalStatsCard
+        stats={stats}
+        isLoading={statsQuery.isLoading}
+        locale={locale}
+      />
+
       <QuickActionsRow
         phone={phone}
         patientId={patientId}
         locale={locale}
         onBook={() => setDialogOpen(true)}
       />
+
+      <TagsCard conversation={conversation} />
 
       <AiAssistantCard
         messages={messages}
@@ -185,6 +275,8 @@ function PatientIdentityCard({
   externalId,
   username,
   isVerified,
+  segment,
+  age,
   isLoading,
 }: {
   name: string;
@@ -193,9 +285,15 @@ function PatientIdentityCard({
   externalId: string | null;
   username: string | null;
   isVerified: boolean;
+  segment: string | null;
+  age: number | null;
   isLoading: boolean;
 }) {
   const t = useTranslations("tgInbox.rail");
+  const segmentLabel =
+    segment && KNOWN_SEGMENTS.has(segment)
+      ? t(`segmentLabels.${segment}`)
+      : null;
   const copyPhone = async () => {
     if (!phone) return;
     try {
@@ -216,7 +314,7 @@ function PatientIdentityCard({
             <BadgeCheckIcon className="size-4 text-primary" aria-label={t("verified")} />
           ) : null}
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
           {externalId ? (
             <span className="inline-flex items-center gap-1">
               <IdCardIcon className="size-3" aria-hidden />
@@ -224,9 +322,26 @@ function PatientIdentityCard({
             </span>
           ) : null}
           {externalId ? <span aria-hidden>·</span> : null}
-          <span className="rounded-full bg-muted px-1.5 py-0.5 font-medium">
-            {t("patientTag")}
-          </span>
+          {age !== null ? (
+            <>
+              <span className="tabular-nums">{t("years", { age })}</span>
+              <span aria-hidden>·</span>
+            </>
+          ) : null}
+          {segmentLabel ? (
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.5 font-semibold uppercase tracking-wide",
+                segmentTone(segment!),
+              )}
+            >
+              {segmentLabel}
+            </span>
+          ) : (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 font-medium">
+              {t("patientTag")}
+            </span>
+          )}
         </div>
       </div>
 
@@ -695,6 +810,104 @@ function countTopics(
   ].filter((x) => x.count > 0);
 }
 
+function ClinicalStatsCard({
+  stats,
+  isLoading,
+  locale,
+}: {
+  stats: PatientClinicalStats | undefined;
+  isLoading: boolean;
+  locale: string;
+}) {
+  const t = useTranslations("tgInbox.rail.clinic");
+
+  const risk: { label: string; tone: string } | null = !stats
+    ? null
+    : stats.totalAppointments === 0
+      ? { label: t("riskNone"), tone: "text-muted-foreground" }
+      : stats.noShowPct === 0
+        ? { label: t("riskLow"), tone: "text-[color:var(--success)]" }
+        : stats.noShowPct < 15
+          ? { label: t("riskMedium"), tone: "text-[color:var(--warning)]" }
+          : { label: t("riskHigh"), tone: "text-destructive" };
+
+  const lastVisit = relativeVisit(stats?.lastVisitAt ?? null, locale);
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-3">
+      <header className="mb-3 flex items-center gap-1.5">
+        <ActivityIcon className="size-3.5 text-muted-foreground" aria-hidden />
+        <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
+      </header>
+      <div className="grid grid-cols-2 gap-2">
+        <ClinicalTile label={t("visits")}>
+          {isLoading ? (
+            <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+          ) : (
+            <CountUp to={stats?.visitsCount ?? 0} />
+          )}
+        </ClinicalTile>
+
+        <ClinicalTile label={t("noShowRisk")}>
+          {isLoading || !risk ? (
+            <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+          ) : stats && stats.totalAppointments > 0 ? (
+            <span className="flex items-baseline gap-1">
+              <span className={cn("tabular-nums", risk.tone)}>
+                {stats.noShowPct}%
+              </span>
+              <span className={cn("text-[10px] font-semibold", risk.tone)}>
+                {risk.label}
+              </span>
+            </span>
+          ) : (
+            <span className={cn("text-[12px] font-semibold", risk.tone)}>
+              {risk.label}
+            </span>
+          )}
+        </ClinicalTile>
+
+        <ClinicalTile label={t("avgCheck")}>
+          {isLoading ? (
+            <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+          ) : stats && stats.avgCheck > 0 ? (
+            <MoneyText amount={stats.avgCheck} currency="UZS" />
+          ) : (
+            <span className="text-muted-foreground/60">—</span>
+          )}
+        </ClinicalTile>
+
+        <ClinicalTile label={t("lastVisit")}>
+          {isLoading ? (
+            <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+          ) : (
+            <span className="text-[13px]">{lastVisit ?? t("never")}</span>
+          )}
+        </ClinicalTile>
+      </div>
+    </section>
+  );
+}
+
+function ClinicalTile({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-xl border border-border/60 bg-muted/30 px-2.5 py-2">
+      <span className="text-[10px] leading-tight text-muted-foreground">
+        {label}
+      </span>
+      <span className="mt-0.5 text-[18px] font-bold leading-none tabular-nums text-foreground">
+        {children}
+      </span>
+    </div>
+  );
+}
+
 function TelegramStatsCard({
   messages,
   conversation,
@@ -877,6 +1090,92 @@ function computeAvgReplySeconds(messages: InboxMessage[]): number | null {
   return gaps.reduce((a, b) => a + b, 0) / gaps.length;
 }
 
+function TagsCard({ conversation }: { conversation: InboxConversation }) {
+  const t = useTranslations("tgInbox.rail.tags");
+  const update = useUpdateConversationMeta(conversation.id);
+  const [draft, setDraft] = React.useState("");
+  const tags = conversation.tags ?? [];
+
+  const commit = (next: string[]) => {
+    update.mutate(
+      { tags: next },
+      {
+        onError: (e) =>
+          toast.error(e instanceof Error ? e.message : t("error")),
+      },
+    );
+  };
+
+  const addTag = () => {
+    const value = draft.trim();
+    if (!value) return;
+    setDraft("");
+    if (tags.some((x) => x.toLowerCase() === value.toLowerCase())) return;
+    commit([...tags, value]);
+  };
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-3">
+      <header className="mb-2 flex items-center gap-1.5">
+        <TagIcon className="size-3.5 text-muted-foreground" aria-hidden />
+        <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
+      </header>
+      {tags.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] font-medium text-primary"
+            >
+              {tag}
+              <button
+                type="button"
+                onClick={() => commit(tags.filter((x) => x !== tag))}
+                disabled={update.isPending}
+                className="inline-flex size-4 items-center justify-center rounded-full text-primary/70 transition-colors hover:bg-primary/15 hover:text-primary disabled:opacity-50"
+                aria-label={t("remove", { tag })}
+              >
+                <XIcon className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mb-2 text-[11px] text-muted-foreground">{t("empty")}</p>
+      )}
+      <div className="flex items-center gap-1.5">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addTag();
+            }
+          }}
+          placeholder={t("placeholder")}
+          maxLength={32}
+          className="h-7 text-[12px]"
+        />
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={addTag}
+          disabled={update.isPending || draft.trim() === ""}
+        >
+          {update.isPending ? (
+            <Loader2Icon className="size-3 animate-spin" />
+          ) : (
+            <PlusIcon className="size-3" />
+          )}
+          {t("add")}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function CreatePatientForm({
   conversation,
 }: {
@@ -954,6 +1253,7 @@ function CreatePatientForm({
           mode: "all",
           unreadOnly: false,
           patientId: null,
+          assignee: "all",
         }),
       });
     },

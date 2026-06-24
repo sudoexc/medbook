@@ -522,6 +522,10 @@ export const AUDIT_ACTION = {
   DOCTOR_SIGNATURE_REMOVED: "DOCTOR_SIGNATURE_REMOVED",
   DOCTOR_NOTIFICATION_PREFS_UPDATED: "DOCTOR_NOTIFICATION_PREFS_UPDATED",
 
+  // Staff self-service UI-language change via PATCH /api/me. `entityType:
+  // "User"`, `entityId: <userId>`, `meta: { locale }`. Any authenticated role.
+  USER_LOCALE_UPDATED: "USER_LOCALE_UPDATED",
+
   // Phase G6 — Clinic catalog overlay + Doctor favorites.
   //
   // CATALOG_OVERLAY_* — admin hid (or un-hid) a global catalog entry for
@@ -610,6 +614,16 @@ export const AUDIT_ACTION = {
   //   consent-gate + recipient eligibility filtering).
   CAMPAIGN_CREATED: "CAMPAIGN_CREATED",
   CAMPAIGN_LAUNCHED: "CAMPAIGN_LAUNCHED",
+
+  //   CAMPAIGN_BROADCAST — one-shot "рассылка" from the Telegram section:
+  //   create DRAFT + launch in a single call. `meta` carries
+  //   `{ name, channel, segment, totalCount, scheduledFor?, deferred }`.
+  CAMPAIGN_BROADCAST: "CAMPAIGN_BROADCAST",
+
+  //   CAMPAIGN_CANCELLED — a scheduled (future-dated) broadcast was cancelled
+  //   before its dispatch time. `meta` carries `{ name, cancelledSends }`
+  //   (the number of pending QUEUED rows flipped to CANCELLED).
+  CAMPAIGN_CANCELLED: "CAMPAIGN_CANCELLED",
 
   // Cross-surface sync §7.10 — cold-start Conversation thread between staff
   // and patient. `entityType: "Conversation"`, `entityId: <conversation.id>`.

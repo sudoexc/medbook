@@ -18,6 +18,7 @@ import {
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import { confirmAppointment } from "@/server/appointments/confirm";
+import { findOtherActiveVisit } from "@/server/appointments/active-visit";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -95,6 +96,30 @@ export const PATCH = createApiHandler(
         });
       }
       return ok(result.appointment);
+    }
+
+    // Single active visit per doctor — same invariant as the status PATCH
+    // route. Block moving a second appointment into IN_PROGRESS while this
+    // doctor already has one on the table.
+    if (
+      body.queueStatus === "IN_PROGRESS" &&
+      before.queueStatus !== "IN_PROGRESS"
+    ) {
+      const tenant = getTenant();
+      const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
+      if (clinicId) {
+        const active = await findOtherActiveVisit({
+          clinicId,
+          doctorId: before.doctorId,
+          excludeAppointmentId: id,
+        });
+        if (active) {
+          return conflict("another_visit_in_progress", {
+            activeAppointmentId: active.id,
+            activePatientName: active.patientName,
+          });
+        }
+      }
     }
 
     const data: Record<string, unknown> = {

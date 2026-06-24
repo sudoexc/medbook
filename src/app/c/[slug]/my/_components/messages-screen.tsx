@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, Send } from "lucide-react";
+import { MessageSquare, Send, Paperclip, Download } from "lucide-react";
 
+import { formatBytes } from "@/lib/chat-attachments";
 import { MCard, MEmpty, MSpinner } from "./mini-ui";
 import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
@@ -223,12 +224,23 @@ function Bubble({
     statusSent: string;
     statusDelivered: string;
     statusRead: string;
+    fileLabel: string;
   };
 }) {
   // IN = patient-sent → align right.
   const isOwn = message.direction === "IN";
   const time = formatTime(message.createdAt);
   const status = message.status;
+
+  const atts = Array.isArray(message.attachments)
+    ? (message.attachments as Array<Record<string, unknown>>)
+    : [];
+  const images = atts.filter(
+    (a) => a && a.kind === "image" && typeof a.url === "string",
+  );
+  const files = atts.filter(
+    (a) => a && a.kind === "file" && typeof a.url === "string",
+  );
 
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
@@ -248,6 +260,63 @@ function Bubble({
               }
         }
       >
+        {images.length > 0 ? (
+          <div
+            className={`mb-1 grid gap-1 overflow-hidden rounded-lg ${
+              images.length === 1 ? "grid-cols-1" : "grid-cols-2"
+            }`}
+          >
+            {images.map((img, i) => (
+              <a
+                key={i}
+                href={String(img.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={String(img.url)}
+                  alt={typeof img.name === "string" ? img.name : ""}
+                  className="block max-h-60 w-full rounded-md object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        ) : null}
+        {files.length > 0 ? (
+          <div className="mb-1 space-y-1">
+            {files.map((f, i) => (
+              <a
+                key={i}
+                href={String(f.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+                style={{
+                  backgroundColor: isOwn
+                    ? "color-mix(in oklch, #fff 18%, transparent)"
+                    : "color-mix(in oklch, var(--tg-hint) 12%, transparent)",
+                }}
+              >
+                <Paperclip className="h-5 w-5 shrink-0 opacity-80" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium">
+                    {typeof f.name === "string" ? f.name : dict.fileLabel}
+                  </span>
+                  {typeof f.sizeBytes === "number" ? (
+                    <span className="block text-[10px] opacity-70">
+                      {formatBytes(f.sizeBytes)}
+                    </span>
+                  ) : null}
+                </span>
+                <Download className="h-4 w-4 shrink-0 opacity-80" />
+              </a>
+            ))}
+          </div>
+        ) : null}
         {message.body ? (
           <div className="whitespace-pre-wrap break-words leading-snug">
             {message.body}

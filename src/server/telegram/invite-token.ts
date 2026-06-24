@@ -101,6 +101,8 @@ export async function consumeInviteToken(
         data: {
           telegramId: input.telegramId,
           telegramUsername: input.telegramUsername ?? undefined,
+          // First-link timestamp — drives the "+N за неделю" trend. Never overwrite.
+          ...(patient.telegramId ? {} : { telegramLinkedAt: now }),
         },
       }),
       prisma.telegramInviteToken.update({

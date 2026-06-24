@@ -1,8 +1,7 @@
-// @ts-nocheck
-// TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
 import { prisma } from "@/lib/prisma";
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
-import { sendMessage, escapeHtml } from "@/lib/telegram";
+import { escapeHtml } from "@/lib/telegram";
+import { sendMessage } from "@/server/telegram/send";
 
 // How long a call stays "active" on the TV after the receptionist presses call.
 const CALL_WINDOW_MS = 15_000;
@@ -56,8 +55,11 @@ export async function POST(request: Request) {
     select: {
       calledAt: true,
       queueOrder: true,
-      patient: { select: { fullName: true, telegramChatId: true } },
+      patient: { select: { fullName: true, telegramId: true } },
       doctor: { select: { id: true, nameRu: true, cabinet: true } },
+      clinic: {
+        select: { id: true, slug: true, tgBotToken: true, tgBotUsername: true },
+      },
     },
   }).catch(() => null);
 
@@ -67,10 +69,12 @@ export async function POST(request: Request) {
 
   const ticketNumber = `${updated.doctor.id.charAt(0).toUpperCase()}${String(updated.queueOrder || 0).padStart(3, "0")}`;
 
-  if (updated.patient.telegramChatId) {
+  if (updated.patient.telegramId) {
     sendMessage(
-      updated.patient.telegramChatId,
-      `📢 <b>Вас вызывают!</b>\n\nПроходите в Кабинет ${updated.doctor.cabinet}\nВрач: ${escapeHtml(updated.doctor.nameRu)}`
+      updated.clinic,
+      updated.patient.telegramId,
+      `📢 <b>Вас вызывают!</b>\n\nПроходите в Кабинет ${updated.doctor.cabinet}\nВрач: ${escapeHtml(updated.doctor.nameRu)}`,
+      { parse_mode: "HTML" }
     ).catch((err) => console.error("[telegram]", err));
   }
 

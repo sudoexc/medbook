@@ -44,6 +44,10 @@ function diff(form: FormState, server: DoctorProfile): ProfilePatch {
   const bioUzNew = form.bioUz.trim() === "" ? null : form.bioUz.trim();
   if (bioUzNew !== server.bioUz) out.bioUz = bioUzNew;
 
+  if (form.maxBookableSlotsPerDay !== server.maxBookableSlotsPerDay) {
+    out.maxBookableSlotsPerDay = form.maxBookableSlotsPerDay;
+  }
+
   return out;
 }
 
@@ -56,6 +60,7 @@ type FormState = {
   specializationUz: string;
   bioRu: string;
   bioUz: string;
+  maxBookableSlotsPerDay: number;
 };
 
 function toForm(p: DoctorProfile): FormState {
@@ -68,7 +73,15 @@ function toForm(p: DoctorProfile): FormState {
     specializationUz: p.specializationUz,
     bioRu: p.bioRu ?? "",
     bioUz: p.bioUz ?? "",
+    maxBookableSlotsPerDay: p.maxBookableSlotsPerDay,
   };
+}
+
+/** Parse the number input and clamp to the server-accepted 1..40 range. */
+function clampSlots(raw: string): number {
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return 1;
+  return Math.min(40, Math.max(1, n));
 }
 
 export function ProfileTab() {
@@ -204,6 +217,30 @@ export function ProfileTab() {
             }
             maxLength={200}
           />
+        </Field>
+
+        <Field
+          id="maxBookableSlotsPerDay"
+          label={t("profile.slotsPerDayLabel")}
+          className="md:col-span-2"
+        >
+          <Input
+            id="maxBookableSlotsPerDay"
+            type="number"
+            min={1}
+            max={40}
+            value={form.maxBookableSlotsPerDay}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                maxBookableSlotsPerDay: clampSlots(e.target.value),
+              })
+            }
+            className="max-w-[140px]"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {t("profile.slotsPerDayHint")}
+          </p>
         </Field>
 
         <Field

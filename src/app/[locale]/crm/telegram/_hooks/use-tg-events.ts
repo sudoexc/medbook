@@ -22,8 +22,13 @@ type ChatFindDetail = {
   term: string;
 };
 
+type OpenAppointmentDetail = {
+  conversationId: string;
+};
+
 const COMPOSER_INSERT = "tg:composer-insert";
 const CHAT_FIND = "tg:chat-find";
+const OPEN_APPOINTMENT = "tg:open-appointment";
 
 export function dispatchComposerInsert(detail: ComposerInsertDetail): void {
   if (typeof window === "undefined") return;
@@ -36,6 +41,13 @@ export function dispatchChatFind(detail: ChatFindDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<ChatFindDetail>(CHAT_FIND, { detail }),
+  );
+}
+
+export function dispatchOpenAppointment(detail: OpenAppointmentDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<OpenAppointmentDetail>(OPEN_APPOINTMENT, { detail }),
   );
 }
 
@@ -72,5 +84,23 @@ export function useChatFind(
     };
     window.addEventListener(CHAT_FIND, handler);
     return () => window.removeEventListener(CHAT_FIND, handler);
+  }, [conversationId]);
+}
+
+export function useOpenAppointment(
+  conversationId: string | null,
+  cb: () => void,
+): void {
+  const cbRef = React.useRef(cb);
+  cbRef.current = cb;
+  React.useEffect(() => {
+    if (!conversationId) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<OpenAppointmentDetail>).detail;
+      if (detail.conversationId !== conversationId) return;
+      cbRef.current();
+    };
+    window.addEventListener(OPEN_APPOINTMENT, handler);
+    return () => window.removeEventListener(OPEN_APPOINTMENT, handler);
   }, [conversationId]);
 }

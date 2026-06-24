@@ -45,6 +45,8 @@ export type NotificationSendRef = {
   channel: NotificationChannel;
   /** `template.key` when populated; else the raw `templateId` for trace. */
   templateKey: string | null;
+  /** Broadcast campaign this send belongs to (null for transactional sends). */
+  campaignId: string | null;
 };
 
 export type RecordDeliveryOutcome =
@@ -157,6 +159,50 @@ export async function recordNotificationDelivery(
       type: eventType,
       payload,
     };
-    return publishViaOutbox(tx, envelope);
+    const published = await publishViaOutbox(tx, envelope);
+
+    // Broadcast rollup: this send just reached a terminal state, so recompute
+    // the parent campaign's progress and finalize it once nothing is left
+    // QUEUED. Counters are recomputed absolutely (not incremented) from the
+    // send rows — idempotent under retries and self-healing if two concurrent
+    // deliveries finalize the same campaign. The SENDING status guard keeps a
+    // CANCELLED/already-DONE campaign from being clobbered or resurrected.
+    if (input.send.campaignId) {
+      const grouped = await tx.notificationSend.groupBy({
+        by: ["status"],
+        where: {
+          campaignId: input.send.campaignId,
+          clinicId: input.send.clinicId,
+        },
+        _count: { _all: true },
+      });
+      let sent = 0;
+      let failed = 0;
+      let pending = 0;
+      for (const g of grouped) {
+        const n = g._count._all;
+        if (g.status === "SENT" || g.status === "DELIVERED" || g.status === "READ") {
+          sent += n;
+        } else if (g.status === "FAILED") {
+          failed += n;
+        } else if (g.status === "QUEUED") {
+          pending += n;
+        }
+      }
+      await tx.campaign.updateMany({
+        where: { id: input.send.campaignId, status: "SENDING" },
+        data:
+          pending === 0
+            ? {
+                status: "DONE",
+                finishedAt: new Date(),
+                sentCount: sent,
+                failedCount: failed,
+              }
+            : { sentCount: sent, failedCount: failed },
+      });
+    }
+
+    return published;
   });
 }

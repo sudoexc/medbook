@@ -159,16 +159,33 @@ export async function detectConflicts(
 }
 
 /**
- * Return an array of "HH:mm" slots for a given doctor/date (30-min grid).
- * Slots overlapping existing appointments or DoctorTimeOff are excluded.
- * If no DoctorSchedule exists for that weekday, uses 09:00-19:00 fallback.
+ * Bookable-slot grid step (minutes) — the interval BETWEEN slot starts.
+ * Decoupled from appointment length: the live-queue model spaces pre-booked
+ * visits 20m apart and leaves the rest of the day to the walk-in queue.
+ */
+export const DEFAULT_SLOT_STEP_MIN = 20;
+
+/** Fallback per-doctor slot cap when the Doctor row can't be read. */
+export const DEFAULT_BOOKABLE_SLOTS_PER_DAY = 3;
+
+/**
+ * Return up to N "HH:mm" slots for a given doctor/date on a 20-min grid, where
+ * N is the doctor's `maxBookableSlotsPerDay` (or `args.maxSlots`). Slots
+ * overlapping existing appointments or DoctorTimeOff are excluded. If no
+ * DoctorSchedule exists for that weekday, uses the 09:00-19:00 fallback.
  */
 export async function findAvailableSlots(args: {
   doctorId: string;
   date: Date;
+  /** Appointment block length for overlap checks (service sum). Default = step. */
   slotMin?: number;
+  /** Grid cadence between slot starts. Default DEFAULT_SLOT_STEP_MIN (20m). */
+  stepMin?: number;
+  /** Cap on returned slots. Default = doctor's maxBookableSlotsPerDay. */
+  maxSlots?: number;
 }): Promise<string[]> {
-  const slot = args.slotMin ?? 30;
+  const step = args.stepMin ?? DEFAULT_SLOT_STEP_MIN;
+  const block = args.slotMin ?? step;
 
   // All reasoning is in Tashkent wall clock. Server-local helpers
   // (`getDay`, `setHours(0,0,0,0)`) silently skew ±5h on UTC prod and used
@@ -177,10 +194,23 @@ export async function findAvailableSlots(args: {
   const weekday = dateComp.dow;
   const { dayStart, dayEnd } = tashkentDayBounds(args.date);
 
-  const schedules = await prisma.doctorSchedule.findMany({
-    where: { doctorId: args.doctorId, weekday, isActive: true },
-    select: { startTime: true, endTime: true },
-  });
+  const [doctor, schedules] = await Promise.all([
+    args.maxSlots == null
+      ? prisma.doctor.findUnique({
+          where: { id: args.doctorId },
+          select: { maxBookableSlotsPerDay: true },
+        })
+      : Promise.resolve(null),
+    prisma.doctorSchedule.findMany({
+      where: { doctorId: args.doctorId, weekday, isActive: true },
+      select: { startTime: true, endTime: true },
+    }),
+  ]);
+
+  const cap =
+    args.maxSlots ??
+    doctor?.maxBookableSlotsPerDay ??
+    DEFAULT_BOOKABLE_SLOTS_PER_DAY;
 
   const windows =
     schedules.length > 0
@@ -211,19 +241,22 @@ export async function findAvailableSlots(args: {
 
   const slots: string[] = [];
   for (const w of windows) {
+    if (slots.length >= cap) break;
     // Anchor window edges to Tashkent wall clock for the requested calendar
     // day, then iterate the UTC instants. The instants are correct because
-    // they were constructed via `+05:00` offset.
+    // they were constructed via `+05:00` offset. Advance by `step` (cadence),
+    // size each candidate by `block` (appointment length) for overlap checks.
     const start = toTashkentDate(dateComp.date, w.start);
     const end = toTashkentDate(dateComp.date, w.end);
 
     for (
       let t = new Date(start);
-      t.getTime() + slot * 60_000 <= end.getTime();
-      t = new Date(t.getTime() + slot * 60_000)
+      t.getTime() + block * 60_000 <= end.getTime();
+      t = new Date(t.getTime() + step * 60_000)
     ) {
+      if (slots.length >= cap) break;
       if (isToday && t.getTime() <= now.getTime()) continue;
-      const slotEnd = new Date(t.getTime() + slot * 60_000);
+      const slotEnd = new Date(t.getTime() + block * 60_000);
       const clashAppt = appts.some(
         (a) => a.date < slotEnd && a.endDate > t
       );

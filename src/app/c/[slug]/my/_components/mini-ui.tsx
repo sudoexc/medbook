@@ -256,18 +256,14 @@ export function MEmpty({
   );
 }
 
-// `amount` is in tiins (UZS minor units); see `formatMoney` in @/lib/format.
-// TODO(mini-app): thread the patient's preferredLang into formatSum so uz
-// locale grouping is honoured. The Mini App uses dict-based i18n (no
-// next-intl context), so we accept the legacy currencyLabel argument for
-// backward compatibility but rely on formatMoney for the localised suffix.
+// `amount` is in tiins (UZS minor units). The patient's `preferredLang`
+// selects the localised unit suffix (so'm / сум) via `formatMoney`.
 export function formatSum(
   amount: number | null | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _currencyLabel: string,
+  lang: "RU" | "UZ",
 ): string {
   if (amount == null) return "—";
-  return formatMoney(amount, "UZS", "ru");
+  return formatMoney(amount, "UZS", lang === "UZ" ? "uz" : "ru");
 }
 
 export function formatDateISO(iso: string, lang: "RU" | "UZ"): string {

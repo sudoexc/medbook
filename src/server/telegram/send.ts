@@ -225,6 +225,36 @@ export async function sendPhoto(
   );
 }
 
+/**
+ * Send a document by URL or file_id (JSON payload).
+ *
+ * Mirrors `sendPhoto`: the file is already uploaded to our storage, so we hand
+ * Telegram the public URL and let it fetch the bytes. Use this for chat
+ * attachments that are NOT images (PDF/Office/zip/etc). The Buffer-based
+ * `sendDocument` below is a different path used by the DSAR export worker.
+ */
+export async function sendDocumentUrl(
+  clinic: TgClinicMinimal,
+  chatId: string | number,
+  documentUrl: string,
+  caption?: string,
+  opts: SendMessageOptions = {},
+): Promise<TgMessageResult> {
+  const payload: Record<string, unknown> = {
+    chat_id: chatId,
+    document: documentUrl,
+    ...(caption ? { caption } : {}),
+    ...(opts.parse_mode ? { parse_mode: opts.parse_mode } : {}),
+    ...(opts.reply_markup ? { reply_markup: opts.reply_markup } : {}),
+  };
+  if (!clinic.tgBotToken) return logNoop(clinic, "sendDocument", payload);
+  return tgCallWithBackoff<TgMessageResult>(
+    clinic.tgBotToken,
+    "sendDocument",
+    payload,
+  );
+}
+
 /** Edit an existing message's text. */
 export async function editMessageText(
   clinic: TgClinicMinimal,

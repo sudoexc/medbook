@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 
 export function useDebounced<T>(value: T, ms: number): T {

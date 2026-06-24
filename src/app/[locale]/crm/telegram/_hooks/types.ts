@@ -11,6 +11,7 @@ export type InboxPatientMini = {
   fullName: string;
   phone: string;
   photoUrl: string | null;
+  tgBlockedAt: string | null;
 };
 
 export type InboxAssignee = {

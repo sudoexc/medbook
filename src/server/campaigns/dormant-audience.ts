@@ -39,6 +39,8 @@ export type AudienceChannelBreakdown = {
   tgReady: number;
   noChannel: number;
   optedOut: number;
+  /** Has a Telegram id but blocked the bot — excluded from the send audience. */
+  blocked: number;
 };
 
 export type AudienceResolution = {
@@ -103,6 +105,7 @@ export async function resolveDormantAudience(args: {
       preferredLang: true,
       lastVisitAt: true,
       marketingOptOut: true,
+      tgBlockedAt: true,
     },
     orderBy: { lastVisitAt: "desc" },
     take: 5000,
@@ -113,7 +116,7 @@ export async function resolveDormantAudience(args: {
       patients: [],
       total: 0,
       eligible: 0,
-      channelBreakdown: { tgReady: 0, noChannel: 0, optedOut: 0 },
+      channelBreakdown: { tgReady: 0, noChannel: 0, optedOut: 0, blocked: 0 },
     };
   }
 
@@ -133,6 +136,7 @@ export async function resolveDormantAudience(args: {
     tgReady: 0,
     noChannel: 0,
     optedOut: 0,
+    blocked: 0,
   };
 
   const audience: AudiencePatient[] = [];
@@ -149,15 +153,16 @@ export async function resolveDormantAudience(args: {
     }
 
     const hasTg = (p.telegramId ?? "").length > 0;
-    if (hasTg) breakdown.tgReady += 1;
     if (!hasTg) {
       breakdown.noChannel += 1;
       continue;
     }
-
-    // Channel-specific eligibility — TG is the only campaign channel
-    // after `docs/TZ-sms-removal.md` Wave 3.
-    if (args.channel === "TG" && !hasTg) continue;
+    // Blocked the bot — a send would just FAIL with 403, so drop them.
+    if (p.tgBlockedAt) {
+      breakdown.blocked += 1;
+      continue;
+    }
+    breakdown.tgReady += 1;
 
     audience.push({
       id: p.id,

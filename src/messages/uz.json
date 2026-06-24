@@ -1814,6 +1814,8 @@
       "aiTooltip": "Navbat AI tomonidan tartiblanadi: kutish, shoshilinchlik, VIP, kelmaslik xavfi",
       "subsectionWaiting": "Chaqiruvni kutmoqda",
       "subsectionReady": "Qabulga tayyor",
+      "subsectionBooked": "Yozilganlar",
+      "subsectionLive": "Jonli navbat",
       "waitMin": "{min} daq.",
       "refreshQueue": "Navbatni yangilash"
     },
@@ -2835,10 +2837,163 @@
     }
   },
   "tgInbox": {
+    "stats": {
+      "total": "Telegramda jami",
+      "reachable": "Tarqatma uchun mavjud",
+      "blocked": "Botni bloklagan",
+      "optedOut": "Obunani bekor qilgan",
+      "newBadge": "Hafta ichida +{count}"
+    },
+    "mode": {
+      "title": "Bemorga kim javob beradi",
+      "bot": "Bot javob beradi",
+      "operator": "Men javob beraman",
+      "botHint": "Bot bemor bilan o'zi yozishmoqda",
+      "operatorHint": "Bot pauzada — siz javob berasiz"
+    },
+    "assignee": {
+      "label": "Mas'ul operator",
+      "title": "Mas'ulni tayinlash",
+      "unassign": "Mas'ulsiz",
+      "unassignedShort": "Tayinlanmagan",
+      "assigned": "Mas'ul tayinlandi",
+      "unassigned": "Mas'ul olib tashlandi",
+      "error": "Mas'ulni yangilab bo'lmadi"
+    },
     "notConfigured": {
       "title": "Telegram-bot hali ulanmagan",
       "description": "Bemorlardan xabarlar olish uchun klinika botini integratsiyalar bo‘limidan ulang. 2–3 daqiqa kifoya — sehrgar bosqichma-bosqich yordam beradi.",
       "cta": "Telegram-botni ulash"
+    },
+    "autoMessages": {
+      "trigger": "Avto-xabarlar",
+      "title": "Avto-xabarlar",
+      "description": "Bemorlarga Telegramdagi avtomatik xabarlar. Keraklilarini yoqing va xohlasangiz matnini o‘zgartiring.",
+      "save": "Saqlash",
+      "cancel": "Bekor qilish",
+      "saved": "Saqlandi",
+      "saveError": "Saqlab bo‘lmadi",
+      "loadError": "Yuklab bo‘lmadi",
+      "placeholdersHint": "Mavjud o‘rinbosarlar: {keys}",
+      "items": {
+        "welcome": {
+          "title": "Salomlashuv",
+          "subtitle": "Bemor Telegramga birinchi marta yozganda yuboriladi"
+        },
+        "reminder": {
+          "title": "Qabul haqida eslatma",
+          "subtitle": "Qabuldan 24 soat oldin yuboriladi"
+        },
+        "thankYou": {
+          "title": "Tashrif uchun rahmat",
+          "subtitle": "Qabul yakunlangach yuboriladi"
+        }
+      }
+    },
+    "broadcast": {
+      "trigger": "Tarqatma",
+      "title": "Ommaviy tarqatma",
+      "subtitle": "Telegramdagi bemorlar guruhiga xabar yuboring",
+      "cancel": "Bekor qilish",
+      "back": "Orqaga",
+      "done": "Tayyor",
+      "sendCta": "Yuborish · {count}",
+      "scheduleCta": "Rejalashtirish · {count}",
+      "audience": {
+        "label": "Auditoriya",
+        "kind": {
+          "all": "Hammasi",
+          "segment": "Toifalar",
+          "tag": "Teglar"
+        },
+        "allHint": "Xabarni Telegrami ulangan va tarqatmadan voz kechmagan barcha bemorlar oladi.",
+        "segment": {
+          "NEW": "Yangi",
+          "ACTIVE": "Faol",
+          "DORMANT": "Uxlayotgan",
+          "VIP": "VIP",
+          "CHURN": "Ketgan"
+        },
+        "tagPlaceholder": "Teg qo'shish…",
+        "addTag": "Teg qo'shish",
+        "suggested": "Mashhur teglar"
+      },
+      "message": {
+        "label": "Xabar",
+        "placeholder": "Xabar matni. Quyidagi o'rin almashtirishlardan foydalanishingiz mumkin."
+      },
+      "schedule": {
+        "label": "Yuborish vaqti",
+        "now": "Hozir",
+        "later": "Rejalashtirish"
+      },
+      "preview": {
+        "label": "Ko'rib chiqish",
+        "willReceive": "Oladi",
+        "noChannel": "Telegramsiz",
+        "optedOut": "Voz kechgan",
+        "blocked": "Bloklagan",
+        "pickAudience": "Qabul qiluvchilar sonini ko'rish uchun auditoriyani tanlang.",
+        "counting": "Qabul qiluvchilar sanalmoqda…",
+        "sampleName": "Ali",
+        "clinicName": "Klinika",
+        "clinicPhone": "+998 90 000-00-00",
+        "clinicAddress": "Namuna ko'chasi, 1",
+        "empty": "Xabar yozishni boshlang…"
+      },
+      "confirm": {
+        "recipients": "Qabul qiluvchilar",
+        "immediate": "Darhol yuborish",
+        "warning": "Xabar {count} bemorga yuboriladi. Bu amalni bekor qilib bo'lmaydi.",
+        "send": "Yuborish",
+        "schedule": "Rejalashtirish"
+      },
+      "result": {
+        "scheduledTitle": "Tarqatma rejalashtirildi",
+        "scheduledFor": "Yuborish:",
+        "recipients": "Qabul qiluvchilar: {count}",
+        "sendingTitle": "Yuborilmoqda…",
+        "doneTitle": "Tarqatma yakunlandi",
+        "sent": "Yuborildi",
+        "pending": "Navbatda",
+        "failed": "Xatolar"
+      },
+      "toast": {
+        "scheduled": "Tarqatma rejalashtirildi",
+        "sent": "Tarqatma ishga tushdi",
+        "error": "Tarqatmani ishga tushirib bo'lmadi"
+      }
+    },
+    "broadcastHistory": {
+      "trigger": "Tarix",
+      "title": "Tarqatmalar tarixi",
+      "subtitle": "Har bir tarqatma bo'yicha yetkazib berish",
+      "repeat": "Takrorlash",
+      "cancel": "Bekor qilish",
+      "cancelConfirm": "Rostdan bekor qilinsinmi?",
+      "recipients": "{count, plural, =0 {qabul qiluvchi yo'q} one {# qabul qiluvchi} other {# qabul qiluvchi}}",
+      "empty": {
+        "title": "Hozircha tarqatmalar yo'q",
+        "description": "Ishga tushirilgan va rejalashtirilgan tarqatmalar shu yerda ko'rinadi."
+      },
+      "status": {
+        "scheduled": "Rejalashtirilgan",
+        "sending": "Yuborilmoqda",
+        "done": "Yakunlangan",
+        "cancelled": "Bekor qilingan"
+      },
+      "funnel": {
+        "total": "Jami",
+        "sent": "Yuborildi",
+        "delivered": "Yetkazildi",
+        "read": "O'qildi",
+        "failed": "Xatolar",
+        "blocked": "Bloklagan"
+      },
+      "toast": {
+        "cancelled": "Tarqatma bekor qilindi",
+        "cancelError": "Tarqatmani bekor qilib bo'lmadi"
+      }
     },
     "desktopOnly": {
       "title": "Desktopda oching",
@@ -2848,6 +3003,19 @@
       "ariaLabel": "Suhbatlar ro'yxati",
       "searchPlaceholder": "Ism yoki telefon bo'yicha qidirish",
       "searchAria": "Suhbatlarni qidirish",
+      "tabsAria": "Suhbatlar filtri",
+      "tabs": {
+        "all": "Hammasi",
+        "unanswered": "Javobsiz",
+        "active": "Ishda"
+      },
+      "temp": {
+        "all": "Hammasi",
+        "hot": "Issiq",
+        "warm": "Iliq",
+        "cold": "Sovuq"
+      },
+      "emptyTemp": "Bu segmentda suhbatlar yo'q",
       "mode": {
         "all": "Hammasi",
         "bot": "Bot",
@@ -2859,7 +3027,12 @@
       "count": "{n, plural, =0 {suhbat yo'q} one {# suhbat} other {# ta suhbat}}",
       "empty": "Suhbatlar yo'q",
       "noMessages": "Xabarlar yo'q",
-      "anonymous": "Noma'lum"
+      "anonymous": "Noma'lum",
+      "assigneeAria": "Mas'ul bo'yicha filtr",
+      "assignee": {
+        "all": "Hammasi",
+        "mine": "Mening"
+      }
     },
     "alerts": {
       "newMessage": "Telegramda yangi xabar",
@@ -2878,9 +3051,16 @@
       },
       "takeover": "Suhbatni olish",
       "returnToBot": "Botga qaytarish",
+      "call": "Qo'ng'iroq qilish",
       "moreMenu": "Suhbat amallari",
       "markRead": "O'qilgan deb belgilash",
-      "noMessages": "Tarix bo'sh"
+      "noMessages": "Tarix bo'sh",
+      "today": "Bugun",
+      "yesterday": "Kecha",
+      "showInfo": "Kartani ko'rsatish",
+      "hideInfo": "Kartani yashirish",
+      "scrollToBottom": "Oxirgi xabarlarga",
+      "blockedBadge": "Botni bloklagan"
     },
     "rail": {
       "ariaLabel": "Bemor kartasi",
@@ -2895,7 +3075,14 @@
       "lastVisit": "Oxirgi tashrif",
       "never": "Yo'q",
       "assignedTo": "Mas'ul",
-      "tags": "Teglar",
+      "tags": {
+        "title": "Teglar",
+        "empty": "Hozircha teglar yo'q",
+        "placeholder": "Teg qo'shish…",
+        "add": "Qo'shish",
+        "remove": "{tag} tegini olib tashlash",
+        "error": "Teglarni yangilab bo'lmadi"
+      },
       "appointmentCreated": "Qabul yaratildi",
       "patientTag": "Bemor",
       "verified": "Tasdiqlangan",
@@ -2908,6 +3095,26 @@
       "createPatient": "Bemor yaratish",
       "patientCreated": "Bemor yaratildi va biriktirildi",
       "patientLinked": "Bu raqamga ega bemor allaqachon bor — chatga biriktirildi",
+      "years": "{age, plural, one {# yosh} other {# yosh}}",
+      "segmentLabels": {
+        "NEW": "Yangi",
+        "ACTIVE": "Faol",
+        "DORMANT": "Sovumoqda",
+        "VIP": "VIP",
+        "CHURN": "Yo'qotilgan"
+      },
+      "clinic": {
+        "title": "Klinika",
+        "visits": "Tashriflar",
+        "noShowRisk": "Kelmaslik xavfi",
+        "avgCheck": "O'rtacha chek",
+        "lastVisit": "Oxirgi tashrif",
+        "never": "Bo'lmagan",
+        "riskNone": "Ma'lumot yo'q",
+        "riskLow": "Past",
+        "riskMedium": "O'rta",
+        "riskHigh": "Yuqori"
+      },
       "actions": {
         "ariaLabel": "Tezkor harakatlar",
         "title": "Harakatlar",
@@ -2995,10 +3202,40 @@
         "toOperator": "Operatorga uzatish",
         "toBot": "Botga qaytarish"
       },
+      "quick": {
+        "label": "Tezkor amallar",
+        "title": "Tezkor amallar",
+        "book": "Qabulga yozish",
+        "price": "Xizmat narxini bilish",
+        "call": "Qayta qo'ng'iroq",
+        "confirm": "Yozuvni tasdiqlash",
+        "askPhone": "Telefon so'rash",
+        "needPatient": "Avval bemor kartasini yarating",
+        "priceText": "Qaysi xizmat qiziqtirayotganini ayting — narxini aniqlab, qulay vaqtni tanlaymiz.",
+        "confirmText": "Yozuvingizni tasdiqlayman. Rejalar o'zgarsa — yozing, qulay vaqtga ko'chiramiz.",
+        "askPhoneText": "Iltimos, telefon raqamingizni qoldiring — shunda siz bilan tezroq bog'lana olamiz."
+      },
       "template": {
         "label": "Shablonlar",
         "title": "Shablonni tanlang",
         "empty": "Shablonlar yo'q"
+      },
+      "canned": {
+        "label": "Tezkor javoblar",
+        "title": "Tezkor javoblar",
+        "manage": "Boshqarish",
+        "empty": "Hozircha tezkor javoblar yo'q",
+        "titlePlaceholder": "Nomi",
+        "bodyPlaceholder": "Javob matni. O'rniga qo'yishlardan foydalanish mumkin.",
+        "cancel": "Bekor qilish",
+        "save": "Saqlash",
+        "add": "Qo'shish",
+        "saved": "Saqlandi",
+        "created": "Tezkor javob yaratildi",
+        "deleted": "O'chirildi",
+        "saveError": "Saqlab bo'lmadi",
+        "edit": "Tahrirlash",
+        "delete": "O'chirish"
       },
       "inlineButtons": {
         "add": "Inline-tugmalar qo'shish",
@@ -3013,15 +3250,19 @@
       },
       "upload": {
         "label": "Fayl biriktirish",
-        "attach": "Rasm biriktirish",
+        "attach": "Fayl biriktirish",
         "remove": "Olib tashlash",
         "dropHere": "Biriktirish uchun qo'yvoring",
-        "rejectedSome": "Tashlab yuborilgan fayllar: {count} (faqat JPG/PNG/WEBP/GIF, 10 MB gacha)",
+        "rejectedSome": "Tashlab yuborilgan fayllar: {count} (rasm va hujjatlar 20 MB gacha)",
         "tooMany": "Bir martada {max} fayldan ko'p emas"
+      },
+      "emoji": {
+        "label": "Emoji"
       }
     },
     "message": {
-      "noText": "Matn yo'q"
+      "noText": "Matn yo'q",
+      "file": "Fayl"
     }
   },
   "callCenter": {
@@ -4599,6 +4840,9 @@
     "uploadTitle": "Hujjat yuklash",
     "uploadHint": "Fayl klinikaning xavfsiz omboriga yuklanadi",
     "pendingSignatures": "Imzolashni kutmoqda",
+    "signed": "Imzolangan",
+    "signedToast": "Hujjat imzolangan deb belgilandi",
+    "signError": "Hujjatni belgilab bo'lmadi",
     "empty": "Hujjatlar topilmadi",
     "filters": {
       "search": "Qidirish: nom, bemor, telefon",
@@ -4633,7 +4877,8 @@
     },
     "actions": {
       "view": "Ochish",
-      "download": "Yuklab olish"
+      "download": "Yuklab olish",
+      "markSigned": "Imzolangan deb belgilash"
     },
     "cancel": "Bekor qilish",
     "fileUrl": "Fayl URL",
@@ -5046,6 +5291,7 @@
     }
   },
   "ai": {
+    "inDevelopment": "Ishlab chiqilmoqda",
     "ask": {
       "placeholder": "AI'dan so'rang: bo'sh oyna top…",
       "send": "So'rash",
@@ -5448,6 +5694,8 @@
         "defer": "Keyinga qoldirish",
         "start": "Boshlash",
         "switchConfirm": "Hozir qabulda {current}. {next}ga o‘tilsinmi?",
+        "anotherInProgress": "Sizda allaqachon qabul davom etmoqda. Yangisini boshlashdan oldin uni yakunlang yoki keyinga qoldiring.",
+        "startFailed": "Qabulni boshlab bo‘lmadi",
         "status": {
           "booked": "Yozilgan",
           "waiting": "Kutmoqda",
@@ -6271,9 +6519,7 @@
         "consultations": "Konsultatsiyalar",
         "repeats": "Takroriy qabullar",
         "completed": "Yakunlangan",
-        "dayPlan": "Kunlik reja",
-        "comingSoon": "AI-tahlil tez orada",
-        "comingSoonHint": "Modelni ulaganimizda ogohlantirishlar va tavsiyalar paydo bo'ladi"
+        "dayPlan": "Kunlik reja"
       },
       "reminders": {
         "title": "Eslatmalar",
@@ -6367,6 +6613,7 @@
         "cancelled": "Qabul bekor qilindi",
         "errTooEarly": "Juda erta — qabul hali boshlanmasligi kerak edi",
         "errInvalidTransition": "Bu holat o‘zgarishiga ruxsat yo‘q",
+        "errAnotherInProgress": "Sizda boshqa qabul davom etmoqda — yangisini boshlashdan oldin uni yakunlang",
         "errNotRevertable": "Bu holatni bekor qilib bo‘lmaydi",
         "errRevertMismatch": "Nimaga qaytarishni aniqlab bo‘lmadi",
         "errCallFailed": "Bemorni chaqirib bo‘lmadi",
@@ -6489,7 +6736,9 @@
         "specializationRuLabel": "Mutaxassislik (ruscha)",
         "specializationUzLabel": "Mutaxassislik (o'zbekcha)",
         "bioRuLabel": "Biografiya (ruscha)",
-        "bioUzLabel": "Biografiya (o'zbekcha)"
+        "bioUzLabel": "Biografiya (o'zbekcha)",
+        "slotsPerDayLabel": "Kuniga band qilinadigan vaqtlar soni",
+        "slotsPerDayHint": "Oldindan nechta qabulni band qilish mumkin (20 daqiqa interval). Qolgan bemorlar jonli navbat orqali keladi."
       },
       "signature": {
         "heading": "Shifokor imzosi",

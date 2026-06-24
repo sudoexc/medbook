@@ -7,6 +7,8 @@ import { SparklesIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 import { buttonVariants } from "@/components/ui/button";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
@@ -59,8 +61,10 @@ function useAiReassign() {
   return useQuery<ReassignResponse>({
     queryKey: ["ai", "reassign"],
     queryFn: ({ signal }) => fetchReassign(signal),
+    // AI surface is paused — don't poll the reassign engine.
+    enabled: AI_ENABLED,
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    refetchInterval: AI_ENABLED ? 60_000 : false,
     retry: false,
   });
 }
@@ -235,6 +239,7 @@ export function DoctorsAiRecommendations({
   };
 
   return (
+    <InDevelopment active={!AI_ENABLED} className={className}>
     <div
       className={cn(
         "flex flex-col rounded-2xl border border-border bg-card p-4",
@@ -287,5 +292,6 @@ export function DoctorsAiRecommendations({
         )}
       </ul>
     </div>
+    </InDevelopment>
   );
 }

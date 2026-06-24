@@ -90,6 +90,7 @@ export const uzDict = {
     statusSent: "✓",
     statusDelivered: "✓✓",
     statusRead: "✓✓",
+    fileLabel: "Fayl",
   },
   clinicCard: {
     header: "Klinika",
@@ -119,7 +120,6 @@ export const uzDict = {
     showLess: "Yopish",
     showMoreTime: "Ko‘proq vaqtni ko‘rsatish",
     newDoctor: "Yangi mutaxassis",
-    experienceStub: "10 yil tajriba",
     clinicTagline: "Neurofax Clinic · Sog‘lig‘ingiz — bizning g‘amxo‘rligimiz",
     stepLabel: "{step}/{total}-qadam",
     stepService: "Mutaxassislik tanlang",

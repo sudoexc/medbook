@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound } from "@/server/http";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import { fireTrigger } from "@/server/notifications/triggers";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
@@ -212,6 +213,12 @@ export const POST = createApiHandler(
         note.patientId,
         result.appointment.completedAt ?? new Date(),
       );
+      // Auto-messages widget — "Спасибо за визит". Idempotent with the
+      // appointment-PATCH completion path (shared NotificationSend gate).
+      fireTrigger({
+        kind: "appointment.completed",
+        appointmentId: note.appointment.id,
+      });
     }
 
     await audit(request, {

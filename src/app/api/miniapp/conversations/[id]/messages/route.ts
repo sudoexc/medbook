@@ -10,6 +10,7 @@
  */
 import { z } from "zod";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
@@ -128,7 +129,7 @@ export async function POST(request: Request): Promise<Response> {
           body: body.body,
           senderId: null,
           status: "DELIVERED",
-        } as never,
+        } satisfies Prisma.MessageUncheckedCreateInput,
         select: {
           id: true,
           direction: true,

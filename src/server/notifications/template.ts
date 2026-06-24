@@ -242,6 +242,17 @@ export const ALLOWED_KEYS_BY_TRIGGER: Record<string, string[]> = {
     "clinic.name",
     "clinic.phone",
   ],
+  // Auto-messages widget — "Спасибо за визит". Short post-visit thank-you;
+  // patient first name + visit/clinic identification.
+  "appointment.thank-you": [
+    "patient.name",
+    "patient.firstName",
+    "appointment.date",
+    "appointment.doctor",
+    "appointment.service",
+    "clinic.name",
+    "clinic.phone",
+  ],
   // Post-visit NPS request: just the doctor name + clinic — short copy with
   // a deeplink to the rating form.
   "appointment.nps-request": [

@@ -90,6 +90,7 @@ export const ruDict = {
     statusSent: "✓",
     statusDelivered: "✓✓",
     statusRead: "✓✓",
+    fileLabel: "Файл",
   },
   clinicCard: {
     header: "Клиника",
@@ -119,7 +120,6 @@ export const ruDict = {
     showLess: "Свернуть",
     showMoreTime: "Показать ещё время",
     newDoctor: "Новый специалист",
-    experienceStub: "Стаж 10 лет",
     clinicTagline: "Neurofax Clinic · Забота о вашем здоровье",
     stepLabel: "Шаг {step} из {total}",
     stepService: "Выберите специальность",

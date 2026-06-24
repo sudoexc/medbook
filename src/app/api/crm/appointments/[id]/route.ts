@@ -21,6 +21,7 @@ import { fireTrigger } from "@/server/notifications/triggers";
 import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { cancelAppointment } from "@/server/appointments/cancel";
+import { findOtherActiveVisit } from "@/server/appointments/active-visit";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { recordPatientView } from "@/server/audit/patient-view";
@@ -33,7 +34,8 @@ import {
   canRoleAdvanceTo,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
-import { sendMessage, escapeHtml } from "@/lib/telegram";
+import { escapeHtml } from "@/lib/telegram";
+import { sendMessage } from "@/server/telegram/send";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -309,6 +311,14 @@ export const PATCH = createApiHandler(
                 cabinet: { select: { number: true } },
               },
             },
+            clinic: {
+              select: {
+                id: true,
+                slug: true,
+                tgBotToken: true,
+                tgBotUsername: true,
+              },
+            },
           },
         });
         // Only emit `statusChanged` when the bump actually flipped status —
@@ -339,7 +349,7 @@ export const PATCH = createApiHandler(
           ? `Кабинет ${escapeHtml(updatedRow.doctor.cabinet.number)}`
           : "Подойдите к врачу";
         const text = `📢 <b>Вас вызывают!</b>\n\n${cabinetLine}\nВрач: ${escapeHtml(updatedRow.doctor.nameRu)}`;
-        await sendMessage(updatedRow.patient.telegramId, text, {
+        await sendMessage(updatedRow.clinic, updatedRow.patient.telegramId, text, {
           parse_mode: "HTML",
         })
           .then(() => {
@@ -387,6 +397,26 @@ export const PATCH = createApiHandler(
             reason: "role_cannot_advance_to",
             target: body.status,
             role,
+          });
+        }
+      }
+
+      // Single active visit per doctor — block starting a second visit while
+      // one is already IN_PROGRESS (any surface / stale tab / scripted call).
+      if (
+        body.status === "IN_PROGRESS" &&
+        before.status !== "IN_PROGRESS" &&
+        ctx.kind === "TENANT"
+      ) {
+        const active = await findOtherActiveVisit({
+          clinicId: ctx.clinicId,
+          doctorId: before.doctorId,
+          excludeAppointmentId: id,
+        });
+        if (active) {
+          return conflict("another_visit_in_progress", {
+            activeAppointmentId: active.id,
+            activePatientName: active.patientName,
           });
         }
       }
@@ -681,6 +711,9 @@ export const PATCH = createApiHandler(
     // pair silently no-ops and any throw is logged but never rolls back the
     // appointment status change.
     if (body.status === "COMPLETED" && !before.completedAt) {
+      // Auto-messages widget — "Спасибо за визит" on the COMPLETED transition.
+      // Best-effort + idempotent; no-op when the clinic has it toggled off.
+      fireTrigger({ kind: "appointment.completed", appointmentId: id });
       try {
         await mintReferralRewardOnCompletion({
           tx: prisma,

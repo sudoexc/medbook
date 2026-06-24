@@ -12,6 +12,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
@@ -35,7 +36,7 @@ const ALLOWED_MIME_EXACT = new Set([
   "application/x-pdf",
 ]);
 
-const ALLOWED_DOCUMENT_TYPES = new Set([
+const ALLOWED_DOCUMENT_TYPES = [
   "REFERRAL",
   "PRESCRIPTION",
   "RESULT",
@@ -43,7 +44,11 @@ const ALLOWED_DOCUMENT_TYPES = new Set([
   "CONTRACT",
   "RECEIPT",
   "OTHER",
-]);
+] as const;
+type PatientDocumentType = (typeof ALLOWED_DOCUMENT_TYPES)[number];
+function isPatientDocumentType(v: string): v is PatientDocumentType {
+  return (ALLOWED_DOCUMENT_TYPES as readonly string[]).includes(v);
+}
 
 function extFromMime(mime: string, fallback: string | null): string {
   if (mime === "image/jpeg") return "jpg";
@@ -150,7 +155,9 @@ export async function POST(request: Request): Promise<Response> {
 
   const rawTitle = (form.get("title") ?? "").toString().trim().slice(0, 200);
   const rawType = (form.get("type") ?? "").toString().trim();
-  const type = ALLOWED_DOCUMENT_TYPES.has(rawType) ? rawType : "OTHER";
+  const type: PatientDocumentType = isPatientDocumentType(rawType)
+    ? rawType
+    : "OTHER";
 
   const ext = extFromMime(mime, extFromName(file.name || null));
   const objectKey = `clinics/${ctx.clinicId}/documents/${randomUUID()}.${ext}`;
@@ -174,13 +181,13 @@ export async function POST(request: Request): Promise<Response> {
       data: {
         clinicId: ctx.clinicId,
         patientId: ctx.patientId,
-        type: type as never,
+        type,
         title,
         fileUrl: uploaded.url,
         mimeType: mime,
         sizeBytes: file.size,
         uploadedById: null,
-      },
+      } satisfies Prisma.DocumentUncheckedCreateInput,
       select: {
         id: true,
         type: true,

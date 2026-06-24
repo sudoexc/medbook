@@ -76,6 +76,7 @@ export async function POST(request: Request) {
           data: {
             telegramId: tgIdStr,
             telegramUsername: tgUser.username ?? patient.telegramUsername,
+            telegramLinkedAt: patient.telegramLinkedAt ?? new Date(),
           },
         });
       }
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
               phoneNormalized: normalizedPhone || `tg:${tgIdStr}`,
               telegramId: tgIdStr,
               telegramUsername: tgUser.username ?? null,
+              telegramLinkedAt: new Date(),
               preferredLang: desiredLang,
               source: "TELEGRAM",
               segment: "NEW",

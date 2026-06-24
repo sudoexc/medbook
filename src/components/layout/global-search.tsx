@@ -30,6 +30,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { AiAskPanel } from "@/components/layout/ai-ask-panel";
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -339,35 +340,37 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       title={t("title")}
       description={t("description")}
     >
-      <div className="flex items-center gap-1 border-b bg-card/60 px-2 py-1.5 text-xs">
-        <button
-          type="button"
-          onClick={() => setMode("commands")}
-          className={cn(
-            "rounded-md px-2.5 py-1 font-medium transition-colors",
-            mode === "commands"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {tAi("tabs.commands")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("ai")}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
-            mode === "ai"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <SparklesIcon className="size-3" />
-          {tAi("tabs.ai")}
-        </button>
-      </div>
+      {AI_ENABLED ? (
+        <div className="flex items-center gap-1 border-b bg-card/60 px-2 py-1.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setMode("commands")}
+            className={cn(
+              "rounded-md px-2.5 py-1 font-medium transition-colors",
+              mode === "commands"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {tAi("tabs.commands")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("ai")}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
+              mode === "ai"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <SparklesIcon className="size-3" />
+            {tAi("tabs.ai")}
+          </button>
+        </div>
+      ) : null}
 
-      {mode === "ai" ? (
+      {mode === "ai" && AI_ENABLED ? (
         <AiAskPanel onNavigate={() => onOpenChange(false)} />
       ) : (
         <ClassicCommandSearch

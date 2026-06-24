@@ -16,10 +16,8 @@ import { prisma } from "@/lib/prisma";
 import type { NotificationStatus } from "@/generated/prisma/client";
 import { render } from "@/server/notifications/template";
 
-import {
-  resolveDormantAudience,
-  type AudiencePatient,
-} from "./dormant-audience";
+import { resolveAudience } from "./audience";
+import type { AudiencePatient } from "./dormant-audience";
 import type { CampaignChannel, CampaignSegment } from "@/server/schemas/campaign";
 import { enqueue } from "@/server/queue";
 import { QUEUE_NAME, JOB_NAME } from "@/server/workers/notifications-send";
@@ -35,7 +33,9 @@ type CampaignRow = {
   channel: "TG" | "SMS" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
   status: string;
   templateId: string | null;
+  body: string | null;
   segment: unknown;
+  scheduledFor: Date | null;
   totalCount: number;
 };
 
@@ -58,6 +58,9 @@ export type LaunchResult = {
   status: string;
   totalCount: number;
   alreadyLaunched: boolean;
+  /** When set in the future, delivery is deferred to the notifications scheduler. */
+  scheduledFor: Date | null;
+  deferred: boolean;
 };
 
 function pickBodyTemplate(template: TemplateRow, lang: "RU" | "UZ"): string {
@@ -137,6 +140,8 @@ export async function launchCampaign(args: {
       status: campaign.status,
       totalCount: campaign.totalCount,
       alreadyLaunched: true,
+      scheduledFor: campaign.scheduledFor,
+      deferred: false,
     };
   }
   // Campaigns are TG-only after `docs/TZ-sms-removal.md` Wave 3.
@@ -150,9 +155,14 @@ export async function launchCampaign(args: {
   }
 
   const segment = campaign.segment as CampaignSegment | null;
-  if (!segment || segment.kind !== "dormant") {
+  if (!segment) {
     throw Object.assign(new Error("UnsupportedSegmentKind"), { status: 400 });
   }
+
+  // Inline body (ad-hoc broadcast) wins over a saved template. Either one is
+  // required — the launcher refuses to materialise empty sends.
+  const inlineBody =
+    campaign.body && campaign.body.trim().length > 0 ? campaign.body : null;
 
   const [template, clinic] = await Promise.all([
     campaign.templateId
@@ -179,23 +189,28 @@ export async function launchCampaign(args: {
   if (campaign.templateId && !template) {
     throw Object.assign(new Error("TemplateMissing"), { status: 400 });
   }
-
-  const channel = campaign.channel as CampaignChannel;
-  const audienceRes = await resolveDormantAudience({
-    bucket: segment.bucket,
-    channel,
-    now,
-  });
-
-  if (!template) {
+  if (!inlineBody && !template) {
     throw Object.assign(new Error("TemplateRequired"), { status: 400 });
   }
+
+  const channel = campaign.channel as CampaignChannel;
+  const audienceRes = await resolveAudience({ segment, channel, now });
+
+  // Future-dated scheduling: rows carry the target time and we skip the
+  // immediate enqueue below — the notifications scheduler dispatches QUEUED
+  // rows once `scheduledFor <= now`. A past/absent time means "send now".
+  const scheduledFor =
+    campaign.scheduledFor && campaign.scheduledFor.getTime() > now.getTime()
+      ? campaign.scheduledFor
+      : now;
+  const deferred = scheduledFor.getTime() > now.getTime();
 
   const rows = audienceRes.patients
     .map((patient) => {
       const recipient = recipientFor(channel, patient);
       if (!recipient) return null;
-      const sourceBody = pickBodyTemplate(template, patient.preferredLang);
+      const sourceBody =
+        inlineBody ?? pickBodyTemplate(template as TemplateRow, patient.preferredLang);
       const body = buildBody({
         body: sourceBody,
         patient,
@@ -210,7 +225,7 @@ export async function launchCampaign(args: {
         channel: campaign.channel,
         recipient,
         body,
-        scheduledFor: now,
+        scheduledFor,
         status: "QUEUED" as NotificationStatus,
       };
     })
@@ -233,6 +248,8 @@ export async function launchCampaign(args: {
       status: updated.status,
       totalCount: 0,
       alreadyLaunched: false,
+      scheduledFor: null,
+      deferred: false,
     };
   }
 
@@ -291,20 +308,28 @@ export async function launchCampaign(args: {
       status: "SENDING",
       totalCount: 0,
       alreadyLaunched: true,
+      scheduledFor: campaign.scheduledFor,
+      deferred: false,
     };
   }
 
   // Best-effort enqueue. The notifications scheduler picks QUEUED rows whose
   // scheduledFor has elapsed, so a missed enqueue here just delays delivery
   // until the next tick rather than dropping the send.
-  for (const sendId of result.sendIds ?? []) {
-    try {
-      await enqueue(QUEUE_NAME, JOB_NAME, { sendId });
-    } catch (e) {
-      console.warn(
-        `[campaign:launch] enqueue failed for sendId=${sendId}`,
-        e instanceof Error ? e.message : String(e),
-      );
+  //
+  // For a deferred (future-dated) broadcast we deliberately skip the enqueue:
+  // the worker does not re-check `scheduledFor`, so enqueuing now would fire
+  // immediately. The scheduler is the only correct dispatch path for future rows.
+  if (!deferred) {
+    for (const sendId of result.sendIds ?? []) {
+      try {
+        await enqueue(QUEUE_NAME, JOB_NAME, { sendId });
+      } catch (e) {
+        console.warn(
+          `[campaign:launch] enqueue failed for sendId=${sendId}`,
+          e instanceof Error ? e.message : String(e),
+        );
+      }
     }
   }
 
@@ -313,5 +338,7 @@ export async function launchCampaign(args: {
     status: "SENDING",
     totalCount: result.totalCount,
     alreadyLaunched: false,
+    scheduledFor: deferred ? scheduledFor : null,
+    deferred,
   };
 }

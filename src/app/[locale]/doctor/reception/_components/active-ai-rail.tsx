@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
@@ -97,6 +99,7 @@ export function ActiveAIRail() {
   };
 
   return (
+    <InDevelopment active={!AI_ENABLED} className="shrink-0">
     <aside className="flex w-[320px] shrink-0 flex-col gap-4 xl:gap-5">
       <Section
         icon={SparklesIcon}
@@ -241,6 +244,7 @@ export function ActiveAIRail() {
         <ChevronRightIcon className="size-4 text-primary" />
       </button>
     </aside>
+    </InDevelopment>
   );
 }
 

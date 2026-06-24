@@ -31,6 +31,10 @@ import { render } from "./template";
 
 export const TRIGGER_KEYS = [
   "appointment.created",
+  // Auto-messages widget — "Спасибо за визит". Fired when a visit lands in
+  // COMPLETED (appointment PATCH / visit-note finalize). Idempotency is the
+  // standard (patientId, appointmentId, templateId) NotificationSend gate.
+  "appointment.thank-you",
   // Stage 2.D — soft 3-day "gentle ping" reminder. Audience is restricted at
   // the materialiser (TELEGRAM/WEBSITE bookings still pending confirmation,
   // i.e. `confirmedAt IS NULL`). PHONE/KIOSK/WALKIN auto-confirm at booking
@@ -284,6 +288,14 @@ function whereForTrigger(
   switch (trigger) {
     case "appointment.created":
       return { trigger: "APPOINTMENT_CREATED" };
+    case "appointment.thank-you":
+      // Match by the enum (preferred) or the slug for hand-seeded rows.
+      return {
+        OR: [
+          { trigger: "APPOINTMENT_COMPLETED" },
+          { key: "appointment.thank-you" },
+        ],
+      };
     case "appointment.reminder-3d":
       return {
         trigger: "APPOINTMENT_BEFORE",
@@ -814,6 +826,25 @@ export async function onNpsRequest(appointmentId: string): Promise<void> {
   await materializeForAppointment(
     appointmentId,
     "appointment.nps-request",
+    new Date(),
+  );
+}
+
+/**
+ * Auto-messages widget — "Спасибо за визит".
+ *
+ * Materialise a thank-you the moment a visit lands in COMPLETED. Idempotency
+ * is the standard (patientId, appointmentId, templateId) gate in
+ * `materializeForAppointment`, so the appointment PATCH and the visit-note
+ * finalize path can both fire it without double-texting. No-op when the
+ * clinic has the template toggled off (`isActive=false` → no row resolves).
+ */
+export async function onAppointmentThankYou(
+  appointmentId: string,
+): Promise<void> {
+  await materializeForAppointment(
+    appointmentId,
+    "appointment.thank-you",
     new Date(),
   );
 }
@@ -1536,6 +1567,9 @@ export type FireTriggerPayload =
   // without anyone marking the patient arrived.
   | { kind: "appointment.running-late"; appointmentId: string }
   | { kind: "appointment.updated"; appointmentId: string }
+  // Auto-messages widget — fired when a visit lands in COMPLETED so the
+  // patient gets a "Спасибо за визит". Best-effort + idempotent.
+  | { kind: "appointment.completed"; appointmentId: string }
   | { kind: "payment.paid"; appointmentId: string | null }
   | {
       // Phase 16 Wave 3 — fired from `mintReferralRewardOnCompletion`.
@@ -1603,6 +1637,10 @@ export function fireTrigger(payload: FireTriggerPayload): void {
         }
         case "appointment.updated": {
           await scheduleAppointmentReminders(payload.appointmentId);
+          return;
+        }
+        case "appointment.completed": {
+          await onAppointmentThankYou(payload.appointmentId);
           return;
         }
         case "payment.paid": {

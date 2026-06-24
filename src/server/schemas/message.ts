@@ -10,7 +10,7 @@ export const MessageStatusEnum = z.enum([
 ]);
 
 export const MessageAttachmentSchema = z.object({
-  kind: z.literal("image"),
+  kind: z.enum(["image", "file"]),
   url: z.string().min(1).max(2000),
   mimeType: z.string().min(1).max(128),
   sizeBytes: z.number().int().nonnegative().optional(),

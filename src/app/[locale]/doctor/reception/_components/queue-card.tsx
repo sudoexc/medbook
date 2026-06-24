@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ClockIcon, Loader2Icon, PhoneCallIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -68,11 +69,27 @@ export function QueueCard() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error(`appointments ${res.status}`);
+      if (!res.ok) {
+        let reason = "";
+        try {
+          const j = (await res.json()) as { reason?: string };
+          reason = j.reason ?? "";
+        } catch {
+          // non-JSON body — fall through to a generic message.
+        }
+        throw new Error(reason || `appointments ${res.status}`);
+      }
       return (await res.json()) as QueueAppointment;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: doctorQueueKey });
+    },
+    onError: (e) => {
+      toast.error(
+        e.message === "another_visit_in_progress"
+          ? t("queue.anotherInProgress")
+          : t("queue.startFailed"),
+      );
     },
   });
 

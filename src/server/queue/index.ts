@@ -37,6 +37,8 @@
  *  - retries are the worker's responsibility (see `notifications-send.ts`)
  */
 
+import { BullmqQueueAdapter } from "./bullmq-adapter";
+
 export type JobHandler<T = unknown> = (data: T) => Promise<void> | void;
 
 export type EnqueueOptions = {
@@ -162,12 +164,17 @@ let singleton: QueueAdapter | null = null;
 /**
  * Lazy-create the process-wide queue adapter.
  *
- * Today always returns in-memory. Once BullMQ is installed, branch on
- * `process.env.REDIS_URL` and return `new BullmqQueueAdapter(...)`.
+ * With `REDIS_URL` set we get the durable BullMQ backend (at-least-once,
+ * survives restarts); without it we fall back to the in-memory runner for
+ * dev + tests. Importing `bullmq` is side-effect-free (no connection opens
+ * until the adapter is constructed), so a static import is safe even on the
+ * in-memory path.
  */
 export function getQueue(): QueueAdapter {
   if (!singleton) {
-    singleton = new InMemoryQueueAdapter();
+    singleton = process.env.REDIS_URL
+      ? new BullmqQueueAdapter()
+      : new InMemoryQueueAdapter();
   }
   return singleton;
 }

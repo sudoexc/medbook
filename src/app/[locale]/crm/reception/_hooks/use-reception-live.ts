@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { AI_ENABLED } from "@/lib/ai-enabled";
 
 import type {
   AppointmentRow,
@@ -366,8 +367,10 @@ export function useAiQueueScores() {
       const j = (await res.json()) as { items: AiQueueItem[] };
       return j.items ?? [];
     },
+    // AI surface is paused — don't poll the scoring endpoint at all.
+    enabled: AI_ENABLED,
     staleTime: RECEPTION_STALE_MS,
-    refetchInterval: RECEPTION_POLL_MS,
+    refetchInterval: AI_ENABLED ? RECEPTION_POLL_MS : false,
     retry: false,
   });
 }

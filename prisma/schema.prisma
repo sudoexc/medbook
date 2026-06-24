@@ -396,6 +396,7 @@ model Clinic {
   notificationTemplates    NotificationTemplate[]
   notificationSends        NotificationSend[]
   campaigns                Campaign[]
+  cannedResponses          CannedResponse[]
   calls                    Call[]
   onlineRequests           OnlineRequest[]
   reviews                  Review[]
@@ -726,6 +727,13 @@ model User {
   pendingTotpSecret    String?
   pendingTotpExpiresAt DateTime?
 
+  // Staff UI language preference (mirrors ClinicSignupToken.preferredLocale).
+  // Persisted server-side via PATCH /api/me so the choice survives across
+  // devices/browsers; seeds the NEXT_LOCALE cookie at sign-in so a fresh
+  // browser lands in the saved language. Single source of truth a future
+  // staff-notification dispatcher reads to localise its sends.
+  preferredLocale      String    @default("ru") // "ru" | "uz"
+
   doctor                      Doctor?
   accounts                    Account[]
   sessions                    Session[]
@@ -820,6 +828,10 @@ model Doctor {
   color            String   @default("#3DD5C0")
   pricePerVisit    Int?
   salaryPercent    Int      @default(40)
+  // Cap on pre-bookable slots/day. The booking grid steps every 20 min and
+  // offers at most this many; the rest of the day is the live walk-in queue.
+  // Doctors raise it in their own settings when they want more appointments.
+  maxBookableSlotsPerDay Int @default(3)
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1656,6 +1668,14 @@ model Patient {
   photoUrl           String?
   telegramId         String?
   telegramUsername   String?
+  // Telegram inbox enrichment (TZ-telegram-section.md).
+  // `tgBlockedAt` — set when the patient blocks the bot (webhook
+  // `my_chat_member` kicked/left, or a 403 send-fallback); cleared on
+  // unblock / `/start`. Drives the «заблокировали» stat + broadcast exclusion.
+  // `telegramLinkedAt` — first time `telegramId` was stamped; powers the
+  // «+N за неделю» trend.
+  tgBlockedAt        DateTime?
+  telegramLinkedAt   DateTime?
   preferredChannel   CommunicationChannel @default(TG)
   preferredLang      Lang                 @default(RU)
   source             LeadSource?
@@ -2183,6 +2203,9 @@ model Document {
   sizeBytes     Int?
   uploadedById  String?
   uploadedBy    User?        @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  // CONSENT/CONTRACT signature capture. NULL = awaiting signature; the
+  // "ожидают подписи" filter keys off this. Stamped by POST .../[id]/sign.
+  signedAt      DateTime?
   createdAt     DateTime     @default(now())
 
   @@index([clinicId, patientId, createdAt])
@@ -2391,6 +2414,7 @@ model Campaign {
   name         String
   templateId   String?
   template     NotificationTemplate? @relation(fields: [templateId], references: [id])
+  body         String?               @db.Text // inline broadcast body (used when templateId is null)
   segment      Json? // filter definition
   channel      CommunicationChannel
   status       String                @default("DRAFT")
@@ -2409,6 +2433,25 @@ model Campaign {
 
   @@index([clinicId, status, scheduledFor])
   @@index([clinicId, createdAt])
+}
+
+/// Canned (quick-reply) responses for the Telegram inbox composer
+/// (TZ-telegram-section.md Layer 4). Clinic-scoped, language-tagged so the
+/// picker shows phrases matching the patient's `preferredLang`. `createdById`
+/// is a plain scalar (no back-relation on User needed — we never navigate it).
+model CannedResponse {
+  id          String   @id @default(cuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  title       String
+  body        String   @db.Text
+  lang        Lang     @default(RU)
+  sortOrder   Int      @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clinicId, lang, sortOrder])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

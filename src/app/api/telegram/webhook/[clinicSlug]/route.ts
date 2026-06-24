@@ -40,8 +40,16 @@ import {
 } from "@/server/telegram/state";
 import { handleDoctorVoice } from "@/server/telegram/voice-handler";
 import { consumeInviteToken } from "@/server/telegram/invite-token";
+import {
+  ingestTelegramMedia,
+  mediaPreviewLabel,
+} from "@/server/telegram/inbound-media";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import {
+  readWelcomeConfig,
+  type WelcomeConfig,
+} from "@/server/notifications/auto-messages";
 
 // Telegram may burst updates; the runtime must be Node (crypto + fetch).
 export const runtime = "nodejs";
@@ -77,7 +85,11 @@ type TgIncomingMessage = {
   chat: TgChat;
   from?: TgUser;
   text?: string;
+  caption?: string;
   photo?: unknown;
+  document?: unknown;
+  video?: unknown;
+  animation?: unknown;
   voice?: TgVoice;
   audio?: TgAudio;
   contact?: { phone_number: string; first_name?: string; last_name?: string };
@@ -89,11 +101,20 @@ type TgCallbackQuery = {
   message?: TgIncomingMessage;
   data?: string;
 };
+type TgChatMember = { status: string; user?: TgUser };
+type TgChatMemberUpdated = {
+  chat: TgChat;
+  from: TgUser;
+  date: number;
+  old_chat_member: TgChatMember;
+  new_chat_member: TgChatMember;
+};
 type TgUpdate = {
   update_id: number;
   message?: TgIncomingMessage;
   edited_message?: TgIncomingMessage;
   callback_query?: TgCallbackQuery;
+  my_chat_member?: TgChatMemberUpdated;
 };
 
 function safeEqual(a: string, b: string): boolean {
@@ -135,11 +156,15 @@ async function loadClinicBySlug(slug: string): Promise<{
   });
 }
 
-function loadBotCatalog(miniAppUrl: string | null): Catalog {
-  // Simplified FSM only needs the Mini App URL to decide whether to attach a
-  // `web_app` button to the welcome message. No services / doctors / slots
-  // are walked in chat anymore — booking happens inside the Mini App.
-  return { miniAppUrl };
+function loadBotCatalog(
+  miniAppUrl: string | null,
+  welcome: WelcomeConfig | null,
+): Catalog {
+  // Simplified FSM needs the Mini App URL to decide whether to attach a
+  // `web_app` button to the welcome message, plus the clinic's configurable
+  // welcome (CRM «Авто-сообщения» widget). No services / doctors / slots are
+  // walked in chat anymore — booking happens inside the Mini App.
+  return { miniAppUrl, welcome };
 }
 
 /** Upsert Conversation + append incoming Message. */
@@ -147,8 +172,16 @@ async function recordIncoming(
   clinic: TgClinicMinimal & { tgWebhookSecret: string | null },
   chatId: string,
   message: TgIncomingMessage,
-): Promise<{ conversationId: string; mode: "bot" | "takeover"; patientId: string | null }> {
-  const body = message.text ?? (message.contact ? message.contact.phone_number : "");
+): Promise<{
+  conversationId: string;
+  mode: "bot" | "takeover";
+  patientId: string | null;
+  preview: string;
+}> {
+  const textBody =
+    message.text ??
+    message.caption ??
+    (message.contact ? message.contact.phone_number : "");
   const now = new Date();
   const contact = {
     contactFirstName: message.from?.first_name ?? null,
@@ -157,6 +190,7 @@ async function recordIncoming(
   };
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
+    // Upsert first so we have the conversation id for the media storage key.
     const conv = await prisma.conversation.upsert({
       where: {
         clinicId_externalId: { clinicId: clinic.id, externalId: chatId },
@@ -168,19 +202,32 @@ async function recordIncoming(
         status: "OPEN",
         externalId: chatId,
         lastMessageAt: now,
-        lastMessageText: previewOf(body),
+        lastMessageText: previewOf(textBody),
         unreadCount: 1,
         ...contact,
       },
       update: {
         lastMessageAt: now,
-        lastMessageText: previewOf(body),
+        lastMessageText: previewOf(textBody),
         unreadCount: { increment: 1 },
         status: "OPEN",
         ...contact,
       },
       select: { id: true, mode: true, patientId: true },
     });
+
+    // Download any inbound photo/document/video and re-host as attachments.
+    const attachments = await ingestTelegramMedia(clinic, conv.id, message);
+    const preview = previewOf(textBody) || mediaPreviewLabel(attachments);
+
+    // Photo with no caption left the upsert preview empty — refine it so the
+    // inbox row doesn't show a blank last message.
+    if (!previewOf(textBody) && preview) {
+      await prisma.conversation.update({
+        where: { id: conv.id },
+        data: { lastMessageText: preview },
+      });
+    }
 
     // Dedupe on (clinicId, externalId) — Telegram may retry a webhook.
     const externalId = String(message.message_id);
@@ -190,10 +237,11 @@ async function recordIncoming(
           clinicId: clinic.id,
           conversationId: conv.id,
           direction: "IN",
-          body: body || null,
+          body: textBody || null,
+          attachments: attachments.length > 0 ? attachments : null,
           externalId,
           status: "DELIVERED",
-        },
+        } as never,
       });
     } catch (e) {
       // Unique violation on (clinicId, externalId) means retry — ignore.
@@ -201,7 +249,12 @@ async function recordIncoming(
       if (!/Unique constraint/i.test(msg)) throw e;
     }
 
-    return { conversationId: conv.id, mode: conv.mode, patientId: conv.patientId };
+    return {
+      conversationId: conv.id,
+      mode: conv.mode,
+      patientId: conv.patientId,
+      preview,
+    };
   });
 }
 
@@ -240,7 +293,8 @@ async function handleFsmMessage(
   event: FsmEvent,
   miniAppUrl: string | null,
 ): Promise<void> {
-  const catalog = loadBotCatalog(miniAppUrl);
+  const welcome = await readWelcomeConfig(clinic.id);
+  const catalog = loadBotCatalog(miniAppUrl, welcome);
   const prev = await loadSnapshot(clinic.id, chatId);
   const { next, outgoing } = step(prev, event, catalog);
   await saveSnapshot(clinic.id, chatId, next);
@@ -355,7 +409,6 @@ export async function POST(
         }
       }
 
-      const previewBody = msg.text ?? msg.contact?.phone_number ?? "";
       const contactDisplayName = (() => {
         const full = [msg.from?.first_name, msg.from?.last_name]
           .filter(Boolean)
@@ -372,7 +425,7 @@ export async function POST(
           chatId,
           direction: "IN",
           messageId: String(msg.message_id),
-          preview: previewOf(previewBody),
+          preview: recorded.preview,
           contactName: contactDisplayName,
         },
       });
@@ -605,6 +658,61 @@ export async function POST(
         { kind: "callback", data: cq.data ?? "" },
         miniAppUrl,
       );
+      return jsonResponse({ ok: true });
+    }
+
+    // ─ my_chat_member (block / unblock signal) ──────────────────────────
+    // Telegram pushes this when the patient blocks (kicked/left) or restarts
+    // (member) the bot in their private chat. We mirror it onto
+    // `Patient.tgBlockedAt` so reachability counters stay honest.
+    if (update.my_chat_member) {
+      const ev = update.my_chat_member;
+      const status = ev.new_chat_member?.status;
+      const blocked = status === "kicked" || status === "left";
+      const unblocked = status === "member";
+      if (ev.chat?.type === "private" && ev.from?.id && (blocked || unblocked)) {
+        try {
+          await runWithTenant({ kind: "SYSTEM" }, async () => {
+            const chatId = String(ev.chat.id);
+            const patient = await prisma.patient.findFirst({
+              where: { clinicId: clinic.id, telegramId: chatId },
+              select: { id: true, tgBlockedAt: true },
+            });
+            if (!patient) return;
+            if (blocked && !patient.tgBlockedAt) {
+              await prisma.patient.update({
+                where: { id: patient.id },
+                data: { tgBlockedAt: new Date() },
+              });
+            } else if (unblocked && patient.tgBlockedAt) {
+              await prisma.patient.update({
+                where: { id: patient.id },
+                data: { tgBlockedAt: null },
+              });
+            } else {
+              return; // already in the desired state — nothing to broadcast
+            }
+            // Nudge the inbox so the header badge + overview counters refresh.
+            const conv = await prisma.conversation.findUnique({
+              where: {
+                clinicId_externalId: { clinicId: clinic.id, externalId: chatId },
+              },
+              select: { id: true },
+            });
+            if (conv) {
+              publishEventSafe(clinic.id, {
+                type: "tg.conversation.updated",
+                payload: { conversationId: conv.id },
+              });
+            }
+          });
+        } catch (blockErr) {
+          // Best-effort — never let block tracking fail the 200 to Telegram.
+          console.warn(
+            `[tg:webhook clinic=${clinic.slug}] my_chat_member handling failed: ${(blockErr as Error).message}`,
+          );
+        }
+      }
       return jsonResponse({ ok: true });
     }
 

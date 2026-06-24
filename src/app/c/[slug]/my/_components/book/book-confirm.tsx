@@ -235,7 +235,7 @@ export function BookConfirm() {
             </Row>
           ) : null}
           <Row label={t.book.summaryPrice}>
-            <strong>{formatSum(total, t.common.currency)}</strong>
+            <strong>{formatSum(total, lang)}</strong>
           </Row>
         </div>
       </MCard>

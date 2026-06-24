@@ -86,8 +86,9 @@ export const GET = createApiListHandler(
       where.createdAt = range;
     }
     if (q.pendingSignature === true) {
-      // Stub: treat CONSENT/CONTRACT docs without `fileUrl` meta token as pending.
-      where.type = { in: ["CONSENT", "CONTRACT"] };
+      // Consent/contract docs not yet marked signed (POST .../[id]/sign).
+      // Pushed as an AND clause so it composes with an explicit `type` filter.
+      andClauses.push({ type: { in: ["CONSENT", "CONTRACT"] }, signedAt: null });
     }
 
     // DOCTOR sees only documents for their patients/appointments.

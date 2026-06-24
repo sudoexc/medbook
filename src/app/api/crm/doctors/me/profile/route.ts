@@ -38,6 +38,11 @@ const PatchBody = z
     specializationUz: z.string().trim().max(200).optional(),
     bioRu: z.string().trim().max(5000).optional().nullable(),
     bioUz: z.string().trim().max(5000).optional().nullable(),
+
+    // Live queue: how many pre-bookable slots/day this doctor offers. The rest
+    // of the day is the walk-in queue; the doctor raises this when they want
+    // more scheduled appointments.
+    maxBookableSlotsPerDay: z.coerce.number().int().min(1).max(40).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "empty_patch",
@@ -69,6 +74,7 @@ export const GET = createApiListHandler(
             bioRu: true,
             bioUz: true,
             signatureUrl: true,
+            maxBookableSlotsPerDay: true,
           },
         },
       },
@@ -97,6 +103,7 @@ export const GET = createApiListHandler(
       bioRu: user.doctor.bioRu,
       bioUz: user.doctor.bioUz,
       signatureUrl: user.doctor.signatureUrl,
+      maxBookableSlotsPerDay: user.doctor.maxBookableSlotsPerDay,
     });
   },
 );
@@ -132,6 +139,9 @@ export const PATCH = createApiHandler(
     }
     if (body.bioRu !== undefined) doctorPatch.bioRu = body.bioRu;
     if (body.bioUz !== undefined) doctorPatch.bioUz = body.bioUz;
+    if (body.maxBookableSlotsPerDay !== undefined) {
+      doctorPatch.maxBookableSlotsPerDay = body.maxBookableSlotsPerDay;
+    }
     // Mirror Doctor.photoUrl to User.photoUrl: the public doctor card pulls
     // from Doctor.photoUrl and the CRM sidebar reads from User.photoUrl.
     if (body.photoUrl !== undefined) doctorPatch.photoUrl = body.photoUrl;

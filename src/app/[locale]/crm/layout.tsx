@@ -9,6 +9,7 @@ import { CrmTopbar } from "@/components/layout/crm-topbar"
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
 import { TrialBanner } from "@/components/layout/trial-banner"
 import { QueryProvider } from "@/components/providers/query-provider"
+import { CrmRoleProvider } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role"
 import { prisma } from "@/lib/prisma"
 import { runWithTenant } from "@/lib/tenant-context"
 import { ACTIVE_BRANCH_COOKIE_NAME } from "@/server/platform/branch-cookie"
@@ -192,7 +193,9 @@ export default async function CrmLayout({
             currentBranchId={branchCookie}
           />
           <main className="min-h-0 flex-1 overflow-y-auto bg-surface">
-            {children}
+            <CrmRoleProvider role={session?.user?.role ?? "ADMIN"}>
+              {children}
+            </CrmRoleProvider>
           </main>
         </div>
       </div>

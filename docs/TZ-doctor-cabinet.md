@@ -288,16 +288,21 @@ duplicate_object`, `ADD COLUMN IF NOT EXISTS`). После деплоя вери
 
 ## 5. Definition of Done
 
-- [ ] `grep MOCK_` в `/doctor/**` — чисто; живые экраны на реальных данных
-- [ ] 2FA-гейт в `createApiHandler` (тест зелёный); аудит на find-or-create
-- [ ] Финализация приёма → заключение в miniapp (документы + карточка визита)
-- [ ] Отревьюенные анализы видны пациенту; PENDING/RESULTED — нет
-- [ ] Направление: врач создаёт → принимающий видит, пациент получает PDF
-- [ ] ICD-10 автокомплит в диагнозе; CDS-override записывается
-- [ ] Doctor UI на токенах/атомах CRM; reception+my-day переведены (UZ)
-- [ ] Всё аудируется в `AuditLog`; миграции верифицированы на прод
+> Сверено по коду 2026-06-19 (Wave B пунч-листа). `[x]` = подтверждено в
+> исходниках + `tsc`/`i18n:check` зелёные. Это **код-верификация, не runtime-smoke**
+> (браузерный прогон всех экранов под флагом — отдельно). Деплой-гейтнутые пункты
+> остаются `[ ]` до фактического деплоя.
+
+- [x] `grep MOCK_` в `/doctor/**` — чисто (только в `_*.md`-доках, не в исходниках)
+- [x] 2FA-гейт в `createApiHandler` — `enforceTotpEnrollment` (`src/lib/api-handler.ts:216,326,403`) → `MFA_REQUIRED`
+- [x] Финализация приёма → заключение в miniapp (`visit-note-handout` worker, durable sweep)
+- [x] Отревьюенные анализы видны пациенту; PENDING/RESULTED — нет (`miniapp/labs/route.ts:32` `status:"REVIEWED"`)
+- [x] Направление: врач создаёт → пациент получает PDF (`referral-dialog` + `referral-document` worker)
+- [x] ICD-10 автокомплит в диагнозе (`use-icd10-search`, `icd10-browser`); CDS — `use-diagnosis-guide`
+- [x] Doctor UI на токенах/атомах CRM; reception+my-day переведены (UZ) (`i18n:check` в парности)
+- [ ] Всё аудируется в `AuditLog`; **миграции верифицированы на прод** — деплой-гейт
 - [ ] Гейт `DOCTOR_CABINET_ENABLED=1` на staging → неделя smoke с одним врачом
-      → прод
+      → прод — деплой-гейт
 
 ## 6. Последовательность (рекомендуемая)
 

@@ -12,8 +12,8 @@
  *     them independently (Phase 6 infra).
  *
  * What it does:
- *   1. Starts the in-memory queue adapter (swap to BullMQ when REDIS_URL
- *      is set — TODO for infrastructure-engineer).
+ *   1. Resolves the process queue adapter via `getQueue()` — BullMQ when
+ *      `REDIS_URL` is set, in-memory otherwise.
  *   2. Registers the `notifications-send` worker.
  *   3. Starts the `notifications-scheduler` every minute.
  *   4. Logs + keeps the process alive.
@@ -21,6 +21,7 @@
 import { registerActionScheduler } from "@/server/actions/scheduler";
 import { registerRevenueSchedulers } from "@/server/revenue/scheduler";
 import { startTgPollingWorkers } from "@/server/telegram/poll";
+import { getQueue } from "@/server/queue";
 
 import { startAnalyticsRefreshWorker } from "./analytics-refresh";
 import { startAppointmentLifecycleSweepWorker } from "./appointment-lifecycle-sweep";
@@ -156,12 +157,18 @@ async function main() {
   //                        dormant patients (>=90 days, once per quarter).
   const revenue = registerRevenueSchedulers();
 
-  // Phase 3c — Telegram long-poll worker.
-  // Webhook delivery from TG to RU VPS times out (Amsterdam→RU edge blocked),
-  // so we pull updates ourselves and re-POST them to the local webhook route.
-  // This also keeps the worker process alive (continuous network I/O), which
-  // the unref'd schedulers above could not on their own.
-  await startTgPollingWorkers();
+  // Phase 3c — Telegram delivery.
+  // Legacy RU-VPS fallback long-polled getUpdates because webhooks RU→TG timed
+  // out (Amsterdam→RU edge blocked). On a directly-reachable box we use the
+  // per-clinic webhook instead and only poll when TG_USE_POLLING=true.
+  if (process.env.TG_USE_POLLING === "true") {
+    await startTgPollingWorkers();
+  } else {
+    // Polling doubled as the process keep-alive (the schedulers above are
+    // unref'd). With it gated off, hold the event loop open explicitly so the
+    // worker container doesn't exit and take every scheduler down with it.
+    setInterval(() => {}, 1 << 30);
+  }
 
   const shutdown = (signal: NodeJS.Signals) => {
     console.info(`[workers] received ${signal} — shutting down`);
@@ -179,7 +186,14 @@ async function main() {
     dsarScheduler.stop();
     analyticsRefresh.stop();
     scheduledReports.stop();
-    process.exit(0);
+    // Close the queue adapter last: for BullMQ this drains in-flight jobs and
+    // quits the Redis connection; for in-memory it clears timers. Bounded by a
+    // hard 10s exit so a hung close can't wedge the container on redeploy.
+    setTimeout(() => process.exit(0), 10_000).unref();
+    void getQueue()
+      .shutdown()
+      .then(() => process.exit(0))
+      .catch(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

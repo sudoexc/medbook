@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 
 import type { CallRow } from "../_hooks/types";
@@ -147,6 +149,7 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
       </section>
 
       {/* ── AI helper ─────────────────────────────────────────────────── */}
+      <InDevelopment active={!AI_ENABLED}>
       <section
         aria-label={t("aiHints.ariaLabel")}
         className="rounded-xl border border-border bg-background p-3"
@@ -174,6 +177,7 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
           {t("aiHints.disclaimer")}
         </p>
       </section>
+      </InDevelopment>
 
       {/* ── Scripts ───────────────────────────────────────────────────── */}
       <section

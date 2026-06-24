@@ -1,5 +1,3 @@
-// @ts-nocheck
-// TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
 import { prisma } from "@/lib/prisma";
 import { phoneSearchVariants } from "@/lib/phone";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
@@ -59,7 +57,7 @@ export async function GET(request: Request) {
     select: {
       id: true,
       date: true,
-      service: true,
+      primaryService: { select: { nameRu: true } },
       queueOrder: true,
       queueStatus: true,
       doctor: { select: { id: true, nameRu: true, cabinet: true } },
@@ -85,7 +83,7 @@ export async function GET(request: Request) {
       id: a.id,
       doctorName: a.doctor.nameRu,
       cabinet: a.doctor.cabinet,
-      service: a.service,
+      service: a.primaryService?.nameRu ?? null,
       time: formatTime(a.date),
       queueOrder: a.queueOrder,
       queueStatus: a.queueStatus,
@@ -99,7 +97,7 @@ export async function GET(request: Request) {
         id: a.id,
         doctorName: a.doctor.nameRu,
         cabinet: a.doctor.cabinet,
-        service: a.service,
+        service: a.primaryService?.nameRu ?? null,
         date: c.date, // YYYY-MM-DD Tashkent
         time: c.time, // HH:mm Tashkent
       };

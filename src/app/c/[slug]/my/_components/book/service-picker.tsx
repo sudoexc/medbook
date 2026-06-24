@@ -167,7 +167,7 @@ export function ServicePicker() {
                     >
                       {t.book.priceFrom.replace(
                         "{price}",
-                        formatSum(s.minPrice, t.common.currency),
+                        formatSum(s.minPrice, lang),
                       )}
                     </div>
                   ) : null}

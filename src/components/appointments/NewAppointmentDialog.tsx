@@ -359,12 +359,14 @@ export function NewAppointmentDialog({
       if (!values.doctorId) throw new Error("DOCTOR_REQUIRED");
       if (!values.time) throw new Error("TIME_REQUIRED");
 
+      // No service selected → default to the 20-min live-queue slot interval
+      // (matches the booking grid step) so back-to-back slots don't overlap.
       const totalDuration = Math.max(
         5,
         values.serviceIds.reduce((acc, sid) => {
           const svc = (servicesQuery.data ?? []).find((x) => x.id === sid);
           return acc + (svc?.durationMin ?? 0);
-        }, 0) || 30,
+        }, 0) || 20,
       );
 
       // Phase 11: cabinet is derived server-side from doctorId and ignored

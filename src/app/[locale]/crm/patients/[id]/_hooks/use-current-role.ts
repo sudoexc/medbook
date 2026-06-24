@@ -1,17 +1,17 @@
 "use client";
 
+import * as React from "react";
+
 /**
- * Temporary role hook for Phase 2a UI gating.
+ * Client-side role for CRM UI gating (which tabs/actions render).
  *
- * We don't have a client session provider yet (NextAuth `useSession` is not
- * wired — the CRM layout hardcodes admin in Phase 0). Until
- * `session-provider` lands (Phase 2c-ish alongside reception dashboard),
- * the Patient card uses this shim to:
- *  - default to ADMIN (show every tab)
- *  - allow override via `?role=RECEPTIONIST` query param for manual RBAC testing
+ * The role is resolved on the server in `crm/layout.tsx` from the NextAuth
+ * session and handed to `CrmRoleProvider`, so every CRM client component sees
+ * the real role with no extra round-trip. Server-side gating still lives in
+ * `createApiHandler({roles})` — this is purely cosmetic.
  *
- * Server-side gating still lives in `createApiHandler({roles})` — this is
- * purely a UI convenience.
+ * Components rendered outside a provider (tests, isolated stories) fall back to
+ * ADMIN so they show every tab.
  */
 export type Role =
   | "SUPER_ADMIN"
@@ -21,21 +21,20 @@ export type Role =
   | "NURSE"
   | "CALL_OPERATOR";
 
-const ROLES: ReadonlySet<Role> = new Set([
-  "SUPER_ADMIN",
-  "ADMIN",
-  "DOCTOR",
-  "RECEPTIONIST",
-  "NURSE",
-  "CALL_OPERATOR",
-]);
+const RoleContext = React.createContext<Role | null>(null);
+
+export function CrmRoleProvider({
+  role,
+  children,
+}: {
+  role: Role;
+  children: React.ReactNode;
+}) {
+  return React.createElement(RoleContext.Provider, { value: role }, children);
+}
 
 export function useCurrentRole(): Role {
-  if (typeof window === "undefined") return "ADMIN";
-  const sp = new URLSearchParams(window.location.search);
-  const override = sp.get("role")?.toUpperCase();
-  if (override && ROLES.has(override as Role)) return override as Role;
-  return "ADMIN";
+  return React.useContext(RoleContext) ?? "ADMIN";
 }
 
 export function canViewMedical(role: Role): boolean {

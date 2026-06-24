@@ -1,16 +1,17 @@
 /**
- * POST /api/crm/conversations/[id]/attachments — upload an image to send in chat.
+ * POST /api/crm/conversations/[id]/attachments — upload a file to send in chat.
  *
  * Accepts multipart/form-data with a single `file` field. Validates that the
  * conversation belongs to the caller's clinic, checks the MIME type and size
- * limit, and writes the bytes to storage.
+ * limit (see `lib/chat-attachments`), and writes the bytes to storage. Images
+ * and documents (PDF/Office/text/zip) are both accepted.
  *
- * Returns: { url, mimeType, sizeBytes, name }.
+ * Returns: { url, kind, mimeType, sizeBytes, name }.
  *
  * In stub mode (no MINIO_ENDPOINT) we write under `public/uploads/chat/<clinicId>/`
  * so Next.js serves it back at `/uploads/chat/...` — that URL is what we hand to
- * Telegram's sendPhoto, which means dev only works once the bot can reach the
- * machine (tunnel, deploy, etc.).
+ * Telegram's sendPhoto/sendDocument, which means dev only works once the bot can
+ * reach the machine (tunnel, deploy, etc.).
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -21,20 +22,13 @@ import { runWithTenant, type TenantContext, type Role } from "@/lib/tenant-conte
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, forbidden } from "@/server/http";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
+import {
+  CHAT_ALLOWED_MIME,
+  CHAT_MAX_BYTES,
+  chatAttachmentKind,
+  chatExtFor,
+} from "@/lib/chat-attachments";
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_MIME = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
-const MIME_TO_EXT: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
 const ALLOWED_ROLES: Role[] = [
   "ADMIN",
   "RECEPTIONIST",
@@ -83,16 +77,16 @@ export async function POST(request: Request): Promise<Response> {
     if (!(file instanceof File)) return err("MissingFile", 400);
 
     const mime = file.type || "application/octet-stream";
-    if (!ALLOWED_MIME.has(mime)) {
+    if (!CHAT_ALLOWED_MIME.has(mime)) {
       return err("UnsupportedMime", 400, { mimeType: mime });
     }
     if (file.size <= 0) return err("EmptyFile", 400);
-    if (file.size > MAX_BYTES) {
-      return err("FileTooLarge", 400, { max: MAX_BYTES });
+    if (file.size > CHAT_MAX_BYTES) {
+      return err("FileTooLarge", 400, { max: CHAT_MAX_BYTES });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const ext = MIME_TO_EXT[mime] ?? "bin";
+    const ext = chatExtFor(mime, file.name);
     const id = randomUUID();
     const fileName = `${id}.${ext}`;
     const key = `clinics/${conv.clinicId}/chat/${conversationId}/${fileName}`;
@@ -111,12 +105,16 @@ export async function POST(request: Request): Promise<Response> {
       await fs.writeFile(path.join(dir, fileName), buffer);
       publicUrl = `/uploads/chat/${conv.clinicId}/${conversationId}/${fileName}`;
     } else {
-      const result = await uploadObject(undefined, key, buffer, mime);
-      publicUrl = result.url;
+      await uploadObject(undefined, key, buffer, mime);
+      // The bucket is private, so the bare MinIO URL 403s for Telegram and the
+      // browser. Hand back our streaming proxy instead (see ./file/route.ts).
+      const q = new URLSearchParams({ key, name: file.name || fileName });
+      publicUrl = `/api/crm/conversations/${conversationId}/attachments/file?${q.toString()}`;
     }
 
     return ok({
       url: publicUrl,
+      kind: chatAttachmentKind(mime),
       mimeType: mime,
       sizeBytes: file.size,
       name: file.name || fileName,

@@ -4,7 +4,15 @@ import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { DownloadIcon, EyeIcon, UploadIcon } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  BadgeCheckIcon,
+  DownloadIcon,
+  EyeIcon,
+  PenLineIcon,
+  UploadIcon,
+} from "lucide-react";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
@@ -61,6 +69,23 @@ export function DocumentsPageClient() {
 
   const q = useDocumentsList(filters);
   const rows = flattenDocs(q.data?.pages);
+  const qc = useQueryClient();
+
+  const sign = useMutation<unknown, Error, string>({
+    mutationFn: async (id) => {
+      const res = await fetch(`/api/crm/documents/${id}/sign`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`sign ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success(t("signedToast"));
+      void qc.invalidateQueries({ queryKey: ["documents", "list"] });
+    },
+    onError: () => toast.error(t("signError")),
+  });
 
   const patch = (p: Partial<DocumentFilters>) =>
     setFilters((f) => ({ ...f, ...p }));
@@ -225,6 +250,30 @@ export function DocumentsPageClient() {
                       {formatSize(d.sizeBytes)}
                     </td>
                     <td className="px-3 py-2 text-right">
+                      {d.type === "CONSENT" || d.type === "CONTRACT" ? (
+                        d.signedAt ? (
+                          <span
+                            title={new Date(d.signedAt).toLocaleString(
+                              intlLocale(locale),
+                            )}
+                            className="mr-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                          >
+                            <BadgeCheckIcon className="size-3" />
+                            {t("signed")}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mr-1"
+                            disabled={sign.isPending}
+                            onClick={() => sign.mutate(d.id)}
+                          >
+                            <PenLineIcon className="mr-1 size-3.5" />
+                            {t("actions.markSigned")}
+                          </Button>
+                        )
+                      ) : null}
                       <a
                         href={d.fileUrl}
                         target="_blank"

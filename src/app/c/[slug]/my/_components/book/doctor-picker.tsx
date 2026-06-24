@@ -135,12 +135,6 @@ export function DoctorPicker() {
                   >
                     {spec}
                   </div>
-                  <div
-                    className="mt-1 text-xs"
-                    style={{ color: "var(--tg-hint)" }}
-                  >
-                    {t.book.experienceStub}
-                  </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                     {rating !== null && !Number.isNaN(rating) ? (
                       <div className="flex items-center gap-1">
@@ -176,7 +170,7 @@ export function DoctorPicker() {
                       >
                         {t.book.priceFrom.replace(
                           "{price}",
-                          formatSum(minPrice, t.common.currency),
+                          formatSum(minPrice, lang),
                         )}
                       </span>
                     ) : null}

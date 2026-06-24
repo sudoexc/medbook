@@ -24,11 +24,14 @@ import type {
  * Polling is 30s (the active chat polls faster in its own hook). Once
  * SSE `tg.message.new` lands, these intervals go away.
  */
+export type AssigneeFilter = "all" | "mine";
+
 export type ConversationFilters = {
   q: string;
   mode: ModeFilter;
   unreadOnly: boolean;
   patientId: string | null;
+  assignee: AssigneeFilter;
 };
 
 export function useConversationsFilters() {
@@ -42,6 +45,7 @@ export function useConversationsFilters() {
       mode: m === "bot" || m === "takeover" ? m : "all",
       unreadOnly: searchParams?.get("unread") === "1",
       patientId: searchParams?.get("patientId") ?? null,
+      assignee: searchParams?.get("assignee") === "mine" ? "mine" : "all",
     };
   }, [searchParams]);
 
@@ -63,6 +67,10 @@ export function useConversationsFilters() {
       if (patch.patientId !== undefined) {
         if (patch.patientId) sp.set("patientId", patch.patientId);
         else sp.delete("patientId");
+      }
+      if (patch.assignee !== undefined) {
+        if (patch.assignee === "mine") sp.set("assignee", "mine");
+        else sp.delete("assignee");
       }
       router.replace(`?${sp.toString()}`, { scroll: false });
     },
@@ -103,6 +111,7 @@ async function fetchConversations(
   if (filters.mode !== "all") sp.set("mode", filters.mode);
   if (filters.unreadOnly) sp.set("unread", "1");
   if (filters.patientId) sp.set("patientId", filters.patientId);
+  if (filters.assignee === "mine") sp.set("assignedToId", "me");
   if (cursor) sp.set("cursor", cursor);
   const res = await fetch(`/api/crm/conversations?${sp.toString()}`, {
     credentials: "include",

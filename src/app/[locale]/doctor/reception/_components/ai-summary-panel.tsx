@@ -11,6 +11,9 @@ import {
   SparklesIcon,
 } from "lucide-react";
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
+
 type SummaryResponse = {
   text: string | null;
   cacheAge: number | null;
@@ -65,6 +68,7 @@ export function AISummaryPanel({
   }, [summary.data?.text]);
 
   return (
+    <InDevelopment active={!AI_ENABLED}>
     <section className="rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
@@ -134,6 +138,7 @@ export function AISummaryPanel({
         )}
       </div>
     </section>
+    </InDevelopment>
   );
 }
 

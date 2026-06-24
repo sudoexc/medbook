@@ -10,7 +10,10 @@
 import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
-import { findAvailableSlots } from "@/server/services/appointments";
+import {
+  DEFAULT_SLOT_STEP_MIN,
+  findAvailableSlots,
+} from "@/server/services/appointments";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const url = new URL(request.url);
@@ -32,15 +35,20 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   });
   if (!doctor) return err("doctor_not_found", 404);
 
-  let slotMin = 30;
+  let blockMin: number | undefined;
   if (serviceIds.length > 0) {
     const svcs = await prisma.service.findMany({
       where: { id: { in: serviceIds }, clinicId: ctx.clinicId },
       select: { durationMin: true },
     });
     const total = svcs.reduce((acc, s) => acc + s.durationMin, 0);
-    if (total > 0) slotMin = total;
+    if (total > 0) blockMin = total;
   }
-  const slots = await findAvailableSlots({ doctorId, date, slotMin });
-  return ok({ doctorId, date: date.toISOString(), slotMin, slots });
+  const slots = await findAvailableSlots({ doctorId, date, slotMin: blockMin });
+  return ok({
+    doctorId,
+    date: date.toISOString(),
+    slotMin: blockMin ?? DEFAULT_SLOT_STEP_MIN,
+    slots,
+  });
 });

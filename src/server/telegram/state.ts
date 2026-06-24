@@ -65,6 +65,13 @@ export type Catalog = {
    * without a button (text-only intro).
    */
   miniAppUrl?: string | null;
+  /**
+   * Admin-configurable welcome (CRM «Авто-сообщения» widget). Resolution:
+   *   - absent/`null`         → use the hard-coded `WELCOME_TEXT` default.
+   *   - `{ enabled: false }`  → bot stays silent on first contact.
+   *   - `{ enabled: true }`   → send `text` as the greeting.
+   */
+  welcome?: { enabled: boolean; text: string } | null;
 };
 
 export const EMPTY_CATALOG: Catalog = {};
@@ -105,14 +112,26 @@ export function step(
     (event.kind === "text" && event.text.trim() === "/start");
 
   if (isStartCommand || prev.state === "start") {
-    return enterWelcome(catalog.miniAppUrl ?? null);
+    return enterWelcome(catalog.miniAppUrl ?? null, catalog.welcome ?? null);
   }
 
   // Already welcomed: stay silent — operator handles it.
   return { next: prev, outgoing: null };
 }
 
-function enterWelcome(miniAppUrl: string | null): FsmStep {
+function enterWelcome(
+  miniAppUrl: string | null,
+  welcome: { enabled: boolean; text: string } | null,
+): FsmStep {
+  const welcomed: FsmSnapshot = { state: "welcomed", data: {}, updatedAt: now() };
+
+  // Admin toggled the welcome off — mark the chat welcomed (so a later
+  // message doesn't re-trigger) but send nothing; the operator handles it.
+  if (welcome && !welcome.enabled) {
+    return { next: welcomed, outgoing: null };
+  }
+
+  const text = welcome?.enabled ? welcome.text : WELCOME_TEXT;
   const replyMarkup = miniAppUrl
     ? {
         inline_keyboard: [
@@ -121,8 +140,8 @@ function enterWelcome(miniAppUrl: string | null): FsmStep {
       }
     : undefined;
   return {
-    next: { state: "welcomed", data: {}, updatedAt: now() },
-    outgoing: { text: WELCOME_TEXT, replyMarkup },
+    next: welcomed,
+    outgoing: { text, replyMarkup },
   };
 }
 

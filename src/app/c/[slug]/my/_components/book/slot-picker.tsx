@@ -180,7 +180,7 @@ export function SlotPicker() {
                 className="text-sm font-semibold"
                 style={{ color: "var(--tg-accent)" }}
               >
-                {formatSum(selectedDoctorMinPrice, t.common.currency)}
+                {formatSum(selectedDoctorMinPrice, lang)}
               </div>
             </div>
           ) : null}

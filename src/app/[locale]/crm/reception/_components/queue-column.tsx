@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
   Tooltip,
@@ -36,7 +37,25 @@ const BAND_ACCENT: Record<Band, string> = {
   low: "before:bg-muted-foreground/30",
 };
 
-type QueueMode = "waiting" | "ready";
+type QueueMode = "booked" | "walkin";
+
+/**
+ * Booked queue: strictly by appointment time = booking order (1-2-3). A booked
+ * patient whose slot time has arrived sits at the top, ahead of the walk-ins.
+ */
+const bySlotTime = (a: AppointmentRow, b: AppointmentRow) =>
+  new Date(a.date).getTime() - new Date(b.date).getTime();
+
+/**
+ * Live walk-in queue: by arrival order. `queueOrder` is stamped on arrival
+ * (max+1 per doctor/day); fall back to creation time when it's missing.
+ */
+const byArrival = (a: AppointmentRow, b: AppointmentRow) => {
+  const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
+  const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
+  if (oa !== ob) return oa - ob;
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+};
 
 export function QueueColumn({ rows, className }: QueueColumnProps) {
   const t = useTranslations("reception.queueColumn");
@@ -57,11 +76,12 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
 
   const scoreMap = React.useMemo(() => {
     const m = new Map<string, AiQueueItem>();
+    if (!AI_ENABLED) return m;
     for (const it of aiScores.data ?? []) m.set(it.appointmentId, it);
     return m;
   }, [aiScores.data]);
 
-  const aiActive = scoreMap.size > 0;
+  const aiActive = AI_ENABLED && scoreMap.size > 0;
 
   /**
    * doctorId -> specialization (locale-aware). Used by the "Готовы к приёму"
@@ -77,38 +97,28 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
     return m;
   }, [doctorsQuery.data, locale]);
 
-  const sortFn = React.useCallback(
-    (a: AppointmentRow, b: AppointmentRow) => {
-      if (aiActive) {
-        const sa = scoreMap.get(a.id)?.score.score ?? -1;
-        const sb = scoreMap.get(b.id)?.score.score ?? -1;
-        if (sa !== sb) return sb - sa;
-      }
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    },
-    [aiActive, scoreMap],
-  );
-
   /**
-   * Bucket split by `queueStatus` (the canonical queue lifecycle field):
-   *   - WAITING               -> "Ожидают вызова" (already arrived)
-   *   - BOOKED / CONFIRMED    -> "Готовы к приёму" (scheduled, not arrived)
-   *
-   * AI score sort is applied WITHIN each bucket, not across them.
+   * Two-tier live queue:
+   *   - booked (channel ≠ WALKIN) -> "Записанные": shown with their slot time,
+   *     ordered by that time = booking order. Priority when their time comes.
+   *   - walk-ins (channel = WALKIN) -> "Живая очередь": secondary, ordered by
+   *     arrival; they fill the gaps between booked appointments.
+   * AI scores stay as row decoration (band accent + no-show pill), not the
+   * sort key — order is deterministic so reception can trust 1-2-3.
    */
-  const { waiting, ready, total } = React.useMemo(() => {
-    const w: AppointmentRow[] = [];
-    const r: AppointmentRow[] = [];
+  const { booked, live, total } = React.useMemo(() => {
+    const b: AppointmentRow[] = [];
+    const l: AppointmentRow[] = [];
     for (const row of rows) {
       const queueField = row.queueStatus ?? row.status;
       if (!QUEUE_STATUSES.has(queueField)) continue;
-      if (queueField === "WAITING") w.push(row);
-      else r.push(row);
+      if (row.channel === "WALKIN") l.push(row);
+      else b.push(row);
     }
-    w.sort(sortFn);
-    r.sort(sortFn);
-    return { waiting: w, ready: r, total: w.length + r.length };
-  }, [rows, sortFn]);
+    b.sort(bySlotTime);
+    l.sort(byArrival);
+    return { booked: b, live: l, total: b.length + l.length };
+  }, [rows]);
 
   const empty = total === 0;
 
@@ -144,38 +154,39 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
             </div>
           ) : (
             <>
-              {waiting.length > 0 ? (
+              {booked.length > 0 ? (
                 <QueueSubsection
-                  title={t("subsectionWaiting")}
-                  count={waiting.length}
+                  title={t("subsectionBooked")}
+                  count={booked.length}
                 >
-                  {waiting.map((row, i) => (
+                  {booked.map((row, i) => (
                     <QueueItem
                       key={row.id}
                       index={i + 1}
                       row={row}
                       locale={locale}
                       ai={scoreMap.get(row.id)}
-                      mode="waiting"
+                      mode="booked"
                       nowMs={nowMs}
+                      specialty={specByDoctor.get(row.doctor.id) ?? null}
                     />
                   ))}
                 </QueueSubsection>
               ) : null}
-              {ready.length > 0 ? (
+              {live.length > 0 ? (
                 <QueueSubsection
-                  title={t("subsectionReady")}
-                  count={ready.length}
+                  title={t("subsectionLive")}
+                  count={live.length}
                 >
-                  {ready.map((row, i) => (
+                  {live.map((row, i) => (
                     <QueueItem
                       key={row.id}
                       index={i + 1}
                       row={row}
                       locale={locale}
                       ai={scoreMap.get(row.id)}
-                      mode="ready"
-                      specialty={specByDoctor.get(row.doctor.id) ?? null}
+                      mode="walkin"
+                      nowMs={nowMs}
                     />
                   ))}
                 </QueueSubsection>
@@ -264,13 +275,15 @@ function QueueItem({
   const showRisk = ai && noShowPct >= 40;
 
   /**
-   * Wait minutes for the orange chip on "Ожидают вызова" rows.
-   * Prefer the AI-scored `waitMin` (computed server-side relative to call/
-   * arrival time); otherwise fall back to "minutes past slot start", clamped
-   * at zero so we never render a negative wait.
+   * Walk-ins always show wait-since-arrival; booked rows show it only once
+   * they've checked in (queueStatus WAITING) and are sitting past their slot.
+   * Prefer the AI-scored `waitMin` (server-computed); otherwise fall back to
+   * "minutes past slot/arrival start", clamped at zero.
    */
+  const arrived = (row.queueStatus ?? row.status) === "WAITING";
+  const showWait = mode === "walkin" || arrived;
   let waitMin = 0;
-  if (mode === "waiting") {
+  if (showWait) {
     if (ai?.waitMin != null) {
       waitMin = Math.max(0, Math.round(ai.waitMin));
     } else if (nowMs != null) {
@@ -309,14 +322,21 @@ function QueueItem({
                 VIP
               </span>
             ) : null}
-            {mode === "waiting" ? (
+            {mode === "walkin" ? (
               <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
                 {t("waitMin", { min: waitMin })}
               </span>
             ) : (
-              <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
-                {time}
-              </span>
+              <>
+                {arrived ? (
+                  <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
+                    {t("waitMin", { min: waitMin })}
+                  </span>
+                ) : null}
+                <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
+                  {time}
+                </span>
+              </>
             )}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -328,7 +348,7 @@ function QueueItem({
                 (locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu)}
             </span>
             {showRisk && ai ? <NoShowRiskPill ai={ai} /> : null}
-            {mode === "waiting" ? (
+            {mode === "walkin" ? (
               <span className="shrink-0 tabular-nums">{time}</span>
             ) : null}
           </div>

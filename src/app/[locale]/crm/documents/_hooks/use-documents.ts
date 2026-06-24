@@ -38,6 +38,7 @@ export interface DocumentRow {
   fileUrl: string;
   mimeType: string | null;
   sizeBytes: number | null;
+  signedAt: string | null;
   createdAt: string;
   patient: { id: string; fullName: string } | null;
   appointment: {

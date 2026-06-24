@@ -47,6 +47,8 @@ export function useTgInboxAlerts(opts: {
       // Always refresh the list on any tg.* event so mode/status flips and
       // assignee changes propagate without a manual reload.
       void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
+      // Keep the overview counters fresh when patients link/block via the bot.
+      void qc.invalidateQueries({ queryKey: ["tg-stats"] });
 
       // Toast / pulse only fires for incoming patient activity. Status-only
       // updates (`tg.conversation.updated`) are silent.

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useDebounced } from "@/hooks/use-debounced";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 
 import { useDrugCatalog } from "../_hooks/use-drug-catalog";
-import { useDebounced } from "../_hooks/use-debounced";
 import {
   DrugDetailView,
   PREGNANCY_TONE,
@@ -69,9 +69,7 @@ const CATEGORY_ORDER = [
   "OTHER",
 ];
 
-// `lower` is the search term already lower-cased once by the caller, so the
-// per-row filter pass doesn't re-lower the invariant term for every drug.
-function matches(d: DrugDetail, lower: string): boolean {
+function matchesLower(d: DrugDetail, lower: string): boolean {
   return (
     d.nameRu.toLowerCase().includes(lower) ||
     (d.nameUz?.toLowerCase().includes(lower) ?? false) ||
@@ -176,7 +174,7 @@ export function DrugBrowser() {
   const filtered = React.useMemo(() => {
     if (!searching) return [];
     const lower = term.toLowerCase();
-    return rows.filter((d) => matches(d, lower));
+    return rows.filter((d) => matchesLower(d, lower));
   }, [rows, searching, term]);
 
   // Open the biggest category by default so first paint isn't a wall of

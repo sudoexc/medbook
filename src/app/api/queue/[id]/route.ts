@@ -1,10 +1,14 @@
 // @ts-nocheck
-// TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
+// LEGACY: rewrite owned by api-builder/prisma-owner (phase-3a). Still mismatched
+// against the current schema (medicalRecord model, payment upsert shape,
+// session.doctorId, doctor.cabinet). The Telegram path here was migrated to the
+// per-clinic sender — do NOT reintroduce the global @/lib/telegram bot client.
 import { auth } from "@/lib/auth";
 import { isAuthorizedOrPin } from "@/lib/auth-or-pin";
 import { hasValidPin } from "@/lib/pin";
 import { prisma } from "@/lib/prisma";
-import { sendMessage, escapeHtml } from "@/lib/telegram";
+import { escapeHtml } from "@/lib/telegram";
+import { sendMessage } from "@/server/telegram/send";
 import { z } from "zod";
 
 const ActionSchema = z.object({
@@ -39,7 +43,13 @@ export async function PATCH(
 
   const appointment = await prisma.appointment.findUnique({
     where: { id },
-    include: { patient: true, doctor: true },
+    include: {
+      patient: true,
+      doctor: true,
+      clinic: {
+        select: { id: true, slug: true, tgBotToken: true, tgBotUsername: true },
+      },
+    },
   });
   if (!appointment) {
     return Response.json({ error: "Not found" }, { status: 404 });
@@ -77,10 +87,12 @@ export async function PATCH(
       });
 
       // Notify patient via Telegram
-      if (appointment.patient.telegramChatId) {
+      if (appointment.patient.telegramId) {
         sendMessage(
-          appointment.patient.telegramChatId,
-          `🟢 <b>Ваша очередь!</b>\n\nПроходите к врачу: ${escapeHtml(appointment.doctor.nameRu)}\nКабинет: ${appointment.doctor.cabinet}`
+          appointment.clinic,
+          appointment.patient.telegramId,
+          `🟢 <b>Ваша очередь!</b>\n\nПроходите к врачу: ${escapeHtml(appointment.doctor.nameRu)}\nКабинет: ${appointment.doctor.cabinet}`,
+          { parse_mode: "HTML" }
         ).catch((err) => console.error("[telegram]", err));
       }
 

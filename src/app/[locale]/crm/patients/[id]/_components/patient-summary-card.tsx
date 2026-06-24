@@ -25,6 +25,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -103,6 +104,8 @@ export function PatientSummaryCard({
     queryKey,
     queryFn: ({ signal }) => fetchSummary(patientId, locale, signal),
     staleTime: 30_000,
+    // AI surface is paused — don't fetch summaries.
+    enabled: AI_ENABLED,
   });
 
   // Re-fetch when the worker publishes the refreshed event for THIS patient.
@@ -112,7 +115,7 @@ export function PatientSummaryCard({
     shouldInvalidate: (event) =>
       event.type === "patient.summary.refreshed" &&
       event.payload.patientId === patientId,
-    enabled: true,
+    enabled: AI_ENABLED,
   });
 
   const [refreshing, setRefreshing] = React.useState(false);
@@ -128,6 +131,9 @@ export function PatientSummaryCard({
       setRefreshing(false);
     }
   }, [canRefresh, patientId, locale, qc, queryKey]);
+
+  // AI surface paused — render nothing until it's switched back on.
+  if (!AI_ENABLED) return null;
 
   const data = q.data;
   const isInitialLoading = q.isLoading;

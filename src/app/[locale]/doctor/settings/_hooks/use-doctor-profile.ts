@@ -19,6 +19,7 @@ export type DoctorProfile = {
   bioRu: string | null;
   bioUz: string | null;
   signatureUrl: string | null;
+  maxBookableSlotsPerDay: number;
 };
 
 export const doctorProfileKey = ["doctor", "me", "profile"] as const;
@@ -48,6 +49,7 @@ export type ProfilePatch = Partial<{
   specializationUz: string;
   bioRu: string | null;
   bioUz: string | null;
+  maxBookableSlotsPerDay: number;
 }>;
 
 export function usePatchDoctorProfile() {

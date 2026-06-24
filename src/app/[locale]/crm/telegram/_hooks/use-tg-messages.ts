@@ -14,11 +14,10 @@ import type { InboxMessage, MessagesResponse } from "./types";
  * Chat history with scroll-up pagination. The list endpoint returns
  * messages newest-first, so we reverse pages for display.
  *
- * Polling: 10s on the active chat (fallback until SSE lands).
- *
- * TODO(realtime-engineer): subscribe to `tg.message.new` and call
- * `queryClient.setQueryData(messagesKey(conversationId), ...)` to append
- * the new message in-place instead of re-fetching.
+ * Realtime: new messages arrive via the `tg.message.new` SSE event —
+ * `useTgMessagesRealtime` (below, mounted by `chat-pane.tsx`) invalidates the
+ * active chat on each matching event. No polling on the active chat; the
+ * conversation list (`use-conversations.ts`) keeps its own slow reconcile.
  */
 
 export function messagesKey(conversationId: string) {
@@ -49,7 +48,6 @@ export function useTgMessages(conversationId: string | null) {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(conversationId),
     staleTime: 5_000,
-    refetchInterval: conversationId ? 60_000 : false,
   });
 }
 

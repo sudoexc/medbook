@@ -50,6 +50,10 @@ export const POST = createApiHandler(
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
+    // Template-backed campaigns only (the dormant wizard). Inline-body
+    // broadcasts go through POST /api/crm/campaigns/broadcast instead.
+    if (!body.templateId) return err("TemplateRequired", 400);
+
     const template = await prisma.notificationTemplate.findUnique({
       where: { id: body.templateId },
       select: { id: true, channel: true, isActive: true },

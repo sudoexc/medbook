@@ -19,9 +19,10 @@ const LABELS: Record<Lang, { short: string; long: string }> = {
  *   and writes the `NEXT_LOCALE` cookie so subsequent visits stick).
  * - Also writes the cookie defensively (1-year, path=/) in case cookie
  *   propagation lags the client-side navigation.
- * - For authenticated staff, we'd like to persist `user.locale` server-side so
- *   notifications go out in the right language. That requires `/api/me`
- *   (PATCH { locale }) which doesn't exist yet — see TODO below.
+ * - For authenticated staff it also PATCHes `/api/me { locale }` (best-effort)
+ *   so the choice is persisted server-side and survives across devices — the
+ *   cookie alone is per-browser. Unauthenticated callers (public pages) get a
+ *   harmless 401 which we ignore.
  */
 export function LanguageSwitcher() {
   const locale = useLocale() as Lang;
@@ -57,9 +58,14 @@ export function LanguageSwitcher() {
       // but we write it eagerly so the preference survives before the nav resolves.
       document.cookie = `NEXT_LOCALE=${next}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
 
-      // TODO(auth): once `/api/me` lands, PATCH { locale: next } so staff users'
-      // `User.locale` is updated server-side and notifications go out in the
-      // chosen language. For now we only persist via cookie.
+      // Persist the staff preference server-side so it survives across devices
+      // (the cookie is per-browser). Best-effort: a 401 on public pages or a
+      // transient failure must not block the language change.
+      void fetch("/api/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale: next }),
+      }).catch(() => {});
 
       router.replace(pathname, { locale: next });
       setOpen(false);

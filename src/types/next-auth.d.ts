@@ -19,6 +19,7 @@ declare module "next-auth" {
     role?: AppRole;
     clinicId?: string | null;
     mustChangePassword?: boolean;
+    preferredLocale?: string;
   }
   interface Session {
     user: {

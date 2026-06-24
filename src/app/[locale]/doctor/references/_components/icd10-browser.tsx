@@ -11,10 +11,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useDebounced } from "@/hooks/use-debounced";
 import { toast } from "@/components/ui/sonner";
 import { ICD10_ENTRIES, type Icd10Entry } from "@/server/icd10/data";
 
-import { useDebounced } from "../_hooks/use-debounced";
 import { useIcd10Search } from "../_hooks/use-icd10-search";
 import { Highlight } from "./highlight";
 import {

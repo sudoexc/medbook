@@ -8,12 +8,16 @@ import {
   ClockIcon,
   AlertCircleIcon,
   BotIcon,
+  HeadsetIcon,
+  DownloadIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatBytes } from "@/lib/chat-attachments";
 import { DateText } from "@/components/atoms/date-text";
 
 import type { InboxMessage } from "../_hooks/types";
+import { FileTypeIcon } from "./file-icon";
 
 /**
  * Simple markdown-lite renderer: `**bold**`, `*italic*`, auto-link http(s)
@@ -66,11 +70,37 @@ function isImageAttachment(x: unknown): x is ImageAttachment {
   );
 }
 
-export interface MessageBubbleProps {
-  message: InboxMessage;
+type FileAttachment = {
+  kind: "file";
+  url: string;
+  mimeType?: string;
+  name?: string;
+  sizeBytes?: number;
+};
+
+function isFileAttachment(x: unknown): x is FileAttachment {
+  if (!x || typeof x !== "object") return false;
+  const obj = x as Record<string, unknown>;
+  return (
+    obj.kind === "file" &&
+    typeof obj.url === "string" &&
+    obj.url.length > 0
+  );
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export interface MessageBubbleProps {
+  message: InboxMessage;
+  /** First message of a consecutive same-author run — gets extra top spacing. */
+  groupStart?: boolean;
+  /** Last message of the run — gets the tail corner + avatar. */
+  groupEnd?: boolean;
+}
+
+export function MessageBubble({
+  message,
+  groupStart = true,
+  groupEnd = true,
+}: MessageBubbleProps) {
   const t = useTranslations("tgInbox");
   const isOut = message.direction === "OUT";
   const body = message.body ?? "";
@@ -87,6 +117,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const images = Array.isArray(message.attachments)
     ? (message.attachments as unknown[]).filter(isImageAttachment)
     : [];
+  const files = Array.isArray(message.attachments)
+    ? (message.attachments as unknown[]).filter(isFileAttachment)
+    : [];
 
   const isBotReply = isOut && !message.senderId;
   const onRight = isOut;
@@ -97,30 +130,54 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       data-message-body={body}
       className={cn(
         "flex items-end gap-1.5 rounded-md transition-shadow",
+        groupStart ? "mt-3" : "mt-0.5",
         onRight ? "flex-row-reverse" : "",
       )}
     >
       {isOut ? (
-        <span
-          className={cn(
-            "inline-flex size-6 shrink-0 items-center justify-center rounded-full",
-            isBotReply
-              ? "bg-primary/15 text-primary"
-              : "bg-muted text-muted-foreground",
-          )}
-          aria-hidden
-        >
-          <BotIcon className="size-3.5" />
-        </span>
+        groupEnd ? (
+          <span
+            className={cn(
+              "inline-flex size-6 shrink-0 items-center justify-center rounded-full shadow-sm ring-1 ring-border/50",
+              isBotReply
+                ? "bg-primary/15 text-primary"
+                : "bg-muted text-muted-foreground",
+            )}
+            aria-hidden
+          >
+            {isBotReply ? (
+              <BotIcon className="size-3.5" />
+            ) : (
+              <HeadsetIcon className="size-3.5" />
+            )}
+          </span>
+        ) : (
+          <span className="size-6 shrink-0" aria-hidden />
+        )
       ) : null}
       <div
         className={cn(
-          "max-w-[68%] rounded-2xl px-3 py-2 text-sm shadow-sm",
+          "max-w-[72%] rounded-2xl px-3 py-2 text-sm shadow-sm ring-1",
           onRight
-            ? "rounded-br-sm bg-primary/10 text-foreground"
-            : "rounded-bl-sm bg-muted text-foreground",
+            ? cn(
+                isBotReply
+                  ? "bg-muted/70 text-foreground ring-border/50"
+                  : "bg-primary/10 text-foreground ring-primary/10",
+                groupEnd && "rounded-br-md",
+              )
+            : cn("bg-card text-foreground ring-border/60", groupEnd && "rounded-bl-md"),
         )}
       >
+        {isOut && groupStart ? (
+          <div
+            className={cn(
+              "mb-1 text-[11px] font-semibold leading-none",
+              isBotReply ? "text-primary" : "text-foreground/70",
+            )}
+          >
+            {isBotReply ? t("mode.bot") : message.sender?.name ?? t("mode.operator")}
+          </div>
+        ) : null}
         {images.length > 0 ? (
           <div
             className={cn(
@@ -147,13 +204,43 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             ))}
           </div>
         ) : null}
+        {files.length > 0 ? (
+          <div className="mb-1 space-y-1">
+            {files.map((f, i) => (
+              <a
+                key={i}
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={f.name ?? true}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-2.5 py-2 transition-colors hover:bg-card"
+              >
+                <FileTypeIcon
+                  nameOrExt={f.name ?? f.mimeType ?? ""}
+                  className="size-7 shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-foreground">
+                    {f.name ?? t("message.file")}
+                  </span>
+                  {typeof f.sizeBytes === "number" ? (
+                    <span className="block text-[11px] text-muted-foreground">
+                      {formatBytes(f.sizeBytes)}
+                    </span>
+                  ) : null}
+                </span>
+                <DownloadIcon className="size-4 shrink-0 text-muted-foreground" />
+              </a>
+            ))}
+          </div>
+        ) : null}
         {body ? (
           <div
             className="whitespace-pre-wrap break-words"
             // Safe: escaped + limited tags.
             dangerouslySetInnerHTML={{ __html: html }}
           />
-        ) : images.length === 0 ? (
+        ) : images.length === 0 && files.length === 0 ? (
           <div className="italic opacity-70">{t("message.noText")}</div>
         ) : null}
         {buttons && buttons.length > 0 ? (

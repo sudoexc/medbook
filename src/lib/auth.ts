@@ -158,6 +158,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: user.role as Role,
           clinicId: user.clinicId ?? null,
           mustChangePassword: user.mustChangePassword,
+          preferredLocale: user.preferredLocale,
         };
       },
     }),
@@ -171,11 +172,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           clinicId?: string | null;
           id?: string;
           mustChangePassword?: boolean;
+          preferredLocale?: string;
         };
         token.role = u.role;
         token.clinicId = u.clinicId ?? null;
         token.userId = u.id ?? token.sub;
         token.mustChangePassword = Boolean(u.mustChangePassword);
+        // Seed the UI-language cookie from the persisted staff preference so a
+        // fresh browser/device lands in the saved language. Best-effort: a
+        // cookie-write failure (e.g. invoked outside a request scope) must
+        // never break sign-in. Mirrors the `cookies()` usage in
+        // mintUserSessionOnSignIn below.
+        if (u.preferredLocale === "ru" || u.preferredLocale === "uz") {
+          try {
+            const store = await cookies();
+            store.set("NEXT_LOCALE", u.preferredLocale, {
+              path: "/",
+              maxAge: 60 * 60 * 24 * 365,
+              sameSite: "lax",
+            });
+          } catch {
+            // Outside a request scope — cookie will be seeded on next switch.
+          }
+        }
         // Phase 17 Wave 2 — fresh signin: mint a UserSession, kick prior
         // ones, and seed the user-session cookie. Stamping happens here
         // instead of an `events.signIn` because events cannot write

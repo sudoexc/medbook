@@ -87,11 +87,14 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       if (!res.ok) {
         let reason = "";
         try {
+          // Server error envelope is flat: `{ error: "conflict", reason }`
+          // (see server/http.ts conflict/err). Read the top-level `reason`.
           const j = (await res.json()) as {
-            error?: { reason?: string; code?: string; message?: string };
+            reason?: string;
+            code?: string;
+            message?: string;
           };
-          reason =
-            j.error?.reason ?? j.error?.code ?? j.error?.message ?? "";
+          reason = j.reason ?? j.code ?? j.message ?? "";
         } catch {
           // body wasn't JSON — fall through to generic message.
         }
@@ -271,6 +274,9 @@ function messageFor(
   }
   if (raw === "invalid_transition") {
     return t("statusToast.errInvalidTransition");
+  }
+  if (raw === "another_visit_in_progress") {
+    return t("statusToast.errAnotherInProgress");
   }
   if (raw === "not_revertable") {
     return t("statusToast.errNotRevertable");

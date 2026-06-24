@@ -8,7 +8,7 @@ import type { InboxMessage, MessagesResponse } from "./types";
 import { messagesKey } from "./use-tg-messages";
 
 export type ChatAttachment = {
-  kind: "image";
+  kind: "image" | "file";
   url: string;
   mimeType: string;
   sizeBytes?: number;

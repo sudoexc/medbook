@@ -14,8 +14,11 @@ import { SkeletonRow } from "@/components/atoms/skeleton-row";
 
 import type {
   ConversationFilters,
+  AssigneeFilter,
 } from "../_hooks/use-conversations";
-import type { InboxConversation, ModeFilter } from "../_hooks/types";
+import type { InboxConversation } from "../_hooks/types";
+
+const ASSIGNEE_FILTERS: AssigneeFilter[] = ["all", "mine"];
 
 export interface ConversationListProps {
   rows: InboxConversation[];
@@ -30,7 +33,37 @@ export interface ConversationListProps {
   pulsedIds?: ReadonlySet<string>;
 }
 
-const MODE_OPTIONS: ModeFilter[] = ["all", "bot", "takeover"];
+type InboxTab = "all" | "unanswered" | "active";
+const TABS: InboxTab[] = ["all", "unanswered", "active"];
+
+type Temperature = "hot" | "warm" | "cold";
+type TempFilter = "all" | Temperature;
+const TEMP_FILTERS: TempFilter[] = ["all", "hot", "warm", "cold"];
+
+const HOT_MAX_MIN = 120; // unread + last activity within 2h → needs reply now
+const WARM_MAX_MIN = 24 * 60; // activity within a day → still warm
+
+/** Lead-urgency heuristic from unread + recency (client-side triage). */
+function temperatureOf(row: InboxConversation, now: number): Temperature {
+  const last = row.lastMessageAt ? new Date(row.lastMessageAt).getTime() : 0;
+  const ageMin = last ? (now - last) / 60_000 : Number.POSITIVE_INFINITY;
+  if (row.unreadCount > 0 && ageMin <= HOT_MAX_MIN) return "hot";
+  if (row.unreadCount > 0 || ageMin <= WARM_MAX_MIN) return "warm";
+  return "cold";
+}
+
+const TEMP_DOT: Record<TempFilter, string> = {
+  all: "bg-muted-foreground/50",
+  hot: "bg-destructive",
+  warm: "bg-[color:var(--warning)]",
+  cold: "bg-[color:var(--info)]",
+};
+
+function tabFromFilters(f: ConversationFilters): InboxTab {
+  if (f.unreadOnly) return "unanswered";
+  if (f.mode === "takeover") return "active";
+  return "all";
+}
 
 export function ConversationList({
   rows,
@@ -45,6 +78,7 @@ export function ConversationList({
 }: ConversationListProps) {
   const t = useTranslations("tgInbox");
   const [search, setSearch] = React.useState(filters.q);
+  const [temp, setTemp] = React.useState<TempFilter>("all");
 
   // Debounce the q filter → URL-sync.
   React.useEffect(() => {
@@ -54,10 +88,35 @@ export function ConversationList({
     return () => clearTimeout(id);
   }, [search, filters.q, setFilters]);
 
+  const activeTab = tabFromFilters(filters);
+
+  // Temperature is a client-side triage filter over the rows the server
+  // already returned for the active tab. Counts reflect what's loaded.
+  const { displayRows, tempCounts } = React.useMemo(() => {
+    const now = Date.now();
+    const counts: Record<Temperature, number> = { hot: 0, warm: 0, cold: 0 };
+    const filtered: InboxConversation[] = [];
+    for (const r of rows) {
+      const tmp = temperatureOf(r, now);
+      counts[tmp] += 1;
+      if (temp === "all" || tmp === temp) filtered.push(r);
+    }
+    return { displayRows: filtered, tempCounts: counts };
+  }, [rows, temp]);
+
+  const tempCountFor = (f: TempFilter): number =>
+    f === "all" ? rows.length : tempCounts[f];
+
+  const setTab = (tab: InboxTab) => {
+    if (tab === "unanswered") setFilters({ unreadOnly: true, mode: "all" });
+    else if (tab === "active") setFilters({ mode: "takeover", unreadOnly: false });
+    else setFilters({ mode: "all", unreadOnly: false });
+  };
+
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: displayRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 76,
     overscan: 6,
@@ -78,50 +137,91 @@ export function ConversationList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Header: filter chips above search */}
-      <div className="space-y-2.5 border-b border-border p-3">
-        <div className="flex flex-wrap items-center gap-1">
-          {MODE_OPTIONS.map((m) => (
+      {/* Header: primary tabs · search · temperature triage */}
+      <div className="space-y-2.5 border-b border-border/60 p-3">
+        <div
+          className="flex items-center gap-1 rounded-lg bg-muted/40 p-0.5"
+          role="tablist"
+          aria-label={t("list.tabsAria")}
+        >
+          {TABS.map((tab) => (
             <button
-              key={m}
+              key={tab}
               type="button"
-              onClick={() => setFilters({ mode: m })}
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => setTab(tab)}
               className={cn(
-                "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                filters.mode === m
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:text-foreground",
+                "flex-1 rounded-md px-2 py-1 text-[12px] font-semibold transition-colors",
+                activeTab === tab
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {t(`list.mode.${m}`)}
+              {t(`list.tabs.${tab}`)}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => setFilters({ unreadOnly: !filters.unreadOnly })}
-            aria-pressed={filters.unreadOnly}
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
-              filters.unreadOnly
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:text-foreground",
-            )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("list.searchPlaceholder")}
+              className="pl-8"
+              aria-label={t("list.searchAria")}
+            />
+          </div>
+          <div
+            className="flex shrink-0 items-center gap-0.5 rounded-lg bg-muted/40 p-0.5"
+            role="group"
+            aria-label={t("list.assigneeAria")}
           >
-            {t("list.unreadToggleShort")}
-          </button>
+            {ASSIGNEE_FILTERS.map((a) => (
+              <button
+                key={a}
+                type="button"
+                aria-pressed={filters.assignee === a}
+                onClick={() => setFilters({ assignee: a })}
+                className={cn(
+                  "rounded-md px-2 py-1 text-[12px] font-semibold transition-colors",
+                  filters.assignee === a
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t(`list.assignee.${a}`)}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("list.searchPlaceholder")}
-            className="pl-8"
-            aria-label={t("list.searchAria")}
-          />
-        </div>
-        <div className="text-[11px] text-muted-foreground">
-          {t("list.count", { n: rows.length })}
+        <div className="flex items-center gap-1">
+          {TEMP_FILTERS.map((f) => {
+            const count = tempCountFor(f);
+            const selected = temp === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setTemp(f)}
+                aria-pressed={selected}
+                className={cn(
+                  "inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium transition-colors",
+                  selected
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <span
+                  className={cn("size-1.5 rounded-full", TEMP_DOT[f])}
+                  aria-hidden
+                />
+                <span className="truncate">{t(`list.temp.${f}`)}</span>
+                <span className="tabular-nums font-semibold">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -134,22 +234,22 @@ export function ConversationList({
         aria-atomic="false"
         aria-label={t("list.ariaLabel")}
       >
-        {isLoading && rows.length === 0 ? (
+        {isLoading && displayRows.length === 0 ? (
           <div className="space-y-0 p-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <SkeletonRow key={i} />
             ))}
           </div>
-        ) : rows.length === 0 ? (
+        ) : displayRows.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground">
-            {t("list.empty")}
+            {temp === "all" ? t("list.empty") : t("list.emptyTemp")}
           </div>
         ) : (
           <div
             style={{ height: virtualizer.getTotalSize(), position: "relative" }}
           >
             {virtualizer.getVirtualItems().map((vi) => {
-              const row = rows[vi.index]!;
+              const row = displayRows[vi.index]!;
               return (
                 <div
                   key={row.id}
@@ -190,6 +290,7 @@ function ConversationRow({
   pulse: boolean;
 }) {
   const t = useTranslations("tgInbox");
+  const temp = temperatureOf(row, Date.now());
   const previewText = row.lastMessageText ?? "";
   const tgFullName = [row.contactFirstName, row.contactLastName]
     .filter(Boolean)
@@ -213,11 +314,23 @@ function ConversationRow({
       onClick={() => onSelect(row.id)}
       key={pulse ? "pulse" : "idle"}
       className={cn(
-        "flex w-full items-start gap-3 border-b border-border px-3 py-2.5 text-left transition-colors",
-        active ? "bg-primary/10" : "hover:bg-muted/40",
+        "relative mx-1.5 flex w-[calc(100%-12px)] items-start gap-3 rounded-xl px-2.5 py-2.5 text-left",
+        "transition-[background-color,box-shadow] duration-[var(--motion-dur-fast)] ease-out",
+        active
+          ? "bg-primary/10 shadow-sm shadow-primary/5"
+          : "hover:bg-muted/60",
         pulse && "tg-row-pulse",
       )}
     >
+      {temp === "hot" || temp === "warm" ? (
+        <span
+          className={cn(
+            "absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-full",
+            temp === "hot" ? "bg-destructive" : "bg-[color:var(--warning)]",
+          )}
+          aria-hidden
+        />
+      ) : null}
       <AvatarWithStatus
         name={name}
         src={row.patient?.photoUrl ?? null}

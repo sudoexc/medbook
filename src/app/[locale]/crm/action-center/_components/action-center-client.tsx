@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 import { MoneyText } from "@/components/atoms/money-text";
 import { CountUp } from "@/components/atoms/count-up";
@@ -1049,6 +1051,7 @@ function AiRecs({
   ];
 
   return (
+    <InDevelopment active={!AI_ENABLED}>
     <section className="motion-rise-in rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <header className="flex items-center gap-2">
         <SparklesIcon className="size-4 text-primary" />
@@ -1081,6 +1084,7 @@ function AiRecs({
         ))}
       </ol>
     </section>
+    </InDevelopment>
   );
 }
 

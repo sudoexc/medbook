@@ -27,6 +27,8 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -592,6 +594,7 @@ function AiAssistantCard({
 
   const confidence = 92;
   return (
+    <InDevelopment active={!AI_ENABLED}>
     <section className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-card to-primary/5 p-3">
       <header className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
@@ -657,6 +660,7 @@ function AiAssistantCard({
         </div>
       </div>
     </section>
+    </InDevelopment>
   );
 }
 

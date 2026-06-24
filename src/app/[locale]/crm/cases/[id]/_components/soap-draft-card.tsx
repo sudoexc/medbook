@@ -24,6 +24,8 @@ import { SparklesIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { AI_ENABLED } from "@/lib/ai-enabled";
+import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -101,6 +103,7 @@ export function SoapDraftCard({ caseId, initialDraft }: SoapDraftCardProps) {
   const empty = !isEditing && current.trim().length === 0;
 
   return (
+    <InDevelopment active={!AI_ENABLED}>
     <section className="rounded-xl border border-border bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -172,5 +175,6 @@ export function SoapDraftCard({ caseId, initialDraft }: SoapDraftCardProps) {
         </pre>
       )}
     </section>
+    </InDevelopment>
   );
 }

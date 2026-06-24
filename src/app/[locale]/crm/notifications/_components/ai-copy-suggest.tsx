@@ -17,6 +17,7 @@ import { useTranslations } from "next-intl";
 import { CopyIcon, Loader2Icon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -216,6 +217,9 @@ export function AiCopySuggest({
     onUse(text);
     setOpen(false);
   };
+
+  // AI surface paused — hide the generate-copy trigger entirely.
+  if (!AI_ENABLED) return null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

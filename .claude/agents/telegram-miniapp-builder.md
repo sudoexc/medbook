@@ -1,7 +1,7 @@
 ---
 name: telegram-miniapp-builder
 description: Use this agent to build /c/[slug]/my — the patient-facing Telegram Mini App (service → doctor → slot flow, my appointments, reschedule, payment, documents). Invoke in Phase 3d.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

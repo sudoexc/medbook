@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Use this agent to audit security after each phase — RBAC correctness, tenancy isolation, PII handling, secrets management, rate limits, input validation, XSS/SQLi/CSRF, auth flow. Invoke at phase boundaries, or when touching auth/permissions/integrations.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

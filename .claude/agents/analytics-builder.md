@@ -1,7 +1,7 @@
 ---
 name: analytics-builder
 description: Use this agent to build analytics surfaces — Loss Analytics dashboard, Revenue Forecast, Custom Report Builder, Cohort analysis, Doctor Performance scoreboard, Real-time Financial dashboard. Invoke for Phase 14 (Loss/Forecast UI) and Phase 18 (full analytics suite) of ROADMAP-11x.md.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

@@ -1,7 +1,7 @@
 ---
 name: realtime-engineer
 description: Use this agent to build the SSE channel /api/events — typed event schema, Redis pub/sub for horizontal scale, client hooks (useLiveEvents, useLiveQuery). Invoke in Phase 2c before reception dashboard, and when a new event type is needed.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

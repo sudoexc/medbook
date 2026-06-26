@@ -1,7 +1,7 @@
 ---
 name: performance-optimizer
 description: Use this agent to run performance audits — bundle analysis, DB query optimization (N+1 detection, missing indexes), React Profiler traces, virtualization check, Lighthouse runs. Invoke after each major feature phase and in Phase 7.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

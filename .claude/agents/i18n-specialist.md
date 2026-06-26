@@ -1,7 +1,7 @@
 ---
 name: i18n-specialist
 description: Use this agent for translations (ru/uz), money formatters (UZS/USD), date/number/phone formatting, language switcher, hreflang. Invoke in Phase 0 for setup and whenever new UI strings are added.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

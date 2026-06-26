@@ -1,7 +1,7 @@
 ---
 name: revenue-engine-builder
 description: Use this agent to build the Revenue Engines — Empty Slot Engine, Reactivation Engine, No-Show Risk v2 (factor breakdown), Loss Analytics dashboard, Revenue Forecast. Closes the revenue-optimization gap (6.5/10 → 10/10). Invoke for Phase 14 of ROADMAP-11x.md.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

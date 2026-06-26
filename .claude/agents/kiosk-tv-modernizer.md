@@ -1,7 +1,7 @@
 ---
 name: kiosk-tv-modernizer
 description: Use this agent to modernize existing /kiosk and /tv pages to work with multi-tenancy and the new design system. These screens exist; refresh their look and plumbing. Invoke after Phase 2b (appointments live) or in parallel with Phase 4.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

@@ -1,7 +1,7 @@
 ---
 name: admin-platform-builder
 description: Use this agent to build /admin/* — the SUPER_ADMIN cross-tenant control plane. Create/edit clinics, switch between them, manage provider connections (SMS, TG, Payment, Telephony), global billing/usage overview. Invoke in Phase 4.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

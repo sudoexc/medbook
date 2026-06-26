@@ -1,7 +1,7 @@
 ---
 name: settings-pages-builder
 description: Use this agent to build /crm/settings/* — clinic info, users (CRUD + roles), services catalog, cabinets, audit log viewer, integrations settings. Invoke in Phase 4.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

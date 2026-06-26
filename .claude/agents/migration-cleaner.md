@@ -1,7 +1,7 @@
 ---
 name: migration-cleaner
 description: Use this agent for Phase 0 cleanup — deleting legacy code paths, old admin pages, dead dependencies, and tagging a safety commit before rebuild. Invoke exactly once at the start of the rebuild, or when a later phase needs targeted removal of a legacy module.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

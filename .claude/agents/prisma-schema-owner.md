@@ -1,7 +1,7 @@
 ---
 name: prisma-schema-owner
 description: Use this agent for any change to prisma/schema.prisma, migrations, seed scripts, or DB indexes. It is the sole owner of the schema. Invoke when adding models, fields, enums, relations, or performance indexes; and for the initial Phase 0/1 schema build.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

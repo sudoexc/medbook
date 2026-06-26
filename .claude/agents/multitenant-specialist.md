@@ -1,7 +1,7 @@
 ---
 name: multitenant-specialist
 description: Use this agent to build and maintain multi-tenancy — the Clinic model's runtime wiring (AsyncLocalStorage clinic context, Prisma middleware that auto-scopes all queries by clinicId), RBAC+tenant isolation tests, and the SUPER_ADMIN clinic switcher. Invoke in Phase 0, and whenever a new model needs tenant scoping.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

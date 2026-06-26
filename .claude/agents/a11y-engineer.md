@@ -1,7 +1,7 @@
 ---
 name: a11y-engineer
 description: Use this agent to audit and fix accessibility — ARIA, keyboard navigation, focus management, contrast, screen reader support, axe-core integration in CI. Invoke after each page phase and in Phase 7.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

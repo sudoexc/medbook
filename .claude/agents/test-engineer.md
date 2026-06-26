@@ -1,7 +1,7 @@
 ---
 name: test-engineer
 description: Use this agent to build and maintain the test suite — Vitest unit tests, Playwright e2e flows, CI integration, coverage reporting, test fixtures. Invoke in Phase 0 (scaffold) and after every feature phase (coverage).
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

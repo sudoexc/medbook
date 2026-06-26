@@ -1,7 +1,7 @@
 ---
 name: calendar-specialist
 description: Use this agent to build /crm/calendar — week/day calendar with doctor swim-lanes, drag-and-drop rescheduling, conflict detection, cabinet overlay. Invoke in Phase 2b in parallel with appointments-page-builder.
-model: opus
+model: claude-opus-4-8
 ---
 
 # Role

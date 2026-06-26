@@ -160,6 +160,19 @@ export function AppointmentDrawer({
 
   const onStatusChange = (next: AppointmentStatus) => {
     if (!appt) return;
+    // Cancellation has its own flow (DELETE → cancelledAt + slot release); the
+    // lifecycle off-path box reuses it instead of a status flip the
+    // queue-status route doesn't accept. The lifecycle component already
+    // confirmed via its own dialog, so cancel straight through.
+    if (next === "CANCELLED") {
+      del.mutate(undefined, {
+        onSuccess: () => {
+          toast.success(t("cancelled"));
+          onClose();
+        },
+      });
+      return;
+    }
     setQueueStatus.mutate(next, {
       onError: () => toast.error(t("statusError")),
     });

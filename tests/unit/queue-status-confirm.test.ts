@@ -265,6 +265,23 @@ describe("PATCH queue-status — CONFIRMED branch", () => {
     expect(confirmAppointment).not.toHaveBeenCalled();
   });
 
+  it("QS7 — queueStatus=NO_SHOW uses the flat-update path, no confirm helper", async () => {
+    const PATCH = await loadPATCH();
+    const { confirmAppointment } = await import("@/server/appointments/confirm");
+    const res = await PATCH(patchReq("appt_1", { queueStatus: "NO_SHOW" }));
+    expect(res.status).toBe(200);
+
+    expect(confirmAppointment).not.toHaveBeenCalled();
+    expect(state.helperCalls).toHaveLength(0);
+    expect(state.updateCalls).toHaveLength(1);
+    const data = state.updateCalls[0].data;
+    expect(data.queueStatus).toBe("NO_SHOW");
+    expect(data.status).toBe("NO_SHOW");
+
+    const body = (await res.json()) as { queueStatus: string };
+    expect(body.queueStatus).toBe("NO_SHOW");
+  });
+
   it("QS6 — tenant ctx without clinicId → 400 ClinicNotSelected", async () => {
     // The route's `tenant?.kind === 'TENANT' ? tenant.clinicId : null` branch
     // returns null if the ctx isn't TENANT-shaped. Flip the getTenant mock to

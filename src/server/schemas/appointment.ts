@@ -91,7 +91,18 @@ export const QueryAppointmentSchema = z.object({
 });
 
 export const QueueStatusUpdateSchema = z.object({
-  queueStatus: z.enum(["CONFIRMED", "WAITING", "IN_PROGRESS", "COMPLETED", "SKIPPED"]),
+  // NO_SHOW joins the off-path triplet (with SKIPPED) the reception drawer can
+  // dispatch here. CANCELLED is intentionally absent — it owns a richer flow
+  // (DELETE /appointments/[id] sets cancelledAt + releases the slot), so the
+  // drawer routes a cancel there instead of through this status flip.
+  queueStatus: z.enum([
+    "CONFIRMED",
+    "WAITING",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "SKIPPED",
+    "NO_SHOW",
+  ]),
 });
 
 export const SlotsQuerySchema = z.object({

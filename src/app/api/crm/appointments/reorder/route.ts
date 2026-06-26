@@ -20,6 +20,10 @@ import { ok, err } from "@/server/http";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { ReorderQueueSchema } from "@/server/schemas/appointment";
+import { serveAtMs } from "@/lib/queue-ordering";
+
+/** Spacing between consecutive serveAt anchors when re-sequencing (1 s). */
+const STEP_MS = 1000;
 
 export const POST = createApiHandler(
   {
@@ -39,7 +43,7 @@ export const POST = createApiHandler(
 
     const existing = await prisma.appointment.findMany({
       where: { id: { in: uniqueIds }, doctorId },
-      select: { id: true, queueOrder: true },
+      select: { id: true, date: true, queuedAt: true, channel: true },
     });
     if (existing.length !== uniqueIds.length) {
       const found = new Set(existing.map((a) => a.id));
@@ -47,13 +51,22 @@ export const POST = createApiHandler(
       return err("IdsMismatch", 422, { reason: "ids_mismatch", missing });
     }
 
-    // One transaction, sequential 1..N updates. With ≤200 rows this is
-    // well under a millisecond per row; no need to drop to raw SQL.
+    // Variant A — re-sequence by rewriting the serveAt anchor (`queuedAt`), not
+    // `queueOrder`, which stays frozen as the immutable ticket-number source.
+    // Anchor the new sequence at the earliest serveAt currently in the set and
+    // space rows STEP_MS apart so the shared EDF comparator (`compareQueue`)
+    // reproduces exactly this top-to-bottom order on every surface.
+    //
+    // Caveat: a booking whose slot is still in the future floors at its slot
+    // (serveAt = max(slot, queuedAt)), so dragging it *earlier* than its slot is
+    // a no-op — the receptionist uses «срочно» (queuePriority) to pull a
+    // not-yet-due booking ahead. Walk-ins and already-due bookings move freely.
+    const base = Math.min(...existing.map((a) => serveAtMs(a)));
     await prisma.$transaction(
       uniqueIds.map((id, idx) =>
         prisma.appointment.update({
           where: { id },
-          data: { queueOrder: idx + 1 },
+          data: { queuedAt: new Date(base + idx * STEP_MS) },
         }),
       ),
     );

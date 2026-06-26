@@ -1823,6 +1823,15 @@ model Appointment {
   // Nullable: set the moment a slot enters the live queue; backfilled from
   // queueOrder for pre-existing rows.
   ticketSeq    Int?
+  // serveAt EDF — the instant this visit joined the live waiting queue. Stamped
+  // the moment a row enters WAITING (walk-in registration, kiosk/reception
+  // check-in). The queue comparator serves walk-ins FIFO by this stamp and
+  // scheduled visits at max(slot, queuedAt) — so a late booking is treated as a
+  // walk-in from arrival and can't jump the people who actually waited. A
+  // skipped patient who returns re-joins at the back (fresh stamp); an
+  // IN_PROGRESS→WAITING put-back keeps its original stamp. Null until the row
+  // first enters the queue (backfilled for pre-existing live rows).
+  queuedAt     DateTime?
   // Wave 3c — patient tapped «Я на месте» in the Mini App. Idempotency
   // anchor for self check-in (one patient.arrived event per visit) and the
   // cross-session source of truth for the "you're checked in" pill. NOT a

@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { isOverdue, isRunningLate } from "@/lib/appointments/overdue";
+import { compareQueue } from "@/lib/queue-ordering";
 
 /**
  * Denormalised row returned by `GET /api/crm/appointments` — see §6.2.
@@ -83,6 +84,8 @@ export type AppointmentRow = {
   channel: "WALKIN" | "PHONE" | "TELEGRAM" | "WEBSITE" | "KIOSK";
   queueOrder: number | null;
   queuePriority: number;
+  ticketSeq: number | null;
+  queuedAt: string | null;
   priceBase: number | null;
   priceService: number | null;
   priceFinal: number | null;
@@ -113,21 +116,24 @@ export type AppointmentRow = {
 
 /**
  * Live-queue precedence shared by every reception sort site (panel, doctor
- * list, queue column) and the public TV board. Urgency (`queuePriority`, higher
- * first) wins; ties fall back to `queueOrder` ascending so the receptionist's
- * manual drag order is preserved within a priority band. Returns 0 when both
- * axes are equal — callers append their own tie-breaker (slot time / arrival).
+ * list, queue column). Thin adapter over the single source of truth
+ * `compareQueue` (`lib/queue-ordering`) so the staff panel sorts byte-for-byte
+ * like the server projection that drives the TV board / kiosk / patient ticket:
+ * urgency bump first, then serveAt (EDF), then the immutable ticket sequence.
+ * Callers may still append a tie-breaker, but with serveAt as the key a true
+ * tie is now rare.
  */
 export function compareQueuePriority(
-  a: Pick<AppointmentRow, "queuePriority" | "queueOrder">,
-  b: Pick<AppointmentRow, "queuePriority" | "queueOrder">,
+  a: Pick<
+    AppointmentRow,
+    "queuePriority" | "queueOrder" | "ticketSeq" | "channel" | "date" | "queuedAt"
+  >,
+  b: Pick<
+    AppointmentRow,
+    "queuePriority" | "queueOrder" | "ticketSeq" | "channel" | "date" | "queuedAt"
+  >,
 ): number {
-  const pa = a.queuePriority ?? 0;
-  const pb = b.queuePriority ?? 0;
-  if (pa !== pb) return pb - pa;
-  const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
-  const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
-  return oa - ob;
+  return compareQueue(a, b);
 }
 
 export type AppointmentsListResponse = {

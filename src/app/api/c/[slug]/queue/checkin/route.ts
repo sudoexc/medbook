@@ -80,6 +80,8 @@ export async function POST(request: Request) {
     // slot (already WAITING/IN_PROGRESS), so we only re-allocate from BOOKED
     // or when the order is missing.
     const needsOrder = !appt.queueOrder || appt.queueStatus === "BOOKED";
+    const enteringQueue = appt.queueStatus === "BOOKED";
+    const now = new Date();
     const { queueOrder, ticketSeq, updated } = await runQueueTx(async (tx) => {
       const order = needsOrder
         ? await allocateQueueOrder(tx, {
@@ -97,6 +99,9 @@ export async function POST(request: Request) {
           // On a re-check-in (needsOrder false) we leave ticketSeq untouched so
           // a reception reorder of queueOrder never reissues the printed ticket.
           ...(needsOrder ? { ticketSeq: order } : {}),
+          // serveAt EDF anchor — stamp arrival the moment a booking flips into
+          // the live queue. A re-check-in (already WAITING) keeps its stamp.
+          ...(enteringQueue ? { queuedAt: now } : {}),
           status: appt.queueStatus === "BOOKED" ? "WAITING" : undefined,
         },
         select: { queueStatus: true, queueOrder: true, ticketSeq: true },

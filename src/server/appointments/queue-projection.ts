@@ -11,7 +11,8 @@
  * every surface reads the same projection. The canonical rules live here and
  * nowhere else:
  *
- *   - ordering:  queuePriority DESC, then queueOrder ASC (reception drag order)
+ *   - ordering:  queuePriority DESC, then serveAt ASC, then ticketSeq ASC —
+ *                the shared `compareQueue` (see `lib/queue-ordering`)
  *   - position:  1-based index within the sorted WAITING list
  *   - ETA:       perVisitMin * (idx + (current ? 1 : 0))   — minutes until seen
  *   - perVisit:  doctor-wide historical median (predictPerVisitMinutes),
@@ -23,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { predictPerVisitMinutes } from "@/server/ai/per-visit-eta";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { tashkentDayBounds } from "@/lib/booking-validation";
+import { compareQueue } from "@/lib/queue-ordering";
 import type { EtaOutput } from "@/lib/ai/eta-predictor";
 
 export interface QueueEntry {
@@ -55,15 +57,6 @@ export interface DoctorQueue {
   waiting: QueueEntry[];
 }
 
-/** queuePriority DESC, then queueOrder ASC — the one true queue comparator. */
-function byQueue(
-  a: { queuePriority: number; queueOrder: number | null },
-  b: { queuePriority: number; queueOrder: number | null },
-): number {
-  if (a.queuePriority !== b.queuePriority) return b.queuePriority - a.queuePriority;
-  return (a.queueOrder ?? 0) - (b.queueOrder ?? 0);
-}
-
 export async function getQueueProjection(opts: {
   clinicId: string;
   doctorIds: string[];
@@ -89,6 +82,9 @@ export async function getQueueProjection(opts: {
       queueOrder: true,
       queuePriority: true,
       ticketSeq: true,
+      channel: true,
+      date: true,
+      queuedAt: true,
       startedAt: true,
       durationMin: true,
       patient: { select: { fullName: true } },
@@ -113,7 +109,7 @@ export async function getQueueProjection(opts: {
     const own = byDoctor.get(id) ?? [];
     const waitingSorted = own
       .filter((a) => a.queueStatus === "WAITING")
-      .sort(byQueue);
+      .sort(compareQueue);
     waitingByDoc.set(id, waitingSorted);
     currentByDoc.set(id, own.find((a) => a.queueStatus === "IN_PROGRESS"));
     if (waitingSorted[0]) fallbackByDoc.set(id, waitingSorted[0].durationMin);

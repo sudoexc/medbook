@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { serveAtMs } from "@/lib/queue-ordering";
 import type {
   AppointmentCabinetShort,
   AppointmentDoctorShort,
@@ -426,11 +427,13 @@ export function useBulkReschedule() {
 /**
  * Persist a new top-to-bottom ordering for a single doctor's live queue.
  *
- * Optimistically rewrites `queueOrder` on every cached `["reception","appointments","today",...]`
- * snapshot so the list jumps into the new order instantly. We don't touch the
- * generic `["appointments","list",...]` cache — its query keys are filter-scoped
- * and the reception panel is the only consumer that sorts by `queueOrder`. On
- * settled we invalidate all reception surfaces so kiosk/TV come back in sync.
+ * Optimistically rewrites the serveAt anchor (`queuedAt`) on every cached
+ * `["reception","appointments","today",...]` snapshot — mirroring the server's
+ * variant-A reorder — so the list jumps into the new order instantly under the
+ * shared EDF comparator. We don't touch the generic `["appointments","list",...]`
+ * cache — its query keys are filter-scoped and the reception panel is the only
+ * consumer that sorts the live queue. On settled we invalidate all reception
+ * surfaces so kiosk/TV come back in sync.
  */
 export function useReorderQueue() {
   const qc = useQueryClient();
@@ -458,7 +461,7 @@ export function useReorderQueue() {
       return (await res.json()) as { count: number };
     },
     onMutate: async ({ orderedIds }) => {
-      const orderMap = new Map(orderedIds.map((id, idx) => [id, idx + 1]));
+      const orderIndex = new Map(orderedIds.map((id, idx) => [id, idx]));
       // Snapshot every reception-today cache (there can be several — one per
       // forDate) so onError can roll back even if multiple panels are mounted.
       await qc.cancelQueries({ queryKey: ["reception", "appointments", "today"] });
@@ -469,11 +472,23 @@ export function useReorderQueue() {
       for (const [key, rows] of entries) {
         if (!rows) continue;
         snapshots.push([key, rows]);
+        // Mirror the server (variant A): anchor at the earliest serveAt in the
+        // affected set and space rows 1 s apart by rewriting `queuedAt`, so the
+        // shared EDF comparator renders exactly the dragged order. A future-slot
+        // booking floors at its slot on both sides, so it stays put either way.
+        const affected = rows.filter((r) => orderIndex.has(r.id));
+        if (affected.length === 0) continue;
+        const base = Math.min(...affected.map((r) => serveAtMs(r)));
         qc.setQueryData<AppointmentRow[]>(
           key,
           rows.map((r) =>
-            orderMap.has(r.id)
-              ? { ...r, queueOrder: orderMap.get(r.id) ?? r.queueOrder }
+            orderIndex.has(r.id)
+              ? {
+                  ...r,
+                  queuedAt: new Date(
+                    base + (orderIndex.get(r.id) ?? 0) * 1000,
+                  ).toISOString(),
+                }
               : r,
           ),
         );

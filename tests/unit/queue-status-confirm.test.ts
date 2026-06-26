@@ -92,33 +92,46 @@ vi.mock("@/server/appointments/confirm", () => ({
   }),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    appointment: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
-        if (state.appt && state.appt.id === where.id) return state.appt;
-        return null;
-      }),
-      update: vi.fn(
-        async ({
-          where,
-          data,
-        }: {
-          where: { id: string };
-          data: Record<string, unknown>;
-        }) => {
-          state.updateCalls.push({ where, data });
-          if (!state.appt) throw new Error("no row");
-          state.appt = { ...state.appt, ...(data as Partial<Appt>) };
-          return state.appt;
-        },
+vi.mock("@/lib/prisma", () => {
+  const appointment = {
+    findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+      if (state.appt && state.appt.id === where.id) return state.appt;
+      return null;
+    }),
+    update: vi.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: Record<string, unknown>;
+      }) => {
+        state.updateCalls.push({ where, data });
+        if (!state.appt) throw new Error("no row");
+        state.appt = { ...state.appt, ...(data as Partial<Appt>) };
+        return state.appt;
+      },
+    ),
+    // The →WAITING path now allocates a queueOrder under Serializable isolation
+    // (reception "Пришёл"); `allocateQueueOrder` reads max+1 per doctor/day via
+    // `aggregate` inside `$transaction`.
+    aggregate: vi.fn(async () => ({ _max: { queueOrder: 0 } })),
+  };
+  return {
+    prisma: {
+      appointment,
+      auditLog: {
+        create: vi.fn(async () => ({ id: "a1" })),
+      },
+      // Callback form used by `runQueueTx`; hand the same mock back as the tx.
+      $transaction: vi.fn(
+        async (
+          fn: (tx: { appointment: typeof appointment }) => Promise<unknown>,
+        ) => fn({ appointment }),
       ),
     },
-    auditLog: {
-      create: vi.fn(async () => ({ id: "a1" })),
-    },
-  },
-}));
+  };
+});
 
 // ----- helpers -------------------------------------------------------------
 

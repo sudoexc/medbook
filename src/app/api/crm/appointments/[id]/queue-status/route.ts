@@ -2,6 +2,7 @@
  * /api/crm/appointments/[id]/queue-status — set queueStatus + side-effects.
  * See docs/TZ.md §6.1 queue.
  */
+import type { Appointment } from "@/generated/prisma/client";
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -20,6 +21,10 @@ import {
 } from "@/lib/appointments/lifecycle";
 import { confirmAppointment } from "@/server/appointments/confirm";
 import { findOtherActiveVisit } from "@/server/appointments/active-visit";
+import {
+  allocateQueueOrder,
+  runQueueTx,
+} from "@/server/appointments/queue-order";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -149,7 +154,35 @@ export const PATCH = createApiHandler(
       }
     }
 
-    const after = await prisma.appointment.update({ where: { id }, data });
+    let after: Appointment;
+    if (body.queueStatus === "WAITING") {
+      // Reception "Пришёл": a BOOKED/CONFIRMED row carries no queueOrder, so it
+      // must claim one (and freeze its ticket number) the same way the kiosk
+      // check-in does — otherwise it joins the live queue with a null order and
+      // the board can't print a ticket for it. A returning SKIPPED row already
+      // owns a queueOrder/ticketSeq, so we leave those frozen.
+      const needsOrder = before.queueOrder == null;
+      // Fresh serveAt anchor on first arrival (queuedAt null) or when a skipped
+      // patient comes back — they re-join at the back of the queue. An
+      // IN_PROGRESS put-back keeps its original stamp so it doesn't surrender
+      // its place.
+      const refreshQueuedAt =
+        before.queuedAt == null || before.queueStatus === "SKIPPED";
+      after = await runQueueTx(async (tx) => {
+        if (needsOrder) {
+          const order = await allocateQueueOrder(tx, {
+            clinicId: before.clinicId,
+            doctorId: before.doctorId,
+          });
+          data.queueOrder = order;
+          data.ticketSeq = order;
+        }
+        if (refreshQueuedAt) data.queuedAt = now;
+        return tx.appointment.update({ where: { id }, data });
+      });
+    } else {
+      after = await prisma.appointment.update({ where: { id }, data });
+    }
     await audit(request, {
       action: "appointment.queue-status",
       entityType: "Appointment",

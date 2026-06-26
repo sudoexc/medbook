@@ -3,7 +3,12 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LayoutGridIcon, ListIcon, SettingsIcon } from "lucide-react";
+import {
+  LayoutGridIcon,
+  ListIcon,
+  SettingsIcon,
+  TicketIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,6 +42,7 @@ import { TgPreviewWidget } from "./tg-preview-widget";
 import { UrgentAlertsWidget } from "./urgent-alerts-widget";
 import { QueueColumn } from "./queue-column";
 import { BottomRow } from "./bottom-row";
+import { WalkinTicketDialog } from "./walkin-ticket-dialog";
 import {
   ReceptionListDrawer,
   type ReceptionListMode,
@@ -157,6 +163,7 @@ export function ReceptionPageClient() {
     patientId?: string | null;
     doctorId?: string | null;
   } | null>(null);
+  const [walkinOpen, setWalkinOpen] = React.useState(false);
 
   const openCreate = React.useCallback(
     (prefill?: { patientId?: string | null; doctorId?: string | null }) => {
@@ -217,6 +224,14 @@ export function ReceptionPageClient() {
             {t("autoRefresh")}
           </span>
         </div>
+        <Button
+          size="sm"
+          className="gap-2"
+          onClick={() => setWalkinOpen(true)}
+        >
+          <TicketIcon className="size-4" />
+          {t("walkin.trigger")}
+        </Button>
       </div>
 
       <KpiStrip
@@ -355,6 +370,8 @@ export function ReceptionPageClient() {
         initialDoctorId={dialogPrefill?.doctorId ?? null}
         onCreated={(id) => openRow(id)}
       />
+
+      <WalkinTicketDialog open={walkinOpen} onOpenChange={setWalkinOpen} />
 
       <DoctorPanelSettings
         open={settingsOpen}

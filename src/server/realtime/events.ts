@@ -44,6 +44,9 @@ export const EVENT_TYPES = [
   "appointment.moved",
   // queue
   "queue.updated",
+  // Wave 2 — patient called into the cabinet. Ephemeral board signal (chime +
+  // "now calling" banner); never persisted to the outbox.
+  "queue.called",
   // calls
   "call.incoming",
   "call.answered",
@@ -152,6 +155,27 @@ export const QueuePayload = z
   })
   .passthrough();
 export type QueueEventPayload = z.infer<typeof QueuePayload>;
+
+/**
+ * Patient called into the cabinet («Вызвать пациента»). Drives the public
+ * waiting-room board's "now calling" banner + chime and the kiosk flash. This
+ * is an *ephemeral signal*, not a status row — it rides the in-process bus via
+ * `publishEventSafe` (no outbox/replay), so a reconnecting TV never re-chimes
+ * a stale call. Payload is deliberately PHI-light: the board joins by
+ * `appointmentId` for the name if it wants one; the bus only carries the
+ * public ticket/cabinet identifiers a waiting room already sees on paper.
+ */
+export const QueueCalledPayload = z
+  .object({
+    appointmentId: z.string().min(1),
+    doctorId: z.string().min(1),
+    queueOrder: z.number().int().nullable().optional(),
+    ticketNumber: z.string().optional(),
+    cabinetNumber: z.string().nullable().optional(),
+    calledAt: z.string().optional(),
+  })
+  .passthrough();
+export type QueueCalledEventPayload = z.infer<typeof QueueCalledPayload>;
 
 export const CallPayload = z
   .object({
@@ -577,6 +601,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("appointment.cancelled", AppointmentPayload),
   makeEvent("appointment.moved", AppointmentPayload),
   makeEvent("queue.updated", QueuePayload),
+  makeEvent("queue.called", QueueCalledPayload),
   makeEvent("call.incoming", CallPayload),
   makeEvent("call.answered", CallPayload),
   makeEvent("call.ended", CallPayload),

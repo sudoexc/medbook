@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { ok, notFound, conflict, err } from "@/server/http";
 import { QueueStatusUpdateSchema } from "@/server/schemas/appointment";
 import { publishEventSafe } from "@/server/realtime/publish";
+import { ticketNumberFor } from "@/server/services/ticket-number";
 import { getTenant } from "@/lib/tenant-context";
 import {
   canTransition,
@@ -186,6 +187,35 @@ export const PATCH = createApiHandler(
             status: after.status,
             date: after.date.toISOString(),
             endDate: after.endDate.toISOString(),
+          },
+        });
+      }
+      // Reception "Вызвать следующего" drives the patient into IN_PROGRESS
+      // through this endpoint (the doctor cabinet uses the ?call=true branch
+      // instead). Emit the ephemeral board signal here too so the waiting-room
+      // TV chimes + flashes "now calling" regardless of which desk summoned
+      // the patient. Fire-and-forget, no DB calledAt write — this is a display
+      // signal, not a lifecycle change.
+      if (
+        body.queueStatus === "IN_PROGRESS" &&
+        before.queueStatus !== "IN_PROGRESS"
+      ) {
+        const doctorCabinet = await prisma.doctor.findUnique({
+          where: { id: after.doctorId },
+          select: { cabinet: { select: { number: true } } },
+        });
+        publishEventSafe(clinicId, {
+          type: "queue.called",
+          payload: {
+            appointmentId: id,
+            doctorId: after.doctorId,
+            queueOrder: after.queueOrder,
+            ticketNumber: ticketNumberFor(
+              after.doctorId,
+              after.ticketSeq ?? after.queueOrder,
+            ),
+            cabinetNumber: doctorCabinet?.cabinet?.number ?? null,
+            calledAt: now.toISOString(),
           },
         });
       }

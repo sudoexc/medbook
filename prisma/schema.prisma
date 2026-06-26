@@ -1811,6 +1811,18 @@ model Appointment {
   status       AppointmentStatus @default(BOOKED)
   queueStatus  AppointmentStatus @default(BOOKED)
   queueOrder   Int?
+  // Manual urgency bump for the live queue (Wave 5). Higher floats to the top
+  // of the waiting list ahead of arrival order; ties fall back to `queueOrder`
+  // (the receptionist's drag order), so a manual reorder is never clobbered.
+  // 0 = normal. Set from the reception queue panel.
+  queuePriority Int     @default(0)
+  // Variant C — immutable ticket sequence. `queueOrder` is mutated by the
+  // reception drag-reorder, which would churn the patient-facing ticket number.
+  // `ticketSeq` is frozen at allocation (walk-in / check-in) and is the sole
+  // input to `ticketNumberFor`, so a reorder never reassigns a printed ticket.
+  // Nullable: set the moment a slot enters the live queue; backfilled from
+  // queueOrder for pre-existing rows.
+  ticketSeq    Int?
   // Wave 3c — patient tapped «Я на месте» in the Mini App. Idempotency
   // anchor for self check-in (one patient.arrived event per visit) and the
   // cross-session source of truth for the "you're checked in" pill. NOT a

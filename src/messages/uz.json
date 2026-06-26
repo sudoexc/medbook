@@ -1730,6 +1730,25 @@
       "patientArrived": "Bemor keldi",
       "fallbackName": "Bemor"
     },
+    "walkin": {
+      "trigger": "Talon berish",
+      "title": "Jonli navbat taloni",
+      "description": "Bemor va shifokorni tanlang — bemor navbatga turadi, talonni esa chop etish mumkin.",
+      "submit": "Talon berish",
+      "issuing": "Berilmoqda…",
+      "cancel": "Bekor qilish",
+      "errPatient": "Bemorni tanlang yoki ism va telefonni kiriting",
+      "errDoctor": "Shifokorni tanlang",
+      "toastIssued": "{number} talon berildi",
+      "result": {
+        "title": "Talon berildi",
+        "number": "Talon raqami",
+        "cabinet": "Kabinet {number}",
+        "print": "Chop etish",
+        "another": "Yana talon",
+        "close": "Yopish"
+      }
+    },
     "doctorsPanel": {
       "title": "Kabinetlar va shifokorlar",
       "day": "Kun",
@@ -1779,6 +1798,8 @@
         "addAppointment": "Yozish",
         "more": "Yana",
         "openCard": "Kartani ochish",
+        "priorityOn": "Navbat boshiga",
+        "priorityOff": "Boshidan olib tashlash",
         "primary": {
           "CONFIRM": "Tasdiqladi",
           "ARRIVED": "Keldi",

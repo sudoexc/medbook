@@ -1,9 +1,7 @@
-// @ts-nocheck
-// TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
 import { prisma } from "@/lib/prisma";
-import { tashkentDayBounds } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
-import { predictETA } from "@/lib/ai/eta-predictor";
+import { ticketNumberFor } from "@/server/services/ticket-number";
+import { getQueueProjection } from "@/server/appointments/queue-projection";
 
 // GET /api/queue/status/:id — public endpoint for patient queue status (QR code page)
 export async function GET(
@@ -16,15 +14,21 @@ export async function GET(
     where: { id },
     select: {
       id: true,
+      clinicId: true,
       doctorId: true,
-      serviceId: true,
-      service: true,
-      durationMin: true,
       queueStatus: true,
       queueOrder: true,
+      ticketSeq: true,
       patient: { select: { fullName: true } },
-      doctor: { select: { id: true, nameRu: true, cabinet: true } },
-      primaryService: { select: { durationMin: true } },
+      doctor: {
+        select: {
+          id: true,
+          nameRu: true,
+          cabinet: { select: { number: true } },
+        },
+      },
+      primaryService: { select: { nameRu: true } },
+      clinic: { select: { nameRu: true, slug: true } },
     },
   });
 
@@ -32,84 +36,48 @@ export async function GET(
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { dayStart: today, dayEnd: tomorrow } = tashkentDayBounds();
-  const fallbackMin =
-    appointment.primaryService?.durationMin ?? appointment.durationMin ?? 30;
+  // Read the patient's own slot from the SAME projection the board and kiosk
+  // use, so position / ETA / ticket can never disagree across surfaces. The
+  // projection honours queuePriority (the old per-queueOrder count here did
+  // not) and sources per-visit minutes doctor-wide (not service-filtered).
+  const projection = await getQueueProjection({
+    clinicId: appointment.clinicId,
+    doctorIds: [appointment.doctorId],
+  });
+  const q = projection.get(appointment.doctorId);
+  const waiting = q?.waiting ?? [];
+  const mine = waiting.find((w) => w.appointmentId === appointment.id);
 
-  const [totalWaiting, ahead, history, hasCurrentPatient] = await Promise.all([
-    prisma.appointment.count({
-      where: {
-        doctorId: appointment.doctorId,
-        date: { gte: today, lt: tomorrow },
-        queueStatus: "WAITING",
-      },
-    }),
-    appointment.queueStatus === "WAITING" && appointment.queueOrder != null
-      ? prisma.appointment.count({
-          where: {
-            doctorId: appointment.doctorId,
-            date: { gte: today, lt: tomorrow },
-            queueStatus: "WAITING",
-            queueOrder: { lt: appointment.queueOrder },
-          },
-        })
-      : Promise.resolve(0),
-    appointment.serviceId
-      ? prisma.appointment.findMany({
-          where: {
-            doctorId: appointment.doctorId,
-            serviceId: appointment.serviceId,
-            status: "COMPLETED",
-            startedAt: { not: null },
-            completedAt: { not: null },
-          },
-          select: { startedAt: true, completedAt: true },
-          orderBy: { completedAt: "desc" },
-          take: 30,
-        })
-      : Promise.resolve([] as Array<{ startedAt: Date; completedAt: Date }>),
-    prisma.appointment.count({
-      where: {
-        doctorId: appointment.doctorId,
-        date: { gte: today, lt: tomorrow },
-        queueStatus: "IN_PROGRESS",
-      },
-    }),
-  ]);
-
-  const samples = (history as Array<{ startedAt: Date | null; completedAt: Date | null }>)
-    .filter(
-      (c): c is { startedAt: Date; completedAt: Date } =>
-        c.startedAt !== null && c.completedAt !== null,
-    )
-    .map((c) => ({ startedAt: c.startedAt, completedAt: c.completedAt }));
-  const prediction = predictETA({ history: samples, fallbackMin });
-  const perVisitMin = prediction.etaMin;
-
-  const position = appointment.queueStatus === "WAITING"
-    ? ahead + 1
-    : appointment.queueStatus === "IN_PROGRESS" ? 0 : -1;
-
-  const etaMinutes = position > 0
-    ? (hasCurrentPatient ? perVisitMin : 0) + (position - 1) * perVisitMin
-    : 0;
-
-  const ticketNumber = `${appointment.doctor.id.charAt(0).toUpperCase()}${String(appointment.queueOrder || 0).padStart(3, "0")}`;
+  const position =
+    appointment.queueStatus === "WAITING"
+      ? (mine?.position ?? 0)
+      : appointment.queueStatus === "IN_PROGRESS"
+        ? 0
+        : -1;
+  const etaMinutes = mine?.etaMinutes ?? 0;
+  const ticketNumber = ticketNumberFor(
+    appointment.doctor.id,
+    appointment.ticketSeq ?? appointment.queueOrder,
+  );
 
   // Public endpoint (patients reach it via QR link). Strip PII — initials only,
   // no phone / passport / notes / email. Doctor name and cabinet are public
-  // clinic info, safe to return.
+  // clinic info, safe to return. clinicSlug + doctorId let the page subscribe to
+  // the clinic SSE stream and react to its own doctor's queue.updated pushes.
   return Response.json({
     patientName: initials(appointment.patient.fullName),
     doctorName: appointment.doctor.nameRu,
-    cabinet: appointment.doctor.cabinet,
-    service: appointment.service,
+    clinicName: appointment.clinic?.nameRu ?? null,
+    clinicSlug: appointment.clinic?.slug ?? null,
+    doctorId: appointment.doctorId,
+    cabinet: appointment.doctor.cabinet?.number ?? null,
+    service: appointment.primaryService?.nameRu ?? null,
     status: appointment.queueStatus,
     position: position > 0 ? position : 0,
-    totalWaiting,
+    totalWaiting: waiting.length,
     etaMinutes,
-    etaConfidence: prediction.confidence,
-    etaSource: prediction.source,
+    etaConfidence: q?.etaConfidence ?? "low",
+    etaSource: q?.etaSource ?? "fallback",
     ticketNumber,
   });
 }

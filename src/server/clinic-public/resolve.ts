@@ -21,6 +21,9 @@ export type PublicClinicContext = {
   clinicSlug: string;
   clinicNameRu: string;
   clinicNameUz: string;
+  clinicPhone: string | null;
+  clinicAddressRu: string | null;
+  clinicAddressUz: string | null;
 };
 
 function json(data: unknown, init?: ResponseInit): Response {
@@ -50,7 +53,16 @@ export async function resolvePublicClinic(
   }
   const clinic = await prisma.clinic.findUnique({
     where: { slug },
-    select: { id: true, slug: true, nameRu: true, nameUz: true, active: true },
+    select: {
+      id: true,
+      slug: true,
+      nameRu: true,
+      nameUz: true,
+      phone: true,
+      addressRu: true,
+      addressUz: true,
+      active: true,
+    },
   });
   if (!clinic || !clinic.active) {
     return {
@@ -65,6 +77,9 @@ export async function resolvePublicClinic(
       clinicSlug: clinic.slug,
       clinicNameRu: clinic.nameRu,
       clinicNameUz: clinic.nameUz,
+      clinicPhone: clinic.phone,
+      clinicAddressRu: clinic.addressRu,
+      clinicAddressUz: clinic.addressUz,
     },
   };
 }

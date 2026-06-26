@@ -9,11 +9,16 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { ok, err } from "@/server/http";
 import { resolvePublicClinic } from "@/server/clinic-public/resolve";
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
+import {
+  allocateQueueOrder,
+  runQueueTx,
+} from "@/server/appointments/queue-order";
 
 const Body = z.object({ appointmentId: z.string().min(1) });
 
@@ -41,6 +46,7 @@ export async function POST(request: Request) {
         time: true,
         queueStatus: true,
         queueOrder: true,
+        ticketCode: true,
         patient: { select: { id: true, fullName: true } },
         doctor: {
           select: {
@@ -55,11 +61,8 @@ export async function POST(request: Request) {
     });
     if (!appt) return err("not_found", 404);
 
-    // Only allow checkin for today's appointments.
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // Only allow checkin for today's appointments (Tashkent wall-clock day).
+    const { dayStart, dayEnd } = tashkentDayBounds();
     if (appt.date < dayStart || appt.date >= dayEnd) {
       return err("not_today", 400);
     }
@@ -71,29 +74,34 @@ export async function POST(request: Request) {
       return err("not_eligible", 400);
     }
 
-    // Assign queueOrder if not already in WAITING/IN_PROGRESS.
-    let queueOrder = appt.queueOrder;
-    if (!queueOrder || appt.queueStatus === "BOOKED") {
-      const max = await prisma.appointment.aggregate({
-        where: {
-          clinicId: ctx.clinicId,
-          doctorId: appt.doctorId,
-          date: { gte: dayStart, lt: dayEnd },
-          queueStatus: { in: ["WAITING", "IN_PROGRESS", "COMPLETED"] },
+    // Allocate queueOrder + flip to WAITING atomically under Serializable
+    // isolation so two kiosks (or kiosk + reception) can't hand out the same
+    // number. allocateQueueOrder is a no-op read when the row already owns a
+    // slot (already WAITING/IN_PROGRESS), so we only re-allocate from BOOKED
+    // or when the order is missing.
+    const needsOrder = !appt.queueOrder || appt.queueStatus === "BOOKED";
+    const { queueOrder, ticketSeq, updated } = await runQueueTx(async (tx) => {
+      const order = needsOrder
+        ? await allocateQueueOrder(tx, {
+            clinicId: ctx.clinicId,
+            doctorId: appt.doctorId,
+          })
+        : appt.queueOrder!;
+      const u = await tx.appointment.update({
+        where: { id: appt.id },
+        data: {
+          queueStatus:
+            appt.queueStatus === "BOOKED" ? "WAITING" : appt.queueStatus,
+          queueOrder: order,
+          // Freeze the ticket number the first time this slot enters the queue.
+          // On a re-check-in (needsOrder false) we leave ticketSeq untouched so
+          // a reception reorder of queueOrder never reissues the printed ticket.
+          ...(needsOrder ? { ticketSeq: order } : {}),
+          status: appt.queueStatus === "BOOKED" ? "WAITING" : undefined,
         },
-        _max: { queueOrder: true },
+        select: { queueStatus: true, queueOrder: true, ticketSeq: true },
       });
-      queueOrder = (max._max.queueOrder ?? 0) + 1;
-    }
-
-    const updated = await prisma.appointment.update({
-      where: { id: appt.id },
-      data: {
-        queueStatus: appt.queueStatus === "BOOKED" ? "WAITING" : appt.queueStatus,
-        queueOrder,
-        status: appt.queueStatus === "BOOKED" ? "WAITING" : undefined,
-      },
-      select: { queueStatus: true, queueOrder: true },
+      return { queueOrder: order, ticketSeq: u.ticketSeq, updated: u };
     });
 
     publishEventSafe(ctx.clinicId, {
@@ -110,7 +118,8 @@ export async function POST(request: Request) {
 
     return ok({
       appointmentId: appt.id,
-      ticketNumber: ticketNumberFor(appt.doctorId, queueOrder),
+      ticketCode: appt.ticketCode,
+      ticketNumber: ticketNumberFor(appt.doctorId, ticketSeq ?? queueOrder),
       queueOrder,
       patient: appt.patient,
       doctor: {

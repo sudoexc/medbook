@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Phone, ArrowRight, ArrowLeft, Check, Printer, MapPin, Clock, User, UserPlus, Globe, Stethoscope } from "lucide-react";
 import { formatMoney } from "@/lib/format";
+import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
 
 // ─── Translations ────────────────────────────────────────────────
 const t = {
@@ -103,7 +104,8 @@ interface Doctor {
   id: string;
   nameRu: string;
   nameUz?: string;
-  cabinet: number;
+  cabinet: string | number | null;
+  color?: string | null;
   waiting: number;
   services: { nameRu: string; nameUz: string; price: number }[];
 }
@@ -128,7 +130,16 @@ interface UpcomingBooking {
 
 type Step = "welcome" | "phone" | "checkin" | "upcoming" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
 
+// Status tints shared with the /tv board — keep the two public surfaces visually
+// identical. Green = active/confirmed, amber = waiting/first-visit.
+const GREEN_TINT = "rgb(22 199 132 / 0.10)";
+const GREEN_BORDER = "rgb(22 199 132 / 0.25)";
+const GREEN_BADGE = "rgb(22 199 132 / 0.20)";
+const AMBER_TINT = "rgb(245 158 11 / 0.10)";
+const AMBER_BORDER = "rgb(245 158 11 / 0.25)";
+
 export default function KioskPage() {
+  const slug = usePublicClinicSlug();
   const [lang, setLang] = useState<Lang>("ru");
   const [step, setStep] = useState<Step>("welcome");
   const [phone, setPhone] = useState("");
@@ -137,6 +148,7 @@ export default function KioskPage() {
   const [preBooked, setPreBooked] = useState<PreBooked[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [clinicName, setClinicName] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [ticketId, setTicketId] = useState<string | null>(null);
@@ -148,26 +160,30 @@ export default function KioskPage() {
 
   const L = t[lang];
 
-  // Fetch doctors with services (parallelized)
+  // Fetch today's doctors from the slug-scoped board (schedule-filtered → only
+  // doctors actually working today) and merge service/price details from the
+  // kiosk doctor route (which the board doesn't carry).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [queueRes, detailsRes] = await Promise.all([
-          fetch("/api/tv-queue"),
+        const [boardRes, detailsRes] = await Promise.all([
+          fetch(`/api/c/${slug}/queue/board`, { cache: "no-store" }),
           fetch("/api/kiosk/doctors"),
         ]);
-        if (cancelled || !queueRes.ok) return;
-        const data: { id: string; nameRu: string; cabinet: number; waiting: { id: string }[] }[] = await queueRes.json();
+        if (cancelled || !boardRes.ok) return;
+        const board: { clinic?: { nameRu: string }; doctors: { id: string; nameRu: string; nameUz: string; cabinet: string | null; color: string | null; waiting: { id: string }[] }[] } = await boardRes.json();
         const details: { id: string; nameRu: string; nameUz: string; cabinet: number; services: { nameRu: string; nameUz: string; price: number }[] }[] = detailsRes.ok ? await detailsRes.json() : [];
         if (cancelled) return;
+        if (board.clinic?.nameRu) setClinicName(board.clinic.nameRu);
         const map = new Map(details.map((d) => [d.id, d]));
         setDoctors(
-          data.map((d) => ({
+          board.doctors.map((d) => ({
             id: d.id,
-            nameRu: map.get(d.id)?.nameRu || d.nameRu,
-            nameUz: map.get(d.id)?.nameUz || d.nameRu,
+            nameRu: d.nameRu,
+            nameUz: d.nameUz || d.nameRu,
             cabinet: d.cabinet,
+            color: d.color,
             waiting: d.waiting.length,
             services: map.get(d.id)?.services || [],
           }))
@@ -177,7 +193,7 @@ export default function KioskPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [slug]);
 
   // Auto-reset after 30 seconds on done screen
   useEffect(() => {
@@ -258,7 +274,7 @@ export default function KioskPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/kiosk/checkin", {
+      const res = await fetch(`/api/c/${slug}/queue/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appointmentId: appointment.id }),
@@ -267,12 +283,24 @@ export default function KioskPage() {
         setError(L.error);
         return;
       }
-      const data: { id: string; ticketNumber: string; doctorName: string; cabinet: number } = await res.json();
-      setTicketId(data.id);
+      const data: {
+        appointmentId: string;
+        ticketNumber: string;
+        doctor: { id: string; nameRu: string; nameUz: string | null };
+        cabinet: string | null;
+      } = await res.json();
+      setTicketId(data.appointmentId);
       setTicketNumber(data.ticketNumber);
-      setSelectedDoctor({ id: "", nameRu: data.doctorName, cabinet: data.cabinet, waiting: 0, services: [] });
+      setSelectedDoctor({
+        id: data.doctor.id,
+        nameRu: data.doctor.nameRu,
+        nameUz: data.doctor.nameUz ?? undefined,
+        cabinet: data.cabinet ?? appointment.cabinet,
+        waiting: 0,
+        services: [],
+      });
       setStep("done");
-      setTimeout(() => window.open(`/ticket/${data.id}`, "_blank"), 500);
+      setTimeout(() => window.open(`/ticket/${data.appointmentId}`, "_blank"), 500);
     } catch {
       setError(L.error);
     } finally {
@@ -296,40 +324,31 @@ export default function KioskPage() {
 
   async function handleConfirm() {
     if (!selectedDoctor) return;
+    const fullName = (patientName || "").trim();
+    if (fullName.length < 2) { setError(L.nameError); return; }
     setLoading(true);
     setError("");
 
     try {
-      let patientId = foundPatientId;
-
-      if (!patientId) {
-        if (!patientName) { setError(L.nameError); setLoading(false); return; }
-        const res = await fetch("/api/patients", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullName: patientName, phone }),
-        });
-        const patient = await res.json();
-        patientId = patient.id;
-      }
-
-      const res = await fetch("/api/queue", {
+      // Single transaction-safe walk-in: finds-or-creates the patient by phone,
+      // allocates the queue slot, and mints a ticketCode in one call.
+      const res = await fetch(`/api/c/${slug}/queue/walkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          patientId,
+          fullName,
+          phone,
           doctorId: selectedDoctor.id,
-          service: selectedService || undefined,
+          lang: lang.toUpperCase(),
         }),
       });
 
       if (res.ok) {
-        const appt = await res.json();
-        setTicketId(appt.id);
-        const tn = `${selectedDoctor.id.charAt(0).toUpperCase()}-${String(appt.queueOrder || 0).padStart(3, "0")}`;
-        setTicketNumber(tn);
+        const data: { appointmentId: string; ticketNumber: string } = await res.json();
+        setTicketId(data.appointmentId);
+        setTicketNumber(data.ticketNumber);
         setStep("done");
-        setTimeout(() => window.open(`/ticket/${appt.id}`, "_blank"), 500);
+        setTimeout(() => window.open(`/ticket/${data.appointmentId}`, "_blank"), 500);
       } else {
         setError(L.recordError);
       }
@@ -349,13 +368,13 @@ export default function KioskPage() {
   const docName = (doc: Doctor) => lang === "uz" && doc.nameUz ? doc.nameUz : doc.nameRu;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0d1b2a] to-[#1b3a5c] text-white flex flex-col select-none">
+    <div className="min-h-screen bg-[var(--public-bg)] text-[var(--public-fg)] flex flex-col select-none">
       {/* Header */}
-      <header className="px-8 py-5 flex items-center justify-between shrink-0">
+      <header className="px-8 py-5 flex items-center justify-between shrink-0 border-b border-[var(--public-border)]">
         <div className="flex items-center gap-3">
           <Image
             src="/logo.png"
-            alt="NeuroFax-B"
+            alt={clinicName || "Логотип клиники"}
             width={123}
             height={48}
             priority
@@ -364,11 +383,11 @@ export default function KioskPage() {
         </div>
         <div className="flex items-center gap-4">
           {/* Language toggle */}
-          <div className="flex rounded-xl bg-white/10 p-1 gap-1">
+          <div className="flex rounded-xl bg-[var(--public-panel)] p-1 gap-1">
             <button
               onClick={() => setLang("ru")}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-all ${
-                lang === "ru" ? "bg-white text-[#0d1b2a]" : "text-white/60 hover:text-white"
+                lang === "ru" ? "bg-[var(--public-fg)] text-[var(--public-bg)]" : "text-[var(--public-fg-muted)] hover:text-[var(--public-fg)]"
               }`}
             >
               🇷🇺 РУС
@@ -376,7 +395,7 @@ export default function KioskPage() {
             <button
               onClick={() => setLang("uz")}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-all ${
-                lang === "uz" ? "bg-white text-[#0d1b2a]" : "text-white/60 hover:text-white"
+                lang === "uz" ? "bg-[var(--public-fg)] text-[var(--public-bg)]" : "text-[var(--public-fg-muted)] hover:text-[var(--public-fg)]"
               }`}
             >
               🇺🇿 UZB
@@ -386,7 +405,7 @@ export default function KioskPage() {
             <p className="text-2xl font-bold tabular-nums font-mono">
               {now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
             </p>
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-[var(--public-fg-muted)]">
               {now.toLocaleDateString(lang === "uz" ? "uz-UZ" : "ru-RU", { day: "numeric", month: "long" })}
             </p>
           </div>
@@ -403,21 +422,27 @@ export default function KioskPage() {
               className="text-center cursor-pointer"
               onClick={() => setStep("phone")}
             >
-              <div className="inline-flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 mb-8 shadow-lg shadow-blue-500/30 animate-pulse-slow">
+              <div
+                className="inline-flex h-28 w-28 items-center justify-center rounded-full mb-8 shadow-lg animate-pulse-slow"
+                style={{
+                  background: "linear-gradient(135deg, var(--public-accent), var(--public-accent-rail))",
+                  boxShadow: "0 20px 40px -12px rgb(35 83 255 / 0.45)",
+                }}
+              >
                 <Stethoscope className="h-14 w-14 text-white" />
               </div>
               <h1 className="text-4xl font-bold mb-3">{L.welcome}</h1>
-              <p className="text-xl text-white/50 mb-10">{L.touchToStart}</p>
+              <p className="text-xl text-[var(--public-fg-muted)] mb-10">{L.touchToStart}</p>
 
               <div className="flex justify-center gap-6">
-                <div className="flex items-center gap-2 text-white/40">
+                <div className="flex items-center gap-2 text-[var(--public-fg-faint)]">
                   <Globe className="h-5 w-5" />
                   <span className="text-sm">Русский / O'zbekcha</span>
                 </div>
               </div>
 
-              <div className="mt-12 h-1.5 w-24 mx-auto rounded-full bg-white/20 overflow-hidden">
-                <div className="h-full w-full bg-white/60 rounded-full animate-shimmer" />
+              <div className="mt-12 h-1.5 w-24 mx-auto rounded-full bg-[var(--public-panel-strong)] overflow-hidden">
+                <div className="h-full w-full rounded-full animate-shimmer" style={{ background: "var(--public-accent)" }} />
               </div>
             </div>
           )}
@@ -425,19 +450,19 @@ export default function KioskPage() {
           {/* PHONE STEP */}
           {step === "phone" && (
             <div className="text-center">
-              <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-white/10 mb-6">
-                <Phone className="h-10 w-10 text-blue-300" />
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-[var(--public-panel)] mb-6">
+                <Phone className="h-10 w-10" style={{ color: "var(--public-accent)" }} />
               </div>
               <h1 className="text-3xl font-bold mb-2">{L.enterPhone}</h1>
-              <p className="text-lg text-white/60 mb-8">{L.enterPhoneDesc}</p>
+              <p className="text-lg text-[var(--public-fg-muted)] mb-8">{L.enterPhoneDesc}</p>
 
-              <div className="bg-white/10 rounded-2xl px-6 py-4 mb-6">
+              <div className="bg-[var(--public-panel)] border border-[var(--public-border)] rounded-2xl px-6 py-4 mb-6">
                 <input
                   ref={inputRef}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/[^0-9+]/g, ""))}
                   placeholder="+998"
-                  className="w-full text-center text-4xl font-bold font-mono tracking-wider bg-transparent outline-none placeholder:text-white/30"
+                  className="w-full text-center text-4xl font-bold font-mono tracking-wider bg-transparent outline-none placeholder:text-[var(--public-fg-faint)]"
                   onKeyDown={(e) => { if (e.key === "Enter") handlePhoneSubmit(); }}
                 />
               </div>
@@ -449,8 +474,8 @@ export default function KioskPage() {
                     onClick={() => handleNumPad(key)}
                     className={`h-16 rounded-2xl text-2xl font-bold transition-all active:scale-90 ${
                       key === "del"
-                        ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
-                        : "bg-white/10 hover:bg-white/20 active:bg-white/30"
+                        ? "bg-[var(--public-panel)] text-[var(--public-danger)] hover:bg-[var(--public-panel-strong)]"
+                        : "bg-[var(--public-panel)] hover:bg-[var(--public-panel-strong)]"
                     }`}
                   >
                     {key === "del" ? "←" : key}
@@ -458,18 +483,19 @@ export default function KioskPage() {
                 ))}
               </div>
 
-              {error && <p className="text-red-400 mb-4 animate-shake">{error}</p>}
+              {error && <p className="mb-4 animate-shake" style={{ color: "var(--public-danger)" }}>{error}</p>}
 
               <button
                 onClick={handlePhoneSubmit}
                 disabled={loading || phone.length < 9}
-                className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 rounded-2xl bg-blue-500 py-4 text-xl font-bold hover:bg-blue-600 transition-all disabled:opacity-40 active:scale-[0.97]"
+                className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 rounded-2xl py-4 text-xl font-bold text-white transition-all disabled:opacity-40 active:scale-[0.97] hover:brightness-110"
+                style={{ background: "var(--public-accent)" }}
               >
                 {loading ? L.searching : L.next}
                 <ArrowRight className="h-6 w-6" />
               </button>
 
-              <button onClick={resetAll} className="mt-4 text-white/40 text-sm hover:text-white/60">
+              <button onClick={resetAll} className="mt-4 text-[var(--public-fg-faint)] text-sm hover:text-[var(--public-fg-muted)]">
                 {L.back}
               </button>
             </div>
@@ -478,15 +504,18 @@ export default function KioskPage() {
           {/* CHECK-IN STEP */}
           {step === "checkin" && (
             <div>
-              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 
-              <div className="bg-green-500/10 border border-green-500/30 rounded-2xl px-5 py-4 mb-6 flex items-center gap-4">
-                <User className="h-8 w-8 text-green-400" />
+              <div
+                className="rounded-2xl px-5 py-4 mb-6 flex items-center gap-4"
+                style={{ background: GREEN_TINT, border: `1px solid ${GREEN_BORDER}` }}
+              >
+                <User className="h-8 w-8" style={{ color: "var(--public-active)" }} />
                 <div>
                   <p className="font-bold text-lg">{patientName}</p>
-                  <p className="text-green-300 text-sm">{L.foundBooking}</p>
+                  <p className="text-sm" style={{ color: "var(--public-active)" }}>{L.foundBooking}</p>
                 </div>
               </div>
 
@@ -497,15 +526,19 @@ export default function KioskPage() {
                   <button
                     key={appt.id}
                     onClick={() => handleCheckin(appt)}
-                    className="w-full flex items-center justify-between rounded-2xl border-2 border-green-500/30 bg-green-500/10 px-6 py-5 text-left hover:bg-green-500/20 transition-all active:scale-[0.99]"
+                    className="w-full flex items-center justify-between rounded-2xl px-6 py-5 text-left transition-all active:scale-[0.99] hover:brightness-110"
+                    style={{ background: GREEN_TINT, border: `1px solid ${GREEN_BORDER}` }}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-green-500/30 text-2xl font-bold">
+                      <div
+                        className="flex h-14 w-14 items-center justify-center rounded-xl text-2xl font-bold"
+                        style={{ background: GREEN_BADGE, color: "var(--public-active)" }}
+                      >
                         {appt.cabinet}
                       </div>
                       <div>
                         <p className="text-lg font-bold">{appt.doctorName}</p>
-                        <div className="flex items-center gap-3 text-sm text-white/50 mt-0.5">
+                        <div className="flex items-center gap-3 text-sm text-[var(--public-fg-muted)] mt-0.5">
                           <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {appt.time}</span>
                           <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {L.cabinet} {appt.cabinet}</span>
                           {appt.service && <span>{appt.service}</span>}
@@ -513,22 +546,22 @@ export default function KioskPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold font-mono text-green-300">{appt.ticketNumber ?? "—"}</p>
-                      <p className="text-xs text-green-400">{L.getTicket}</p>
+                      <p className="text-2xl font-bold font-mono" style={{ color: "var(--public-active)" }}>{appt.ticketNumber ?? "—"}</p>
+                      <p className="text-xs" style={{ color: "var(--public-active)" }}>{L.getTicket}</p>
                     </div>
                   </button>
                 ))}
               </div>
 
               <div className="flex items-center gap-3 mb-4">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-xs text-white/40">{L.or}</span>
-                <div className="flex-1 h-px bg-white/10" />
+                <div className="flex-1 h-px bg-[var(--public-border)]" />
+                <span className="text-xs text-[var(--public-fg-faint)]">{L.or}</span>
+                <div className="flex-1 h-px bg-[var(--public-border)]" />
               </div>
 
               <button
                 onClick={() => setStep("select-doctor")}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/20 py-4 text-lg hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-[var(--public-border-strong)] py-4 text-lg hover:bg-[var(--public-panel)] transition-colors"
               >
                 <UserPlus className="h-5 w-5" />
                 {L.bookOther}
@@ -539,15 +572,15 @@ export default function KioskPage() {
           {/* UPCOMING — patient has a booking but not for today */}
           {step === "upcoming" && (
             <div>
-              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl px-5 py-4 mb-6 flex items-center gap-4">
-                <User className="h-8 w-8 text-blue-400" />
+              <div className="bg-[var(--public-panel)] border border-[var(--public-border)] rounded-2xl px-5 py-4 mb-6 flex items-center gap-4">
+                <User className="h-8 w-8" style={{ color: "var(--public-accent)" }} />
                 <div>
                   <p className="font-bold text-lg">{patientName}</p>
-                  <p className="text-blue-300 text-sm">{L.upcomingDesc}</p>
+                  <p className="text-sm text-[var(--public-fg-muted)]">{L.upcomingDesc}</p>
                 </div>
               </div>
 
@@ -560,24 +593,24 @@ export default function KioskPage() {
                   return (
                     <div
                       key={appt.id}
-                      className="w-full flex items-center justify-between rounded-2xl border-2 border-blue-500/30 bg-blue-500/10 px-6 py-5"
+                      className="w-full flex items-center justify-between rounded-2xl border border-[var(--public-border)] bg-[var(--public-panel)] px-6 py-5"
                     >
                       <div className="flex items-center gap-4">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/30 text-2xl font-bold">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--public-panel-strong)] text-2xl font-bold">
                           {appt.cabinet}
                         </div>
                         <div>
                           <p className="text-lg font-bold">{appt.doctorName}</p>
-                          <div className="flex items-center gap-3 text-sm text-white/60 mt-0.5">
+                          <div className="flex items-center gap-3 text-sm text-[var(--public-fg-muted)] mt-0.5">
                             <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {appt.time}</span>
                             <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {L.cabinet} {appt.cabinet}</span>
                           </div>
-                          {appt.service && <p className="text-xs text-white/40 mt-0.5">{appt.service}</p>}
+                          {appt.service && <p className="text-xs text-[var(--public-fg-faint)] mt-0.5">{appt.service}</p>}
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-blue-300/70 uppercase tracking-wide">{L.onDate}</p>
-                        <p className="text-xl font-bold font-mono text-blue-200">{dateLabel}</p>
+                        <p className="text-xs uppercase tracking-wide text-[var(--public-fg-faint)]">{L.onDate}</p>
+                        <p className="text-xl font-bold font-mono" style={{ color: "var(--public-accent)" }}>{dateLabel}</p>
                       </div>
                     </div>
                   );
@@ -585,14 +618,14 @@ export default function KioskPage() {
               </div>
 
               <div className="flex items-center gap-3 mb-4">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-xs text-white/40">{L.or}</span>
-                <div className="flex-1 h-px bg-white/10" />
+                <div className="flex-1 h-px bg-[var(--public-border)]" />
+                <span className="text-xs text-[var(--public-fg-faint)]">{L.or}</span>
+                <div className="flex-1 h-px bg-[var(--public-border)]" />
               </div>
 
               <button
                 onClick={() => setStep("select-doctor")}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/20 py-4 text-lg hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-[var(--public-border-strong)] py-4 text-lg hover:bg-[var(--public-panel)] transition-colors"
               >
                 <UserPlus className="h-5 w-5" />
                 {L.notTodayBookWalkin}
@@ -603,12 +636,15 @@ export default function KioskPage() {
           {/* ENTER NAME — new patient */}
           {step === "enter-name" && (
             <div className="text-center">
-              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-5 py-4 mb-6 text-left">
-                <p className="text-amber-300 text-sm">{L.firstVisit}</p>
+              <div
+                className="rounded-2xl px-5 py-4 mb-6 text-left"
+                style={{ background: AMBER_TINT, border: `1px solid ${AMBER_BORDER}` }}
+              >
+                <p className="text-sm" style={{ color: "var(--public-waiting)" }}>{L.firstVisit}</p>
               </div>
 
               <input
@@ -616,14 +652,15 @@ export default function KioskPage() {
                 onChange={(e) => setPatientName(e.target.value)}
                 placeholder={L.fioPlaceholder}
                 autoFocus
-                className="w-full bg-white/10 rounded-2xl px-6 py-4 text-xl text-center outline-none placeholder:text-white/30 mb-6"
+                className="w-full bg-[var(--public-panel)] border border-[var(--public-border)] rounded-2xl px-6 py-4 text-xl text-center outline-none placeholder:text-[var(--public-fg-faint)] mb-6"
                 onKeyDown={(e) => { if (e.key === "Enter" && patientName.length > 2) setStep("select-doctor"); }}
               />
 
               <button
                 onClick={() => { if (patientName.length > 2) setStep("select-doctor"); }}
                 disabled={patientName.length < 3}
-                className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 rounded-2xl bg-blue-500 py-4 text-xl font-bold hover:bg-blue-600 transition-colors disabled:opacity-40"
+                className="w-full max-w-xs mx-auto flex items-center justify-center gap-3 rounded-2xl py-4 text-xl font-bold text-white transition-colors disabled:opacity-40 hover:brightness-110"
+                style={{ background: "var(--public-accent)" }}
               >
                 {L.next} <ArrowRight className="h-6 w-6" />
               </button>
@@ -638,13 +675,13 @@ export default function KioskPage() {
                 else if (upcomingBookings.length > 0) setStep("upcoming");
                 else if (foundPatientId) setStep("phone");
                 else setStep(patientName ? "enter-name" : "phone");
-              }} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              }} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 
               {patientName && (
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl px-5 py-3 mb-6 flex items-center gap-3">
-                  <User className="h-6 w-6 text-blue-400" />
+                <div className="bg-[var(--public-panel)] border border-[var(--public-border)] rounded-2xl px-5 py-3 mb-6 flex items-center gap-3">
+                  <User className="h-6 w-6" style={{ color: "var(--public-accent)" }} />
                   <p className="font-bold">{patientName}</p>
                 </div>
               )}
@@ -652,27 +689,33 @@ export default function KioskPage() {
               <h2 className="text-2xl font-bold mb-4">{L.selectDoctor}</h2>
 
               <div className="space-y-3">
-                {doctors.map((doc) => (
-                  <button
-                    key={doc.id}
-                    onClick={() => handleSelectDoctor(doc)}
-                    className="w-full flex items-center justify-between rounded-2xl border-2 border-white/10 bg-white/5 px-6 py-5 text-left hover:border-blue-400/40 hover:bg-blue-500/10 transition-all active:scale-[0.99]"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/30 text-2xl font-bold">
-                        {doc.cabinet}
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold">{docName(doc)}</p>
-                        <div className="flex items-center gap-3 text-sm text-white/50 mt-0.5">
-                          <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {L.cabinet} {doc.cabinet}</span>
-                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {doc.waiting} {L.inQueue}</span>
+                {doctors.map((doc) => {
+                  const accent = doc.color || "var(--public-accent)";
+                  return (
+                    <button
+                      key={doc.id}
+                      onClick={() => handleSelectDoctor(doc)}
+                      className="group w-full flex items-center justify-between rounded-2xl border border-[var(--public-border)] bg-[var(--public-panel)] px-6 py-5 text-left transition-all active:scale-[0.99] hover:bg-[var(--public-panel-strong)] hover:border-[var(--public-border-strong)]"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div
+                          className="flex h-14 w-14 items-center justify-center rounded-xl text-2xl font-bold text-white shadow-lg"
+                          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}99)` }}
+                        >
+                          {doc.cabinet ?? "—"}
+                        </div>
+                        <div>
+                          <p className="text-lg font-bold">{docName(doc)}</p>
+                          <div className="flex items-center gap-3 text-sm text-[var(--public-fg-muted)] mt-0.5">
+                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {L.cabinet} {doc.cabinet}</span>
+                            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {doc.waiting} {L.inQueue}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <ArrowRight className="h-6 w-6 text-white/30" />
-                  </button>
-                ))}
+                      <ArrowRight className="h-6 w-6 text-[var(--public-fg-faint)] group-hover:text-[var(--public-fg-muted)]" />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -680,15 +723,15 @@ export default function KioskPage() {
           {/* SELECT SERVICE */}
           {step === "select-service" && selectedDoctor && (
             <div>
-              <button onClick={() => setStep("select-doctor")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              <button onClick={() => setStep("select-doctor")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl px-5 py-3 mb-6 flex items-center gap-3">
-                <Stethoscope className="h-6 w-6 text-blue-400" />
+              <div className="bg-[var(--public-panel)] border border-[var(--public-border)] rounded-2xl px-5 py-3 mb-6 flex items-center gap-3">
+                <Stethoscope className="h-6 w-6" style={{ color: "var(--public-accent)" }} />
                 <div>
                   <p className="font-bold">{docName(selectedDoctor)}</p>
-                  <p className="text-blue-300 text-xs">{L.cabinet} {selectedDoctor.cabinet}</p>
+                  <p className="text-xs text-[var(--public-fg-muted)]">{L.cabinet} {selectedDoctor.cabinet}</p>
                 </div>
               </div>
 
@@ -701,10 +744,10 @@ export default function KioskPage() {
                     <button
                       key={name}
                       onClick={() => handleSelectService(name)}
-                      className="w-full flex items-center justify-between rounded-2xl border-2 border-white/10 bg-white/5 px-5 py-4 text-left hover:border-blue-400/40 hover:bg-blue-500/10 transition-all active:scale-[0.99]"
+                      className="w-full flex items-center justify-between rounded-2xl border border-[var(--public-border)] bg-[var(--public-panel)] px-5 py-4 text-left transition-all active:scale-[0.99] hover:bg-[var(--public-panel-strong)] hover:border-[var(--public-border-strong)]"
                     >
                       <span className="text-lg font-medium">{name}</span>
-                      <span className="text-blue-300 font-bold font-mono">
+                      <span className="font-bold font-mono" style={{ color: "var(--public-accent)" }}>
                         {/* svc.price is whole UZS (legacy /api/kiosk/doctors shape).
                             formatMoney expects tiins, so multiply by 100. The route
                             file is marked TODO(phase-1) for full rewrite. */}
@@ -717,7 +760,7 @@ export default function KioskPage() {
 
               <button
                 onClick={() => handleSelectService(null)}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-white/20 py-4 text-lg text-white/60 hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl border border-[var(--public-border-strong)] py-4 text-lg text-[var(--public-fg-muted)] hover:bg-[var(--public-panel)] transition-colors"
               >
                 {L.skipService}
               </button>
@@ -727,48 +770,49 @@ export default function KioskPage() {
           {/* CONFIRM */}
           {step === "confirm" && selectedDoctor && (
             <div className="text-center">
-              <button onClick={() => selectedDoctor.services.length > 0 ? setStep("select-service") : setStep("select-doctor")} className="flex items-center gap-2 text-white/60 mb-6 hover:text-white">
+              <button onClick={() => selectedDoctor.services.length > 0 ? setStep("select-service") : setStep("select-doctor")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}
               </button>
 
               <h2 className="text-2xl font-bold mb-6">{L.confirmTitle}</h2>
 
-              <div className="bg-white/10 rounded-2xl p-6 mb-6 text-left space-y-3">
+              <div className="bg-[var(--public-panel)] border border-[var(--public-border)] rounded-2xl p-6 mb-6 text-left space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-white/60">{L.patient}:</span>
+                  <span className="text-[var(--public-fg-muted)]">{L.patient}:</span>
                   <span className="font-bold">{patientName || phone}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/60">{L.phone}:</span>
+                  <span className="text-[var(--public-fg-muted)]">{L.phone}:</span>
                   <span className="font-mono">{phone}</span>
                 </div>
-                <div className="border-t border-white/10 my-2" />
+                <div className="border-t border-[var(--public-border)] my-2" />
                 <div className="flex justify-between">
-                  <span className="text-white/60">{L.doctor}:</span>
+                  <span className="text-[var(--public-fg-muted)]">{L.doctor}:</span>
                   <span className="font-bold">{docName(selectedDoctor)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/60">{L.cabinet}:</span>
+                  <span className="text-[var(--public-fg-muted)]">{L.cabinet}:</span>
                   <span className="text-2xl font-bold">{selectedDoctor.cabinet}</span>
                 </div>
                 {selectedService && (
                   <div className="flex justify-between">
-                    <span className="text-white/60">{L.service}:</span>
-                    <span className="font-medium text-blue-300">{selectedService}</span>
+                    <span className="text-[var(--public-fg-muted)]">{L.service}:</span>
+                    <span className="font-medium" style={{ color: "var(--public-accent)" }}>{selectedService}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-white/60">{L.beforeYou}:</span>
+                  <span className="text-[var(--public-fg-muted)]">{L.beforeYou}:</span>
                   <span className="font-bold">{selectedDoctor.waiting} {L.people}</span>
                 </div>
               </div>
 
-              {error && <p className="text-red-400 mb-4 animate-shake">{error}</p>}
+              {error && <p className="mb-4 animate-shake" style={{ color: "var(--public-danger)" }}>{error}</p>}
 
               <button
                 onClick={handleConfirm}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-3 rounded-2xl bg-green-500 py-5 text-2xl font-bold hover:bg-green-600 transition-all disabled:opacity-40 active:scale-[0.97]"
+                className="w-full flex items-center justify-center gap-3 rounded-2xl py-5 text-2xl font-bold text-white transition-all disabled:opacity-40 active:scale-[0.97] hover:brightness-110"
+                style={{ background: "var(--public-active)" }}
               >
                 {loading ? "..." : <><Check className="h-7 w-7" /> {L.confirm}</>}
               </button>
@@ -778,18 +822,21 @@ export default function KioskPage() {
           {/* DONE */}
           {step === "done" && (
             <div className="text-center animate-appear">
-              <div className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-green-500/20 mb-6 ring-4 ring-green-500/30">
-                <Check className="h-12 w-12 text-green-400" />
+              <div
+                className="inline-flex h-24 w-24 items-center justify-center rounded-full mb-6 ring-4 ring-[rgb(22_199_132_/_0.25)]"
+                style={{ background: GREEN_TINT }}
+              >
+                <Check className="h-12 w-12" style={{ color: "var(--public-active)" }} />
               </div>
 
               <h2 className="text-3xl font-bold mb-2">{L.inQueueTitle}</h2>
-              <p className="text-white/60 mb-8">{L.takeTicket}</p>
+              <p className="text-[var(--public-fg-muted)] mb-8">{L.takeTicket}</p>
 
-              <div className="bg-white/10 rounded-3xl p-8 mb-6 inline-block">
-                <p className="text-white/50 text-sm uppercase tracking-widest mb-2">{L.yourNumber}</p>
-                <p className="text-8xl font-bold font-mono tracking-wider text-green-300">{ticketNumber}</p>
+              <div className="bg-[var(--public-panel)] border border-[var(--public-border)] rounded-3xl p-8 mb-6 inline-block">
+                <p className="text-[var(--public-fg-faint)] text-sm uppercase tracking-widest mb-2">{L.yourNumber}</p>
+                <p className="text-8xl font-bold font-mono tracking-wider" style={{ color: "var(--public-active)" }}>{ticketNumber}</p>
                 {selectedDoctor && (
-                  <p className="text-white/50 mt-3 text-lg">{L.cabinet} {selectedDoctor.cabinet} · {docName(selectedDoctor)}</p>
+                  <p className="text-[var(--public-fg-muted)] mt-3 text-lg">{L.cabinet} {selectedDoctor.cabinet} · {docName(selectedDoctor)}</p>
                 )}
               </div>
 
@@ -797,18 +844,18 @@ export default function KioskPage() {
                 {ticketId && (
                   <button
                     onClick={() => window.open(`/ticket/${ticketId}`, "_blank")}
-                    className="flex items-center justify-center gap-2 rounded-2xl bg-white/10 py-4 text-lg font-semibold hover:bg-white/20 transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-[var(--public-panel)] border border-[var(--public-border)] py-4 text-lg font-semibold hover:bg-[var(--public-panel-strong)] transition-colors"
                   >
                     <Printer className="h-5 w-5" />
                     {L.printTicket}
                   </button>
                 )}
-                <button onClick={resetAll} className="flex items-center justify-center gap-2 rounded-2xl border border-white/20 py-4 text-lg font-semibold hover:bg-white/10 transition-colors">
+                <button onClick={resetAll} className="flex items-center justify-center gap-2 rounded-2xl border border-[var(--public-border-strong)] py-4 text-lg font-semibold hover:bg-[var(--public-panel)] transition-colors">
                   {L.newRecord}
                 </button>
               </div>
 
-              <p className="text-xs text-white/30 mt-6">{L.resetIn}</p>
+              <p className="text-xs text-[var(--public-fg-faint)] mt-6">{L.resetIn}</p>
             </div>
           )}
         </div>

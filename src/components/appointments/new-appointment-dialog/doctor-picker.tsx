@@ -19,7 +19,7 @@ export function DoctorPicker({
   value,
   onChange,
 }: {
-  doctors: DoctorHit[];
+  doctors: Pick<DoctorHit, "id" | "nameRu" | "color">[];
   value: string | null;
   onChange: (id: string | null) => void;
 }) {

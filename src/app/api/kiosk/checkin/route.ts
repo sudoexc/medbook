@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { phoneSearchVariants } from "@/lib/phone";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
 import { rateLimit } from "@/lib/rate-limit";
+import { ticketNumberFor } from "@/server/services/ticket-number";
 import { z } from "zod";
 
 function clientIp(request: Request): string {
@@ -59,6 +60,7 @@ export async function GET(request: Request) {
       date: true,
       primaryService: { select: { nameRu: true } },
       queueOrder: true,
+      ticketSeq: true,
       queueStatus: true,
       doctor: { select: { id: true, nameRu: true, cabinet: true } },
     },
@@ -87,9 +89,10 @@ export async function GET(request: Request) {
       time: formatTime(a.date),
       queueOrder: a.queueOrder,
       queueStatus: a.queueStatus,
-      ticketNumber: a.queueOrder
-        ? `${a.doctor.id.charAt(0).toUpperCase()}-${String(a.queueOrder).padStart(3, "0")}`
-        : null,
+      ticketNumber:
+        (a.ticketSeq ?? a.queueOrder) != null
+          ? ticketNumberFor(a.doctor.id, a.ticketSeq ?? a.queueOrder)
+          : null,
     })),
     upcoming: upcoming.map((a) => {
       const c = tashkentComponents(a.date);
@@ -102,88 +105,5 @@ export async function GET(request: Request) {
         time: c.time, // HH:mm Tashkent
       };
     }),
-  });
-}
-
-// POST /api/kiosk/checkin — claim a queue position for an existing online booking.
-// Called when the patient taps their appointment on the kiosk.
-const CheckinSchema = z.object({ appointmentId: z.string().min(1) });
-
-export async function POST(request: Request) {
-  if (!rateLimit(clientIp(request), 30)) {
-    return Response.json({ error: "Too many requests" }, { status: 429 });
-  }
-  const body = await request.json().catch(() => null);
-  const parsed = CheckinSchema.safeParse(body);
-  if (!parsed.success) {
-    return Response.json({ error: "Invalid request" }, { status: 400 });
-  }
-
-  const { dayStart, dayEnd } = tashkentDayBounds();
-
-  // Transaction: re-read + assign next queueOrder atomically so two concurrent
-  // check-ins can't claim the same number.
-  const result = await prisma.$transaction(async (tx) => {
-    const appt = await tx.appointment.findUnique({
-      where: { id: parsed.data.appointmentId },
-      select: {
-        id: true,
-        doctorId: true,
-        date: true,
-        queueStatus: true,
-        queueOrder: true,
-        doctor: { select: { id: true, nameRu: true, cabinet: true } },
-      },
-    });
-
-    if (!appt) return { error: "Appointment not found", status: 404 as const };
-    if (appt.queueStatus !== "WAITING") {
-      return { error: "Already processed", status: 409 as const };
-    }
-    if (appt.date < dayStart || appt.date >= dayEnd) {
-      return { error: "Not scheduled for today", status: 400 as const };
-    }
-
-    // Already checked in — return the existing ticket (idempotent).
-    if (appt.queueOrder) {
-      return { appt };
-    }
-
-    const last = await tx.appointment.findFirst({
-      where: {
-        doctorId: appt.doctorId,
-        date: { gte: dayStart, lt: dayEnd },
-        queueOrder: { not: null },
-      },
-      orderBy: { queueOrder: "desc" },
-      select: { queueOrder: true },
-    });
-
-    const nextOrder = (last?.queueOrder ?? 0) + 1;
-
-    const updated = await tx.appointment.update({
-      where: { id: appt.id },
-      data: { queueOrder: nextOrder },
-      select: {
-        id: true,
-        queueOrder: true,
-        doctor: { select: { id: true, nameRu: true, cabinet: true } },
-      },
-    });
-
-    return { appt: { ...appt, queueOrder: updated.queueOrder, doctor: updated.doctor } };
-  });
-
-  if ("error" in result) {
-    return Response.json({ error: result.error }, { status: result.status });
-  }
-
-  const a = result.appt;
-  return Response.json({
-    id: a.id,
-    doctorName: a.doctor.nameRu,
-    cabinet: a.doctor.cabinet,
-    queueOrder: a.queueOrder,
-    ticketNumber: `${a.doctor.id.charAt(0).toUpperCase()}-${String(a.queueOrder).padStart(3, "0")}`,
   });
 }

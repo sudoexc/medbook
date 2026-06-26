@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 export type MiniAppQueueStatus = {
   patientName: string;
   doctorName: string;
+  clinicName: string | null;
   cabinet: string | null;
   service: string | null;
   /** queueStatus: WAITING | IN_PROGRESS | DONE | SKIPPED … */

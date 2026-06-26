@@ -24,6 +24,8 @@ import { cancelAppointment } from "@/server/appointments/cancel";
 import { findOtherActiveVisit } from "@/server/appointments/active-visit";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
+import { publishEventSafe } from "@/server/realtime/publish";
+import { ticketNumberFor } from "@/server/services/ticket-number";
 import { recordPatientView } from "@/server/audit/patient-view";
 import {
   canTransitionAt,
@@ -330,6 +332,8 @@ export const PATCH = createApiHandler(
             id: true,
             status: true,
             queueStatus: true,
+            queueOrder: true,
+            ticketSeq: true,
             calledAt: true,
             date: true,
             doctorId: true,
@@ -369,6 +373,25 @@ export const PATCH = createApiHandler(
           alsoQueueUpdate: row.queueStatus !== before.queueStatus,
         });
         return row;
+      });
+
+      // Ephemeral board signal — drives the public waiting-room board's
+      // "now calling" banner + chime. Fire-and-forget (no outbox/replay) so a
+      // reconnecting TV never re-chimes a stale call; the durable
+      // statusChanged above already covers state reconciliation.
+      publishEventSafe(ctx.clinicId, {
+        type: "queue.called",
+        payload: {
+          appointmentId: updatedRow.id,
+          doctorId: updatedRow.doctorId,
+          queueOrder: updatedRow.queueOrder,
+          ticketNumber: ticketNumberFor(
+            updatedRow.doctorId,
+            updatedRow.ticketSeq ?? updatedRow.queueOrder,
+          ),
+          cabinetNumber: updatedRow.doctor.cabinet?.number ?? null,
+          calledAt: updatedRow.calledAt?.toISOString(),
+        },
       });
 
       let notificationSent = false;
@@ -644,6 +667,12 @@ export const PATCH = createApiHandler(
       if (ctx.kind === "TENANT") {
         const statusChanged =
           body.status !== undefined && body.status !== before.status;
+        // An urgency bump re-sorts the waiting list without a status flip, so
+        // the public TV board (which only refetches on queue.updated) needs the
+        // follow-up envelope too.
+        const priorityChanged =
+          body.queuePriority !== undefined &&
+          body.queuePriority !== before.queuePriority;
         const kind: "cancelled" | "statusChanged" | "moved" | "updated" =
           body.status === "CANCELLED"
             ? "cancelled"
@@ -665,8 +694,8 @@ export const PATCH = createApiHandler(
           actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
           surface: ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM",
           correlationId: patchCorrelationId,
-          // Queue snapshot shifts on any status flip.
-          alsoQueueUpdate: statusChanged,
+          // Queue snapshot shifts on any status flip or urgency bump.
+          alsoQueueUpdate: statusChanged || priorityChanged,
         });
       }
       return { after: fresh, recomputed };

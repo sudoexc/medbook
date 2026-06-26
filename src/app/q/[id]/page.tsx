@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { Clock, MapPin, User, CheckCircle, Bell, Stethoscope } from "lucide-react";
 
 interface QueueStatus {
   patientName: string;
   doctorName: string;
-  cabinet: number;
+  clinicName: string | null;
+  clinicSlug: string | null;
+  doctorId: string;
+  cabinet: string | null;
   service: string | null;
   status: string;
   position: number;
@@ -18,51 +21,92 @@ interface QueueStatus {
   ticketNumber: string;
 }
 
+// SSE now delivers instant pokes; the poll is just a safety net for a dropped
+// stream or a missed event.
+const POLL_FALLBACK_MS = 20_000;
+const SSE_REFETCH_DEBOUNCE_MS = 350;
+const QUEUE_EVENTS = new Set<string>([
+  "queue.updated",
+  "queue.called",
+  "appointment.created",
+  "appointment.statusChanged",
+  "appointment.cancelled",
+  "appointment.moved",
+]);
+
 export default function QueueStatusPage({ params }: { params: Promise<{ id: string }> }) {
   const [data, setData] = useState<QueueStatus | null>(null);
   const [id, setId] = useState<string>("");
   const [error, setError] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [wasNotified, setWasNotified] = useState(false);
+  const wasNotified = useRef(false);
   const lastStatus = useRef<string>("");
   const fetchedAt = useRef<number>(0);
+  const refetchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     params.then((p) => setId(p.id));
   }, [params]);
 
-  useEffect(() => {
+  const fetchStatus = useCallback(async () => {
     if (!id) return;
-    async function fetchStatus() {
-      try {
-        const res = await fetch(`/api/queue/status/${id}`);
-        if (res.ok) {
-          const d = await res.json();
-          setData(d);
-          setError(false);
-          fetchedAt.current = Date.now();
-          setCountdown(d.etaMinutes * 60);
+    try {
+      const res = await fetch(`/api/queue/status/${id}`);
+      if (res.ok) {
+        const d = (await res.json()) as QueueStatus;
+        setData(d);
+        setError(false);
+        fetchedAt.current = Date.now();
+        setCountdown(d.etaMinutes * 60);
 
-          // Vibrate + notify when status changes to IN_PROGRESS
-          if (d.status === "IN_PROGRESS" && lastStatus.current !== "IN_PROGRESS") {
-            try { navigator.vibrate?.([300, 100, 300, 100, 500]); } catch {}
-            if (!wasNotified && "Notification" in window && Notification.permission === "granted") {
-              new Notification("NeuroFax-B", { body: `Ваша очередь! Кабинет ${d.cabinet}`, icon: "/logo.png" });
-              setWasNotified(true);
-            }
+        // Vibrate + notify when status changes to IN_PROGRESS
+        if (d.status === "IN_PROGRESS" && lastStatus.current !== "IN_PROGRESS") {
+          try { navigator.vibrate?.([300, 100, 300, 100, 500]); } catch {}
+          if (!wasNotified.current && "Notification" in window && Notification.permission === "granted") {
+            new Notification(d.clinicName || "Электронная очередь", { body: `Ваша очередь! Кабинет ${d.cabinet}`, icon: "/logo.png" });
+            wasNotified.current = true;
           }
-          lastStatus.current = d.status;
-        } else {
-          setError(true);
         }
-      } catch {
+        lastStatus.current = d.status;
+      } else {
         setError(true);
       }
+    } catch {
+      setError(true);
     }
+  }, [id]);
+
+  // Initial load + slow fallback poll (covers a dropped stream / missed poke).
+  useEffect(() => {
+    if (!id) return;
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, [id, wasNotified]);
+    const interval = setInterval(fetchStatus, POLL_FALLBACK_MS);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(refetchTimer.current);
+    };
+  }, [id, fetchStatus]);
+
+  // SSE — instant refetch when this patient's doctor queue changes. clinicSlug
+  // and doctorId arrive with the first status payload, then stay constant, so
+  // the stream opens once. Events without a doctorId still refetch (safe).
+  const clinicSlug = data?.clinicSlug ?? null;
+  const myDoctorId = data?.doctorId ?? null;
+  useEffect(() => {
+    if (!clinicSlug || !myDoctorId) return;
+    const es = new EventSource(`/api/c/${encodeURIComponent(clinicSlug)}/queue/events`);
+    es.onmessage = (ev) => {
+      let parsed: { type?: string; payload?: { doctorId?: string } };
+      try { parsed = JSON.parse(ev.data); } catch { return; }
+      const type = parsed?.type;
+      if (!type || !QUEUE_EVENTS.has(type)) return;
+      const evDoctorId = parsed.payload?.doctorId;
+      if (evDoctorId && evDoctorId !== myDoctorId) return;
+      clearTimeout(refetchTimer.current);
+      refetchTimer.current = setTimeout(fetchStatus, SSE_REFETCH_DEBOUNCE_MS);
+    };
+    return () => es.close();
+  }, [clinicSlug, myDoctorId, fetchStatus]);
 
   // Request notification permission
   useEffect(() => {
@@ -101,7 +145,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-blue-500 animate-spin" />
+          <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-[var(--brand-primary)] animate-spin" />
           <span className="text-gray-400 text-sm">Загрузка...</span>
         </div>
       </div>
@@ -121,7 +165,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
       <div className="pt-6 pb-3 px-4 text-center">
         <Image
           src="/logo.png"
-          alt="NeuroFax-B"
+          alt={data?.clinicName || "Электронная очередь"}
           width={82}
           height={32}
           priority
@@ -139,7 +183,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
           }`}>
             <div className={`px-6 py-8 text-center ${
               isInProgress ? "bg-gradient-to-br from-green-500 to-emerald-600" :
-              isCompleted ? "bg-gray-400" : "bg-gradient-to-br from-[#1B4F7A] to-[#2a6ea8]"
+              isCompleted ? "bg-gray-400" : "bg-gradient-to-br from-[var(--brand-primary)] to-[#1a3fd6]"
             }`}>
               <p className="text-white/70 text-xs font-semibold uppercase tracking-[0.2em] mb-2">Ваш талон</p>
               <p className="text-white text-6xl font-bold font-mono tracking-wider">{data.ticketNumber}</p>

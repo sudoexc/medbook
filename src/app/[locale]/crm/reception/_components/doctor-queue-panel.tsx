@@ -19,6 +19,7 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  ChevronsUpIcon,
   ExternalLinkIcon,
   GripVerticalIcon,
   MoreHorizontalIcon,
@@ -74,8 +75,10 @@ import {
 } from "@/lib/appointments/lifecycle";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import {
   useReorderQueue,
+  useSetQueuePriority,
   useSetQueueStatus,
 } from "../../appointments/_hooks/use-appointment";
 import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
@@ -90,10 +93,10 @@ export interface DoctorQueuePanelProps {
 const STATUS_TINT: Record<AppointmentRow["queueStatus"], string> = {
   BOOKED: "border-border bg-muted/40 text-muted-foreground",
   CONFIRMED: "border-info/40 bg-info/10 text-[color:var(--info)]",
-  WAITING: "border-warning/40 bg-warning/10 text-amber-800 dark:text-amber-200",
+  WAITING: "border-warning/40 bg-warning/10 text-warning-text",
   IN_PROGRESS: "border-success/40 bg-success/15 text-[color:var(--success)]",
   COMPLETED: "border-border bg-card text-muted-foreground",
-  SKIPPED: "border-warning/40 bg-warning/10 text-amber-800 dark:text-amber-200",
+  SKIPPED: "border-warning/40 bg-warning/10 text-warning-text",
   CANCELLED: "border-border bg-card text-muted-foreground line-through",
   NO_SHOW: "border-destructive/40 bg-destructive/10 text-destructive",
 };
@@ -117,9 +120,8 @@ const REORDER_ROLES = new Set<LifecycleRole>([
 
 function sortDraggable(rows: AppointmentRow[]): AppointmentRow[] {
   return [...rows].sort((a, b) => {
-    const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
-    const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
-    if (oa !== ob) return oa - ob;
+    const c = compareQueuePriority(a, b);
+    if (c !== 0) return c;
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 }
@@ -340,6 +342,7 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
     const role = useCurrentRole() as LifecycleRole;
     const apptDate = React.useMemo(() => new Date(row.date), [row.date]);
     const mutation = useSetQueueStatus(row.id);
+    const priorityMutation = useSetQueuePriority(row.id);
 
     const actions = React.useMemo(
       () => getQuickActions(row.queueStatus, role, apptDate),
@@ -348,6 +351,10 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
 
     const primary = actions.find((a) => !a.confirm) ?? null;
     const overflow = actions.filter((a) => a !== primary);
+
+    // Manual urgency is only meaningful while the patient is still queued.
+    const canPrioritize = DRAGGABLE_STATUSES.has(row.queueStatus);
+    const isUrgent = (row.queuePriority ?? 0) > 0;
 
     const [confirmTarget, setConfirmTarget] =
       React.useState<AppointmentStatus | null>(null);
@@ -478,6 +485,19 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
               <ExternalLinkIcon className="mr-2 size-3.5" />
               {t("openCard")}
             </DropdownMenuItem>
+            {canPrioritize ? (
+              <DropdownMenuItem
+                disabled={priorityMutation.isPending}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  priorityMutation.mutate(isUrgent ? 0 : 1);
+                }}
+                className={isUrgent ? undefined : "text-warning-text"}
+              >
+                <ChevronsUpIcon className="mr-2 size-3.5" />
+                {isUrgent ? t("priorityOff") : t("priorityOn")}
+              </DropdownMenuItem>
+            ) : null}
             {overflow.length > 0 ? <DropdownMenuSeparator /> : null}
             {overflow.map((a) => (
               <DropdownMenuItem

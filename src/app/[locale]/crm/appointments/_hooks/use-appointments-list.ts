@@ -82,6 +82,7 @@ export type AppointmentRow = {
     | "NO_SHOW";
   channel: "WALKIN" | "PHONE" | "TELEGRAM" | "WEBSITE" | "KIOSK";
   queueOrder: number | null;
+  queuePriority: number;
   priceBase: number | null;
   priceService: number | null;
   priceFinal: number | null;
@@ -109,6 +110,25 @@ export type AppointmentRow = {
   services: AppointmentServiceLineShort[];
   payments: AppointmentPaymentShort[];
 };
+
+/**
+ * Live-queue precedence shared by every reception sort site (panel, doctor
+ * list, queue column) and the public TV board. Urgency (`queuePriority`, higher
+ * first) wins; ties fall back to `queueOrder` ascending so the receptionist's
+ * manual drag order is preserved within a priority band. Returns 0 when both
+ * axes are equal — callers append their own tie-breaker (slot time / arrival).
+ */
+export function compareQueuePriority(
+  a: Pick<AppointmentRow, "queuePriority" | "queueOrder">,
+  b: Pick<AppointmentRow, "queuePriority" | "queueOrder">,
+): number {
+  const pa = a.queuePriority ?? 0;
+  const pb = b.queuePriority ?? 0;
+  if (pa !== pb) return pb - pa;
+  const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
+  const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
+  return oa - ob;
+}
 
 export type AppointmentsListResponse = {
   rows: AppointmentRow[];

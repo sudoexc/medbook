@@ -82,7 +82,7 @@ export function ReceptionListDrawer({
   const tone =
     mode === "in_progress"
       ? "bg-success/12 text-success"
-      : "bg-warning/15 text-amber-700 dark:bg-warning/15 dark:text-amber-300";
+      : "bg-warning/15 text-warning-text";
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>

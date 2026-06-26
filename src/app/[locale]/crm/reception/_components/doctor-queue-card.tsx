@@ -312,13 +312,13 @@ function StatusPill({
         ? t("pillAwaiting")
         : t("pillFree");
   // `--warning-foreground` is white (designed for solid `bg-warning`). On a
-  // light tint like `bg-warning/15` it disappears — use a dark amber instead
-  // (Tailwind amber-800, ~5.5:1 on the tint over white).
+  // light tint like `bg-warning/15` it disappears — `--warning-text` is the
+  // readable amber tuned for tinted surfaces (~5.5:1 on the tint over white).
   const tone =
     state === "in_session"
       ? "bg-success/15 text-success"
       : state === "awaiting"
-        ? "bg-warning/20 text-amber-800 dark:bg-warning/25 dark:text-amber-200"
+        ? "bg-warning/20 text-warning-text dark:bg-warning/25"
         : "bg-muted text-muted-foreground";
   const dot =
     state === "in_session"

@@ -63,6 +63,7 @@ export async function POST(request: Request) {
         time: true,
         queueStatus: true,
         queueOrder: true,
+        ticketSeq: true,
         doctor: {
           select: {
             id: true,
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
         time: a.time,
         queueStatus: a.queueStatus,
         queueOrder: a.queueOrder,
-        ticketNumber: ticketNumberFor(a.doctor.id, a.queueOrder),
+        ticketNumber: ticketNumberFor(a.doctor.id, a.ticketSeq ?? a.queueOrder),
         doctor: a.doctor,
       })),
     });

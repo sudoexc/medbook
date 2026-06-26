@@ -320,12 +320,12 @@ function SmartRecommendations({
 type DistributionMode = "bySpecialty" | "byTime";
 
 const SPECIALTY_BAR_COLORS = [
-  "bg-red-500",
-  "bg-amber-500",
-  "bg-emerald-500",
-  "bg-blue-500",
-  "bg-violet-500",
-  "bg-slate-400",
+  "bg-chart-5",
+  "bg-chart-3",
+  "bg-chart-2",
+  "bg-chart-1",
+  "bg-chart-4",
+  "bg-muted-foreground",
 ];
 
 function DistributionChart({

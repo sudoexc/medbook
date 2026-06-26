@@ -8,15 +8,15 @@
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
 import { createPublicClinicHandler } from "@/server/clinic-public/resolve";
+import { getQueueProjection } from "@/server/appointments/queue-projection";
+import { tashkentComponents } from "@/lib/booking-validation";
 
 export const dynamic = "force-dynamic";
 
 export const GET = createPublicClinicHandler(async ({ ctx }) => {
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-  const weekday = dayStart.getDay();
+  // Tashkent wall-clock weekday — the server runs UTC, so a naive day pick would
+  // choose the wrong schedule weekday near midnight (same fix as the TV board).
+  const weekday = tashkentComponents(new Date()).dow;
 
   const doctors = await prisma.doctor.findMany({
     where: {
@@ -42,19 +42,17 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
     return ok({ doctors: [] });
   }
 
-  const waiting = await prisma.appointment.groupBy({
-    by: ["doctorId"],
-    where: {
-      clinicId: ctx.clinicId,
-      doctorId: { in: doctors.map((d) => d.id) },
-      date: { gte: dayStart, lt: dayEnd },
-      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
-    },
-    _count: { _all: true },
+  const doctorIds = doctors.map((d) => d.id);
+  const projection = await getQueueProjection({
+    clinicId: ctx.clinicId,
+    doctorIds,
   });
 
   const out = doctors.map((d) => {
-    const w = waiting.find((x) => x.doctorId === d.id)?._count._all ?? 0;
+    const q = projection.get(d.id);
+    // People ahead of a new walk-in = everyone WAITING plus the one being seen.
+    const activeCount = q ? q.waiting.length + (q.current ? 1 : 0) : 0;
+    const perVisitMin = q?.perVisitMin ?? 30;
     return {
       id: d.id,
       nameRu: d.nameRu,
@@ -65,8 +63,8 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
       color: d.color,
       cabinet: d.cabinet?.number ?? null,
       pricePerVisit: d.pricePerVisit,
-      waitingCount: w,
-      etaMinutes: w * 30,
+      waitingCount: activeCount,
+      etaMinutes: activeCount * perVisitMin,
     };
   });
 

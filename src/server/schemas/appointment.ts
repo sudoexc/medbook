@@ -61,6 +61,9 @@ export const UpdateAppointmentSchema = z.object({
   durationMin: z.number().int().min(5).max(480).optional(),
   status: AppointmentStatusEnum.optional(),
   queueStatus: AppointmentStatusEnum.optional(),
+  // Manual live-queue urgency. Higher floats to the top of the waiting list;
+  // 0 = normal. The reception panel toggles between 0 and 1.
+  queuePriority: z.number().int().min(0).max(100).optional(),
   channel: ChannelTypeEnum.optional(),
   discountPct: z.number().int().min(0).max(100).optional(),
   discountAmount: z.number().int().min(0).optional(),

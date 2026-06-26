@@ -120,6 +120,7 @@ export type AppointmentPatchInput = {
   serviceId?: string | null;
   status?: AppointmentRow["status"];
   queueStatus?: AppointmentRow["queueStatus"];
+  queuePriority?: number;
   channel?: AppointmentRow["channel"];
   comments?: string | null;
   notes?: string | null;
@@ -308,6 +309,71 @@ export function useSetQueueStatus(id: string) {
     onError: (err, _p, context) => {
       if (context?.previous) {
         qc.setQueryData(appointmentKey(id), context.previous);
+      }
+      toast.error(err.message || t("actionFailed"));
+    },
+    onSettled: () => {
+      invalidateAppointmentSurfaces(qc, id);
+    },
+  });
+}
+
+/**
+ * Toggle a patient's live-queue urgency. Optimistically rewrites
+ * `queuePriority` on every `["reception","appointments","today",...]` snapshot
+ * so the row jumps to the top (or back) instantly; the drag order within a
+ * priority band is preserved because the sort falls back to `queueOrder`. On
+ * settled we invalidate reception surfaces so kiosk/TV come back in sync.
+ */
+export function useSetQueuePriority(id: string) {
+  const qc = useQueryClient();
+  const t = useTranslations("crmToasts.appointment");
+  return useMutation<
+    AppointmentDetail,
+    Error,
+    number,
+    { snapshots: Array<[readonly unknown[], AppointmentRow[]]> }
+  >({
+    mutationFn: async (queuePriority) => {
+      const res = await fetch(`/api/crm/appointments/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queuePriority }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as AppointmentDetail;
+    },
+    onMutate: async (queuePriority) => {
+      await qc.cancelQueries({
+        queryKey: ["reception", "appointments", "today"],
+      });
+      const snapshots: Array<[readonly unknown[], AppointmentRow[]]> = [];
+      const entries = qc.getQueriesData<AppointmentRow[]>({
+        queryKey: ["reception", "appointments", "today"],
+      });
+      for (const [key, rows] of entries) {
+        if (!rows) continue;
+        snapshots.push([key, rows]);
+        qc.setQueryData<AppointmentRow[]>(
+          key,
+          rows.map((r) => (r.id === id ? { ...r, queuePriority } : r)),
+        );
+      }
+      const prevDetail = qc.getQueryData<AppointmentDetail>(appointmentKey(id));
+      if (prevDetail) {
+        qc.setQueryData<AppointmentDetail>(appointmentKey(id), {
+          ...prevDetail,
+          queuePriority,
+        } as AppointmentDetail);
+      }
+      return { snapshots };
+    },
+    onError: (err, _v, context) => {
+      if (context?.snapshots) {
+        for (const [key, prev] of context.snapshots) {
+          qc.setQueryData(key, prev);
+        }
       }
       toast.error(err.message || t("actionFailed"));
     },

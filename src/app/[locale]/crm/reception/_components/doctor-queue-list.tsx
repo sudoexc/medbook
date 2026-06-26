@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 import type { DoctorPanelDensity } from "../_hooks/use-panel-prefs";
 import { DoctorQueuePanel } from "./doctor-queue-panel";
@@ -85,11 +86,9 @@ export function DoctorQueueList({
         )
         .sort((a, b) => {
           // Mirror the panel's sort so the "next" preview matches what the
-          // receptionist has been dragging into place. `queueOrder` nulls
-          // sink to the bottom, then we break ties by appointment time.
-          const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
-          const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
-          if (oa !== ob) return oa - ob;
+          // receptionist sees: urgency first, then drag order, then slot time.
+          const c = compareQueuePriority(a, b);
+          if (c !== 0) return c;
           return new Date(a.date).getTime() - new Date(b.date).getTime();
         });
       const next = upcoming[0] ?? null;

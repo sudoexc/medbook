@@ -1,8 +1,11 @@
 // @ts-nocheck
 // TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
+import QRCode from "qrcode";
+
 import { prisma } from "@/lib/prisma";
 import { SITE_DOMAIN } from "@/lib/constants";
-// TODO(phase-2c): re-introduce AutoPrint client component after dashboard rebuild.
+import { ticketNumberFor } from "@/server/services/ticket-number";
+import { AutoPrint } from "./_components/auto-print";
 
 export default async function TicketPage({
   params,
@@ -20,10 +23,13 @@ export default async function TicketPage({
     return <p style={{ padding: 40, textAlign: "center" }}>Талон не найден</p>;
   }
 
-  const ticketNumber = `${appointment.doctor.id.charAt(0).toUpperCase()}-${String(appointment.queueOrder || 0).padStart(3, "0")}`;
+  const ticketNumber = ticketNumberFor(appointment.doctor.id, appointment.queueOrder);
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
   const statusUrl = `${baseUrl}/q/${id}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(statusUrl)}`;
+  // Self-hosted QR (the `qrcode` package, same one the PDFs/mini-app use) —
+  // no third-party `api.qrserver.com` round-trip, which both leaks the queue
+  // URL and is unreliable from a VPS behind SNI/DPI filtering.
+  const qrUrl = await QRCode.toDataURL(statusUrl, { width: 200, margin: 1 });
   const dateStr = appointment.date.toLocaleDateString("ru-RU");
   const timeStr = appointment.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 
@@ -135,7 +141,7 @@ export default async function TicketPage({
         <div style={{ fontSize: "8px", color: "#999", marginTop: "1mm" }}>+998 71 200 00 07 | neurofax.uz</div>
       </div>
 
-      {/* TODO(phase-2c): auto-trigger window.print() via re-added AutoPrint client component. */}
+      <AutoPrint />
     </div>
   );
 }

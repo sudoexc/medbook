@@ -38,6 +38,7 @@
 
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-text: var(--warning-text);
 
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
@@ -122,6 +123,35 @@
 }
 
 /*
+ * Public waiting-room surfaces (TV board, kiosk, paper ticket, queue status).
+ *
+ * A dark, high-contrast theme tuned for a wall-mounted TV read at distance and
+ * a lobby kiosk, deriving its accent + status hues from the CRM brand tokens
+ * above so the patient-facing screens feel like the same product as the staff
+ * CRM. Wave 6 will allow per-clinic overrides by re-declaring these on a
+ * `[data-clinic]` scope.
+ */
+:root {
+  --public-bg: #0a1628;
+  --public-bg-elevated: #0e1c33;
+  --public-panel: rgba(255, 255, 255, 0.04);
+  --public-panel-strong: rgba(255, 255, 255, 0.06);
+  --public-border: rgba(255, 255, 255, 0.1);
+  --public-border-strong: rgba(255, 255, 255, 0.16);
+
+  --public-fg: #ffffff;
+  --public-fg-muted: rgba(255, 255, 255, 0.55);
+  --public-fg-faint: rgba(255, 255, 255, 0.3);
+
+  --public-accent: var(--brand-primary);
+  --public-accent-rail: #16407a;
+
+  --public-active: var(--brand-success);
+  --public-waiting: var(--brand-warning);
+  --public-danger: var(--brand-danger);
+}
+
+/*
  * Light theme tokens — matches mockups in docs/*.png.
  *
  * - Primary: drives CTAs, links, focus ring (sourced from `--brand-primary`).
@@ -160,6 +190,9 @@
 
   --warning: #f59e0b;
   --warning-foreground: #ffffff;
+  /* Readable amber for text/icons on tinted warning surfaces (amber-800,
+     AA on warning/10). Pairs with --warning for fills. */
+  --warning-text: #92400e;
 
   --success: #16c784;
   --success-foreground: #ffffff;
@@ -235,6 +268,8 @@
 
   --warning: #f59e0b;
   --warning-foreground: #ffffff;
+  /* Lighter amber (amber-300) so it stays legible on dark warning tints. */
+  --warning-text: #fcd34d;
 
   --success: #22d39a;
   --success-foreground: #ffffff;

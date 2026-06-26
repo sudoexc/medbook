@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import {
   type AiQueueItem,
   useActiveDoctors,
@@ -51,9 +52,8 @@ const bySlotTime = (a: AppointmentRow, b: AppointmentRow) =>
  * (max+1 per doctor/day); fall back to creation time when it's missing.
  */
 const byArrival = (a: AppointmentRow, b: AppointmentRow) => {
-  const oa = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
-  const ob = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
-  if (oa !== ob) return oa - ob;
+  const c = compareQueuePriority(a, b);
+  if (c !== 0) return c;
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 };
 
@@ -318,18 +318,18 @@ function QueueItem({
               {row.patient.fullName}
             </span>
             {ai?.isVip ? (
-              <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+              <span className="inline-flex shrink-0 items-center rounded bg-warning/15 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-warning-text">
                 VIP
               </span>
             ) : null}
             {mode === "walkin" ? (
-              <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
+              <span className="inline-flex shrink-0 items-center rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-text tabular-nums">
                 {t("waitMin", { min: waitMin })}
               </span>
             ) : (
               <>
                 {arrived ? (
-                  <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 tabular-nums dark:bg-amber-500/15 dark:text-amber-300">
+                  <span className="inline-flex shrink-0 items-center rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-text tabular-nums">
                     {t("waitMin", { min: waitMin })}
                   </span>
                 ) : null}

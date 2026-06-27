@@ -68,12 +68,16 @@ export async function detectConflicts(
     return { ok: false, reason: "in_past" };
   }
 
-  // Doctor overlap
+  // Doctor overlap. Walk-ins are order-based, not slot-based — they stack in
+  // the live queue and don't reserve a calendar slot, so a scheduled booking
+  // must not be blocked by an overlapping walk-in window. This mirrors the DB
+  // EXCLUDE constraints, which carry the same `channel <> 'WALKIN'` predicate.
   const doctorClash = await client.appointment.findFirst({
     where: {
       doctorId: args.doctorId,
       id: args.excludeId ? { not: args.excludeId } : undefined,
       status: { notIn: ["CANCELLED", "NO_SHOW"] },
+      channel: { not: "WALKIN" },
       date: { lt: args.endAt },
       endDate: { gt: args.startAt },
     },
@@ -94,6 +98,7 @@ export async function detectConflicts(
         cabinetId: args.cabinetId,
         id: args.excludeId ? { not: args.excludeId } : undefined,
         status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        channel: { not: "WALKIN" },
         date: { lt: args.endAt },
         endDate: { gt: args.startAt },
       },

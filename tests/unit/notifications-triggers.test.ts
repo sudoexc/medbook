@@ -6,21 +6,30 @@
  * Phase 14 (Wave 2) added `patient.reactivation` for the dormant-patient
  * reactivation engine. Phase 16 Wave 3 added `medication.reminder` and
  * `referral.reward-earned` for the medication-compliance and refer-a-friend
- * loops.
+ * loops. TZ-notifications-cancel-sync added the day-of cascade
+ * (`appointment.thank-you`, `-3h`, `-1h`, surface-aware cancel variants,
+ * `appointment.running-late`, `appointment.no-show`).
  */
 import { describe, it, expect } from "vitest";
 
 import { TRIGGER_KEYS } from "@/server/notifications/triggers";
 
 describe("TRIGGER_KEYS", () => {
-  it("exposes all 15 triggers in the documented order", () => {
+  it("exposes all 22 triggers in the documented order", () => {
     expect([...TRIGGER_KEYS]).toEqual([
       "appointment.created",
+      "appointment.thank-you",
       "appointment.reminder-3d",
       "appointment.reminder-24h",
       "appointment.reminder-5h",
+      "appointment.reminder-3h",
       "appointment.reminder-2h",
+      "appointment.reminder-1h",
       "appointment.cancelled",
+      "appointment.cancelled.by-staff",
+      "appointment.cancelled.by-patient",
+      "appointment.running-late",
+      "appointment.no-show",
       "birthday",
       "no-show",
       "payment.due",
@@ -33,7 +42,7 @@ describe("TRIGGER_KEYS", () => {
     ]);
   });
 
-  it("is a tuple-const (readonly) length 15", () => {
-    expect(TRIGGER_KEYS.length).toBe(15);
+  it("is a tuple-const (readonly) length 22", () => {
+    expect(TRIGGER_KEYS.length).toBe(22);
   });
 });

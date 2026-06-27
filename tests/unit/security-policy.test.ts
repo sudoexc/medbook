@@ -5,7 +5,7 @@
  * - SUPER_ADMIN/ADMIN are always required regardless of clinic flag.
  * - Other staff roles are required only when require2faForAll is on.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import {
   isMandatory2faRole,
@@ -38,6 +38,20 @@ describe("isMandatory2faRole", () => {
 });
 
 describe("requiresTotpEnrollment", () => {
+  // This block asserts the enrolment policy in its enforcing state. The test
+  // env sets DISABLE_2FA=1 globally (so route-handler suites short-circuit the
+  // MFA gate); clear it here so we exercise the real role/flag logic, then
+  // restore it for the rest of the run.
+  let prevDisable: string | undefined;
+  beforeAll(() => {
+    prevDisable = process.env.DISABLE_2FA;
+    delete process.env.DISABLE_2FA;
+  });
+  afterAll(() => {
+    if (prevDisable === undefined) delete process.env.DISABLE_2FA;
+    else process.env.DISABLE_2FA = prevDisable;
+  });
+
   it("ADMIN/SUPER_ADMIN are always required regardless of clinic flag", () => {
     for (const flag of [false, true]) {
       expect(

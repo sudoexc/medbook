@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Памятка · Живая очередь · NeuroFax</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#5b6678; --line:#e3e8f0; --bg:#f4f6fa; --card:#ffffff;
+    --primary:#2353ff; --primary-soft:#e8efff;
+    --success:#16c784; --success-soft:#e3f8ef;
+    --warning:#f59e0b; --warning-soft:#fdf1dc;
+    --danger:#ef4444;  --danger-soft:#fde8e8;
+    --slate:#64748b;   --slate-soft:#eef1f6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); background:var(--bg); line-height:1.45;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .sheet{max-width:1000px; margin:0 auto; padding:28px 30px 40px}
+  .toolbar{max-width:1000px; margin:14px auto 0; padding:0 30px; text-align:right}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    background:var(--primary); color:#fff; border:none; border-radius:10px;
+    font-size:14px; font-weight:600; padding:10px 16px;
+  }
+  /* Header */
+  header.hd{display:flex; align-items:flex-end; justify-content:space-between; gap:20px;
+    border-bottom:3px solid var(--primary); padding-bottom:14px; margin-bottom:20px}
+  .brand{display:flex; align-items:center; gap:12px}
+  .mark{width:40px;height:40px;border-radius:11px;background:var(--primary);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:19px;letter-spacing:-.5px}
+  h1{font-size:23px; margin:0; letter-spacing:-.4px}
+  .sub{color:var(--muted); font-size:13px; margin-top:2px}
+  .for{font-size:12px; color:var(--muted); text-align:right; line-height:1.5}
+  .for b{color:var(--ink)}
+
+  h2{font-size:15px; letter-spacing:.02em; text-transform:uppercase; color:var(--primary);
+    margin:0 0 12px; display:flex; align-items:center; gap:9px}
+  h2 .n{width:22px;height:22px;border-radius:7px;background:var(--primary-soft);color:var(--primary);
+    display:grid;place-items:center;font-size:12px;font-weight:800}
+
+  /* The model strip */
+  .model{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:22px}
+  .rules{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:4px}
+  .rule{background:var(--bg); border-radius:11px; padding:13px 14px}
+  .rule .t{font-weight:700; font-size:13.5px; margin-bottom:4px}
+  .rule .d{font-size:12.5px; color:var(--muted)}
+  .rule code{background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11.5px}
+  .order{margin-top:15px; padding-top:14px; border-top:1px dashed var(--line);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px}
+  .order b{color:var(--primary)}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--primary-soft);color:var(--primary);
+    border-radius:999px;padding:4px 11px;font-weight:700;font-size:12px}
+  .arrow{color:var(--muted);font-weight:700}
+
+  /* Two column roles */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-bottom:22px}
+  .col{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px}
+  .act{display:flex; gap:12px; padding:11px 0; border-top:1px solid var(--line)}
+  .act:first-of-type{border-top:none}
+  .act .ic{flex:0 0 auto; width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+    font-size:15px; font-weight:800}
+  .act .bd{flex:1}
+  .act .h{font-weight:700; font-size:13.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .act .p{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .pill{font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:999px; letter-spacing:.02em; white-space:nowrap}
+  .p-wait{background:var(--primary-soft);color:var(--primary)}
+  .p-prog{background:var(--success-soft);color:#0a8a5c}
+  .p-skip{background:var(--warning-soft);color:#9a6406}
+  .p-canc{background:var(--danger-soft);color:#b91c1c}
+  .p-done{background:var(--slate-soft);color:var(--slate)}
+  .ic-pri{background:var(--primary-soft);color:var(--primary)}
+  .ic-suc{background:var(--success-soft);color:#0a8a5c}
+  .ic-war{background:var(--warning-soft);color:#9a6406}
+  .ic-dan{background:var(--danger-soft);color:#b91c1c}
+  .ic-sla{background:var(--slate-soft);color:var(--slate)}
+
+  /* Patient strip */
+  .patient{display:grid; grid-template-columns:1.1fr 1fr 1fr; gap:18px; margin-bottom:22px}
+  .pcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px}
+  .pcard .h{font-weight:700; font-size:13.5px; margin-bottom:6px; display:flex; align-items:center; gap:8px}
+  .pcard .p{font-size:12.5px; color:var(--muted)}
+  .pcard code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11.5px}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+
+  /* FAQ */
+  .faq{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:18px}
+  .qa{display:grid; grid-template-columns:repeat(2,1fr); gap:13px 22px; margin-top:4px}
+  .q{font-size:12.8px}
+  .q .qq{font-weight:700} .q .aa{color:var(--muted)}
+  .q .aa b{color:var(--ink); font-weight:600}
+
+  footer{display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:11.5px;
+    border-top:1px solid var(--line); padding-top:12px}
+
+  @media print{
+    @page{ size:A4; margin:11mm 12mm; }
+    body{background:#fff}
+    .toolbar{display:none}
+    .sheet{max-width:none; padding:0}
+    .model,.col,.pcard,.faq{break-inside:avoid}
+    .cols{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar"><button class="btn" onclick="window.print()">🖨 Печать / Сохранить в PDF</button></div>
+
+<div class="sheet">
+
+  <header class="hd">
+    <div class="brand">
+      <div class="mark">NF</div>
+      <div>
+        <h1>Живая очередь — памятка</h1>
+        <div class="sub">Как ведётся очередь приёма в течение дня</div>
+      </div>
+    </div>
+    <div class="for">для&nbsp;<b>ресепшн</b> и&nbsp;<b>врача</b><br>NeuroFax · neurofax.uz</div>
+  </header>
+
+  <!-- MODEL -->
+  <section class="model">
+    <h2><span class="n">i</span>Как устроена очередь</h2>
+    <div class="rules">
+      <div class="rule">
+        <div class="t">🎟 Номер-талон закреплён</div>
+        <div class="d">У каждого пациента свой номер (напр. <code>C-007</code>). Он выдаётся при отметке прихода и <b>не меняется</b> — даже если пациента пропустили или подвинули в очереди.</div>
+      </div>
+      <div class="rule">
+        <div class="t">⏱ Очередь — по «времени к приёму»</div>
+        <div class="d"><b>Живая запись:</b> по моменту прихода.<br><b>Запись по времени:</b> по <code>max(время записи, момент прихода)</code> — раньше своего слота пациент не встанет.</div>
+      </div>
+      <div class="rule">
+        <div class="t">🏃 Опоздал — встал по приходу</div>
+        <div class="d">Пришёл позже своего времени — система ставит его по <b>фактическому приходу</b>, а не по записи. Те, кто пришёл раньше, идут первыми.</div>
+      </div>
+    </div>
+    <div class="order">
+      <b>Порядок сортировки:</b>
+      <span class="chip">1 · «Срочно»</span><span class="arrow">→</span>
+      <span class="chip">2 · по времени к приёму</span><span class="arrow">→</span>
+      <span class="chip">3 · по номеру талона</span>
+    </div>
+  </section>
+
+  <!-- ROLES -->
+  <div class="cols">
+    <!-- RECEPTION -->
+    <section class="col">
+      <h2><span class="n">Р</span>Ресепшн</h2>
+
+      <div class="act">
+        <div class="ic ic-pri">✓</div>
+        <div class="bd">
+          <div class="h">Пришёл <span class="pill p-wait">В очереди</span></div>
+          <div class="p">Отметить приход пациента. Он встаёт в живую очередь, печатается талон с номером. Для записи по времени талон выдаётся именно в этот момент.</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-suc">▶</div>
+        <div class="bd">
+          <div class="h">Вызвать к врачу <span class="pill p-prog">Идёт приём</span></div>
+          <div class="p">Пациент уходит к врачу. На ТВ в холле загорается «приглашается № …» с кабинетом.</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-war">⏭</div>
+        <div class="bd">
+          <div class="h">Пропустить → Вернуть <span class="pill p-skip">Пропущен</span></div>
+          <div class="p">Не отозвался — отметьте «Пропустить». Подошёл — «Вернуть в очередь»: <b>номер сохраняется</b>, но пациент встаёт <b>в конец</b> (по новому времени прихода).</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-pri">⚡</div>
+        <div class="bd">
+          <div class="h">Срочно</div>
+          <div class="p">Поднять пациента над всей очередью. <b>Важно:</b> запись, чьё время ещё не наступило, перетаскиванием выше слота не сдвинуть — для этого есть только «Срочно».</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-sla">⇅</div>
+        <div class="bd">
+          <div class="h">Перетащить (drag)</div>
+          <div class="p">Поменять местами тех, кто уже пришёл. Если перетащили, а порядок не изменился — значит у записи ещё не наступило время; используйте «Срочно».</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-dan">✕</div>
+        <div class="bd">
+          <div class="h">Отмена <span class="pill p-canc">Отменён</span></div>
+          <div class="p">Пациент ушёл / не придёт. Запись отменяется, слот освобождается, она исчезает из очереди, киоска и с ТВ.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOCTOR -->
+    <section class="col">
+      <h2><span class="n">В</span>Врач</h2>
+
+      <div class="act">
+        <div class="ic ic-suc">▶</div>
+        <div class="bd">
+          <div class="h">Начать приём <span class="pill p-prog">Идёт приём</span></div>
+          <div class="p">Открыть приём вызванного пациента. Одновременно может идти <b>только один</b> приём — закройте текущий, прежде чем начать следующий.</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-done" style="background:var(--slate-soft);color:var(--slate)">■</div>
+        <div class="bd">
+          <div class="h">Завершить <span class="pill p-done">Завершён</span></div>
+          <div class="p">Приём окончен. Слот укорачивается до фактического времени — хвост освобождается для других пациентов.</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-war">↩</div>
+        <div class="bd">
+          <div class="h">Откатить (ошиблись кнопкой)</div>
+          <div class="p">Только на <b>своей</b> записи: «Завершён» → «Идёт приём», «Идёт приём» → «В очереди». Ресепшн откатить приём не может.</div>
+        </div>
+      </div>
+
+      <div class="act">
+        <div class="ic ic-sla">i</div>
+        <div class="bd">
+          <div class="h">Что видит врач</div>
+          <div class="p">Свою живую очередь на сегодня: кто вызван, кто ждёт, номера талонов и примерное ожидание. Порядок — общий для всех экранов.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- PATIENT SURFACES -->
+  <div class="patient">
+    <div class="pcard">
+      <div class="h"><span class="dot" style="background:var(--primary)"></span>Талон + QR</div>
+      <div class="p">На талоне номер и QR. Пациент сканирует → <code>/t/КОД</code> → открывается его личная страница статуса. Обновляется вживую.</div>
+    </div>
+    <div class="pcard">
+      <div class="h"><span class="dot" style="background:var(--success)"></span>Страница статуса</div>
+      <div class="p">Пациент видит свой номер, позицию в очереди и примерное время ожидания. Меняется само, перезагружать не нужно.</div>
+    </div>
+    <div class="pcard">
+      <div class="h"><span class="dot" style="background:var(--warning)"></span>Киоск и ТВ</div>
+      <div class="p">Киоск: пациент сам берёт талон или отмечается по телефону. ТВ в холле: «сейчас приглашается № …» и список ожидания.</div>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <section class="faq">
+    <h2><span class="n">?</span>Частые ситуации</h2>
+    <div class="qa">
+      <div class="q"><div class="qq">Пациент опоздал на свою запись.</div>
+        <div class="aa">Просто нажмите <b>«Пришёл»</b>. Система сама поставит его по времени прихода — раньше тех, кто ждёт, он не вклинится.</div></div>
+      <div class="q"><div class="qq">Не отозвался на вызов.</div>
+        <div class="aa"><b>«Пропустить»</b>. Когда подойдёт — <b>«Вернуть в очередь»</b>: номер тот же, место — в конце.</div></div>
+      <div class="q"><div class="qq">Перетащил запись вверх — порядок не изменился.</div>
+        <div class="aa">У неё ещё не наступило время приёма. Поднять можно только кнопкой <b>«Срочно»</b>.</div></div>
+      <div class="q"><div class="qq">Нужно принять вне очереди (срочный случай).</div>
+        <div class="aa">Кнопка <b>«Срочно»</b> — пациент поднимается над всеми, номер талона сохраняется.</div></div>
+      <div class="q"><div class="qq">Врач случайно нажал «Завершить».</div>
+        <div class="aa">Врач сам нажимает <b>«Откатить»</b> на своей записи — вернётся «Идёт приём».</div></div>
+      <div class="q"><div class="qq">Пациент передумал / ушёл.</div>
+        <div class="aa"><b>«Отмена»</b> — запись уходит из очереди, слот освобождается для других.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>NeuroFax · Живая очередь · единый порядок для ресепшн, врача, киоска и ТВ</span>
+    <span>Памятка для печати · 2026</span>
+  </footer>
+
+</div>
+</body>
+</html>

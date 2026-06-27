@@ -97,9 +97,10 @@ describe("validate", () => {
 });
 
 describe("ALLOWED_KEYS_BY_TRIGGER", () => {
-  it("covers all 14 triggers (incl. Phase 16 Wave 3 medication + referral)", () => {
+  it("covers all 15 triggers (incl. Phase 16 Wave 3 medication + referral)", () => {
     const expected = [
       "appointment.created",
+      "appointment.thank-you",
       "appointment.reminder-24h",
       "appointment.reminder-5h",
       "appointment.reminder-2h",

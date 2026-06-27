@@ -435,11 +435,19 @@ export function useBulkReschedule() {
  * consumer that sorts the live queue. On settled we invalidate all reception
  * surfaces so kiosk/TV come back in sync.
  */
+/** Honest response from POST /reorder — see route for `floored` semantics. */
+type ReorderResult = {
+  count: number;
+  exact: boolean;
+  floored: string[];
+  effectiveOrder: string[];
+};
+
 export function useReorderQueue() {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.appointment");
   return useMutation<
-    { count: number },
+    ReorderResult,
     Error,
     { doctorId: string; orderedIds: string[] },
     { snapshots: Array<[readonly unknown[], AppointmentRow[]]> }
@@ -458,7 +466,7 @@ export function useReorderQueue() {
         } | null;
         throw new Error(j?.reason ?? j?.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as { count: number };
+      return (await res.json()) as ReorderResult;
     },
     onMutate: async ({ orderedIds }) => {
       const orderIndex = new Map(orderedIds.map((id, idx) => [id, idx]));
@@ -494,6 +502,14 @@ export function useReorderQueue() {
         );
       }
       return { snapshots };
+    },
+    onSuccess: (data) => {
+      // A future-slot booking floors at its slot, so dragging it earlier was a
+      // no-op. The board (and our optimistic state) already keep it put; the
+      // operator just needs to know why and that «срочно» is the lever.
+      if (data.floored.length > 0) {
+        toast(t("reorderFlooredHint", { count: data.floored.length }));
+      }
     },
     onError: (err, _vars, context) => {
       if (context?.snapshots) {

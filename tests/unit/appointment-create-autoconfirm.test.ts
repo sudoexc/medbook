@@ -113,6 +113,8 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async () => []),
     },
     appointment: {
+      // generateTicketCode() pre-checks ticket-code uniqueness; null = unused.
+      findUnique: vi.fn(async () => null),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.createCalls.push({ data });
         state.apptIdSeq += 1;

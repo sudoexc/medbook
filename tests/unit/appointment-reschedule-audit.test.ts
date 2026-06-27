@@ -292,7 +292,10 @@ describe("PATCH /api/crm/appointments/[id] — APPOINTMENT_RESCHEDULED audit", (
 
   it("does NOT emit APPOINTMENT_RESCHEDULED for status-only PATCHes", async () => {
     const PATCH = await loadPatch();
-    const res = await PATCH(patchReq({ status: "IN_PROGRESS" }));
+    // CONFIRMED is a role-agnostic status-only change (IN_PROGRESS/COMPLETED
+    // are doctor-owned and 403 for the ADMIN ctx this suite mocks). No
+    // slot-defining field changes, so no reschedule audit should fire.
+    const res = await PATCH(patchReq({ status: "CONFIRMED" }));
     expect(res.status).toBe(200);
 
     const reschedule = state.audits.find(

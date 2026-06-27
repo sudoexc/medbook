@@ -20,7 +20,7 @@ import { ok, err } from "@/server/http";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { ReorderQueueSchema } from "@/server/schemas/appointment";
-import { serveAtMs } from "@/lib/queue-ordering";
+import { compareQueue, serveAtMs } from "@/lib/queue-ordering";
 
 /** Spacing between consecutive serveAt anchors when re-sequencing (1 s). */
 const STEP_MS = 1000;
@@ -43,7 +43,14 @@ export const POST = createApiHandler(
 
     const existing = await prisma.appointment.findMany({
       where: { id: { in: uniqueIds }, doctorId },
-      select: { id: true, date: true, queuedAt: true, channel: true },
+      select: {
+        id: true,
+        date: true,
+        queuedAt: true,
+        channel: true,
+        queuePriority: true,
+        ticketSeq: true,
+      },
     });
     if (existing.length !== uniqueIds.length) {
       const found = new Set(existing.map((a) => a.id));
@@ -62,6 +69,30 @@ export const POST = createApiHandler(
     // a no-op — the receptionist uses «срочно» (queuePriority) to pull a
     // not-yet-due booking ahead. Walk-ins and already-due bookings move freely.
     const base = Math.min(...existing.map((a) => serveAtMs(a)));
+    const byId = new Map(existing.map((a) => [a.id, a]));
+
+    // Project the post-write rows (new `queuedAt` anchors) and recompute the
+    // order the shared comparator will actually render on the board. A booking
+    // whose slot is still in the future floors at its slot
+    // (serveAt = max(slot, queuedAt)), so dragging it earlier than its slot is a
+    // no-op. We surface those ids (`floored`) and the resulting order
+    // (`effectiveOrder`) so the reception UI can correct its optimistic state
+    // and nudge the operator toward «срочно» (queuePriority) instead of lying
+    // with a bare success.
+    const projected = uniqueIds.map((id, idx) => {
+      const row = byId.get(id)!;
+      return { ...row, queuedAt: new Date(base + idx * STEP_MS) };
+    });
+    const floored = projected
+      .filter(
+        (r) => r.channel !== "WALKIN" && r.date.getTime() > r.queuedAt.getTime(),
+      )
+      .map((r) => r.id);
+    const effectiveOrder = [...projected].sort(compareQueue).map((r) => r.id);
+    const exact =
+      effectiveOrder.length === uniqueIds.length &&
+      effectiveOrder.every((id, i) => id === uniqueIds[i]);
+
     await prisma.$transaction(
       uniqueIds.map((id, idx) =>
         prisma.appointment.update({
@@ -86,6 +117,6 @@ export const POST = createApiHandler(
       });
     }
 
-    return ok({ count: uniqueIds.length });
+    return ok({ count: uniqueIds.length, exact, floored, effectiveOrder });
   },
 );

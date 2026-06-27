@@ -52,7 +52,7 @@ describe("/api/health — public probe", () => {
     expect(body.status).toBe("ok");
     expect(body.checks.db.status).toBe("ok");
     expect(body.checks.redis.status).toBe("not_configured");
-    expect(body.checks.minio.status).toBe("stub");
+    expect(body.checks.minio.status).toBe("not_configured");
     expect(body.checks.workers.status).toBe("ok");
     expect(Array.isArray(body.checks.workers.queues)).toBe(true);
     expect(typeof body.uptime).toBe("number");

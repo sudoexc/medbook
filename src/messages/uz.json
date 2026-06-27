@@ -5654,6 +5654,7 @@
       "actionFailed": "Xato",
       "rescheduleFailed": "Yozuvlarni o'tkazib bo'lmadi",
       "reorderFailed": "Navbat tartibini o'zgartirib bo'lmadi",
+      "reorderFlooredHint": "{count, plural, other {# yozuv}} belgilangan vaqtida qoldi — slotdan oldinga surib bo'lmaydi. Navbatda ko'tarish uchun «Shoshilinch» tugmasini bosing.",
       "statusFailed": "Statusni o'zgartirishda xato"
     },
     "case": {

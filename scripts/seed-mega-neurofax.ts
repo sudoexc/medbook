@@ -24,6 +24,8 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { tashkentComponents, toTashkentDate } from "../src/lib/booking-validation";
+import { seedTodayLiveQueue, todayScheduledDoctors } from "./_live-queue-seed";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -44,12 +46,9 @@ const addDays = (d: Date, days: number) => {
   r.setDate(r.getDate() + days);
   return r;
 };
-const atHM = (d: Date, h: number, m = 0) => {
-  const r = new Date(d);
-  r.setHours(h, m, 0, 0);
-  return r;
-};
 const addMin = (d: Date, min: number) => new Date(d.getTime() + min * 60_000);
+
+type Segment = "VIP" | "ACTIVE" | "NEW" | "DORMANT" | "CHURN";
 
 // ─── reference data ─────────────────────────────────────────────────────────
 const FIRST_MALE_RU = ["Иван", "Алексей", "Сергей", "Дмитрий", "Андрей", "Михаил", "Артём", "Николай"];
@@ -198,8 +197,9 @@ async function main() {
         clinicId,
       );
       if (res > 0) console.log(`  ✗ ${table}: -${res}`);
-    } catch (e: any) {
-      console.warn(`  ! ${table}: ${e.message?.slice(0, 160) ?? e}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`  ! ${table}: ${msg.slice(0, 160)}`);
     }
   }
   // Reset patient counter so new patients start at P-00001.
@@ -209,12 +209,12 @@ async function main() {
   // ── 2. SEED patients ──────────────────────────────────────────────────────
   console.log("┌─ SEED patients");
   const PATIENT_COUNT = 260;
-  const segDistribution = [
-    ...Array(10).fill("VIP"),
-    ...Array(60).fill("ACTIVE"),
-    ...Array(30).fill("NEW"),
-    ...Array(35).fill("DORMANT"),
-    ...Array(15).fill("CHURN"),
+  const segDistribution: Segment[] = [
+    ...Array<Segment>(10).fill("VIP"),
+    ...Array<Segment>(60).fill("ACTIVE"),
+    ...Array<Segment>(30).fill("NEW"),
+    ...Array<Segment>(35).fill("DORMANT"),
+    ...Array<Segment>(15).fill("CHURN"),
   ];
 
   const now = new Date();
@@ -239,7 +239,7 @@ async function main() {
     const birthDate = new Date(now.getFullYear() - age, rand(12), 1 + rand(28));
     const phone = `9${["0", "1", "3", "5", "8", "9"][rand(6)]}${String(1000000 + rand(9000000))}`;
     const phoneNormalized = `+998${phone}`;
-    const segment = segDistribution[i % segDistribution.length] as any;
+    const segment = segDistribution[i % segDistribution.length]!;
 
     // last-visit timestamp depends on segment so the dashboards look right
     const lastVisitOffsetDays =
@@ -360,13 +360,17 @@ async function main() {
     statusBias: ("BOOKED" | "WAITING" | "IN_PROGRESS" | "COMPLETED" | "NO_SHOW" | "CANCELLED" | "SKIPPED")[];
   }) => {
     const { patientId, segment, dayOffset, statusBias } = params;
+    // Build the slot at Tashkent wall-clock (prod runs UTC; a server-local
+    // setHours would skew the stored instant −5h and leave `time` blank).
+    const dayStr = tashkentComponents(addDays(now, dayOffset)).date;
     for (let attempt = 0; attempt < 8; attempt++) {
       const doctor = pick(doctors);
       const service = pick(services);
       const cabinet = pick(cabinets);
       const hour = 9 + rand(9);
       const minute = pick([0, 15, 30, 45]);
-      const date = atHM(addDays(now, dayOffset), hour, minute);
+      const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      const date = toTashkentDate(dayStr, time);
       const key = slotKey(doctor.id, date);
       if (taken.has(key)) continue;
       const status = pick(statusBias);
@@ -380,11 +384,12 @@ async function main() {
             cabinetId: cabinet.id,
             serviceId: service.id,
             date,
+            time,
             durationMin: service.durationMin,
             endDate: addMin(date, service.durationMin),
             status,
             queueStatus: status,
-            channel: pick(["TELEGRAM", "PHONE", "WALKIN", "WEBSITE"] as const),
+            channel: pick(["TELEGRAM", "PHONE", "WEBSITE"] as const),
             priceService: price,
             priceBase: price,
             priceFinal: price,
@@ -416,20 +421,33 @@ async function main() {
         : r < 0.8 ? "NO_SHOW"
         : r < 0.95 ? "CANCELLED"
         : "SKIPPED";
-      await tryPlace({ patientId: patient.id, segment: patient.segment, dayOffset: d, statusBias: [status as any] });
+      await tryPlace({ patientId: patient.id, segment: patient.segment, dayOffset: d, statusBias: [status] });
     }
   }
-  // Today: ~30 appointments with live-feel statuses
-  const currentHour = new Date().getHours();
-  for (let i = 0; i < 52; i++) {
-    const patient = pick(patients.filter((p) => p.segment !== "CHURN"));
-    const apptHour = 9 + rand(9);
-    const status: any =
-      apptHour < currentHour - 1 ? (chance(0.85) ? "COMPLETED" : chance(0.5) ? "NO_SHOW" : "CANCELLED")
-      : apptHour === currentHour ? pick(["IN_PROGRESS", "WAITING", "COMPLETED"])
-      : apptHour === currentHour + 1 ? pick(["WAITING", "BOOKED"])
-      : "BOOKED";
-    await tryPlace({ patientId: patient.id, segment: patient.segment, dayOffset: 0, statusBias: [status] });
+  // Today: a believable LIVE queue per board-visible doctor, built the way the
+  // real walk-in / check-in paths do — serveAt EDF, immutable ticketSeq,
+  // queuedAt anchor, a «срочно» bump and a late-arrival demotion. Only doctors
+  // with an active schedule for today's weekday appear on the board, so we seed
+  // exactly those (see scripts/_live-queue-seed.ts).
+  const liveDoctors = await todayScheduledDoctors(prisma, clinicId, now);
+  if (liveDoctors.length === 0) {
+    console.log("  ! no doctors scheduled today — live board will be empty");
+  } else {
+    const live = await seedTodayLiveQueue(prisma, {
+      clinicId,
+      doctors: liveDoctors,
+      services: services.map((s) => ({
+        id: s.id,
+        durationMin: s.durationMin,
+        priceBase: s.priceBase,
+      })),
+      patients: patients.map((p) => ({ id: p.id })),
+      operatorId: operators[0]?.id ?? users[0]?.id ?? null,
+      now,
+    });
+    console.log(
+      `  ✓ today live queue: +${live.created} rows across ${liveDoctors.length} doctors (+${live.payments} payments)`,
+    );
   }
   // Future 14 days: ~20 appts/day
   for (let d = 1; d <= 14; d++) {
@@ -648,7 +666,7 @@ async function main() {
           clinicId,
           type: t.type,
           severity: t.severity,
-          payload: { patientId: p.id, patientName: `Пациент #${p.id.slice(-4)}`, hint: pick(["перезвонить", "подтвердить запись", "переназначить", "уточнить"]) } as any,
+          payload: { patientId: p.id, patientName: `Пациент #${p.id.slice(-4)}`, hint: pick(["перезвонить", "подтвердить запись", "переназначить", "уточнить"]) },
           status: chance(0.7) ? "OPEN" : pick(["SNOOZED", "DONE", "DISMISSED"]),
           assigneeRole: pick(["ADMIN", "RECEPTIONIST", null] as const),
           deeplinkPath: `/crm/patients/${p.id}`,

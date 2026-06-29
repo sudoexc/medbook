@@ -30,8 +30,9 @@ import { useCallPatch } from "../_hooks/use-call-notes";
  *   2. AI hints — static placeholder tile; wired once the AI service is live.
  *   3. Scripts — four canned phrases the operator can copy with one click.
  *
- * When no call is active, every tile is disabled but still visible so the
- * operator understands what actions will be available mid-call.
+ * The SIP tiles stay disabled until a provider is connected (the disclaimer
+ * explains why); the real tiles enable only while a call is in progress. Both
+ * stay visible so the operator can see what the surface will offer mid-call.
  */
 export function CallActionsRail({ call }: { call: CallRow | null }) {
   const t = useTranslations("callCenter.actionsRail");
@@ -69,8 +70,6 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
       toast.error((e as Error).message);
     }
   };
-
-  const onStub = () => toast.info(t("toasts.sipUnavailable"));
 
   const onCopyScript = async (text: string) => {
     if (typeof navigator === "undefined") return;
@@ -121,24 +120,21 @@ export function CallActionsRail({ call }: { call: CallRow | null }) {
             label={t("controls.transfer")}
             icon={<PhoneForwardedIcon className="size-5" />}
             tone="muted"
-            disabled={!call}
-            onClick={onStub}
+            disabled
             title={t("toasts.sipUnavailable")}
           />
           <ControlTile
             label={t("controls.mute")}
             icon={<MicOffIcon className="size-5" />}
             tone="muted"
-            disabled={!call}
-            onClick={onStub}
+            disabled
             title={t("toasts.sipUnavailable")}
           />
           <ControlTile
             label={t("controls.hold")}
             icon={<PauseIcon className="size-5" />}
             tone="muted"
-            disabled={!call}
-            onClick={onStub}
+            disabled
             title={t("toasts.sipUnavailable")}
           />
         </div>

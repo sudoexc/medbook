@@ -208,8 +208,6 @@ type Buckets = {
   freeSlots: ActionRow[];
   noShowRisk: ActionRow[];
   payments: ActionRow[];
-  telegram: ActionRow[];
-  callbacks: ActionRow[];
   dormant: ActionRow[];
   overload: ActionRow[];
   unconfirmedRevTiins: number;
@@ -274,8 +272,6 @@ function bucketActions(rows: ActionRow[], avgVisitTiins: number): Buckets {
     freeSlots,
     noShowRisk,
     payments,
-    telegram: [], // wired later via conversations endpoint
-    callbacks: [],
     dormant,
     overload,
     unconfirmedRevTiins,

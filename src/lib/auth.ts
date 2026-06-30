@@ -269,15 +269,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   token.impersonationMode = null;
                 }
               } catch {
-                // DB read failed — keep cookie-only behaviour rather than
-                // locking the SUPER_ADMIN out.
-                token.clinicId = overridden;
+                // DB read failed — fail closed. We cannot confirm an active
+                // grant, so the override is NOT honoured (an unverifiable
+                // impersonation is treated as none). The admin drops back to
+                // the platform view and can re-impersonate.
+                token.clinicId = null;
+                token.impersonationGrantId = null;
+                token.impersonationMode = null;
               }
             } else {
-              // Override cookie present but grant cookie missing. Treat as
-              // legacy state and honour the override (back-compat with
-              // pre-W4 sessions). Grant-less sessions cannot be VIEW_ONLY.
-              token.clinicId = overridden;
+              // Override cookie present but grant cookie missing/expired. No
+              // live grant ⇒ no impersonation (fail closed). Honouring a
+              // grant-less override would be an ungateable WRITE outliving the
+              // 60-min lease, so we drop it.
+              token.clinicId = null;
               token.impersonationGrantId = null;
               token.impersonationMode = null;
             }

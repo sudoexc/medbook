@@ -24,6 +24,7 @@ interface InvoiceRow {
   number: string;
   status: "DRAFT" | "ISSUED" | "PAID" | "VOID" | "OVERDUE";
   amountTiins: bigint;
+  targetPlanId: string | null;
   paidAt: Date | null;
   paymentRef: string | null;
 }
@@ -91,6 +92,7 @@ vi.mock("@/lib/prisma", () => ({
             number: data.number as string,
             status: (data.status as InvoiceRow["status"]) ?? "DRAFT",
             amountTiins: data.amountTiins as bigint,
+            targetPlanId: (data.targetPlanId as string | null) ?? null,
             paidAt: null,
             paymentRef: null,
           };
@@ -108,18 +110,21 @@ vi.mock("@/lib/prisma", () => ({
           return state.invoices.find((i) => i.id === where.id) ?? null;
         },
       ),
-      update: vi.fn(
+      updateMany: vi.fn(
         async ({
           where,
           data,
         }: {
-          where: { id: string };
+          where: { id: string; status?: { not?: string } };
           data: Partial<InvoiceRow>;
         }) => {
           const inv = state.invoices.find((i) => i.id === where.id);
-          if (!inv) throw new Error("invoice not found");
+          if (!inv) return { count: 0 };
+          if (where.status?.not && inv.status === where.status.not) {
+            return { count: 0 };
+          }
           Object.assign(inv, data);
-          return inv;
+          return { count: 1 };
         },
       ),
     },
@@ -234,6 +239,7 @@ describe("markInvoicePaid", () => {
         number: "INV-2026-0001",
         status: "DRAFT",
         amountTiins: BigInt(12_000_000),
+        targetPlanId: "plan-pro",
         paidAt: null,
         paymentRef: null,
       },
@@ -249,7 +255,9 @@ describe("markInvoicePaid", () => {
   });
 
   it("flips status to PAID, swaps planId, clears pendingPlanId", async () => {
-    await markInvoicePaid("inv-1", "ref-001", new Date("2026-05-08T00:00:00Z"));
+    await markInvoicePaid("inv-1", "ref-001", {
+      now: new Date("2026-05-08T00:00:00Z"),
+    });
 
     const inv = state.invoices.find((i) => i.id === "inv-1")!;
     expect(inv.status).toBe("PAID");
@@ -259,6 +267,29 @@ describe("markInvoicePaid", () => {
     expect(state.sub.planId).toBe("plan-pro");
     expect(state.sub.pendingPlanId).toBeNull();
     expect(state.sub.status).toBe("ACTIVE");
+  });
+
+  it("upgrades to the invoice's own plan, preserving a newer pending upgrade", async () => {
+    // A second upgrade (to enterprise) was queued after this pro invoice.
+    state.sub.pendingPlanId = "plan-enterprise";
+    await markInvoicePaid("inv-1", "ref-001");
+
+    // Paying the pro invoice grants pro — NOT the newer enterprise upgrade —
+    // and leaves the enterprise upgrade pending so its invoice can still pay.
+    expect(state.sub.planId).toBe("plan-pro");
+    expect(state.sub.pendingPlanId).toBe("plan-enterprise");
+  });
+
+  it("rejects a payment whose amount doesn't match the invoice", async () => {
+    await expect(
+      markInvoicePaid("inv-1", "ref-bad", {
+        expectedAmountTiins: BigInt(1),
+      }),
+    ).rejects.toThrow(/amount mismatch/);
+
+    // Untouched — no flip, no plan swap.
+    expect(state.invoices[0]!.status).toBe("DRAFT");
+    expect(state.sub.planId).toBe("plan-basic");
   });
 
   it("emits exactly one INVOICE_PAID audit row", async () => {
@@ -277,9 +308,10 @@ describe("markInvoicePaid", () => {
     expect(state.invoices[0]!.paymentRef).toBe("ref-001");
   });
 
-  it("works when no pending plan is set (legacy invoice)", async () => {
+  it("leaves the plan unchanged for a non-upgrade invoice (no targetPlanId)", async () => {
+    state.invoices[0]!.targetPlanId = null;
     state.sub.pendingPlanId = null;
-    await markInvoicePaid("inv-1", "ref-no-pending");
+    await markInvoicePaid("inv-1", "ref-no-plan");
     expect(state.sub.planId).toBe("plan-basic"); // unchanged
     expect(state.sub.pendingPlanId).toBeNull();
     expect(state.invoices[0]!.status).toBe("PAID");

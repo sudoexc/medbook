@@ -141,6 +141,11 @@ enum MessageStatus {
 
 enum NotificationStatus {
   QUEUED
+  // In-flight claim (D-1). A worker flips QUEUED→SENDING in a single
+  // conditional updateMany before the external dispatch, so concurrent
+  // workers / duplicate jobs can't double-send. A row stuck in SENDING
+  // (worker crashed mid-send) is recoverable via the /retry endpoint.
+  SENDING
   SENT
   DELIVERED
   READ
@@ -599,6 +604,11 @@ model Invoice {
   status      InvoiceStatus @default(DRAFT)
   amountTiins BigInt
   currency    Currency      @default(UZS)
+  // Plan this invoice upgrades to, captured at creation. The PAID handler
+  // swaps the subscription to THIS plan — not to whatever Subscription.
+  // pendingPlanId happens to hold at payment time — so paying an older
+  // invoice can't grant a newer (or different) plan that was queued after it.
+  targetPlanId String?
   periodStart DateTime
   periodEnd   DateTime
   dueAt       DateTime
@@ -2011,7 +2021,13 @@ model VisitNote {
   appointmentId String      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   patientId     String
-  patient       Patient     @relation(fields: [patientId], references: [id])
+  // Medico-legal guard (D-5). A finalized conclusion is a legal record that
+  // must survive the patient row — onDelete: Restrict makes the DB refuse a
+  // patient hard-delete while any visit note exists. This is already the
+  // Prisma default for a required relation; it is spelled out here so a future
+  // edit can't silently flip it to Cascade. The patient DELETE route routes
+  // such patients through the DSAR flow instead.
+  patient       Patient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
   doctorId      String
   doctor        Doctor      @relation(fields: [doctorId], references: [id])
 
@@ -2198,7 +2214,11 @@ model Document {
   clinicId      String
   clinic        Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patientId     String
-  patient       Patient      @relation(fields: [patientId], references: [id])
+  // Medico-legal guard (D-5). Signed consents/contracts and conclusion
+  // handouts are legal records — onDelete: Restrict stops a patient hard-delete
+  // from destroying them. Already the Prisma default for a required relation;
+  // spelled out so it can't be flipped to Cascade by accident.
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
   // Set only for auto-generated CONCLUSION handouts. Unique so the

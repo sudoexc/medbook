@@ -1,9 +1,8 @@
-// @ts-nocheck
-// TODO(phase-1): rewrite — legacy Prisma schema mismatch, owned by api-builder/prisma-owner.
 import QRCode from "qrcode";
 
 import { prisma } from "@/lib/prisma";
 import { SITE_DOMAIN } from "@/lib/constants";
+import { initials } from "@/lib/format";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { AutoPrint } from "./_components/auto-print";
 
@@ -14,9 +13,25 @@ export default async function TicketPage({
 }) {
   const { id } = await params;
 
+  // Public, unauthenticated page reachable by raw CUID — never expose full
+  // PHI. The patient name is masked to initials (mirrors /api/queue/status),
+  // and only the fields the printed stub actually needs are selected.
   const appointment = await prisma.appointment.findUnique({
     where: { id },
-    include: { patient: true, doctor: true },
+    select: {
+      queueOrder: true,
+      date: true,
+      doctorId: true,
+      patient: { select: { fullName: true } },
+      doctor: {
+        select: {
+          id: true,
+          nameRu: true,
+          cabinet: { select: { number: true } },
+        },
+      },
+      primaryService: { select: { nameRu: true } },
+    },
   });
 
   if (!appointment) {
@@ -91,7 +106,7 @@ export default async function TicketPage({
         <tbody>
           <tr>
             <td style={{ padding: "1.5mm 0", color: "#666" }}>Пациент:</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{appointment.patient.fullName}</td>
+            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{initials(appointment.patient.fullName)}</td>
           </tr>
           <tr>
             <td style={{ padding: "1.5mm 0", color: "#666" }}>Врач:</td>
@@ -99,12 +114,12 @@ export default async function TicketPage({
           </tr>
           <tr>
             <td style={{ padding: "1.5mm 0", color: "#666" }}>Кабинет:</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>{appointment.doctor.cabinet}</td>
+            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>{appointment.doctor.cabinet?.number ?? "—"}</td>
           </tr>
-          {appointment.service && (
+          {appointment.primaryService && (
             <tr>
               <td style={{ padding: "1.5mm 0", color: "#666" }}>Услуга:</td>
-              <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{appointment.service}</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{appointment.primaryService.nameRu}</td>
             </tr>
           )}
           <tr>

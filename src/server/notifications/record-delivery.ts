@@ -185,7 +185,9 @@ export async function recordNotificationDelivery(
           sent += n;
         } else if (g.status === "FAILED") {
           failed += n;
-        } else if (g.status === "QUEUED") {
+        } else if (g.status === "QUEUED" || g.status === "SENDING") {
+          // SENDING = a sibling send is mid-flight (D-1 claim). Count it as
+          // pending so the campaign isn't finalised DONE before it lands.
           pending += n;
         }
       }

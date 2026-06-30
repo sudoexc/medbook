@@ -11,12 +11,14 @@
  *     the complexity at this stage). One audit row is emitted with
  *     `INVOICE_CREATED`.
  *
- *   - `markInvoicePaid(invoiceId, paymentRef, now)` flips the row to
- *     PAID, sets `paidAt` + `paymentRef`, swaps the subscription's
- *     `planId = pendingPlanId`, and clears `pendingPlanId`. One audit
- *     row is emitted with `INVOICE_PAID`. Idempotent: if the row is
- *     already PAID the function is a no-op (safe to call from a
- *     webhook delivered twice).
+ *   - `markInvoicePaid(invoiceId, paymentRef, opts)` flips the row to
+ *     PAID, sets `paidAt` + `paymentRef`, and swaps the subscription's
+ *     `planId` to the invoice's own `targetPlanId` (NOT to whatever
+ *     `pendingPlanId` holds at payment time, so paying an older invoice
+ *     can't grant a newer queued plan). `opts.expectedAmountTiins`, when
+ *     supplied by the webhook, must equal the invoice amount or the call
+ *     throws. The status flip is an atomic conditional updateMany, so the
+ *     function is idempotent and race-safe under webhook redelivery.
  *
  * Both helpers run inside `runWithTenant({ kind: "SYSTEM" })` so the
  * tenant-scope Prisma extension does not double-filter — the caller is
@@ -92,6 +94,9 @@ export async function createUpgradeInvoice(
         status: "DRAFT",
         amountTiins,
         currency: toPlan.currency,
+        // Bind the destination plan to the invoice itself — the PAID handler
+        // upgrades to this, regardless of any newer pending upgrade.
+        targetPlanId: opts.toPlanId,
         periodStart,
         periodEnd,
         dueAt,
@@ -134,11 +139,23 @@ export async function createUpgradeInvoice(
   });
 }
 
+export interface MarkInvoicePaidOpts {
+  /**
+   * Amount the payment provider reported charging, in tiins. When present it
+   * MUST equal the invoice amount or the call throws — a mismatch means a
+   * tampered/misrouted webhook, never a legitimate payment for this invoice.
+   * Omitted by the dev simulate-pay stub, which trusts itself.
+   */
+  expectedAmountTiins?: bigint;
+  now?: Date;
+}
+
 export async function markInvoicePaid(
   invoiceId: string,
   paymentRef: string,
-  now: Date = new Date(),
+  opts: MarkInvoicePaidOpts = {},
 ): Promise<void> {
+  const now = opts.now ?? new Date();
   await runWithTenant({ kind: "SYSTEM" }, async () => {
     const inv = await prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -148,35 +165,58 @@ export async function markInvoicePaid(
         status: true,
         number: true,
         amountTiins: true,
+        targetPlanId: true,
       },
     });
     if (!inv) {
       throw new Error(`Invoice not found: ${invoiceId}`);
     }
     if (inv.status === "PAID") {
-      // Idempotent — webhook redelivery is the common cause and we don't
-      // want to double-emit audit or mutate the subscription twice.
+      // Fast-path idempotency — webhook redelivery is the common cause. The
+      // atomic updateMany below is the authoritative guard against races.
       return;
     }
 
-    await prisma.invoice.update({
-      where: { id: invoiceId },
+    if (
+      opts.expectedAmountTiins !== undefined &&
+      opts.expectedAmountTiins !== inv.amountTiins
+    ) {
+      throw new Error(
+        `Invoice ${invoiceId} amount mismatch: expected ${inv.amountTiins.toString()} ` +
+          `got ${opts.expectedAmountTiins.toString()}`,
+      );
+    }
+
+    // Atomic, race-safe flip: only the writer that actually transitions the
+    // row out of its non-PAID state proceeds to swap the plan and emit audit.
+    // A concurrent redelivery sees count=0 and no-ops — no double upgrade, no
+    // duplicate audit row.
+    const flipped = await prisma.invoice.updateMany({
+      where: { id: invoiceId, status: { not: "PAID" } },
       data: { status: "PAID", paidAt: now, paymentRef },
     });
+    if (flipped.count === 0) {
+      return;
+    }
 
-    // Resolve pendingPlanId → planId on the related subscription. We
-    // tolerate "no pendingPlanId" (e.g. an invoice not tied to an
-    // upgrade) and just log the transition without changing the plan.
+    // Swap the subscription to the plan bound to THIS invoice (not whatever
+    // pendingPlanId currently holds). Only clear pendingPlanId when it still
+    // points at this same plan — a newer queued upgrade must survive so its
+    // own invoice can still be paid.
     const sub = await prisma.subscription.findUnique({
       where: { clinicId: inv.clinicId },
       select: { id: true, planId: true, pendingPlanId: true },
     });
-    if (sub?.pendingPlanId) {
+    const previousPlanId = sub?.planId ?? null;
+    let newPlanId = previousPlanId;
+    if (sub && inv.targetPlanId) {
+      newPlanId = inv.targetPlanId;
       await prisma.subscription.update({
         where: { clinicId: inv.clinicId },
         data: {
-          planId: sub.pendingPlanId,
-          pendingPlanId: null,
+          planId: inv.targetPlanId,
+          pendingPlanId:
+            sub.pendingPlanId === inv.targetPlanId ? null : sub.pendingPlanId,
           status: "ACTIVE",
         },
       });
@@ -193,8 +233,8 @@ export async function markInvoicePaid(
             number: inv.number,
             amountTiins: inv.amountTiins.toString(),
             paymentRef,
-            previousPlanId: sub?.planId ?? null,
-            newPlanId: sub?.pendingPlanId ?? sub?.planId ?? null,
+            previousPlanId,
+            newPlanId,
           },
         },
       });

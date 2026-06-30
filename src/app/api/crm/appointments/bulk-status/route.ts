@@ -16,6 +16,8 @@ import {
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { newCorrelationId } from "@/server/realtime/outbox";
 
 export const POST = createApiHandler(
   {
@@ -46,7 +48,15 @@ export const POST = createApiHandler(
     // the source of truth — kiosks, scripts, or stale tabs may still try.
     const existing = await prisma.appointment.findMany({
       where: { id: { in: body.ids } },
-      select: { id: true, status: true, date: true },
+      select: {
+        id: true,
+        status: true,
+        queueStatus: true,
+        doctorId: true,
+        patientId: true,
+        cabinetId: true,
+        date: true,
+      },
     });
     const blocked = existing
       .map((a) => ({
@@ -68,15 +78,49 @@ export const POST = createApiHandler(
     }
 
     const data: Record<string, unknown> = { status: target };
+    // Mirror status→queueStatus so the reception board's «Кабинеты и врачи»
+    // lane tracks the flip. The single-appointment PATCH already does this;
+    // this bulk path historically wrote only `status`, leaving the queue stale.
+    data.queueStatus = target;
     if (target === "CANCELLED") {
       data.cancelledAt = now;
       if (body.cancelReason) data.cancelReason = body.cancelReason;
     }
     if (target === "COMPLETED") data.completedAt = now;
 
-    const result = await prisma.appointment.updateMany({
-      where: { id: { in: body.ids } },
-      data,
+    const correlationId = newCorrelationId();
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.appointment.updateMany({
+        where: { id: { in: body.ids } },
+        data,
+      });
+      // Realtime fan-out per row so reception, doctor my-day, and the public TV
+      // board see the flip without polling. Same routing as the single PATCH:
+      // CANCELLED → appointment.cancelled, any other flip →
+      // appointment.statusChanged, plus a queue.updated follow-up (the queue
+      // lane always shifts on a status change). The appointment write and the
+      // outbox rows commit together inside this transaction.
+      if (ctx.kind === "TENANT") {
+        const kind = target === "CANCELLED" ? "cancelled" : "statusChanged";
+        const actorRole = ctx.role === "ADMIN" ? "ADMIN" : "RECEPTIONIST";
+        const actorUserId = ctx.userId || null;
+        for (const before of existing) {
+          await emitAppointmentChangeViaOutbox({
+            tx,
+            kind,
+            before,
+            after: { ...before, status: target, queueStatus: target },
+            clinicId: ctx.clinicId,
+            actorId: actorUserId,
+            actorRole,
+            actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+            surface: "CRM",
+            correlationId,
+            alsoQueueUpdate: true,
+          });
+        }
+      }
+      return updated;
     });
     await audit(request, {
       action: "appointment.bulk-status",

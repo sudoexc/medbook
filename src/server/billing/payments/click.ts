@@ -64,6 +64,8 @@ export interface ClickVerifyOk {
   ok: true;
   invoiceId?: string;
   providerRef?: string;
+  /** Charged amount in tiins, parsed from the webhook's decimal-soum field. */
+  amountTiins?: bigint;
   /** Set when the verification ran in stub mode (no secret in env). */
   stub?: boolean;
 }
@@ -165,10 +167,15 @@ export async function clickVerifyWebhook(
     return { ok: false, reason: "missing_merchant_trans_id" };
   }
 
+  const providerRef =
+    typeof p.click_trans_id === "string" || typeof p.click_trans_id === "number"
+      ? String(p.click_trans_id)
+      : undefined;
+  const amountTiins = soumStringToTiins(p.amount);
+
   if (!secretFromEnv) {
     // Stub mode — log and accept. The route handler decides whether to
-    // act on the result; in dev it does, in prod the route will not be
-    // hit because real webhooks carry a signature.
+    // act on the result; in prod it fails closed when the secret is unset.
     console.info(
       `[click] webhook stub-accept invoice=${p.merchant_trans_id} action=${String(p.action)}`,
     );
@@ -176,10 +183,8 @@ export async function clickVerifyWebhook(
       ok: true,
       stub: true,
       invoiceId: p.merchant_trans_id,
-      providerRef:
-        typeof p.click_trans_id === "string" || typeof p.click_trans_id === "number"
-          ? String(p.click_trans_id)
-          : undefined,
+      providerRef,
+      amountTiins,
     };
   }
 
@@ -194,11 +199,23 @@ export async function clickVerifyWebhook(
   return {
     ok: true,
     invoiceId: p.merchant_trans_id,
-    providerRef:
-      typeof p.click_trans_id === "string" || typeof p.click_trans_id === "number"
-        ? String(p.click_trans_id)
-        : undefined,
+    providerRef,
+    amountTiins,
   };
+}
+
+/**
+ * Parse Click's decimal-soum `amount` (e.g. "120000.00") into tiins. Returns
+ * undefined for any non-numeric/malformed value so the caller can decide
+ * whether a missing amount is fatal.
+ */
+function soumStringToTiins(amount: unknown): bigint | undefined {
+  if (typeof amount !== "string" && typeof amount !== "number") return undefined;
+  const s = String(amount).trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return undefined;
+  const [whole, frac = ""] = s.split(".");
+  const fracPadded = (frac + "00").slice(0, 2);
+  return BigInt(whole) * BigInt(100) + BigInt(fracPadded || "0");
 }
 
 /**

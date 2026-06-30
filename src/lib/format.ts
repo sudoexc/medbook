@@ -188,21 +188,41 @@ export function formatClinicDateTime(
   }).format(d);
 }
 
+/** Clinic wall-clock. Asia/Tashkent is a fixed UTC+5 (no DST since 1992). */
+const CLINIC_TZ = "Asia/Tashkent";
+
+/**
+ * The clinic-local civil date (year/month/day) for an instant, as an ordinal
+ * day number. We read the date parts in Asia/Tashkent and re-pack them through
+ * `Date.UTC` purely to get a stable, DST-free day index for subtraction — the
+ * UTC epoch here is an ordinal, not a wall-clock instant.
+ */
+function clinicDayOrdinal(d: Date): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CLINIC_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  return Date.UTC(get("year"), get("month") - 1, get("day")) / 86_400_000;
+}
+
 function formatRelative(d: Date, locale: Locale): string {
   const now = new Date();
   const tag = intlLocale(locale);
+  // Anchor the displayed time AND the day-boundary comparison to the clinic's
+  // wall-clock. Without `timeZone`, both read the runtime zone (UTC on the
+  // server), so a late-evening Tashkent event renders an hour-shifted time and
+  // can land in the wrong «сегодня / вчера / завтра» bucket under SSR.
   const time = new Intl.DateTimeFormat(tag, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: CLINIC_TZ,
   }).format(d);
 
-  // Compare at day granularity (local time).
-  const startOfDay = (x: Date) =>
-    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const dayDiff = Math.round(
-    (startOfDay(d) - startOfDay(now)) / (1000 * 60 * 60 * 24),
-  );
+  const dayDiff = clinicDayOrdinal(d) - clinicDayOrdinal(now);
 
   if (dayDiff === 0) {
     return locale === "uz" ? `bugun ${time} da` : `сегодня в ${time}`;
@@ -220,7 +240,15 @@ function formatRelative(d: Date, locale: Locale): string {
     return `${rtf.format(dayDiff, "day")}, ${time}`;
   }
 
-  return `${formatDate(d, locale, "long")}, ${time}`;
+  // Absolute fallback — also clinic-anchored so the long date can't drift to
+  // the UTC day for events near midnight.
+  const longDate = new Intl.DateTimeFormat(tag, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: CLINIC_TZ,
+  }).format(d);
+  return `${longDate}, ${time}`;
 }
 
 // -----------------------------------------------------------------------------

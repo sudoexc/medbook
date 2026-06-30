@@ -7,9 +7,11 @@
  * the raw body on the row — re-rendering is a no-op if no placeholders
  * remain), sends, and updates the row's status.
  *
- * Retry policy: 3 attempts with exponential backoff (60s, 300s, 1800s).
- * On final failure the row is marked FAILED and left for the UI to retry
- * via POST /api/crm/notifications/sends/[id]/retry.
+ * Retry policy: up to 3 attempts. Backoff between retries indexes
+ * BACKOFF_MS by the row's current retryCount (0-based) — first retry 60s,
+ * second 300s, with 1800s as the ceiling. On final failure the row is
+ * marked FAILED and left for the UI to retry via
+ * POST /api/crm/notifications/sends/[id]/retry.
  *
  * ## Running
  *
@@ -52,13 +54,33 @@ function isTgBlockedError(message: string): boolean {
   );
 }
 
+/**
+ * D-1 — atomically claim a QUEUED send for dispatch. The flip QUEUED→SENDING
+ * happens in one conditional `updateMany`, so under concurrent workers (the
+ * 5s dispatch loop re-enqueues every QUEUED+due row, and BullMQ will add real
+ * parallelism in Phase 6) exactly one caller wins the row and performs the
+ * external send. Losers get `count === 0` and bail without re-sending. The
+ * transient-retry path resets the row to QUEUED so a later attempt re-claims
+ * it; a row stranded in SENDING (worker crashed mid-send) is recoverable via
+ * the /retry endpoint.
+ */
+async function claimForDispatch(sendId: string): Promise<boolean> {
+  const claimed = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.updateMany({
+      where: { id: sendId, status: "QUEUED" },
+      data: { status: "SENDING" },
+    }),
+  );
+  return claimed.count === 1;
+}
+
 async function deliver(job: DeliverJob): Promise<void> {
   const send = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.findUnique({
       where: { id: job.sendId },
       include: {
         patient: { select: { id: true, phone: true, telegramId: true } },
-        template: { select: { key: true } },
+        template: { select: { key: true, trigger: true } },
       },
     }),
   );
@@ -69,14 +91,17 @@ async function deliver(job: DeliverJob): Promise<void> {
   // has already confirmed (any path: TG_BUTTON, MANUAL_CRM, INBOUND_CALL,
   // BOOKING_AUTO; SMS_REPLY is legacy/no longer emitted — SMS removed in
   // `docs/TZ-sms-removal.md`) by the time the worker fires, skip the
-  // send entirely. Same gate the detector uses (`confirmedAt IS NULL`),
-  // applied to the three reminder keys that still ask "are you coming?".
-  const templateKey = send.template?.key ?? null;
-  const isConfirmCascade =
-    templateKey === "reminder.3d" ||
-    templateKey === "reminder.24h" ||
-    templateKey === "reminder.2h";
-  if (isConfirmCascade && send.appointmentId) {
+  // send entirely. Same gate the detector uses (`confirmedAt IS NULL`).
+  //
+  // D-3 — decide this by the template's `trigger` enum, NOT its `key` slug.
+  // The slug is admin-editable and the seeded reminder keys
+  // (`appointment.reminder-24h`, …) never matched the old hardcoded
+  // `reminder.24h`/`reminder.2h` checks, so the guard + confirm button were
+  // silently dead. Every APPOINTMENT_BEFORE reminder asks "are you coming?",
+  // so once the patient confirms (or the appointment closes) we suppress the
+  // rest of the cascade.
+  const isBeforeReminder = send.template?.trigger === "APPOINTMENT_BEFORE";
+  if (isBeforeReminder && send.appointmentId) {
     const appt = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.appointment.findUnique({
         where: { id: send.appointmentId! },
@@ -91,8 +116,10 @@ async function deliver(job: DeliverJob): Promise<void> {
         appt.status === "COMPLETED")
     ) {
       await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.notificationSend.update({
-          where: { id: send.id },
+        prisma.notificationSend.updateMany({
+          // Guard on QUEUED so we never clobber a row another worker has
+          // already claimed (SENDING) or finalised.
+          where: { id: send.id, status: "QUEUED" },
           data: {
             status: "CANCELLED",
             failedReason: "patient already confirmed (or appointment closed)",
@@ -109,6 +136,9 @@ async function deliver(job: DeliverJob): Promise<void> {
   // limiter check and inline the "send" so the row flips straight to
   // DELIVERED. The Mini App polls these rows from the inbox endpoint.
   if (send.channel === "INAPP") {
+    // D-1 — claim before the inbox write so a re-dispatched job can't insert
+    // a duplicate banner.
+    if (!(await claimForDispatch(send.id))) return;
     try {
       const res = await adapters.inapp.send(send.id, send.body);
       const now = new Date();
@@ -165,14 +195,14 @@ async function deliver(job: DeliverJob): Promise<void> {
     let externalId: string;
     if (send.channel === "TG") {
       const chatId = send.recipient;
-      // Stage 2.D — attach a "✅ Подтверждаю" inline keyboard for the two
-      // confirm-CTA reminders (T-1d, T-2h). The callback_data shape is
+      // Stage 2.D — attach a "✅ Подтверждаю" inline keyboard so the patient
+      // can confirm in one tap. The callback_data shape is
       // `confirm:<appointmentId>` — the Stage 3.G webhook (not wired here)
       // routes it back through `confirmAppointment({ via: 'TG_BUTTON' })`.
-      // The T-3d "gentle ping" intentionally has no button.
-      const wantsConfirmButton =
-        send.appointmentId &&
-        (templateKey === "reminder.24h" || templateKey === "reminder.2h");
+      // D-3 — gate on the APPOINTMENT_BEFORE trigger (see no-spam guard
+      // above), not the template slug. Once a patient confirms, the no-spam
+      // guard cancels the remaining cascade so they aren't asked again.
+      const wantsConfirmButton = isBeforeReminder && Boolean(send.appointmentId);
       const replyMarkup = wantsConfirmButton
         ? {
             inline_keyboard: [
@@ -185,6 +215,8 @@ async function deliver(job: DeliverJob): Promise<void> {
             ],
           }
         : undefined;
+      // D-1 — claim the row immediately before the irreversible network send.
+      if (!(await claimForDispatch(send.id))) return;
       const res = await adapters.tg.send(
         chatId,
         send.body,
@@ -256,14 +288,20 @@ async function deliver(job: DeliverJob): Promise<void> {
       );
       return;
     }
-    const delay = BACKOFF_MS[Math.min(nextAttempt, BACKOFF_MS.length - 1)];
+    // D-2 — index by the row's current retryCount (0-based) so the first
+    // retry waits 60s, not 300s. The old `nextAttempt` index skipped
+    // BACKOFF_MS[0] entirely.
+    const delay = BACKOFF_MS[Math.min(send.retryCount, BACKOFF_MS.length - 1)]!;
     await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.notificationSend.update({
         where: { id: send.id },
         data: {
+          // D-1 — release the SENDING claim back to QUEUED so the scheduler +
+          // retry endpoint re-pick it. The delayed re-enqueue below and the
+          // dispatch loop may both fire; the next claim dedupes them.
+          status: "QUEUED",
           failedReason: message.slice(0, 500),
           retryCount: nextAttempt,
-          // keep status QUEUED so the scheduler + retry endpoint see it
         },
       }),
     );

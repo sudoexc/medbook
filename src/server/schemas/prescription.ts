@@ -28,7 +28,11 @@ export const PrescriptionStatusEnum = z.enum([
 ]);
 
 export const CreatePrescriptionSchema = z.object({
-  doctorId: z.string().min(1),
+  // D-7 — authorship is decided server-side. A DOCTOR always prescribes as
+  // themselves (resolved from the session, body value ignored); only an ADMIN
+  // prescribing on behalf of a doctor needs to supply this, and that act is
+  // audited. Optional here so doctors don't have to send it.
+  doctorId: z.string().min(1).optional(),
   drugName: z.string().min(1).max(120),
   dosage: z.string().min(1).max(200),
   schedule: PrescriptionScheduleSchema,

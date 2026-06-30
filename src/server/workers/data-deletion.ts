@@ -11,8 +11,10 @@
  *          PatientFamily rows are also cascaded. Audit
  *          PATIENT_HARD_DELETED with the full pre-delete snapshot.
  *        - ANONYMIZE — apply `buildAnonymizationPayload(jobId, now)`
- *          via Prisma update. Audit PATIENT_ANONYMIZED with
- *          forensic snapshot in `meta.before`.
+ *          via Prisma update, then `scrubPatientPhiCarriers` to erase the
+ *          free-text PHI that lives off-row (medical-case SOAP drafts,
+ *          appointment notes, chat message bodies, review comments). Audit
+ *          PATIENT_ANONYMIZED with forensic snapshot in `meta.before`.
  *      Then mark the job EXECUTED (HARD) / ANONYMIZED (soft).
  *   3. Errors are logged + the job is left at APPROVED so a future tick
  *      retries it; the cron is therefore self-healing for transient
@@ -62,6 +64,55 @@ async function logAudit(
   } catch (err) {
     console.error("[dsar:deletion] audit insert failed", err);
   }
+}
+
+/**
+ * D-6 — scrub free-text PHI that lives outside the Patient row. The
+ * Patient-row payload (`buildAnonymizationPayload`) covers identity columns;
+ * these carriers hold clinical / conversational free text that names or
+ * describes the patient and so must be erased on anonymization too. The
+ * HARD_DELETE path doesn't need this — its FK cascade removes the rows.
+ *
+ * Idempotent: every write just nulls a field, so a retried tick (patient
+ * update succeeded but a later step threw, job left APPROVED) re-runs
+ * harmlessly.
+ */
+async function scrubPatientPhiCarriers(patientId: string): Promise<void> {
+  await prisma.medicalCase.updateMany({
+    where: { patientId },
+    data: { soapDraft: null },
+  });
+  await prisma.appointment.updateMany({
+    where: { patientId },
+    data: { notes: null },
+  });
+  await prisma.patientReview.updateMany({
+    where: { patientId },
+    data: { comment: null },
+  });
+  // Chat lives in Conversation/Message; Message has no patientId, so resolve
+  // the patient's threads first, then null every message body. Also clear the
+  // denormalized last-message text + Telegram contact identifiers on the
+  // conversation so the scrubbed body can't re-leak through the inbox preview.
+  const convs = await prisma.conversation.findMany({
+    where: { patientId },
+    select: { id: true },
+  });
+  if (convs.length > 0) {
+    await prisma.message.updateMany({
+      where: { conversationId: { in: convs.map((c) => c.id) } },
+      data: { body: null },
+    });
+  }
+  await prisma.conversation.updateMany({
+    where: { patientId },
+    data: {
+      lastMessageText: null,
+      contactFirstName: null,
+      contactLastName: null,
+      contactUsername: null,
+    },
+  });
 }
 
 /**
@@ -127,6 +178,7 @@ export async function executeDeletionJob(jobId: string): Promise<void> {
     where: { id: job.patientId },
     data: payload,
   });
+  await scrubPatientPhiCarriers(job.patientId);
   await prisma.dataDeletionJob.update({
     where: { id: job.id },
     data: { status: "ANONYMIZED", executedAt: now },

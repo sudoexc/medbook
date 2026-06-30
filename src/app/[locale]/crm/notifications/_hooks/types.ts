@@ -3,6 +3,7 @@ export type TemplateCategory = "REMINDER" | "MARKETING" | "TRANSACTIONAL";
 
 export type QueueStatus =
   | "QUEUED"
+  | "SENDING"
   | "SENT"
   | "DELIVERED"
   | "READ"

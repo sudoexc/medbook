@@ -26,6 +26,20 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const secret = process.env.PAYME_SECRET_KEY;
+  // Fail closed in production: without the shared secret the verifier degrades
+  // to stub-accept, which would let anyone POST a forged PerformTransaction and
+  // mark invoices PAID for free. Dev/staging keep the stub so QA can drive it.
+  if (!secret && process.env.NODE_ENV === "production") {
+    console.error("[payme webhook] PAYME_SECRET_KEY unset in production — refusing");
+    return Response.json(
+      {
+        jsonrpc: "2.0",
+        id: (payload as { id?: unknown })?.id ?? null,
+        error: { code: -32504, message: "WebhookNotConfigured" },
+      },
+      { status: 503 },
+    );
+  }
   const authHeader = request.headers.get("authorization");
   const result = await paymeVerifyWebhook(payload, secret, authHeader);
   if (!result.ok) {
@@ -45,6 +59,7 @@ export async function POST(request: Request): Promise<Response> {
       await markInvoicePaid(
         result.invoiceId,
         result.providerRef ?? `payme-${Date.now()}`,
+        { expectedAmountTiins: result.amountTiins },
       );
     } catch (err) {
       console.error("[payme webhook] markInvoicePaid threw:", err);

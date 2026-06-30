@@ -55,7 +55,14 @@ const SOURCE_SQL = `COALESCE(a."channel"::text, p."source"::text, 'unknown')`;
 export const DIMENSIONS: Record<DimensionKey, DimensionDef> = {
   date: {
     key: "date",
-    sql: `date_trunc('day', a."date")::date`,
+    // Bucket by the clinic's civil day (Asia/Tashkent), not the Postgres
+    // session zone. `a."date"` is TIMESTAMP(3) without time zone holding a UTC
+    // instant, so we first label it UTC (`AT TIME ZONE 'UTC'` → timestamptz)
+    // then convert that instant to Tashkent wall-clock (`AT TIME ZONE
+    // 'Asia/Tashkent'` → timestamp) before truncating. Without this a 02:00
+    // Tashkent appointment (21:00 UTC the day before) lands in the wrong day
+    // whenever the DB session runs in UTC (the prod default).
+    sql: `date_trunc('day', (a."date" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')::date`,
     alias: "date",
     label: "Day",
   },

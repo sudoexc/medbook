@@ -9,12 +9,12 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { DoctorSidebar } from "./_components/doctor-sidebar";
 import { DoctorTopbar } from "./_components/doctor-topbar";
 
-// Doctor cabinet is paused (priority pivot 2026-05-18, feature freeze 2026-05-22).
-// The P0.1 fake-data blocker is resolved — the live visit screens now read real
-// data (last-visit / last-diagnosis via useDoctorPatientVisits, meta chips via
-// real allergies/chronic, AI rail via patient-segments). Other unpause blockers
-// (P0.2 2FA-over-/api, P0.3 audit) remain, so we still bounce everyone to /crm.
-// Flip DOCTOR_CABINET_ENABLED=1 in env to re-enable for dev/preview.
+// Doctor cabinet is LIVE — unpaused on prod (DOCTOR_CABINET_ENABLED=1). All
+// unpause blockers are closed: P0.1 fake data removed (visit screens read real
+// data), P0.2 2FA-over-/api enforced via enforceTotpEnrollment in api-handler.ts,
+// P0.3 audit wired for DOCTOR_CABINET surfaces. The env gate below is kept as a
+// kill-switch; per _ROADMAP.md it's removed only after a sustained green window.
+// Unset DOCTOR_CABINET_ENABLED (or set it != "1") to re-pause and bounce to /crm.
 export default async function DoctorLayout({
   children,
   params,

@@ -11,6 +11,7 @@
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { prescribeMedication } from "@/server/prescriptions/prescribe";
 import { CreatePrescriptionSchema } from "@/server/schemas/prescription";
@@ -34,12 +35,36 @@ export const POST = createApiHandler(
     });
     if (!mcase) return notFound();
 
-    const doctor = await prisma.doctor.findUnique({
-      where: { id: body.doctorId },
-      select: { id: true, clinicId: true },
-    });
-    if (!doctor) {
-      return err("ValidationError", 400, { reason: "doctor_not_found" });
+    // D-7 — decide the prescription author server-side so a doctor can't author
+    // under a colleague's name by passing a foreign `body.doctorId`.
+    //   DOCTOR → always themselves, resolved from the session user; the body
+    //            value is ignored entirely.
+    //   ADMIN  → may prescribe on behalf of a named doctor; `body.doctorId` is
+    //            required and the act is audited below.
+    let doctor: { id: string; clinicId: string } | null;
+    let onBehalf = false;
+    if (ctx.kind === "TENANT" && ctx.role === "DOCTOR") {
+      doctor = await prisma.doctor.findFirst({
+        where: { userId: ctx.userId },
+        select: { id: true, clinicId: true },
+      });
+      if (!doctor) {
+        return err("DoctorProfileMissing", 403, {
+          reason: "no_doctor_row_for_user",
+        });
+      }
+    } else {
+      if (!body.doctorId) {
+        return err("ValidationError", 400, { reason: "doctorId_required" });
+      }
+      doctor = await prisma.doctor.findUnique({
+        where: { id: body.doctorId },
+        select: { id: true, clinicId: true },
+      });
+      if (!doctor) {
+        return err("ValidationError", 400, { reason: "doctor_not_found" });
+      }
+      onBehalf = true;
     }
     if (doctor.clinicId !== mcase.clinicId) {
       return err("Forbidden", 403, { reason: "cross_tenant" });
@@ -71,6 +96,22 @@ export const POST = createApiHandler(
       actorRole: actorRole === "DOCTOR" ? "DOCTOR" : "ADMIN",
       surface: actorRole === "DOCTOR" ? "DOCTOR_CABINET" : "CRM",
     });
+
+    // D-7 — an admin issuing a prescription under a doctor's name is a
+    // higher-trust act than self-prescribing; leave a dedicated audit trail.
+    if (onBehalf) {
+      await audit(request, {
+        action: "prescription.create-on-behalf",
+        entityType: "Prescription",
+        entityId: prescription.id,
+        meta: {
+          caseId,
+          patientId: mcase.patientId,
+          doctorId: doctor.id,
+          byUserId: actorId,
+        },
+      });
+    }
 
     return ok(prescription);
   },

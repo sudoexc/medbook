@@ -8,7 +8,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
-import { ok, notFound, diff } from "@/server/http";
+import { ok, notFound, conflict, diff } from "@/server/http";
 import {
   hydratePatientForRead,
   serializePatientForWrite,
@@ -103,6 +103,31 @@ export const DELETE = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.patient.findUnique({ where: { id } });
     if (!before) return notFound();
+
+    // Medico-legal guard (D-5). A patient with any clinical or financial
+    // footprint must never be hard-deleted here: appointment / visit-note /
+    // document / payment FKs are ON DELETE RESTRICT, so prisma.delete() would
+    // throw a raw FK violation, and — more importantly — finalized conclusions
+    // and signed documents are legal records that must outlive the patient
+    // row. Send the admin to the DSAR deletion flow (POST /api/crm/dsar/
+    // deletions), which anonymizes or schedules a reviewed hard-delete with
+    // retention checks instead of destroying records. Hard-delete stays
+    // allowed only for a footprint-free patient (created by mistake).
+    const [appointments, visitNotes, documents, payments, cases] =
+      await Promise.all([
+        prisma.appointment.count({ where: { patientId: id } }),
+        prisma.visitNote.count({ where: { patientId: id } }),
+        prisma.document.count({ where: { patientId: id } }),
+        prisma.payment.count({ where: { patientId: id } }),
+        prisma.medicalCase.count({ where: { patientId: id } }),
+      ]);
+    if (appointments + visitNotes + documents + payments + cases > 0) {
+      return conflict("has_clinical_records", {
+        useDsar: true,
+        counts: { appointments, visitNotes, documents, payments, cases },
+      });
+    }
+
     await prisma.patient.delete({ where: { id } });
     await audit(request, {
       action: "patient.delete",

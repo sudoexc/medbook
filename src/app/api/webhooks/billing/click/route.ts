@@ -27,6 +27,16 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const secret = process.env.CLICK_SECRET_KEY;
+  // Fail closed in production: without the shared secret the verifier degrades
+  // to stub-accept, which would let anyone POST a forged "complete" and mark
+  // invoices PAID for free. Dev/staging keep the stub so simulate-pay works.
+  if (!secret && process.env.NODE_ENV === "production") {
+    console.error("[click webhook] CLICK_SECRET_KEY unset in production — refusing");
+    return Response.json(
+      { error: -1, error_note: "WebhookNotConfigured" },
+      { status: 503 },
+    );
+  }
   const result = await clickVerifyWebhook(payload, secret);
   if (!result.ok) {
     console.warn("[click webhook] verify failed:", result.reason);
@@ -46,6 +56,7 @@ export async function POST(request: Request): Promise<Response> {
       await markInvoicePaid(
         result.invoiceId,
         result.providerRef ?? `click-${Date.now()}`,
+        { expectedAmountTiins: result.amountTiins },
       );
     } catch (err) {
       console.error("[click webhook] markInvoicePaid threw:", err);

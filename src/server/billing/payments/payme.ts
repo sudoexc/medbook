@@ -45,6 +45,8 @@ export interface PaymeVerifyOk {
   invoiceId?: string;
   providerRef?: string;
   method?: string;
+  /** Charged amount in tiins, parsed from the JSON-RPC `params.amount`. */
+  amountTiins?: bigint;
   stub?: boolean;
 }
 
@@ -149,6 +151,18 @@ export async function paymeVerifyWebhook(
         undefined
       : undefined;
 
+  const rawAmount = (params as Record<string, unknown>).amount;
+  const amountTiins =
+    typeof rawAmount === "number" && Number.isFinite(rawAmount)
+      ? BigInt(Math.round(rawAmount))
+      : typeof rawAmount === "string" && /^\d+$/.test(rawAmount)
+        ? BigInt(rawAmount)
+        : undefined;
+  const providerRef =
+    typeof env.id === "string" || typeof env.id === "number"
+      ? String(env.id)
+      : undefined;
+
   if (!secretFromEnv) {
     console.info(
       `[payme] webhook stub-accept method=${env.method} invoice=${String(invoiceId)}`,
@@ -158,9 +172,8 @@ export async function paymeVerifyWebhook(
       stub: true,
       method: env.method,
       invoiceId: typeof invoiceId === "string" ? invoiceId : undefined,
-      providerRef: typeof env.id === "string" || typeof env.id === "number"
-        ? String(env.id)
-        : undefined,
+      providerRef,
+      amountTiins,
     };
   }
 
@@ -177,9 +190,7 @@ export async function paymeVerifyWebhook(
     ok: true,
     method: env.method,
     invoiceId: typeof invoiceId === "string" ? invoiceId : undefined,
-    providerRef:
-      typeof env.id === "string" || typeof env.id === "number"
-        ? String(env.id)
-        : undefined,
+    providerRef,
+    amountTiins,
   };
 }

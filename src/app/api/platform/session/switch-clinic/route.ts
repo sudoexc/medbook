@@ -123,14 +123,23 @@ export async function POST(request: Request): Promise<Response> {
           },
         });
 
+        // Both cookies expire exactly with the grant lease. The override must
+        // NOT outlive the grant: auth.ts treats a present override + absent
+        // grant as no impersonation (fail-closed), so a longer-lived override
+        // would just be dead weight — and historically it kept impersonation
+        // alive (ungated) for up to 12h past the 60-min lease.
+        const leaseSeconds = Math.max(
+          60,
+          Math.round((grant.expiresAt.getTime() - Date.now()) / 1000),
+        );
         const headers = new Headers();
         headers.append(
           "set-cookie",
-          cookieHeader(OVERRIDE_COOKIE_NAME, signed, 60 * 60 * 12),
+          cookieHeader(OVERRIDE_COOKIE_NAME, signed, leaseSeconds),
         );
         headers.append(
           "set-cookie",
-          cookieHeader(GRANT_COOKIE_NAME, grant.grantId, 60 * 60), // 60min, mirrors lease
+          cookieHeader(GRANT_COOKIE_NAME, grant.grantId, leaseSeconds),
         );
         return Response.json(
           {

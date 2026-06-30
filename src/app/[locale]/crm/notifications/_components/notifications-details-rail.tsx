@@ -44,6 +44,7 @@ const STATUS_VARIANT: Record<
   React.ComponentProps<typeof Badge>["variant"]
 > = {
   QUEUED: "warning",
+  SENDING: "info",
   SENT: "info",
   DELIVERED: "success",
   READ: "success",

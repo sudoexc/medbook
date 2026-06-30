@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { runWithTenant } from "@/lib/tenant-context";
+import { resolvePublicClinic } from "@/lib/public-clinic";
 import { phoneSearchVariants } from "@/lib/phone";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
 import { rateLimit } from "@/lib/rate-limit";
@@ -29,11 +31,20 @@ export async function GET(request: Request) {
   }
   const phone = parsed.data;
 
-  // Find patient by any known phone representation (shared helper)
+  const clinic = await resolvePublicClinic(request);
+  if (!clinic) {
+    return Response.json({ patient: null, appointments: [], upcoming: [] });
+  }
+
+  // Find patient by any known phone representation (shared helper), scoped to
+  // the resolved clinic so an anonymous kiosk request can't probe another
+  // tenant's patient base by enumerating phone numbers.
   const variants = phoneSearchVariants(phone);
-  const patient = await prisma.patient.findFirst({
-    where: { phone: { in: variants } },
-  });
+  const patient = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.patient.findFirst({
+      where: { clinicId: clinic.id, phone: { in: variants } },
+    }),
+  );
 
   if (!patient) {
     return Response.json({ patient: null, appointments: [], upcoming: [] });
@@ -49,23 +60,28 @@ export async function GET(request: Request) {
   const { dayStart, dayEnd } = tashkentDayBounds();
   const weekEnd = new Date(dayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const all = await prisma.appointment.findMany({
-    where: {
-      patientId: patient.id,
-      date: { gte: dayStart, lt: weekEnd },
-      queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
-    },
-    select: {
-      id: true,
-      date: true,
-      primaryService: { select: { nameRu: true } },
-      queueOrder: true,
-      ticketSeq: true,
-      queueStatus: true,
-      doctor: { select: { id: true, nameRu: true, cabinet: true } },
-    },
-    orderBy: { date: "asc" },
-  });
+  const all = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findMany({
+      where: {
+        clinicId: clinic.id,
+        patientId: patient.id,
+        date: { gte: dayStart, lt: weekEnd },
+        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+      },
+      select: {
+        id: true,
+        date: true,
+        primaryService: { select: { nameRu: true } },
+        queueOrder: true,
+        ticketSeq: true,
+        queueStatus: true,
+        doctor: {
+          select: { id: true, nameRu: true, cabinet: { select: { number: true } } },
+        },
+      },
+      orderBy: { date: "asc" },
+    }),
+  );
 
   const today: typeof all = [];
   const upcoming: typeof all = [];
@@ -84,7 +100,7 @@ export async function GET(request: Request) {
     appointments: today.map((a) => ({
       id: a.id,
       doctorName: a.doctor.nameRu,
-      cabinet: a.doctor.cabinet,
+      cabinet: a.doctor.cabinet?.number ?? null,
       service: a.primaryService?.nameRu ?? null,
       time: formatTime(a.date),
       queueOrder: a.queueOrder,
@@ -99,7 +115,7 @@ export async function GET(request: Request) {
       return {
         id: a.id,
         doctorName: a.doctor.nameRu,
-        cabinet: a.doctor.cabinet,
+        cabinet: a.doctor.cabinet?.number ?? null,
         service: a.primaryService?.nameRu ?? null,
         date: c.date, // YYYY-MM-DD Tashkent
         time: c.time, // HH:mm Tashkent

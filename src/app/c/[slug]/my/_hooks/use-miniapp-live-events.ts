@@ -85,6 +85,8 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "eprescription.issued": [["miniapp", "medications"]],
   "eprescription.cancelled": [["miniapp", "medications"]],
   "prescription.created": [["miniapp", "medications"]],
+  // Regimen paused / resumed / edited / cancelled — refresh the schedule.
+  "prescription.updated": [["miniapp", "medications"]],
   // Ф6 — finalize stamps followUpDays + (via the bridge worker) the
   // conclusion link, both rendered on the past-appointments cards.
   "visit-note.finalized": [["miniapp", "appointments"]],
@@ -96,6 +98,8 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   // arrive slightly before the PDF lands; the refetch is cheap and the document
   // appears on the next poll/refresh regardless.
   "referral.created": [["miniapp", "documents"]],
+  // A rendered PDF / upload landed in the patient's Document table.
+  "document.created": [["miniapp", "documents"]],
   // Schedule change invalidates every cached slot query — the user may have
   // been mid-booking and the picker needs to redraw with the new availability.
   "doctor.scheduleChanged": [["miniapp", "slots"]],

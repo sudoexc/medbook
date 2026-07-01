@@ -17,6 +17,10 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
 import { err, ok } from "@/server/http";
 import {
   createMiniAppListHandler,
@@ -177,26 +181,48 @@ export async function POST(request: Request): Promise<Response> {
   const title = rawTitle.length > 0 ? rawTitle : fallbackTitle;
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    const created = await prisma.document.create({
-      data: {
-        clinicId: ctx.clinicId,
-        patientId: ctx.patientId,
-        type,
-        title,
-        fileUrl: uploaded.url,
-        mimeType: mime,
-        sizeBytes: file.size,
-        uploadedById: null,
-      } satisfies Prisma.DocumentUncheckedCreateInput,
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        fileUrl: true,
-        mimeType: true,
-        sizeBytes: true,
-        createdAt: true,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.document.create({
+        data: {
+          clinicId: ctx.clinicId,
+          patientId: ctx.patientId,
+          type,
+          title,
+          fileUrl: uploaded.url,
+          mimeType: mime,
+          sizeBytes: file.size,
+          uploadedById: null,
+        } satisfies Prisma.DocumentUncheckedCreateInput,
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          fileUrl: true,
+          mimeType: true,
+          sizeBytes: true,
+          createdAt: true,
+        },
+      });
+      // Mirror the upload across the patient's other devices / family link.
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "PATIENT",
+          userId: null,
+          patientId: ctx.patientId,
+          onBehalfOfPatientId: null,
+          label: `patient:${ctx.patientId}`,
+        },
+        surface: "MINIAPP",
+        tenantScope: { clinicId: ctx.clinicId, patientId: ctx.patientId },
+        type: "document.created",
+        payload: {
+          documentId: row.id,
+          patientId: ctx.patientId,
+          documentType: row.type,
+        },
+      });
+      return row;
     });
     await audit(request, {
       action: AUDIT_ACTION.MINIAPP_DOCUMENT_UPLOADED,

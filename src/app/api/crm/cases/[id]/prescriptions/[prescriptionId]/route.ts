@@ -10,12 +10,17 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { ok, notFound, diff } from "@/server/http";
+import { ok, err, notFound, diff } from "@/server/http";
 import {
   hydratePrescriptionForRead,
   serializePrescriptionForWrite,
 } from "@/server/prescription/cipher-fields";
 import { UpdatePrescriptionSchema } from "@/server/schemas/prescription";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { ActorRole, Surface } from "@/server/realtime/envelope";
 
 function idsFromUrl(request: Request): {
   caseId: string;
@@ -34,7 +39,8 @@ export const PATCH = createApiHandler(
     roles: ["ADMIN", "DOCTOR"],
     bodySchema: UpdatePrescriptionSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("Forbidden", 403);
     const { caseId, prescriptionId } = idsFromUrl(request);
 
     const before = await prisma.prescription.findUnique({
@@ -42,6 +48,7 @@ export const PATCH = createApiHandler(
       select: {
         id: true,
         caseId: true,
+        patientId: true,
         drugName: true,
         dosage: true,
         schedule: true,
@@ -75,12 +82,37 @@ export const PATCH = createApiHandler(
       dataRaw as { notes?: string | null | undefined } & Record<string, unknown>,
     );
 
-    const after = await prisma.prescription.update({
-      where: { id: prescriptionId },
-      data: data as never,
-      include: {
-        doctor: { select: { id: true, nameRu: true, nameUz: true } },
-      },
+    const actorRole: ActorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "ADMIN";
+    const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
+
+    const after = await prisma.$transaction(async (tx) => {
+      const row = await tx.prescription.update({
+        where: { id: prescriptionId },
+        data: data as never,
+        include: {
+          doctor: { select: { id: true, nameRu: true, nameUz: true } },
+        },
+      });
+      // Cross-surface sync — refresh the patient's Mini App /medications live.
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: actorRole,
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `user:${ctx.userId}`,
+        },
+        surface,
+        tenantScope: { clinicId: ctx.clinicId, patientId: before.patientId },
+        type: "prescription.updated",
+        payload: {
+          prescriptionId,
+          patientId: before.patientId,
+          status: row.status,
+        },
+      });
+      return row;
     });
 
     const beforeHydrated = hydratePrescriptionForRead(
@@ -104,7 +136,8 @@ export const PATCH = createApiHandler(
 
 export const DELETE = createApiHandler(
   { roles: ["ADMIN", "DOCTOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("Forbidden", 403);
     const { caseId, prescriptionId } = idsFromUrl(request);
 
     const before = await prisma.prescription.findUnique({
@@ -121,7 +154,32 @@ export const DELETE = createApiHandler(
     });
     if (!before || before.caseId !== caseId) return notFound();
 
-    await prisma.prescription.delete({ where: { id: prescriptionId } });
+    const actorRole: ActorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "ADMIN";
+    const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
+
+    await prisma.$transaction(async (tx) => {
+      await tx.prescription.delete({ where: { id: prescriptionId } });
+      // Cross-surface sync — drop the drug from the patient's schedule live.
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: actorRole,
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `user:${ctx.userId}`,
+        },
+        surface,
+        tenantScope: { clinicId: ctx.clinicId, patientId: before.patientId },
+        type: "prescription.updated",
+        payload: {
+          prescriptionId,
+          patientId: before.patientId,
+          status: before.status,
+          deleted: true,
+        },
+      });
+    });
 
     await audit(request, {
       action: AUDIT_ACTION.PRESCRIPTION_DELETED,

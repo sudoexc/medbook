@@ -8,12 +8,17 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, parseQuery } from "@/server/http";
+import { ok, err, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
 import {
   CreateDocumentSchema,
   QueryDocumentSchema,
 } from "@/server/schemas/document";
+import {
+  newCorrelationId,
+  publishViaOutbox,
+} from "@/server/realtime/outbox";
+import type { ActorRole, Surface } from "@/server/realtime/envelope";
 
 /**
  * Per-patient sequence number — `#1` is the patient's oldest document,
@@ -141,19 +146,53 @@ export const POST = createApiHandler(
     bodySchema: CreateDocumentSchema,
   },
   async ({ request, body, ctx }) => {
-    const uploadedById = ctx.kind === "TENANT" ? ctx.userId : null;
-    const created = await prisma.document.create({
-      data: {
-        patientId: body.patientId,
-        appointmentId: body.appointmentId ?? null,
-        type: body.type,
-        title: body.title,
-        fileUrl: body.fileUrl,
-        mimeType: body.mimeType ?? null,
-        sizeBytes: body.sizeBytes ?? null,
-        uploadedById,
-      } as never,
+    if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    const uploadedById = ctx.userId;
+    const actorRole: ActorRole =
+      ctx.role === "DOCTOR"
+        ? "DOCTOR"
+        : ctx.role === "RECEPTIONIST"
+          ? "RECEPTIONIST"
+          : ctx.role === "ADMIN"
+            ? "ADMIN"
+            : "SYSTEM"; // NURSE has no ActorRole; real role rides in `label`
+    const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
+
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.document.create({
+        data: {
+          patientId: body.patientId,
+          appointmentId: body.appointmentId ?? null,
+          type: body.type,
+          title: body.title,
+          fileUrl: body.fileUrl,
+          mimeType: body.mimeType ?? null,
+          sizeBytes: body.sizeBytes ?? null,
+          uploadedById,
+        } as never,
+      });
+      // Surface the new document in the patient's Mini App /documents live.
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: actorRole,
+          userId: ctx.userId,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: `${ctx.role.toLowerCase()}:${ctx.userId}`,
+        },
+        surface,
+        tenantScope: { clinicId: ctx.clinicId, patientId: body.patientId },
+        type: "document.created",
+        payload: {
+          documentId: row.id,
+          patientId: body.patientId,
+          documentType: body.type,
+        },
+      });
+      return row;
     });
+
     await audit(request, {
       action: "document.create",
       entityType: "Document",

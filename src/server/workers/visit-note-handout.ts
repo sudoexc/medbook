@@ -176,30 +176,52 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
   // Upsert on the @unique visitNoteId — the idempotency anchor. verifyToken
   // is either the preserved existing one or the freshly-minted one embedded
   // in this very PDF, so update never invalidates a printed QR.
-  await prisma.document.upsert({
-    where: { visitNoteId: note.id },
-    create: {
-      clinicId: note.clinicId,
-      patientId: note.patientId,
-      appointmentId: note.appointmentId,
-      visitNoteId: note.id,
-      type: "CONCLUSION",
-      title,
-      number: note.documentNumber,
-      verifyToken,
-      fileUrl: uploaded.url,
-      mimeType: "application/pdf",
-      sizeBytes: pdf.length,
-      uploadedById: null,
-    },
-    update: {
-      fileUrl: uploaded.url,
-      title,
-      number: note.documentNumber,
-      verifyToken,
-      mimeType: "application/pdf",
-      sizeBytes: pdf.length,
-    },
+  await prisma.$transaction(async (tx) => {
+    const doc = await tx.document.upsert({
+      where: { visitNoteId: note.id },
+      create: {
+        clinicId: note.clinicId,
+        patientId: note.patientId,
+        appointmentId: note.appointmentId,
+        visitNoteId: note.id,
+        type: "CONCLUSION",
+        title,
+        number: note.documentNumber,
+        verifyToken,
+        fileUrl: uploaded.url,
+        mimeType: "application/pdf",
+        sizeBytes: pdf.length,
+        uploadedById: null,
+      },
+      update: {
+        fileUrl: uploaded.url,
+        title,
+        number: note.documentNumber,
+        verifyToken,
+        mimeType: "application/pdf",
+        sizeBytes: pdf.length,
+      },
+      select: { id: true },
+    });
+    // Refresh the patient's Mini App /documents list once the PDF exists.
+    await publishViaOutbox(tx, {
+      correlationId: newCorrelationId(),
+      actor: {
+        role: "SYSTEM",
+        userId: null,
+        patientId: null,
+        onBehalfOfPatientId: null,
+        label: "system:visit-note-handout",
+      },
+      surface: "WORKER",
+      tenantScope: { clinicId: note.clinicId, patientId: note.patientId },
+      type: "document.created",
+      payload: {
+        documentId: doc.id,
+        patientId: note.patientId,
+        documentType: "CONCLUSION",
+      },
+    });
   });
 }
 

@@ -19,6 +19,7 @@ import { newVerifyToken } from "@/server/clinical-forms/numbering";
 import { getQueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
 import { renderReferralPdf } from "@/server/referrals/referral-pdf";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 
 export const QUEUE_NAME = "doctor:referral-document";
 export const JOB_NAME = "referral-document-tick";
@@ -124,27 +125,50 @@ async function generateReferralDocument(
   // Upsert on the @unique referralId — the idempotency anchor. verifyToken
   // is either the preserved existing one or the freshly-minted one embedded
   // in this very PDF, so update never invalidates a printed QR.
-  await prisma.document.upsert({
-    where: { referralId: ref.id },
-    create: {
-      clinicId: ref.clinicId,
-      patientId: ref.patientId,
-      referralId: ref.id,
-      type: "REFERRAL",
-      title,
-      verifyToken,
-      fileUrl: uploaded.url,
-      mimeType: "application/pdf",
-      sizeBytes: pdf.length,
-      uploadedById: null,
-    },
-    update: {
-      fileUrl: uploaded.url,
-      title,
-      verifyToken,
-      mimeType: "application/pdf",
-      sizeBytes: pdf.length,
-    },
+  await prisma.$transaction(async (tx) => {
+    const doc = await tx.document.upsert({
+      where: { referralId: ref.id },
+      create: {
+        clinicId: ref.clinicId,
+        patientId: ref.patientId,
+        referralId: ref.id,
+        type: "REFERRAL",
+        title,
+        verifyToken,
+        fileUrl: uploaded.url,
+        mimeType: "application/pdf",
+        sizeBytes: pdf.length,
+        uploadedById: null,
+      },
+      update: {
+        fileUrl: uploaded.url,
+        title,
+        verifyToken,
+        mimeType: "application/pdf",
+        sizeBytes: pdf.length,
+      },
+      select: { id: true },
+    });
+    // Refresh the patient's Mini App /documents list once the PDF exists —
+    // `referral.created` fires earlier (at referral POST), before the render.
+    await publishViaOutbox(tx, {
+      correlationId: newCorrelationId(),
+      actor: {
+        role: "SYSTEM",
+        userId: null,
+        patientId: null,
+        onBehalfOfPatientId: null,
+        label: "system:referral-document",
+      },
+      surface: "WORKER",
+      tenantScope: { clinicId: ref.clinicId, patientId: ref.patientId },
+      type: "document.created",
+      payload: {
+        documentId: doc.id,
+        patientId: ref.patientId,
+        documentType: "REFERRAL",
+      },
+    });
   });
 }
 

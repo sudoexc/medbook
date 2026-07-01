@@ -89,6 +89,9 @@ export const EVENT_TYPES = [
   // for the pharmacy; this is the schedule/reminder row that drives the
   // mini-app `/medications` page. Auditable per spec.
   "prescription.created",
+  // Regimen edited / paused / resumed / cancelled (hard delete). Refreshes the
+  // patient Mini App `/medications` schedule live from any surface.
+  "prescription.updated",
   // Phase G7 — clinical forms lifecycle. Issued/cancelled events let the
   // patient card and visit history refresh live; printed isn't broadcast
   // (paper handoff is a non-realtime concern).
@@ -102,6 +105,11 @@ export const EVENT_TYPES = [
   // out of EVENT_META_OVERRIDES (non-auditable) — same single-source rule as
   // `lab.result.reviewed`.
   "referral.created",
+  // A file landed in the patient's Document table (referral/conclusion PDF
+  // rendered by a worker, or a staff/patient upload). Refreshes the Mini App
+  // `/documents` list live — emitted AFTER the row + PDF exist so the refetch
+  // actually finds it (unlike `referral.created`, which fires pre-render).
+  "document.created",
   // Phase G8 — CDS override recorded. Lets a future quality dashboard refresh
   // its KPI tiles the moment a doctor justifies a flagged warning. Tenant
   // scope is the clinic; no PHI in the payload.
@@ -417,6 +425,38 @@ export type PrescriptionCreatedEventPayload = z.infer<
 >;
 
 /**
+ * Regimen edit / pause / resume / cancel (hard delete). `patientId` is
+ * required so the patient-scoped mini-app filter can route it; `status`
+ * reflects the new lifecycle state (absent for a delete, where `deleted` is
+ * set). Consumers only key invalidation off the type.
+ */
+export const PrescriptionUpdatedPayload = z
+  .object({
+    prescriptionId: z.string().min(1),
+    patientId: z.string().min(1),
+    status: z.string().min(1).optional(),
+    deleted: z.boolean().optional(),
+  })
+  .passthrough();
+export type PrescriptionUpdatedEventPayload = z.infer<
+  typeof PrescriptionUpdatedPayload
+>;
+
+/**
+ * A Document row appeared for a patient (worker-rendered PDF or an upload).
+ * `patientId` required for the patient-scoped filter; `documentType` mirrors
+ * `Document.type` for optional client-side filtering.
+ */
+export const DocumentCreatedPayload = z
+  .object({
+    documentId: z.string().min(1),
+    patientId: z.string().min(1),
+    documentType: z.string().min(1).optional(),
+  })
+  .passthrough();
+export type DocumentCreatedEventPayload = z.infer<typeof DocumentCreatedPayload>;
+
+/**
  * Phase G7 — sick-leave lifecycle. Same shape rules as the Rx payload.
  */
 export const SickLeaveEventPayload = z
@@ -635,11 +675,13 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("lab.result.reviewed", LabResultEventPayload),
   makeEvent("lab.order.created", LabOrderCreatedPayload),
   makeEvent("prescription.created", PrescriptionCreatedPayload),
+  makeEvent("prescription.updated", PrescriptionUpdatedPayload),
   makeEvent("eprescription.issued", EPrescriptionEventPayload),
   makeEvent("eprescription.cancelled", EPrescriptionEventPayload),
   makeEvent("sickleave.issued", SickLeaveEventPayload),
   makeEvent("sickleave.cancelled", SickLeaveEventPayload),
   makeEvent("referral.created", ReferralCreatedPayload),
+  makeEvent("document.created", DocumentCreatedPayload),
   makeEvent("cds.override.recorded", CdsOverrideEventPayload),
   makeEvent("visit-note.draftSaved", VisitNotePayload),
   makeEvent("visit-note.finalized", VisitNotePayload),

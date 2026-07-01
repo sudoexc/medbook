@@ -17,7 +17,6 @@ import { SkeletonList } from "../skeleton";
 import { useT } from "../mini-i18n";
 import {
   useAppointments,
-  useAppointmentsLiveSync,
   useCancelAppointment,
   MiniAppAppointment,
 } from "../../_hooks/use-appointments";
@@ -69,10 +68,11 @@ export function AppointmentsScreen() {
     },
     [setDraft, router, clinicSlug],
   );
-  // SSE — invalidate caches when CRM / other surfaces mutate this patient's
-  // appointments (TZ §6.1). Mounted at the screen level so it stays alive
-  // while the patient is on this view.
-  useAppointmentsLiveSync();
+  // Realtime invalidation is handled globally by `useMiniAppLiveEvents` in
+  // MiniAppShell over the patient-scoped /api/miniapp/events stream (appointment
+  // events now also refresh the `slots` cache — see MINIAPP_INVALIDATION_MAP).
+  // The old screen-level useAppointmentsLiveSync hit staff-only /api/events,
+  // which 401'd for patients, so it was removed.
 
   React.useEffect(() => {
     const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));

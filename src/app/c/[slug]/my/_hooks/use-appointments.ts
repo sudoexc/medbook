@@ -6,7 +6,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useMiniAppFetch } from "./use-miniapp-api";
-import { useLiveEvents } from "@/hooks/use-live-events";
 
 export type MiniAppAppointment = {
   id: string;
@@ -261,39 +260,11 @@ export function useCheckInAppointment() {
   });
 }
 
-/**
- * Subscribe the mini-app to the SSE event bus so cross-surface mutations
- * (e.g. receptionist cancels in CRM while the patient has the mini-app open)
- * land in ≤2 sec without a manual refetch. Per TZ §6.1.
- *
- * We invalidate both `appointments` (the list itself) and `slots` because
- * a cancel / move frees up a slot the patient might be browsing in the
- * reschedule picker. TanStack coalesces multiple invalidate calls into a
- * single refetch — no extra debounce needed.
- */
-export function useAppointmentsLiveSync(): void {
-  const qc = useQueryClient();
-  const { clinicSlug } = useMiniAppFetch();
-  useLiveEvents(
-    () => {
-      qc.invalidateQueries({
-        queryKey: ["miniapp", "appointments", clinicSlug],
-      });
-      qc.invalidateQueries({
-        queryKey: ["miniapp", "slots", clinicSlug],
-      });
-    },
-    {
-      filter: [
-        "appointment.created",
-        "appointment.updated",
-        "appointment.statusChanged",
-        "appointment.cancelled",
-        "appointment.moved",
-      ],
-    },
-  );
-}
+// Cross-surface realtime for the patient is handled globally by
+// `useMiniAppLiveEvents` (MiniAppShell) over the patient-scoped
+// /api/miniapp/events stream. The former screen-level `useAppointmentsLiveSync`
+// subscribed to staff-only /api/events (401 for a Telegram patient), so it was
+// removed; its `slots` invalidation moved into MINIAPP_INVALIDATION_MAP.
 
 export function useRescheduleAppointment() {
   const qc = useQueryClient();

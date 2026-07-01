@@ -50,11 +50,18 @@ type QueryPrefix = ReadonlyArray<string>;
  * "thank you" screen *and* the appointments list which highlights "rated").
  */
 const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
-  "appointment.created": [["miniapp", "appointments"]],
-  "appointment.updated": [["miniapp", "appointments"]],
-  "appointment.statusChanged": [["miniapp", "appointments"]],
-  "appointment.cancelled": [["miniapp", "appointments"]],
-  "appointment.moved": [["miniapp", "appointments"]],
+  // `slots` is invalidated alongside `appointments` because a booking / cancel
+  // / move frees or takes a slot the patient may be browsing in the reschedule
+  // picker. (Previously handled by the separate `useAppointmentsLiveSync` hook
+  // on the staff-only /api/events stream, which 401'd for patients.)
+  "appointment.created": [["miniapp", "appointments"], ["miniapp", "slots"]],
+  "appointment.updated": [["miniapp", "appointments"], ["miniapp", "slots"]],
+  "appointment.statusChanged": [
+    ["miniapp", "appointments"],
+    ["miniapp", "slots"],
+  ],
+  "appointment.cancelled": [["miniapp", "appointments"], ["miniapp", "slots"]],
+  "appointment.moved": [["miniapp", "appointments"], ["miniapp", "slots"]],
   "queue.updated": [
     ["miniapp", "appointments"],
     // Wave 3a — home-hero live queue card polls /api/queue/status/:id under

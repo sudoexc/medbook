@@ -250,6 +250,10 @@ export const POST = createApiHandler(
           messageId: dispatched.id,
           direction: "OUT",
           preview: previewText.slice(0, 200),
+          // Route the operator's reply to the patient's in-app chat via the
+          // patient-scoped mini-app SSE filter (legacy v1 event → payload is
+          // the only patient hint).
+          patientId: conv.patientId,
         },
       });
     }

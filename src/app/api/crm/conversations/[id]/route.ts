@@ -80,6 +80,9 @@ export const PATCH = createApiHandler(
         status: after.status,
         assigneeId: after.assignedToId ?? null,
         unreadCount: after.unreadCount,
+        // Route the thread-meta change to the patient's mini-app conversations
+        // list via the patient-scoped SSE filter.
+        patientId: after.patientId,
       },
     });
     return ok(after);

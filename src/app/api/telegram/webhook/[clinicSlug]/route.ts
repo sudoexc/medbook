@@ -427,6 +427,9 @@ export async function POST(
           messageId: String(msg.message_id),
           preview: recorded.preview,
           contactName: contactDisplayName,
+          // Mirror the patient's inbound TG message into their own mini-app
+          // chat via the patient-scoped SSE filter.
+          patientId: recorded.patientId,
         },
       });
 

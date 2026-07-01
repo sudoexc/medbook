@@ -36,9 +36,9 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import {
   AppEventSchema,
-  type AppEvent,
   type EventType,
 } from "@/server/realtime/events";
+import { EventEnvelopeSchema } from "@/server/realtime/envelope";
 
 import { useMiniAppAuth } from "../_components/miniapp-auth-provider";
 
@@ -168,16 +168,19 @@ export function useMiniAppLiveEvents(): void {
       } catch {
         return;
       }
-      const result = AppEventSchema.safeParse(parsed);
-      if (!result.success) return;
-      const event = result.data;
+      // The stream carries BOTH shapes: v2 outbox envelopes (clinicId lives
+      // under `tenantScope`) and legacy v1 AppEvents (top-level `clinicId`).
+      // The v1 schema rejects a v2 envelope (missing top-level clinicId) and
+      // vice-versa, so try both — we only need the discriminator `type`.
+      const type = extractEventType(parsed);
+      if (!type) return;
 
-      // Persist Last-Event-ID for cold reconnects. The browser EventSource
-      // already echoes it on warm reconnects via the Last-Event-ID header.
+      // Persist Last-Event-ID for cold reconnects. Only v2 envelopes carry an
+      // eventId; v1 events are live-only and leave the stored cursor untouched.
       const eventId = (parsed as { eventId?: string } | null)?.eventId;
       if (eventId) writeLastEventId(eventId);
 
-      dispatchInvalidation(qc, event);
+      dispatchInvalidation(qc, type);
     };
 
     es.onerror = () => {
@@ -201,11 +204,25 @@ export function useMiniAppLiveEvents(): void {
   }, [ready, qc, initData, clinicSlug]);
 }
 
+/**
+ * Extract the event discriminator from either envelope generation. A v2
+ * envelope fails `AppEventSchema` (no top-level `clinicId`); a v1 event fails
+ * `EventEnvelopeSchema` (no `tenantScope`/`actor`). Try both, return `null`
+ * when neither matches (malformed frame).
+ */
+function extractEventType(parsed: unknown): EventType | null {
+  const v1 = AppEventSchema.safeParse(parsed);
+  if (v1.success) return v1.data.type;
+  const v2 = EventEnvelopeSchema.safeParse(parsed);
+  if (v2.success) return v2.data.type;
+  return null;
+}
+
 function dispatchInvalidation(
   qc: ReturnType<typeof useQueryClient>,
-  event: AppEvent,
+  type: EventType,
 ): void {
-  const prefixes = MINIAPP_INVALIDATION_MAP[event.type];
+  const prefixes = MINIAPP_INVALIDATION_MAP[type];
   if (!prefixes) return;
   for (const prefix of prefixes) {
     qc.invalidateQueries({ queryKey: prefix });

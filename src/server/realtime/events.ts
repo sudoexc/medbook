@@ -199,6 +199,13 @@ export const TgMessagePayload = z
     preview: z.string().optional(),
     /** Display name of the chat contact (first/last/@username) for UI alerts. */
     contactName: z.string().nullable().optional(),
+    /**
+     * Patient this thread belongs to. Carried so the patient-scoped mini-app
+     * SSE filter can route the message to the patient's in-app chat (legacy v1
+     * events have no `tenantScope`; this is their only patient hint). `null`
+     * for threads with no linked patient (staff-only inbox row).
+     */
+    patientId: z.string().nullable().optional(),
   })
   .passthrough();
 export type TgMessageEventPayload = z.infer<typeof TgMessagePayload>;
@@ -217,6 +224,9 @@ export const TgConversationUpdatedPayload = z
     mode: z.string().optional(),
     status: z.string().optional(),
     assigneeId: z.string().nullable().optional(),
+    /** Patient this thread belongs to — routes the update to the mini-app
+     *  conversations list via the patient-scoped SSE filter. */
+    patientId: z.string().nullable().optional(),
   })
   .passthrough();
 export type TgConversationUpdatedEventPayload = z.infer<

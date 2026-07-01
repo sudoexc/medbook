@@ -49,6 +49,7 @@ import {
   isEventEnvelope,
   type EventEnvelope,
 } from "@/server/realtime/envelope";
+import type { EventType } from "@/server/realtime/events";
 import {
   ensureRedisSubscriber,
   isRedisEnabled,
@@ -93,6 +94,70 @@ export function shouldDeliverToMiniApp(
     if (typeof pid === "string" && allowed.patientIds.has(pid)) return true;
   }
   return false;
+}
+
+/**
+ * Patient-facing event types eligible for delivery over the legacy v1 path
+ * (see `shouldDeliverV1ToMiniApp`). Must stay a subset of the client's
+ * `MINIAPP_INVALIDATION_MAP` keys — `tests/unit/miniapp-sse-filter.test.ts`
+ * asserts this so a v1 event the client can't act on is never streamed.
+ *
+ * The gate exists because some v1 payloads carry a `patientId` for a *staff*
+ * concern (e.g. `call.incoming`), which must NOT leak to the patient even
+ * though the id matches. Only types a patient legitimately owns are listed.
+ */
+export const MINIAPP_DELIVERABLE_TYPES: ReadonlySet<EventType> = new Set<EventType>([
+  "appointment.created",
+  "appointment.updated",
+  "appointment.statusChanged",
+  "appointment.cancelled",
+  "appointment.moved",
+  "queue.updated",
+  "notification.sent",
+  "notification.read",
+  "patient.profileUpdated",
+  "patient.familyLinked",
+  "patient.familyUnlinked",
+  "nps.submitted",
+  "previsit.submitted",
+  "payment.paid",
+  "eprescription.issued",
+  "eprescription.cancelled",
+  "prescription.created",
+  "visit-note.finalized",
+  "lab.result.reviewed",
+  "referral.created",
+  "doctor.scheduleChanged",
+  "tg.message.new",
+  "tg.conversation.updated",
+]);
+
+/**
+ * Delivery decision for a legacy v1 `AppEvent` ({ type, clinicId, at, payload })
+ * published via `publishEventSafe` (no `tenantScope`, no `eventId`). These ride
+ * the same clinic bus as v2 envelopes; the CRM stream already forwards both, so
+ * the mini-app does too — gated hard so a patient only ever sees their own data:
+ *
+ *   1. `type` is patient-facing (`MINIAPP_DELIVERABLE_TYPES`), AND
+ *   2. `clinicId` matches the connection's clinic, AND
+ *   3. `payload.patientId` is a string in the allow-set (owner + family).
+ *
+ * v1 events carry no `eventId`, so they are live-only (not replayable) — the
+ * 60s query poll + v2 replay cover a reconnect gap. Pure + unit-tested.
+ */
+export function shouldDeliverV1ToMiniApp(
+  event: unknown,
+  allowed: AllowedScope,
+): boolean {
+  if (!event || typeof event !== "object") return false;
+  const e = event as { type?: unknown; clinicId?: unknown; payload?: unknown };
+  if (typeof e.type !== "string") return false;
+  if (!MINIAPP_DELIVERABLE_TYPES.has(e.type as EventType)) return false;
+  if (e.clinicId !== allowed.clinicId) return false;
+  const payload = e.payload;
+  if (!payload || typeof payload !== "object") return false;
+  const pid = (payload as { patientId?: unknown }).patientId;
+  return typeof pid === "string" && allowed.patientIds.has(pid);
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -149,20 +214,40 @@ export async function GET(request: NextRequest): Promise<Response> {
 
       const emit = (payload: unknown, kind: "live" | "replay") => {
         if (closed) return;
-        if (!isEventEnvelope(payload)) return;
-        if (!shouldDeliverToMiniApp(payload, allowed)) return;
-        const { eventId } = payload;
-        if (replayedIds.has(eventId)) return;
-        replayedIds.add(eventId);
+        if (isEventEnvelope(payload)) {
+          // v2 outbox envelope — patient-scoped + replayable (carries eventId).
+          if (!shouldDeliverToMiniApp(payload, allowed)) return;
+          const { eventId } = payload;
+          if (replayedIds.has(eventId)) return;
+          replayedIds.add(eventId);
+          try {
+            safeEnqueue(`id: ${eventId}\ndata: ${JSON.stringify(payload)}\n\n`);
+            metrics.sseEventsDelivered.inc({
+              event_type: payload.type,
+              clinic_id: clinicId,
+            });
+            if (kind === "replay") {
+              metrics.sseReplayEvents.inc({ clinic_id: clinicId });
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            safeEnqueue(`: error ${msg}\n\n`);
+          }
+          return;
+        }
+        // Legacy v1 AppEvent (publishEventSafe): no envelope, no eventId → not
+        // replayable, so it only rides the live bus. Deliver the patient-safe
+        // subset whose payload names an allowed patient, so v1 publishers
+        // (walk-in, chat, queue transitions, TG webhook) reach the mini-app —
+        // the same both-shapes handling the CRM `/api/events` stream already does.
+        if (kind !== "live") return;
+        if (!shouldDeliverV1ToMiniApp(payload, allowed)) return;
         try {
-          safeEnqueue(`id: ${eventId}\ndata: ${JSON.stringify(payload)}\n\n`);
+          safeEnqueue(`data: ${JSON.stringify(payload)}\n\n`);
           metrics.sseEventsDelivered.inc({
-            event_type: payload.type,
+            event_type: (payload as { type: string }).type,
             clinic_id: clinicId,
           });
-          if (kind === "replay") {
-            metrics.sseReplayEvents.inc({ clinic_id: clinicId });
-          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           safeEnqueue(`: error ${msg}\n\n`);

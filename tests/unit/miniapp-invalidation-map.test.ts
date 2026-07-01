@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { EVENT_TYPES, type EventType } from "@/server/realtime/events";
 
 import { MINIAPP_INVALIDATION_MAP } from "@/app/c/[slug]/my/_hooks/use-miniapp-live-events";
+import { MINIAPP_DELIVERABLE_TYPES } from "@/app/api/miniapp/events/route";
 
 const PATIENT_FACING: ReadonlyArray<EventType> = [
   "appointment.created",
@@ -55,6 +56,18 @@ describe("MINIAPP_INVALIDATION_MAP", () => {
     const known = new Set<string>(EVENT_TYPES);
     for (const type of Object.keys(MINIAPP_INVALIDATION_MAP)) {
       expect(known.has(type), `unknown event ${type}`).toBe(true);
+    }
+  });
+
+  // The server-side v1 delivery allow-list (MINIAPP_DELIVERABLE_TYPES) must be
+  // a subset of what the client knows how to act on — otherwise the mini-app
+  // would stream a v1 event the client silently ignores (wasted frame) or,
+  // worse, an event that was never meant to be patient-facing.
+  it("every server-deliverable v1 type has a client invalidation mapping", () => {
+    for (const type of MINIAPP_DELIVERABLE_TYPES) {
+      const prefixes = MINIAPP_INVALIDATION_MAP[type];
+      expect(prefixes, `deliverable type ${type} has no client mapping`).toBeDefined();
+      expect(prefixes?.length ?? 0).toBeGreaterThan(0);
     }
   });
 });

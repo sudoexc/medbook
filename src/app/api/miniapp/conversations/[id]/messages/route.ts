@@ -169,6 +169,9 @@ export async function POST(request: Request): Promise<Response> {
         messageId: created.id,
         direction: "IN",
         preview,
+        // Mirror the patient's own message across their other devices / family
+        // link via the patient-scoped mini-app SSE filter.
+        patientId: ctx.patientId,
       },
     });
 

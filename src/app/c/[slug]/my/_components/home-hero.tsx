@@ -183,7 +183,7 @@ function QueueHero({
   const lang = useLang();
   const tg = useTelegramWebApp();
   const touchStart = React.useRef<{ x: number; y: number } | null>(null);
-  const ahead = Math.max(0, q.position - 1);
+  const ahead = Math.max(0, (q.position ?? 1) - 1);
   const isNext = ahead === 0;
   const color = isNext ? SALMON : "var(--tg-accent)";
   const aheadTemplate =
@@ -196,9 +196,9 @@ function QueueHero({
         )
       : t.home.hero.aheadOne;
   const etaFlavor =
-    q.etaMinutes <= 5
+    (q.etaMinutes ?? 0) <= 5
       ? t.home.hero.etaShort
-      : q.etaMinutes <= 25
+      : (q.etaMinutes ?? 0) <= 25
         ? t.home.hero.etaMid
         : t.home.hero.etaLong;
   const open = () => {
@@ -255,7 +255,7 @@ function QueueHero({
         <div className="mt-1 text-sm font-medium" style={{ color }}>
           {isNext
             ? t.home.hero.youAreNextHint
-            : `${t.home.hero.etaWait.replace("{n}", String(q.etaMinutes))} · ${etaFlavor}`}
+            : `${t.home.hero.etaWait.replace("{n}", String(q.etaMinutes ?? 0))} · ${etaFlavor}`}
         </div>
         <DoctorRow
           appt={appt}
@@ -672,8 +672,16 @@ export function HomeHero({
   // The live queue card owns the "waiting" moment; once the doctor starts the
   // visit (IN_PROGRESS) we fall through to the calm today-appointment card
   // rather than a redundant "your visit has started" banner.
+  // Two-lanes: an arrived BOOKING is WAITING too but holds no queue
+  // position (lane = "schedule") — it gets the calm appointment card with
+  // its slot time, not a fake position.
   let primary: Primary;
-  if (queueAppt && queue.data?.status === "WAITING") primary = "queue";
+  if (
+    queueAppt &&
+    queue.data?.status === "WAITING" &&
+    queue.data.lane !== "schedule"
+  )
+    primary = "queue";
   else if (queueAppt || todayAppt) primary = "today";
   else if (dueReminder) primary = "meds";
   else if (freshConclusion) primary = "results";

@@ -19,10 +19,13 @@ export type MiniAppQueueStatus = {
   service: string | null;
   /** queueStatus: WAITING | IN_PROGRESS | DONE | SKIPPED … */
   status: string;
-  /** 1-based position; 0 when not waiting. */
-  position: number;
+  /** Two-lanes: walk-ins ("live") hold a position, bookings ("schedule") a slot time. */
+  lane?: "live" | "schedule";
+  slotTime?: string | null;
+  /** 1-based position; 0 when not waiting; null for schedule-lane bookings. */
+  position: number | null;
   totalWaiting: number;
-  etaMinutes: number;
+  etaMinutes: number | null;
   etaConfidence: string;
   etaSource: string;
   ticketNumber: string;

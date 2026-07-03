@@ -7,6 +7,7 @@ import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
+import { isLiveLane } from "@/lib/queue-ordering";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
   Tooltip,
@@ -41,15 +42,16 @@ const BAND_ACCENT: Record<Band, string> = {
 type QueueMode = "booked" | "walkin";
 
 /**
- * Booked queue: strictly by appointment time = booking order (1-2-3). A booked
- * patient whose slot time has arrived sits at the top, ahead of the walk-ins.
+ * Schedule lane: strictly by slot time = booking order. Bookings live on the
+ * calendar axis — they never gain a position in the live queue, no matter
+ * when they check in (two-lanes TZ I2).
  */
 const bySlotTime = (a: AppointmentRow, b: AppointmentRow) =>
   new Date(a.date).getTime() - new Date(b.date).getTime();
 
 /**
- * Live walk-in queue: by arrival order. `queueOrder` is stamped on arrival
- * (max+1 per doctor/day); fall back to creation time when it's missing.
+ * Live lane FIFO: urgency bump → arrival (queuedAt) → ticketSeq; creation
+ * time only catches legacy rows where all three keys collide.
  */
 const byArrival = (a: AppointmentRow, b: AppointmentRow) => {
   const c = compareQueuePriority(a, b);
@@ -98,11 +100,11 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
   }, [doctorsQuery.data, locale]);
 
   /**
-   * Two-tier live queue:
-   *   - booked (channel ≠ WALKIN) -> "Записанные": shown with their slot time,
-   *     ordered by that time = booking order. Priority when their time comes.
-   *   - walk-ins (channel = WALKIN) -> "Живая очередь": secondary, ordered by
-   *     arrival; they fill the gaps between booked appointments.
+   * Two lanes (docs/TZ-two-lanes.md), lane = f(channel), not status:
+   *   - walk-ins -> "Живая очередь": the primary section, FIFO by arrival;
+   *     their 1-2-3 is the position the receptionist announces.
+   *   - bookings -> "Записанные": secondary, shown with their slot time,
+   *     ordered by that time = booking order. They never enter the queue.
    * AI scores stay as row decoration (band accent + no-show pill), not the
    * sort key — order is deterministic so reception can trust 1-2-3.
    */
@@ -112,7 +114,7 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
     for (const row of rows) {
       const queueField = row.queueStatus ?? row.status;
       if (!QUEUE_STATUSES.has(queueField)) continue;
-      if (row.channel === "WALKIN") l.push(row);
+      if (isLiveLane(row)) l.push(row);
       else b.push(row);
     }
     b.sort(bySlotTime);
@@ -143,8 +145,13 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
               </span>
             ) : null}
           </h3>
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary tabular-nums">
-            {total}
+          <span className="flex shrink-0 items-center gap-1">
+            <span className="inline-flex h-5 items-center rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold text-primary tabular-nums">
+              {t("liveCount", { count: live.length })}
+            </span>
+            <span className="inline-flex h-5 items-center rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground tabular-nums">
+              {t("bookedCount", { count: booked.length })}
+            </span>
           </span>
         </header>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
@@ -154,6 +161,24 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
             </div>
           ) : (
             <>
+              {live.length > 0 ? (
+                <QueueSubsection
+                  title={t("subsectionLive")}
+                  count={live.length}
+                >
+                  {live.map((row, i) => (
+                    <QueueItem
+                      key={row.id}
+                      index={i + 1}
+                      row={row}
+                      locale={locale}
+                      ai={scoreMap.get(row.id)}
+                      mode="walkin"
+                      nowMs={nowMs}
+                    />
+                  ))}
+                </QueueSubsection>
+              ) : null}
               {booked.length > 0 ? (
                 <QueueSubsection
                   title={t("subsectionBooked")}
@@ -169,24 +194,6 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
                       mode="booked"
                       nowMs={nowMs}
                       specialty={specByDoctor.get(row.doctor.id) ?? null}
-                    />
-                  ))}
-                </QueueSubsection>
-              ) : null}
-              {live.length > 0 ? (
-                <QueueSubsection
-                  title={t("subsectionLive")}
-                  count={live.length}
-                >
-                  {live.map((row, i) => (
-                    <QueueItem
-                      key={row.id}
-                      index={i + 1}
-                      row={row}
-                      locale={locale}
-                      ai={scoreMap.get(row.id)}
-                      mode="walkin"
-                      nowMs={nowMs}
                     />
                   ))}
                 </QueueSubsection>

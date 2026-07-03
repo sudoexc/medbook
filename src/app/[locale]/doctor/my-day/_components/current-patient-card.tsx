@@ -84,11 +84,19 @@ function todayDateKey(): string {
   return `${y}-${m}-${day}`;
 }
 
+type CurrentSlice = {
+  current: CurrentPatient | null;
+  /** Two-lanes: true when `current` is the imminent-booking fallback. */
+  implicitNext: boolean;
+};
+
 export function CurrentPatientCard() {
   const t = useTranslations("doctor.myDay");
-  const { data: p, isLoading } = useDoctorToday<CurrentPatient | null>(
-    (d) => d.current,
-  );
+  const { data, isLoading } = useDoctorToday<CurrentSlice>((d) => ({
+    current: d.current,
+    implicitNext: d.currentIsImplicitNext,
+  }));
+  const p = data?.current ?? null;
 
   if (isLoading) {
     return (
@@ -137,27 +145,39 @@ export function CurrentPatientCard() {
     );
   }
 
-  return <ActivePatient patient={p} />;
+  return (
+    <ActivePatient patient={p} implicitNext={data?.implicitNext ?? false} />
+  );
 }
 
-function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
+function ActivePatient({
+  patient: p,
+  implicitNext,
+}: {
+  patient: CurrentPatient;
+  /**
+   * Two-lanes model: the server flags when this "current" is just the next
+   * booking within 15 min, not a visit the doctor actually picked. The card
+   * then says «Следующая запись» + a pick hint instead of implying a visit
+   * is underway — the doctor may equally well call a walk-in instead.
+   */
+  implicitNext: boolean;
+}) {
   const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
-  const dateKey = React.useMemo(todayDateKey, []);
+  const dateKey = React.useMemo(() => todayDateKey(), []);
   const mutation = useAppointmentStatusMutation(dateKey);
 
   // One global tick re-renders the timer every second; cheap because the
   // rest of the card is memoized through React's bailout on identical
-  // props. We tick on a single setState rather than maintaining separate
-  // state for "elapsed", "until-start", etc. — derived locally on render.
-  const [, setTick] = React.useState(0);
+  // props. The tick state *is* the clock — everything ("elapsed",
+  // "until-start", etc.) derives from it locally on render.
+  const [now, setNow] = React.useState<number>(() => Date.now());
   React.useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
-
-  const now = Date.now();
   const startsAtMs = new Date(p.startsAt).getTime();
   const startedAtMs = p.startedAt ? new Date(p.startedAt).getTime() : null;
 
@@ -264,8 +284,15 @@ function ActivePatient({ patient: p }: { patient: CurrentPatient }) {
         <div className="text-[15px] font-semibold text-foreground">
           {p.status === "IN_PROGRESS"
             ? t("current.currentVisit")
-            : t("current.nextPatient")}
+            : implicitNext
+              ? t("current.nextBooking")
+              : t("current.nextPatient")}
         </div>
+        {implicitNext ? (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {t("current.pickHint")}
+          </div>
+        ) : null}
       </header>
 
       <div className="flex flex-col gap-3 px-5 pb-3">

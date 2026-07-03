@@ -1823,7 +1823,10 @@
           "SMS_REPLY": "по SMS",
           "TG_BUTTON": "через Telegram",
           "INBOUND_CALL": "входящий звонок"
-        }
+        },
+        "sectionLive": "Живая очередь",
+        "sectionBooked": "Записи",
+        "bookedHint": "Записи не участвуют в порядке очереди"
       }
     },
     "warnings": {
@@ -1838,7 +1841,9 @@
       "subsectionBooked": "Записанные",
       "subsectionLive": "Живая очередь",
       "waitMin": "{min} мин",
-      "refreshQueue": "Обновить очередь"
+      "refreshQueue": "Обновить очередь",
+      "liveCount": "в очереди: {count}",
+      "bookedCount": "записей: {count}"
     },
     "bottomRow": {
       "smartTitle": "Умные рекомендации",
@@ -1940,7 +1945,14 @@
       "inQueueCount": "В очереди ({count})",
       "openDoctor": "Открыть карточку врача {name}",
       "waitMin": "{min} мин",
-      "menuLabel": "Действия"
+      "menuLabel": "Действия",
+      "sectionLive": "Живая очередь",
+      "sectionBooked": "Записи",
+      "callNextLive": "Вызвать из очереди",
+      "startBooking": "Начать запись",
+      "arrivedBadge": "Пришёл",
+      "emptyLive": "Очередь пуста",
+      "emptyBooked": "Записей нет"
     },
     "calls": {
       "title": "Call-центр",
@@ -5730,7 +5742,9 @@
           "cancelled": "Отменён",
           "noShow": "Не пришёл",
           "skipped": "Пропущен"
-        }
+        },
+        "sectionLive": "Живая очередь",
+        "sectionBooked": "Записи"
       },
       "activePatient": {
         "noActiveTitle": "Нет активного пациента",
@@ -6627,7 +6641,9 @@
         "startWithoutCall": "Начать без вызова",
         "registerArrivalOnly": "Только зарегистрировать прибытие",
         "noShow": "Не пришёл",
-        "cancelVisit": "Отменить приём"
+        "cancelVisit": "Отменить приём",
+        "nextBooking": "Следующая запись",
+        "pickHint": "Выберите пациента: из очереди или по записи"
       },
       "statusToast": {
         "called": "Пациент вызван",
@@ -6645,6 +6661,13 @@
         "errCallFailed": "Не удалось вызвать пациента",
         "errRevertFailed": "Не удалось отменить шаг",
         "errUpdateFailed": "Не удалось обновить статус"
+      },
+      "liveQueue": {
+        "title": "Живая очередь",
+        "empty": "Очередь пуста",
+        "call": "Вызвать",
+        "waitingFor": "ждёт {min} мин",
+        "ticket": "Талон"
       }
     },
     "visits": {

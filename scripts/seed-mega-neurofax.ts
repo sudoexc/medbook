@@ -425,7 +425,7 @@ async function main() {
     }
   }
   // Today: a believable LIVE queue per board-visible doctor, built the way the
-  // real walk-in / check-in paths do — serveAt EDF, immutable ticketSeq,
+  // real walk-in / check-in paths do — two-lanes (live FIFO ⊥ schedule), immutable ticketSeq,
   // queuedAt anchor, a «срочно» bump and a late-arrival demotion. Only doctors
   // with an active schedule for today's weekday appear on the board, so we seed
   // exactly those (see scripts/_live-queue-seed.ts).

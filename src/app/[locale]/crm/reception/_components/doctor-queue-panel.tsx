@@ -10,11 +10,12 @@
  * (optimistic + toast + invalidates the reception surfaces). NO_SHOW goes
  * through an AlertDialog to prevent fat-fingers; everything else is one click.
  *
- * Drag-and-drop reorder: WAITING/BOOKED rows are sortable via @dnd-kit. Drop
- * triggers `useReorderQueue` which persists `queueOrder` 1..N — kiosk/TV board
- * see the same sequence (ticket numbers derive from queueOrder). IN_PROGRESS
- * stays pinned at the top and off-path rows (COMPLETED/CANCELLED/...) sit at
- * the bottom — neither is draggable.
+ * Two-lanes layout (docs/TZ-two-lanes.md): the middle splits into «Живая
+ * очередь» (live lane = waiting walk-ins, FIFO, drag-and-drop via @dnd-kit —
+ * drop triggers `useReorderQueue` which persists `queueOrder` 1..N) and
+ * «Записи» (schedule lane = bookings sorted by slot time, never draggable —
+ * the reorder API 422s on non-walk-in ids). IN_PROGRESS stays pinned at the
+ * top and off-path rows (COMPLETED/CANCELLED/...) sit at the bottom.
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
@@ -74,6 +75,7 @@ import {
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
+import { isLiveLane } from "@/lib/queue-ordering";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import {
@@ -101,14 +103,14 @@ const STATUS_TINT: Record<AppointmentRow["queueStatus"], string> = {
   NO_SHOW: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
-// Which queue statuses sit in the "active" section and may be reordered.
-// CONFIRMED slots in alongside BOOKED — the patient hasn't arrived yet, but
-// their seat in the queue is real, so receptionists need to be able to drag
-// them around the same way they would an unconfirmed slot.
-const DRAGGABLE_STATUSES = new Set<AppointmentRow["queueStatus"]>([
-  "WAITING",
+// Schedule-lane statuses shown in the «Записи» section. WAITING here is an
+// arrived booking (checked in at reception/kiosk) — per the two-lanes TZ it
+// stays in the schedule lane with a «Пришёл» badge and never gets a queue
+// position, so it is not draggable either.
+const BOOKED_SECTION_STATUSES = new Set<AppointmentRow["queueStatus"]>([
   "BOOKED",
   "CONFIRMED",
+  "WAITING",
 ]);
 
 // Roles allowed to reorder — mirrors RBAC on POST /api/crm/appointments/reorder.
@@ -118,13 +120,18 @@ const REORDER_ROLES = new Set<LifecycleRole>([
   "RECEPTIONIST",
 ]);
 
-function sortDraggable(rows: AppointmentRow[]): AppointmentRow[] {
+// Live-lane FIFO: urgency bump → arrival (queuedAt) → ticketSeq. The extra
+// date tiebreak only catches legacy rows where all three keys collide.
+function sortLive(rows: AppointmentRow[]): AppointmentRow[] {
   return [...rows].sort((a, b) => {
     const c = compareQueuePriority(a, b);
     if (c !== 0) return c;
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 }
+
+const bySlotTime = (a: AppointmentRow, b: AppointmentRow) =>
+  new Date(a.date).getTime() - new Date(b.date).getTime();
 
 export function DoctorQueuePanel({
   appointments,
@@ -137,18 +144,24 @@ export function DoctorQueuePanel({
   const canReorder = REORDER_ROLES.has(role);
   const reorder = useReorderQueue();
 
-  const { inProgress, draggable, offPath } = React.useMemo(() => {
+  const { inProgress, live, booked, offPath } = React.useMemo(() => {
     const ip: AppointmentRow[] = [];
-    const dr: AppointmentRow[] = [];
+    const lv: AppointmentRow[] = [];
+    const bk: AppointmentRow[] = [];
     const op: AppointmentRow[] = [];
     for (const row of appointments) {
+      // Lane = f(channel), not status (TZ I2): a walk-in that isn't WAITING
+      // yet (or anymore) has no queue position, so it falls to off-path.
       if (row.queueStatus === "IN_PROGRESS") ip.push(row);
-      else if (DRAGGABLE_STATUSES.has(row.queueStatus)) dr.push(row);
+      else if (isLiveLane(row) && row.queueStatus === "WAITING") lv.push(row);
+      else if (!isLiveLane(row) && BOOKED_SECTION_STATUSES.has(row.queueStatus))
+        bk.push(row);
       else op.push(row);
     }
-    ip.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    op.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    return { inProgress: ip, draggable: sortDraggable(dr), offPath: op };
+    ip.sort(bySlotTime);
+    bk.sort(bySlotTime);
+    op.sort(bySlotTime);
+    return { inProgress: ip, live: sortLive(lv), booked: bk, offPath: op };
   }, [appointments]);
 
   // Local override during a drag — dnd-kit needs the items array to reflect
@@ -159,27 +172,27 @@ export function DoctorQueuePanel({
   React.useEffect(() => {
     if (!pendingOrder) return;
     // Once cached data agrees with our pending order, drop the override.
-    const ids = draggable.map((r) => r.id);
+    const ids = live.map((r) => r.id);
     if (
       ids.length === pendingOrder.length &&
       ids.every((id, i) => id === pendingOrder[i])
     ) {
       setPendingOrder(null);
     }
-  }, [draggable, pendingOrder]);
+  }, [live, pendingOrder]);
 
-  const visibleDraggable = React.useMemo(() => {
-    if (!pendingOrder) return draggable;
-    const byId = new Map(draggable.map((r) => [r.id, r]));
+  const visibleLive = React.useMemo(() => {
+    if (!pendingOrder) return live;
+    const byId = new Map(live.map((r) => [r.id, r]));
     const out: AppointmentRow[] = [];
     for (const id of pendingOrder) {
       const r = byId.get(id);
       if (r) out.push(r);
     }
     // Any new id arriving mid-drag (rare) goes to the bottom.
-    for (const r of draggable) if (!pendingOrder.includes(r.id)) out.push(r);
+    for (const r of live) if (!pendingOrder.includes(r.id)) out.push(r);
     return out;
-  }, [draggable, pendingOrder]);
+  }, [live, pendingOrder]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -191,10 +204,10 @@ export function DoctorQueuePanel({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = visibleDraggable.findIndex((r) => r.id === active.id);
-    const newIndex = visibleDraggable.findIndex((r) => r.id === over.id);
+    const oldIndex = visibleLive.findIndex((r) => r.id === active.id);
+    const newIndex = visibleLive.findIndex((r) => r.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(visibleDraggable, oldIndex, newIndex);
+    const next = arrayMove(visibleLive, oldIndex, newIndex);
     const orderedIds = next.map((r) => r.id);
     setPendingOrder(orderedIds);
     reorder.mutate(
@@ -207,7 +220,8 @@ export function DoctorQueuePanel({
 
   if (
     inProgress.length === 0 &&
-    visibleDraggable.length === 0 &&
+    visibleLive.length === 0 &&
+    booked.length === 0 &&
     offPath.length === 0
   ) {
     return (
@@ -226,38 +240,39 @@ export function DoctorQueuePanel({
     );
   }
 
-  // Numbering is positional across the visible sections so it matches the
-  // ticket sequence the patient sees on the kiosk receipt.
-  let counter = 0;
-  const nextIndex = () => ++counter;
-
+  // Numbering restarts per section: for the live lane it is the actual queue
+  // position 1..N (what the receptionist announces); bookings/off-path get a
+  // positional index within their own list — they have no queue position.
   return (
     <ul
       className="flex flex-col divide-y divide-border rounded-lg border border-border bg-background"
       aria-label={t("ariaLabel")}
     >
-      {inProgress.map((row) => (
+      {inProgress.map((row, i) => (
         <QueuePanelRow
           key={row.id}
-          index={nextIndex()}
+          index={i + 1}
           row={row}
           onOpenAppointment={onOpenAppointment}
         />
       ))}
 
+      {visibleLive.length > 0 ? (
+        <SectionHeading label={t("sectionLive")} />
+      ) : null}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
-          items={visibleDraggable.map((r) => r.id)}
+          items={visibleLive.map((r) => r.id)}
           strategy={verticalListSortingStrategy}
         >
-          {visibleDraggable.map((row) => (
+          {visibleLive.map((row, i) => (
             <SortableQueueRow
               key={row.id}
-              index={nextIndex()}
+              index={i + 1}
               row={row}
               draggable={canReorder}
               onOpenAppointment={onOpenAppointment}
@@ -266,15 +281,40 @@ export function DoctorQueuePanel({
         </SortableContext>
       </DndContext>
 
-      {offPath.map((row) => (
+      {booked.length > 0 ? (
+        <SectionHeading label={t("sectionBooked")} hint={t("bookedHint")} />
+      ) : null}
+      {booked.map((row, i) => (
         <QueuePanelRow
           key={row.id}
-          index={nextIndex()}
+          index={i + 1}
+          row={row}
+          onOpenAppointment={onOpenAppointment}
+        />
+      ))}
+
+      {offPath.map((row, i) => (
+        <QueuePanelRow
+          key={row.id}
+          index={i + 1}
           row={row}
           onOpenAppointment={onOpenAppointment}
         />
       ))}
     </ul>
+  );
+}
+
+function SectionHeading({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <li className="bg-muted/30 px-3 py-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </span>
+      {hint ? (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
+      ) : null}
+    </li>
   );
 }
 
@@ -338,6 +378,8 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
   ) {
     const t = useTranslations("reception.doctorsPanel.panel");
     const tStatus = useTranslations("appointments.status");
+    // «Пришёл» badge lives in the doctorQueue namespace (shared with the card).
+    const tQueue = useTranslations("reception.doctorQueue");
     const locale = useLocale();
     const role = useCurrentRole() as LifecycleRole;
     const apptDate = React.useMemo(() => new Date(row.date), [row.date]);
@@ -352,9 +394,12 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
     const primary = actions.find((a) => !a.confirm) ?? null;
     const overflow = actions.filter((a) => a !== primary);
 
-    // Manual urgency is only meaningful while the patient is still queued.
-    const canPrioritize = DRAGGABLE_STATUSES.has(row.queueStatus);
+    // Manual urgency reorders the live lane only — bookings have no queue
+    // position to bump (two-lanes TZ I1/I2).
+    const canPrioritize = isLiveLane(row) && row.queueStatus === "WAITING";
     const isUrgent = (row.queuePriority ?? 0) > 0;
+    // Arrived booking: checked in, but stays in the schedule lane.
+    const arrivedBooking = !isLiveLane(row) && row.queueStatus === "WAITING";
 
     const [confirmTarget, setConfirmTarget] =
       React.useState<AppointmentStatus | null>(null);
@@ -444,6 +489,16 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
         >
           {tStatus(row.queueStatus.toLowerCase() as never)}
         </Badge>
+
+        {arrivedBooking ? (
+          <Badge
+            variant="outline"
+            className="h-6 shrink-0 gap-1 border-warning/40 bg-warning/10 px-2 text-[11px] font-medium text-warning-text"
+          >
+            <UserCheckIcon className="size-3" aria-hidden />
+            {tQueue("arrivedBadge")}
+          </Badge>
+        ) : null}
 
         {confirmedTime ? (
           <span

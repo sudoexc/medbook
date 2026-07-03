@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { initials } from "@/lib/format";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
+import { isLiveLane } from "@/lib/queue-ordering";
 
 // GET /api/queue/status/:id — public endpoint for patient queue status (QR code page)
 export async function GET(
@@ -19,6 +20,8 @@ export async function GET(
       queueStatus: true,
       queueOrder: true,
       ticketSeq: true,
+      channel: true,
+      time: true,
       patient: { select: { fullName: true } },
       doctor: {
         select: {
@@ -48,13 +51,18 @@ export async function GET(
   const waiting = q?.waiting ?? [];
   const mine = waiting.find((w) => w.appointmentId === appointment.id);
 
-  const position =
-    appointment.queueStatus === "WAITING"
+  // Two-lanes (docs/TZ-two-lanes.md): only live-lane rows (walk-ins) hold a
+  // queue position. An arrived booking waits on the schedule axis — the UI
+  // shows its slot time, not a fake "you're 0th in line".
+  const live = isLiveLane(appointment);
+  const position = !live
+    ? null
+    : appointment.queueStatus === "WAITING"
       ? (mine?.position ?? 0)
       : appointment.queueStatus === "IN_PROGRESS"
         ? 0
         : -1;
-  const etaMinutes = mine?.etaMinutes ?? 0;
+  const etaMinutes = live ? (mine?.etaMinutes ?? 0) : null;
   const ticketNumber = ticketNumberFor(
     appointment.doctor.id,
     appointment.ticketSeq ?? appointment.queueOrder,
@@ -73,7 +81,10 @@ export async function GET(
     cabinet: appointment.doctor.cabinet?.number ?? null,
     service: appointment.primaryService?.nameRu ?? null,
     status: appointment.queueStatus,
-    position: position > 0 ? position : 0,
+    /** "live" = walk-in with a queue position; "schedule" = booking (slot time). */
+    lane: live ? "live" : "schedule",
+    slotTime: appointment.time ?? null,
+    position: position !== null && position > 0 ? position : live ? 0 : null,
     totalWaiting: waiting.length,
     etaMinutes,
     etaConfidence: q?.etaConfidence ?? "low",

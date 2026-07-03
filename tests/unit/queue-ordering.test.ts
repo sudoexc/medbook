@@ -1,159 +1,150 @@
 /**
- * serveAt EDF model — `src/lib/queue-ordering.ts`
+ * Two-lanes ordering spec (docs/TZ-two-lanes.md) — replaces the serveAt EDF
+ * suite. The live queue is timeless FIFO over walk-ins only; bookings never
+ * enter its order. `compareQueue` is shared verbatim by the server projection
+ * and every client sort site, so these are THE invariants of the model:
  *
- * The single source of truth for live-queue ordering, shared verbatim by the
- * server projection (TV board / kiosk / patient ticket) and every client sort
- * site (reception panel, doctor list, queue column). These tests pin the two
- * invariants the whole feature rests on:
- *
- *   - serveAt: a walk-in is served by arrival (`queuedAt`); a booking by
- *     max(slot, queuedAt) — so a late booking is treated as a walk-in from the
- *     moment it actually arrived and can't reclaim its original slot.
- *   - compareQueue: queuePriority (срочно) → serveAt (EDF) → ticketSeq.
+ *   I1 — order depends only on (queuePriority, queuedAt, ticketSeq);
+ *        the row's slot `date` never matters
+ *   I2 — `isLiveLane` splits strictly by channel; `splitLanes` never lets a
+ *        booking into the live list
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-  serveAtMs,
   compareQueue,
+  isLiveLane,
+  queuedMs,
+  splitLanes,
   type QueueOrderable,
 } from "@/lib/queue-ordering";
 
-const at = (hhmm: string) => `2026-06-26T${hhmm}:00.000Z`;
-const ms = (hhmm: string) => new Date(at(hhmm)).getTime();
+const T0 = new Date("2026-07-03T09:00:00.000Z").getTime();
+const MIN = 60_000;
 
-function make(o: {
-  priority?: number;
-  channel?: string;
-  date: string;
-  queuedAt?: string | null;
-  ticketSeq?: number | null;
-  queueOrder?: number | null;
-}): QueueOrderable {
+function walkin(
+  id: string,
+  joinedAtMs: number,
+  over: Partial<QueueOrderable> = {},
+): QueueOrderable & { id: string } {
   return {
-    queuePriority: o.priority ?? 0,
-    channel: o.channel ?? "PHONE",
-    date: at(o.date),
-    queuedAt: o.queuedAt == null ? null : at(o.queuedAt),
-    ticketSeq: o.ticketSeq ?? null,
-    queueOrder: o.queueOrder ?? null,
+    id,
+    channel: "WALKIN",
+    date: new Date(joinedAtMs),
+    queuedAt: new Date(joinedAtMs),
+    queuePriority: 0,
+    ticketSeq: null,
+    ...over,
   };
 }
 
-describe("serveAtMs", () => {
-  it("walk-in is served by arrival (queuedAt), not its display date", () => {
-    const r = serveAtMs({
-      channel: "WALKIN",
-      date: at("09:00"),
-      queuedAt: at("09:30"),
-    });
-    expect(r).toBe(ms("09:30"));
+function booking(
+  id: string,
+  slotMs: number,
+  over: Partial<QueueOrderable> = {},
+): QueueOrderable & { id: string } {
+  return {
+    id,
+    channel: "PHONE",
+    date: new Date(slotMs),
+    queuedAt: null,
+    queuePriority: 0,
+    ticketSeq: null,
+    ...over,
+  };
+}
+
+function order(rows: Array<QueueOrderable & { id: string }>): string[] {
+  return [...rows].sort(compareQueue).map((r) => r.id);
+}
+
+describe("queuedMs — the FIFO key", () => {
+  it("uses queuedAt when present", () => {
+    expect(queuedMs({ date: new Date(T0), queuedAt: new Date(T0 + 5 * MIN) })).toBe(
+      T0 + 5 * MIN,
+    );
   });
 
-  it("on-time booking is served at its slot, not its earlier arrival", () => {
-    // Patient arrived 08:55 for a 09:00 slot — keeps the 09:00 deadline.
-    const r = serveAtMs({
-      channel: "PHONE",
-      date: at("09:00"),
-      queuedAt: at("08:55"),
-    });
-    expect(r).toBe(ms("09:00"));
+  it("falls back to date for legacy rows without queuedAt", () => {
+    expect(queuedMs({ date: new Date(T0), queuedAt: null })).toBe(T0);
   });
 
-  it("late booking is served from arrival (treated as a walk-in)", () => {
-    // 09:00 slot, but the patient only checked in at 09:40.
-    const r = serveAtMs({
-      channel: "PHONE",
-      date: at("09:00"),
-      queuedAt: at("09:40"),
-    });
-    expect(r).toBe(ms("09:40"));
-  });
-
-  it("falls back to date when queuedAt is null (pre-migration / not yet queued)", () => {
-    const r = serveAtMs({
-      channel: "TELEGRAM",
-      date: at("09:00"),
-      queuedAt: null,
-    });
-    expect(r).toBe(ms("09:00"));
-  });
-
-  it("accepts Date and epoch-ms as well as ISO strings", () => {
-    const asDate = serveAtMs({
-      channel: "WALKIN",
-      date: new Date(at("09:00")),
-      queuedAt: new Date(at("09:10")),
-    });
-    const asEpoch = serveAtMs({
-      channel: "WALKIN",
-      date: ms("09:00"),
-      queuedAt: ms("09:10"),
-    });
-    expect(asDate).toBe(ms("09:10"));
-    expect(asEpoch).toBe(ms("09:10"));
+  it("accepts Date, ISO string, and epoch interchangeably", () => {
+    const iso = new Date(T0).toISOString();
+    expect(queuedMs({ date: iso, queuedAt: iso })).toBe(T0);
+    expect(queuedMs({ date: T0, queuedAt: T0 })).toBe(T0);
   });
 });
 
-describe("compareQueue", () => {
-  const sorted = (rows: QueueOrderable[]) => [...rows].sort(compareQueue);
-
-  it("urgency (queuePriority) beats an earlier serveAt", () => {
-    const urgent = make({ priority: 1, date: "10:00", queuedAt: "10:00", ticketSeq: 9 });
-    const early = make({ priority: 0, date: "09:00", queuedAt: "09:00", ticketSeq: 1 });
-    expect(compareQueue(urgent, early)).toBeLessThan(0);
-    expect(sorted([early, urgent])).toEqual([urgent, early]);
+describe("compareQueue — timeless FIFO", () => {
+  it("orders strictly by arrival, not by slot time (I1)", () => {
+    // w_late's row `date` (slot axis) is far in the future — irrelevant: it
+    // joined the queue first, it is served first.
+    const wLate = walkin("w_late", T0, { date: new Date(T0 + 6 * 60 * MIN) });
+    const wEarly = walkin("w_early", T0 + 10 * MIN, { date: new Date(T0) });
+    expect(order([wEarly, wLate])).toEqual(["w_late", "w_early"]);
   });
 
-  it("within a priority band, earlier serveAt is served first (EDF)", () => {
-    const a = make({ date: "09:15", queuedAt: "09:15", ticketSeq: 2 });
-    const b = make({ date: "09:05", queuedAt: "09:05", ticketSeq: 5 });
-    expect(sorted([a, b])).toEqual([b, a]);
+  it("urgency bump outranks earlier arrival", () => {
+    const first = walkin("first", T0);
+    const urgent = walkin("urgent", T0 + 30 * MIN, { queuePriority: 1 });
+    expect(order([first, urgent])).toEqual(["urgent", "first"]);
   });
 
-  it("a late booking cannot jump a walk-in who actually waited", () => {
-    // Booking slotted 09:00 but only arrived at 10:00.
-    const lateBooking = make({
-      channel: "PHONE",
-      date: "09:00",
-      queuedAt: "10:00",
-      ticketSeq: 1,
+  it("equal arrival resolves by immutable ticketSeq", () => {
+    const a = walkin("a", T0, { ticketSeq: 2 });
+    const b = walkin("b", T0, { ticketSeq: 1 });
+    expect(order([a, b])).toEqual(["b", "a"]);
+  });
+
+  it("ticketSeq falls back to queueOrder, missing both sorts last", () => {
+    const seq = walkin("seq", T0, { ticketSeq: 1 });
+    const ord = walkin("ord", T0, { ticketSeq: null, queueOrder: 2 });
+    const bare = walkin("bare", T0, { ticketSeq: null, queueOrder: null });
+    expect(order([bare, ord, seq])).toEqual(["seq", "ord", "bare"]);
+  });
+});
+
+describe("lanes (I2)", () => {
+  it("isLiveLane: only WALKIN is the live lane", () => {
+    expect(isLiveLane({ channel: "WALKIN" })).toBe(true);
+    for (const channel of ["PHONE", "TELEGRAM", "WEBSITE", "KIOSK"]) {
+      expect(isLiveLane({ channel })).toBe(false);
+    }
+  });
+
+  it("splitLanes: bookings never enter the live list, whatever their state", () => {
+    // An "arrived" booking (checked in: queuedAt stamped, even earlier than
+    // every walk-in) still belongs to the schedule lane.
+    const arrivedBooking = booking("b_arrived", T0 + 60 * MIN, {
+      queuedAt: new Date(T0 - 30 * MIN),
     });
-    // Walk-in arrived 09:30 — before the booking showed up.
-    const walkin = make({
-      channel: "WALKIN",
-      date: "09:30",
-      queuedAt: "09:30",
-      ticketSeq: 7,
-    });
-    expect(sorted([lateBooking, walkin])).toEqual([walkin, lateBooking]);
+    const w1 = walkin("w1", T0);
+    const w2 = walkin("w2", T0 + 5 * MIN);
+    const { live, schedule } = splitLanes([arrivedBooking, w2, w1]);
+    expect(live.map((r) => r.id)).toEqual(["w1", "w2"]);
+    expect(schedule.map((r) => r.id)).toEqual(["b_arrived"]);
   });
 
-  it("an on-time booking keeps its place over a later walk-in", () => {
-    const booking = make({
-      channel: "PHONE",
-      date: "09:00",
-      queuedAt: "08:55",
-      ticketSeq: 3,
-    });
-    const walkin = make({
-      channel: "WALKIN",
-      date: "09:15",
-      queuedAt: "09:15",
-      ticketSeq: 4,
-    });
-    expect(sorted([walkin, booking])).toEqual([booking, walkin]);
+  it("splitLanes returns the live lane already FIFO-sorted", () => {
+    const rows = [
+      walkin("w3", T0 + 20 * MIN),
+      walkin("w1", T0),
+      walkin("w2", T0 + 10 * MIN, { queuePriority: 1 }),
+    ];
+    const { live } = splitLanes(rows);
+    expect(live.map((r) => r.id)).toEqual(["w2", "w1", "w3"]);
   });
 
-  it("breaks an exact serveAt tie by immutable ticketSeq", () => {
-    const later = make({ date: "09:00", queuedAt: "09:00", ticketSeq: 8 });
-    const earlier = make({ date: "09:00", queuedAt: "09:00", ticketSeq: 2 });
-    expect(sorted([later, earlier])).toEqual([earlier, later]);
-  });
-
-  it("falls back to queueOrder when ticketSeq is absent", () => {
-    const later = make({ date: "09:00", queuedAt: "09:00", ticketSeq: null, queueOrder: 6 });
-    const earlier = make({ date: "09:00", queuedAt: "09:00", ticketSeq: null, queueOrder: 1 });
-    expect(sorted([later, earlier])).toEqual([earlier, later]);
+  it("a 13:00 booking and a 13:00 walk-in coexist without interaction", () => {
+    // The strategy's core scenario: a booked 13:00 slot neither blocks nor
+    // reorders a walk-in who joins the live queue at 13:00 — the two rows
+    // live on independent axes.
+    const slot13 = T0 + 4 * 60 * MIN;
+    const b = booking("b_13", slot13);
+    const w = walkin("w_13", slot13);
+    const { live, schedule } = splitLanes([b, w]);
+    expect(live.map((r) => r.id)).toEqual(["w_13"]);
+    expect(schedule.map((r) => r.id)).toEqual(["b_13"]);
   });
 });

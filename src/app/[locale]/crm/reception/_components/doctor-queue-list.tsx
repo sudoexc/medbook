@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { isLiveLane } from "@/lib/queue-ordering";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -37,6 +38,14 @@ export interface DoctorQueueListProps {
 }
 
 type RowState = "in_session" | "awaiting" | "empty";
+
+// Schedule-lane statuses that count as a pending booking for the "next"
+// fallback — mirrors the panel's «Записи» section.
+const BOOKING_STATUSES = new Set<AppointmentRow["queueStatus"]>([
+  "BOOKED",
+  "CONFIRMED",
+  "WAITING",
+]);
 
 interface DerivedRow {
   doctor: DoctorRef;
@@ -80,23 +89,22 @@ export function DoctorQueueList({
       const items = appointmentsByDoctor.get(doctor.id) ?? [];
       const current =
         items.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
-      const upcoming = items
-        .filter(
-          (a) => a.queueStatus === "WAITING" || a.queueStatus === "BOOKED",
-        )
-        .sort((a, b) => {
-          // Mirror the panel's sort so the "next" preview matches what the
-          // receptionist sees: urgency first, then drag order, then slot time.
-          const c = compareQueuePriority(a, b);
-          if (c !== 0) return c;
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        });
-      const next = upcoming[0] ?? null;
+      // "Next" = live-lane head (FIFO, mirrors the panel's «Живая очередь»);
+      // when nobody is physically waiting, fall back to the nearest booking.
+      const live = items
+        .filter((a) => isLiveLane(a) && a.queueStatus === "WAITING")
+        .sort(compareQueuePriority);
+      const bookings = items
+        .filter((a) => !isLiveLane(a) && BOOKING_STATUSES.has(a.queueStatus))
+        .sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+        );
+      const next = live[0] ?? bookings[0] ?? null;
       const cabinet =
         (current ?? next)?.cabinet?.number ?? items[0]?.cabinet?.number ?? null;
       const state: RowState = current
         ? "in_session"
-        : upcoming.length > 0
+        : live.length + bookings.length > 0
           ? "awaiting"
           : "empty";
       return {
@@ -104,7 +112,9 @@ export function DoctorQueueList({
         state,
         current,
         next,
-        count: items.filter((a) => a.queueStatus !== "COMPLETED" && a.queueStatus !== "CANCELLED").length,
+        // The queue column shows the live lane only — bookings live on the
+        // calendar axis and would inflate the "waiting" number.
+        count: live.length,
         cabinet,
       };
     });

@@ -119,8 +119,8 @@ export type AppointmentRow = {
  * list, queue column). Thin adapter over the single source of truth
  * `compareQueue` (`lib/queue-ordering`) so the staff panel sorts byte-for-byte
  * like the server projection that drives the TV board / kiosk / patient ticket:
- * urgency bump first, then serveAt (EDF), then the immutable ticket sequence.
- * Callers may still append a tie-breaker, but with serveAt as the key a true
+ * urgency bump first, then arrival FIFO (queuedAt), then the immutable ticket
+ * sequence. Callers may still append a tie-breaker, but with arrival as the key a true
  * tie is now rare.
  */
 export function compareQueuePriority(

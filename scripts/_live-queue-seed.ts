@@ -3,7 +3,7 @@
  * the way the real walk-in / check-in paths do, so the TV board, the kiosk
  * doctor list and the patient ticket all render a believable mid-shift clinic.
  *
- * Every row it writes is correct under the serveAt EDF model
+ * Every row it writes is correct under the two-lanes model (docs/TZ-two-lanes.md)
  * (see src/lib/queue-ordering.ts):
  *
  *   - `time` is the Tashkent wall-clock string the board displays. Prod runs UTC;

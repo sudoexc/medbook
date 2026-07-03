@@ -20,9 +20,9 @@ import { ok, err } from "@/server/http";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { ReorderQueueSchema } from "@/server/schemas/appointment";
-import { compareQueue, serveAtMs } from "@/lib/queue-ordering";
+import { compareQueue, isLiveLane, queuedMs } from "@/lib/queue-ordering";
 
-/** Spacing between consecutive serveAt anchors when re-sequencing (1 s). */
+/** Spacing between consecutive FIFO anchors when re-sequencing (1 s). */
 const STEP_MS = 1000;
 
 export const POST = createApiHandler(
@@ -58,36 +58,33 @@ export const POST = createApiHandler(
       return err("IdsMismatch", 422, { reason: "ids_mismatch", missing });
     }
 
-    // Variant A — re-sequence by rewriting the serveAt anchor (`queuedAt`), not
+    // Two-lanes: only LIVE-lane rows (walk-ins) have a queue order to shuffle.
+    // Bookings live on the schedule axis and never interleave (TZ-two-lanes I2)
+    // — a set containing one is a stale client; 422 so it refetches lanes.
+    const bookings = existing.filter((a) => !isLiveLane(a));
+    if (bookings.length > 0) {
+      return err("NotLiveLane", 422, {
+        reason: "not_live_lane",
+        ids: bookings.map((a) => a.id),
+      });
+    }
+
+    // Variant A — re-sequence by rewriting the FIFO anchor (`queuedAt`), not
     // `queueOrder`, which stays frozen as the immutable ticket-number source.
-    // Anchor the new sequence at the earliest serveAt currently in the set and
-    // space rows STEP_MS apart so the shared EDF comparator (`compareQueue`)
-    // reproduces exactly this top-to-bottom order on every surface.
-    //
-    // Caveat: a booking whose slot is still in the future floors at its slot
-    // (serveAt = max(slot, queuedAt)), so dragging it *earlier* than its slot is
-    // a no-op — the receptionist uses «срочно» (queuePriority) to pull a
-    // not-yet-due booking ahead. Walk-ins and already-due bookings move freely.
-    const base = Math.min(...existing.map((a) => serveAtMs(a)));
+    // Anchor the new sequence at the earliest arrival currently in the set and
+    // space rows STEP_MS apart so the shared FIFO comparator (`compareQueue`)
+    // reproduces exactly this top-to-bottom order on every surface. With the
+    // schedule lane excluded above there is nothing left to "floor" — the
+    // requested order is always the effective order.
+    const base = Math.min(...existing.map((a) => queuedMs(a)));
     const byId = new Map(existing.map((a) => [a.id, a]));
 
-    // Project the post-write rows (new `queuedAt` anchors) and recompute the
-    // order the shared comparator will actually render on the board. A booking
-    // whose slot is still in the future floors at its slot
-    // (serveAt = max(slot, queuedAt)), so dragging it earlier than its slot is a
-    // no-op. We surface those ids (`floored`) and the resulting order
-    // (`effectiveOrder`) so the reception UI can correct its optimistic state
-    // and nudge the operator toward «срочно» (queuePriority) instead of lying
-    // with a bare success.
     const projected = uniqueIds.map((id, idx) => {
       const row = byId.get(id)!;
       return { ...row, queuedAt: new Date(base + idx * STEP_MS) };
     });
-    const floored = projected
-      .filter(
-        (r) => r.channel !== "WALKIN" && r.date.getTime() > r.queuedAt.getTime(),
-      )
-      .map((r) => r.id);
+    // Response shape kept for client compat; floored is structurally empty now.
+    const floored: string[] = [];
     const effectiveOrder = [...projected].sort(compareQueue).map((r) => r.id);
     const exact =
       effectiveOrder.length === uniqueIds.length &&

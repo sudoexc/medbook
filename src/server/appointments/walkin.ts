@@ -161,8 +161,8 @@ export async function registerWalkin(
         queueOrder: order,
         // Immutable ticket sequence, frozen at creation (see queue-projection).
         ticketSeq: order,
-        // serveAt EDF anchor — a walk-in is served FIFO from the moment it
-        // joined the queue, which is "now" (== `start`, the display instant).
+        // FIFO anchor of the live lane — a walk-in is served from the moment
+        // it joined the queue, which is "now" (== `start`, the display instant).
         queuedAt: start,
         channel,
         ticketCode,

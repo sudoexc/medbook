@@ -1823,7 +1823,10 @@
           "SMS_REPLY": "SMS orqali",
           "TG_BUTTON": "Telegram orqali",
           "INBOUND_CALL": "kiruvchi qo'ng'iroq"
-        }
+        },
+        "sectionLive": "Jonli navbat",
+        "sectionBooked": "Yozuvlar",
+        "bookedHint": "Yozuvlar navbat tartibida qatnashmaydi"
       }
     },
     "warnings": {
@@ -1838,7 +1841,9 @@
       "subsectionBooked": "Yozilganlar",
       "subsectionLive": "Jonli navbat",
       "waitMin": "{min} daq.",
-      "refreshQueue": "Navbatni yangilash"
+      "refreshQueue": "Navbatni yangilash",
+      "liveCount": "navbatda: {count}",
+      "bookedCount": "yozuvlar: {count}"
     },
     "bottomRow": {
       "smartTitle": "Aqlli tavsiyalar",
@@ -1940,7 +1945,14 @@
       "inQueueCount": "Navbatda ({count})",
       "waitMin": "{min} daq.",
       "menuLabel": "Amallar",
-      "openDoctor": "{name} kartochkasini ochish"
+      "openDoctor": "{name} kartochkasini ochish",
+      "sectionLive": "Jonli navbat",
+      "sectionBooked": "Yozuvlar",
+      "callNextLive": "Navbatdan chaqirish",
+      "startBooking": "Yozuvni boshlash",
+      "arrivedBadge": "Keldi",
+      "emptyLive": "Navbat bo'sh",
+      "emptyBooked": "Yozuvlar yo'q"
     },
     "calls": {
       "title": "Call-markaz",
@@ -5730,7 +5742,9 @@
           "cancelled": "Bekor qilingan",
           "noShow": "Kelmadi",
           "skipped": "O‘tkazib yuborilgan"
-        }
+        },
+        "sectionLive": "Jonli navbat",
+        "sectionBooked": "Yozuvlar"
       },
       "activePatient": {
         "noActiveTitle": "Faol bemor yo‘q",
@@ -6627,7 +6641,9 @@
         "startWithoutCall": "Chaqirmasdan boshlash",
         "registerArrivalOnly": "Faqat kelganini qayd etish",
         "noShow": "Kelmadi",
-        "cancelVisit": "Qabulni bekor qilish"
+        "cancelVisit": "Qabulni bekor qilish",
+        "nextBooking": "Keyingi yozuv",
+        "pickHint": "Bemorni tanlang: navbatdan yoki yozuv bo'yicha"
       },
       "statusToast": {
         "called": "Bemor chaqirildi",
@@ -6645,6 +6661,13 @@
         "errCallFailed": "Bemorni chaqirib bo‘lmadi",
         "errRevertFailed": "Qadamni bekor qilib bo‘lmadi",
         "errUpdateFailed": "Holatni yangilab bo‘lmadi"
+      },
+      "liveQueue": {
+        "title": "Jonli navbat",
+        "empty": "Navbat bo'sh",
+        "call": "Chaqirish",
+        "waitingFor": "{min} daqiqa kutmoqda",
+        "ticket": "Talon"
       }
     },
     "visits": {

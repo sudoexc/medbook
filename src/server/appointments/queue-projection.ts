@@ -11,8 +11,11 @@
  * every surface reads the same projection. The canonical rules live here and
  * nowhere else:
  *
- *   - ordering:  queuePriority DESC, then serveAt ASC, then ticketSeq ASC —
- *                the shared `compareQueue` (see `lib/queue-ordering`)
+ *   - lanes:     waiting = LIVE lane only (walk-ins, `isLiveLane`) — bookings
+ *                never enter the queue order, no matter when they checked in
+ *                (docs/TZ-two-lanes.md); `current` may come from either lane
+ *   - ordering:  queuePriority DESC, then queuedAt ASC (FIFO), then ticketSeq
+ *                ASC — the shared `compareQueue` (see `lib/queue-ordering`)
  *   - position:  1-based index within the sorted WAITING list
  *   - ETA:       perVisitMin * (idx + (current ? 1 : 0))   — minutes until seen
  *   - perVisit:  doctor-wide historical median (predictPerVisitMinutes),
@@ -24,7 +27,7 @@ import { prisma } from "@/lib/prisma";
 import { predictPerVisitMinutes } from "@/server/ai/per-visit-eta";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { tashkentDayBounds } from "@/lib/booking-validation";
-import { compareQueue } from "@/lib/queue-ordering";
+import { compareQueue, isLiveLane } from "@/lib/queue-ordering";
 import type { EtaOutput } from "@/lib/ai/eta-predictor";
 
 export interface QueueEntry {
@@ -107,8 +110,12 @@ export async function getQueueProjection(opts: {
   const fallbackByDoc = new Map<string, number>();
   for (const id of doctorIds) {
     const own = byDoctor.get(id) ?? [];
+    // Two-lanes: the queue is walk-ins only. An arrived booking (WAITING,
+    // channel ≠ WALKIN) stays in the schedule lane — it holds a ticket as an
+    // identifier but takes no position here. `current` below is lane-agnostic:
+    // the doctor may be seeing either a walk-in or a booked patient.
     const waitingSorted = own
-      .filter((a) => a.queueStatus === "WAITING")
+      .filter((a) => a.queueStatus === "WAITING" && isLiveLane(a))
       .sort(compareQueue);
     waitingByDoc.set(id, waitingSorted);
     currentByDoc.set(id, own.find((a) => a.queueStatus === "IN_PROGRESS"));

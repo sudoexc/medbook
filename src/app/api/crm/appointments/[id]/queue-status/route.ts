@@ -162,7 +162,7 @@ export const PATCH = createApiHandler(
       // the board can't print a ticket for it. A returning SKIPPED row already
       // owns a queueOrder/ticketSeq, so we leave those frozen.
       const needsOrder = before.queueOrder == null;
-      // Fresh serveAt anchor on first arrival (queuedAt null) or when a skipped
+      // Fresh arrival stamp on first arrival (queuedAt null) or when a skipped
       // patient comes back — they re-join at the back of the queue. An
       // IN_PROGRESS put-back keeps its original stamp so it doesn't surrender
       // its place.

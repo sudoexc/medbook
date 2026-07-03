@@ -16,6 +16,16 @@ export type QueueAppointment = {
     | "NO_SHOW"
     | "SKIPPED";
   startedAt: string | null;
+  /**
+   * Two-lanes fields (docs/TZ-two-lanes.md) — the API returns raw rows, so
+   * these come through untouched. `channel === "WALKIN"` puts the row in
+   * the live lane; the rest order it FIFO via the shared `compareQueue`.
+   */
+  channel: string;
+  queuedAt: string | null;
+  queuePriority: number;
+  ticketSeq: number | null;
+  queueOrder: number | null;
   patient: {
     id: string;
     fullName: string;

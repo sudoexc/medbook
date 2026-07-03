@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import { isLiveLane } from "@/lib/queue-ordering";
 import { Button } from "@/components/ui/button";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/popover";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 
 export interface DoctorQueueCardProps {
@@ -31,21 +33,34 @@ export interface DoctorQueueCardProps {
 
 type CabinetState = "in_session" | "awaiting" | "empty";
 
-/** When the queue exceeds this many rows, switch to a scrollable list. */
+/** When the live queue exceeds this many rows, switch to a scrollable list. */
 const SCROLL_AFTER = 4;
 
+/** Bookings shown beyond this cap collapse into a "+N" line. */
+const MAX_BOOKINGS = 3;
+
+// Schedule-lane statuses visible on the card. WAITING = arrived booking —
+// it stays in this list (two-lanes TZ I2), never in the live queue.
+const BOOKING_STATUSES = new Set<AppointmentRow["queueStatus"]>([
+  "BOOKED",
+  "CONFIRMED",
+  "WAITING",
+]);
+
 /**
- * Compact cabinet card per Image #13 feedback.
+ * Compact cabinet card per Image #13 feedback, two-lanes layout
+ * (docs/TZ-two-lanes.md):
  *
  *   ┌──────────────────────────────────────┐
  *   │ Кабинет 101  ● Идёт приём        ⋮  │
  *   │ ◯ Эргашев Б. С.                      │
  *   │   Невролог                           │
- *   │ В ОЧЕРЕДИ (3)              🕐 25 мин │
+ *   │ В ОЧЕРЕДИ (2)              🕐 25 мин │
  *   │ 1. Ali Karimov           — 14:30     │
  *   │ 2. Dilshod Aliyev        — 14:50     │
- *   │ 3. Madina Yusupova       — 15:10     │
- *   │ [   Вызвать следующего           ]   │
+ *   │ ЗАПИСИ                               │
+ *   │ 15:10 Madina Yusupova  [Начать]      │
+ *   │ [   Вызвать из очереди           ]   │
  *   └──────────────────────────────────────┘
  */
 export function DoctorQueueCard({
@@ -68,20 +83,23 @@ export function DoctorQueueCard({
 
   const current =
     appointments.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
-  const waiting = appointments.filter((a) => a.queueStatus === "WAITING");
-  const booked = appointments.filter((a) => a.queueStatus === "BOOKED");
-  const upcoming = [...waiting, ...booked].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-  );
+  // LIVE lane: waiting walk-ins in FIFO order — slot time never orders them.
+  const live = appointments
+    .filter((a) => isLiveLane(a) && a.queueStatus === "WAITING")
+    .sort(compareQueuePriority);
+  // SCHEDULE lane: bookings keep the calendar axis.
+  const bookings = appointments
+    .filter((a) => !isLiveLane(a) && BOOKING_STATUSES.has(a.queueStatus))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const cabinetNumber =
-    (current ?? upcoming[0])?.cabinet?.number ??
+    (current ?? live[0] ?? bookings[0])?.cabinet?.number ??
     appointments[0]?.cabinet?.number ??
     null;
 
   const state: CabinetState = current
     ? "in_session"
-    : upcoming.length > 0
+    : live.length + bookings.length > 0
       ? "awaiting"
       : "empty";
 
@@ -89,7 +107,11 @@ export function DoctorQueueCard({
     locale === "uz" ? doctor.specializationUz : doctor.specializationRu;
   const doctorName = locale === "uz" ? doctor.nameUz : doctor.nameRu;
 
-  const waitMin = computeWaitMinutes(state, current, upcoming[0] ?? null);
+  const waitMin = computeWaitMinutes(
+    state,
+    current,
+    live[0] ?? bookings[0] ?? null,
+  );
 
   const invalidate = () => {
     const opts = { refetchType: "active" } as const;
@@ -99,11 +121,14 @@ export function DoctorQueueCard({
     qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
   };
 
-  const advanceQueue = async () => {
-    // If there's a current in-session patient, complete them first.
-    if (current) {
-      setPending(true);
-      try {
+  // Shared "complete current, then start" transition — used by the live-lane
+  // call button and each booking's «Начать запись». Completing the current
+  // patient must succeed before the candidate goes IN_PROGRESS (one per
+  // doctor), so a failure aborts without touching the candidate.
+  const startVisit = async (candidate: AppointmentRow) => {
+    setPending(true);
+    try {
+      if (current) {
         const res = await fetch(
           `/api/crm/appointments/${current.id}/queue-status`,
           {
@@ -114,20 +139,7 @@ export function DoctorQueueCard({
           },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      } catch (err) {
-        setPending(false);
-        toast.error((err as Error).message);
-        return;
       }
-    }
-    const candidate = waiting[0] ?? booked[0];
-    if (!candidate) {
-      setPending(false);
-      invalidate();
-      return;
-    }
-    setPending(true);
-    try {
       const res = await fetch(
         `/api/crm/appointments/${candidate.id}/queue-status`,
         {
@@ -147,7 +159,14 @@ export function DoctorQueueCard({
     }
   };
 
-  const scrollable = upcoming.length > SCROLL_AFTER;
+  // «Вызвать из очереди» promotes only the live-lane head — bookings never
+  // auto-advance, the receptionist starts them per row.
+  const advanceQueue = () => {
+    const head = live[0];
+    if (head) void startVisit(head);
+  };
+
+  const scrollable = live.length > SCROLL_AFTER;
 
   return (
     <article
@@ -224,7 +243,7 @@ export function DoctorQueueCard({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            {t("inQueueCount", { count: upcoming.length })}
+            {t("inQueueCount", { count: live.length })}
           </span>
           {waitMin !== null ? (
             <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground tabular-nums">
@@ -234,43 +253,94 @@ export function DoctorQueueCard({
           ) : null}
         </div>
 
-        {upcoming.length > 0 ? (
-          <ul
-            className={cn(
-              "space-y-1",
-              scrollable &&
-                "max-h-[136px] overflow-y-auto pr-1 [scrollbar-width:thin]",
-            )}
-          >
-            {upcoming.map((a, i) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => onRowClick(a.id)}
-                  className="motion-press group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
-                >
-                  <span className="text-xs font-semibold text-muted-foreground tabular-nums">
-                    {i + 1}.
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {a.patient.fullName}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    — {formatTime(new Date(a.date), locale)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
+        {live.length === 0 && bookings.length === 0 ? (
           <p className="py-1 text-center text-xs text-muted-foreground">
             {t("queueEmpty")}
           </p>
+        ) : (
+          <>
+            {live.length > 0 ? (
+              <ul
+                className={cn(
+                  "space-y-1",
+                  scrollable &&
+                    "max-h-[136px] overflow-y-auto pr-1 [scrollbar-width:thin]",
+                )}
+              >
+                {live.map((a, i) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => onRowClick(a.id)}
+                      className="motion-press group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
+                    >
+                      <span className="text-xs font-semibold text-muted-foreground tabular-nums">
+                        {i + 1}.
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                        {a.patient.fullName}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        — {formatTime(new Date(a.date), locale)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {bookings.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  {t("sectionBooked")}
+                </span>
+                <ul className="space-y-1">
+                  {bookings.slice(0, MAX_BOOKINGS).map((a) => (
+                    <li key={a.id} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onRowClick(a.id)}
+                        className="motion-press group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/60"
+                      >
+                        <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
+                          {formatTime(new Date(a.date), locale)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                          {a.patient.fullName}
+                        </span>
+                        {a.queueStatus === "WAITING" ? (
+                          <span className="inline-flex shrink-0 items-center rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-text">
+                            {t("arrivedBadge")}
+                          </span>
+                        ) : null}
+                      </button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 shrink-0 px-2 text-[11px]"
+                        disabled={pending}
+                        onClick={() => void startVisit(a)}
+                      >
+                        {t("startBooking")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                {bookings.length > MAX_BOOKINGS ? (
+                  <p className="px-1 text-[11px] text-muted-foreground">
+                    {t("backlogCount", {
+                      count: bookings.length - MAX_BOOKINGS,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 
       <div className="mt-auto pt-1">
-        {state === "empty" && upcoming.length === 0 ? (
+        {state === "empty" ? (
           <Button
             variant="outline"
             className="motion-press w-full border-primary/40 text-primary hover:bg-primary/5 hover:text-primary"
@@ -287,10 +357,10 @@ export function DoctorQueueCard({
               "motion-press w-full",
               popKey > 0 && "motion-success-pop",
             )}
-            disabled={pending || (upcoming.length === 0 && !current)}
+            disabled={pending || live.length === 0}
             onClick={advanceQueue}
           >
-            {t("callNext")}
+            {t("callNextLive")}
           </Button>
         )}
       </div>

@@ -13,9 +13,12 @@ interface QueueStatus {
   cabinet: string | null;
   service: string | null;
   status: string;
-  position: number;
+  /** Two-lanes: walk-ins hold a queue position, bookings hold a slot time. */
+  lane?: "live" | "schedule";
+  slotTime?: string | null;
+  position: number | null;
   totalWaiting: number;
-  etaMinutes: number;
+  etaMinutes: number | null;
   etaConfidence?: "high" | "med" | "low";
   etaSource?: "history" | "blended" | "fallback";
   ticketNumber: string;
@@ -57,7 +60,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
         setData(d);
         setError(false);
         fetchedAt.current = Date.now();
-        setCountdown(d.etaMinutes * 60);
+        setCountdown((d.etaMinutes ?? 0) * 60);
 
         // Vibrate + notify when status changes to IN_PROGRESS
         if (d.status === "IN_PROGRESS" && lastStatus.current !== "IN_PROGRESS") {
@@ -154,7 +157,12 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
 
   const isCompleted = data.status === "COMPLETED";
   const isInProgress = data.status === "IN_PROGRESS";
-  const isWaiting = data.status === "WAITING";
+  // Two-lanes: a booking (schedule lane) never shows a queue position — its
+  // axis is the slot time. Only live-lane walk-ins render position/ETA.
+  const isScheduleLane = data.lane === "schedule";
+  const isWaiting = data.status === "WAITING" && !isScheduleLane;
+  const isArrivedBooking =
+    isScheduleLane && ["WAITING", "BOOKED", "CONFIRMED"].includes(data.status);
 
   return (
     <div className={`min-h-screen flex flex-col ${
@@ -206,6 +214,21 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
                 </div>
               )}
 
+              {isArrivedBooking && (
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-[var(--brand-primary)]" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-800">Приём по записи</p>
+                    <p className="text-xs text-gray-500">
+                      Ваше время: <span className="font-semibold">{data.slotTime ?? "—"}</span>
+                      {data.status === "WAITING" ? " · вы отмечены как пришедший" : ""}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {isWaiting && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
@@ -215,7 +238,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
                       </div>
                       <div>
                         <p className="font-bold text-gray-800">Ожидание</p>
-                        <p className="text-xs text-gray-500">Перед вами: {Math.max(0, data.position - 1)} чел.</p>
+                        <p className="text-xs text-gray-500">Перед вами: {Math.max(0, (data.position ?? 1) - 1)} чел.</p>
                       </div>
                     </div>
                     {/* Live countdown */}
@@ -228,7 +251,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
                   </div>
 
                   {/* Progress */}
-                  {data.totalWaiting > 0 && (
+                  {data.totalWaiting > 0 && data.position !== null && (
                     <div>
                       <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
                         <div
@@ -238,7 +261,7 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
                       </div>
                       <div className="flex justify-between mt-1.5">
                         <span className="text-[10px] text-gray-400">{data.position} из {data.totalWaiting}</span>
-                        <span className="text-[10px] text-gray-400">~{data.etaMinutes} мин</span>
+                        <span className="text-[10px] text-gray-400">~{data.etaMinutes ?? 0} мин</span>
                       </div>
                     </div>
                   )}

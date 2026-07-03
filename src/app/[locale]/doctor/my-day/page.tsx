@@ -2,6 +2,7 @@ import { AIAssistant } from "./_components/ai-assistant";
 import { CurrentPatientCard } from "./_components/current-patient-card";
 import { DraftConclusions } from "./_components/draft-conclusions";
 import { IncomingReferrals } from "./_components/incoming-referrals";
+import { LiveQueueCard } from "./_components/live-queue-card";
 import { QuickActions } from "./_components/quick-actions";
 import { RecentPatients } from "./_components/recent-patients";
 import { Reminders } from "./_components/reminders";
@@ -14,14 +15,18 @@ export default function MyDayPage() {
   return (
     <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
       <div className="grid min-w-0 flex-1 auto-rows-min grid-cols-1 gap-4 xl:grid-cols-3 xl:gap-5">
+        {/* Two-lanes model: the schedule (bookings, «Начать») and the live
+            walk-in queue («Вызвать») sit side by side on desktop — the
+            doctor explicitly picks the lane, nothing auto-interleaves. */}
         <ScheduleCard />
+        <LiveQueueCard />
+
         <CurrentPatientCard />
         <UpcomingPatients />
-
         <TodayTasks />
+
         <UnreadResults />
         <IncomingReferrals />
-
         <Reminders />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:col-span-3 xl:gap-5">

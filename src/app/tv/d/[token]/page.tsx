@@ -100,8 +100,10 @@ const SLOT_META: Record<
     fg: "#7cb7ff",
     bg: "rgba(35,83,255,0.18)",
   },
+  // Two-lanes: an arrived booking waits on the schedule axis, it is NOT in
+  // the live queue — the badge says so.
   WAITING: {
-    label: "В очереди",
+    label: "Пришёл",
     fg: "var(--public-waiting)",
     bg: "rgba(245,158,11,0.16)",
   },

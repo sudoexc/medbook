@@ -2,7 +2,7 @@
  * Refresh ONLY today's live queue to the current moment — without touching
  * past/future days or re-running the full mega seed. Deletes today's
  * appointments (child rows first) and rebuilds a correct live queue via the
- * shared builder: serveAt EDF ordering, immutable ticketSeq, queuedAt anchor,
+ * shared builder: two-lanes ordering (live FIFO ⊥ schedule), immutable ticketSeq, queuedAt anchor,
  * a «срочно» bump and a late-arrival demotion, for every doctor the board
  * actually shows today (active schedule for today's Tashkent weekday).
  *

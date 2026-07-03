@@ -21,6 +21,8 @@ export default async function TicketPage({
     select: {
       queueOrder: true,
       date: true,
+      time: true,
+      channel: true,
       doctorId: true,
       patient: { select: { fullName: true } },
       doctor: {
@@ -48,20 +50,25 @@ export default async function TicketPage({
   const dateStr = appointment.date.toLocaleDateString("ru-RU");
   const timeStr = appointment.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 
-  // Count waiting ahead
+  // Two-lanes (docs/TZ-two-lanes.md): only a walk-in has a queue position.
+  // A booking's stub shows its slot time instead of «перед вами».
+  const live = appointment.channel === "WALKIN";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const waitingAhead = await prisma.appointment.count({
-    where: {
-      doctorId: appointment.doctorId,
-      date: { gte: today, lt: tomorrow },
-      queueStatus: "WAITING",
-      queueOrder: { lt: appointment.queueOrder || 9999 },
-    },
-  });
+  const waitingAhead = live
+    ? await prisma.appointment.count({
+        where: {
+          doctorId: appointment.doctorId,
+          date: { gte: today, lt: tomorrow },
+          queueStatus: "WAITING",
+          channel: "WALKIN",
+          queueOrder: { lt: appointment.queueOrder || 9999 },
+        },
+      })
+    : null;
 
   return (
     <div
@@ -126,10 +133,17 @@ export default async function TicketPage({
             <td style={{ padding: "1.5mm 0", color: "#666" }}>Дата:</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{dateStr} {timeStr}</td>
           </tr>
-          <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>Перед вами:</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{waitingAhead} чел.</td>
-          </tr>
+          {waitingAhead !== null ? (
+            <tr>
+              <td style={{ padding: "1.5mm 0", color: "#666" }}>Перед вами:</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{waitingAhead} чел.</td>
+            </tr>
+          ) : (
+            <tr>
+              <td style={{ padding: "1.5mm 0", color: "#666" }}>Приём по записи:</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{appointment.time ?? timeStr}</td>
+            </tr>
+          )}
         </tbody>
       </table>
 

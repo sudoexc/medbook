@@ -99,7 +99,7 @@ export async function POST(request: Request) {
           // On a re-check-in (needsOrder false) we leave ticketSeq untouched so
           // a reception reorder of queueOrder never reissues the printed ticket.
           ...(needsOrder ? { ticketSeq: order } : {}),
-          // serveAt EDF anchor — stamp arrival the moment a booking flips into
+          // Arrival stamp («ждёт с …») the moment a booking flips into
           // the live queue. A re-check-in (already WAITING) keeps its stamp.
           ...(enteringQueue ? { queuedAt: now } : {}),
           status: appt.queueStatus === "BOOKED" ? "WAITING" : undefined,

@@ -22,6 +22,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ok, err } from "@/server/http";
 import {
   scheduleStatusOf,
@@ -152,9 +153,38 @@ type DaySummary = {
   dayPlanPercent: number;
 };
 
+/**
+ * One row of the LIVE lane (walk-ins only — docs/TZ-two-lanes.md). Full
+ * names are fine here: this is the doctor's own authenticated surface,
+ * unlike the public TV/kiosk projections which reduce to initials.
+ */
+type LiveQueueEntry = {
+  appointmentId: string;
+  patientFullName: string;
+  ticketNumber: string;
+  /** 1-based FIFO position within the live lane. */
+  position: number;
+  etaMinutes: number;
+  /** ISO — when the patient joined the queue. Omitted for legacy rows. */
+  queuedAt?: string;
+};
+
 type TodayResponse = {
   schedule: ScheduleEntry[];
   current: CurrentPatient | null;
+  /**
+   * True when `current` is the imminent-booking fallback (next BOOKED/
+   * CONFIRMED within 15 min), not a real IN_PROGRESS/WAITING visit — the
+   * client labels it «Следующая запись» instead of pretending the doctor
+   * already picked this patient.
+   */
+  currentIsImplicitNext: boolean;
+  /**
+   * The LIVE lane (walk-in FIFO) from the canonical queue projection —
+   * rendered as its own card next to the schedule so the doctor explicitly
+   * picks whom to serve. Bookings never appear here (two-lanes model).
+   */
+  liveQueue: LiveQueueEntry[];
   upcoming: UpcomingPatient[];
   /**
    * Total upcoming appointments today, regardless of how many the
@@ -266,6 +296,7 @@ export const GET = createApiListHandler(
     // ──────────────────────────────────────────────────────────────────────
     const [
       todayAppts,
+      queueProjection,
       activeReminders,
       unreadLabs,
       draftNotes,
@@ -288,6 +319,9 @@ export const GET = createApiListHandler(
           status: true,
           startedAt: true,
           calledAt: true,
+          // Two-lanes: only used as the "ждёт с …" label source for the
+          // liveQueue block below — never as an ordering key here.
+          queuedAt: true,
           patientId: true,
           patient: {
             select: {
@@ -305,6 +339,9 @@ export const GET = createApiListHandler(
           },
         },
       }),
+      // Canonical live-lane projection (same source as TV/kiosk/ticket) —
+      // one doctor, so the Map carries at most one entry.
+      getQueueProjection({ clinicId: ctx.clinicId, doctorIds: [doctor.id] }),
       prisma.reminder.findMany({
         where: {
           doctorId: ctx.userId,
@@ -537,6 +574,33 @@ export const GET = createApiListHandler(
       };
     }
 
+    // `current` above may be the imminent-booking fallback — presentation
+    // sugar, not a doctor's pick. Flag it so the client can label the card
+    // «Следующая запись» instead of implying a visit is underway.
+    const currentIsImplicitNext = current !== null && !inProgress;
+
+    // ──────────────────────────────────────────────────────────────────────
+    // liveQueue — the walk-in FIFO from the shared projection. `queuedAt`
+    // is joined back from todayAppts (the projection doesn't carry it);
+    // rows that predate queuedAt simply omit the "ждёт N мин" label.
+    // ──────────────────────────────────────────────────────────────────────
+    const queuedAtById = new Map(
+      todayAppts.map((a) => [a.id, a.queuedAt] as const),
+    );
+    const liveQueue: LiveQueueEntry[] = (
+      queueProjection.get(doctor.id)?.waiting ?? []
+    ).map((w) => {
+      const queuedAt = queuedAtById.get(w.appointmentId);
+      return {
+        appointmentId: w.appointmentId,
+        patientFullName: w.patientFullName,
+        ticketNumber: w.ticketNumber,
+        position: w.position,
+        etaMinutes: w.etaMinutes,
+        ...(queuedAt ? { queuedAt: queuedAt.toISOString() } : {}),
+      };
+    });
+
     // ──────────────────────────────────────────────────────────────────────
     // upcoming — next 5 actionable today (not current, not cancelled, not
     // done), excluding whichever appointment is currentSource.
@@ -653,6 +717,8 @@ export const GET = createApiListHandler(
     const payload: TodayResponse = {
       schedule,
       current,
+      currentIsImplicitNext,
+      liveQueue,
       upcoming,
       upcomingTotal,
       daySummary,

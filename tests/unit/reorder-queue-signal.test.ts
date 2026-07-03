@@ -1,11 +1,11 @@
 /**
- * POST /api/crm/appointments/reorder — honest no-op signal.
+ * POST /api/crm/appointments/reorder — two-lanes contract.
  *
- * Variant-A reorder rewrites the `queuedAt` anchor, but a booking whose slot is
- * still in the future floors at its slot (serveAt = max(slot, queuedAt)), so
- * dragging it earlier than its slot is a no-op. The route must report that
- * honestly (`exact`, `floored`, `effectiveOrder`) so the reception UI can snap
- * its optimistic state and suggest «срочно» instead of showing a bare success.
+ * Only LIVE-lane rows (walk-ins) have a queue order to shuffle. A reorder set
+ * that contains a booking is a stale client → 422 `not_live_lane` (the lanes
+ * never interleave, docs/TZ-two-lanes.md I2). For an all-walk-in set the
+ * dragged order is always the effective order (`exact: true`) — the old EDF
+ * slot-flooring is gone along with the EDF.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -113,8 +113,8 @@ beforeEach(() => {
   state.publishes = [];
 });
 
-describe("POST /api/crm/appointments/reorder — honest signal", () => {
-  it("all walk-ins: drag is exact, nothing floored", async () => {
+describe("POST /api/crm/appointments/reorder — two-lanes contract", () => {
+  it("all walk-ins: drag is exact, effective order = requested order", async () => {
     state.rows = [
       walkin("w1", NOW.getTime(), 1),
       walkin("w2", NOW.getTime() + 60_000, 2),
@@ -133,11 +133,14 @@ describe("POST /api/crm/appointments/reorder — honest signal", () => {
     expect(body.exact).toBe(true);
     expect(body.floored).toEqual([]);
     expect(body.effectiveOrder).toEqual(["w3", "w1", "w2"]);
+    expect(state.updates).toHaveLength(3);
+    // Rewritten anchors reproduce the requested order (1 s spacing).
+    const byId = new Map(state.updates.map((u) => [u.id, u.queuedAt.getTime()]));
+    expect(byId.get("w3")!).toBeLessThan(byId.get("w1")!);
+    expect(byId.get("w1")!).toBeLessThan(byId.get("w2")!);
   });
 
-  it("future-slot booking dragged earlier than its slot floors → not exact", async () => {
-    // b1 is a PHONE booking three hours out: its serveAt floors at the slot,
-    // so dragging it to the top can't actually move it ahead of the walk-ins.
+  it("a booking in the set → 422 not_live_lane, nothing written", async () => {
     state.rows = [
       walkin("w1", NOW.getTime(), 1),
       walkin("w2", NOW.getTime() + 60_000, 2),
@@ -154,17 +157,32 @@ describe("POST /api/crm/appointments/reorder — honest signal", () => {
     const res = await POST(
       postReq({ doctorId: "doc_1", orderedIds: ["b1", "w1", "w2"] }),
     );
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { reason: string; ids: string[] };
+    expect(body.reason).toBe("not_live_lane");
+    expect(body.ids).toEqual(["b1"]);
+    expect(state.updates).toHaveLength(0);
+    expect(state.publishes).toHaveLength(0);
+  });
+
+  it("urgency bump still outranks the dragged FIFO order", async () => {
+    // w2 carries the «срочно» bump — the comparator puts it first regardless
+    // of dragged anchors; the route reports the honest effective order.
+    state.rows = [
+      walkin("w1", NOW.getTime(), 1),
+      { ...walkin("w2", NOW.getTime() + 60_000, 2), queuePriority: 1 },
+      walkin("w3", NOW.getTime() + 120_000, 3),
+    ];
+    const POST = await loadPOST();
+    const res = await POST(
+      postReq({ doctorId: "doc_1", orderedIds: ["w1", "w3", "w2"] }),
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       exact: boolean;
-      floored: string[];
       effectiveOrder: string[];
     };
     expect(body.exact).toBe(false);
-    expect(body.floored).toEqual(["b1"]);
-    // The booking sinks below the walk-ins it could not jump.
-    expect(body.effectiveOrder).toEqual(["w1", "w2", "b1"]);
-    // The write still happens — the floored row's anchor is harmless.
-    expect(state.updates).toHaveLength(3);
+    expect(body.effectiveOrder).toEqual(["w2", "w1", "w3"]);
   });
 });

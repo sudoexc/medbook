@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
-import { serveAtMs } from "@/lib/queue-ordering";
+import { queuedMs } from "@/lib/queue-ordering";
 import type {
   AppointmentCabinetShort,
   AppointmentDoctorShort,
@@ -427,7 +427,7 @@ export function useBulkReschedule() {
 /**
  * Persist a new top-to-bottom ordering for a single doctor's live queue.
  *
- * Optimistically rewrites the serveAt anchor (`queuedAt`) on every cached
+ * Optimistically rewrites the FIFO anchor (`queuedAt`) on every cached
  * `["reception","appointments","today",...]` snapshot — mirroring the server's
  * variant-A reorder — so the list jumps into the new order instantly under the
  * shared EDF comparator. We don't touch the generic `["appointments","list",...]`
@@ -480,13 +480,13 @@ export function useReorderQueue() {
       for (const [key, rows] of entries) {
         if (!rows) continue;
         snapshots.push([key, rows]);
-        // Mirror the server (variant A): anchor at the earliest serveAt in the
+        // Mirror the server (variant A): anchor at the earliest arrival in the
         // affected set and space rows 1 s apart by rewriting `queuedAt`, so the
-        // shared EDF comparator renders exactly the dragged order. A future-slot
-        // booking floors at its slot on both sides, so it stays put either way.
+        // shared FIFO comparator renders exactly the dragged order. Only
+        // live-lane rows are draggable (two-lanes) — bookings never move here.
         const affected = rows.filter((r) => orderIndex.has(r.id));
         if (affected.length === 0) continue;
-        const base = Math.min(...affected.map((r) => serveAtMs(r)));
+        const base = Math.min(...affected.map((r) => queuedMs(r)));
         qc.setQueryData<AppointmentRow[]>(
           key,
           rows.map((r) =>

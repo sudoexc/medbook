@@ -54,6 +54,22 @@ export type CurrentPatient = {
   lastDiagnosis: { codes: { code: string; name: string }[] };
 };
 
+/**
+ * One row of the LIVE lane (walk-ins only — docs/TZ-two-lanes.md), ordered
+ * FIFO by the server projection. Bookings never appear here; they live in
+ * the schedule cards with their own «Начать» CTA.
+ */
+export type LiveQueueEntry = {
+  appointmentId: string;
+  patientFullName: string;
+  ticketNumber: string;
+  /** 1-based FIFO position within the live lane. */
+  position: number;
+  etaMinutes: number;
+  /** ISO — when the patient joined the queue. Omitted for legacy rows. */
+  queuedAt?: string;
+};
+
 export type UpcomingPatient = {
   appointmentId: string;
   patientId: string;
@@ -127,6 +143,14 @@ export type DaySummary = {
 export type DoctorToday = {
   schedule: ScheduleEntry[];
   current: CurrentPatient | null;
+  /**
+   * True when `current` is the imminent-booking fallback (next booking
+   * within 15 min), not a real active visit — the card labels it
+   * «Следующая запись» so the doctor knows nothing has started yet.
+   */
+  currentIsImplicitNext: boolean;
+  /** Walk-in FIFO — the live lane, rendered by LiveQueueCard. */
+  liveQueue: LiveQueueEntry[];
   upcoming: UpcomingPatient[];
   upcomingTotal: number;
   daySummary: DaySummary;

@@ -108,7 +108,7 @@ export function TicketSheet({
   const waiting = data?.status === "WAITING";
   const inProgress = data?.status === "IN_PROGRESS";
   const live = waiting || inProgress;
-  const ahead = data ? Math.max(0, data.position - 1) : 0;
+  const ahead = data ? Math.max(0, (data.position ?? 1) - 1) : 0;
   const isNext = waiting && ahead === 0;
   const aheadTemplate =
     lang === "RU"
@@ -120,9 +120,9 @@ export function TicketSheet({
         )
       : t.home.hero.aheadOne;
   const etaFlavor = data
-    ? data.etaMinutes <= 5
+    ? (data.etaMinutes ?? 0) <= 5
       ? t.home.hero.etaShort
-      : data.etaMinutes <= 25
+      : (data.etaMinutes ?? 0) <= 25
         ? t.home.hero.etaMid
         : t.home.hero.etaLong
     : "";
@@ -223,7 +223,7 @@ export function TicketSheet({
                 className="mt-0.5 text-sm font-medium"
                 style={{ color: "var(--tg-accent)" }}
               >
-                {`${t.home.hero.etaWait.replace("{n}", String(data!.etaMinutes))} · ${etaFlavor}`}
+                {`${t.home.hero.etaWait.replace("{n}", String(data!.etaMinutes ?? 0))} · ${etaFlavor}`}
               </div>
             </>
           ) : inProgress ? (

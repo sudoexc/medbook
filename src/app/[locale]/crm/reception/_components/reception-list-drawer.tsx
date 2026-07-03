@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { isLiveLane } from "@/lib/queue-ordering";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -23,6 +24,7 @@ import {
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 
 export type ReceptionListMode = "queue" | "in_progress";
 
@@ -34,6 +36,14 @@ export interface ReceptionListDrawerProps {
 }
 
 const QUEUE_STATUSES = new Set(["WAITING", "BOOKED", "CONFIRMED"]);
+
+/** A rendered group: the "queue" mode splits into the two lanes, "in_progress" stays flat. */
+interface DrawerSection {
+  key: string;
+  /** Subsection header; null renders the rows without one. */
+  title: string | null;
+  rows: AppointmentRow[];
+}
 
 /**
  * Side-drawer that opens off the KPI strip for the two live-data tiles:
@@ -52,25 +62,50 @@ export function ReceptionListDrawer({
   onRowClick,
 }: ReceptionListDrawerProps) {
   const t = useTranslations("reception.listDrawer");
+  // Lane subsection titles are shared with the queue column.
+  const tQueue = useTranslations("reception.queueColumn");
   const locale = useLocale();
 
-  const filtered = React.useMemo(() => {
-    if (!mode) return [] as AppointmentRow[];
-    const list =
-      mode === "queue"
-        ? rows.filter((r) => QUEUE_STATUSES.has(r.queueStatus ?? r.status))
-        : rows.filter(
-            (r) => (r.queueStatus ?? r.status) === "IN_PROGRESS",
-          );
-    return list.slice().sort((a, b) => {
-      if (mode === "in_progress") {
-        const sa = a.startedAt ? new Date(a.startedAt).getTime() : 0;
-        const sb = b.startedAt ? new Date(b.startedAt).getTime() : 0;
-        return sb - sa;
-      }
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
-  }, [mode, rows]);
+  const { sections, total } = React.useMemo(() => {
+    if (!mode) return { sections: [] as DrawerSection[], total: 0 };
+    if (mode === "in_progress") {
+      const list = rows
+        .filter((r) => (r.queueStatus ?? r.status) === "IN_PROGRESS")
+        .sort((a, b) => {
+          const sa = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+          const sb = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+          return sb - sa;
+        });
+      return {
+        sections: [{ key: "in_progress", title: null, rows: list }],
+        total: list.length,
+      };
+    }
+    // Two lanes (docs/TZ-two-lanes.md), membership by channel: live FIFO
+    // first (queue position = what the receptionist announces), bookings
+    // after, on their own calendar axis.
+    const queue = rows.filter((r) =>
+      QUEUE_STATUSES.has(r.queueStatus ?? r.status),
+    );
+    const live = queue.filter((r) => isLiveLane(r)).sort(compareQueuePriority);
+    const booked = queue
+      .filter((r) => !isLiveLane(r))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sections: DrawerSection[] = [];
+    if (live.length > 0)
+      sections.push({
+        key: "live",
+        title: tQueue("subsectionLive"),
+        rows: live,
+      });
+    if (booked.length > 0)
+      sections.push({
+        key: "booked",
+        title: tQueue("subsectionBooked"),
+        rows: booked,
+      });
+    return { sections, total: live.length + booked.length };
+  }, [mode, rows, tQueue]);
 
   const fullListHref =
     mode === "queue"
@@ -112,7 +147,7 @@ export function ReceptionListDrawer({
                   variant="secondary"
                   className="h-5 min-w-5 justify-center px-1.5 text-[11px] tabular-nums"
                 >
-                  {filtered.length}
+                  {total}
                 </Badge>
               </div>
               <SheetDescription className="mt-0.5 text-xs text-muted-foreground">
@@ -125,7 +160,7 @@ export function ReceptionListDrawer({
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {filtered.length === 0 ? (
+          {total === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
               <span className="inline-flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <HeaderIcon className="size-5" />
@@ -142,21 +177,38 @@ export function ReceptionListDrawer({
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-border">
-              {filtered.map((row, i) => (
-                <li key={row.id}>
-                  <DrawerRow
-                    index={i + 1}
-                    row={row}
-                    mode={mode!}
-                    locale={locale}
-                    onClick={() => {
-                      onRowClick(row.id);
-                    }}
-                  />
-                </li>
-              ))}
-            </ul>
+            sections.map((section) => (
+              <section
+                key={section.key}
+                className="border-b border-border last:border-b-0"
+              >
+                {section.title ? (
+                  <header className="flex items-center justify-between bg-muted/30 px-4 py-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                      {section.title}
+                    </span>
+                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground tabular-nums">
+                      {section.rows.length}
+                    </span>
+                  </header>
+                ) : null}
+                <ul className="divide-y divide-border">
+                  {section.rows.map((row, i) => (
+                    <li key={row.id}>
+                      <DrawerRow
+                        index={i + 1}
+                        row={row}
+                        mode={mode!}
+                        locale={locale}
+                        onClick={() => {
+                          onRowClick(row.id);
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
           )}
         </div>
 

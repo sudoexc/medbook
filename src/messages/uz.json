@@ -2268,7 +2268,9 @@
       "fillSlots": "Slotlarni to'ldirish",
       "schedule": "Jadval",
       "redirect": "Yo'naltirish",
-      "book": "Yozilish"
+      "book": "Yozilish",
+      "tvLink": "Shifokor TV ekrani — havolani nusxalash",
+      "tvLinkCopied": "TV ekran havolasi nusxalandi"
     },
     "empty": {
       "title": "Hozircha shifokorlar yo'q",

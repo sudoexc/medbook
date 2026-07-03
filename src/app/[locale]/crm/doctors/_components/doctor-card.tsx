@@ -3,6 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
+import { Tv } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { MoneyText } from "@/components/atoms/money-text";
@@ -210,12 +212,12 @@ export function DoctorCard({
         </Row>
       </dl>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+      <div className="mt-auto flex gap-2 pt-4">
         <Link
           href={`/${locale}/crm/doctors/${doctor.id}`}
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
-            "motion-press h-9 text-[12px]",
+            "motion-press h-9 flex-1 text-[12px]",
           )}
         >
           {t("schedule")}
@@ -225,11 +227,33 @@ export function DoctorCard({
           onClick={() => setBookOpen(true)}
           className={cn(
             buttonVariants({ variant: "default", size: "sm" }),
-            "motion-press h-9 text-[12px]",
+            "motion-press h-9 flex-1 text-[12px]",
           )}
         >
           {t("book")}
         </button>
+        {doctor.tvToken && (
+          <button
+            type="button"
+            title={t("tvLink")}
+            aria-label={t("tvLink")}
+            onClick={async () => {
+              const url = `${window.location.origin}/tv/d/${doctor.tvToken}`;
+              try {
+                await navigator.clipboard.writeText(url);
+                toast.success(t("tvLinkCopied"));
+              } catch {
+                toast.error(url); // clipboard blocked — surface the URL itself
+              }
+            }}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "motion-press h-9 w-9 shrink-0 px-0",
+            )}
+          >
+            <Tv className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <NewAppointmentDialog
         open={bookOpen}

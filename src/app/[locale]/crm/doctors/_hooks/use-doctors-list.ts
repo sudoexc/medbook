@@ -29,6 +29,8 @@ export type DoctorRow = {
   updatedAt: string;
   cabinetId: string;
   cabinet: { id: string; number: string; floor: number | null } | null;
+  /** Bearer for the doctor's personal TV screen (`/tv/d/<token>`). */
+  tvToken: string | null;
 };
 
 export type DoctorsListResponse = {

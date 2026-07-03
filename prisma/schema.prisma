@@ -858,6 +858,12 @@ model Doctor {
   // back to a typed signature in the PDF when missing.
   signatureUrl String?
 
+  // Unguessable bearer for the doctor's personal waiting-room TV
+  // (`/tv/d/<token>`). Same trust posture as the clinic-slug board — the
+  // screen shows initials only; the token just keeps the URL private to the
+  // clinic. Minted on create, backfilled for existing rows by migration.
+  tvToken String? @unique
+
   services           ServiceOnDoctor[]
   schedules          DoctorSchedule[]
   timeOffs           DoctorTimeOff[]

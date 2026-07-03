@@ -1,30 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 
 import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
-import { useQueueBoard, type BoardClinic, type BoardDoctor } from "@/hooks/use-queue-board";
+import { useQueueBoard, type BoardDoctor } from "@/hooks/use-queue-board";
 
 interface Overlay {
   ticketNumber: string;
   cabinet: string;
   patientName: string;
   doctorName: string;
-}
-
-// Lobby ticker — built from the clinic's own phone/address (multi-tenant) with
-// the silence reminder always present so the band never renders empty.
-function buildAnnouncements(clinic: BoardClinic | undefined): string[] {
-  const lines: string[] = [];
-  if (clinic?.phone) {
-    lines.push(`Приём ведётся ежедневно  |  Тел: ${clinic.phone}`);
-  }
-  if (clinic?.addressRu) {
-    lines.push(`Адрес: ${clinic.addressRu}`);
-  }
-  lines.push("Уважаемые пациенты, просим соблюдать тишину в зоне ожидания");
-  return lines;
 }
 
 function playChime() {
@@ -81,35 +67,18 @@ export default function TVQueuePage() {
   const [activated, setActivated] = useState(false);
   const [time, setTime] = useState(new Date());
   const [overlay, setOverlay] = useState<Overlay | null>(null);
-  const [announcementIdx, setAnnouncementIdx] = useState(0);
 
   const lastCallSeq = useRef(0);
   const overlayTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const doctors = board?.doctors ?? [];
   const clinicName = board?.clinic.nameRu ?? "Электронная очередь";
-  const announcements = useMemo(
-    () => buildAnnouncements(board?.clinic),
-    [board?.clinic],
-  );
 
   // Live clock.
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
-
-  // Rotate the bottom ticker. Resets to the first line whenever the set of
-  // announcements changes (e.g. the board snapshot arrives) so the index can
-  // never point past the array.
-  useEffect(() => {
-    setAnnouncementIdx(0);
-    const id = setInterval(
-      () => setAnnouncementIdx((i) => (i + 1) % announcements.length),
-      8000,
-    );
-    return () => clearInterval(id);
-  }, [announcements.length]);
 
   // React to a `queue.called` signal: resolve the called patient/doctor from
   // the current board snapshot, chime, announce, and show the overlay once.
@@ -235,37 +204,15 @@ export default function TVQueuePage() {
         )}
       </div>
 
-      {/* Ticker */}
-      <div className="shrink-0 bg-[var(--public-accent-rail)] border-t border-[var(--public-border)] px-6 py-3 overflow-hidden">
-        <div className="flex items-center gap-4">
-          <div className="shrink-0 flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1">
-            <div className="h-2 w-2 rounded-full bg-[var(--public-danger)] animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider">
-              LIVE
-            </span>
-          </div>
-          <div className="flex-1 overflow-hidden relative h-6">
-            <p
-              key={announcementIdx}
-              className="absolute inset-0 text-sm text-[var(--public-fg)]/80 whitespace-nowrap animate-ticker"
-            >
-              {announcements[announcementIdx]}
-            </p>
-          </div>
-        </div>
-      </div>
-
       <style>{`
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scale-in { from { opacity: 0; transform: scale(0.85) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         @keyframes ping-slow { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(2.5); opacity: 0; } }
         @keyframes ping-slower { 0% { transform: scale(1); opacity: 0.3; } 100% { transform: scale(3); opacity: 0; } }
-        @keyframes ticker { 0% { transform: translateX(100%); opacity: 0; } 5% { opacity: 1; } 95% { opacity: 1; } 100% { transform: translateX(-100%); opacity: 0; } }
         .animate-fade-in { animation: fade-in 0.3s ease-out; }
         .animate-scale-in { animation: scale-in 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
         .animate-ping-slow { animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
         .animate-ping-slower { animation: ping-slower 2.5s cubic-bezier(0, 0, 0.2, 1) infinite 0.5s; }
-        .animate-ticker { animation: ticker 8s linear; }
       `}</style>
     </div>
   );

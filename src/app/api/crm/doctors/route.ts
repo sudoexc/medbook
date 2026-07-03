@@ -7,6 +7,8 @@
  *   AND is not already occupied. The route uses a single transaction so the
  *   doctor row + ServiceOnDoctor links land atomically.
  */
+import { randomBytes } from "node:crypto";
+
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -102,6 +104,9 @@ export const POST = createApiHandler(
             isActive: body.isActive ?? true,
             branchId,
             cabinetId: body.cabinetId,
+            // Personal waiting-room TV link (`/tv/d/<token>`) — minted here so
+            // the copy button works the moment the doctor is created.
+            tvToken: randomBytes(18).toString("base64url"),
           } as never,
         });
         if (body.services && body.services.length > 0) {

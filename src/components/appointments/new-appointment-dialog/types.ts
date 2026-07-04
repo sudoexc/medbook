@@ -1,9 +1,14 @@
+/**
+ * Booking channels offered by the dialog. Two-lanes (docs/TZ-two-lanes.md):
+ * this dialog creates SCHEDULE-lane rows only — WALKIN/KIOSK are excluded
+ * because `channel === "WALKIN"` is the live-lane discriminator (a "booking"
+ * minted with it disappears from the «Записи» sections, reserves no slot and
+ * never reaches the TV). Walk-ins go through «Выдать талон» (`registerWalkin`).
+ */
 export const CHANNELS = [
-  "WALKIN",
   "PHONE",
   "TELEGRAM",
   "WEBSITE",
-  "KIOSK",
 ] as const;
 
 export type ChannelType = (typeof CHANNELS)[number];
@@ -89,6 +94,6 @@ export const EMPTY: FormState = {
   doctorId: null,
   date: new Date(),
   time: null,
-  channel: "WALKIN",
+  channel: "PHONE",
   comments: "",
 };

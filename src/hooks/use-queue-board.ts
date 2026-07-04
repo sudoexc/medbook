@@ -25,7 +25,8 @@ export interface BoardWaiting {
 
 export interface BoardCurrent {
   fullName: string;
-  ticketNumber: string;
+  /** Null for a booking started without check-in (no queue fields). */
+  ticketNumber: string | null;
   startedAt: string | null;
 }
 

@@ -18,6 +18,8 @@ import {
 import { fireTrigger } from "@/server/notifications/triggers";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
+import { applyWaitingIntake } from "@/server/appointments/intake";
+import { runQueueTx } from "@/server/appointments/queue-order";
 
 export const POST = createApiHandler(
   {
@@ -56,6 +58,10 @@ export const POST = createApiHandler(
         patientId: true,
         cabinetId: true,
         date: true,
+        // Intake inputs for the WAITING target (see applyWaitingIntake).
+        clinicId: true,
+        queueOrder: true,
+        queuedAt: true,
       },
     });
     const blocked = existing
@@ -89,11 +95,40 @@ export const POST = createApiHandler(
     if (target === "COMPLETED") data.completedAt = now;
 
     const correlationId = newCorrelationId();
-    const result = await prisma.$transaction(async (tx) => {
-      const updated = await tx.appointment.updateMany({
-        where: { id: { in: body.ids } },
-        data,
-      });
+    // WAITING is the one target with per-row side-effects — each row claims
+    // its own queueOrder/ticketSeq + queuedAt stamp (see applyWaitingIntake),
+    // which updateMany can't express. That branch loops row-by-row and runs
+    // under Serializable via runQueueTx (same isolation as the single
+    // queue-status intake, so a concurrent kiosk check-in can't share an
+    // order). Every other target keeps the original updateMany + default
+    // isolation — no behavioral change there.
+    const txBody = async (
+      tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+    ) => {
+      let count: number;
+      if (target === "WAITING") {
+        count = 0;
+        for (const row of existing) {
+          const intake = await applyWaitingIntake(tx, row, now);
+          await tx.appointment.update({
+            where: { id: row.id },
+            data: {
+              ...data,
+              ...intake,
+              // Same rule as the single paths: putting a visit back to
+              // WAITING clears the start stamp so a restart re-times it.
+              ...(row.queueStatus === "IN_PROGRESS" ? { startedAt: null } : {}),
+            } as never,
+          });
+          count += 1;
+        }
+      } else {
+        const updated = await tx.appointment.updateMany({
+          where: { id: { in: body.ids } },
+          data,
+        });
+        count = updated.count;
+      }
       // Realtime fan-out per row so reception, doctor my-day, and the public TV
       // board see the flip without polling. Same routing as the single PATCH:
       // CANCELLED → appointment.cancelled, any other flip →
@@ -120,8 +155,12 @@ export const POST = createApiHandler(
           });
         }
       }
-      return updated;
-    });
+      return { count };
+    };
+    const result =
+      target === "WAITING"
+        ? await runQueueTx(txBody)
+        : await prisma.$transaction(txBody);
     await audit(request, {
       action: "appointment.bulk-status",
       entityType: "Appointment",

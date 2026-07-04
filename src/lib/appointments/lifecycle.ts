@@ -84,12 +84,12 @@ export function canMutateStatus(role: LifecycleRole): boolean {
  * Anchors the role/action separation: who DRIVES the lifecycle, not who is
  * merely co-present.
  *
- *   - IN_PROGRESS belongs to the doctor. Only the doctor knows they've
- *     actually started the consultation — reception flipping it would
- *     produce ghost in-session rows on the kiosk and the TV board.
- *   - COMPLETED belongs to the doctor. Only the doctor knows the visit is
- *     done; mistaken closure by reception would trigger premature payment
- *     reminders and prevent the doctor from finishing notes.
+ *   - IN_PROGRESS / COMPLETED are shared between the doctor and the front
+ *     desk. Two-lanes model (docs/TZ-two-lanes.md, «врач/ресепшн выбирает
+ *     сам»): the doctor starts/finishes visits from /my-day, and reception
+ *     drives the same transitions from the cabinets board («Вызвать из
+ *     очереди» / «Начать запись»). NURSE stays read-only via
+ *     `canMutateStatus`; CALL_OPERATOR never advances the visit lifecycle.
  *
  * Targets not listed default to "any mutate-permitted role" — confirmation
  * (CONFIRMED), intake (WAITING), and the off-path triplet (NO_SHOW /
@@ -102,8 +102,18 @@ export function canMutateStatus(role: LifecycleRole): boolean {
 const STATE_OWNERS: Partial<
   Record<AppointmentStatus, ReadonlySet<LifecycleRole>>
 > = {
-  IN_PROGRESS: new Set<LifecycleRole>(["DOCTOR"]),
-  COMPLETED: new Set<LifecycleRole>(["DOCTOR"]),
+  IN_PROGRESS: new Set<LifecycleRole>([
+    "DOCTOR",
+    "ADMIN",
+    "SUPER_ADMIN",
+    "RECEPTIONIST",
+  ]),
+  COMPLETED: new Set<LifecycleRole>([
+    "DOCTOR",
+    "ADMIN",
+    "SUPER_ADMIN",
+    "RECEPTIONIST",
+  ]),
 };
 
 /**
@@ -307,8 +317,10 @@ export function getQuickActions(
   ) {
     actions.push({ kind: "ARRIVED", to: "WAITING", confirm: false });
   }
-  // Consultation start belongs to the doctor — receptionists can't decide
-  // when the doctor is ready to see the next patient.
+  // START/COMPLETE quick icons stay doctor-only as a UI policy: reception
+  // starts visits from the cabinet card («Вызвать из очереди» / «Начать
+  // запись»), not from per-row icons. Ownership itself is shared — see
+  // STATE_OWNERS above.
   if (
     isDoctor &&
     allowed.has("IN_PROGRESS") &&
@@ -316,7 +328,7 @@ export function getQuickActions(
   ) {
     actions.push({ kind: "START", to: "IN_PROGRESS", confirm: false });
   }
-  // Same with completion: only the doctor knows when the visit is done.
+  // Same UI policy for completion — the doctor's row is the one-click path.
   if (
     isDoctor &&
     allowed.has("COMPLETED") &&

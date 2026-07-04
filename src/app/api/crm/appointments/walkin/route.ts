@@ -71,7 +71,6 @@ export const POST = createApiHandler(
         doctorId: body.doctorId,
         patientId: result.patient.id,
         queueOrder: result.queueOrder,
-        channel: "WALKIN",
       },
     });
 

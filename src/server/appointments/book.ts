@@ -178,7 +178,8 @@ export type BookResult =
         | "doctor_time_off"
         | "outside_schedule"
         | "in_past"
-        | "bad_start_at";
+        | "bad_start_at"
+        | "bad_channel";
       until?: string;
     };
 
@@ -193,6 +194,13 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
     ? applyTime(input.startAt, input.time)
     : input.startAt;
   if (Number.isNaN(startAt.getTime())) return { ok: false, reason: "bad_start_at" };
+
+  // Two-lanes hard guard (docs/TZ-two-lanes.md): the booking kernel mints
+  // SCHEDULE-lane rows only. `channel === "WALKIN"` is the live-lane
+  // discriminator — a "booking" carrying it would reserve no slot (walk-ins
+  // are exempt from every overlap check) and vanish from the «Записи»
+  // sections. Live rows are created exclusively by `registerWalkin`.
+  if (input.channel === "WALKIN") return { ok: false, reason: "bad_channel" };
 
   // Doctor + cabinet existence + active checks. The cabinet binding is
   // doctor-derived (Phase 11 enforced 1:1) — callers no longer choose.

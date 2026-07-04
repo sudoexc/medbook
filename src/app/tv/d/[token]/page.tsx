@@ -330,9 +330,11 @@ export default function DoctorTVPage() {
                     <p className="truncate text-5xl font-bold text-[var(--public-active)]">
                       {data.queue.current.fullName}
                     </p>
-                    <p className="shrink-0 font-mono text-3xl font-bold text-[var(--public-active)]/80">
-                      {data.queue.current.ticketNumber}
-                    </p>
+                    {data.queue.current.ticketNumber && (
+                      <p className="shrink-0 font-mono text-3xl font-bold text-[var(--public-active)]/80">
+                        {data.queue.current.ticketNumber}
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (

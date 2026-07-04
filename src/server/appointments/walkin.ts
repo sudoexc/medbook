@@ -18,8 +18,6 @@
  * helper only resolves the patient, allocates the slot under Serializable
  * isolation, creates the row, and emits the realtime envelopes.
  */
-import type { ChannelType } from "@/generated/prisma/client";
-
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneSearchVariants } from "@/lib/phone";
 import { tashkentComponents } from "@/lib/booking-validation";
@@ -41,8 +39,6 @@ export type RegisterWalkinInput = {
   clinicId: string;
   doctorId: string;
   patient: WalkinPatientInput;
-  /** Defaults to "WALKIN". */
-  channel?: ChannelType;
   /** Staff `User.id` for the CRM front desk; `null` for the anonymous kiosk. */
   createdById?: string | null;
   /** Visit length in minutes; defaults to 30. */
@@ -135,7 +131,8 @@ export async function registerWalkin(
   // paper slip carries a QR/lookup code into `/t/[code]`. Minted pre-tx so the
   // rare collision retry doesn't fight Serializable isolation.
   const ticketCode = await generateTicketCode();
-  const channel = input.channel ?? "WALKIN";
+  // Live lane is WALKIN by definition (two-lanes) — not caller-selectable.
+  const channel = "WALKIN" as const;
 
   // Allocate the queue slot and create the row atomically under Serializable
   // isolation so two simultaneous walk-ins on the same doctor can't share a
@@ -197,7 +194,10 @@ export async function registerWalkin(
     ok: true,
     appointmentId: created.id,
     ticketCode,
-    ticketNumber: ticketNumberFor(doctor.id, queueOrder),
+    // Non-null: `queueOrder` was just allocated above, so a ticket always
+    // prints for a fresh walk-in (ticketNumberFor is null only for seq-less
+    // bookings).
+    ticketNumber: ticketNumberFor(doctor.id, queueOrder)!,
     queueOrder,
     patient: { id: patient.id, fullName: patient.fullName },
     doctor: {

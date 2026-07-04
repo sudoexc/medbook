@@ -268,20 +268,11 @@ describe("POST /api/crm/appointments — auto-confirm branch", () => {
     expect((confirmAudit!.meta as { channel: string }).channel).toBe("KIOSK");
   });
 
-  it("AC3 — channel=WALKIN: auto-confirmed with channel=WALKIN in meta", async () => {
+  it("AC3 — channel=WALKIN is rejected at the schema (two-lanes: walk-ins via registerWalkin)", async () => {
     const POST = await loadPOST();
     const res = await POST(postReq(makeBody({ channel: "WALKIN" })));
-    expect(res.status).toBe(201);
-    const data = state.createCalls[0].data;
-    expect(data.status).toBe("CONFIRMED");
-    expect(data.queueStatus).toBe("CONFIRMED");
-    expect(data.confirmedVia).toBe("BOOKING_AUTO");
-
-    const confirmAudit = state.audits.find(
-      (a) => a.action === "APPOINTMENT_CONFIRMED",
-    );
-    expect(confirmAudit).toBeDefined();
-    expect((confirmAudit!.meta as { channel: string }).channel).toBe("WALKIN");
+    expect(res.status).toBe(400);
+    expect(state.createCalls).toHaveLength(0);
   });
 
   it("AC4 — channel=TELEGRAM: stays BOOKED, no APPOINTMENT_CONFIRMED audit", async () => {

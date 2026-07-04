@@ -605,7 +605,7 @@ describe("registerWalkin — channel + createdById passthrough (W6)", () => {
     expect(row.channel).toBe("WALKIN");
   });
 
-  it("honours an explicit channel override", async () => {
+  it("always mints channel WALKIN — the lane is not caller-selectable (two-lanes)", async () => {
     seedDoctor();
     seedPatient({ id: "pat_existing" });
     const registerWalkin = await loadRegisterWalkin();
@@ -614,10 +614,9 @@ describe("registerWalkin — channel + createdById passthrough (W6)", () => {
       clinicId: "c1",
       doctorId: "doc_alpha",
       patient: { id: "pat_existing" },
-      channel: "KIOSK",
     });
 
-    expect(lastAppointmentData().channel).toBe("KIOSK");
+    expect(lastAppointmentData().channel).toBe("WALKIN");
   });
 
   it("doctor with null pricePerVisit leaves priceBase/priceFinal null", async () => {

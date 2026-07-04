@@ -21,7 +21,9 @@
  *   - perVisit:  doctor-wide historical median (predictPerVisitMinutes),
  *                falling back per doctor to the next-waiting booked duration
  *   - ticket:    ticketNumberFor(doctorId, ticketSeq ?? queueOrder)
- *                (ticketSeq is immutable, so reorders never churn ticket codes)
+ *                (ticketSeq is immutable, so reorders never churn ticket codes;
+ *                null for `current` when a booking was started without
+ *                check-in — waiting rows are live-lane and always own a seq)
  */
 import { prisma } from "@/lib/prisma";
 import { predictPerVisitMinutes } from "@/server/ai/per-visit-eta";
@@ -54,7 +56,8 @@ export interface DoctorQueue {
     patientFullName: string;
     queueOrder: number | null;
     ticketSeq: number | null;
-    ticketNumber: string;
+    /** Null when a booked patient was started without check-in (no seq). */
+    ticketNumber: string | null;
     startedAt: Date | null;
   } | null;
   waiting: QueueEntry[];
@@ -155,7 +158,9 @@ export async function getQueueProjection(opts: {
         patientFullName: w.patient.fullName,
         queueOrder: w.queueOrder,
         ticketSeq: w.ticketSeq,
-        ticketNumber: ticketNumberFor(id, w.ticketSeq ?? w.queueOrder),
+        // Live-lane WAITING rows are minted with ticketSeq at creation
+        // (registerWalkin), so the ticket is always printable here.
+        ticketNumber: ticketNumberFor(id, w.ticketSeq ?? w.queueOrder)!,
         durationMin: w.durationMin,
         position: idx + 1,
         etaMinutes: perVisitMin * (idx + (hasCurrent ? 1 : 0)),

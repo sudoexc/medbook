@@ -23,6 +23,11 @@ import { MA_ACCENTS } from "./mini-app-tokens";
 const GREEN = MA_ACCENTS.success;
 const SALMON = MA_ACCENTS.salmon;
 
+/** Same helper as home-hero's — `t.home.todayAt` starts lowercase («сегодня в …»). */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function ruPlural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
   const m100 = n % 100;
@@ -108,8 +113,12 @@ export function TicketSheet({
   const waiting = data?.status === "WAITING";
   const inProgress = data?.status === "IN_PROGRESS";
   const live = waiting || inProgress;
+  // Two-lanes (mirrors home-hero): an arrived BOOKING is WAITING too but
+  // holds no queue position (lane = "schedule") — it gets its slot time,
+  // not a fake «перед вами 0 чел» / ETA.
+  const scheduleLane = data?.lane === "schedule";
   const ahead = data ? Math.max(0, (data.position ?? 1) - 1) : 0;
-  const isNext = waiting && ahead === 0;
+  const isNext = waiting && !scheduleLane && ahead === 0;
   const aheadTemplate =
     lang === "RU"
       ? ruPlural(
@@ -128,7 +137,7 @@ export function TicketSheet({
     : "";
   const doctorName = lang === "UZ" ? appt.doctor.nameUz : appt.doctor.nameRu;
   const cabinet = data?.cabinet ?? appt.cabinet?.number ?? "—";
-  const time = appt.time ?? formatTimeISO(appt.date);
+  const time = data?.slotTime ?? appt.time ?? formatTimeISO(appt.date);
   const bigNumber = data?.ticketNumber ?? appt.ticketCode ?? "—";
 
   return (
@@ -214,6 +223,10 @@ export function TicketSheet({
                 {t.home.hero.youAreNextHint}
               </div>
             </>
+          ) : waiting && scheduleLane ? (
+            <div className="mt-2 text-lg font-bold leading-tight">
+              {capitalize(t.home.todayAt.replace("{time}", time))}
+            </div>
           ) : waiting ? (
             <>
               <div className="mt-2 text-lg font-bold leading-tight">

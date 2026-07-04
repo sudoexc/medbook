@@ -38,7 +38,13 @@ export const CreateAppointmentSchema = z.object({
   date: z.coerce.date(),
   time: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(),
   durationMin: z.number().int().min(5).max(480).default(30),
-  channel: ChannelTypeEnum.default("WALKIN"),
+  // Two-lanes: the booking path mints SCHEDULE-lane rows only. WALKIN is the
+  // live-lane discriminator — live rows are created exclusively by
+  // `registerWalkin`. Defaulting to WALKIN used to silently produce
+  // "bookings" that reserved no slot and vanished from the «Записи» panels.
+  channel: ChannelTypeEnum.default("PHONE").refine((c) => c !== "WALKIN", {
+    message: "walk-ins are created via registerWalkin, not the booking path",
+  }),
   discountPct: z.number().int().min(0).max(100).optional(),
   discountAmount: z.number().int().min(0).optional(),
   priceFinal: z.number().int().min(0).optional().nullable(),
@@ -64,7 +70,11 @@ export const UpdateAppointmentSchema = z.object({
   // Manual live-queue urgency. Higher floats to the top of the waiting list;
   // 0 = normal. The reception panel toggles between 0 and 1.
   queuePriority: z.number().int().min(0).max(100).optional(),
-  channel: ChannelTypeEnum.optional(),
+  // Two-lanes: a channel flip must never teleport a row between lanes —
+  // WALKIN rows are minted by registerWalkin only (see CreateAppointmentSchema).
+  channel: ChannelTypeEnum.optional().refine((c) => c !== "WALKIN", {
+    message: "walk-ins are created via registerWalkin, not the booking path",
+  }),
   discountPct: z.number().int().min(0).max(100).optional(),
   discountAmount: z.number().int().min(0).optional(),
   priceFinal: z.number().int().min(0).nullable().optional(),

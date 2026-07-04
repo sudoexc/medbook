@@ -73,6 +73,7 @@ export function DoctorQueueCard({
 }: DoctorQueueCardProps) {
   const locale = useLocale();
   const t = useTranslations("reception.doctorQueue");
+  const tToast = useTranslations("crmToasts.appointment");
   const qc = useQueryClient();
   const [pending, setPending] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -121,11 +122,32 @@ export function DoctorQueueCard({
     qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
   };
 
+  // Parse the API error envelope (`{ error, reason }`, see server/http.ts)
+  // and toast a localized message — raw `HTTP ${status}` codes never reach
+  // the receptionist.
+  const toastStartError = async (res: Response) => {
+    let reason = "";
+    try {
+      const j = (await res.json()) as { error?: string; reason?: string };
+      reason = j.reason ?? "";
+    } catch {
+      // body wasn't JSON — fall through to the generic message.
+    }
+    toast.error(
+      reason === "another_visit_in_progress"
+        ? tToast("startConflict")
+        : t("startFailed"),
+    );
+  };
+
   // Shared "complete current, then start" transition — used by the live-lane
   // call button and each booking's «Начать запись». Completing the current
   // patient must succeed before the candidate goes IN_PROGRESS (one per
   // doctor), so a failure aborts without touching the candidate.
   const startVisit = async (candidate: AppointmentRow) => {
+    // Switching patients implicitly completes the current visit — make the
+    // receptionist confirm before we close it behind the doctor's back.
+    if (current && !window.confirm(t("switchConfirm"))) return;
     setPending(true);
     try {
       if (current) {
@@ -138,7 +160,10 @@ export function DoctorQueueCard({
             body: JSON.stringify({ queueStatus: "COMPLETED" }),
           },
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          await toastStartError(res);
+          return;
+        }
       }
       const res = await fetch(
         `/api/crm/appointments/${candidate.id}/queue-status`,
@@ -149,11 +174,15 @@ export function DoctorQueueCard({
           body: JSON.stringify({ queueStatus: "IN_PROGRESS" }),
         },
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        await toastStartError(res);
+        return;
+      }
       invalidate();
       setPopKey((k) => k + 1);
-    } catch (err) {
-      toast.error((err as Error).message);
+    } catch {
+      // Network-level failure (fetch threw before a response landed).
+      toast.error(t("startFailed"));
     } finally {
       setPending(false);
     }

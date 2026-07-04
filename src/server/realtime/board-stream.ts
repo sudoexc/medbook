@@ -39,7 +39,10 @@ const BOARD_EVENT_SET = new Set<string>(BOARD_EVENT_TYPES);
 
 /**
  * Scalar payload keys allowed onto the public stream. Deliberately excludes
- * `patientId` and anything name-shaped — the board joins by `appointmentId`.
+ * `patientId` and full names — the board joins by `appointmentId`. The one
+ * name-shaped exception is `patientName`: `queue.called` emitters populate it
+ * via `initials()` only, the same PHI-safe reduction the board route itself
+ * serves, so the "now calling" banner can greet without an extra fetch.
  */
 const SAFE_PAYLOAD_KEYS = [
   "appointmentId",
@@ -49,6 +52,7 @@ const SAFE_PAYLOAD_KEYS = [
   "status",
   "queueOrder",
   "ticketNumber",
+  "patientName",
   "cabinetNumber",
   "calledAt",
 ] as const;

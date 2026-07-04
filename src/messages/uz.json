@@ -1952,7 +1952,9 @@
       "startBooking": "Yozuvni boshlash",
       "arrivedBadge": "Keldi",
       "emptyLive": "Navbat bo'sh",
-      "emptyBooked": "Yozuvlar yo'q"
+      "emptyBooked": "Yozuvlar yo'q",
+      "switchConfirm": "Joriy qabulni yakunlab, bu bemorni boshlaysizmi?",
+      "startFailed": "Qabulni boshlab bo'lmadi"
     },
     "calls": {
       "title": "Call-markaz",
@@ -5671,7 +5673,9 @@
       "rescheduleFailed": "Yozuvlarni o'tkazib bo'lmadi",
       "reorderFailed": "Navbat tartibini o'zgartirib bo'lmadi",
       "reorderFlooredHint": "{count, plural, other {# yozuv}} belgilangan vaqtida qoldi — slotdan oldinga surib bo'lmaydi. Navbatda ko'tarish uchun «Shoshilinch» tugmasini bosing.",
-      "statusFailed": "Statusni o'zgartirishda xato"
+      "statusFailed": "Statusni o'zgartirishda xato",
+      "reorderNotLive": "Yozuvlarni jonli navbat ichida siljitib bo'lmaydi — ro'yxat yangilandi",
+      "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang"
     },
     "case": {
       "saveFailed": "Saqlash imkonsiz",
@@ -6660,7 +6664,8 @@
         "errRevertMismatch": "Nimaga qaytarishni aniqlab bo‘lmadi",
         "errCallFailed": "Bemorni chaqirib bo‘lmadi",
         "errRevertFailed": "Qadamni bekor qilib bo‘lmadi",
-        "errUpdateFailed": "Holatni yangilab bo‘lmadi"
+        "errUpdateFailed": "Holatni yangilab bo‘lmadi",
+        "switchConfirm": "Joriy qabulni yakunlab, yangi bemorni boshlaysizmi?"
       },
       "liveQueue": {
         "title": "Jonli navbat",

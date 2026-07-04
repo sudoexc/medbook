@@ -55,9 +55,21 @@ describe("CreateAppointmentSchema", () => {
       date: "2026-04-22",
       time: "10:00",
       durationMin: 30,
-      channel: "WALKIN",
+      channel: "PHONE",
     });
     expect(r.success).toBe(true);
+  });
+
+  it("rejects channel WALKIN — live-lane rows are minted by registerWalkin only (two-lanes)", () => {
+    const r = CreateAppointmentSchema.safeParse({
+      patientId: "pat_1",
+      doctorId: "doc_1",
+      date: "2026-04-22",
+      time: "10:00",
+      durationMin: 30,
+      channel: "WALKIN",
+    });
+    expect(r.success).toBe(false);
   });
 
   it("rejects bad time format", () => {

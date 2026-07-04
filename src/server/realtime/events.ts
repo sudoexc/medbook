@@ -169,16 +169,20 @@ export type QueueEventPayload = z.infer<typeof QueuePayload>;
  * waiting-room board's "now calling" banner + chime and the kiosk flash. This
  * is an *ephemeral signal*, not a status row — it rides the in-process bus via
  * `publishEventSafe` (no outbox/replay), so a reconnecting TV never re-chimes
- * a stale call. Payload is deliberately PHI-light: the board joins by
- * `appointmentId` for the name if it wants one; the bus only carries the
- * public ticket/cabinet identifiers a waiting room already sees on paper.
+ * a stale call. Payload is deliberately PHI-light: the bus only carries the
+ * public ticket/cabinet identifiers a waiting room already sees on paper,
+ * plus `patientName` reduced to initials — the exact same projection the
+ * public board route already exposes.
  */
 export const QueueCalledPayload = z
   .object({
     appointmentId: z.string().min(1),
     doctorId: z.string().min(1),
     queueOrder: z.number().int().nullable().optional(),
-    ticketNumber: z.string().optional(),
+    /** Null when the row never claimed a seq (booking started w/o check-in). */
+    ticketNumber: z.string().nullable().optional(),
+    /** INITIALS ONLY (`initials()` from lib/format) — PHI-safe by reduction. */
+    patientName: z.string().optional(),
     cabinetNumber: z.string().nullable().optional(),
     calledAt: z.string().optional(),
   })

@@ -38,7 +38,7 @@ describe("isBoardEvent", () => {
 });
 
 describe("projectBoardEvent", () => {
-  it("strips patientId and any enriched name from an appointment payload", () => {
+  it("strips patientId but passes the whitelisted initials-only patientName", () => {
     const projected = projectBoardEvent({
       type: "appointment.statusChanged",
       clinicId: "c1",
@@ -56,11 +56,14 @@ describe("projectBoardEvent", () => {
     expect(projected!.payload).toEqual({
       appointmentId: "a1",
       doctorId: "d1",
+      // patientName is whitelisted for the call overlay — emitters send
+      // initials only (see queue.called emit sites).
+      patientName: "Иванов Иван",
       status: "WAITING",
       previousStatus: "BOOKED",
     });
     expect("patientId" in projected!.payload).toBe(false);
-    expect("patientName" in projected!.payload).toBe(false);
+    expect("patientName" in projected!.payload).toBe(true);
   });
 
   it("preserves the public call identifiers for the now-calling banner", () => {

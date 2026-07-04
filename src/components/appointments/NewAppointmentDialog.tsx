@@ -135,7 +135,9 @@ export function NewAppointmentDialog({
       doctorId: initialDoctorId ?? null,
       date: initialDate ?? new Date(),
       time: initialTime ?? null,
-      channel: "WALKIN",
+      // Schedule-lane default. Never WALKIN — that channel is the live-lane
+      // discriminator and belongs exclusively to «Выдать талон».
+      channel: "PHONE",
       comments: "",
     }));
   }, [open, initialDoctorId, initialDate, initialTime]);

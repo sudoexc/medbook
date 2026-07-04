@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { SITE_DOMAIN } from "@/lib/constants";
 import { initials } from "@/lib/format";
 import { ticketNumberFor } from "@/server/services/ticket-number";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { AutoPrint } from "./_components/auto-print";
 
 export default async function TicketPage({
@@ -20,6 +21,7 @@ export default async function TicketPage({
     where: { id },
     select: {
       queueOrder: true,
+      queuedAt: true,
       date: true,
       time: true,
       channel: true,
@@ -40,6 +42,8 @@ export default async function TicketPage({
     return <p style={{ padding: 40, textAlign: "center" }}>Талон не найден</p>;
   }
 
+  // Nullable under two-lanes: a booking printed before check-in has no queue
+  // fields — the stub leads with its slot time instead of a fake "C-000".
   const ticketNumber = ticketNumberFor(appointment.doctor.id, appointment.queueOrder);
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
   const statusUrl = `${baseUrl}/q/${id}`;
@@ -53,22 +57,21 @@ export default async function TicketPage({
   // Two-lanes (docs/TZ-two-lanes.md): only a walk-in has a queue position.
   // A booking's stub shows its slot time instead of «перед вами».
   const live = appointment.channel === "WALKIN";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const waitingAhead = live
-    ? await prisma.appointment.count({
-        where: {
-          doctorId: appointment.doctorId,
-          date: { gte: today, lt: tomorrow },
-          queueStatus: "WAITING",
-          channel: "WALKIN",
-          queueOrder: { lt: appointment.queueOrder || 9999 },
-        },
-      })
-    : null;
+  // Live-lane FIFO count in Tashkent day bounds (server runs UTC — a naive
+  // local-midnight window skews ±5h). Ahead = joined earlier (queuedAt).
+  const { dayStart, dayEnd } = tashkentDayBounds(new Date());
+  const waitingAhead =
+    live && appointment.queuedAt
+      ? await prisma.appointment.count({
+          where: {
+            doctorId: appointment.doctorId,
+            date: { gte: dayStart, lt: dayEnd },
+            queueStatus: "WAITING",
+            channel: "WALKIN",
+            queuedAt: { lt: appointment.queuedAt },
+          },
+        })
+      : null;
 
   return (
     <div
@@ -101,8 +104,8 @@ export default async function TicketPage({
 
       {/* Ticket number — BIG */}
       <div style={{ textAlign: "center", margin: "4mm 0" }}>
-        <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase", letterSpacing: "2px" }}>Ваш номер</div>
-        <div style={{ fontSize: "48px", fontWeight: "bold", lineHeight: "1.1", letterSpacing: "2px" }}>{ticketNumber}</div>
+        <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase", letterSpacing: "2px" }}>{ticketNumber ? "Ваш номер" : "Ваше время"}</div>
+        <div style={{ fontSize: "48px", fontWeight: "bold", lineHeight: "1.1", letterSpacing: "2px" }}>{ticketNumber ?? appointment.time ?? timeStr}</div>
       </div>
 
       {/* Separator */}

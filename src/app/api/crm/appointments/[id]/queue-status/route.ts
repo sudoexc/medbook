@@ -21,10 +21,9 @@ import {
 } from "@/lib/appointments/lifecycle";
 import { confirmAppointment } from "@/server/appointments/confirm";
 import { findOtherActiveVisit } from "@/server/appointments/active-visit";
-import {
-  allocateQueueOrder,
-  runQueueTx,
-} from "@/server/appointments/queue-order";
+import { runQueueTx } from "@/server/appointments/queue-order";
+import { applyWaitingIntake } from "@/server/appointments/intake";
+import { initials } from "@/lib/format";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -156,28 +155,16 @@ export const PATCH = createApiHandler(
 
     let after: Appointment;
     if (body.queueStatus === "WAITING") {
-      // Reception "Пришёл": a BOOKED/CONFIRMED row carries no queueOrder, so it
-      // must claim one (and freeze its ticket number) the same way the kiosk
-      // check-in does — otherwise it joins the live queue with a null order and
-      // the board can't print a ticket for it. A returning SKIPPED row already
-      // owns a queueOrder/ticketSeq, so we leave those frozen.
-      const needsOrder = before.queueOrder == null;
-      // Fresh arrival stamp on first arrival (queuedAt null) or when a skipped
-      // patient comes back — they re-join at the back of the queue. An
-      // IN_PROGRESS put-back keeps its original stamp so it doesn't surrender
-      // its place.
-      const refreshQueuedAt =
-        before.queuedAt == null || before.queueStatus === "SKIPPED";
+      // Put-back: IN_PROGRESS → WAITING re-opens the visit, so the first-start
+      // stamp must clear — otherwise a later restart keeps the stale time.
+      // (The doctor's ?revert=true path already does this; keep parity here.)
+      if (before.queueStatus === "IN_PROGRESS") data.startedAt = null;
+      // Reception "Пришёл" — shared intake (see `applyWaitingIntake`): claim
+      // queueOrder/ticketSeq exactly once and stamp queuedAt on fresh arrival
+      // or a SKIPPED return. Serializable via runQueueTx so two desks racing
+      // the same doctor can't hand out a duplicate order.
       after = await runQueueTx(async (tx) => {
-        if (needsOrder) {
-          const order = await allocateQueueOrder(tx, {
-            clinicId: before.clinicId,
-            doctorId: before.doctorId,
-          });
-          data.queueOrder = order;
-          data.ticketSeq = order;
-        }
-        if (refreshQueuedAt) data.queuedAt = now;
+        Object.assign(data, await applyWaitingIntake(tx, before, now));
         return tx.appointment.update({ where: { id }, data });
       });
     } else {
@@ -233,9 +220,15 @@ export const PATCH = createApiHandler(
         body.queueStatus === "IN_PROGRESS" &&
         before.queueStatus !== "IN_PROGRESS"
       ) {
-        const doctorCabinet = await prisma.doctor.findUnique({
-          where: { id: after.doctorId },
-          select: { cabinet: { select: { number: true } } },
+        // One re-read covers both display fields: the cabinet number and the
+        // patient's name for the banner (reduced to initials — the same
+        // PHI-safe projection the public board route serves).
+        const callContext = await prisma.appointment.findUnique({
+          where: { id },
+          select: {
+            patient: { select: { fullName: true } },
+            doctor: { select: { cabinet: { select: { number: true } } } },
+          },
         });
         publishEventSafe(clinicId, {
           type: "queue.called",
@@ -243,11 +236,14 @@ export const PATCH = createApiHandler(
             appointmentId: id,
             doctorId: after.doctorId,
             queueOrder: after.queueOrder,
+            // Null for a booking started without check-in — no fake "X-000".
             ticketNumber: ticketNumberFor(
               after.doctorId,
               after.ticketSeq ?? after.queueOrder,
             ),
-            cabinetNumber: doctorCabinet?.cabinet?.number ?? null,
+            patientName:
+              initials(callContext?.patient.fullName) || undefined,
+            cabinetNumber: callContext?.doctor.cabinet?.number ?? null,
             calledAt: now.toISOString(),
           },
         });

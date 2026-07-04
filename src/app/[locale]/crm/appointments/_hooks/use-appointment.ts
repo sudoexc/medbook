@@ -517,7 +517,14 @@ export function useReorderQueue() {
           qc.setQueryData(key, prev);
         }
       }
-      toast.error(err.message || t("reorderFailed"));
+      // Stale client dragged a schedule-lane row (channel flip mid-drag) —
+      // the rollback above already restored the list; explain, don't leak
+      // the raw reason string.
+      if (err.message === "not_live_lane") {
+        toast.error(t("reorderNotLive"));
+      } else {
+        toast.error(err.message || t("reorderFailed"));
+      }
     },
     onSettled: () => {
       invalidateAppointmentSurfaces(qc);

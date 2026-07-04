@@ -240,6 +240,10 @@ export const POST = createMiniAppHandler(
           );
         case "bad_start_at":
           return err("bad_start_at", 400);
+        case "bad_channel":
+          // Unreachable from this route (channel is hardcoded TELEGRAM) —
+          // kept for switch exhaustiveness over BookResult.
+          return err("bad_channel", 422);
       }
     }
 

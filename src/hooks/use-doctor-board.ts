@@ -26,7 +26,8 @@ export interface DoctorBoardWaiting {
 
 export interface DoctorBoardCurrent {
   fullName: string;
-  ticketNumber: string;
+  /** Null for a booking started without check-in (no queue fields). */
+  ticketNumber: string | null;
   startedAt: string | null;
 }
 

@@ -20,6 +20,7 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { tashkentComponents } from "@/lib/booking-validation";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { cancelAppointment } from "@/server/appointments/cancel";
 import {
@@ -122,9 +123,10 @@ export const PATCH = createMiniAppHandler(
       return conflict(c.reason, c.until ? { until: c.until } : undefined);
     }
 
-    const time = `${String(startAt.getHours()).padStart(2, "0")}:${String(
-      startAt.getMinutes(),
-    ).padStart(2, "0")}`;
+    // Display column must be Tashkent wall clock — prod runs UTC, so
+    // `getHours()` would skew the stored "HH:mm" by −5h (same rule as
+    // registerWalkin and the CRM create path).
+    const time = tashkentComponents(startAt).time;
     const correlationId = newCorrelationId();
 
     const updated = await prisma.$transaction(async (tx) => {

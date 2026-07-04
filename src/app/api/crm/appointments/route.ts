@@ -152,7 +152,9 @@ export const GET = createApiListHandler(
 // happened during booking itself — no need for a follow-up reminder Action.
 // TELEGRAM / WEBSITE bookings are remote/self-service and stay BOOKED until
 // the unconfirmed-window detector posts a confirm-call task.
-const AUTO_CONFIRM_CHANNELS = new Set<string>(["PHONE", "KIOSK", "WALKIN"]);
+// WALKIN is unreachable here since the two-lanes guard (bookAppointment
+// rejects it; walk-ins go via registerWalkin) — kept out deliberately.
+const AUTO_CONFIRM_CHANNELS = new Set<string>(["PHONE", "KIOSK"]);
 
 export const POST = createApiHandler(
   {
@@ -215,6 +217,8 @@ export const POST = createApiHandler(
           );
         case "bad_start_at":
           return err("BadStartAt", 400, { reason: "bad_start_at" });
+        case "bad_channel":
+          return err("BadChannel", 422, { reason: "bad_channel" });
       }
     }
 

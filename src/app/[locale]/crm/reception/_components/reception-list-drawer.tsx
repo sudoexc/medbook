@@ -87,7 +87,10 @@ export function ReceptionListDrawer({
     const queue = rows.filter((r) =>
       QUEUE_STATUSES.has(r.queueStatus ?? r.status),
     );
-    const live = queue.filter((r) => isLiveLane(r)).sort(compareQueuePriority);
+    // Same WAITING rule as the panel — a non-WAITING walk-in is off-path.
+    const live = queue
+      .filter((r) => isLiveLane(r) && (r.queueStatus ?? r.status) === "WAITING")
+      .sort(compareQueuePriority);
     const booked = queue
       .filter((r) => !isLiveLane(r))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());

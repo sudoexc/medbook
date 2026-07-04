@@ -21,7 +21,7 @@ interface QueueStatus {
   etaMinutes: number | null;
   etaConfidence?: "high" | "med" | "low";
   etaSource?: "history" | "blended" | "fallback";
-  ticketNumber: string;
+  ticketNumber: string | null;
 }
 
 // SSE now delivers instant pokes; the poll is just a safety net for a dropped
@@ -193,8 +193,8 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
               isInProgress ? "bg-gradient-to-br from-green-500 to-emerald-600" :
               isCompleted ? "bg-gray-400" : "bg-gradient-to-br from-[var(--brand-primary)] to-[#1a3fd6]"
             }`}>
-              <p className="text-white/70 text-xs font-semibold uppercase tracking-[0.2em] mb-2">Ваш талон</p>
-              <p className="text-white text-6xl font-bold font-mono tracking-wider">{data.ticketNumber}</p>
+              <p className="text-white/70 text-xs font-semibold uppercase tracking-[0.2em] mb-2">{data.ticketNumber ? "Ваш талон" : "Ваша запись"}</p>
+              <p className="text-white text-6xl font-bold font-mono tracking-wider">{data.ticketNumber ?? data.slotTime ?? "—"}</p>
             </div>
 
             {/* Status section */}

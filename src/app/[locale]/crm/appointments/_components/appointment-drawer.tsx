@@ -76,7 +76,10 @@ import {
 } from "@/lib/appointment-transitions";
 import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 
-const CHANNELS = ["WALKIN", "PHONE", "TELEGRAM", "WEBSITE", "KIOSK"] as const;
+// Two-lanes: schedule-lane channels only. WALKIN/KIOSK are excluded — a
+// channel flip to WALKIN would teleport the row into the live queue (and the
+// PATCH schema rejects it server-side anyway).
+const CHANNELS = ["PHONE", "TELEGRAM", "WEBSITE"] as const;
 
 export interface AppointmentDrawerProps {
   appointmentId: string | null;

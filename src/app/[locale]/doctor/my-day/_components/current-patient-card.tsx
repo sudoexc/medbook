@@ -481,8 +481,11 @@ function ActivePatient({
             ) : null}
             {p.status === "WAITING" ? (
               <>
+                {/* WAITING has no REVERTS entry (appointment-transitions) —
+                    WAITING → BOOKED is a legal *forward* transition, so this
+                    fires a plain status PATCH, not a revert. */}
                 <DropdownMenuItem
-                  onSelect={() => fire("BOOKED", { revert: true })}
+                  onSelect={() => fire("BOOKED")}
                   className="gap-2"
                 >
                   <RotateCcwIcon className="size-4" />

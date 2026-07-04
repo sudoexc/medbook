@@ -76,29 +76,62 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
         : revert
           ? `/api/crm/appointments/${appointmentId}?revert=true`
           : `/api/crm/appointments/${appointmentId}`;
-      const res = await fetch(url, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        // Call branch ignores the body server-side, but sending `{}` keeps
-        // the content-type header honest.
-        body: call ? "{}" : JSON.stringify({ status: toStatus }),
-      });
+      const patch = () =>
+        fetch(url, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          // Call branch ignores the body server-side, but sending `{}` keeps
+          // the content-type header honest.
+          body: call ? "{}" : JSON.stringify({ status: toStatus }),
+        });
+      let res = await patch();
       if (!res.ok) {
-        let reason = "";
-        try {
-          // Server error envelope is flat: `{ error: "conflict", reason }`
-          // (see server/http.ts conflict/err). Read the top-level `reason`.
-          const j = (await res.json()) as {
-            reason?: string;
-            code?: string;
-            message?: string;
-          };
-          reason = j.reason ?? j.code ?? j.message ?? "";
-        } catch {
-          // body wasn't JSON — fall through to generic message.
+        const parsed = await readErrorEnvelope(res);
+        // Switch-patient flow: starting/calling a patient while another
+        // visit is IN_PROGRESS 409s. Instead of dead-ending on a toast, ask
+        // the doctor whether to close the active visit and switch — the
+        // conflict payload carries `activeAppointmentId` (see
+        // /api/crm/appointments/[id] `another_visit_in_progress`), with the
+        // /today cache as fallback for older payloads.
+        const isStartPath = call === true || (!revert && toStatus === "IN_PROGRESS");
+        if (
+          res.status === 409 &&
+          parsed.reason === "another_visit_in_progress" &&
+          isStartPath &&
+          window.confirm(t("statusToast.switchConfirm"))
+        ) {
+          const cached = qc.getQueryData<DoctorToday>(doctorTodayKey);
+          const cachedCurrent = cached?.current;
+          const activeId =
+            parsed.activeAppointmentId ??
+            (cachedCurrent &&
+            cachedCurrent.status === "IN_PROGRESS" &&
+            cachedCurrent.appointmentId !== appointmentId
+              ? cachedCurrent.appointmentId
+              : null);
+          if (activeId) {
+            const completed = await fetch(
+              `/api/crm/appointments/${activeId}`,
+              {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ status: "COMPLETED" }),
+              },
+            );
+            if (completed.ok) {
+              // Retry the original transition once, now that the lane is free.
+              res = await patch();
+              if (res.ok) return (await res.json()) as unknown;
+              const retry = await readErrorEnvelope(res);
+              throw new Error(retry.reason || `HTTP ${res.status}`);
+            }
+          }
+          // No active id resolvable or completion failed — fall through to
+          // the existing errAnotherInProgress toast via messageFor.
         }
-        throw new Error(reason || `HTTP ${res.status}`);
+        throw new Error(parsed.reason || `HTTP ${res.status}`);
       }
       return (await res.json()) as unknown;
     },
@@ -239,6 +272,33 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       qc.invalidateQueries({ queryKey: ["doctor", "me", "patients"] });
     },
   });
+}
+
+/**
+ * Server error envelope is flat: `{ error: "conflict", reason, ...extra }`
+ * (see server/http.ts conflict/err). Reads the top-level `reason` plus the
+ * `activeAppointmentId` extra that `another_visit_in_progress` conflicts
+ * attach.
+ */
+async function readErrorEnvelope(res: Response): Promise<{
+  reason: string;
+  activeAppointmentId: string | null;
+}> {
+  try {
+    const j = (await res.json()) as {
+      reason?: string;
+      code?: string;
+      message?: string;
+      activeAppointmentId?: string;
+    };
+    return {
+      reason: j.reason ?? j.code ?? j.message ?? "",
+      activeAppointmentId: j.activeAppointmentId ?? null,
+    };
+  } catch {
+    // body wasn't JSON — fall through to generic message.
+    return { reason: "", activeAppointmentId: null };
+  }
 }
 
 type Translate = (key: string) => string;

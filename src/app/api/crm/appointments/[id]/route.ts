@@ -13,6 +13,9 @@ import {
   computeEndDate,
   detectConflicts,
 } from "@/server/services/appointments";
+import { tashkentComponents } from "@/lib/booking-validation";
+import { initials } from "@/lib/format";
+import { applyWaitingIntake } from "@/server/appointments/intake";
 import {
   recomputeAppointmentPrice,
   recomputeCaseAppointments,
@@ -385,10 +388,13 @@ export const PATCH = createApiHandler(
           appointmentId: updatedRow.id,
           doctorId: updatedRow.doctorId,
           queueOrder: updatedRow.queueOrder,
+          // Null for a booking started without check-in — no fake "X-000".
           ticketNumber: ticketNumberFor(
             updatedRow.doctorId,
             updatedRow.ticketSeq ?? updatedRow.queueOrder,
           ),
+          // Initials only — same PHI-safe reduction the board route serves.
+          patientName: initials(updatedRow.patient.fullName) || undefined,
           cabinetNumber: updatedRow.doctor.cabinet?.number ?? null,
           calledAt: updatedRow.calledAt?.toISOString(),
         },
@@ -502,16 +508,22 @@ export const PATCH = createApiHandler(
       const dur = body.durationMin ?? before.durationMin;
       startAt = applyTime(date, time);
       endAt = computeEndDate(startAt, dur);
-      const doctorId = body.doctorId ?? before.doctorId;
-      const c = await detectConflicts({
-        doctorId,
-        cabinetId: nextCabinetId,
-        startAt,
-        endAt,
-        excludeId: id,
-      });
-      if (!c.ok) {
-        return conflict(c.reason, c.until ? { until: c.until } : undefined);
+      // Two-lanes (TZ I4): a walk-in is served by queue order, not by slot —
+      // its date window is a technical field, so a time nudge can never
+      // "clash" with the schedule grid. Skip conflict detection entirely for
+      // WALKIN rows; bookings keep the full check.
+      if (before.channel !== "WALKIN") {
+        const doctorId = body.doctorId ?? before.doctorId;
+        const c = await detectConflicts({
+          doctorId,
+          cabinetId: nextCabinetId,
+          startAt,
+          endAt,
+          excludeId: id,
+        });
+        if (!c.ok) {
+          return conflict(c.reason, c.until ? { until: c.until } : undefined);
+        }
       }
     }
 
@@ -529,6 +541,26 @@ export const PATCH = createApiHandler(
     }
     if (body.doctorId !== undefined && body.doctorId !== before.doctorId) {
       data.cabinetId = nextCabinetId;
+    }
+
+    // Rescheduling an arrived (WAITING) row onto a different Tashkent day
+    // un-arrives it: the patient isn't in today's waiting room anymore, so
+    // status returns to CONFIRMED and the FIFO anchor (queuedAt) clears.
+    // ticketSeq/queueOrder stay frozen (two-lanes I5) — if they come back the
+    // same day their printed ticket is still theirs. Skipped when the caller
+    // drives status explicitly in the same PATCH: an explicit transition wins.
+    const dayMoved =
+      timeChanged &&
+      tashkentComponents(before.date).date !== tashkentComponents(startAt).date;
+    const unarriveOnDayMove =
+      dayMoved &&
+      before.queueStatus === "WAITING" &&
+      body.status === undefined &&
+      body.queueStatus === undefined;
+    if (unarriveOnDayMove) {
+      data.status = "CONFIRMED";
+      data.queueStatus = "CONFIRMED";
+      data.queuedAt = null;
     }
 
     // When the discount changes and the caller hasn't pinned `priceFinal`
@@ -569,6 +601,15 @@ export const PATCH = createApiHandler(
     }
     if (body.status === "IN_PROGRESS" && !before.startedAt) {
       data.startedAt = new Date();
+    }
+    // WAITING flips through this generic PATCH mirror the queue-status route:
+    // the row must claim its live-queue slot (see `applyWaitingIntake`, run
+    // inside the tx below) and an IN_PROGRESS put-back clears the first-start
+    // stamp so a later restart records fresh (?revert=true already does this).
+    const movesToWaiting =
+      body.status === "WAITING" || body.queueStatus === "WAITING";
+    if (movesToWaiting && before.queueStatus === "IN_PROGRESS") {
+      data.startedAt = null;
     }
 
     // Replace AppointmentService join rows if body.services provided.
@@ -628,6 +669,14 @@ export const PATCH = createApiHandler(
             })) as never,
           });
         }
+      }
+      // Shared WAITING intake — queueOrder/ticketSeq allocation + queuedAt
+      // stamp, merged into the same update so the row never observes a
+      // WAITING state without its queue fields. This route's existing default
+      // isolation is preserved (the queue-status route is the Serializable
+      // hot path; this mirror mostly serves drawer/legacy flips).
+      if (movesToWaiting) {
+        Object.assign(data, await applyWaitingIntake(tx, before, new Date()));
       }
       const updated = await tx.appointment.update({
         where: { id },
@@ -694,8 +743,10 @@ export const PATCH = createApiHandler(
           actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
           surface: ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM",
           correlationId: patchCorrelationId,
-          // Queue snapshot shifts on any status flip or urgency bump.
-          alsoQueueUpdate: statusChanged || priorityChanged,
+          // Queue snapshot shifts on any status flip or urgency bump — and on
+          // the implicit day-move un-arrive, which changes queueStatus without
+          // a body.status (boards must drop the row from today's list).
+          alsoQueueUpdate: statusChanged || priorityChanged || unarriveOnDayMove,
         });
       }
       return { after: fresh, recomputed };

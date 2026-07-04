@@ -21,11 +21,13 @@ import {
 } from "@/lib/appointments/lifecycle";
 
 describe("getAllowedTransitions", () => {
-  it("BOOKED → WAITING is valid for RECEPTIONIST; IN_PROGRESS is doctor-owned", () => {
+  it("BOOKED → WAITING and IN_PROGRESS are valid for RECEPTIONIST (two-lanes shared ownership)", () => {
     const next = getAllowedTransitions("BOOKED", "RECEPTIONIST");
     expect(next).toContain("WAITING");
-    expect(next).not.toContain("IN_PROGRESS"); // doctor-owned per STATE_OWNERS
-    expect(next).not.toContain("COMPLETED"); // doctor-owned per STATE_OWNERS
+    // Two-lanes: reception drives the flow too — starting a visit is no
+    // longer doctor-exclusive (docs/TZ-two-lanes.md).
+    expect(next).toContain("IN_PROGRESS");
+    expect(next).not.toContain("COMPLETED"); // graph: must pass through IN_PROGRESS
     expect(next).toContain("CANCELLED");
     expect(next).not.toContain("BOOKED"); // self-loop excluded
   });
@@ -112,24 +114,22 @@ describe("getAllowedTransitionsAt — NO_SHOW gating", () => {
       before,
     );
     expect(allowed).toEqual(
-      expect.arrayContaining(["CONFIRMED", "WAITING"]),
+      expect.arrayContaining(["CONFIRMED", "WAITING", "IN_PROGRESS"]),
     );
-    // Doctor-owned states stay locked regardless of timing.
-    expect(allowed).not.toContain("IN_PROGRESS");
+    // COMPLETED still unreachable from BOOKED (graph, not ownership).
     expect(allowed).not.toContain("COMPLETED");
   });
 });
 
 describe("ownership — STATE_OWNERS", () => {
-  it("IN_PROGRESS and COMPLETED are doctor-owned", () => {
-    expect(canRoleAdvanceTo("DOCTOR", "IN_PROGRESS")).toBe(true);
-    expect(canRoleAdvanceTo("DOCTOR", "COMPLETED")).toBe(true);
-    expect(canRoleAdvanceTo("ADMIN", "IN_PROGRESS")).toBe(false);
-    expect(canRoleAdvanceTo("ADMIN", "COMPLETED")).toBe(false);
-    expect(canRoleAdvanceTo("RECEPTIONIST", "IN_PROGRESS")).toBe(false);
-    expect(canRoleAdvanceTo("RECEPTIONIST", "COMPLETED")).toBe(false);
-    expect(canRoleAdvanceTo("SUPER_ADMIN", "IN_PROGRESS")).toBe(false);
-    expect(canRoleAdvanceTo("SUPER_ADMIN", "COMPLETED")).toBe(false);
+  it("IN_PROGRESS and COMPLETED are shared by doctor + reception (two-lanes)", () => {
+    for (const role of ["DOCTOR", "ADMIN", "RECEPTIONIST", "SUPER_ADMIN"] as const) {
+      expect(canRoleAdvanceTo(role, "IN_PROGRESS")).toBe(true);
+      expect(canRoleAdvanceTo(role, "COMPLETED")).toBe(true);
+    }
+    // Read-only roles stay locked out.
+    expect(canRoleAdvanceTo("NURSE", "IN_PROGRESS")).toBe(false);
+    expect(canRoleAdvanceTo("CALL_OPERATOR", "IN_PROGRESS")).toBe(false);
   });
 
   it("Confirmation, intake, and off-path states are open to all mutate roles", () => {
@@ -143,8 +143,9 @@ describe("ownership — STATE_OWNERS", () => {
   });
 
   it("isOwnershipLocked flags only ownership-restricted states", () => {
-    expect(isOwnershipLocked("ADMIN", "IN_PROGRESS")).toBe(true);
-    expect(isOwnershipLocked("ADMIN", "COMPLETED")).toBe(true);
+    // Two-lanes: staff mutate roles all own IN_PROGRESS/COMPLETED now.
+    expect(isOwnershipLocked("ADMIN", "IN_PROGRESS")).toBe(false);
+    expect(isOwnershipLocked("ADMIN", "COMPLETED")).toBe(false);
     expect(isOwnershipLocked("ADMIN", "WAITING")).toBe(false);
     expect(isOwnershipLocked("ADMIN", "CANCELLED")).toBe(false);
     expect(isOwnershipLocked("DOCTOR", "IN_PROGRESS")).toBe(false);

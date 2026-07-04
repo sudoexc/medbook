@@ -26,6 +26,7 @@ import {
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 import { detectConflicts } from "@/server/services/appointments";
+import { tashkentComponents } from "@/lib/booking-validation";
 
 export const POST = createApiHandler(
   {
@@ -42,6 +43,9 @@ export const POST = createApiHandler(
         endDate: true,
         doctorId: true,
         cabinetId: true,
+        // Two-lanes: WALKIN rows are order-based and exempt from slot-overlap
+        // checks below (their date window is technical — TZ I4).
+        channel: true,
       },
     });
 
@@ -64,6 +68,7 @@ export const POST = createApiHandler(
       id: r.id,
       doctorId: r.doctorId,
       cabinetId: r.cabinetId,
+      channel: r.channel,
       newStart: new Date(r.date.getTime() + deltaMs),
       newEnd: new Date(r.endDate.getTime() + deltaMs),
     }));
@@ -95,6 +100,9 @@ export const POST = createApiHandler(
             doctorId: cur.doctorId,
             id: { not: cur.id },
             status: { notIn: ["CANCELLED", "NO_SHOW"] },
+            // Persisted walk-ins never contend for a slot — their date window
+            // is technical, the live lane is served by queue order (TZ I4).
+            channel: { not: "WALKIN" },
             date: { lt: cur.newEnd },
             endDate: { gt: cur.newStart },
           },
@@ -115,6 +123,8 @@ export const POST = createApiHandler(
               cabinetId: cur.cabinetId,
               id: { not: cur.id },
               status: { notIn: ["CANCELLED", "NO_SHOW"] },
+              // Same walk-in exemption as the doctor clash above.
+              channel: { not: "WALKIN" },
               date: { lt: cur.newEnd },
               endDate: { gt: cur.newStart },
             },
@@ -124,18 +134,25 @@ export const POST = createApiHandler(
             return conflict("cabinet_busy", { id: cur.id });
           }
         }
-        // doctor_time_off and in_past always block regardless of batch.
+        // doctor_time_off / in_past / outside_schedule always block regardless
+        // of batch — they're clashes with the calendar itself, not with
+        // another (possibly moving) row.
         if (
           persistedConflict.reason === "doctor_time_off" ||
-          persistedConflict.reason === "in_past"
+          persistedConflict.reason === "in_past" ||
+          persistedConflict.reason === "outside_schedule"
         ) {
           return conflict(persistedConflict.reason, { id: cur.id });
         }
       }
 
-      // Intra-batch: this row vs every later (already-sorted) row.
+      // Intra-batch: this row vs every later (already-sorted) row. Walk-ins
+      // are exempt on either side — the live lane is FIFO by queuedAt, its
+      // rows' date windows are technical and can't overlap-clash (TZ I4).
+      if (cur.channel === "WALKIN") continue;
       for (let j = i + 1; j < planned.length; j++) {
         const other = planned[j];
+        if (other.channel === "WALKIN") continue;
         const sameDoctor = other.doctorId === cur.doctorId;
         const sameCab =
           cur.cabinetId !== null && other.cabinetId === cur.cabinetId;
@@ -155,7 +172,13 @@ export const POST = createApiHandler(
       planned.map((p) =>
         prisma.appointment.update({
           where: { id: p.id },
-          data: { date: p.newStart, endDate: p.newEnd },
+          data: {
+            date: p.newStart,
+            endDate: p.newEnd,
+            // Keep the display column in lockstep — `time` is Tashkent wall
+            // clock (prod runs UTC; a bare shift would leave it stale).
+            time: tashkentComponents(p.newStart).time,
+          },
         }),
       ),
     );

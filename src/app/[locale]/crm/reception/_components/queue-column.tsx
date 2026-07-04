@@ -114,8 +114,14 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
     for (const row of rows) {
       const queueField = row.queueStatus ?? row.status;
       if (!QUEUE_STATUSES.has(queueField)) continue;
-      if (isLiveLane(row)) l.push(row);
-      else b.push(row);
+      // Live lane = walk-ins that are actually WAITING (same rule as the
+      // doctor-queue-panel). A WALKIN row in BOOKED/CONFIRMED is a legacy
+      // dialog-created phantom — it belongs to neither lane here.
+      if (isLiveLane(row)) {
+        if (queueField === "WAITING") l.push(row);
+      } else {
+        b.push(row);
+      }
     }
     b.sort(bySlotTime);
     l.sort(byArrival);

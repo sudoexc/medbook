@@ -206,13 +206,7 @@ export default function TVQueuePage() {
 
       <style>{`
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes scale-in { from { opacity: 0; transform: scale(0.85) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        @keyframes ping-slow { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(2.5); opacity: 0; } }
-        @keyframes ping-slower { 0% { transform: scale(1); opacity: 0.3; } 100% { transform: scale(3); opacity: 0; } }
-        .animate-fade-in { animation: fade-in 0.3s ease-out; }
-        .animate-scale-in { animation: scale-in 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-        .animate-ping-slow { animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
-        .animate-ping-slower { animation: ping-slower 2.5s cubic-bezier(0, 0, 0.2, 1) infinite 0.5s; }
+        .animate-fade-in { animation: fade-in 0.25s ease-out; }
       `}</style>
     </div>
   );
@@ -272,10 +266,8 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
           </p>
         </div>
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl font-bold shadow-lg"
-          style={{
-            background: `linear-gradient(135deg, ${accent}, ${accent}99)`,
-          }}
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-xl font-bold"
+          style={{ background: accent, color: "#fff" }}
         >
           {doc.cabinet ?? "—"}
         </div>
@@ -388,48 +380,28 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
 }
 
 function CallOverlay({ overlay }: { overlay: Overlay }) {
+  // Flat signage takeover — solid green, size and color carry the message.
+  // No rings, no blur, no gradients (owner's direction: no AI-slop styling).
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-      <div className="relative text-center animate-scale-in">
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="h-40 w-40 rounded-full border-2 border-[var(--public-active)]/30 animate-ping-slow" />
-        </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="h-56 w-56 rounded-full border border-[var(--public-active)]/15 animate-ping-slower" />
-        </div>
-
-        {overlay.cabinet && (
-          <div className="relative mb-8">
-            <div
-              className="inline-flex h-32 w-32 items-center justify-center rounded-full text-6xl font-bold shadow-2xl"
-              style={{
-                background:
-                  "linear-gradient(135deg, var(--public-active), #0f9d6c)",
-                boxShadow: "0 25px 50px -12px rgb(22 199 132 / 0.40)",
-              }}
-            >
-              {overlay.cabinet}
-            </div>
-          </div>
-        )}
-        <p className="text-[var(--public-active)] text-2xl font-semibold uppercase tracking-[0.3em] mb-4">
-          Проходите{overlay.cabinet ? " в кабинет" : ""}
+    <div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center animate-fade-in"
+      style={{ background: "#16C784", color: "#06281B" }}
+    >
+      <p className="text-4xl font-bold uppercase tracking-widest">
+        Пройдите{overlay.cabinet ? " в кабинет" : ""}
+      </p>
+      {overlay.cabinet && (
+        <p className="mt-2 font-mono text-[10rem] font-bold leading-none tabular-nums">
+          {overlay.cabinet}
         </p>
-        <p className="text-7xl sm:text-8xl font-bold mb-6 leading-tight drop-shadow-lg">
-          {overlay.patientName || overlay.ticketNumber}
-        </p>
-        <div className="flex items-center justify-center gap-6 text-2xl text-[var(--public-fg-muted)]">
-          {overlay.cabinet && <span>Кабинет {overlay.cabinet}</span>}
-          {overlay.cabinet && overlay.doctorName && (
-            <span className="text-[var(--public-fg-faint)]">|</span>
-          )}
-          {overlay.doctorName && <span>{overlay.doctorName}</span>}
-        </div>
-        {overlay.ticketNumber && (
-          <p className="mt-8 text-xl font-mono text-[var(--public-active)]/70 tracking-widest">
-            {overlay.ticketNumber}
-          </p>
+      )}
+      <p className="mt-8 max-w-full truncate text-7xl font-bold">
+        {overlay.patientName || overlay.ticketNumber || ""}
+      </p>
+      <div className="mt-6 flex items-center gap-6 text-3xl font-semibold opacity-80">
+        {overlay.doctorName && <span>{overlay.doctorName}</span>}
+        {overlay.ticketNumber && overlay.patientName && (
+          <span className="font-mono tabular-nums">Талон {overlay.ticketNumber}</span>
         )}
       </div>
     </div>

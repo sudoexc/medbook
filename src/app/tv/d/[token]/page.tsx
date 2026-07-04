@@ -3,16 +3,17 @@
 /**
  * Personal doctor TV — `/tv/d/<token>`.
  *
- * One screen per doctor, mounted at the cabinet door / inside the waiting
- * area. Left half: the LIVE queue (current patient hero + waiting list).
- * Right half: today's booked slot timeline with a moving "now" divider.
- * A `queue.called` signal for THIS doctor takes over the screen with a
- * full-screen call overlay + chime + voice announcement; other doctors'
- * calls never disturb this screen.
+ * One screen per doctor, mounted PORTRAIT at the cabinet. Information-board
+ * design (flat signage, not a web page): solid background, hairline rules,
+ * typographic hierarchy, tabular/mono numerals, ONE accent color (the
+ * doctor's), zero gradients/blur/glow — per the owner's explicit direction.
  *
- * Design: dark public-surface tokens + the doctor's own accent color as the
- * aurora/highlight hue, so every cabinet screen is subtly personalized.
- * All PII is initials-only (server-enforced). No ticker by design.
+ * Portrait (default): header → «Сейчас» strip → «Живая очередь» → «Записи».
+ * Landscape fallback: queue and bookings side by side.
+ *
+ * A `queue.called` signal for THIS doctor takes the screen over with a flat
+ * full-green call board + chime + voice; other doctors' calls never disturb
+ * this screen. PII is initials-only (server-enforced). No ticker.
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -20,17 +21,27 @@ import { useParams } from "next/navigation";
 
 import {
   useDoctorBoard,
-  type DoctorBoardData,
   type DoctorBoardSlot,
 } from "@/hooks/use-doctor-board";
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
-const OVERLAY_MS = 15_000; // call overlay auto-dismiss
-const MAX_WAITING_ROWS = 8; // left panel rows before "+N ещё"
-const MAX_PAST_COMPACT = 3; // right panel: compact past rows kept visible
-const MAX_UPCOMING_ROWS = 9; // right panel rows before "+N ещё"
-const AURORA_OPACITY = 0.32; // 0..1 — accent glow intensity
+const OVERLAY_MS = 15_000; // call takeover auto-dismiss
+const MAX_WAITING_ROWS = 7; // queue rows before «ещё N»
+const MAX_PAST_COMPACT = 2; // finished bookings kept visible above the now-line
+const MAX_UPCOMING_ROWS = 8; // booking rows before «ещё N»
 const SPEECH_DELAY_MS = 1200; // chime first, then the voice
+// Flat board palette — solid colors only (no translucency on surfaces).
+const C = {
+  bg: "#0B1322",
+  row: "#131D30",
+  rowActive: "#15243A",
+  line: "#243049",
+  fg: "#F2F5FA",
+  muted: "#8B97AC",
+  faint: "#566178",
+  green: "#16C784",
+  amber: "#F5A623",
+};
 // ────────────────────────────────────────────────────────────────────────────
 
 interface Overlay {
@@ -81,42 +92,22 @@ function announce(patientName: string, cabinet: string, ticketNumber: string) {
       u.pitch = 1.1;
       speechSynthesis.speak(u);
     } catch {
-      // Speech synthesis unavailable — visual overlay still shows.
+      // Speech synthesis unavailable — visual board still flips.
     }
   }, SPEECH_DELAY_MS);
 }
 
 const SLOT_META: Record<
   DoctorBoardSlot["status"],
-  { label: string; fg: string; bg: string }
+  { label: string; color: string }
 > = {
-  BOOKED: {
-    label: "Запись",
-    fg: "var(--public-fg-muted)",
-    bg: "rgba(255,255,255,0.08)",
-  },
-  CONFIRMED: {
-    label: "Подтверждена",
-    fg: "#7cb7ff",
-    bg: "rgba(35,83,255,0.18)",
-  },
-  // Two-lanes: an arrived booking waits on the schedule axis, it is NOT in
-  // the live queue — the badge says so.
-  WAITING: {
-    label: "Пришёл",
-    fg: "var(--public-waiting)",
-    bg: "rgba(245,158,11,0.16)",
-  },
-  IN_PROGRESS: {
-    label: "На приёме",
-    fg: "var(--public-active)",
-    bg: "rgba(22,199,132,0.16)",
-  },
-  COMPLETED: {
-    label: "Завершён",
-    fg: "var(--public-fg-faint)",
-    bg: "rgba(255,255,255,0.05)",
-  },
+  BOOKED: { label: "запись", color: C.muted },
+  CONFIRMED: { label: "подтверждена", color: C.muted },
+  // Two-lanes: an arrived booking waits on the schedule axis, not in the
+  // live queue — the label says so.
+  WAITING: { label: "пришёл", color: C.amber },
+  IN_PROGRESS: { label: "на приёме", color: C.green },
+  COMPLETED: { label: "завершён", color: C.faint },
 };
 
 /** "HH:mm" → minutes since midnight; unparseable → +∞ (sorts last). */
@@ -134,13 +125,11 @@ export default function DoctorTVPage() {
 
   const [activated, setActivated] = useState(false);
   const [time, setTime] = useState(new Date());
-  // The overlay is DERIVED from the latest call: visible until its seq is
-  // dismissed by the timer below. No setState-in-effect, no cascading renders.
+  // Overlay derived from the latest call; dismissed by seq after OVERLAY_MS.
   const [dismissedSeq, setDismissedSeq] = useState(0);
 
   const lastCallSeq = useRef(0);
 
-  // Live clock.
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(id);
@@ -157,7 +146,7 @@ export default function DoctorTVPage() {
     announce(data?.queue.current?.fullName ?? "", cabinet, ticketNumber);
   }, [call, data]);
 
-  // Auto-dismiss the overlay after OVERLAY_MS (async setState — allowed).
+  // Auto-dismiss the call board after OVERLAY_MS (async setState — allowed).
   useEffect(() => {
     if (!call) return;
     const t = setTimeout(() => setDismissedSeq(call.seq), OVERLAY_MS);
@@ -174,7 +163,7 @@ export default function DoctorTVPage() {
         }
       : null;
 
-  const accent = data?.doctor.color || "var(--public-accent)";
+  const accent = data?.doctor.color || "#2353FF";
   const nowMinutes = time.getHours() * 60 + time.getMinutes();
 
   const slotsSorted = useMemo(
@@ -184,9 +173,7 @@ export default function DoctorTVPage() {
       ),
     [data?.slots],
   );
-  const pastSlots = slotsSorted.filter(
-    (s) => slotMinutes(s.time) < nowMinutes,
-  );
+  const pastSlots = slotsSorted.filter((s) => slotMinutes(s.time) < nowMinutes);
   const upcomingSlots = slotsSorted.filter(
     (s) => slotMinutes(s.time) >= nowMinutes,
   );
@@ -194,24 +181,23 @@ export default function DoctorTVPage() {
 
   if (notFound) {
     return (
-      <Shell accent="var(--public-accent)">
-        <div className="flex h-screen flex-col items-center justify-center gap-4">
-          <div className="text-8xl">📺</div>
-          <p className="text-4xl font-bold">Экран не найден</p>
-          <p className="text-xl text-[var(--public-fg-muted)]">
+      <Board>
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-10 text-center">
+          <p className="text-5xl font-bold">Экран не найден</p>
+          <p className="text-2xl" style={{ color: C.muted }}>
             Ссылка недействительна или врач деактивирован
           </p>
         </div>
-      </Shell>
+      </Board>
     );
   }
 
   // Activation splash — a tap resumes AudioContext so the chime can play.
   if (!activated) {
     return (
-      <Shell accent={accent}>
+      <Board>
         <div
-          className="flex h-screen cursor-pointer flex-col items-center justify-center"
+          className="flex h-full cursor-pointer flex-col items-center justify-center px-10 text-center"
           onClick={() => {
             setActivated(true);
             try {
@@ -221,25 +207,31 @@ export default function DoctorTVPage() {
             }
           }}
         >
-          <DoctorAvatar data={data} accent={accent} size={128} />
-          <p className="mt-8 text-6xl font-bold text-center leading-tight">
-            {data?.doctor.nameRu ?? "Личный экран врача"}
+          {data?.doctor.cabinet && (
+            <div
+              className="mb-10 flex h-32 w-32 items-center justify-center rounded-lg text-6xl font-bold"
+              style={{ background: accent, color: "#fff" }}
+            >
+              {data.doctor.cabinet}
+            </div>
+          )}
+          <p className="text-5xl font-bold leading-tight">
+            {data?.doctor.nameRu ?? "Экран врача"}
           </p>
-          <p className="mt-3 text-2xl text-[var(--public-fg-muted)]">
+          <p className="mt-3 text-2xl" style={{ color: C.muted }}>
             {data?.doctor.specializationRu ?? ""}
           </p>
-          <p className="mt-14 text-xl text-[var(--public-fg-faint)] animate-pulse">
+          <p className="mt-16 text-xl" style={{ color: C.faint }}>
             Нажмите на экран для запуска
           </p>
         </div>
-      </Shell>
+      </Board>
     );
   }
 
   const timeStr = time.toLocaleTimeString("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   });
   const dateStr = time.toLocaleDateString("ru-RU", {
     weekday: "long",
@@ -248,170 +240,140 @@ export default function DoctorTVPage() {
   });
 
   return (
-    <Shell accent={accent}>
-      {overlay && <CallOverlay overlay={overlay} accent={accent} />}
+    <Board>
+      {overlay && <CallBoard overlay={overlay} />}
 
-      <div className="flex h-screen flex-col">
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <header className="shrink-0 flex items-center justify-between gap-6 px-10 py-5 border-b border-[var(--public-border)] bg-[var(--public-panel-strong)] backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-5">
-            <DoctorAvatar data={data} accent={accent} size={64} />
-            <div className="min-w-0">
-              <p className="truncate text-3xl font-bold leading-tight">
-                {data?.doctor.nameRu ?? "…"}
-              </p>
-              <p className="truncate text-lg text-[var(--public-fg-muted)]">
-                {data?.doctor.specializationRu || "Врач"}
-                <span className="mx-2 text-[var(--public-fg-faint)]">·</span>
-                {data?.clinic.nameRu ?? ""}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-8">
-            <ConnectionDot connected={connected} />
+      <div className="flex h-full flex-col">
+        {/* ── Header: cabinet plate · doctor · clock ─────────────────── */}
+        <header
+          className="shrink-0 px-8 pt-7 pb-5"
+          style={{ borderBottom: `1px solid ${C.line}` }}
+        >
+          <div className="flex items-center gap-6">
             {data?.doctor.cabinet && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm uppercase tracking-widest text-[var(--public-fg-faint)]">
-                  Кабинет
+              <div
+                className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-lg"
+                style={{ background: accent, color: "#fff" }}
+              >
+                <span className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
+                  кабинет
                 </span>
-                <span
-                  className="flex h-16 min-w-16 items-center justify-center rounded-2xl px-4 text-4xl font-bold shadow-2xl"
-                  style={{
-                    background: `linear-gradient(135deg, ${accent}, ${accent}88)`,
-                  }}
-                >
+                <span className="text-5xl font-bold leading-none">
                   {data.doctor.cabinet}
                 </span>
               </div>
             )}
-            <div className="text-right">
-              <p className="font-mono text-5xl font-bold tabular-nums tracking-tight">
-                {timeStr}
+            <div className="min-w-0 flex-1">
+              <p className="text-4xl font-bold leading-tight">
+                {data?.doctor.nameRu ?? "…"}
               </p>
-              <p className="text-lg capitalize text-[var(--public-fg-muted)]">
-                {dateStr}
+              <p className="mt-1 truncate text-2xl" style={{ color: C.muted }}>
+                {data?.doctor.specializationRu || "Врач"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 flex items-baseline justify-between">
+            <p className="text-xl capitalize" style={{ color: C.muted }}>
+              {dateStr}
+            </p>
+            <div className="flex items-center gap-4">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: connected ? C.green : C.amber }}
+                title={connected ? "В сети" : "Переподключение"}
+              />
+              <p className="font-mono text-6xl font-bold tabular-nums leading-none">
+                {timeStr}
               </p>
             </div>
           </div>
         </header>
 
-        {/* ── Split body ─────────────────────────────────────────────── */}
-        <main className="grid min-h-0 flex-1 grid-cols-2 gap-6 p-6">
-          {/* LEFT — live queue */}
-          <section className="flex min-h-0 flex-col rounded-3xl border border-[var(--public-border)] bg-[var(--public-panel)] backdrop-blur-xl overflow-hidden">
-            <PanelTitle
-              title="Живая очередь"
-              badge={data ? String(data.queue.waiting.length) : "…"}
-              badgeColor="var(--public-waiting)"
-            />
-
-            {/* Current patient hero */}
-            <div className="px-7 pb-2">
-              {data?.queue.current ? (
-                <div
-                  className="rounded-2xl border px-7 py-6 animate-rise"
-                  style={{
-                    borderColor: "rgba(22,199,132,0.35)",
-                    background:
-                      "linear-gradient(135deg, rgba(22,199,132,0.16), rgba(22,199,132,0.05))",
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="relative shrink-0">
-                      <span className="block h-3.5 w-3.5 rounded-full bg-[var(--public-active)]" />
-                      <span className="absolute top-0 h-3.5 w-3.5 rounded-full bg-[var(--public-active)] animate-ping" />
-                    </span>
-                    <p className="text-sm font-semibold uppercase tracking-[0.25em] text-[var(--public-active)]">
-                      Сейчас на приёме
-                    </p>
-                  </div>
-                  <div className="mt-3 flex items-end justify-between gap-4">
-                    <p className="truncate text-5xl font-bold text-[var(--public-active)]">
-                      {data.queue.current.fullName}
-                    </p>
-                    {data.queue.current.ticketNumber && (
-                      <p className="shrink-0 font-mono text-3xl font-bold text-[var(--public-active)]/80">
-                        {data.queue.current.ticketNumber}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-[var(--public-border)] px-7 py-6">
-                  <p className="text-sm font-semibold uppercase tracking-[0.25em] text-[var(--public-fg-faint)]">
-                    Сейчас на приёме
-                  </p>
-                  <p className="mt-2 text-3xl text-[var(--public-fg-faint)]">
-                    Кабинет свободен
-                  </p>
-                </div>
+        {/* ── Now serving strip ──────────────────────────────────────── */}
+        <section
+          className="shrink-0 px-8 py-5"
+          style={{
+            background: data?.queue.current ? C.rowActive : "transparent",
+            borderBottom: `1px solid ${C.line}`,
+            borderLeft: `6px solid ${data?.queue.current ? C.green : "transparent"}`,
+          }}
+        >
+          <p
+            className="text-lg font-semibold uppercase tracking-wide"
+            style={{ color: data?.queue.current ? C.green : C.faint }}
+          >
+            Сейчас принимается
+          </p>
+          {data?.queue.current ? (
+            <div className="mt-1 flex items-baseline justify-between gap-4">
+              <p className="truncate text-5xl font-bold">
+                {data.queue.current.fullName}
+              </p>
+              {data.queue.current.ticketNumber && (
+                <p className="shrink-0 font-mono text-5xl font-bold tabular-nums">
+                  {data.queue.current.ticketNumber}
+                </p>
               )}
             </div>
+          ) : (
+            <p className="mt-1 text-4xl" style={{ color: C.faint }}>
+              Кабинет свободен
+            </p>
+          )}
+        </section>
 
-            {/* Waiting list */}
-            <div className="min-h-0 flex-1 overflow-hidden px-7 py-4">
+        {/* ── Two lanes: stacked portrait, side-by-side landscape ────── */}
+        <main className="grid min-h-0 flex-1 grid-cols-1 landscape:grid-cols-2">
+          {/* Live queue */}
+          <section
+            className="flex min-h-0 flex-col landscape:border-r"
+            style={{ borderColor: C.line }}
+          >
+            <SectionRule
+              title="Живая очередь"
+              value={data ? String(data.queue.waiting.length) : "…"}
+              valueColor={C.amber}
+            />
+            <div className="min-h-0 flex-1 overflow-hidden px-8">
               {!data || data.queue.waiting.length === 0 ? (
-                <p className="py-10 text-center text-2xl text-[var(--public-fg-faint)]">
+                <p className="py-8 text-2xl" style={{ color: C.faint }}>
                   {data ? "Очередь пуста" : "Загрузка…"}
                 </p>
               ) : (
-                <div className="space-y-2.5">
-                  {data.queue.waiting
-                    .slice(0, MAX_WAITING_ROWS)
-                    .map((w, i) => (
-                      <div
-                        key={w.id}
-                        className="flex items-center justify-between gap-4 rounded-xl px-5 py-3.5 animate-rise"
-                        style={
-                          i === 0
-                            ? {
-                                background: "rgba(245,158,11,0.12)",
-                                border: "1px solid rgba(245,158,11,0.28)",
-                              }
-                            : {
-                                background: "rgba(255,255,255,0.04)",
-                                border: "1px solid transparent",
-                              }
-                        }
+                <div>
+                  {data.queue.waiting.slice(0, MAX_WAITING_ROWS).map((w, i) => (
+                    <div
+                      key={w.id}
+                      className="flex items-center gap-5 py-3.5 pl-3 -ml-3"
+                      style={{
+                        borderBottom: `1px solid ${C.line}`,
+                        borderLeft: `6px solid ${i === 0 ? C.amber : "transparent"}`,
+                        background: i === 0 ? C.row : "transparent",
+                      }}
+                    >
+                      <span
+                        className="w-24 shrink-0 font-mono text-4xl font-bold tabular-nums"
+                        style={{ color: i === 0 ? C.amber : C.fg }}
                       >
-                        <div className="flex min-w-0 items-center gap-4">
-                          <span
-                            className="flex h-11 min-w-[4.5rem] shrink-0 items-center justify-center rounded-lg font-mono text-xl font-bold"
-                            style={
-                              i === 0
-                                ? {
-                                    background: "rgba(245,158,11,0.25)",
-                                    color: "var(--public-waiting)",
-                                  }
-                                : {
-                                    background: "rgba(255,255,255,0.07)",
-                                    color: "var(--public-fg-muted)",
-                                  }
-                            }
-                          >
-                            {w.ticketNumber}
-                          </span>
-                          <p
-                            className={`truncate text-2xl ${i === 0 ? "font-semibold" : ""}`}
-                            style={{
-                              color:
-                                i === 0
-                                  ? "var(--public-waiting)"
-                                  : "var(--public-fg-muted)",
-                            }}
-                          >
-                            {w.fullName}
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-lg tabular-nums text-[var(--public-fg-faint)]">
-                          ~{w.etaMinutes} мин
-                        </span>
-                      </div>
-                    ))}
+                        {w.ticketNumber}
+                      </span>
+                      <span
+                        className="min-w-0 flex-1 truncate text-3xl"
+                        style={{ color: i === 0 ? C.fg : C.muted }}
+                      >
+                        {w.fullName}
+                      </span>
+                      <span
+                        className="shrink-0 text-2xl tabular-nums"
+                        style={{ color: C.faint }}
+                      >
+                        ~{w.etaMinutes} мин
+                      </span>
+                    </div>
+                  ))}
                   {data.queue.waiting.length > MAX_WAITING_ROWS && (
-                    <p className="pt-1 text-center text-lg text-[var(--public-fg-faint)]">
-                      +{data.queue.waiting.length - MAX_WAITING_ROWS} ещё
+                    <p className="py-2.5 text-xl" style={{ color: C.faint }}>
+                      ещё {data.queue.waiting.length - MAX_WAITING_ROWS}
                     </p>
                   )}
                 </div>
@@ -419,59 +381,43 @@ export default function DoctorTVPage() {
             </div>
           </section>
 
-          {/* RIGHT — today's slot timeline */}
-          <section className="flex min-h-0 flex-col rounded-3xl border border-[var(--public-border)] bg-[var(--public-panel)] backdrop-blur-xl overflow-hidden">
-            <PanelTitle
+          {/* Today's bookings */}
+          <section className="flex min-h-0 flex-col">
+            <SectionRule
               title="Записи на сегодня"
-              badge={
-                data
-                  ? `${doneCount}/${slotsSorted.length}`
-                  : "…"
-              }
-              badgeColor={accent}
+              value={data ? `${doneCount}/${slotsSorted.length}` : "…"}
+              valueColor={C.muted}
             />
-
-            <div className="min-h-0 flex-1 overflow-hidden px-7 py-2">
+            <div className="min-h-0 flex-1 overflow-hidden px-8">
               {!data || slotsSorted.length === 0 ? (
-                <p className="py-10 text-center text-2xl text-[var(--public-fg-faint)]">
+                <p className="py-8 text-2xl" style={{ color: C.faint }}>
                   {data ? "На сегодня записей нет" : "Загрузка…"}
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {/* Past — compact, dimmed */}
+                <div>
                   {pastSlots.length > MAX_PAST_COMPACT && (
-                    <p className="text-center text-base text-[var(--public-fg-faint)]">
-                      +{pastSlots.length - MAX_PAST_COMPACT} ранее
+                    <p className="py-2 text-lg" style={{ color: C.faint }}>
+                      раньше: {pastSlots.length - MAX_PAST_COMPACT}
                     </p>
                   )}
                   {pastSlots.slice(-MAX_PAST_COMPACT).map((s) => (
-                    <SlotRow key={s.id} slot={s} compact accent={accent} />
+                    <SlotRow key={s.id} slot={s} compact />
                   ))}
 
-                  {/* NOW divider */}
-                  <div className="flex items-center gap-4 py-1.5">
+                  {/* Now rule */}
+                  <div className="flex items-center gap-3 py-2">
                     <span
-                      className="h-3 w-3 shrink-0 rounded-full"
-                      style={{ background: accent, boxShadow: `0 0 14px ${accent}` }}
-                    />
-                    <span
-                      className="h-px flex-1"
-                      style={{
-                        background: `linear-gradient(90deg, ${accent}, transparent)`,
-                      }}
+                      className="h-0.5 flex-1"
+                      style={{ background: accent }}
                     />
                     <span
                       className="shrink-0 font-mono text-lg font-bold tabular-nums"
                       style={{ color: accent }}
                     >
-                      {time.toLocaleTimeString("ru-RU", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {timeStr}
                     </span>
                   </div>
 
-                  {/* Upcoming */}
                   {upcomingSlots.slice(0, MAX_UPCOMING_ROWS).map((s, i) => (
                     <SlotRow
                       key={s.id}
@@ -481,8 +427,8 @@ export default function DoctorTVPage() {
                     />
                   ))}
                   {upcomingSlots.length > MAX_UPCOMING_ROWS && (
-                    <p className="pt-1 text-center text-lg text-[var(--public-fg-faint)]">
-                      +{upcomingSlots.length - MAX_UPCOMING_ROWS} ещё
+                    <p className="py-2.5 text-xl" style={{ color: C.faint }}>
+                      ещё {upcomingSlots.length - MAX_UPCOMING_ROWS}
                     </p>
                   )}
                 </div>
@@ -490,125 +436,64 @@ export default function DoctorTVPage() {
             </div>
           </section>
         </main>
+
+        {/* ── Footer: clinic name, quiet ─────────────────────────────── */}
+        <footer
+          className="shrink-0 px-8 py-3"
+          style={{ borderTop: `1px solid ${C.line}` }}
+        >
+          <p className="text-lg" style={{ color: C.faint }}>
+            {data?.clinic.nameRu ?? ""}
+          </p>
+        </footer>
       </div>
-    </Shell>
+    </Board>
   );
 }
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────
 
-/** Full-screen shell: bg, aurora glows in the doctor accent, keyframes. */
-function Shell({
-  accent,
-  children,
-}: {
-  accent: string;
-  children: React.ReactNode;
-}) {
+/** Flat full-screen shell — solid background, nothing else. */
+function Board({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative h-screen overflow-hidden bg-[var(--public-bg)] text-[var(--public-fg)]">
-      {/* Aurora — two slow-drifting accent glows */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-48 -left-48 h-[42rem] w-[42rem] rounded-full blur-[140px] animate-drift"
-        style={{ background: accent, opacity: AURORA_OPACITY }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-56 -right-40 h-[38rem] w-[38rem] rounded-full blur-[150px] animate-drift-rev"
-        style={{ background: "#2353ff", opacity: AURORA_OPACITY * 0.7 }}
-      />
-      <div className="relative z-10 h-full">{children}</div>
-
+    <div
+      className="h-screen overflow-hidden"
+      style={{ background: C.bg, color: C.fg }}
+    >
+      {children}
       <style>{`
-        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes scale-in { from { opacity: 0; transform: scale(0.85) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes ping-slow { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(2.5); opacity: 0; } }
-        @keyframes ping-slower { 0% { transform: scale(1); opacity: 0.3; } 100% { transform: scale(3); opacity: 0; } }
-        @keyframes drift { 0%,100% { transform: translate(0,0); } 50% { transform: translate(60px,40px); } }
-        @keyframes drift-rev { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px,-30px); } }
-        .animate-fade-in { animation: fade-in 0.3s ease-out; }
-        .animate-scale-in { animation: scale-in 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
-        .animate-rise { animation: rise 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
-        .animate-ping-slow { animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
-        .animate-ping-slower { animation: ping-slower 2.5s cubic-bezier(0, 0, 0.2, 1) infinite 0.5s; }
-        .animate-drift { animation: drift 18s ease-in-out infinite; }
-        .animate-drift-rev { animation: drift-rev 22s ease-in-out infinite; }
+        @keyframes board-in { from { opacity: 0; } to { opacity: 1; } }
+        .board-in { animation: board-in 0.25s ease-out; }
       `}</style>
     </div>
   );
 }
 
-function DoctorAvatar({
-  data,
-  accent,
-  size,
-}: {
-  data: DoctorBoardData | null;
-  accent: string;
-  size: number;
-}) {
-  const name = data?.doctor.nameRu ?? "";
-  const monogram = name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0] ?? "")
-    .join("")
-    .toUpperCase();
-  const ring = { boxShadow: `0 0 0 3px ${accent}, 0 0 30px ${accent}66` };
-
-  if (data?.doctor.photoUrl) {
-    // Plain <img>: photoUrl is a MinIO URL and next/image would need a
-    // remotePatterns entry per storage host — same posture as AvatarImage
-    // everywhere else in the app.
-    // eslint-disable-next-line @next/next/no-img-element
-    return (
-      <img
-        src={data.doctor.photoUrl}
-        alt={name}
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-        style={{ width: size, height: size, ...ring }}
-      />
-    );
-  }
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full font-bold"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.36,
-        background: `linear-gradient(135deg, ${accent}, ${accent}77)`,
-        ...ring,
-      }}
-    >
-      {monogram || "Dr"}
-    </div>
-  );
-}
-
-function PanelTitle({
+function SectionRule({
   title,
-  badge,
-  badgeColor,
+  value,
+  valueColor,
 }: {
   title: string;
-  badge: string;
-  badgeColor: string;
+  value: string;
+  valueColor: string;
 }) {
   return (
-    <div className="flex items-center justify-between px-7 pt-6 pb-4">
-      <h2 className="text-xl font-bold uppercase tracking-[0.2em] text-[var(--public-fg-muted)]">
+    <div
+      className="mx-8 mt-6 mb-1 flex items-baseline justify-between pb-2"
+      style={{ borderBottom: `2px solid ${C.line}` }}
+    >
+      <h2
+        className="text-xl font-semibold uppercase tracking-wide"
+        style={{ color: C.muted }}
+      >
         {title}
       </h2>
       <span
-        className="rounded-full px-4 py-1 font-mono text-xl font-bold tabular-nums"
-        style={{ color: badgeColor, background: "rgba(255,255,255,0.06)" }}
+        className="font-mono text-2xl font-bold tabular-nums"
+        style={{ color: valueColor }}
       >
-        {badge}
+        {value}
       </span>
     </div>
   );
@@ -621,19 +506,22 @@ function SlotRow({
   next = false,
 }: {
   slot: DoctorBoardSlot;
-  accent: string;
+  accent?: string;
   compact?: boolean;
   next?: boolean;
 }) {
   const meta = SLOT_META[slot.status];
   if (compact) {
     return (
-      <div className="flex items-center gap-4 rounded-lg px-4 py-1.5 opacity-45">
-        <span className="w-16 shrink-0 font-mono text-lg tabular-nums">
+      <div
+        className="flex items-center gap-4 py-2"
+        style={{ borderBottom: `1px solid ${C.line}`, opacity: 0.45 }}
+      >
+        <span className="w-20 shrink-0 font-mono text-xl tabular-nums">
           {slot.time ?? "—"}
         </span>
-        <span className="min-w-0 flex-1 truncate text-lg">{slot.fullName}</span>
-        <span className="shrink-0 text-base" style={{ color: meta.fg }}>
+        <span className="min-w-0 flex-1 truncate text-xl">{slot.fullName}</span>
+        <span className="shrink-0 text-lg" style={{ color: meta.color }}>
           {slot.status === "COMPLETED" ? "✓" : meta.label}
         </span>
       </div>
@@ -641,39 +529,20 @@ function SlotRow({
   }
   return (
     <div
-      className="flex items-center gap-5 rounded-xl px-5 py-3 animate-rise"
-      style={
-        next
-          ? {
-              border: `1px solid ${accent}55`,
-              background: `linear-gradient(90deg, ${accent}1f, transparent)`,
-            }
-          : {
-              border: "1px solid transparent",
-              background: "rgba(255,255,255,0.04)",
-            }
-      }
+      className="flex items-center gap-5 py-3.5 pl-3 -ml-3"
+      style={{
+        borderBottom: `1px solid ${C.line}`,
+        borderLeft: `6px solid ${next ? (accent ?? C.fg) : "transparent"}`,
+        background: next ? C.row : "transparent",
+      }}
     >
-      <span
-        className="w-20 shrink-0 font-mono text-2xl font-bold tabular-nums"
-        style={{ color: next ? accent : "var(--public-fg)" }}
-      >
+      <span className="w-24 shrink-0 font-mono text-3xl font-bold tabular-nums">
         {slot.time ?? "—"}
       </span>
-      <span className="min-w-0 flex-1 truncate text-2xl">
-        {slot.fullName}
-      </span>
-      {next && (
-        <span
-          className="shrink-0 rounded-full px-3 py-0.5 text-sm font-bold uppercase tracking-wider"
-          style={{ color: accent, background: `${accent}22` }}
-        >
-          Следующий
-        </span>
-      )}
+      <span className="min-w-0 flex-1 truncate text-3xl">{slot.fullName}</span>
       <span
-        className="shrink-0 rounded-full px-3.5 py-1 text-base font-semibold"
-        style={{ color: meta.fg, background: meta.bg }}
+        className="shrink-0 text-xl font-semibold"
+        style={{ color: meta.color }}
       >
         {meta.label}
       </span>
@@ -681,67 +550,32 @@ function SlotRow({
   );
 }
 
-function ConnectionDot({ connected }: { connected: boolean }) {
+/**
+ * Call takeover — flat solid green board, the way real clinic signage flips.
+ * No rings, no blur: color and size carry the message across the room.
+ */
+function CallBoard({ overlay }: { overlay: Overlay }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-full bg-[var(--public-panel)] px-4 py-2 text-base">
-      <span
-        className={`h-2.5 w-2.5 rounded-full ${connected ? "animate-pulse" : ""}`}
-        style={{
-          background: connected
-            ? "var(--public-active)"
-            : "var(--public-waiting)",
-        }}
-      />
-      <span className="text-[var(--public-fg-muted)]">
-        {connected ? "В сети" : "Переподключение…"}
-      </span>
-    </div>
-  );
-}
-
-function CallOverlay({
-  overlay,
-  accent,
-}: {
-  overlay: Overlay;
-  accent: string;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" />
-      <div className="relative text-center animate-scale-in">
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="h-44 w-44 rounded-full border-2 border-[var(--public-active)]/30 animate-ping-slow" />
-        </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="h-64 w-64 rounded-full border border-[var(--public-active)]/15 animate-ping-slower" />
-        </div>
-
-        {overlay.cabinet && (
-          <div className="relative mb-10">
-            <div
-              className="inline-flex h-40 w-40 items-center justify-center rounded-full text-7xl font-bold shadow-2xl"
-              style={{
-                background: `linear-gradient(135deg, var(--public-active), ${accent})`,
-                boxShadow: "0 25px 60px -12px rgb(22 199 132 / 0.45)",
-              }}
-            >
-              {overlay.cabinet}
-            </div>
-          </div>
-        )}
-        <p className="mb-5 text-3xl font-semibold uppercase tracking-[0.35em] text-[var(--public-active)]">
-          Проходите{overlay.cabinet ? " в кабинет" : ""}
+    <div
+      className="board-in fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center"
+      style={{ background: C.green, color: "#06281B" }}
+    >
+      <p className="text-4xl font-bold uppercase tracking-widest">
+        Пройдите{overlay.cabinet ? " в кабинет" : ""}
+      </p>
+      {overlay.cabinet && (
+        <p className="mt-2 font-mono text-[11rem] font-bold leading-none tabular-nums">
+          {overlay.cabinet}
         </p>
-        <p className="mb-8 text-8xl font-bold leading-tight drop-shadow-lg sm:text-9xl">
-          {overlay.patientName || overlay.ticketNumber}
+      )}
+      <p className="mt-8 max-w-full truncate text-7xl font-bold">
+        {overlay.patientName || overlay.ticketNumber || ""}
+      </p>
+      {overlay.ticketNumber && overlay.patientName && (
+        <p className="mt-5 font-mono text-4xl font-semibold tabular-nums opacity-80">
+          Талон {overlay.ticketNumber}
         </p>
-        {overlay.ticketNumber && (
-          <p className="font-mono text-3xl tracking-[0.3em] text-[var(--public-active)]/70">
-            {overlay.ticketNumber}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 }

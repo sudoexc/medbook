@@ -1,7 +1,7 @@
 ---
 name: call-center-developer
 description: Use this agent to build /crm/call-center — 3-column UI (incoming/active/history), TelephonyAdapter interface, LogOnly adapter implementation, and webhook /api/calls/sip/event. Invoke in Phase 3c.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

@@ -1,7 +1,7 @@
 ---
 name: patient-experience-engineer
 description: Use this agent to make the Telegram Mini App a daily-use surface — treatment plan view, pre-visit questionnaire, post-visit NPS, family accounts, medication reminders, refer-a-friend. Builds engagement loop that drives retention/LTV. Invoke for Phase 16 of ROADMAP-11x.md.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

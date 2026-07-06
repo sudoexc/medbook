@@ -1,7 +1,7 @@
 ---
 name: ai-copilot-engineer
 description: Use this agent to build the AI Co-Pilot — LLM proxy with PII redaction, in-app NL command bar, patient summary auto-gen, voice→SOAP for doctors via Telegram, conversational TG booking, marketing copy generator. Invoke for Phase 15 of ROADMAP-11x.md.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

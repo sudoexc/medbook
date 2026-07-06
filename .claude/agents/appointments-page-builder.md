@@ -1,7 +1,7 @@
 ---
 name: appointments-page-builder
 description: Use this agent to build /crm/appointments — the big filterable table of all appointments, bulk actions, row drawer, and the universal NewAppointmentDialog. Invoke in Phase 2b in parallel with calendar-specialist.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

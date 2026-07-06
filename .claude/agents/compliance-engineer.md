@@ -1,7 +1,7 @@
 ---
 name: compliance-engineer
 description: Use this agent for Phase 17 of ROADMAP-11x.md — 2FA, granular PHI audit (PatientView log), session security, data export/deletion (patient request), encryption at rest review, backup restore drill. Makes the product sellable to large clinics.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

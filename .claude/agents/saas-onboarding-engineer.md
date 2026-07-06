@@ -1,7 +1,7 @@
 ---
 name: saas-onboarding-engineer
 description: Use this agent for Phase 19 of ROADMAP-11x.md — self-service signup, onboarding playbooks (general/dental/neurology/pediatric/cosmetology), Stripe-style billing, white-label settings, SUPER_ADMIN support tools (impersonate), Plan limit enforcement.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

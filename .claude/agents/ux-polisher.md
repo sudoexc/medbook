@@ -1,7 +1,7 @@
 ---
 name: ux-polisher
 description: Use this agent to polish UX — empty states, skeletons, error boundaries, toasts, micro-animations, loading states, form UX. Invoke after page agents complete their work, and in Phase 7.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

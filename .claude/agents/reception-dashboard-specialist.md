@@ -1,7 +1,7 @@
 ---
 name: reception-dashboard-specialist
 description: Use this agent to build /crm/reception — live dashboard with KPIs, doctor queue cards, Call/TG/Cabinets widgets, right rail. Invoke in Phase 2c after patients/appointments/calendar are live. This is the receptionist's primary screen.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

@@ -1,7 +1,7 @@
 ---
 name: public-site-revamp
 description: Use this agent to revamp the public website — landing /, /services, /doctors, /c/[slug] per-clinic pages — with multi-tenancy and new design system. Invoke in parallel with CRM work (no shared state).
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

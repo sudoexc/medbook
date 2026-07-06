@@ -1,7 +1,7 @@
 ---
 name: design-system-builder
 description: Use this agent to set up the design system layer — Tailwind tokens, shadcn/ui initialization, reusable atoms/molecules (SectionHeader, FilterBar, badges, chips, KPI tiles), layout shell with sidebar/topbar/right-rail. Invoke once in Phase 0 and re-invoke when a page agent reports a missing atom.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

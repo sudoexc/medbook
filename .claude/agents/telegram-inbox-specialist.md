@@ -1,7 +1,7 @@
 ---
 name: telegram-inbox-specialist
 description: Use this agent to build /crm/telegram — 3-column inbox (conversations list, active chat, right rail with patient context), takeover mode, outgoing messages, interactive button support. Invoke in Phase 3b.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

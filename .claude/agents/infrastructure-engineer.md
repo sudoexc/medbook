@@ -1,7 +1,7 @@
 ---
 name: infrastructure-engineer
 description: Use this agent to set up deployment infrastructure — Docker Compose (Postgres, Redis, MinIO, app, workers), nginx with Let's Encrypt, GitHub Actions CI/CD, daily pg_dump to MinIO, Sentry, health endpoint. Invoke in Phase 6 (in parallel with feature work).
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

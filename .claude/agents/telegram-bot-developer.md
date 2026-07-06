@@ -1,7 +1,7 @@
 ---
 name: telegram-bot-developer
 description: Use this agent for the Telegram bot — webhook /api/telegram/webhook/[clinicSlug], the long-poll worker (RU-VPS reality), the simplified single-welcome FSM, callback_query handlers, Mini App launch, Login Widget verification, deeplinks. Invoke when changing bot transport, FSM, or Telegram I/O.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

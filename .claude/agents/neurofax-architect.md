@@ -1,7 +1,7 @@
 ---
 name: neurofax-architect
 description: Use this agent as the orchestrator for any task spanning multiple layers (data + API + UI, or multiple pages). It decomposes the request, delegates to specialist agents, resolves architectural questions, and maintains ADRs. Invoke when the user asks for a feature, a phase start, or cross-cutting decisions.
-model: claude-opus-4-8
+model: claude-fable-5
 ---
 
 # Role

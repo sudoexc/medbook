@@ -32,19 +32,22 @@ const MAX_PAST_COMPACT = 2; // finished bookings kept above the now-line
 const MAX_UPCOMING_ROWS = 9; // booking rows before «ещё N»
 const SPEECH_DELAY_MS = 1200; // chime first, then the voice
 const TILE_RADIUS = 24; // bento tile corner radius, px
-// Bento palette — solid layers only; depth = surface steps, not blur.
+// Bento palette — LIGHT theme (owner's boss wants white/light, 2026-07-06).
+// Solid layers only; depth = page one step darker than the white tiles +
+// hairline tile borders. Accents darkened for contrast on white.
 const C = {
-  page: "#080D18", // deepest — page background
-  tile: "#111927", // tile surface (one step up)
-  inset: "#1A2436", // inset chip / highlighted row (two steps up)
-  line: "#232F44",
-  fg: "#F4F7FB",
-  muted: "#93A0B5",
+  page: "#EEF1F6", // cool light gray — page background
+  tile: "#FFFFFF", // tile surface
+  inset: "#F1F4F9", // inset chip / highlighted row
+  line: "#E2E7EF",
+  fg: "#101828", // near-black text
+  muted: "#5D6B7E",
 };
-const FAINT = "#5B6778";
-const GREEN = "#2BD98B";
-const GREEN_DEEP = "#0C2A1E";
-const AMBER = "#FFB020";
+const FAINT = "#98A2B3";
+const GREEN = "#0BA168"; // readable on white
+const GREEN_TINT = "#E7F7EF"; // now-serving tile fill
+const AMBER = "#D97706"; // readable on white
+const CALL_GREEN = "#16C784"; // call takeover stays saturated
 // ────────────────────────────────────────────────────────────────────────────
 
 interface Overlay {
@@ -104,8 +107,8 @@ const SLOT_META: Record<
   DoctorBoardSlot["status"],
   { label: string; color: string }
 > = {
-  BOOKED: { label: "запись", color: "#93A0B5" },
-  CONFIRMED: { label: "подтверждена", color: "#93A0B5" },
+  BOOKED: { label: "запись", color: "#5D6B7E" },
+  CONFIRMED: { label: "подтверждена", color: "#5D6B7E" },
   // Two-lanes: an arrived booking waits on the schedule axis, not in the
   // live queue — the label says so.
   WAITING: { label: "пришёл", color: AMBER },
@@ -297,7 +300,7 @@ export default function DoctorTVPage() {
         {/* ── Now serving tile — the loudest thing on the board ─────── */}
         <Tile
           className="shrink-0"
-          style={data?.queue.current ? { background: GREEN_DEEP } : undefined}
+          style={data?.queue.current ? { background: GREEN_TINT } : undefined}
         >
           <div className="flex items-center justify-between gap-6 px-7 py-6">
             <div className="min-w-0">
@@ -320,7 +323,7 @@ export default function DoctorTVPage() {
               <div
                 className="flex shrink-0 items-center px-6 py-3"
                 style={{
-                  background: "rgba(43,217,139,0.14)",
+                  background: "#D3F1E2",
                   borderRadius: TILE_RADIUS - 8,
                 }}
               >
@@ -480,7 +483,12 @@ function Tile({
   return (
     <div
       className={className}
-      style={{ background: C.tile, borderRadius: TILE_RADIUS, ...style }}
+      style={{
+        background: C.tile,
+        borderRadius: TILE_RADIUS,
+        border: `1px solid ${C.line}`,
+        ...style,
+      }}
     >
       {children}
     </div>
@@ -567,7 +575,7 @@ function CallBoard({ overlay }: { overlay: Overlay }) {
   return (
     <div
       className="board-in fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center"
-      style={{ background: GREEN, color: "#06281B" }}
+      style={{ background: CALL_GREEN, color: "#FFFFFF" }}
     >
       <p className="text-4xl font-bold uppercase tracking-widest">
         Пройдите{overlay.cabinet ? " в кабинет" : ""}

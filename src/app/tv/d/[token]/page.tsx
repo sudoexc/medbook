@@ -1,19 +1,20 @@
 "use client";
 
 /**
- * Personal doctor TV — `/tv/d/<token>`.
+ * Personal doctor TV — `/tv/d/<token>`. Bento signage, v3.
  *
- * One screen per doctor, mounted PORTRAIT at the cabinet. Information-board
- * design (flat signage, not a web page): solid background, hairline rules,
- * typographic hierarchy, tabular/mono numerals, ONE accent color (the
- * doctor's), zero gradients/blur/glow — per the owner's explicit direction.
+ * Owner direction: no AI-slop styling (no gradients/blur/glow), TVs mounted
+ * PORTRAIT, live queue on the LEFT and bookings on the RIGHT — always, in
+ * both orientations. Visual language follows what holds up on 2026 boards:
+ * bento tiles (solid surfaces a step lighter than the page, generous radius,
+ * real gaps), typography-first hierarchy (huge tabular/mono numerals), deep
+ * dark background with exactly two accents — green for "now serving", amber
+ * for the live queue — plus the doctor's color on the cabinet plate only.
+ * Queue status owns ~60% of the screen per clinic-signage practice.
  *
- * Portrait (default): header → «Сейчас» strip → «Живая очередь» → «Записи».
- * Landscape fallback: queue and bookings side by side.
- *
- * A `queue.called` signal for THIS doctor takes the screen over with a flat
- * full-green call board + chime + voice; other doctors' calls never disturb
- * this screen. PII is initials-only (server-enforced). No ticker.
+ * A `queue.called` signal for THIS doctor flips the screen to a flat solid
+ * green call board + chime + voice; other doctors' calls never disturb it.
+ * PII is initials-only (server-enforced). No ticker.
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -26,22 +27,24 @@ import {
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
 const OVERLAY_MS = 15_000; // call takeover auto-dismiss
-const MAX_WAITING_ROWS = 7; // queue rows before «ещё N»
-const MAX_PAST_COMPACT = 2; // finished bookings kept visible above the now-line
-const MAX_UPCOMING_ROWS = 8; // booking rows before «ещё N»
+const MAX_WAITING_ROWS = 8; // queue rows before «ещё N»
+const MAX_PAST_COMPACT = 2; // finished bookings kept above the now-line
+const MAX_UPCOMING_ROWS = 9; // booking rows before «ещё N»
 const SPEECH_DELAY_MS = 1200; // chime first, then the voice
-// Flat board palette — solid colors only (no translucency on surfaces).
+const TILE_RADIUS = 24; // bento tile corner radius, px
+// Bento palette — solid layers only; depth = surface steps, not blur.
 const C = {
-  bg: "#0B1322",
-  row: "#131D30",
-  rowActive: "#15243A",
-  line: "#243049",
-  fg: "#F2F5FA",
-  muted: "#8B97AC",
-  faint: "#566178",
-  green: "#16C784",
-  amber: "#F5A623",
+  page: "#080D18", // deepest — page background
+  tile: "#111927", // tile surface (one step up)
+  inset: "#1A2436", // inset chip / highlighted row (two steps up)
+  line: "#232F44",
+  fg: "#F4F7FB",
+  muted: "#93A0B5",
 };
+const FAINT = "#5B6778";
+const GREEN = "#2BD98B";
+const GREEN_DEEP = "#0C2A1E";
+const AMBER = "#FFB020";
 // ────────────────────────────────────────────────────────────────────────────
 
 interface Overlay {
@@ -101,13 +104,13 @@ const SLOT_META: Record<
   DoctorBoardSlot["status"],
   { label: string; color: string }
 > = {
-  BOOKED: { label: "запись", color: C.muted },
-  CONFIRMED: { label: "подтверждена", color: C.muted },
+  BOOKED: { label: "запись", color: "#93A0B5" },
+  CONFIRMED: { label: "подтверждена", color: "#93A0B5" },
   // Two-lanes: an arrived booking waits on the schedule axis, not in the
   // live queue — the label says so.
-  WAITING: { label: "пришёл", color: C.amber },
-  IN_PROGRESS: { label: "на приёме", color: C.green },
-  COMPLETED: { label: "завершён", color: C.faint },
+  WAITING: { label: "пришёл", color: AMBER },
+  IN_PROGRESS: { label: "на приёме", color: GREEN },
+  COMPLETED: { label: "завершён", color: FAINT },
 };
 
 /** "HH:mm" → minutes since midnight; unparseable → +∞ (sorts last). */
@@ -181,21 +184,21 @@ export default function DoctorTVPage() {
 
   if (notFound) {
     return (
-      <Board>
+      <Page>
         <div className="flex h-full flex-col items-center justify-center gap-3 px-10 text-center">
           <p className="text-5xl font-bold">Экран не найден</p>
           <p className="text-2xl" style={{ color: C.muted }}>
             Ссылка недействительна или врач деактивирован
           </p>
         </div>
-      </Board>
+      </Page>
     );
   }
 
   // Activation splash — a tap resumes AudioContext so the chime can play.
   if (!activated) {
     return (
-      <Board>
+      <Page>
         <div
           className="flex h-full cursor-pointer flex-col items-center justify-center px-10 text-center"
           onClick={() => {
@@ -209,8 +212,12 @@ export default function DoctorTVPage() {
         >
           {data?.doctor.cabinet && (
             <div
-              className="mb-10 flex h-32 w-32 items-center justify-center rounded-lg text-6xl font-bold"
-              style={{ background: accent, color: "#fff" }}
+              className="mb-10 flex h-36 w-36 items-center justify-center text-7xl font-bold"
+              style={{
+                background: accent,
+                color: "#fff",
+                borderRadius: TILE_RADIUS,
+              }}
             >
               {data.doctor.cabinet}
             </div>
@@ -221,11 +228,11 @@ export default function DoctorTVPage() {
           <p className="mt-3 text-2xl" style={{ color: C.muted }}>
             {data?.doctor.specializationRu ?? ""}
           </p>
-          <p className="mt-16 text-xl" style={{ color: C.faint }}>
+          <p className="mt-16 text-xl" style={{ color: FAINT }}>
             Нажмите на экран для запуска
           </p>
         </div>
-      </Board>
+      </Page>
     );
   }
 
@@ -234,26 +241,27 @@ export default function DoctorTVPage() {
     minute: "2-digit",
   });
   const dateStr = time.toLocaleDateString("ru-RU", {
-    weekday: "long",
     day: "numeric",
     month: "long",
   });
+  const weekday = time.toLocaleDateString("ru-RU", { weekday: "long" });
 
   return (
-    <Board>
+    <Page>
       {overlay && <CallBoard overlay={overlay} />}
 
-      <div className="flex h-full flex-col">
-        {/* ── Header: cabinet plate · doctor · clock ─────────────────── */}
-        <header
-          className="shrink-0 px-8 pt-7 pb-5"
-          style={{ borderBottom: `1px solid ${C.line}` }}
-        >
-          <div className="flex items-center gap-6">
+      <div className="flex h-full flex-col gap-4 p-5">
+        {/* ── Header tile: cabinet plate · doctor · clock ────────────── */}
+        <Tile className="shrink-0">
+          <div className="flex items-center gap-6 px-7 py-5">
             {data?.doctor.cabinet && (
               <div
-                className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-lg"
-                style={{ background: accent, color: "#fff" }}
+                className="flex h-24 w-24 shrink-0 flex-col items-center justify-center"
+                style={{
+                  background: accent,
+                  color: "#fff",
+                  borderRadius: TILE_RADIUS - 8,
+                }}
               >
                 <span className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
                   кабинет
@@ -264,139 +272,140 @@ export default function DoctorTVPage() {
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-4xl font-bold leading-tight">
+              <p className="truncate text-4xl font-bold leading-tight">
                 {data?.doctor.nameRu ?? "…"}
               </p>
-              <p className="mt-1 truncate text-2xl" style={{ color: C.muted }}>
+              <p className="mt-1.5 truncate text-2xl" style={{ color: C.muted }}>
                 {data?.doctor.specializationRu || "Врач"}
               </p>
             </div>
-          </div>
-          <div className="mt-5 flex items-baseline justify-between">
-            <p className="text-xl capitalize" style={{ color: C.muted }}>
-              {dateStr}
-            </p>
-            <div className="flex items-center gap-4">
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: connected ? C.green : C.amber }}
-                title={connected ? "В сети" : "Переподключение"}
-              />
+            <div className="shrink-0 text-right">
               <p className="font-mono text-6xl font-bold tabular-nums leading-none">
                 {timeStr}
               </p>
+              <p className="mt-1.5 text-xl capitalize" style={{ color: C.muted }}>
+                <span
+                  className="mr-2.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
+                  style={{ background: connected ? GREEN : AMBER }}
+                />
+                {weekday}, {dateStr}
+              </p>
             </div>
           </div>
-        </header>
+        </Tile>
 
-        {/* ── Now serving strip ──────────────────────────────────────── */}
-        <section
-          className="shrink-0 px-8 py-5"
-          style={{
-            background: data?.queue.current ? C.rowActive : "transparent",
-            borderBottom: `1px solid ${C.line}`,
-            borderLeft: `6px solid ${data?.queue.current ? C.green : "transparent"}`,
-          }}
+        {/* ── Now serving tile — the loudest thing on the board ─────── */}
+        <Tile
+          className="shrink-0"
+          style={data?.queue.current ? { background: GREEN_DEEP } : undefined}
         >
-          <p
-            className="text-lg font-semibold uppercase tracking-wide"
-            style={{ color: data?.queue.current ? C.green : C.faint }}
-          >
-            Сейчас принимается
-          </p>
-          {data?.queue.current ? (
-            <div className="mt-1 flex items-baseline justify-between gap-4">
-              <p className="truncate text-5xl font-bold">
-                {data.queue.current.fullName}
+          <div className="flex items-center justify-between gap-6 px-7 py-6">
+            <div className="min-w-0">
+              <p
+                className="text-xl font-semibold uppercase tracking-wide"
+                style={{ color: data?.queue.current ? GREEN : FAINT }}
+              >
+                Сейчас принимается
               </p>
-              {data.queue.current.ticketNumber && (
-                <p className="shrink-0 font-mono text-5xl font-bold tabular-nums">
-                  {data.queue.current.ticketNumber}
-                </p>
-              )}
+              <p
+                className="mt-1 truncate text-6xl font-bold leading-tight"
+                style={{ color: data?.queue.current ? C.fg : FAINT }}
+              >
+                {data?.queue.current
+                  ? data.queue.current.fullName
+                  : "Кабинет свободен"}
+              </p>
             </div>
-          ) : (
-            <p className="mt-1 text-4xl" style={{ color: C.faint }}>
-              Кабинет свободен
-            </p>
-          )}
-        </section>
+            {data?.queue.current?.ticketNumber && (
+              <div
+                className="flex shrink-0 items-center px-6 py-3"
+                style={{
+                  background: "rgba(43,217,139,0.14)",
+                  borderRadius: TILE_RADIUS - 8,
+                }}
+              >
+                <span
+                  className="font-mono text-6xl font-bold tabular-nums"
+                  style={{ color: GREEN }}
+                >
+                  {data.queue.current.ticketNumber}
+                </span>
+              </div>
+            )}
+          </div>
+        </Tile>
 
-        {/* ── Two lanes: stacked portrait, side-by-side landscape ────── */}
-        <main className="grid min-h-0 flex-1 grid-cols-1 landscape:grid-cols-2">
-          {/* Live queue */}
-          <section
-            className="flex min-h-0 flex-col landscape:border-r"
-            style={{ borderColor: C.line }}
-          >
-            <SectionRule
+        {/* ── Two lane tiles: queue LEFT, bookings RIGHT — always ───── */}
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
+          {/* LEFT — live queue */}
+          <Tile className="flex min-h-0 flex-col">
+            <TileHead
               title="Живая очередь"
               value={data ? String(data.queue.waiting.length) : "…"}
-              valueColor={C.amber}
+              color={AMBER}
             />
-            <div className="min-h-0 flex-1 overflow-hidden px-8">
+            <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
               {!data || data.queue.waiting.length === 0 ? (
-                <p className="py-8 text-2xl" style={{ color: C.faint }}>
+                <p className="py-8 text-2xl" style={{ color: FAINT }}>
                   {data ? "Очередь пуста" : "Загрузка…"}
                 </p>
               ) : (
-                <div>
+                <div className="flex flex-col gap-2.5">
                   {data.queue.waiting.slice(0, MAX_WAITING_ROWS).map((w, i) => (
                     <div
                       key={w.id}
-                      className="flex items-center gap-5 py-3.5 pl-3 -ml-3"
+                      className="flex items-center gap-4 px-4 py-3"
                       style={{
-                        borderBottom: `1px solid ${C.line}`,
-                        borderLeft: `6px solid ${i === 0 ? C.amber : "transparent"}`,
-                        background: i === 0 ? C.row : "transparent",
+                        background: i === 0 ? C.inset : "transparent",
+                        borderRadius: TILE_RADIUS - 10,
                       }}
                     >
                       <span
-                        className="w-24 shrink-0 font-mono text-4xl font-bold tabular-nums"
-                        style={{ color: i === 0 ? C.amber : C.fg }}
+                        className="shrink-0 font-mono text-4xl font-bold tabular-nums"
+                        style={{ color: i === 0 ? AMBER : C.fg, minWidth: 108 }}
                       >
                         {w.ticketNumber}
                       </span>
                       <span
-                        className="min-w-0 flex-1 truncate text-3xl"
+                        className="min-w-0 flex-1 truncate text-2xl"
                         style={{ color: i === 0 ? C.fg : C.muted }}
                       >
                         {w.fullName}
                       </span>
                       <span
-                        className="shrink-0 text-2xl tabular-nums"
-                        style={{ color: C.faint }}
+                        className="shrink-0 text-xl tabular-nums"
+                        style={{ color: FAINT }}
                       >
-                        ~{w.etaMinutes} мин
+                        ~{w.etaMinutes}м
                       </span>
                     </div>
                   ))}
                   {data.queue.waiting.length > MAX_WAITING_ROWS && (
-                    <p className="py-2.5 text-xl" style={{ color: C.faint }}>
+                    <p className="px-4 py-1 text-xl" style={{ color: FAINT }}>
                       ещё {data.queue.waiting.length - MAX_WAITING_ROWS}
                     </p>
                   )}
                 </div>
               )}
             </div>
-          </section>
+          </Tile>
 
-          {/* Today's bookings */}
-          <section className="flex min-h-0 flex-col">
-            <SectionRule
-              title="Записи на сегодня"
+          {/* RIGHT — today's bookings */}
+          <Tile className="flex min-h-0 flex-col">
+            <TileHead
+              title="Записи"
               value={data ? `${doneCount}/${slotsSorted.length}` : "…"}
-              valueColor={C.muted}
+              color={C.muted}
             />
-            <div className="min-h-0 flex-1 overflow-hidden px-8">
+            <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
               {!data || slotsSorted.length === 0 ? (
-                <p className="py-8 text-2xl" style={{ color: C.faint }}>
+                <p className="py-8 text-2xl" style={{ color: FAINT }}>
                   {data ? "На сегодня записей нет" : "Загрузка…"}
                 </p>
               ) : (
-                <div>
+                <div className="flex flex-col gap-1.5">
                   {pastSlots.length > MAX_PAST_COMPACT && (
-                    <p className="py-2 text-lg" style={{ color: C.faint }}>
+                    <p className="px-4 py-1 text-lg" style={{ color: FAINT }}>
                       раньше: {pastSlots.length - MAX_PAST_COMPACT}
                     </p>
                   )}
@@ -405,10 +414,10 @@ export default function DoctorTVPage() {
                   ))}
 
                   {/* Now rule */}
-                  <div className="flex items-center gap-3 py-2">
+                  <div className="flex items-center gap-3 px-1 py-1.5">
                     <span
-                      className="h-0.5 flex-1"
-                      style={{ background: accent }}
+                      className="h-[3px] flex-1"
+                      style={{ background: accent, borderRadius: 2 }}
                     />
                     <span
                       className="shrink-0 font-mono text-lg font-bold tabular-nums"
@@ -419,46 +428,35 @@ export default function DoctorTVPage() {
                   </div>
 
                   {upcomingSlots.slice(0, MAX_UPCOMING_ROWS).map((s, i) => (
-                    <SlotRow
-                      key={s.id}
-                      slot={s}
-                      next={i === 0}
-                      accent={accent}
-                    />
+                    <SlotRow key={s.id} slot={s} next={i === 0} />
                   ))}
                   {upcomingSlots.length > MAX_UPCOMING_ROWS && (
-                    <p className="py-2.5 text-xl" style={{ color: C.faint }}>
+                    <p className="px-4 py-1 text-xl" style={{ color: FAINT }}>
                       ещё {upcomingSlots.length - MAX_UPCOMING_ROWS}
                     </p>
                   )}
                 </div>
               )}
             </div>
-          </section>
-        </main>
+          </Tile>
+        </div>
 
-        {/* ── Footer: clinic name, quiet ─────────────────────────────── */}
-        <footer
-          className="shrink-0 px-8 py-3"
-          style={{ borderTop: `1px solid ${C.line}` }}
-        >
-          <p className="text-lg" style={{ color: C.faint }}>
-            {data?.clinic.nameRu ?? ""}
-          </p>
-        </footer>
+        {/* ── Quiet footer ───────────────────────────────────────────── */}
+        <p className="shrink-0 px-2 text-lg" style={{ color: FAINT }}>
+          {data?.clinic.nameRu ?? ""}
+        </p>
       </div>
-    </Board>
+    </Page>
   );
 }
 
 // ─── Pieces ─────────────────────────────────────────────────────────────────
 
-/** Flat full-screen shell — solid background, nothing else. */
-function Board({ children }: { children: React.ReactNode }) {
+function Page({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="h-screen overflow-hidden"
-      style={{ background: C.bg, color: C.fg }}
+      style={{ background: C.page, color: C.fg }}
     >
       {children}
       <style>{`
@@ -469,20 +467,37 @@ function Board({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SectionRule({
-  title,
-  value,
-  valueColor,
+/** Bento tile: solid surface one step above the page, real corner radius. */
+function Tile({
+  children,
+  className = "",
+  style,
 }: {
-  title: string;
-  value: string;
-  valueColor: string;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <div
-      className="mx-8 mt-6 mb-1 flex items-baseline justify-between pb-2"
-      style={{ borderBottom: `2px solid ${C.line}` }}
+      className={className}
+      style={{ background: C.tile, borderRadius: TILE_RADIUS, ...style }}
     >
+      {children}
+    </div>
+  );
+}
+
+function TileHead({
+  title,
+  value,
+  color,
+}: {
+  title: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between px-6 pt-5 pb-3">
       <h2
         className="text-xl font-semibold uppercase tracking-wide"
         style={{ color: C.muted }}
@@ -490,8 +505,8 @@ function SectionRule({
         {title}
       </h2>
       <span
-        className="font-mono text-2xl font-bold tabular-nums"
-        style={{ color: valueColor }}
+        className="font-mono text-3xl font-bold tabular-nums"
+        style={{ color }}
       >
         {value}
       </span>
@@ -501,22 +516,17 @@ function SectionRule({
 
 function SlotRow({
   slot,
-  accent,
   compact = false,
   next = false,
 }: {
   slot: DoctorBoardSlot;
-  accent?: string;
   compact?: boolean;
   next?: boolean;
 }) {
   const meta = SLOT_META[slot.status];
   if (compact) {
     return (
-      <div
-        className="flex items-center gap-4 py-2"
-        style={{ borderBottom: `1px solid ${C.line}`, opacity: 0.45 }}
-      >
+      <div className="flex items-center gap-4 px-4 py-1.5" style={{ opacity: 0.4 }}>
         <span className="w-20 shrink-0 font-mono text-xl tabular-nums">
           {slot.time ?? "—"}
         </span>
@@ -529,17 +539,16 @@ function SlotRow({
   }
   return (
     <div
-      className="flex items-center gap-5 py-3.5 pl-3 -ml-3"
+      className="flex items-center gap-4 px-4 py-2.5"
       style={{
-        borderBottom: `1px solid ${C.line}`,
-        borderLeft: `6px solid ${next ? (accent ?? C.fg) : "transparent"}`,
-        background: next ? C.row : "transparent",
+        background: next ? C.inset : "transparent",
+        borderRadius: TILE_RADIUS - 10,
       }}
     >
       <span className="w-24 shrink-0 font-mono text-3xl font-bold tabular-nums">
         {slot.time ?? "—"}
       </span>
-      <span className="min-w-0 flex-1 truncate text-3xl">{slot.fullName}</span>
+      <span className="min-w-0 flex-1 truncate text-2xl">{slot.fullName}</span>
       <span
         className="shrink-0 text-xl font-semibold"
         style={{ color: meta.color }}
@@ -552,13 +561,13 @@ function SlotRow({
 
 /**
  * Call takeover — flat solid green board, the way real clinic signage flips.
- * No rings, no blur: color and size carry the message across the room.
+ * Color and size carry the message across the room; nothing else moves.
  */
 function CallBoard({ overlay }: { overlay: Overlay }) {
   return (
     <div
       className="board-in fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center"
-      style={{ background: C.green, color: "#06281B" }}
+      style={{ background: GREEN, color: "#06281B" }}
     >
       <p className="text-4xl font-bold uppercase tracking-widest">
         Пройдите{overlay.cabinet ? " в кабинет" : ""}

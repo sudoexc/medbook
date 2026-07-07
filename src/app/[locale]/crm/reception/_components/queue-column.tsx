@@ -7,7 +7,7 @@ import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
-import { isLiveLane } from "@/lib/queue-ordering";
+import { splitReceptionLanes } from "@/lib/queue-ordering";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
   Tooltip,
@@ -16,7 +16,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
-import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import {
   type AiQueueItem,
   useActiveDoctors,
@@ -28,8 +27,6 @@ export interface QueueColumnProps {
   className?: string;
 }
 
-const QUEUE_STATUSES = new Set(["BOOKED", "WAITING", "CONFIRMED"]);
-
 type Band = AiQueueItem["score"]["band"];
 
 const BAND_ACCENT: Record<Band, string> = {
@@ -40,24 +37,6 @@ const BAND_ACCENT: Record<Band, string> = {
 };
 
 type QueueMode = "booked" | "walkin";
-
-/**
- * Schedule lane: strictly by slot time = booking order. Bookings live on the
- * calendar axis — they never gain a position in the live queue, no matter
- * when they check in (two-lanes TZ I2).
- */
-const bySlotTime = (a: AppointmentRow, b: AppointmentRow) =>
-  new Date(a.date).getTime() - new Date(b.date).getTime();
-
-/**
- * Live lane FIFO: urgency bump → arrival (queuedAt) → ticketSeq; creation
- * time only catches legacy rows where all three keys collide.
- */
-const byArrival = (a: AppointmentRow, b: AppointmentRow) => {
-  const c = compareQueuePriority(a, b);
-  if (c !== 0) return c;
-  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-};
 
 export function QueueColumn({ rows, className }: QueueColumnProps) {
   const t = useTranslations("reception.queueColumn");
@@ -107,25 +86,12 @@ export function QueueColumn({ rows, className }: QueueColumnProps) {
    *     ordered by that time = booking order. They never enter the queue.
    * AI scores stay as row decoration (band accent + no-show pill), not the
    * sort key — order is deterministic so reception can trust 1-2-3.
+   * Membership + order come from the shared reception selector; anything it
+   * drops (terminal rows, non-WAITING walk-ins) is off-path for this column.
    */
   const { booked, live, total } = React.useMemo(() => {
-    const b: AppointmentRow[] = [];
-    const l: AppointmentRow[] = [];
-    for (const row of rows) {
-      const queueField = row.queueStatus ?? row.status;
-      if (!QUEUE_STATUSES.has(queueField)) continue;
-      // Live lane = walk-ins that are actually WAITING (same rule as the
-      // doctor-queue-panel). A WALKIN row in BOOKED/CONFIRMED is a legacy
-      // dialog-created phantom — it belongs to neither lane here.
-      if (isLiveLane(row)) {
-        if (queueField === "WAITING") l.push(row);
-      } else {
-        b.push(row);
-      }
-    }
-    b.sort(bySlotTime);
-    l.sort(byArrival);
-    return { booked: b, live: l, total: b.length + l.length };
+    const { live, booked } = splitReceptionLanes(rows);
+    return { booked, live, total: booked.length + live.length };
   }, [rows]);
 
   const empty = total === 0;
@@ -335,22 +301,16 @@ function QueueItem({
                 VIP
               </span>
             ) : null}
-            {mode === "walkin" ? (
+            {showWait ? (
               <span className="inline-flex shrink-0 items-center rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-text tabular-nums">
                 {t("waitMin", { min: waitMin })}
               </span>
-            ) : (
-              <>
-                {arrived ? (
-                  <span className="inline-flex shrink-0 items-center rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-text tabular-nums">
-                    {t("waitMin", { min: waitMin })}
-                  </span>
-                ) : null}
-                <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
-                  {time}
-                </span>
-              </>
-            )}
+            ) : null}
+            {mode === "booked" ? (
+              <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
+                {time}
+              </span>
+            ) : null}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="min-w-0 flex-1 truncate">

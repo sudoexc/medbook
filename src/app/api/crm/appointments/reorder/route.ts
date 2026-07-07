@@ -83,8 +83,6 @@ export const POST = createApiHandler(
       const row = byId.get(id)!;
       return { ...row, queuedAt: new Date(base + idx * STEP_MS) };
     });
-    // Response shape kept for client compat; floored is structurally empty now.
-    const floored: string[] = [];
     const effectiveOrder = [...projected].sort(compareQueue).map((r) => r.id);
     const exact =
       effectiveOrder.length === uniqueIds.length &&
@@ -114,6 +112,6 @@ export const POST = createApiHandler(
       });
     }
 
-    return ok({ count: uniqueIds.length, exact, floored, effectiveOrder });
+    return ok({ count: uniqueIds.length, exact, effectiveOrder });
   },
 );

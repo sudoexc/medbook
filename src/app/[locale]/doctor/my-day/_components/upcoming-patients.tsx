@@ -56,7 +56,7 @@ function formatRelative(
  * (10 rows × 1 update/min vs 10 × 60), and the user can't tell the
  * difference because the label only changes on minute boundaries.
  */
-function useMinuteClock(): number {
+export function useMinuteClock(): number {
   const [now, setNow] = React.useState<number>(() => Date.now());
   React.useEffect(() => {
     // Sync to the next minute boundary so all rows update in lockstep.

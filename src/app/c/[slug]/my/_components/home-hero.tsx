@@ -79,7 +79,7 @@ function ruPlural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
-function capitalize(s: string): string {
+export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 

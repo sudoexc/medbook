@@ -1946,13 +1946,10 @@
       "waitMin": "{min} daq.",
       "menuLabel": "Amallar",
       "openDoctor": "{name} kartochkasini ochish",
-      "sectionLive": "Jonli navbat",
       "sectionBooked": "Yozuvlar",
       "callNextLive": "Navbatdan chaqirish",
       "startBooking": "Yozuvni boshlash",
       "arrivedBadge": "Keldi",
-      "emptyLive": "Navbat bo'sh",
-      "emptyBooked": "Yozuvlar yo'q",
       "switchConfirm": "Joriy qabulni yakunlab, bu bemorni boshlaysizmi?",
       "startFailed": "Qabulni boshlab bo'lmadi"
     },
@@ -5672,7 +5669,6 @@
       "actionFailed": "Xato",
       "rescheduleFailed": "Yozuvlarni o'tkazib bo'lmadi",
       "reorderFailed": "Navbat tartibini o'zgartirib bo'lmadi",
-      "reorderFlooredHint": "{count, plural, other {# yozuv}} belgilangan vaqtida qoldi — slotdan oldinga surib bo'lmaydi. Navbatda ko'tarish uchun «Shoshilinch» tugmasini bosing.",
       "statusFailed": "Statusni o'zgartirishda xato",
       "reorderNotLive": "Yozuvlarni jonli navbat ichida siljitib bo'lmaydi — ro'yxat yangilandi",
       "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang"

@@ -11,38 +11,12 @@ import {
   type DoctorToday,
   type LiveQueueEntry,
 } from "../_hooks/use-doctor-today";
+import { useMinuteClock } from "./upcoming-patients";
+import { todayDateKey } from "./current-patient-card";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 
 /** YYYY-MM-DD for today's local date — matches the schedule cache key. */
-function todayDateKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
-/**
- * Tick once a minute so the «ждёт N мин» labels stay honest without a
- * per-second re-render. Same alignment trick as UpcomingPatients: sync to
- * the minute boundary so all rows update in lockstep.
- */
-function useMinuteClock(): number {
-  const [now, setNow] = React.useState<number>(() => Date.now());
-  React.useEffect(() => {
-    const msToNextMinute = 60_000 - (Date.now() % 60_000);
-    let interval: ReturnType<typeof setInterval> | undefined;
-    const align = setTimeout(() => {
-      setNow(Date.now());
-      interval = setInterval(() => setNow(Date.now()), 60_000);
-    }, msToNextMinute);
-    return () => {
-      clearTimeout(align);
-      if (interval) clearInterval(interval);
-    };
-  }, []);
-  return now;
-}
 
 /**
  * The LIVE lane of the two-lanes model (docs/TZ-two-lanes.md): walk-ins

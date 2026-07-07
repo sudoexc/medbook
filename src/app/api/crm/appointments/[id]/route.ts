@@ -608,9 +608,6 @@ export const PATCH = createApiHandler(
     // stamp so a later restart records fresh (?revert=true already does this).
     const movesToWaiting =
       body.status === "WAITING" || body.queueStatus === "WAITING";
-    if (movesToWaiting && before.queueStatus === "IN_PROGRESS") {
-      data.startedAt = null;
-    }
 
     // Replace AppointmentService join rows if body.services provided.
     const services = body.services;

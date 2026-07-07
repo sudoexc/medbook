@@ -4,7 +4,6 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { isOverdue, isRunningLate } from "@/lib/appointments/overdue";
-import { compareQueue } from "@/lib/queue-ordering";
 
 /**
  * Denormalised row returned by `GET /api/crm/appointments` — see §6.2.
@@ -114,27 +113,6 @@ export type AppointmentRow = {
   payments: AppointmentPaymentShort[];
 };
 
-/**
- * Live-queue precedence shared by every reception sort site (panel, doctor
- * list, queue column). Thin adapter over the single source of truth
- * `compareQueue` (`lib/queue-ordering`) so the staff panel sorts byte-for-byte
- * like the server projection that drives the TV board / kiosk / patient ticket:
- * urgency bump first, then arrival FIFO (queuedAt), then the immutable ticket
- * sequence. Callers may still append a tie-breaker, but with arrival as the key a true
- * tie is now rare.
- */
-export function compareQueuePriority(
-  a: Pick<
-    AppointmentRow,
-    "queuePriority" | "queueOrder" | "ticketSeq" | "channel" | "date" | "queuedAt"
-  >,
-  b: Pick<
-    AppointmentRow,
-    "queuePriority" | "queueOrder" | "ticketSeq" | "channel" | "date" | "queuedAt"
-  >,
-): number {
-  return compareQueue(a, b);
-}
 
 export type AppointmentsListResponse = {
   rows: AppointmentRow[];

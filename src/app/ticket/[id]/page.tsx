@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { SITE_DOMAIN } from "@/lib/constants";
 import { initials } from "@/lib/format";
 import { ticketNumberFor } from "@/server/services/ticket-number";
-import { tashkentDayBounds } from "@/lib/booking-validation";
+import { isLiveLane } from "@/lib/queue-ordering";
+import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { AutoPrint } from "./_components/auto-print";
 
 export default async function TicketPage({
@@ -21,7 +22,7 @@ export default async function TicketPage({
     where: { id },
     select: {
       queueOrder: true,
-      queuedAt: true,
+      clinicId: true,
       date: true,
       time: true,
       channel: true,
@@ -55,23 +56,21 @@ export default async function TicketPage({
   const timeStr = appointment.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 
   // Two-lanes (docs/TZ-two-lanes.md): only a walk-in has a queue position.
-  // A booking's stub shows its slot time instead of «перед вами».
-  const live = appointment.channel === "WALKIN";
-  // Live-lane FIFO count in Tashkent day bounds (server runs UTC — a naive
-  // local-midnight window skews ±5h). Ahead = joined earlier (queuedAt).
-  const { dayStart, dayEnd } = tashkentDayBounds(new Date());
-  const waitingAhead =
-    live && appointment.queuedAt
-      ? await prisma.appointment.count({
-          where: {
-            doctorId: appointment.doctorId,
-            date: { gte: dayStart, lt: dayEnd },
-            queueStatus: "WAITING",
-            channel: "WALKIN",
-            queuedAt: { lt: appointment.queuedAt },
-          },
-        })
-      : null;
+  // A booking's stub shows its slot time instead of «перед вами». Position
+  // comes from the SAME projection as the QR page and boards — a private
+  // count here would disagree the moment a «срочно» bump exists.
+  const live = isLiveLane(appointment);
+  let waitingAhead: number | null = null;
+  if (live) {
+    const projection = await getQueueProjection({
+      clinicId: appointment.clinicId,
+      doctorIds: [appointment.doctorId],
+    });
+    const mine = projection
+      .get(appointment.doctorId)
+      ?.waiting.find((w) => w.appointmentId === id);
+    waitingAhead = mine ? mine.position - 1 : 0;
+  }
 
   return (
     <div

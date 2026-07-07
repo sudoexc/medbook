@@ -18,7 +18,8 @@ import {
 import { fireTrigger } from "@/server/notifications/triggers";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
-import { applyWaitingIntake } from "@/server/appointments/intake";
+import { applyWaitingIntake, type PrismaTx } from "@/server/appointments/intake";
+import { allocateQueueOrder } from "@/server/appointments/queue-order";
 import { runQueueTx } from "@/server/appointments/queue-order";
 
 export const POST = createApiHandler(
@@ -102,23 +103,34 @@ export const POST = createApiHandler(
     // queue-status intake, so a concurrent kiosk check-in can't share an
     // order). Every other target keeps the original updateMany + default
     // isolation — no behavioral change there.
-    const txBody = async (
-      tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-    ) => {
+    const txBody = async (tx: PrismaTx) => {
       let count: number;
       if (target === "WAITING") {
         count = 0;
+        // One order aggregate per doctor, not per row: rows needing a number
+        // get base, base+1, … from a single allocation, so a 500-row bulk
+        // does D queries (distinct doctors) instead of N inside the
+        // Serializable tx — shrinking the write-conflict window runQueueTx
+        // retries on.
+        const nextOrderByDoctor = new Map<string, number>();
         for (const row of existing) {
-          const intake = await applyWaitingIntake(tx, row, now);
+          let presetOrder: number | undefined;
+          if (row.queueOrder == null) {
+            let next = nextOrderByDoctor.get(row.doctorId);
+            if (next === undefined) {
+              next = await allocateQueueOrder(tx, {
+                clinicId: row.clinicId,
+                doctorId: row.doctorId,
+                at: now,
+              });
+            }
+            presetOrder = next;
+            nextOrderByDoctor.set(row.doctorId, next + 1);
+          }
+          const intake = await applyWaitingIntake(tx, row, now, { presetOrder });
           await tx.appointment.update({
             where: { id: row.id },
-            data: {
-              ...data,
-              ...intake,
-              // Same rule as the single paths: putting a visit back to
-              // WAITING clears the start stamp so a restart re-times it.
-              ...(row.queueStatus === "IN_PROGRESS" ? { startedAt: null } : {}),
-            } as never,
+            data: { ...data, ...intake } as never,
           });
           count += 1;
         }

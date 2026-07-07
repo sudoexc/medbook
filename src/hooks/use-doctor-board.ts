@@ -20,7 +20,6 @@ export interface DoctorBoardWaiting {
   id: string;
   fullName: string;
   ticketNumber: string;
-  queueOrder: number | null;
   etaMinutes: number;
 }
 
@@ -28,13 +27,11 @@ export interface DoctorBoardCurrent {
   fullName: string;
   /** Null for a booking started without check-in (no queue fields). */
   ticketNumber: string | null;
-  startedAt: string | null;
 }
 
 export interface DoctorBoardSlot {
   id: string;
   time: string | null;
-  durationMin: number | null;
   status:
     | "BOOKED"
     | "CONFIRMED"
@@ -45,14 +42,11 @@ export interface DoctorBoardSlot {
 }
 
 export interface DoctorBoardData {
-  clinic: { slug: string; nameRu: string; nameUz: string };
+  clinic: { slug: string; nameRu: string };
   doctor: {
     id: string;
     nameRu: string;
-    nameUz: string;
     specializationRu: string | null;
-    specializationUz: string | null;
-    photoUrl: string | null;
     color: string | null;
     cabinet: string | null;
   };
@@ -68,17 +62,11 @@ export interface DoctorCall {
   seq: number;
 }
 
-const REFETCH_DEBOUNCE_MS = 400;
-const POLL_FALLBACK_MS = 25_000;
-
-const REFETCH_EVENTS = new Set<string>([
-  "queue.updated",
-  "queue.called",
-  "appointment.created",
-  "appointment.statusChanged",
-  "appointment.cancelled",
-  "appointment.moved",
-]);
+import {
+  BOARD_POLL_FALLBACK_MS,
+  BOARD_REFETCH_DEBOUNCE_MS,
+  BOARD_REFETCH_EVENTS,
+} from "@/hooks/use-queue-board";
 
 export function useDoctorBoard(token: string) {
   const [data, setData] = useState<DoctorBoardData | null>(null);
@@ -113,13 +101,13 @@ export function useDoctorBoard(token: string) {
 
   const scheduleRefetch = useCallback(() => {
     clearTimeout(refetchTimer.current);
-    refetchTimer.current = setTimeout(fetchBoard, REFETCH_DEBOUNCE_MS);
+    refetchTimer.current = setTimeout(fetchBoard, BOARD_REFETCH_DEBOUNCE_MS);
   }, [fetchBoard]);
 
   // Initial load + slow poll fallback.
   useEffect(() => {
     fetchBoard();
-    const id = setInterval(fetchBoard, POLL_FALLBACK_MS);
+    const id = setInterval(fetchBoard, BOARD_POLL_FALLBACK_MS);
     return () => {
       clearInterval(id);
       clearTimeout(refetchTimer.current);
@@ -151,7 +139,7 @@ export function useDoctorBoard(token: string) {
         return;
       }
       const type = parsed?.type;
-      if (!type || !REFETCH_EVENTS.has(type)) return;
+      if (!type || !BOARD_REFETCH_EVENTS.has(type)) return;
       const p = parsed.payload ?? {};
       const evDoctorId = typeof p.doctorId === "string" ? p.doctorId : null;
       // Foreign doctor's signal — not ours, skip entirely.

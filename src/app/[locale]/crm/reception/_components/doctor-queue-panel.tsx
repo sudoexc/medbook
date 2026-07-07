@@ -75,9 +75,12 @@ import {
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
-import { isLiveLane } from "@/lib/queue-ordering";
+import {
+  bySlotTime,
+  isLiveLane,
+  splitReceptionLanes,
+} from "@/lib/queue-ordering";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
-import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import {
   useReorderQueue,
   useSetQueuePriority,
@@ -103,35 +106,12 @@ const STATUS_TINT: Record<AppointmentRow["queueStatus"], string> = {
   NO_SHOW: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
-// Schedule-lane statuses shown in the «Записи» section. WAITING here is an
-// arrived booking (checked in at reception/kiosk) — per the two-lanes TZ it
-// stays in the schedule lane with a «Пришёл» badge and never gets a queue
-// position, so it is not draggable either.
-const BOOKED_SECTION_STATUSES = new Set<AppointmentRow["queueStatus"]>([
-  "BOOKED",
-  "CONFIRMED",
-  "WAITING",
-]);
-
 // Roles allowed to reorder — mirrors RBAC on POST /api/crm/appointments/reorder.
 const REORDER_ROLES = new Set<LifecycleRole>([
   "ADMIN",
   "SUPER_ADMIN",
   "RECEPTIONIST",
 ]);
-
-// Live-lane FIFO: urgency bump → arrival (queuedAt) → ticketSeq. The extra
-// date tiebreak only catches legacy rows where all three keys collide.
-function sortLive(rows: AppointmentRow[]): AppointmentRow[] {
-  return [...rows].sort((a, b) => {
-    const c = compareQueuePriority(a, b);
-    if (c !== 0) return c;
-    return new Date(a.date).getTime() - new Date(b.date).getTime();
-  });
-}
-
-const bySlotTime = (a: AppointmentRow, b: AppointmentRow) =>
-  new Date(a.date).getTime() - new Date(b.date).getTime();
 
 export function DoctorQueuePanel({
   appointments,
@@ -145,23 +125,20 @@ export function DoctorQueuePanel({
   const reorder = useReorderQueue();
 
   const { inProgress, live, booked, offPath } = React.useMemo(() => {
-    const ip: AppointmentRow[] = [];
-    const lv: AppointmentRow[] = [];
-    const bk: AppointmentRow[] = [];
-    const op: AppointmentRow[] = [];
-    for (const row of appointments) {
-      // Lane = f(channel), not status (TZ I2): a walk-in that isn't WAITING
-      // yet (or anymore) has no queue position, so it falls to off-path.
-      if (row.queueStatus === "IN_PROGRESS") ip.push(row);
-      else if (isLiveLane(row) && row.queueStatus === "WAITING") lv.push(row);
-      else if (!isLiveLane(row) && BOOKED_SECTION_STATUSES.has(row.queueStatus))
-        bk.push(row);
-      else op.push(row);
-    }
-    ip.sort(bySlotTime);
-    bk.sort(bySlotTime);
-    op.sort(bySlotTime);
-    return { inProgress: ip, live: sortLive(lv), booked: bk, offPath: op };
+    // IN_PROGRESS pins above both lanes regardless of channel; everything
+    // else splits via the shared reception selector (lane = f(channel), not
+    // status — TZ I2). Off-path = whatever the selector left out: terminal
+    // rows and walk-ins with no queue position.
+    const ip = appointments
+      .filter((row) => row.queueStatus === "IN_PROGRESS")
+      .sort(bySlotTime);
+    const rest = appointments.filter(
+      (row) => row.queueStatus !== "IN_PROGRESS",
+    );
+    const { live: lv, booked: bk } = splitReceptionLanes(rest);
+    const placed = new Set<string>([...lv, ...bk].map((r) => r.id));
+    const op = rest.filter((row) => !placed.has(row.id)).sort(bySlotTime);
+    return { inProgress: ip, live: lv, booked: bk, offPath: op };
   }, [appointments]);
 
   // Local override during a drag — dnd-kit needs the items array to reflect
@@ -218,12 +195,9 @@ export function DoctorQueuePanel({
     );
   };
 
-  if (
-    inProgress.length === 0 &&
-    visibleLive.length === 0 &&
-    booked.length === 0 &&
-    offPath.length === 0
-  ) {
+  // Every appointment lands in exactly one of the four buckets, so "all
+  // buckets empty" is just "no appointments".
+  if (appointments.length === 0) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-3">
         <span className="text-xs text-muted-foreground">{t("queueEmpty")}</span>

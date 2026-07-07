@@ -22,7 +22,7 @@
  *     }],
  *   }
  *
- * Walk-in / kiosk rows are excluded from `slots` — they ARE the live queue on
+ * Walk-in rows are excluded from `slots` — they ARE the live queue on
  * the left; duplicating them right would double-count. CANCELLED/NO_SHOW rows
  * are dropped (a lobby screen shouldn't advertise no-shows).
  */
@@ -70,14 +70,11 @@ export async function GET(request: Request): Promise<Response> {
         clinicId: true,
         isActive: true,
         nameRu: true,
-        nameUz: true,
         specializationRu: true,
-        specializationUz: true,
-        photoUrl: true,
         color: true,
         cabinet: { select: { number: true } },
         clinic: {
-          select: { slug: true, nameRu: true, nameUz: true, active: true },
+          select: { slug: true, nameRu: true, active: true },
         },
       },
     });
@@ -102,12 +99,13 @@ export async function GET(request: Request): Promise<Response> {
           doctorId: doctor.id,
           date: { gte: dayStart, lt: dayEnd },
           status: { in: [...SLOT_STATUSES] },
-          channel: { notIn: ["WALKIN", "KIOSK"] },
+          // Schedule lane = everything except WALKIN (matches isLiveLane and
+          // every other lane predicate) — a KIOSK booking is a booking.
+          channel: { not: "WALKIN" },
         },
         select: {
           id: true,
           time: true,
-          durationMin: true,
           status: true,
           patient: { select: { fullName: true } },
         },
@@ -122,15 +120,13 @@ export async function GET(request: Request): Promise<Response> {
       clinic: {
         slug: doctor.clinic.slug,
         nameRu: doctor.clinic.nameRu,
-        nameUz: doctor.clinic.nameUz,
       },
+      // Trimmed to what the board renders (RU-only signage) — widen
+      // deliberately if a consumer appears, not speculatively.
       doctor: {
         id: doctor.id,
         nameRu: doctor.nameRu,
-        nameUz: doctor.nameUz,
         specializationRu: doctor.specializationRu,
-        specializationUz: doctor.specializationUz,
-        photoUrl: doctor.photoUrl,
         color: doctor.color,
         cabinet: doctor.cabinet?.number ?? null,
       },
@@ -140,21 +136,18 @@ export async function GET(request: Request): Promise<Response> {
           ? {
               fullName: initials(q.current.patientFullName),
               ticketNumber: q.current.ticketNumber,
-              startedAt: q.current.startedAt?.toISOString() ?? null,
             }
           : null,
         waiting: (q?.waiting ?? []).map((w) => ({
           id: w.appointmentId,
           fullName: initials(w.patientFullName),
           ticketNumber: w.ticketNumber,
-          queueOrder: w.queueOrder,
           etaMinutes: w.etaMinutes,
         })),
       },
       slots: slotRows.map((s) => ({
         id: s.id,
         time: s.time,
-        durationMin: s.durationMin,
         status: s.status,
         fullName: initials(s.patient?.fullName),
       })),

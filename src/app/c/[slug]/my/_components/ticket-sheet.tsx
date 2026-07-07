@@ -13,6 +13,7 @@ import * as React from "react";
 import QRCode from "qrcode";
 import { X } from "lucide-react";
 
+import { capitalize } from "./home-hero";
 import { useT, useLang } from "./mini-i18n";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useQueueStatus } from "../_hooks/use-queue-status";
@@ -24,9 +25,6 @@ const GREEN = MA_ACCENTS.success;
 const SALMON = MA_ACCENTS.salmon;
 
 /** Same helper as home-hero's — `t.home.todayAt` starts lowercase («сегодня в …»). */
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 function ruPlural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;

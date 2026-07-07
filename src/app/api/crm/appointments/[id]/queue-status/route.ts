@@ -153,22 +153,30 @@ export const PATCH = createApiHandler(
       }
     }
 
-    let after: Appointment;
+    // The IN_PROGRESS flip decorates `queue.called` with two display fields —
+    // ride them on the update instead of a follow-up read (they're stripped
+    // from the response below to keep its shape flat).
+    const callInclude = {
+      patient: { select: { fullName: true } },
+      doctor: { select: { cabinet: { select: { number: true } } } },
+    } as const;
+
+    let after: Appointment & {
+      patient?: { fullName: string };
+      doctor?: { cabinet: { number: string } | null };
+    };
     if (body.queueStatus === "WAITING") {
-      // Put-back: IN_PROGRESS → WAITING re-opens the visit, so the first-start
-      // stamp must clear — otherwise a later restart keeps the stale time.
-      // (The doctor's ?revert=true path already does this; keep parity here.)
-      if (before.queueStatus === "IN_PROGRESS") data.startedAt = null;
       // Reception "Пришёл" — shared intake (see `applyWaitingIntake`): claim
-      // queueOrder/ticketSeq exactly once and stamp queuedAt on fresh arrival
-      // or a SKIPPED return. Serializable via runQueueTx so two desks racing
-      // the same doctor can't hand out a duplicate order.
+      // queueOrder/ticketSeq exactly once, stamp queuedAt on fresh arrival or
+      // a SKIPPED return, clear startedAt on an IN_PROGRESS put-back.
+      // Serializable via runQueueTx so two desks racing the same doctor can't
+      // hand out a duplicate order.
       after = await runQueueTx(async (tx) => {
         Object.assign(data, await applyWaitingIntake(tx, before, now));
-        return tx.appointment.update({ where: { id }, data });
+        return tx.appointment.update({ where: { id }, data, include: callInclude });
       });
     } else {
-      after = await prisma.appointment.update({ where: { id }, data });
+      after = await prisma.appointment.update({ where: { id }, data, include: callInclude });
     }
     await audit(request, {
       action: "appointment.queue-status",
@@ -220,16 +228,6 @@ export const PATCH = createApiHandler(
         body.queueStatus === "IN_PROGRESS" &&
         before.queueStatus !== "IN_PROGRESS"
       ) {
-        // One re-read covers both display fields: the cabinet number and the
-        // patient's name for the banner (reduced to initials — the same
-        // PHI-safe projection the public board route serves).
-        const callContext = await prisma.appointment.findUnique({
-          where: { id },
-          select: {
-            patient: { select: { fullName: true } },
-            doctor: { select: { cabinet: { select: { number: true } } } },
-          },
-        });
         publishEventSafe(clinicId, {
           type: "queue.called",
           payload: {
@@ -241,14 +239,15 @@ export const PATCH = createApiHandler(
               after.doctorId,
               after.ticketSeq ?? after.queueOrder,
             ),
-            patientName:
-              initials(callContext?.patient.fullName) || undefined,
-            cabinetNumber: callContext?.doctor.cabinet?.number ?? null,
+            patientName: initials(after.patient?.fullName) || undefined,
+            cabinetNumber: after.doctor?.cabinet?.number ?? null,
             calledAt: now.toISOString(),
           },
         });
       }
     }
-    return ok(after);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-omit of the joined display fields
+    const { patient, doctor, ...flat } = after;
+    return ok(flat);
   }
 );

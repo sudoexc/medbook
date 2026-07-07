@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { isLiveLane } from "@/lib/queue-ordering";
+import { splitReceptionLanes } from "@/lib/queue-ordering";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -20,7 +20,6 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
-import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 import type { DoctorPanelDensity } from "../_hooks/use-panel-prefs";
 import { DoctorQueuePanel } from "./doctor-queue-panel";
@@ -38,14 +37,6 @@ export interface DoctorQueueListProps {
 }
 
 type RowState = "in_session" | "awaiting" | "empty";
-
-// Schedule-lane statuses that count as a pending booking for the "next"
-// fallback — mirrors the panel's «Записи» section.
-const BOOKING_STATUSES = new Set<AppointmentRow["queueStatus"]>([
-  "BOOKED",
-  "CONFIRMED",
-  "WAITING",
-]);
 
 interface DerivedRow {
   doctor: DoctorRef;
@@ -91,14 +82,7 @@ export function DoctorQueueList({
         items.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
       // "Next" = live-lane head (FIFO, mirrors the panel's «Живая очередь»);
       // when nobody is physically waiting, fall back to the nearest booking.
-      const live = items
-        .filter((a) => isLiveLane(a) && a.queueStatus === "WAITING")
-        .sort(compareQueuePriority);
-      const bookings = items
-        .filter((a) => !isLiveLane(a) && BOOKING_STATUSES.has(a.queueStatus))
-        .sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-        );
+      const { live, booked: bookings } = splitReceptionLanes(items);
       const next = live[0] ?? bookings[0] ?? null;
       const cabinet =
         (current ?? next)?.cabinet?.number ?? items[0]?.cabinet?.number ?? null;

@@ -127,11 +127,9 @@ describe("POST /api/crm/appointments/reorder — two-lanes contract", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       exact: boolean;
-      floored: string[];
       effectiveOrder: string[];
     };
     expect(body.exact).toBe(true);
-    expect(body.floored).toEqual([]);
     expect(body.effectiveOrder).toEqual(["w3", "w1", "w2"]);
     expect(state.updates).toHaveLength(3);
     // Rewritten anchors reproduce the requested order (1 s spacing).

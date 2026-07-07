@@ -68,10 +68,12 @@ export interface QueueCall {
   seq: number;
 }
 
-const BOARD_REFETCH_DEBOUNCE_MS = 400;
-const POLL_FALLBACK_MS = 25_000;
+// Exported so the per-doctor board hook shares the exact transport tuning —
+// an event type added here must poke both screens.
+export const BOARD_REFETCH_DEBOUNCE_MS = 400;
+export const BOARD_POLL_FALLBACK_MS = 25_000;
 
-const REFETCH_EVENTS = new Set<string>([
+export const BOARD_REFETCH_EVENTS = new Set<string>([
   "queue.updated",
   "queue.called",
   "appointment.created",
@@ -113,7 +115,7 @@ export function useQueueBoard(slug: string) {
   // Initial load + slow poll fallback (covers a dropped stream / missed poke).
   useEffect(() => {
     fetchBoard();
-    const id = setInterval(fetchBoard, POLL_FALLBACK_MS);
+    const id = setInterval(fetchBoard, BOARD_POLL_FALLBACK_MS);
     return () => {
       clearInterval(id);
       clearTimeout(refetchTimer.current);
@@ -136,7 +138,7 @@ export function useQueueBoard(slug: string) {
         return;
       }
       const type = parsed?.type;
-      if (!type || !REFETCH_EVENTS.has(type)) return;
+      if (!type || !BOARD_REFETCH_EVENTS.has(type)) return;
       if (type === "queue.called") {
         const p = parsed.payload ?? {};
         callSeq.current += 1;

@@ -76,7 +76,7 @@ function formatHHMM(iso: string): string {
 }
 
 /** YYYY-MM-DD for today's local date — matches the schedule cache key. */
-function todayDateKey(): string {
+export function todayDateKey(): string {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { isLiveLane } from "@/lib/queue-ordering";
+import { splitReceptionLanes } from "@/lib/queue-ordering";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -24,7 +24,6 @@ import {
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
-import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 
 export type ReceptionListMode = "queue" | "in_progress";
 
@@ -34,8 +33,6 @@ export interface ReceptionListDrawerProps {
   onOpenChange: (open: boolean) => void;
   onRowClick: (appointmentId: string) => void;
 }
-
-const QUEUE_STATUSES = new Set(["WAITING", "BOOKED", "CONFIRMED"]);
 
 /** A rendered group: the "queue" mode splits into the two lanes, "in_progress" stays flat. */
 interface DrawerSection {
@@ -83,17 +80,9 @@ export function ReceptionListDrawer({
     }
     // Two lanes (docs/TZ-two-lanes.md), membership by channel: live FIFO
     // first (queue position = what the receptionist announces), bookings
-    // after, on their own calendar axis.
-    const queue = rows.filter((r) =>
-      QUEUE_STATUSES.has(r.queueStatus ?? r.status),
-    );
-    // Same WAITING rule as the panel — a non-WAITING walk-in is off-path.
-    const live = queue
-      .filter((r) => isLiveLane(r) && (r.queueStatus ?? r.status) === "WAITING")
-      .sort(compareQueuePriority);
-    const booked = queue
-      .filter((r) => !isLiveLane(r))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // after, on their own calendar axis. The shared selector also enforces
+    // the booked-status filter, so terminal/SKIPPED rows never surface here.
+    const { live, booked } = splitReceptionLanes(rows);
     const sections: DrawerSection[] = [];
     if (live.length > 0)
       sections.push({

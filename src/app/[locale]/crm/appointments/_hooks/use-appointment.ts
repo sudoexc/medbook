@@ -439,7 +439,6 @@ export function useBulkReschedule() {
 type ReorderResult = {
   count: number;
   exact: boolean;
-  floored: string[];
   effectiveOrder: string[];
 };
 
@@ -503,14 +502,6 @@ export function useReorderQueue() {
       }
       return { snapshots };
     },
-    onSuccess: (data) => {
-      // A future-slot booking floors at its slot, so dragging it earlier was a
-      // no-op. The board (and our optimistic state) already keep it put; the
-      // operator just needs to know why and that «срочно» is the lever.
-      if (data.floored.length > 0) {
-        toast(t("reorderFlooredHint", { count: data.floored.length }));
-      }
-    },
     onError: (err, _vars, context) => {
       if (context?.snapshots) {
         for (const [key, prev] of context.snapshots) {
@@ -523,7 +514,9 @@ export function useReorderQueue() {
       if (err.message === "not_live_lane") {
         toast.error(t("reorderNotLive"));
       } else {
-        toast.error(err.message || t("reorderFailed"));
+        // Machine reasons (duplicate_ids, ids_mismatch, …) are not operator
+        // copy — always show the localized failure line.
+        toast.error(t("reorderFailed"));
       }
     },
     onSettled: () => {

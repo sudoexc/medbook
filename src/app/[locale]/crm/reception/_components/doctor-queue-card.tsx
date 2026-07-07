@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
-import { isLiveLane } from "@/lib/queue-ordering";
+import { splitReceptionLanes } from "@/lib/queue-ordering";
 import { Button } from "@/components/ui/button";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/popover";
 
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
-import { compareQueuePriority } from "../../appointments/_hooks/use-appointments-list";
 import type { DoctorRef } from "../_hooks/use-reception-live";
 
 export interface DoctorQueueCardProps {
@@ -38,14 +37,6 @@ const SCROLL_AFTER = 4;
 
 /** Bookings shown beyond this cap collapse into a "+N" line. */
 const MAX_BOOKINGS = 3;
-
-// Schedule-lane statuses visible on the card. WAITING = arrived booking —
-// it stays in this list (two-lanes TZ I2), never in the live queue.
-const BOOKING_STATUSES = new Set<AppointmentRow["queueStatus"]>([
-  "BOOKED",
-  "CONFIRMED",
-  "WAITING",
-]);
 
 /**
  * Compact cabinet card per Image #13 feedback, two-lanes layout
@@ -84,14 +75,9 @@ export function DoctorQueueCard({
 
   const current =
     appointments.find((a) => a.queueStatus === "IN_PROGRESS") ?? null;
-  // LIVE lane: waiting walk-ins in FIFO order — slot time never orders them.
-  const live = appointments
-    .filter((a) => isLiveLane(a) && a.queueStatus === "WAITING")
-    .sort(compareQueuePriority);
-  // SCHEDULE lane: bookings keep the calendar axis.
-  const bookings = appointments
-    .filter((a) => !isLiveLane(a) && BOOKING_STATUSES.has(a.queueStatus))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // Shared reception split: live = waiting walk-ins in FIFO order (slot time
+  // never orders them), bookings keep the calendar axis (two-lanes TZ I2).
+  const { live, booked: bookings } = splitReceptionLanes(appointments);
 
   const cabinetNumber =
     (current ?? live[0] ?? bookings[0])?.cabinet?.number ??

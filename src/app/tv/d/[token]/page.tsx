@@ -24,13 +24,13 @@ import {
   useDoctorBoard,
   type DoctorBoardSlot,
 } from "@/hooks/use-doctor-board";
+import { CallTakeover, announce, playChime } from "../../_shared";
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
 const OVERLAY_MS = 15_000; // call takeover auto-dismiss
 const MAX_WAITING_ROWS = 8; // queue rows before «ещё N»
 const MAX_PAST_COMPACT = 2; // finished bookings kept above the now-line
 const MAX_UPCOMING_ROWS = 9; // booking rows before «ещё N»
-const SPEECH_DELAY_MS = 1200; // chime first, then the voice
 const TILE_RADIUS = 24; // bento tile corner radius, px
 // Bento palette — LIGHT theme (owner's boss wants white/light, 2026-07-06).
 // Solid layers only; depth = page one step darker than the white tiles +
@@ -47,7 +47,6 @@ const FAINT = "#98A2B3";
 const GREEN = "#0BA168"; // readable on white
 const GREEN_TINT = "#E7F7EF"; // now-serving tile fill
 const AMBER = "#D97706"; // readable on white
-const CALL_GREEN = "#16C784"; // call takeover stays saturated
 // ────────────────────────────────────────────────────────────────────────────
 
 interface Overlay {
@@ -56,59 +55,12 @@ interface Overlay {
   patientName: string;
 }
 
-function playChime() {
-  try {
-    const ctx = new AudioContext();
-    const tone = (freq: number, delay: number, dur: number, vol: number) => {
-      setTimeout(() => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = freq;
-        osc.type = "sine";
-        gain.gain.value = vol;
-        osc.start();
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
-        osc.stop(ctx.currentTime + dur);
-      }, delay);
-    };
-    tone(784, 0, 0.6, 0.4); // G5
-    tone(1047, 250, 0.6, 0.4); // C6
-    tone(1319, 500, 0.8, 0.35); // E6
-  } catch {
-    // AudioContext blocked until the screen is tapped — splash handles that.
-  }
-}
-
-function announce(patientName: string, cabinet: string, ticketNumber: string) {
-  setTimeout(() => {
-    try {
-      const who = patientName
-        ? patientName
-        : ticketNumber
-          ? `Талон ${ticketNumber}`
-          : "Следующий пациент";
-      const u = new SpeechSynthesisUtterance(
-        cabinet ? `${who}, пройдите в кабинет ${cabinet}` : `${who}, проходите`,
-      );
-      u.lang = "ru-RU";
-      u.rate = 0.85;
-      u.volume = 1;
-      u.pitch = 1.1;
-      speechSynthesis.speak(u);
-    } catch {
-      // Speech synthesis unavailable — visual board still flips.
-    }
-  }, SPEECH_DELAY_MS);
-}
-
 const SLOT_META: Record<
   DoctorBoardSlot["status"],
   { label: string; color: string }
 > = {
-  BOOKED: { label: "запись", color: "#5D6B7E" },
-  CONFIRMED: { label: "подтверждена", color: "#5D6B7E" },
+  BOOKED: { label: "запись", color: C.muted },
+  CONFIRMED: { label: "подтверждена", color: C.muted },
   // Two-lanes: an arrived booking waits on the schedule axis, not in the
   // live queue — the label says so.
   WAITING: { label: "пришёл", color: AMBER },
@@ -136,8 +88,19 @@ export default function DoctorTVPage() {
 
   const lastCallSeq = useRef(0);
 
+  // Nothing on the board has second granularity (clock renders HH:mm, lanes
+  // split on minutes) — tick every second but only commit state when the
+  // minute flips, so signage sticks aren't re-rendering the whole tree 60×/min.
   useEffect(() => {
-    const id = setInterval(() => setTime(new Date()), 1000);
+    const id = setInterval(() => {
+      setTime((prev) => {
+        const next = new Date();
+        return next.getHours() === prev.getHours() &&
+          next.getMinutes() === prev.getMinutes()
+          ? prev
+          : next;
+      });
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -172,18 +135,21 @@ export default function DoctorTVPage() {
   const accent = data?.doctor.color || "#2353FF";
   const nowMinutes = time.getHours() * 60 + time.getMinutes();
 
-  const slotsSorted = useMemo(
-    () =>
-      [...(data?.slots ?? [])].sort(
-        (a, b) => slotMinutes(a.time) - slotMinutes(b.time),
-      ),
-    [data?.slots],
+  // The route returns slots ordered by (date, time) — no client re-sort.
+  const slots = data?.slots;
+  const { pastSlots, upcomingSlots } = useMemo(() => {
+    const past: DoctorBoardSlot[] = [];
+    const upcoming: DoctorBoardSlot[] = [];
+    for (const s of slots ?? []) {
+      (slotMinutes(s.time) < nowMinutes ? past : upcoming).push(s);
+    }
+    return { pastSlots: past, upcomingSlots: upcoming };
+  }, [slots, nowMinutes]);
+  const doneCount = useMemo(
+    () => (slots ?? []).filter((s) => s.status === "COMPLETED").length,
+    [slots],
   );
-  const pastSlots = slotsSorted.filter((s) => slotMinutes(s.time) < nowMinutes);
-  const upcomingSlots = slotsSorted.filter(
-    (s) => slotMinutes(s.time) >= nowMinutes,
-  );
-  const doneCount = slotsSorted.filter((s) => s.status === "COMPLETED").length;
+  const slotCount = slots?.length ?? 0;
 
   if (notFound) {
     return (
@@ -251,7 +217,14 @@ export default function DoctorTVPage() {
 
   return (
     <Page>
-      {overlay && <CallBoard overlay={overlay} />}
+      {overlay && (
+        <CallTakeover
+          cabinet={overlay.cabinet}
+          patientName={overlay.patientName}
+          ticketNumber={overlay.ticketNumber}
+          className="board-in"
+        />
+      )}
 
       <div className="flex h-full flex-col gap-4 p-5">
         {/* ── Header tile: cabinet plate · doctor · clock ────────────── */}
@@ -397,11 +370,11 @@ export default function DoctorTVPage() {
           <Tile className="flex min-h-0 flex-col">
             <TileHead
               title="Записи"
-              value={data ? `${doneCount}/${slotsSorted.length}` : "…"}
+              value={data ? `${doneCount}/${slotCount}` : "…"}
               color={C.muted}
             />
             <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
-              {!data || slotsSorted.length === 0 ? (
+              {!data || slotCount === 0 ? (
                 <p className="py-8 text-2xl" style={{ color: FAINT }}>
                   {data ? "На сегодня записей нет" : "Загрузка…"}
                 </p>
@@ -563,36 +536,6 @@ function SlotRow({
       >
         {meta.label}
       </span>
-    </div>
-  );
-}
-
-/**
- * Call takeover — flat solid green board, the way real clinic signage flips.
- * Color and size carry the message across the room; nothing else moves.
- */
-function CallBoard({ overlay }: { overlay: Overlay }) {
-  return (
-    <div
-      className="board-in fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center"
-      style={{ background: CALL_GREEN, color: "#FFFFFF" }}
-    >
-      <p className="text-4xl font-bold uppercase tracking-widest">
-        Пройдите{overlay.cabinet ? " в кабинет" : ""}
-      </p>
-      {overlay.cabinet && (
-        <p className="mt-2 font-mono text-[11rem] font-bold leading-none tabular-nums">
-          {overlay.cabinet}
-        </p>
-      )}
-      <p className="mt-8 max-w-full truncate text-7xl font-bold">
-        {overlay.patientName || overlay.ticketNumber || ""}
-      </p>
-      {overlay.ticketNumber && overlay.patientName && (
-        <p className="mt-5 font-mono text-4xl font-semibold tabular-nums opacity-80">
-          Талон {overlay.ticketNumber}
-        </p>
-      )}
     </div>
   );
 }

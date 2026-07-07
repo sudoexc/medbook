@@ -82,3 +82,63 @@ export function splitLanes<T extends QueueOrderable>(
   live.sort(compareQueue);
   return { live, schedule };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reception on-screen lanes — the ONE definition of what each panel shows.
+// Five reception surfaces (queue panel/card/list, queue column, list drawer)
+// used to hand-roll this split with per-file status sets and drifting
+// tiebreaks; the invariant lives here now.
+
+/** Row shape the reception splitters work over (status pair + order keys). */
+export interface ReceptionLaneRow extends QueueOrderable {
+  status?: string | null;
+  queueStatus?: string | null;
+  /** ISO or Date — the booking's slot start, the schedule-lane sort key. */
+  date: Date | string | number;
+}
+
+/** Statuses a booking may hold while still belonging on the «Записи» list. */
+export const RECEPTION_BOOKED_STATUSES: ReadonlySet<string> = new Set([
+  "BOOKED",
+  "CONFIRMED",
+  "WAITING",
+]);
+
+function laneStatus(r: ReceptionLaneRow): string {
+  return (r.queueStatus ?? r.status ?? "") as string;
+}
+
+/** On-screen live queue = walk-ins that are actually WAITING. */
+export function isLiveWaiting(r: ReceptionLaneRow): boolean {
+  return isLiveLane(r) && laneStatus(r) === "WAITING";
+}
+
+/** Schedule-lane sort: by slot start ascending. */
+export function bySlotTime(a: ReceptionLaneRow, b: ReceptionLaneRow): number {
+  return (
+    new Date(a.date as string | number | Date).getTime() -
+    new Date(b.date as string | number | Date).getTime()
+  );
+}
+
+/**
+ * The reception split: `live` = WAITING walk-ins in FIFO order
+ * (`compareQueue`); `booked` = schedule-lane rows still on today's list
+ * (BOOKED/CONFIRMED/arrived-WAITING) by slot time. Rows in neither bucket
+ * (terminal, SKIPPED, a non-WAITING walk-in) are the caller's off-path
+ * concern.
+ */
+export function splitReceptionLanes<T extends ReceptionLaneRow>(
+  rows: T[],
+): { live: T[]; booked: T[] } {
+  const live: T[] = [];
+  const booked: T[] = [];
+  for (const r of rows) {
+    if (isLiveWaiting(r)) live.push(r);
+    else if (!isLiveLane(r) && RECEPTION_BOOKED_STATUSES.has(laneStatus(r)))
+      booked.push(r);
+  }
+  live.sort(compareQueue);
+  booked.sort(bySlotTime);
+  return { live, booked };
+}

@@ -5,59 +5,13 @@ import Image from "next/image";
 
 import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
 import { useQueueBoard, type BoardDoctor } from "@/hooks/use-queue-board";
+import { CallTakeover, announce, playChime } from "./_shared";
 
 interface Overlay {
   ticketNumber: string;
   cabinet: string;
   patientName: string;
   doctorName: string;
-}
-
-function playChime() {
-  try {
-    const ctx = new AudioContext();
-    const tone = (freq: number, delay: number, dur: number, vol: number) => {
-      setTimeout(() => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = freq;
-        osc.type = "sine";
-        gain.gain.value = vol;
-        osc.start();
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
-        osc.stop(ctx.currentTime + dur);
-      }, delay);
-    };
-    tone(784, 0, 0.6, 0.4); // G5
-    tone(1047, 250, 0.6, 0.4); // C6
-    tone(1319, 500, 0.8, 0.35); // E6
-  } catch {
-    // AudioContext blocked until the screen is tapped — splash handles that.
-  }
-}
-
-function announce(patientName: string, cabinet: string, ticketNumber: string) {
-  setTimeout(() => {
-    try {
-      const who = patientName
-        ? patientName
-        : ticketNumber
-          ? `Талон ${ticketNumber}`
-          : "Следующий пациент";
-      const u = new SpeechSynthesisUtterance(
-        cabinet ? `${who}, пройдите в кабинет ${cabinet}` : `${who}, проходите`,
-      );
-      u.lang = "ru-RU";
-      u.rate = 0.85;
-      u.volume = 1;
-      u.pitch = 1.1;
-      speechSynthesis.speak(u);
-    } catch {
-      // Speech synthesis unavailable — visual overlay still shows.
-    }
-  }, 1200);
 }
 
 export default function TVQueuePage() {
@@ -150,7 +104,15 @@ export default function TVQueuePage() {
 
   return (
     <div className="h-screen bg-[var(--public-bg)] text-[var(--public-fg)] flex flex-col overflow-hidden">
-      {overlay && <CallOverlay overlay={overlay} />}
+      {overlay && (
+        <CallTakeover
+          cabinet={overlay.cabinet}
+          patientName={overlay.patientName}
+          ticketNumber={overlay.ticketNumber}
+          doctorName={overlay.doctorName}
+          className="animate-fade-in"
+        />
+      )}
 
       {/* Header */}
       <div className="shrink-0 bg-[var(--public-panel-strong)] border-b border-[var(--public-border)] px-8 py-4 flex items-center justify-between">
@@ -373,35 +335,6 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
               </p>
             )}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CallOverlay({ overlay }: { overlay: Overlay }) {
-  // Flat signage takeover — solid green, size and color carry the message.
-  // No rings, no blur, no gradients (owner's direction: no AI-slop styling).
-  return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center animate-fade-in"
-      style={{ background: "#16C784", color: "#06281B" }}
-    >
-      <p className="text-4xl font-bold uppercase tracking-widest">
-        Пройдите{overlay.cabinet ? " в кабинет" : ""}
-      </p>
-      {overlay.cabinet && (
-        <p className="mt-2 font-mono text-[10rem] font-bold leading-none tabular-nums">
-          {overlay.cabinet}
-        </p>
-      )}
-      <p className="mt-8 max-w-full truncate text-7xl font-bold">
-        {overlay.patientName || overlay.ticketNumber || ""}
-      </p>
-      <div className="mt-6 flex items-center gap-6 text-3xl font-semibold opacity-80">
-        {overlay.doctorName && <span>{overlay.doctorName}</span>}
-        {overlay.ticketNumber && overlay.patientName && (
-          <span className="font-mono tabular-nums">Талон {overlay.ticketNumber}</span>
         )}
       </div>
     </div>

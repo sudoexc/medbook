@@ -13,7 +13,6 @@ import {
   ChevronsRightIcon,
   ClipboardCheckIcon,
   FileTextIcon,
-  FilesIcon,
   HistoryIcon,
   MessageSquareIcon,
   SettingsIcon,
@@ -47,7 +46,8 @@ const DOCTOR_NAV: NavGroup[] = [
       { href: "reception", labelKey: "sidebar.reception", icon: ClipboardCheckIcon },
       { href: "patients", labelKey: "sidebar.patients", icon: UsersIcon },
       { href: "visits", labelKey: "sidebar.visits", icon: HistoryIcon },
-      { href: "documents", labelKey: "sidebar.documents", icon: FilesIcon },
+      // «Документы» hidden from the cabinet nav per doctor feedback — the
+      // route + per-patient documents (patient card tab) stay intact.
       { href: "conclusions", labelKey: "sidebar.conclusions", icon: FileTextIcon },
       { href: "messages", labelKey: "sidebar.messages", icon: MessageSquareIcon },
       { href: "analytics", labelKey: "sidebar.analytics", icon: BarChart3Icon },

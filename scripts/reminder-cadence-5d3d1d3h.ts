@@ -46,11 +46,11 @@ const CASCADE_KEYS = [
   "appointment.reminder-3h",
 ] as const;
 
-/** Ex-canon pings to retire — only when still on the seeded offset. */
-const RETIRE = [
-  { key: "appointment.reminder-5h", offsetMin: -300 },
-  { key: "appointment.reminder-1h", offsetMin: -60 },
-] as const;
+/** The four canonical offsets — the ONLY APPOINTMENT_BEFORE offsets that stay
+ *  active. Anything else (ex-canon 5h/2h/1h pings, older `reminder.*` seeds,
+ *  duplicates on the same offset) is swept to inactive so neither the
+ *  canonical nor the dynamic scheduler pass fires a stray reminder. */
+const CANONICAL_OFFSETS = new Set([-7200, -4320, -1440, -180]);
 
 function offsetOf(triggerConfig: unknown): number | null {
   const cfg =
@@ -162,38 +162,53 @@ async function main() {
       console.log(`  [+]      ${clinic.slug} :: ${t.key} (${target})`);
     }
 
-    // 2. Retire the ex-canon 5h/1h pings still sitting on their seeded
-    //    offsets — otherwise the dynamic scheduler pass keeps firing them.
-    for (const r of RETIRE) {
-      const row = await prisma.notificationTemplate.findUnique({
-        where: { clinicId_key: { clinicId: clinic.id, key: r.key } },
-        select: { id: true, isActive: true, triggerConfig: true },
-      });
-      if (!row) continue;
-      if (offsetOf(row.triggerConfig) !== r.offsetMin) {
-        skippedCount += 1;
-        console.log(
-          `  [skip]   ${clinic.slug} :: ${r.key} (offset customised — left active)`,
-        );
-        continue;
-      }
-      if (!row.isActive) {
-        skippedCount += 1;
-        console.log(`  [skip]   ${clinic.slug} :: ${r.key} (already retired)`);
+    // 2. Sweep: keep active EXACTLY one row per canonical offset; deactivate
+    //    every other active APPOINTMENT_BEFORE row (ex-canon 5h/2h/1h pings,
+    //    older `reminder.*` seeds, and duplicates on a canonical offset).
+    //    Both the canonical (slug-based) and dynamic (offset-based) scheduler
+    //    passes then materialise the 5d/3d/1d/3h cascade and nothing else.
+    const active = await prisma.notificationTemplate.findMany({
+      where: {
+        clinicId: clinic.id,
+        trigger: "APPOINTMENT_BEFORE",
+        isActive: true,
+      },
+      select: { id: true, key: true, triggerConfig: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const keptCanonicalOffset = new Set<number>();
+    for (const row of active) {
+      const off = offsetOf(row.triggerConfig);
+      const isCanonical = off !== null && CANONICAL_OFFSETS.has(off);
+      // Keep the first active row on each canonical offset; prefer the
+      // canonical `appointment.reminder-*` key when duplicates exist.
+      const preferred =
+        isCanonical &&
+        !keptCanonicalOffset.has(off!) &&
+        (row.key.startsWith("appointment.reminder-") ||
+          !active.some(
+            (o) =>
+              o.id !== row.id &&
+              offsetOf(o.triggerConfig) === off &&
+              o.key.startsWith("appointment.reminder-"),
+          ));
+      if (preferred) {
+        keptCanonicalOffset.add(off!);
         continue;
       }
       await prisma.notificationTemplate.update({
         where: { id: row.id },
         data: {
           isActive: false,
-          // The UI writes both flags for safety — mirror that here.
           triggerConfig: mergeConfig(row.triggerConfig, {
             enabled: false,
           }) as never,
         },
       });
       retiredCount += 1;
-      console.log(`  [retire] ${clinic.slug} :: ${r.key} (${r.offsetMin})`);
+      console.log(
+        `  [retire] ${clinic.slug} :: ${row.key} (${off ?? "no-offset"})`,
+      );
     }
   }
 

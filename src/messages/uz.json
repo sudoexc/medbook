@@ -5223,7 +5223,8 @@
           "reset": "Tozalash",
           "noMatchTitle": "Filtrlar bo'yicha hech narsa topilmadi",
           "noMatchHint": "Filtrlarning bir qismini olib tashlab ko'ring — tanlangan cheklovlar birgalikda bugungi barcha bemorlarni chiqarib tashlayapti."
-        }
+        },
+        "progressOpenHandled": "Yopilganlarni ko'rsatish ({count})"
       },
       "responseTime": {
         "title": "O'rtacha javob vaqti",

@@ -109,6 +109,18 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
   const showProgress = total > 0;
   const allDone = open === 0 && handled > 0;
 
+  // The «1/48» progress badge doubles as the entry point to the closed-tasks
+  // list: clicking it reveals «Обработано сегодня» (and scrolls to it). State
+  // lives here so the badge and the trail share one open flag.
+  const [showHandled, setShowHandled] = React.useState(false);
+  const handledRef = React.useRef<HTMLDivElement>(null);
+  const openHandled = React.useCallback(() => {
+    setShowHandled(true);
+    requestAnimationFrame(() =>
+      handledRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+    );
+  }, []);
+
   return (
     <section
       id={anchorId}
@@ -145,7 +157,12 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {showProgress ? (
-            <ProgressBadge open={open} handled={handled} total={total} />
+            <ProgressBadge
+              open={open}
+              handled={handled}
+              total={total}
+              onOpenHandled={handled > 0 ? openHandled : undefined}
+            />
           ) : null}
           {open > 0 && loss > 0 ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
@@ -189,7 +206,14 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
           handled, with what outcome and by whom — the "client doesn't
           vanish" half of TZ-risk-outcomes §5. */}
       {data && (handled > 0 || data.handled.length > 0) ? (
-        <HandledToday items={data.handled} count={handled} locale={locale} />
+        <HandledToday
+          ref={handledRef}
+          items={data.handled}
+          count={handled}
+          locale={locale}
+          expanded={showHandled}
+          onToggle={() => setShowHandled((v) => !v)}
+        />
       ) : null}
     </section>
   );
@@ -201,18 +225,19 @@ function ProgressBadge({
   open,
   handled,
   total,
+  onOpenHandled,
 }: {
   open: number;
   handled: number;
   total: number;
+  /** Set when there ARE closed tasks — turns the badge into a button that
+   *  reveals the «Обработано сегодня» list. */
+  onOpenHandled?: () => void;
 }) {
   const t = useTranslations("actionCenter.dashboard.riskToday");
   const pct = total === 0 ? 0 : Math.round((handled / total) * 100);
-  return (
-    <div
-      className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground"
-      title={t("progressTitle", { handled, total })}
-    >
+  const inner = (
+    <>
       <span className="tabular-nums">
         {t("progressLabel", { handled, total })}
       </span>
@@ -225,7 +250,27 @@ function ProgressBadge({
       <span className="tabular-nums text-[10px] text-muted-foreground">
         {open} {t("openShort")}
       </span>
-    </div>
+    </>
+  );
+  const base =
+    "inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground";
+  if (!onOpenHandled) {
+    return (
+      <div className={base} title={t("progressTitle", { handled, total })}>
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpenHandled}
+      title={t("progressOpenHandled", { count: handled })}
+      className={cn(base, "cursor-pointer transition-colors hover:bg-muted/70")}
+    >
+      {inner}
+      <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+    </button>
   );
 }
 
@@ -848,33 +893,39 @@ function OutcomeMenu({
  * time and which teammate closed it. This is what stops handled clients from
  * "vanishing" — the work stays visible for the whole shift.
  */
-function HandledToday({
-  items,
-  count,
-  locale,
-}: {
-  items: HandledRow[];
-  count: number;
-  locale: Locale;
-}) {
+const HandledToday = React.forwardRef<
+  HTMLDivElement,
+  {
+    items: HandledRow[];
+    count: number;
+    locale: Locale;
+    expanded: boolean;
+    onToggle: () => void;
+  }
+>(function HandledToday({ items, count, locale, expanded, onToggle }, ref) {
   const t = useTranslations("actionCenter.dashboard.riskToday");
-  const [expanded, setExpanded] = React.useState(false);
 
   // No enriched rows to show (legacy DONE actions without an outcome) — keep
   // the plain counter so the header math still adds up.
   if (items.length === 0) {
     return (
-      <div className="mt-4 rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs font-semibold text-muted-foreground">
+      <div
+        ref={ref}
+        className="mt-4 rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs font-semibold text-muted-foreground"
+      >
         {t("handledList.title", { count })}
       </div>
     );
   }
 
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/20">
+    <div
+      ref={ref}
+      className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/20"
+    >
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={onToggle}
         aria-expanded={expanded}
         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40"
       >
@@ -927,7 +978,7 @@ function HandledToday({
       ) : null}
     </div>
   );
-}
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 

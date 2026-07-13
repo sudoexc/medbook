@@ -5166,6 +5166,37 @@
           "noContactDays": "Aloqa yo'q {days, plural, one {# kun} other {# kun}}",
           "noContactNever": "Hech qachon aloqaga chiqilmagan"
         },
+        "outcome": {
+          "CONFIRMED": "Tasdiqladi",
+          "RESCHEDULED": "Ko'chirish",
+          "CALLBACK": "Keyinroq qo'ng'iroq qilish",
+          "RETURN_LATER": "Keyinroq kelmoqchi",
+          "REFUSED": "Rad etdi",
+          "NO_ANSWER": "Javob bermadi"
+        },
+        "outcomeMenu": {
+          "title": "Suhbat yakuni",
+          "opensDrawer": "yozuvni ochadi",
+          "callbackAtLabel": "Qachon qo'ng'iroq qilish",
+          "returnAtLabel": "Qaytish sanasi",
+          "noteLabel": "Izoh",
+          "notePlaceholder": "Qisqacha: bemor nima dedi",
+          "reasonLabel": "Rad etish sababi",
+          "reasonPlaceholder": "Nega rad etdi — yozuvda saqlanadi",
+          "back": "Orqaga",
+          "confirm": "Saqlash",
+          "success": "Yakun yozildi: {outcome}",
+          "error": "Yakunni yozib bo'lmadi: {reason}"
+        },
+        "remindersChip": {
+          "confirmed": "{count, plural, one {# eslatma} other {# eslatma}} · tasdiqladi",
+          "notConfirmed": "{count, plural, one {# eslatma} other {# eslatma}} · tasdiqlamadi"
+        },
+        "handledList": {
+          "title": "Bugun ishlandi ({count})",
+          "empty": "Bugun hali hech kim ishlanmadi",
+          "callbackAt": "qo'ng'iroq qilish {at}"
+        },
         "filteredCount": "{total} dan {visible} ta ko'rsatildi",
         "filters": {
           "reason": {

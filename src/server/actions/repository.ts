@@ -143,10 +143,24 @@ export async function upsertAction(
   }
 
   // Update path -------------------------------------------------------------
+  // Outcome lock (TZ-risk-outcomes §3): once a human recorded a call outcome,
+  // the row must NOT be auto-resurrected by the 15-min recompute — that churn
+  // ("marked handled → back in 15 min") is exactly what the widget redesign
+  // kills. The outcome stays authoritative until the appointment itself passes
+  // (`expiresAt`). SNOOZED already survives recompute below, so CALLBACK /
+  // RETURN_LATER / NO_ANSWER (which snooze) are covered; this guards the
+  // DONE outcomes (CONFIRMED / RESCHEDULED / REFUSED).
+  const nowMs = Date.now();
+  const outcomeLocked =
+    existing.status === "DONE" &&
+    (existing as { outcome?: string | null }).outcome != null &&
+    existing.expiresAt != null &&
+    nowMs < existing.expiresAt.getTime();
   const wasTerminal =
-    existing.status === "DONE" ||
-    existing.status === "DISMISSED" ||
-    existing.status === "EXPIRED";
+    !outcomeLocked &&
+    (existing.status === "DONE" ||
+      existing.status === "DISMISSED" ||
+      existing.status === "EXPIRED");
   const newStatus = wasTerminal ? "OPEN" : existing.status;
 
   const oldPayload = existing.payload as ActionPayload | null;

@@ -5166,6 +5166,37 @@
           "noContactDays": "Не на связи {days, plural, one {# день} few {# дня} many {# дней} other {# дней}}",
           "noContactNever": "Ни разу не связывались"
         },
+        "outcome": {
+          "CONFIRMED": "Подтвердил",
+          "RESCHEDULED": "Перенести",
+          "CALLBACK": "Перезвонить позже",
+          "RETURN_LATER": "Хочет прийти позже",
+          "REFUSED": "Отказался",
+          "NO_ANSWER": "Не дозвонился"
+        },
+        "outcomeMenu": {
+          "title": "Итог разговора",
+          "opensDrawer": "откроет запись",
+          "callbackAtLabel": "Когда перезвонить",
+          "returnAtLabel": "Дата возврата",
+          "noteLabel": "Заметка",
+          "notePlaceholder": "Коротко: что сказал пациент",
+          "reasonLabel": "Причина отказа",
+          "reasonPlaceholder": "Почему отказался — сохранится в записи",
+          "back": "Назад",
+          "confirm": "Сохранить",
+          "success": "Исход записан: {outcome}",
+          "error": "Не удалось записать исход: {reason}"
+        },
+        "remindersChip": {
+          "confirmed": "{count, plural, one {# напоминание} few {# напоминания} many {# напоминаний} other {# напоминания}} · подтвердил",
+          "notConfirmed": "{count, plural, one {# напоминание} few {# напоминания} many {# напоминаний} other {# напоминания}} · не подтвердил"
+        },
+        "handledList": {
+          "title": "Обработано сегодня ({count})",
+          "empty": "Сегодня ещё никого не обработали",
+          "callbackAt": "перезвонить {at}"
+        },
         "filteredCount": "Показано {visible} из {total}",
         "filters": {
           "reason": {

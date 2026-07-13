@@ -2,12 +2,12 @@
  * notifications-scheduler — cron-style poller.
  *
  * Every minute:
- *   1. Run trigger materialisation (birthday, 3d/24h/5h/2h reminders,
+ *   1. Run trigger materialisation (birthday, 5d/3d/1d/3h reminders,
  *      payment.due) via the legacy `runScheduledTriggers()` pass — this
- *      honors the seeded offsetMin values (-4320, -1440, -300, -120) and is
- *      idempotent. The -4320 (T-3d) band is additionally gated on
- *      `confirmedAt IS NULL` so PHONE/KIOSK/WALKIN auto-confirms never
- *      receive the gentle ping.
+ *      honors the seeded offsetMin values (-7200, -4320, -1440, -180) and is
+ *      idempotent (TZ-risk-outcomes §7 cascade). The -4320 (T-3d) band is
+ *      additionally gated on `confirmedAt IS NULL` so PHONE/KIOSK/WALKIN
+ *      auto-confirms never receive the gentle ping.
  *   2. Run a *dynamic* pass for any APPOINTMENT_BEFORE templates whose
  *      `triggerConfig.offsetMin` was customised by the admin in
  *      /crm/settings/notifications. The dynamic pass uses the same
@@ -52,8 +52,8 @@ export type TickResult = {
 /**
  * Dynamic-rules pass: schedule reminders for templates whose
  * `triggerConfig.offsetMin` was customised by an admin (i.e. not the seeded
- * -1440 or -120). The legacy pass owns those two canonical values via
- * Prisma JSON-path WHERE clauses.
+ * -7200/-4320/-1440/-180 cascade). The legacy pass owns those canonical
+ * values via Prisma JSON-path WHERE clauses.
  */
 async function runDynamicReminders(): Promise<{ created: number; skipped: number }> {
   const now = new Date();
@@ -95,14 +95,16 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
         ? (t.triggerConfig as { offsetMin?: number })
         : {};
     const off = typeof cfg.offsetMin === "number" ? cfg.offsetMin : null;
-    // Legacy hardcoded values are owned by `runScheduledTriggers` — the 3d
-    // (-4320) band lands here too as of Stage 2.D, gated on confirmedAt.
+    // Canonical cascade values are owned by `runScheduledTriggers` —
+    // 5d/3d/1d/3h per TZ-risk-outcomes §7 (the -4320 band stays gated on
+    // confirmedAt there). Ex-canon offsets (-300, -120, -60) now flow
+    // through this dynamic pass like any admin-customised value.
     return (
       off !== null &&
+      off !== -7200 &&
       off !== -4320 &&
       off !== -1440 &&
-      off !== -300 &&
-      off !== -120
+      off !== -180
     );
   });
 

@@ -2778,6 +2778,16 @@ model Action {
   updatedAt    DateTime  @updatedAt
   expiresAt    DateTime?
 
+  // Call-outcome capture (TZ-risk-outcomes) — the receptionist records what
+  // the risk-call resolved to, so a "handled" row behaves predictably and the
+  // client never silently vanishes. `outcome` also LOCKS the row against the
+  // 15-min engine recompute (see repository.upsertAction) until `expiresAt`.
+  outcome      String? // CONFIRMED|RESCHEDULED|CALLBACK|RETURN_LATER|REFUSED|NO_ANSWER
+  outcomeNote  String? @db.Text
+  callbackAt   DateTime? // resurface time (CALLBACK) / return date (RETURN_LATER)
+  resolvedById String? // User who recorded the outcome
+  callAttempts Int     @default(0) // failed-call counter (NO_ANSWER)
+
   clinic Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 

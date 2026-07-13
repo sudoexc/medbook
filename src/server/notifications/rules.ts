@@ -192,8 +192,8 @@ export function resolveOffsetMin(
  * cleaned object suitable for Prisma persistence.
  *
  * Rules:
- *   - offsetMin is clamped to the [-72*60, -30] minute range (i.e. 0.5h to 72h
- *     before the event); UI provides 0.5h step.
+ *   - offsetMin is clamped to the [-7*24*60, -30] minute range (0.5h to 7d
+ *     before the event, covering the 5d/3d/1d/3h cascade); UI 0.5h step.
  *   - channels is restricted to ["TG"]; legacy "SMS" entries are silently
  *     dropped (SMS removed in `docs/TZ-sms-removal.md` Wave 3); duplicates
  *     are de-duped.
@@ -216,13 +216,13 @@ export function sanitizeTriggerConfig(
         ? Math.round(incoming.offsetMin)
         : null;
     if (off !== null) {
-      // clamp to [-72*60, -30] minutes
-      const clamped = Math.max(-72 * 60, Math.min(-30, off));
+      // clamp to [-7d, -30min] — wide enough for the 5d cascade band
+      const clamped = Math.max(-7 * 24 * 60, Math.min(-30, off));
       incoming.offsetMin = clamped;
     } else if (typeof incoming.offsetMin === "string") {
       const parsed = parseInt(incoming.offsetMin, 10);
       if (Number.isFinite(parsed)) {
-        incoming.offsetMin = Math.max(-72 * 60, Math.min(-30, parsed));
+        incoming.offsetMin = Math.max(-7 * 24 * 60, Math.min(-30, parsed));
       } else {
         delete incoming.offsetMin;
       }

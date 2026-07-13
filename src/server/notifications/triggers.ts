@@ -5,10 +5,12 @@
  * `NotificationSend` rows with `status=QUEUED` and a `scheduledFor`
  * timestamp. The scheduler worker picks them up and dispatches.
  *
- * Triggers (TZ §6.9 + §8.3):
+ * Triggers (TZ §6.9 + §8.3; cascade per TZ-risk-outcomes §7):
  *   - appointment.created       — immediate confirmation
- *   - appointment.reminder-24h  — 24h before start
- *   - appointment.reminder-2h   — 2h before start
+ *   - appointment.reminder-5d   — 5 days before start
+ *   - appointment.reminder-3d   — 3 days before start
+ *   - appointment.reminder-24h  — 1 day before start
+ *   - appointment.reminder-3h   — 3h before start
  *   - appointment.cancelled     — immediate
  *   - birthday                  — 09:00 clinic TZ on birthday
  *   - no-show                   — immediate after status=NO_SHOW
@@ -35,19 +37,21 @@ export const TRIGGER_KEYS = [
   // COMPLETED (appointment PATCH / visit-note finalize). Idempotency is the
   // standard (patientId, appointmentId, templateId) NotificationSend gate.
   "appointment.thank-you",
+  // TZ-risk-outcomes §7 — first touch of the 5d/3d/1d/3h cascade. Fires
+  // 5 days before start so the clinic has a full working week of runway
+  // to re-fill the slot if the patient bails.
+  "appointment.reminder-5d",
   // Stage 2.D — soft 3-day "gentle ping" reminder. Audience is restricted at
   // the materialiser (TELEGRAM/WEBSITE bookings still pending confirmation,
   // i.e. `confirmedAt IS NULL`). PHONE/KIOSK/WALKIN auto-confirm at booking
-  // and never see this template. RETIRED from the canonical scheduler band
-  // 2026-06-05 (TZ-notifications-cancel-sync §2) — slug stays for legacy
-  // templates an admin may keep as a dynamic-offset variant.
+  // and never see this template. Retired 2026-06-05, RESTORED to the
+  // canonical scheduler band by TZ-risk-outcomes §7 (5d/3d/1d/3h cascade).
   "appointment.reminder-3d",
   "appointment.reminder-24h",
+  // TZ-risk-outcomes §7 — the -5h / -2h / -1h pings fall out of the canon
+  // (cascade is now 5d/3d/1d/3h). Slugs stay for legacy per-clinic
+  // templates an admin may keep as a dynamic-offset variant.
   "appointment.reminder-5h",
-  // TZ-notifications-cancel-sync §2 — day-of cascade replaces the 2h ping
-  // with a 3h + 1h pair. Existing per-clinic `-120` templates still resolve
-  // via `appointment.reminder-2h` slug but the canonical scheduler does not
-  // materialise them anymore.
   "appointment.reminder-3h",
   "appointment.reminder-2h",
   "appointment.reminder-1h",
@@ -295,6 +299,11 @@ function whereForTrigger(
           { trigger: "APPOINTMENT_COMPLETED" },
           { key: "appointment.thank-you" },
         ],
+      };
+    case "appointment.reminder-5d":
+      return {
+        trigger: "APPOINTMENT_BEFORE",
+        triggerConfig: { path: ["offsetMin"], equals: -7200 },
       };
     case "appointment.reminder-3d":
       return {
@@ -850,12 +859,13 @@ export async function onAppointmentThankYou(
 }
 
 /**
- * Schedule the day-of reminder cascade for an appointment.
+ * Schedule the reminder cascade for an appointment.
  *
- * TZ-notifications-cancel-sync §2 — canonical bands are 24h / 5h / 3h / 1h.
- * The legacy 3d "gentle ping" and 2h "almost time" pings are retired from
- * the canonical scheduler but still resolvable via slug for any per-clinic
- * template the admin chose to keep on dynamic-offset materialisation.
+ * TZ-risk-outcomes §7 — canonical bands are 5d / 3d / 1d / 3h (replaces the
+ * 24h / 5h / 3h / 1h day-of cadence from TZ-notifications-cancel-sync §2).
+ * The legacy -5h / -2h / -1h pings are retired from the canonical scheduler
+ * but still resolvable via slug for any per-clinic template the admin chose
+ * to keep on dynamic-offset materialisation.
  */
 export async function scheduleAppointmentReminders(
   appointmentId: string,
@@ -864,18 +874,25 @@ export async function scheduleAppointmentReminders(
   if (!appt) return;
   const start = appt.date.getTime();
   const now = Date.now();
+  if (start - 5 * 24 * 60 * 60 * 1000 > now) {
+    await materializeForAppointment(
+      appointmentId,
+      "appointment.reminder-5d",
+      new Date(start - 5 * 24 * 60 * 60 * 1000),
+    );
+  }
+  if (start - 3 * 24 * 60 * 60 * 1000 > now) {
+    await materializeForAppointment(
+      appointmentId,
+      "appointment.reminder-3d",
+      new Date(start - 3 * 24 * 60 * 60 * 1000),
+    );
+  }
   if (start - 24 * 60 * 60 * 1000 > now) {
     await materializeForAppointment(
       appointmentId,
       "appointment.reminder-24h",
       new Date(start - 24 * 60 * 60 * 1000),
-    );
-  }
-  if (start - 5 * 60 * 60 * 1000 > now) {
-    await materializeForAppointment(
-      appointmentId,
-      "appointment.reminder-5h",
-      new Date(start - 5 * 60 * 60 * 1000),
     );
   }
   if (start - 3 * 60 * 60 * 1000 > now) {
@@ -885,37 +902,31 @@ export async function scheduleAppointmentReminders(
       new Date(start - 3 * 60 * 60 * 1000),
     );
   }
-  if (start - 60 * 60 * 1000 > now) {
-    await materializeForAppointment(
-      appointmentId,
-      "appointment.reminder-1h",
-      new Date(start - 60 * 60 * 1000),
-    );
-  }
 }
 
 /**
  * Scheduler tick: materialise reminders whose time is approaching. Also
  * runs birthday and payment.due triggers once per tick.
  *
- * TZ-notifications-cancel-sync §2 — canonical bands are 24h / 5h / 3h / 1h.
+ * TZ-risk-outcomes §7 — canonical bands are 5d / 3d / 1d / 3h.
  * Each appointment falling inside a band is materialised exactly once per
  * (appointmentId, templateId); a second tick that lands in the same band
  * collapses to a no-op via the unique index. Band edges are slightly wider
  * than the tick cadence (60s) so a tick that runs late doesn't skip a row.
  */
 export async function runScheduledTriggers(): Promise<{
-  reminders24h: number;
-  reminders5h: number;
+  reminders5d: number;
+  reminders3d: number;
+  reminders1d: number;
   reminders3h: number;
-  reminders1h: number;
   birthdays: number;
   paymentsDue: number;
   caseRepeats: number;
 }> {
   const now = new Date();
-  // 25h horizon covers every canonical band — the 24h ping is the farthest.
-  const horizon = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+  // 121h horizon covers every canonical band — the 5d (120h) ping is the
+  // farthest.
+  const horizon = new Date(now.getTime() + 121 * 60 * 60 * 1000);
 
   const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
@@ -929,27 +940,33 @@ export async function runScheduledTriggers(): Promise<{
   );
 
   // Bands chosen so a 60s tick comfortably covers each window:
-  //   - 23–24h before  → 24h reminder
-  //   -  4–5h  before  → 5h  reminder
-  //   -  2–3h  before  → 3h  reminder (NEW — day-of cadence)
-  //   -  0–1h  before  → 1h  reminder (NEW — final "leaving soon")
-  const jobs24h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
-  const jobs5h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  //   - 119–120h before → 5d reminder (NEW — TZ-risk-outcomes §7)
+  //   -  71–72h  before → 3d reminder (restored to canon)
+  //   -  23–24h  before → 1d reminder
+  //   -   2–3h   before → 3h reminder (final "leaving soon")
+  const jobs5d: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  const jobs3d: Array<{ appointmentId: string; scheduledFor: Date }> = [];
+  const jobs1d: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   const jobs3h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
-  const jobs1h: Array<{ appointmentId: string; scheduledFor: Date }> = [];
   for (const r of rows) {
     const start = r.date.getTime();
     const until = start - Date.now();
-    if (until > 0 && until <= 24 * 60 * 60 * 1000 && until > 23 * 60 * 60 * 1000) {
-      jobs24h.push({
+    if (until > 0 && until <= 120 * 60 * 60 * 1000 && until > 119 * 60 * 60 * 1000) {
+      jobs5d.push({
         appointmentId: r.id,
-        scheduledFor: new Date(start - 24 * 60 * 60 * 1000),
+        scheduledFor: new Date(start - 120 * 60 * 60 * 1000),
       });
     }
-    if (until > 0 && until <= 5 * 60 * 60 * 1000 && until > 4 * 60 * 60 * 1000) {
-      jobs5h.push({
+    if (until > 0 && until <= 72 * 60 * 60 * 1000 && until > 71 * 60 * 60 * 1000) {
+      jobs3d.push({
         appointmentId: r.id,
-        scheduledFor: new Date(start - 5 * 60 * 60 * 1000),
+        scheduledFor: new Date(start - 72 * 60 * 60 * 1000),
+      });
+    }
+    if (until > 0 && until <= 24 * 60 * 60 * 1000 && until > 23 * 60 * 60 * 1000) {
+      jobs1d.push({
+        appointmentId: r.id,
+        scheduledFor: new Date(start - 24 * 60 * 60 * 1000),
       });
     }
     if (until > 0 && until <= 3 * 60 * 60 * 1000 && until > 2 * 60 * 60 * 1000) {
@@ -958,32 +975,26 @@ export async function runScheduledTriggers(): Promise<{
         scheduledFor: new Date(start - 3 * 60 * 60 * 1000),
       });
     }
-    if (until > 0 && until <= 60 * 60 * 1000) {
-      jobs1h.push({
-        appointmentId: r.id,
-        scheduledFor: new Date(start - 60 * 60 * 1000),
-      });
-    }
   }
-  const [res24, res5, res3, res1] = await Promise.all([
-    materializeForAppointmentsBulk(jobs24h, "appointment.reminder-24h"),
-    materializeForAppointmentsBulk(jobs5h, "appointment.reminder-5h"),
+  const [res5d, res3d, res1d, res3h] = await Promise.all([
+    materializeForAppointmentsBulk(jobs5d, "appointment.reminder-5d"),
+    materializeForAppointmentsBulk(jobs3d, "appointment.reminder-3d"),
+    materializeForAppointmentsBulk(jobs1d, "appointment.reminder-24h"),
     materializeForAppointmentsBulk(jobs3h, "appointment.reminder-3h"),
-    materializeForAppointmentsBulk(jobs1h, "appointment.reminder-1h"),
   ]);
-  const reminders24h = res24.created;
-  const reminders5h = res5.created;
-  const reminders3h = res3.created;
-  const reminders1h = res1.created;
+  const reminders5d = res5d.created;
+  const reminders3d = res3d.created;
+  const reminders1d = res1d.created;
+  const reminders3h = res3h.created;
 
   const birthdays = await runBirthdays();
   const paymentsDue = await runPaymentsDue();
   const caseRepeats = await runCaseRepeatReminders();
   return {
-    reminders24h,
-    reminders5h,
+    reminders5d,
+    reminders3d,
+    reminders1d,
     reminders3h,
-    reminders1h,
     birthdays,
     paymentsDue,
     caseRepeats,

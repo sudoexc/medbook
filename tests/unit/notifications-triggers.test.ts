@@ -8,17 +8,19 @@
  * `referral.reward-earned` for the medication-compliance and refer-a-friend
  * loops. TZ-notifications-cancel-sync added the day-of cascade
  * (`appointment.thank-you`, `-3h`, `-1h`, surface-aware cancel variants,
- * `appointment.running-late`, `appointment.no-show`).
+ * `appointment.running-late`, `appointment.no-show`). TZ-risk-outcomes §7
+ * added `appointment.reminder-5d` for the 5d/3d/1d/3h cascade.
  */
 import { describe, it, expect } from "vitest";
 
 import { TRIGGER_KEYS } from "@/server/notifications/triggers";
 
 describe("TRIGGER_KEYS", () => {
-  it("exposes all 22 triggers in the documented order", () => {
+  it("exposes all 23 triggers in the documented order", () => {
     expect([...TRIGGER_KEYS]).toEqual([
       "appointment.created",
       "appointment.thank-you",
+      "appointment.reminder-5d",
       "appointment.reminder-3d",
       "appointment.reminder-24h",
       "appointment.reminder-5h",
@@ -42,7 +44,7 @@ describe("TRIGGER_KEYS", () => {
     ]);
   });
 
-  it("is a tuple-const (readonly) length 22", () => {
-    expect(TRIGGER_KEYS.length).toBe(22);
+  it("is a tuple-const (readonly) length 23", () => {
+    expect(TRIGGER_KEYS.length).toBe(23);
   });
 });

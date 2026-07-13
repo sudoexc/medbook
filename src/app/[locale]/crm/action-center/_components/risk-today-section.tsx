@@ -13,21 +13,33 @@
  *   - explicit reason chips (high-risk / unconfirmed / no-contact) — no
  *     more guessing why a patient surfaced
  *   - composite risk score gauge for at-a-glance triage
- *   - inline CTAs: call, mark handled, snooze
+ *   - reminder-cascade context chip («3 напоминания · не подтвердил»)
+ *   - inline CTAs: call, outcome menu («Обработано»), snooze
  *
- * `Mark handled` closes all the open Action rows attached to this
- * appointment (NO_SHOW_RISK_HIGH + UNCONFIRMED_24H), which is the same path
- * the dedicated action card uses. Optimistic removal from cache so the row
- * disappears immediately; the server response then drives the authoritative
- * refetch.
+ * `Обработано` opens a six-outcome menu (TZ-risk-outcomes §1/§5): each
+ * outcome is POSTed to every open Action attached to this appointment
+ * (NO_SHOW_RISK_HIGH + UNCONFIRMED_24H) and drives the right durable domain
+ * action server-side, so the row stops resurrecting on the engine recompute.
+ * Optimistic removal from cache so the row disappears immediately; the
+ * server response then drives the authoritative refetch.
+ *
+ * Resolved rows land in the collapsible «Обработано сегодня» trail at the
+ * bottom — nothing vanishes into a void anymore.
  */
 import * as React from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlarmClockIcon,
   AlertTriangleIcon,
+  BanIcon,
+  BellRingIcon,
+  CalendarClockIcon,
+  CalendarDaysIcon,
   CheckIcon,
+  ChevronDownIcon,
   ClipboardListIcon,
   ClockIcon,
   FlameIcon,
@@ -35,6 +47,7 @@ import {
   MessageCircleOffIcon,
   MoreHorizontalIcon,
   PhoneIcon,
+  PhoneMissedIcon,
   ShieldCheckIcon,
   UserIcon,
 } from "lucide-react";
@@ -47,18 +60,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { Locale } from "@/lib/format";
 
-import {
-  useDoneAction,
-  useSnoozeAction,
-} from "../_hooks/use-actions";
+import { useSnoozeAction } from "../_hooks/use-actions";
 import {
   RISK_TODAY_KEY,
+  dropRiskRowFromCache,
   useMarkPatientContacted,
+  useRecordOutcome,
   useRiskToday,
+  type HandledRow,
+  type RiskOutcome,
   type RiskReason,
-  type RiskTodayResponse,
   type RiskTodayRow,
 } from "../_hooks/use-risk-today";
 import { useRiskTodayFilters } from "../_hooks/use-risk-today-filters";
@@ -168,6 +184,13 @@ export function RiskTodaySection({ anchorId }: RiskTodaySectionProps) {
           </>
         )}
       </div>
+
+      {/* Resolved trail. Expandable so the receptionist can see WHO was
+          handled, with what outcome and by whom — the "client doesn't
+          vanish" half of TZ-risk-outcomes §5. */}
+      {data && (handled > 0 || data.handled.length > 0) ? (
+        <HandledToday items={data.handled} count={handled} locale={locale} />
+      ) : null}
     </section>
   );
 }
@@ -297,10 +320,10 @@ function RiskList({
 
 function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const t = useTranslations("actionCenter.dashboard.riskToday");
-  const tAction = useTranslations("actionCenter.actions");
+  const router = useRouter();
   const qc = useQueryClient();
-  const done = useDoneAction();
   const snooze = useSnoozeAction();
+  const recordOutcome = useRecordOutcome();
   const markContacted = useMarkPatientContacted();
   const [busy, setBusy] = React.useState(false);
 
@@ -326,57 +349,32 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const patientHref = `/${locale}/crm/patients/${row.patientId}`;
   const apptHref = `/${locale}/crm/appointments/${row.appointmentId}`;
 
-  // Optimistically drop this row from the cached risk-today response so the
-  // UI feels instant. Server-driven invalidation re-syncs after the writes.
-  //
-  // Must mirror the server's per-row loss formula in route.ts:
-  //   estimatedLossTiins += (priceFinal ?? FALLBACK) * riskScore
-  // otherwise the «X сум до потери» chip stays stuck at the original total
-  // until the next refetch.
-  const optimisticallyDrop = React.useCallback(
-    (isDone: boolean) => {
-      qc.setQueryData<RiskTodayResponse>(RISK_TODAY_KEY, (prev) => {
-        if (!prev) return prev;
-        const target = prev.appointments.find(
-          (a) => a.appointmentId === row.appointmentId,
-        );
-        if (!target) return prev;
-        const next = prev.appointments.filter(
-          (a) => a.appointmentId !== row.appointmentId,
-        );
-        const FALLBACK_PRICE_TIINS = 8_000_000;
-        const droppedLoss = Math.round(
-          (target.priceFinalTiins ?? FALLBACK_PRICE_TIINS) * target.riskScore,
-        );
-        return {
-          ...prev,
-          appointments: next,
-          totals: {
-            ...prev.totals,
-            open: next.length,
-            handledToday: prev.totals.handledToday + (isDone ? 1 : 0),
-            estimatedLossTiins: Math.max(
-              0,
-              prev.totals.estimatedLossTiins - droppedLoss,
-            ),
-          },
-        };
-      });
-    },
-    [qc, row.appointmentId],
-  );
-
-  const onMarkHandled = async () => {
+  // Records the call outcome on every attached Action (TZ-risk-outcomes §1).
+  // The mutation optimistically drops the row from the cache in onMutate;
+  // for a pure no_contact row (no detector Actions) we drop it ourselves.
+  const onOutcome = async (input: {
+    outcome: RiskOutcome;
+    note?: string;
+    callbackAt?: string;
+  }) => {
     if (busy) return;
     setBusy(true);
-    optimisticallyDrop(true);
     try {
-      const writes: Array<Promise<unknown>> = row.actionIds.map((id) =>
-        done.mutateAsync({ id }),
-      );
+      const writes: Array<Promise<unknown>> = [];
+      if (row.actionIds.length > 0) {
+        writes.push(
+          recordOutcome.mutateAsync({
+            actionIds: row.actionIds,
+            appointmentId: row.appointmentId,
+            ...input,
+          }),
+        );
+      } else {
+        dropRiskRowFromCache(qc, row.appointmentId, true);
+      }
       // Stamp lastContactedAt whenever the row surfaced (also) from the
-      // no_contact signal — without this the receptionist closes the
-      // detector actions but the row keeps coming back on the next refetch.
+      // no_contact signal — without this the receptionist records the
+      // outcome but the row keeps coming back on the next refetch.
       if (hasNoContactReason) {
         writes.push(
           markContacted.mutateAsync({
@@ -393,10 +391,19 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
       } else {
         await Promise.all(writes);
       }
-      toast.success(tAction("doneSuccess"));
+      // «Перенести» = record the outcome + jump into the appointment drawer.
+      // The actual date move happens there; reminders reschedule on save.
+      if (input.outcome === "RESCHEDULED") {
+        router.push(
+          `/${locale}/crm/appointments?ap=${row.appointmentId}&from=risk-today`,
+        );
+      }
+      toast.success(
+        t("outcomeMenu.success", { outcome: t(`outcome.${input.outcome}`) }),
+      );
     } catch (e) {
       toast.error(
-        tAction("doneError", {
+        t("outcomeMenu.error", {
           reason: e instanceof Error ? e.message : "Error",
         }),
       );
@@ -409,7 +416,7 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const onSnoozeAll = async () => {
     if (busy || row.actionIds.length === 0) return;
     setBusy(true);
-    optimisticallyDrop(false);
+    dropRiskRowFromCache(qc, row.appointmentId, false);
     try {
       await Promise.all(
         row.actionIds.map((id) =>
@@ -461,6 +468,24 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
           {row.reasons.map((r, i) => (
             <ReasonChip key={i} reason={r} />
           ))}
+          {/* Reminder-cascade context: how many TG reminders already went
+              out + whether the patient confirmed — so the receptionist
+              knows the story before dialing. */}
+          {row.remindersSent > 0 ? (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                row.confirmed
+                  ? "bg-success/15 text-[color:var(--success)]"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              <BellRingIcon className="size-3" />
+              {row.confirmed
+                ? t("remindersChip.confirmed", { count: row.remindersSent })
+                : t("remindersChip.notConfirmed", { count: row.remindersSent })}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -474,16 +499,11 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
           <PhoneIcon className="size-3.5" />
           <span className="hidden sm:inline">{t("ctaCall")}</span>
         </Link>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onMarkHandled()}
-          className="inline-flex items-center gap-1 rounded-md bg-success px-2.5 py-1.5 text-xs font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50"
-          title={t("ctaHandledTitle")}
-        >
-          <CheckIcon className="size-3.5" />
-          <span className="hidden sm:inline">{t("ctaHandled")}</span>
-        </button>
+        <OutcomeMenu
+          rowKey={row.appointmentId}
+          busy={busy}
+          onSelect={(input) => void onOutcome(input)}
+        />
         <RowMenu
           onSnooze={() => void onSnoozeAll()}
           patientHref={patientHref}
@@ -617,6 +637,300 @@ function RowMenu({
 
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Menu-item descriptors for the six outcomes. `form` = needs extra input
+ *  (date and/or note) collected in a second popover view before firing. */
+const OUTCOME_ITEMS: Array<{
+  outcome: RiskOutcome;
+  icon: React.ComponentType<{ className?: string }>;
+  form: "callback" | "return" | "refused" | null;
+}> = [
+  { outcome: "CONFIRMED", icon: CheckIcon, form: null },
+  { outcome: "RESCHEDULED", icon: CalendarClockIcon, form: null },
+  { outcome: "CALLBACK", icon: AlarmClockIcon, form: "callback" },
+  { outcome: "RETURN_LATER", icon: CalendarDaysIcon, form: "return" },
+  { outcome: "REFUSED", icon: BanIcon, form: "refused" },
+  { outcome: "NO_ANSWER", icon: PhoneMissedIcon, form: null },
+];
+
+/**
+ * The «Обработано» split control: primary click opens a popover with the six
+ * call outcomes. CONFIRMED / RESCHEDULED / NO_ANSWER fire immediately;
+ * CALLBACK / RETURN_LATER / REFUSED switch to an inline form (date-time /
+ * date + note) because the server requires `callbackAt` for the snoozes and
+ * the refusal reason is what makes REFUSED auditable.
+ */
+function OutcomeMenu({
+  rowKey,
+  busy,
+  onSelect,
+}: {
+  /** Stable id suffix so input/label pairs stay unique per row. */
+  rowKey: string;
+  busy: boolean;
+  onSelect: (input: {
+    outcome: RiskOutcome;
+    note?: string;
+    callbackAt?: string;
+  }) => void;
+}) {
+  const t = useTranslations("actionCenter.dashboard.riskToday");
+  const [open, setOpen] = React.useState(false);
+  const [form, setForm] = React.useState<"callback" | "return" | "refused" | null>(null);
+  const [at, setAt] = React.useState(""); // yyyy-MM-ddTHH:mm | yyyy-MM-dd
+  const [note, setNote] = React.useState("");
+
+  const reset = () => {
+    setForm(null);
+    setAt("");
+    setNote("");
+  };
+
+  const fire = (input: {
+    outcome: RiskOutcome;
+    note?: string;
+    callbackAt?: string;
+  }) => {
+    setOpen(false);
+    reset();
+    onSelect(input);
+  };
+
+  const submitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = note.trim();
+    if (form === "refused") {
+      if (!trimmed) return;
+      fire({ outcome: "REFUSED", note: trimmed });
+      return;
+    }
+    if (!at) return;
+    // datetime-local / date values are clinic-local wall time in the
+    // receptionist's browser; the schema wants a strict ISO instant.
+    fire({
+      outcome: form === "callback" ? "CALLBACK" : "RETURN_LATER",
+      callbackAt: new Date(at).toISOString(),
+      note: trimmed || undefined,
+    });
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={busy}
+          className="inline-flex items-center gap-1 rounded-md bg-success px-2.5 py-1.5 text-xs font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50"
+          title={t("ctaHandledTitle")}
+        >
+          <CheckIcon className="size-3.5" />
+          <span className="hidden sm:inline">{t("ctaHandled")}</span>
+          <ChevronDownIcon className="size-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-1">
+        {form === null ? (
+          <>
+            <div className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("outcomeMenu.title")}
+            </div>
+            {OUTCOME_ITEMS.map(({ outcome, icon: Icon, form: target }) => (
+              <button
+                key={outcome}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  if (target) {
+                    setForm(target);
+                  } else {
+                    fire({ outcome });
+                  }
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                <Icon className="size-3.5 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {t(`outcome.${outcome}`)}
+                </span>
+                {outcome === "RESCHEDULED" ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    {t("outcomeMenu.opensDrawer")}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </>
+        ) : (
+          <form onSubmit={submitForm} className="space-y-2 p-2">
+            <div className="text-xs font-semibold text-foreground">
+              {form === "callback"
+                ? t("outcome.CALLBACK")
+                : form === "return"
+                  ? t("outcome.RETURN_LATER")
+                  : t("outcome.REFUSED")}
+            </div>
+            {form !== "refused" ? (
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`outcome-${rowKey}-at`}
+                  className="text-xs text-muted-foreground"
+                >
+                  {form === "callback"
+                    ? t("outcomeMenu.callbackAtLabel")
+                    : t("outcomeMenu.returnAtLabel")}
+                </Label>
+                <Input
+                  id={`outcome-${rowKey}-at`}
+                  type={form === "callback" ? "datetime-local" : "date"}
+                  value={at}
+                  onChange={(e) => setAt(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+            ) : null}
+            <div className="space-y-1">
+              <Label
+                htmlFor={`outcome-${rowKey}-note`}
+                className="text-xs text-muted-foreground"
+              >
+                {form === "refused"
+                  ? t("outcomeMenu.reasonLabel")
+                  : t("outcomeMenu.noteLabel")}
+              </Label>
+              <Textarea
+                id={`outcome-${rowKey}-note`}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                placeholder={
+                  form === "refused"
+                    ? t("outcomeMenu.reasonPlaceholder")
+                    : t("outcomeMenu.notePlaceholder")
+                }
+                className="min-h-14 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {t("outcomeMenu.back")}
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  busy || (form === "refused" ? note.trim() === "" : at === "")
+                }
+                className="flex-1 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {t("outcomeMenu.confirm")}
+              </button>
+            </div>
+          </form>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * «Обработано сегодня (N)» — the resolved trail. Expands into the list of
+ * rows worked today: who, with what outcome, the note, the promised callback
+ * time and which teammate closed it. This is what stops handled clients from
+ * "vanishing" — the work stays visible for the whole shift.
+ */
+function HandledToday({
+  items,
+  count,
+  locale,
+}: {
+  items: HandledRow[];
+  count: number;
+  locale: Locale;
+}) {
+  const t = useTranslations("actionCenter.dashboard.riskToday");
+  const [expanded, setExpanded] = React.useState(false);
+
+  // No enriched rows to show (legacy DONE actions without an outcome) — keep
+  // the plain counter so the header math still adds up.
+  if (items.length === 0) {
+    return (
+      <div className="mt-4 rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs font-semibold text-muted-foreground">
+        {t("handledList.title", { count })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/20">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40"
+      >
+        <span className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
+          <CheckIcon className="size-3.5 text-[color:var(--success)]" />
+          {t("handledList.title", { count })}
+        </span>
+        <ChevronDownIcon
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+      {expanded ? (
+        <ul className="divide-y divide-border border-t border-border bg-background/40">
+          {items.map((h) => (
+            <li
+              key={h.appointmentId}
+              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2 text-xs"
+            >
+              <span className="font-semibold text-foreground">
+                {h.patientName}
+              </span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-foreground">
+                {h.outcome ? t(`outcome.${h.outcome}`) : t("ctaHandled")}
+              </span>
+              {h.outcomeNote ? (
+                <span className="min-w-0 truncate text-muted-foreground">
+                  «{h.outcomeNote}»
+                </span>
+              ) : null}
+              {h.callbackAt ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-semibold text-[color:var(--warning-foreground)]">
+                  <AlarmClockIcon className="size-3" />
+                  {t("handledList.callbackAt", {
+                    at: formatDateTimeInClinic(h.callbackAt, locale),
+                  })}
+                </span>
+              ) : null}
+              <span className="ml-auto flex shrink-0 items-baseline gap-1.5 text-muted-foreground">
+                {h.resolvedByName ? <span>{h.resolvedByName}</span> : null}
+                <span className="tabular-nums">
+                  {formatTimeInClinic(h.handledAt, locale)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 function formatTimeInClinic(iso: string, locale: Locale): string {
   try {
     return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
@@ -627,5 +941,22 @@ function formatTimeInClinic(iso: string, locale: Locale): string {
     }).format(new Date(iso));
   } catch {
     return iso.slice(11, 16);
+  }
+}
+
+/** Like `formatTimeInClinic` but with the calendar date — callbackAt can be
+ *  days away («хочет прийти позже»), so time alone would mislead. */
+function formatDateTimeInClinic(iso: string, locale: Locale): string {
+  try {
+    return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Tashkent",
+    }).format(new Date(iso));
+  } catch {
+    return iso.slice(0, 16).replace("T", " ");
   }
 }

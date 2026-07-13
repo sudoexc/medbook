@@ -76,6 +76,36 @@ export const DismissActionSchema = z.object({
 export const DoneActionSchema = z.object({}).passthrough();
 export const ReopenActionSchema = z.object({}).passthrough();
 
+/** The six call outcomes the risk-today widget records (TZ-risk-outcomes §1). */
+export const ACTION_OUTCOMES = [
+  "CONFIRMED",
+  "RESCHEDULED",
+  "CALLBACK",
+  "RETURN_LATER",
+  "REFUSED",
+  "NO_ANSWER",
+] as const;
+export const ActionOutcomeEnum = z.enum(ACTION_OUTCOMES);
+
+/**
+ * POST /api/crm/actions/[id]/outcome body. `callbackAt` (ISO) is required for
+ * CALLBACK (when to resurface) and RETURN_LATER (the return date); ignored for
+ * the rest. `note` is what the patient said (reason / return context).
+ */
+export const OutcomeActionSchema = z
+  .object({
+    outcome: ActionOutcomeEnum,
+    note: z.string().max(1000).optional(),
+    callbackAt: z.string().datetime().optional(),
+  })
+  .refine(
+    (v) =>
+      (v.outcome !== "CALLBACK" && v.outcome !== "RETURN_LATER") ||
+      Boolean(v.callbackAt),
+    { message: "callbackAt is required for CALLBACK / RETURN_LATER" },
+  );
+
 export type QueryAction = z.infer<typeof QueryActionSchema>;
 export type SnoozeActionBody = z.infer<typeof SnoozeActionSchema>;
 export type DismissActionBody = z.infer<typeof DismissActionSchema>;
+export type OutcomeActionBody = z.infer<typeof OutcomeActionSchema>;

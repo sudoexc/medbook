@@ -21,12 +21,20 @@ import {
 } from "@/server/notifications/rules";
 
 describe("sanitizeTriggerConfig", () => {
-  it("clamps offsetMin below -72h to -72h", () => {
+  it("clamps offsetMin below -7d to -7d (widened for the 5d/3d cascade)", () => {
     const out = sanitizeTriggerConfig(
       { offsetMin: -100_000 },
       { kind: "before" },
     );
-    expect(out.offsetMin).toBe(-72 * 60);
+    expect(out.offsetMin).toBe(-7 * 24 * 60);
+  });
+
+  it("keeps a 5-day offset (was clamped under the old -72h bound)", () => {
+    const out = sanitizeTriggerConfig(
+      { offsetMin: -7200 },
+      { kind: "before" },
+    );
+    expect(out.offsetMin).toBe(-7200);
   });
 
   it("clamps offsetMin above -30 to -30", () => {

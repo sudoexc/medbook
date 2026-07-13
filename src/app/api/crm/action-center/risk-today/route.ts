@@ -57,10 +57,28 @@ export type RiskTodayRow = {
   reasons: RiskReason[];
   riskScore: number;
   actionIds: string[];
+  /** How many appointment reminders already went out (TG cascade) — lets the
+   *  receptionist see "3 напоминания ушло, не подтвердил" before calling. */
+  remindersSent: number;
+  /** True once the patient confirmed (any channel). */
+  confirmed: boolean;
+};
+
+/** A row the receptionist already resolved today — surfaced so «Обработано
+ *  сегодня» is a clickable trail, not a void the client vanishes into. */
+export type HandledRow = {
+  appointmentId: string;
+  patientName: string;
+  outcome: string | null;
+  outcomeNote: string | null;
+  callbackAt: string | null;
+  resolvedByName: string | null;
+  handledAt: string;
 };
 
 export type RiskTodayResponse = {
   appointments: RiskTodayRow[];
+  handled: HandledRow[];
   totals: {
     total: number;       // open + handledToday
     open: number;        // = appointments.length
@@ -176,6 +194,7 @@ export const GET = createApiListHandler(
     if (appts.length === 0) {
       const empty: RiskTodayResponse = {
         appointments: [],
+        handled: [],
         totals: { total: 0, open: 0, handledToday: 0, estimatedLossTiins: 0 },
         windowStart: dayStart.toISOString(),
         windowEnd: dayEnd.toISOString(),
@@ -205,6 +224,11 @@ export const GET = createApiListHandler(
         payload: true,
         doneAt: true,
         snoozeUntil: true,
+        outcome: true,
+        outcomeNote: true,
+        callbackAt: true,
+        resolvedById: true,
+        updatedAt: true,
       },
     });
 
@@ -215,19 +239,58 @@ export const GET = createApiListHandler(
       payload: ActionPayload;
       doneAt: Date | null;
       snoozeUntil: Date | null;
+      outcome: string | null;
+      outcomeNote: string | null;
+      callbackAt: Date | null;
+      resolvedById: string | null;
+      updatedAt: Date;
     };
     // Cast once — payload is JSONB. We only read appointmentId + risk.
     const lite = actions as unknown as ActionLite[];
 
+    // Reminder cascade context: how many APPOINTMENT_BEFORE pings actually went
+    // out per appointment. Drives the «N напоминаний · не подтвердил» chip.
+    const reminderCounts = await prisma.notificationSend.groupBy({
+      by: ["appointmentId"],
+      where: { appointmentId: { in: apptIds }, sentAt: { not: null } },
+      _count: { _all: true },
+    });
+    const remindersByAppt = new Map<string, number>();
+    for (const r of reminderCounts) {
+      if (r.appointmentId) remindersByAppt.set(r.appointmentId, r._count._all);
+    }
+
     const openByAppt = new Map<string, ActionLite[]>();
-    const doneTodayApptIds = new Set<string>();
+    type HandledRaw = {
+      appointmentId: string;
+      outcome: string | null;
+      outcomeNote: string | null;
+      callbackAt: Date | null;
+      resolvedById: string | null;
+      handledAt: Date;
+    };
+    const handledRaw: HandledRaw[] = [];
     for (const a of lite) {
       const apptId = (a.payload as { appointmentId?: string }).appointmentId;
       if (!apptId) continue;
-      if (a.status === "DONE") {
-        if (apptIds.includes(apptId)) doneTodayApptIds.add(apptId);
-        continue;
+      // Anything resolved today with a recorded outcome (DONE via confirm/
+      // cancel/reschedule, or SNOOZED via callback/return/no-answer) is part of
+      // the «Обработано сегодня» trail — one row per appointment, latest wins.
+      const resolvedToday =
+        a.outcome != null &&
+        ((a.doneAt && a.doneAt >= startOfTodayUtc) ||
+          (a.status === "SNOOZED" && a.updatedAt >= startOfTodayUtc));
+      if (resolvedToday) {
+        handledRaw.push({
+          appointmentId: apptId,
+          outcome: a.outcome,
+          outcomeNote: a.outcomeNote,
+          callbackAt: a.callbackAt,
+          resolvedById: a.resolvedById,
+          handledAt: a.doneAt ?? a.updatedAt,
+        });
       }
+      if (a.status === "DONE") continue;
       // Treat SNOOZED with an elapsed timer as OPEN (matches /actions list).
       if (a.status === "SNOOZED" && a.snoozeUntil && a.snoozeUntil > now) {
         continue;
@@ -314,15 +377,66 @@ export const GET = createApiListHandler(
         reasons,
         riskScore: Math.round(riskScore * 100) / 100,
         actionIds,
+        remindersSent: remindersByAppt.get(ap.id) ?? 0,
+        confirmed: ap.status === "CONFIRMED",
       });
     }
 
+    // Resolve names for the «Обработано сегодня» trail. Handled appointments
+    // may already be CANCELLED (refused) and thus absent from `appts`, so we
+    // fetch patient names by id; resolver names come from one User batch.
+    const apptNameById = new Map(
+      appts.map((a) => [a.id, a.patient.fullName]),
+    );
+    const missingApptIds = handledRaw
+      .map((h) => h.appointmentId)
+      .filter((aid) => !apptNameById.has(aid));
+    if (missingApptIds.length > 0) {
+      const extra = await prisma.appointment.findMany({
+        where: { id: { in: missingApptIds } },
+        select: { id: true, patient: { select: { fullName: true } } },
+      });
+      for (const e of extra) apptNameById.set(e.id, e.patient.fullName);
+    }
+    const resolverIds = [
+      ...new Set(handledRaw.map((h) => h.resolvedById).filter((v): v is string => !!v)),
+    ];
+    const resolverNameById = new Map<string, string>();
+    if (resolverIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: resolverIds } },
+        select: { id: true, name: true },
+      });
+      for (const u of users) resolverNameById.set(u.id, u.name);
+    }
+    // Latest outcome per appointment (a row may have been re-touched).
+    const handledByAppt = new Map<string, HandledRow>();
+    for (const h of handledRaw) {
+      const existing = handledByAppt.get(h.appointmentId);
+      if (existing && new Date(existing.handledAt) >= h.handledAt) continue;
+      handledByAppt.set(h.appointmentId, {
+        appointmentId: h.appointmentId,
+        patientName: apptNameById.get(h.appointmentId) ?? "—",
+        outcome: h.outcome,
+        outcomeNote: h.outcomeNote,
+        callbackAt: h.callbackAt?.toISOString() ?? null,
+        resolvedByName: h.resolvedById
+          ? resolverNameById.get(h.resolvedById) ?? null
+          : null,
+        handledAt: h.handledAt.toISOString(),
+      });
+    }
+    const handled = [...handledByAppt.values()].sort((a, b) =>
+      b.handledAt.localeCompare(a.handledAt),
+    );
+
     const response: RiskTodayResponse = {
       appointments: rows,
+      handled,
       totals: {
-        total: rows.length + doneTodayApptIds.size,
+        total: rows.length + handled.length,
         open: rows.length,
-        handledToday: doneTodayApptIds.size,
+        handledToday: handled.length,
         estimatedLossTiins,
       },
       windowStart: dayStart.toISOString(),

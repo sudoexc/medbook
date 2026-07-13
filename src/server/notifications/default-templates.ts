@@ -1,6 +1,7 @@
 /**
  * TZ-notifications-cancel-sync §4 + §7.3 — canonical default templates for
- * the day-of reminder cascade + cancel / running-late / no-show triggers.
+ * the reminder cascade + cancel / running-late / no-show triggers.
+ * Cascade cadence updated to 5d / 3d / 1d / 3h by TZ-risk-outcomes §7.
  *
  * The clinic admin can edit any of these in /crm/notifications post-seed;
  * this file is the source-of-truth for "what a freshly-onboarded clinic
@@ -47,11 +48,39 @@ const COMMON_VARS = [
 ];
 
 export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
-  // ── Reminder cascade (24h / 5h / 3h / 1h) ─────────────────────────────
+  // ── Reminder cascade (5d / 3d / 1d / 3h) — TZ-risk-outcomes §7 ────────
+  {
+    key: "appointment.reminder-5d",
+    nameRu: "Напоминание за 5 дней",
+    nameUz: "5 kun oldin eslatma",
+    channel: "TG",
+    category: "REMINDER",
+    bodyRu:
+      "{{patient.firstName}}, до приёма 5 дней: {{appointment.date}} в {{appointment.time}} вы записаны к {{appointment.doctor}} в {{clinic.name}}. Если планы изменились — отмените через приложение или позвоните {{clinic.phone}}.",
+    bodyUz:
+      "{{patient.firstName}}, qabulgacha 5 kun qoldi: {{appointment.date}} kuni soat {{appointment.time}} da {{appointment.doctor}} qabuliga yozilgansiz ({{clinic.name}}). Rejalar o'zgargan bo'lsa — ilovadan bekor qiling yoki {{clinic.phone}} ga qo'ng'iroq qiling.",
+    trigger: "APPOINTMENT_BEFORE",
+    triggerConfig: { offsetMin: -7200 },
+    variables: COMMON_VARS,
+  },
+  {
+    key: "appointment.reminder-3d",
+    nameRu: "Напоминание за 3 дня",
+    nameUz: "3 kun oldin eslatma",
+    channel: "TG",
+    category: "REMINDER",
+    bodyRu:
+      "{{patient.firstName}}, через 3 дня, {{appointment.date}} в {{appointment.time}} — ваш приём у {{appointment.doctor}} в {{clinic.name}}. Подтвердите визит кнопкой ниже или отмените в приложении.",
+    bodyUz:
+      "{{patient.firstName}}, 3 kundan keyin, {{appointment.date}} kuni soat {{appointment.time}} da — {{appointment.doctor}} bilan qabulingiz ({{clinic.name}}). Tashrifni quyidagi tugma bilan tasdiqlang yoki ilovadan bekor qiling.",
+    trigger: "APPOINTMENT_BEFORE",
+    triggerConfig: { offsetMin: -4320 },
+    variables: COMMON_VARS,
+  },
   {
     key: "appointment.reminder-24h",
-    nameRu: "Напоминание за 24 часа",
-    nameUz: "24 soat oldin eslatma",
+    nameRu: "Напоминание за 1 день",
+    nameUz: "1 kun oldin eslatma",
     channel: "TG",
     category: "REMINDER",
     bodyRu:
@@ -60,20 +89,6 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
       "{{patient.firstName}}, eslatamiz: ertaga soat {{appointment.time}} da {{appointment.doctor}} qabuliga yozilgansiz ({{clinic.name}}). Rejalar o'zgargan bo'lsa — ilovadan bekor qiling yoki {{clinic.phone}} ga qo'ng'iroq qiling.",
     trigger: "APPOINTMENT_BEFORE",
     triggerConfig: { offsetMin: -1440 },
-    variables: COMMON_VARS,
-  },
-  {
-    key: "appointment.reminder-5h",
-    nameRu: "Напоминание за 5 часов",
-    nameUz: "5 soat oldin eslatma",
-    channel: "TG",
-    category: "REMINDER",
-    bodyRu:
-      "{{patient.firstName}}, через 5 часов в {{appointment.time}} — ваш приём у {{appointment.doctor}}. До встречи.",
-    bodyUz:
-      "{{patient.firstName}}, 5 soatdan keyin soat {{appointment.time}} da — {{appointment.doctor}} bilan qabulingiz. Ko'rishguncha.",
-    trigger: "APPOINTMENT_BEFORE",
-    triggerConfig: { offsetMin: -300 },
     variables: COMMON_VARS,
   },
   {
@@ -88,20 +103,6 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
       "{{patient.firstName}}, 3 soatdan keyin {{appointment.time}} da {{appointment.doctor}} sizni kutmoqda. Reja o'zgarsa — ilovadan bekor qiling.",
     trigger: "APPOINTMENT_BEFORE",
     triggerConfig: { offsetMin: -180 },
-    variables: COMMON_VARS,
-  },
-  {
-    key: "appointment.reminder-1h",
-    nameRu: "Напоминание за 1 час",
-    nameUz: "1 soat oldin eslatma",
-    channel: "TG",
-    category: "REMINDER",
-    bodyRu:
-      "{{patient.firstName}}, через час в {{appointment.time}} — ваш приём у {{appointment.doctor}}. Выходите заранее.",
-    bodyUz:
-      "{{patient.firstName}}, bir soatdan keyin {{appointment.time}} da — {{appointment.doctor}} bilan qabulingiz. Oldindan yo'lga chiqing.",
-    trigger: "APPOINTMENT_BEFORE",
-    triggerConfig: { offsetMin: -60 },
     variables: COMMON_VARS,
   },
 

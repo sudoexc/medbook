@@ -1,44 +1,27 @@
-import { AIAssistant } from "./_components/ai-assistant";
 import { CurrentPatientCard } from "./_components/current-patient-card";
-import { DraftConclusions } from "./_components/draft-conclusions";
-import { IncomingReferrals } from "./_components/incoming-referrals";
 import { LiveQueueCard } from "./_components/live-queue-card";
-import { QuickActions } from "./_components/quick-actions";
 import { RecentPatients } from "./_components/recent-patients";
-import { Reminders } from "./_components/reminders";
 import { ScheduleCard } from "./_components/schedule-card";
-import { TodayTasks } from "./_components/today-tasks";
-import { UnreadResults } from "./_components/unread-results";
 import { UpcomingPatients } from "./_components/upcoming-patients";
 
 export default function MyDayPage() {
   return (
-    <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
-      <div className="grid min-w-0 flex-1 auto-rows-min grid-cols-1 gap-4 xl:grid-cols-3 xl:gap-5">
-        {/* Two-lanes model: the schedule (bookings, «Начать») and the live
-            walk-in queue («Вызвать») sit side by side on desktop — the
-            doctor explicitly picks the lane, nothing auto-interleaves. */}
-        <ScheduleCard />
-        <LiveQueueCard />
+    <div className="grid auto-rows-min grid-cols-1 gap-4 p-4 xl:grid-cols-3 xl:gap-5 xl:p-6">
+      {/* Focused doctor day (feedback): two-lanes on top — the schedule
+          (bookings, «Начать») and the live walk-in queue («Вызвать») — with
+          the «Следующий пациент» hero carrying the primary «Начать приём» +
+          «Открыть карту». Everything else (tasks / results / referrals /
+          reminders / drafts / AI / quick-actions) was intentionally stripped. */}
+      <ScheduleCard />
+      <LiveQueueCard />
+      <CurrentPatientCard />
 
-        <CurrentPatientCard />
+      {/* Clickable patient lists — each row/card opens the patient card
+          (visit history, documents). */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:col-span-3 xl:gap-5">
         <UpcomingPatients />
-        <TodayTasks />
-
-        <UnreadResults />
-        <IncomingReferrals />
-        <Reminders />
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:col-span-3 xl:gap-5">
-          <DraftConclusions />
-          <RecentPatients />
-        </div>
+        <RecentPatients />
       </div>
-
-      <aside className="hidden w-[300px] shrink-0 flex-col gap-4 xl:flex xl:gap-5">
-        <AIAssistant />
-        <QuickActions />
-      </aside>
     </div>
   );
 }

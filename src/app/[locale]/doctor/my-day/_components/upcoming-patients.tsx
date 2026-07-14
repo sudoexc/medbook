@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { PhoneIcon } from "lucide-react";
+import { ChevronRightIcon, PhoneIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -188,6 +188,11 @@ export function UpcomingPatients() {
                     <PhoneIcon className="size-4" />
                   </span>
                 )}
+                {/* Affordance that the whole row opens the patient card. */}
+                <ChevronRightIcon
+                  aria-hidden
+                  className="relative size-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground"
+                />
               </li>
             );
           })

@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  CalendarClockIcon,
   CalendarIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   Loader2Icon,
@@ -97,6 +99,24 @@ export function ScheduleCard() {
   const { data, isLoading } = useDoctorSchedule(dateKey);
   const entries = data?.entries ?? [];
 
+  // Two groups (feedback): finished visits (done / no_show / cancelled) fold
+  // into a collapsible «Завершённые» block so a long day doesn't bury the
+  // rows that still need action; active/upcoming ones stay always open.
+  const { active, finished } = React.useMemo(() => {
+    const a: ScheduleEntry[] = [];
+    const f: ScheduleEntry[] = [];
+    for (const e of entries) {
+      (e.status === "done" ||
+      e.status === "no_show" ||
+      e.status === "cancelled"
+        ? f
+        : a
+      ).push(e);
+    }
+    return { active: a, finished: f };
+  }, [entries]);
+  const [finishedOpen, setFinishedOpen] = React.useState(false);
+
   const rel = relativeLabel(viewDate, today, t);
   const dateLine = fullDateLabel(viewDate);
 
@@ -107,14 +127,14 @@ export function ScheduleCard() {
   // viewing today.
   const nextUpcomingIndex = React.useMemo(() => {
     if (!isToday) return -1;
-    return entries.findIndex(
+    return active.findIndex(
       (e) =>
         e.status === "upcoming" &&
         e.type !== "break" &&
         e.type !== "reserve" &&
         e.patientId != null,
     );
-  }, [entries, isToday]);
+  }, [active, isToday]);
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card xl:col-span-2">
@@ -182,9 +202,8 @@ export function ScheduleCard() {
             {isToday ? t("schedule.emptyToday") : t("schedule.emptyDay")}
           </li>
         ) : (
-          entries
-            .slice(0, 10)
-            .map((entry, i) => (
+          <>
+            {active.map((entry, i) => (
               <ScheduleRow
                 key={entry.id}
                 entry={entry}
@@ -192,7 +211,17 @@ export function ScheduleCard() {
                 isToday={isToday}
                 isNextUpcoming={i === nextUpcomingIndex}
               />
-            ))
+            ))}
+            {finished.length > 0 ? (
+              <FinishedGroup
+                entries={finished}
+                open={finishedOpen}
+                onToggle={() => setFinishedOpen((v) => !v)}
+                dateKey={dateKey}
+                isToday={isToday}
+              />
+            ) : null}
+          </>
         )}
       </ul>
 
@@ -203,14 +232,62 @@ export function ScheduleCard() {
         >
           <CalendarIcon className="size-4" />
           {t("schedule.showWholeDay")}
-          {entries.length > 10 ? (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold">
-              +{entries.length - 10}
-            </span>
-          ) : null}
         </Link>
       </footer>
     </section>
+  );
+}
+
+/**
+ * Terminal visits (Уже был / Не пришёл / Отменён) collapsed behind one
+ * toggle so a busy day doesn't bury the rows that still need action
+ * (feedback). Collapsed by default; the header stays as a compact summary
+ * with the count. Active rows above it are always expanded.
+ */
+function FinishedGroup({
+  entries,
+  open,
+  onToggle,
+  dateKey,
+  isToday,
+}: {
+  entries: ScheduleEntry[];
+  open: boolean;
+  onToggle: () => void;
+  dateKey: string;
+  isToday: boolean;
+}) {
+  const t = useTranslations("doctor.myDay");
+  return (
+    <>
+      <li>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="motion-press flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50"
+        >
+          <ChevronDownIcon
+            className={cn(
+              "size-4 shrink-0 transition-transform",
+              open ? "" : "-rotate-90",
+            )}
+          />
+          <span>{t("schedule.finishedTitle", { count: entries.length })}</span>
+        </button>
+      </li>
+      {open
+        ? entries.map((entry) => (
+            <ScheduleRow
+              key={entry.id}
+              entry={entry}
+              dateKey={dateKey}
+              isToday={isToday}
+              isNextUpcoming={false}
+            />
+          ))
+        : null}
+    </>
   );
 }
 
@@ -268,16 +345,28 @@ function ScheduleRow({
         />
       </div>
       <div className="min-w-0 flex-1">
-        <div
-          className={cn(
-            "truncate text-[15px] font-semibold",
-            isBreak || isReserve
-              ? "text-muted-foreground"
-              : "text-foreground",
-          )}
-        >
-          {entry.patientName ??
-            (isBreak ? t("type.break") : t("schedule.unspecified"))}
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "truncate text-[15px] font-semibold",
+              isBreak || isReserve
+                ? "text-muted-foreground"
+                : "text-foreground",
+            )}
+          >
+            {entry.patientName ??
+              (isBreak ? t("type.break") : t("schedule.unspecified"))}
+          </span>
+          {/* Lane marker (feedback): every schedule row is a booked slot —
+              «Запись» — as opposed to the walk-in «Живой» chips on the live
+              queue card, so the doctor can tell the two lanes apart at a
+              glance. Break/reserve blocks aren't patients, so no chip. */}
+          {!isBreak && !isReserve && entry.patientId != null ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              <CalendarClockIcon className="size-3" />
+              {t("laneBooking")}
+            </span>
+          ) : null}
         </div>
         <div className="truncate text-xs text-muted-foreground">
           {t(TYPE_LABEL_KEY[entry.type])}

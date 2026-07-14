@@ -6624,7 +6624,8 @@
         "startVisit": "Qabulni boshlash",
         "revertReopen": "Qabulni qayta ochish",
         "revertToPlanned": "Rejalashtirilganlarga qaytarish",
-        "revertRestore": "Qabulni tiklash"
+        "revertRestore": "Qabulni tiklash",
+        "finishedTitle": "Bugun yakunlangan ({count})"
       },
       "current": {
         "title": "Joriy bemor",
@@ -6686,8 +6687,12 @@
         "empty": "Navbat bo'sh",
         "call": "Chaqirish",
         "waitingFor": "{min} daqiqa kutmoqda",
-        "ticket": "Talon"
-      }
+        "ticket": "Talon",
+        "walkin": "Jonli",
+        "waitingHm": "{h} soat {m} daqiqa kutmoqda",
+        "waitingSince": "{at} dan beri kutmoqda"
+      },
+      "laneBooking": "Yozuv"
     },
     "visits": {
       "title": "Tashriflar tarixi",

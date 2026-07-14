@@ -2,7 +2,12 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { Loader2Icon, MegaphoneIcon, UsersIcon } from "lucide-react";
+import {
+  Loader2Icon,
+  MegaphoneIcon,
+  TicketIcon,
+  UsersIcon,
+} from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -95,6 +100,17 @@ export function LiveQueueCard() {
                   ),
                 )
               : null;
+            // Read as a clock instead of a raw minute count: past an hour
+            // «ждёт 118 мин» becomes «ждёт 1 ч 58 мин» (feedback).
+            const waitLabel =
+              waitingMin === null
+                ? null
+                : waitingMin >= 60
+                  ? t("waitingHm", {
+                      h: Math.floor(waitingMin / 60),
+                      m: waitingMin % 60,
+                    })
+                  : t("waitingFor", { min: waitingMin });
             const rowPending = pendingId === entry.appointmentId;
 
             return (
@@ -102,6 +118,7 @@ export function LiveQueueCard() {
                 key={entry.appointmentId}
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
               >
+                {/* Position = queue order (who's next), not the ticket. */}
                 <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold tabular-nums text-muted-foreground">
                   {entry.position}
                 </span>
@@ -110,15 +127,27 @@ export function LiveQueueCard() {
                     <span className="truncate text-sm font-semibold text-foreground">
                       {entry.patientFullName}
                     </span>
-                    <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
-                      {t("ticket")} {entry.ticketNumber}
+                    {/* Lane marker — this row is a live walk-in, the mirror
+                        of the «Запись» chip on the schedule card. */}
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+                      <span className="size-1.5 rounded-full bg-success" />
+                      {t("walkin")}
                     </span>
                   </div>
-                  {waitingMin !== null ? (
-                    <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                      {t("waitingFor", { min: waitingMin })}
-                    </div>
-                  ) : null}
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    {/* The physical ticket the patient holds — how the doctor
+                        calls them out loud, distinct from the position. */}
+                    <span className="inline-flex items-center gap-1 font-medium tabular-nums text-foreground/70">
+                      <TicketIcon className="size-3" />
+                      {entry.ticketNumber}
+                    </span>
+                    {waitLabel ? (
+                      <>
+                        <span aria-hidden>·</span>
+                        <span className="tabular-nums">{waitLabel}</span>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
                 <button
                   type="button"

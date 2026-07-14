@@ -6624,7 +6624,8 @@
         "startVisit": "Начать приём",
         "revertReopen": "Открыть приём заново",
         "revertToPlanned": "Вернуть в запланированные",
-        "revertRestore": "Восстановить приём"
+        "revertRestore": "Восстановить приём",
+        "finishedTitle": "Завершённые сегодня ({count})"
       },
       "current": {
         "title": "Текущий пациент",
@@ -6686,8 +6687,12 @@
         "empty": "Очередь пуста",
         "call": "Вызвать",
         "waitingFor": "ждёт {min} мин",
-        "ticket": "Талон"
-      }
+        "ticket": "Талон",
+        "walkin": "Живой",
+        "waitingHm": "ждёт {h} ч {m} мин",
+        "waitingSince": "ждёт с {at}"
+      },
+      "laneBooking": "Запись"
     },
     "visits": {
       "title": "История визитов",

@@ -5224,7 +5224,8 @@
           "noMatchTitle": "Filtrlar bo'yicha hech narsa topilmadi",
           "noMatchHint": "Filtrlarning bir qismini olib tashlab ko'ring — tanlangan cheklovlar birgalikda bugungi barcha bemorlarni chiqarib tashlayapti."
         },
-        "progressOpenHandled": "Yopilganlarni ko'rsatish ({count})"
+        "progressOpenHandled": "Yopilganlarni ko'rsatish ({count})",
+        "todayLabel": "bugun"
       },
       "responseTime": {
         "title": "O'rtacha javob vaqti",
@@ -5303,21 +5304,6 @@
         "missedRequests": "O'tkazib yuborilgan so'rovlar",
         "missedCalls": "O'tkazib yuborilgan qo'ng'iroqlar",
         "totalLabel": "Jami potensial yo'qotishlar"
-      },
-      "tasksQueue": {
-        "title": "Bugungi vazifalar navbati",
-        "showAll": "Barcha vazifalarni ko'rsatish",
-        "showLess": "Yig'ish",
-        "progress": "{done}/{total}",
-        "shortLabel": {
-          "UNCONFIRMED_24H": "Yozuvni tasdiqlash ({patientName})",
-          "EMPTY_SLOT_TOMORROW": "Bo'sh vaqtni to'ldirish ({doctorName})",
-          "NO_SHOW_RISK_HIGH": "{patientName} bilan bog'lanish",
-          "DORMANT_BATCH": "{patientCount} bemorni qaytarish",
-          "DOCTOR_OVERLOAD": "{doctorName} yukini kamaytirish",
-          "PAYMENT_OVERDUE": "{patientName} to'lovi",
-          "fallback": "{type}"
-        }
       },
       "doctorsLoad": {
         "title": "Bugungi shifokorlar yuklamasi",

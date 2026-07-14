@@ -21,7 +21,6 @@ import {
   SparklesIcon,
   TrendingDownIcon,
   UsersIcon,
-  ZapIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,9 +36,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "@/components/ui/sonner";
-import {
-  ACTION_ICONS,
-} from "@/lib/actions/icons";
 import { formatActionTitle, formatActionBody } from "@/lib/actions/format";
 import {
   defaultDeeplinkPath,
@@ -179,10 +175,10 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
             localePath={localePath}
             avgVisitTiins={avgVisitTiins}
           />
-          <div className="grid gap-5 lg:grid-cols-2">
-            <TasksQueue actions={actions} />
-            <DoctorsLoad doctors={doctors} todayApts={todayApts} />
-          </div>
+          {/* «Очередь задач на сегодня» removed per feedback — it rendered
+              synthetic hour slots + raw action types (PATIENT_NO_CHANNEL).
+              The real work lives in the risk-today widget + the actions list. */}
+          <DoctorsLoad doctors={doctors} todayApts={todayApts} />
         </div>
         <aside className="flex flex-col gap-5">
           <ResponseTimeTile />
@@ -1228,142 +1224,6 @@ function TodayLosses({
 // Bottom row — tasks queue + doctors load
 // ────────────────────────────────────────────────────────────────────────────
 
-const SEVERITY_DOT_BG: Record<ActionSeverity, string> = {
-  critical: "bg-destructive",
-  high: "bg-warning",
-  medium: "bg-info",
-  low: "bg-muted-foreground/40",
-};
-
-function TasksQueue({ actions }: { actions: ActionRow[] }) {
-  const td = useTranslations("actionCenter.dashboard.tasksQueue");
-  const tac = useTranslations("actionCenter.dashboard.actionsList");
-  const [showAll, setShowAll] = React.useState(false);
-  const visible = showAll ? actions : actions.slice(0, 5);
-  const tags = visible.map((row, i) => ({
-    id: row.id,
-    severity: row.severity,
-    time: hourSlot(i),
-    label: shortLabelForRow(td, row),
-    badge:
-      row.severity === "critical"
-        ? tac("priorityCritical")
-        : row.severity === "high"
-          ? tac("priorityHigh")
-          : row.severity === "medium"
-            ? tac("priorityMedium")
-            : tac("priorityLow"),
-    progress: progressForRow(row),
-  }));
-
-  return (
-    <section className="motion-rise-in rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="flex items-baseline justify-between">
-        <h3 className="text-sm font-bold text-foreground">{td("title")}</h3>
-        <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary tabular-nums">
-          {actions.length}
-        </span>
-      </header>
-      <ul className="mt-3 space-y-2">
-        {tags.map((t) => (
-          <li
-            key={t.id}
-            className="flex items-center gap-3 rounded-md px-1 py-1 text-xs"
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground tabular-nums",
-              )}
-            >
-              <span
-                className={cn("size-1.5 rounded-full", SEVERITY_DOT_BG[t.severity])}
-              />
-            </span>
-            <span className="shrink-0 font-semibold tabular-nums text-muted-foreground">
-              {t.time}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-foreground">
-              {t.label}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                SEVERITY_PILL[t.severity],
-              )}
-            >
-              {t.badge}
-            </span>
-            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-              {td("progress", t.progress)}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {actions.length > 5 ? (
-        <div className="mt-3 flex justify-center border-t border-border pt-2">
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            className="motion-press inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            {showAll ? td("showLess") : td("showAll")}
-            <ArrowRightIcon
-              className={cn(
-                "size-3 transition-transform",
-                showAll ? "-rotate-90" : "rotate-90",
-              )}
-            />
-          </button>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function hourSlot(i: number): string {
-  const start = 9; // start at 09:00
-  const h = (start + i * 1) % 24;
-  return `${String(h).padStart(2, "0")}:00`;
-}
-
-const SHORT_LABEL_TYPES = new Set([
-  "UNCONFIRMED_24H",
-  "EMPTY_SLOT_TOMORROW",
-  "NO_SHOW_RISK_HIGH",
-  "DORMANT_BATCH",
-  "DOCTOR_OVERLOAD",
-  "PAYMENT_OVERDUE",
-]);
-
-function shortLabelForRow(
-  td: ReturnType<typeof useTranslations>,
-  row: ActionRow,
-): string {
-  if (!SHORT_LABEL_TYPES.has(row.payload.type)) return row.type;
-  const values: Record<string, string | number> = {};
-  const p = row.payload as Record<string, unknown>;
-  if (typeof p.patientName === "string") values.patientName = p.patientName;
-  if (typeof p.doctorName === "string") values.doctorName = p.doctorName;
-  if (typeof p.patientCount === "number") values.patientCount = p.patientCount;
-  const tDynamic = td as unknown as (
-    key: string,
-    vals: Record<string, string | number>,
-  ) => string;
-  return tDynamic(`shortLabel.${row.payload.type}`, values);
-}
-
-function progressForRow(row: ActionRow): { done: number; total: number } {
-  // Without per-action progress data, derive a stable display from the type +
-  // current status: OPEN → 0/N, where N is a sensible per-type quota.
-  const total =
-    row.payload.type === "DORMANT_BATCH"
-      ? row.payload.patientCount
-      : row.payload.type === "DOCTOR_OVERLOAD"
-        ? row.payload.queueLength
-        : 1;
-  return { done: row.status === "DONE" ? total : 0, total };
-}
 
 function DoctorsLoad({
   doctors,

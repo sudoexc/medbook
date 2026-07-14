@@ -5224,7 +5224,8 @@
           "noMatchTitle": "Ничего не подошло под фильтр",
           "noMatchHint": "Попробуй снять часть фильтров — выбранные ограничения вместе исключают всех сегодняшних пациентов."
         },
-        "progressOpenHandled": "Показать закрытые ({count})"
+        "progressOpenHandled": "Показать закрытые ({count})",
+        "todayLabel": "сегодня"
       },
       "responseTime": {
         "title": "Среднее время ответа",
@@ -5303,21 +5304,6 @@
         "missedRequests": "Пропущенные заявки",
         "missedCalls": "Пропущенные звонки",
         "totalLabel": "Всего потенциальных потерь"
-      },
-      "tasksQueue": {
-        "title": "Очередь задач на сегодня",
-        "showAll": "Показать все задачи",
-        "showLess": "Свернуть",
-        "progress": "{done}/{total}",
-        "shortLabel": {
-          "UNCONFIRMED_24H": "Подтвердить запись ({patientName})",
-          "EMPTY_SLOT_TOMORROW": "Заполнить слот ({doctorName})",
-          "NO_SHOW_RISK_HIGH": "Связаться с {patientName}",
-          "DORMANT_BATCH": "Реактивация {patientCount} пациентов",
-          "DOCTOR_OVERLOAD": "Разгрузить {doctorName}",
-          "PAYMENT_OVERDUE": "Оплата {patientName}",
-          "fallback": "{type}"
-        }
       },
       "doctorsLoad": {
         "title": "Загрузка врачей на сегодня",

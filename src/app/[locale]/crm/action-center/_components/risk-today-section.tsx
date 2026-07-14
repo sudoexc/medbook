@@ -49,6 +49,7 @@ import {
   PhoneIcon,
   PhoneMissedIcon,
   ShieldCheckIcon,
+  StethoscopeIcon,
   UserIcon,
 } from "lucide-react";
 
@@ -385,6 +386,7 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
       : row.serviceName.ru
     : null;
   const timeLabel = formatTimeInClinic(row.appointmentAt, locale);
+  const dateLabel = formatApptDate(row.appointmentAt, locale, t);
 
   const phoneTel = row.patientPhone
     ? row.patientPhone.replace(/[^\d+]/g, "")
@@ -505,9 +507,23 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
             </a>
           ) : null}
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {doctorName}
-          {serviceName ? ` · ${serviceName}` : ""}
+        {/* Explicit appointment line — WHO / WHEN / WHAT is spelled out so the
+            receptionist doesn't have to guess (feedback: doctor + day + time
+            were unclear). */}
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+          <StethoscopeIcon className="size-3.5 shrink-0" />
+          <span className="font-medium text-foreground/90">{doctorName}</span>
+          <span className="text-muted-foreground/50">·</span>
+          <CalendarClockIcon className="size-3.5 shrink-0" />
+          <span className="tabular-nums">
+            {dateLabel}, {timeLabel}
+          </span>
+          {serviceName ? (
+            <>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="min-w-0 truncate">{serviceName}</span>
+            </>
+          ) : null}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
           {row.reasons.map((r, i) => (
@@ -981,6 +997,34 @@ const HandledToday = React.forwardRef<
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+
+/** Clinic-local day label: «сегодня» when the appointment is today, else the
+ *  calendar date. Risk-today rows are always today, but showing it explicitly
+ *  answers the "в какой день" ask without making the receptionist assume. */
+function formatApptDate(
+  iso: string,
+  locale: Locale,
+  t: ReturnType<typeof useTranslations>,
+): string {
+  const tzDate = (d: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tashkent",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  try {
+    const at = new Date(iso);
+    if (tzDate(at) === tzDate(new Date())) return t("todayLabel");
+    return new Intl.DateTimeFormat(locale === "uz" ? "uz-UZ" : "ru-RU", {
+      day: "numeric",
+      month: "long",
+      timeZone: "Asia/Tashkent",
+    }).format(at);
+  } catch {
+    return t("todayLabel");
+  }
+}
 
 function formatTimeInClinic(iso: string, locale: Locale): string {
   try {

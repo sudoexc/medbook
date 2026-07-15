@@ -889,20 +889,32 @@ export const GET = createApiListHandler(
 
     ${dynamicsSection}
 
-    <section class="block">
+    ${
+      note.complaints.length > 0
+        ? `<section class="block">
       <h3>${escapeHtml(labels.complaints)}</h3>
       ${renderChips(note.complaints)}
-    </section>
+    </section>`
+        : ""
+    }
 
-    <section class="block">
+    ${
+      note.anamnesis.length > 0
+        ? `<section class="block">
       <h3>${escapeHtml(labels.anamnesis)}</h3>
       ${renderChips(note.anamnesis)}
-    </section>
+    </section>`
+        : ""
+    }
 
-    <section class="block">
+    ${
+      note.examination.length > 0
+        ? `<section class="block">
       <h3>${escapeHtml(labels.examination)}</h3>
       ${renderChips(note.examination)}
-    </section>
+    </section>`
+        : ""
+    }
 
     ${bodyMapSection}
 
@@ -920,10 +932,14 @@ export const GET = createApiListHandler(
 
     ${treatmentDiffSection}
 
-    <section class="block">
+    ${
+      note.advice.length > 0
+        ? `<section class="block">
       <h3>${escapeHtml(labels.advice)}</h3>
       ${renderChips(note.advice)}
-    </section>
+    </section>`
+        : ""
+    }
 
     ${
       followUpLine

@@ -4,9 +4,9 @@ import { ArrowLeftIcon } from "lucide-react";
 
 import { ActiveAIRail } from "./_components/active-ai-rail";
 import { ActivePatientCard } from "./_components/active-patient-card";
+import { DiagnosisHistoryCard } from "./_components/diagnosis-history-card";
 import { DraftConclusionsCard } from "./_components/draft-conclusions-card";
 import { HistoryDocsCard } from "./_components/history-docs-card";
-import { QueueCard } from "./_components/queue-card";
 import { RecentFilesCard } from "./_components/recent-files-card";
 import { SessionTabContent } from "./_components/session-tab-content";
 import { SessionTabs } from "./_components/session-tabs";
@@ -39,7 +39,7 @@ export default async function ReceptionPage({
             <HistoryDocsCard />
             <RecentFilesCard />
             <DraftConclusionsCard />
-            <QueueCard />
+            <DiagnosisHistoryCard />
           </div>
         </div>
 

@@ -256,38 +256,24 @@ function ConclusionEditor() {
           <EyeIcon className="size-3.5 shrink-0 text-primary" />
           <span className="truncate">{t("editor.previewHint")}</span>
         </div>
-        <div className="inline-flex shrink-0 items-center gap-1.5">
-          <div className="inline-flex items-center rounded-lg border border-border bg-background p-0.5">
-            <ViewToggleButton
-              active={view === "edit"}
-              onClick={() => setView("edit")}
-              Icon={PencilLineIcon}
-            >
-              {t("editor.viewText")}
-            </ViewToggleButton>
-            <ViewToggleButton
-              active={view === "preview"}
-              onClick={showPreview}
-              disabled={!note}
-              Icon={EyeIcon}
-            >
+        <button
+          type="button"
+          disabled={!note}
+          onClick={view === "edit" ? showPreview : () => setView("edit")}
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {view === "edit" ? (
+            <>
+              <EyeIcon className="size-3.5" />
               {t("editor.viewPreview")}
-            </ViewToggleButton>
-          </div>
-          <a
-            href={note ? `/api/crm/visit-notes/${note.id}/print` : "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-disabled={!note}
-            onClick={(e) => {
-              if (!note) e.preventDefault();
-            }}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
-          >
-            <PrinterIcon className="size-3.5" />
-            {t("editor.print")}
-          </a>
-        </div>
+            </>
+          ) : (
+            <>
+              <PencilLineIcon className="size-3.5" />
+              {t("editor.viewEdit")}
+            </>
+          )}
+        </button>
       </div>
 
       <SaveStatusBar
@@ -322,37 +308,6 @@ function ConclusionEditor() {
         </>
       )}
     </div>
-  );
-}
-
-function ViewToggleButton({
-  active,
-  onClick,
-  disabled,
-  Icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  Icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        active
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      <Icon className="size-3" />
-      {children}
-    </button>
   );
 }
 

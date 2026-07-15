@@ -2,11 +2,9 @@
 
 import * as React from "react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
   FilesIcon,
-  HistoryIcon,
   Loader2Icon,
   MinusIcon,
   PhoneIcon,
@@ -85,7 +83,6 @@ function useElapsed(startedAt: string | null): string {
 export function ActivePatientCard() {
   const t = useTranslations("doctor.reception");
   const { activeAppointment, visitNoteId } = useReceptionContext();
-  const router = useRouter();
   const noteQuery = useVisitNote(visitNoteId);
   const finalize = useFinalizeVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
@@ -274,15 +271,6 @@ export function ActivePatientCard() {
               : t("activePatient.finishVisit")}
           </Button>
         </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={() => router.push(`/doctor/patients/${p.id}`)}
-        >
-          <HistoryIcon className="size-4 text-muted-foreground" />
-          {t("activePatient.openChart")}
-        </Button>
         <Button
           type="button"
           variant="outline"

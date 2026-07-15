@@ -5801,7 +5801,8 @@
         "sizeBytes": "{value} B",
         "sizeKb": "{value} KB",
         "sizeMb": "{value} MB",
-        "sizeGb": "{value} GB"
+        "sizeGb": "{value} GB",
+        "openAll": "Barcha hujjatlar"
       },
       "drafts": {
         "title": "Xulosa qoralamalari",
@@ -5894,6 +5895,7 @@
         "conclusionPlaceholder": "Xulosaning klinik matni — ko‘rik, holat, asoslash. Chap paneldagi tashxis, tayinlovlar va tavsiyalar chop shakliga avtomatik kiradi.",
         "viewText": "Matn",
         "viewPreview": "Oldindan ko‘rish",
+        "viewEdit": "Tahrirlash",
         "previewHint": "Varaq chapdagi maydonlar va quyidagi matndan yig‘iladi — «Oldindan ko‘rish» uni to‘liq ko‘rsatadi",
         "conclusionPlaceholderEmpty": "Xulosa tuzish uchun tashrif maydonlarini to‘ldiring.",
         "handoutComposedHint": "Eslatma tashrif maydonlaridan tuzildi.",
@@ -6066,6 +6068,11 @@
         "noLabel": "Izohsiz",
         "labelPlaceholder": "Nuqta izohi…",
         "removePoint": "Nuqtani o‘chirish"
+      },
+      "diagnosisHistory": {
+        "title": "Tashxislar tarixi",
+        "empty": "Hozircha tashxislar yoʻq",
+        "selectPatient": "Bemorni tanlang"
       }
     },
     "receptionDialogs": {

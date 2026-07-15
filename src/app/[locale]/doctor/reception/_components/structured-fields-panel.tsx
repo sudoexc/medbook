@@ -3,25 +3,13 @@
 import * as React from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import {
-  BookmarkPlusIcon,
   CalendarCheckIcon,
-  ClipboardListIcon,
-  CopyPlusIcon,
   FileTextIcon,
-  FlaskConicalIcon,
   HeartPulseIcon,
-  HistoryIcon,
   Loader2Icon,
-  PillIcon,
-  PlusIcon,
-  ScrollTextIcon,
   SearchIcon,
-  Share2Icon,
-  ScrollIcon,
-  StethoscopeIcon,
   WandSparklesIcon,
   XIcon,
-  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,78 +35,24 @@ import {
   type VisitNoteRow,
   type VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
-import {
-  usePreviousVisit,
-  type PreviousVisitRow,
-} from "../_hooks/use-previous-visit";
 import { useAddChronicCondition } from "../_hooks/use-patient-history";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
-import { BodyMapCard } from "./body-map-card";
 import { CatalogDrawer } from "./catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
-import { DiagnosisGuideCard } from "./diagnosis-guide-card";
-import { EPrescriptionDialog } from "./e-prescription-dialog";
 import {
   draftFromDrug,
   PrescriptionConstructor,
 } from "./prescription-constructor";
-import { LabOrderDialog } from "./lab-order-dialog";
-import { ReferralDialog } from "./referral-dialog";
-import { SaveProtocolDialog } from "./save-protocol-dialog";
-import { SickLeaveDialog } from "./sick-leave-dialog";
-
-type ArrayKey =
-  | "complaints"
-  | "anamnesis"
-  | "examination"
-  | "prescriptions"
-  | "advice";
 
 type FieldDef = {
-  key: ArrayKey;
-  labelKey: string;
-  Icon: LucideIcon;
-  placeholderKey: string;
+  key: "prescriptions";
   presetField: PresetField;
 };
 
-const FIELDS: FieldDef[] = [
-  {
-    key: "complaints",
-    labelKey: "fields.complaints.label",
-    Icon: ClipboardListIcon,
-    placeholderKey: "fields.complaints.placeholder",
-    presetField: "COMPLAINTS",
-  },
-  {
-    key: "anamnesis",
-    labelKey: "fields.anamnesis.label",
-    Icon: ScrollTextIcon,
-    placeholderKey: "fields.anamnesis.placeholder",
-    presetField: "ANAMNESIS",
-  },
-  {
-    key: "examination",
-    labelKey: "fields.examination.label",
-    Icon: StethoscopeIcon,
-    placeholderKey: "fields.examination.placeholder",
-    presetField: "EXAMINATION",
-  },
-  {
-    key: "prescriptions",
-    labelKey: "fields.prescriptions.label",
-    Icon: PillIcon,
-    placeholderKey: "fields.prescriptions.placeholder",
-    presetField: "PRESCRIPTIONS",
-  },
-  {
-    key: "advice",
-    labelKey: "fields.advice.label",
-    Icon: WandSparklesIcon,
-    placeholderKey: "fields.advice.placeholder",
-    presetField: "ADVICE",
-  },
-];
+const RX_FIELD: FieldDef = {
+  key: "prescriptions",
+  presetField: "PRESCRIPTIONS",
+};
 
 export function StructuredFieldsPanel() {
   const t = useTranslations("doctor.reception");
@@ -131,27 +65,11 @@ export function StructuredFieldsPanel() {
   const noteQuery = useVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
   const presetsQuery = useDoctorPresets();
-  const previousQuery = usePreviousVisit(visitNoteId);
-  const previous = previousQuery.data ?? null;
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
-  // Ф7 — чипы, принесённые copy-forward'ом: помечены «из прошлого визита»
-  // до первого редактирования соответствующего поля.
-  const [carried, setCarried] = React.useState<
-    Partial<Record<ArrayKey, Set<string>>>
-  >({});
-  const clearCarried = React.useCallback((key: ArrayKey) => {
-    setCarried((prev) => (prev[key]?.size ? { ...prev, [key]: undefined } : prev));
-  }, []);
   const [catalogOpen, setCatalogOpen] = React.useState(false);
-  const [labOrderOpen, setLabOrderOpen] = React.useState(false);
-  const [labOrderInitial, setLabOrderInitial] = React.useState<string[]>([]);
-  const [rxOpen, setRxOpen] = React.useState(false);
-  const [sickLeaveOpen, setSickLeaveOpen] = React.useState(false);
-  const [referOpen, setReferOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
-  const [saveProtocolOpen, setSaveProtocolOpen] = React.useState(false);
 
   const applyPatch = React.useCallback(
     (p: VisitNotePatch) => {
@@ -212,7 +130,6 @@ export function StructuredFieldsPanel() {
   const handlePresetClick = React.useCallback(
     (def: FieldDef, preset: DoctorPresetRow) => {
       if (!note || isFinalized) return;
-      clearCarried(def.key);
       const arr = note[def.key] ?? [];
       if (!arr.includes(preset.fieldValue)) {
         applyPatch({ [def.key]: [...arr, preset.fieldValue] } as VisitNotePatch);
@@ -221,63 +138,8 @@ export function StructuredFieldsPanel() {
         requestBodyAppend(preset.noteTemplate);
       }
     },
-    [note, isFinalized, applyPatch, requestBodyAppend, clearCarried],
+    [note, isFinalized, applyPatch, requestBodyAppend],
   );
-
-  // Ф7 — copy-forward: переносит диагноз (если ещё не выбран), чипы
-  // complaints/anamnesis и структурные назначения из прошлого визита.
-  // Не автоматом — врач решает кнопкой; повторный клик — no-op.
-  const handleCopyForward = React.useCallback(() => {
-    if (!note || isFinalized || !previous) return;
-    const patchData: VisitNotePatch = {};
-
-    const freshComplaints = previous.complaints.filter(
-      (c) => !(note.complaints ?? []).includes(c),
-    );
-    const freshAnamnesis = previous.anamnesis.filter(
-      (c) => !(note.anamnesis ?? []).includes(c),
-    );
-    if (freshComplaints.length > 0) {
-      patchData.complaints = [...(note.complaints ?? []), ...freshComplaints];
-    }
-    if (freshAnamnesis.length > 0) {
-      patchData.anamnesis = [...(note.anamnesis ?? []), ...freshAnamnesis];
-    }
-    if (!note.diagnosisCode && previous.diagnosisCode) {
-      patchData.diagnosisCode = previous.diagnosisCode;
-      patchData.diagnosisName = previous.diagnosisName;
-    }
-    if (previous.visitPrescriptions.length > 0) {
-      const existing = (note.visitPrescriptions ?? []).map(
-        ({ id: _id, sortOrder: _s, ...rest }) => rest,
-      );
-      const seen = new Set(existing.map((r) => `${r.displayName}|${r.dose}`));
-      const fresh = previous.visitPrescriptions
-        .map(({ id: _id, sortOrder: _s, ...rest }) => rest)
-        .filter((r) => !seen.has(`${r.displayName}|${r.dose}`));
-      if (fresh.length > 0) {
-        patchData.visitPrescriptions = [...existing, ...fresh];
-      }
-    }
-    // Ф8 — точки карты тела переносятся, если врач ещё не ставил свои.
-    if (
-      (note.bodyMap ?? []).length === 0 &&
-      (previous.bodyMap?.length ?? 0) > 0
-    ) {
-      patchData.bodyMap = previous.bodyMap ?? [];
-    }
-
-    if (Object.keys(patchData).length === 0) {
-      toast.info(t("copyForward.nothingToCopy"));
-      return;
-    }
-    applyPatch(patchData);
-    setCarried({
-      complaints: new Set(freshComplaints),
-      anamnesis: new Set(freshAnamnesis),
-    });
-    toast.success(t("copyForward.applied"));
-  }, [note, isFinalized, previous, applyPatch, t]);
 
   const handleApplyProtocol = React.useCallback(
     (protocol: ClinicalProtocolRow) => {
@@ -293,15 +155,7 @@ export function StructuredFieldsPanel() {
         }
         return out;
       };
-      const patch: VisitNotePatch = {
-        complaints: mergeUnique(note.complaints ?? [], protocol.complaintsTemplate),
-        anamnesis: mergeUnique(note.anamnesis ?? [], protocol.anamnesisTemplate),
-        examination: mergeUnique(
-          note.examination ?? [],
-          protocol.examinationTemplate,
-        ),
-        advice: mergeUnique(note.advice ?? [], protocol.adviceTemplate),
-      };
+      const patch: VisitNotePatch = {};
       // Ф3 — structured items append to the prescription constructor
       // (dedup by name+dose so a double-apply is a no-op); the legacy
       // free-text lines are the fallback for protocols that predate it.
@@ -328,15 +182,11 @@ export function StructuredFieldsPanel() {
       if (protocol.followUpDays != null && note.followUpDays == null) {
         patch.followUpDays = protocol.followUpDays;
       }
-      applyPatch(patch);
+      if (Object.keys(patch).length > 0) {
+        applyPatch(patch);
+      }
       if (protocol.conclusionTemplateMd && protocol.conclusionTemplateMd.trim()) {
         requestBodyAppend(protocol.conclusionTemplateMd);
-      }
-      // If the protocol recommends labs, open the lab-order dialog with the
-      // codes pre-selected. The doctor can still tweak before printing.
-      if (protocol.recommendedLabs && protocol.recommendedLabs.length > 0) {
-        setLabOrderInitial(protocol.recommendedLabs);
-        setLabOrderOpen(true);
       }
       setProtocolToApply(null);
     },
@@ -346,7 +196,6 @@ export function StructuredFieldsPanel() {
   const handleRemoveChip = React.useCallback(
     (def: FieldDef, chip: string) => {
       if (!note || isFinalized) return;
-      clearCarried(def.key);
       const arr = note[def.key] ?? [];
       applyPatch({
         [def.key]: arr.filter((c) => c !== chip),
@@ -362,7 +211,7 @@ export function StructuredFieldsPanel() {
         requestBodyRemove(preset.noteTemplate);
       }
     },
-    [note, isFinalized, applyPatch, presetsByField, requestBodyRemove, clearCarried],
+    [note, isFinalized, applyPatch, presetsByField, requestBodyRemove],
   );
 
   return (
@@ -371,68 +220,12 @@ export function StructuredFieldsPanel() {
         <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-foreground">
           {t("structured.title")}
         </h2>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-          {patch.isPending && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2Icon className="size-3 animate-spin" />
-              {t("editor.saving")}
-            </span>
-          )}
-          {note && !isFinalized && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setLabOrderInitial([]);
-                  setLabOrderOpen(true);
-                }}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title={t("structured.labOrderTitle")}
-              >
-                <FlaskConicalIcon className="size-3" />
-                {t("structured.labOrder")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setRxOpen(true)}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title={t("structured.rxTitle")}
-              >
-                <PillIcon className="size-3" />
-                {t("structured.rx")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSickLeaveOpen(true)}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title={t("structured.sickLeaveTitle")}
-              >
-                <ScrollIcon className="size-3" />
-                {t("structured.sickLeave")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setReferOpen(true)}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
-                title={t("structured.referTitle")}
-              >
-                <Share2Icon className="size-3" />
-                {t("structured.refer")}
-              </button>
-            </>
-          )}
-          {note && (
-            <button
-              type="button"
-              onClick={() => setSaveProtocolOpen(true)}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title={t("structured.saveProtocolTitle")}
-            >
-              <BookmarkPlusIcon className="size-3" />
-              {t("structured.saveProtocol")}
-            </button>
-          )}
-        </div>
+        {patch.isPending && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Loader2Icon className="size-3 animate-spin" />
+            {t("editor.saving")}
+          </span>
+        )}
       </div>
 
       {!note ? (
@@ -441,59 +234,23 @@ export function StructuredFieldsPanel() {
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-          {previous && !isFinalized && (
-            <CopyForwardCard
-              previous={previous}
-              pending={patch.isPending}
-              onApply={handleCopyForward}
-            />
-          )}
-          {FIELDS.map((f) => (
-            <React.Fragment key={f.key}>
-              {f.key === "prescriptions" ? (
-                <PrescriptionConstructor
-                  note={note}
-                  disabled={isFinalized}
-                  presets={presetsByField[f.presetField] ?? []}
-                  onSaveRows={saveRxRows}
-                  onPresetClick={(preset) => handlePresetClick(f, preset)}
-                  onRemoveLegacyChip={(chip) => handleRemoveChip(f, chip)}
-                  onOpenCatalog={() => setCatalogOpen(true)}
-                />
-              ) : (
-                <ChipFieldCard
-                  def={f}
-                  value={note[f.key] ?? []}
-                  presets={presetsByField[f.presetField] ?? []}
-                  disabled={isFinalized}
-                  carried={carried[f.key]}
-                  onChange={(next) => {
-                    clearCarried(f.key);
-                    applyPatch({ [f.key]: next } as VisitNotePatch);
-                  }}
-                  onPresetClick={(preset) => handlePresetClick(f, preset)}
-                  onRemoveChip={(chip) => handleRemoveChip(f, chip)}
-                />
-              )}
-              {f.key === "examination" && (
-                <BodyMapCard
-                  points={note.bodyMap ?? []}
-                  disabled={isFinalized}
-                  onChange={(pointsNext) => applyPatch({ bodyMap: pointsNext })}
-                />
-              )}
-              {f.key === "prescriptions" && (
-                <CdsWarningsCard
-                  patientId={activeAppointment?.patient.id ?? null}
-                  prescriptions={cdsTextLines}
-                  drugIds={cdsDrugIds}
-                  diagnosisCode={note.diagnosisCode ?? null}
-                  appointmentId={activeAppointment?.id ?? null}
-                  visitNoteId={visitNoteId}
-                />
-              )}
-            </React.Fragment>
-          ))}
+          <PrescriptionConstructor
+            note={note}
+            disabled={isFinalized}
+            presets={presetsByField[RX_FIELD.presetField] ?? []}
+            onSaveRows={saveRxRows}
+            onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}
+            onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
+            onOpenCatalog={() => setCatalogOpen(true)}
+          />
+          <CdsWarningsCard
+            patientId={activeAppointment?.patient.id ?? null}
+            prescriptions={cdsTextLines}
+            drugIds={cdsDrugIds}
+            diagnosisCode={note.diagnosisCode ?? null}
+            appointmentId={activeAppointment?.id ?? null}
+            visitNoteId={visitNoteId}
+          />
           <DiagnosisCard
             note={note}
             disabled={isFinalized}
@@ -501,17 +258,6 @@ export function StructuredFieldsPanel() {
               applyPatch({ diagnosisCode: code, diagnosisName: name })
             }
             onRequestApplyProtocol={(p) => setProtocolToApply(p)}
-          />
-          <DiagnosisGuideCard
-            note={note}
-            disabled={isFinalized}
-            onMergeAdvice={(chips) => {
-              const current = note.advice ?? [];
-              const next = chips.filter((c) => !current.includes(c));
-              if (next.length === 0) return;
-              applyPatch({ advice: [...current, ...next] });
-            }}
-            onSetFollowUpDays={(days) => applyPatch({ followUpDays: days })}
           />
           {(!isFinalized || note.followUpDays != null) && (
             <FollowUpCard
@@ -529,49 +275,6 @@ export function StructuredFieldsPanel() {
         onPick={handleCatalogPick}
       />
 
-      <LabOrderDialog
-        open={labOrderOpen}
-        onOpenChange={setLabOrderOpen}
-        patientId={activeAppointment?.patient.id ?? null}
-        appointmentId={activeAppointment?.id ?? null}
-        visitNoteId={visitNoteId}
-        diagnosisCode={note?.diagnosisCode ?? null}
-        initialTestCodes={labOrderInitial}
-      />
-
-      <EPrescriptionDialog
-        open={rxOpen}
-        onOpenChange={setRxOpen}
-        patientId={activeAppointment?.patient.id ?? null}
-        appointmentId={activeAppointment?.id ?? null}
-        visitNoteId={visitNoteId}
-        diagnosisCode={note?.diagnosisCode ?? null}
-        diagnosisName={note?.diagnosisName ?? null}
-        seedItems={[
-          ...rxStructured.map((r) => formatPrescriptionLine(r, "ru")),
-          ...(note?.prescriptions ?? []),
-        ]}
-      />
-
-      <SickLeaveDialog
-        open={sickLeaveOpen}
-        onOpenChange={setSickLeaveOpen}
-        patientId={activeAppointment?.patient.id ?? null}
-        appointmentId={activeAppointment?.id ?? null}
-        visitNoteId={visitNoteId}
-        diagnosisCode={note?.diagnosisCode ?? null}
-        diagnosisName={note?.diagnosisName ?? null}
-      />
-
-      <ReferralDialog
-        open={referOpen}
-        onOpenChange={setReferOpen}
-        patientId={activeAppointment?.patient.id ?? null}
-        visitNoteId={visitNoteId}
-        diagnosisCode={note?.diagnosisCode ?? null}
-        diagnosisName={note?.diagnosisName ?? null}
-      />
-
       <ApplyProtocolDialog
         open={!!protocolToApply}
         onOpenChange={(next) => {
@@ -580,253 +283,7 @@ export function StructuredFieldsPanel() {
         protocol={protocolToApply}
         onApply={handleApplyProtocol}
       />
-
-      <SaveProtocolDialog
-        open={saveProtocolOpen}
-        onOpenChange={setSaveProtocolOpen}
-        note={note}
-      />
     </section>
-  );
-}
-
-/**
- * Ф7 — copy-forward. Видна только когда у пациента есть прошлый FINALIZED
- * визит у этого врача и текущая запись ещё в DRAFT. Не автоматом — врач
- * решает кнопкой.
- */
-function CopyForwardCard({
-  previous,
-  pending,
-  onApply,
-}: {
-  previous: PreviousVisitRow;
-  pending: boolean;
-  onApply: () => void;
-}) {
-  const t = useTranslations("doctor.reception");
-  const fmt = useFormatter();
-  const date = previous.finalizedAt ? new Date(previous.finalizedAt) : null;
-  const rxCount = previous.visitPrescriptions.length;
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <HistoryIcon className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-foreground">
-            {date
-              ? t("copyForward.title", {
-                  date: fmt.dateTime(date, {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  }),
-                })
-              : t("copyForward.titleNoDate")}
-          </p>
-          <p className="truncate text-[11px] text-muted-foreground">
-            {previous.diagnosisCode && (
-              <span className="font-mono font-semibold text-primary/80">
-                {previous.diagnosisCode}{" "}
-              </span>
-            )}
-            {previous.diagnosisName ?? "—"}
-            {rxCount > 0 && (
-              <span> · {t("copyForward.rxCount", { count: rxCount })}</span>
-            )}
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={onApply}
-        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-primary/30 bg-card px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
-      >
-        <CopyPlusIcon className="size-3" />
-        {t("copyForward.button")}
-      </button>
-    </div>
-  );
-}
-
-function ChipFieldCard({
-  def,
-  value,
-  presets,
-  disabled,
-  carried,
-  onChange,
-  onPresetClick,
-  onRemoveChip,
-}: {
-  def: FieldDef;
-  value: string[];
-  presets: DoctorPresetRow[];
-  disabled: boolean;
-  carried?: Set<string>;
-  onChange: (next: string[]) => void;
-  onPresetClick: (preset: DoctorPresetRow) => void;
-  onRemoveChip: (chip: string) => void;
-}) {
-  const t = useTranslations("doctor.reception");
-  const [adding, setAdding] = React.useState(false);
-  const [draft, setDraft] = React.useState("");
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
-
-  React.useEffect(() => {
-    if (adding) inputRef.current?.focus();
-  }, [adding]);
-
-  const commit = () => {
-    const v = draft.trim();
-    if (!v) {
-      setAdding(false);
-      setDraft("");
-      return;
-    }
-    if (!value.includes(v)) {
-      onChange([...value, v]);
-    }
-    setDraft("");
-    setAdding(false);
-  };
-
-  const Icon = def.Icon;
-  // Hide preset chips that are already in the value list — keeps the row
-  // shorter and avoids the "click does nothing" feel.
-  const availablePresets = presets.filter((p) => !value.includes(p.fieldValue));
-
-  return (
-    <div className="rounded-xl border border-border bg-background px-2.5 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-1.5">
-          <span className="inline-flex size-5 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <Icon className="size-3" />
-          </span>
-          <span className="text-xs font-semibold text-foreground">{t(def.labelKey)}</span>
-          {value.length > 0 && (
-            <span className="rounded-md bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
-              {value.length}
-            </span>
-          )}
-        </div>
-        <div className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            aria-label={t("structured.add")}
-            disabled={disabled || adding}
-            onClick={() => setAdding(true)}
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-          >
-            <PlusIcon className="size-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {!disabled && availablePresets.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {availablePresets.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onPresetClick(p)}
-              title={
-                p.noteTemplate
-                  ? t("structured.presetTitleWithTemplate")
-                  : t("structured.presetTitle")
-              }
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-            >
-              {p.noteTemplate && (
-                <WandSparklesIcon className="size-2.5 text-primary/70" />
-              )}
-              {p.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-1.5 flex flex-wrap gap-1">
-        {value.map((chip) => (
-          <Chip
-            key={chip}
-            label={chip}
-            fromPast={carried?.has(chip) ?? false}
-            onRemove={disabled ? undefined : () => onRemoveChip(chip)}
-          />
-        ))}
-        {adding ? (
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              } else if (e.key === "Escape") {
-                setAdding(false);
-                setDraft("");
-              }
-            }}
-            placeholder={t(def.placeholderKey)}
-            className="inline-flex h-6 min-w-[160px] items-center rounded-md border border-primary/40 bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        ) : (
-          !disabled &&
-          value.length === 0 &&
-          availablePresets.length === 0 && (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-dashed border-border px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <PlusIcon className="size-3" />
-              {t("structured.add")}
-            </button>
-          )
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Chip({
-  label,
-  fromPast,
-  onRemove,
-}: {
-  label: string;
-  fromPast?: boolean;
-  onRemove?: () => void;
-}) {
-  const t = useTranslations("doctor.reception");
-  return (
-    <span
-      title={fromPast ? t("copyForward.carried") : undefined}
-      className={cn(
-        "inline-flex h-6 items-center gap-0.5 rounded-md border border-primary/20 bg-primary/10 px-1.5 text-[11px] font-medium text-primary",
-        fromPast && "border-dashed border-primary/50 bg-primary/5",
-      )}
-    >
-      {fromPast && <HistoryIcon className="size-2.5 text-primary/60" />}
-      {label}
-      {onRemove && (
-        <button
-          type="button"
-          aria-label={t("structured.remove")}
-          onClick={onRemove}
-          className="ml-0.5 inline-flex size-3.5 items-center justify-center rounded-sm text-primary/60 transition-colors hover:bg-primary/15 hover:text-primary"
-        >
-          <XIcon className="size-2.5" />
-        </button>
-      )}
-    </span>
   );
 }
 

@@ -52,30 +52,32 @@ export function DraftConclusionsCard() {
       ) : (
         <ul className="divide-y divide-border">
           {(q.data ?? []).map((d) => (
-            <li
-              key={d.id}
-              className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted"
-            >
-              <span className="inline-flex size-8 items-center justify-center rounded-lg bg-warning/10 text-warning">
-                <FileTextIcon className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-foreground">
-                  {d.patient.fullName}
+            <li key={d.id}>
+              <Link
+                href={`/${locale}/doctor/conclusions/${d.id}`}
+                className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted"
+              >
+                <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
+                  <FileTextIcon className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-foreground">
+                    {d.patient.fullName}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {d.diagnosisCode
+                      ? `${d.diagnosisCode} · ${d.diagnosisName ?? ""}`
+                      : t("drafts.noDiagnosis")}{" "}
+                    · {new Date(d.updatedAt).toLocaleString("ru-RU", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {d.diagnosisCode
-                    ? `${d.diagnosisCode} · ${d.diagnosisName ?? ""}`
-                    : t("drafts.noDiagnosis")}{" "}
-                  · {new Date(d.updatedAt).toLocaleString("ru-RU", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </div>
-              </div>
-              <ChevronRightIcon className="size-4 text-muted-foreground" />
+                <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+              </Link>
             </li>
           ))}
         </ul>

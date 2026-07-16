@@ -6,14 +6,13 @@ import { useParams, usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   BarChart3Icon,
-  BellIcon,
   BookOpenIcon,
   BrainIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   ClipboardCheckIcon,
   FileTextIcon,
-  MessageSquareIcon,
+  SendIcon,
   SettingsIcon,
   SunIcon,
   UsersIcon,
@@ -49,16 +48,15 @@ const DOCTOR_NAV: NavGroup[] = [
       // /doctor/visits route stays intact (per-patient deep links use it).
       // «Документы» likewise hidden — route + per-patient documents stay.
       { href: "conclusions", labelKey: "sidebar.conclusions", icon: FileTextIcon },
-      { href: "messages", labelKey: "sidebar.messages", icon: MessageSquareIcon },
+      // «Сообщения» → «Telegram» — the doctor↔patient chat reaches patients
+      // through the Telegram mini-app; the label + icon make that explicit.
+      { href: "messages", labelKey: "sidebar.telegram", icon: SendIcon },
       { href: "analytics", labelKey: "sidebar.analytics", icon: BarChart3Icon },
     ],
   },
-  {
-    labelKey: "groups.communications",
-    items: [
-      { href: "notifications", labelKey: "sidebar.notifications", icon: BellIcon },
-    ],
-  },
+  // «Уведомления» hidden per doctor feedback — the «Мой день» today-tasks
+  // surface those items instead. Route stays for deep links. That left the
+  // «Коммуникации» group empty, so it's dropped.
   {
     labelKey: "groups.settings",
     items: [

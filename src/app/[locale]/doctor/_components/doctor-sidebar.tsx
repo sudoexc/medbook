@@ -13,7 +13,6 @@ import {
   ChevronsRightIcon,
   ClipboardCheckIcon,
   FileTextIcon,
-  HistoryIcon,
   MessageSquareIcon,
   SettingsIcon,
   SunIcon,
@@ -45,9 +44,10 @@ const DOCTOR_NAV: NavGroup[] = [
       { href: "my-day", labelKey: "sidebar.myDay", icon: SunIcon },
       { href: "reception", labelKey: "sidebar.reception", icon: ClipboardCheckIcon },
       { href: "patients", labelKey: "sidebar.patients", icon: UsersIcon },
-      { href: "visits", labelKey: "sidebar.visits", icon: HistoryIcon },
-      // «Документы» hidden from the cabinet nav per doctor feedback — the
-      // route + per-patient documents (patient card tab) stay intact.
+      // «История визитов» hidden from the cabinet nav per doctor feedback —
+      // every patient card already carries its own visit history. The
+      // /doctor/visits route stays intact (per-patient deep links use it).
+      // «Документы» likewise hidden — route + per-patient documents stay.
       { href: "conclusions", labelKey: "sidebar.conclusions", icon: FileTextIcon },
       { href: "messages", labelKey: "sidebar.messages", icon: MessageSquareIcon },
       { href: "analytics", labelKey: "sidebar.analytics", icon: BarChart3Icon },

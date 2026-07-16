@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDownIcon, SlidersHorizontalIcon, UploadIcon } from "lucide-react";
+import { SlidersHorizontalIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ const TABS: Array<{
   highlight?: "danger";
 }> = [
   { key: "all", labelKey: "tabs.all" },
+  { key: "today", labelKey: "tabs.today" },
   { key: "active", labelKey: "tabs.active" },
   { key: "new", labelKey: "tabs.new" },
   { key: "watch", labelKey: "tabs.watch" },
@@ -64,14 +65,7 @@ export function PatientsHeader() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 pb-2">
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-          >
-            <UploadIcon className="size-4 text-muted-foreground" />
-            {t("actions.export")}
-            <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-          </button>
+          {/* «Экспорт» removed per doctor feedback. */}
           <button
             type="button"
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"

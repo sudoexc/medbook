@@ -27,6 +27,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import {
   classifyDoctorSegment,
   DAY_MS,
@@ -36,7 +37,7 @@ import {
 const QuerySchema = z.object({
   q: z.string().trim().min(1).optional(),
   tab: z
-    .enum(["all", "active", "new", "watch", "returned", "dormant"])
+    .enum(["all", "today", "active", "new", "watch", "returned", "dormant"])
     .default("all"),
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -113,9 +114,31 @@ export const GET = createApiListHandler(
     // appointments by patient → classify → keep only IDs in the target
     // bucket, then layer `id: { in: ids }` on the main query.
     //
-    // `tab === "all"` skips this step and falls through to the plain
+    // «Сегодняшние» — patients this doctor has an appointment with *today*
+    // (Tashkent wall clock), any live status (booked / waiting / on-visit /
+    // done — cancels & no-shows excluded). Not a donut segment, just a
+    // day filter, so it's handled before the segment classifier below.
+    //
+    // `tab === "all"` skips both branches and falls through to the plain
     // doctor-caseload filter above.
-    if (q.tab !== "all") {
+    if (q.tab === "today") {
+      const { dayStart, dayEnd } = tashkentDayBounds(now);
+      const todays = await prisma.appointment.findMany({
+        where: {
+          doctorId,
+          date: { gte: dayStart, lt: dayEnd },
+          status: { in: ["BOOKED", "WAITING", "IN_PROGRESS", "COMPLETED"] },
+        },
+        select: { patientId: true },
+        distinct: ["patientId"],
+      });
+      const todayIds = todays.map((a) => a.patientId);
+      if (todayIds.length === 0) {
+        return ok({ rows: [], nextCursor: null, total: 0 });
+      }
+      delete where.appointments;
+      where.id = { in: todayIds };
+    } else if (q.tab !== "all") {
       const grouped = await prisma.appointment.groupBy({
         by: ["patientId"],
         where: { doctorId, status: "COMPLETED" },

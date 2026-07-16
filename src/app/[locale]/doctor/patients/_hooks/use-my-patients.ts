@@ -4,6 +4,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 
 export type DoctorPatientTab =
   | "all"
+  | "today"
   | "active"
   | "new"
   | "watch"

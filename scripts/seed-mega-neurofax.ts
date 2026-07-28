@@ -679,20 +679,124 @@ async function main() {
   }
   console.log(`  ✓ actions: +${actionN}\n`);
 
-  // ── 11. Documents (~50) ──────────────────────────────────────────────────
+  // ── 10b. Visit notes (finalized conclusions + a few drafts) ───────────────
+  // Every finished visit gets a written conclusion so the doctor cabinet
+  // lights up: «История диагнозов» (finalized notes w/ ICD), «Документы» /
+  // last-visit cards (visitNoteId → opens the conclusion), reception
+  // «Последний диагноз», and printed заключение. The newest handful stay
+  // DRAFT to fill «Черновики заключений».
+  console.log("┌─ SEED visit notes");
+  const ANAMNESIS = [
+    "Считает себя больным около недели",
+    "Хроническое течение более года, периодические обострения",
+    "Ранее по данному поводу не обследовался",
+    "Наследственность отягощена по линии матери",
+    "Симптоматика постепенно нарастает",
+    "На фоне терапии отмечает улучшение",
+  ];
+  const EXAM = [
+    "Состояние удовлетворительное, сознание ясное",
+    "Кожные покровы обычной окраски, чистые",
+    "Дыхание везикулярное, хрипов нет",
+    "Тоны сердца ясные, ритмичные",
+    "Живот мягкий, безболезненный",
+    "Зев спокойный, миндалины не увеличены",
+    "АД 130/85 мм рт. ст., ЧСС 76 в мин.",
+  ];
+  const RX_TEXT = [
+    "Эналаприл 10 мг — 1 таб. утром, 30 дней",
+    "Амоксициллин 500 мг — 3 раза в день, 7 дней",
+    "Омепразол 20 мг — 1 капс. натощак, 14 дней",
+    "Ибупрофен 400 мг — при боли, до 3 раз в день",
+    "Лоратадин 10 мг — 1 таб. в день, 10 дней",
+    "Мелоксикам 15 мг — 1 таб. в день, 10 дней",
+    "Дротаверин 40 мг — при спазме, до 3 раз в день",
+  ];
+  const ADVICE = [
+    "Контроль АД дважды в день, вести дневник",
+    "Обильное тёплое питьё, домашний режим",
+    "Диета с ограничением соли и жирного",
+    "Ограничить физические нагрузки 2 недели",
+    "Повторный визит при ухудшении состояния",
+    "Соблюдать режим сна и отдыха",
+  ];
+  const completedForNotes = appointments
+    .filter((a) => a.status === "COMPLETED")
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  // Reserve the most recent finished visits as DRAFTs for the drafts card.
+  const draftPool = new Set(completedForNotes.slice(-14).map((a) => a.id));
+  let vnFinal = 0, vnDraft = 0, vnSeq = 0;
+  for (const a of completedForNotes) {
+    const makeDraft = draftPool.has(a.id) && chance(0.55);
+    // ~12% of finished visits simply have no written conclusion — realistic.
+    if (!makeDraft && chance(0.12)) continue;
+    const diag = pick(DIAGNOSES);
+    const startedAt = addMin(a.date, 2);
+    vnSeq++;
+    try {
+      await prisma.visitNote.create({
+        data: {
+          clinicId,
+          appointmentId: a.id,
+          patientId: a.patientId,
+          doctorId: a.doctorId,
+          status: makeDraft ? "DRAFT" : "FINALIZED",
+          startedAt,
+          finalizedAt: makeDraft ? null : addMin(a.date, 20 + rand(20)),
+          documentNumber: makeDraft
+            ? null
+            : `NF-2026-${String(100 + vnSeq).padStart(6, "0")}`,
+          diagnosisCode: makeDraft ? (chance(0.5) ? diag.code : null) : diag.code,
+          diagnosisName: makeDraft ? (chance(0.5) ? diag.text : null) : diag.text,
+          complaints: [pick(COMPLAINTS)],
+          anamnesis: pickN(ANAMNESIS, 1 + rand(2)),
+          examination: pickN(EXAM, 2 + rand(2)),
+          prescriptions: pickN(RX_TEXT, 1 + rand(3)),
+          advice: pickN(ADVICE, 1 + rand(2)),
+          followUpDays: pick([null, 3, 7, 14, 30] as const),
+          bodyMarkdown: `Жалобы: ${pick(COMPLAINTS).toLowerCase()}. Объективно: ${pick(EXAM).toLowerCase()}. Диагноз: ${diag.text} (${diag.code}). Назначено лечение, рекомендован контроль в динамике.`,
+          createdAt: startedAt,
+        },
+      });
+      if (makeDraft) vnDraft++;
+      else vnFinal++;
+    } catch {
+      /* appointmentId unique collision — skip */
+    }
+  }
+  console.log(`  ✓ visit notes: +${vnFinal} finalized, +${vnDraft} drafts\n`);
+
+  // ── 11. Documents (~130) — openable demo PDFs (public/uploads/demo) ───────
   console.log("┌─ SEED documents");
+  const DEMO_DOC_FILE: Record<string, string> = {
+    RESULT: "/uploads/demo/result.pdf",
+    REFERRAL: "/uploads/demo/referral.pdf",
+    PRESCRIPTION: "/uploads/demo/prescription.pdf",
+    RECEIPT: "/uploads/demo/receipt.pdf",
+    OTHER: "/uploads/demo/other.pdf",
+  };
+  const DEMO_DOC_TITLE: Record<string, readonly string[]> = {
+    RESULT: ["Результат УЗИ", "Анализ крови", "Результат МРТ", "ЭКГ", "Результат КТ"],
+    REFERRAL: ["Направление на МРТ", "Направление к неврологу", "Направление на анализы"],
+    PRESCRIPTION: ["Рецепт"],
+    RECEIPT: ["Квитанция об оплате"],
+    OTHER: ["Заключение специалиста", "Выписка из карты"],
+  };
   let docN = 0;
   for (let i = 0; i < 130; i++) {
     const a = pick(appointments.filter((x) => x.status === "COMPLETED"));
     if (!a) break;
+    const kind = pick(["RESULT", "REFERRAL", "PRESCRIPTION", "RECEIPT", "OTHER"] as const);
     await prisma.document.create({
       data: {
         clinicId,
         patientId: a.patientId,
         appointmentId: a.id,
-        type: pick(["RESULT", "REFERRAL", "PRESCRIPTION", "RECEIPT", "OTHER"] as const),
-        title: pick(["Результат УЗИ", "Анализ крови", "Направление на МРТ", "Рецепт", "Квитанция", "Заключение терапевта"]),
-        fileUrl: `s3://medbook/${a.patientId}/${a.id}/doc-${i}.pdf`,
+        type: kind,
+        title: pick(DEMO_DOC_TITLE[kind]!),
+        // Static demo PDFs baked into the image (public/uploads/demo/*.pdf),
+        // so the «Недавние файлы» card actually opens/downloads them.
+        fileUrl: DEMO_DOC_FILE[kind]!,
         mimeType: "application/pdf",
         sizeBytes: 50_000 + rand(950_000),
         uploadedById: users[0]?.id ?? null,

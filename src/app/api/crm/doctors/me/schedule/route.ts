@@ -103,6 +103,10 @@ export const GET = createApiListHandler(
       where: {
         doctorId: doctor.id,
         date: { gte: start, lte: end },
+        // Two-lanes: walk-ins live only in the «Живая очередь» lane, never in
+        // the time-grid schedule — otherwise they double up (once here, once
+        // in the live queue) and clutter the day plan.
+        NOT: { channel: "WALKIN" },
       },
       orderBy: [{ date: "asc" }, { id: "asc" }],
       select: {

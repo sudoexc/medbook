@@ -18,7 +18,13 @@ export type DoctorScheduleStatus =
 export function scheduleStatusOf(
   appointmentStatus: string,
 ): DoctorScheduleStatus {
-  if (appointmentStatus === "IN_PROGRESS" || appointmentStatus === "WAITING") {
+  // Only a visit the doctor has actually started is «Идёт приём». WAITING =
+  // patient has arrived and is queued, NOT being seen — it must NOT render as
+  // in_progress: that offers a «Завершить» the server rejects (WAITING→
+  // COMPLETED is invalid) and makes a whole queue look like simultaneous
+  // visits, breaking the one-visit-at-a-time rule. WAITING falls through to
+  // "upcoming" so the row offers «Начать», gated by the single-active guard.
+  if (appointmentStatus === "IN_PROGRESS") {
     return "in_progress";
   }
   if (appointmentStatus === "COMPLETED" || appointmentStatus === "SKIPPED") {

@@ -347,7 +347,8 @@ async function main() {
   }
   console.log(`  ✓ allergies: +${allergyN} · chronics: +${chronicN} · diagnoses: +${diagN}\n`);
 
-  // ── 5. Appointments (~700: 30d past + today + 14d future) ─────────────────
+  // ── 5. Appointments (30d past + today live queue + 14d future, next
+  //       week densely booked) ────────────────────────────────────────────
   console.log("┌─ SEED appointments");
   const appointments: { id: string; patientId: string; doctorId: string; serviceId: string; status: string; date: Date; price: number; segment: string }[] = [];
   const slotKey = (doctorId: string, date: Date) => `${doctorId}|${date.toISOString()}`;
@@ -449,9 +450,11 @@ async function main() {
       `  ✓ today live queue: +${live.created} rows across ${liveDoctors.length} doctors (+${live.payments} payments)`,
     );
   }
-  // Future 14 days: ~20 appts/day
+  // Future 14 days: the NEXT WEEK is densely booked (~42-56 appts/day) so the
+  // upcoming schedule/calendar looks like a busy clinic a week ahead (boss
+  // ask); days 8-14 taper to ~22-34/day.
   for (let d = 1; d <= 14; d++) {
-    const apptCount = 22 + rand(12);
+    const apptCount = d <= 7 ? 42 + rand(14) : 22 + rand(12);
     for (let i = 0; i < apptCount; i++) {
       const patient = pick(patients.filter((p) => p.segment !== "CHURN"));
       await tryPlace({ patientId: patient.id, segment: patient.segment, dayOffset: d, statusBias: ["BOOKED"] });

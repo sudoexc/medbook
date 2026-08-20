@@ -51,6 +51,13 @@ jobs:
         # git-ignored — typecheck, tests and build all import it.
         run: npx prisma generate
 
+      - name: Next route typegen
+        # Next 16 emits global route/page/layout types (LayoutProps, ...)
+        # into .next/types — app code references them, so on a fresh
+        # checkout tsc fails with TS2304 without this step. `next typegen`
+        # generates them without a full build.
+        run: npx next typegen
+
       - name: Typecheck
         # tsc OOMs with the default heap on this codebase. Public-repo
         # ubuntu-latest runners have 4 vCPU / 16 GB RAM, so 8 GB heap fits.

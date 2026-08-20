@@ -61,6 +61,22 @@ type ReceptionContextValue = {
    */
   handoutAppendRequest: { text: string; nonce: number } | null;
   requestHandoutAppend: (text: string) => void;
+  /**
+   * P0-3 — right after a successful finalize the queue refetch flips the
+   * appointment to COMPLETED, `activeAppointment` collapses to null and the
+   * card unmounts before the doctor can press «Печать». Pinning keeps the
+   * just-finalized appointment active until the doctor explicitly picks
+   * another patient or a new visit goes IN_PROGRESS.
+   */
+  pinFinalizedAppointment: (appointment: QueueAppointment) => void;
+  /**
+   * P0-2 — editors register a "push unsaved draft to the server now"
+   * callback here; finalize awaits `flushDraftEdits()` before POSTing so a
+   * debounced autosave tail is never dropped from the legally-final
+   * document. Returns an unregister function for effect cleanup.
+   */
+  registerDraftFlush: (flush: () => Promise<void>) => () => void;
+  flushDraftEdits: () => Promise<void>;
   activeTab: ReceptionTab;
   setActiveTab: (t: ReceptionTab) => void;
 };
@@ -75,16 +91,67 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
 
   // The doctor can explicitly select an appointment via Queue card. Default
   // picks the IN_PROGRESS one if it exists.
-  const [pickAppointmentId, setPickAppointmentId] = React.useState<string | null>(
-    null,
+  const [pickAppointmentId, setPickAppointmentIdState] = React.useState<
+    string | null
+  >(null);
+
+  // P0-3 — snapshot of the appointment we just finalized. Kept in a ref too
+  // so the visit-note effect below can consult it without widening its deps.
+  const [pinnedFinalized, setPinnedFinalized] =
+    React.useState<QueueAppointment | null>(null);
+  const pinnedFinalizedRef = React.useRef<QueueAppointment | null>(null);
+
+  const pinFinalizedAppointment = React.useCallback(
+    (appointment: QueueAppointment) => {
+      // The queue row still says IN_PROGRESS until the refetch lands —
+      // snapshot as COMPLETED so the fallback (row paged out of the queue)
+      // still renders the finished state.
+      const snapshot = { ...appointment, status: "COMPLETED" as const };
+      pinnedFinalizedRef.current = snapshot;
+      setPinnedFinalized(snapshot);
+    },
+    [],
   );
+
+  const clearFinalizedPin = React.useCallback(() => {
+    pinnedFinalizedRef.current = null;
+    setPinnedFinalized(null);
+  }, []);
+
+  // Explicitly choosing another patient releases the pin — the doctor moved on.
+  const setPickAppointmentId = React.useCallback(
+    (id: string | null) => {
+      if (id && id !== pinnedFinalizedRef.current?.id) clearFinalizedPin();
+      setPickAppointmentIdState(id);
+    },
+    [clearFinalizedPin],
+  );
+
+  // A new visit going IN_PROGRESS supersedes the pin — the normal "next
+  // patient from the queue" flow must win over the frozen finished card.
+  React.useEffect(() => {
+    if (
+      inProgress &&
+      pinnedFinalizedRef.current &&
+      inProgress.id !== pinnedFinalizedRef.current.id
+    ) {
+      clearFinalizedPin();
+    }
+  }, [inProgress, clearFinalizedPin]);
 
   const activeAppointment = React.useMemo(() => {
     if (pickAppointmentId) {
       return queue.find((a) => a.id === pickAppointmentId) ?? null;
     }
-    return inProgress;
-  }, [queue, pickAppointmentId, inProgress]);
+    if (inProgress) return inProgress;
+    // P0-3 — no live visit: fall back to the just-finalized one so the
+    // finished-visit card (with the print buttons) survives the queue
+    // refetch. Prefer the fresh queue row; keep the snapshot if it paged out.
+    if (pinnedFinalized) {
+      return queue.find((a) => a.id === pinnedFinalized.id) ?? pinnedFinalized;
+    }
+    return null;
+  }, [queue, pickAppointmentId, inProgress, pinnedFinalized]);
 
   const ensureNote = useEnsureVisitNote();
   const [visitNoteId, setVisitNoteId] = React.useState<string | null>(null);
@@ -92,6 +159,15 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
   // When the active appointment changes (and is IN_PROGRESS), upsert the note.
   React.useEffect(() => {
     if (!activeAppointment || activeAppointment.status !== "IN_PROGRESS") {
+      // P0-3 — the pinned just-finalized appointment flips to COMPLETED
+      // within a second of finalize; keep its note id so the finished-visit
+      // card and the print buttons stay usable.
+      if (
+        activeAppointment &&
+        activeAppointment.id === pinnedFinalizedRef.current?.id
+      ) {
+        return;
+      }
       setVisitNoteId(null);
       return;
     }
@@ -144,6 +220,28 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
     setHandoutAppendRequest({ text: trimmed, nonce: Date.now() });
   }, []);
 
+  // P0-2 — flush registry. A Set, not a single slot: the conclusion and the
+  // handout editors are both mounted (hidden tabs) and both autosave on a
+  // debounce, so finalize must be able to drain both tails.
+  const draftFlushesRef = React.useRef(new Set<() => Promise<void>>());
+  const registerDraftFlush = React.useCallback(
+    (flush: () => Promise<void>) => {
+      draftFlushesRef.current.add(flush);
+      return () => {
+        draftFlushesRef.current.delete(flush);
+      };
+    },
+    [],
+  );
+  const flushDraftEdits = React.useCallback(async () => {
+    // Sequential on purpose — the editors PATCH the same visit-note row and
+    // parallel PATCHes would race in last-write-wins order server-side. Any
+    // rejection propagates: the caller must abort the finalize.
+    for (const flush of Array.from(draftFlushesRef.current)) {
+      await flush();
+    }
+  }, []);
+
   const [activeTab, setActiveTab] = React.useState<ReceptionTab>("session");
 
   // Realtime — when any appointment status changes in this clinic, refetch
@@ -194,6 +292,9 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       requestBodyRemove,
       handoutAppendRequest,
       requestHandoutAppend,
+      pinFinalizedAppointment,
+      registerDraftFlush,
+      flushDraftEdits,
       activeTab,
       setActiveTab,
     }),
@@ -202,6 +303,7 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       queueQuery.isLoading,
       activeAppointment,
       pickAppointmentId,
+      setPickAppointmentId,
       visitNoteId,
       ensureNote.isPending,
       noteQuery.isLoading,
@@ -213,6 +315,9 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       requestBodyRemove,
       handoutAppendRequest,
       requestHandoutAppend,
+      pinFinalizedAppointment,
+      registerDraftFlush,
+      flushDraftEdits,
       activeTab,
     ],
   );

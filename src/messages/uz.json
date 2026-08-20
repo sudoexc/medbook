@@ -5791,6 +5791,11 @@
         "emptyComplaints": "Shikoyatlar",
         "emptyAdvice": "Tavsiyalar",
         "emptyHandout": "Bemor eslatmasi",
+        "emptyConclusion": "Xulosa matni",
+        "emptyPrescriptions": "Tayinlovlar",
+        "finalizeErrorDiagnosis": "Tashrifni yakunlab bo‘lmadi: xulosada tashxis ko‘rsatilmagan.",
+        "finalizeErrorGeneric": "Tashrifni yakunlab bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.",
+        "finalizeFlushError": "Hujjatdagi o‘zgarishlar saqlanmadi — tashrif yakunlanmadi. Qayta urinib ko‘ring.",
         "docNumber": "Xulosa №"
       },
       "recentFiles": {

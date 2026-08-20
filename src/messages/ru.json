@@ -5791,6 +5791,11 @@
         "emptyComplaints": "Жалобы",
         "emptyAdvice": "Рекомендации",
         "emptyHandout": "Памятка пациента",
+        "emptyConclusion": "Текст заключения",
+        "emptyPrescriptions": "Назначения",
+        "finalizeErrorDiagnosis": "Не удалось завершить визит: в заключении не указан диагноз.",
+        "finalizeErrorGeneric": "Не удалось завершить визит. Проверьте соединение и попробуйте ещё раз.",
+        "finalizeFlushError": "Не удалось сохранить изменения в документе — визит не завершён. Попробуйте ещё раз.",
         "docNumber": "№ заключения"
       },
       "recentFiles": {

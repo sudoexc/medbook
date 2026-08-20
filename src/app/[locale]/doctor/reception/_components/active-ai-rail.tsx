@@ -19,7 +19,6 @@ import {
 
 import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
-import { InDevelopment } from "@/components/ui/in-development";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
@@ -35,6 +34,15 @@ type WarningTone = ReceptionWarning["tone"];
 type DiagnosisHintTone = "likely" | "possible";
 
 export function ActiveAIRail() {
+  // P1-9 — AI is globally paused: render nothing instead of shipping a
+  // dimmed «В разработке» column to production. The split keeps the rules
+  // of hooks intact — the inner component (and its queries) never mounts
+  // while the flag is off. Flip AI_ENABLED to bring the rail back.
+  if (!AI_ENABLED) return null;
+  return <ActiveAIRailInner />;
+}
+
+function ActiveAIRailInner() {
   const t = useTranslations("doctor.reception");
   const { activeAppointment, visitNoteId, bumpBodyInject } = useReceptionContext();
   const note = useVisitNote(visitNoteId).data ?? null;
@@ -44,7 +52,9 @@ export function ActiveAIRail() {
   // Summary — backed by the existing patient-summary cache endpoint.
   const summary = useQuery<{ text: string; pendingRefresh: boolean }>({
     queryKey: ["doctor", "reception", "ai-summary", patientId],
-    enabled: !!patientId,
+    // AI_ENABLED is redundant while the flag gates the whole component, but
+    // it keeps this backend call off even if the rail is ever re-wrapped.
+    enabled: AI_ENABLED && !!patientId,
     queryFn: async ({ signal }) => {
       const res = await fetch(
         `/api/crm/patients/${patientId}/summary?locale=ru`,
@@ -99,7 +109,6 @@ export function ActiveAIRail() {
   };
 
   return (
-    <InDevelopment active={!AI_ENABLED} className="shrink-0">
     <aside className="flex w-[320px] shrink-0 flex-col gap-4 xl:gap-5">
       <Section
         icon={SparklesIcon}
@@ -244,7 +253,6 @@ export function ActiveAIRail() {
         <ChevronRightIcon className="size-4 text-primary" />
       </button>
     </aside>
-    </InDevelopment>
   );
 }
 

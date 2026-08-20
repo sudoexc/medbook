@@ -19,12 +19,20 @@ import {
 } from "@/lib/catalogs/handout-composer";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
   pickGuideText,
   useDiagnosisGuide,
 } from "../_hooks/use-diagnosis-guide";
-import { usePatchVisitNote, useVisitNote } from "../_hooks/use-visit-note";
+import {
+  usePatchVisitNote,
+  useVisitNote,
+  visitNoteKey,
+  type VisitNotePatch,
+  type VisitNoteRow,
+} from "../_hooks/use-visit-note";
 import { HandoutLibraryDrawer } from "./handout-library-drawer";
 
 const AUTOSAVE_DEBOUNCE_MS = 1_500;
@@ -138,6 +146,106 @@ function TabButton({
   );
 }
 
+// ── Draft safety (P0-2 / P0-4) ────────────────────────────────────────
+//
+// Both editors autosave on a 1.5s debounce, leaving a window where the last
+// keystrokes exist only in local state. This hook closes that window:
+//  - registers a flush callback in the reception context so «Завершить
+//    визит» can push the tail to the server BEFORE finalizing (P0-2);
+//  - flushes on unmount so tab switches / SPA navigation don't drop the
+//    tail (P0-4a);
+//  - warns via beforeunload while unsaved text exists (P0-4b).
+function useDraftSafety({
+  field,
+  note,
+  isFinalized,
+  draft,
+  dirty,
+  lastSentRef,
+  patch,
+  onFlushed,
+}: {
+  field: "bodyMarkdown" | "patientHandoutMarkdown";
+  note: VisitNoteRow | null;
+  isFinalized: boolean;
+  draft: string;
+  dirty: boolean;
+  lastSentRef: React.MutableRefObject<string | null>;
+  patch: ReturnType<typeof usePatchVisitNote>;
+  onFlushed: () => void;
+}) {
+  const { registerDraftFlush } = useReceptionContext();
+  const qc = useQueryClient();
+
+  // Latest-value snapshot so the unmount cleanup and the registered flush
+  // callback never close over a stale draft.
+  const stateRef = React.useRef({ note, isFinalized, draft });
+  stateRef.current = { note, isFinalized, draft };
+  const patchRef = React.useRef(patch);
+  patchRef.current = patch;
+  const onFlushedRef = React.useRef(onFlushed);
+  onFlushedRef.current = onFlushed;
+
+  // Same dirtiness rule as the autosave effect: pending only when the draft
+  // differs from both the server copy and the last successfully sent value.
+  const pendingText = React.useCallback((): string | null => {
+    const s = stateRef.current;
+    if (!s.note || s.isFinalized) return null;
+    const current = s.note[field] ?? "";
+    const clean =
+      (s.draft === current && lastSentRef.current === null) ||
+      lastSentRef.current === s.draft;
+    return clean ? null : s.draft;
+  }, [field, lastSentRef]);
+
+  // P0-2 — finalize awaits this via the context registry; a rejected PATCH
+  // propagates so the caller aborts the finalize (never sign a note whose
+  // text failed to save). No-op when nothing is dirty.
+  React.useEffect(
+    () =>
+      registerDraftFlush(async () => {
+        const text = pendingText();
+        if (text === null) return;
+        // Cast: TS can't narrow a computed union key to VisitNotePatch.
+        await patchRef.current.mutateAsync({ [field]: text } as VisitNotePatch);
+        lastSentRef.current = text;
+        onFlushedRef.current();
+      }),
+    [registerDraftFlush, pendingText, field, lastSentRef],
+  );
+
+  // P0-4a — flush on unmount. `mutate` (not mutateAsync): the mutation and
+  // its cache-merge onSuccess keep running after unmount in react-query.
+  React.useEffect(() => {
+    return () => {
+      const s = stateRef.current;
+      const text = pendingText();
+      if (text === null || !s.note) return;
+      const noteId = s.note.id;
+      // Fold the tail into the cached row synchronously FIRST: a quick
+      // remount re-hydrates the draft from this cache, and without the tail
+      // it would resurrect the pre-flush text and autosave it back over the
+      // flushed version.
+      qc.setQueryData<VisitNoteRow>(visitNoteKey(noteId), (prev) =>
+        prev ? { ...prev, [field]: text } : prev,
+      );
+      patchRef.current.mutate({ [field]: text } as VisitNotePatch);
+    };
+  }, [pendingText, field, qc]);
+
+  // P0-4b — hard-unload guard while the draft is ahead of the server.
+  React.useEffect(() => {
+    if (!dirty || isFinalized) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chromium ignores preventDefault without returnValue.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, isFinalized]);
+}
+
 // ── Conclusion (clinical bodyMarkdown) ────────────────────────────────
 
 function ConclusionEditor() {
@@ -224,6 +332,21 @@ function ConclusionEditor() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, note?.id, isFinalized]);
+
+  // P0-2/P0-4 — flush-on-finalize registration, flush-on-unmount, unload guard.
+  useDraftSafety({
+    field: "bodyMarkdown",
+    note,
+    isFinalized,
+    draft,
+    dirty,
+    lastSentRef,
+    patch,
+    onFlushed: () => {
+      setSavedAt(Date.now());
+      setDirty(false);
+    },
+  });
 
   // Live-предпросмотр листа: тот же print-роут в iframe (?embed=1 — без
   // панели печати и без audit-шума). key по updatedAt — превью само
@@ -381,6 +504,22 @@ function HandoutEditor() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, note?.id, isFinalized]);
+
+  // P0-2/P0-4 — same draft-safety contract as the conclusion editor; the
+  // handout is part of the printed visit package, so its tail matters too.
+  useDraftSafety({
+    field: "patientHandoutMarkdown",
+    note,
+    isFinalized,
+    draft,
+    dirty,
+    lastSentRef,
+    patch,
+    onFlushed: () => {
+      setSavedAt(Date.now());
+      setDirty(false);
+    },
+  });
 
   const generate = React.useCallback(() => {
     if (!note) return;

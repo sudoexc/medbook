@@ -24,6 +24,8 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ok, err } from "@/server/http";
+import { isLiveLane } from "@/lib/queue-ordering";
+import { pickCurrentVisit } from "@/lib/doctor-current-visit";
 import {
   scheduleStatusOf,
   type DoctorScheduleStatus,
@@ -319,6 +321,9 @@ export const GET = createApiListHandler(
           status: true,
           startedAt: true,
           calledAt: true,
+          // Two-lanes: splits the booked schedule lane from the walk-in live
+          // lane (see `bookedAppts` below).
+          channel: true,
           // Two-lanes: only used as the "ждёт с …" label source for the
           // liveQueue block below — never as an ordering key here.
           queuedAt: true,
@@ -437,7 +442,13 @@ export const GET = createApiListHandler(
     // ──────────────────────────────────────────────────────────────────────
     // schedule + summary (always-on numbers)
     // ──────────────────────────────────────────────────────────────────────
-    const schedule: ScheduleEntry[] = todayAppts.map((a) => ({
+    // Two-lanes (docs/TZ-two-lanes.md): the booked lane is the time-grid
+    // schedule; walk-ins belong to the live queue only. Deriving `schedule`
+    // and `upcoming` from anything else double-shows every walk-in — once in
+    // the day plan and again in «Живая очередь» — and inflates the counters.
+    const bookedAppts = todayAppts.filter((a) => !isLiveLane(a));
+
+    const schedule: ScheduleEntry[] = bookedAppts.map((a) => ({
       id: a.id,
       startTime: a.time ?? formatHHMM(a.date),
       patientId: a.patientId,
@@ -478,23 +489,10 @@ export const GET = createApiListHandler(
     // practice — the queue UI enforces single-in-progress). Falls back to
     // the next upcoming appointment within 15 minutes if nothing is active.
     // ──────────────────────────────────────────────────────────────────────
-    const inProgress = todayAppts.find(
-      (a) => a.status === "IN_PROGRESS" || a.status === "WAITING",
-    );
-    let currentSource: (typeof todayAppts)[number] | undefined = inProgress;
-    if (!currentSource) {
-      const upcomingSoon = todayAppts.find((a) => {
-        const ms = a.date.getTime() - now.getTime();
-        // CRM bookings auto-confirm, so CONFIRMED is the default pre-visit
-        // state — without it the doctor never sees the imminent patient card.
-        return (
-          (a.status === "BOOKED" || a.status === "CONFIRMED") &&
-          ms >= 0 &&
-          ms <= 15 * 60_000
-        );
-      });
-      currentSource = upcomingSoon;
-    }
+    // Precedence + the shadowing bug it fixes live in `pickCurrentVisit`
+    // (unit-tested in tests/unit/doctor-current-visit.test.ts).
+    const picked = pickCurrentVisit(todayAppts, now);
+    const currentSource: (typeof todayAppts)[number] | undefined = picked?.row;
 
     let current: CurrentPatient | null = null;
     if (currentSource && currentSource.patient) {
@@ -577,7 +575,7 @@ export const GET = createApiListHandler(
     // `current` above may be the imminent-booking fallback — presentation
     // sugar, not a doctor's pick. Flag it so the client can label the card
     // «Следующая запись» instead of implying a visit is underway.
-    const currentIsImplicitNext = current !== null && !inProgress;
+    const currentIsImplicitNext = current !== null && picked?.isImplicitNext === true;
 
     // ──────────────────────────────────────────────────────────────────────
     // liveQueue — the walk-in FIFO from the shared projection. `queuedAt`
@@ -607,7 +605,7 @@ export const GET = createApiListHandler(
     // upcomingTotal counts the *whole* upcoming queue so the «Показать
     // всех (N)» footer doesn't lie about how many we're hiding.
     // ──────────────────────────────────────────────────────────────────────
-    const upcomingAll = todayAppts.filter((a) => {
+    const upcomingAll = bookedAppts.filter((a) => {
       if (currentSource && a.id === currentSource.id) return false;
       const s = scheduleStatusOf(a.status);
       return s === "upcoming";

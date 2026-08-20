@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useFormatter, useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AlertTriangleIcon,
   FilesIcon,
@@ -32,6 +34,7 @@ import {
   useFinalizeVisitNote,
   usePatchVisitNote,
   useVisitNote,
+  visitNoteKey,
   type VisitNotePatch,
   type VisitNoteRow,
 } from "../_hooks/use-visit-note";
@@ -82,7 +85,13 @@ function useElapsed(startedAt: string | null): string {
 
 export function ActivePatientCard() {
   const t = useTranslations("doctor.reception");
-  const { activeAppointment, visitNoteId } = useReceptionContext();
+  const {
+    activeAppointment,
+    visitNoteId,
+    flushDraftEdits,
+    pinFinalizedAppointment,
+  } = useReceptionContext();
+  const qc = useQueryClient();
   const noteQuery = useVisitNote(visitNoteId);
   const finalize = useFinalizeVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
@@ -115,24 +124,65 @@ export function ActivePatientCard() {
   // backstops with 400 DIAGNOSIS_REQUIRED). Empty sections don't block but
   // must be explicitly confirmed so an empty conclusion is never an accident.
   const hasDiagnosis = Boolean(note?.diagnosisCode);
-  const emptySections = !note
-    ? []
-    : [
-        note.complaints.length === 0 ? t("activePatient.emptyComplaints") : null,
-        note.advice.length === 0 ? t("activePatient.emptyAdvice") : null,
-        !note.patientHandoutMarkdown?.trim()
-          ? t("activePatient.emptyHandout")
-          : null,
-      ].filter((s): s is string => s !== null);
+
+  // P1-5 — the complaints/anamnesis/advice inputs were stripped from this
+  // screen, so we only warn about what the doctor can still fill here: the
+  // conclusion text and the prescriptions (structured rows + legacy lines).
+  const emptySectionsOf = (n: VisitNoteRow | null | undefined): string[] =>
+    !n
+      ? []
+      : [
+          !n.bodyMarkdown?.trim() ? t("activePatient.emptyConclusion") : null,
+          (n.visitPrescriptions?.length ?? 0) === 0 &&
+          n.prescriptions.length === 0
+            ? t("activePatient.emptyPrescriptions")
+            : null,
+        ].filter((s): s is string => s !== null);
+  const emptySections = emptySectionsOf(note);
+
+  // P0-2 — drain both editors' debounced tails into the server before any
+  // finalize decision. A failed flush must abort: finalizing a note whose
+  // text failed to save would sign a truncated legal document.
+  const flushBeforeFinalize = async (): Promise<boolean> => {
+    try {
+      await flushDraftEdits();
+      return true;
+    } catch {
+      toast.error(t("activePatient.finalizeFlushError"));
+      return false;
+    }
+  };
 
   const doFinalize = async () => {
     if (!visitNoteId || finalize.isPending || isFinalized) return;
-    await finalize.mutateAsync();
+    if (!(await flushBeforeFinalize())) return;
+    try {
+      await finalize.mutateAsync();
+      // P0-3 — the queue refetch flips this appointment to COMPLETED, which
+      // would unmount the card before the doctor can print. Pin it so the
+      // finished-visit view (with the print buttons) stays until they move on.
+      pinFinalizedAppointment(activeAppointment);
+    } catch (error) {
+      // P0-1 — the mutation hook only surfaces the HTTP status in the error
+      // message ("visit-note finalize <status>"); the sole 400 that route
+      // returns is DIAGNOSIS_REQUIRED, so map it to the specific toast.
+      toast.error(
+        error instanceof Error && / 400$/.test(error.message)
+          ? t("activePatient.finalizeErrorDiagnosis")
+          : t("activePatient.finalizeErrorGeneric"),
+      );
+    }
   };
 
   const onFinalize = async () => {
     if (!visitNoteId || finalize.isPending || isFinalized || !hasDiagnosis) return;
-    if (emptySections.length > 0) {
+    // Flush BEFORE the emptiness check so text typed seconds ago counts —
+    // otherwise a freshly written conclusion would trip the "empty" dialog.
+    if (!(await flushBeforeFinalize())) return;
+    // The flush updated the query cache; `note` in this closure is stale.
+    const fresh =
+      qc.getQueryData<VisitNoteRow>(visitNoteKey(visitNoteId)) ?? note;
+    if (emptySectionsOf(fresh).length > 0) {
       setConfirmOpen(true);
       return;
     }

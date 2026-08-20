@@ -4116,10 +4116,11 @@
       "rules": {
         "enabledTitle": "Активен",
         "enabledHint": "Выключенный шаблон не отправляется.",
-        "offsetTitle": "За сколько часов до записи",
-        "offsetHint": "Шаг 0.5 часа, диапазон 1–72 часа.",
+        "offsetTitle": "За сколько до записи",
+        "offsetHint": "Шаг 0.5 часа, диапазон от 1 часа до 7 дней.",
         "offsetMinLabel": "(offsetMin = {minutes})",
         "hourSuffix": "ч",
+        "dayCount": "{days, plural, one {# день} few {# дня} other {# дней}}",
         "channelsTitle": "Каналы",
         "channelsHint": "Если выбраны оба — отправим первым доступным каналом.",
         "channelsDefault": "По умолчанию: TG если есть telegramId пациента, иначе SMS.",
@@ -7256,13 +7257,13 @@
     "analytics": {
       "page": {
         "title": "Моя статистика",
-        "subtitle": "Клинические KPI за выбранный период: приёмы, назначения, override-аудит CDS."
+        "subtitle": "Клинические KPI за выбранный период: приёмы, заключения, анализы и предупреждения CDS."
       },
       "dashboard": {
         "loadError": "Не удалось загрузить аналитику: {message}",
         "errorFallback": "ошибка",
         "computing": "Считаем показатели…",
-        "footnote": "Показатели обновляются автоматически каждые 30 секунд. Override CDS — это случаи, когда вы продолжили назначение, несмотря на предупреждение системы; квалити-команда видит их в отдельном отчёте."
+        "footnote": "Показатели обновляются автоматически каждые 30 секунд. Учтённое предупреждение CDS — это случай, когда вы продолжили назначение, несмотря на предупреждение системы; команда качества видит такие случаи в отдельном отчёте."
       },
       "toolbar": {
         "period": "Период",
@@ -7274,20 +7275,16 @@
         "finalizedNotes": "Финализированных заключений",
         "protocolApplied": "Протокол применён",
         "protocolAppliedHint": "{pct}% от заключений",
-        "rxIssued": "Рецептов выписано",
-        "slIssued": "Б/л выписано",
-        "labOrdersIssued": "Лаб. заявок",
         "labResultsReviewed": "Анализы просмотрены",
-        "cdsOverrides": "CDS overrides",
-        "cdsOverridesPresent": "квалити проверит",
+        "cdsOverrides": "Предупреждений CDS учтено",
+        "cdsOverridesPresent": "команда качества проверит",
         "cdsOverridesNone": "ни одного — отлично"
       },
       "daily": {
-        "title": "Объём по дням",
-        "legendRx": "Rx",
-        "legendSl": "Б/л",
-        "legendLabs": "Лаб.",
-        "legendOverride": "Override"
+        "title": "Активность по дням",
+        "legendAppointments": "Приёмы",
+        "legendNotes": "Заключения",
+        "legendOverride": "Предупреждения CDS"
       }
     },
     "references": {

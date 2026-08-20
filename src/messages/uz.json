@@ -4116,10 +4116,11 @@
       "rules": {
         "enabledTitle": "Faol",
         "enabledHint": "O'chirilgan shablon yuborilmaydi.",
-        "offsetTitle": "Yozuvdan necha soat oldin",
-        "offsetHint": "Qadam 0.5 soat, oraliq 1–72 soat.",
+        "offsetTitle": "Yozuvdan qancha oldin",
+        "offsetHint": "Qadam 0.5 soat, oraliq 1 soatdan 7 kungacha.",
         "offsetMinLabel": "(offsetMin = {minutes})",
         "hourSuffix": "soat",
+        "dayCount": "{days, plural, other {# kun}}",
         "channelsTitle": "Kanallar",
         "channelsHint": "Ikkalasi tanlansa — birinchi mavjudi orqali yuboramiz.",
         "channelsDefault": "Sukut: bemorda telegramId bo'lsa TG, aks holda SMS.",
@@ -7256,13 +7257,13 @@
     "analytics": {
       "page": {
         "title": "Mening statistikam",
-        "subtitle": "Tanlangan davr uchun klinik KPI: qabullar, tayinlovlar, CDS override auditi."
+        "subtitle": "Tanlangan davr uchun klinik KPI: qabullar, xulosalar, tahlillar va CDS ogohlantirishlari."
       },
       "dashboard": {
         "loadError": "Tahlilni yuklab bo‘lmadi: {message}",
         "errorFallback": "xatolik",
         "computing": "Ko‘rsatkichlar hisoblanmoqda…",
-        "footnote": "Ko‘rsatkichlar har 30 soniyada avtomatik yangilanadi. CDS override — bu siz tizim ogohlantirishiga qaramay tayinlovni davom ettirgan holatlar; sifat jamoasi ularni alohida hisobotda ko‘radi."
+        "footnote": "Ko‘rsatkichlar har 30 soniyada avtomatik yangilanadi. Inobatga olingan CDS ogohlantirishi — bu siz tizim ogohlantirishiga qaramay tayinlovni davom ettirgan holat; sifat jamoasi bunday holatlarni alohida hisobotda ko‘radi."
       },
       "toolbar": {
         "period": "Davr",
@@ -7274,20 +7275,16 @@
         "finalizedNotes": "Yakunlangan xulosalar",
         "protocolApplied": "Protokol qo‘llanildi",
         "protocolAppliedHint": "xulosalarning {pct}%",
-        "rxIssued": "Retseptlar yozildi",
-        "slIssued": "Kasallik varaqalari yozildi",
-        "labOrdersIssued": "Lab. so‘rovlari",
         "labResultsReviewed": "Tahlillar ko‘rib chiqildi",
-        "cdsOverrides": "CDS override",
+        "cdsOverrides": "Inobatga olingan CDS ogohlantirishlari",
         "cdsOverridesPresent": "sifat jamoasi tekshiradi",
         "cdsOverridesNone": "bittasi ham yo‘q — a’lo"
       },
       "daily": {
-        "title": "Kunlar bo‘yicha hajm",
-        "legendRx": "Rx",
-        "legendSl": "Kasallik varaqasi",
-        "legendLabs": "Lab.",
-        "legendOverride": "Override"
+        "title": "Kunlar bo‘yicha faollik",
+        "legendAppointments": "Qabullar",
+        "legendNotes": "Xulosalar",
+        "legendOverride": "CDS ogohlantirishlari"
       }
     },
     "references": {

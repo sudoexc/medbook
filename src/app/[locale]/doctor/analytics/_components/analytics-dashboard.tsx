@@ -6,8 +6,11 @@
  * Single-shot fetch of `/api/crm/doctors/me/analytics` with a date-range
  * toggle (7 / 30 / 90 days or a custom from/to). KPI tiles render the
  * counters straight from the response; a compact bar group visualises the
- * daily Rx/SL/lab/override volumes side-by-side. Kept dependency-free —
- * no chart libraries — so the bundle doesn't grow for a single screen.
+ * daily visits/conclusions/CDS-override activity side-by-side. Only metrics
+ * the doctor can actually produce from the current UI are shown — the Rx /
+ * sick-leave / lab-order tiles left with the buttons that created them
+ * (see the API route header). Kept dependency-free — no chart libraries —
+ * so the bundle doesn't grow for a single screen.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -16,11 +19,8 @@ import {
   CalendarRangeIcon,
   ClipboardCheckIcon,
   FileTextIcon,
-  FlaskConicalIcon,
   Loader2Icon,
-  PillIcon,
   RefreshCwIcon,
-  ScrollIcon,
   ShieldAlertIcon,
   StethoscopeIcon,
   TrendingUpIcon,
@@ -220,9 +220,6 @@ function KpiGrid({
     finalizedNotes: number;
     protocolApplied: number;
     protocolAppliedPct: number;
-    rxIssued: number;
-    slIssued: number;
-    labOrdersIssued: number;
     cdsOverrides: number;
     labResultsReviewed: number;
   };
@@ -247,24 +244,6 @@ function KpiGrid({
       hint: t("kpi.protocolAppliedHint", { pct: kpis.protocolAppliedPct }),
       icon: ClipboardCheckIcon,
       tone: "good",
-    },
-    {
-      label: t("kpi.rxIssued"),
-      value: kpis.rxIssued,
-      icon: PillIcon,
-      tone: "neutral",
-    },
-    {
-      label: t("kpi.slIssued"),
-      value: kpis.slIssued,
-      icon: ScrollIcon,
-      tone: "neutral",
-    },
-    {
-      label: t("kpi.labOrdersIssued"),
-      value: kpis.labOrdersIssued,
-      icon: FlaskConicalIcon,
-      tone: "neutral",
     },
     {
       label: t("kpi.labResultsReviewed"),
@@ -332,7 +311,7 @@ function DailyVolumeCard({ daily }: { daily: DoctorAnalyticsDaily[] }) {
   const peak = React.useMemo(() => {
     let p = 0;
     for (const d of daily) {
-      p = Math.max(p, d.rx + d.sl + d.labs + d.overrides);
+      p = Math.max(p, d.appointments + d.notes + d.overrides);
     }
     return p;
   }, [daily]);
@@ -363,7 +342,7 @@ function DailyVolumeCard({ daily }: { daily: DoctorAnalyticsDaily[] }) {
 
 function DayColumn({ day, peak }: { day: DoctorAnalyticsDaily; peak: number }) {
   const t = useTranslations("doctor.analytics");
-  const total = day.rx + day.sl + day.labs + day.overrides;
+  const total = day.appointments + day.notes + day.overrides;
   const heightPct = (n: number) => (peak > 0 ? Math.round((n / peak) * 100) : 0);
 
   const dayLabel = day.date.slice(8); // "DD"
@@ -371,16 +350,14 @@ function DayColumn({ day, peak }: { day: DoctorAnalyticsDaily; peak: number }) {
     <div
       className="group flex flex-col items-center gap-0.5"
       title={tooltip(day, {
-        rx: t("daily.legendRx"),
-        sl: t("daily.legendSl"),
-        labs: t("daily.legendLabs"),
+        appointments: t("daily.legendAppointments"),
+        notes: t("daily.legendNotes"),
         overrides: t("daily.legendOverride"),
       })}
     >
       <div className="flex h-16 w-full items-end gap-px">
-        <Bar pct={heightPct(day.rx)} color="bg-sky-400" />
-        <Bar pct={heightPct(day.sl)} color="bg-amber-400" />
-        <Bar pct={heightPct(day.labs)} color="bg-emerald-400" />
+        <Bar pct={heightPct(day.appointments)} color="bg-sky-400" />
+        <Bar pct={heightPct(day.notes)} color="bg-emerald-400" />
         <Bar pct={heightPct(day.overrides)} color="bg-red-400" />
       </div>
       <div
@@ -408,13 +385,12 @@ function Bar({ pct, color }: { pct: number; color: string }) {
 
 function tooltip(
   day: DoctorAnalyticsDaily,
-  labels: { rx: string; sl: string; labs: string; overrides: string },
+  labels: { appointments: string; notes: string; overrides: string },
 ): string {
   return (
     `${day.date}` +
-    ` · ${labels.rx}: ${day.rx}` +
-    ` · ${labels.sl}: ${day.sl}` +
-    ` · ${labels.labs}: ${day.labs}` +
+    ` · ${labels.appointments}: ${day.appointments}` +
+    ` · ${labels.notes}: ${day.notes}` +
     ` · ${labels.overrides}: ${day.overrides}`
   );
 }
@@ -423,9 +399,8 @@ function Legend() {
   const t = useTranslations("doctor.analytics");
   return (
     <div className="ml-auto flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-      <LegendDot color="bg-sky-400" label={t("daily.legendRx")} />
-      <LegendDot color="bg-amber-400" label={t("daily.legendSl")} />
-      <LegendDot color="bg-emerald-400" label={t("daily.legendLabs")} />
+      <LegendDot color="bg-sky-400" label={t("daily.legendAppointments")} />
+      <LegendDot color="bg-emerald-400" label={t("daily.legendNotes")} />
       <LegendDot color="bg-red-400" label={t("daily.legendOverride")} />
     </div>
   );

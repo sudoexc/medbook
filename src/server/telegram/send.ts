@@ -19,7 +19,15 @@
  * This module deliberately has zero business logic: it is the pure I/O layer
  * for the state machine in `state.ts` and the adapter in
  * `src/server/notifications/adapters/tg.ts`.
+ *
+ * `tgBotToken` on the incoming clinic blob may be AES-GCM ciphertext (at-rest
+ * encryption) or legacy plaintext — callers pass the DB value straight
+ * through, and every function here decrypts at point of use via
+ * `readTgBotToken`. Centralising the decrypt in this module means the ~10
+ * call sites that build `TgClinicMinimal` from a Prisma select need no
+ * knowledge of the encryption at all.
  */
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 export type TgInlineButton = {
   text: string;
@@ -51,6 +59,7 @@ export type SendMessageOptions = {
 export type TgClinicMinimal = {
   id: string;
   slug: string;
+  /** Raw DB value — ciphertext or legacy plaintext; decrypted at use. */
   tgBotToken: string | null;
   tgBotUsername: string | null;
 };
@@ -194,12 +203,9 @@ export async function sendMessage(
       ? { disable_web_page_preview: opts.disable_web_page_preview }
       : {}),
   };
-  if (!clinic.tgBotToken) return logNoop(clinic, "sendMessage", payload);
-  return tgCallWithBackoff<TgMessageResult>(
-    clinic.tgBotToken,
-    "sendMessage",
-    payload,
-  );
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) return logNoop(clinic, "sendMessage", payload);
+  return tgCallWithBackoff<TgMessageResult>(token, "sendMessage", payload);
 }
 
 /** Send a photo (by URL or file_id). */
@@ -217,12 +223,9 @@ export async function sendPhoto(
     ...(opts.parse_mode ? { parse_mode: opts.parse_mode } : {}),
     ...(opts.reply_markup ? { reply_markup: opts.reply_markup } : {}),
   };
-  if (!clinic.tgBotToken) return logNoop(clinic, "sendPhoto", payload);
-  return tgCallWithBackoff<TgMessageResult>(
-    clinic.tgBotToken,
-    "sendPhoto",
-    payload,
-  );
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) return logNoop(clinic, "sendPhoto", payload);
+  return tgCallWithBackoff<TgMessageResult>(token, "sendPhoto", payload);
 }
 
 /**
@@ -247,12 +250,9 @@ export async function sendDocumentUrl(
     ...(opts.parse_mode ? { parse_mode: opts.parse_mode } : {}),
     ...(opts.reply_markup ? { reply_markup: opts.reply_markup } : {}),
   };
-  if (!clinic.tgBotToken) return logNoop(clinic, "sendDocument", payload);
-  return tgCallWithBackoff<TgMessageResult>(
-    clinic.tgBotToken,
-    "sendDocument",
-    payload,
-  );
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) return logNoop(clinic, "sendDocument", payload);
+  return tgCallWithBackoff<TgMessageResult>(token, "sendDocument", payload);
 }
 
 /** Edit an existing message's text. */
@@ -270,9 +270,10 @@ export async function editMessageText(
     ...(opts.parse_mode ? { parse_mode: opts.parse_mode } : {}),
     ...(opts.reply_markup ? { reply_markup: opts.reply_markup } : {}),
   };
-  if (!clinic.tgBotToken) return logNoop(clinic, "editMessageText", payload);
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) return logNoop(clinic, "editMessageText", payload);
   return tgCallWithBackoff<TgMessageResult | boolean>(
-    clinic.tgBotToken,
+    token,
     "editMessageText",
     payload,
   );
@@ -290,16 +291,13 @@ export async function answerCallbackQuery(
     ...(text ? { text } : {}),
     ...(showAlert ? { show_alert: true } : {}),
   };
-  if (!clinic.tgBotToken) {
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) {
     console.info(`[tg:noop clinic=${clinic.slug}] answerCallbackQuery id=${callbackQueryId}`);
     return;
   }
   try {
-    await tgCallWithBackoff<boolean>(
-      clinic.tgBotToken,
-      "answerCallbackQuery",
-      payload,
-    );
+    await tgCallWithBackoff<boolean>(token, "answerCallbackQuery", payload);
   } catch (e) {
     console.warn(`[tg] answerCallbackQuery failed: ${(e as Error).message}`);
   }
@@ -334,7 +332,8 @@ export async function sendDocument(
   const filename = opts.filename ?? "document.bin";
   const contentType = opts.contentType ?? "application/octet-stream";
 
-  if (!clinic.tgBotToken) {
+  const token = readTgBotToken(clinic.tgBotToken);
+  if (!token) {
     return logNoop(clinic, "sendDocument", {
       chat_id: chatId,
       filename,
@@ -343,7 +342,7 @@ export async function sendDocument(
     });
   }
 
-  const url = `${API_ROOT}/bot${clinic.tgBotToken}/sendDocument`;
+  const url = `${API_ROOT}/bot${token}/sendDocument`;
 
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {

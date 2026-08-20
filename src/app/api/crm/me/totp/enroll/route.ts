@@ -26,6 +26,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err } from "@/server/http";
 import { generateTotpSecret, buildOtpauthUrl } from "@/server/auth/totp";
+import { writeTotpSecret } from "@/server/crypto/secret-fields";
 
 const Schema = z.object({
   password: z.string().min(1).max(200),
@@ -75,7 +76,9 @@ export async function POST(request: Request): Promise<Response> {
     await prisma.user.update({
       where: { id: me.id },
       data: {
-        pendingTotpSecret: secret,
+        // Encrypted at rest — the DB never sees the raw seed. The plaintext
+        // still goes back to the client below (it has to: the QR encodes it).
+        pendingTotpSecret: writeTotpSecret(secret),
         pendingTotpExpiresAt: expiresAt,
       },
     });

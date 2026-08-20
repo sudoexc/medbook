@@ -49,8 +49,10 @@ export class LogOnlyTelephonyAdapter implements TelephonyAdapter {
    */
   async call(to: string, from: string): Promise<{ callId: string }> {
     const ctx = requireTenant();
-    if (ctx.kind === "SUPER_ADMIN" || ctx.kind === "SYSTEM") {
-      // Outbound calls always originate from a clinic operator.
+    // Positive narrowing (not a kind-blocklist) so future context kinds —
+    // UNSCOPED was added by the fail-closed isolation fix — can never slip
+    // through: outbound calls always originate from a clinic operator.
+    if (ctx.kind !== "TENANT") {
       throw new Error("LogOnly.call requires TENANT context");
     }
     const sipCallId = makeSipCallId();

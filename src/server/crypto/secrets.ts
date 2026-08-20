@@ -119,6 +119,24 @@ export function decrypt(ciphertext: string): string {
 }
 
 /**
+ * True iff the value looks like a `v<n>:{iv}:{tag}:{ct}` payload produced by
+ * `encrypt`. Used by the read boundary in `secret-fields.ts` and the
+ * `scripts/encrypt-auth-secrets.ts` backfill to tell legacy plaintext rows
+ * apart from ciphertext.
+ *
+ * The strict 4-segment check matters: a Telegram bot token contains a colon
+ * (`123456:AAE…`) but splits into 2 segments — and its first segment is
+ * numeric, not `v<n>` — so real-world plaintext values in these columns can
+ * never be mistaken for ciphertext.
+ */
+export function isEncryptedSecret(value: string | null | undefined): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  const parts = value.split(":");
+  if (parts.length !== 4) return false;
+  return /^v\d+$/.test(parts[0]!);
+}
+
+/**
  * Mask a secret for UI display: shows the last 4 characters (or fewer if the
  * secret is short) prefixed by bullets. Safe for public responses — never
  * returns a portion of the secret that could be used to probe.

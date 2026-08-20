@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
 import { deleteWebhook } from "@/server/telegram/bot-api";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 import { z } from "zod";
 
 const Schema = z.object({}).optional();
@@ -41,7 +42,9 @@ export const POST = createApiHandler(
     const previousUsername = clinic.tgBotUsername ?? null;
     let telegramOk = false;
     let telegramError: string | null = null;
-    const r = await deleteWebhook(clinic.tgBotToken, true).catch(
+    // Decrypt the at-rest token for the Bot API call (legacy plaintext
+    // passes through unchanged).
+    const r = await deleteWebhook(readTgBotToken(clinic.tgBotToken), true).catch(
       () => null,
     );
     if (r && r.ok) telegramOk = true;

@@ -12,23 +12,22 @@ export type DoctorAnalyticsRange = {
   to: string;
 };
 
+// Rx / sick-leave / lab-order KPIs were removed together with the visit-screen
+// buttons that produced them — a doctor can't issue those anymore, so the
+// tiles would sit at zero forever and read as a bug (see the route header).
 export type DoctorAnalyticsKpis = {
   completedAppointments: number;
   finalizedNotes: number;
   protocolApplied: number;
   protocolAppliedPct: number;
-  rxIssued: number;
-  slIssued: number;
-  labOrdersIssued: number;
   cdsOverrides: number;
   labResultsReviewed: number;
 };
 
 export type DoctorAnalyticsDaily = {
   date: string;
-  rx: number;
-  sl: number;
-  labs: number;
+  appointments: number;
+  notes: number;
   overrides: number;
 };
 

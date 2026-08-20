@@ -8,6 +8,16 @@
  *   SUPER_ADMIN  — platform operator; Prisma is NOT auto-scoped. Handlers for
  *                  the `/admin` area must explicitly select clinics.
  *   SYSTEM       — cron / workers / onboarding seeding; bypasses tenant scope.
+ *   UNSCOPED     — a deliberately cross-tenant / pre-auth code path (public
+ *                  capability-URL lookups, login-time grant checks). Bypasses
+ *                  tenant scope like SYSTEM, but carries a human-readable
+ *                  `reason` so every bypass is a visible, auditable decision.
+ *                  Created ONLY via `runUnscoped(reason, fn)`.
+ *
+ * Fail-closed isolation: since the security-audit fix, the Prisma extension
+ * REJECTS queries against tenant-scoped models when no context is bound at
+ * all — a forgotten `runWithTenant` now throws instead of silently reading
+ * every clinic's data. `runUnscoped` is the explicit escape hatch.
  *
  * Phase 9a — TENANT contexts MAY additionally carry a `branchId`. When
  * present, the Prisma extension layers a second filter on top of `clinicId`
@@ -64,7 +74,15 @@ export type TenantContext =
       impersonation?: ImpersonationStamp | null;
     }
   | { kind: "SUPER_ADMIN"; userId: string }
-  | { kind: "SYSTEM" };
+  | { kind: "SYSTEM" }
+  /**
+   * Fail-closed escape hatch. A code path that must legitimately touch
+   * tenant-scoped models WITHOUT knowing the tenant yet (or across tenants)
+   * declares its intent by running inside `runUnscoped(reason, fn)`. The
+   * `reason` is mandatory documentation-at-the-callsite: grep for
+   * `runUnscoped(` to enumerate every deliberate bypass of clinic isolation.
+   */
+  | { kind: "UNSCOPED"; reason: string };
 
 const storage = new AsyncLocalStorage<TenantContext>();
 
@@ -77,6 +95,28 @@ export function runWithTenant<T>(
   fn: () => T | Promise<T>
 ): Promise<T> {
   return Promise.resolve(storage.run(ctx, fn));
+}
+
+/**
+ * Run `fn` with an explicit "no tenant scoping, on purpose" context.
+ *
+ * Use this ONLY for code paths that must query tenant-scoped models while no
+ * tenant is (or can be) known yet:
+ *   - public capability-URL lookups (verify pages, queue-status QR, ticket
+ *     stubs) where the unguessable token/id IS the authorization;
+ *   - pre-auth resolution (Mini App patient lookup before the SYSTEM scope
+ *     is entered, impersonation-grant checks inside the NextAuth callback).
+ *
+ * `reason` is required and should say WHY the bypass is safe — it makes the
+ * intent explicit at the call-site and greppable across the codebase. For
+ * cron / workers / onboarding prefer `runWithTenant({ kind: "SYSTEM" })`,
+ * which is the established convention for background jobs.
+ */
+export function runUnscoped<T>(
+  reason: string,
+  fn: () => T | Promise<T>
+): Promise<T> {
+  return runWithTenant({ kind: "UNSCOPED", reason }, fn);
 }
 
 /** Read the current TenantContext, or `undefined` if not inside `runWithTenant`. */

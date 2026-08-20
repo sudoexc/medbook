@@ -16,13 +16,14 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
 import { prisma } from "./prisma";
-import { runWithTenant } from "./tenant-context";
+import { runUnscoped, runWithTenant } from "./tenant-context";
 import type { Role } from "./tenant-context";
 import {
   OVERRIDE_COOKIE_NAME,
   verifyClinicOverride,
 } from "@/server/platform/clinic-override";
 import { verifyTotpCode } from "@/server/auth/totp";
+import { readTotpSecret } from "@/server/crypto/secret-fields";
 import {
   consumeRecoveryCode,
   type ConsumeResult,
@@ -109,7 +110,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // a short-term ops bypass.
         if (user.totpEnabledAt && user.totpSecret && !is2faDisabled()) {
           if (totp) {
-            if (!verifyTotpCode(user.totpSecret, totp)) return null;
+            // Stored secret is AES-GCM ciphertext at rest (legacy plaintext
+            // tolerated until the backfill runs) — decrypt before verifying.
+            if (!verifyTotpCode(readTotpSecret(user.totpSecret), totp)) {
+              return null;
+            }
           } else if (recoveryCode) {
             const result: ConsumeResult = await consumeRecoveryCode(
               recoveryCode,
@@ -257,7 +262,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 const { getActiveGrant } = await import(
                   "@/server/platform/impersonation"
                 );
-                const active = await getActiveGrant(grantId);
+                // The JWT callback runs outside any runWithTenant boundary,
+                // and ImpersonationGrant is tenant-scoped — without an
+                // explicit bypass the fail-closed Prisma extension would
+                // throw here and the catch below would silently drop every
+                // impersonation. Safe: lookup is by unguessable grant id,
+                // and the result is cross-checked against the signed cookie.
+                const active = await runUnscoped(
+                  "auth: verify SUPER_ADMIN impersonation grant during JWT refresh",
+                  () => getActiveGrant(grantId),
+                );
                 if (active && active.clinicId === overridden) {
                   token.clinicId = overridden;
                   token.impersonationGrantId = grantId;

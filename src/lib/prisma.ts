@@ -9,7 +9,13 @@
  *   TENANT       → inject clinicId into where/data for non-allowlisted models.
  *   SUPER_ADMIN  → never inject; handlers may filter by clinicId manually.
  *   SYSTEM       → never inject; used by cron, onboarding seeders, workers.
- *   (no ctx)     → never inject; callers that need isolation must runWithTenant.
+ *   UNSCOPED     → never inject; explicit `runUnscoped(reason, fn)` bypass
+ *                  for pre-auth / capability-URL paths.
+ *   (no ctx)     → FAIL CLOSED. Querying a tenant-scoped model without any
+ *                  context throws `MissingTenantContextError` instead of
+ *                  silently running cross-tenant. Models without a clinicId
+ *                  column (`MODELS_WITHOUT_TENANT`) still pass through, so
+ *                  auth-time User/Session lookups keep working.
  *
  * Composite unique lookups (`where: { clinicId_slug: {...} }`) already embed
  * clinicId — the extension detects these via `COMPOSITE_TENANT_UNIQUES` and
@@ -46,6 +52,32 @@ import {
 } from "./tenant-allowlist";
 
 type UnknownRecord = Record<string, unknown>;
+
+/**
+ * Thrown when a tenant-scoped model is queried with NO tenant context bound.
+ *
+ * Before the security-audit fix this case silently passed through unscoped —
+ * any code path that forgot `runWithTenant` would read/write EVERY clinic's
+ * data without anyone noticing (fail-open). Now isolation fails closed: the
+ * query is rejected before it reaches Postgres, and the error text tells the
+ * developer exactly which query tripped it and what the legitimate escape
+ * hatches are.
+ */
+export class MissingTenantContextError extends Error {
+  constructor(model: string, operation: string) {
+    super(
+      `Tenant isolation violation: "${model}.${operation}" was called without a ` +
+        `tenant context, and ${model} is a tenant-scoped model. Refusing to run ` +
+        `an unscoped cross-tenant query. Fix: run this code inside ` +
+        `runWithTenant(ctx, fn) — createApiHandler / createMiniAppHandler / ` +
+        `createPublicClinicHandler already do this for their routes; background ` +
+        `jobs should use runWithTenant({ kind: "SYSTEM" }, fn). If this path is ` +
+        `LEGITIMATELY cross-tenant or pre-auth (e.g. a capability-URL lookup), ` +
+        `make that explicit with runUnscoped(reason, fn) from "@/lib/tenant-context".`
+    );
+    this.name = "MissingTenantContextError";
+  }
+}
 
 function buildBaseClient(): PrismaClient {
   const adapter = new PrismaPg({
@@ -163,14 +195,28 @@ export const prisma = prismaBase.$extends({
         const mutableArgs = (args as UnknownRecord | undefined) ?? {};
         const skipFlag = extractSkipFlag(mutableArgs);
 
-        // No context → pass through. Callers that need isolation must
-        // wrap their invocation with runWithTenant.
+        // No context → FAIL CLOSED for tenant-scoped models. A missing
+        // `runWithTenant` used to silently run the query unscoped, exposing
+        // every clinic's rows; now it throws so the gap is caught in dev/CI
+        // instead of leaking data in prod. Models without a clinicId column
+        // (User, Session, Clinic, global catalogs…) still pass through —
+        // login flows resolve users before any tenant is known.
         if (!ctx) {
+          if (model && !MODELS_WITHOUT_TENANT.has(model)) {
+            throw new MissingTenantContextError(model, operation);
+          }
           return query(mutableArgs as typeof args);
         }
 
-        // SUPER_ADMIN and SYSTEM never get auto-scoped.
-        if (ctx.kind === "SUPER_ADMIN" || ctx.kind === "SYSTEM") {
+        // SUPER_ADMIN, SYSTEM and UNSCOPED never get auto-scoped. UNSCOPED is
+        // the explicit `runUnscoped(reason, fn)` escape hatch — same runtime
+        // behaviour as SYSTEM, but the mandatory reason marks the bypass as a
+        // conscious decision rather than a forgotten wrapper.
+        if (
+          ctx.kind === "SUPER_ADMIN" ||
+          ctx.kind === "SYSTEM" ||
+          ctx.kind === "UNSCOPED"
+        ) {
           return query(mutableArgs as typeof args);
         }
 

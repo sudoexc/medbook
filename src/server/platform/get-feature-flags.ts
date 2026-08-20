@@ -16,9 +16,18 @@
  * extension treats the call as already-scoped and does not duplicate the
  * column — making this helper safe to call from TENANT, SUPER_ADMIN, and
  * SYSTEM contexts.
+ *
+ * The read itself runs under `runUnscoped` because several callers are React
+ * server components (sidebar, gated pages, Mini App layout) that render with
+ * NO AsyncLocalStorage context at all — `runWithTenant` in a layout does not
+ * span the RSC tree. The fail-closed extension would otherwise reject those
+ * reads. Isolation is preserved by the explicit `where: { clinicId }`, and
+ * every caller passes a clinicId it already authorized (session claim or a
+ * SYSTEM-resolved clinic row).
  */
 
 import { prisma } from "@/lib/prisma";
+import { runUnscoped } from "@/lib/tenant-context";
 import {
   DEFAULT_FLAGS,
   parsePlanFeatures,
@@ -28,10 +37,14 @@ import {
 export async function getFeatureFlags(
   clinicId: string
 ): Promise<FeatureFlags> {
-  const sub = await prisma.subscription.findUnique({
-    where: { clinicId },
-    include: { plan: true },
-  });
+  const sub = await runUnscoped(
+    "feature flags: read subscription for an explicitly-passed clinicId (RSC callers have no ALS context)",
+    () =>
+      prisma.subscription.findUnique({
+        where: { clinicId },
+        include: { plan: true },
+      }),
+  );
 
   if (!sub) return { ...DEFAULT_FLAGS };
 

@@ -12,6 +12,7 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 const Schema = z.object({
   baseUrl: z
@@ -28,7 +29,10 @@ export const POST = createApiHandler(
       where: { id: ctx.clinicId },
     });
     if (!clinic) return err("NotFound", 404);
-    if (!clinic.tgBotToken) {
+    // Token is ciphertext at rest (legacy plaintext tolerated) — decrypt
+    // before splicing into the Bot API URL below.
+    const botToken = readTgBotToken(clinic.tgBotToken);
+    if (!botToken) {
       return err("Forbidden", 403, { reason: "not_configured" });
     }
     const origin = body.baseUrl ?? new URL(request.url).origin;
@@ -45,7 +49,7 @@ export const POST = createApiHandler(
     }
 
     const apiBase = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
-    const url = `${apiBase}/bot${clinic.tgBotToken}/setWebhook`;
+    const url = `${apiBase}/bot${botToken}/setWebhook`;
     const tgBody = {
       url: webhookUrl,
       ...(clinic.tgWebhookSecret

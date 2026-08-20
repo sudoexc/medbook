@@ -605,12 +605,17 @@ function RulesEditorPane({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Hours-based offset slider. Step 0.5h → 30 minutes. Range 1..72 hours.
+  // Hours-based offset stepper. Step 0.5h → 30 minutes. Range 1..168 hours
+  // (7 days): the canonical reminder cascade fires at 5d/3d/1d/3h before the
+  // appointment, so the editor must be able to round-trip a 5-day offset —
+  // a 72h cap made "за 5 дней" unrepresentable once touched. Mirrors the
+  // server-side clamp in `sanitizeTriggerConfig` ([-7d, -30min]).
+  const MAX_OFFSET_HOURS = 7 * 24;
   const hours =
     typeof offsetMin === "number" ? Math.abs(offsetMin) / 60 : isBefore ? 24 : 0;
 
   const setHours = (h: number) => {
-    const clamped = Math.max(1, Math.min(72, h));
+    const clamped = Math.max(1, Math.min(MAX_OFFSET_HOURS, h));
     const stepped = Math.round(clamped * 2) / 2;
     setOffsetMin(-Math.round(stepped * 60));
   };
@@ -665,13 +670,13 @@ function RulesEditorPane({
                 className="flex h-9 min-w-[6rem] items-center justify-center rounded-md border border-input bg-transparent px-3 text-sm font-mono"
                 data-testid="rules-hours"
               >
-                {hours.toFixed(1)} {t("notifications.rules.hourSuffix")}
+                {formatOffsetHours(t, hours)}
               </div>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setHours(hours + 0.5)}
-                disabled={hours >= 72}
+                disabled={hours >= MAX_OFFSET_HOURS}
               >
                 +
               </Button>
@@ -751,7 +756,7 @@ function RulesEditorPane({
               <strong className="text-foreground">
                 {t("notifications.rules.fireAt")}:
               </strong>{" "}
-              {hours.toFixed(1)} {t("notifications.rules.hourSuffix")}
+              {formatOffsetHours(t, hours)}
             </li>
           ) : null}
           <li>
@@ -774,4 +779,25 @@ function RulesEditorPane({
       </section>
     </div>
   );
+}
+
+/**
+ * Human-readable offset label. Sub-day offsets stay in hours ("2.5 ч"), but
+ * once the range widened to 7 days a raw "120.0 ч" forces the admin to do
+ * mental division — render "5 дней" / "3 дня 2.5 ч" instead, matching how
+ * the reminder cascade is described in the spec (5д/3д/1д/3ч).
+ */
+function formatOffsetHours(
+  t: ReturnType<typeof useTranslations>,
+  hours: number,
+): string {
+  // Drop the ".0" for whole hours — the 0.5h step only ever yields one
+  // fractional digit, so toFixed(1) is enough for the rest.
+  const fmtHours = (h: number) =>
+    `${Number.isInteger(h) ? h : h.toFixed(1)} ${t("notifications.rules.hourSuffix")}`;
+  if (hours < 24) return fmtHours(hours);
+  const days = Math.floor(hours / 24);
+  const rest = hours - days * 24;
+  const dayPart = t("notifications.rules.dayCount", { days });
+  return rest > 0 ? `${dayPart} ${fmtHours(rest)}` : dayPart;
 }

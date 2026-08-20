@@ -137,10 +137,11 @@
 3. `POST /api/crm/me/totp/disable`, `POST
    /api/crm/me/totp/recovery-codes/regenerate` — с теми же rate limit.
 
-⚠️ **`User.totpSecret` и `pendingTotpSecret` хранятся в БД плейнтекстом.**
-Комментарий в `prisma/schema.prisma` («totpSecret (encrypted)») отражает
-намерение, но в коде (`totp/verify/route.ts`) шифрование не применяется — ни
-`field-cipher`, ни `secrets.ts`. См. §12.
+`User.totpSecret` и `pendingTotpSecret` шифруются at rest (AES-256-GCM,
+`src/server/crypto/secret-fields.ts`, ключ из APP_SECRET/AUTH_SECRET — тот же
+шифр, что у ProviderConnection-секретов). Чтение терпит legacy-плейнтекст до
+прогона бэкфилла `scripts/encrypt-auth-secrets.ts`; запись — всегда
+шифрованная. См. §12 п. 2–3.
 
 ### Где принудительно требуется
 
@@ -237,7 +238,12 @@ Telegram initData, не NextAuth (см. §4). Отдельный псевдо-а
 - `TENANT { clinicId, userId, role, branchId?, impersonation? }` — обычный
   сотрудник клиники;
 - `SUPER_ADMIN { userId }` — платформенный оператор, **без** авто-скоупа;
-- `SYSTEM` — кроны/воркеры/вебхуки/онбординг, **без** авто-скоупа.
+- `SYSTEM` — кроны/воркеры/вебхуки/онбординг, **без** авто-скоупа;
+- `UNSCOPED { reason }` — явный байпас для pre-auth / capability-URL путей,
+  **без** авто-скоупа. Создаётся только через `runUnscoped(reason, fn)`;
+  обязательный `reason` документирует, почему конкретное место имеет право
+  ходить в тенантные модели без известного тенанта. `grep -r "runUnscoped("`
+  даёт полный список осознанных байпасов.
 
 `runWithTenant(ctx, fn)` связывает контекст со всей async-цепочкой запроса.
 Фабрики хендлеров (§3) делают это автоматически.
@@ -268,30 +274,46 @@ Telegram initData, не NextAuth (см. §4). Отдельный псевдо-а
 клиники через Prisma-модели — `where` всегда содержит `clinicId` текущего
 тенанта, а `create` всегда пишет его в данные.
 
-### 4.3 Что будет при забытом контексте — честно
+### 4.3 Что будет при забытом контексте — fail-closed
 
-**Расширение fail-open.** Если код вызывает `prisma.*` вне `runWithTenant`
-(нет контекста в ALS), запрос **проходит без инжекции** — комментарий в
-`src/lib/prisma.ts`: «No context → pass through». То же для `SYSTEM` и
-`SUPER_ADMIN` контекстов — это осознанные «привилегированные» режимы.
-Утверждение из `docs/security/phase-7.md` («extension refuses to run any
-query… outside runWithTenant») **не соответствует коду** — отказа нет,
-есть тихий пропуск.
+**Расширение fail-closed.** Если код вызывает `prisma.*` по тенантной модели
+(любая модель **не** из `MODELS_WITHOUT_TENANT`) вне `runWithTenant` (нет
+контекста в ALS), расширение **бросает `MissingTenantContextError`** до
+обращения к Postgres — забытая обёртка ломается громко в dev/CI, а не тихо
+читает данные всех клиник. Текст ошибки называет модель/операцию и оба
+легитимных выхода (`runWithTenant` / `runUnscoped`). Модели без `clinicId`
+(User, Session, Clinic, глобальные каталоги) без контекста по-прежнему
+проходят — иначе сломался бы логин (поиск User по email до того, как клиника
+известна).
 
-Компенсирующие меры:
+Осознанные привилегированные режимы (`SYSTEM`, `SUPER_ADMIN`, `UNSCOPED`)
+проходят без инжекции, как и раньше; разница в том, что «нет контекста
+вообще» перестало быть эквивалентом `SYSTEM`.
+
+Легитимные пути без тенанта обёрнуты явно:
+
+- `runUnscoped(reason, fn)` — pre-auth / capability-URL: verify-страницы
+  рецепта и больничного (`/api/verify/*`), QR-статус очереди
+  (`/api/queue/status/[id]`), талон (`/ticket/[id]`, `/t/[code]`), резолв
+  пациента Mini App до входа в SYSTEM-скоуп (`src/server/miniapp/handler.ts`),
+  проверка impersonation-гранта в JWT-коллбеке (`src/lib/auth.ts`), чтение
+  Subscription из RSC-хелперов (`get-feature-flags.ts`,
+  `current-subscription.ts` — серверные компоненты рендерятся вне ALS);
+- `runWithTenant({ kind: "SYSTEM" })` — воркеры/кроны/вебхуки (уже было;
+  дозакрыты пропуски в `scheduled-reports.ts` и `data-export.ts`).
+
+Компенсирующие меры (без изменений):
 
 - весь аутентифицированный ingress идёт через фабрики хендлеров, которые
   оборачивают в `runWithTenant` безусловно;
 - `requireTenant()` доступен для явного ассерта;
-- `docs/security/checklist.md` §3 требует при `SYSTEM`-контексте явный
-  `clinicId` в каждом `where` (так и сделано в вебхуках/кронах/Mini App);
+- `docs/security/checklist.md` §3 требует при `SYSTEM`/`UNSCOPED`-контексте
+  явный `clinicId` в каждом `where` (так и сделано в вебхуках/кронах/Mini App);
 - единственный оставшийся `@ts-nocheck`-роут — `src/app/api/telegram/webhook/route.ts`
   (возвращает только 410 GONE). Исторические дыры S-1…S-4 из
   `docs/TZ-security-hardening.md` (тикет `/ticket/[id]`, kiosk, leads)
   по коду исправлены: тикет маскирует ФИО до инициалов и делает узкий
   `select`, kiosk/leads скоупятся через `resolvePublicClinic` + rate limit.
-  ⚠️ Роуты `src/app/api/queue/**`, `tv-queue` на предмет остаточного
-  legacy-скоупа детально не перепроверялись в этом документе.
 
 ### 4.4 SUPER_ADMIN и импер­сонация (платформенные исключения)
 
@@ -332,8 +354,16 @@ query… outside runWithTenant») **не соответствует коду** �
     `clinicId_slug` (без дублирования `clinicId`);
   - клиникоширокие модели (Patient) branch-фильтр **не** получают;
   - явный `branchId` в данных пользователя не перезатирается ambient-значением.
-- `tests/unit/prisma-tenant.test.ts` — базовое поведение clinicId-инжекции
-  (упомянут в шапке branch-теста; ⚠️ содержимое отдельно не читалось).
+- `tests/unit/prisma-tenant.test.ts` — базовое поведение clinicId-инжекции,
+  включая «тенантная модель без контекста → throw» и «User без контекста →
+  проходит».
+- `tests/unit/prisma-fail-closed.test.ts` — контракт fail-closed целиком:
+  (a) тенантная модель без контекста бросает `MissingTenantContextError`
+  (включая мутации и не-CRUD операции вроде `findRaw`), нижележащий query
+  не вызывается; (b) `runUnscoped` пропускает без инжекции и не «протекает»
+  за пределы коллбека; (c) `TENANT` по-прежнему инжектит `clinicId` в
+  `where`/`data`; (d) нетенантные модели доступны без контекста;
+  `SYSTEM`/`SUPER_ADMIN` работают как раньше.
 - `tests/unit/tenant-allowlist.test.ts` — пинит инвариант «все модели без
   clinicId перечислены в `MODELS_WITHOUT_TENANT`».
 
@@ -397,7 +427,10 @@ auth tag → тампер детектится на decrypt).
   24 символа, показывается один раз, в БД — bcrypt-хэш
   (`DataExportJob.passphraseHash`).
 - Session-токены — sha256 (§1); пароли/recovery-коды/DSAR-passphrase — bcrypt.
-- **Не шифруется** (см. §12): `User.totpSecret`, `Clinic.tgBotToken`.
+- Auth-секреты (`User.totpSecret`/`pendingTotpSecret`, `Clinic.tgBotToken`) —
+  AES-256-GCM через `src/server/crypto/secret-fields.ts` (ключ из
+  APP_SECRET/AUTH_SECRET); legacy-плейнтекст читается до бэкфилла
+  `scripts/encrypt-auth-secrets.ts` (см. §12 п. 2–3).
 
 ---
 
@@ -584,12 +617,12 @@ Phase 17 Wave 3. Две независимые джобы, обе тенант-�
 | Переменная | Назначение | Последствия утечки/потери |
 | --- | --- | --- |
 | `AUTH_SECRET` | подпись NextAuth JWT; фолбэк-KDF для `secrets.ts` и HMAC override-cookie | подделка сессий любого пользователя, включая SUPER_ADMIN |
-| `APP_SECRET` | KDF секретов интеграций + HMAC `admin_clinic_override` | расшифровка секретов интеграций, подделка импер­сонации |
+| `APP_SECRET` | KDF секретов интеграций и auth-секретов (`totpSecret`, `tgBotToken`) + HMAC `admin_clinic_override` | расшифровка секретов интеграций и auth-секретов, подделка импер­сонации; потеря/ротация без пере-шифрования = сломанная 2FA и Mini App |
 | `FIELD_ENCRYPTION_KEY[_V<n>]` | AES-ключи PII-полей (§5.2) | утечка → чтение passport/notes из дампа; потеря → данные невосстановимы (ранбук) |
 | `DATABASE_URL` / `POSTGRES_PASSWORD` | Postgres | вся БД, включая нешифрованные PII |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | root-креды MinIO (docker-compose.yml) | все файлы всех клиник, включая DSAR-бандлы |
 | `RECEPTIONIST_PIN` | серверный PIN терминала (`src/lib/pin.ts`; без него — fail closed) | доступ к queue-API терминала |
-| `Clinic.tgBotToken` (в БД, не env) | токен бота клиники; ключ HMAC-аутентификации Mini App | полная имперсонация пациентской поверхности клиники |
+| `Clinic.tgBotToken` (в БД, AES-GCM at rest) | токен бота клиники; ключ HMAC-аутентификации Mini App | полная имперсонация пациентской поверхности клиники |
 | `DISABLE_2FA`, `DISABLE_AUTH_RATE_LIMIT` | kill-switch'и (§2, §8) | установлены в проде = снятая 2FA / снятый логин-троттл |
 | `REDIS_URL`, `OPENAI/LLM`-ключи и пр. | инфраструктура/AI | по контексту |
 
@@ -654,17 +687,19 @@ Phase 17 Wave 3. Две независимые джобы, обе тенант-�
 
 Честный список слабых мест «как есть» (не предположения — по коду):
 
-1. **Fail-open при забытом тенант-контексте.** Prisma-расширение молча
-   пропускает запросы без ALS-контекста (`src/lib/prisma.ts`) — изоляция
-   держится на дисциплине «весь ingress через фабрики хендлеров». Runtime-
-   гарда «нет контекста → исключение» нет (и spec phase-7 здесь описывает
-   желаемое, а не реальное).
-2. **`User.totpSecret` / `pendingTotpSecret` — плейнтекст в БД.** Комментарий
-   схемы обещает «encrypted», код не шифрует. Дамп БД + окно ±1 шаг = обход
-   второго фактора для любого пользователя.
-3. **`Clinic.tgBotToken` — плейнтекст в БД.** Токен — ключ HMAC-аутентификации
-   всей пациентской поверхности клиники; ProviderConnection-секреты шифруются,
-   этот столбец — нет.
+1. **(Закрыто) Fail-open при забытом тенант-контексте.** Prisma-расширение
+   теперь fail-closed: запрос к тенантной модели без ALS-контекста бросает
+   `MissingTenantContextError` (§4.3), spec phase-7 наконец соответствует
+   коду. Остаточный риск сместился: `SYSTEM`/`UNSCOPED`-пути по-прежнему
+   скоупятся **вручную** (конвенция «явный `clinicId` в каждом `where`»),
+   и ошибка в таком месте не ловится расширением — см. п. 10 про Mini App.
+2. **(Закрыто)** `User.totpSecret` / `pendingTotpSecret` теперь AES-256-GCM
+   at rest (`src/server/crypto/secret-fields.ts`). Чтение терпит
+   legacy-плейнтекст, поэтому на проде после деплоя нужно прогнать бэкфилл
+   `scripts/encrypt-auth-secrets.ts` — до него старые строки лежат открыто.
+3. **(Закрыто)** `Clinic.tgBotToken` — так же зашифрован тем же ключом, что
+   ProviderConnection-секреты (APP_SECRET/AUTH_SECRET); расшифровка в точке
+   использования (`send.ts`, Mini App HMAC, webhook/poll). Тот же бэкфилл.
 4. **In-memory rate limiter** (`src/lib/rate-limit.ts`): не кластер-safe,
    обнуляется рестартом, ключ доверяет `x-forwarded-for` (finding M3, Redis
    запланирован, не сделан).

@@ -18,6 +18,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 import { deleteWebhook, getUpdates, type TgUpdate } from "./bot-api";
 
@@ -48,18 +49,21 @@ async function loadPollableClinics(): Promise<PollClinic[]> {
       },
     }),
   );
-  return rows.flatMap((r) =>
-    r.tgBotToken && r.tgWebhookSecret
+  return rows.flatMap((r) => {
+    // Decrypt once at load — getUpdates/deleteWebhook below need the real
+    // token, and the `{ not: null }` filter above matches ciphertext fine.
+    const token = readTgBotToken(r.tgBotToken);
+    return token && r.tgWebhookSecret
       ? [
           {
             id: r.id,
             slug: r.slug,
-            tgBotToken: r.tgBotToken,
+            tgBotToken: token,
             tgWebhookSecret: r.tgWebhookSecret,
           },
         ]
-      : [],
-  );
+      : [];
+  });
 }
 
 async function forwardUpdateToWebhook(

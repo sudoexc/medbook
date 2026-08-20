@@ -12,6 +12,8 @@
  *   - Exponential backoff reconnect (1s, 2s, 4s, … capped at 30s).
  *   - SSR-safe: on the server / during test, subscribing is a no-op.
  *   - Zod-validated payloads: malformed events never reach callers.
+ *   - Accepts both envelope generations (v1 `AppEvent` + v2 outbox
+ *     `EventEnvelope`) — see `parseLiveEvent` below.
  *   - Optional `filter` to narrow the subscription to a set of event types.
  */
 
@@ -22,8 +24,44 @@ import {
   type AppEvent,
   type EventType,
 } from "@/server/realtime/events";
+import { EventEnvelopeSchema } from "@/server/realtime/envelope";
 
 type Listener = (event: AppEvent) => void;
+
+/**
+ * Normalize a raw SSE frame into an `AppEvent`, accepting BOTH envelope
+ * generations that ride the shared bus (see `docs/architecture/REALTIME.md` §2):
+ *
+ *   - v1 `AppEvent`       — `clinicId` on the top level
+ *   - v2 `EventEnvelope`  — `clinicId` nested inside `tenantScope`
+ *
+ * The schemas are mutually unparsable (v1 requires top-level `clinicId`, v2
+ * requires `tenantScope`/`actor`), so a parser that knows only one silently
+ * drops the other generation. That is exactly how every outbox-published
+ * event (`visit-note.finalized`, `patient.arrived`, `nps.submitted`, …)
+ * used to vanish before reaching CRM subscribers — masked by the 60s
+ * safety-net polling. Same fix as the mini-app's `extractEventType`.
+ *
+ * v2 envelopes are flattened back to the v1 shape (clinicId lifted out of
+ * `tenantScope`) and re-validated against `AppEventSchema`, so listeners
+ * keep the "Zod-validated typed payload" guarantee regardless of dialect.
+ * Returns `null` for malformed frames.
+ */
+export function parseLiveEvent(parsed: unknown): AppEvent | null {
+  const v1 = AppEventSchema.safeParse(parsed);
+  if (v1.success) return v1.data;
+
+  const v2 = EventEnvelopeSchema.safeParse(parsed);
+  if (!v2.success) return null;
+
+  const flattened = AppEventSchema.safeParse({
+    type: v2.data.type,
+    clinicId: v2.data.tenantScope.clinicId,
+    at: v2.data.at,
+    payload: v2.data.payload,
+  });
+  return flattened.success ? flattened.data : null;
+}
 
 type SharedSource = {
   es: EventSource | null;
@@ -103,9 +141,11 @@ function openConnection(): void {
     } catch {
       return;
     }
-    const result = AppEventSchema.safeParse(parsed);
-    if (!result.success) return;
-    const event = result.data;
+    // Both envelope dialects (v1 AppEvent + v2 outbox EventEnvelope) arrive
+    // on this stream — normalize instead of parsing v1-only, or every
+    // outbox-published event is silently dropped.
+    const event = parseLiveEvent(parsed);
+    if (!event) return;
     // Snapshot: listeners may unsubscribe during dispatch.
     for (const listener of Array.from(s.listeners)) {
       try {

@@ -284,11 +284,25 @@ describe("prisma tenant-scope extension", () => {
     );
   });
 
-  it("no ambient context → passes through unmodified", async () => {
+  // Fail-closed isolation (security-audit fix): a tenant-scoped model with
+  // NO ambient context must throw, not silently run cross-tenant. Full
+  // coverage (runUnscoped escape hatch etc.) lives in
+  // tests/unit/prisma-fail-closed.test.ts.
+  it("no ambient context → tenant-scoped model throws (fail closed)", async () => {
     const { call, query } = runHook({
       model: "Patient",
       operation: "findMany",
       args: { where: { fullName: "No-ctx" } },
+    });
+    await expect(call).rejects.toThrow(/Tenant isolation violation/);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("no ambient context → non-tenant model (User) still passes through", async () => {
+    const { call, query } = runHook({
+      model: "User",
+      operation: "findUnique",
+      args: { where: { email: "login@clinic.uz" } },
     });
     await call;
     const passed = query.mock.calls[0][0] as {

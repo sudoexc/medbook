@@ -2,10 +2,12 @@
  * Phase 8b/c — triggerConfig sanitisation + defaulting helpers.
  *
  * Covers:
- *   - sanitizeTriggerConfig clamps offsetMin into [-72*60, -30] and now only
- *     accepts `TG` as a valid channel (Wave 3 of `docs/TZ-sms-removal.md`
- *     narrowed the allow-list — EMAIL/CALL/VISIT are not exposed through the
- *     trigger editor)
+ *   - sanitizeTriggerConfig clamps offsetMin into [-7*24*60, -30] (7 days —
+ *     wide enough for the canonical 5d/3d/1d/3h reminder cascade; the CRM
+ *     editor exposes the same 1h..7d range) and now only accepts `TG` as a
+ *     valid channel (Wave 3 of `docs/TZ-sms-removal.md` narrowed the
+ *     allow-list — EMAIL/CALL/VISIT are not exposed through the trigger
+ *     editor)
  *   - resolveChannels honors triggerConfig.channels and demotes TG when the
  *     patient has no telegramId
  *   - resolveOffsetMin returns the configured value, or fallback
@@ -35,6 +37,14 @@ describe("sanitizeTriggerConfig", () => {
       { kind: "before" },
     );
     expect(out.offsetMin).toBe(-7200);
+  });
+
+  it("keeps the exact 7-day boundary (editor max = 168h)", () => {
+    const out = sanitizeTriggerConfig(
+      { offsetMin: -7 * 24 * 60 },
+      { kind: "before" },
+    );
+    expect(out.offsetMin).toBe(-7 * 24 * 60);
   });
 
   it("clamps offsetMin above -30 to -30", () => {

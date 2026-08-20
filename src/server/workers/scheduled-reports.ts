@@ -380,31 +380,38 @@ export interface TickResult {
 export async function runScheduledReportsTick(
   deps: RunnerDeps = {},
 ): Promise<TickResult> {
-  const now = deps.now ? deps.now() : new Date();
-  const rows = await fetchDueSchedules(now, BATCH_CAP);
-  let delivered = 0;
-  let failed = 0;
-  let disabled = 0;
-  for (const row of rows) {
-    try {
-      const r = await processSchedule(row, deps);
-      if (r.ok) delivered += 1;
-      else failed += 1;
-      if (r.disabled) disabled += 1;
-    } catch (e) {
-      // processSchedule already swallows internal errors via the catch above.
-      // This outermost catch is only here so a surprise throw (e.g. from the
-      // audit insert path itself) cannot kill the worker.
-      console.error("[scheduled-reports] unexpected error", e);
-      failed += 1;
+  // The worker fires with no ambient tenant context; ScheduledReport is
+  // tenant-scoped, so the whole tick (due-row picker + bookkeeping updates)
+  // runs under SYSTEM like every other cron in this directory. The per-row
+  // report run inside `processSchedule` still narrows to a TENANT context —
+  // AsyncLocalStorage nests, so the inner scope wins for that stretch.
+  return runWithTenant({ kind: "SYSTEM" }, async () => {
+    const now = deps.now ? deps.now() : new Date();
+    const rows = await fetchDueSchedules(now, BATCH_CAP);
+    let delivered = 0;
+    let failed = 0;
+    let disabled = 0;
+    for (const row of rows) {
+      try {
+        const r = await processSchedule(row, deps);
+        if (r.ok) delivered += 1;
+        else failed += 1;
+        if (r.disabled) disabled += 1;
+      } catch (e) {
+        // processSchedule already swallows internal errors via the catch above.
+        // This outermost catch is only here so a surprise throw (e.g. from the
+        // audit insert path itself) cannot kill the worker.
+        console.error("[scheduled-reports] unexpected error", e);
+        failed += 1;
+      }
     }
-  }
-  if (rows.length > 0) {
-    console.info(
-      `[scheduled-reports] tick: ${delivered} delivered, ${failed} failed (${disabled} auto-disabled), ${rows.length} picked`,
-    );
-  }
-  return { picked: rows.length, delivered, failed, disabled };
+    if (rows.length > 0) {
+      console.info(
+        `[scheduled-reports] tick: ${delivered} delivered, ${failed} failed (${disabled} auto-disabled), ${rows.length} picked`,
+      );
+    }
+    return { picked: rows.length, delivered, failed, disabled };
+  });
 }
 
 export function startScheduledReportsWorker(

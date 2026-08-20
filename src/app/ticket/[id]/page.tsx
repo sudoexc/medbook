@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 
 import { prisma } from "@/lib/prisma";
+import { runUnscoped } from "@/lib/tenant-context";
 import { SITE_DOMAIN } from "@/lib/constants";
 import { initials } from "@/lib/format";
 import { ticketNumberFor } from "@/server/services/ticket-number";
@@ -18,26 +19,33 @@ export default async function TicketPage({
   // Public, unauthenticated page reachable by raw CUID — never expose full
   // PHI. The patient name is masked to initials (mirrors /api/queue/status),
   // and only the fields the printed stub actually needs are selected.
-  const appointment = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      queueOrder: true,
-      clinicId: true,
-      date: true,
-      time: true,
-      channel: true,
-      doctorId: true,
-      patient: { select: { fullName: true } },
-      doctor: {
+  // The clinic is unknown until the row resolves, so the lookup runs with an
+  // explicit unscoped bypass (fail-closed Prisma extension); the unguessable
+  // CUID is the authorization.
+  const appointment = await runUnscoped(
+    "public ticket stub: lookup appointment by unguessable CUID",
+    () =>
+      prisma.appointment.findUnique({
+        where: { id },
         select: {
-          id: true,
-          nameRu: true,
-          cabinet: { select: { number: true } },
+          queueOrder: true,
+          clinicId: true,
+          date: true,
+          time: true,
+          channel: true,
+          doctorId: true,
+          patient: { select: { fullName: true } },
+          doctor: {
+            select: {
+              id: true,
+              nameRu: true,
+              cabinet: { select: { number: true } },
+            },
+          },
+          primaryService: { select: { nameRu: true } },
         },
-      },
-      primaryService: { select: { nameRu: true } },
-    },
-  });
+      }),
+  );
 
   if (!appointment) {
     return <p style={{ padding: 40, textAlign: "center" }}>Талон не найден</p>;
@@ -62,10 +70,16 @@ export default async function TicketPage({
   const live = isLiveLane(appointment);
   let waitingAhead: number | null = null;
   if (live) {
-    const projection = await getQueueProjection({
-      clinicId: appointment.clinicId,
-      doctorIds: [appointment.doctorId],
-    });
+    // Same unscoped rationale as the lookup above — the projection reads
+    // queue rows for the clinic this (already-authorized) ticket belongs to.
+    const projection = await runUnscoped(
+      "public ticket stub: queue projection for the resolved clinic",
+      () =>
+        getQueueProjection({
+          clinicId: appointment.clinicId,
+          doctorIds: [appointment.doctorId],
+        }),
+    );
     const mine = projection
       .get(appointment.doctorId)
       ?.waiting.find((w) => w.appointmentId === id);

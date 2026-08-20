@@ -14,6 +14,7 @@ import "dotenv/config";
 
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 async function main(): Promise<void> {
   const [, , slug, baseUrl] = process.argv;
@@ -37,9 +38,11 @@ async function main(): Promise<void> {
       console.error(`Clinic '${slug}' has no bot token or webhook secret.`);
       process.exit(1);
     }
+    // At-rest ciphertext (legacy plaintext tolerated) — Bot API needs plain.
+    const botToken = readTgBotToken(clinic.tgBotToken);
     const url = `${baseUrl.replace(/\/$/, "")}/api/telegram/webhook/${slug}`;
     const setRes = await fetch(
-      `https://api.telegram.org/bot${clinic.tgBotToken}/setWebhook`,
+      `https://api.telegram.org/bot${botToken}/setWebhook`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -55,7 +58,7 @@ async function main(): Promise<void> {
     console.log("setWebhook →", setJson);
 
     const infoRes = await fetch(
-      `https://api.telegram.org/bot${clinic.tgBotToken}/getWebhookInfo`,
+      `https://api.telegram.org/bot${botToken}/getWebhookInfo`,
     );
     const infoJson = await infoRes.json();
     console.log("\ngetWebhookInfo →", JSON.stringify(infoJson.result, null, 2));

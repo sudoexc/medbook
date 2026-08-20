@@ -95,10 +95,15 @@ async function logAudit(
  * without the queue plumbing.
  */
 export async function runExportJob(job: ExportRunJob): Promise<void> {
-  const row = await prisma.dataExportJob.findUnique({
-    where: { id: job.jobId },
-    select: { id: true, clinicId: true, patientId: true, status: true },
-  });
+  // Queue workers run with no ambient tenant context, and DataExportJob is
+  // tenant-scoped — this pre-flight status read must carry the same SYSTEM
+  // scope as the main pipeline below or the fail-closed extension rejects it.
+  const row = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.dataExportJob.findUnique({
+      where: { id: job.jobId },
+      select: { id: true, clinicId: true, patientId: true, status: true },
+    }),
+  );
   if (!row) {
     console.warn(`[dsar:export] job ${job.jobId} not found`);
     return;

@@ -25,6 +25,7 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
+import { writeTgBotToken } from "@/server/crypto/secret-fields";
 import {
   getMe,
   getWebhookInfo,
@@ -221,11 +222,12 @@ export const POST = createApiHandler(
       }
     }
 
-    // Step 4 — persist.
+    // Step 4 — persist. Token is encrypted at rest — it doubles as the HMAC
+    // key for Mini App initData, so a DB dump must not expose it.
     await prisma.clinic.update({
       where: { id: ctx.clinicId },
       data: {
-        tgBotToken: body.token,
+        tgBotToken: writeTgBotToken(body.token),
         tgBotUsername: me.username,
         tgWebhookSecret: webhookSecret,
       } as never,

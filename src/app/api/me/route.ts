@@ -26,9 +26,12 @@ const PatchBody = z.object({
 export const PATCH = createApiHandler(
   { bodySchema: PatchBody },
   async ({ request, body, ctx }) => {
-    // SYSTEM context never reaches a request handler, but the union includes it
-    // and it carries no userId — narrow to the authenticated kinds.
-    if (ctx.kind === "SYSTEM") return err("Forbidden", 403);
+    // SYSTEM/UNSCOPED contexts never reach a request handler, but the union
+    // includes them and they carry no userId — narrow to the authenticated
+    // kinds positively so future kinds fail safe too.
+    if (ctx.kind !== "TENANT" && ctx.kind !== "SUPER_ADMIN") {
+      return err("Forbidden", 403);
+    }
     const userId = ctx.userId;
 
     await prisma.user.update({

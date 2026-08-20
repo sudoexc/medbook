@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { ClinicSecretsSchema } from "@/server/schemas/settings";
+import { writeTgBotToken } from "@/server/crypto/secret-fields";
 
 export const POST = createApiHandler(
   { roles: ["ADMIN"], bodySchema: ClinicSecretsSchema },
@@ -32,7 +33,8 @@ export const POST = createApiHandler(
     const data: Record<string, unknown> = {};
     const changed: string[] = [];
     if (body.tgBotToken !== undefined) {
-      data.tgBotToken = body.tgBotToken || null;
+      // Encrypted at rest — the token is also the Mini App HMAC key.
+      data.tgBotToken = writeTgBotToken(body.tgBotToken || null);
       changed.push("tgBotToken");
     }
     if (body.tgBotUsername !== undefined) {

@@ -25,6 +25,10 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err } from "@/server/http";
 import { verifyTotpCode } from "@/server/auth/totp";
 import {
+  readTotpSecret,
+  writeTotpSecret,
+} from "@/server/crypto/secret-fields";
+import {
   generateRecoveryCodes,
   hashRecoveryCodes,
   RECOVERY_CODE_COUNT,
@@ -80,14 +84,20 @@ export async function POST(request: Request): Promise<Response> {
       return err("enrollment_expired", 400);
     }
 
-    if (!verifyTotpCode(me.pendingTotpSecret, code)) {
+    // Stored pending secret is ciphertext at rest; a row enrolled minutes
+    // before this code deployed may still be plaintext (10-min TTL), so the
+    // read helper tolerates both.
+    const pendingSecret = readTotpSecret(me.pendingTotpSecret);
+    if (!verifyTotpCode(pendingSecret, code)) {
       return err("invalid_code", 400);
     }
 
     await prisma.user.update({
       where: { id: me.id },
       data: {
-        totpSecret: me.pendingTotpSecret,
+        // Re-encrypt on promote (not copy the stored value) so even a
+        // legacy-plaintext pending secret lands encrypted in `totpSecret`.
+        totpSecret: writeTotpSecret(pendingSecret),
         totpEnabledAt: new Date(),
         recoveryCodesHash: hashes,
         pendingTotpSecret: null,

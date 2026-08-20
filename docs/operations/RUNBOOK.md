@@ -268,30 +268,59 @@ docker compose exec -T postgres psql -U medbook -d medbook -tc \
 
 ## 4. Бэкап и восстановление
 
-> 🔴 **СОСТОЯНИЕ НА 2026-08-20: автоматический бэкап medbook на текущем сервере
-> НЕ НАСТРОЕН.** Проверено: в `crontab -l` root'а есть только бэкап
-> travel-crm; в MinIO нет бакета `medbook-backups` (только `medbook` и
-> `rtxshop`) — т.е. ночной дамп не запускался ни разу с миграции на Hetzner.
-> Пока прод — демо-окружение без реальных пациентов, это терпимо; **перед
-> заходом первой живой клиники бэкап обязан быть включён.**
+> ✅ **СОСТОЯНИЕ НА 2026-08-20: ночной бэкап включён и проверен.**
+> Крон root'а: `15 3 * * * cd /opt/neurofax && ./ops/backup.sh`, лог —
+> `/var/log/medbook-backup.log`. Восстановление проверено на практике
+> (дамп развёрнут во временную базу, 0 ошибок, счётчики строк сошлись
+> с боевой: Patient 260, Appointment 1392, VisitNote 441, Document 130).
 
-### 4.1 Включить ночной бэкап (однократно)
+### 4.1 Что и куда бэкапится
 
-Скрипт в репо: `ops/backup.sh` (pg_dump → gzip → MinIO
-`medbook-backups/backups/`, ретенция 30 дней). Внимание: пример крона в
-`ops/crontab.example` указывает на несуществующий `/opt/medbook` — путь
-заменить:
+`ops/backup.sh` кладёт в **директорию на хосте** `/var/backups/medbook/<дата>/`
+два артефакта:
+
+| Файл | Что внутри |
+|---|---|
+| `pg-medbook-<ts>.sql.gz` | Полный логический дамп Postgres (~3 МБ сжатый) |
+| `files-<ts>.tar.gz` | Файлы клиники из бакета MinIO: документы, вложения чата, памятки (~11 МБ) |
+
+Ретенция — 14 дней (`BACKUP_RETENTION_DAYS`), примерно 200 МБ на диске.
+
+Почему на диск хоста, а не в MinIO: предыдущая версия скрипта складывала дамп
+в тот самый MinIO, который и должна была защищать — круговая зависимость, и
+смерть диска уносила обе копии. (Заодно та версия была нерабочей: `mc`
+запускался без `--entrypoint sh`, из-за чего зеркалирование падало.)
+
+⚠️ **Это по-прежнему копия НА ТОМ ЖЕ СЕРВЕРЕ.** Она спасает от повреждения
+базы, неудачной миграции, ошибочного сида или сорванного деплоя — но **не от
+потери сервера**. Копию нужно регулярно забирать наружу:
+
+```bash
+# с локальной машины — забрать последние бэкапы
+rsync -avz root@167.233.142.75:/var/backups/medbook/ ~/medbook-backups/
+```
+
+### 4.1.1 Проверить, что бэкап живой
+
+```bash
+ssh root@167.233.142.75 'ls -lh /var/backups/medbook/*/ | tail -20; tail -5 /var/log/medbook-backup.log'
+```
+
+Признаки беды: нет папки за сегодня; дамп меньше 1 МБ; в логе `FAILED:`.
+
+### 4.1.2 Проверить, что дамп реально восстанавливается
+
+Раз в пару месяцев — разворачиваем во временную базу, сверяем и удаляем:
 
 ```bash
 ssh root@167.233.142.75
-( crontab -l 2>/dev/null; echo '0 3 * * * cd /opt/neurofax && ./ops/backup.sh >> /var/log/medbook-backup.log 2>&1' ) | crontab -
-# прогнать руками и убедиться, что дамп лёг:
-cd /opt/neurofax && ./ops/backup.sh
+cd /opt/neurofax
+DUMP=$(ls -t /var/backups/medbook/*/pg-*.sql.gz | head -1)
+docker compose exec -T postgres psql -U medbook -d postgres -c "CREATE DATABASE restore_test;"
+gunzip -c "$DUMP" | docker compose exec -T postgres psql -U medbook -d restore_test -q
+docker compose exec -T postgres psql -U medbook -d restore_test -tAc 'select count(*) from "Patient"'
+docker compose exec -T postgres psql -U medbook -d postgres -c "DROP DATABASE restore_test;"
 ```
-
-⚠️ Скрипт использует docker-сеть `medbook_default` и креды MinIO из `.env` —
-при первом запуске проверить, что бакет `medbook-backups` создался и файл
-`pg-medbook-<дата>.sql.gz` появился.
 
 ### 4.2 Ручной дамп Postgres (перед рискованными операциями)
 

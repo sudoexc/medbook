@@ -23,7 +23,8 @@
 import type { ZodSchema } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { runWithTenant } from "@/lib/tenant-context";
+import { runUnscoped, runWithTenant } from "@/lib/tenant-context";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 import { verifyMiniAppInitData } from "@/server/telegram/auth";
 
 export type MiniAppContext = {
@@ -154,7 +155,11 @@ export async function resolveMiniAppContext(
       };
     }
   } else {
-    if (!clinic.tgBotToken) {
+    // The bot token doubles as the HMAC key for initData, so we must decrypt
+    // the at-rest ciphertext (legacy plaintext passes through) before
+    // verification — hashing the ciphertext would reject every real patient.
+    const botToken = readTgBotToken(clinic.tgBotToken);
+    if (!botToken) {
       return {
         ok: false,
         response: json(
@@ -163,7 +168,7 @@ export async function resolveMiniAppContext(
         ),
       };
     }
-    const verify = verifyMiniAppInitData(initData, clinic.tgBotToken);
+    const verify = verifyMiniAppInitData(initData, botToken);
     if (!verify.ok) {
       return {
         ok: false,
@@ -207,17 +212,25 @@ export async function resolveMiniAppContext(
   }
 
   const tgIdStr = String(tgUser.id);
-  const existing = await prisma.patient.findFirst({
-    where: { clinicId: clinic.id, telegramId: tgIdStr },
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      preferredLang: true,
-      telegramId: true,
-      telegramUsername: true,
-    },
-  });
+  // Pre-auth lookup: this runs BEFORE the handler's SYSTEM scope is entered,
+  // so the fail-closed extension needs an explicit bypass. Safe: the where
+  // clause manually pins `clinicId` (resolved from the verified slug) and
+  // the caller's HMAC-verified Telegram id.
+  const existing = await runUnscoped(
+    "miniapp: resolve patient by verified telegramId within resolved clinic",
+    () =>
+      prisma.patient.findFirst({
+        where: { clinicId: clinic.id, telegramId: tgIdStr },
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          preferredLang: true,
+          telegramId: true,
+          telegramUsername: true,
+        },
+      }),
+  );
   if (!existing) {
     return {
       ok: false,

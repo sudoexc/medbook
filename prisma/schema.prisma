@@ -318,6 +318,10 @@ model Clinic {
   workdayEnd                 String    @default("19:00")
   slotMin                    Int       @default(30)
   tgBotUsername              String?
+  // AES-256-GCM ciphertext (`v1:iv:tag:ct`) via src/server/crypto/secret-fields.ts —
+  // the token doubles as the HMAC key for Mini App initData, so at-rest leakage
+  // would allow full patient-surface impersonation. Legacy plaintext rows are
+  // tolerated on read until `scripts/encrypt-auth-secrets.ts` backfills them.
   tgBotToken                 String?
   tgWebhookSecret            String?
   kioskPin                   String?
@@ -725,6 +729,11 @@ model User {
   // `totpSecret` (encrypted) + `recoveryCodesHash` (bcrypt of one-time
   // codes; NEVER plaintext) and start stamping `lastSessionRotatedAt`
   // from session middleware.
+  //
+  // `totpSecret` / `pendingTotpSecret` are AES-256-GCM ciphertext at rest
+  // (src/server/crypto/secret-fields.ts, key from APP_SECRET/AUTH_SECRET);
+  // legacy plaintext rows are tolerated on read until
+  // `scripts/encrypt-auth-secrets.ts` backfills them.
   totpSecret           String?
   totpEnabledAt        DateTime?
   recoveryCodesHash    String[]

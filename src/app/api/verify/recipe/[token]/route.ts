@@ -15,6 +15,7 @@
  * with the items; the verify page only confirms the paper itself is real.
  */
 import { prisma } from "@/lib/prisma";
+import { runUnscoped } from "@/lib/tenant-context";
 
 export async function GET(request: Request) {
   const m = /\/verify\/recipe\/([^/?]+)/.exec(request.url);
@@ -22,14 +23,21 @@ export async function GET(request: Request) {
   const token = decodeURIComponent(m[1]);
   const wantsJson = (request.headers.get("accept") ?? "").includes("application/json");
 
-  const rx = await prisma.ePrescription.findFirst({
-    where: { verifyToken: token },
-    include: {
-      patient: { select: { fullName: true } },
-      doctor: { select: { name: true } },
-      clinic: { select: { nameRu: true, phone: true } },
-    },
-  });
+  // Anonymous capability-URL endpoint: the clinic is unknown until the row is
+  // found, so the query cannot be tenant-scoped. The unguessable verifyToken
+  // IS the authorization; the response is PII-masked by construction.
+  const rx = await runUnscoped(
+    "public Rx verify: lookup EPrescription by unguessable verifyToken",
+    () =>
+      prisma.ePrescription.findFirst({
+        where: { verifyToken: token },
+        include: {
+          patient: { select: { fullName: true } },
+          doctor: { select: { name: true } },
+          clinic: { select: { nameRu: true, phone: true } },
+        },
+      }),
+  );
 
   if (!rx) {
     return wantsJson

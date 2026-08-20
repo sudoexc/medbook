@@ -23,6 +23,7 @@ import type { NextRequest } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 import {
   answerCallbackQuery,
@@ -143,7 +144,7 @@ async function loadClinicBySlug(slug: string): Promise<{
   tgWebhookSecret: string | null;
 } | null> {
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    return prisma.clinic.findUnique({
+    const row = await prisma.clinic.findUnique({
       where: { slug },
       select: {
         id: true,
@@ -153,6 +154,12 @@ async function loadClinicBySlug(slug: string): Promise<{
         tgWebhookSecret: true,
       },
     });
+    if (!row) return null;
+    // Decrypt the at-rest token once at load: everything downstream
+    // (voice-handler / inbound-media getFile calls, send.ts replies) then
+    // works with a usable value. send.ts re-checks the envelope, so passing
+    // plaintext through it is fine.
+    return { ...row, tgBotToken: readTgBotToken(row.tgBotToken) };
   });
 }
 

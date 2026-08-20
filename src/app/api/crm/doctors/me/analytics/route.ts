@@ -3,9 +3,9 @@
  * personal analytics page (Phase G8).
  *
  * Returns a flat set of counters scoped to the calling DOCTOR + a per-day
- * series for the daily Rx/sick-leave/lab volume sparklines. Range is
- * driven by `?from=YYYY-MM-DD&to=YYYY-MM-DD`; both default to a 30-day
- * window ending today so a stale tab still renders something sensible.
+ * series for the daily activity sparklines. Range is driven by
+ * `?from=YYYY-MM-DD&to=YYYY-MM-DD`; both default to a 30-day window ending
+ * today so a stale tab still renders something sensible.
  *
  * Counters in scope:
  *   completedAppointments — Appointment.status=COMPLETED for this doctor.
@@ -15,12 +15,18 @@
  *                          protocol-applied marker). Phase G2 stamps this in
  *                          the body itself; counting it here is cheap and
  *                          avoids a new join table.
- *   rxIssued / slIssued   — Counters from the G7 tables, doctorId=userId.
- *   labOrdersIssued       — LabOrder.doctorId=userId.
  *   cdsOverrides          — CdsOverride.doctorId=userId.
  *   labResultsReviewed    — LabResult.reviewedAt!=null && reviewedById=userId
  *                          (only when the schema has that column; otherwise
  *                          falls back to reviewedAt!=null).
+ *
+ * Deliberately NOT counted: ePrescription / SickLeave / LabOrder issuance.
+ * The visit-screen buttons that created those rows were removed in the
+ * interface simplification, so a doctor cannot produce them anymore — the
+ * KPIs would read as eternal zeros and look broken. The G7 tables and their
+ * CRUD routes stay untouched; resurrect the counters from git history if
+ * the buttons ever come back. This endpoint's only consumer is the doctor
+ * analytics dashboard (`src/app/[locale]/doctor/analytics/**`).
  *
  * The doctor model uses two id namespaces (Doctor.id vs User.id) — G7+G8
  * rows store User.id while VisitNote/Appointment use Doctor.id. We resolve
@@ -39,11 +45,12 @@ const QuerySchema = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+// Daily series mirrors the KPI set: only activity the doctor can actually
+// generate from the current UI (visits, conclusions, CDS overrides).
 type DailyBucket = {
   date: string;
-  rx: number;
-  sl: number;
-  labs: number;
+  appointments: number;
+  notes: number;
   overrides: number;
 };
 
@@ -74,29 +81,25 @@ export const GET = createApiListHandler(
     const doctorRowId = doctor.id;
     const clinicId = ctx.clinicId;
 
-    // Run aggregate counts in parallel — six small queries beat a single
+    // Run the queries in parallel — several small queries beat a single
     // mega-join here because Prisma can't aggregate across heterogeneous
-    // tables in one trip anyway.
+    // tables in one trip anyway. Row-level selects (dates only) feed the
+    // daily buckets; counts derive from the same rows where possible.
     const [
-      completedAppointments,
+      appointmentRows,
       finalizedNotesAgg,
-      rxAgg,
-      slAgg,
-      labOrdersAgg,
       cdsOverrideAgg,
       labResultsReviewedAgg,
-      rxRows,
-      slRows,
-      labRows,
       overrideRows,
     ] = await Promise.all([
-      prisma.appointment.count({
+      prisma.appointment.findMany({
         where: {
           clinicId,
           doctorId: doctorRowId,
           status: "COMPLETED",
           date: { gte: from, lte: to },
         },
+        select: { date: true },
       }),
       prisma.visitNote.findMany({
         where: {
@@ -105,30 +108,7 @@ export const GET = createApiListHandler(
           status: "FINALIZED",
           finalizedAt: { gte: from, lte: to },
         },
-        select: { id: true, bodyMarkdown: true },
-      }),
-      prisma.ePrescription.count({
-        where: {
-          clinicId,
-          doctorId: userId,
-          status: "ISSUED",
-          issuedAt: { gte: from, lte: to },
-        },
-      }),
-      prisma.sickLeave.count({
-        where: {
-          clinicId,
-          doctorId: userId,
-          status: "ISSUED",
-          issuedAt: { gte: from, lte: to },
-        },
-      }),
-      prisma.labOrder.count({
-        where: {
-          clinicId,
-          doctorId: userId,
-          createdAt: { gte: from, lte: to },
-        },
+        select: { id: true, bodyMarkdown: true, finalizedAt: true },
       }),
       prisma.cdsOverride.count({
         where: {
@@ -144,32 +124,6 @@ export const GET = createApiListHandler(
           reviewedAt: { gte: from, lte: to, not: null },
         },
       }),
-      prisma.ePrescription.findMany({
-        where: {
-          clinicId,
-          doctorId: userId,
-          status: "ISSUED",
-          issuedAt: { gte: from, lte: to },
-        },
-        select: { issuedAt: true },
-      }),
-      prisma.sickLeave.findMany({
-        where: {
-          clinicId,
-          doctorId: userId,
-          status: "ISSUED",
-          issuedAt: { gte: from, lte: to },
-        },
-        select: { issuedAt: true },
-      }),
-      prisma.labOrder.findMany({
-        where: {
-          clinicId,
-          doctorId: userId,
-          createdAt: { gte: from, lte: to },
-        },
-        select: { createdAt: true },
-      }),
       prisma.cdsOverride.findMany({
         where: {
           clinicId,
@@ -180,6 +134,7 @@ export const GET = createApiListHandler(
       }),
     ]);
 
+    const completedAppointments = appointmentRows.length;
     const finalizedNotes = finalizedNotesAgg.length;
     const protocolApplied = finalizedNotesAgg.filter((n) =>
       hasProtocolMarker(n.bodyMarkdown),
@@ -197,18 +152,22 @@ export const GET = createApiListHandler(
       const d = addDays(from, i);
       buckets.push({
         date: toYMD(d),
-        rx: 0,
-        sl: 0,
-        labs: 0,
+        appointments: 0,
+        notes: 0,
         overrides: 0,
       });
     }
     const bucketIndex = new Map<string, DailyBucket>(
       buckets.map((b) => [b.date, b]),
     );
-    for (const r of rxRows) bumpBucket(bucketIndex, r.issuedAt, "rx");
-    for (const r of slRows) bumpBucket(bucketIndex, r.issuedAt, "sl");
-    for (const r of labRows) bumpBucket(bucketIndex, r.createdAt, "labs");
+    for (const r of appointmentRows) {
+      bumpBucket(bucketIndex, r.date, "appointments");
+    }
+    for (const n of finalizedNotesAgg) {
+      // finalizedAt is set on the FINALIZED transition, but the column is
+      // nullable — guard so a legacy row can't crash the whole dashboard.
+      if (n.finalizedAt) bumpBucket(bucketIndex, n.finalizedAt, "notes");
+    }
     for (const r of overrideRows) bumpBucket(bucketIndex, r.createdAt, "overrides");
 
     return ok({
@@ -218,9 +177,6 @@ export const GET = createApiListHandler(
         finalizedNotes,
         protocolApplied,
         protocolAppliedPct,
-        rxIssued: rxAgg,
-        slIssued: slAgg,
-        labOrdersIssued: labOrdersAgg,
         cdsOverrides: cdsOverrideAgg,
         labResultsReviewed: labResultsReviewedAgg,
       },
@@ -232,7 +188,7 @@ export const GET = createApiListHandler(
 function bumpBucket(
   idx: Map<string, DailyBucket>,
   at: Date,
-  key: "rx" | "sl" | "labs" | "overrides",
+  key: "appointments" | "notes" | "overrides",
 ) {
   const k = toYMD(at);
   const b = idx.get(k);

@@ -7,6 +7,7 @@
  * trumps verification convenience.
  */
 import { prisma } from "@/lib/prisma";
+import { runUnscoped } from "@/lib/tenant-context";
 
 export async function GET(request: Request) {
   const m = /\/verify\/sick-leave\/([^/?]+)/.exec(request.url);
@@ -14,14 +15,21 @@ export async function GET(request: Request) {
   const token = decodeURIComponent(m[1]);
   const wantsJson = (request.headers.get("accept") ?? "").includes("application/json");
 
-  const sl = await prisma.sickLeave.findFirst({
-    where: { verifyToken: token },
-    include: {
-      patient: { select: { fullName: true } },
-      doctor: { select: { name: true } },
-      clinic: { select: { nameRu: true, phone: true } },
-    },
-  });
+  // Anonymous capability-URL endpoint: the clinic is unknown until the row is
+  // found, so the query cannot be tenant-scoped. The unguessable verifyToken
+  // IS the authorization; the response is PII-masked, no diagnosis exposed.
+  const sl = await runUnscoped(
+    "public sick-leave verify: lookup SickLeave by unguessable verifyToken",
+    () =>
+      prisma.sickLeave.findFirst({
+        where: { verifyToken: token },
+        include: {
+          patient: { select: { fullName: true } },
+          doctor: { select: { name: true } },
+          clinic: { select: { nameRu: true, phone: true } },
+        },
+      }),
+  );
 
   if (!sl) {
     return wantsJson

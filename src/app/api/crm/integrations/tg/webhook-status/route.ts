@@ -8,6 +8,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 type TgWebhookInfo = {
   url?: string;
@@ -29,7 +30,10 @@ export const GET = createApiListHandler(
       where: { id: ctx.clinicId },
     });
     if (!clinic) return err("NotFound", 404);
-    if (!clinic.tgBotToken) {
+    // Ciphertext at rest (legacy plaintext tolerated) — needed in plain form
+    // for the Bot API URL below.
+    const botToken = readTgBotToken(clinic.tgBotToken);
+    if (!botToken) {
       return ok({
         notConfigured: true,
         botUsername: clinic.tgBotUsername ?? null,
@@ -51,7 +55,7 @@ export const GET = createApiListHandler(
     }
     try {
       const apiBase = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
-      const url = `${apiBase}/bot${clinic.tgBotToken}/getWebhookInfo`;
+      const url = `${apiBase}/bot${botToken}/getWebhookInfo`;
       const resp = await fetch(url, { method: "GET" });
       const json = (await resp.json().catch(() => null)) as
         | { ok: true; result: TgWebhookInfo }

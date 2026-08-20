@@ -18,9 +18,14 @@
  * Tenant scoping note: `prisma.subscription.findUnique({ where: { clinicId } })`
  * is keyed on the clinic explicitly, so the tenant-scope Prisma extension
  * is a no-op — safe under TENANT, SUPER_ADMIN-with-clinic, and SYSTEM.
+ * The read runs under `runUnscoped` because the caller is a React server
+ * component (CRM layout) rendering with no AsyncLocalStorage context — the
+ * fail-closed extension would otherwise reject it. The clinicId comes from
+ * the authenticated session claim, so isolation is preserved.
  */
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { runUnscoped } from "@/lib/tenant-context";
 import {
   computeTrialDaysLeft,
   type CurrentSubscription,
@@ -37,10 +42,14 @@ export async function getCurrentSubscription(): Promise<CurrentSubscription | nu
     return null;
   }
 
-  const sub = await prisma.subscription.findUnique({
-    where: { clinicId },
-    include: { plan: { select: { slug: true } } },
-  });
+  const sub = await runUnscoped(
+    "trial banner: read subscription for the session's own clinicId (RSC has no ALS context)",
+    () =>
+      prisma.subscription.findUnique({
+        where: { clinicId },
+        include: { plan: { select: { slug: true } } },
+      }),
+  );
   if (!sub) return null;
 
   const now = new Date();

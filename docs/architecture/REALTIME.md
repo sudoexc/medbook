@@ -161,28 +161,27 @@ function extractEventType(parsed: unknown): EventType | null {
 }
 ```
 
-### ⚠️ Ловушка всё ещё взведена в CRM-хуке
+### ✅ CRM-хук: ловушка разряжена (2026-08-20)
 
-`src/hooks/use-live-events.ts:106` (общий хук CRM и кабинета врача) до сих пор
-парсит **только v1**:
-
-```ts
-const result = AppEventSchema.safeParse(parsed);
-if (!result.success) return;   // ← v2-конверт молча выбрасывается
-```
-
-По коду это означает: события, публикуемые **только через outbox**
-(например `appointment.statusChanged` из `emitAppointmentChangeViaOutbox`,
+Исторический контекст: `src/hooks/use-live-events.ts` (общий хук CRM и
+кабинета врача) парсил **только v1** (`AppEventSchema.safeParse` → silent
+drop), поэтому события, публикуемые **только через outbox** (например
+`appointment.statusChanged` из `emitAppointmentChangeViaOutbox`,
 `visit-note.finalized`, `doctor.scheduleChanged`, `patient.arrived`,
 mini-app-мутации `nps.submitted`/`previsit.submitted`/`patient.family*`),
-до CRM-подписчиков живьём **не доходят**. Симптом маскируется тремя вещами:
-60-секундным поллингом-страховкой (`RECEPTION_POLL_MS` в
+до CRM-подписчиков живьём **не доходили**. Симптом маскировался тремя
+вещами: 60-секундным поллингом-страховкой (`RECEPTION_POLL_MS` в
 `use-reception-live.ts:126` и аналогичные `refetchInterval` в других хуках),
 локальной инвалидацией в `onSuccess` мутаций у самого действующего юзера и
 v1-дублёрами на горячих путях (queue-status роут шлёт v1
-`queue.updated`+`appointment.statusChanged`). ⚠️ Требует проверки в рантайме
-(вывод сделан по чтению кода и семантике Zod); если чинить — переносить
-`extractEventType`-паттерн из mini-app-хука в `use-live-events.ts`.
+`queue.updated`+`appointment.statusChanged`).
+
+Фикс — `parseLiveEvent` в `use-live-events.ts`: пробует `AppEventSchema`
+(v1), затем `EventEnvelopeSchema` (v2); v2-конверт сплющивается обратно в
+v1-форму (`clinicId` поднимается из `tenantScope`) и ревалидируется через
+`AppEventSchema`, так что подписчики по-прежнему получают типизированный
+`AppEvent` независимо от диалекта. Регресс-тест:
+`tests/unit/live-events-dialects.test.ts`.
 
 Публичное табло не подвержено: `board-stream.ts` читает `type`/`payload`
 дефензивно из `unknown` и работает для обоих поколений (см. комментарий в

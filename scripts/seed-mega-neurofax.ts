@@ -26,6 +26,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { tashkentComponents, toTashkentDate } from "../src/lib/booking-validation";
 import { seedTodayLiveQueue, todayScheduledDoctors } from "./_live-queue-seed";
+import { assertDestructiveAllowed } from "./_destructive-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -120,6 +121,7 @@ const REVIEW_TEXTS_MIXED = [
 
 // ─── main ───────────────────────────────────────────────────────────────────
 async function main() {
+  await assertDestructiveAllowed(prisma, "seed-mega-neurofax");
   const slug = "neurofax";
   const clinic = await prisma.clinic.findUnique({ where: { slug } });
   if (!clinic) throw new Error(`clinic '${slug}' not found`);

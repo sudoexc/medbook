@@ -201,19 +201,20 @@ export function useDoctorToday<TSelected = DoctorToday>(
   });
 
   useLiveQueryInvalidation({
+    // Scoped to what the screen actually renders — the current patient and
+    // the live queue. `queue.updated` was missing, so a reception-side drag
+    // or priority bump never reached the doctor: positions and «ждёт N мин»
+    // sat stale until an unrelated appointment event happened to land.
+    // Conversely reminder.* / lab.result.* / tg.* used to refetch this whole
+    // aggregate on every incoming Telegram message, for cards that no longer
+    // exist here.
     events: [
       "appointment.created",
       "appointment.updated",
       "appointment.statusChanged",
       "appointment.cancelled",
       "appointment.moved",
-      "case.soap-draft.refreshed",
-      "reminder.created",
-      "reminder.updated",
-      "lab.result.received",
-      "lab.result.reviewed",
-      "tg.message.new",
-      "tg.conversation.updated",
+      "queue.updated",
     ],
     queryKey: doctorTodayKey,
   });

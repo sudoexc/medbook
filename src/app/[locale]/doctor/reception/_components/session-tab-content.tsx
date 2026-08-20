@@ -8,6 +8,7 @@ import { PrescriptionsSection } from "../../patients/[id]/_components/prescripti
 import { LabsSection } from "../../patients/[id]/_components/labs-section";
 
 import { useReceptionContext } from "../_hooks/reception-context";
+import { DiagnosisHistoryCard } from "./diagnosis-history-card";
 import { NotesEditorPanel } from "./notes-editor-panel";
 import { StructuredFieldsPanel } from "./structured-fields-panel";
 
@@ -47,7 +48,15 @@ export function SessionTabContent({ locale }: { locale: string }) {
   }
 
   if (activeTab === "history") {
-    return <VisitsSection patientId={patientId} locale={locale} />;
+    // Diagnosis history rides along with the visit list instead of holding its
+    // own card on the consultation screen — same patient, same question
+    // («что у него было раньше»), so one place to look.
+    return (
+      <div className="flex flex-col gap-4 xl:gap-5">
+        <DiagnosisHistoryCard />
+        <VisitsSection patientId={patientId} locale={locale} />
+      </div>
+    );
   }
   if (activeTab === "documents") {
     return <DocumentsSection patientId={patientId} />;

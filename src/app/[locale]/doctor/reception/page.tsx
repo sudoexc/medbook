@@ -4,10 +4,6 @@ import { ArrowLeftIcon } from "lucide-react";
 
 import { ActiveAIRail } from "./_components/active-ai-rail";
 import { ActivePatientCard } from "./_components/active-patient-card";
-import { DiagnosisHistoryCard } from "./_components/diagnosis-history-card";
-import { DraftConclusionsCard } from "./_components/draft-conclusions-card";
-import { HistoryDocsCard } from "./_components/history-docs-card";
-import { RecentFilesCard } from "./_components/recent-files-card";
 import { SessionTabContent } from "./_components/session-tab-content";
 import { SessionTabs } from "./_components/session-tabs";
 import { ReceptionProvider } from "./_hooks/reception-context";
@@ -31,16 +27,16 @@ export default async function ReceptionPage({
             {t("page.backToList")}
           </Link>
 
+          {/* Consultation screen = patient + tabs + the visit itself, nothing
+              below it (design feedback — «проще»). The old bottom row of four
+              cards re-showed what the tabs already hold: «Документы» and
+              «Недавние файлы» duplicated the Документы/Анализы tabs, «История
+              диагнозов» moved into the История tab, and «Черновики
+              заключений» wasn't even about this patient — it lives in the
+              Заключения section. */}
           <ActivePatientCard />
           <SessionTabs />
           <SessionTabContent locale={locale} />
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4 xl:gap-5">
-            <HistoryDocsCard />
-            <RecentFilesCard />
-            <DraftConclusionsCard />
-            <DiagnosisHistoryCard />
-          </div>
         </div>
 
         <div className="hidden xl:block">

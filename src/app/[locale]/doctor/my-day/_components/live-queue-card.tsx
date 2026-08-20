@@ -16,7 +16,7 @@ import {
   type DoctorToday,
   type LiveQueueEntry,
 } from "../_hooks/use-doctor-today";
-import { useMinuteClock } from "./upcoming-patients";
+import { useMinuteClock } from "../_hooks/use-minute-clock";
 import { todayDateKey } from "./current-patient-card";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 

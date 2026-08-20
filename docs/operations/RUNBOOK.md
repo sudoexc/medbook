@@ -266,6 +266,42 @@ docker compose exec -T postgres psql -U medbook -d medbook -tc \
 
 ---
 
+## 3.5 Мониторинг
+
+`ops/watchdog.sh` — крон каждые 5 минут, опрашивает `/api/health` и пишет в
+`/var/log/medbook-watchdog.log`.
+
+| Что | Значение |
+|---|---|
+| Крон | `*/5 * * * * cd /opt/neurofax && ./ops/watchdog.sh` |
+| Куда алерты | Telegram, `WATCHDOG_TG_CHAT_ID` в `.env` (бот берётся из `TELEGRAM_BOT_TOKEN`) |
+| Состояние | `/var/lib/medbook-watchdog.state` (`ok` / `bad`) |
+
+Сообщения приходят **только на переходах** состояния: одно при падении, одно
+при восстановлении. Долгая авария не превращается в спам каждые 5 минут.
+Проверяются все подсистемы из health (`db`, `redis`, `minio`, `workers`) — в
+тексте алерта перечислены все упавшие, а не первая попавшаяся.
+
+Проверить, что сторож жив:
+
+```bash
+ssh root@167.233.142.75 'tail -5 /var/log/medbook-watchdog.log; cat /var/lib/medbook-watchdog.state 2>/dev/null'
+```
+
+Проверить сам канал алертов (сымитировать падение, не трогая боевое состояние):
+
+```bash
+cd /opt/neurofax
+WATCHDOG_URL=https://neurofax.uz/api/health-nope WATCHDOG_STATE=/tmp/wd.state ./ops/watchdog.sh
+WATCHDOG_STATE=/tmp/wd.state ./ops/watchdog.sh   # отбой
+rm -f /tmp/wd.state
+```
+
+⚠️ Сторож проверяет только доступность. Ошибки внутри приложения (исключения
+на конкретной странице) он не видит — для этого в проекте есть Sentry
+(`src/instrumentation.ts`), но он **выключен**: `SENTRY_DSN` в `.env` пустой.
+Чтобы включить — завести проект в Sentry и вписать DSN.
+
 ## 4. Бэкап и восстановление
 
 > ✅ **СОСТОЯНИЕ НА 2026-08-20: ночной бэкап включён и проверен.**

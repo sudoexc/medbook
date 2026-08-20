@@ -14,7 +14,8 @@
     "e2e:seed": "tsx tests/e2e/seed.ts",
     "e2e:install": "playwright install --with-deps chromium",
     "i18n:check": "tsx scripts/i18n-check.ts",
-    "i18n:audit": "tsx scripts/i18n-miniapp-audit.ts"
+    "i18n:audit": "tsx scripts/i18n-miniapp-audit.ts",
+    "docs:manual": "node scripts/build-manual-html.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.94.0",

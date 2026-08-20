@@ -47,12 +47,39 @@ The in-memory queue, SSE fallback, and `/tmp` upload stub kick in automatically 
   documents (placeholder PDFs in `public/uploads/demo/`), conversations, calls,
   and leads. Idempotent — tagged via `demo:` markers, safe to re-run.
 
+## Documentation
+
+**[`docs/README.md`](./docs/README.md) is the entry point** — user manuals (doctor,
+reception, clinic admin, patient), architecture, operations, API reference.
+
+Note: `docs/TZ*.md` are **specifications** ("what we planned"), not descriptions of
+current behaviour — parts were never built or were later reworked. For how the system
+actually behaves today, read [`docs/architecture/`](./docs/architecture/).
+
 ## Deployment
 
-See [`docs/runbook.md`](./docs/runbook.md) for the full operations guide
-(deploy, rollback, backup/restore, incident response).
+Full guide: [`docs/operations/DEPLOY.md`](./docs/operations/DEPLOY.md).
+Incidents, backups, demo data: [`docs/operations/RUNBOOK.md`](./docs/operations/RUNBOOK.md).
 
-CI/CD: `.github/workflows/{ci,deploy}.yml`. Push to `main` → CI → SSH deploy via `ops/deploy.sh`.
+Deployment is **manual**, not CI-driven. Prod lives at `/opt/neurofax` on the Hetzner
+VPS as a checkout of `origin/main`:
+
+```bash
+cd /opt/neurofax && git pull --ff-only && nohup bash _deploy.sh >/tmp/deploy.out 2>&1 &
+# wait for /tmp/deploy.done (PIPELINE_OK) or /tmp/deploy.fail; log in /tmp/deploy.log
+```
+
+`_deploy.sh` runs: `docker compose build app worker` → `prisma migrate deploy` **via the
+`worker` container** (the slim `app` image lacks the Prisma CLI's transitive deps) →
+`up -d --no-deps --force-recreate app worker` → `nginx -s reload` (mandatory — nginx
+otherwise holds the old container IP and serves 502).
+
+⚠️ The VPS is **shared** with unrelated sites (rtxshop, orientatravel, …). Never touch
+`nginx/conf.d/*.conf` or the compose bind mounts without smoke-testing the neighbours.
+
+> Stale, kept only for history: `.github/workflows/deploy.yml` + `ops/deploy.sh` (they
+> target `/opt/medbook`; the workflow is skipped) and `docs/runbook.md` — superseded by
+> [`docs/operations/`](./docs/operations/).
 
 ## Architecture
 

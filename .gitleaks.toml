@@ -24,4 +24,6 @@ regexes = [
   '''(?i)key["']?:\s*["']?(appointment|reminder|marketing|transactional|patient)\.[a-z0-9.\-]+''',
   # ULID-shaped test fixtures (idempotency keys etc.)
   '''01[A-Z0-9]{22,26}''',
+  # alphabet-run token fixture in tests/unit/signup/token.test.ts
+  '''abcdefghijklmnopqrstuvwxyz012345''',
 ]

@@ -49,14 +49,19 @@ test.describe("notifications — template lifecycle", () => {
     const tpl = (await createRes.json()) as { id: string };
     expect(tpl.id).toBeTruthy();
 
-    // Fire a manual send.
+    // Fire a manual send. CreateSendSchema takes a single patientId plus the
+    // rendered recipient/body and a scheduledFor timestamp (the worker picks
+    // the row up from the QUEUED state).
     const sendRes = await request.post(
       `${BASE_URL}/api/crm/notifications/sends`,
       {
         data: {
           templateId: tpl.id,
-          patientIds: [patientId],
+          patientId,
           channel: "TG",
+          recipient: "+998901000010",
+          body: "Здравствуйте! (e2e manual send)",
+          scheduledFor: new Date().toISOString(),
         },
         failOnStatusCode: false,
       },

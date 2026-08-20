@@ -71,8 +71,11 @@ test.describe("admin billing — change plan", () => {
     expect(patchRes.ok()).toBeTruthy();
 
     // Reload the page and assert the Enterprise feature row reads "on".
+    // `.first()` — the billing page now renders the label in the feature row
+    // AND inside the plan-comparison card list, so the bare text locator
+    // trips Playwright's strict mode.
     await page.reload();
-    await expect(page.getByText(/Pro-аналитика/)).toBeVisible();
+    await expect(page.getByText(/Pro-аналитика/).first()).toBeVisible();
     // Now snap the subscription back to `pro` to keep the seed deterministic
     // for downstream specs.
     const proPlan = (plansBody.plans ?? []).find((p) => p.slug === "pro");

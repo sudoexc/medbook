@@ -45,7 +45,15 @@ function futureWeekdayInput(daysAhead = 7): string {
  * Returns the dialog locator, primed and ready to submit.
  */
 async function openAndFillBooking(page: Page) {
-  await page.keyboard.press("F2");
+  // The topbar "Новая запись / Yangi yozuv" split button carries an "F2"
+  // kbd badge — waiting for it doubles as a hydration barrier (pressing F2
+  // before React attaches the keydown listener silently does nothing).
+  // Clicking the button is equivalent to the shortcut and race-free.
+  const newApptButton = page
+    .locator("button", { hasText: "F2" })
+    .first();
+  await expect(newApptButton).toBeVisible({ timeout: 20_000 });
+  await newApptButton.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
 

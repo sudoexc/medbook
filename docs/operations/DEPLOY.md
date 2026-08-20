@@ -3,13 +3,15 @@
 > Актуально на 2026-08-20. Проверено против живого сервера (`root@167.233.142.75`,
 > `/opt/neurofax`, compose-проект `medbook`) и содержимого `_deploy.sh` на нём.
 >
-> ⚠️ **README.md в корне репо устарел.** Он описывает деплой «push в main →
-> GitHub Actions → SSH → `ops/deploy.sh`». Этот путь **не работает**: CI в
-> Actions сейчас красный, job Deploy стоит в `skipped`, а секреты
-> `SSH_HOST/SSH_USER/SSH_KEY` и `DEPLOY_DIR` (дефолт в workflow — `/opt/medbook`,
-> реальный каталог — `/opt/neurofax`) не сходятся с продом. Реальный деплой —
-> **ручной, по SSH, через `_deploy.sh`** (описан ниже). `ops/deploy.sh` в репо
-> близок по содержанию, но продом не используется.
+> CI в GitHub Actions (`.github/workflows/ci.yml`) снова живой: на каждый
+> push/PR в `main` гоняются typecheck, unit-тесты, i18n-проверки, prod-build и
+> secret-scan (lint и npm audit — отдельные non-blocking шаги). CI **ничего не
+> деплоит**. Бывший workflow `deploy.yml` удалён (2026-08-20): он целился в
+> несуществующий `/opt/medbook`, его секреты `SSH_*` не были настроены, а
+> автодеплой по зелёному CI противоречит правилу «деплой — только по явной
+> просьбе владельца». Реальный деплой — **ручной, по SSH, через `_deploy.sh`**
+> (описан ниже). `ops/deploy.sh` в репо близок по содержанию, но продом не
+> используется.
 
 ## Оглавление
 
@@ -55,8 +57,9 @@ curl -fsSo /dev/null -w '%{http_code}\n' https://orientatravel.uz/  # 200/30x �
 
 ## 1. Предусловия: локальная проверка
 
-Перед пушем в `main` прогнать локально (CI в GitHub сейчас красный и деплой
-не блокирует, так что локальная проверка — единственный барьер):
+Перед пушем в `main` прогнать локально. CI прогонит то же самое на push, но
+деплой ручной и CI его не блокирует — так что зелёный локальный прогон
+остаётся обязательным барьером перед деплоем:
 
 ```bash
 cd /Users/joe/Desktop/medbook/medbook-uz
@@ -70,15 +73,25 @@ node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit
 
 # Юнит-тесты
 npx vitest run
-```
 
-Опционально (то, что гоняет CI, когда он зелёный):
-
-```bash
-npm run lint
+# i18n (оба зелёные и блокирующие в CI)
 npm run i18n:check     # паритет ru/uz словарей next-intl
 npm run i18n:audit     # inline-строки в mini-app
 ```
+
+Опционально:
+
+```bash
+npm run lint    # сейчас красный (~71 старая ошибка) — в CI non-blocking шаг;
+                # новые ошибки старайся не добавлять
+npm run test:e2e:local  # Playwright-сьют одной командой (БД+сид+build+start);
+                        # нужен локальный Postgres и остановленный `npm run dev`
+                        # — см. tests/e2e/README.md
+```
+
+После пуша глянуть Actions: зелёная джоба `CI / typecheck · unit · i18n · build`
+= код собирается и тесты прошли на чистой машине (кэш `node_modules` там свой,
+так что «у меня локально собирается» перепроверяется честно).
 
 Если менялась схема Prisma — убедиться, что миграция создана и закоммичена
 (`prisma/migrations/<timestamp>_имя/`), а не осталась только в локальной БД.

@@ -20,7 +20,7 @@ test.describe("appointments — reschedule + no-show", () => {
     test.skip(!healthy, "webServer reachable but DB health check failed");
   });
 
-  test("PATCH moves the appointment to a new slot; status NO_SHOW persists", async ({
+  test("PATCH moves the appointment; premature NO_SHOW is rejected; cancel works", async ({
     page,
     request,
   }) => {
@@ -47,8 +47,9 @@ test.describe("appointments — reschedule + no-show", () => {
           doctorId,
           date: when.toISOString(),
           durationMin: service!.durationMin,
-          serviceIds: [service!.id],
-          channel: "WALKIN",
+          services: [{ serviceId: service!.id, quantity: 1 }],
+          // Two-lanes: WALKIN is rejected on the booking path (registerWalkin only).
+          channel: "PHONE",
         },
         failOnStatusCode: false,
       },
@@ -56,24 +57,44 @@ test.describe("appointments — reschedule + no-show", () => {
     expect([200, 201]).toContain(createRes.status());
     const { id } = (await createRes.json()) as { id: string };
 
-    // Reschedule 2h later.
+    // Reschedule 2h later. The stored `time` (HH:MM wall-clock) is the
+    // authoritative slot time — a PATCH carrying only `date` keeps the old
+    // wall-clock and silently no-ops a same-day move, so `time` MUST be sent.
     const later = new Date(when.getTime() + 2 * 60 * 60 * 1000);
+    const laterHM = `${String(later.getHours()).padStart(2, "0")}:${String(
+      later.getMinutes(),
+    ).padStart(2, "0")}`;
     const patchRes = await request.patch(
       `${BASE_URL}/api/crm/appointments/${id}`,
       {
-        data: { date: later.toISOString() },
+        data: { date: later.toISOString(), time: laterHM },
         failOnStatusCode: false,
       },
     );
     expect(patchRes.ok()).toBeTruthy();
+    const patched = (await patchRes.json()) as { date?: string };
+    expect(new Date(patched.date ?? 0).getTime()).toBe(later.getTime());
 
-    // Mark no-show.
+    // Lifecycle guard: NO_SHOW on a still-future appointment is rejected
+    // (the sweep/reception can only no-show once the slot time has passed).
     const noShowRes = await request.patch(
       `${BASE_URL}/api/crm/appointments/${id}`,
       { data: { status: "NO_SHOW" }, failOnStatusCode: false },
     );
-    expect(noShowRes.ok()).toBeTruthy();
-    const noShowBody = (await noShowRes.json()) as { status?: string };
-    expect(noShowBody.status ?? "NO_SHOW").toBe("NO_SHOW");
+    expect(noShowRes.status()).toBe(409);
+    const noShowBody = (await noShowRes.json()) as { reason?: string };
+    expect(noShowBody.reason).toBe("too_early_for_no_show");
+
+    // Terminal transition that IS allowed ahead of time: cancellation.
+    const cancelRes = await request.patch(
+      `${BASE_URL}/api/crm/appointments/${id}`,
+      {
+        data: { status: "CANCELLED", cancelReason: "e2e cleanup" },
+        failOnStatusCode: false,
+      },
+    );
+    expect(cancelRes.ok()).toBeTruthy();
+    const cancelBody = (await cancelRes.json()) as { status?: string };
+    expect(cancelBody.status).toBe("CANCELLED");
   });
 });

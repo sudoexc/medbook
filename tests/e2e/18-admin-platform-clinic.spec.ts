@@ -34,6 +34,10 @@ test.describe("admin platform — clinic lifecycle", () => {
           phone: "+998712000999",
           email: `${slug}@example.com`,
           brandColor: "#3DD5C0",
+          // Onboarding contract: clinic creation now provisions the owner
+          // ADMIN account in the same call, so both fields are required.
+          ownerName: "E2E Owner",
+          ownerEmail: `owner-${slug}@example.com`,
         },
         failOnStatusCode: false,
       },

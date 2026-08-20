@@ -19,9 +19,13 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = Number(process.env.E2E_PORT ?? 3001);
 const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
+// NB: do NOT pass `--hostname 127.0.0.1` here. Under Next 16 an explicit
+// hostname makes the dev server canonicalize its origin as `localhost:<port>`,
+// which turns next-intl's locale rewrite of `/` into an absolute cross-origin
+// URL — Next then answers `307 → /` forever and the webServer readiness
+// check times out. Without the flag the rewrite stays relative and `/` is 200.
 const startCommand =
-  process.env.E2E_START_COMMAND ??
-  `next dev --port ${PORT} --hostname 127.0.0.1`;
+  process.env.E2E_START_COMMAND ?? `next dev --port ${PORT}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -29,7 +33,10 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : 2,
+  // Single worker everywhere: the suite shares one seeded DB and several
+  // specs (23/24/25) temporarily flip the seeded clinic's plan — a second
+  // worker hitting feature-gated routes mid-flip would flake.
+  workers: 1,
   timeout: 45_000,
   expect: { timeout: 7_500 },
   reporter: process.env.CI
@@ -75,7 +82,10 @@ export default defineConfig({
         stdout: "pipe",
         stderr: "pipe",
         env: {
-          NODE_ENV: "development",
+          // NB: no NODE_ENV here — `next dev` and `next start` each set the
+          // right mode themselves, and forcing "development" breaks
+          // E2E_START_COMMAND="next start …" (the recommended, flake-free
+          // way to run the suite against a prebuilt production bundle).
           PORT: String(PORT),
           // Test DB — falls back to prod DB url if not provided.
           DATABASE_URL:
@@ -85,6 +95,10 @@ export default defineConfig({
           AUTH_URL: baseURL,
           NEXT_TELEMETRY_DISABLED: "1",
           E2E: "1",
+          // Prod runs with the doctor cabinet unpaused (kill-switch env set).
+          // Without it every DOCTOR login bounces in a /crm ↔ /doctor
+          // redirect loop (the CRM layout redirect ignores the kill-switch).
+          DOCTOR_CABINET_ENABLED: "1",
         },
       },
 });

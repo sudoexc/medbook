@@ -32,8 +32,19 @@ test.describe("global search", () => {
 
   test("Ctrl+K on a CRM page opens the dialog", async ({ page }) => {
     await as.admin(page, { landing: crm("/")});
-    // Using keyboard shortcut — the handler is wired via `useGlobalSearchShortcut`.
-    await page.keyboard.press("Control+KeyK");
+    // Wait for the topbar search button to hydrate before firing the
+    // shortcut — pressing Ctrl+K before React attaches the keydown listener
+    // (useGlobalSearchShortcut) is a race that flakes on cold dev compiles.
+    await expect(page.getByText("⌘ K")).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(
+        async () => {
+          await page.keyboard.press("Control+KeyK");
+          return page.locator('[role="dialog"]').count();
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(0);
     // cmdk renders a dialog with role=dialog; tolerate either cmdk or Radix.
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog.first()).toBeVisible({ timeout: 5_000 });

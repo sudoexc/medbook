@@ -20,10 +20,14 @@ test.describe("call-center — SIP webhook ingest", () => {
     await as.admin(page, { request });
 
     const callId = `e2e-${Date.now()}`;
-    // The webhook accepts dev-mode requests without a secret (logs a warning).
+    // Production mode requires the webhook secret configured on the clinic's
+    // SIP ProviderConnection (seeded by tests/e2e/seed.ts) — dev mode would
+    // accept an unsigned request with a warning, but the suite runs against
+    // `next start`, so we always sign.
     const res = await request.post(
       `${BASE_URL}/api/calls/sip/event?clinicSlug=neurofax`,
       {
+        headers: { "x-sip-secret": "e2e-sip-webhook-secret" },
         data: {
           kind: "ringing",
           callId,

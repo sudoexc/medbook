@@ -89,12 +89,22 @@ const storage = new AsyncLocalStorage<TenantContext>();
 /**
  * Run `fn` with the given `TenantContext` bound to AsyncLocalStorage.
  * All async calls chained from `fn` see the same context.
+ *
+ * The thenable returned by `fn` MUST be adopted *inside* `storage.run`.
+ * Prisma's client returns lazy thenables that only start executing when
+ * awaited — with the old `Promise.resolve(storage.run(ctx, fn))` shape the
+ * adoption happened after `storage.run` had already exited, so a callback
+ * like `runUnscoped(reason, () => prisma.x.findUnique(...))` ran its query
+ * with NO context and the fail-closed extension threw
+ * MissingTenantContextError (500 on every CRM RSC page). Wrapping the
+ * resolve inside the scope pins the ALS context to the promise-adoption
+ * job, so the query executes under `ctx` no matter when it is awaited.
  */
 export function runWithTenant<T>(
   ctx: TenantContext,
   fn: () => T | Promise<T>
 ): Promise<T> {
-  return Promise.resolve(storage.run(ctx, fn));
+  return storage.run(ctx, () => Promise.resolve(fn()));
 }
 
 /**

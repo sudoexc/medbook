@@ -29,9 +29,15 @@ test.describe("auth — login", () => {
     });
   }
 
-  test("doctor can log in and lands on CRM", async ({ page }) => {
+  test("doctor can log in and lands in the doctor cabinet", async ({
+    page,
+  }) => {
+    // DOCTOR is bounced out of /crm into the dedicated doctor cabinet
+    // (/doctor → «Мой день») by the CRM layout guard. Requires the
+    // DOCTOR_CABINET_ENABLED=1 kill-switch (set by playwright.config.ts,
+    // matching prod).
     await loginAs(page, NEUROFAX.doctors[0], { landing: "/ru/crm"});
-    await expect(page).toHaveURL(/\/(?:ru\/)?crm(\/reception)?\/?$/);
+    await expect(page).toHaveURL(/\/(?:ru\/)?doctor(\/my-day)?\/?$/);
   });
 
   test("invalid credentials are rejected", async ({ request }) => {

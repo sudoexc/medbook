@@ -47,8 +47,9 @@ test.describe("appointments — conflict detection", () => {
       doctorId,
       date: when.toISOString(),
       durationMin: service!.durationMin,
-      serviceIds: [service!.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service!.id, quantity: 1 }],
+      // Two-lanes: WALKIN is rejected on the booking path (registerWalkin only).
+      channel: "PHONE",
     };
 
     const createRes = await request.post(

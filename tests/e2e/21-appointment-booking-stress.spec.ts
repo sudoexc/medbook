@@ -209,8 +209,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       cabinetId,
       date: baseSlot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(
       res.status(),
@@ -228,8 +228,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: baseSlot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(res.status()).toBe(409);
     const body = (await res.json()) as { error: string; reason?: string };
@@ -248,8 +248,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: touching.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(
       res.status(),
@@ -261,37 +261,30 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
     });
   });
 
-  test("05 cabinet collision — different doctor, same cabinet, overlap → 409", async () => {
-    test.skip(!secondDoctorId, "needs at least 2 seeded doctors");
-    test.skip(!cabinetId, "no cabinet seeded — cabinet collision unverifiable");
-    // Move the first appointment INTO the cabinet so we have something to
-    // collide with. (The original POST passed `cabinetId`, but only if the
-    // seed had one — re-PATCH to be safe.)
-    await request.patch(`${BASE_URL}/api/crm/appointments/${originalApptId}`, {
-      data: { cabinetId },
-      failOnStatusCode: false,
-    });
-    const overlapping = new Date(baseSlot.getTime() + 5 * 60_000);
-    const res = await postAppointment(request, {
-      patientId,
-      doctorId: secondDoctorId!,
-      cabinetId,
-      date: overlapping.toISOString(),
-      durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
-    });
-    expect(res.status()).toBe(409);
-    const body = (await res.json()) as { reason?: string };
-    expect(["cabinet_busy", "doctor_busy"]).toContain(body.reason);
-  });
+  // NOTE: the former test "05 cabinet collision — different doctor, same
+  // cabinet, overlap → 409" was REMOVED (2026-08-20). It relied on the
+  // client being able to place an appointment into an arbitrary cabinet via
+  // a `cabinetId` payload field. Phase 11 removed that capability: each
+  // doctor is bound 1:1 to their own cabinet and the API derives cabinetId
+  // from the doctor, ignoring anything the client sends — so two different
+  // doctors can never collide on one cabinet and the scenario is untestable
+  // by design.
 
-  test("06 reschedule the original +2h — original slot becomes free", async () => {
-    const later = new Date(baseSlot.getTime() + 2 * 60 * 60 * 1000);
+  test("06 reschedule the original +1h — original slot becomes free", async () => {
+    // +1h, not +2h: baseSlot is 15:05..15:55 (RUN_MINUTE_OFFSET), and a +2h
+    // move can end past the 18:00 schedule edge → flaky 409 outside_schedule
+    // depending on the run minute. +1h always stays inside 09:00–18:00.
+    const later = new Date(baseSlot.getTime() + 60 * 60 * 1000);
+    // `time` must accompany `date`: the stored HH:MM wall-clock is
+    // authoritative, and a date-only PATCH keeps the old time (same-day
+    // moves silently no-op without it).
+    const laterHM = `${String(later.getHours()).padStart(2, "0")}:${String(
+      later.getMinutes(),
+    ).padStart(2, "0")}`;
     const res = await request.patch(
       `${BASE_URL}/api/crm/appointments/${originalApptId}`,
       {
-        data: { date: later.toISOString() },
+        data: { date: later.toISOString(), time: laterHM },
         failOnStatusCode: false,
       },
     );
@@ -307,8 +300,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: baseSlot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(res.status()).toBe(201);
     const { id } = (await res.json()) as Created;
@@ -324,8 +317,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: slot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     };
     const results = await Promise.all(
       Array.from({ length: 5 }).map(() => postAppointment(request, payload)),
@@ -363,8 +356,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: slot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(created.status()).toBe(201);
     const { id } = (await created.json()) as Created;
@@ -378,8 +371,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: slot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(rebook.status()).toBe(201);
     const { id: rebookId } = (await rebook.json()) as Created;
@@ -395,8 +388,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
       doctorId,
       date: slot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(created.status()).toBe(201);
     const orig = (await created.json()) as Created;
@@ -444,8 +437,8 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
           ),
         ),
       ),
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     // Either it fits (201) or it landed past schedule edge (outside_schedule).
     // doctor_busy here would be a real bug — assert that's NOT the reason.
@@ -462,30 +455,39 @@ test.describe.serial("appointments — booking stress (overbook + lifecycle)", (
     }
   });
 
-  test("11 NO_SHOW frees the slot — re-book same window → 201", async () => {
+  // NOTE: this test used to flip the appointment to NO_SHOW, but the
+  // lifecycle guard now rejects NO_SHOW while the slot is still in the
+  // future (409 too_early_for_no_show — asserted in
+  // 06-appointment-reschedule.spec.ts). Cancellation has the same
+  // slot-freeing semantics and is allowed ahead of time, so the scenario
+  // under test (terminal status frees the window for re-booking) survives.
+  test("11 cancel frees the slot — re-book same window → 201", async () => {
     const slot = futureSlot(18, 14, 0);
     const created = await postAppointment(request, {
       patientId,
       doctorId,
       date: slot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(created.status()).toBe(201);
     const { id } = (await created.json()) as Created;
-    const noShow = await request.patch(
+    const cancelled = await request.patch(
       `${BASE_URL}/api/crm/appointments/${id}`,
-      { data: { status: "NO_SHOW" }, failOnStatusCode: false },
+      {
+        data: { status: "CANCELLED", cancelReason: "e2e: free the slot" },
+        failOnStatusCode: false,
+      },
     );
-    expect(noShow.ok()).toBeTruthy();
+    expect(cancelled.ok()).toBeTruthy();
     const rebook = await postAppointment(request, {
       patientId,
       doctorId,
       date: slot.toISOString(),
       durationMin: service.durationMin,
-      serviceIds: [service.id],
-      channel: "WALKIN",
+      services: [{ serviceId: service.id, quantity: 1 }],
+      channel: "WEBSITE",
     });
     expect(rebook.status()).toBe(201);
     const { id: rebookId } = (await rebook.json()) as Created;

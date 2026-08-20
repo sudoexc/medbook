@@ -36,10 +36,21 @@ The in-memory queue, SSE fallback, and `/tmp` upload stub kick in automatically 
 ## Scripts
 
 - `npm run dev` — Next dev server (Turbopack).
-- `npm run build` — production build (`.next/standalone` ready for Docker).
-- `npm run lint` — eslint.
-- `npx tsc --noEmit` — type-check.
-- `npx vitest run` — unit tests.
+- `npm run build` — production build (`prisma generate` + `.next/standalone` ready for Docker).
+- `rm -rf .next/dev && node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit` —
+  type-check. Обе части обязательны: устаревший `.next/dev` даёт ложные ошибки,
+  а с дефолтной кучей `tsc` на этом проекте падает по OOM.
+- `npx vitest run` (= `npm test`) — unit-тесты.
+- `npm run lint` — eslint. Сейчас **красный** (~71 старая ошибка) — в CI идёт
+  отдельным non-blocking шагом.
+- `npm run i18n:check` — паритет ru/uz словарей next-intl.
+- `npm run i18n:audit` — inline-строки в mini-app.
+- `npm run test:e2e:local` — Playwright e2e одной командой: создаёт БД
+  `neurofax_e2e` → миграции → сид → build → прогон против `next start`.
+  Требует локальный Postgres и остановленный `npm run dev` —
+  см. [`tests/e2e/README.md`](./tests/e2e/README.md).
+- `npm run e2e:seed` — идемпотентный сид e2e-базы (`tests/e2e/seed.ts`).
+- `npm run test:e2e` — только прогон Playwright (окружение готовишь сам).
 - `npx tsx src/server/workers/start.ts` — run background workers locally.
 - `npx tsx scripts/seed-demo-data.ts` — populate the `neurofax` clinic with a
   realistic demo load: ~150 patients, today's storyline of ~270 appointments
@@ -77,8 +88,14 @@ otherwise holds the old container IP and serves 502).
 ⚠️ The VPS is **shared** with unrelated sites (rtxshop, orientatravel, …). Never touch
 `nginx/conf.d/*.conf` or the compose bind mounts without smoke-testing the neighbours.
 
-> Stale, kept only for history: `.github/workflows/deploy.yml` + `ops/deploy.sh` (they
-> target `/opt/medbook`; the workflow is skipped) and `docs/runbook.md` — superseded by
+CI (`.github/workflows/ci.yml`) гоняет проверки на каждый push/PR в `main`
+(typecheck, unit, i18n, build, secret-scan; lint и npm audit — non-blocking),
+но **ничего не деплоит**. Бывший `deploy.yml` удалён: он целился в несуществующий
+`/opt/medbook`, его секреты не были настроены, а автодеплой по зелёному CI
+противоречит правилу проекта «деплой только по явной просьбе».
+
+> Stale, kept only for history: `ops/deploy.sh` + `ops/crontab.example` (they
+> target `/opt/medbook`) and `docs/runbook.md` — superseded by
 > [`docs/operations/`](./docs/operations/).
 
 ## Architecture

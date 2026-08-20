@@ -54,10 +54,13 @@ test.describe("branches — CRUD + active switcher", () => {
       failOnStatusCode: false,
     });
     expect(createRes.status()).toBe(201);
+    // POST /api/crm/branches returns the created Branch row directly
+    // (`ok(created, 201)` in route.ts), not wrapped in `{ branch }`.
     const created = (await createRes.json()) as {
-      branch?: { id: string; slug: string };
+      id?: string;
+      slug?: string;
     };
-    const branchId = created.branch?.id;
+    const branchId = created.id;
     expect(branchId).toBeTruthy();
 
     // 3. Switch active branch via cookie endpoint.

@@ -1,0 +1,23 @@
+# gitleaks false-positive baseline.
+# Every entry below is a historical `generic-api-key` match on non-secret
+# strings: notification template keys ("appointment.reminder...") and ULID
+# test fixtures ("01HZZZ..."). Verified by hand 2026-08-20.
+# Do NOT add real leaked secrets here — rotate them instead.
+0d50c75466ec0573e8f13f7736653c6f511969a3:src/server/notifications/default-templates.ts:generic-api-key:53
+0d50c75466ec0573e8f13f7736653c6f511969a3:src/server/notifications/default-templates.ts:generic-api-key:67
+0d50c75466ec0573e8f13f7736653c6f511969a3:src/server/notifications/default-templates.ts:generic-api-key:81
+0d50c75466ec0573e8f13f7736653c6f511969a3:src/server/notifications/default-templates.ts:generic-api-key:95
+64882e26d1af772f9dd264a6767ba21e1b15a738:tests/unit/miniapp-idempotency.test.ts:generic-api-key:101
+64882e26d1af772f9dd264a6767ba21e1b15a738:tests/unit/miniapp-idempotency.test.ts:generic-api-key:120
+64882e26d1af772f9dd264a6767ba21e1b15a738:tests/unit/miniapp-idempotency.test.ts:generic-api-key:65
+64882e26d1af772f9dd264a6767ba21e1b15a738:tests/unit/miniapp-idempotency.test.ts:generic-api-key:81
+c5b3f2ceebdce2b29c719ee98e0a9b957d8f685d:scripts/reminder-cadence-5d3d1d3h.ts:generic-api-key:51
+c5b3f2ceebdce2b29c719ee98e0a9b957d8f685d:scripts/reminder-cadence-5d3d1d3h.ts:generic-api-key:52
+c5b3f2ceebdce2b29c719ee98e0a9b957d8f685d:src/server/notifications/default-templates.ts:generic-api-key:53
+c5b3f2ceebdce2b29c719ee98e0a9b957d8f685d:src/server/notifications/default-templates.ts:generic-api-key:67
+c5b3f2ceebdce2b29c719ee98e0a9b957d8f685d:src/server/notifications/default-templates.ts:generic-api-key:81
+c5b3f2ceebdce2b29c719ee98e0a9b957d8f685d:src/server/notifications/default-templates.ts:generic-api-key:95
+e8ae02fb870ee197c62542fb2b2b0f2b2b09fc25:tests/unit/action-payload-formatter.test.ts:generic-api-key:110
+e8ae02fb870ee197c62542fb2b2b0f2b2b09fc25:tests/unit/action-types.test.ts:generic-api-key:125
+e8ae02fb870ee197c62542fb2b2b0f2b2b09fc25:tests/unit/notifications-no-channel-action.test.ts:generic-api-key:52
+e8ae02fb870ee197c62542fb2b2b0f2b2b09fc25:tests/unit/notifications-no-channel-action.test.ts:generic-api-key:82

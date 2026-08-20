@@ -18,11 +18,14 @@ test.describe("rbac — doctor on /crm/settings", () => {
     request,
   }) => {
     await as.doctor(page, { request });
-    // Settings clinic profile endpoint is ADMIN-only.
-    const res = await request.get(`${BASE_URL}/api/crm/clinic`, {
+    // GET /api/crm/clinic is readable by every tenant role since Фаза 4
+    // ("ADMIN only for writes; all tenant roles can read") — the RBAC
+    // boundary under test is the ADMIN-only WRITE path.
+    const res = await request.patch(`${BASE_URL}/api/crm/clinic`, {
+      data: { nameRu: "Doctor must not be able to write this" },
       failOnStatusCode: false,
     });
-    // Either the endpoint is 403 (role check) or 404 (not exposed to doctors).
+    // Either 403 (role check) or 404 (not exposed to doctors).
     expect([401, 403, 404]).toContain(res.status());
   });
 

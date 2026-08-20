@@ -421,6 +421,32 @@ async function main() {
       });
     }
 
+    // SIP provider connection with a webhook secret. In production mode the
+    // /api/calls/sip/event webhook REJECTS clinics without a configured
+    // secret (401) — dev mode merely warns. The e2e suite runs against
+    // `next start`, so the seed must provision one; the spec sends it via
+    // the `x-sip-secret` header (see 11-sip-webhook-call.spec.ts).
+    await prisma.providerConnection.upsert({
+      where: {
+        clinicId_kind_label: {
+          clinicId: clinic.id,
+          kind: "OTHER",
+          label: "sip",
+        },
+      },
+      update: {
+        active: true,
+        config: { webhookSecret: "e2e-sip-webhook-secret" },
+      },
+      create: {
+        clinicId: clinic.id,
+        kind: "OTHER",
+        label: "sip",
+        secretCipher: "",
+        config: { webhookSecret: "e2e-sip-webhook-secret" },
+      },
+    });
+
     // 10 templates
     for (const t of TEMPLATE_SEEDS) {
       const bodyRu = `Здравствуйте, {{patient.fullName}}! ${t.nameRu}.`;

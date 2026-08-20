@@ -39,7 +39,8 @@ test.describe("csv export worker", () => {
         status?: string;
         url?: string;
       };
-      if (body.status === "DONE") {
+      // The exports API reports lowercase statuses ("queued" → "done").
+      if ((body.status ?? "").toLowerCase() === "done") {
         done = true;
         break;
       }

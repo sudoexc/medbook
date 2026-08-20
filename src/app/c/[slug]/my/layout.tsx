@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { Viewport } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { QueryProvider } from "@/components/providers/query-provider";
 import { MiniAppAuthProvider } from "./_components/miniapp-auth-provider";
@@ -17,6 +17,22 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
 };
+
+// The mini-app tree lives outside the [locale] layout, so without its own
+// metadata the document ships with NO <title> — a serious axe violation
+// (document-title) flagged by the e2e a11y suite. Clinic is a global model
+// (MODELS_WITHOUT_TENANT), so the read needs no tenant context.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const clinic = await prisma.clinic
+    .findUnique({ where: { slug }, select: { nameRu: true } })
+    .catch(() => null);
+  return { title: clinic?.nameRu ?? "MedBook" };
+}
 
 // Reject anything that isn't a 3- or 6-digit hex literal so a malicious clinic
 // can't terminate the declaration and inject arbitrary CSS via `brandColor`.

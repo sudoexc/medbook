@@ -31,6 +31,7 @@ import {
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePreviousVisit } from "../_hooks/use-previous-visit";
 import {
+  isVersionConflict,
   useFinalizeVisitNote,
   usePatchVisitNote,
   useVisitNote,
@@ -147,8 +148,15 @@ export function ActivePatientCard() {
     try {
       await flushDraftEdits();
       return true;
-    } catch {
-      toast.error(t("activePatient.finalizeFlushError"));
+    } catch (e) {
+      // A 409 means another window edited this note — finalizing now would
+      // sign over someone else's text, so name the real cause instead of the
+      // generic flush error.
+      toast.error(
+        isVersionConflict(e)
+          ? t("editor.saveErrorConflict")
+          : t("activePatient.finalizeFlushError"),
+      );
       return false;
     }
   };
@@ -287,7 +295,18 @@ export function ActivePatientCard() {
           note={note}
           previousFinalizedAt={previous.finalizedAt}
           disabled={isFinalized}
-          onChange={(p) => patch.mutate(p)}
+          onChange={(p) =>
+            // Dynamics is part of the clinical record too — a silent failure
+            // here would leave the doctor believing the assessment is saved.
+            patch.mutate(p, {
+              onError: (e) =>
+                toast.error(
+                  isVersionConflict(e)
+                    ? t("editor.saveErrorConflict")
+                    : t("structured.saveErrorGeneric"),
+                ),
+            })
+          }
         />
       )}
 

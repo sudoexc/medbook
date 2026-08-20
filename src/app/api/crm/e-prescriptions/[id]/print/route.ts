@@ -151,11 +151,13 @@ function renderHtml({
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
   const validUntilStr = rx.validUntilAt.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
   const dob = patient.birthDate
     ? patient.birthDate.toLocaleDateString("ru-RU")

@@ -15,33 +15,24 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { tashkentComponents } from "@/lib/booking-validation";
 import { ok } from "@/server/http";
 
+/**
+ * Days from "today" (Tashkent civil date — clinic time, not server-local)
+ * until the patient's next birthday. All arithmetic is done in Date.UTC
+ * civil space so the server timezone never leaks in.
+ */
 function daysUntilBirthday(birthDate: Date, ref: Date): number {
-  const today = new Date(ref);
-  today.setHours(0, 0, 0, 0);
-  const thisYear = new Date(
-    today.getFullYear(),
-    birthDate.getMonth(),
-    birthDate.getDate(),
-  );
-  thisYear.setHours(0, 0, 0, 0);
-  let diff = Math.round(
-    (thisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (diff < 0) {
+  const [ty, tm, td] = tashkentComponents(ref).date.split("-").map(Number);
+  const [, bm, bd] = tashkentComponents(birthDate).date.split("-").map(Number);
+  const todayUtc = Date.UTC(ty, tm - 1, td);
+  let candidate = Date.UTC(ty, bm - 1, bd);
+  if (candidate < todayUtc) {
     // birthday already passed this year — roll over to next year
-    const nextYear = new Date(
-      today.getFullYear() + 1,
-      birthDate.getMonth(),
-      birthDate.getDate(),
-    );
-    nextYear.setHours(0, 0, 0, 0);
-    diff = Math.round(
-      (nextYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-    );
+    candidate = Date.UTC(ty + 1, bm - 1, bd);
   }
-  return diff;
+  return Math.round((candidate - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
 function ageFromBirthDate(birthDate: Date, ref: Date): number {

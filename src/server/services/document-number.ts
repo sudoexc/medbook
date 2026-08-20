@@ -13,6 +13,7 @@
  * an aborted finalize must not burn a number.
  */
 import { prisma } from "@/lib/prisma";
+import { tashkentComponents } from "@/lib/booking-validation";
 
 type PrismaLike =
   | typeof prisma
@@ -44,7 +45,9 @@ export async function allocateDocumentNumber(
   client: PrismaLike = prisma,
   now: Date = new Date(),
 ): Promise<string> {
-  const year = now.getFullYear();
+  // Clinic year (Asia/Tashkent) — server-local `getFullYear()` would stamp
+  // the old year for the first 5 hours of Jan 1 on the UTC prod box.
+  const year = Number(tashkentComponents(now).date.slice(0, 4));
 
   await client.documentCounter.createMany({
     data: [{ clinicId, year, kind, value: 0 }],

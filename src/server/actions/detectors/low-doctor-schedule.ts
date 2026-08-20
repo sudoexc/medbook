@@ -15,7 +15,7 @@ import type { LowDoctorSchedulePayload } from "@/lib/actions/types";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
-import { addDays, startOfUtcDay } from "./_shared";
+import { addDays, startOfClinicDay } from "./_shared";
 
 type DoctorRow = {
   id: string;
@@ -49,7 +49,7 @@ export async function detectLowDoctorSchedule(
   now: Date,
   config: DetectorConfig,
 ): Promise<LowDoctorSchedulePayload[]> {
-  const windowStart = startOfUtcDay(now);
+  const windowStart = startOfClinicDay(now);
   const windowEnd = addDays(windowStart, 7);
 
   const doctors = (await prisma.doctor.findMany({

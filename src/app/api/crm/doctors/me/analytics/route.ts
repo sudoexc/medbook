@@ -34,9 +34,16 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentDayBoundsForDateString,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import { ok, err } from "@/server/http";
 import { z } from "zod";
 import { parseQuery } from "@/server/http";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QuerySchema = z.object({
   // Inclusive YYYY-MM-DD bounds. Both default to a 30-day window ending
@@ -72,10 +79,17 @@ export const GET = createApiListHandler(
       });
     }
 
-    const today = startOfDay(new Date());
-    const to = q.to ? endOfDay(parseYMD(q.to)) : endOfDay(new Date());
-    const from = q.from ? startOfDay(parseYMD(q.from)) : startOfDay(addDays(today, -29));
-    if (to < from) return err("BadRequest", 400, { reason: "to_before_from" });
+    // All day boundaries are Tashkent (clinic time): `from` inclusive,
+    // `toEnd` exclusive (midnight after the requested `to` day).
+    const now = new Date();
+    const todayBounds = tashkentDayBounds(now);
+    const toEnd = q.to
+      ? tashkentDayBoundsForDateString(q.to).dayEnd
+      : todayBounds.dayEnd;
+    const from = q.from
+      ? tashkentDayBoundsForDateString(q.from).dayStart
+      : new Date(todayBounds.dayStart.getTime() - 29 * DAY_MS);
+    if (toEnd <= from) return err("BadRequest", 400, { reason: "to_before_from" });
 
     const userId = ctx.userId;
     const doctorRowId = doctor.id;
@@ -97,7 +111,7 @@ export const GET = createApiListHandler(
           clinicId,
           doctorId: doctorRowId,
           status: "COMPLETED",
-          date: { gte: from, lte: to },
+          date: { gte: from, lt: toEnd },
         },
         select: { date: true },
       }),
@@ -106,7 +120,7 @@ export const GET = createApiListHandler(
           clinicId,
           doctorId: doctorRowId,
           status: "FINALIZED",
-          finalizedAt: { gte: from, lte: to },
+          finalizedAt: { gte: from, lt: toEnd },
         },
         select: { id: true, bodyMarkdown: true, finalizedAt: true },
       }),
@@ -114,21 +128,21 @@ export const GET = createApiListHandler(
         where: {
           clinicId,
           doctorId: userId,
-          createdAt: { gte: from, lte: to },
+          createdAt: { gte: from, lt: toEnd },
         },
       }),
       prisma.labResult.count({
         where: {
           clinicId,
           doctorId: userId,
-          reviewedAt: { gte: from, lte: to, not: null },
+          reviewedAt: { gte: from, lt: toEnd, not: null },
         },
       }),
       prisma.cdsOverride.findMany({
         where: {
           clinicId,
           doctorId: userId,
-          createdAt: { gte: from, lte: to },
+          createdAt: { gte: from, lt: toEnd },
         },
         select: { createdAt: true },
       }),
@@ -144,14 +158,14 @@ export const GET = createApiListHandler(
         ? Math.round((protocolApplied / finalizedNotes) * 100)
         : 0;
 
-    // Daily buckets (UTC days for stability; client renders in local TZ).
-    const dayCount =
-      Math.floor((endOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000) + 1;
+    // Daily buckets keyed by Tashkent civil date — the same day definition
+    // the queries above filter on, so a 01:00 visit lands in its clinic day.
+    // Tashkent has no DST, so stepping in 24h increments is exact.
+    const dayCount = Math.round((toEnd.getTime() - from.getTime()) / DAY_MS);
     const buckets: DailyBucket[] = [];
     for (let i = 0; i < dayCount; i++) {
-      const d = addDays(from, i);
       buckets.push({
-        date: toYMD(d),
+        date: tashkentComponents(new Date(from.getTime() + i * DAY_MS)).date,
         appointments: 0,
         notes: 0,
         overrides: 0,
@@ -171,7 +185,11 @@ export const GET = createApiListHandler(
     for (const r of overrideRows) bumpBucket(bucketIndex, r.createdAt, "overrides");
 
     return ok({
-      range: { from: toYMD(from), to: toYMD(to) },
+      range: {
+        from: tashkentComponents(from).date,
+        // `toEnd` is exclusive — step back one day for the inclusive label.
+        to: tashkentComponents(new Date(toEnd.getTime() - DAY_MS)).date,
+      },
       kpis: {
         completedAppointments,
         finalizedNotes,
@@ -190,7 +208,7 @@ function bumpBucket(
   at: Date,
   key: "appointments" | "notes" | "overrides",
 ) {
-  const k = toYMD(at);
+  const k = tashkentComponents(at).date;
   const b = idx.get(k);
   if (b) b[key]++;
 }
@@ -203,25 +221,3 @@ function hasProtocolMarker(md: string | null): boolean {
   return md.includes("Применён протокол") || md.includes("Применен протокол");
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-function addDays(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-function parseYMD(s: string): Date {
-  const [y, m, dd] = s.split("-").map((p) => Number.parseInt(p, 10));
-  return new Date(y, m - 1, dd);
-}
-function toYMD(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}

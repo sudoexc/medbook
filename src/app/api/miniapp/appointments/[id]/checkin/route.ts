@@ -15,6 +15,10 @@
  * today, and still be in BOOKED/CONFIRMED.
  */
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import { err, forbidden, notFound, ok } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
@@ -65,18 +69,15 @@ export const POST = createMiniAppHandler({}, async ({ request, ctx }) => {
   // tap must not spam the desk with another patient.arrived toast.
   if (appt.arrivedAt) return ok({ ok: true, already: true });
 
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  // "Today" = the clinic's Tashkent day — server-local midnight is 05:00
+  // Tashkent on the UTC prod box and would reject valid same-day check-ins.
+  const { dayStart, dayEnd } = tashkentDayBounds();
   if (appt.date < dayStart || appt.date >= dayEnd) {
     return err("not_today", 409, { reason: "not_today" });
   }
 
-  const time = appt.date.toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Tashkent wall clock for the reception toast (not server-local).
+  const time = tashkentComponents(appt.date).time;
   const envelope: EventEnvelopeInput = {
     correlationId: newCorrelationId(),
     actor: {

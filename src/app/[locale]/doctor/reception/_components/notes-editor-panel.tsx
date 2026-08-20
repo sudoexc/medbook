@@ -3,12 +3,14 @@
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  AlertTriangleIcon,
   BookOpenIcon,
   CheckIcon,
   EyeIcon,
   Loader2Icon,
   PencilLineIcon,
   PrinterIcon,
+  RotateCcwIcon,
   SparklesIcon,
 } from "lucide-react";
 
@@ -27,6 +29,8 @@ import {
   useDiagnosisGuide,
 } from "../_hooks/use-diagnosis-guide";
 import {
+  isEditWindowExpired,
+  isVersionConflict,
   usePatchVisitNote,
   useVisitNote,
   visitNoteKey,
@@ -144,6 +148,155 @@ function TabButton({
       {children}
     </button>
   );
+}
+
+// ── Autosave with visible failure (P0-5) ──────────────────────────────
+//
+// Both editors autosave on the same debounce; a failed PATCH used to be
+// swallowed in an empty catch, leaving the status bar spinning «Сохранение…»
+// forever — on flaky clinic Wi-Fi the doctor could not tell saved text from
+// lost text. This hook owns the debounce for one field, classifies failures,
+// auto-retries the transient ones with backoff and exposes the error kind so
+// the status bar can render an explicit «Не сохранено» + «Повторить».
+
+type SaveErrorKind = "conflict" | "locked" | "generic";
+
+// Two silent retries before asking the doctor to intervene — enough to ride
+// out a Wi-Fi blip without delaying the error banner past ~8s.
+const AUTOSAVE_RETRY_DELAYS_MS = [2_000, 5_000];
+// Manual «Повторить» should feel immediate, not re-debounced.
+const MANUAL_RETRY_DELAY_MS = 300;
+
+function classifySaveError(e: unknown): SaveErrorKind {
+  if (isVersionConflict(e)) return "conflict";
+  if (isEditWindowExpired(e)) return "locked";
+  return "generic";
+}
+
+function useFieldAutosave({
+  field,
+  note,
+  isFinalized,
+  draft,
+  patch,
+  lastSentRef,
+}: {
+  field: "bodyMarkdown" | "patientHandoutMarkdown";
+  note: VisitNoteRow | null;
+  isFinalized: boolean;
+  draft: string;
+  patch: ReturnType<typeof usePatchVisitNote>;
+  lastSentRef: React.MutableRefObject<string | null>;
+}) {
+  const [savedAt, setSavedAt] = React.useState<number | null>(null);
+  const [dirty, setDirty] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<SaveErrorKind | null>(null);
+  // Bumped to re-arm the effect when the draft itself hasn't changed:
+  // automatic backoff retries and the manual «Повторить» button.
+  const [saveTick, setSaveTick] = React.useState(0);
+  const autoRetriesRef = React.useRef(0);
+  // One-shot delay override for the next scheduled save (backoff / manual
+  // retry); null → the regular typing debounce.
+  const delayRef = React.useRef<number | null>(null);
+
+  // `patch` is a fresh object every render — go through a ref so the effect
+  // below doesn't need it in deps (same pattern as useDraftSafety).
+  const patchRef = React.useRef(patch);
+  patchRef.current = patch;
+
+  // Fresh typing starts a fresh auto-retry budget.
+  React.useEffect(() => {
+    autoRetriesRef.current = 0;
+  }, [draft]);
+
+  React.useEffect(() => {
+    if (!note || isFinalized) return;
+    // A version conflict or an expired edit window never resolves by
+    // retrying — the server will keep rejecting this window's writes. Freeze
+    // the autosave loop entirely: keeps us from spamming 4xx and, more
+    // importantly, keeps a later cache refresh from handing this window a
+    // fresh version token that would let the stale draft overwrite the other
+    // window's text. Editing resumes after the doctor reloads (re-hydration
+    // resets this state).
+    if (saveError === "conflict" || saveError === "locked") return;
+    const current = note[field] ?? "";
+    if (
+      (draft === current && lastSentRef.current === null) ||
+      lastSentRef.current === draft
+    ) {
+      setDirty(false);
+      return;
+    }
+    setDirty(true);
+    const delay = delayRef.current ?? AUTOSAVE_DEBOUNCE_MS;
+    delayRef.current = null;
+    const timer = setTimeout(async () => {
+      try {
+        await patchRef.current.mutateAsync({ [field]: draft } as VisitNotePatch);
+        lastSentRef.current = draft;
+        autoRetriesRef.current = 0;
+        setSavedAt(Date.now());
+        setDirty(false);
+        setSaveError(null);
+      } catch (e) {
+        // Surface the failure immediately; `dirty` stays true so the flush /
+        // beforeunload guards still treat the tail as unsaved.
+        const kind = classifySaveError(e);
+        setSaveError(kind);
+        if (
+          kind === "generic" &&
+          autoRetriesRef.current < AUTOSAVE_RETRY_DELAYS_MS.length
+        ) {
+          // Transient (network / 5xx): retry on our own with backoff before
+          // the doctor has to press «Повторить». Both state updates batch
+          // into one effect re-run, so exactly one timer gets scheduled.
+          delayRef.current =
+            AUTOSAVE_RETRY_DELAYS_MS[autoRetriesRef.current] ?? null;
+          autoRetriesRef.current += 1;
+          setSaveTick((t) => t + 1);
+        }
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, note?.id, isFinalized, saveTick, saveError]);
+
+  const retrySave = React.useCallback(() => {
+    autoRetriesRef.current = 0;
+    delayRef.current = MANUAL_RETRY_DELAY_MS;
+    setSaveError(null);
+    setSaveTick((t) => t + 1);
+  }, []);
+
+  // An external flush (finalize / unmount path in useDraftSafety) succeeded —
+  // sync the visible state with it.
+  const markSaved = React.useCallback(() => {
+    autoRetriesRef.current = 0;
+    setSavedAt(Date.now());
+    setDirty(false);
+    setSaveError(null);
+  }, []);
+
+  // Immediate save for the preview toggle: push the tail now so the preview
+  // isn't one debounce behind. Failures are reported through the same
+  // saveError channel; the caller then previews the last saved version.
+  const flushNow = React.useCallback(async (): Promise<boolean> => {
+    try {
+      await patchRef.current.mutateAsync({ [field]: draft } as VisitNotePatch);
+      lastSentRef.current = draft;
+      autoRetriesRef.current = 0;
+      setSavedAt(Date.now());
+      setDirty(false);
+      setSaveError(null);
+      return true;
+    } catch (e) {
+      setSaveError(classifySaveError(e));
+      return false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, field]);
+
+  return { dirty, savedAt, saveError, retrySave, markSaved, flushNow };
 }
 
 // ── Draft safety (P0-2 / P0-4) ────────────────────────────────────────
@@ -303,35 +456,17 @@ function ConclusionEditor() {
     setDraft((d) => removeSnippet(d, bodyRemoveRequest.text));
   }, [bodyRemoveRequest, note, isFinalized]);
 
-  const [savedAt, setSavedAt] = React.useState<number | null>(null);
-  const [dirty, setDirty] = React.useState(false);
   const lastSentRef = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    if (!note || isFinalized) return;
-    const current = note.bodyMarkdown ?? "";
-    if (draft === current && lastSentRef.current === null) {
-      setDirty(false);
-      return;
-    }
-    if (lastSentRef.current === draft) {
-      setDirty(false);
-      return;
-    }
-    setDirty(true);
-    const timer = setTimeout(async () => {
-      try {
-        await patch.mutateAsync({ bodyMarkdown: draft });
-        lastSentRef.current = draft;
-        setSavedAt(Date.now());
-        setDirty(false);
-      } catch {
-        // keep dirty so the user sees something's wrong
-      }
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, note?.id, isFinalized]);
+  // P0-5 — debounced autosave with visible failure + retry.
+  const { dirty, savedAt, saveError, retrySave, markSaved, flushNow } =
+    useFieldAutosave({
+      field: "bodyMarkdown",
+      note,
+      isFinalized,
+      draft,
+      patch,
+      lastSentRef,
+    });
 
   // P0-2/P0-4 — flush-on-finalize registration, flush-on-unmount, unload guard.
   useDraftSafety({
@@ -342,10 +477,7 @@ function ConclusionEditor() {
     dirty,
     lastSentRef,
     patch,
-    onFlushed: () => {
-      setSavedAt(Date.now());
-      setDirty(false);
-    },
+    onFlushed: markSaved,
   });
 
   // Live-предпросмотр листа: тот же print-роут в iframe (?embed=1 — без
@@ -356,19 +488,14 @@ function ConclusionEditor() {
   const showPreview = React.useCallback(async () => {
     if (dirty && note && !isFinalized) {
       // Дожимаем несохранённый текст до показа, иначе превью отстаёт на
-      // один дебаунс и врач видит «пустой» лист.
-      try {
-        await patch.mutateAsync({ bodyMarkdown: draft });
-        lastSentRef.current = draft;
-        setSavedAt(Date.now());
-        setDirty(false);
-      } catch {
-        // покажем превью по последней сохранённой версии
-      }
+      // один дебаунс и врач видит «пустой» лист. При ошибке flushNow сам
+      // выставит saveError (статус-бар покажет «Не сохранено»), а превью
+      // откроется по последней сохранённой версии.
+      await flushNow();
     }
     setView("preview");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, draft, note?.id, isFinalized]);
+  }, [dirty, note?.id, isFinalized, flushNow]);
 
   const { chars, words } = statsOf(draft);
 
@@ -400,7 +527,10 @@ function ConclusionEditor() {
       </div>
 
       <SaveStatusBar
-        pending={patch.isPending || dirty}
+        saving={patch.isPending}
+        dirty={dirty}
+        error={saveError}
+        onRetry={retrySave}
         savedAt={savedAt}
         updatedAt={note?.updatedAt ?? null}
         label={t("editor.autosaveLabel")}
@@ -475,35 +605,16 @@ function HandoutEditor() {
     });
   }, [handoutAppendRequest, note, isFinalized]);
 
-  const [savedAt, setSavedAt] = React.useState<number | null>(null);
-  const [dirty, setDirty] = React.useState(false);
   const lastSentRef = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    if (!note || isFinalized) return;
-    const current = note.patientHandoutMarkdown ?? "";
-    if (draft === current && lastSentRef.current === null) {
-      setDirty(false);
-      return;
-    }
-    if (lastSentRef.current === draft) {
-      setDirty(false);
-      return;
-    }
-    setDirty(true);
-    const timer = setTimeout(async () => {
-      try {
-        await patch.mutateAsync({ patientHandoutMarkdown: draft });
-        lastSentRef.current = draft;
-        setSavedAt(Date.now());
-        setDirty(false);
-      } catch {
-        // surface stays dirty until next attempt
-      }
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, note?.id, isFinalized]);
+  // P0-5 — same visible-failure autosave as the conclusion editor.
+  const { dirty, savedAt, saveError, retrySave, markSaved } = useFieldAutosave({
+    field: "patientHandoutMarkdown",
+    note,
+    isFinalized,
+    draft,
+    patch,
+    lastSentRef,
+  });
 
   // P0-2/P0-4 — same draft-safety contract as the conclusion editor; the
   // handout is part of the printed visit package, so its tail matters too.
@@ -515,10 +626,7 @@ function HandoutEditor() {
     dirty,
     lastSentRef,
     patch,
-    onFlushed: () => {
-      setSavedAt(Date.now());
-      setDirty(false);
-    },
+    onFlushed: markSaved,
   });
 
   const generate = React.useCallback(() => {
@@ -629,7 +737,10 @@ function HandoutEditor() {
       </div>
 
       <SaveStatusBar
-        pending={patch.isPending || dirty}
+        saving={patch.isPending}
+        dirty={dirty}
+        error={saveError}
+        onRetry={retrySave}
         savedAt={savedAt}
         updatedAt={note?.updatedAt ?? null}
         label={t("editor.handoutLabel")}
@@ -664,25 +775,58 @@ function HandoutEditor() {
 // ── Shared bars ───────────────────────────────────────────────────────
 
 function SaveStatusBar({
-  pending,
+  saving,
+  dirty,
+  error,
+  onRetry,
   savedAt,
   updatedAt,
   label,
 }: {
-  pending: boolean;
+  saving: boolean;
+  dirty: boolean;
+  error: SaveErrorKind | null;
+  onRetry: () => void;
   savedAt: number | null;
   updatedAt: string | null;
   label: string;
 }) {
   const t = useTranslations("doctor.reception");
+  // Precedence: an in-flight PATCH shows the spinner (also covers the retry
+  // attempts, so the doctor sees «trying again»); then a failure — `dirty`
+  // alone must not mask it, otherwise a dead network means an eternal
+  // spinner and the doctor believes the text is being saved.
+  const showError = !saving && error !== null;
+  const showSpinner = saving || (dirty && !showError);
   return (
-    <div className="flex items-center justify-between border-b border-border px-4 py-2.5 text-xs">
+    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-border px-4 py-2.5 text-xs">
       <span className="text-muted-foreground">{label}</span>
-      <span className="inline-flex items-center gap-1.5">
-        {pending ? (
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        {showSpinner ? (
           <>
             <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
             <span className="text-muted-foreground">{t("editor.saving")}</span>
+          </>
+        ) : showError ? (
+          <>
+            <AlertTriangleIcon className="size-3.5 shrink-0 text-destructive" />
+            <span className="font-medium text-destructive">
+              {error === "conflict"
+                ? t("editor.saveErrorConflict")
+                : error === "locked"
+                  ? t("editor.saveErrorLocked")
+                  : t("editor.saveErrorGeneric")}
+            </span>
+            {error === "generic" && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-destructive/40 bg-destructive/5 px-2 font-semibold text-destructive transition-colors hover:bg-destructive/10"
+              >
+                <RotateCcwIcon className="size-3" />
+                {t("editor.retry")}
+              </button>
+            )}
           </>
         ) : savedAt || updatedAt ? (
           <>

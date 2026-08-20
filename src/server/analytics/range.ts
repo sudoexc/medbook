@@ -2,35 +2,37 @@
  * Pure helpers for the analytics dashboard window resolution. Factored
  * out of `/api/crm/analytics/route.ts` so unit tests don't have to import
  * the full handler (which transitively pulls next-auth).
+ *
+ * All day boundaries are **Tashkent** (clinic time, UTC+5, no DST) — the
+ * old `setHours(0,0,0,0)` variant used server-local midnight, which on the
+ * UTC prod box shifted every window by 5 hours vs. the clinic's day.
+ * Tashkent has no DST, so N×24h arithmetic on a Tashkent midnight always
+ * lands on another Tashkent midnight.
  */
+import {
+  tashkentDayBounds,
+  tashkentDayBoundsForDateString,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 
 export type AnalyticsPeriod = "week" | "month" | "quarter" | "custom";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Midnight (Tashkent) of the civil day containing `d`. */
 export function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+  return tashkentDayBounds(d).dayStart;
 }
 
 export function addDays(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
+  return new Date(d.getTime() + n * DAY_MS);
 }
 
+/** Parse YYYY-MM-DD as a Tashkent calendar day → its midnight instant. */
 export function parseYmd(s: string | null): Date | null {
   if (!s) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  const d = new Date(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    0,
-    0,
-    0,
-    0,
-  );
+  if (!/^(\d{4})-(\d{2})-(\d{2})$/.test(s)) return null;
+  const d = tashkentDayBoundsForDateString(s).dayStart;
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -48,15 +50,14 @@ export function resolveAnalyticsRange(
 
   if (explicitFrom && explicitTo) {
     return {
-      from: startOfDay(explicitFrom),
-      to: addDays(startOfDay(explicitTo), 1),
+      from: explicitFrom,
+      to: addDays(explicitTo, 1),
       period: "custom",
     };
   }
 
   const period = (url.searchParams.get("period") as AnalyticsPeriod) ?? "month";
-  const todayStart = startOfDay(now);
-  const tomorrow = addDays(todayStart, 1);
+  const { dayStart: todayStart, dayEnd: tomorrow } = tashkentDayBounds(now);
   switch (period) {
     case "week":
       return { from: addDays(todayStart, -6), to: tomorrow, period };
@@ -68,16 +69,14 @@ export function resolveAnalyticsRange(
   }
 }
 
+/** Tashkent civil date (YYYY-MM-DD) of the instant — daily bucket key. */
 export function ymdKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return tashkentComponents(d).date;
 }
 
 export function eachDay(from: Date, to: Date): string[] {
   const out: string[] = [];
-  for (let d = new Date(from); d < to; d = addDays(d, 1)) {
+  for (let d = from; d < to; d = addDays(d, 1)) {
     out.push(ymdKey(d));
   }
   return out;

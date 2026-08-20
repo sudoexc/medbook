@@ -14,7 +14,7 @@ import type { DoctorOverloadPayload } from "@/lib/actions/types";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
-import { startOfUtcDay, addDays } from "./_shared";
+import { startOfClinicDay, addDays } from "./_shared";
 
 type DoctorRow = {
   id: string;
@@ -33,7 +33,7 @@ export async function detectDoctorOverload(
   now: Date,
   config: DetectorConfig,
 ): Promise<DoctorOverloadPayload[]> {
-  const todayStart = startOfUtcDay(now);
+  const todayStart = startOfClinicDay(now);
   const todayEnd = addDays(todayStart, 1);
 
   const doctors = (await prisma.doctor.findMany({

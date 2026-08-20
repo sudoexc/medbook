@@ -11,14 +11,20 @@
  * isn't meaningful for past or future dates. This endpoint is the
  * narrower "just the schedule + day summary, for any date" query.
  *
- * `date` is the calling browser's local YYYY-MM-DD; missing → today
- * (server local). The day window is [00:00, 23:59:59.999] in server
- * local time, matching how appointments are persisted.
+ * `date` is a YYYY-MM-DD string interpreted as a **Tashkent** calendar day
+ * (clinic time, UTC+5, no DST); missing → today in Tashkent. The day
+ * window is [00:00, 24:00) Tashkent — NOT server-local: prod runs UTC and
+ * `setHours(0,0,0,0)` there would shift the day by 5 hours vs. the clinic.
  */
 import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentDayBoundsForDateString,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import {
   scheduleStatusOf,
   type DoctorScheduleStatus,
@@ -61,20 +67,23 @@ const Query = z.object({
     .optional(),
 });
 
+/**
+ * Resolve `[start, end)` for the requested Tashkent calendar day.
+ * `iso` echoes the day back to the client in clinic time.
+ */
 function dayWindow(dateStr: string | undefined): { start: Date; end: Date; iso: string } {
-  const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
-  const start = new Date(base);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(base);
-  end.setHours(23, 59, 59, 999);
-  const y = start.getFullYear();
-  const m = String(start.getMonth() + 1).padStart(2, "0");
-  const d = String(start.getDate()).padStart(2, "0");
-  return { start, end, iso: `${y}-${m}-${d}` };
+  if (dateStr) {
+    const { dayStart, dayEnd } = tashkentDayBoundsForDateString(dateStr);
+    return { start: dayStart, end: dayEnd, iso: dateStr };
+  }
+  const now = new Date();
+  const { dayStart, dayEnd } = tashkentDayBounds(now);
+  return { start: dayStart, end: dayEnd, iso: tashkentComponents(now).date };
 }
 
+/** "HH:MM" in Tashkent wall clock — fallback when `Appointment.time` is empty. */
 function formatHHMM(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return tashkentComponents(d).time;
 }
 
 function appointmentTypeOf(visitsCount: number): "consultation" | "repeat" {
@@ -102,7 +111,7 @@ export const GET = createApiListHandler(
     const appts = await prisma.appointment.findMany({
       where: {
         doctorId: doctor.id,
-        date: { gte: start, lte: end },
+        date: { gte: start, lt: end },
         // Two-lanes: walk-ins live only in the «Живая очередь» lane, never in
         // the time-grid schedule — otherwise they double up (once here, once
         // in the live queue) and clutter the day plan.

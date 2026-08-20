@@ -18,6 +18,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { tashkentComponents } from "@/lib/booking-validation";
 import { audit } from "@/lib/audit";
 import { err, notFound } from "@/server/http";
 
@@ -42,11 +43,13 @@ function csvRow(cols: unknown[]): string {
   return cols.map(csvCell).join(",");
 }
 
+// Tashkent civil date / wall clock — `toISOString()` (UTC date) and
+// `getHours()` (server-local) both mislabel night visits on the UTC prod box.
 function ru(d: Date): string {
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD — sortable in Excel
+  return tashkentComponents(d).date; // YYYY-MM-DD — sortable in Excel
 }
 function hhmm(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return tashkentComponents(d).time;
 }
 
 export const GET = createApiListHandler(
@@ -189,7 +192,7 @@ export const GET = createApiListHandler(
       },
     });
 
-    const filename = `visits-${patient.fullName.replace(/[^A-Za-zА-Яа-яЁё0-9]+/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `visits-${patient.fullName.replace(/[^A-Za-zА-Яа-яЁё0-9]+/g, "-")}-${tashkentComponents(new Date()).date}.csv`;
 
     return new Response(body, {
       status: 200,

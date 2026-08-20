@@ -6,30 +6,36 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentDayBoundsForDateString,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import { getClinicAvgVisitTiins } from "@/server/revenue/avg-visit";
 import { ok } from "@/server/http";
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function addDays(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-function startOfWeek(d: Date): Date {
-  const x = startOfDay(d);
-  const day = x.getDay();
-  const diff = (day + 6) % 7; // Monday=0
-  x.setDate(x.getDate() - diff);
-  return x;
-}
-function startOfMonth(d: Date): Date {
-  const x = startOfDay(d);
-  x.setDate(1);
-  return x;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Day/week/month windows in clinic time (Asia/Tashkent, no DST) — the old
+ * `setHours(0,0,0,0)` variant used server-local midnight, which on the UTC
+ * prod box shifted every window by 5 hours vs. the clinic's day.
+ * Tashkent has no DST, so N×24h arithmetic on a Tashkent midnight stays on
+ * Tashkent midnights.
+ */
+function tashkentWindows(now: Date) {
+  const comp = tashkentComponents(now);
+  const { dayStart: todayStart, dayEnd: tomorrow } = tashkentDayBounds(now);
+  const weekStart = new Date(todayStart.getTime() - ((comp.dow + 6) % 7) * DAY_MS); // Monday
+  const nextWeek = new Date(weekStart.getTime() + 7 * DAY_MS);
+  const [y, m] = comp.date.split("-").map(Number);
+  const monthStart = tashkentDayBoundsForDateString(
+    `${comp.date.slice(0, 7)}-01`,
+  ).dayStart;
+  const nextMonthFirst =
+    m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const nextMonth = tashkentDayBoundsForDateString(nextMonthFirst).dayStart;
+  return { todayStart, tomorrow, weekStart, nextWeek, monthStart, nextMonth };
 }
 
 async function kpisFor(fromDate: Date, toDate: Date) {
@@ -68,12 +74,8 @@ export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"] },
   async () => {
     const now = new Date();
-    const todayStart = startOfDay(now);
-    const tomorrow = addDays(todayStart, 1);
-    const weekStart = startOfWeek(now);
-    const nextWeek = addDays(weekStart, 7);
-    const monthStart = startOfMonth(now);
-    const nextMonth = addDays(startOfMonth(addDays(now, 40)), 0);
+    const { todayStart, tomorrow, weekStart, nextWeek, monthStart, nextMonth } =
+      tashkentWindows(now);
 
     const [
       today,

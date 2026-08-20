@@ -8,7 +8,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, err, forbidden, notFound } from "@/server/http";
+import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
@@ -72,6 +72,23 @@ export const PATCH = createApiHandler(
       const edgeMs = finalizedAt != null ? Date.now() - finalizedAt : Infinity;
       if (edgeMs > 24 * 60 * 60 * 1000) {
         return err("Forbidden", 403, { reason: "edit_window_expired" });
+      }
+    }
+
+    // Optimistic locking — the same note can be open in the reception editor
+    // and in /doctor/conclusions/[id] at once. Without a version check the
+    // slower window silently erases the faster one (worst failure class for a
+    // clinical document). When the client sends the `updatedAt` it last saw,
+    // reject the write if the row moved on; the client shows the doctor an
+    // explicit "changed in another window" message instead of overwriting.
+    // Compare on epoch millis: Prisma serialises DateTime via toISOString(),
+    // so a round-tripped token is millisecond-exact.
+    if (body.expectedUpdatedAt != null) {
+      const expectedMs = Date.parse(body.expectedUpdatedAt);
+      if (expectedMs !== before.updatedAt.getTime()) {
+        return conflict("version_conflict", {
+          currentUpdatedAt: before.updatedAt.toISOString(),
+        });
       }
     }
 

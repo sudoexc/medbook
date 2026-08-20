@@ -9,6 +9,8 @@
  */
 import { z } from "zod";
 
+import { tashkentDayBounds } from "@/lib/booking-validation";
+
 import { DIMENSION_KEYS, type DimensionKey } from "./dimensions";
 import { MEASURE_KEYS, type MeasureKey } from "./measures";
 
@@ -148,11 +150,10 @@ export function resolveDateRange(
   now: Date = new Date(),
 ): { dateFrom: Date; dateTo: Date } {
   const f = config.filters ?? {};
-  const to = f.dateTo
-    ? new Date(f.dateTo)
-    : new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
-      );
+  // Explicit config values are ISO instants and pass through untouched;
+  // the *default* upper bound is tomorrow-at-midnight **Tashkent** so the
+  // window covers the clinic's "today", not the UTC server's.
+  const to = f.dateTo ? new Date(f.dateTo) : tashkentDayBounds(now).dayEnd;
   const from = f.dateFrom
     ? new Date(f.dateFrom)
     : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);

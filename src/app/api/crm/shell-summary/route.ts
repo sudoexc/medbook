@@ -17,19 +17,11 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import { ok } from "@/server/http";
-
-function startOfToday(): Date {
-  const x = new Date();
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfToday(): Date {
-  const x = startOfToday();
-  x.setDate(x.getDate() + 1);
-  return x;
-}
 
 /** Convert "HH:MM" → minutes since midnight. Defensive against bad input. */
 function hhmmToMinutes(s: string): number {
@@ -49,9 +41,10 @@ export const GET = createApiListHandler(
     ],
   },
   async () => {
-    const todayStart = startOfToday();
-    const todayEnd = endOfToday();
-    const weekday = todayStart.getDay(); // 0=Sun … 6=Sat
+    // Clinic day (Asia/Tashkent), not server-local — prod runs UTC.
+    const now = new Date();
+    const { dayStart: todayStart, dayEnd: todayEnd } = tashkentDayBounds(now);
+    const weekday = tashkentComponents(now).dow; // 0=Sun … 6=Sat
 
     const [
       appointmentsToday,

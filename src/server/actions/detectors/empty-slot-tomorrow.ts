@@ -23,10 +23,14 @@
  * schedule rows whose `weekday` matches into blocks of empty time.
  */
 import { defaultSeverity, type EmptySlotTomorrowPayload } from "@/lib/actions/types";
+import {
+  tashkentComponents,
+  toTashkentDate,
+} from "@/lib/booking-validation";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
-import { addDays, startOfUtcDay } from "./_shared";
+import { addDays, startOfClinicDay } from "./_shared";
 
 type ScheduleRow = {
   doctorId: string;
@@ -57,11 +61,15 @@ function parseHHmm(value: string): { h: number; m: number } | null {
   return { h, m: min };
 }
 
-/** Build a UTC-anchored timestamp for `tomorrow at HH:mm` (clinic tz approx). */
+/**
+ * UTC instant for `tomorrow at HH:mm` **Tashkent wall clock** — schedule
+ * rows store clinic wall-clock strings, so anchoring them at UTC hours
+ * shifted every block by 5h on the prod box.
+ */
 function atTomorrow(now: Date, hh: number, mm: number): Date {
-  const t = startOfUtcDay(addDays(now, 1));
-  t.setUTCHours(hh, mm, 0, 0);
-  return t;
+  const tomorrow = tashkentComponents(addDays(now, 1)).date;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return toTashkentDate(tomorrow, `${pad(hh)}:${pad(mm)}`);
 }
 
 export async function detectEmptySlotTomorrow(
@@ -71,10 +79,10 @@ export async function detectEmptySlotTomorrow(
   config: DetectorConfig,
 ): Promise<EmptySlotTomorrowPayload[]> {
 
-  const tomorrowStart = startOfUtcDay(addDays(now, 1));
+  const tomorrowStart = startOfClinicDay(addDays(now, 1));
   const tomorrowEnd = addDays(tomorrowStart, 1);
-  // JavaScript `getUTCDay`: Sun=0..Sat=6. Schemas use the same convention.
-  const weekday = tomorrowStart.getUTCDay();
+  // Sun=0..Sat=6 in the *clinic's* civil day — same convention as the schema.
+  const weekday = tashkentComponents(tomorrowStart).dow;
 
   const doctors = (await prisma.doctor.findMany({
     where: { isActive: true },

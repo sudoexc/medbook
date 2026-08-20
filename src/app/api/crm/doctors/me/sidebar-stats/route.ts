@@ -24,6 +24,10 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import { ok, err } from "@/server/http";
 
 const DEFAULT_SLOT_MINUTES = 30;
@@ -34,18 +38,6 @@ type SidebarStatsResponse = {
   loadPercent: number;
   todayCount: number;
 };
-
-function startOfLocalDay(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfLocalDay(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
 
 function parseHHMM(value: string): number {
   // DoctorSchedule.{start,end}Time are stored as "HH:MM" strings. Failing
@@ -72,15 +64,16 @@ export const GET = createApiListHandler(
     }
 
     const now = new Date();
-    const start = startOfLocalDay(now);
-    const end = endOfLocalDay(now);
-    const weekday = now.getDay();
+    // Clinic day, not server day — prod runs UTC and server-local midnight
+    // is 05:00 in Tashkent; `getDay()` flips the weekday before 05:00 too.
+    const { dayStart: start, dayEnd: end } = tashkentDayBounds(now);
+    const weekday = tashkentComponents(now).dow;
 
     const [todayAppointments, unreadAgg, schedule] = await Promise.all([
       prisma.appointment.findMany({
         where: {
           doctorId: doctor.id,
-          date: { gte: start, lte: end },
+          date: { gte: start, lt: end },
           status: { not: "CANCELLED" },
         },
         select: { status: true },

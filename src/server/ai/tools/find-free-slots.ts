@@ -23,6 +23,12 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentDayBoundsForDateString,
+  tashkentComponents,
+  toTashkentDate,
+} from "@/lib/booking-validation";
 import type { Tool, ToolContext, ToolResult } from "./types";
 
 type FindFreeSlotsInput = {
@@ -45,23 +51,22 @@ const TIME_OF_DAY: Record<
 };
 
 const MAX_SLOTS = 5;
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseHHMM(hhmm: string): number {
   const [h, m] = hhmm.split(":").map((v) => Number(v));
   return (h ?? 0) + (m ?? 0) / 60;
 }
 
-function ymd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/**
+ * All calendar reasoning here is in Tashkent civil space (clinic time):
+ * `DoctorSchedule` start/end are Tashkent wall-clock strings, so appointment
+ * hours must be derived via `tashkentComponents` — `date.getHours()` is
+ * server-local and skews −5h on the UTC prod box, marking booked hours free.
+ */
+function tashkentDayStartFor(dateStr: string | undefined): Date {
+  if (dateStr) return tashkentDayBoundsForDateString(dateStr).dayStart;
+  return tashkentDayBounds().dayStart;
 }
 
 export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
@@ -103,15 +108,12 @@ export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
     input: FindFreeSlotsInput,
     context: ToolContext,
   ): Promise<ToolResult> => {
-    const today = startOfDay(new Date());
-    const dateFrom = input.dateFrom
-      ? startOfDay(new Date(input.dateFrom))
-      : today;
-    const defaultTo = new Date(today);
-    defaultTo.setDate(defaultTo.getDate() + 7);
+    // Tashkent day starts (UTC-backed instants at clinic midnight).
+    const today = tashkentDayBounds().dayStart;
+    const dateFrom = input.dateFrom ? tashkentDayStartFor(input.dateFrom) : today;
     const dateTo = input.dateTo
-      ? startOfDay(new Date(input.dateTo))
-      : defaultTo;
+      ? tashkentDayStartFor(input.dateTo)
+      : new Date(today.getTime() + 7 * DAY_MS);
 
     if (
       Number.isNaN(dateFrom.getTime()) ||
@@ -173,8 +175,8 @@ export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
 
     // For each doctor pull schedule + appointments in the window in
     // parallel; then walk hour-by-hour to find empty buckets.
-    const dayEnd = new Date(dateTo);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // `dateTo` is a Tashkent midnight; +24h = end of that (inclusive) day.
+    const dayEnd = new Date(dateTo.getTime() + DAY_MS);
 
     const [schedulesByDoctor, apptsByDoctor] = await Promise.all([
       prisma.doctorSchedule.findMany({
@@ -214,8 +216,9 @@ export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
     const apptHourSet = new Set<string>();
     const now = Date.now();
     for (const a of apptsByDoctor) {
-      const h = a.date.getHours();
-      apptHourSet.add(`${a.doctorId}|${ymd(a.date)}|${h}`);
+      const c = tashkentComponents(a.date);
+      const h = Math.floor(c.minutes / 60);
+      apptHourSet.add(`${a.doctorId}|${c.date}|${h}`);
     }
 
     type FreeSlot = {
@@ -230,22 +233,28 @@ export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
 
     outer: for (const doc of doctors) {
       const schedules = scheduleMap.get(doc.id) ?? [];
+      // Walk Tashkent days: `dateFrom`/`dateTo` are Tashkent midnights and
+      // Tashkent has no DST, so +24h steps stay on clinic midnights.
       for (
-        let day = new Date(dateFrom);
-        day <= dateTo;
-        day.setDate(day.getDate() + 1)
+        let dayMs = dateFrom.getTime();
+        dayMs <= dateTo.getTime();
+        dayMs += DAY_MS
       ) {
-        const wd = day.getDay();
+        const dayComp = tashkentComponents(new Date(dayMs));
+        const wd = dayComp.dow;
         const winsForDay = schedules.filter((s) => s.weekday === wd);
         if (winsForDay.length === 0) continue;
         for (const w of winsForDay) {
           const startH = Math.max(Math.floor(w.start), todHours.startHour);
           const endH = Math.min(Math.ceil(w.end), todHours.endHour);
           for (let h = startH; h < endH; h++) {
-            const key = `${doc.id}|${ymd(day)}|${h}`;
+            const key = `${doc.id}|${dayComp.date}|${h}`;
             if (apptHourSet.has(key)) continue;
-            // Skip slots already in the past for today.
-            const slotMs = new Date(day).setHours(h, 0, 0, 0);
+            // Skip slots already in the past for today (Tashkent wall clock).
+            const slotMs = toTashkentDate(
+              dayComp.date,
+              `${String(h).padStart(2, "0")}:00`,
+            ).getTime();
             if (slotMs < now) continue;
             const docName =
               context.locale === "uz" && doc.nameUz ? doc.nameUz : doc.nameRu;
@@ -257,11 +266,11 @@ export const findFreeSlotsTool: Tool<FindFreeSlotsInput> = {
               doctorId: doc.id,
               doctorName: docName,
               specialty,
-              date: ymd(day),
+              date: dayComp.date,
               hour: h,
               deeplink: `/crm/calendar?doctor=${encodeURIComponent(
                 doc.id,
-              )}&date=${ymd(day)}`,
+              )}&date=${dayComp.date}`,
             });
             if (free.length >= MAX_SLOTS) break outer;
           }

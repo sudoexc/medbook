@@ -20,6 +20,7 @@
  */
 
 import type { TenantScopedPrisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 
 /**
  * Subset of the tenant-scoped client we accept everywhere. Previously a
@@ -36,11 +37,13 @@ export function round(n: number, digits = 2): number {
   return Math.round(n * factor) / factor;
 }
 
-/** Floor `d` to the start of its UTC day. */
-export function startOfUtcDay(d: Date): Date {
-  const out = new Date(d);
-  out.setUTCHours(0, 0, 0, 0);
-  return out;
+/**
+ * Floor `d` to the start of its clinic (Asia/Tashkent) civil day.
+ * Detector "today"/"tomorrow" windows must match the clinic's day — the
+ * old UTC floor put the window 5h ahead of the clinic's midnight.
+ */
+export function startOfClinicDay(d: Date): Date {
+  return tashkentDayBounds(d).dayStart;
 }
 
 /** Add `days` days (24h each) to `d` and return a new Date. */

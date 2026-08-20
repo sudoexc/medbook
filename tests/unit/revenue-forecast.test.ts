@@ -184,9 +184,12 @@ describe("ceilingRevenue / baselineRevenue / projectedDelta", () => {
 // -----------------------------------------------------------------------------
 
 describe("toDateKey / eachDateKey", () => {
-  it("formats UTC midnight as YYYY-MM-DD", () => {
+  it("keys by the Tashkent (clinic) civil day", () => {
+    // Tashkent midnight = 19:00Z of the previous UTC day.
+    expect(toDateKey(new Date("2026-05-05T19:00:00.000Z"))).toBe("2026-05-06");
     expect(toDateKey(new Date("2026-05-06T00:00:00.000Z"))).toBe("2026-05-06");
-    expect(toDateKey(new Date("2026-05-06T23:59:59.999Z"))).toBe("2026-05-06");
+    // 20:30Z = 01:30 Tashkent of May 7 — belongs to the next clinic day.
+    expect(toDateKey(new Date("2026-05-06T20:30:00.000Z"))).toBe("2026-05-07");
   });
 
   it("eachDateKey returns inclusive..exclusive range", () => {

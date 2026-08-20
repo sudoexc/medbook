@@ -55,6 +55,13 @@ export const BodyMapPointSchema = z.object({
 export type BodyMapPointInput = z.infer<typeof BodyMapPointSchema>;
 
 export const UpdateVisitNoteSchema = z.object({
+  // Optimistic-concurrency token, not a data field. The client echoes the
+  // `updatedAt` of the note revision it was editing; the PATCH route compares
+  // it against the stored row and returns 409 `version_conflict` on mismatch,
+  // so two windows editing the same note can never silently overwrite each
+  // other. Optional for backward compatibility — callers that don't send it
+  // keep the legacy last-write-wins behaviour.
+  expectedUpdatedAt: z.string().datetime().nullable().optional(),
   complaints: ChipArray.optional(),
   anamnesis: ChipArray.optional(),
   examination: ChipArray.optional(),

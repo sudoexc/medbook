@@ -13,6 +13,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import {
   computeQueueScore,
   type QueueScoreOutput,
@@ -54,17 +55,6 @@ export interface ScoredAppointment {
 
 const URGENT_RE = /urgent|emerg/i;
 
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
-}
-function endOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(23, 59, 59, 999);
-  return c;
-}
-
 function urgencyFromCode(code: string | null | undefined): 0 | 1 | 2 | 3 {
   if (!code) return 0;
   return URGENT_RE.test(code) ? 3 : 0;
@@ -94,9 +84,11 @@ export async function resolveQueueScores(
     ? (["BOOKED", "WAITING", "IN_PROGRESS"] as const)
     : (["BOOKED", "WAITING"] as const);
 
+  // Clinic day (Asia/Tashkent) — not server-local midnight.
+  const { dayStart, dayEnd } = tashkentDayBounds(now);
   const rows = await prisma.appointment.findMany({
     where: {
-      date: { gte: startOfDay(now), lte: endOfDay(now) },
+      date: { gte: dayStart, lt: dayEnd },
       queueStatus: { in: statuses as unknown as string[] } as never,
     },
     include: {

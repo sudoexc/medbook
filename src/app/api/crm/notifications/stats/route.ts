@@ -11,6 +11,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { ok } from "@/server/http";
 
 export const GET = createApiListHandler(
@@ -18,11 +19,8 @@ export const GET = createApiListHandler(
   async () => {
     const now = new Date();
     const in30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
+    // "Today" = clinic day (Asia/Tashkent), not server-local midnight.
+    const startOfToday = tashkentDayBounds(now).dayStart;
 
     const byStatus = await prisma.notificationSend.groupBy({
       by: ["status"],

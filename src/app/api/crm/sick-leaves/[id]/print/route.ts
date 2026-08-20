@@ -150,16 +150,19 @@ function renderHtml({
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
   const fromStr = sl.periodFrom.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
   const toStr = sl.periodTo.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
   const days =
     Math.round(

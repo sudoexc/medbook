@@ -11,6 +11,8 @@
  * empty when the doctor activates a session.
  */
 
+import { tashkentComponents } from "@/lib/booking-validation";
+
 import { callLLM } from "./llm";
 
 export type ClarifyingInput = {
@@ -90,7 +92,8 @@ function buildUserContent(input: ClarifyingInput): string {
   if (input.recentVisits.length > 0) {
     lines.push("Последние визиты:");
     for (const v of input.recentVisits) {
-      const ymd = v.date.toISOString().slice(0, 10);
+      // Tashkent civil date — the UTC date is yesterday for pre-05:00 visits.
+      const ymd = tashkentComponents(v.date).date;
       const parts = [ymd];
       if (v.diagnosis) parts.push(`диагноз: ${v.diagnosis}`);
       if (v.notes) parts.push(`заметки: ${v.notes.slice(0, 200)}`);

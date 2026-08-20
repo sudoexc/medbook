@@ -1,10 +1,10 @@
 /**
  * Phase 15 Wave 3 — `getAppointmentsToday` tool.
  *
- * READ-ONLY. Returns today's appointments (Tashkent local day boundary, but
- * we use the server's local day; the calendar normalises to TZ already, so
- * for the LLM "today" answer this is fine). Up to 20 rows, each with a
- * `/crm/calendar?focus={id}` deeplink.
+ * READ-ONLY. Returns today's appointments. "Today" is the clinic's Tashkent
+ * day (`tashkentDayBounds`) — prod runs UTC, so the server-local day is 5h
+ * off the clinic's. Up to 20 rows, each with a `/crm/calendar?focus={id}`
+ * deeplink.
  *
  * Filters:
  *   - doctorId — narrow to one doctor.
@@ -12,6 +12,10 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import type { Tool, ToolContext, ToolResult } from "./types";
 
 const APPOINTMENT_STATUSES = [
@@ -32,16 +36,9 @@ type GetAppointmentsTodayInput = {
 
 const MAX_RESULTS = 20;
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
+/** "HH:MM" in Tashkent wall clock — not server-local. */
 function fmtTime(d: Date): string {
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+  return tashkentComponents(d).time;
 }
 
 export const getAppointmentsTodayTool: Tool<GetAppointmentsTodayInput> = {
@@ -68,9 +65,7 @@ export const getAppointmentsTodayTool: Tool<GetAppointmentsTodayInput> = {
     input: GetAppointmentsTodayInput,
     context: ToolContext,
   ): Promise<ToolResult> => {
-    const today = startOfDay(new Date());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const { dayStart: today, dayEnd: tomorrow } = tashkentDayBounds();
 
     const rows = await prisma.appointment.findMany({
       where: {

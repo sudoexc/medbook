@@ -78,32 +78,30 @@ export interface LossDashboardData {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function utcMidnight(d: Date): Date {
-  const c = new Date(d);
-  c.setUTCHours(0, 0, 0, 0);
-  return c;
-}
-
 /**
  * Load all four loss sources for `clinicId` over `[from, to)` and return
  * the aggregated dashboard payload. Caller MUST be inside `runWithTenant`
  * with this clinic's TenantContext (the page wraps it via createApiHandler-
  * equivalent server-component plumbing).
+ *
+ * `from`/`to` are Tashkent-midnight instants (see `resolveAnalyticsRange`);
+ * day keys are Tashkent civil dates, matching the empty-slot engine's
+ * Tashkent-anchored snapshot `date` values.
  */
 export async function loadLossDashboard(
   clinicId: string,
   from: Date,
   to: Date,
 ): Promise<LossDashboardData> {
-  const fromKey = toDateKey(utcMidnight(from));
-  const toKeyExcl = toDateKey(utcMidnight(to));
+  const fromKey = toDateKey(from);
+  const toKeyExcl = toDateKey(to);
 
   // Empty-slot snapshots — pre-computed by the daily worker. One row per
   // (doctor, hour) tuple.
   const slotRows = await prisma.emptySlotSnapshot.findMany({
     where: {
       clinicId,
-      date: { gte: utcMidnight(from), lt: utcMidnight(to) },
+      date: { gte: from, lt: to },
     },
     select: {
       date: true,

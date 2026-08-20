@@ -22,6 +22,10 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  tashkentDayBounds,
+  tashkentComponents,
+} from "@/lib/booking-validation";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ok, err } from "@/server/http";
 import { isLiveLane } from "@/lib/queue-ordering";
@@ -203,22 +207,15 @@ type TodayResponse = {
   recentPatients: RecentPatientItem[];
 };
 
-function startOfLocalDay(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfLocalDay(now: Date): Date {
-  const d = new Date(now);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
+/**
+ * "HH:MM" in Tashkent wall clock. The fallback for `Appointment.time` —
+ * `d.getHours()` would print server-local (UTC on prod) time, skewing the
+ * schedule by −5h. Day bounds come from `tashkentDayBounds` for the same
+ * reason: the whole payload must agree with the liveQueue projection on
+ * what "today" means (clinic time, Asia/Tashkent).
+ */
 function formatHHMM(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return tashkentComponents(d).time;
 }
 
 function shortName(fullName: string): string {
@@ -283,8 +280,7 @@ export const GET = createApiListHandler(
     }
 
     const now = new Date();
-    const dayStart = startOfLocalDay(now);
-    const dayEnd = endOfLocalDay(now);
+    const { dayStart, dayEnd } = tashkentDayBounds(now);
     const reminderHorizon = new Date(now);
     reminderHorizon.setHours(reminderHorizon.getHours() + 24);
     const recentWindowStart = new Date(now);
@@ -309,7 +305,7 @@ export const GET = createApiListHandler(
       prisma.appointment.findMany({
         where: {
           doctorId: doctor.id,
-          date: { gte: dayStart, lte: dayEnd },
+          date: { gte: dayStart, lt: dayEnd },
         },
         orderBy: [{ date: "asc" }, { id: "asc" }],
         select: {
@@ -689,7 +685,9 @@ export const GET = createApiListHandler(
         const appointmentDate = d.appointment?.date ?? d.startedAt ?? now;
         return {
           id: d.id,
-          title: `Заключение от ${appointmentDate.toISOString().slice(0, 10)}`,
+          // Tashkent civil date — `toISOString()` would print the UTC date,
+          // which is yesterday for appointments before 05:00 clinic time.
+          title: `Заключение от ${tashkentComponents(appointmentDate).date}`,
           patientId: d.patient!.id,
           patientShort: shortName(d.patient!.fullName),
           updatedAt: (d.startedAt ?? appointmentDate).toISOString(),

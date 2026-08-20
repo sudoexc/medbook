@@ -17,11 +17,12 @@
  * constant 5% bump). Wave 4 can replace this with a real attribution.
  */
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import type { ForecastPoint } from "@/lib/revenue/forecast";
 import { toDateKey } from "@/lib/revenue/loss-aggregation";
 
 export interface ForecastDashboardData {
-  /** 30 forward-day points starting at today (UTC). */
+  /** 30 forward-day points starting at today (Tashkent clinic day). */
   points: ForecastPoint[];
   /** Used by the page to show how the bands were derived. */
   meta: {
@@ -35,17 +36,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FORECAST_DAYS = 30;
 const LOOKBACK_DAYS_NOSHOW = 30;
 
-function utcMidnight(d: Date): Date {
-  const c = new Date(d);
-  c.setUTCHours(0, 0, 0, 0);
-  return c;
-}
-
 export async function loadForecast(
   clinicId: string,
   now: Date = new Date(),
 ): Promise<ForecastDashboardData> {
-  const todayMidnight = utcMidnight(now);
+  // Clinic day (Asia/Tashkent, no DST) — 24h steps stay on clinic midnights.
+  const todayMidnight = tashkentDayBounds(now).dayStart;
   const horizon = new Date(todayMidnight.getTime() + FORECAST_DAYS * DAY_MS);
 
   // 1. Current booked pipeline — scheduled in `[today, today+30d)`.
@@ -101,7 +97,7 @@ export async function loadForecast(
   // 4. Bucket upcoming revenue per day.
   const baselinePerDay = new Map<string, number>();
   for (const a of upcoming) {
-    const key = toDateKey(utcMidnight(a.date));
+    const key = toDateKey(a.date);
     const valueUzs =
       a.priceFinal && a.priceFinal > 0
         ? a.priceFinal

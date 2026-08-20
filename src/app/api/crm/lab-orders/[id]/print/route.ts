@@ -163,6 +163,7 @@ function renderHtml({
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
   const dob = order.patient.birthDate
     ? order.patient.birthDate.toLocaleDateString("ru-RU")

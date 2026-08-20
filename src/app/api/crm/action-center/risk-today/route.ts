@@ -207,14 +207,14 @@ export const GET = createApiListHandler(
     // 2) All NO_SHOW_RISK_HIGH + UNCONFIRMED_24H actions touching today's
     // appointments — both still-OPEN (drives reasons[]) and DONE-today
     // (drives the handledToday counter). One query keeps the round-trip flat.
-    const startOfTodayUtc = new Date(now);
-    startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+    // "DONE today" uses the same clinic-day window as the appointment list —
+    // a UTC floor would make the counter reset at 05:00 clinic time.
     const actions = await prisma.action.findMany({
       where: {
         type: { in: ["NO_SHOW_RISK_HIGH", "UNCONFIRMED_24H"] },
         OR: [
           { status: { in: ["OPEN", "SNOOZED"] } },
-          { status: "DONE", doneAt: { gte: startOfTodayUtc } },
+          { status: "DONE", doneAt: { gte: dayStart } },
         ],
       },
       select: {
@@ -278,8 +278,8 @@ export const GET = createApiListHandler(
       // the «Обработано сегодня» trail — one row per appointment, latest wins.
       const resolvedToday =
         a.outcome != null &&
-        ((a.doneAt && a.doneAt >= startOfTodayUtc) ||
-          (a.status === "SNOOZED" && a.updatedAt >= startOfTodayUtc));
+        ((a.doneAt && a.doneAt >= dayStart) ||
+          (a.status === "SNOOZED" && a.updatedAt >= dayStart));
       if (resolvedToday) {
         handledRaw.push({
           appointmentId: apptId,

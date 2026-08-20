@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import {
   suggestReassignments,
   type DoctorLoad,
@@ -24,24 +25,14 @@ export interface ResolveReassignResult {
 
 const DAY_CAPACITY_MIN = 8 * 60; // 8 working hours per doctor by default
 
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
-}
-function endOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(23, 59, 59, 999);
-  return c;
-}
 function diffMin(a: Date, b: Date): number {
   return Math.max(0, (a.getTime() - b.getTime()) / 60_000);
 }
 
 export async function resolveReassign(opts: { now?: Date } = {}): Promise<ResolveReassignResult> {
   const now = opts.now ?? new Date();
-  const dayStart = startOfDay(now);
-  const dayEnd = endOfDay(now);
+  // Clinic day (Asia/Tashkent) — not server-local midnight.
+  const { dayStart, dayEnd } = tashkentDayBounds(now);
 
   // Active doctors visible in current scope (auto-clinic + optional branch).
   const doctors = await prisma.doctor.findMany({
@@ -55,7 +46,7 @@ export async function resolveReassign(opts: { now?: Date } = {}): Promise<Resolv
   // Today's appointments — used for both load and waiting list.
   const todays = await prisma.appointment.findMany({
     where: {
-      date: { gte: dayStart, lte: dayEnd },
+      date: { gte: dayStart, lt: dayEnd },
     },
     select: {
       id: true,

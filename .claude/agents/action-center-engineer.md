@@ -1,7 +1,7 @@
 ---
 name: action-center-engineer
 description: Use this agent to build the Action Center — proactive recommendation engine that tells users (receptionist/admin) what to do next. Owns Action model, detector engine, BullMQ recompute job, daily briefing module, /crm/action-center page. Invoke for Phase 13 of ROADMAP-11x.md.
-model: claude-fable-5
+model: claude-opus-5
 ---
 
 # Role

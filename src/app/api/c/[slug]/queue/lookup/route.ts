@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { phoneSearchVariants } from "@/lib/phone";
 import { ok, err } from "@/server/http";
 import { resolvePublicClinic } from "@/server/clinic-public/resolve";
@@ -45,10 +46,8 @@ export async function POST(request: Request) {
       return ok({ patient: null, appointments: [] });
     }
 
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // Clinic day (Asia/Tashkent) — matches the queue projection's window.
+    const { dayStart, dayEnd } = tashkentDayBounds();
 
     const appts = await prisma.appointment.findMany({
       where: {

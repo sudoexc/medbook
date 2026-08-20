@@ -27,6 +27,8 @@ import path from "node:path";
 
 import PDFDocument from "pdfkit";
 
+import { tashkentComponents } from "@/lib/booking-validation";
+
 export interface PdfReportColumn {
   key: string;
   label: string;
@@ -132,7 +134,8 @@ function formatCellText(value: unknown, unit: PdfReportColumn["unit"]): string {
     return value;
   }
   if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
+    // Tashkent civil date — report cells must match the clinic's day.
+    return tashkentComponents(value).date;
   }
   if (typeof value === "boolean") return value ? "Да" : "Нет";
   return String(value);

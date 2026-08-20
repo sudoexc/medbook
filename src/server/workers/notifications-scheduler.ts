@@ -20,6 +20,7 @@
  * actual delivery + retry lives in `notifications-send.ts`.
  */
 import { prisma } from "@/lib/prisma";
+import { tashkentComponents } from "@/lib/booking-validation";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { recordPatientNoChannel } from "@/server/notifications/no-channel-action";
@@ -257,7 +258,9 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
           firstName: appt.patient.fullName.split(/\s+/)[0] ?? "",
           phone: appt.patient.phone,
         },
-        appointment: { date: appt.date.toISOString().slice(0, 10) },
+        // Tashkent civil date — the ISO/UTC date is a day early for
+        // appointments before 05:00 clinic time.
+        appointment: { date: tashkentComponents(appt.date).date },
         clinic: { name: "", phone: "", address: "" },
       });
       toInsert.push({

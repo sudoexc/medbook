@@ -57,7 +57,12 @@ export const POST = createMiniAppHandler(
       const isUz = ctx.patient.preferredLang === "UZ";
       const dStr = appt.date.toLocaleDateString(
         isUz ? "uz-Latn-UZ" : "ru-RU",
-        { day: "2-digit", month: "2-digit", year: "numeric" },
+        {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          timeZone: "Asia/Tashkent",
+        },
       );
       const fallbackTitle = isUz
         ? `Yangi shikoyat, ${dStr}`

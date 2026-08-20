@@ -29,6 +29,8 @@ import {
   type ClinicalProtocolRow,
 } from "../_hooks/use-clinical-protocols";
 import {
+  isEditWindowExpired,
+  isVersionConflict,
   usePatchVisitNote,
   useVisitNote,
   type VisitNotePatch,
@@ -71,12 +73,38 @@ export function StructuredFieldsPanel() {
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
 
+  const noteRefetch = noteQuery.refetch;
   const applyPatch = React.useCallback(
     (p: VisitNotePatch) => {
       if (!note || isFinalized) return;
-      patch.mutate(p);
+      // Every card in this panel saves through here: diagnosis, prescription
+      // rows (replace-all!), follow-up, dynamics. A silent failure means the
+      // doctor believes the data is recorded when it is not — the worst
+      // failure class for a clinical system — so every error must be loud.
+      patch.mutate(p, {
+        onError: (e) => {
+          if (isVersionConflict(e)) {
+            // Another window saved this note first. Do NOT refetch here: the
+            // conclusion editor still holds this window's stale draft, and a
+            // refreshed cache row would hand its autosave a fresh version
+            // token — letting the stale text overwrite the other window.
+            // The doctor is told to reload instead.
+            toast.error(t("structured.saveErrorConflict"));
+            return;
+          }
+          toast.error(
+            isEditWindowExpired(e)
+              ? t("structured.saveErrorLocked")
+              : t("structured.saveErrorGeneric"),
+          );
+          // Explicit rollback: the cards render from the cached server row
+          // (the failed PATCH never touched it), so a refetch snaps every
+          // optimistic-looking control back to server truth.
+          void noteRefetch();
+        },
+      });
     },
-    [note, isFinalized, patch],
+    [note, isFinalized, patch, noteRefetch, t],
   );
 
   const presetsByField = React.useMemo(() => {

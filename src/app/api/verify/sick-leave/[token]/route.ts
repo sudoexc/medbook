@@ -105,6 +105,7 @@ function verifyHtml(p: {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent", // clinic dates, not server-local
   };
   const statusLabel =
     p.status === "CANCELLED"

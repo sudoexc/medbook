@@ -22,6 +22,7 @@ function defaultName(now: Date): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Tashkent", // clinic wall clock, not server-local
   });
   return `Рассылка · ${stamp}`;
 }

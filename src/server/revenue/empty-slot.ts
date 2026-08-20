@@ -30,6 +30,10 @@
  */
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { TenantScopedPrisma } from "@/lib/prisma";
+import {
+  tashkentComponents,
+  tashkentDayBoundsForDateString,
+} from "@/lib/booking-validation";
 import { runWithTenant } from "@/lib/tenant-context";
 
 export type EmptySlotInput = {
@@ -138,17 +142,6 @@ export function expandScheduleHours(
     out.push(h);
   }
   return out;
-}
-
-/** Floor `d` to the start of its UTC day. Mirrors `_shared.ts`. */
-function startOfUtcDay(d: Date): Date {
-  const out = new Date(d);
-  out.setUTCHours(0, 0, 0, 0);
-  return out;
-}
-
-function addDays(d: Date, days: number): Date {
-  return new Date(d.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 type DoctorRow = {
@@ -266,10 +259,15 @@ export async function snapshotEmptySlotsForDay(
   clinicId: string,
   date: Date,
 ): Promise<{ snapshotsWritten: number; totalLossUzs: number }> {
-  const dayStart = startOfUtcDay(date);
-  const dayEnd = addDays(dayStart, 1);
-  // JS getUTCDay: Sun=0..Sat=6 — DoctorSchedule uses the same convention.
-  const weekday = dayStart.getUTCDay();
+  // Snapshot the *clinic's* civil day (Asia/Tashkent). DoctorSchedule
+  // start/end times are Tashkent wall-clock strings, so the day window,
+  // the weekday, and the hour buckets below must all be Tashkent-anchored —
+  // a UTC anchor puts the hour buckets 5h off the schedule and marks every
+  // booked hour as "empty".
+  const dayComp = tashkentComponents(date);
+  const { dayStart, dayEnd } = tashkentDayBoundsForDateString(dayComp.date);
+  // Sun=0..Sat=6 — same convention as DoctorSchedule.weekday.
+  const weekday = dayComp.dow;
 
   const doctors = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.doctor.findMany({
@@ -348,9 +346,9 @@ export async function snapshotEmptySlotsForDay(
 
     const bookedHours: number[] = [];
     for (const a of apptsByDoctor.get(doctor.id) ?? []) {
-      // An appointment occupies every UTC hour it overlaps. We use UTC
-      // because the snapshot's `date` is UTC-anchored and the schedule
-      // hours were derived in UTC too.
+      // An appointment occupies every Tashkent wall-clock hour it overlaps:
+      // offsets from `dayStart` (a Tashkent midnight) are clinic hours —
+      // the same coordinate system as the schedule's "HH:MM" strings.
       const startMs = a.date.getTime();
       const endMs = a.endDate.getTime();
       const dayStartMs = dayStart.getTime();

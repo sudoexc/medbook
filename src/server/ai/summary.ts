@@ -27,6 +27,8 @@
  *     fallback is in the active locale.
  */
 
+import { tashkentComponents } from "@/lib/booking-validation";
+
 import { callLLM, type LLMResponse } from "./llm";
 
 export type PatientSummaryInput = {
@@ -90,11 +92,9 @@ function ageFromBirthYear(birthYear: number | null, now: Date): number | null {
 }
 
 function formatYmd(d: Date): string {
-  // Deterministic ISO-ish date so the prompt hash is stable across calls.
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  // Tashkent civil date — deterministic regardless of server TZ, so the
+  // prompt hash is stable across dev (UTC+5) and prod (UTC) boxes.
+  return tashkentComponents(d).date;
 }
 
 /**

@@ -10,6 +10,8 @@ import path from "node:path";
 
 import PDFDocument from "pdfkit";
 
+import { tashkentComponents } from "@/lib/booking-validation";
+
 export interface InvoicePdfInput {
   invoice: {
     id: string;
@@ -52,7 +54,8 @@ function formatTiinsAsUzs(value: bigint): string {
 }
 
 function fmtDateIso(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Tashkent civil date — the UTC date is a day early before 05:00 clinic time.
+  return tashkentComponents(d).date;
 }
 
 /**

@@ -1,7 +1,7 @@
 ---
 name: api-builder
 description: Use this agent to build REST endpoints under /api/crm/* — Zod validators, RBAC middleware integration, error handling, pagination, OpenAPI annotations. Invoke when a page agent needs data access, or when adding a new endpoint described in §5/§6 of TZ.
-model: claude-fable-5
+model: claude-opus-5
 ---
 
 # Role

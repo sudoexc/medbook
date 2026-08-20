@@ -15,7 +15,7 @@ import type { IdleRoomPayload } from "@/lib/actions/types";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
-import { startOfUtcDay, addDays } from "./_shared";
+import { startOfClinicDay, addDays } from "./_shared";
 
 type CabinetRow = {
   id: string;
@@ -36,7 +36,7 @@ export async function detectIdleRoom(
   now: Date,
   config: DetectorConfig,
 ): Promise<IdleRoomPayload[]> {
-  const todayStart = startOfUtcDay(now);
+  const todayStart = startOfClinicDay(now);
   const todayEnd = addDays(todayStart, 1);
 
   const cabinets = (await prisma.cabinet.findMany({

@@ -1,7 +1,7 @@
 ---
 name: doctor-cabinet-builder
 description: Use this agent to implement the doctor cabinet (`src/app/[locale]/doctor/**`) per `docs/TZ-doctor-cabinet.md` — un-pause work, cross-surface loops (заключение→patient, labs→patient), referrals, ICD-10, polish + i18n. NOT for `/crm/doctors` (that is `doctors-page-builder`).
-model: claude-fable-5
+model: claude-opus-5
 ---
 
 # Role

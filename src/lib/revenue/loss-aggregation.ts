@@ -16,8 +16,10 @@
  * Every UZS amount is in **tiins** (minor units) and integer arithmetic only.
  * The page UI formats with `<MoneyText>` — these helpers return raw integers.
  *
- * Pure: zero imports. Used by the page server component AND by unit tests.
+ * Pure (only the client-safe Tashkent time helper is imported). Used by the
+ * page server component AND by unit tests.
  */
+import { tashkentPartsOf } from "@/lib/tashkent-time";
 
 export type LossSource = "emptySlot" | "noShow" | "cancellation" | "dormant";
 
@@ -57,14 +59,13 @@ function isInRange(dateKey: string, fromKey: string, toKeyExcl: string): boolean
 }
 
 /**
- * Convert a `Date` to a "YYYY-MM-DD" key in UTC. Mirrors the engine's
- * UTC-anchored snapshot dates so comparisons line up.
+ * Convert a `Date` to a "YYYY-MM-DD" key in **Tashkent** (clinic time).
+ * Mirrors the empty-slot engine's Tashkent-anchored snapshot dates so
+ * comparisons line up, and buckets night appointments into the clinic's
+ * civil day rather than the UTC one.
  */
 export function toDateKey(d: Date): string {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return tashkentPartsOf(d).date;
 }
 
 /** Each calendar day in `[fromKey, toKeyExcl)`, inclusive..exclusive. */

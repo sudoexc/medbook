@@ -12,9 +12,13 @@ import {
   PrinterIcon,
 } from "lucide-react";
 
+import { toast } from "sonner";
+
 import { cn } from "@/lib/utils";
 
 import {
+  isEditWindowExpired,
+  isVersionConflict,
   usePatchVisitNote,
   useVisitNote,
 } from "../../../reception/_hooks/use-visit-note";
@@ -103,8 +107,17 @@ export function ConclusionDetail({
     try {
       await patch.mutateAsync({ bodyMarkdown: draft });
       setEditing(false);
-    } catch {
-      // surface as banner if needed later
+    } catch (e) {
+      // A swallowed failure here means the doctor closes the page believing
+      // the conclusion is saved. Stay in edit mode (the draft is not lost)
+      // and say exactly why the save was rejected.
+      toast.error(
+        isVersionConflict(e)
+          ? tr("detail.saveErrorConflict")
+          : isEditWindowExpired(e)
+            ? tr("detail.saveErrorLocked")
+            : tr("detail.saveErrorGeneric"),
+      );
     }
   };
 

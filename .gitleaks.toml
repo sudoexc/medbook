@@ -1,0 +1,27 @@
+# Gitleaks config — extends the default ruleset with a false-positive
+# allowlist. The generic-api-key rule fires on two non-secret patterns in
+# this repo:
+#
+#   1. notification template keys — `key: "appointment.reminder-5d"` and
+#      friends (default-templates.ts, reminder-cadence script, action tests)
+#   2. ULID test fixtures — `01HZZZ...` idempotency keys in unit tests
+#
+# The allowlist matches on the rule MATCH (not just the captured secret) so
+# it stays scoped to these shapes. Real secrets never look like either.
+#
+# NB: CI runs gitleaks-action on a shallow clone, so findings re-fingerprint
+# to the HEAD commit on every push — commit-pinned .gitleaksignore entries
+# do not survive that, which is why the baseline lives here as patterns.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Non-secret shapes: notification template keys and ULID test fixtures"
+regexTarget = "match"
+regexes = [
+  # template keys: `key: "appointment.reminder-5d"`, `triggerKey: "..."`, ...
+  '''(?i)key["']?:\s*["']?(appointment|reminder|marketing|transactional|patient)\.[a-z0-9.\-]+''',
+  # ULID-shaped test fixtures (idempotency keys etc.)
+  '''01[A-Z0-9]{22,26}''',
+]

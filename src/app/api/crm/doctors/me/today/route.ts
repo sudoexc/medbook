@@ -1,58 +1,27 @@
 /**
- * GET /api/crm/doctors/me/today — one-shot aggregate that backs every card
- * on /doctor/my-day.
+ * GET /api/crm/doctors/me/today — the /doctor/my-day dashboard aggregate.
  *
- * Why one endpoint and not nine:
- *   /my-day mounts ten cards at once. Nine parallel `useQuery`s would mean
- *   nine fetches on every navigation in and out of the route, nine refetch
- *   timers on focus, and nine independent invalidations on every SSE event.
- *   This handler issues the queries in parallel via Promise.all and returns
- *   one payload — the cards consume slices via TanStack's `select`.
+ * Scope note: this used to be a ten-block payload (schedule, upcoming,
+ * daySummary, reminders, drafts, unread labs/messages, recent patients, ai)
+ * backed by ~8 parallel DB queries. After the screen was simplified the
+ * client reads exactly three things — `current`, `currentIsImplicitNext`
+ * and `liveQueue` (see my-day/_components/*, which select slices via
+ * `useDoctorToday<T>(selector)`); the ScheduleCard fetches its own data
+ * from /doctors/me/schedule. Every dead block was dropped TOGETHER WITH its
+ * queries — this endpoint refetches on every appointment/queue SSE event
+ * for every doctor, so each spare query here was multiplied by clinic-wide
+ * event traffic.
  *
- * No-AI-v1: the `ai` block (summary / alerts / recommendations) is reserved
- *   for a future worker. v1 returns `{summary: null, alerts: [], recommendations: []}`
- *   plus a numeric `daySummary` block of plain counts so the AI card still
- *   has something concrete to render (totalAppointments, repeats, completedCount).
- *
- * Tasks-card pragma: the schema's `Action` model is role-scoped, not user-
- *   scoped, so we can't filter `assigneeId = me`. Instead, `actionItems` is
- *   derived from real counters that *do* track per-doctor state — unread
- *   results, draft visit-notes, unread messages, due reminders — so the
- *   checklist mirrors actual outstanding work for this user.
+ * `doctorId` rides on the payload so the client SSE filter can drop events
+ * addressed to other doctors (see `useDoctorToday`).
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import {
-  tashkentDayBounds,
-  tashkentComponents,
-} from "@/lib/booking-validation";
+import { tashkentDayBounds } from "@/lib/booking-validation";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ok, err } from "@/server/http";
-import { isLiveLane } from "@/lib/queue-ordering";
 import { pickCurrentVisit } from "@/lib/doctor-current-visit";
-import {
-  scheduleStatusOf,
-  type DoctorScheduleStatus,
-} from "@/lib/doctor-schedule-status";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
-
-const REPEAT_VISITS_THRESHOLD = 2;
-const RECENT_PATIENTS_WINDOW_DAYS = 14;
-
-type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
-type ScheduleStatus = DoctorScheduleStatus;
-
-type ScheduleEntry = {
-  id: string;
-  startTime: string;
-  patientId: string | null;
-  patientName: string | null;
-  type: ScheduleType;
-  durationMin: number | null;
-  status: ScheduleStatus;
-  /** Same semantics as in /schedule — flips row CTA Вызвать → Начать. */
-  calledAt: string | null;
-};
 
 type PatientTag = "active" | "first_visit" | "vip" | "new";
 
@@ -90,75 +59,6 @@ type CurrentPatient = {
   lastDiagnosis: { codes: { code: string; name: string }[] };
 };
 
-type UpcomingPatient = {
-  appointmentId: string;
-  patientId: string;
-  shortName: string;
-  phone: string;
-  startTime: string;
-  startAt: string;
-  durationMin: number;
-  type: "consultation" | "repeat";
-  avatarUrl: string | null;
-};
-
-type ActionItem = { id: string; title: string; count: number; href: string };
-
-type ReminderItem = {
-  id: string;
-  title: string;
-  /** Null when the reminder isn't bound to a patient (general task). */
-  patientId: string | null;
-  patientShort: string | null;
-  remindAt: string;
-  status: string;
-};
-
-type RemindersBlock = {
-  /** Preview slice — at most 5 next-up actionable reminders. */
-  items: ReminderItem[];
-  /**
-   * Total reminders matching the "actionable in next 24h" predicate, so the
-   * preview card can show «N всего» and link to the full list without lying.
-   */
-  total: number;
-};
-
-type UnreadResultItem = {
-  id: string;
-  testName: string;
-  /** Deep-link target so a click on the row opens the patient's labs tab. */
-  patientId: string;
-  patientShort: string;
-  receivedAt: string;
-  flag: string | null;
-  isNew: boolean;
-};
-
-type DraftItem = {
-  /** VisitNote id — used to deep-link «Продолжить» to /doctor/conclusions/[id]. */
-  id: string;
-  title: string;
-  patientId: string;
-  patientShort: string;
-  updatedAt: string;
-};
-
-type RecentPatientItem = {
-  id: string;
-  shortName: string;
-  lastVisitAt: string;
-  avatarUrl: string | null;
-};
-
-type DaySummary = {
-  totalAppointments: number;
-  consultations: number;
-  repeats: number;
-  completedCount: number;
-  dayPlanPercent: number;
-};
-
 /**
  * One row of the LIVE lane (walk-ins only — docs/TZ-two-lanes.md). Full
  * names are fine here: this is the doctor's own authenticated surface,
@@ -176,7 +76,8 @@ type LiveQueueEntry = {
 };
 
 type TodayResponse = {
-  schedule: ScheduleEntry[];
+  /** Doctor row id — the client filters SSE events on it (my-day hooks). */
+  doctorId: string;
   current: CurrentPatient | null;
   /**
    * True when `current` is the imminent-booking fallback (next BOOKED/
@@ -191,44 +92,7 @@ type TodayResponse = {
    * picks whom to serve. Bookings never appear here (two-lanes model).
    */
   liveQueue: LiveQueueEntry[];
-  upcoming: UpcomingPatient[];
-  /**
-   * Total upcoming appointments today, regardless of how many the
-   * `upcoming` array carries — used by the «Показать всех (N)» footer
-   * so the count is honest even when we slice the list at 5.
-   */
-  upcomingTotal: number;
-  daySummary: DaySummary;
-  ai: { summary: null; alerts: []; recommendations: [] };
-  actionItems: ActionItem[];
-  reminders: RemindersBlock;
-  unreadResults: UnreadResultItem[];
-  drafts: DraftItem[];
-  recentPatients: RecentPatientItem[];
 };
-
-/**
- * "HH:MM" in Tashkent wall clock. The fallback for `Appointment.time` —
- * `d.getHours()` would print server-local (UTC on prod) time, skewing the
- * schedule by −5h. Day bounds come from `tashkentDayBounds` for the same
- * reason: the whole payload must agree with the liveQueue projection on
- * what "today" means (clinic time, Asia/Tashkent).
- */
-function formatHHMM(d: Date): string {
-  return tashkentComponents(d).time;
-}
-
-function shortName(fullName: string): string {
-  // "Турсунова Феруза Камиловна" → "Турсунова Ф.К."
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length <= 1) return fullName.trim();
-  const surname = parts[0];
-  const initials = parts
-    .slice(1, 3)
-    .map((p) => `${p.charAt(0)}.`)
-    .join("");
-  return `${surname} ${initials}`;
-}
 
 function ageFromBirthDate(birthDate: Date | null): number | null {
   if (!birthDate) return null;
@@ -262,10 +126,6 @@ function derivePatientTags(p: {
   return out;
 }
 
-function appointmentTypeOf(visitsCount: number): "consultation" | "repeat" {
-  return visitsCount >= REPEAT_VISITS_THRESHOLD ? "repeat" : "consultation";
-}
-
 export const GET = createApiListHandler(
   { roles: ["DOCTOR"] },
   async ({ ctx }) => {
@@ -273,7 +133,7 @@ export const GET = createApiListHandler(
 
     const doctor = await prisma.doctor.findFirst({
       where: { userId: ctx.userId },
-      select: { id: true, userId: true },
+      select: { id: true },
     });
     if (!doctor) {
       return err("DoctorProfileMissing", 403, { reason: "no_doctor_row" });
@@ -281,27 +141,8 @@ export const GET = createApiListHandler(
 
     const now = new Date();
     const { dayStart, dayEnd } = tashkentDayBounds(now);
-    const reminderHorizon = new Date(now);
-    reminderHorizon.setHours(reminderHorizon.getHours() + 24);
-    const recentWindowStart = new Date(now);
-    recentWindowStart.setDate(
-      recentWindowStart.getDate() - RECENT_PATIENTS_WINDOW_DAYS,
-    );
 
-    // ──────────────────────────────────────────────────────────────────────
-    // Run all independent queries in parallel. The branches are ordered to
-    // make the destructure below readable, not by cost.
-    // ──────────────────────────────────────────────────────────────────────
-    const [
-      todayAppts,
-      queueProjection,
-      activeReminders,
-      unreadLabs,
-      draftNotes,
-      recentApptsRaw,
-      unreadMsgAgg,
-      counts,
-    ] = await Promise.all([
+    const [todayAppts, queueProjection] = await Promise.all([
       prisma.appointment.findMany({
         where: {
           doctorId: doctor.id,
@@ -311,19 +152,16 @@ export const GET = createApiListHandler(
         select: {
           id: true,
           date: true,
-          endDate: true,
-          time: true,
           durationMin: true,
           status: true,
           startedAt: true,
           calledAt: true,
-          // Two-lanes: splits the booked schedule lane from the walk-in live
-          // lane (see `bookedAppts` below).
+          // Two-lanes: pickCurrentVisit uses the channel to keep walk-ins out
+          // of the imminent-booking fallback.
           channel: true,
           // Two-lanes: only used as the "ждёт с …" label source for the
           // liveQueue block below — never as an ordering key here.
           queuedAt: true,
-          patientId: true,
           patient: {
             select: {
               id: true,
@@ -343,142 +181,7 @@ export const GET = createApiListHandler(
       // Canonical live-lane projection (same source as TV/kiosk/ticket) —
       // one doctor, so the Map carries at most one entry.
       getQueueProjection({ clinicId: ctx.clinicId, doctorIds: [doctor.id] }),
-      prisma.reminder.findMany({
-        where: {
-          doctorId: ctx.userId,
-          status: { in: ["PENDING", "SNOOZED"] },
-          remindAt: { lte: reminderHorizon },
-        },
-        orderBy: [{ remindAt: "asc" }, { id: "asc" }],
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          remindAt: true,
-          status: true,
-          patient: { select: { id: true, fullName: true } },
-        },
-      }),
-      prisma.labResult.findMany({
-        where: { doctorId: ctx.userId, status: "RESULTED" },
-        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
-        take: 5,
-        select: {
-          id: true,
-          testName: true,
-          flag: true,
-          receivedAt: true,
-          patient: { select: { id: true, fullName: true } },
-        },
-      }),
-      prisma.visitNote.findMany({
-        where: { doctorId: doctor.id, status: "DRAFT" },
-        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-        take: 5,
-        select: {
-          id: true,
-          startedAt: true,
-          appointment: {
-            select: { date: true },
-          },
-          patient: { select: { id: true, fullName: true } },
-        },
-      }),
-      // "Recent" = COMPLETED visits in the last 14d, distinct on patientId.
-      // We over-fetch and de-dupe in JS — DISTINCT-on-related-column is
-      // awkward in Prisma without raw SQL.
-      prisma.appointment.findMany({
-        where: {
-          doctorId: doctor.id,
-          status: "COMPLETED",
-          date: { gte: recentWindowStart, lt: dayStart },
-        },
-        orderBy: [{ date: "desc" }, { id: "desc" }],
-        take: 30,
-        select: {
-          patientId: true,
-          date: true,
-          patient: {
-            select: { id: true, fullName: true, photoUrl: true },
-          },
-        },
-      }),
-      prisma.conversation.aggregate({
-        where: {
-          unreadCount: { gt: 0 },
-          OR: [
-            { appointment: { doctorId: doctor.id } },
-            { assignedToId: doctor.userId ?? "__never__" },
-          ],
-        },
-        _sum: { unreadCount: true },
-      }),
-      // Total counters for "actionItems" badges. Same predicates as the
-      // list queries above so the badge matches the list length.
-      Promise.all([
-        prisma.labResult.count({
-          where: { doctorId: ctx.userId, status: "RESULTED" },
-        }),
-        prisma.visitNote.count({
-          where: { doctorId: doctor.id, status: "DRAFT" },
-        }),
-        prisma.reminder.count({
-          where: {
-            doctorId: ctx.userId,
-            status: { in: ["PENDING", "SNOOZED"] },
-            remindAt: { lte: reminderHorizon },
-          },
-        }),
-      ]),
     ]);
-
-    const [unreadLabsCount, draftCount, dueRemindersCount] = counts;
-    const unreadMessages = unreadMsgAgg._sum.unreadCount ?? 0;
-
-    // ──────────────────────────────────────────────────────────────────────
-    // schedule + summary (always-on numbers)
-    // ──────────────────────────────────────────────────────────────────────
-    // Two-lanes (docs/TZ-two-lanes.md): the booked lane is the time-grid
-    // schedule; walk-ins belong to the live queue only. Deriving `schedule`
-    // and `upcoming` from anything else double-shows every walk-in — once in
-    // the day plan and again in «Живая очередь» — and inflates the counters.
-    const bookedAppts = todayAppts.filter((a) => !isLiveLane(a));
-
-    const schedule: ScheduleEntry[] = bookedAppts.map((a) => ({
-      id: a.id,
-      startTime: a.time ?? formatHHMM(a.date),
-      patientId: a.patientId,
-      patientName: a.patient?.fullName ?? null,
-      type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
-      durationMin: a.durationMin,
-      status: scheduleStatusOf(a.status),
-      calledAt: a.calledAt ? a.calledAt.toISOString() : null,
-    }));
-
-    let consultations = 0;
-    let repeats = 0;
-    let completedCount = 0;
-    for (const a of todayAppts) {
-      if (a.status === "CANCELLED") continue;
-      if (a.status === "COMPLETED") completedCount += 1;
-      const t = appointmentTypeOf(a.patient?.visitsCount ?? 0);
-      if (t === "repeat") repeats += 1;
-      else consultations += 1;
-    }
-    const totalAppointments = todayAppts.filter(
-      (a) => a.status !== "CANCELLED",
-    ).length;
-    const dayPlanPercent =
-      totalAppointments > 0
-        ? Math.round((completedCount / totalAppointments) * 100)
-        : 0;
-    const daySummary: DaySummary = {
-      totalAppointments,
-      consultations,
-      repeats,
-      completedCount,
-      dayPlanPercent,
-    };
 
     // ──────────────────────────────────────────────────────────────────────
     // current — IN_PROGRESS appointment for this doctor (at most one in
@@ -595,135 +298,11 @@ export const GET = createApiListHandler(
       };
     });
 
-    // ──────────────────────────────────────────────────────────────────────
-    // upcoming — next 5 actionable today (not current, not cancelled, not
-    // done), excluding whichever appointment is currentSource.
-    // upcomingTotal counts the *whole* upcoming queue so the «Показать
-    // всех (N)» footer doesn't lie about how many we're hiding.
-    // ──────────────────────────────────────────────────────────────────────
-    const upcomingAll = bookedAppts.filter((a) => {
-      if (currentSource && a.id === currentSource.id) return false;
-      const s = scheduleStatusOf(a.status);
-      return s === "upcoming";
-    });
-    const upcoming: UpcomingPatient[] = upcomingAll.slice(0, 5).map((a) => ({
-      appointmentId: a.id,
-      patientId: a.patientId,
-      shortName: a.patient ? shortName(a.patient.fullName) : "—",
-      phone: a.patient?.phone ?? "",
-      startTime: a.time ?? formatHHMM(a.date),
-      startAt: a.date.toISOString(),
-      durationMin: a.durationMin,
-      type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
-      avatarUrl: a.patient?.photoUrl ?? null,
-    }));
-    const upcomingTotal = upcomingAll.length;
-
-    // ──────────────────────────────────────────────────────────────────────
-    // actionItems — derived counts. Order matters: this is the order the
-    // card renders. Each entry has a stable id so React keys are stable
-    // across renders.
-    // ──────────────────────────────────────────────────────────────────────
-    const actionItems: ActionItem[] = [
-      {
-        id: "unread-results",
-        title: "Просмотреть результаты анализов",
-        count: unreadLabsCount,
-        href: "/doctor/conclusions?tab=labs",
-      },
-      {
-        id: "drafts",
-        title: "Подписать черновики заключений",
-        count: draftCount,
-        href: "/doctor/conclusions?status=draft",
-      },
-      {
-        id: "messages",
-        title: "Ответить на сообщения",
-        count: unreadMessages,
-        href: "/doctor/messages",
-      },
-      {
-        id: "reminders",
-        title: "Активные напоминания",
-        count: dueRemindersCount,
-        // Full reminders list lives at /doctor/notifications — the my-day
-        // card only surfaces the next 5, so the "go to all" link must leave
-        // the my-day page, not loop back to it.
-        href: "/doctor/notifications",
-      },
-    ];
-
-    const reminders: RemindersBlock = {
-      items: activeReminders.map((r) => ({
-        id: r.id,
-        title: r.title,
-        patientId: r.patient?.id ?? null,
-        patientShort: r.patient ? shortName(r.patient.fullName) : null,
-        remindAt: r.remindAt.toISOString(),
-        status: r.status,
-      })),
-      total: dueRemindersCount,
-    };
-
-    const unreadResults: UnreadResultItem[] = unreadLabs
-      .filter((r) => r.patient)
-      .map((r) => ({
-        id: r.id,
-        testName: r.testName,
-        patientId: r.patient!.id,
-        patientShort: shortName(r.patient!.fullName),
-        receivedAt: r.receivedAt.toISOString(),
-        flag: r.flag,
-        // "new" badge — received within the last 24h.
-        isNew: now.getTime() - r.receivedAt.getTime() <= 24 * 60 * 60_000,
-      }));
-
-    const drafts: DraftItem[] = draftNotes
-      .filter((d) => d.patient)
-      .map((d) => {
-        const appointmentDate = d.appointment?.date ?? d.startedAt ?? now;
-        return {
-          id: d.id,
-          // Tashkent civil date — `toISOString()` would print the UTC date,
-          // which is yesterday for appointments before 05:00 clinic time.
-          title: `Заключение от ${tashkentComponents(appointmentDate).date}`,
-          patientId: d.patient!.id,
-          patientShort: shortName(d.patient!.fullName),
-          updatedAt: (d.startedAt ?? appointmentDate).toISOString(),
-        };
-      });
-
-    // De-dupe completed visits by patientId, keep first (most recent) hit.
-    const seen = new Set<string>();
-    const recentPatients: RecentPatientItem[] = [];
-    for (const a of recentApptsRaw) {
-      if (!a.patient) continue;
-      if (seen.has(a.patient.id)) continue;
-      seen.add(a.patient.id);
-      recentPatients.push({
-        id: a.patient.id,
-        shortName: shortName(a.patient.fullName),
-        lastVisitAt: a.date.toISOString(),
-        avatarUrl: a.patient.photoUrl,
-      });
-      if (recentPatients.length >= 5) break;
-    }
-
     const payload: TodayResponse = {
-      schedule,
+      doctorId: doctor.id,
       current,
       currentIsImplicitNext,
       liveQueue,
-      upcoming,
-      upcomingTotal,
-      daySummary,
-      ai: { summary: null, alerts: [], recommendations: [] },
-      actionItems,
-      reminders,
-      unreadResults,
-      drafts,
-      recentPatients,
     };
     return ok(payload);
   },

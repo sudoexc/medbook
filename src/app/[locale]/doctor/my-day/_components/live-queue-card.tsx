@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
   Loader2Icon,
@@ -17,10 +16,8 @@ import {
   type LiveQueueEntry,
 } from "../_hooks/use-doctor-today";
 import { useMinuteClock } from "../_hooks/use-minute-clock";
-import { todayDateKey } from "./current-patient-card";
+import { useTashkentToday } from "../_hooks/use-tashkent-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
-
-/** YYYY-MM-DD for today's local date — matches the schedule cache key. */
 
 
 /**
@@ -35,7 +32,9 @@ import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-m
  */
 export function LiveQueueCard() {
   const t = useTranslations("doctor.myDay.liveQueue");
-  const dateKey = React.useMemo(() => todayDateKey(), []);
+  // Live clinic date, not a mount-time snapshot — a tab left open past
+  // midnight must patch TODAY's schedule cache, not yesterday's.
+  const dateKey = useTashkentToday();
   const mutation = useAppointmentStatusMutation(dateKey);
 
   const { data, isLoading } = useDoctorToday<LiveQueueEntry[]>(

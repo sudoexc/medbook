@@ -1,9 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
+import type { AppEvent } from "@/server/realtime/events";
 
 export type ScheduleType = "consultation" | "repeat" | "reserve" | "break";
 export type ScheduleStatus =
@@ -21,6 +22,13 @@ export type ScheduleEntry = {
   type: ScheduleType;
   durationMin: number | null;
   status: ScheduleStatus;
+  /**
+   * Raw Appointment.status. `status` above collapses COMPLETED and SKIPPED
+   * into one "done" bucket, but their revert targets differ (IN_PROGRESS vs
+   * WAITING) — the row's undo button feeds this into `revertTargetFor`
+   * instead of guessing from the collapsed bucket.
+   */
+  appointmentStatus: AppointmentStatus;
   /** When the doctor pressed «Вызвать пациента». Drives the row CTA. */
   calledAt: string | null;
 };
@@ -70,68 +78,6 @@ export type LiveQueueEntry = {
   queuedAt?: string;
 };
 
-export type UpcomingPatient = {
-  appointmentId: string;
-  patientId: string;
-  shortName: string;
-  phone: string;
-  startTime: string;
-  /** Full ISO timestamp — needed for relative-time («через X») on the client. */
-  startAt: string;
-  durationMin: number;
-  type: "consultation" | "repeat";
-  avatarUrl: string | null;
-};
-
-export type ActionItem = {
-  id: string;
-  title: string;
-  count: number;
-  href: string;
-};
-
-export type ReminderItem = {
-  id: string;
-  title: string;
-  /** Null when the reminder isn't bound to a patient (general task). */
-  patientId: string | null;
-  patientShort: string | null;
-  remindAt: string;
-  status: string;
-};
-
-export type RemindersBlock = {
-  items: ReminderItem[];
-  /** Total actionable reminders behind the preview slice. */
-  total: number;
-};
-
-export type UnreadResultItem = {
-  id: string;
-  testName: string;
-  patientId: string;
-  patientShort: string;
-  receivedAt: string;
-  flag: string | null;
-  isNew: boolean;
-};
-
-export type DraftItem = {
-  /** VisitNote id — opens at /doctor/conclusions/[id]. */
-  id: string;
-  title: string;
-  patientId: string;
-  patientShort: string;
-  updatedAt: string;
-};
-
-export type RecentPatientItem = {
-  id: string;
-  shortName: string;
-  lastVisitAt: string;
-  avatarUrl: string | null;
-};
-
 export type DaySummary = {
   totalAppointments: number;
   consultations: number;
@@ -140,8 +86,15 @@ export type DaySummary = {
   dayPlanPercent: number;
 };
 
+/**
+ * The /today aggregate is intentionally small: the simplified «Мой день»
+ * screen renders only the current-patient card and the live queue. The
+ * ScheduleCard reads /doctors/me/schedule via `useDoctorSchedule` instead.
+ * Anything added back here is paid for on every SSE-triggered refetch.
+ */
 export type DoctorToday = {
-  schedule: ScheduleEntry[];
+  /** Doctor row id — used to scope SSE invalidation to this doctor. */
+  doctorId: string;
   current: CurrentPatient | null;
   /**
    * True when `current` is the imminent-booking fallback (next booking
@@ -151,32 +104,39 @@ export type DoctorToday = {
   currentIsImplicitNext: boolean;
   /** Walk-in FIFO — the live lane, rendered by LiveQueueCard. */
   liveQueue: LiveQueueEntry[];
-  upcoming: UpcomingPatient[];
-  upcomingTotal: number;
-  daySummary: DaySummary;
-  ai: { summary: string | null; alerts: unknown[]; recommendations: unknown[] };
-  actionItems: ActionItem[];
-  reminders: RemindersBlock;
-  unreadResults: UnreadResultItem[];
-  drafts: DraftItem[];
-  recentPatients: RecentPatientItem[];
 };
 
 export const doctorTodayKey = ["doctor", "me", "today"] as const;
 
 /**
- * Backs every card on /doctor/my-day via a single aggregate fetch.
+ * True when an SSE event concerns the given doctor — or can't be ruled out.
+ *
+ * `appointment.*` / `queue.updated` payloads carry the Doctor row id (see
+ * `emitAppointmentChangeViaOutbox` and the walk-in/book/cancel publishers),
+ * so most events scope cleanly. The check is deliberately conservative:
+ * when our own id isn't known yet (first fetch still in flight) or the
+ * payload has no usable `doctorId` (legacy/unscoped publisher), we allow
+ * the invalidation — a spare refetch is cheap, a missed update leaves the
+ * doctor staring at a stale queue.
+ */
+export function eventTargetsDoctor(
+  event: AppEvent,
+  doctorId: string | null | undefined,
+): boolean {
+  if (!doctorId) return true;
+  const payloadDoctorId = (event.payload as { doctorId?: unknown }).doctorId;
+  if (typeof payloadDoctorId !== "string" || payloadDoctorId.length === 0) {
+    return true;
+  }
+  return payloadDoctorId === doctorId;
+}
+
+/**
+ * Backs the current-patient + live-queue cards on /doctor/my-day via a
+ * single aggregate fetch.
  *
  * The `select` parameter lets each card subscribe to its own slice — TanStack
- * will only re-render the card whose slice actually changed. Without `select`
- * a status flip on any appointment would re-render all 10 cards in lockstep.
- *
- * SSE wiring covers every mutation that can change anything in the payload:
- *   - appointment.* → schedule / current / upcoming / recentPatients / daySummary
- *   - case.soap-draft.refreshed → drafts (visit-note DRAFT count surfaces here)
- *   - reminder.* → reminders + actionItems (due count)
- *   - lab.result.* → unreadResults + actionItems (unread count)
- *   - tg.message.new / tg.conversation.updated → actionItems (messages count)
+ * will only re-render the card whose slice actually changed.
  *
  * `useLiveQueryInvalidation` debounces with a 400ms coalesce inside, so a
  * burst of events fires at most one refetch.
@@ -184,6 +144,7 @@ export const doctorTodayKey = ["doctor", "me", "today"] as const;
 export function useDoctorToday<TSelected = DoctorToday>(
   select?: (data: DoctorToday) => TSelected,
 ) {
+  const qc = useQueryClient();
   const query = useQuery<DoctorToday, Error, TSelected>({
     queryKey: doctorTodayKey,
     queryFn: async ({ signal }) => {
@@ -205,9 +166,6 @@ export function useDoctorToday<TSelected = DoctorToday>(
     // the live queue. `queue.updated` was missing, so a reception-side drag
     // or priority bump never reached the doctor: positions and «ждёт N мин»
     // sat stale until an unrelated appointment event happened to land.
-    // Conversely reminder.* / lab.result.* / tg.* used to refetch this whole
-    // aggregate on every incoming Telegram message, for cards that no longer
-    // exist here.
     events: [
       "appointment.created",
       "appointment.updated",
@@ -217,6 +175,14 @@ export function useDoctorToday<TSelected = DoctorToday>(
       "queue.updated",
     ],
     queryKey: doctorTodayKey,
+    // Per-doctor scoping: without it every appointment/queue event in the
+    // clinic refetched every doctor's dashboard — ×N doctors of pointless
+    // traffic and DB load. Our own doctorId rides on the cached payload.
+    shouldInvalidate: (event) =>
+      eventTargetsDoctor(
+        event,
+        qc.getQueryData<DoctorToday>(doctorTodayKey)?.doctorId,
+      ),
   });
 
   return query;

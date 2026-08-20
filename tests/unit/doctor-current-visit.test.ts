@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   pickCurrentVisit,
+  LATE_ARRIVAL_GRACE_MS,
   type CurrentVisitCandidate,
 } from "@/lib/doctor-current-visit";
 
@@ -138,11 +139,41 @@ describe("pickCurrentVisit — C3: imminent-booking fallback", () => {
     expect(pickCurrentVisit([walkinSoon], NOW)).toBeNull();
   });
 
-  it("ignores bookings beyond the window and ones already past", () => {
+  it("ignores bookings beyond the future window", () => {
     const far = row("far", { date: new Date(NOW.getTime() + 60 * MIN) });
-    const past = row("past", { date: new Date(NOW.getTime() - MIN) });
 
-    expect(pickCurrentVisit(byDate(past, far), NOW)).toBeNull();
+    expect(pickCurrentVisit([far], NOW)).toBeNull();
+  });
+
+  it("keeps a slightly-late booking within the grace window", () => {
+    // The regression this guards: at ms >= 0 a patient 5 minutes late fell
+    // off the card, hiding the «Начать» CTA exactly when the doctor needed
+    // it. Late bookings stay up until LATE_ARRIVAL_GRACE_MS elapses (or the
+    // row is cancelled / marked no-show).
+    const late = row("late", { date: new Date(NOW.getTime() - 5 * MIN) });
+
+    const pick = pickCurrentVisit([late], NOW);
+
+    expect(pick?.row.id).toBe("late");
+    expect(pick?.isImplicitNext).toBe(true);
+  });
+
+  it("drops a booking once the late-arrival grace has fully elapsed", () => {
+    const tooLate = row("too-late", {
+      date: new Date(NOW.getTime() - LATE_ARRIVAL_GRACE_MS - MIN),
+    });
+
+    expect(pickCurrentVisit([tooLate], NOW)).toBeNull();
+  });
+
+  it("prefers the most overdue booking over a future imminent one", () => {
+    // date-ASC + find: the earliest still-eligible row is "next to be seen".
+    // The doctor clears it explicitly (start / no-show / cancel) before the
+    // following booking claims the card.
+    const late = row("late", { date: new Date(NOW.getTime() - 5 * MIN) });
+    const soon = row("soon", { date: new Date(NOW.getTime() + 10 * MIN) });
+
+    expect(pickCurrentVisit(byDate(late, soon), NOW)?.row.id).toBe("late");
   });
 
   it("yields to a called patient rather than the sooner booking", () => {

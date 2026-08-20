@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { revertTargetFor } from "@/lib/appointment-transitions";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSchedule } from "../_hooks/use-doctor-schedule";
@@ -25,6 +26,7 @@ import type {
   ScheduleType,
 } from "../_hooks/use-doctor-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
+import { useTashkentToday } from "../_hooks/use-tashkent-today";
 
 type MyDayTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
 
@@ -40,6 +42,17 @@ function toIsoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * Local-midnight Date for a YYYY-MM-DD key. Parsing via `new Date(iso)`
+ * would interpret the string as UTC and shift the civil date for any
+ * non-UTC browser tz; all paging math here treats Dates as plain
+ * civil-date carriers.
+ */
+function localDateFromKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
 }
 
 function startOfDay(d: Date): Date {
@@ -89,10 +102,24 @@ export function ScheduleCard() {
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
 
-  const [viewDate, setViewDate] = React.useState<Date>(() =>
-    startOfDay(new Date()),
-  );
-  const today = React.useMemo(() => startOfDay(new Date()), []);
+  // Live clinic date (Asia/Tashkent) instead of a mount-time snapshot —
+  // clinic tabs stay open for days, and a frozen `useMemo(..., [])` kept
+  // labelling yesterday «Сегодня» after midnight while mutations patched
+  // yesterday's cache key.
+  const todayKey = useTashkentToday();
+  const today = React.useMemo(() => localDateFromKey(todayKey), [todayKey]);
+  const [viewDate, setViewDate] = React.useState<Date>(today);
+  // Follow the midnight rollover only when the doctor was looking at the
+  // outgoing "today" — a deliberately paged past/future date stays put.
+  const prevTodayKeyRef = React.useRef(todayKey);
+  React.useEffect(() => {
+    if (prevTodayKeyRef.current === todayKey) return;
+    const prevKey = prevTodayKeyRef.current;
+    prevTodayKeyRef.current = todayKey;
+    setViewDate((v) =>
+      toIsoDate(v) === prevKey ? localDateFromKey(todayKey) : v,
+    );
+  }, [todayKey]);
   const isToday = daysBetween(viewDate, today) === 0;
   const dateKey = toIsoDate(viewDate);
 
@@ -503,19 +530,32 @@ function RowAction({
     );
   }
 
+  // Revert targets come from the shared REVERTS map keyed by the RAW
+  // appointment status — never from the collapsed UI status. «done» merges
+  // COMPLETED and SKIPPED, whose targets differ (IN_PROGRESS vs WAITING);
+  // hardcoding IN_PROGRESS made every SKIPPED revert 409 with
+  // revert_target_mismatch, leaving a skipped patient impossible to recover.
+  const revertTarget = revertTargetFor(entry.appointmentStatus);
+
   if (entry.status === "done") {
     return (
       <div className="flex shrink-0 items-center gap-1">
         <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
           {t("status.alreadyVisited")}
         </span>
-        <RevertButton
-          isPending={isPending}
-          /* The doctor's primary "oops" recovery — most common case is
-             clicking "Завершить" on the wrong row. */
-          onClick={() => onFire("IN_PROGRESS", { revert: true })}
-          tooltip={t("schedule.revertReopen")}
-        />
+        {revertTarget ? (
+          <RevertButton
+            isPending={isPending}
+            /* The doctor's primary "oops" recovery — most common case is
+               clicking "Завершить" on the wrong row. */
+            onClick={() => onFire(revertTarget, { revert: true })}
+            tooltip={
+              entry.appointmentStatus === "SKIPPED"
+                ? t("schedule.revertToWaiting")
+                : t("schedule.revertReopen")
+            }
+          />
+        ) : null}
       </div>
     );
   }
@@ -526,11 +566,13 @@ function RowAction({
         <span className="inline-flex items-center rounded-full bg-warning/15 px-2.5 py-1 text-[11px] font-semibold text-warning">
           {t("status.noShow")}
         </span>
-        <RevertButton
-          isPending={isPending}
-          onClick={() => onFire("BOOKED", { revert: true })}
-          tooltip={t("schedule.revertToPlanned")}
-        />
+        {revertTarget ? (
+          <RevertButton
+            isPending={isPending}
+            onClick={() => onFire(revertTarget, { revert: true })}
+            tooltip={t("schedule.revertToPlanned")}
+          />
+        ) : null}
       </div>
     );
   }
@@ -541,11 +583,13 @@ function RowAction({
         <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive">
           {t("status.cancelled")}
         </span>
-        <RevertButton
-          isPending={isPending}
-          onClick={() => onFire("BOOKED", { revert: true })}
-          tooltip={t("schedule.revertRestore")}
-        />
+        {revertTarget ? (
+          <RevertButton
+            isPending={isPending}
+            onClick={() => onFire(revertTarget, { revert: true })}
+            tooltip={t("schedule.revertRestore")}
+          />
+        ) : null}
       </div>
     );
   }

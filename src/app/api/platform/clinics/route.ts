@@ -19,6 +19,7 @@ import {
 } from "@/server/platform/handler";
 import { CreateClinicSchema } from "@/server/schemas/platform";
 import { generateTempPassword, hashPassword } from "@/server/auth/password";
+import { applyPlaybook } from "@/server/onboarding/apply-playbook";
 
 export const GET = createPlatformListHandler(async () => {
   const rows = await prisma.clinic.findMany({
@@ -87,6 +88,7 @@ export const POST = createPlatformHandler(
           secondaryCurrency: body.secondaryCurrency ?? null,
           brandColor: body.brandColor,
           active: body.active,
+          onboardingPlaybook: body.playbook ?? null,
         },
       });
       await tx.user.create({
@@ -104,6 +106,20 @@ export const POST = createPlatformHandler(
       return clinic;
     });
 
+    // Apply the onboarding playbook AFTER the transaction, mirroring the
+    // self-service /signup path: a playbook hiccup must not roll back the
+    // clinic + owner (worst case the clinic starts blank and the seeds can
+    // be re-applied later — `applyPlaybook` is idempotent).
+    let playbookApplied = false;
+    if (body.playbook) {
+      try {
+        await applyPlaybook(created.id, body.playbook);
+        playbookApplied = true;
+      } catch (e) {
+        console.error("[platform-clinics] playbook apply failed", e);
+      }
+    }
+
     await platformAudit({
       request,
       userId,
@@ -111,13 +127,19 @@ export const POST = createPlatformHandler(
       action: "clinic.create",
       entityType: "Clinic",
       entityId: created.id,
-      meta: { slug: created.slug, ownerEmail: body.ownerEmail },
+      meta: {
+        slug: created.slug,
+        ownerEmail: body.ownerEmail,
+        playbook: body.playbook ?? null,
+        playbookApplied,
+      },
     });
     return ok(
       {
         ...created,
         ownerLogin: body.ownerEmail,
         ownerTempPassword: tempPassword,
+        playbookApplied,
       },
       201,
     );

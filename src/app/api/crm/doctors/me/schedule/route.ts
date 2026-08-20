@@ -29,6 +29,7 @@ import {
   scheduleStatusOf,
   type DoctorScheduleStatus,
 } from "@/lib/doctor-schedule-status";
+import type { AppointmentStatus } from "@/lib/appointment-transitions";
 import { ok, err, parseQuery } from "@/server/http";
 
 const REPEAT_VISITS_THRESHOLD = 2;
@@ -44,6 +45,13 @@ type ScheduleEntry = {
   type: ScheduleType;
   durationMin: number | null;
   status: ScheduleStatus;
+  /**
+   * Raw Appointment.status. The UI-facing `status` above collapses
+   * COMPLETED and SKIPPED into one "done" bucket, but their revert targets
+   * differ (IN_PROGRESS vs WAITING) — the row's undo button needs the raw
+   * value to ask `revertTargetFor` instead of guessing.
+   */
+  appointmentStatus: AppointmentStatus;
   /**
    * When the doctor pressed "Вызвать пациента". The schedule UI uses this
    * to flip the row CTA from "Вызвать" to "Начать приём" without needing
@@ -143,6 +151,7 @@ export const GET = createApiListHandler(
       type: appointmentTypeOf(a.patient?.visitsCount ?? 0),
       durationMin: a.durationMin,
       status: scheduleStatusOf(a.status),
+      appointmentStatus: a.status as AppointmentStatus,
       calledAt: a.calledAt ? a.calledAt.toISOString() : null,
     }));
 
@@ -170,6 +179,8 @@ export const GET = createApiListHandler(
           : 0,
     };
 
-    return ok({ date: iso, entries, summary });
+    // `doctorId` lets the client-side SSE filter drop events addressed to
+    // other doctors of the clinic (see `useDoctorSchedule`).
+    return ok({ date: iso, doctorId: doctor.id, entries, summary });
   },
 );

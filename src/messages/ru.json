@@ -6644,6 +6644,7 @@
         "call": "Вызвать",
         "startVisit": "Начать приём",
         "revertReopen": "Открыть приём заново",
+        "revertToWaiting": "Вернуть в ожидание",
         "revertToPlanned": "Вернуть в запланированные",
         "revertRestore": "Восстановить приём",
         "finishedTitle": "Завершённые сегодня ({count})"
@@ -6698,6 +6699,8 @@
         "errAnotherInProgress": "У вас уже идёт другой приём — завершите его, прежде чем начать новый",
         "errNotRevertable": "Этот статус нельзя отменить",
         "errRevertMismatch": "Не удалось определить, к чему откатить",
+        "errAlreadyInProgress": "Пациент уже на приёме",
+        "errCannotCallTerminal": "Приём уже завершён или отменён — вызвать нельзя",
         "errCallFailed": "Не удалось вызвать пациента",
         "errRevertFailed": "Не удалось отменить шаг",
         "errUpdateFailed": "Не удалось обновить статус",

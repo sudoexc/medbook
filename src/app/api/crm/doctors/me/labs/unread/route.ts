@@ -29,8 +29,8 @@ const QuerySchema = z.object({
 
 /**
  * Where clause for "RESULTED labs I am the ordering doctor of, not yet
- * REVIEWED". Centralized so the today aggregate (`doctors/me/today`)
- * and this endpoint never diverge on what counts as "my unread".
+ * REVIEWED". Kept as the single definition of "my unread" (the /today
+ * aggregate used to share it before its labs block was dropped).
  */
 function myUnreadLabsWhere(orderingUserId: string) {
   return { doctorId: orderingUserId, status: "RESULTED" as const };

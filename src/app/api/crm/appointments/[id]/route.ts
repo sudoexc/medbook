@@ -281,21 +281,19 @@ export const PATCH = createApiHandler(
         return forbidden();
       }
       const fromStatus = before.status as AppointmentStatus;
+      // The specific reason goes in the primary slot — passing it inside
+      // `extra` used to clobber the generic "invalid_transition" and the
+      // client mapper (messageFor) knew neither string, so the doctor only
+      // ever saw a generic «не удалось вызвать» toast.
       if (
         fromStatus === "COMPLETED" ||
         fromStatus === "CANCELLED" ||
         fromStatus === "NO_SHOW"
       ) {
-        return conflict("invalid_transition", {
-          from: fromStatus,
-          reason: "cannot_call_terminal",
-        });
+        return conflict("cannot_call_terminal", { from: fromStatus });
       }
       if (fromStatus === "IN_PROGRESS") {
-        return conflict("invalid_transition", {
-          from: fromStatus,
-          reason: "already_in_progress",
-        });
+        return conflict("already_in_progress", { from: fromStatus });
       }
 
       // One patient at a time: calling a patient in now *starts* their visit

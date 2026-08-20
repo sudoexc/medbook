@@ -36,6 +36,7 @@ import {
   type PatientTag,
 } from "../_hooks/use-doctor-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
+import { useTashkentToday } from "../_hooks/use-tashkent-today";
 
 const TAG_LABEL_KEY: Record<PatientTag, string> = {
   active: "tags.active",
@@ -73,15 +74,6 @@ function formatHHMM(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
-}
-
-/** YYYY-MM-DD for today's local date — matches the schedule cache key. */
-export function todayDateKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 type CurrentSlice = {
@@ -166,7 +158,9 @@ function ActivePatient({
   const t = useTranslations("doctor.myDay");
   const params = useParams();
   const locale = typeof params?.locale === "string" ? params.locale : "ru";
-  const dateKey = React.useMemo(() => todayDateKey(), []);
+  // Live clinic date, not a mount-time snapshot — a tab left open past
+  // midnight must patch TODAY's schedule cache, not yesterday's.
+  const dateKey = useTashkentToday();
   const mutation = useAppointmentStatusMutation(dateKey);
 
   // One global tick re-renders the timer every second; cheap because the

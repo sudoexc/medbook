@@ -11,7 +11,6 @@ import {
   doctorTodayKey,
   type CurrentPatient,
   type DoctorToday,
-  type ScheduleEntry,
 } from "./use-doctor-today";
 import { doctorScheduleKey, type DoctorSchedule } from "./use-doctor-schedule";
 
@@ -51,8 +50,8 @@ type Snapshot = {
  *   reconciliation.
  *
  * Two caches are touched:
- *   - `doctorTodayKey` (the /api/.../today aggregate, drives every card on
- *     /my-day, incl. CurrentPatientCard)
+ *   - `doctorTodayKey` (the /api/.../today aggregate — current patient +
+ *     live queue on /my-day, incl. CurrentPatientCard)
  *   - `doctorScheduleKey(dateKey)` (per-date schedule grid)
  *
  * The "current" patient slot is special: when a doctor completes a visit,
@@ -166,11 +165,6 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
             : cur;
           const next: DoctorToday = {
             ...today,
-            schedule: today.schedule.map((e: ScheduleEntry) =>
-              e.id === appointmentId
-                ? { ...e, calledAt: nowIso, status: startedStatus }
-                : e,
-            ),
             current: nextCurrent,
           };
           qc.setQueryData(doctorTodayKey, next);
@@ -180,7 +174,14 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
             ...schedule,
             entries: schedule.entries.map((e) =>
               e.id === appointmentId
-                ? { ...e, calledAt: nowIso, status: startedStatus }
+                ? {
+                    ...e,
+                    calledAt: nowIso,
+                    status: startedStatus,
+                    // Keep the raw status in lockstep — the row's revert
+                    // button derives its target from it.
+                    appointmentStatus: "IN_PROGRESS" as const,
+                  }
                 : e,
             ),
           };
@@ -191,9 +192,9 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
 
       const mappedScheduleStatus = scheduleStatusOf(toStatus);
 
-      // doctorTodayKey — flip the schedule entry + current.status; null
-      // current out when the visit completes / cancels so the UI shows the
-      // "next patient" placeholder until the refetch lands.
+      // doctorTodayKey — flip current.status; null current out when the
+      // visit completes / cancels so the UI shows the "next patient"
+      // placeholder until the refetch lands.
       if (today) {
         const cur = today.current;
         const currentMatches =
@@ -222,11 +223,6 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
         }
         const next: DoctorToday = {
           ...today,
-          schedule: today.schedule.map((e: ScheduleEntry) =>
-            e.id === appointmentId
-              ? { ...e, status: mappedScheduleStatus }
-              : e,
-          ),
           current: nextCurrent,
         };
         qc.setQueryData(doctorTodayKey, next);
@@ -237,7 +233,13 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
           ...schedule,
           entries: schedule.entries.map((e) =>
             e.id === appointmentId
-              ? { ...e, status: mappedScheduleStatus }
+              ? {
+                  ...e,
+                  status: mappedScheduleStatus,
+                  // Raw status travels with the mapped one so the revert
+                  // button's target stays correct between refetches.
+                  appointmentStatus: toStatus,
+                }
               : e,
           ),
         };
@@ -336,6 +338,15 @@ function messageFor(
   }
   if (raw === "another_visit_in_progress") {
     return t("statusToast.errAnotherInProgress");
+  }
+  // Call-branch conflicts (`?call=true`). The server used to bury these
+  // under a generic "invalid_transition", so the doctor only saw «не удалось
+  // вызвать» with no clue the visit was already running / already closed.
+  if (raw === "already_in_progress") {
+    return t("statusToast.errAlreadyInProgress");
+  }
+  if (raw === "cannot_call_terminal") {
+    return t("statusToast.errCannotCallTerminal");
   }
   if (raw === "not_revertable") {
     return t("statusToast.errNotRevertable");

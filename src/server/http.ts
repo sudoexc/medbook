@@ -34,7 +34,11 @@ export function conflict(
   reason: string,
   extra?: Record<string, unknown>
 ): Response {
-  return err("conflict", 409, { reason, ...extra });
+  // `reason` is spread LAST so a stray `reason` key inside `extra` can never
+  // clobber the primary one. That silent clobbering is how the doctor's
+  // «Вызвать» errors lost their specific reason on the wire — callers that
+  // need extra context must pass it under a different key.
+  return err("conflict", 409, { ...extra, reason });
 }
 
 /**

@@ -76,6 +76,17 @@ async function fetchClinics(): Promise<ClinicRow[]> {
   return data.clinics;
 }
 
+/** Mirrors PLAYBOOK_SLUGS in src/server/onboarding/playbooks (RU labels). */
+const PLAYBOOK_OPTIONS = [
+  { value: "general", label: "Многопрофильная клиника" },
+  { value: "dental", label: "Стоматология" },
+  { value: "neurology", label: "Неврология" },
+  { value: "pediatric", label: "Педиатрия" },
+  { value: "cosmetology", label: "Косметология" },
+] as const;
+
+type PlaybookValue = (typeof PLAYBOOK_OPTIONS)[number]["value"];
+
 async function createClinic(input: {
   slug: string;
   nameRu: string;
@@ -85,6 +96,7 @@ async function createClinic(input: {
   ownerName: string;
   ownerEmail: string;
   active: boolean;
+  playbook: PlaybookValue | null;
 }): Promise<CreatedClinicResponse> {
   const r = await fetch("/api/platform/clinics", {
     method: "POST",
@@ -465,6 +477,8 @@ function CreateClinicDialog({
   const [ownerName, setOwnerName] = React.useState("");
   const [ownerEmail, setOwnerEmail] = React.useState("");
   const [emailError, setEmailError] = React.useState<string | null>(null);
+  // "none" = start blank (no seeded services/templates).
+  const [playbook, setPlaybook] = React.useState<PlaybookValue | "none">("none");
 
   const reset = () => {
     setSlug("");
@@ -473,6 +487,7 @@ function CreateClinicDialog({
     setOwnerName("");
     setOwnerEmail("");
     setEmailError(null);
+    setPlaybook("none");
   };
 
   const mut = useMutation({
@@ -486,6 +501,7 @@ function CreateClinicDialog({
         ownerName: ownerName.trim(),
         ownerEmail: ownerEmail.trim().toLowerCase(),
         active: true,
+        playbook: playbook === "none" ? null : playbook,
       }),
     onSuccess: (res) => {
       toast.success("Клиника создана");
@@ -567,6 +583,30 @@ function CreateClinicDialog({
               <Label>Валюта</Label>
               <Input value="UZS" readOnly className="text-muted-foreground" />
             </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Плейбук специализации</Label>
+            <Select
+              value={playbook}
+              onValueChange={(v) => setPlaybook(v as PlaybookValue | "none")}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Без плейбука (пустая клиника)</SelectItem>
+                {PLAYBOOK_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Плейбук сразу создаст типовые услуги, шаблоны уведомлений
+              (подтверждение + напоминания) и график работы. «Без плейбука» —
+              клиника начнёт с нуля, шаблоны придётся заводить вручную.
+            </p>
           </div>
 
           <div className="mt-2 rounded-md border border-border bg-muted/30 p-3 space-y-3">

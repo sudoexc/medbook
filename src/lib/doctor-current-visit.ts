@@ -34,10 +34,21 @@ export type CurrentVisitPick<T> = {
 /** How far ahead a booking may be and still occupy the hero card. */
 export const IMMINENT_WINDOW_MS = 15 * 60_000;
 
+/**
+ * How long a booking keeps the hero card after its scheduled start. A patient
+ * running 5-10 minutes late is routine, and the old `ms >= 0` cutoff dropped
+ * the card (and its «Начать» CTA) the very second the slot began — exactly
+ * when the doctor needed it. The row leaves the card early only through an
+ * explicit action: CANCELLED / NO_SHOW (status filter below), or another
+ * visit being started/called (higher-precedence branches above).
+ */
+export const LATE_ARRIVAL_GRACE_MS = 30 * 60_000;
+
 export function pickCurrentVisit<T extends CurrentVisitCandidate>(
   appts: readonly T[],
   now: Date,
   imminentWindowMs: number = IMMINENT_WINDOW_MS,
+  lateArrivalGraceMs: number = LATE_ARRIVAL_GRACE_MS,
 ): CurrentVisitPick<T> | null {
   // 1. The running visit wins, whichever lane it came from — a walk-in called
   //    into the room is every bit the current patient as a booked one.
@@ -62,7 +73,11 @@ export function pickCurrentVisit<T extends CurrentVisitCandidate>(
     // without it the doctor never sees the imminent-patient card.
     if (a.status !== "BOOKED" && a.status !== "CONFIRMED") return false;
     const ms = a.date.getTime() - now.getTime();
-    return ms >= 0 && ms <= imminentWindowMs;
+    // Negative ms = the slot already started. Keep the card up through the
+    // late-arrival grace so a slightly-late patient can still be started in
+    // one click; `find` over the date-ASC list means the earliest still-
+    // eligible booking (the most overdue one) wins over a future imminent one.
+    return ms >= -lateArrivalGraceMs && ms <= imminentWindowMs;
   });
   if (imminent) return { row: imminent, isImplicitNext: true };
 

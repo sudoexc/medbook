@@ -94,10 +94,12 @@ export const PATCH = createApiHandler(
       });
       if (!result.ok) {
         if (result.reason === "not_found") return notFound();
-        return conflict("invalid_transition", {
+        // The specific reason ("cancelled" / "completed") is the primary one —
+        // conflict() no longer lets an `extra.reason` override it, and this is
+        // what already reached the wire before that hardening.
+        return conflict(result.reason, {
           from: before.queueStatus,
           to: "CONFIRMED",
-          reason: result.reason,
         });
       }
       return ok(result.appointment);

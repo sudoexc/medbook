@@ -6644,6 +6644,7 @@
         "call": "Chaqirish",
         "startVisit": "Qabulni boshlash",
         "revertReopen": "Qabulni qayta ochish",
+        "revertToWaiting": "Kutish holatiga qaytarish",
         "revertToPlanned": "Rejalashtirilganlarga qaytarish",
         "revertRestore": "Qabulni tiklash",
         "finishedTitle": "Bugun yakunlangan ({count})"
@@ -6698,6 +6699,8 @@
         "errAnotherInProgress": "Sizda boshqa qabul davom etmoqda — yangisini boshlashdan oldin uni yakunlang",
         "errNotRevertable": "Bu holatni bekor qilib bo‘lmaydi",
         "errRevertMismatch": "Nimaga qaytarishni aniqlab bo‘lmadi",
+        "errAlreadyInProgress": "Bemor allaqachon qabulda",
+        "errCannotCallTerminal": "Qabul allaqachon yakunlangan yoki bekor qilingan — chaqirib bo‘lmaydi",
         "errCallFailed": "Bemorni chaqirib bo‘lmadi",
         "errRevertFailed": "Qadamni bekor qilib bo‘lmadi",
         "errUpdateFailed": "Holatni yangilab bo‘lmadi",

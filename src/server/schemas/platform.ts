@@ -8,6 +8,8 @@
  */
 import { z } from "zod";
 
+import { PLAYBOOK_SLUGS } from "@/server/onboarding/playbooks";
+
 const CurrencyEnum = z.enum(["UZS", "USD"]);
 const RoleEnum = z.enum([
   "SUPER_ADMIN",
@@ -65,6 +67,13 @@ export const CreateClinicSchema = z.object({
   // generated server-side and returned exactly once — see POST handler.
   ownerName: z.string().min(1).max(200),
   ownerEmail: z.string().email().max(200),
+  // Optional onboarding playbook (same catalog as self-service /signup).
+  // When set, the POST handler seeds starter services + notification
+  // templates + workday defaults via `applyPlaybook` right after creation,
+  // so an admin-console clinic doesn't start with zero templates (before
+  // this, only the /signup path got the playbook and a Path-A clinic needed
+  // a manual SSH seed run for the reminder cascade to exist at all).
+  playbook: z.enum(PLAYBOOK_SLUGS).nullish(),
 });
 export type CreateClinic = z.infer<typeof CreateClinicSchema>;
 

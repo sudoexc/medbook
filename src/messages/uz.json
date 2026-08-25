@@ -5957,7 +5957,10 @@
         "toChronic": "Surunkaliga qo‘shish",
         "toChronicDone": "Surunkalilarga qo‘shildi",
         "toChronicError": "Saqlab bo‘lmadi",
-        "toChronicTitle": "Tashxisni bemorning surunkali kasalliklariga qo‘shish"
+        "toChronicTitle": "Tashxisni bemorning surunkali kasalliklariga qo‘shish",
+        "pastTitle": "Avval boʻlgan",
+        "pastTake": "olish",
+        "pastMore": "Yana {count} ta tashxis"
       },
       "guide": {
         "title": "Bilimlar bazasi",

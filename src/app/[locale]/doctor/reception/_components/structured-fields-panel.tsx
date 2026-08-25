@@ -6,6 +6,7 @@ import {
   CalendarCheckIcon,
   FileTextIcon,
   HeartPulseIcon,
+  HistoryIcon,
   Loader2Icon,
   SearchIcon,
   WandSparklesIcon,
@@ -38,6 +39,10 @@ import {
   type VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
 import { useAddChronicCondition } from "../_hooks/use-patient-history";
+import {
+  usePatientDiagnoses,
+  type PatientDiagnosisRow,
+} from "../_hooks/use-patient-diagnoses";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
@@ -522,6 +527,7 @@ function DiagnosisCard({
             </ul>
           )}
         </div>
+        <PastDiagnosesBlock note={note} disabled={disabled} onTake={onChange} />
         {note.diagnosisCode && note.diagnosisName && (
           <>
             <div className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-sm">
@@ -579,5 +585,134 @@ function DiagnosisCard({
         )}
       </div>
     </div>
+  );
+}
+
+/** How many past diagnoses fit before the panel starts feeling like a list. */
+const PAST_DIAGNOSES_VISIBLE = 3;
+
+/**
+ * «Было раньше» — the patient's earlier ICD-10 diagnoses, right under the
+ * search box.
+ *
+ * A repeat patient starts every visit on a blank note, and the diagnosis
+ * history lives on another tab — so the doctor had to leave the consultation
+ * screen to remember what they treated last time. Showing it here closes that
+ * loop, and «взять» copies one into the current visit.
+ *
+ * Deliberately never auto-fills: a diagnosis is the doctor's assertion, and a
+ * prefilled one is easy to sign without reading. The click is the consent.
+ */
+function PastDiagnosesBlock({
+  note,
+  disabled,
+  onTake,
+}: {
+  note: VisitNoteRow;
+  disabled: boolean;
+  onTake: (code: string | null, name: string | null) => void;
+}) {
+  const t = useTranslations("doctor.reception");
+  const formatter = useFormatter();
+  const [expanded, setExpanded] = React.useState(false);
+  const query = usePatientDiagnoses(note.patientId);
+
+  // Drop this visit's own row — the endpoint returns finalized notes, so a
+  // re-opened visit would otherwise offer the doctor their own diagnosis back.
+  const rows = React.useMemo(
+    () => (query.data ?? []).filter((d) => d.visitNoteId !== note.id),
+    [query.data, note.id],
+  );
+
+  if (rows.length === 0) return null;
+
+  const shown = expanded ? rows : rows.slice(0, PAST_DIAGNOSES_VISIBLE);
+  const hidden = rows.length - shown.length;
+
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/30 p-2">
+      <div className="mb-1.5 inline-flex items-center gap-1.5 px-0.5">
+        <HistoryIcon className="size-3.5 text-muted-foreground" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("diagnosis.pastTitle")}
+        </span>
+      </div>
+
+      <ul className="flex flex-col gap-1">
+        {shown.map((d) => (
+          <PastDiagnosisRow
+            key={d.visitNoteId}
+            row={d}
+            disabled={disabled}
+            isCurrent={d.diagnosisCode === note.diagnosisCode}
+            dateLabel={formatter.dateTime(new Date(d.date), {
+              day: "2-digit",
+              month: "2-digit",
+            })}
+            onTake={() => onTake(d.diagnosisCode, d.diagnosisName)}
+            takeLabel={t("diagnosis.pastTake")}
+          />
+        ))}
+      </ul>
+
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-1 w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-primary transition-colors hover:bg-primary/5"
+        >
+          {t("diagnosis.pastMore", { count: hidden })}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PastDiagnosisRow({
+  row,
+  disabled,
+  isCurrent,
+  dateLabel,
+  onTake,
+  takeLabel,
+}: {
+  row: PatientDiagnosisRow;
+  disabled: boolean;
+  isCurrent: boolean;
+  dateLabel: string;
+  onTake: () => void;
+  takeLabel: string;
+}) {
+  return (
+    <li className="group flex items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-background">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5">
+          <span className="shrink-0 font-mono text-xs font-semibold text-foreground">
+            {row.diagnosisCode}
+          </span>
+          {row.diagnosisName && (
+            <span className="truncate text-xs text-foreground/80">
+              {row.diagnosisName}
+            </span>
+          )}
+        </div>
+        <div className="truncate text-[11px] text-muted-foreground tabular-nums">
+          {dateLabel} · {row.doctorName}
+        </div>
+      </div>
+      {/* Hidden while the visit is finalized (nothing to write into) and while
+          this code is already the current diagnosis (nothing to change). */}
+      {!disabled && !isCurrent && (
+        <button
+          type="button"
+          onClick={onTake}
+          // Always visible, not hover-revealed: clinics use touch screens, and
+          // a button that needs a mouse hover simply doesn't exist there.
+          className="motion-press mt-0.5 shrink-0 rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {takeLabel}
+        </button>
+      )}
+    </li>
   );
 }

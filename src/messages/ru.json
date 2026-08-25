@@ -5957,7 +5957,10 @@
         "toChronic": "В хронические",
         "toChronicDone": "Добавлено в хронические",
         "toChronicError": "Не удалось сохранить",
-        "toChronicTitle": "Добавить диагноз в хронические заболевания пациента"
+        "toChronicTitle": "Добавить диагноз в хронические заболевания пациента",
+        "pastTitle": "Было раньше",
+        "pastTake": "взять",
+        "pastMore": "Ещё {count} {count, plural, one {диагноз} few {диагноза} other {диагнозов}}"
       },
       "guide": {
         "title": "База знаний",

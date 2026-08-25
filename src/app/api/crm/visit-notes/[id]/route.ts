@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
+import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
@@ -67,10 +68,10 @@ export const PATCH = createApiHandler(
     if (!doctor || doctor.id !== before.doctorId) return forbidden();
 
     if (before.status === "FINALIZED") {
-      // 24h post-finalization edit window. Beyond that the note is locked.
-      const finalizedAt = before.finalizedAt?.getTime() ?? null;
-      const edgeMs = finalizedAt != null ? Date.now() - finalizedAt : Infinity;
-      if (edgeMs > 24 * 60 * 60 * 1000) {
+      // 24h post-finalization edit window. Beyond that the note is locked —
+      // corrections switch to the append-only amendment flow (see
+      // .../amendments/route.ts for the medico-legal rationale).
+      if (isEditWindowExpired(before.finalizedAt)) {
         return err("Forbidden", 403, { reason: "edit_window_expired" });
       }
     }
@@ -119,6 +120,18 @@ export const PATCH = createApiHandler(
     const changedFields = Object.keys(data);
     const rxRows = body.visitPrescriptions;
     if (rxRows !== undefined) changedFields.push("visitPrescriptions");
+
+    // A finalized note already has its CONCLUSION PDF rendered (the patient
+    // sees it in the Mini App and via the QR link), so an accepted in-window
+    // edit makes that file stale. Stamp the convergence anchor; the handout
+    // worker sweeps it up and re-renders IN PLACE — same MinIO key, same
+    // verifyToken, same documentNumber — so the printed QR keeps resolving.
+    // Deliberately after changedFields is captured: the anchor is a technical
+    // field and must not appear in the audit/event field list.
+    if (before.status === "FINALIZED" && changedFields.length > 0) {
+      data.handoutStaleAt = new Date();
+    }
+
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
 

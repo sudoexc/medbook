@@ -2,10 +2,14 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 
+// Mirrors the Prisma DocumentType enum. CONCLUSION is included because the
+// API returns worker-rendered conclusion handouts alongside uploads — the UI
+// must label them correctly even though they are read-only here.
 export type DocumentType =
   | "REFERRAL"
   | "PRESCRIPTION"
   | "RESULT"
+  | "CONCLUSION"
   | "CONSENT"
   | "CONTRACT"
   | "RECEIPT"
@@ -21,6 +25,10 @@ export type DoctorDocumentRow = {
   mimeType: string | null;
   sizeBytes: number | null;
   uploadedById: string | null;
+  // Non-null → PDF rendered by a worker from its source entity; such rows
+  // are read-only in this UI (PATCH rejects them server-side too).
+  visitNoteId: string | null;
+  referralId: string | null;
   createdAt: string;
   patient: { id: string; fullName: string } | null;
   uploadedBy: { id: string; name: string } | null;

@@ -48,6 +48,13 @@ const TICK_INTERVAL_MS = 30 * 1000;
 const BACKFILL_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const BATCH = 25;
 
+type SweepAmendment = {
+  reason: string;
+  text: string;
+  createdAt: Date;
+  doctor: { nameRu: string; nameUz: string } | null;
+};
+
 type SweepNote = {
   id: string;
   clinicId: string;
@@ -58,6 +65,9 @@ type SweepNote = {
   documentNumber: string | null;
   finalizedAt: Date | null;
   followUpDays: number | null;
+  // Re-render anchor as swept — used for the conditional clear (see below).
+  handoutStaleAt: Date | null;
+  amendments: SweepAmendment[];
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string; nameUz: string } | null;
   appointment: { date: Date; time: string | null } | null;
@@ -84,6 +94,32 @@ export function hasDeliverableHandout(note: {
 }): boolean {
   if (note.status !== "FINALIZED") return false;
   return Boolean(note.patientHandoutMarkdown?.trim());
+}
+
+/**
+ * Map amendment rows to the presentation shape the PDF renderer consumes.
+ * Pure (exported for unit tests): the renderer must stay ignorant of Prisma
+ * shapes, and the locale pick (nameRu/nameUz) is easy to get subtly wrong.
+ */
+export function buildPdfAmendments(
+  amendments: SweepAmendment[],
+  locale: "ru" | "uz",
+): Array<{
+  dateLabel: string;
+  doctorName: string | null;
+  reason: string;
+  text: string;
+}> {
+  return amendments.map((a) => ({
+    dateLabel: `${formatDate(a.createdAt, locale, "short")} ${formatDate(a.createdAt, locale, "time")}`,
+    doctorName: a.doctor
+      ? locale === "uz"
+        ? a.doctor.nameUz
+        : a.doctor.nameRu
+      : null,
+    reason: a.reason,
+    text: a.text,
+  }));
 }
 
 async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
@@ -158,6 +194,9 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     prescriptions: note.visitPrescriptions,
     verifyUrl,
     followUpLine,
+    // Post-window corrections ride along as an appended block — the original
+    // handout text above stays exactly as issued.
+    amendments: buildPdfAmendments(note.amendments, locale),
     locale,
     generatedAt: now,
     brandColor: clinic?.brandColor ?? null,
@@ -222,6 +261,19 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
         documentType: "CONCLUSION",
       },
     });
+    // Convergence: clear the stale anchor ONLY when it still holds the value
+    // we swept. An edit landing mid-render bumps the stamp, this UPDATE then
+    // matches zero rows, and the next tick re-renders with the newer text.
+    // Raw SQL on purpose: prisma.update would also bump `updatedAt`, which
+    // the editor's optimistic lock compares against — a background render
+    // must never make the doctor's open window 409 with "changed elsewhere".
+    if (note.handoutStaleAt != null) {
+      await tx.$executeRaw`
+        UPDATE "VisitNote"
+        SET "handoutStaleAt" = NULL
+        WHERE "id" = ${note.id} AND "handoutStaleAt" = ${note.handoutStaleAt}
+      `;
+    }
   });
 }
 
@@ -234,11 +286,19 @@ export async function runVisitNoteHandoutTick(
     const notes = (await prisma.visitNote.findMany({
       where: {
         status: "FINALIZED",
-        finalizedAt: { gte: since },
-        // No conclusion document yet — this is what makes the sweep converge.
-        conclusionDocument: { is: null },
         patientHandoutMarkdown: { not: null },
         patient: { deletedAt: null },
+        // Two roads into the sweep, each with its own convergence anchor:
+        //  - first render: no CONCLUSION document yet. Bounded by the
+        //    backfill window so the feature's first deploy doesn't render the
+        //    clinic's whole history at once.
+        //  - re-render: `handoutStaleAt` set (in-window edit or amendment).
+        //    Deliberately NOT window-bounded — an amendment can arrive months
+        //    after the visit and must still reach the patient's PDF.
+        OR: [
+          { conclusionDocument: { is: null }, finalizedAt: { gte: since } },
+          { handoutStaleAt: { not: null } },
+        ],
       },
       select: {
         id: true,
@@ -250,6 +310,16 @@ export async function runVisitNoteHandoutTick(
         documentNumber: true,
         finalizedAt: true,
         followUpDays: true,
+        handoutStaleAt: true,
+        amendments: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            reason: true,
+            text: true,
+            createdAt: true,
+            doctor: { select: { nameRu: true, nameUz: true } },
+          },
+        },
         patient: { select: { fullName: true, preferredLang: true } },
         doctor: { select: { nameRu: true, nameUz: true } },
         appointment: { select: { date: true, time: true } },
@@ -275,7 +345,28 @@ export async function runVisitNoteHandoutTick(
     for (const note of notes) {
       // Defence in depth: the query filters non-null, but an all-whitespace
       // handout still must be skipped — and bodyMarkdown is never even loaded.
-      if (!hasDeliverableHandout(note)) continue;
+      if (!hasDeliverableHandout(note)) {
+        // A stale mark on a note whose handout is now blank can never render.
+        // Clear it (same conditional raw-SQL clear as after a successful
+        // render) so the sweep converges instead of re-scanning the row every
+        // tick — 25 such rows would otherwise starve the whole batch. The
+        // already-issued PDF, if any, stays untouched.
+        if (note.handoutStaleAt != null) {
+          try {
+            await prisma.$executeRaw`
+              UPDATE "VisitNote"
+              SET "handoutStaleAt" = NULL
+              WHERE "id" = ${note.id} AND "handoutStaleAt" = ${note.handoutStaleAt}
+            `;
+          } catch (err) {
+            console.error(
+              `[visit-note-handout] stale clear for ${note.id} failed`,
+              err,
+            );
+          }
+        }
+        continue;
+      }
       try {
         await generateConclusion(note, now);
         generated += 1;

@@ -91,3 +91,15 @@ export const QueryVisitNoteSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
 });
+
+// Amendments (исправления) — append-only corrections to a finalized
+// conclusion after the 24h edit window. Both fields are required: a
+// correction without a stated reason is not defensible on paper.
+export const CreateVisitNoteAmendmentSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+  text: z.string().trim().min(1).max(10_000),
+});
+
+export type CreateVisitNoteAmendmentInput = z.infer<
+  typeof CreateVisitNoteAmendmentSchema
+>;

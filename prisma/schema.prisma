@@ -440,6 +440,7 @@ model Clinic {
   patientDiagnoses         PatientDiagnosis[]
   telegramInviteTokens     TelegramInviteToken[]
   visitNotes               VisitNote[]
+  visitNoteAmendments      VisitNoteAmendment[]
   reminders                Reminder[]
   labResults               LabResult[]
   labOrders                LabOrder[]
@@ -883,6 +884,7 @@ model Doctor {
   patientReviews     PatientReview[]
   prescriptions      Prescription[]
   visitNotes         VisitNote[]
+  visitNoteAmendments VisitNoteAmendment[]
   presets            DoctorPreset[]
 
   @@unique([clinicId, slug])
@@ -2077,6 +2079,15 @@ model VisitNote {
   // finalize worker hasn't mirrored remindPatient rows into Prescription yet.
   medicationsBridgedAt DateTime?
 
+  // Convergence anchor for CONCLUSION PDF re-renders (mirrors the
+  // medicationsBridgedAt pattern, inverted): non-null = the rendered PDF no
+  // longer matches the database (the note was edited inside the 24h window,
+  // or an amendment was appended) and the handout worker must re-render it.
+  // Stamped with the edit time by the PATCH/amendment routes; cleared by the
+  // worker ONLY when the value it swept is still current, so an edit landing
+  // mid-render keeps the note in the sweep until the next tick converges.
+  handoutStaleAt DateTime?
+
   // Ф7 — состояние vs прошлый визит: IMPROVED | STABLE | WORSE. String not
   // enum (как PatientAllergy.severity) — новые градации без миграции.
   dynamics     String?
@@ -2120,6 +2131,9 @@ model VisitNote {
   visitPrescriptions VisitPrescription[]
   // Ф6 — Mini App reminder courses mirrored from visitPrescriptions.
   bridgedPrescriptions Prescription[]
+  // Post-window corrections. The original note stays byte-for-byte intact;
+  // see VisitNoteAmendment for the medico-legal rationale.
+  amendments VisitNoteAmendment[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -2162,6 +2176,47 @@ model VisitPrescription {
   updatedAt     DateTime     @updatedAt
 
   @@index([clinicId, visitNoteId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Amendments (исправления) to finalized conclusions.
+//
+// A finalized conclusion is an ISSUED legal document: it carries an allocated
+// documentNumber and a verifyToken whose QR is printed on paper the patient
+// already holds. Editing the row after the 24h window would make the database
+// contradict that paper with no trace of what the doctor originally signed —
+// so past the window the original VisitNote is immutable and every correction
+// is APPENDED as a VisitNoteAmendment. Prints and the patient PDF show the
+// original text as-is plus an «Исправления» block at the end.
+//
+// Amendments are themselves append-only: there is deliberately no update or
+// delete API. A wrong amendment is corrected by issuing another amendment,
+// exactly like the note it corrects.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model VisitNoteAmendment {
+  id          String    @id @default(cuid())
+  clinicId    String
+  clinic      Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  visitNoteId String
+  // Cascade mirrors VisitPrescription: an amendment has no meaning without
+  // its note, and the note itself is already delete-protected upstream
+  // (Patient → VisitNote is onDelete: Restrict, see the VisitNote comment).
+  visitNote   VisitNote @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
+  // Author. The API only lets the conclusion's own doctor amend it (same
+  // ownership rule as the PATCH edit window). Restrict (the required-relation
+  // default) keeps the author row around as long as their amendments exist.
+  doctorId    String
+  doctor      Doctor    @relation(fields: [doctorId], references: [id])
+  // Why the correction was needed («ошибка в дозировке») — printed next to
+  // the correction so the reader can judge its weight.
+  reason      String
+  // The correction itself, plain text. Rendered as an appended block; never
+  // merged back into the original fields.
+  text        String    @db.Text
+  createdAt   DateTime  @default(now())
+
+  @@index([clinicId, visitNoteId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

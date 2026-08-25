@@ -6,12 +6,21 @@ import {
   DownloadIcon,
   FileTextIcon,
   MoreHorizontalIcon,
+  PencilIcon,
+  RefreshCwIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/sonner";
 
+import {
+  canEditDocument,
+  RenameDocumentDialog,
+  ReplaceDocumentFileDialog,
+} from "../../_components/document-edit-dialogs";
+import { useDoctorProfile } from "../../settings/_hooks/use-doctor-profile";
 import { useDocumentsFilters } from "../_hooks/documents-context";
 import {
   flattenDoctorDocuments,
@@ -57,10 +66,13 @@ function formatSize(
   return t("size.gb", { n: (bytes / (1024 * 1024 * 1024)).toFixed(1) });
 }
 
+// CONCLUSION included: worker-rendered conclusion handouts come back from the
+// API too — without an entry here they used to render a broken label.
 const TYPE_LABEL_KEY: Record<DocumentType, string> = {
   REFERRAL: "type.referral",
   PRESCRIPTION: "type.prescription",
   RESULT: "type.result",
+  CONCLUSION: "type.conclusion",
   CONSENT: "type.consent",
   CONTRACT: "type.contract",
   RECEIPT: "type.receipt",
@@ -71,6 +83,7 @@ const TYPE_TONE: Record<DocumentType, string> = {
   REFERRAL: "bg-info/15 text-info",
   PRESCRIPTION: "bg-primary/15 text-primary",
   RESULT: "bg-success/15 text-success",
+  CONCLUSION: "bg-primary/15 text-primary",
   CONSENT: "bg-warning/15 text-warning",
   CONTRACT: "bg-warning/15 text-warning",
   RECEIPT: "bg-muted text-muted-foreground",
@@ -85,6 +98,10 @@ export function DocumentsTable() {
   const { filters } = useDocumentsFilters();
   const query = useDoctorDocuments(filters);
   const rows = flattenDoctorDocuments(query.data);
+  // Needed to decide which rows the doctor may edit (own uploads only).
+  // Cached under a shared key, so this doesn't add a request per render.
+  const profile = useDoctorProfile();
+  const myUserId = profile.data?.id ?? null;
 
   const isInitialLoading = query.isLoading;
   const isEmpty = !isInitialLoading && rows.length === 0;
@@ -123,7 +140,7 @@ export function DocumentsTable() {
         <>
           <ul className="divide-y divide-border">
             {rows.map((r) => (
-              <DocumentRow key={r.id} doc={r} />
+              <DocumentRow key={r.id} doc={r} myUserId={myUserId} />
             ))}
           </ul>
 
@@ -147,13 +164,29 @@ export function DocumentsTable() {
   );
 }
 
-function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
+function DocumentRow({
+  doc,
+  myUserId,
+}: {
+  doc: DoctorDocumentRow;
+  myUserId: string | null;
+}) {
   const t = useTranslations("doctor.documents");
   const { filters } = useDocumentsFilters();
   const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [renameOpen, setRenameOpen] = React.useState(false);
+  const [replaceOpen, setReplaceOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const { date, time } = ruDate(doc.createdAt);
+
+  // Own uploads only; conclusions / worker-rendered PDFs stay read-only.
+  // Server enforces the same rules — this just hides buttons that would 403.
+  const editable = canEditDocument(doc, myUserId);
+
+  // Broad key (no filters) so every filtered variant of the list refreshes.
+  const invalidateList = () =>
+    queryClient.invalidateQueries({ queryKey: ["doctor", "me", "documents"] });
 
   const handleDelete = async () => {
     if (busy) return;
@@ -165,8 +198,11 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
         credentials: "include",
       });
       if (!res.ok) {
-        const txt = await res.text();
-        alert(t("row.deleteError", { detail: txt || res.status }));
+        toast.error(
+          res.status === 403
+            ? t("edit.errorForbidden")
+            : t("row.deleteError", { detail: res.status }),
+        );
         return;
       }
       await queryClient.invalidateQueries({
@@ -261,19 +297,62 @@ function DocumentRow({ doc }: { doc: DoctorDocumentRow }) {
                 <DownloadIcon className="size-4 text-muted-foreground" />
                 {t("row.download")}
               </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={busy}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
-              >
-                <Trash2Icon className="size-4" />
-                {busy ? t("row.deleting") : t("row.delete")}
-              </button>
+              {editable ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setRenameOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-foreground transition-colors hover:bg-muted"
+                  >
+                    <PencilIcon className="size-4 text-muted-foreground" />
+                    {t("row.rename")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setReplaceOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-foreground transition-colors hover:bg-muted"
+                  >
+                    <RefreshCwIcon className="size-4 text-muted-foreground" />
+                    {t("row.replace")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={busy}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+                  >
+                    <Trash2Icon className="size-4" />
+                    {busy ? t("row.deleting") : t("row.delete")}
+                  </button>
+                </>
+              ) : null}
             </div>
           </>
         ) : null}
       </div>
+
+      {renameOpen ? (
+        <RenameDocumentDialog
+          open={renameOpen}
+          onClose={() => setRenameOpen(false)}
+          doc={doc}
+          onSaved={invalidateList}
+        />
+      ) : null}
+      {replaceOpen ? (
+        <ReplaceDocumentFileDialog
+          open={replaceOpen}
+          onClose={() => setReplaceOpen(false)}
+          doc={doc}
+          onSaved={invalidateList}
+        />
+      ) : null}
     </li>
   );
 }

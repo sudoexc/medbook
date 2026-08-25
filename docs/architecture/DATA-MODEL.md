@@ -271,13 +271,30 @@ Pre-visit/NPS: `preVisitData Json` / `preVisitNotifiedAt` / `preVisitSubmittedAt
 | `diagnosisCode`, `diagnosisName` | `String?` | ICD-10 плоскими колонками (без FK на справочник — намеренно); name — денормализованная копия для отображения |
 | `followUpDays`, `followUpNote` | `Int?`, `String?` | План повторного визита: печатается в заключении, нюдж в Mini App, Action ресепшену |
 | `medicationsBridgedAt` | `DateTime?` | null = finalize-воркер ещё не отзеркалил `remindPatient`-строки в `Prescription` |
+| `handoutStaleAt` | `DateTime?` | Якорь сходимости перерендера CONCLUSION-PDF (инверсия паттерна `medicationsBridgedAt`): non-null = отрендеренный PDF отстал от базы (правка в 24ч-окне или добавлено исправление). Ставится PATCH-роутом/роутом исправлений, снимается handout-воркером **условно** (raw SQL `WHERE handoutStaleAt = <захваченное значение>`, чтобы правка во время рендера не потерялась и чтобы не бампать `updatedAt` — токен оптимистичной блокировки редактора) |
 | `dynamics`, `dynamicsNote` | `String?` | Состояние vs прошлый визит: IMPROVED/STABLE/WORSE (строка, не enum) |
 | `bodyMap` | `Json?` | Карта тела `[{x, y, view: FRONT|BACK, label?}]`, координаты 0..1 |
 | `bodyMarkdown` | `String? @db.Text` | Канонический свободный текст врача |
 | `patientHandoutMarkdown` | `String? @db.Text` | Памятка пациенту (без МКБ-кодов), собирается шаблонизатором без LLM |
 | `aiGenerated`, `aiModel`, `aiTokens` | — | Провенанс AI-генерации; флаг никогда не сбрасывается правками |
 
-Связи: `visitPrescriptions`, `bridgedPrescriptions` (Prescription), labOrders/labResults, ePrescriptions, sickLeaves, cdsOverrides, referrals, `conclusionDocument` (1:1 через `Document.visitNoteId`). **`patient … onDelete: Restrict`** — см. §4.
+Связи: `visitPrescriptions`, `bridgedPrescriptions` (Prescription), labOrders/labResults, ePrescriptions, sickLeaves, cdsOverrides, referrals, `conclusionDocument` (1:1 через `Document.visitNoteId`), `amendments` (VisitNoteAmendment). **`patient … onDelete: Restrict`** — см. §4.
+
+### VisitNoteAmendment
+
+Исправления к финализированному заключению (миграция `20260825120000_visit_note_amendments`).
+
+**Правило «оригинал неизменен»:** финализированное заключение — ВЫДАННЫЙ документ (номер `documentNumber` аллоцирован, `verifyToken` напечатан QR-кодом на бумаге у пациента). Внутри 24-часового окна врач правит заключение напрямую (PDF перерендеривается in-place с тем же токеном/номером); после закрытия окна строка VisitNote становится неизменяемой, и любая коррекция **добавляется сверху** строкой VisitNoteAmendment. Печатная форма и PDF пациента показывают оригинальный текст как есть + блок «Исправления» в конце (дата, автор, причина, текст). Сами исправления тоже append-only: update/delete-роутов нет намеренно, ошибочное исправление корректируется следующим исправлением.
+
+| Поле | Тип | Смысл |
+|---|---|---|
+| `visitNoteId` | `String` | FK на VisitNote, `onDelete: Cascade` (как VisitPrescription; сам VisitNote защищён Restrict от Patient) |
+| `doctorId` | `String` | Автор; API пускает только автора заключения (`doctor.id === note.doctorId`), FK Restrict |
+| `reason` | `String` | Почему понадобилось исправление — печатается рядом с текстом |
+| `text` | `String @db.Text` | Текст исправления; никогда не мержится в оригинальные поля |
+| `createdAt` | `DateTime` | Дата исправления, печатается в блоке |
+
+API: `GET/POST /api/crm/visit-notes/[id]/amendments` (POST — только после истечения 24ч-окна, `conflict: edit_window_open` внутри окна). Единственная запись в VisitNote при добавлении исправления — технический `handoutStaleAt`. Аудит: `visit_note.amend`.
 
 ### Document
 

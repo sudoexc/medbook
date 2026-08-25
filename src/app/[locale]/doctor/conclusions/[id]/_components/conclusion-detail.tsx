@@ -9,6 +9,7 @@ import {
   Loader2Icon,
   LockIcon,
   PencilIcon,
+  PlusIcon,
   PrinterIcon,
 } from "lucide-react";
 
@@ -22,6 +23,7 @@ import {
   usePatchVisitNote,
   useVisitNote,
 } from "../../../reception/_hooks/use-visit-note";
+import { AmendmentsSection } from "./amendments-section";
 
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -66,6 +68,9 @@ export function ConclusionDetail({
 
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
+  // Amendment form visibility lives here so the header button (next to the
+  // "window closed" lock) can open the form rendered further down the page.
+  const [amendFormOpen, setAmendFormOpen] = React.useState(false);
   const hydratedFor = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -154,10 +159,23 @@ export function ConclusionDetail({
             </span>
           )}
           {isFinalized && !canEdit && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <LockIcon className="size-3" />
-              {tr("detail.editWindowClosed")}
-            </span>
+            <>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <LockIcon className="size-3" />
+                {tr("detail.editWindowClosed")}
+              </span>
+              {/* The window is closed, but the record is not a dead end: the
+                  amendment flow appends corrections without touching the
+                  issued original. */}
+              <button
+                type="button"
+                onClick={() => setAmendFormOpen(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <PlusIcon className="size-4" />
+                {tr("amendments.add")}
+              </button>
+            </>
           )}
           <a
             href={`/api/crm/visit-notes/${note.id}/print?lang=${locale === "uz" ? "uz" : "ru"}`}
@@ -259,6 +277,16 @@ export function ConclusionDetail({
           </DetailCard>
         </aside>
       </div>
+
+      {isFinalized && (
+        <AmendmentsSection
+          noteId={note.id}
+          locale={locale}
+          canAmend={!canEdit}
+          formOpen={amendFormOpen}
+          onFormOpenChange={setAmendFormOpen}
+        />
+      )}
     </div>
   );
 }

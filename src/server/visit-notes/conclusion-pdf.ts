@@ -47,6 +47,19 @@ export interface ConclusionPdfInput {
   verifyUrl?: string | null;
   /** Ф6 — pre-formatted control-visit line ("через 10 дн. · ≈ 20.06.2026"). */
   followUpLine?: string | null;
+  /**
+   * Post-window corrections, oldest first. Rendered as an appended
+   * «Исправления» block — the handout body above is the text as ORIGINALLY
+   * issued and is never rewritten (the paper copy with this document's number
+   * and QR is already in the patient's hands).
+   */
+  amendments?: Array<{
+    /** Pre-formatted date+time, localised by the caller. */
+    dateLabel: string;
+    doctorName?: string | null;
+    reason: string;
+    text: string;
+  }> | null;
   locale?: "ru" | "uz";
   generatedAt?: Date;
   brandColor?: string | null;
@@ -61,6 +74,8 @@ const LABELS = {
     generated: "Подготовлено",
     grid: "Схема приёма",
     followUp: "Контрольный визит",
+    amendments: "Исправления",
+    amendmentReason: "Причина",
     verify: "Проверка подлинности документа — отсканируйте QR-код",
   },
   uz: {
@@ -71,6 +86,8 @@ const LABELS = {
     generated: "Tayyorlandi",
     grid: "Qabul jadvali",
     followUp: "Nazorat tashrifi",
+    amendments: "Tuzatishlar",
+    amendmentReason: "Sababi",
     verify: "Hujjat haqiqiyligini tekshirish — QR kodni skanerlang",
   },
 } as const;
@@ -323,6 +340,43 @@ export async function renderConclusionPdf(
       .fontSize(11)
       .fillColor("#1a1f2e")
       .text(input.followUpLine.trim(), left, doc.y, { width: usableWidth });
+  }
+
+  // Amendments — appended AFTER all original content, never merged into it:
+  // the block documents that the correction came later, which is exactly the
+  // legal point of the amendment mechanism.
+  const amendments = input.amendments ?? [];
+  if (amendments.length > 0) {
+    doc.moveDown(0.6);
+    if (doc.y + 48 > doc.page.height - doc.page.margins.bottom) doc.addPage();
+    doc
+      .fontSize(12)
+      .fillColor("#1a1f2e")
+      .text(labels.amendments, left, doc.y, { width: usableWidth });
+    doc.moveDown(0.2);
+    for (const a of amendments) {
+      if (doc.y + 40 > doc.page.height - doc.page.margins.bottom) {
+        doc.addPage();
+      }
+      const metaLineText = [a.dateLabel, a.doctorName]
+        .filter((x): x is string => Boolean(x && x.trim()))
+        .join("  ·  ");
+      doc
+        .fontSize(9)
+        .fillColor("#525866")
+        .text(metaLineText, left, doc.y, { width: usableWidth });
+      doc
+        .fontSize(9)
+        .fillColor("#8b909b")
+        .text(`${labels.amendmentReason}: ${a.reason}`, left, doc.y, {
+          width: usableWidth,
+        });
+      doc
+        .fontSize(11)
+        .fillColor("#1a1f2e")
+        .text(a.text, left, doc.y + 1, { width: usableWidth });
+      doc.moveDown(0.45);
+    }
   }
 
   // Ф5 — QR verification block (public, PII-free /v/[token] page).

@@ -140,6 +140,18 @@ export const GET = createApiListHandler(
         },
         appointment: { select: { id: true, date: true, time: true } },
         visitPrescriptions: { orderBy: { sortOrder: "asc" } },
+        // Post-window corrections — printed as an appended block; the
+        // original sections above render exactly as issued.
+        amendments: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            reason: true,
+            text: true,
+            createdAt: true,
+            doctor: { select: { nameRu: true, nameUz: true } },
+          },
+        },
       },
     });
     if (!note) return notFound();
@@ -243,6 +255,8 @@ export const GET = createApiListHandler(
             bodyMap: "Tana xaritasi",
             bodyMapFront: "Old tomondan",
             bodyMapBack: "Orqa tomondan",
+            amendmentsTitle: "Tuzatishlar",
+            amendmentReason: "Sababi",
           }
         : {
             title: "Заключение по приёму",
@@ -288,6 +302,8 @@ export const GET = createApiListHandler(
             bodyMap: "Карта тела",
             bodyMapFront: "Спереди",
             bodyMapBack: "Сзади",
+            amendmentsTitle: "Исправления",
+            amendmentReason: "Причина",
           };
 
     const patientGender =
@@ -466,6 +482,40 @@ export const GET = createApiListHandler(
     </section>`
         : "";
 
+    // ── Amendments (исправления) — shared by clinical + handout + package ─
+    // Appended at the END of the document, after every original section: the
+    // conclusion was issued with a number and a printed QR, so its original
+    // text renders untouched and later corrections are visibly LATER. Each
+    // item carries its own date/author/reason so the block is self-evident
+    // on paper without access to the system.
+    const amendmentItemsHtml = note.amendments
+      .map((a) => {
+        const author = a.doctor
+          ? locale === "uz"
+            ? a.doctor.nameUz
+            : a.doctor.nameRu
+          : null;
+        const when = `${formatDate(a.createdAt, locale, "short")} ${formatDate(a.createdAt, locale, "time")}`;
+        return `<div class="amendment">
+      <div class="amendment-meta">${escapeHtml(when)}${author ? ` · ${escapeHtml(author)}` : ""}</div>
+      <div class="amendment-reason">${escapeHtml(labels.amendmentReason)}: ${escapeHtml(a.reason)}</div>
+      <div class="amendment-text">${escapeHtml(a.text)}</div>
+    </div>`;
+      })
+      .join("");
+    const amendmentsSection =
+      note.amendments.length > 0
+        ? `<section class="block">
+      <h3>${escapeHtml(labels.amendmentsTitle)}</h3>
+      ${amendmentItemsHtml}
+    </section>`
+        : "";
+    // Handout page has no section.block styles — reuse its md-h2 heading.
+    const handoutAmendmentsSection =
+      note.amendments.length > 0
+        ? `<section><h2 class="md-h2">${escapeHtml(labels.amendmentsTitle)}</h2>${amendmentItemsHtml}</section>`
+        : "";
+
     // ── Ф5 fragments shared by all print types ────────────────────────
     const medGridTable =
       note.visitPrescriptions.length > 0
@@ -559,7 +609,15 @@ export const GET = createApiListHandler(
       align-items: center;
       justify-content: center;
       flex: none;
-    }`;
+    }
+    .amendment {
+      border-top: 1px solid #e3e6ec;
+      padding: 6px 0;
+    }
+    .amendment:first-of-type { border-top: 0; padding-top: 0; }
+    .amendment-meta { font-size: 10px; font-weight: 600; color: #525866; }
+    .amendment-reason { font-size: 10px; color: #8b909b; }
+    .amendment-text { white-space: pre-wrap; margin-top: 2px; }`;
 
     // Shared by the standalone handout page and the package assembly.
     const quickMetaMdCss = `
@@ -669,6 +727,8 @@ export const GET = createApiListHandler(
     ${handoutDiffSection}
 
     ${handoutFollowUpSection}
+
+    ${handoutAmendmentsSection}
 
     <div class="signature">
       <div class="slot">${escapeHtml(handoutLabels.doctor)}: ${escapeHtml(doctorName ?? "")}</div>
@@ -954,6 +1014,8 @@ export const GET = createApiListHandler(
       <h3>${escapeHtml(labels.bodySection)}</h3>
       ${renderBody(note.bodyMarkdown)}
     </section>
+
+    ${amendmentsSection}
 
     <div class="signature">
       <div class="slot">${escapeHtml(labels.doctor)}: ${escapeHtml(doctorName ?? "")}${doctorSpec ? `, ${escapeHtml(doctorSpec)}` : ""}</div>

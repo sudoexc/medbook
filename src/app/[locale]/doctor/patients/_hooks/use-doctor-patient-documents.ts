@@ -10,6 +10,10 @@ export type DoctorPatientDocumentRow = {
   mimeType: string | null;
   sizeBytes: number | null;
   appointmentId: string | null;
+  // Non-null → PDF rendered by a worker from its source entity (visit note /
+  // referral); such documents are read-only in the doctor UI.
+  visitNoteId: string | null;
+  referralId: string | null;
   uploadedBy: { id: string; name: string } | null;
   createdAt: string;
 };

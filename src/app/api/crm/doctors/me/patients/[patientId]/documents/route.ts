@@ -31,6 +31,11 @@ type DocumentRow = {
   mimeType: string | null;
   sizeBytes: number | null;
   appointmentId: string | null;
+  // Non-null → the PDF is rendered by a worker from its source entity
+  // (visit note / referral). The client uses these to hide edit actions
+  // that PATCH /api/crm/documents/[id] would reject anyway.
+  visitNoteId: string | null;
+  referralId: string | null;
   uploadedBy: { id: string; name: string } | null;
   createdAt: string;
 };
@@ -95,6 +100,8 @@ export const GET = createApiListHandler(
         mimeType: true,
         sizeBytes: true,
         appointmentId: true,
+        visitNoteId: true,
+        referralId: true,
         createdAt: true,
         uploadedBy: { select: { id: true, name: true } },
       },
@@ -117,6 +124,8 @@ export const GET = createApiListHandler(
       mimeType: d.mimeType,
       sizeBytes: d.sizeBytes,
       appointmentId: d.appointmentId,
+      visitNoteId: d.visitNoteId,
+      referralId: d.referralId,
       uploadedBy: d.uploadedBy,
       createdAt: d.createdAt.toISOString(),
     }));

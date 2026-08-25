@@ -12,6 +12,7 @@ import { QueryProvider } from "@/components/providers/query-provider"
 import { CrmRoleProvider } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role"
 import { prisma } from "@/lib/prisma"
 import { runWithTenant } from "@/lib/tenant-context"
+import { shouldRedirectDoctorToCabinet } from "@/lib/doctor-cabinet"
 import { ACTIVE_BRANCH_COOKIE_NAME } from "@/server/platform/branch-cookie"
 import { getFeatureFlagsForCurrentSession } from "@/server/platform/current-flags"
 import { getCurrentSubscription } from "@/server/platform/current-subscription"
@@ -52,11 +53,13 @@ export default async function CrmLayout({
   // legacy demo-friendly render when the session is missing — pages enforce
   // their own auth, so the layout never blocks.
   const session = await auth()
-  // Mirror the guard in /[locale]/doctor/layout.tsx: a DOCTOR who manually
-  // navigates to /crm has nothing to do here. Bounce them to their own
-  // surface so the login UX promise ("you land where your role belongs")
-  // holds even when the URL is typed by hand.
-  if (session?.user?.role === "DOCTOR") {
+  // A DOCTOR who manually navigates to /crm has nothing to do here — bounce
+  // them to their own surface so the login UX promise ("you land where your
+  // role belongs") holds even when the URL is typed by hand. Gated on the
+  // cabinet actually being enabled: /[locale]/doctor/layout.tsx bounces back
+  // here when it is off, and an ungated redirect made that pair an infinite
+  // loop. Both sides read the same helper so they cannot disagree again.
+  if (shouldRedirectDoctorToCabinet(session?.user?.role)) {
     const { locale } = await params
     redirect(`/${locale}/doctor`)
   }

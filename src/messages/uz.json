@@ -2391,7 +2391,8 @@
     },
     "topRevenue": {
       "title": "Tushum bo'yicha TOP shifokorlar",
-      "emptyPeriod": "Davr uchun ma'lumot yo'q"
+      "emptyPeriod": "Davr uchun ma'lumot yo'q",
+      "periodAria": "Statistika davri"
     },
     "statsPanel": {
       "title": "Shifokorlar statistikasi",

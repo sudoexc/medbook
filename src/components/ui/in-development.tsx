@@ -27,8 +27,14 @@ export function InDevelopment({
   if (!active) return <>{children}</>;
   return (
     <div className={cn("relative", className)}>
+      {/* `inert` (React 19 boolean prop) removes the dimmed subtree from the
+          tab order: aria-hidden alone leaves its buttons keyboard-focusable,
+          which is an axe `aria-hidden-focus` violation — a screen-reader user
+          could land on controls that do not exist for them. Mouse users were
+          already blocked by pointer-events-none, so behavior stays symmetric. */}
       <div
         aria-hidden
+        inert
         className="pointer-events-none select-none opacity-40 grayscale"
       >
         {children}

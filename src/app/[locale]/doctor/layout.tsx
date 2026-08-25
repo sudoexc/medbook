@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
+import { isDoctorCabinetEnabled } from "@/lib/doctor-cabinet";
 import { QueryProvider } from "@/components/providers/query-provider";
 
 import { DoctorSidebar } from "./_components/doctor-sidebar";
@@ -28,7 +29,9 @@ export default async function DoctorLayout({
   if (!session?.user) {
     redirect(`/${locale}/login`);
   }
-  if (process.env.DOCTOR_CABINET_ENABLED !== "1") {
+  // Same helper the CRM layout consults, so the two guards cannot disagree and
+  // trap a doctor bouncing between them (see src/lib/doctor-cabinet.ts).
+  if (!isDoctorCabinetEnabled()) {
     redirect(`/${locale}/crm?notice=doctor_cabinet_paused`);
   }
   if (session.user.role !== "DOCTOR") {

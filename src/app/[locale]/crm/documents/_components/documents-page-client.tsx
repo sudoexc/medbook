@@ -119,7 +119,10 @@ export function DocumentsPageClient() {
             patch({ type: v === "__all" ? "" : (v as DocumentType) })
           }
         >
-          <SelectTrigger className="w-[180px]">
+          {/* aria-label: no visible <label> for this filter, and a closed
+              Radix Select exposes no inner text to the accessibility tree —
+              without an explicit name axe flags `button-name` (critical). */}
+          <SelectTrigger className="w-[180px]" aria-label={t("filters.type")}>
             <SelectValue placeholder={t("filters.type")} />
           </SelectTrigger>
           <SelectContent>

@@ -222,10 +222,18 @@ export function AppointmentsTable({
               />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
+                  {/* WCAG 2.5.8 hit-slop (axe `target-size`, serious): the
+                      name/phone links are 20px/15px tall. Vertical padding
+                      enlarges the tap boxes to ≥24px; the name link is a flex
+                      item (blockified), so -mt compensates the pt to keep the
+                      layout pixel-identical, while the inline phone link needs
+                      no compensation. Directions must not overlap each other
+                      (name grows up into the row padding, phone grows down),
+                      because overlapping targets fail the rule again. */}
                   <Link
                     href={`/${locale}/crm/patients/${p.id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="truncate text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                    className="-mt-[5px] truncate pt-[5px] text-sm font-semibold text-foreground hover:text-primary hover:underline"
                   >
                     {p.fullName}
                   </Link>
@@ -239,7 +247,7 @@ export function AppointmentsTable({
                   className="truncate text-xs text-muted-foreground tabular-nums"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <PhoneText phone={p.phone} />
+                  <PhoneText phone={p.phone} className="pb-[10px]" />
                 </div>
               </div>
             </div>
@@ -627,23 +635,29 @@ export function AppointmentsTable({
               ))}
             </div>
           ) : isTrulyEmpty ? (
-            <div className="p-4">
-              <EmptyState
-                icon={<CalendarIcon />}
-                title={
-                  hasFilters ? t("empty.filteredTitle") : t("empty.title")
-                }
-                description={
-                  hasFilters
-                    ? t("empty.filteredDescription")
-                    : t("empty.description")
-                }
-                action={
-                  !hasFilters ? (
-                    <Button onClick={onCreate}>{t("empty.action")}</Button>
-                  ) : null
-                }
-              />
+            // row>cell wrapper (like an empty <tr><td colspan>): the empty
+            // state carries a heading and a CTA button, which axe would
+            // otherwise bubble up as disallowed children of role="table"
+            // (`aria-required-children`, critical).
+            <div role="row">
+              <div role="cell" className="p-4">
+                <EmptyState
+                  icon={<CalendarIcon />}
+                  title={
+                    hasFilters ? t("empty.filteredTitle") : t("empty.title")
+                  }
+                  description={
+                    hasFilters
+                      ? t("empty.filteredDescription")
+                      : t("empty.description")
+                  }
+                  action={
+                    !hasFilters ? (
+                      <Button onClick={onCreate}>{t("empty.action")}</Button>
+                    ) : null
+                  }
+                />
+              </div>
             </div>
           ) : (
             <div
@@ -715,22 +729,28 @@ export function AppointmentsTable({
           )}
         </div>
 
-        {!isLoading && rows.length > 0 ? (
-          <PaginationFooter
-            shown={rows.length}
-            total={total ?? rows.length}
-            hasNext={hasNextPage}
-            isFetching={isFetchingNextPage}
-            onMore={onLoadMore}
-            rangeLabel={t("pagination.range", {
-              shown: rows.length,
-              total: total ?? rows.length,
-            })}
-            loadMoreLabel={t("loadMore")}
-            loadingLabel={t("loading")}
-          />
-        ) : null}
       </div>
+
+      {/* Footer lives OUTSIDE the role="table" element: its buttons are not
+          rows/cells, and axe bubbles them up through the generic wrappers as
+          disallowed table children (`aria-required-children`, critical).
+          Both containers are flex-col with the table part flex-1, so the
+          footer renders in exactly the same place. */}
+      {!isLoading && rows.length > 0 ? (
+        <PaginationFooter
+          shown={rows.length}
+          total={total ?? rows.length}
+          hasNext={hasNextPage}
+          isFetching={isFetchingNextPage}
+          onMore={onLoadMore}
+          rangeLabel={t("pagination.range", {
+            shown: rows.length,
+            total: total ?? rows.length,
+          })}
+          loadMoreLabel={t("loadMore")}
+          loadingLabel={t("loading")}
+        />
+      ) : null}
     </div>
   );
 }

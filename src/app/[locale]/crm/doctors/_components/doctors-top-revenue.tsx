@@ -72,7 +72,13 @@ export function DoctorsTopRevenue({
           {t("title")}
         </h3>
         <Select value={period} onValueChange={(v) => onPeriodChange(v as PeriodKey)}>
-          <SelectTrigger className="h-7 w-[120px] text-[12px]">
+          {/* aria-label: the trigger has no visible <label> and a closed Radix
+              Select exposes no inner text to the accessibility tree, so axe
+              flags `button-name` (critical) without an explicit name. */}
+          <SelectTrigger
+            className="h-7 w-[120px] text-[12px]"
+            aria-label={t("periodAria")}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

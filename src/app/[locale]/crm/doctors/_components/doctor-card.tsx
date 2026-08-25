@@ -264,6 +264,9 @@ export function DoctorCard({
   );
 }
 
+// dt/dd (not spans): rendered directly inside the card's <dl>, and axe's
+// `definition-list` rule only allows a <div> child there when it wraps a
+// proper dt+dd group. Same layout classes, so visuals are untouched.
 function Row({
   label,
   children,
@@ -273,8 +276,8 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="tabular-nums text-foreground">{children}</span>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="tabular-nums text-foreground">{children}</dd>
     </div>
   );
 }

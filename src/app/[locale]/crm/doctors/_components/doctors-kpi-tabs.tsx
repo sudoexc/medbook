@@ -53,48 +53,56 @@ export function DoctorsKpiTabs({
         "flex items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-card px-2 py-1.5 [scrollbar-width:thin]",
         className,
       )}
-      role="tablist"
-      aria-label={t("ariaLabel")}
     >
-      {TABS.map((tab) => {
-        const count = counts[tab.key] ?? 0;
-        const isActive = active === tab.key;
-        return (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(tab.key)}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors",
-              isActive
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {tab.dotClass ? (
-              <span
-                className={cn("size-2 shrink-0 rounded-full", tab.dotClass)}
-                aria-hidden
-              />
-            ) : null}
-            {t(tab.key)}
-            <span
+      {/* role="tablist" sits on an inner wrapper: ARIA requires tablist
+          children to be tabs only, and the "configure view" button is not a
+          tab (axe `aria-required-children`, critical). The wrapper mirrors the
+          outer flex/gap so the pixel layout is unchanged. */}
+      <div
+        role="tablist"
+        aria-label={t("ariaLabel")}
+        className="flex items-center gap-1"
+      >
+        {TABS.map((tab) => {
+          const count = counts[tab.key] ?? 0;
+          const isActive = active === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onChange(tab.key)}
               className={cn(
-                "inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[11px] font-bold tabular-nums",
+                "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors",
                 isActive
-                  ? "bg-primary text-primary-foreground"
-                  : count > 0
-                    ? "bg-muted-foreground/15 text-foreground"
-                    : "bg-muted text-muted-foreground",
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              {new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(count)}
-            </span>
-          </button>
-        );
-      })}
+              {tab.dotClass ? (
+                <span
+                  className={cn("size-2 shrink-0 rounded-full", tab.dotClass)}
+                  aria-hidden
+                />
+              ) : null}
+              {t(tab.key)}
+              <span
+                className={cn(
+                  "inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[11px] font-bold tabular-nums",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : count > 0
+                      ? "bg-muted-foreground/15 text-foreground"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : "ru-RU").format(count)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
       <button
         type="button"
         onClick={onConfigureView}

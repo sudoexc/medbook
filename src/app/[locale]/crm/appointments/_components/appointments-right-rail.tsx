@@ -358,27 +358,32 @@ function FreeSlotsSection({
           {t("freeSlotsUpdated", { min: lastUpdatedMin })}
         </span>
       </div>
-      <ul className="flex flex-col gap-2">
-        {visible.map(({ doctor, firstSlot }) => (
-          <SlotRow
-            key={doctor.id}
-            doctor={doctor}
-            firstSlot={firstSlot}
-            onPick={(time) =>
-              onSlotPick({ doctorId: doctor.id, date: today, time })
-            }
-          />
-        ))}
-        {doctors.length === 0 ? (
-          <p className="px-1 text-xs text-muted-foreground">
-            {t("noDoctors")}
-          </p>
-        ) : withSlots.length === 0 && !anyLoading ? (
-          <p className="px-1 text-xs text-muted-foreground">
-            {t("freeSlotsAllBooked")}
-          </p>
-        ) : null}
-      </ul>
+      {/* Empty-state <p> lives OUTSIDE the <ul>: axe's `list` rule forbids
+          non-<li> children. The empty ul rendered nothing anyway, so the
+          conditional split is visually identical. */}
+      {visible.length > 0 ? (
+        <ul className="flex flex-col gap-2">
+          {visible.map(({ doctor, firstSlot }) => (
+            <SlotRow
+              key={doctor.id}
+              doctor={doctor}
+              firstSlot={firstSlot}
+              onPick={(time) =>
+                onSlotPick({ doctorId: doctor.id, date: today, time })
+              }
+            />
+          ))}
+        </ul>
+      ) : null}
+      {doctors.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground">
+          {t("noDoctors")}
+        </p>
+      ) : withSlots.length === 0 && !anyLoading ? (
+        <p className="px-1 text-xs text-muted-foreground">
+          {t("freeSlotsAllBooked")}
+        </p>
+      ) : null}
       {withSlots.length > 3 ? (
         <button
           type="button"
@@ -669,10 +674,13 @@ function StatLine({
   value: number;
   pct?: number;
 }) {
+  // dt/dd (not spans): the parent renders StatLine directly inside a <dl>,
+  // and axe's `definition-list` rule only allows a <div> child there when it
+  // wraps a proper dt+dd group. Layout classes stay on the same elements.
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="flex items-center gap-3 tabular-nums">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="flex items-center gap-3 tabular-nums">
         <span className="font-semibold text-foreground">
           <CountUp to={value} />
         </span>
@@ -683,7 +691,7 @@ function StatLine({
         ) : (
           <span className="w-9" />
         )}
-      </span>
+      </dd>
     </div>
   );
 }

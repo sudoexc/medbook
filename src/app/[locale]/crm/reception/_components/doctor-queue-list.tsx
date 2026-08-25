@@ -180,7 +180,12 @@ export function DoctorQueueList({
         </span>
       </div>
 
-      <ul className="motion-stagger divide-y divide-border">
+      {/* Generic <div>s, not <ul>/<li>: inside role="table" axe traverses
+          role-less wrappers transparently, but an implicit list/listitem role
+          breaks the required table→row ownership chain (critical
+          `aria-required-children` / `aria-required-parent`). Tailwind resets
+          ul/li spacing anyway, so the swap is visually a no-op. */}
+      <div className="motion-stagger divide-y divide-border">
         {rows.map(({ doctor, state, count, cabinet, next }) => {
           const spec =
             locale === "uz"
@@ -193,17 +198,20 @@ export function DoctorQueueList({
             setExpandedDoctorId((cur) => (cur === doctor.id ? null : doctor.id));
           };
           return (
-            <li
+            <div
               key={doctor.id}
               className={cn(
                 "motion-rise-in flex flex-col",
                 expanded && "bg-muted/30",
               )}
             >
+              {/* No aria-expanded here: axe `aria-conditional-attr` (serious)
+                  only permits it on rows of a treegrid, not a plain table.
+                  aria-controls only while the panel exists — a dangling id
+                  reference is an `aria-valid-attr-value` critical. */}
               <div
                 role="row"
-                aria-expanded={expanded}
-                aria-controls={panelId}
+                aria-controls={expanded ? panelId : undefined}
                 tabIndex={0}
                 onClick={toggle}
                 onKeyDown={(e) => {
@@ -218,7 +226,10 @@ export function DoctorQueueList({
                 )}
                 style={{ gridTemplateColumns: gridTemplate }}
               >
-                <div className="flex min-w-0 items-center gap-2">
+                {/* Every direct child of role="row" carries role="cell" —
+                    a row with only generic children fails axe
+                    `aria-required-children` (critical). */}
+                <div role="cell" className="flex min-w-0 items-center gap-2">
                   <AvatarWithStatus
                     name={doctor.nameRu}
                     src={doctor.photoUrl}
@@ -244,12 +255,16 @@ export function DoctorQueueList({
                 </div>
 
                 {showCabinet ? (
-                  <span className="text-xs tabular-nums text-muted-foreground">
+                  <span
+                    role="cell"
+                    className="text-xs tabular-nums text-muted-foreground"
+                  >
                     {cabinet ? `№ ${cabinet}` : t("noNext")}
                   </span>
                 ) : null}
 
                 <span
+                  role="cell"
                   className="text-center text-sm font-semibold tabular-nums text-foreground"
                   aria-label={t("queue")}
                 >
@@ -257,7 +272,10 @@ export function DoctorQueueList({
                 </span>
 
                 {showNextSlot ? (
-                  <span className="text-center text-xs tabular-nums text-muted-foreground">
+                  <span
+                    role="cell"
+                    className="text-center text-xs tabular-nums text-muted-foreground"
+                  >
                     {next
                       ? new Date(next.date).toLocaleTimeString(
                           locale === "uz" ? "uz-UZ" : "ru-RU",
@@ -269,7 +287,7 @@ export function DoctorQueueList({
 
                 <StatusPill state={state} t={tStatus} />
 
-                <div className="flex items-center justify-end gap-1.5">
+                <div role="cell" className="flex items-center justify-end gap-1.5">
                   {onAddAppointment ? (
                     <Button
                       variant="outline"
@@ -295,19 +313,24 @@ export function DoctorQueueList({
               </div>
 
               {expanded ? (
-                <div id={panelId} className="px-3 pb-3">
-                  <DoctorQueuePanel
-                    appointments={items}
-                    doctorId={doctor.id}
-                    onOpenAppointment={onRowClick}
-                    onAddAppointment={(id) => onAddAppointment?.(id)}
-                  />
+                // The accordion panel is still inside role="table", so it
+                // must be a row>cell pair — a bare div here would surface its
+                // buttons as disallowed table children once expanded.
+                <div role="row">
+                  <div role="cell" id={panelId} className="px-3 pb-3">
+                    <DoctorQueuePanel
+                      appointments={items}
+                      doctorId={doctor.id}
+                      onOpenAppointment={onRowClick}
+                      onAddAppointment={(id) => onAddAppointment?.(id)}
+                    />
+                  </div>
                 </div>
               ) : null}
-            </li>
+            </div>
           );
         })}
-      </ul>
+      </div>
     </div>
   );
 }
@@ -326,6 +349,9 @@ function gridTemplateColumns(showCabinet: boolean, showNextSlot: boolean): strin
   return parts.join(" ");
 }
 
+// role="cell" lives on the Badge itself (not a wrapper): the pill is a direct
+// grid child of the role="row" element, and wrapping it would change which
+// element the grid track stretches.
 function StatusPill({
   state,
   t,
@@ -335,7 +361,7 @@ function StatusPill({
 }) {
   if (state === "in_session") {
     return (
-      <Badge variant="default" className="gap-1 bg-success text-white">
+      <Badge role="cell" variant="default" className="gap-1 bg-success text-white">
         <CheckIcon className="size-3" />
         {t("statusInSession")}
       </Badge>
@@ -343,14 +369,14 @@ function StatusPill({
   }
   if (state === "awaiting") {
     return (
-      <Badge variant="secondary" className="gap-1">
+      <Badge role="cell" variant="secondary" className="gap-1">
         <HourglassIcon className="size-3" />
         {t("statusAwaiting")}
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="gap-1 text-muted-foreground">
+    <Badge role="cell" variant="outline" className="gap-1 text-muted-foreground">
       <UserIcon className="size-3" />
       {t("statusEmpty")}
     </Badge>

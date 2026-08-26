@@ -10,13 +10,15 @@
  * (`appointment.thank-you`, `-3h`, `-1h`, surface-aware cancel variants,
  * `appointment.running-late`, `appointment.no-show`). TZ-risk-outcomes §7
  * added `appointment.reminder-5d` for the 5d/3d/1d/3h cascade.
+ * `appointment.rescheduled` closes the silent-move gap: a reschedule now
+ * notifies the patient of the new time and rebuilds the cascade around it.
  */
 import { describe, it, expect } from "vitest";
 
 import { TRIGGER_KEYS } from "@/server/notifications/triggers";
 
 describe("TRIGGER_KEYS", () => {
-  it("exposes all 23 triggers in the documented order", () => {
+  it("exposes all 24 triggers in the documented order", () => {
     expect([...TRIGGER_KEYS]).toEqual([
       "appointment.created",
       "appointment.thank-you",
@@ -30,6 +32,7 @@ describe("TRIGGER_KEYS", () => {
       "appointment.cancelled",
       "appointment.cancelled.by-staff",
       "appointment.cancelled.by-patient",
+      "appointment.rescheduled",
       "appointment.running-late",
       "appointment.no-show",
       "birthday",
@@ -44,7 +47,7 @@ describe("TRIGGER_KEYS", () => {
     ]);
   });
 
-  it("is a tuple-const (readonly) length 23", () => {
-    expect(TRIGGER_KEYS.length).toBe(23);
+  it("is a tuple-const (readonly) length 24", () => {
+    expect(TRIGGER_KEYS.length).toBe(24);
   });
 });

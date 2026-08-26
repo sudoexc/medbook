@@ -14,19 +14,23 @@
  *
  * An envelope is delivered when:
  *   1. `tenantScope.clinicId` matches the connect's clinic, AND
- *   2. either `tenantScope.patientId` is in the allow-set, OR
+ *   2. `type` is in `MINIAPP_DELIVERABLE_TYPES`, AND
+ *   3. either `tenantScope.patientId` is in the allow-set, OR
  *      `payload.patientId` is in the allow-set
  *
  * Anything else is dropped silently. The clinic-only events (e.g. doctor
- * schedule edits with no patientId) intentionally never reach the mini-app.
+ * schedule edits with no patientId) intentionally never reach the mini-app,
+ * and rule 2 keeps patient-scoped *staff* events (visit-note autosaves,
+ * notification failures) off the patient's device.
  *
  * Replay:
  *   On connect with `Last-Event-ID` (header) or `?since=<eventId>` (query),
  *   we look up the cursor row in `EventOutbox` and flush every newer
  *   `DELIVERED` row that survives the same filter. Capped at REPLAY_LIMIT.
- *   When the cursor row is missing / belongs to another clinic, we emit
- *   `: cursor-too-old\n\n` so the client wipes its TanStack cache and
- *   refetches.
+ *   When the cursor row is missing / belongs to another clinic, we emit a
+ *   named `cursor-too-old` event so the client wipes its TanStack cache and
+ *   refetches. It must be a named event rather than an SSE comment — the
+ *   spec hides comment lines from JavaScript entirely.
  *
  * Auth:
  *   Reuses `resolveMiniAppContext` (init-data verify + patient resolution).
@@ -72,33 +76,9 @@ type AllowedScope = {
 };
 
 /**
- * Decide whether an envelope is for this connected patient. Pure function —
- * unit-tested by `tests/unit/miniapp-sse-filter.test.ts`.
- */
-export function shouldDeliverToMiniApp(
-  envelope: EventEnvelope,
-  allowed: AllowedScope,
-): boolean {
-  if (envelope.tenantScope.clinicId !== allowed.clinicId) return false;
-  if (
-    envelope.tenantScope.patientId &&
-    allowed.patientIds.has(envelope.tenantScope.patientId)
-  ) {
-    return true;
-  }
-  // The clinic-only events (cabinet schedule, staff-only audit) never carry
-  // a patient hint — they shouldn't leak into the mini-app stream.
-  const payload = envelope.payload;
-  if (payload && typeof payload === "object" && "patientId" in payload) {
-    const pid = (payload as { patientId?: unknown }).patientId;
-    if (typeof pid === "string" && allowed.patientIds.has(pid)) return true;
-  }
-  return false;
-}
-
-/**
- * Patient-facing event types eligible for delivery over the legacy v1 path
- * (see `shouldDeliverV1ToMiniApp`). Must stay a subset of the client's
+ * Patient-facing event types eligible for delivery over both the v2 and the
+ * legacy v1 path (see `shouldDeliverToMiniApp` / `shouldDeliverV1ToMiniApp`).
+ * Must stay a subset of the client's
  * `MINIAPP_INVALIDATION_MAP` keys — `tests/unit/miniapp-sse-filter.test.ts`
  * asserts this so a v1 event the client can't act on is never streamed.
  *
@@ -133,6 +113,39 @@ export const MINIAPP_DELIVERABLE_TYPES: ReadonlySet<EventType> = new Set<EventTy
   "tg.message.new",
   "tg.conversation.updated",
 ]);
+
+/**
+ * Decide whether a v2 envelope is for this connected patient. Pure function —
+ * unit-tested by `tests/unit/miniapp-sse-filter.test.ts`.
+ */
+export function shouldDeliverToMiniApp(
+  envelope: EventEnvelope,
+  allowed: AllowedScope,
+): boolean {
+  if (envelope.tenantScope.clinicId !== allowed.clinicId) return false;
+  // Same patient-facing allowlist the v1 path uses. Staff-only v2 envelopes
+  // are patient-scoped too — `visit-note.draftSaved` fires on every autosave
+  // and names the fields the doctor just edited, `notification.failed` carries
+  // the internal delivery error — so the patientId check alone was letting
+  // them onto the patient's device. The client's invalidation map is exactly
+  // this set, so gating here drops nothing the mini-app acts on; it only stops
+  // shipping staff metadata down the wire.
+  if (!MINIAPP_DELIVERABLE_TYPES.has(envelope.type)) return false;
+  if (
+    envelope.tenantScope.patientId &&
+    allowed.patientIds.has(envelope.tenantScope.patientId)
+  ) {
+    return true;
+  }
+  // The clinic-only events (cabinet schedule, staff-only audit) never carry
+  // a patient hint — they shouldn't leak into the mini-app stream.
+  const payload = envelope.payload;
+  if (payload && typeof payload === "object" && "patientId" in payload) {
+    const pid = (payload as { patientId?: unknown }).patientId;
+    if (typeof pid === "string" && allowed.patientIds.has(pid)) return true;
+  }
+  return false;
+}
 
 /**
  * Delivery decision for a legacy v1 `AppEvent` ({ type, clinicId, at, payload })
@@ -266,7 +279,14 @@ export async function GET(request: NextRequest): Promise<Response> {
               select: { createdAt: true, clinicId: true },
             });
             if (!cursor || cursor.clinicId !== clinicId) {
+              // Named event, not a comment: per the SSE spec comment lines
+              // (`: …`) are invisible to JavaScript, so the old
+              // `: cursor-too-old` frame could never reach the client and the
+              // cache-wipe branch was dead code. `event: cursor-too-old`
+              // dispatches to an `addEventListener("cursor-too-old", …)`
+              // handler. The comment line is kept for log/debug readability.
               safeEnqueue(`: cursor-too-old\n\n`);
+              safeEnqueue(`event: cursor-too-old\ndata: {}\n\n`);
               return;
             }
             const missed = await prisma.eventOutbox.findMany({

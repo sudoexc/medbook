@@ -63,6 +63,12 @@ export const TRIGGER_KEYS = [
   // `triggerConfig.audience` discriminator on the template row.
   "appointment.cancelled.by-staff",
   "appointment.cancelled.by-patient",
+  // Fired whenever an appointment's start moves (single PATCH or bulk
+  // reschedule). Without it a move was completely silent: the cascade rows
+  // materialised at booking time carry the OLD time baked into their body,
+  // so the patient was reminded of a slot that no longer exists and got
+  // nothing at all for the new one.
+  "appointment.rescheduled",
   // TZ-notifications-cancel-sync §3 — fired by appointment-lifecycle-sweep
   // when `isRunningLate(row, now)` and no NotificationSend exists for this
   // (appointment, template) pair.
@@ -377,6 +383,15 @@ function whereForTrigger(
             triggerConfig: { path: ["audience"], equals: "any" },
           },
           { key: "appointment.cancelled" },
+        ],
+      };
+    case "appointment.rescheduled":
+      // Enum first; slug fallback for clinics that hand-seeded a row before
+      // the enum existed.
+      return {
+        OR: [
+          { trigger: "APPOINTMENT_RESCHEDULED" },
+          { key: "appointment.rescheduled" },
         ],
       };
     case "appointment.running-late":
@@ -902,6 +917,68 @@ export async function scheduleAppointmentReminders(
       new Date(start - 3 * 60 * 60 * 1000),
     );
   }
+}
+
+/**
+ * Void every still-pending reminder for an appointment.
+ *
+ * Reminders are materialised eagerly at booking time with the wall-clock time
+ * ALREADY rendered into `body` and `scheduledFor` derived from the old start.
+ * Once the appointment moves, those rows are lies twice over — wrong text and
+ * wrong delivery moment — so they must die before the cascade is rebuilt.
+ *
+ * Only QUEUED rows are touched: SENT/DELIVERED/READ are historical fact and a
+ * CANCELLED row must stay CANCELLED. Restricting to the two reminder-ish
+ * triggers keeps transactional rows (the cancel/no-show/reschedule notices
+ * themselves) out of the blast radius.
+ *
+ * Cancelling is also what re-opens the idempotency gate: `alreadyScheduled`
+ * only counts QUEUED/SENT/DELIVERED/READ, so flipping the stale rows to
+ * CANCELLED lets the same (patient, appointment, template) tuple be
+ * materialised again against the new time.
+ */
+export async function cancelPendingAppointmentReminders(
+  appointmentId: string,
+): Promise<{ cancelled: number }> {
+  const res = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.notificationSend.updateMany({
+      where: {
+        appointmentId,
+        status: "QUEUED",
+        template: {
+          trigger: { in: ["APPOINTMENT_BEFORE", "APPOINTMENT_CREATED"] },
+        },
+      },
+      data: {
+        status: "CANCELLED",
+        failedReason: "appointment rescheduled",
+      },
+    }),
+  );
+  return { cancelled: res.count };
+}
+
+/**
+ * Full reschedule fan-out: tell the patient the new time, then rebuild the
+ * reminder cascade around it.
+ *
+ * Order matters. The stale rows are cancelled FIRST so the idempotency gate
+ * sees a clean slate when `scheduleAppointmentReminders` re-materialises; if
+ * we rebuilt first, every band would be skipped as "already scheduled" and the
+ * patient would be left with only the old-time reminders.
+ */
+export async function onAppointmentRescheduled(
+  appointmentId: string,
+): Promise<void> {
+  await cancelPendingAppointmentReminders(appointmentId);
+  // Immediate "your appointment moved" notice, rendered against the already
+  // persisted (new) row — so the body names the new date/time.
+  await materializeForAppointment(
+    appointmentId,
+    "appointment.rescheduled",
+    new Date(),
+  );
+  await scheduleAppointmentReminders(appointmentId);
 }
 
 /**
@@ -1577,6 +1654,10 @@ export type FireTriggerPayload =
   // sub-pass when a CONFIRMED/BOOKED row crosses `isRunningLate(now)`
   // without anyone marking the patient arrived.
   | { kind: "appointment.running-late"; appointmentId: string }
+  // The appointment's start moved. Distinct from `appointment.updated`, which
+  // only tops up the cascade and cannot undo reminders already rendered
+  // against the previous time.
+  | { kind: "appointment.rescheduled"; appointmentId: string }
   | { kind: "appointment.updated"; appointmentId: string }
   // Auto-messages widget — fired when a visit lands in COMPLETED so the
   // patient gets a "Спасибо за визит". Best-effort + idempotent.
@@ -1646,7 +1727,14 @@ export function fireTrigger(payload: FireTriggerPayload): void {
           await onAppointmentRunningLate(payload.appointmentId);
           return;
         }
+        case "appointment.rescheduled": {
+          await onAppointmentRescheduled(payload.appointmentId);
+          return;
+        }
         case "appointment.updated": {
+          // Non-move edits only. A time change must go through
+          // `appointment.rescheduled` — this path cannot retract reminders
+          // that were already rendered against the old slot.
           await scheduleAppointmentReminders(payload.appointmentId);
           return;
         }

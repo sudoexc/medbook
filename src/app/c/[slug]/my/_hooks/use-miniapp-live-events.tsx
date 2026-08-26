@@ -20,9 +20,19 @@
  *     append it as `?since=<id>` on the *first* connect — that covers the
  *     "TG webview was backgrounded for 30 minutes, EventSource lost its
  *     in-memory cursor" case.
- *   • If the cursor row is gone (`: cursor-too-old\n\n`), we wipe the whole
- *     `["miniapp"]` cache and refetch — the alternative is silently stale
- *     data after long backgrounding.
+ *   • If the cursor row is gone the server sends a named `cursor-too-old`
+ *     event (an SSE *comment* would be invisible to JS), and we wipe the
+ *     whole `["miniapp"]` cache and refetch — the alternative is silently
+ *     stale data after long backgrounding.
+ *
+ * Reconnect + foreground revival:
+ *   The browser's own EventSource retry gives up permanently once the
+ *   handshake fails hard (401 on a 24h-expired initData, 502 mid-deploy):
+ *   readyState goes CLOSED and nothing ever reopens it. So we own the retry
+ *   with exponential backoff, mirroring the CRM `useLiveEvents` hook. On top
+ *   of that, returning from the background re-arms the socket immediately
+ *   instead of waiting out the backoff, and invalidates the cache because
+ *   anything could have happened while the webview was frozen.
  *
  * Invalidation map: lives in `MINIAPP_INVALIDATION_MAP`. Each event maps to
  * the React-Query prefixes a screen depends on; the dispatcher
@@ -41,6 +51,15 @@ import {
 import { EventEnvelopeSchema } from "@/server/realtime/envelope";
 
 import { useMiniAppAuth } from "../_components/miniapp-auth-provider";
+import {
+  backoffDelayMs,
+  shouldInvalidateOnForeground,
+  shouldReviveOnForeground,
+  shouldRetryAfterError,
+  type MiniAppLiveStatus,
+} from "../_lib/live-reconnect";
+
+export type { MiniAppLiveStatus };
 
 type QueryPrefix = ReadonlyArray<string>;
 
@@ -89,7 +108,14 @@ const MINIAPP_INVALIDATION_MAP: Partial<Record<EventType, QueryPrefix[]>> = {
   "prescription.updated": [["miniapp", "medications"]],
   // Ф6 — finalize stamps followUpDays + (via the bridge worker) the
   // conclusion link, both rendered on the past-appointments cards.
-  "visit-note.finalized": [["miniapp", "appointments"]],
+  // `visit-summary` is the /my/visit/[id] screen sitting on a "заключение
+  // готовится" placeholder: finalize is the exact moment it must come alive,
+  // and without this prefix the patient stared at the placeholder until a
+  // manual reload.
+  "visit-note.finalized": [
+    ["miniapp", "appointments"],
+    ["miniapp", "visit-summary"],
+  ],
   // P1.2 — a doctor flipping a lab result to REVIEWED makes it visible to the
   // patient for the first time, so refresh the labs screen without a manual pull.
   "lab.result.reviewed": [["miniapp", "labs"]],
@@ -152,67 +178,161 @@ function isTestEnv(): boolean {
   return process.env?.NODE_ENV === "test" || Boolean(process.env?.VITEST);
 }
 
-export function useMiniAppLiveEvents(): void {
+export function useMiniAppLiveEvents(): MiniAppLiveStatus {
   const qc = useQueryClient();
   const { state, initData, clinicSlug } = useMiniAppAuth();
   const ready = state.status === "ready";
+  const [status, setStatus] = React.useState<MiniAppLiveStatus>("connecting");
 
   React.useEffect(() => {
-    if (!ready) return;
+    if (!ready) {
+      setStatus("connecting");
+      return;
+    }
     if (!isBrowser() || isTestEnv()) return;
 
-    // Build the connect URL. `initData` is signed and short-lived, so
-    // shipping it in the query string is fine for the SSE handshake.
-    const params = new URLSearchParams({ clinicSlug });
-    if (initData) params.set("initData", initData);
-    const stash = readLastEventId();
-    if (stash) params.set("since", stash);
-    const url = `/api/miniapp/events?${params.toString()}`;
+    // Mutable per-effect state. `disposed` guards every async callback so a
+    // pending backoff timer can't resurrect the socket after unmount.
+    let es: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    let disposed = false;
 
-    const es = new EventSource(url, { withCredentials: true });
-
-    es.onmessage = (ev) => {
-      if (!ev.data) return;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(ev.data as string);
-      } catch {
-        return;
-      }
-      // The stream carries BOTH shapes: v2 outbox envelopes (clinicId lives
-      // under `tenantScope`) and legacy v1 AppEvents (top-level `clinicId`).
-      // The v1 schema rejects a v2 envelope (missing top-level clinicId) and
-      // vice-versa, so try both — we only need the discriminator `type`.
-      const type = extractEventType(parsed);
-      if (!type) return;
-
-      // Persist Last-Event-ID for cold reconnects. Only v2 envelopes carry an
-      // eventId; v1 events are live-only and leave the stored cursor untouched.
-      const eventId = (parsed as { eventId?: string } | null)?.eventId;
-      if (eventId) writeLastEventId(eventId);
-
-      dispatchInvalidation(qc, type);
-    };
-
-    es.onerror = () => {
-      // Browser auto-reconnects with backoff. We only handle the explicit
-      // `: cursor-too-old\n\n` sentinel, which the browser surfaces as an
-      // `onerror` with `readyState === EventSource.CLOSED` — at which point
-      // we wipe the cache so the next refetch grabs the truth.
-      if (es.readyState === EventSource.CLOSED) {
-        clearLastEventId();
-        qc.invalidateQueries({ queryKey: ["miniapp"] });
-      }
-    };
-
-    return () => {
+    const closeSocket = () => {
+      if (!es) return;
       try {
         es.close();
       } catch {
         /* ignore */
       }
+      es = null;
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      closeSocket();
+      setStatus("connecting");
+
+      // Build the connect URL. `initData` is signed and short-lived, so
+      // shipping it in the query string is fine for the SSE handshake.
+      const params = new URLSearchParams({ clinicSlug });
+      if (initData) params.set("initData", initData);
+      const stash = readLastEventId();
+      if (stash) params.set("since", stash);
+      const source = new EventSource(
+        `/api/miniapp/events?${params.toString()}`,
+        { withCredentials: true },
+      );
+      es = source;
+
+      source.onopen = () => {
+        if (disposed) return;
+        attempt = 0;
+        setStatus("live");
+      };
+
+      source.onmessage = (ev) => {
+        if (!ev.data) return;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(ev.data as string);
+        } catch {
+          return;
+        }
+        // The stream carries BOTH shapes: v2 outbox envelopes (clinicId lives
+        // under `tenantScope`) and legacy v1 AppEvents (top-level `clinicId`).
+        // The v1 schema rejects a v2 envelope (missing top-level clinicId) and
+        // vice-versa, so try both — we only need the discriminator `type`.
+        const type = extractEventType(parsed);
+        if (!type) return;
+
+        // Persist Last-Event-ID for cold reconnects. Only v2 envelopes carry
+        // an eventId; v1 events are live-only and leave the cursor untouched.
+        const eventId = (parsed as { eventId?: string } | null)?.eventId;
+        if (eventId) writeLastEventId(eventId);
+
+        dispatchInvalidation(qc, type);
+      };
+
+      // Named event — the server used to send this as an SSE comment, which
+      // the spec hides from JS, so this recovery path never ran. The stored
+      // cursor points at an outbox row that no longer exists, so drop it and
+      // refetch everything rather than serve silently stale screens.
+      source.addEventListener("cursor-too-old", () => {
+        clearLastEventId();
+        qc.invalidateQueries({ queryKey: ["miniapp"] });
+      });
+
+      source.onerror = () => {
+        // Don't trust the browser's built-in retry: on a fatal handshake
+        // failure (401 expired initData, 502 during deploy) it parks the
+        // socket in CLOSED forever. Close and re-open on our own backoff.
+        if (!shouldRetryAfterError(disposed)) return;
+        closeSocket();
+        setStatus("offline");
+        const delay = backoffDelayMs(attempt);
+        attempt += 1;
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          connect();
+        }, delay);
+      };
+    };
+
+    // Coming back from the background: Telegram freezes the webview, so the
+    // socket is usually dead and any pending backoff may be minutes out.
+    // Reconnect immediately and refetch — we cannot know what the clinic did
+    // while we were away, and a stale "live" screen is worse than a spinner.
+    const revive = () => {
+      const hidden = document.hidden;
+      if (shouldInvalidateOnForeground({ hidden, disposed })) {
+        qc.invalidateQueries({ queryKey: ["miniapp"] });
+      }
+      if (
+        !shouldReviveOnForeground({
+          hidden,
+          disposed,
+          readyState: es ? es.readyState : null,
+        })
+      ) {
+        return;
+      }
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      attempt = 0;
+      connect();
+    };
+
+    connect();
+    document.addEventListener("visibilitychange", revive);
+    window.addEventListener("focus", revive);
+    // Telegram's own lifecycle signal — fires on clients where the webview is
+    // restored without a DOM visibilitychange.
+    const tg = window.Telegram?.WebApp;
+    try {
+      tg?.onEvent?.("activated", revive);
+    } catch {
+      /* older clients don't know this event */
+    }
+
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", revive);
+      window.removeEventListener("focus", revive);
+      try {
+        tg?.offEvent?.("activated", revive);
+      } catch {
+        /* ignore */
+      }
+      if (retryTimer) clearTimeout(retryTimer);
+      closeSocket();
     };
   }, [ready, qc, initData, clinicSlug]);
+
+  return status;
 }
 
 /**
@@ -238,6 +358,33 @@ function dispatchInvalidation(
   for (const prefix of prefixes) {
     qc.invalidateQueries({ queryKey: prefix });
   }
+}
+
+/**
+ * Broadcasts the subscription state from the shell (the single subscriber)
+ * down to whoever draws the pulsing "live" dot. Without this the dot was
+ * hardcoded on: it kept pulsing over a dead socket, so a patient watching a
+ * frozen queue position believed it was current.
+ */
+const MiniAppLiveStatusContext =
+  React.createContext<MiniAppLiveStatus>("connecting");
+
+export function MiniAppLiveStatusProvider({
+  status,
+  children,
+}: {
+  status: MiniAppLiveStatus;
+  children: React.ReactNode;
+}) {
+  return (
+    <MiniAppLiveStatusContext.Provider value={status}>
+      {children}
+    </MiniAppLiveStatusContext.Provider>
+  );
+}
+
+export function useMiniAppLiveStatus(): MiniAppLiveStatus {
+  return React.useContext(MiniAppLiveStatusContext);
 }
 
 /** Test-only: expose the map so unit tests can assert the wiring. */

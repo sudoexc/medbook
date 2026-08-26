@@ -50,6 +50,9 @@ export const POST = createApiHandler(
         channel: true,
         queuePriority: true,
         ticketSeq: true,
+        // Needed to address the per-patient `queue.updated` fan-out below —
+        // the mini-app SSE filter drops any v1 payload without a patientId.
+        patientId: true,
       },
     });
     if (existing.length !== uniqueIds.length) {
@@ -106,10 +109,32 @@ export const POST = createApiHandler(
     const tenant = getTenant();
     const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
     if (clinicId) {
+      // Board / CRM signal: doctor-wide, no patient hint — every staff surface
+      // just refetches the whole lane.
       publishEventSafe(clinicId, {
         type: "queue.updated",
         payload: { doctorId, reorder: true, count: uniqueIds.length },
       });
+      // …plus one addressed event per moved row. A reorder changes the
+      // patient's own position ("вы третий в очереди"), but the doctor-wide
+      // event above carries no `patientId`, so the mini-app SSE filter drops
+      // it and the patient's hero card stays stale until the next poll. Each
+      // payload names only the patient of that very row, so the server-side
+      // allow-set check keeps A's position out of B's stream.
+      for (const [idx, id] of uniqueIds.entries()) {
+        const row = byId.get(id);
+        if (!row) continue;
+        publishEventSafe(clinicId, {
+          type: "queue.updated",
+          payload: {
+            appointmentId: id,
+            doctorId,
+            patientId: row.patientId,
+            reorder: true,
+            position: idx + 1,
+          },
+        });
+      }
     }
 
     return ok({ count: uniqueIds.length, exact, effectiveOrder });

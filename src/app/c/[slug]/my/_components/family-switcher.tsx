@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, User2 } from "lucide-react";
 
 import { useT } from "./mini-i18n";
-import { MSheet } from "./mini-ui";
+import { MErrorInline, MSheet } from "./mini-ui";
 import { useFamily, type FamilyMember, type FamilyPatient } from "../_hooks/use-family";
 import { useActiveContext } from "../_hooks/use-active-context";
 
@@ -20,9 +20,24 @@ import { useActiveContext } from "../_hooks/use-active-context";
  */
 export function FamilySwitcher() {
   const t = useT();
-  const { data, isLoading } = useFamily();
+  const { data, isLoading, isError, refetch } = useFamily();
   const { onBehalfOf, setOnBehalfOf } = useActiveContext();
   const [open, setOpen] = React.useState(false);
+
+  // A failed family fetch used to hide the switcher entirely while
+  // `onBehalfOf` stayed in the URL — the rest of the screen kept rendering a
+  // relative's data with no visible sign of whose it was. Say it plainly.
+  if (isError && onBehalfOf) {
+    return (
+      <div className="-mt-1 mb-3">
+        <MErrorInline
+          text={t.common.loadFailedShort}
+          retryLabel={t.common.retry}
+          onRetry={() => void refetch()}
+        />
+      </div>
+    );
+  }
 
   if (isLoading || !data || data.members.length === 0) return null;
 

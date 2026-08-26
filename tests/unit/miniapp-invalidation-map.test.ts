@@ -33,6 +33,7 @@ const PATIENT_FACING: ReadonlyArray<EventType> = [
   "eprescription.cancelled",
   "lab.result.reviewed",
   "referral.created",
+  "visit-note.finalized",
 ];
 
 describe("MINIAPP_INVALIDATION_MAP", () => {
@@ -57,6 +58,17 @@ describe("MINIAPP_INVALIDATION_MAP", () => {
     for (const type of Object.keys(MINIAPP_INVALIDATION_MAP)) {
       expect(known.has(type), `unknown event ${type}`).toBe(true);
     }
+  });
+
+  // Regression: the /my/visit/[id] screen renders «заключение готовится» until
+  // the doctor finalizes. `visit-note.finalized` only invalidated the
+  // appointments list, so the summary screen sat on its placeholder until the
+  // patient manually reloaded — right when they were waiting for it.
+  it("refreshes the visit-summary screen when a note is finalized", () => {
+    const prefixes = MINIAPP_INVALIDATION_MAP["visit-note.finalized"] ?? [];
+    const keys = prefixes.map((p) => p.join("/"));
+    expect(keys).toContain("miniapp/visit-summary");
+    expect(keys).toContain("miniapp/appointments");
   });
 
   // The server-side v1 delivery allow-list (MINIAPP_DELIVERABLE_TYPES) must be

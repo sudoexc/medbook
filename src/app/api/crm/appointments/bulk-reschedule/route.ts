@@ -27,13 +27,16 @@ import {
 } from "@/lib/appointment-transitions";
 import { detectConflicts } from "@/server/services/appointments";
 import { tashkentComponents } from "@/lib/booking-validation";
+import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { newCorrelationId } from "@/server/realtime/outbox";
+import { fireTrigger } from "@/server/notifications/triggers";
 
 export const POST = createApiHandler(
   {
     roles: ["ADMIN", "RECEPTIONIST"],
     bodySchema: BulkRescheduleSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const rows = await prisma.appointment.findMany({
       where: { id: { in: body.ids } },
       select: {
@@ -43,6 +46,10 @@ export const POST = createApiHandler(
         endDate: true,
         doctorId: true,
         cabinetId: true,
+        // Needed to build the realtime envelope for each moved row — a bulk
+        // shift used to be invisible to every open patient/board surface.
+        patientId: true,
+        queueStatus: true,
         // Two-lanes: WALKIN rows are order-based and exempt from slot-overlap
         // checks below (their date window is technical — TZ I4).
         channel: true,
@@ -69,6 +76,9 @@ export const POST = createApiHandler(
       doctorId: r.doctorId,
       cabinetId: r.cabinetId,
       channel: r.channel,
+      patientId: r.patientId,
+      status: r.status,
+      queueStatus: r.queueStatus,
       newStart: new Date(r.date.getTime() + deltaMs),
       newEnd: new Date(r.endDate.getTime() + deltaMs),
     }));
@@ -168,9 +178,16 @@ export const POST = createApiHandler(
       }
     }
 
-    await prisma.$transaction(
-      planned.map((p) =>
-        prisma.appointment.update({
+    // A bulk shift is a real reschedule for every row in it, so it must take
+    // the same path as the single-appointment PATCH: persist, emit
+    // `appointment.moved` through the outbox (atomically with the write), and
+    // then re-notify the patient. Previously this route moved the times and
+    // said nothing — no event, no notification — so a patient with the app
+    // open still saw the old slot and the reminder cascade kept the old time.
+    const correlationId = newCorrelationId();
+    await prisma.$transaction(async (tx) => {
+      for (const p of planned) {
+        const updated = await tx.appointment.update({
           where: { id: p.id },
           data: {
             date: p.newStart,
@@ -179,9 +196,32 @@ export const POST = createApiHandler(
             // clock (prod runs UTC; a bare shift would leave it stale).
             time: tashkentComponents(p.newStart).time,
           },
-        }),
-      ),
-    );
+        });
+
+        if (ctx.kind === "TENANT") {
+          const actorUserId = ctx.userId || null;
+          await emitAppointmentChangeViaOutbox({
+            tx,
+            kind: "moved",
+            before: { status: p.status, queueStatus: p.queueStatus },
+            after: updated,
+            clinicId: ctx.clinicId,
+            actorId: actorUserId,
+            actorRole: ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST",
+            actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+            surface: ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM",
+            correlationId,
+          });
+        }
+      }
+    });
+
+    // Best-effort, post-commit: cancel the now-stale reminders and rebuild the
+    // cascade around each new start. Fire-and-forget by contract — a trigger
+    // failure must never fail an already-committed reschedule.
+    for (const p of planned) {
+      fireTrigger({ kind: "appointment.rescheduled", appointmentId: p.id });
+    }
 
     await audit(request, {
       action: "appointment.bulk-reschedule",

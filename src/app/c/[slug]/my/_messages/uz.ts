@@ -16,6 +16,13 @@ export const uzDict = {
     min: "daq",
     today: "Bugun",
     tomorrow: "Ertaga",
+    loadFailed: "Yuklab bo‘lmadi",
+    loadFailedHint:
+      "Internet aloqasini tekshirib, qayta urinib ko‘ring. Ma’lumotlaringiz joyida.",
+    loadFailedShort: "Ma’lumotlar yuklanmadi",
+    offline: "Aloqa yo‘q",
+    connecting: "Ulanmoqda…",
+    live: "Onlayn",
   },
   home: {
     greetingMorning: "Xayrli tong, {name}",
@@ -52,6 +59,10 @@ export const uzDict = {
       emptyTitle: "Hammasi joyida",
       emptyHint:
         "Yaqin kunlarga yozuvlar yo‘q. Biror narsa bezovta qilsa — biz yoningizdamiz.",
+      labsLabel: "Tahlillar",
+      labsTitleOne: "Yangi natija tayyor",
+      labsTitleMany: "Yangi natijalar tayyor",
+      labsHint: "Shifokor tekshirdi — ko‘rishingiz mumkin",
       swipeHint: "Tepaga suring — talon",
       checkinCta: "Men keldim",
       checkinDone: "Belgilandi — sizni kutib olishadi",
@@ -64,6 +75,7 @@ export const uzDict = {
       labs: "Tahlillar",
       labsLast: "oxirgisi — {date}",
       labsNone: "natijalar hali yo‘q",
+      labsUnseen: "yangi: {n}",
       docs: "Hujjatlar",
       docsHint: "ma’lumotnoma va xulosalar",
     },
@@ -382,6 +394,7 @@ export const uzDict = {
       skipped: "O‘tkazib yubordim",
       snooze: "+30 daq.",
     },
+    markFailed: "Belgilab bo‘lmadi. Qayta urinib ko‘ring.",
   },
   labs: {
     title: "Tahlillar",

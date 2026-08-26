@@ -136,6 +136,26 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     variables: COMMON_VARS,
   },
 
+  // ── Reschedule ────────────────────────────────────────────────────────
+  // The variables always render the CURRENT (post-move) appointment row, so
+  // {{appointment.date}}/{{appointment.time}} are the NEW slot. The wording
+  // says "перенесён" explicitly — a bare "вы записаны на …" reads like a
+  // duplicate confirmation and the patient may keep the old time in mind.
+  {
+    key: "appointment.rescheduled",
+    nameRu: "Перенос приёма",
+    nameUz: "Qabul ko'chirildi",
+    channel: "TG",
+    category: "TRANSACTIONAL",
+    bodyRu:
+      "{{patient.firstName}}, ваш приём перенесён. Новое время: {{appointment.date}} в {{appointment.time}}, врач {{appointment.doctor}} ({{clinic.name}}). Старая запись больше не действует. Если новое время не подходит — позвоните {{clinic.phone}} или откройте приложение.",
+    bodyUz:
+      "{{patient.firstName}}, qabulingiz ko'chirildi. Yangi vaqt: {{appointment.date}} kuni soat {{appointment.time}}, shifokor {{appointment.doctor}} ({{clinic.name}}). Eski yozuv endi amal qilmaydi. Yangi vaqt to'g'ri kelmasa — {{clinic.phone}} ga qo'ng'iroq qiling yoki ilovani oching.",
+    trigger: "APPOINTMENT_RESCHEDULED",
+    triggerConfig: null,
+    variables: COMMON_VARS,
+  },
+
   // ── Running late ──────────────────────────────────────────────────────
   {
     key: "appointment.running-late",

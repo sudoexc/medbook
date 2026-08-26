@@ -12,7 +12,9 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { FlaskConical } from "lucide-react";
 
-import { MCard, MEmpty, MSection } from "./mini-ui";
+import { MCard, MEmpty, MError, MSection } from "./mini-ui";
+import { writeLabsSeenAt } from "../_lib/labs-unseen";
+import { resolveScreenState } from "../_lib/screen-state";
 import { SkeletonList } from "./skeleton";
 import { useLang, useT } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
@@ -91,17 +93,37 @@ export function LabsScreen() {
     return tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
   }, [tg, router, clinicSlug]);
 
+  // Clear the home-screen "new results" badge once the list actually renders.
+  // Gated on a successful load so a failed fetch can't mark unread results as
+  // seen — the patient would lose the only pointer to them.
+  const loaded = query.isSuccess;
+  React.useEffect(() => {
+    if (!loaded) return;
+    writeLabsSeenAt(clinicSlug, Date.now());
+  }, [loaded, clinicSlug]);
+
+  const screenState = resolveScreenState({
+    isLoading: query.isLoading,
+    isError: query.isError,
+    itemCount: query.data?.length,
+  });
+
   return (
     <div>
       <h1 className="mb-1 text-xl font-bold">{t.labs.title}</h1>
       <p className="mb-4 text-sm" style={{ color: "var(--tg-hint)" }}>
         {t.labs.subtitle}
       </p>
-      {query.isLoading ? (
+      {screenState === "loading" ? (
         <SkeletonList rows={4} variant="card" />
-      ) : query.isError ? (
-        <MEmpty>{t.common.error}</MEmpty>
-      ) : query.data && query.data.length > 0 ? (
+      ) : screenState === "error" ? (
+        <MError
+          title={t.common.loadFailed}
+          hint={t.common.loadFailedHint}
+          retryLabel={t.common.retry}
+          onRetry={() => void query.refetch()}
+        />
+      ) : screenState === "list" && query.data ? (
         <MSection>
           {query.data.map((lab) => (
             <LabCard key={lab.id} lab={lab} />

@@ -9,9 +9,12 @@ import {
   MButton,
   MCard,
   MEmpty,
+  MError,
   MSection,
   formatDateISO,
 } from "../mini-ui";
+import { useMinuteClock } from "../../_hooks/use-minute-clock";
+import { resolveScreenState } from "../../_lib/screen-state";
 import { getAppointmentTone } from "../mini-app-tokens";
 import { SkeletonList } from "../skeleton";
 import { useT } from "../mini-i18n";
@@ -47,9 +50,15 @@ export function AppointmentsScreen() {
   const cancel = useCancelAppointment();
   const query = useAppointments(tab, onBehalfOf);
   const { setDraft } = useBookingDraft(clinicSlug);
-  // Frozen per mount — react-hooks/purity forbids Date.now() in render, and
-  // the follow-up CTA cutoff doesn't need to tick while the screen is open.
-  const [now] = React.useState(() => Date.now());
+  // Ticks every minute. The Telegram webview is suspended rather than
+  // unmounted, so a frozen mount-time clock made the follow-up CTA cutoff
+  // drift by however long the app spent in the background.
+  const now = useMinuteClock();
+  const screenState = resolveScreenState({
+    isLoading: query.isLoading,
+    isError: query.isError,
+    itemCount: query.data?.length,
+  });
 
   // Ф6 — «записаться на контроль»: seed the booking wizard with the same
   // doctor and jump straight to the slot-adjacent step. The wizard is
@@ -121,9 +130,18 @@ export function AppointmentsScreen() {
           </button>
         ))}
       </div>
-      {query.isLoading ? (
+      {screenState === "loading" ? (
         <SkeletonList rows={4} variant="appointment" />
-      ) : query.data && query.data.length > 0 ? (
+      ) : screenState === "error" ? (
+        // Distinct from the empty state on purpose: "у вас нет записей" after
+        // a network drop convinced patients their appointment was cancelled.
+        <MError
+          title={t.common.loadFailed}
+          hint={t.common.loadFailedHint}
+          retryLabel={t.common.retry}
+          onRetry={() => void query.refetch()}
+        />
+      ) : screenState === "list" && query.data ? (
         // key={tab} remounts the list per tab so the crossfade replays.
         <div key={tab} className="ma-fade-in">
         <MSection>

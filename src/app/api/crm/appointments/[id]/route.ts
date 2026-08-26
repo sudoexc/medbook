@@ -805,7 +805,15 @@ export const PATCH = createApiHandler(
     } else if (body.status === "NO_SHOW") {
       fireTrigger({ kind: "appointment.noshow", appointmentId: id });
     } else if (timeChanged) {
-      fireTrigger({ kind: "appointment.updated", appointmentId: id });
+      // `timeChanged` is also true for a doctor-only swap (it re-runs conflict
+      // detection), so compare the persisted starts: only an actual slot move
+      // may claim "приём перенесён" to the patient and rebuild the cascade.
+      // A same-time doctor change keeps the old top-up-only behaviour.
+      const startMoved = after.date.getTime() !== before.date.getTime();
+      fireTrigger({
+        kind: startMoved ? "appointment.rescheduled" : "appointment.updated",
+        appointmentId: id,
+      });
     }
 
     // Phase 16 Wave 3 — mint a referral reward when this is the patient's

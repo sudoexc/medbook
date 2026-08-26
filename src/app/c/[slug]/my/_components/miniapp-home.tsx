@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Calendar,
   FileText,
+  FlaskConical,
   Pill,
 } from "lucide-react";
 
@@ -12,6 +13,9 @@ import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useT } from "./mini-i18n";
 import { useActiveContext } from "../_hooks/use-active-context";
 import { useMedications } from "../_hooks/use-medications";
+import { useLabs } from "../_hooks/use-labs";
+import { useMinuteClock } from "../_hooks/use-minute-clock";
+import { countUnseenLabs, readLabsSeenAt } from "../_lib/labs-unseen";
 import { MCard, MSpinner, formatTimeISO } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { HomeHero } from "./home-hero";
@@ -79,6 +83,7 @@ function BentoTile({
   color,
   tall,
   wide,
+  badge,
   delay,
   animate,
 }: {
@@ -89,6 +94,8 @@ function BentoTile({
   color: string;
   tall?: boolean;
   wide?: boolean;
+  /** Unread count pill. Omit (not 0) to hide. */
+  badge?: number;
   delay?: number;
   animate?: boolean;
 }) {
@@ -133,6 +140,14 @@ function BentoTile({
           </span>
         ) : null}
       </span>
+      {badge ? (
+        <span
+          className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums"
+          style={{ backgroundColor: color, color: "#fff" }}
+        >
+          {badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -146,9 +161,10 @@ function HomeContent({ slug }: { slug: string }) {
   const patient = state.status === "ready" ? state.patient : null;
   const firstName = patient?.fullName?.split(" ")[0] ?? "";
   const lang = patient?.preferredLang ?? "RU";
-  // Frozen per mount — react-hooks/purity forbids Date.now() in render; the
-  // greeting doesn't need to flip while the screen is open.
-  const [now] = React.useState(() => Date.now());
+  // Ticks every minute. Freezing it at mount meant a Mini App left open
+  // overnight still greeted the patient with «доброй ночи» at breakfast, and
+  // "next dose today vs on {date}" was computed against yesterday.
+  const now = useMinuteClock();
 
   // The entrance stagger plays once per session — re-mounting home on every
   // back-navigation used to replay the full second of fade-ups, which made
@@ -179,6 +195,25 @@ function HomeContent({ slug }: { slug: string }) {
       .sort();
     return candidates[0] ?? null;
   }, [meds.data]);
+  // Labs used to have no entry point anywhere in the app — a doctor could
+  // mark a result REVIEWED and the patient had literally no link to reach it.
+  // The tile is the permanent door; the count is the nudge.
+  const labs = useLabs();
+  const unseenLabs = React.useMemo(
+    () => countUnseenLabs(labs.data, readLabsSeenAt(slug)),
+    [labs.data, slug],
+  );
+  const labsHint = labs.data
+    ? unseenLabs > 0
+      ? t.home.bento.labsUnseen.replace("{n}", String(unseenLabs))
+      : labs.data.length > 0 && labs.data[0].reviewedAt
+        ? t.home.bento.labsLast.replace(
+            "{date}",
+            formatShortDate(labs.data[0].reviewedAt, lang),
+          )
+        : t.home.bento.labsNone
+    : null;
+
   const medsHint = meds.data
     ? nextDose
       ? new Date(nextDose).getDate() === new Date(now).getDate()
@@ -245,6 +280,17 @@ function HomeContent({ slug }: { slug: string }) {
           color="var(--tg-accent)"
           tall
           delay={160}
+          animate={animate}
+        />
+        <BentoTile
+          href={`/c/${slug}/my/labs`}
+          title={t.home.bento.labs}
+          hint={labsHint}
+          icon={FlaskConical}
+          color={MA_ACCENTS.success}
+          badge={unseenLabs > 0 ? unseenLabs : undefined}
+          wide
+          delay={200}
           animate={animate}
         />
       </div>

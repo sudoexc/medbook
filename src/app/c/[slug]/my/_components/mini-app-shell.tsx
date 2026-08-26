@@ -9,7 +9,10 @@ import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useT } from "./mini-i18n";
 import { useClinic } from "../_hooks/use-clinic";
-import { useMiniAppLiveEvents } from "../_hooks/use-miniapp-live-events";
+import {
+  MiniAppLiveStatusProvider,
+  useMiniAppLiveEvents,
+} from "../_hooks/use-miniapp-live-events";
 import { FamilySwitcher } from "./family-switcher";
 
 // Focused flows own the bottom edge (wizard footer, NPS/pre-visit CTAs,
@@ -41,9 +44,11 @@ export function MiniAppShell({
   const showTabBar =
     state.status === "ready" && !TABBAR_HIDDEN_RE.test(pathname);
   // Phase M3 — single SSE connection per page; the hook no-ops until auth
-  // resolves and silently reconnects on backgrounding (Last-Event-ID via
-  // `?since=` cold-start + browser-native Last-Event-ID warm reconnect).
-  useMiniAppLiveEvents();
+  // resolves and reconnects with its own backoff on backgrounding
+  // (Last-Event-ID via `?since=` cold-start + warm reconnect). The returned
+  // status feeds the "live" dot so it can't claim freshness over a dead
+  // socket.
+  const liveStatus = useMiniAppLiveEvents();
 
   const bg = themeParams.bg_color ?? (colorScheme === "dark" ? "#17212b" : "#f4f4f5");
   const text = themeParams.text_color ?? (colorScheme === "dark" ? "#f5f5f5" : "#0a0a0a");
@@ -112,6 +117,7 @@ export function MiniAppShell({
     lang === "uz" ? clinic?.nameUz ?? clinic?.nameRu : clinic?.nameRu;
 
   return (
+    <MiniAppLiveStatusProvider status={liveStatus}>
     <div
       className="relative min-h-dvh w-full antialiased"
       style={
@@ -236,6 +242,7 @@ export function MiniAppShell({
         <MiniAppTabBar base={base} pathname={pathname} />
       ) : null}
     </div>
+    </MiniAppLiveStatusProvider>
   );
 }
 

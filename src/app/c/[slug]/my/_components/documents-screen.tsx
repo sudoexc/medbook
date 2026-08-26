@@ -14,12 +14,14 @@ import {
   MButton,
   MCard,
   MEmpty,
+  MError,
   MSection,
 } from "./mini-ui";
 import { SkeletonList } from "./skeleton";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { useT } from "./mini-i18n";
 import { useDocuments, useUploadDocument } from "../_hooks/use-documents";
+import { resolveScreenState } from "../_lib/screen-state";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { formatDate } from "@/lib/format";
@@ -72,6 +74,11 @@ export function DocumentsScreen() {
   );
 
   const disabled = upload.isPending || state.status !== "ready";
+  const docsState = resolveScreenState({
+    isLoading: docs.isLoading,
+    isError: docs.isError,
+    itemCount: docs.data?.length,
+  });
 
   return (
     <div>
@@ -158,9 +165,19 @@ export function DocumentsScreen() {
           }}
         />
       </MCard>
-      {docs.isLoading ? (
+      {docsState === "loading" ? (
         <SkeletonList rows={4} variant="card" />
-      ) : docs.data && docs.data.length > 0 ? (
+      ) : docsState === "error" ? (
+        // Without this branch a dropped connection rendered the "у вас пока
+        // нет документов" empty state — patients concluded their conclusions
+        // and referrals had been deleted.
+        <MError
+          title={t.common.loadFailed}
+          hint={t.common.loadFailedHint}
+          retryLabel={t.common.retry}
+          onRetry={() => void docs.refetch()}
+        />
+      ) : docsState === "list" && docs.data ? (
         <MSection>
           {docs.data.map((d) => {
             const isPending = !d.fileUrl || d.fileUrl.startsWith("pending:");

@@ -16,6 +16,7 @@ type Row = {
   channel: string;
   queuePriority: number;
   ticketSeq: number | null;
+  patientId: string;
 };
 
 const state = {
@@ -104,6 +105,8 @@ function walkin(id: string, joinedAtMs: number, ticketSeq: number): Row {
     channel: "WALKIN",
     queuePriority: 0,
     ticketSeq,
+    // One patient per row — the per-patient fan-out must address each own row.
+    patientId: `p_${id}`,
   };
 }
 
@@ -149,6 +152,7 @@ describe("POST /api/crm/appointments/reorder — two-lanes contract", () => {
         channel: "PHONE",
         queuePriority: 0,
         ticketSeq: 3,
+        patientId: "p_b1",
       },
     ];
     const POST = await loadPOST();
@@ -182,5 +186,71 @@ describe("POST /api/crm/appointments/reorder — two-lanes contract", () => {
     };
     expect(body.exact).toBe(false);
     expect(body.effectiveOrder).toEqual(["w2", "w1", "w3"]);
+  });
+});
+
+/**
+ * Per-patient fan-out. The doctor-wide `queue.updated` carries no patientId,
+ * so the mini-app SSE filter drops it and the patient's "вы N в очереди" card
+ * stays stale until the next poll. The route now also emits one addressed
+ * event per moved row.
+ */
+describe("POST /api/crm/appointments/reorder — mini-app fan-out", () => {
+  it("emits one patient-addressed queue.updated per reordered row", async () => {
+    state.rows = [
+      walkin("w1", NOW.getTime(), 1),
+      walkin("w2", NOW.getTime() + 60_000, 2),
+      walkin("w3", NOW.getTime() + 120_000, 3),
+    ];
+    const POST = await loadPOST();
+    await POST(postReq({ doctorId: "doc_1", orderedIds: ["w3", "w1", "w2"] }));
+
+    const addressed = state.publishes.filter(
+      (p) =>
+        p.type === "queue.updated" &&
+        typeof (p.payload as { patientId?: unknown }).patientId === "string",
+    );
+    expect(addressed).toHaveLength(3);
+    expect(
+      addressed.map((p) => (p.payload as { patientId: string }).patientId),
+    ).toEqual(["p_w3", "p_w1", "p_w2"]);
+    // Position matches the dragged order, 1-based.
+    expect(
+      addressed.map((p) => (p.payload as { position: number }).position),
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("keeps the doctor-wide board signal alongside the addressed ones", async () => {
+    state.rows = [walkin("w1", NOW.getTime(), 1), walkin("w2", NOW.getTime() + 60_000, 2)];
+    const POST = await loadPOST();
+    await POST(postReq({ doctorId: "doc_1", orderedIds: ["w2", "w1"] }));
+
+    const board = state.publishes.filter(
+      (p) =>
+        p.type === "queue.updated" &&
+        (p.payload as { reorder?: boolean; count?: number }).count !== undefined,
+    );
+    expect(board).toHaveLength(1);
+    expect(board[0].payload).toMatchObject({ doctorId: "doc_1", count: 2 });
+  });
+
+  it("each addressed payload reaches only its own patient (leak guard)", async () => {
+    state.rows = [
+      walkin("w1", NOW.getTime(), 1),
+      walkin("w2", NOW.getTime() + 60_000, 2),
+    ];
+    const POST = await loadPOST();
+    await POST(postReq({ doctorId: "doc_1", orderedIds: ["w2", "w1"] }));
+
+    const { shouldDeliverV1ToMiniApp } = await import(
+      "@/app/api/miniapp/events/route"
+    );
+    const w1Scope = { clinicId: "c1", patientIds: new Set(["p_w1"]) };
+    const delivered = state.publishes
+      .map((ev) => ({ ...ev, clinicId: "c1", at: NOW.toISOString() }))
+      .filter((ev) => shouldDeliverV1ToMiniApp(ev, w1Scope));
+
+    expect(delivered).toHaveLength(1);
+    expect((delivered[0].payload as { patientId: string }).patientId).toBe("p_w1");
   });
 });

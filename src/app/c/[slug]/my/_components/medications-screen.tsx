@@ -26,6 +26,7 @@ import {
   MButton,
   MCard,
   MEmpty,
+  MError,
   MSection,
 } from "./mini-ui";
 import { SkeletonList } from "./skeleton";
@@ -239,16 +240,28 @@ export function MedicationsScreen() {
         });
         tg.haptic.notification("success");
       } catch {
+        // Haptic-only failure feedback is invisible on a silenced phone, so
+        // patients kept believing a failed "принял" had registered.
         tg.haptic.notification("error");
+        tg.showAlert(t.medications.markFailed);
       } finally {
         setPendingId(null);
       }
     },
-    [mark, tg],
+    [mark, tg, t.medications.markFailed],
   );
 
   if (query.isLoading) return <SkeletonList rows={4} variant="card" />;
-  if (query.isError || !query.data) return <MEmpty>{t.common.error}</MEmpty>;
+  if (query.isError || !query.data) {
+    return (
+      <MError
+        title={t.common.loadFailed}
+        hint={t.common.loadFailedHint}
+        retryLabel={t.common.retry}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
 
   const data = query.data;
   const tz = data.timezone || "Asia/Tashkent";

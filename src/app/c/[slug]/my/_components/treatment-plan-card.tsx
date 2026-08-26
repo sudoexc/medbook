@@ -7,7 +7,7 @@ import { CheckCircle2, Stethoscope } from "lucide-react";
 import { useT, useLang } from "./mini-i18n";
 import { useTreatmentPlan } from "../_hooks/use-treatment-plan";
 import { useActiveContext } from "../_hooks/use-active-context";
-import { MCard, MSection, MSpinner } from "./mini-ui";
+import { MCard, MErrorInline, MSection, MSpinner } from "./mini-ui";
 
 /**
  * Treatment plan summary card on the Mini App home.
@@ -23,7 +23,9 @@ import { MCard, MSection, MSpinner } from "./mini-ui";
  *   - there's no active case AND no completed case (the user has no plan)
  *
  * Hidden, not errored, on 4xx — Mini App home should never show a red banner
- * just because no plan exists.
+ * just because no plan exists. A *transport* failure (no `status` on the
+ * error, or 5xx) is different: we genuinely don't know whether a plan exists,
+ * and silently vanishing made an in-progress course look abandoned.
  */
 export function TreatmentPlanCard({
   slug,
@@ -35,7 +37,8 @@ export function TreatmentPlanCard({
   const t = useT();
   const lang = useLang();
   const { onBehalfOf } = useActiveContext();
-  const { data, isLoading, isError } = useTreatmentPlan(onBehalfOf);
+  const { data, isLoading, isError, error, refetch } =
+    useTreatmentPlan(onBehalfOf);
 
   if (isLoading) {
     return (
@@ -45,7 +48,24 @@ export function TreatmentPlanCard({
     );
   }
 
-  if (isError || !data || !data.active) return null;
+  if (isError) {
+    // 4xx = "this patient has no plan" per the route contract → stay hidden.
+    // Anything else (network drop, 5xx) is unknown, so surface a retry.
+    const status = (error as (Error & { status?: number }) | null)?.status;
+    const isClientError = status != null && status >= 400 && status < 500;
+    if (isClientError) return null;
+    return (
+      <div className="mb-5">
+        <MErrorInline
+          text={t.common.loadFailedShort}
+          retryLabel={t.common.retry}
+          onRetry={() => void refetch()}
+        />
+      </div>
+    );
+  }
+
+  if (!data || !data.active) return null;
 
   const { active } = data;
   const { progress } = active;

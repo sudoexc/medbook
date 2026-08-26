@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ChevronUp,
   FileText,
+  FlaskConical,
   MapPin,
   Pill,
 } from "lucide-react";
@@ -44,7 +45,11 @@ import {
   useQueueStatus,
   type MiniAppQueueStatus,
 } from "../_hooks/use-queue-status";
-import { formatDateISO, formatTimeISO } from "./mini-ui";
+import { useLabs } from "../_hooks/use-labs";
+import { useMiniAppLiveStatus } from "../_hooks/use-miniapp-live-events";
+import { useMinuteClock } from "../_hooks/use-minute-clock";
+import { countUnseenLabs, readLabsSeenAt } from "../_lib/labs-unseen";
+import { formatDateISO, formatTimeISO, MErrorInline } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { TicketSheet } from "./ticket-sheet";
 import type { Dict } from "./mini-i18n";
@@ -99,13 +104,24 @@ const chipStyle: React.CSSProperties = {
   color: "var(--tg-text)",
 };
 
-function LiveDot({ color = GREEN }: { color?: string }) {
+/**
+ * Honest realtime indicator. It used to pulse unconditionally, so a patient
+ * staring at a queue position over a dead socket had every reason to believe
+ * it was current. Now it only pulses while the subscription is actually open;
+ * a dropped stream goes grey and static, and says so next to the caption.
+ */
+function LiveDot() {
+  const status = useMiniAppLiveStatus();
+  const connected = status === "live";
+  const color = connected ? GREEN : "var(--tg-hint)";
   return (
     <span className="relative flex h-2 w-2" aria-hidden>
-      <span
-        className="ma-ping absolute inline-flex h-full w-full rounded-full"
-        style={{ backgroundColor: color }}
-      />
+      {connected ? (
+        <span
+          className="ma-ping absolute inline-flex h-full w-full rounded-full"
+          style={{ backgroundColor: color }}
+        />
+      ) : null}
       <span
         className="relative inline-flex h-2 w-2 rounded-full"
         style={{ backgroundColor: color }}
@@ -125,15 +141,30 @@ function HeroCaption({
   live?: boolean;
   right?: React.ReactNode;
 }) {
+  const t = useT();
+  const status = useMiniAppLiveStatus();
+  // When the caption claims "live" but the stream is down, the label itself
+  // must admit it — a grey dot alone is too subtle for a number the patient
+  // is making decisions on.
+  const stale = live && status !== "live";
   return (
     <div className="flex items-center gap-2">
       {live ? <LiveDot /> : null}
       <span
         className="text-[11px] font-bold uppercase tracking-wider"
-        style={{ color }}
+        style={{ color: stale ? "var(--tg-hint)" : color }}
       >
         {label}
       </span>
+      {stale ? (
+        <span
+          className="text-[11px] font-semibold"
+          style={{ color: "var(--tg-hint)" }}
+        >
+          ·{" "}
+          {status === "connecting" ? t.common.connecting : t.common.offline}
+        </span>
+      ) : null}
       {right ? <span className="ml-auto">{right}</span> : null}
     </div>
   );
@@ -443,7 +474,13 @@ function MedsHero({
             { id: reminder.id, action: "TAKEN" },
             {
               onSuccess: () => tg.haptic.notification("success"),
-              onError: () => tg.haptic.notification("error"),
+              onError: () => {
+                // A buzz alone is indistinguishable from a successful tap on
+                // a silent phone — the patient walked away believing the dose
+                // was recorded. Say it out loud.
+                tg.haptic.notification("error");
+                tg.showAlert(t.medications.markFailed);
+              },
             },
           );
         }}
@@ -495,6 +532,58 @@ function ResultsHero({ slug, appt }: { slug: string; appt: MiniAppAppointment })
             }}
           >
             {t.documents.open}
+          </span>
+          <ChevronRight className="ml-auto h-4 w-4 shrink-0" />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/**
+ * Reviewed lab results the patient hasn't opened yet. Sits between "fresh
+ * conclusion" and "next visit": a doctor releasing a result is news the
+ * patient should act on, but it isn't as time-critical as today's queue.
+ */
+function LabsHero({ slug, count }: { slug: string; count: number }) {
+  const t = useT();
+  const tg = useTelegramWebApp();
+  return (
+    <Link
+      href={`/c/${slug}/my/labs`}
+      onClick={() => tg.haptic.selection()}
+      className="block"
+    >
+      <div
+        className="ma-fade-in rounded-3xl p-5 ma-press active:scale-[0.99]"
+        style={heroSurface(GREEN)}
+      >
+        <HeroCaption
+          label={t.home.hero.labsLabel}
+          color={GREEN}
+          right={<FlaskConical className="h-4 w-4" style={{ color: GREEN }} />}
+        />
+        <div className="mt-2.5 text-[26px] font-extrabold leading-tight tracking-tight">
+          {count > 1 ? t.home.hero.labsTitleMany : t.home.hero.labsTitleOne}
+        </div>
+        <div
+          className="mt-1 text-sm font-medium"
+          style={{ color: "var(--tg-hint)" }}
+        >
+          {t.home.hero.labsHint}
+        </div>
+        <div
+          className="mt-3.5 flex items-center gap-2 text-xs"
+          style={{ color: "var(--tg-hint)" }}
+        >
+          <span
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums"
+            style={{
+              backgroundColor: `color-mix(in oklch, ${GREEN} 14%, transparent)`,
+              color: GREEN,
+            }}
+          >
+            {count}
           </span>
           <ChevronRight className="ml-auto h-4 w-4 shrink-0" />
         </div>
@@ -592,8 +681,11 @@ export function HomeHero({
   const upcoming = useAppointments("upcoming", onBehalfOf);
   const past = useAppointments("past", onBehalfOf);
   const meds = useMedications(onBehalfOf);
-  // Frozen per mount — react-hooks/purity forbids Date.now() in render.
-  const [now] = React.useState(() => Date.now());
+  const labs = useLabs();
+  // Ticks every minute instead of freezing at mount: the Mini App webview is
+  // suspended, not unmounted, so a screen left open past midnight kept
+  // claiming a visit was «завтра» on the day it actually happened.
+  const now = useMinuteClock();
   const nowDate = React.useMemo(() => new Date(now), [now]);
   const [ticketOpen, setTicketOpen] = React.useState(false);
   const openTicket = React.useCallback(() => setTicketOpen(true), []);
@@ -649,6 +741,11 @@ export function HomeHero({
     ? ({ animationDelay: "40ms" } as React.CSSProperties)
     : undefined;
 
+  const unseenLabs = React.useMemo(
+    () => countUnseenLabs(labs.data, readLabsSeenAt(slug)),
+    [labs.data, slug],
+  );
+
   // Same-geometry skeleton — no layout jump when data lands (П7).
   if (upcoming.isLoading || (queueAppt !== null && queue.isLoading)) {
     return (
@@ -661,11 +758,27 @@ export function HomeHero({
     );
   }
 
+  // The appointments query is what every hero state below is derived from, so
+  // when it fails we know nothing — and "Всё спокойно" would be a lie that
+  // reads as "you have no visits". Say we couldn't check, and offer a retry.
+  if (upcoming.isError) {
+    return (
+      <div className={wrapperClass} style={wrapperStyle}>
+        <MErrorInline
+          text={t.common.loadFailedShort}
+          retryLabel={t.common.retry}
+          onRetry={() => void upcoming.refetch()}
+        />
+      </div>
+    );
+  }
+
   type Primary =
     | "queue"
     | "today"
     | "meds"
     | "results"
+    | "labs"
     | "soon"
     | "empty";
 
@@ -685,6 +798,9 @@ export function HomeHero({
   else if (queueAppt || todayAppt) primary = "today";
   else if (dueReminder) primary = "meds";
   else if (freshConclusion) primary = "results";
+  // Reviewed-but-unopened lab results outrank "your next visit is in 12 days":
+  // the result is actionable now, the far-off visit is not.
+  else if (unseenLabs > 0) primary = "labs";
   else if (nextUpcoming) primary = "soon";
   else primary = "empty";
 
@@ -709,6 +825,9 @@ export function HomeHero({
       break;
     case "results":
       hero = <ResultsHero slug={slug} appt={freshConclusion!} />;
+      break;
+    case "labs":
+      hero = <LabsHero slug={slug} count={unseenLabs} />;
       break;
     case "soon":
       hero = <AppointmentHero slug={slug} appt={nextUpcoming!} now={now} />;
@@ -762,6 +881,22 @@ export function HomeHero({
         icon={FileText}
         color={GREEN}
         text={t.home.hero.resultsTitle}
+      />
+    );
+  } else if (primary !== "labs" && unseenLabs > 0) {
+    // Last resort so a new lab result is never more than one tap away, even
+    // when the queue / today's visit owns the hero.
+    secondary = (
+      <SlimRow
+        href={`/c/${slug}/my/labs`}
+        icon={FlaskConical}
+        color={GREEN}
+        text={
+          unseenLabs > 1
+            ? t.home.hero.labsTitleMany
+            : t.home.hero.labsTitleOne
+        }
+        chip={String(unseenLabs)}
       />
     );
   }

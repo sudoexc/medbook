@@ -133,6 +133,59 @@ describe("shouldDeliverToMiniApp", () => {
       ),
     ).toBe(false);
   });
+
+  // Staff-only v2 envelopes are patient-SCOPED (they name the patient whose
+  // chart is open), so the patientId check alone used to wave them through
+  // onto the patient's device. The type allowlist is what stops them.
+  it("drops visit-note.draftSaved — doctor autosave, names edited fields", () => {
+    expect(
+      shouldDeliverToMiniApp(
+        makeEnvelope({
+          type: "visit-note.draftSaved" as EventEnvelope["type"],
+          payload: { patientId: "p_owner", changedFields: ["subjective"] },
+        }),
+        allowed,
+      ),
+    ).toBe(false);
+  });
+
+  it("drops notification.failed — carries the internal delivery error", () => {
+    expect(
+      shouldDeliverToMiniApp(
+        makeEnvelope({
+          type: "notification.failed" as EventEnvelope["type"],
+          payload: { patientId: "p_owner", error: "403 bot was blocked" },
+        }),
+        allowed,
+      ),
+    ).toBe(false);
+  });
+
+  it("still delivers the patient-facing v2 types the client acts on", () => {
+    for (const type of ["appointment.statusChanged", "queue.updated", "notification.sent"] as const) {
+      expect(
+        shouldDeliverToMiniApp(
+          makeEnvelope({ type: type as EventEnvelope["type"] }),
+          allowed,
+        ),
+        `${type} must stay deliverable`,
+      ).toBe(true);
+    }
+  });
+
+  it("the v2 gate is the same allowlist the client can act on", () => {
+    // Guard against the gate outgrowing the client: anything delivered must
+    // have a handler, or we're shipping bytes the mini-app throws away.
+    for (const type of MINIAPP_DELIVERABLE_TYPES) {
+      expect(
+        shouldDeliverToMiniApp(
+          makeEnvelope({ type: type as EventEnvelope["type"] }),
+          allowed,
+        ),
+        `${type} is in the allowlist but was dropped`,
+      ).toBe(true);
+    }
+  });
 });
 
 /**

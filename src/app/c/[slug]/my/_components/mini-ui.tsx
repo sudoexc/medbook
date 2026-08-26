@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { RefreshCw, WifiOff } from "lucide-react";
 
 import { formatMoney } from "@/lib/format";
 
@@ -252,6 +253,102 @@ export function MEmpty({
       ) : null}
       <div className="max-w-[260px]">{children}</div>
       {action ? <div className="mt-1">{action}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * Load-failure state. Distinct from `MEmpty` on purpose: an empty list says
+ * "you have nothing", a failed fetch says "we couldn't check". Showing the
+ * former for the latter made patients believe their appointments had
+ * vanished, so every screen that can fail must render this instead.
+ */
+export function MError({
+  title,
+  hint,
+  retryLabel,
+  onRetry,
+}: {
+  title: string;
+  hint?: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-3 rounded-2xl border px-4 py-8 text-center"
+      style={{
+        backgroundColor: "var(--tg-section-bg)",
+        color: "var(--tg-text)",
+        borderColor: "color-mix(in oklch, var(--ma-danger) 30%, transparent)",
+      }}
+    >
+      <WifiOff
+        className="h-10 w-10"
+        style={{ color: "var(--ma-danger)" }}
+        aria-hidden
+      />
+      <div className="max-w-[280px]">
+        <div className="text-sm font-semibold">{title}</div>
+        {hint ? (
+          <p
+            className="mt-1 text-xs leading-relaxed"
+            style={{ color: "var(--tg-hint)" }}
+          >
+            {hint}
+          </p>
+        ) : null}
+      </div>
+      <MButton variant="secondary" onClick={onRetry}>
+        <RefreshCw className="mr-1 inline h-4 w-4" aria-hidden />
+        {retryLabel}
+      </MButton>
+    </div>
+  );
+}
+
+/**
+ * Slim inline variant for cards that sit among other content (home hero,
+ * treatment plan) where a full-height error block would dominate the screen.
+ */
+export function MErrorInline({
+  text,
+  retryLabel,
+  onRetry,
+}: {
+  text: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex items-center gap-3 rounded-2xl border px-3.5 py-3"
+      style={{
+        backgroundColor: "var(--tg-section-bg)",
+        color: "var(--tg-text)",
+        borderColor: "color-mix(in oklch, var(--ma-danger) 30%, transparent)",
+      }}
+    >
+      <WifiOff
+        className="h-5 w-5 shrink-0"
+        style={{ color: "var(--ma-danger)" }}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 text-sm font-medium">{text}</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ma-press active:scale-[0.97]"
+        style={{
+          backgroundColor:
+            "color-mix(in oklch, var(--tg-accent) 12%, transparent)",
+          color: "var(--tg-accent)",
+        }}
+      >
+        {retryLabel}
+      </button>
     </div>
   );
 }

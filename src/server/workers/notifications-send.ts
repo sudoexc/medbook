@@ -80,7 +80,9 @@ async function deliver(job: DeliverJob): Promise<void> {
       where: { id: job.sendId },
       include: {
         patient: { select: { id: true, phone: true, telegramId: true } },
-        template: { select: { key: true, trigger: true } },
+        // `triggerConfig.offsetMin` tells us which cascade band this row is,
+        // which is what makes the stale-time guard below possible.
+        template: { select: { key: true, trigger: true, triggerConfig: true } },
       },
     }),
   );
@@ -105,7 +107,7 @@ async function deliver(job: DeliverJob): Promise<void> {
     const appt = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.appointment.findUnique({
         where: { id: send.appointmentId! },
-        select: { confirmedAt: true, status: true },
+        select: { confirmedAt: true, status: true, date: true },
       }),
     );
     if (
@@ -127,6 +129,39 @@ async function deliver(job: DeliverJob): Promise<void> {
         }),
       );
       return;
+    }
+
+    // Backstop against stale reminders. The cascade is materialised eagerly
+    // with the wall-clock time rendered into `body`, so a row that outlived a
+    // reschedule would tell the patient to come at an hour that no longer
+    // exists. The reschedule path cancels these rows up front; this is the
+    // safety net for anything that slips past it (a race with an in-flight
+    // dispatch, a direct DB edit, a legacy row predating the fix).
+    //
+    // A band's row is valid only if it still sits `offsetMin` before the
+    // CURRENT start. Rows whose template has no numeric offset are left alone
+    // — we can't infer an expected time for them, and refusing to send would
+    // be worse than sending.
+    const offsetMin = (send.template?.triggerConfig as { offsetMin?: unknown } | null)
+      ?.offsetMin;
+    if (appt && typeof offsetMin === "number") {
+      const expectedAt = appt.date.getTime() + offsetMin * 60_000;
+      // One minute of slack: `scheduledFor` is stored to the millisecond but
+      // the scheduler ticks on a 60s cadence, so exact equality would flag
+      // healthy rows.
+      const driftMs = Math.abs(expectedAt - send.scheduledFor.getTime());
+      if (driftMs > 60_000) {
+        await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.notificationSend.updateMany({
+            where: { id: send.id, status: "QUEUED" },
+            data: {
+              status: "CANCELLED",
+              failedReason: "appointment time changed after reminder was queued",
+            },
+          }),
+        );
+        return;
+      }
     }
   }
 

@@ -6,6 +6,7 @@ import type { Appointment } from "@/generated/prisma/client";
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, notFound, conflict, err } from "@/server/http";
 import { QueueStatusUpdateSchema } from "@/server/schemas/appointment";
 import { publishEventSafe } from "@/server/realtime/publish";
@@ -24,6 +25,7 @@ import { findOtherActiveVisit } from "@/server/appointments/active-visit";
 import { runQueueTx } from "@/server/appointments/queue-order";
 import { applyWaitingIntake } from "@/server/appointments/intake";
 import { initials } from "@/lib/format";
+import { sendCallNotice } from "@/server/telegram/call-notice";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -157,15 +159,46 @@ export const PATCH = createApiHandler(
 
     // The IN_PROGRESS flip decorates `queue.called` with two display fields —
     // ride them on the update instead of a follow-up read (they're stripped
-    // from the response below to keep its shape flat).
+    // from the response below to keep its shape flat). `telegramId` /
+    // `preferredLang` / `nameRu` / `clinic` come along for the "Вас вызывают"
+    // push, so the call path costs no extra round-trip.
     const callInclude = {
-      patient: { select: { fullName: true } },
-      doctor: { select: { cabinet: { select: { number: true } } } },
+      patient: {
+        select: {
+          fullName: true,
+          telegramId: true,
+          preferredLang: true,
+        },
+      },
+      doctor: {
+        select: {
+          nameRu: true,
+          cabinet: { select: { number: true } },
+        },
+      },
+      clinic: {
+        select: {
+          id: true,
+          slug: true,
+          tgBotToken: true,
+          tgBotUsername: true,
+        },
+      },
     } as const;
 
     let after: Appointment & {
-      patient?: { fullName: string };
-      doctor?: { cabinet: { number: string } | null };
+      patient?: {
+        fullName: string;
+        telegramId: string | null;
+        preferredLang: "RU" | "UZ";
+      };
+      doctor?: { nameRu: string; cabinet: { number: string } | null };
+      clinic?: {
+        id: string;
+        slug: string;
+        tgBotToken: string | null;
+        tgBotUsername: string | null;
+      };
     };
     if (body.queueStatus === "WAITING") {
       // Reception "Пришёл" — shared intake (see `applyWaitingIntake`): claim
@@ -190,11 +223,18 @@ export const PATCH = createApiHandler(
     const tenant = getTenant();
     const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
     if (clinicId) {
+      // `patientId` is what the mini-app SSE filter matches against
+      // (`shouldDeliverV1ToMiniApp`): a v1 payload without it is dropped
+      // silently, so before this the patient never learned they were called
+      // from reception. Always the id off the *updated row* — never the
+      // caller's context — so an event about patient A can't reach patient B.
+      const patientId = after.patientId;
       publishEventSafe(clinicId, {
         type: "queue.updated",
         payload: {
           appointmentId: id,
           doctorId: after.doctorId,
+          patientId,
           queueStatus: after.queueStatus,
           previousStatus: before.queueStatus,
         },
@@ -204,6 +244,7 @@ export const PATCH = createApiHandler(
         payload: {
           appointmentId: id,
           doctorId: after.doctorId,
+          patientId,
           status: after.status,
           previousStatus: before.status,
         },
@@ -214,6 +255,7 @@ export const PATCH = createApiHandler(
           payload: {
             appointmentId: id,
             doctorId: after.doctorId,
+            patientId,
             status: after.status,
             date: after.date.toISOString(),
             endDate: after.endDate.toISOString(),
@@ -230,6 +272,10 @@ export const PATCH = createApiHandler(
         body.queueStatus === "IN_PROGRESS" &&
         before.queueStatus !== "IN_PROGRESS"
       ) {
+        // Deliberately no `patientId` here: `queue.called` feeds the public
+        // waiting-room TV, which is why the name is reduced to initials. It is
+        // not in `MINIAPP_DELIVERABLE_TYPES` — the patient's own notice rides
+        // `queue.updated` + the Telegram push below.
         publishEventSafe(clinicId, {
           type: "queue.called",
           payload: {
@@ -248,8 +294,39 @@ export const PATCH = createApiHandler(
         });
       }
     }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-omit of the joined display fields
-    const { patient, doctor, ...flat } = after;
+
+    // Same "📢 Вас вызывают" push the doctor cabinet sends — reception
+    // summoning a patient is the identical event from the patient's side, and
+    // a person standing in the corridor with the app closed has no other way
+    // to learn about it. Awaited (not fire-and-forget) so `notificationSent`
+    // in the audit trail reflects reality; `sendCallNotice` swallows its own
+    // errors so a Telegram outage can't fail a committed lifecycle write.
+    if (
+      body.queueStatus === "IN_PROGRESS" &&
+      before.queueStatus !== "IN_PROGRESS" &&
+      after.clinic
+    ) {
+      const notificationSent = await sendCallNotice({
+        clinic: after.clinic,
+        telegramId: after.patient?.telegramId,
+        cabinetNumber: after.doctor?.cabinet?.number ?? null,
+        doctorName: after.doctor?.nameRu ?? null,
+        lang: after.patient?.preferredLang ?? null,
+        logTag: "appointments/queue-status",
+      });
+      await audit(request, {
+        action: AUDIT_ACTION.APPOINTMENT_CALLED,
+        entityType: "Appointment",
+        entityId: id,
+        meta: {
+          previousStatus: before.queueStatus,
+          startedVisit: true,
+          notificationSent,
+        },
+      });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-omit of the joined display fields (clinic carries the bot token — must never reach the wire)
+    const { patient, doctor, clinic, ...flat } = after;
     return ok(flat);
   }
 );

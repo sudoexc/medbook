@@ -99,7 +99,10 @@ export default async function MiniAppLayout(
     // a DB hiccup.
   }
   return (
-    <QueryProvider>
+    // refetchOnFocus: Telegram freezes the webview whenever the patient
+    // switches chats, so coming back must re-read the server instead of
+    // painting whatever was cached before the freeze.
+    <QueryProvider refetchOnFocus>
       {brandStyle ? (
         <style dangerouslySetInnerHTML={{ __html: brandStyle }} />
       ) : null}

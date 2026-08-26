@@ -16,6 +16,13 @@ export const ruDict = {
     min: "мин",
     today: "Сегодня",
     tomorrow: "Завтра",
+    loadFailed: "Не удалось загрузить",
+    loadFailedHint:
+      "Проверьте подключение к интернету и попробуйте ещё раз. Ваши данные никуда не пропали.",
+    loadFailedShort: "Данные не загрузились",
+    offline: "Нет связи",
+    connecting: "Подключаемся…",
+    live: "Онлайн",
   },
   home: {
     greetingMorning: "Доброе утро, {name}",
@@ -52,6 +59,10 @@ export const ruDict = {
       emptyTitle: "Всё спокойно",
       emptyHint:
         "Записей на ближайшие дни нет. Если что-то беспокоит — мы рядом.",
+      labsLabel: "Анализы",
+      labsTitleOne: "Готов новый результат",
+      labsTitleMany: "Готовы новые результаты",
+      labsHint: "Врач проверил — можно посмотреть",
       swipeHint: "Свайпните вверх — ваш талон",
       checkinCta: "Я на месте",
       checkinDone: "Вы отметились — вас встретят",
@@ -64,6 +75,7 @@ export const ruDict = {
       labs: "Анализы",
       labsLast: "последний — {date}",
       labsNone: "результатов пока нет",
+      labsUnseen: "новых: {n}",
       docs: "Документы",
       docsHint: "справки и заключения",
     },
@@ -382,6 +394,7 @@ export const ruDict = {
       skipped: "Пропустил",
       snooze: "+30 мин",
     },
+    markFailed: "Не удалось отметить. Попробуйте ещё раз.",
   },
   labs: {
     title: "Анализы",

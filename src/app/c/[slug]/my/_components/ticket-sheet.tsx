@@ -17,6 +17,7 @@ import { capitalize } from "./home-hero";
 import { useT, useLang } from "./mini-i18n";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useQueueStatus } from "../_hooks/use-queue-status";
+import { useMiniAppLiveStatus } from "../_hooks/use-miniapp-live-events";
 import { type MiniAppAppointment } from "../_hooks/use-appointments";
 import { formatTimeISO } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
@@ -34,16 +35,26 @@ function ruPlural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
+/**
+ * Only pulses while the SSE subscription is genuinely open — see the twin in
+ * `home-hero.tsx`. The queue position on this ticket is the single number the
+ * patient trusts to decide whether to leave the waiting room, so an animated
+ * dot over a dead socket is worse than no dot at all.
+ */
 function LiveDot({ color = GREEN }: { color?: string }) {
+  const connected = useMiniAppLiveStatus() === "live";
+  const dotColor = connected ? color : "var(--tg-hint)";
   return (
     <span className="relative flex h-2 w-2" aria-hidden>
-      <span
-        className="ma-ping absolute inline-flex h-full w-full rounded-full"
-        style={{ backgroundColor: color }}
-      />
+      {connected ? (
+        <span
+          className="ma-ping absolute inline-flex h-full w-full rounded-full"
+          style={{ backgroundColor: dotColor }}
+        />
+      ) : null}
       <span
         className="relative inline-flex h-2 w-2 rounded-full"
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: dotColor }}
       />
     </span>
   );

@@ -19,6 +19,8 @@ import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { allocateDocumentNumber } from "@/server/services/document-number";
+import { composePatientHandout } from "@/lib/catalogs/handout-composer";
+import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -48,6 +50,14 @@ export const POST = createApiHandler(
             cabinetId: true,
           },
         },
+        // Everything the handout composer needs, in case we have to build the
+        // patient copy ourselves below.
+        patient: { select: { fullName: true } },
+        doctor: {
+          select: { nameRu: true, specializationRu: true },
+        },
+        clinic: { select: { nameRu: true } },
+        visitPrescriptions: true,
       },
     });
     if (!note) return notFound();
@@ -69,6 +79,36 @@ export const POST = createApiHandler(
       return err("DIAGNOSIS_REQUIRED", 400);
     }
 
+    // The patient's PDF is rendered from `patientHandoutMarkdown` alone — the
+    // clinical body deliberately never reaches them. So a doctor who signs a
+    // conclusion without filling the «Памятка пациенту» tab silently sends the
+    // patient nothing: the app shows no document and nobody is told why.
+    // Observed in production — every finalized note of one patient had an
+    // empty handout. Compose it here from the structured fields the doctor did
+    // fill (diagnosis, prescriptions, advice, follow-up); the composer returns
+    // an empty string when there is genuinely nothing to say, and then we
+    // leave it alone rather than issue a blank sheet.
+    const composedHandout = note.patientHandoutMarkdown?.trim()
+      ? null
+      : composePatientHandout({
+          locale: "ru",
+          patientName: note.patient?.fullName ?? null,
+          doctorName: note.doctor?.nameRu ?? null,
+          doctorSpecialty: note.doctor?.specializationRu ?? null,
+          clinicName: note.clinic?.nameRu ?? null,
+          visitDate: note.appointment?.date ?? new Date(),
+          diagnosisName: note.diagnosisName,
+          complaints: note.complaints,
+          prescriptions: [
+            ...formatPrescriptionLines(note.visitPrescriptions ?? [], "ru", {
+              withInstruction: true,
+            }),
+            ...note.prescriptions,
+          ],
+          advice: note.advice,
+          followUp: note.followUpNote,
+        }) || null;
+
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
     const actorLabel = actorUserId ? `user:${actorUserId}` : "user:anonymous";
@@ -83,7 +123,14 @@ export const POST = createApiHandler(
         (await allocateDocumentNumber(note.clinicId, "CONCLUSION", tx, now));
       const updatedNote = await tx.visitNote.update({
         where: { id },
-        data: { status: "FINALIZED", finalizedAt: now, documentNumber },
+        data: {
+          status: "FINALIZED",
+          finalizedAt: now,
+          documentNumber,
+          ...(composedHandout
+            ? { patientHandoutMarkdown: composedHandout }
+            : {}),
+        },
       });
 
       let updatedAppt = note.appointment;

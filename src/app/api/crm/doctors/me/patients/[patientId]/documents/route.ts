@@ -6,11 +6,17 @@
  * least one appointment with this patient. Without that, every patient row
  * in the clinic would be reachable just by guessing IDs.
  *
- * Scope of "visible to me": any `Document` whose patientId matches AND
- * EITHER its `appointmentId` points to one of my appointments, OR the
- * `appointmentId` is null (unbound clinic-wide doc, e.g. referral letter
- * scanned into the patient's file). We don't try to show another doctor's
- * appointment-bound docs — that's their case.
+ * Scope of "visible to me": every `Document` belonging to the patient,
+ * whichever colleague's appointment it came from.
+ *
+ * This used to hide documents bound to another doctor's appointment, and in
+ * practice that read as a bug: a neurologist opening a patient's chart saw
+ * "Документов пока нет" while a referral letter and receipts sat right there,
+ * filed by the therapist who sent the patient over. The referral from a
+ * colleague is exactly the thing the next doctor needs. A patient's documents
+ * are one chart, not one per doctor — the anti-leak guard below (caller must
+ * have an appointment with this patient) is what keeps other clinics' and
+ * strangers' files out, and it still applies.
  */
 import { z } from "zod";
 
@@ -85,13 +91,7 @@ export const GET = createApiListHandler(
 
     const take = q.limit + 1;
     const rows = await prisma.document.findMany({
-      where: {
-        patientId,
-        OR: [
-          { appointment: { doctorId: doctor.id } },
-          { appointmentId: null },
-        ],
-      },
+      where: { patientId },
       select: {
         id: true,
         title: true,

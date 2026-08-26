@@ -133,7 +133,9 @@ export function LastVisitCard({ patientId }: { patientId: string }) {
 
       {last.visitNoteId ? (
         <Link
-          href={`/${locale}/doctor/visits/${patientId}/${last.id}`}
+          // Detail route resolves this as a VisitNote id — the appointment id
+          // (`last.id`) 404s.
+          href={`/${locale}/doctor/visits/${patientId}/${last.visitNoteId}`}
           className="motion-press mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-background py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
         >
           {t("lastVisit.openLast")}

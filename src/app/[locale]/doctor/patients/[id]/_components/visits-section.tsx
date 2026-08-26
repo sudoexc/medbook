@@ -91,9 +91,16 @@ export function VisitsSection({
       <ul className="divide-y divide-border">
         {rows.map((v) => (
           <li key={v.id}>
-            <Link
-              href={`/${locale}/doctor/visits/${patientId}/${v.id}`}
-              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted"
+            {/* The detail page looks the segment up as a VisitNote id, so it
+                must be `visitNoteId` — passing the appointment id (`v.id`)
+                404s. A visit without a conclusion has nothing to open, so it
+                renders as a plain row instead of a link that leads nowhere. */}
+            <VisitRow
+              href={
+                v.visitNoteId
+                  ? `/${locale}/doctor/visits/${patientId}/${v.visitNoteId}`
+                  : null
+              }
             >
               <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <FileTextIcon className="size-4" />
@@ -117,8 +124,10 @@ export function VisitsSection({
                   {v.serviceName ? ` · ${v.serviceName}` : ""}
                 </div>
               </div>
-              <ChevronRightIcon className="size-4 text-muted-foreground" />
-            </Link>
+              {v.visitNoteId ? (
+                <ChevronRightIcon className="size-4 text-muted-foreground" />
+              ) : null}
+            </VisitRow>
           </li>
         ))}
       </ul>
@@ -130,5 +139,24 @@ export function VisitsSection({
         </div>
       )}
     </section>
+  );
+}
+
+/** A visit row: a link when there's a conclusion to open, plain text when not. */
+function VisitRow({
+  href,
+  children,
+}: {
+  href: string | null;
+  children: React.ReactNode;
+}) {
+  const className = "flex items-center gap-3 px-4 py-3";
+  if (!href) {
+    return <div className={className}>{children}</div>;
+  }
+  return (
+    <Link href={href} className={`${className} transition-colors hover:bg-muted`}>
+      {children}
+    </Link>
   );
 }

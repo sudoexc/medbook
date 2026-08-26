@@ -318,6 +318,12 @@ function TableCard({
         <ul className="divide-y divide-border">
           {rows.map((v) => {
             const treatments = [...v.prescriptions, ...v.advice].slice(0, 4);
+            // The detail route resolves this segment as a VisitNote id, so the
+            // appointment id (`v.id`) 404s. Null when the visit was never
+            // written up — there is no conclusion page to open.
+            const noteHref = v.visitNoteId
+              ? `/${locale}/doctor/visits/${patientId}/${v.visitNoteId}`
+              : null;
             return (
               <li
                 key={v.id}
@@ -387,9 +393,9 @@ function TableCard({
                 </ul>
 
                 <div>
-                  {v.hasVisitNote ? (
+                  {noteHref ? (
                     <Link
-                      href={`/${locale}/doctor/visits/${patientId}/${v.id}`}
+                      href={noteHref}
                       className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs transition-colors hover:bg-muted"
                     >
                       <FileTextIcon className="size-4 text-info" />
@@ -419,12 +425,14 @@ function TableCard({
                 </div>
 
                 <div className="flex items-center justify-end gap-1.5">
-                  <Link
-                    href={`/${locale}/doctor/visits/${patientId}/${v.id}`}
-                    className="motion-press inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-                  >
-                    {t("actions.open")}
-                  </Link>
+                  {noteHref ? (
+                    <Link
+                      href={noteHref}
+                      className="motion-press inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                      {t("actions.open")}
+                    </Link>
+                  ) : null}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -437,11 +445,10 @@ function TableCard({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                       <DropdownMenuItem
-                        onClick={() =>
-                          router.push(
-                            `/${locale}/doctor/visits/${patientId}/${v.id}`,
-                          )
-                        }
+                        disabled={!noteHref}
+                        onClick={() => {
+                          if (noteHref) router.push(noteHref);
+                        }}
                       >
                         <ExternalLinkIcon className="mr-2 size-3.5" />
                         {t("menu.openVisit")}

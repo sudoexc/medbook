@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
 import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
+import { didPrescriptionsChange } from "@/server/visit-notes/prescription-diff";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
@@ -119,7 +120,34 @@ export const PATCH = createApiHandler(
 
     const changedFields = Object.keys(data);
     const rxRows = body.visitPrescriptions;
-    if (rxRows !== undefined) changedFields.push("visitPrescriptions");
+
+    // Did the prescription list ACTUALLY change, or did the editor just resend
+    // the current one? The constructor saves replace-all on every interaction
+    // (including no-op ones like collapsing a row), so `rxRows !== undefined`
+    // alone is far too coarse a trigger for the medication-bridge rebuild
+    // below. Compare against the stored rows on the fields that reach the
+    // patient — anything that alters WHAT they take, HOW MUCH, WHEN, FOR HOW
+    // LONG, or WHETHER they are reminded at all.
+    let rxChanged = false;
+    if (rxRows !== undefined) {
+      const beforeRows = await prisma.visitPrescription.findMany({
+        where: { visitNoteId: id },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          displayName: true,
+          strength: true,
+          dose: true,
+          timesOfDay: true,
+          mealRelation: true,
+          durationDays: true,
+          instructionRu: true,
+          instructionUz: true,
+          remindPatient: true,
+        },
+      });
+      rxChanged = didPrescriptionsChange(beforeRows, rxRows);
+      if (rxChanged) changedFields.push("visitPrescriptions");
+    }
 
     // A finalized note already has its CONCLUSION PDF rendered (the patient
     // sees it in the Mini App and via the QR link), so an accepted in-window
@@ -130,6 +158,25 @@ export const PATCH = createApiHandler(
     // field and must not appear in the audit/event field list.
     if (before.status === "FINALIZED" && changedFields.length > 0) {
       data.handoutStaleAt = new Date();
+    }
+
+    // ── The clinical half of the same problem ────────────────────────────
+    // The PDF is not the only artefact a finalized note feeds: `remindPatient`
+    // rows are mirrored into `Prescription` courses that drive the patient's
+    // medication reminders in the Mini App. That mirror ran exactly once,
+    // gated on `medicationsBridgedAt IS NULL`, so a dosage corrected inside
+    // the 24h window re-rendered the PDF but left the patient being reminded
+    // on the WITHDRAWN schedule — they would keep taking a regimen the doctor
+    // had already cancelled.
+    //
+    // Clearing the anchor puts the note back into the bridge sweep, which is
+    // now reconciling rather than create-only (see `bridgeNote`): it updates
+    // surviving courses in place and cancels the ones the doctor removed.
+    // Deliberately gated on `rxChanged` — a typo fix in the conclusion text
+    // must not disturb courses the patient is already following, and must not
+    // re-emit `prescription.created` notifications.
+    if (before.status === "FINALIZED" && rxChanged) {
+      data.medicationsBridgedAt = null;
     }
 
     const correlationId = newCorrelationId();

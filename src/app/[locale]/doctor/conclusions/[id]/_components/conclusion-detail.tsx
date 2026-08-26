@@ -22,7 +22,16 @@ import {
   isVersionConflict,
   usePatchVisitNote,
   useVisitNote,
+  type VisitNotePatch,
+  type VisitPrescriptionDraft,
 } from "../../../reception/_hooks/use-visit-note";
+// Same controls the doctor used during the visit — reused, not re-implemented,
+// so an in-window correction can never diverge from the original entry UI.
+import {
+  DiagnosisCard,
+  FollowUpCard,
+} from "../../../_components/diagnosis-follow-up-cards";
+import { PrescriptionConstructor } from "../../../reception/_components/prescription-constructor";
 import { AmendmentsSection } from "./amendments-section";
 
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -129,6 +138,32 @@ export function ConclusionDetail({
   const onCancel = () => {
     setDraft(note.bodyMarkdown ?? "");
     setEditing(false);
+  };
+
+  /**
+   * Save path for the structured cards (diagnosis / prescriptions / control
+   * visit). Unlike the conclusion text — which has an explicit «Сохранить» —
+   * these cards commit on interaction, exactly as they do during the visit.
+   *
+   * A silent failure here is the worst case in this whole screen: the doctor
+   * corrects a dosage, sees the control move, walks away, and the patient
+   * keeps the old regimen. So every rejection is surfaced and the card is
+   * snapped back to server truth by refetching.
+   */
+  const applyStructuredPatch = (p: VisitNotePatch) => {
+    if (!canEdit) return;
+    patch.mutate(p, {
+      onError: (e) => {
+        toast.error(
+          isVersionConflict(e)
+            ? tr("detail.saveErrorConflict")
+            : isEditWindowExpired(e)
+              ? tr("detail.saveErrorLocked")
+              : tr("detail.saveErrorGeneric"),
+        );
+        void noteQuery.refetch();
+      },
+    });
   };
 
   return (
@@ -258,11 +293,86 @@ export function ConclusionDetail({
         </section>
 
         <aside className="flex flex-col gap-4">
+          {/* Clinical corrections. While the 24h window is open these are the
+              live constructors from the visit screen — a dosage error must be
+              fixable in the same control that created it, not only as free
+              text. After the window they render disabled (read-only) and the
+              amendment flow in the header takes over. */}
+          <section className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-foreground">
+                {tr("detail.clinicalHeading")}
+              </h3>
+              {canEdit ? (
+                patch.isPending && (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2Icon className="size-3 animate-spin" />
+                    {tr("detail.saving")}
+                  </span>
+                )
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <LockIcon className="size-3" />
+                  {tr("detail.readOnly")}
+                </span>
+              )}
+            </div>
+            {canEdit && (
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {tr("detail.clinicalHint")}
+              </p>
+            )}
+
+            <PrescriptionConstructor
+              note={note}
+              disabled={!canEdit}
+              // Presets and the catalog drawer belong to the live visit flow;
+              // a correction is a targeted fix, not a fresh prescribing
+              // session, so the surface stays deliberately narrower here.
+              presets={[]}
+              onSaveRows={(rows: VisitPrescriptionDraft[]) =>
+                applyStructuredPatch({ visitPrescriptions: rows })
+              }
+              onPresetClick={() => {}}
+              onRemoveLegacyChip={(chip: string) =>
+                applyStructuredPatch({
+                  prescriptions: (note.prescriptions ?? []).filter(
+                    (c) => c !== chip,
+                  ),
+                })
+              }
+              onOpenCatalog={() => {}}
+            />
+            <DiagnosisCard
+              note={note}
+              disabled={!canEdit}
+              onChange={(code, name) =>
+                applyStructuredPatch({
+                  diagnosisCode: code,
+                  diagnosisName: name,
+                })
+              }
+              // Applying a whole protocol is a visit-time action (it rewrites
+              // prescriptions and appends template text) — out of scope for a
+              // correction, so the affordance is simply not offered.
+              onRequestApplyProtocol={() => {}}
+            />
+            {(canEdit || note.followUpDays != null) && (
+              <FollowUpCard
+                note={note}
+                disabled={!canEdit}
+                onChange={applyStructuredPatch}
+              />
+            )}
+          </section>
+
           <DetailCard title={tr("detail.structuredFields")}>
             <ChipGroup label={tr("detail.complaints")} items={note.complaints} />
             <ChipGroup label={tr("detail.anamnesis")} items={note.anamnesis} />
             <ChipGroup label={tr("detail.examination")} items={note.examination} />
-            <ChipGroup label={tr("detail.prescriptions")} items={note.prescriptions} />
+            {/* Legacy free-text prescriptions are rendered (and removable) by
+                the constructor above — showing them twice would suggest two
+                separate lists. */}
             <ChipGroup label={tr("detail.advice")} items={note.advice} />
           </DetailCard>
 

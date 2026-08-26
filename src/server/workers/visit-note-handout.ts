@@ -392,6 +392,13 @@ export async function runVisitNoteHandoutTick(
 // Row idempotency is the `@@unique([visitNoteId, visitNoteSortOrder])` upsert;
 // the follow-up Action dedupes on `visitNoteId`; so a partial failure simply
 // re-runs to convergence on the next tick.
+//
+// The sweep is a RECONCILER, not a one-shot: PATCH clears
+// `medicationsBridgedAt` whenever an in-window correction actually changed the
+// prescriptions, which puts the note back here. Each pass makes the patient's
+// live courses match the note exactly — surviving rows are updated in place,
+// withdrawn ones are CANCELLED (never deleted: that would cascade away the
+// patient's reminder-response history).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Clinic-overridable slot → clock mapping (TZ Ф6 defaults). */
@@ -493,6 +500,12 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
 
   const correlationId = newCorrelationId();
   await prisma.$transaction(async (tx) => {
+    // Rows the doctor kept, by their bridge key. Anything already bridged for
+    // this note and NOT in this set was deleted (or had its reminder switched
+    // off) during an in-window correction, and must stop reminding — see the
+    // cancellation pass after the upserts.
+    const keptSortOrders = new Set(rows.map((vp) => vp.sortOrder));
+
     for (const vp of rows) {
       const schedule = buildBridgeSchedule(vp, slotTimes, startsAt);
       const dosage = vp.strength ? `${vp.dose} (${vp.strength})` : vp.dose;
@@ -514,10 +527,11 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
           visitNoteSortOrder: vp.sortOrder,
         },
       };
-      const existing = await tx.prescription.findUnique({
+      const existingRow = await tx.prescription.findUnique({
         where,
-        select: { id: true },
+        select: { id: true, status: true },
       });
+      const existing = existingRow;
       const row = await tx.prescription.upsert({
         where,
         create: {
@@ -540,6 +554,14 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
           schedule,
           notes,
           remindersEnabled,
+          // Re-activate on re-bridge: a course cancelled by an earlier
+          // correction and then restored by the doctor must come back to the
+          // patient's dashboard instead of staying invisibly CANCELLED.
+          // COMPLETED/PAUSED are the patient's or reception's business and are
+          // left alone — only our own cancellation is reversed.
+          ...(existingRow?.status === "CANCELLED"
+            ? { status: "ACTIVE" }
+            : {}),
         },
       });
 
@@ -576,6 +598,33 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
         await publishViaOutbox(tx, envelope);
       }
     }
+
+    // ── Withdrawal pass ──────────────────────────────────────────────────
+    // Courses previously bridged from this note that the doctor has since
+    // deleted, or whose «напоминать» flag they switched off. Leaving them
+    // ACTIVE is the dangerous outcome: the patient would keep being reminded
+    // to take a drug that is no longer prescribed.
+    //
+    // CANCELLED, never deleted. Two reasons, both load-bearing:
+    //   1. `MedicationReminderSend` cascades on Prescription delete — deleting
+    //      would erase the patient's own «принял / пропустил» answers, which
+    //      are clinical history and not ours to rewrite.
+    //   2. The Mini App lists only ACTIVE/PAUSED, so CANCELLED disappears from
+    //      the patient's dashboard exactly as intended, and the reminder
+    //      worker (status: "ACTIVE") stops scheduling new ticks.
+    // Already-sent reminders are therefore untouched: they stay as the record
+    // of what the patient was actually told at the time.
+    const staleWhere = {
+      visitNoteId: note.id,
+      status: { in: ["ACTIVE", "PAUSED"] },
+      ...(keptSortOrders.size > 0
+        ? { visitNoteSortOrder: { notIn: Array.from(keptSortOrders) } }
+        : {}),
+    };
+    await tx.prescription.updateMany({
+      where: staleWhere as never,
+      data: { status: "CANCELLED", remindersEnabled: false },
+    });
   });
 
   // Follow-up reception task — idempotent via the Action dedupeKey, so it
@@ -622,6 +671,9 @@ export async function runMedicationBridgeTick(
     const notes = (await prisma.visitNote.findMany({
       where: {
         status: "FINALIZED",
+        // Safe to keep the backfill bound on the re-bridge path too: the only
+        // way `medicationsBridgedAt` goes back to null is an in-window PATCH,
+        // and that window is 24h — orders of magnitude inside this 14d bound.
         finalizedAt: { gte: since },
         medicationsBridgedAt: null,
         patient: { deletedAt: null },

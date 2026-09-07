@@ -18,6 +18,7 @@ import { fireTrigger } from "@/server/notifications/triggers";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { completionFields } from "@/server/appointments/completion";
 import { allocateDocumentNumber } from "@/server/services/document-number";
 import { composePatientHandout } from "@/lib/catalogs/handout-composer";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
@@ -138,21 +139,15 @@ export const POST = createApiHandler(
       if (note.appointment.status !== "COMPLETED") {
         // Mirror /api/crm/appointments/[id] PATCH: shrink endDate when the
         // doctor closes the visit ahead of schedule so the freed tail is
-        // re-bookable. Minimum 5 min.
-        const minEnd = new Date(note.appointment.date.getTime() + 5 * 60_000);
-        const newEnd = now < minEnd ? minEnd : now < note.appointment.endDate ? now : note.appointment.endDate;
-        const durationMin = Math.max(
-          5,
-          Math.round((newEnd.getTime() - note.appointment.date.getTime()) / 60_000),
-        );
+        // re-bookable. Both status columns move together — see
+        // `completionFields`.
         updatedAppt = await tx.appointment.update({
           where: { id: note.appointment.id },
-          data: {
-            status: "COMPLETED",
-            completedAt: now,
-            endDate: newEnd,
-            durationMin,
-          },
+          data: completionFields({
+            now,
+            date: note.appointment.date,
+            endDate: note.appointment.endDate,
+          }),
           select: {
             id: true,
             status: true,

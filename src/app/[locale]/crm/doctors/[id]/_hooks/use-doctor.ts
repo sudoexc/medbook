@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 /**
@@ -120,6 +120,7 @@ export function useDoctor(id: string) {
 export function usePatchDoctor(id: string) {
   const qc = useQueryClient();
   const t = useTranslations("crmToasts.doctor");
+  const locale = useLocale();
   return useMutation<DoctorDetail, Error, DoctorUpdateInput, { prev?: DoctorDetail }>({
     mutationFn: async (patch) => {
       const res = await fetch(`/api/crm/doctors/${id}`, {
@@ -131,7 +132,21 @@ export function usePatchDoctor(id: string) {
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as {
           error?: string;
+          reason?: string;
+          orphanedServices?: { nameRu: string; nameUz: string }[];
         } | null;
+        // Deactivation refused because these services would lose their last
+        // provider. Surfacing the raw "ServiceOrphaned" string here is why
+        // the button felt like it silently did nothing — name the services.
+        if (j?.reason === "service_orphaned") {
+          const names = (j.orphanedServices ?? [])
+            .map((s) => (locale === "uz" ? s.nameUz : s.nameRu))
+            .filter(Boolean)
+            .join(", ");
+          throw new Error(
+            names ? t("orphanedServices", { services: names }) : t("orphaned"),
+          );
+        }
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       return (await res.json()) as DoctorDetail;

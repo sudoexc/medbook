@@ -7,7 +7,10 @@ import {
   DoorOpenIcon,
   StarIcon,
   StethoscopeIcon,
+  UserCheckIcon,
+  UserMinusIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -15,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-current-role";
 
-import type { DoctorDetail } from "../_hooks/use-doctor";
+import { usePatchDoctor, type DoctorDetail } from "../_hooks/use-doctor";
 import { CabinetPickerDialog } from "./cabinet-picker-dialog";
 
 function parseRating(r: DoctorDetail["rating"]): number | null {
@@ -43,6 +46,7 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
         null
       : null;
   const [cabinetOpen, setCabinetOpen] = React.useState(false);
+  const patch = usePatchDoctor(doctor.id);
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
@@ -119,14 +123,49 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
             {t("newAppointment")}
           </Button>
           {role === "ADMIN" || role === "SUPER_ADMIN" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCabinetOpen(true)}
-            >
-              <DoorOpenIcon className="size-4" />
-              {t("profile.cabinetChange")}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCabinetOpen(true)}
+              >
+                <DoorOpenIcon className="size-4" />
+                {t("profile.cabinetChange")}
+              </Button>
+              <Button
+                variant={doctor.isActive ? "outline" : "default"}
+                size="sm"
+                disabled={patch.isPending}
+                onClick={() => {
+                  if (
+                    doctor.isActive &&
+                    !window.confirm(t("profile.deactivateConfirm"))
+                  ) {
+                    return;
+                  }
+                  patch.mutate(
+                    { isActive: !doctor.isActive },
+                    {
+                      onSuccess: () =>
+                        toast.success(
+                          doctor.isActive
+                            ? t("profile.deactivated")
+                            : t("profile.activated"),
+                        ),
+                    },
+                  );
+                }}
+              >
+                {doctor.isActive ? (
+                  <UserMinusIcon className="size-4" />
+                ) : (
+                  <UserCheckIcon className="size-4" />
+                )}
+                {doctor.isActive
+                  ? t("profile.deactivate")
+                  : t("profile.activate")}
+              </Button>
+            </>
           ) : null}
         </div>
       </div>

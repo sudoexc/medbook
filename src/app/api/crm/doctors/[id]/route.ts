@@ -23,6 +23,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, forbidden, diff } from "@/server/http";
 import { UpdateDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
+import { findServicesOrphanedByDeactivating } from "@/server/doctors/deactivation";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -116,6 +117,20 @@ export const PATCH = createApiHandler(
       }
     }
 
+    // Taking the doctor out of service through PATCH must respect the same
+    // "no orphaned service" rule DELETE enforces — otherwise the guard is
+    // just a speed bump on one of two identical paths.
+    if (data.isActive === false && before.isActive) {
+      const orphaned = await findServicesOrphanedByDeactivating(id);
+      if (orphaned.length > 0) {
+        return err("ServiceOrphaned", 409, {
+          reason: "service_orphaned",
+          orphanedServiceIds: orphaned.map((s) => s.id),
+          orphanedServices: orphaned,
+        });
+      }
+    }
+
     // Pull `services` out — handled via ServiceOnDoctor below.
     const services = data.services as
       | { serviceId: string; priceOverride?: number | null; durationMinOverride?: number | null }[]
@@ -182,31 +197,15 @@ export const DELETE = createApiHandler(
 
     // Refuse if any of this doctor's services would be left with zero active
     // providers after the deactivation. Services without a doctor are an
-    // illegal product state per Phase 11.
-    const myLinks = await prisma.serviceOnDoctor.findMany({
-      where: { doctorId: id },
-      select: { serviceId: true },
-    });
-    if (myLinks.length > 0) {
-      const serviceIds = myLinks.map((l) => l.serviceId);
-      const otherActive = await prisma.serviceOnDoctor.findMany({
-        where: {
-          serviceId: { in: serviceIds },
-          doctorId: { not: id },
-          doctor: { isActive: true },
-        },
-        select: { serviceId: true },
+    // illegal product state per Phase 11. Shared with the PATCH path so both
+    // report the same thing — including names, so the UI can say which.
+    const orphaned = await findServicesOrphanedByDeactivating(id);
+    if (orphaned.length > 0) {
+      return err("ServiceOrphaned", 409, {
+        reason: "service_orphaned",
+        orphanedServiceIds: orphaned.map((s) => s.id),
+        orphanedServices: orphaned,
       });
-      const stillCovered = new Set(otherActive.map((r) => r.serviceId));
-      const orphanedServiceIds = serviceIds.filter(
-        (sid) => !stillCovered.has(sid),
-      );
-      if (orphanedServiceIds.length > 0) {
-        return err("ServiceOrphaned", 409, {
-          reason: "service_orphaned",
-          orphanedServiceIds,
-        });
-      }
     }
 
     await prisma.doctor.update({

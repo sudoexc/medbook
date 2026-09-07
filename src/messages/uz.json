@@ -2451,7 +2451,12 @@
       "cabinetSaved": "Xona yangilandi",
       "cabinetTaken": "Bu xona allaqachon boshqa shifokorga biriktirilgan",
       "cabinetEmpty": "Mavjud xonalar yo'q",
-      "cabinetLoadError": "Xonalarni yuklab bo'lmadi"
+      "cabinetLoadError": "Xonalarni yuklab bo'lmadi",
+      "deactivate": "Faolsizlantirish",
+      "activate": "Ishga qaytarish",
+      "deactivateConfirm": "Shifokor faolsizlantirilsinmi? U jadval, kalendar va yozuv shaklidan yo'qoladi. Qabullar tarixi saqlanadi.",
+      "deactivated": "Shifokor faolsizlantirildi",
+      "activated": "Shifokor yana ishda"
     },
     "finance": {
       "title": "Moliya",
@@ -5698,7 +5703,9 @@
       "detachFailed": "Yozuvni uzib bo'lmadi"
     },
     "doctor": {
-      "saveFailed": "Saqlash imkonsiz"
+      "saveFailed": "Saqlash imkonsiz",
+      "orphaned": "Faolsizlantirib bo'lmaydi: ba'zi xizmatlarda birorta ham shifokor qolmaydi.",
+      "orphanedServices": "Faolsizlantirib bo'lmaydi — bu xizmatlar shifokorsiz qoladi: {services}. Avval ularga boshqa shifokor tayinlang."
     }
   },
   "meChangePassword": {

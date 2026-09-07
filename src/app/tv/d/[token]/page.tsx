@@ -24,7 +24,12 @@ import {
   useDoctorBoard,
   type DoctorBoardSlot,
 } from "@/hooks/use-doctor-board";
-import { CallTakeover, announce, playChime } from "../../_shared";
+import {
+  CallTakeover,
+  announce,
+  playChime,
+  useAudioUnlock,
+} from "../../_shared";
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
 const OVERLAY_MS = 15_000; // call takeover auto-dismiss
@@ -81,7 +86,11 @@ export default function DoctorTVPage() {
   const token = params.token;
   const { data, notFound, call, connected } = useDoctorBoard(token);
 
-  const [activated, setActivated] = useState(false);
+  // Board renders immediately; sound arms itself on the first stray
+  // interaction (one remote press on a TV box) instead of gating the queue
+  // behind a splash screen.
+  useAudioUnlock();
+
   const [time, setTime] = useState(new Date());
   // Overlay derived from the latest call; dismissed by seq after OVERLAY_MS.
   const [dismissedSeq, setDismissedSeq] = useState(0);
@@ -158,47 +167,6 @@ export default function DoctorTVPage() {
           <p className="text-5xl font-bold">Экран не найден</p>
           <p className="text-2xl" style={{ color: C.muted }}>
             Ссылка недействительна или врач деактивирован
-          </p>
-        </div>
-      </Page>
-    );
-  }
-
-  // Activation splash — a tap resumes AudioContext so the chime can play.
-  if (!activated) {
-    return (
-      <Page>
-        <div
-          className="flex h-full cursor-pointer flex-col items-center justify-center px-10 text-center"
-          onClick={() => {
-            setActivated(true);
-            try {
-              new AudioContext().resume();
-            } catch {
-              /* resumed on first chime instead */
-            }
-          }}
-        >
-          {data?.doctor.cabinet && (
-            <div
-              className="mb-10 flex h-36 w-36 items-center justify-center text-7xl font-bold"
-              style={{
-                background: accent,
-                color: "#fff",
-                borderRadius: TILE_RADIUS,
-              }}
-            >
-              {data.doctor.cabinet}
-            </div>
-          )}
-          <p className="text-5xl font-bold leading-tight">
-            {data?.doctor.nameRu ?? "Экран врача"}
-          </p>
-          <p className="mt-3 text-2xl" style={{ color: C.muted }}>
-            {data?.doctor.specializationRu ?? ""}
-          </p>
-          <p className="mt-16 text-xl" style={{ color: FAINT }}>
-            Нажмите на экран для запуска
           </p>
         </div>
       </Page>

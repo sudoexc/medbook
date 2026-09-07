@@ -5,7 +5,12 @@ import Image from "next/image";
 
 import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
 import { useQueueBoard, type BoardDoctor } from "@/hooks/use-queue-board";
-import { CallTakeover, announce, playChime } from "./_shared";
+import {
+  CallTakeover,
+  announce,
+  playChime,
+  useAudioUnlock,
+} from "./_shared";
 
 interface Overlay {
   ticketNumber: string;
@@ -18,7 +23,10 @@ export default function TVQueuePage() {
   const slug = usePublicClinicSlug();
   const { board, call, connected } = useQueueBoard(slug);
 
-  const [activated, setActivated] = useState(false);
+  // Board renders immediately; sound arms itself on the first stray
+  // interaction instead of gating the queue behind a splash screen.
+  useAudioUnlock();
+
   const [time, setTime] = useState(new Date());
   const [overlay, setOverlay] = useState<Overlay | null>(null);
 
@@ -68,39 +76,6 @@ export default function TVQueuePage() {
 
   const totalWaiting = doctors.reduce((s, d) => s + d.waiting.length, 0);
   const totalCurrent = doctors.filter((d) => d.current).length;
-
-  // Activation screen — taps resume AudioContext so the chime can play.
-  if (!activated) {
-    return (
-      <div
-        className="min-h-screen bg-[var(--public-bg)] text-[var(--public-fg)] flex flex-col items-center justify-center cursor-pointer"
-        onClick={() => {
-          setActivated(true);
-          try {
-            new AudioContext().resume();
-          } catch {
-            /* resumed on first chime instead */
-          }
-        }}
-      >
-        <Image
-          src="/logo.png"
-          alt={clinicName}
-          width={164}
-          height={64}
-          priority
-          className="h-16 w-auto brightness-0 invert mb-8"
-        />
-        <div className="text-6xl font-bold mb-4">Электронная очередь</div>
-        <p className="text-xl text-[var(--public-fg-muted)] mb-12">
-          Нажмите на экран для запуска
-        </p>
-        <div className="h-20 w-20 rounded-full border-4 border-[var(--public-border-strong)] flex items-center justify-center animate-pulse">
-          <div className="h-0 w-0 border-l-[20px] border-l-[var(--public-fg)] border-y-[14px] border-y-transparent ml-2" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-screen bg-[var(--public-bg)] text-[var(--public-fg)] flex flex-col overflow-hidden">

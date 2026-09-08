@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
+import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
 import { audit } from "@/lib/audit";
 import { registerWalkin } from "@/server/appointments/walkin";
@@ -35,13 +36,29 @@ const Body = z
   });
 
 export const POST = createApiHandler(
-  { roles: ["ADMIN", "RECEPTIONIST"], bodySchema: Body },
+  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"], bodySchema: Body },
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
 
+    // A doctor may queue walk-ins, but only into their OWN queue: returning
+    // patients who walk straight past the front desk are the whole point, and
+    // letting one doctor fill a colleague's queue is not. Resolved per request
+    // rather than trusted from the body — the same reason /doctors/me does it.
+    let doctorId = body.doctorId;
+    if (ctx.role === "DOCTOR") {
+      const self = await prisma.doctor.findFirst({
+        where: { userId: ctx.userId },
+        select: { id: true, isActive: true },
+      });
+      if (!self) return err("doctor_not_found", 404);
+      if (!self.isActive) return err("Forbidden", 403);
+      if (doctorId !== self.id) return err("Forbidden", 403);
+      doctorId = self.id;
+    }
+
     const result = await registerWalkin({
       clinicId: ctx.clinicId,
-      doctorId: body.doctorId,
+      doctorId,
       patient: body.patientId
         ? { id: body.patientId }
         : {
@@ -68,7 +85,7 @@ export const POST = createApiHandler(
       entityType: "Appointment",
       entityId: result.appointmentId,
       meta: {
-        doctorId: body.doctorId,
+        doctorId,
         patientId: result.patient.id,
         queueOrder: result.queueOrder,
       },

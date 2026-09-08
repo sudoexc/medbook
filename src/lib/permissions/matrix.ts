@@ -104,7 +104,11 @@ export const PERMISSION_MATRIX: ResourcePermissions[] = [
   row("Appointment", {
     SUPER_ADMIN: FULL,
     ADMIN: FULL,
-    DOCTOR: { read: "own", write: false, update: "own", delete: false },
+    // write — walk-ins only, and only into their OWN queue: returning patients
+    // often walk straight to the office instead of the front desk. The route
+    // (`/api/crm/appointments/walkin`) resolves the doctor from the session and
+    // rejects any other doctorId, so this cannot become "books for colleagues".
+    DOCTOR: { read: "own", write: true, update: "own", delete: false },
     RECEPTIONIST: { read: "all", write: true, update: "all", delete: true },
     NURSE: { read: "today", write: false, update: "none", delete: false },
     CALL_OPERATOR: { read: "all", write: true, update: "all", delete: false },

@@ -6725,9 +6725,29 @@
         "ticket": "Талон",
         "walkin": "Живой",
         "waitingHm": "ждёт {h} ч {m} мин",
-        "waitingSince": "ждёт с {at}"
+        "waitingSince": "ждёт с {at}",
+        "add": "Добавить"
       },
-      "laneBooking": "Запись"
+      "laneBooking": "Запись",
+      "addWalkin": {
+        "title": "Добавить пациента в очередь",
+        "description": "Пациент попадёт в вашу живую очередь. Ресепшн для этого не нужен.",
+        "searchPlaceholder": "Фамилия, имя или телефон",
+        "searchHint": "Введите минимум 2 символа",
+        "searching": "Ищем…",
+        "nothingFound": "Не найдено. Можно завести нового.",
+        "createNew": "+ Новый пациент",
+        "backToSearch": "← Назад к поиску",
+        "fullName": "ФИО",
+        "fullNamePlaceholder": "Фамилия Имя Отчество",
+        "phone": "Телефон",
+        "submit": "В очередь",
+        "cancel": "Отмена",
+        "added": "Пациент в очереди",
+        "addedWithTicket": "Пациент в очереди, талон {ticket}",
+        "badPhone": "Проверьте номер телефона",
+        "failed": "Не удалось добавить"
+      }
     },
     "visits": {
       "title": "История визитов",

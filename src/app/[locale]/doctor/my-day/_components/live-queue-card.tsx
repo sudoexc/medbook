@@ -1,10 +1,12 @@
 "use client";
 
+import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
   Loader2Icon,
   MegaphoneIcon,
   TicketIcon,
+  UserPlusIcon,
   UsersIcon,
 } from "lucide-react";
 
@@ -18,6 +20,7 @@ import {
 import { useMinuteClock } from "../_hooks/use-minute-clock";
 import { useTashkentToday } from "../_hooks/use-tashkent-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
+import { AddWalkinDialog } from "./add-walkin-dialog";
 
 
 /**
@@ -41,6 +44,8 @@ export function LiveQueueCard() {
     (d: DoctorToday) => d.liveQueue,
   );
   const queue = data ?? [];
+  const { data: doctorId } = useDoctorToday<string>((d: DoctorToday) => d.doctorId);
+  const [addOpen, setAddOpen] = React.useState(false);
 
   const nowMs = useMinuteClock();
   // The mutation object is shared across rows — pin the spinner to the row
@@ -59,14 +64,28 @@ export function LiveQueueCard() {
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
-      <header className="flex items-center justify-between px-5 pt-4 pb-3">
-        <div className="text-[15px] font-semibold text-foreground">
-          {t("title")}
+      <header className="flex items-center justify-between gap-2 px-5 pt-4 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="text-[15px] font-semibold text-foreground">
+            {t("title")}
+          </div>
+          {queue.length > 0 ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
+              {queue.length}
+            </span>
+          ) : null}
         </div>
-        {queue.length > 0 ? (
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
-            {queue.length}
-          </span>
+        {/* Returning patients often come straight to the office instead of the
+            front desk — the doctor queues them here without leaving «Мой день». */}
+        {doctorId ? (
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            <UserPlusIcon className="size-3.5" />
+            {t("add")}
+          </button>
         ) : null}
       </header>
 
@@ -166,6 +185,14 @@ export function LiveQueueCard() {
           })
         )}
       </ul>
+
+      {doctorId ? (
+        <AddWalkinDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          doctorId={doctorId}
+        />
+      ) : null}
     </section>
   );
 }

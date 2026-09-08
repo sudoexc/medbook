@@ -6725,9 +6725,29 @@
         "ticket": "Talon",
         "walkin": "Jonli",
         "waitingHm": "{h} soat {m} daqiqa kutmoqda",
-        "waitingSince": "{at} dan beri kutmoqda"
+        "waitingSince": "{at} dan beri kutmoqda",
+        "add": "Qo'shish"
       },
-      "laneBooking": "Yozuv"
+      "laneBooking": "Yozuv",
+      "addWalkin": {
+        "title": "Navbatga bemor qo'shish",
+        "description": "Bemor sizning jonli navbatingizga tushadi. Resepshn kerak emas.",
+        "searchPlaceholder": "Familiya, ism yoki telefon",
+        "searchHint": "Kamida 2 ta belgi kiriting",
+        "searching": "Qidirilmoqda…",
+        "nothingFound": "Topilmadi. Yangisini qo'shish mumkin.",
+        "createNew": "+ Yangi bemor",
+        "backToSearch": "← Qidiruvga qaytish",
+        "fullName": "F.I.O.",
+        "fullNamePlaceholder": "Familiya Ism Otasining ismi",
+        "phone": "Telefon",
+        "submit": "Navbatga",
+        "cancel": "Bekor qilish",
+        "added": "Bemor navbatda",
+        "addedWithTicket": "Bemor navbatda, talon {ticket}",
+        "badPhone": "Telefon raqamini tekshiring",
+        "failed": "Qo'shib bo'lmadi"
+      }
     },
     "visits": {
       "title": "Tashriflar tarixi",

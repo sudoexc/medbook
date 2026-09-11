@@ -5805,7 +5805,12 @@
         "finalizeErrorDiagnosis": "Tashrifni yakunlab bo‘lmadi: xulosada tashxis ko‘rsatilmagan.",
         "finalizeErrorGeneric": "Tashrifni yakunlab bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.",
         "finalizeFlushError": "Hujjatdagi o‘zgarishlar saqlanmadi — tashrif yakunlanmadi. Qayta urinib ko‘ring.",
-        "docNumber": "Xulosa №"
+        "docNumber": "Xulosa №",
+        "phoneEdit": "Raqamni tuzatish",
+        "phoneSave": "Saqlash",
+        "phoneCancel": "Bekor qilish",
+        "phoneSaved": "Raqam yangilandi",
+        "phoneSaveFailed": "Raqamni saqlab bo'lmadi"
       },
       "recentFiles": {
         "title": "So‘nggi fayllar",

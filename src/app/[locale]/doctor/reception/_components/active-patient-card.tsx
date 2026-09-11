@@ -9,7 +9,6 @@ import {
   FilesIcon,
   Loader2Icon,
   MinusIcon,
-  PhoneIcon,
   PrinterIcon,
   SquareCheckIcon,
   TrendingDownIcon,
@@ -31,6 +30,7 @@ import {
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePreviousVisit } from "../_hooks/use-previous-visit";
 import { QuickVisitEntry } from "./quick-visit-entry";
+import { EditablePhone } from "./editable-phone";
 import {
   isVersionConflict,
   useFinalizeVisitNote,
@@ -253,10 +253,9 @@ export function ActivePatientCard() {
           </MetaCell>
         )}
         <MetaCell label={t("activePatient.phoneLabel")}>
-          <span className="inline-flex items-center gap-1.5 tabular-nums">
-            {p.phone}
-            <PhoneIcon className="size-3.5 text-muted-foreground" />
-          </span>
+          {/* Correctable in place: a digit mistyped at registration is noticed
+              here, with the patient present, not on a card two screens away. */}
+          <EditablePhone patientId={p.id} phone={p.phone ?? null} />
         </MetaCell>
         <MetaCell label={t("activePatient.typeLabel")}>
           {activeAppointment.primaryService?.nameRu ?? t("common.consultation")}

@@ -5967,7 +5967,9 @@
         "toChronicTitle": "Tashxisni bemorning surunkali kasalliklariga qo‘shish",
         "pastTitle": "Avval boʻlgan",
         "pastTake": "olish",
-        "pastMore": "Yana {count} ta tashxis"
+        "pastMore": "Yana {count} ta tashxis",
+        "hint": "Yozishni boshlang — MKB-10 ma'lumotnomasidan tanlang yoki tashxisni o'z so'zingiz bilan yozing.",
+        "useAsTyped": "Shundayligicha yozish: «{text}»"
       },
       "guide": {
         "title": "Bilimlar bazasi",
@@ -6097,6 +6099,14 @@
         "title": "Tashxislar tarixi",
         "empty": "Hozircha tashxislar yoʻq",
         "selectPatient": "Bemorni tanlang"
+      },
+      "quickEntry": {
+        "diagnosisLabel": "Tashxis",
+        "diagnosisPlaceholder": "Tashxisni o'z so'zingiz bilan yozing",
+        "drugLabel": "Asosiy dori",
+        "drugPlaceholder": "Dori, dozasi — Enter",
+        "removeDrug": "Olib tashlash",
+        "hint": "Tez kiritish: Enter — saqlash. Batafsili kerak bo'lsa quyida."
       }
     },
     "receptionDialogs": {
@@ -6481,7 +6491,12 @@
         "noAppointments": "Rejalashtirilgan qabullar yo‘q.",
         "allergies": "Allergiyalar",
         "notSpecified": "Ko‘rsatilmagan.",
-        "chronicConditions": "Surunkali kasalliklar"
+        "chronicConditions": "Surunkali kasalliklar",
+        "edit": "O'zgartirish",
+        "save": "Saqlash",
+        "cancel": "Bekor qilish",
+        "saved": "Ma'lumot yangilandi",
+        "saveFailed": "Saqlab bo'lmadi"
       },
       "visits": {
         "loading": "Tashriflar yuklanmoqda…",

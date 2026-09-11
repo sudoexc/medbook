@@ -5967,7 +5967,9 @@
         "toChronicTitle": "Добавить диагноз в хронические заболевания пациента",
         "pastTitle": "Было раньше",
         "pastTake": "взять",
-        "pastMore": "Ещё {count} {count, plural, one {диагноз} few {диагноза} other {диагнозов}}"
+        "pastMore": "Ещё {count} {count, plural, one {диагноз} few {диагноза} other {диагнозов}}",
+        "hint": "Начните печатать — выберите из справочника МКБ-10 или впишите диагноз своими словами.",
+        "useAsTyped": "Записать как есть: «{text}»"
       },
       "guide": {
         "title": "База знаний",
@@ -6097,6 +6099,14 @@
         "title": "История диагнозов",
         "empty": "Диагнозов пока нет",
         "selectPatient": "Выберите пациента"
+      },
+      "quickEntry": {
+        "diagnosisLabel": "Диагноз",
+        "diagnosisPlaceholder": "Впишите диагноз своими словами",
+        "drugLabel": "Основное лекарство",
+        "drugPlaceholder": "Препарат, дозировка — Enter",
+        "removeDrug": "Убрать",
+        "hint": "Быстрый ввод: Enter — сохранить. Подробности при необходимости ниже."
       }
     },
     "receptionDialogs": {
@@ -6481,7 +6491,12 @@
         "noAppointments": "Запланированных приёмов нет.",
         "allergies": "Аллергии",
         "notSpecified": "Не указаны.",
-        "chronicConditions": "Хронические заболевания"
+        "chronicConditions": "Хронические заболевания",
+        "edit": "Изменить",
+        "save": "Сохранить",
+        "cancel": "Отмена",
+        "saved": "Данные обновлены",
+        "saveFailed": "Не удалось сохранить"
       },
       "visits": {
         "loading": "Загружаем визиты…",

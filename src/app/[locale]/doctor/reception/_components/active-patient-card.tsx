@@ -30,6 +30,7 @@ import {
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePreviousVisit } from "../_hooks/use-previous-visit";
+import { QuickVisitEntry } from "./quick-visit-entry";
 import {
   isVersionConflict,
   useFinalizeVisitNote,
@@ -124,7 +125,11 @@ export function ActivePatientCard() {
   // Ф0 — finalize gate. No diagnosis → button stays disabled (the API
   // backstops with 400 DIAGNOSIS_REQUIRED). Empty sections don't block but
   // must be explicitly confirmed so an empty conclusion is never an accident.
-  const hasDiagnosis = Boolean(note?.diagnosisCode);
+  // A free-text diagnosis counts: the ICD-10 code is for statistics, the name
+  // is what makes the conclusion a valid document (see the finalize gate).
+  const hasDiagnosis = Boolean(
+    note?.diagnosisCode || note?.diagnosisName?.trim(),
+  );
 
   // P1-5 — the complaints/anamnesis/advice inputs were stripped from this
   // screen, so we only warn about what the doctor can still fill here: the
@@ -268,13 +273,31 @@ export function ActivePatientCard() {
         </MetaCell>
       </div>
 
-      {note && note.diagnosisCode && (
+      {note && !isFinalized && (
+        <QuickVisitEntry
+          note={note}
+          disabled={isFinalized}
+          saving={patch.isPending}
+          onChange={(p) =>
+            patch.mutate(p, {
+              onError: (e) =>
+                toast.error(
+                  isVersionConflict(e)
+                    ? t("editor.saveErrorConflict")
+                    : t("structured.saveErrorGeneric"),
+                ),
+            })
+          }
+        />
+      )}
+
+      {note && (note.diagnosisCode || note.diagnosisName) && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-5 py-3 text-sm">
           <div className="inline-flex min-w-0 items-center gap-1.5">
             <AlertTriangleIcon className="size-4 shrink-0 text-muted-foreground" />
             <span className="font-semibold text-foreground">{t("activePatient.diagnosisLabel")}</span>
             <span className="truncate text-muted-foreground">
-              {note.diagnosisCode} · {note.diagnosisName}
+              {[note.diagnosisCode, note.diagnosisName].filter(Boolean).join(" · ")}
             </span>
           </div>
           {note.documentNumber && (

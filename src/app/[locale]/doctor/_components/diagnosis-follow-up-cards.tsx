@@ -21,6 +21,7 @@ import {
   HeartPulseIcon,
   HistoryIcon,
   Loader2Icon,
+  PenLineIcon,
   SearchIcon,
   WandSparklesIcon,
   XIcon,
@@ -227,7 +228,7 @@ export function DiagnosisCard({
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
           />
-          {focused && rows.length > 0 && (
+          {focused && (rows.length > 0 || query.trim().length >= 2) && (
             <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
               {rows.map((r) => (
                 <li key={r.code}>
@@ -248,17 +249,52 @@ export function DiagnosisCard({
                   </button>
                 </li>
               ))}
+              {/* Free text is a first-class option: the reference doesn't cover
+                  every wording a doctor uses, and hunting for a code mid-visit
+                  is exactly the friction that made this screen feel unusable.
+                  The code is for statistics; the name makes the document valid. */}
+              {query.trim().length >= 2 && (
+                <li className={rows.length > 0 ? "border-t border-border/60" : ""}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      onChange(null, query.trim());
+                      setQuery("");
+                      setFocused(false);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                  >
+                    <PenLineIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="text-foreground">
+                      {t("diagnosis.useAsTyped", { text: query.trim() })}
+                    </span>
+                  </button>
+                </li>
+              )}
             </ul>
           )}
         </div>
+        {/* The doctor's first complaint about this screen was "нигде не
+            указано" — the field looked like a search box with no hint that
+            typing your own wording is allowed. */}
+        {!disabled && !note.diagnosisCode && !note.diagnosisName && (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {t("diagnosis.hint")}
+          </p>
+        )}
         <PastDiagnosesBlock note={note} disabled={disabled} onTake={onChange} />
-        {note.diagnosisCode && note.diagnosisName && (
+        {(note.diagnosisCode || note.diagnosisName) && (
           <>
             <div className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-sm">
-              <span className="font-mono font-semibold text-primary">
-                {note.diagnosisCode}
+              {note.diagnosisCode && (
+                <span className="font-mono font-semibold text-primary">
+                  {note.diagnosisCode}
+                </span>
+              )}
+              <span className="text-foreground">
+                {note.diagnosisName ?? note.diagnosisCode}
               </span>
-              <span className="text-foreground">{note.diagnosisName}</span>
               {!disabled && (
                 <button
                   type="button"

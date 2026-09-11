@@ -76,7 +76,13 @@ export const POST = createApiHandler(
     // Ф0 — a conclusion without a diagnosis is legally void. Hard gate; the
     // UI disables the button too, this is the API backstop. Empty sections
     // (complaints/advice/handout) are allowed but confirmed client-side.
-    if (!note.diagnosisCode) {
+    //
+    // The diagnosis may be free text: requiring an ICD-10 code meant a doctor
+    // whose wording isn't in the reference (or who simply types faster than he
+    // searches) could not close the visit at all. The code is valuable for
+    // statistics, not for the document's validity — a named diagnosis is a
+    // diagnosis. `PatientDiagnosis.icd10Code` is nullable for the same reason.
+    if (!note.diagnosisCode && !note.diagnosisName?.trim()) {
       return err("DIAGNOSIS_REQUIRED", 400);
     }
 
@@ -190,8 +196,17 @@ export const POST = createApiHandler(
       // Ф7 — карточка пациента наполняется сама: диагноз приёма становится
       // (или снова становится) ACTIVE в PatientDiagnosis. diagnosedAt
       // существующей записи не трогаем — дата первичной постановки ценнее.
+      // Match on the code when there is one; fall back to the label for
+      // free-text diagnoses. Matching a null code would collapse every
+      // uncoded diagnosis a patient ever had into one row.
       const existingDx = await tx.patientDiagnosis.findFirst({
-        where: { patientId: note.patientId, icd10Code: note.diagnosisCode },
+        where: note.diagnosisCode
+          ? { patientId: note.patientId, icd10Code: note.diagnosisCode }
+          : {
+              patientId: note.patientId,
+              icd10Code: null,
+              label: note.diagnosisName!.trim(),
+            },
         select: { id: true },
       });
       const patientDiagnosis = existingDx
@@ -208,7 +223,7 @@ export const POST = createApiHandler(
               clinicId: note.clinicId,
               patientId: note.patientId,
               icd10Code: note.diagnosisCode,
-              label: note.diagnosisName ?? note.diagnosisCode ?? "",
+              label: note.diagnosisName?.trim() || note.diagnosisCode || "",
               diagnosedAt: now,
               status: "ACTIVE",
             },

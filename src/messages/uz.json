@@ -6759,14 +6759,16 @@
         "createNew": "+ Yangi bemor",
         "backToSearch": "← Qidiruvga qaytish",
         "fullName": "F.I.O.",
-        "fullNamePlaceholder": "Familiya Ism Otasining ismi",
+        "fullNamePlaceholder": "Familiya Ism 1969",
         "phone": "Telefon",
         "submit": "Navbatga",
         "cancel": "Bekor qilish",
         "added": "Bemor navbatda",
         "addedWithTicket": "Bemor navbatda, talon {ticket}",
         "badPhone": "Telefon raqamini tekshiring",
-        "failed": "Qo'shib bo'lmadi"
+        "failed": "Qo'shib bo'lmadi",
+        "parsedYear": "· {year} y. · {age} yosh",
+        "noYearHint": "Tug'ilgan yilni qo'shsangiz bo'ladi — «Familiya I 1969», u alohida saqlanadi."
       }
     },
     "visits": {

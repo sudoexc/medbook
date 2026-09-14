@@ -29,6 +29,10 @@ import {
   runQueueTx,
 } from "@/server/appointments/queue-order";
 import { generateTicketCode } from "@/server/appointments/ticket-code";
+import {
+  birthDateFromYear,
+  parsePatientIdentity,
+} from "@/lib/patients/parse-identity";
 
 /** Existing patient by id, or details to find-or-create by phone. */
 export type WalkinPatientInput =
@@ -99,7 +103,14 @@ export async function registerWalkin(
       select: { id: true, fullName: true },
     });
     if (!patient) {
-      const fullName = input.patient.fullName;
+      // The doctor types «Турматов О 1969» — surname, initial, birth year in
+      // one field, because that is how he writes on paper. Lift the year out
+      // here rather than at one call site, so a patient created from the
+      // kiosk, the front desk or the doctor's own dialog is stored the same.
+      const parsed = parsePatientIdentity(input.patient.fullName);
+      const fullName = parsed.fullName || input.patient.fullName.trim();
+      const birthDate =
+        parsed.birthYear !== null ? birthDateFromYear(parsed.birthYear) : null;
       const lang = input.patient.lang ?? "RU";
       patient = await prisma.$transaction(async (tx) => {
         const patientNumber = await allocatePatientNumber(input.clinicId, tx);
@@ -111,6 +122,7 @@ export async function registerWalkin(
             phone: phoneNorm,
             phoneNormalized: phoneNorm,
             preferredLang: lang,
+            ...(birthDate ? { birthDate } : {}),
             source: "WALKIN",
           } as never,
           select: { id: true, fullName: true },

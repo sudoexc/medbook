@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2Icon, SearchIcon, UserPlusIcon } from "lucide-react";
+import { CheckIcon, Loader2Icon, SearchIcon, UserPlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import { doctorTodayKey } from "../_hooks/use-doctor-today";
+import { parsePatientIdentity } from "@/lib/patients/parse-identity";
 
 /**
  * Lets the doctor put a patient into their OWN live queue without routing them
@@ -123,8 +124,11 @@ export function AddWalkinDialog({
     onError: (e: Error) => toast.error(e.message || t("failed")),
   });
 
+  // Parsed on every keystroke — it is a pure string operation, no request.
+  const parsedNew = parsePatientIdentity(newName);
+
   const canSubmit = creating
-    ? newName.trim().length >= 2 && newPhone.trim().length >= 3
+    ? parsedNew.fullName.length >= 2 && newPhone.trim().length >= 3
     : Boolean(picked);
 
   return (
@@ -147,6 +151,27 @@ export function AddWalkinDialog({
                 placeholder={t("fullNamePlaceholder")}
                 autoFocus
               />
+              {/* Live read-back of what the parser understood. The doctor keeps
+                  typing «Турматов О 1969» as always; this shows that the year
+                  became a real birth year instead of sitting inside the name. */}
+              {parsedNew.matched ? (
+                <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+                  <CheckIcon className="size-3 text-success" />
+                  <span className="font-medium text-foreground">
+                    {parsedNew.fullName}
+                  </span>
+                  <span>
+                    {t("parsedYear", {
+                      year: parsedNew.birthYear!,
+                      age: parsedNew.age!,
+                    })}
+                  </span>
+                </p>
+              ) : newName.trim().length >= 2 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  {t("noYearHint")}
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-1">
               <label className="text-xs font-medium text-muted-foreground">

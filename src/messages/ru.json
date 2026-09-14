@@ -6759,14 +6759,16 @@
         "createNew": "+ Новый пациент",
         "backToSearch": "← Назад к поиску",
         "fullName": "ФИО",
-        "fullNamePlaceholder": "Фамилия Имя Отчество",
+        "fullNamePlaceholder": "Фамилия Имя 1969",
         "phone": "Телефон",
         "submit": "В очередь",
         "cancel": "Отмена",
         "added": "Пациент в очереди",
         "addedWithTicket": "Пациент в очереди, талон {ticket}",
         "badPhone": "Проверьте номер телефона",
-        "failed": "Не удалось добавить"
+        "failed": "Не удалось добавить",
+        "parsedYear": "· {year} г.р. · {age} лет",
+        "noYearHint": "Можно дописать год рождения — «Фамилия И 1969», он сохранится отдельно."
       }
     },
     "visits": {

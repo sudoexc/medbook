@@ -7488,7 +7488,7 @@
         "collapse": "Свернуть"
       },
       "topbar": {
-        "searchPlaceholder": "Поиск пациента, врача, записи, телефона, ФИО...",
+        "searchPlaceholder": "Поиск пациента: фамилия, телефон, «Фамилия 1969»…",
         "clearSearch": "Очистить поиск",
         "newAppointment": "Новая запись",
         "moreActions": "Дополнительные действия",
@@ -7498,7 +7498,12 @@
         "signOut": "Выйти",
         "lightTheme": "Светлая тема",
         "darkTheme": "Тёмная тема",
-        "theme": "Тема"
+        "theme": "Тема",
+        "addToQueue": "В очередь",
+        "searching": "Ищем…",
+        "searchEmpty": "Никого не найдено",
+        "searchParsed": "Ищем: {name} · {year} г.р.",
+        "searchYearAge": "{year} г.р. · {age} лет"
       }
     }
   }

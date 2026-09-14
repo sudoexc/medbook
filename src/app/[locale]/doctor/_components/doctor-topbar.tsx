@@ -1,21 +1,18 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   ChevronDownIcon,
   LogOutIcon,
   MoonIcon,
-  PhoneIcon,
   PlusIcon,
-  SearchIcon,
   SendIcon,
   SunIcon,
-  XIcon,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { useTheme } from "@/components/providers/theme-provider";
 import {
@@ -60,6 +57,8 @@ export interface DoctorTopbarProps {
   userEmail?: string | null;
 }
 
+import { DoctorSearch } from "./doctor-search";
+
 export function DoctorTopbar({
   doctorName,
   doctorSpecialty,
@@ -67,6 +66,8 @@ export function DoctorTopbar({
   userEmail,
 }: DoctorTopbarProps) {
   const t = useTranslations("doctor.nav");
+  const locale = useLocale();
+  const router = useRouter();
   const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => {
     setNow(new Date());
@@ -74,72 +75,25 @@ export function DoctorTopbar({
     return () => window.clearInterval(id);
   }, []);
 
-  const [searchValue, setSearchValue] = React.useState("");
-  const searchRef = React.useRef<HTMLInputElement>(null);
-
-  // ⌘K / Ctrl+K focuses the search field.
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-5">
-      {/* Search */}
-      <div className="relative w-full max-w-[480px]">
-        <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          ref={searchRef}
-          value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value)}
-          placeholder={t("topbar.searchPlaceholder")}
-          className="h-10 w-full rounded-xl border border-border bg-background pl-10 pr-16 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
-        />
-        <div className="absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
-          {searchValue ? (
-            <button
-              type="button"
-              onClick={() => setSearchValue("")}
-              aria-label={t("topbar.clearSearch")}
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <XIcon className="size-3.5" />
-            </button>
-          ) : (
-            <kbd className="hidden h-6 select-none items-center gap-0.5 rounded-md border border-border bg-muted px-1.5 text-[11px] font-medium text-muted-foreground md:inline-flex">
-              ⌘K
-            </kbd>
-          )}
-        </div>
-      </div>
+      {/* Search — real: patients, by name/phone/«Фамилия Год». */}
+      <DoctorSearch placeholder={t("topbar.searchPlaceholder")} />
 
-      {/* + Новая запись */}
-      <div className="inline-flex h-10 items-stretch overflow-hidden rounded-xl bg-primary text-primary-foreground shadow-sm">
-        <button
-          type="button"
-          className="motion-press inline-flex items-center gap-2 px-3.5 text-sm font-semibold transition-colors hover:bg-primary/90"
-        >
-          <PlusIcon className="size-4" />
-          <span className="hidden sm:inline">{t("topbar.newAppointment")}</span>
-          <span className="ml-0.5 hidden h-5 items-center rounded-md bg-white/20 px-1.5 text-[11px] font-semibold tabular-nums lg:inline-flex">
-            F2
-          </span>
-        </button>
-        <span aria-hidden className="my-2 w-px bg-white/25" />
-        <button
-          type="button"
-          aria-label={t("topbar.moreActions")}
-          className="motion-press inline-flex items-center justify-center px-2 transition-colors hover:bg-primary/90"
-        >
-          <ChevronDownIcon className="size-4" />
-        </button>
-      </div>
+      {/* The doctor does not book online slots — that is reception's job. His
+          equivalent action is putting a walk-in into his own queue, so the
+          button goes where that happens instead of doing nothing. */}
+      <button
+        type="button"
+        onClick={() => router.push(`/${locale}/doctor/my-day`)}
+        className="motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+      >
+        <PlusIcon className="size-4" />
+        <span className="hidden sm:inline">{t("topbar.addToQueue")}</span>
+        <span className="ml-0.5 hidden h-5 items-center rounded-md bg-white/20 px-1.5 text-[11px] font-semibold tabular-nums lg:inline-flex">
+          F2
+        </span>
+      </button>
 
       <div className="ml-auto flex items-center gap-2">
         {/* Clock + date */}
@@ -156,8 +110,14 @@ export function DoctorTopbar({
 
         {/* Utility + comms — clean icon buttons, labels via tooltip */}
         <ThemeToggleButton />
-        <TopbarIconButton icon={PhoneIcon} label={t("topbar.calls")} />
-        <TopbarIconButton icon={SendIcon} label="Telegram" />
+        {/* Telephony belongs to reception — the doctor had a phone button that
+            did nothing, so it is gone rather than decorative. Telegram opens
+            the section that actually exists in his sidebar. */}
+        <TopbarIconButton
+          icon={SendIcon}
+          label={t("sidebar.telegram")}
+          onClick={() => router.push(`/${locale}/doctor/messages`)}
+        />
 
         <span aria-hidden className="mx-0.5 h-7 w-px bg-border" />
 

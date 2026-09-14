@@ -7488,7 +7488,7 @@
         "collapse": "Yig‘ish"
       },
       "topbar": {
-        "searchPlaceholder": "Bemor, shifokor, yozuv, telefon, F.I.Sh. bo‘yicha qidiruv...",
+        "searchPlaceholder": "Bemor qidirish: familiya, telefon, «Familiya 1969»…",
         "clearSearch": "Qidiruvni tozalash",
         "newAppointment": "Yangi yozuv",
         "moreActions": "Qo‘shimcha amallar",
@@ -7498,7 +7498,12 @@
         "signOut": "Chiqish",
         "lightTheme": "Yorug‘ mavzu",
         "darkTheme": "Qorong‘i mavzu",
-        "theme": "Mavzu"
+        "theme": "Mavzu",
+        "addToQueue": "Navbatga",
+        "searching": "Qidirilmoqda…",
+        "searchEmpty": "Hech kim topilmadi",
+        "searchParsed": "Qidirilmoqda: {name} · {year} y.",
+        "searchYearAge": "{year} y. · {age} yosh"
       }
     }
   }

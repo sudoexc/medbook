@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { splitReceptionLanes } from "@/lib/queue-ordering";
+import { isLiveLane, splitReceptionLanes } from "@/lib/queue-ordering";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
@@ -276,12 +276,18 @@ export function DoctorQueueList({
                     role="cell"
                     className="text-center text-xs tabular-nums text-muted-foreground"
                   >
-                    {next
-                      ? new Date(next.date).toLocaleTimeString(
-                          locale === "uz" ? "uz-UZ" : "ru-RU",
-                          { hour: "2-digit", minute: "2-digit" },
-                        )
-                      : t("noNext")}
+                    {/* «Ближайший» falls back to the live-lane head when
+                        nobody is booked — and a walk-in has no slot to show.
+                        Printing its arrival stamp here read as an appointment
+                        time, so the live lane says «в очереди» instead. */}
+                    {!next
+                      ? t("noNext")
+                      : isLiveLane(next)
+                        ? t("nextInQueue")
+                        : new Date(next.date).toLocaleTimeString(
+                            locale === "uz" ? "uz-UZ" : "ru-RU",
+                            { hour: "2-digit", minute: "2-digit" },
+                          )}
                   </span>
                 ) : null}
 

@@ -430,8 +430,11 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
         <span className="w-6 shrink-0 text-center text-[11px] font-semibold tabular-nums text-muted-foreground">
           {index}
         </span>
+        {/* Two-lanes: only a booking has a slot. For a walk-in `date` is the
+            arrival stamp, and printing it in the same column as real slot
+            times is what made reception treat the live lane as scheduled. */}
         <span className="w-12 shrink-0 text-xs font-semibold tabular-nums text-foreground">
-          {time}
+          {isLiveLane(row) ? "" : time}
         </span>
         <AvatarWithStatus
           name={row.patient.fullName}

@@ -1789,7 +1789,8 @@
         "status": "Holat",
         "actions": "",
         "noNext": "—",
-        "addAppointment": "Yozish"
+        "addAppointment": "Yozish",
+        "nextInQueue": "navbatda"
       },
       "panel": {
         "ariaLabel": "Shifokor navbati",

@@ -1789,7 +1789,8 @@
         "status": "Статус",
         "actions": "",
         "noNext": "—",
-        "addAppointment": "Записать"
+        "addAppointment": "Записать",
+        "nextInQueue": "в очереди"
       },
       "panel": {
         "ariaLabel": "Очередь врача",

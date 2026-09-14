@@ -321,9 +321,10 @@ function QueueItem({
                 (locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu)}
             </span>
             {showRisk && ai ? <NoShowRiskPill ai={ai} /> : null}
-            {mode === "walkin" ? (
-              <span className="shrink-0 tabular-nums">{time}</span>
-            ) : null}
+            {/* The live lane carries no clock — `date` is an arrival stamp,
+                not a slot, and printing it invited reading walk-ins as
+                scheduled. How long they have waited is the number that
+                matters and it already shows as a badge above. */}
           </div>
         </div>
       </Link>

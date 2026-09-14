@@ -295,9 +295,11 @@ export function DoctorQueueCard({
                       <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                         {a.patient.fullName}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        — {formatTime(new Date(a.date), locale)}
-                      </span>
+                      {/* No clock on the live lane. `date` here is the moment
+                          the row was created, not an appointment — printed
+                          next to a booking's real slot it made reception read
+                          walk-ins as scheduled. Order is the only promise the
+                          live lane makes, and the position number carries it. */}
                     </button>
                   </li>
                 ))}

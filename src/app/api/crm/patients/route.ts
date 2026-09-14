@@ -57,6 +57,29 @@ export const GET = createApiListHandler(
         or.push({ phoneNormalized: { contains: phoneDigits } });
         if (phoneNorm) or.push({ phoneNormalized: { contains: phoneNorm } });
       }
+      // The doctor records patients as «Турматов О 1969» and searches the same
+      // way. The year now lives in `birthDate` instead of inside the name, so
+      // a trailing year has to match on the date or his habit would silently
+      // stop finding people.
+      const yearMatch = term.match(/(?:^|\s)((?:19|20)\d{2})\s*$/);
+      const year = yearMatch ? Number(yearMatch[1]) : null;
+      if (year !== null && year >= 1900 && year <= new Date().getFullYear()) {
+        const range = {
+          gte: new Date(Date.UTC(year, 0, 1)),
+          lt: new Date(Date.UTC(year + 1, 0, 1)),
+        };
+        const namePart = term.slice(0, yearMatch!.index ?? 0).trim();
+        if (namePart) {
+          // «Турматов 1969» — name AND year must both hold, otherwise a query
+          // naming someone specific would return every patient born that year.
+          where.AND = [
+            { fullName: { contains: namePart, mode: "insensitive" } },
+            { birthDate: range },
+          ];
+        } else {
+          or.push({ birthDate: range });
+        }
+      }
       where.OR = or;
     }
 

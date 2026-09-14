@@ -58,6 +58,8 @@ export interface DoctorTopbarProps {
 }
 
 import { DoctorSearch } from "./doctor-search";
+import { AddWalkinDialog } from "../my-day/_components/add-walkin-dialog";
+import { useDoctorToday } from "../my-day/_hooks/use-doctor-today";
 
 export function DoctorTopbar({
   doctorName,
@@ -68,6 +70,23 @@ export function DoctorTopbar({
   const t = useTranslations("doctor.nav");
   const locale = useLocale();
   const router = useRouter();
+  // Queueing a walk-in must happen wherever the doctor is standing — routing
+  // him to «Мой день» was a no-op when he was already there, which is exactly
+  // how it was reported ("нажимаю не работает").
+  const [addOpen, setAddOpen] = React.useState(false);
+  const { data: doctorId } = useDoctorToday<string>((d) => d.doctorId);
+
+  // F2 — the shortcut the button advertises.
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "F2") {
+        e.preventDefault();
+        setAddOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [now, setNow] = React.useState<Date | null>(null);
   React.useEffect(() => {
     setNow(new Date());
@@ -85,8 +104,9 @@ export function DoctorTopbar({
           button goes where that happens instead of doing nothing. */}
       <button
         type="button"
-        onClick={() => router.push(`/${locale}/doctor/my-day`)}
-        className="motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+        disabled={!doctorId}
+        onClick={() => setAddOpen(true)}
+        className="motion-press inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
       >
         <PlusIcon className="size-4" />
         <span className="hidden sm:inline">{t("topbar.addToQueue")}</span>
@@ -94,6 +114,14 @@ export function DoctorTopbar({
           F2
         </span>
       </button>
+
+      {doctorId ? (
+        <AddWalkinDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          doctorId={doctorId}
+        />
+      ) : null}
 
       <div className="ml-auto flex items-center gap-2">
         {/* Clock + date */}

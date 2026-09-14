@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { splitReceptionLanes } from "@/lib/queue-ordering";
+import { isLiveLane, splitReceptionLanes } from "@/lib/queue-ordering";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -266,9 +266,14 @@ function DrawerRow({
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
             {row.patient.fullName}
           </span>
-          <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
-            {time}
-          </span>
+          {/* Two-lanes: a walk-in has no slot, only an arrival stamp. Printing
+              it beside real appointment times is what made the live lane read
+              as scheduled (same fix as the queue card / column / panel). */}
+          {isLiveLane(row) ? null : (
+            <span className="shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
+              {time}
+            </span>
+          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
           <span className="inline-flex min-w-0 items-center gap-1 truncate">

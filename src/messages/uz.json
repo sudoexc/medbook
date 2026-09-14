@@ -5810,7 +5810,8 @@
         "phoneSave": "Saqlash",
         "phoneCancel": "Bekor qilish",
         "phoneSaved": "Raqam yangilandi",
-        "phoneSaveFailed": "Raqamni saqlab bo'lmadi"
+        "phoneSaveFailed": "Raqamni saqlab bo'lmadi",
+        "queuedLabel": "NAVBATDA"
       },
       "recentFiles": {
         "title": "So‘nggi fayllar",

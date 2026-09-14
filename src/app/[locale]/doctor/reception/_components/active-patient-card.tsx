@@ -67,6 +67,14 @@ function formatRange(date: string, end: string): string {
   )}:${pad(e.getMinutes())}`;
 }
 
+/** Wall-clock moment, no range — used for "joined the queue at". */
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const day = d.toLocaleString("ru-RU", { day: "numeric", month: "short" });
+  return `${day}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function useElapsed(startedAt: string | null): string {
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -121,6 +129,8 @@ export function ActivePatientCard() {
   );
   const note = noteQuery.data;
   const isFinalized = note?.status === "FINALIZED";
+  // Two-lanes: the live lane has no appointment time, only a join moment.
+  const isWalkin = activeAppointment.channel === "WALKIN";
 
   // Ф0 — finalize gate. No diagnosis → button stays disabled (the API
   // backstops with 400 DIAGNOSIS_REQUIRED). Empty sections don't block but
@@ -260,9 +270,22 @@ export function ActivePatientCard() {
         <MetaCell label={t("activePatient.typeLabel")}>
           {activeAppointment.primaryService?.nameRu ?? t("common.consultation")}
         </MetaCell>
-        <MetaCell label={t("activePatient.scheduledLabel")}>
+        {/* A walk-in has no scheduled slot — the 30-minute range exists only
+            because the row needs a start and an end in the database. Showing
+            it as «ЗАПЛАНИРОВАНО 15:24 – 15:54» invents a commitment nobody
+            made: the live lane runs at whatever pace the day has, five in an
+            hour or one. Show when they joined the queue instead. */}
+        <MetaCell
+          label={
+            isWalkin
+              ? t("activePatient.queuedLabel")
+              : t("activePatient.scheduledLabel")
+          }
+        >
           <div className="tabular-nums">
-            {formatRange(activeAppointment.date, activeAppointment.endDate)}
+            {isWalkin
+              ? formatTime(activeAppointment.queuedAt ?? activeAppointment.date)
+              : formatRange(activeAppointment.date, activeAppointment.endDate)}
           </div>
           {activeAppointment.cabinet?.number && (
             <div className="text-xs text-muted-foreground">

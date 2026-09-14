@@ -26,6 +26,21 @@ import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+
+/**
+ * HH:mm in the clinic's wall clock. Used for walk-ins, where the meaningful
+ * moment is when the visit began rather than a slot nobody booked.
+ */
+function formatTimeHm(value: Date | string): string {
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Tashkent",
+  }).format(d);
+}
+
 import {
   diffTreatments,
   formatTreatmentDiff,
@@ -138,7 +153,15 @@ export const GET = createApiListHandler(
             specializationUz: true,
           },
         },
-        appointment: { select: { id: true, date: true, time: true } },
+        appointment: {
+          select: {
+            id: true,
+            date: true,
+            time: true,
+            channel: true,
+            startedAt: true,
+          },
+        },
         visitPrescriptions: { orderBy: { sortOrder: "asc" } },
         // Post-window corrections — printed as an appended block; the
         // original sections above render exactly as issued.
@@ -316,8 +339,18 @@ export const GET = createApiListHandler(
       ? formatDate(note.patient.birthDate, locale, "short")
       : null;
 
+    // A walk-in has no appointment time — the slot exists only so the row has
+    // a start in the database. Printing it as the visit time would put an
+    // invented commitment on a signed document; use when the visit actually
+    // began instead, and fall back to the date alone.
+    const isWalkinVisit = note.appointment?.channel === "WALKIN";
+    const walkinStart = note.appointment?.startedAt ?? note.startedAt;
     const visitDate = note.appointment
-      ? `${formatDate(note.appointment.date, locale, "short")}${note.appointment.time ? ` · ${escapeHtml(note.appointment.time)}` : ""}`
+      ? isWalkinVisit
+        ? `${formatDate(note.appointment.date, locale, "short")}${
+            walkinStart ? ` · ${formatTimeHm(walkinStart)}` : ""
+          }`
+        : `${formatDate(note.appointment.date, locale, "short")}${note.appointment.time ? ` · ${escapeHtml(note.appointment.time)}` : ""}`
       : note.startedAt
         ? formatDate(note.startedAt, locale, "short")
         : "—";

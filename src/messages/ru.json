@@ -5810,7 +5810,8 @@
         "phoneSave": "Сохранить",
         "phoneCancel": "Отмена",
         "phoneSaved": "Номер обновлён",
-        "phoneSaveFailed": "Не удалось сохранить номер"
+        "phoneSaveFailed": "Не удалось сохранить номер",
+        "queuedLabel": "В ОЧЕРЕДИ С"
       },
       "recentFiles": {
         "title": "Недавние файлы",

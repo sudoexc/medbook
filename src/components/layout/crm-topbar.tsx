@@ -11,6 +11,7 @@ import {
   MoonIcon,
   PhoneIcon,
   PlusIcon,
+  TicketIcon,
   SearchIcon,
   SendIcon,
   SunIcon,
@@ -39,6 +40,7 @@ import { BranchSwitcher } from "@/components/layout/branch-switcher"
 import { useGlobalSearchShortcut } from "@/components/layout/global-search"
 import { toast } from "@/components/ui/sonner"
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog"
+import { WalkinTicketDialog } from "@/app/[locale]/crm/reception/_components/walkin-ticket-dialog"
 
 // The cmdk search dialog pulls in cmdk + @radix-ui/react-dialog + a slew
 // of icons (~50KB gzip combined). Only load it when the user opens the
@@ -165,18 +167,24 @@ export function CrmTopbar({
   }, [now, dateLocale])
 
   const roleLabel = userRole ? tRoles(userRole) : tRoles("fallback")
+  const [walkinOpen, setWalkinOpen] = React.useState(false)
 
-  // Keyboard shortcut: F2 → open "Новая запись".
+  // On the reception desk the frequent action is issuing a queue ticket, not
+  // booking a slot: patients walk in far more often than they call ahead. The
+  // primary button and F2 follow the screen instead of being fixed globally.
+  const isReception = /\/crm\/reception(?:\/|$|\?)/.test(pathname)
+
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F2") {
         e.preventDefault()
-        setNewApptOpen(true)
+        if (isReception) setWalkinOpen(true)
+        else setNewApptOpen(true)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [isReception])
 
   return (
     <header className="relative flex h-[72px] shrink-0 items-center gap-4 overflow-hidden border-b border-border bg-card px-6">
@@ -211,13 +219,17 @@ export function CrmTopbar({
         <div className="flex h-11 overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-sm">
           <Button
             size="lg"
-            onClick={() => setNewApptOpen(true)}
+            onClick={() => (isReception ? setWalkinOpen(true) : setNewApptOpen(true))}
             className={cn(
               "h-full gap-2 rounded-none border-0 bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
             )}
           >
-            <PlusIcon className="size-4" />
-            {tTopbar("newAppointment")}
+            {isReception ? (
+              <TicketIcon className="size-4" />
+            ) : (
+              <PlusIcon className="size-4" />
+            )}
+            {isReception ? tTopbar("issueTicket") : tTopbar("newAppointment")}
             <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[11px] font-bold tracking-wide">
               F2
             </span>
@@ -250,6 +262,7 @@ export function CrmTopbar({
           </DropdownMenu>
         </div>
         <NewAppointmentDialog open={newApptOpen} onOpenChange={setNewApptOpen} />
+        <WalkinTicketDialog open={walkinOpen} onOpenChange={setWalkinOpen} />
 
         {userRole === "SUPER_ADMIN" && (
           <ClinicSwitcher

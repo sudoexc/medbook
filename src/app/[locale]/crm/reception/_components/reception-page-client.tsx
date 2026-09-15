@@ -7,7 +7,7 @@ import {
   LayoutGridIcon,
   ListIcon,
   SettingsIcon,
-  TicketIcon,
+  CalendarPlusIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -165,6 +165,17 @@ export function ReceptionPageClient() {
   } | null>(null);
   const [walkinOpen, setWalkinOpen] = React.useState(false);
 
+  // The topbar's «Выдать талон» menu item routes here with ?walkin=true, but
+  // nothing read the flag — the menu item opened the page and stopped. Honour
+  // it, then strip the param so a refresh doesn't reopen the dialog.
+  React.useEffect(() => {
+    if (searchParams?.get("walkin") !== "true") return;
+    setWalkinOpen(true);
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.delete("walkin");
+    router.replace(sp.toString() ? `?${sp.toString()}` : "?", { scroll: false });
+  }, [searchParams, router]);
+
   const openCreate = React.useCallback(
     (prefill?: { patientId?: string | null; doctorId?: string | null }) => {
       setDialogPrefill(prefill ?? null);
@@ -224,13 +235,17 @@ export function ReceptionPageClient() {
             {t("autoRefresh")}
           </span>
         </div>
+        {/* Swapped with the topbar: issuing a ticket is the frequent action at
+            the desk, so it took the primary slot up top and booking a slot
+            moved down here as the secondary one. */}
         <Button
           size="sm"
+          variant="outline"
           className="gap-2"
-          onClick={() => setWalkinOpen(true)}
+          onClick={() => setDialogOpen(true)}
         >
-          <TicketIcon className="size-4" />
-          {t("walkin.trigger")}
+          <CalendarPlusIcon className="size-4" />
+          {t("newAppointment")}
         </Button>
       </div>
 

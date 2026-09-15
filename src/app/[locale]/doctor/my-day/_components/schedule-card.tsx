@@ -163,8 +163,11 @@ export function ScheduleCard() {
     );
   }, [active, isToday]);
 
+  // No col-span on the section: the card used to claim both grid columns,
+  // which pushed the live queue onto its own row and left half the screen
+  // empty. The two lanes share one row now.
   return (
-    <section className="flex flex-col rounded-2xl border border-border bg-card xl:col-span-2">
+    <section className="flex flex-col rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between px-5 pt-4 pb-3">
         <div>
           <div className="text-[15px] font-semibold text-foreground">

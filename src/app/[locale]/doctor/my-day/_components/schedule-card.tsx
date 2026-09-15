@@ -12,7 +12,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Loader2Icon,
-  PlayIcon,
+  MegaphoneIcon,
   RotateCcwIcon,
 } from "lucide-react";
 
@@ -614,9 +614,13 @@ function RowAction({
       {isPending ? (
         <Loader2Icon className="size-4 animate-spin" />
       ) : (
-        <PlayIcon className="size-4" />
+        <MegaphoneIcon className="size-4" />
       )}
-      {t("schedule.startVisit")}
+      {/* Same wording as the live queue. The two lanes already fire the very
+          same mutation (`call: true` — notify the patient, chime the board,
+          open the visit); only the labels differed, which read as two
+          different workflows and was reported as such from the cabinet. */}
+      {t("liveQueue.call")}
     </button>
   );
 }

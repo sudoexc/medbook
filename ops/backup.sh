@@ -82,8 +82,42 @@ tar -czf "$FILES" -C "$STAGE" . || fail "tar clinic files"
 FILES_SIZE=$(stat -c %s "$FILES" 2>/dev/null || stat -f %z "$FILES")
 log "files OK ($(numfmt --to=iec "$FILES_SIZE" 2>/dev/null || echo "${FILES_SIZE}B"))"
 
-# ── 3. Retention ───────────────────────────────────────────────────────────
-# Pruned only after both artefacts of THIS run landed — a failing run must not
+# ── 3. Off-box copy ────────────────────────────────────────────────────────
+# Everything above still lives on the same disk as production: a dead disk or
+# a locked instance takes the database, the clinic's files AND every retained
+# backup at once. That is ~100 patients and hundreds of signed conclusions,
+# which are legally irreplaceable.
+#
+# Set BACKUP_REMOTE to an rsync target to close that hole, e.g.
+#   BACKUP_REMOTE=u12345@u12345.your-storagebox.de:medbook   (Hetzner Storage Box)
+#   BACKUP_REMOTE=backup@1.2.3.4:/srv/medbook-backups        (any second host)
+# Key-based auth only — cron has nobody to type a password.
+#
+# A failure here is loud but NOT fatal: a broken remote must not make a good
+# local backup look failed, nor stop retention from running.
+if [[ -n "${BACKUP_REMOTE:-}" ]]; then
+  log "copying off-box → ${BACKUP_REMOTE}"
+  if rsync -az --timeout=300 \
+      -e "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+      "$DEST" "${BACKUP_REMOTE}/" 2>/tmp/backup-offbox.err; then
+    log "off-box OK"
+  else
+    log "OFF-BOX FAILED — local copy is fine, remote is NOT. See /tmp/backup-offbox.err"
+    # Surface it the way the watchdog surfaces outages, when configured.
+    if [[ -n "${ALERT_TG_TOKEN:-}" && -n "${ALERT_TG_CHAT_ID:-}" ]]; then
+      curl -fsS --max-time 15 \
+        "https://api.telegram.org/bot${ALERT_TG_TOKEN}/sendMessage" \
+        -d "chat_id=${ALERT_TG_CHAT_ID}" \
+        -d "text=⚠️ MedBook: off-box backup FAILED on $(hostname). Local copy present, remote NOT." \
+        >/dev/null 2>&1 || true
+    fi
+  fi
+else
+  log "BACKUP_REMOTE unset — backups exist only on this disk"
+fi
+
+# ── 4. Retention ───────────────────────────────────────────────────────────
+# Pruned only after the artefacts of THIS run landed — a failing run must not
 # delete history while adding nothing.
 find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime "+${BACKUP_RETENTION_DAYS}" \
   -exec rm -rf {} + 2>/dev/null || true

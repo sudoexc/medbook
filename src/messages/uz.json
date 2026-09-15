@@ -6703,6 +6703,7 @@
         "timerElapsed": "Davom etmoqda: {time}",
         "timerWaiting": "Kutmoqda: {time}",
         "timerUntil": "{time} dan so'ng",
+        "birthYear": "{year} y.t.",
         "startsAt": "Boshlanishi {time}",
         "calledAgo": "{ago} chaqirilgan",
         "secondsAgo": "{n} soniya oldin",

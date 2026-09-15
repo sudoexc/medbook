@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+  birthYearOf,
+  isYearOnlyBirthDate,
+} from "@/lib/patients/parse-identity";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
@@ -209,7 +213,14 @@ function ActivePatient({
     };
   }
 
-  const birthLabel = p.birthDate ? formatVisitDate(p.birthDate) : null;
+  // Most patients here were entered as «Турматов О 1969» — only a year is
+  // known, stored as 1 January. Printing «01.01.1969» claims a precision the
+  // doctor never gave us, so a year-only date renders as «1969 г.р.».
+  const birthLabel = !p.birthDate
+    ? null
+    : isYearOnlyBirthDate(p.birthDate)
+      ? t("current.birthYear", { year: birthYearOf(p.birthDate) })
+      : formatVisitDate(p.birthDate);
 
   type StatusTarget = Parameters<typeof mutation.mutate>[0]["toStatus"];
 

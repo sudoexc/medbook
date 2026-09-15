@@ -6,7 +6,8 @@ export type PatientDiagnosisRow = {
   visitNoteId: string;
   appointmentId: string;
   date: string;
-  diagnosisCode: string;
+  /** Null for a free-text diagnosis — the name carries it then. */
+  diagnosisCode: string | null;
   diagnosisName: string | null;
   doctorName: string;
   doctorSpecialty: string | null;

@@ -26,6 +26,10 @@ import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import {
+  birthYearOf,
+  isYearOnlyBirthDate,
+} from "@/lib/patients/parse-identity";
 
 /**
  * HH:mm in the clinic's wall clock. Used for walk-ins, where the meaningful
@@ -335,9 +339,14 @@ export const GET = createApiListHandler(
         : note.patient.gender === "FEMALE"
           ? labels.genderF
           : null;
-    const patientBirth = note.patient.birthDate
-      ? formatDate(note.patient.birthDate, locale, "short")
-      : null;
+    // Year-only birth dates (the doctor types «Турматов О 1969») are stored as
+    // 1 January. On a signed document a fabricated day and month is worse than
+    // a coarser truth, so those print as the year alone.
+    const patientBirth = !note.patient.birthDate
+      ? null
+      : isYearOnlyBirthDate(note.patient.birthDate)
+        ? `${birthYearOf(note.patient.birthDate)}`
+        : formatDate(note.patient.birthDate, locale, "short");
 
     // A walk-in has no appointment time — the slot exists only so the row has
     // a start in the database. Printing it as the visit time would put an
@@ -355,8 +364,17 @@ export const GET = createApiListHandler(
         ? formatDate(note.startedAt, locale, "short")
         : "—";
 
-    const diagnosisLine = note.diagnosisCode
-      ? `${escapeHtml(note.diagnosisCode)}${note.diagnosisName ? ` · ${escapeHtml(note.diagnosisName)}` : ""}`
+    // A diagnosis written in words is a diagnosis: the finalize gate accepts
+    // it, so the printed form must carry it. Keying this off `diagnosisCode`
+    // alone meant every conclusion where the doctor typed «Дорсопатия
+    // шейного отдела» instead of picking an ICD-10 entry was signed, numbered
+    // and handed to the patient with a dash in the diagnosis field — a legally
+    // void document that nobody noticed until printing.
+    const diagnosisParts = [note.diagnosisCode, note.diagnosisName]
+      .filter((v): v is string => Boolean(v && v.trim()))
+      .map((v) => escapeHtml(v.trim()));
+    const diagnosisLine = diagnosisParts.length
+      ? diagnosisParts.join(" · ")
       : `<span class="empty">—</span>`;
 
     const generatedAt = new Date();

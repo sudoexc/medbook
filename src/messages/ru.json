@@ -6703,6 +6703,7 @@
         "timerElapsed": "Идёт: {time}",
         "timerWaiting": "Ожидает: {time}",
         "timerUntil": "Через {time}",
+        "birthYear": "{year} г.р.",
         "startsAt": "Начало в {time}",
         "calledAgo": "Вызван {ago}",
         "secondsAgo": "{n} сек назад",

@@ -106,3 +106,31 @@ export function birthDateFromYear(year: number): Date {
 function collapse(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
+
+/**
+ * True when the stored birth date is year-only — i.e. it came from
+ * `birthDateFromYear` and the day/month are padding, not information.
+ *
+ * Heuristic by necessity: we store 1 January UTC and keep no "precision" flag,
+ * so someone genuinely born on 1 January reads as year-only too. That is the
+ * right way to be wrong — saying «1987 г.р.» about a January 1st birthday
+ * loses nothing, while printing «01.01.1987» for a patient whose doctor only
+ * ever typed «1987» invents a fact on a medical document.
+ */
+export function isYearOnlyBirthDate(value: Date | string): boolean {
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return false;
+  return (
+    d.getUTCMonth() === 0 &&
+    d.getUTCDate() === 1 &&
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0
+  );
+}
+
+/** Birth year of a stored date, for «1987 г.р.» style rendering. */
+export function birthYearOf(value: Date | string): number {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return d.getUTCFullYear();
+}

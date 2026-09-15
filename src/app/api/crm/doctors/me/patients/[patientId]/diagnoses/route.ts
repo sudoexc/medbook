@@ -27,7 +27,8 @@ type DiagnosisRow = {
   visitNoteId: string;
   appointmentId: string;
   date: string;
-  diagnosisCode: string;
+  /** Null for a free-text diagnosis — the name carries it then. */
+  diagnosisCode: string | null;
   diagnosisName: string | null;
   doctorName: string;
   doctorSpecialty: string | null;
@@ -82,7 +83,14 @@ export const GET = createApiListHandler(
       where: {
         patientId,
         status: "FINALIZED",
-        diagnosisCode: { not: null },
+        // A diagnosis may be free text — requiring a code hid every one the
+        // doctor typed in his own words. That emptied «Было раньше» and the
+        // history card, so on a repeat visit he retyped a diagnosis the
+        // system already had — precisely the work free text was meant to save.
+        OR: [
+          { diagnosisCode: { not: null } },
+          { diagnosisName: { not: null } },
+        ],
       },
       select: {
         id: true,
@@ -103,7 +111,7 @@ export const GET = createApiListHandler(
       // Prefer the clinical date (when the visit happened); fall back to
       // finalizedAt for the rare note finalized without an appointment date.
       date: (r.appointment?.date ?? r.finalizedAt ?? new Date(0)).toISOString(),
-      diagnosisCode: r.diagnosisCode ?? "",
+      diagnosisCode: r.diagnosisCode,
       diagnosisName: r.diagnosisName,
       doctorName: r.doctor?.nameRu ?? "—",
       doctorSpecialty: r.doctor?.specializationRu ?? null,

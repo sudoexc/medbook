@@ -60,12 +60,20 @@ export function DiagnosisHistoryCard() {
                   <StethoscopeIcon className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
+                  {/* The code is optional — a free-text diagnosis has only a
+                      name, and rendering the code slot unconditionally left
+                      those rows looking blank. */}
                   <div className="truncate text-sm font-medium text-foreground">
-                    <span className="font-semibold tabular-nums">
-                      {d.diagnosisCode}
-                    </span>
+                    {d.diagnosisCode ? (
+                      <span className="font-semibold tabular-nums">
+                        {d.diagnosisCode}
+                      </span>
+                    ) : null}
                     {d.diagnosisName ? (
-                      <span className="text-foreground/80"> · {d.diagnosisName}</span>
+                      <span className="text-foreground/80">
+                        {d.diagnosisCode ? " · " : ""}
+                        {d.diagnosisName}
+                      </span>
                     ) : null}
                   </div>
                   <div className="truncate text-xs text-muted-foreground tabular-nums">

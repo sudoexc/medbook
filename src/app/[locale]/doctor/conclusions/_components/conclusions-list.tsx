@@ -180,10 +180,17 @@ function ConclusionRowItem({ row, locale }: { row: ConclusionRow; locale: string
             {row.patient.fullName}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {row.diagnosisCode ? (
+            {/* A free-text diagnosis has no code. Gating on the code alone
+                labelled those conclusions «Без диагноза» even though the
+                doctor had written one. */}
+            {row.diagnosisCode || row.diagnosisName ? (
               <>
-                <span className="font-mono">{row.diagnosisCode}</span>
-                {row.diagnosisName ? ` · ${row.diagnosisName}` : ""}
+                {row.diagnosisCode ? (
+                  <span className="font-mono">{row.diagnosisCode}</span>
+                ) : null}
+                {row.diagnosisName
+                  ? `${row.diagnosisCode ? " · " : ""}${row.diagnosisName}`
+                  : ""}
               </>
             ) : (
               tr("noDiagnosis")

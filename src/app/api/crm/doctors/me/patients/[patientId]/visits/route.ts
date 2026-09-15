@@ -38,6 +38,17 @@ type VisitRow = {
   advice: string[];
   hasVisitNote: boolean;
   visitNoteId: string | null;
+  /** DRAFT | FINALIZED. A draft means the visit was never signed off. */
+  noteStatus: string | null;
+  /** What this visit produced — documents, lab orders, structured meds. */
+  documents: { id: string; title: string; type: string; createdAt: string }[];
+  labs: { id: string; orderNumber: string; status: string; tests: number }[];
+  medications: {
+    id: string;
+    name: string;
+    dose: string;
+    strength: string | null;
+  }[];
 };
 
 function patientIdFromUrl(request: Request): string {
@@ -109,11 +120,40 @@ export const GET = createApiListHandler(
         visitNote: {
           select: {
             id: true,
+            status: true,
             diagnosisCode: true,
             diagnosisName: true,
             prescriptions: true,
             advice: true,
+            // Structured medications of THIS visit. The free-text
+            // `prescriptions` array above is the quick-entry lane, kept
+            // separate because the doctor uses both.
+            visitPrescriptions: {
+              select: {
+                id: true,
+                displayName: true,
+                dose: true,
+                strength: true,
+              },
+              orderBy: { sortOrder: "asc" },
+            },
           },
+        },
+        // What the visit produced. Both hang off appointmentId, so a visit
+        // owns its artefacts without an extra round-trip per row — that is
+        // what lets the history show them inline instead of in flat tabs.
+        documents: {
+          select: { id: true, title: true, type: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+        },
+        labOrders: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            testCodes: true,
+          },
+          orderBy: { createdAt: "desc" },
         },
       },
       orderBy: [{ date: "desc" }, { id: "desc" }],
@@ -177,6 +217,25 @@ export const GET = createApiListHandler(
         advice: a.visitNote?.advice ?? [],
         hasVisitNote: a.visitNote !== null && a.visitNote !== undefined,
         visitNoteId: a.visitNote?.id ?? null,
+        noteStatus: a.visitNote?.status ?? null,
+        documents: a.documents.map((d) => ({
+          id: d.id,
+          title: d.title,
+          type: String(d.type),
+          createdAt: d.createdAt.toISOString(),
+        })),
+        labs: a.labOrders.map((l) => ({
+          id: l.id,
+          orderNumber: l.orderNumber,
+          status: String(l.status),
+          tests: l.testCodes.length,
+        })),
+        medications: (a.visitNote?.visitPrescriptions ?? []).map((m) => ({
+          id: m.id,
+          name: m.displayName,
+          dose: m.dose,
+          strength: m.strength,
+        })),
       };
     });
 

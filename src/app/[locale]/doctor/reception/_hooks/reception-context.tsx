@@ -13,12 +13,10 @@ import {
 } from "./use-doctor-queue";
 import { useEnsureVisitNote, useVisitNote } from "./use-visit-note";
 
-export type ReceptionTab =
-  | "session"
-  | "history"
-  | "documents"
-  | "labs"
-  | "prescriptions";
+/** Two tabs: the consultation itself, and everything the patient had before
+    it. Documents / labs / prescriptions folded into the history timeline,
+    under the visit that produced each of them. */
+export type ReceptionTab = "session" | "history";
 
 type ReceptionContextValue = {
   queue: QueueAppointment[];

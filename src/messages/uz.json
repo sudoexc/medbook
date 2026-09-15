@@ -6512,6 +6512,16 @@
         "empty": "Hozircha yakunlangan tashriflar yo‘q.",
         "noDiagnosis": "Tashxissiz",
         "durationMin": "{min} daq.",
+        "draft": "Qoralama",
+        "medsCount": "{n} dori",
+        "docsCount": "{n} hujjat",
+        "labsCount": "{n} tahlil",
+        "medications": "Tayinlovlar",
+        "documents": "Hujjatlar",
+        "labs": "Tahlillar",
+        "advice": "Tavsiyalar",
+        "labTests": "{n} tekshiruv",
+        "openConclusion": "Xulosani ochish",
         "type": {
           "repeat": "Takroriy",
           "consultation": "Konsultatsiya"

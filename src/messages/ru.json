@@ -6512,6 +6512,16 @@
         "empty": "Завершённых визитов пока нет.",
         "noDiagnosis": "Без диагноза",
         "durationMin": "{min} мин",
+        "draft": "Черновик",
+        "medsCount": "{n} преп.",
+        "docsCount": "{n} док.",
+        "labsCount": "{n} анализ.",
+        "medications": "Назначения",
+        "documents": "Документы",
+        "labs": "Анализы",
+        "advice": "Рекомендации",
+        "labTests": "{n} иссл.",
+        "openConclusion": "Открыть заключение",
         "type": {
           "repeat": "Повторный",
           "consultation": "Консультация"

@@ -9,12 +9,14 @@ import {
   type ReceptionTab,
 } from "../_hooks/reception-context";
 
+// Documents / labs / prescriptions used to be sibling tabs. They are not
+// independent of the visit that produced them — they ARE the visit — so they
+// now live inside «История визитов», each under its own visit. Three flat
+// lists became one timeline, and answering «что я назначал в прошлый раз»
+// stopped meaning "open three tabs and match them up by date".
 const TABS: ReadonlyArray<{ key: ReceptionTab; labelKey: string }> = [
   { key: "session", labelKey: "tabs.session" },
   { key: "history", labelKey: "tabs.history" },
-  { key: "documents", labelKey: "tabs.documents" },
-  { key: "labs", labelKey: "tabs.labs" },
-  { key: "prescriptions", labelKey: "tabs.prescriptions" },
 ];
 
 export function SessionTabs() {

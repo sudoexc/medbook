@@ -17,6 +17,18 @@ export type DoctorPatientVisitRow = {
   advice: string[];
   hasVisitNote: boolean;
   visitNoteId: string | null;
+  /** DRAFT | FINALIZED — a draft visit was never signed off. */
+  noteStatus: string | null;
+  /** Artefacts the visit produced, so the history can show them inline
+      instead of forcing the doctor into separate flat tabs. */
+  documents: { id: string; title: string; type: string; createdAt: string }[];
+  labs: { id: string; orderNumber: string; status: string; tests: number }[];
+  medications: {
+    id: string;
+    name: string;
+    dose: string;
+    strength: string | null;
+  }[];
 };
 
 export type DoctorPatientVisitsResponse = {

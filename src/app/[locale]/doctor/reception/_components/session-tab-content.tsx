@@ -3,9 +3,6 @@
 import { useTranslations } from "next-intl";
 
 import { VisitsSection } from "../../patients/[id]/_components/visits-section";
-import { DocumentsSection } from "../../patients/[id]/_components/documents-section";
-import { PrescriptionsSection } from "../../patients/[id]/_components/prescriptions-section";
-import { LabsSection } from "../../patients/[id]/_components/labs-section";
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import { DiagnosisHistoryCard } from "./diagnosis-history-card";
@@ -47,22 +44,14 @@ export function SessionTabContent({ locale }: { locale: string }) {
     );
   }
 
-  if (activeTab === "history") {
-    // Diagnosis history rides along with the visit list instead of holding its
-    // own card on the consultation screen — same patient, same question
-    // («что у него было раньше»), so one place to look.
-    return (
-      <div className="flex flex-col gap-4 xl:gap-5">
-        <DiagnosisHistoryCard />
-        <VisitsSection patientId={patientId} locale={locale} />
-      </div>
-    );
-  }
-  if (activeTab === "documents") {
-    return <DocumentsSection patientId={patientId} />;
-  }
-  if (activeTab === "labs") {
-    return <LabsSection patientId={patientId} />;
-  }
-  return <PrescriptionsSection patientId={patientId} />;
+  // Everything a patient has — diagnoses, visits, and what each visit produced
+  // (documents, labs, prescriptions) — now answers from one timeline. The
+  // documents/labs/prescriptions tabs were removed; their sections still serve
+  // the standalone patient card, where a flat list is the right shape.
+  return (
+    <div className="flex flex-col gap-4 xl:gap-5">
+      <DiagnosisHistoryCard />
+      <VisitsSection patientId={patientId} locale={locale} />
+    </div>
+  );
 }

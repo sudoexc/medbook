@@ -6506,7 +6506,18 @@
         "save": "Сохранить",
         "cancel": "Отмена",
         "saved": "Данные обновлены",
-        "saveFailed": "Не удалось сохранить"
+        "saveFailed": "Не удалось сохранить",
+        "birthYear": "{year} г.р.",
+        "status": {
+          "booked": "Записан",
+          "confirmed": "Подтверждена",
+          "waiting": "Ожидает в клинике",
+          "inProgress": "Идёт приём",
+          "completed": "Завершён",
+          "skipped": "Пропущен",
+          "cancelled": "Отменена",
+          "noShow": "Не пришёл"
+        }
       },
       "visits": {
         "loading": "Загружаем визиты…",

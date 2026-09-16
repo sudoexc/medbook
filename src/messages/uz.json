@@ -6506,7 +6506,18 @@
         "save": "Saqlash",
         "cancel": "Bekor qilish",
         "saved": "Ma'lumot yangilandi",
-        "saveFailed": "Saqlab bo'lmadi"
+        "saveFailed": "Saqlab bo'lmadi",
+        "birthYear": "{year} y.t.",
+        "status": {
+          "booked": "Yozilgan",
+          "confirmed": "Tasdiqlangan",
+          "waiting": "Klinikada kutmoqda",
+          "inProgress": "Qabul ketmoqda",
+          "completed": "Yakunlangan",
+          "skipped": "Oʻtkazib yuborilgan",
+          "cancelled": "Bekor qilingan",
+          "noShow": "Kelmagan"
+        }
       },
       "visits": {
         "loading": "Tashriflar yuklanmoqda…",

@@ -7,6 +7,10 @@ import { Loader2Icon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  birthYearOf,
+  isYearOnlyBirthDate,
+} from "@/lib/patients/parse-identity";
+import {
   doctorPatientSummaryKey,
   type DoctorPatientSummary,
 } from "../../_hooks/use-doctor-patient-summary";
@@ -35,6 +39,18 @@ function ruDateTime(iso: string): string {
 
 const fieldCls =
   "h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
+
+/** AppointmentStatus enum → i18n key under `overview.status.*`. */
+const APPOINTMENT_STATUS_KEY: Record<string, string> = {
+  BOOKED: "booked",
+  CONFIRMED: "confirmed",
+  WAITING: "waiting",
+  IN_PROGRESS: "inProgress",
+  COMPLETED: "completed",
+  SKIPPED: "skipped",
+  CANCELLED: "cancelled",
+  NO_SHOW: "noShow",
+};
 
 export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) {
   const t = useTranslations("doctor.patients");
@@ -153,7 +169,20 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
             <Row label={t("overview.name")} value={summary.fullName} />
             <Row label={t("overview.phone")} value={summary.phone} mono />
             {summary.birthDate ? (
-              <Row label={t("overview.birthDate")} value={ruDateTime(summary.birthDate).split(",")[0] ?? "—"} mono />
+              // Most patients carry a year-only birth date («Аметова 1972» →
+              // stored as 1 January). Printing «1 января 1972» asserts a day
+              // and month the doctor never gave us — show the year alone.
+              <Row
+                label={t("overview.birthDate")}
+                value={
+                  isYearOnlyBirthDate(summary.birthDate)
+                    ? t("overview.birthYear", {
+                        year: birthYearOf(summary.birthDate),
+                      })
+                    : (ruDateTime(summary.birthDate).split(",")[0] ?? "—")
+                }
+                mono
+              />
             ) : null}
             {summary.segment ? (
               <Row label={t("overview.segment")} value={summary.segment} />
@@ -172,8 +201,17 @@ export function OverviewSection({ summary }: { summary: DoctorPatientSummary }) 
               {ruDateTime(summary.upcomingAppointment.date)}
             </div>
             <div className="text-muted-foreground">
+              {/* «Статус: WAITING» is machine vocabulary — translate the enum,
+                  falling back to the raw value only for a status this map has
+                  never heard of (better odd than blank). */}
               {t("overview.statusLabel", {
-                status: summary.upcomingAppointment.status,
+                status:
+                  APPOINTMENT_STATUS_KEY[summary.upcomingAppointment.status] !=
+                  null
+                    ? t(
+                        `overview.status.${APPOINTMENT_STATUS_KEY[summary.upcomingAppointment.status]!}`,
+                      )
+                    : summary.upcomingAppointment.status,
               })}
             </div>
             {summary.upcomingAppointment.doctor ? (

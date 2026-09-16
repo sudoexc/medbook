@@ -5961,7 +5961,9 @@
         "presetTitleWithTemplate": "Protokol shablonidan qo‘shish",
         "remove": "O‘chirish",
         "saveProtocol": "Protokolga",
-        "saveProtocolTitle": "Qabulni shaxsiy protokol sifatida saqlash"
+        "saveProtocolTitle": "Qabulni shaxsiy protokol sifatida saqlash",
+        "frequentLabel": "Tez-tez",
+        "frequentTitle": "Yarim yilda {n} marta tayinlangan"
       },
       "diagnosis": {
         "title": "Tashxis",

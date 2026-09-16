@@ -328,9 +328,10 @@ export function ConclusionDetail({
             <PrescriptionConstructor
               note={note}
               disabled={!canEdit}
-              // Presets and the catalog drawer belong to the live visit flow;
-              // a correction is a targeted fix, not a fresh prescribing
-              // session, so the surface stays deliberately narrower here.
+              // Presets, frequent-drug chips and the catalog drawer belong to
+              // the live visit flow; a correction is a targeted fix, not a
+              // fresh prescribing session, so the surface stays deliberately
+              // narrower here.
               presets={[]}
               onSaveRows={(rows: VisitPrescriptionDraft[]) =>
                 applyStructuredPatch({ visitPrescriptions: rows })

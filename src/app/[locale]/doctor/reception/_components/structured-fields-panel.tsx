@@ -261,6 +261,12 @@ export function StructuredFieldsPanel() {
             presets={presetsByField[RX_FIELD.presetField] ?? []}
             onSaveRows={saveRxRows}
             onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}
+            onAddLegacyLine={(line) => {
+              if (!note || isFinalized) return;
+              const arr = note[RX_FIELD.key] ?? [];
+              if (arr.includes(line)) return;
+              applyPatch({ [RX_FIELD.key]: [...arr, line] } as VisitNotePatch);
+            }}
             onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
             onOpenCatalog={() => setCatalogOpen(true)}
           />

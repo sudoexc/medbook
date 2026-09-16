@@ -5961,7 +5961,9 @@
         "presetTitleWithTemplate": "Добавить из шаблона протокола",
         "remove": "Удалить",
         "saveProtocol": "В протокол",
-        "saveProtocolTitle": "Сохранить приём как личный протокол"
+        "saveProtocolTitle": "Сохранить приём как личный протокол",
+        "frequentLabel": "Часто",
+        "frequentTitle": "Назначали {n} раз за полгода"
       },
       "diagnosis": {
         "title": "Диагноз",

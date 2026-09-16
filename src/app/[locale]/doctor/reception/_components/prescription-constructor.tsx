@@ -37,6 +37,7 @@ import {
 } from "@/lib/catalogs/prescription-format";
 
 import type { DoctorPresetRow } from "../_hooks/use-doctor-presets";
+import { useFrequentDrugs } from "../_hooks/use-frequent-drugs";
 import {
   useDrugSearch,
   useDrugSuggestions,
@@ -100,6 +101,12 @@ type Props = {
   presets: DoctorPresetRow[];
   onSaveRows: (rows: VisitPrescriptionDraft[]) => void;
   onPresetClick: (preset: DoctorPresetRow) => void;
+  /**
+   * Append a free-text prescription line. Optional: when absent the
+   * frequent-drug chips are hidden entirely rather than rendered inert — the
+   * corrections screen has no prescribing flow to add to.
+   */
+  onAddLegacyLine?: (line: string) => void;
   onRemoveLegacyChip: (chip: string) => void;
   onOpenCatalog: () => void;
 };
@@ -110,6 +117,7 @@ export function PrescriptionConstructor({
   presets,
   onSaveRows,
   onPresetClick,
+  onAddLegacyLine,
   onRemoveLegacyChip,
   onOpenCatalog,
 }: Props) {
@@ -121,7 +129,39 @@ export function PrescriptionConstructor({
     () => note.visitPrescriptions ?? [],
     [note.visitPrescriptions],
   );
-  const legacy = note.prescriptions ?? [];
+  // Memoised: `?? []` would mint a new array each render and re-run every
+  // hook that depends on it.
+  const legacy = React.useMemo(
+    () => note.prescriptions ?? [],
+    [note.prescriptions],
+  );
+
+  // Ranked by how often he actually prescribes each drug. Anything already on
+  // this visit is filtered out — re-suggesting what is on screen is noise.
+  const frequentQuery = useFrequentDrugs(10);
+  const frequent = React.useMemo(() => {
+    const taken = new Set(
+      [...rows.map((r) => r.displayName), ...legacy].map((s) =>
+        s.trim().toLowerCase(),
+      ),
+    );
+    if (!onAddLegacyLine) return [];
+    return (frequentQuery.data ?? []).filter(
+      (f) => !taken.has(f.label.toLowerCase()),
+    );
+  }, [frequentQuery.data, rows, legacy, onAddLegacyLine]);
+
+  /** Insert a frequent drug as a free-text line, with its last-used dose. */
+  const onFrequentClick = React.useCallback(
+    (f: { label: string; lastDose: string | null }) => {
+      const line = f.lastDose ? `${f.label} ${f.lastDose}` : f.label;
+      if (legacy.some((l) => l.trim().toLowerCase() === line.toLowerCase())) {
+        return;
+      }
+      onAddLegacyLine?.(line);
+    },
+    [legacy, onAddLegacyLine],
+  );
 
   const [expanded, setExpanded] = React.useState<number | null>(null);
   const [query, setQuery] = React.useState("");
@@ -296,6 +336,31 @@ export function PrescriptionConstructor({
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── What this doctor prescribes most ──
+          Ordered by his own prescribing history rather than a hand-set
+          sequence, so the drugs he reaches for sit first. Counted from issued
+          prescriptions, not chip clicks — clicks would just entrench whatever
+          already sat at the top. Hidden until there is enough history to be
+          meaningful; the curated presets below carry the screen until then. */}
+      {!disabled && frequent.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("structured.frequentLabel")}
+          </span>
+          {frequent.map((f) => (
+            <button
+              key={`freq-${f.label}`}
+              type="button"
+              onClick={() => onFrequentClick(f)}
+              title={t("structured.frequentTitle", { n: f.count })}
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       )}
 

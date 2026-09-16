@@ -10,7 +10,6 @@ import {
   LogOutIcon,
   MoonIcon,
   PhoneIcon,
-  PlusIcon,
   TicketIcon,
   SearchIcon,
   SendIcon,
@@ -169,22 +168,22 @@ export function CrmTopbar({
   const roleLabel = userRole ? tRoles(userRole) : tRoles("fallback")
   const [walkinOpen, setWalkinOpen] = React.useState(false)
 
-  // On the reception desk the frequent action is issuing a queue ticket, not
-  // booking a slot: patients walk in far more often than they call ahead. The
-  // primary button and F2 follow the screen instead of being fixed globally.
-  const isReception = /\/crm\/reception(?:\/|$|\?)/.test(pathname)
-
+  // Issuing a queue ticket is the clinic's dominant action — walk-ins far
+  // outnumber bookings. The first cut swapped the button per screen
+  // (ticket on /crm/reception, booking elsewhere), which read as the button
+  // randomly changing while reception moved between sections: same person,
+  // same job, different primary. One primary everywhere now; booking sits
+  // one click away in the dropdown.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F2") {
         e.preventDefault()
-        if (isReception) setWalkinOpen(true)
-        else setNewApptOpen(true)
+        setWalkinOpen(true)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [isReception])
+  }, [])
 
   return (
     <header className="relative flex h-[72px] shrink-0 items-center gap-4 overflow-hidden border-b border-border bg-card px-6">
@@ -219,17 +218,13 @@ export function CrmTopbar({
         <div className="flex h-11 overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-sm">
           <Button
             size="lg"
-            onClick={() => (isReception ? setWalkinOpen(true) : setNewApptOpen(true))}
+            onClick={() => setWalkinOpen(true)}
             className={cn(
               "h-full gap-2 rounded-none border-0 bg-primary px-5 text-sm font-bold text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
             )}
           >
-            {isReception ? (
-              <TicketIcon className="size-4" />
-            ) : (
-              <PlusIcon className="size-4" />
-            )}
-            {isReception ? tTopbar("issueTicket") : tTopbar("newAppointment")}
+            <TicketIcon className="size-4" />
+            {tTopbar("issueTicket")}
             <span className="ml-1 rounded-md bg-white/20 px-1.5 py-0.5 text-[11px] font-bold tracking-wide">
               F2
             </span>
@@ -252,11 +247,6 @@ export function CrmTopbar({
                 onClick={() => intlRouter.push("/crm/patients?new=true")}
               >
                 {tTopbar("create.patient")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => intlRouter.push("/crm/reception?walkin=true")}
-              >
-                {tTopbar("create.walkin")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

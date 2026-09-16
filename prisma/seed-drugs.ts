@@ -15,8 +15,17 @@ import "dotenv/config";
 import { Prisma, PrismaClient, type DrugCategory } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { DRUGS } from "./_drug-catalog";
+import { DRUGS as DRUGS_CORE } from "./_drug-catalog";
+import { DRUGS_EXTRA } from "./_drug-catalog-extra";
 import { DRUG_ENRICHMENT } from "./_drug-data";
+
+/**
+ * Curated core plus the depth extension, kept in separate files on purpose:
+ * the originals were compiled against local practice, while the extension was
+ * assembled without an official registry and still wants a pharmacist's eye.
+ * Splitting them keeps that distinction visible in review.
+ */
+const DRUGS = [...DRUGS_CORE, ...DRUGS_EXTRA];
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -24,8 +33,13 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   const ids = DRUGS.map((d) => d.id);
 
-  // Wipe existing rows for these ids (DrugBrand cascades).
-  await prisma.drug.deleteMany({ where: { id: { in: ids } } });
+  // Upsert rather than wipe-and-recreate. Deleting was safe while this was a
+  // fresh-install seed, but the clinic is live now and VisitPrescription rows
+  // point at these ids — dropping a drug either fails on the foreign key or
+  // silently detaches a prescription from its catalog entry. Brands are
+  // replaced per drug instead, since they are pure catalog data with nothing
+  // referencing them.
+  void ids;
 
   let drugCount = 0;
   let brandCount = 0;
@@ -40,29 +54,36 @@ async function main() {
       strengths: f.doses,
     }));
 
-    await prisma.drug.create({
-      data: {
-        id: d.id,
-        inn,
-        nameRu: d.nameRu,
-        nameUz: d.nameUz ?? null,
-        atcCode: enr.atcCode ?? null,
-        category: (enr.categoryOverride ?? d.category) as DrugCategory,
-        forms,
-        indications: enr.indications ?? [],
-        contraindications: enr.contraindications ?? [],
-        sideEffects: enr.sideEffects ?? [],
-        pregnancyCat: enr.pregnancyCat ?? "UNKNOWN",
-        defaultDosing: enr.defaultDosing ?? Prisma.JsonNull,
-        rxOnly: enr.rxOnly ?? true,
-        active: true,
-        brands: d.brands?.length
-          ? {
-              create: d.brands.map((name) => ({ name })),
-            }
-          : undefined,
-      },
+    const fields = {
+      inn,
+      nameRu: d.nameRu,
+      nameUz: d.nameUz ?? null,
+      atcCode: enr.atcCode ?? null,
+      category: (enr.categoryOverride ?? d.category) as DrugCategory,
+      forms,
+      indications: enr.indications ?? [],
+      contraindications: enr.contraindications ?? [],
+      sideEffects: enr.sideEffects ?? [],
+      pregnancyCat: enr.pregnancyCat ?? "UNKNOWN",
+      defaultDosing: enr.defaultDosing ?? Prisma.JsonNull,
+      rxOnly: enr.rxOnly ?? true,
+      active: true,
+    };
+
+    await prisma.drug.upsert({
+      where: { id: d.id },
+      create: { id: d.id, ...fields },
+      update: fields,
     });
+
+    // Brands are catalog-only (nothing references them), so replacing them
+    // wholesale keeps the list in step with the source file.
+    await prisma.drugBrand.deleteMany({ where: { drugId: d.id } });
+    if (d.brands?.length) {
+      await prisma.drugBrand.createMany({
+        data: d.brands.map((name) => ({ drugId: d.id, name })),
+      });
+    }
     drugCount += 1;
     brandCount += d.brands?.length ?? 0;
   }

@@ -203,12 +203,16 @@ function VisitEntry({
     : null;
   const isDraft = v.noteStatus === "DRAFT";
 
-  return (
-    <li>
+  // Every affordance must act. A row with attachments expands in place; a row
+  // whose only content is the conclusion navigates straight to it — the old
+  // flat list did, and losing that turned draft visits into dead rows with a
+  // chevron that promised a click and delivered nothing (reported same day).
+  const rowBody = (
       <div
         className={cn(
           "flex items-center gap-3 px-4 py-3",
-          hasDetail && "cursor-pointer transition-colors hover:bg-muted/60",
+          (hasDetail || noteHref) &&
+            "cursor-pointer transition-colors hover:bg-muted/60",
         )}
         onClick={hasDetail ? onToggle : undefined}
       >
@@ -277,6 +281,17 @@ function VisitEntry({
           <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
         ) : null}
       </div>
+  );
+
+  return (
+    <li>
+      {!hasDetail && noteHref ? (
+        <Link href={noteHref} className="block">
+          {rowBody}
+        </Link>
+      ) : (
+        rowBody
+      )}
 
       {isOpen ? (
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">

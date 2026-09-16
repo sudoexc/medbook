@@ -241,8 +241,21 @@ export function ConversationList({
             ))}
           </div>
         ) : displayRows.length === 0 ? (
-          <div className="p-6 text-sm text-muted-foreground">
-            {temp === "all" ? t("list.empty") : t("list.emptyTemp")}
+          <div className="space-y-2 p-6 text-sm text-muted-foreground">
+            <p>{temp === "all" ? t("list.empty") : t("list.emptyTemp")}</p>
+            {/* «Мои» sticks in the URL, and threads are rarely assigned to
+                anyone in this clinic — a receptionist who once clicked the tab
+                came back to an inbox that looked dead («ТГ не работает»).
+                Name the filter as the cause and offer the way out. */}
+            {filters.assignee === "mine" ? (
+              <button
+                type="button"
+                onClick={() => setFilters({ assignee: "all" })}
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                {t("list.emptyMineHint")}
+              </button>
+            ) : null}
           </div>
         ) : (
           <div

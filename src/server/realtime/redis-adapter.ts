@@ -26,6 +26,32 @@ import type { EventEnvelope } from "./envelope";
 
 let publisher: RedisClient | null = null;
 let subscriber: RedisClient | null = null;
+import { randomUUID } from "node:crypto";
+
+/**
+ * Identifies THIS process's publishes on the Redis channel.
+ *
+ * Publish and subscribe run in the same process (every SSE route calls
+ * `ensureRedisSubscriber()`), so without a marker each locally-published
+ * event came straight back off Redis and hit the local bus a second time.
+ * v2 envelopes deduped by eventId downstream; v1 events have no id, so the
+ * echo reached clients: the TV chimed twice per call and every CRM surface
+ * ran a double invalidation per event («уведы глючат»). The subscriber drops
+ * frames carrying our own origin.
+ */
+const ORIGIN_ID = randomUUID();
+
+type WireFrame = { __origin: string; payload: unknown };
+
+function isWireFrame(v: unknown): v is WireFrame {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as WireFrame).__origin === "string" &&
+    "payload" in (v as WireFrame)
+  );
+}
+
 let started = false;
 
 export function isRedisEnabled(): boolean {
@@ -85,6 +111,13 @@ export function ensureRedisSubscriber(): void {
     } catch {
       return;
     }
+    // Origin-framed messages: drop our own echo (already dispatched locally
+    // at publish time), unwrap everyone else's. Bare frames are from an older
+    // build mid-deploy — forward untouched.
+    if (isWireFrame(parsed)) {
+      if (parsed.__origin === ORIGIN_ID) return;
+      parsed = parsed.payload;
+    }
     // Forward to local bus. The SSE handler already listens on
     // `clinicChannel(clinicId)` so this lights it up.
     getEventBus().publish(clinicChannel(clinicId), parsed);
@@ -100,7 +133,10 @@ export async function publishToRedis(event: AppEvent): Promise<boolean> {
   const pub = getPublisher();
   if (!pub) return false;
   try {
-    await pub.publish(`events:${event.clinicId}`, JSON.stringify(event));
+    await pub.publish(
+      `events:${event.clinicId}`,
+      JSON.stringify({ __origin: ORIGIN_ID, payload: event } satisfies WireFrame),
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn("[realtime:redis:pub] publish failed", msg);
@@ -121,7 +157,10 @@ export async function publishEnvelopeToRedis(
   try {
     await pub.publish(
       `events:${envelope.tenantScope.clinicId}`,
-      JSON.stringify(envelope),
+      JSON.stringify({
+        __origin: ORIGIN_ID,
+        payload: envelope,
+      } satisfies WireFrame),
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

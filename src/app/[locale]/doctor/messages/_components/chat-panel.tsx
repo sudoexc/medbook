@@ -6,11 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
   ClockIcon,
-  InfoIcon,
   MessageSquareIcon,
-  MoreHorizontalIcon,
   SendIcon,
-  StarIcon,
   XOctagonIcon,
 } from "lucide-react";
 
@@ -197,17 +194,6 @@ function ChatHeader({ conv }: { conv: ConversationRow }) {
             )}
           </div>
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <IconBtn aria={t("chat.actions.favorite")}>
-          <StarIcon className="size-4" />
-        </IconBtn>
-        <IconBtn aria={t("chat.actions.info")}>
-          <InfoIcon className="size-4" />
-        </IconBtn>
-        <IconBtn aria={t("chat.actions.more")}>
-          <MoreHorizontalIcon className="size-4" />
-        </IconBtn>
       </div>
     </div>
   );
@@ -396,20 +382,3 @@ function Composer({ conversationId }: { conversationId: string }) {
   );
 }
 
-function IconBtn({
-  aria,
-  children,
-}: {
-  aria: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={aria}
-      className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-    >
-      {children}
-    </button>
-  );
-}

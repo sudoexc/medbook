@@ -3078,7 +3078,8 @@
       "assignee": {
         "all": "Все",
         "mine": "Мои"
-      }
+      },
+      "emptyMineHint": "Показать все диалоги — включён фильтр «Мои»"
     },
     "alerts": {
       "newMessage": "Новое сообщение в Telegram",

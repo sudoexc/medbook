@@ -3078,7 +3078,8 @@
       "assignee": {
         "all": "Hammasi",
         "mine": "Mening"
-      }
+      },
+      "emptyMineHint": "Barcha suhbatlarni koʻrsatish — «Meniki» filtri yoqilgan"
     },
     "alerts": {
       "newMessage": "Telegramda yangi xabar",

@@ -52,8 +52,17 @@ export const GET = createApiListHandler(
     }
     if (doctorScopeId) {
       const callerUserId = ctx.kind === "TENANT" ? ctx.userId : null;
+      // The old scope (appointment-tied OR assigned-to-me) left the doctor's
+      // inbox empty in practice: TG threads mostly arrive before any
+      // appointment is linked, so patientId/appointmentId are null and
+      // nothing matched — a live doctor saw «0 диалогов» while reception saw
+      // the same threads fine. His caseload is patients, not appointment
+      // rows, and unlinked threads carry no other doctor's clinical data —
+      // they are the clinic's front door, which he must be able to see.
       const or: Array<Record<string, unknown>> = [
         { appointment: { doctorId: doctorScopeId } },
+        { patient: { appointments: { some: { doctorId: doctorScopeId } } } },
+        { patientId: null },
       ];
       if (callerUserId) or.push({ assignedToId: callerUserId });
       andClauses.push({ OR: or });

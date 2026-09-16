@@ -33,6 +33,7 @@ import {
 } from "../../../_components/diagnosis-follow-up-cards";
 import { PrescriptionConstructor } from "../../../reception/_components/prescription-constructor";
 import { AmendmentsSection } from "./amendments-section";
+import { TelegramSendPanel } from "../../../_components/telegram-send-panel";
 
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -223,6 +224,9 @@ export function ConclusionDetail({
             <PrinterIcon className="size-4" />
             {tr("detail.print")}
           </a>
+          {note.status === "FINALIZED" ? (
+            <TelegramSendPanel patientId={note.patientId} visitNoteId={note.id} />
+          ) : null}
           {note.status === "DRAFT" && (
             <Link
               href={`/${locale}/doctor/reception`}

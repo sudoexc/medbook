@@ -39,6 +39,31 @@ function mintToken(): string {
   return randomBytes(12).toString("base64url");
 }
 
+/**
+ * GET — lightweight link status for the same patient. The doctor's send-to-
+ * Telegram panel polls this while its QR dialog is open, so the moment the
+ * patient presses /start in the cabinet the button flips from «привязать» to
+ * «отправить» without a reload.
+ */
+export const GET = createApiHandler(
+  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
+  async ({ request }) => {
+    const id = idFromUrl(request);
+    if (!id) return err("InvalidPatientId", 400);
+
+    const patient = await prisma.patient.findUnique({
+      where: { id },
+      select: { telegramId: true, telegramUsername: true, deletedAt: true },
+    });
+    if (!patient || patient.deletedAt) return notFound();
+
+    return ok({
+      linked: Boolean(patient.telegramId),
+      username: patient.telegramUsername,
+    });
+  },
+);
+
 export const POST = createApiHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
   async ({ request, ctx }) => {

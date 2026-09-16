@@ -31,6 +31,7 @@ import { useReceptionContext } from "../_hooks/reception-context";
 import { usePreviousVisit } from "../_hooks/use-previous-visit";
 import { QuickVisitEntry } from "./quick-visit-entry";
 import { EditablePhone } from "./editable-phone";
+import { TelegramSendPanel } from "../../_components/telegram-send-panel";
 import {
   isVersionConflict,
   useFinalizeVisitNote,
@@ -405,6 +406,12 @@ export function ActivePatientCard() {
           <FilesIcon className="size-4 text-muted-foreground" />
           {t("activePatient.printPackage")}
         </Button>
+        {/* The Telegram half of «отдать документы»: link the patient by QR
+            right at the desk if needed, then push the visit's files to their
+            chat. Print stays for paper people; this is for everyone else. */}
+        {visitNoteId ? (
+          <TelegramSendPanel patientId={p.id} visitNoteId={visitNoteId} />
+        ) : null}
 
         <div className="ml-auto inline-flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

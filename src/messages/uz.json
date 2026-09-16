@@ -7534,6 +7534,23 @@
         "searchParsed": "Qidirilmoqda: {name} · {year} y.",
         "searchYearAge": "{year} y. · {age} yosh"
       }
+    },
+    "tgSend": {
+      "send": "Telegramga yuborish",
+      "link": "Telegram ulash",
+      "sent": "Telegramga yuborildi: {n} ta hujjat",
+      "sentPartial": "{n} ta yuborildi, {failed} ta yuborilmadi",
+      "nothingToSend": "Yuborish uchun hujjat yoʻq — avval qabulni yakunlang",
+      "botNotConfigured": "Klinikada Telegram-bot sozlanmagan",
+      "sendFailed": "Yuborib boʻlmadi, yana urinib koʻring",
+      "linkTitle": "Telegram ulash",
+      "linkHint": "Bemor QR-kodni telefon kamerasi bilan skanerlaydi va Start bosadi — ulanish oʻzi amalga oshadi",
+      "linkedNow": "Telegram ulandi — yuborish mumkin",
+      "qrAlt": "Telegram ulash uchun QR-kod",
+      "copyLink": "Havolani nusxalash",
+      "copyFailed": "Nusxalab boʻlmadi",
+      "inviteFailed": "Havola yaratib boʻlmadi",
+      "waiting": "Bemor Start bosishini kutmoqdamiz…"
     }
   }
 }

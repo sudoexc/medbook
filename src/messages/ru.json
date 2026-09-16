@@ -7534,6 +7534,23 @@
         "searchParsed": "Ищем: {name} · {year} г.р.",
         "searchYearAge": "{year} г.р. · {age} лет"
       }
+    },
+    "tgSend": {
+      "send": "Отправить в Telegram",
+      "link": "Привязать Telegram",
+      "sent": "Отправлено в Telegram: {n} док.",
+      "sentPartial": "Отправлено {n}, не удалось {failed}",
+      "nothingToSend": "Нет документов для отправки — сначала завершите приём",
+      "botNotConfigured": "У клиники не настроен Telegram-бот",
+      "sendFailed": "Не удалось отправить, попробуйте ещё раз",
+      "linkTitle": "Привязка Telegram",
+      "linkHint": "Пациент сканирует QR камерой телефона и нажимает Start — привязка произойдёт сама",
+      "linkedNow": "Telegram привязан — можно отправлять",
+      "qrAlt": "QR-код для привязки Telegram",
+      "copyLink": "Скопировать ссылку",
+      "copyFailed": "Не удалось скопировать",
+      "inviteFailed": "Не удалось создать ссылку",
+      "waiting": "Ждём, пока пациент нажмёт Start…"
     }
   }
 }

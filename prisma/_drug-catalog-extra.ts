@@ -165,42 +165,12 @@ export const DRUGS_EXTRA: Drug[] = [
     ],
   },
   {
-    id: "thioctic-acid",
-    nameRu: "Тиоктовая (альфа-липоевая) кислота",
-    intl: "Thioctic acid",
-    brands: ["Тиогамма", "Берлитион", "Октолипен"],
-    category: "NEUROLOGICAL",
-    forms: [
-      { form: "TAB", doses: ["600 мг", "300 мг"] },
-      { form: "INJ_IV", doses: ["600 мг/24 мл"] },
-    ],
-  },
-  {
-    id: "ethylmethylhydroxypyridine-succinate",
-    nameRu: "Этилметилгидроксипиридина сукцинат",
-    intl: "Ethylmethylhydroxypyridine succinate",
-    brands: ["Мексикор", "Нейрокс", "Мексиприм"],
-    category: "NEUROLOGICAL",
-    forms: [
-      { form: "TAB", doses: ["125 мг"] },
-      { form: "INJ_IV", doses: ["50 мг/мл (2 мл)", "50 мг/мл (5 мл)"] },
-    ],
-  },
-  {
     id: "hopantenic-acid",
     nameRu: "Гопантеновая кислота",
     intl: "Hopantenic acid",
     brands: ["Пантогам", "Пантокальцин"],
     category: "NEUROLOGICAL",
     forms: [{ form: "TAB", doses: ["250 мг", "500 мг"] }],
-  },
-  {
-    id: "aminophenylbutyric-acid",
-    nameRu: "Аминофенилмасляная кислота",
-    intl: "Aminophenylbutyric acid",
-    brands: ["Анвифен", "Ноофен"],
-    category: "NEUROLOGICAL",
-    forms: [{ form: "CAP", doses: ["250 мг", "125 мг"] }],
   },
   {
     id: "meldonium",
@@ -912,14 +882,6 @@ export const DRUGS_EXTRA: Drug[] = [
     forms: [{ form: "TAB", doses: ["470 мг/5 мг"] }],
   },
   {
-    id: "folic-acid",
-    nameRu: "Фолиевая кислота",
-    intl: "Folic acid",
-    brands: ["Фолиевая кислота"],
-    category: "VITAMIN",
-    forms: [{ form: "TAB", doses: ["1 мг", "5 мг"] }],
-  },
-  {
     id: "ferrous-sulfate",
     nameRu: "Железа сульфат",
     intl: "Ferrous sulfate",
@@ -964,14 +926,6 @@ export const DRUGS_EXTRA: Drug[] = [
   },
 
   // ─── Прочее общей практики ───────────────────────────────────────────
-  {
-    id: "betahistine-24",
-    nameRu: "Бетагистин (24 мг)",
-    intl: "Betahistine",
-    brands: ["Бетасерк", "Вестибо"],
-    category: "NEUROLOGICAL",
-    forms: [{ form: "TAB", doses: ["24 мг", "16 мг", "8 мг"] }],
-  },
   {
     id: "diosmin-hesperidin",
     nameRu: "Диосмин + Гесперидин",
@@ -1019,13 +973,5 @@ export const DRUGS_EXTRA: Drug[] = [
     brands: ["Нимотоп"],
     category: "NEUROLOGICAL",
     forms: [{ form: "TAB", doses: ["30 мг"] }],
-  },
-  {
-    id: "sumatriptan-inj",
-    nameRu: "Суматриптан (инъекционный)",
-    intl: "Sumatriptan",
-    brands: ["Имигран"],
-    category: "NEUROLOGICAL",
-    forms: [{ form: "INJ_SC", doses: ["6 мг/0,5 мл"] }],
   },
 ];

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  CalendarPlusIcon,
   CalendarClockIcon,
   CalendarIcon,
   CheckCircle2Icon,
@@ -27,6 +28,8 @@ import type {
 } from "../_hooks/use-doctor-today";
 import { useAppointmentStatusMutation } from "../_hooks/use-appointment-status-mutation";
 import { useTashkentToday } from "../_hooks/use-tashkent-today";
+import { useDoctorToday, type DoctorToday } from "../_hooks/use-doctor-today";
+import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
 type MyDayTranslate = ReturnType<typeof useTranslations<"doctor.myDay">>;
 
@@ -109,6 +112,8 @@ export function ScheduleCard() {
   const todayKey = useTashkentToday();
   const today = React.useMemo(() => localDateFromKey(todayKey), [todayKey]);
   const [viewDate, setViewDate] = React.useState<Date>(today);
+  const [bookOpen, setBookOpen] = React.useState(false);
+  const { data: doctorId } = useDoctorToday<string>((d: DoctorToday) => d.doctorId);
   // Follow the midnight rollover only when the doctor was looking at the
   // outgoing "today" — a deliberately paged past/future date stays put.
   const prevTodayKeyRef = React.useRef(todayKey);
@@ -178,6 +183,20 @@ export function ScheduleCard() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {/* Booking, mirroring «Добавить» on the live queue. Patients arrange
+              the next visit with the doctor at the end of this one, so making
+              him walk to reception for it was the wrong shape. The dialog is
+              pinned to his own schedule and to the day he is looking at. */}
+          {doctorId ? (
+            <button
+              type="button"
+              onClick={() => setBookOpen(true)}
+              className="motion-press mr-1 inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              <CalendarPlusIcon className="size-3.5" />
+              {t("schedule.book")}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setViewDate(today)}
@@ -264,6 +283,15 @@ export function ScheduleCard() {
           {t("schedule.showWholeDay")}
         </Link>
       </footer>
+
+      {doctorId ? (
+        <NewAppointmentDialog
+          open={bookOpen}
+          onOpenChange={setBookOpen}
+          initialDoctorId={doctorId}
+          initialDate={viewDate}
+        />
+      ) : null}
     </section>
   );
 }

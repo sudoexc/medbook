@@ -6693,7 +6693,8 @@
         "revertToWaiting": "Вернуть в ожидание",
         "revertToPlanned": "Вернуть в запланированные",
         "revertRestore": "Восстановить приём",
-        "finishedTitle": "Завершённые сегодня ({count})"
+        "finishedTitle": "Завершённые сегодня ({count})",
+        "book": "Записать"
       },
       "current": {
         "title": "Текущий пациент",

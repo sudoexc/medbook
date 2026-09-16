@@ -6693,7 +6693,8 @@
         "revertToWaiting": "Kutish holatiga qaytarish",
         "revertToPlanned": "Rejalashtirilganlarga qaytarish",
         "revertRestore": "Qabulni tiklash",
-        "finishedTitle": "Bugun yakunlangan ({count})"
+        "finishedTitle": "Bugun yakunlangan ({count})",
+        "book": "Yozib qoʻyish"
       },
       "current": {
         "title": "Joriy bemor",

@@ -158,11 +158,28 @@ const AUTO_CONFIRM_CHANNELS = new Set<string>(["PHONE", "KIOSK"]);
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST"],
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
     bodySchema: CreateAppointmentSchema,
   },
   async ({ body, ctx }) => {
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+
+    // A doctor books into his OWN schedule only — patients arrange follow-ups
+    // with him directly at the end of a visit, which is why he asked for this.
+    // Booking for a colleague stays reception's job, so the doctor row is
+    // resolved from the session rather than trusted from the body (same guard
+    // as the walk-in route).
+    let doctorId = body.doctorId;
+    if (ctx.role === "DOCTOR") {
+      const self = await prisma.doctor.findFirst({
+        where: { userId: ctx.userId },
+        select: { id: true, isActive: true },
+      });
+      if (!self) return err("doctor_not_found", 404);
+      if (!self.isActive) return err("Forbidden", 403);
+      if (doctorId !== self.id) return err("Forbidden", 403);
+      doctorId = self.id;
+    }
 
     const actorRole = ctx.role === "DOCTOR" ? "DOCTOR" : "RECEPTIONIST";
     const actorUserId = ctx.userId || null;
@@ -170,7 +187,7 @@ export const POST = createApiHandler(
     const result = await bookAppointment({
       clinicId: ctx.clinicId,
       patientId: body.patientId,
-      doctorId: body.doctorId,
+      doctorId,
       startAt: body.date,
       time: body.time ?? null,
       serviceId: body.serviceId ?? null,

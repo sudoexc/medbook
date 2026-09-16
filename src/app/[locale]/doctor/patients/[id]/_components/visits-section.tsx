@@ -66,6 +66,12 @@ export function VisitsSection({
   const list = useDoctorPatientVisits(patientId);
   const rows = flattenVisits(list.data);
   const [openId, setOpenId] = React.useState<string | null>(null);
+  // First page carries patient artefacts tied to no visit. Folding the flat
+  // tabs into this timeline must not orphan them.
+  const unattached = list.data?.pages?.[0]?.unattached ?? null;
+  const hasUnattached = Boolean(
+    unattached && unattached.documents.length + unattached.labs.length > 0,
+  );
 
   const sentinel = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
@@ -104,7 +110,10 @@ export function VisitsSection({
     );
   }
 
-  if (rows.length === 0) {
+  // «Empty» only when BOTH the timeline and the unattached bucket are empty —
+  // otherwise the bucket (the only home of visit-less documents now that the
+  // flat tabs are gone) would be hidden by this early return.
+  if (rows.length === 0 && !hasUnattached) {
     return (
       <div className="rounded-2xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
         {t("visits.empty")}
@@ -114,6 +123,37 @@ export function VisitsSection({
 
   return (
     <section className="rounded-2xl border border-border bg-card">
+      {hasUnattached && unattached ? (
+        <div className="border-b border-border bg-muted/20 px-4 py-3">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("visits.unattached")}
+          </div>
+          <ul className="space-y-1 text-xs">
+            {unattached.documents.map((d) => (
+              <li key={d.id}>
+                <a
+                  href={d.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-primary underline-offset-2 hover:underline"
+                >
+                  <PaperclipIcon className="size-3" />
+                  {d.title}
+                </a>
+              </li>
+            ))}
+            {unattached.labs.map((l) => (
+              <li key={l.id} className="inline-flex items-center gap-1.5 text-foreground">
+                <FlaskConicalIcon className="size-3 text-muted-foreground" />
+                {l.orderNumber}
+                <span className="text-muted-foreground">
+                  · {t("visits.labTests", { n: l.tests })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <ul className="divide-y divide-border">
         {rows.map((v) => (
           <VisitEntry
@@ -264,8 +304,18 @@ function VisitEntry({
           {docs > 0 ? (
             <DetailBlock icon={PaperclipIcon} title={t("visits.documents")}>
               {v.documents.map((d) => (
-                <li key={d.id} className="text-foreground">
-                  {d.title}
+                <li key={d.id}>
+                  {/* A document you cannot open is a document you do not
+                      have — the flat tab this replaced opened files, so the
+                      timeline must too. */}
+                  <a
+                    href={d.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {d.title}
+                  </a>
                 </li>
               ))}
             </DetailBlock>

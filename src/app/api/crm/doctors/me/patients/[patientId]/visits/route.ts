@@ -41,7 +41,13 @@ type VisitRow = {
   /** DRAFT | FINALIZED. A draft means the visit was never signed off. */
   noteStatus: string | null;
   /** What this visit produced — documents, lab orders, structured meds. */
-  documents: { id: string; title: string; type: string; createdAt: string }[];
+  documents: {
+    id: string;
+    title: string;
+    type: string;
+    fileUrl: string;
+    createdAt: string;
+  }[];
   labs: { id: string; orderNumber: string; status: string; tests: number }[];
   medications: {
     id: string;
@@ -143,7 +149,13 @@ export const GET = createApiListHandler(
         // owns its artefacts without an extra round-trip per row — that is
         // what lets the history show them inline instead of in flat tabs.
         documents: {
-          select: { id: true, title: true, type: true, createdAt: true },
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            fileUrl: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: "desc" },
         },
         labOrders: {
@@ -222,6 +234,7 @@ export const GET = createApiListHandler(
           id: d.id,
           title: d.title,
           type: String(d.type),
+          fileUrl: d.fileUrl,
           createdAt: d.createdAt.toISOString(),
         })),
         labs: a.labOrders.map((l) => ({
@@ -239,6 +252,55 @@ export const GET = createApiListHandler(
       };
     });
 
+    // Artefacts that belong to the patient but to no visit — a document
+    // uploaded straight to the card, a lab ordered outside an appointment.
+    // The flat tabs used to be the only place these were visible; folding the
+    // tabs into the timeline must not orphan them, so the first page carries
+    // them as a bucket of their own. First page only: repeating the bucket on
+    // every cursor page would duplicate it in the merged list.
+    const unattached = q.cursor
+      ? null
+      : {
+          documents: (
+            await prisma.document.findMany({
+              where: { patientId, appointmentId: null },
+              select: {
+                id: true,
+                title: true,
+                type: true,
+                fileUrl: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: "desc" },
+              take: 50,
+            })
+          ).map((d) => ({
+            id: d.id,
+            title: d.title,
+            type: String(d.type),
+            fileUrl: d.fileUrl,
+            createdAt: d.createdAt.toISOString(),
+          })),
+          labs: (
+            await prisma.labOrder.findMany({
+              where: { patientId, appointmentId: null },
+              select: {
+                id: true,
+                orderNumber: true,
+                status: true,
+                testCodes: true,
+              },
+              orderBy: { createdAt: "desc" },
+              take: 50,
+            })
+          ).map((l) => ({
+            id: l.id,
+            orderNumber: l.orderNumber,
+            status: String(l.status),
+            tests: l.testCodes.length,
+          })),
+        };
+
     const total = await prisma.appointment.count({
       where: {
         patientId,
@@ -247,6 +309,6 @@ export const GET = createApiListHandler(
       },
     });
 
-    return ok({ rows: out, nextCursor, total });
+    return ok({ rows: out, nextCursor, total, unattached });
   },
 );

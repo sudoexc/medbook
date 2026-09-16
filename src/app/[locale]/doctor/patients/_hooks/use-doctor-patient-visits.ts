@@ -21,7 +21,13 @@ export type DoctorPatientVisitRow = {
   noteStatus: string | null;
   /** Artefacts the visit produced, so the history can show them inline
       instead of forcing the doctor into separate flat tabs. */
-  documents: { id: string; title: string; type: string; createdAt: string }[];
+  documents: {
+    id: string;
+    title: string;
+    type: string;
+    fileUrl: string;
+    createdAt: string;
+  }[];
   labs: { id: string; orderNumber: string; status: string; tests: number }[];
   medications: {
     id: string;
@@ -31,10 +37,17 @@ export type DoctorPatientVisitRow = {
   }[];
 };
 
+export type UnattachedArtefacts = {
+  documents: DoctorPatientVisitRow["documents"];
+  labs: DoctorPatientVisitRow["labs"];
+};
+
 export type DoctorPatientVisitsResponse = {
   rows: DoctorPatientVisitRow[];
   nextCursor: string | null;
   total: number;
+  /** Patient artefacts tied to no visit; present on the first page only. */
+  unattached: UnattachedArtefacts | null;
 };
 
 export function doctorPatientVisitsKey(patientId: string) {

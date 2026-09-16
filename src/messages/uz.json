@@ -6540,7 +6540,8 @@
         "type": {
           "repeat": "Takroriy",
           "consultation": "Konsultatsiya"
-        }
+        },
+        "unattached": "Tashriflardan tashqari"
       },
       "documents": {
         "loading": "Hujjatlar yuklanmoqda…",

@@ -5,9 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeftIcon,
-  ClipboardListIcon,
-  FilesIcon,
-  FlaskConicalIcon,
   HistoryIcon,
   InfoIcon,
   MessageSquareIcon,
@@ -24,21 +21,22 @@ import { useDoctorPatientSummary } from "../../_hooks/use-doctor-patient-summary
 
 import { OverviewSection } from "./overview-section";
 import { VisitsSection } from "./visits-section";
-import { DocumentsSection } from "./documents-section";
-import { PrescriptionsSection } from "./prescriptions-section";
-import { LabsSection } from "./labs-section";
 
+// Two tabs. Documents / labs / prescriptions folded into «История визитов» —
+// they are what a visit produced, not parallel worlds — with an «Вне визитов»
+// bucket inside the timeline so a document uploaded outside any visit cannot
+// become unreachable.
 const TABS = [
   { value: "overview", labelKey: "detail.tabs.overview", Icon: InfoIcon },
   { value: "visits", labelKey: "detail.tabs.visits", Icon: HistoryIcon },
-  { value: "documents", labelKey: "detail.tabs.documents", Icon: FilesIcon },
-  { value: "labs", labelKey: "detail.tabs.labs", Icon: FlaskConicalIcon },
-  {
-    value: "prescriptions",
-    labelKey: "detail.tabs.prescriptions",
-    Icon: ClipboardListIcon,
-  },
 ] as const;
+
+/** Old deep links (?tab=documents etc.) land in the timeline, not nowhere. */
+const LEGACY_TAB_ALIASES: Record<string, (typeof TABS)[number]["value"]> = {
+  documents: "visits",
+  labs: "visits",
+  prescriptions: "visits",
+};
 
 type TabValue = (typeof TABS)[number]["value"];
 
@@ -80,7 +78,9 @@ export function PatientDetail({
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
   const [tab, setTab] = React.useState<TabValue>(
-    isValidTab(initialTab) ? initialTab : "overview",
+    isValidTab(initialTab)
+      ? initialTab
+      : (initialTab && LEGACY_TAB_ALIASES[initialTab]) || "overview",
   );
 
   const summary = useDoctorPatientSummary(patientId);
@@ -234,15 +234,6 @@ export function PatientDetail({
         </TabsContent>
         <TabsContent value="visits">
           <VisitsSection patientId={patientId} locale={locale} />
-        </TabsContent>
-        <TabsContent value="documents">
-          <DocumentsSection patientId={patientId} />
-        </TabsContent>
-        <TabsContent value="labs">
-          <LabsSection patientId={patientId} />
-        </TabsContent>
-        <TabsContent value="prescriptions">
-          <PrescriptionsSection patientId={patientId} />
         </TabsContent>
       </Tabs>
     </div>

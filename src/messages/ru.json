@@ -510,7 +510,8 @@
       "filters": "Фильтры",
       "segments": "Сегменты",
       "configureTable": "Настроить таблицу"
-    }
+    },
+    "birthYear": "{year} г.р."
   },
   "appointments": {
     "title": "Записи",
@@ -1215,7 +1216,8 @@
       "actionTelegram": "Telegram",
       "actionNewAppointment": "Создать запись",
       "actionSmsAria": "SMS",
-      "actionMoreAria": "Ещё"
+      "actionMoreAria": "Ещё",
+      "birthYear": "{year} г.р."
     },
     "overview": {
       "ltv": "LTV",

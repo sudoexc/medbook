@@ -13,6 +13,10 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import {
+  birthYearOf,
+  isYearOnlyBirthDate,
+} from "@/lib/patients/parse-identity";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
@@ -174,7 +178,13 @@ export function PatientHero({
               {patient.birthDate ? (
                 <>
                   {age !== null ? <span>·</span> : null}
-                  <span>{formatDate(patient.birthDate, locale, "short")}</span>
+                  {/* Year-only birth dates (stored as 1 Jan) print as the
+                      year — the doctor gave us no day or month to show. */}
+                  <span>
+                    {isYearOnlyBirthDate(patient.birthDate)
+                      ? t("birthYear", { year: birthYearOf(patient.birthDate) })
+                      : formatDate(patient.birthDate, locale, "short")}
+                  </span>
                 </>
               ) : null}
               <span>·</span>

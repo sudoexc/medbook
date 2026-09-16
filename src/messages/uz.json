@@ -510,7 +510,8 @@
       "filters": "Filtrlar",
       "segments": "Segmentlar",
       "configureTable": "Jadvalni sozlash"
-    }
+    },
+    "birthYear": "{year} y.t."
   },
   "appointments": {
     "title": "Yozilishlar",
@@ -1215,7 +1216,8 @@
       "actionTelegram": "Telegram",
       "actionNewAppointment": "Yozilish yaratish",
       "actionSmsAria": "SMS",
-      "actionMoreAria": "Yana"
+      "actionMoreAria": "Yana",
+      "birthYear": "{year} y.t."
     },
     "overview": {
       "ltv": "LTV",

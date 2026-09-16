@@ -31,6 +31,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+  birthYearOf,
+  isYearOnlyBirthDate,
+} from "@/lib/patients/parse-identity";
 import { formatDate, formatName, type Locale } from "@/lib/format";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
@@ -295,7 +299,12 @@ export function PatientsTable({
                     <>
                       {t("ageYears", { age })}
                       {p.birthDate ? (
-                        <> · {formatDate(p.birthDate, locale, "short")}</>
+                        <>
+                          {" · "}
+                          {isYearOnlyBirthDate(p.birthDate)
+                            ? t("birthYear", { year: birthYearOf(p.birthDate) })
+                            : formatDate(p.birthDate, locale, "short")}
+                        </>
                       ) : null}
                     </>
                   ) : (

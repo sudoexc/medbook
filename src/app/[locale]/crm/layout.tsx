@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server"
 
 import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
+import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts"
 import { CrmTopbar } from "@/components/layout/crm-topbar"
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
 import { TrialBanner } from "@/components/layout/trial-banner"
@@ -166,6 +167,10 @@ export default async function CrmLayout({
   const brandStyle = renderBrandStyle(brandPrimary, brandSecondary)
   return (
     <QueryProvider>
+      {/* Incoming-message toast + ping on every CRM screen — being alerted is
+          a property of the shift, not of the section the user happens to be
+          in. The inbox page keeps its own focus-aware alerting. */}
+      <GlobalTgAlerts inboxPath="/crm/telegram" />
       {brandStyle ? (
         <style dangerouslySetInnerHTML={{ __html: brandStyle }} />
       ) : null}

@@ -8,6 +8,7 @@ import { isDoctorCabinetEnabled } from "@/lib/doctor-cabinet";
 import { QueryProvider } from "@/components/providers/query-provider";
 
 import { DoctorSidebar } from "./_components/doctor-sidebar";
+import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts";
 import { DoctorTopbar } from "./_components/doctor-topbar";
 
 // Doctor cabinet is LIVE — unpaused on prod (DOCTOR_CABINET_ENABLED=1). All
@@ -67,6 +68,7 @@ export default async function DoctorLayout({
   return (
     <QueryProvider>
       <div className="flex h-screen min-h-0 w-full bg-background">
+        <GlobalTgAlerts inboxPath="/doctor/messages" />
         <DoctorSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <DoctorTopbar

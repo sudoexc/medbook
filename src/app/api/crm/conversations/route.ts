@@ -6,6 +6,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, parseQuery } from "@/server/http";
 import { normalizePhone } from "@/lib/phone";
+import { doctorConversationScope } from "@/server/conversations/doctor-scope";
 import { QueryConversationSchema } from "@/server/schemas/conversation";
 
 export const GET = createApiListHandler(
@@ -59,13 +60,9 @@ export const GET = createApiListHandler(
       // the same threads fine. His caseload is patients, not appointment
       // rows, and unlinked threads carry no other doctor's clinical data —
       // they are the clinic's front door, which he must be able to see.
-      const or: Array<Record<string, unknown>> = [
-        { appointment: { doctorId: doctorScopeId } },
-        { patient: { appointments: { some: { doctorId: doctorScopeId } } } },
-        { patientId: null },
-      ];
-      if (callerUserId) or.push({ assignedToId: callerUserId });
-      andClauses.push({ OR: or });
+      andClauses.push({
+        OR: doctorConversationScope(doctorScopeId, callerUserId),
+      });
     }
     if (q.q) {
       const term = q.q;

@@ -3310,6 +3310,12 @@
     "message": {
       "noText": "Matn yo'q",
       "file": "Fayl"
+    },
+    "globalToast": {
+      "titleFrom": "{name} dan xabar",
+      "title": "Telegramda yangi xabar",
+      "noText": "Ilova",
+      "open": "Ochish"
     }
   },
   "callCenter": {

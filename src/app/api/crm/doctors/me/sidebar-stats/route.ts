@@ -24,6 +24,7 @@
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import { doctorConversationScope } from "@/server/conversations/doctor-scope";
 import {
   tashkentDayBounds,
   tashkentComponents,
@@ -78,16 +79,13 @@ export const GET = createApiListHandler(
         },
         select: { status: true },
       }),
-      // Doctor scope mirrors /api/crm/conversations: a conversation belongs
-      // to a doctor if EITHER an appointment links it OR the doctor's user
-      // is the explicit assignee. We aggregate unreadCount across both.
+      // Same scope as the conversations list — imported, not mirrored. The
+      // hand-copied version here kept the old appointment-only rule after the
+      // list was widened, so messages arrived with no badge on «Сообщения».
       prisma.conversation.aggregate({
         where: {
           unreadCount: { gt: 0 },
-          OR: [
-            { appointment: { doctorId: doctor.id } },
-            ...(doctor.userId ? [{ assignedToId: doctor.userId }] : []),
-          ],
+          OR: doctorConversationScope(doctor.id, doctor.userId ?? null),
         },
         _sum: { unreadCount: true },
       }),

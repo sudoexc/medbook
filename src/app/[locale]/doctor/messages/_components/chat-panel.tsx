@@ -4,6 +4,7 @@ import * as React from "react";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  PaperclipIcon,
   CheckIcon,
   ClockIcon,
   MessageSquareIcon,
@@ -235,7 +236,41 @@ function MessageBubble({ m }: { m: MessageRow }) {
               : "rounded-bl-md bg-muted text-foreground",
           )}
         >
-          {m.body ?? "—"}
+          {/* The bubble used to render text only, so a photo from the patient
+              arrived as an empty «—» with nothing to open — the CRM showed it,
+              the doctor's chat swallowed it. Images inline, the rest as
+              download links; both hit the same capability URL Telegram uses. */}
+          {(m.attachments ?? []).map((a, idx) =>
+            a.kind === "image" ? (
+              <a
+                key={idx}
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mb-1.5 block"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={a.url}
+                  alt={a.name ?? "photo"}
+                  className="max-h-64 max-w-full rounded-lg object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ) : (
+              <a
+                key={idx}
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mb-1.5 flex items-center gap-1.5 text-primary underline-offset-2 hover:underline"
+              >
+                <PaperclipIcon className="size-3.5 shrink-0" />
+                <span className="truncate">{a.name ?? a.kind}</span>
+              </a>
+            ),
+          )}
+          {m.body ? m.body : (m.attachments?.length ?? 0) === 0 ? "—" : null}
         </div>
         <div
           className={cn(

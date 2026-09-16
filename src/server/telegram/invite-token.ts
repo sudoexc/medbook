@@ -28,6 +28,8 @@
  * Side-effects are best-effort — a failure here MUST NOT abort the
  * welcome message (we still want the patient to see the bot reply).
  */
+import { randomBytes } from "node:crypto";
+
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
@@ -134,4 +136,65 @@ export async function consumeInviteToken(
 
     return { kind: "linked", patientId: patient.id, tokenId: row.id };
   });
+}
+
+/**
+ * Mint — or reuse within 24h — the patient's personal deep-link token.
+ *
+ * Extracted from the invite API route so the printed conclusion can carry the
+ * same link as a QR: paper is the one artefact every patient walks out
+ * holding, which makes it the highest-leverage place to grow bot adoption.
+ * Reuse matters doubly here — every print/reprint of a conclusion calls this,
+ * and each call must NOT mint a fresh row.
+ *
+ * Returns null when the clinic has no bot username (a t.me URL would be
+ * meaningless) or the patient is already linked (nothing to invite).
+ */
+const INVITE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const REUSE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 h
+
+export async function mintOrReuseInviteUrl(args: {
+  patientId: string;
+  createdByUserId: string | null;
+}): Promise<{ url: string; token: string } | null> {
+  const patient = await prisma.patient.findUnique({
+    where: { id: args.patientId },
+    select: { id: true, clinicId: true, telegramId: true, deletedAt: true },
+  });
+  if (!patient || patient.deletedAt || patient.telegramId) return null;
+
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: patient.clinicId },
+    select: { tgBotUsername: true },
+  });
+  if (!clinic?.tgBotUsername) return null;
+
+  const now = new Date();
+  const existing = await prisma.telegramInviteToken.findFirst({
+    where: {
+      patientId: patient.id,
+      consumedAt: null,
+      expiresAt: { gt: now },
+      createdAt: { gte: new Date(now.getTime() - REUSE_WINDOW_MS) },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { token: true },
+  });
+
+  const token =
+    existing?.token ??
+    (
+      await prisma.telegramInviteToken.create({
+        data: {
+          patientId: patient.id,
+          clinicId: patient.clinicId,
+          token: randomBytes(12).toString("base64url"),
+          expiresAt: new Date(now.getTime() + INVITE_TTL_MS),
+          createdByUserId: args.createdByUserId,
+        },
+        select: { token: true },
+      })
+    ).token;
+
+  return { url: `https://t.me/${clinic.tgBotUsername}?start=${token}`, token };
 }

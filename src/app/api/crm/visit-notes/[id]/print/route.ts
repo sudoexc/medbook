@@ -26,6 +26,7 @@ import { audit } from "@/lib/audit";
 import { forbidden, notFound } from "@/server/http";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import { mintOrReuseInviteUrl } from "@/server/telegram/invite-token";
 import {
   birthYearOf,
   isYearOnlyBirthDate,
@@ -143,6 +144,7 @@ export const GET = createApiListHandler(
             id: true,
             fullName: true,
             phone: true,
+            telegramId: true,
             birthDate: true,
             gender: true,
             preferredLang: true,
@@ -267,6 +269,7 @@ export const GET = createApiListHandler(
             signature: "Imzo",
             gridTitle: "Qabul jadvali",
             verify: "Haqiqiylikni QR orqali tekshiring",
+            tgInvite: "Telegramga ulaning — hujjatlar va eslatmalar botda",
             rxTitle: "Retsept",
             rxValidUntil: "Amal qilish muddati",
             referralTitle: "Yoʻllanma",
@@ -314,6 +317,7 @@ export const GET = createApiListHandler(
             signature: "Подпись",
             gridTitle: "Схема приёма",
             verify: "Проверка подлинности — отсканируйте QR",
+            tgInvite: "Подключите Telegram — документы и напоминания в боте",
             rxTitle: "Рецепт",
             rxValidUntil: "Действителен до",
             referralTitle: "Направление",
@@ -594,6 +598,28 @@ export const GET = createApiListHandler(
       : null;
     const verifyBlock = verifyBlockFor(verifyUrl, qrDataUrl);
 
+    // Personal bot-invite QR on the printed page. Paper is the one artefact
+    // every patient walks out holding, which makes it the highest-leverage
+    // surface for bot adoption: scan → /start → linked, and every next
+    // document arrives in Telegram by itself. Shown only while the patient
+    // is NOT linked; the token is minted-or-reused (24h window), so reprints
+    // do not churn rows. Failure here must never block printing.
+    let tgInviteBlock = "";
+    if (!note.patient.telegramId) {
+      try {
+        const invite = await mintOrReuseInviteUrl({
+          patientId: note.patient.id,
+          createdByUserId: null,
+        });
+        if (invite) {
+          const tgQr = await QRCode.toDataURL(invite.url, QR_OPTS);
+          tgInviteBlock = `<div class="verify"><img src="${tgQr}" alt="QR" /><div><div class="verify-title">${escapeHtml(labels.tgInvite)}</div><div class="verify-url">${escapeHtml(invite.url)}</div></div></div>`;
+        }
+      } catch (e) {
+        console.warn(`[print] tg invite qr failed: ${(e as Error).message}`);
+      }
+    }
+
     const langSwitchHtml = `<div class="lang-switch">
       <a href="?lang=ru&type=${printType}" class="${locale === "ru" ? "on" : ""}">RU</a>
       <a href="?lang=uz&type=${printType}" class="${locale === "uz" ? "on" : ""}">UZ</a>
@@ -787,6 +813,7 @@ export const GET = createApiListHandler(
     </div>
 
     ${verifyBlock}
+    ${tgInviteBlock}
 
     <footer>
       <span>${escapeHtml(handoutLabels.generated)}: ${escapeHtml(formatDate(generatedAt, locale, "long"))} ${escapeHtml(formatDate(generatedAt, locale, "time"))}</span>
@@ -1074,6 +1101,7 @@ export const GET = createApiListHandler(
     </div>
 
     ${verifyBlock}
+    ${tgInviteBlock}
 
     <footer>
       <span>${escapeHtml(labels.generated)}: ${escapeHtml(formatDate(generatedAt, locale, "long"))} ${escapeHtml(formatDate(generatedAt, locale, "time"))}</span>

@@ -11,6 +11,7 @@ import { ok, parseQuery } from "@/server/http";
 import { z } from "zod";
 
 import { searchIcd10 } from "@/server/icd10/search";
+import { searchClinicCatalog } from "@/server/icd10/clinic-catalog";
 
 const QuerySchema = z.object({
   q: z.string().optional(),
@@ -24,6 +25,16 @@ export const GET = createApiListHandler(
     if (!parsed.ok) return parsed.response;
     const { q, limit } = parsed.value;
 
-    return ok({ rows: searchIcd10(q ?? "", limit) });
+    // Clinic-learned entries first: they exist because a doctor of THIS
+    // clinic signed them, which beats generic catalog relevance. The static
+    // list fills the remainder; exact static duplicates are dropped.
+    const custom = await searchClinicCatalog(q ?? "", limit);
+    const seen = new Set(
+      custom.map((c) => `${c.code.toLowerCase()}|${c.nameRu.toLowerCase()}`),
+    );
+    const stat = searchIcd10(q ?? "", limit).filter(
+      (r) => !seen.has(`${r.code.toLowerCase()}|${r.nameRu.toLowerCase()}`),
+    );
+    return ok({ rows: [...custom, ...stat].slice(0, limit) });
   },
 );

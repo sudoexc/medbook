@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { parseCodeNameQuery } from "@/lib/icd10-query";
 
 import { useIcd10Search } from "../reception/_hooks/use-icd10";
 import {
@@ -236,16 +237,27 @@ export function DiagnosisCard({
                     type="button"
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      onChange(r.code, r.nameRu);
+                      onChange(r.code || null, r.nameRu);
                       setQuery("");
                       setFocused(false);
                     }}
                     className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted"
                   >
-                    <span className="font-mono font-semibold text-primary">
-                      {r.code}
+                    {r.code ? (
+                      <span className="font-mono font-semibold text-primary">
+                        {r.code}
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 flex-1 text-foreground">
+                      {r.nameRu}
                     </span>
-                    <span className="text-foreground">{r.nameRu}</span>
+                    {/* Learned from THIS clinic's signed conclusions — worth
+                        knowing it's a colleague's wording, not the classifier. */}
+                    {r.custom ? (
+                      <span className="shrink-0 rounded bg-primary/10 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                        {t("diagnosis.clinicBadge")}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               ))}
@@ -253,6 +265,33 @@ export function DiagnosisCard({
                   every wording a doctor uses, and hunting for a code mid-visit
                   is exactly the friction that made this screen feel unusable.
                   The code is for statistics; the name makes the document valid. */}
+              {(() => {
+                const pair = parseCodeNameQuery(query);
+                if (!pair) return null;
+                return (
+                  <li className={rows.length > 0 ? "border-t border-border/60" : ""}>
+                    {/* The catalog lacks some codes the doctor knows by heart.
+                        «G43.81 Название» becomes one click: code AND name land
+                        together, and signing will teach it to the clinic
+                        catalog for everyone. */}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onChange(pair.code, pair.name);
+                        setQuery("");
+                        setFocused(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                    >
+                      <span className="font-mono font-semibold text-primary">
+                        {pair.code}
+                      </span>
+                      <span className="text-foreground">{pair.name}</span>
+                    </button>
+                  </li>
+                );
+              })()}
               {query.trim().length >= 2 && (
                 <li className={rows.length > 0 ? "border-t border-border/60" : ""}>
                   <button

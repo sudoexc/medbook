@@ -451,6 +451,7 @@ model Clinic {
   sickLeaves               SickLeave[]
   cdsOverrides             CdsOverride[]
   referrals                Referral[]
+  clinicDiagnoses          ClinicDiagnosis[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -603,26 +604,26 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id          String        @id @default(cuid())
-  clinicId    String
-  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  number      String        @unique
-  status      InvoiceStatus @default(DRAFT)
-  amountTiins BigInt
-  currency    Currency      @default(UZS)
+  id           String        @id @default(cuid())
+  clinicId     String
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  number       String        @unique
+  status       InvoiceStatus @default(DRAFT)
+  amountTiins  BigInt
+  currency     Currency      @default(UZS)
   // Plan this invoice upgrades to, captured at creation. The PAID handler
   // swaps the subscription to THIS plan — not to whatever Subscription.
   // pendingPlanId happens to hold at payment time — so paying an older
   // invoice can't grant a newer (or different) plan that was queued after it.
   targetPlanId String?
-  periodStart DateTime
-  periodEnd   DateTime
-  dueAt       DateTime
-  paidAt      DateTime?
-  paymentRef  String?
-  pdfUrl      String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  periodStart  DateTime
+  periodEnd    DateTime
+  dueAt        DateTime
+  paidAt       DateTime?
+  paymentRef   String?
+  pdfUrl       String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([clinicId, createdAt])
   @@index([status])
@@ -753,7 +754,7 @@ model User {
   // devices/browsers; seeds the NEXT_LOCALE cookie at sign-in so a fresh
   // browser lands in the saved language. Single source of truth a future
   // staff-notification dispatcher reads to localise its sends.
-  preferredLocale      String    @default("ru") // "ru" | "uz"
+  preferredLocale String @default("ru") // "ru" | "uz"
 
   doctor                      Doctor?
   accounts                    Account[]
@@ -784,6 +785,7 @@ model User {
   cdsOverrides                CdsOverride[]           @relation("DoctorCdsOverrides")
   referralsFrom               Referral[]              @relation("ReferralFromDoctor")
   referralsTo                 Referral[]              @relation("ReferralToDoctor")
+  clinicDiagnosesCreated      ClinicDiagnosis[]       @relation("ClinicDiagnosisCreator")
 
   // Global uniqueness of email across the whole installation + per-clinic lookup.
   @@unique([email])
@@ -829,33 +831,33 @@ model VerificationToken {
 }
 
 model Doctor {
-  id               String   @id @default(cuid())
-  clinicId         String
-  clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  branchId         String?
-  branch           Branch?  @relation(fields: [branchId], references: [id])
-  userId           String?  @unique
-  user             User?    @relation(fields: [userId], references: [id])
-  slug             String
-  nameRu           String
-  nameUz           String
-  specializationRu String
-  specializationUz String
-  photoUrl         String?
-  bioRu            String?  @db.Text
-  bioUz            String?  @db.Text
-  rating           Decimal? @db.Decimal(3, 2)
-  reviewCount      Int      @default(0)
-  color            String   @default("#3DD5C0")
-  pricePerVisit    Int?
-  salaryPercent    Int      @default(40)
+  id                     String   @id @default(cuid())
+  clinicId               String
+  clinic                 Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branchId               String?
+  branch                 Branch?  @relation(fields: [branchId], references: [id])
+  userId                 String?  @unique
+  user                   User?    @relation(fields: [userId], references: [id])
+  slug                   String
+  nameRu                 String
+  nameUz                 String
+  specializationRu       String
+  specializationUz       String
+  photoUrl               String?
+  bioRu                  String?  @db.Text
+  bioUz                  String?  @db.Text
+  rating                 Decimal? @db.Decimal(3, 2)
+  reviewCount            Int      @default(0)
+  color                  String   @default("#3DD5C0")
+  pricePerVisit          Int?
+  salaryPercent          Int      @default(40)
   // Cap on pre-bookable slots/day. The booking grid steps every 20 min and
   // offers at most this many; the rest of the day is the live walk-in queue.
   // Doctors raise it in their own settings when they want more appointments.
-  maxBookableSlotsPerDay Int @default(3)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  maxBookableSlotsPerDay Int      @default(3)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   // Doctor↔Cabinet 1:1 binding. NOT NULL — every doctor must occupy a
   // cabinet (no headless doctors). UNIQUE — one doctor per cabinet, no
@@ -875,18 +877,18 @@ model Doctor {
   // clinic. Minted on create, backfilled for existing rows by migration.
   tvToken String? @unique
 
-  services           ServiceOnDoctor[]
-  schedules          DoctorSchedule[]
-  timeOffs           DoctorTimeOff[]
-  appointments       Appointment[]
-  leads              Lead[]
-  primaryCases       MedicalCase[]
-  emptySlotSnapshots EmptySlotSnapshot[]
-  patientReviews     PatientReview[]
-  prescriptions      Prescription[]
-  visitNotes         VisitNote[]
+  services            ServiceOnDoctor[]
+  schedules           DoctorSchedule[]
+  timeOffs            DoctorTimeOff[]
+  appointments        Appointment[]
+  leads               Lead[]
+  primaryCases        MedicalCase[]
+  emptySlotSnapshots  EmptySlotSnapshot[]
+  patientReviews      PatientReview[]
+  prescriptions       Prescription[]
+  visitNotes          VisitNote[]
   visitNoteAmendments VisitNoteAmendment[]
-  presets            DoctorPreset[]
+  presets             DoctorPreset[]
 
   @@unique([clinicId, slug])
   @@index([clinicId, isActive])
@@ -1054,6 +1056,45 @@ model DrugBrand {
 //   clinicId set  + doctorId set   → doctor-personal («сохранить как протокол»)
 // Apply priority: personal → clinic → global; within a scope longest
 // prefix, then sortOrder.
+// ─────────────────────────────────────────────────────────────────────────────
+// Clinic-learned diagnosis catalog.
+//
+// The bundled ICD-10 list is complete but not exhaustive of WORDINGS, and a
+// working neurologist still hits «нет в списке». Rather than an admin screen
+// nobody will maintain, the clinic catalog LEARNS: every diagnosis a doctor
+// typed by hand and then SIGNED (finalize) is upserted here and joins the
+// picker's suggestions for every doctor of the clinic. Signing is the quality
+// gate — abandoned typos never enter.
+//
+// `normalized` deduplicates case/ё spellings; uniqueness is per clinic.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ClinicDiagnosis {
+  id          String   @id @default(cuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  /**
+   * Optional ICD-style code the doctor attached («нет в базе, но код знаю»).
+   */
+  code        String?
+  nameRu      String
+  /**
+   * Lowercased, ё→е, whitespace-collapsed nameRu — the dedupe key.
+   */
+  normalized  String
+  /**
+   * How many signed conclusions used it — drives ranking in the picker.
+   */
+  usageCount  Int      @default(1)
+  createdById String?
+  createdBy   User?    @relation("ClinicDiagnosisCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([clinicId, normalized])
+  @@index([clinicId, usageCount])
+}
+
 model ClinicalProtocol {
   id                    String   @id @default(cuid())
   clinicId              String?
@@ -1085,8 +1126,8 @@ model ClinicalProtocol {
   /**
    * Ф3 — structured prescription drafts, the VisitPrescriptionDraft shape:
    * [{drugId?, displayName, form?, strength?, dose, timesOfDay[],
-   *   mealRelation, durationDays?, instructionRu?, instructionUz?,
-   *   remindPatient}]. Applying a protocol appends these as
+   * mealRelation, durationDays?, instructionRu?, instructionUz?,
+   * remindPatient}]. Applying a protocol appends these as
    * VisitPrescription rows; «сохранить как протокол» writes them back.
    */
   prescriptionItems     Json?
@@ -1836,21 +1877,21 @@ model Appointment {
   // existing rows; new rows are always set by `bookAppointment`.
   ticketCode String? @unique
 
-  status       AppointmentStatus @default(BOOKED)
-  queueStatus  AppointmentStatus @default(BOOKED)
-  queueOrder   Int?
+  status        AppointmentStatus @default(BOOKED)
+  queueStatus   AppointmentStatus @default(BOOKED)
+  queueOrder    Int?
   // Manual urgency bump for the live queue (Wave 5). Higher floats to the top
   // of the waiting list ahead of arrival order; ties fall back to `queueOrder`
   // (the receptionist's drag order), so a manual reorder is never clobbered.
   // 0 = normal. Set from the reception queue panel.
-  queuePriority Int     @default(0)
+  queuePriority Int               @default(0)
   // Variant C — immutable ticket sequence. `queueOrder` is mutated by the
   // reception drag-reorder, which would churn the patient-facing ticket number.
   // `ticketSeq` is frozen at allocation (walk-in / check-in) and is the sole
   // input to `ticketNumberFor`, so a reorder never reassigns a printed ticket.
   // Nullable: set the moment a slot enters the live queue; backfilled from
   // queueOrder for pre-existing rows.
-  ticketSeq    Int?
+  ticketSeq     Int?
   // serveAt EDF — the instant this visit joined the live waiting queue. Stamped
   // the moment a row enters WAITING (walk-in registration, kiosk/reception
   // check-in). The queue comparator serves walk-ins FIFO by this stamp and
@@ -1859,21 +1900,21 @@ model Appointment {
   // skipped patient who returns re-joins at the back (fresh stamp); an
   // IN_PROGRESS→WAITING put-back keeps its original stamp. Null until the row
   // first enters the queue (backfilled for pre-existing live rows).
-  queuedAt     DateTime?
+  queuedAt      DateTime?
   // Wave 3c — patient tapped «Я на месте» in the Mini App. Idempotency
   // anchor for self check-in (one patient.arrived event per visit) and the
   // cross-session source of truth for the "you're checked in" pill. NOT a
   // status change: intake (→ WAITING) stays a receptionist action.
-  arrivedAt    DateTime?
-  calledAt     DateTime?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  cancelledAt  DateTime?
-  cancelReason String?
+  arrivedAt     DateTime?
+  calledAt      DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  cancelReason  String?
   // Cross-surface sync v1 (Phase A) — who initiated the cancel. Free-form
   // string ("patient" | "staff" | "system" | "no-show") so future actors
   // (e.g. payment-failure-auto-cancel) don't need a migration.
-  cancelledBy  String?
+  cancelledBy   String?
 
   // Pre-visit confirmation audit. `status === CONFIRMED` answers "is it
   // confirmed right now"; these three fields answer "when / by whom / how"
@@ -2074,8 +2115,8 @@ model VisitNote {
   // Ф6 (TZ-smart-constructor) — follow-up plan. Prefilled from the diagnosis
   // guide / protocol, hand-editable. On finalize: printed in the conclusion,
   // surfaces a booking nudge in the Mini App, and spawns a reception Action.
-  followUpDays Int?
-  followUpNote String?
+  followUpDays         Int?
+  followUpNote         String?
   // Ф6 — convergence anchor for the medication-bridge sweep: null = the
   // finalize worker hasn't mirrored remindPatient rows into Prescription yet.
   medicationsBridgedAt DateTime?
@@ -2117,24 +2158,24 @@ model VisitNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  labResults         LabResult[]
-  labOrders          LabOrder[]
-  ePrescriptions     EPrescription[]
-  sickLeaves         SickLeave[]
-  cdsOverrides       CdsOverride[]
+  labResults           LabResult[]
+  labOrders            LabOrder[]
+  ePrescriptions       EPrescription[]
+  sickLeaves           SickLeave[]
+  cdsOverrides         CdsOverride[]
   // The patient-facing CONCLUSION handout, generated on finalize. 1:1 —
   // see Document.visitNoteId (@unique). Null until the worker renders it.
-  conclusionDocument Document?
+  conclusionDocument   Document?
   // Referrals authored from this visit (snapshot the visit's diagnosis).
-  referrals          Referral[]
+  referrals            Referral[]
   // Ф2 (TZ-smart-constructor) — structured prescription rows on the Drug
   // catalog. `prescriptions String[]` above stays as read-only legacy.
-  visitPrescriptions VisitPrescription[]
+  visitPrescriptions   VisitPrescription[]
   // Ф6 — Mini App reminder courses mirrored from visitPrescriptions.
   bridgedPrescriptions Prescription[]
   // Post-window corrections. The original note stays byte-for-byte intact;
   // see VisitNoteAmendment for the medico-legal rationale.
-  amendments VisitNoteAmendment[]
+  amendments           VisitNoteAmendment[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -2150,19 +2191,19 @@ enum MealRelation {
 }
 
 model VisitPrescription {
-  id          String    @id @default(cuid())
-  clinicId    String
-  visitNoteId String
-  visitNote   VisitNote @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
+  id            String       @id @default(cuid())
+  clinicId      String
+  visitNoteId   String
+  visitNote     VisitNote    @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
   // null = manual entry outside the catalog (free-text fallback is a hard
   // requirement — the catalog never blocks prescribing).
-  drugId      String?
-  drug        Drug?     @relation(fields: [drugId], references: [id])
+  drugId        String?
+  drug          Drug?        @relation(fields: [drugId], references: [id])
   // Snapshot («Конкор (бисопролол)») so print stays stable across catalog edits.
-  displayName String
-  form        String? // from Drug.forms
-  strength    String? // "5 мг"
-  dose        String // "1 таб", "10 мл"
+  displayName   String
+  form          String? // from Drug.forms
+  strength      String? // "5 мг"
+  dose          String // "1 таб", "10 мл"
   // MORNING | NOON | EVENING | NIGHT
   timesOfDay    String[]     @default([])
   mealRelation  MealRelation @default(NO_MATTER)
@@ -2848,10 +2889,10 @@ model Action {
   // client never silently vanishes. `outcome` also LOCKS the row against the
   // 15-min engine recompute (see repository.upsertAction) until `expiresAt`.
   outcome      String? // CONFIRMED|RESCHEDULED|CALLBACK|RETURN_LATER|REFUSED|NO_ANSWER
-  outcomeNote  String? @db.Text
+  outcomeNote  String?   @db.Text
   callbackAt   DateTime? // resurface time (CALLBACK) / return date (RETURN_LATER)
   resolvedById String? // User who recorded the outcome
-  callAttempts Int     @default(0) // failed-call counter (NO_ANSWER)
+  callAttempts Int       @default(0) // failed-call counter (NO_ANSWER)
 
   clinic Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -2997,39 +3038,39 @@ model PatientFamily {
 }
 
 model Prescription {
-  id               String      @id @default(cuid())
-  clinicId         String
-  clinic           Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  id                 String       @id @default(cuid())
+  clinicId           String
+  clinic             Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   // Optional since Ф6 (TZ-smart-constructor): rows bridged from the visit
   // constructor have no MedicalCase — they anchor on visitNoteId instead.
-  caseId           String?
-  case             MedicalCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  caseId             String?
+  case               MedicalCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
   // Ф6 — provenance of bridged rows. (visitNoteId, visitNoteSortOrder)
   // mirrors the source VisitPrescription row so the finalize sweep upserts
   // idempotently instead of duplicating courses on re-runs.
   visitNoteId        String?
-  visitNote          VisitNote? @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
+  visitNote          VisitNote?   @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
   visitNoteSortOrder Int?
   // Denormalized for query speed (Wave 3 reminder query: "all active
   // prescriptions for patient X").
-  patientId        String
-  patient          Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  doctorId         String
-  doctor           Doctor      @relation(fields: [doctorId], references: [id])
-  drugName         String
+  patientId          String
+  patient            Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId           String
+  doctor             Doctor       @relation(fields: [doctorId], references: [id])
+  drugName           String
   // Free-text "500mg 2 раза в день" — no structured RxNorm / formulary yet.
-  dosage           String
+  dosage             String
   // { times: ['09:00','21:00'], days: 30, startsAt: ISO } — kept flexible
   // because Wave 3 may add fields like `daysOfWeek` / `mealRelation` without
   // requiring a schema migration each time.
-  schedule         Json
-  notes            String?     @db.Text
+  schedule           Json
+  notes              String?      @db.Text
   // 'ACTIVE' | 'PAUSED' | 'COMPLETED' — String, not enum (small set, but
   // we may add 'CANCELLED' or 'EXPIRED' in Wave 3 without a migration).
-  status           String      @default("ACTIVE")
-  remindersEnabled Boolean     @default(false)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  status             String       @default("ACTIVE")
+  remindersEnabled   Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   reminderSends MedicationReminderSend[]
 

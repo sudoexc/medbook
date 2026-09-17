@@ -160,3 +160,4 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
   scored.sort((a, b) => b.score - a.score || a.code.localeCompare(b.code));
   return scored.slice(0, limit).map((s) => s.entry);
 }
+

@@ -19,6 +19,7 @@ import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { completionFields } from "@/server/appointments/completion";
+import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
 import { allocateDocumentNumber } from "@/server/services/document-number";
 import { composePatientHandout } from "@/lib/catalogs/handout-composer";
 import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
@@ -277,6 +278,15 @@ export const POST = createApiHandler(
         appointmentId: note.appointment.id,
       });
     }
+
+    // The clinic catalog learns from every SIGNED diagnosis — free text and
+    // codes the static list lacks become suggestions for all doctors here.
+    // Fire-and-forget: catalog trouble must never fail a signed conclusion.
+    void learnClinicDiagnosis({
+      code: note.diagnosisCode ?? null,
+      nameRu: note.diagnosisName ?? null,
+      createdById: actorUserId,
+    });
 
     await audit(request, {
       action: "visit_note.finalize",

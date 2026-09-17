@@ -3,7 +3,12 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
-export type Icd10Hit = { code: string; nameRu: string };
+export type Icd10Hit = {
+  code: string;
+  nameRu: string;
+  /** Clinic-learned entry (signed by a doctor here), not the static list. */
+  custom?: boolean;
+};
 
 export function useIcd10Search(rawQuery: string) {
   const [debounced, setDebounced] = React.useState(rawQuery);

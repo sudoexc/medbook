@@ -5988,7 +5988,8 @@
         "pastTake": "olish",
         "pastMore": "Yana {count} ta tashxis",
         "hint": "Yozishni boshlang — MKB-10 ma'lumotnomasidan tanlang yoki tashxisni o'z so'zingiz bilan yozing.",
-        "useAsTyped": "Shundayligicha yozish: «{text}»"
+        "useAsTyped": "Shundayligicha yozish: «{text}»",
+        "clinicBadge": "klinika"
       },
       "guide": {
         "title": "Bilimlar bazasi",

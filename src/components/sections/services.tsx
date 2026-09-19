@@ -4,38 +4,38 @@ type PriceItem = { name: string; price: string };
 
 const GROUP_KEYS = ["consultations", "diagnostics"] as const;
 
+// The price list rendered like the printed прейскурант on the clinic door:
+// plain ruled rows, group headers in small caps, prices right-aligned in
+// tabular figures. No cards, no chrome — a document people trust.
 export function Services() {
   const t = useTranslations("services");
 
   return (
-    <section id="services" className="border-t border-border bg-white py-16 sm:py-20">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+    <section id="services" className="border-t border-border py-16 sm:py-24">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           {t("title")}
         </h2>
-        <p className="mt-1 text-muted-foreground">{t("subtitle")}</p>
+        <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div className="mt-10 grid grid-cols-1 gap-x-16 gap-y-12 lg:grid-cols-2">
           {GROUP_KEYS.map((groupKey) => {
             const items = t.raw(`groups.${groupKey}.items`) as PriceItem[];
             return (
-              <div
-                key={groupKey}
-                className="rounded-xl border border-border bg-white"
-              >
-                <div className="border-b border-border px-5 py-4">
-                  <h3 className="font-semibold text-foreground">
-                    {t(`groups.${groupKey}.title`)}
-                  </h3>
-                </div>
-                <div className="divide-y divide-border">
+              <div key={groupKey}>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+                  {t(`groups.${groupKey}.title`)}
+                </h3>
+                <div className="mt-4 divide-y divide-border border-t border-border">
                   {items.map((item, i) => (
                     <div
                       key={i}
-                      className="flex items-baseline justify-between gap-4 px-5 py-3"
+                      className="flex items-baseline justify-between gap-6 py-3.5"
                     >
-                      <span className="text-sm text-foreground">{item.name}</span>
-                      <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-foreground">
+                      <span className="text-[15px] leading-snug text-foreground">
+                        {item.name}
+                      </span>
+                      <span className="whitespace-nowrap text-[15px] font-bold tabular-nums text-foreground">
                         {item.price}{" "}
                         <span className="font-normal text-muted-foreground">
                           {t("sum")}

@@ -25,6 +25,6 @@ export const CONTACT = {
 export const NAV_LINKS = [
   { href: "#doctors", labelKey: "nav.doctors" },
   { href: "#services", labelKey: "nav.services" },
-  { href: "#about", labelKey: "nav.about" },
+  { href: "#visit", labelKey: "nav.visit" },
   { href: "#faq", labelKey: "nav.faq" },
 ] as const;

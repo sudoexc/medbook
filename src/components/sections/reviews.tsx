@@ -74,14 +74,14 @@ export function Reviews() {
   const t = useTranslations("reviews");
 
   return (
-    <section id="reviews" className="border-t border-border bg-white py-16 sm:py-20">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6">
+    <section id="reviews" className="border-t border-border bg-[#f4f8fc] py-16 sm:py-24">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               {t("title")}
             </h2>
-            <p className="mt-1 text-muted-foreground">{t("subtitle")}</p>
+            <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
           </div>
           <a
             href={YANDEX_URL}
@@ -98,7 +98,7 @@ export function Reviews() {
           {REVIEWS.map((review) => (
             <div
               key={review.id}
-              className="flex flex-col rounded-xl border border-border bg-white p-5"
+              className="flex flex-col rounded-2xl border border-border bg-white p-6"
             >
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -119,17 +119,6 @@ export function Reviews() {
           ))}
         </div>
 
-        <div className="mt-6 text-center">
-          <a
-            href={YANDEX_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            {t("allReviews")}
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        </div>
       </div>
     </section>
   );

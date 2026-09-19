@@ -1,7 +1,7 @@
 import { Hero } from "@/components/sections/hero";
+import { Visit } from "@/components/sections/visit";
 import { Doctors } from "@/components/sections/doctors";
 import { Services } from "@/components/sections/services";
-import { About } from "@/components/sections/about";
 import { Reviews } from "@/components/sections/reviews";
 import { Cta } from "@/components/sections/cta";
 import { Faq } from "@/components/sections/faq";
@@ -42,12 +42,12 @@ export default async function Home({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <Hero />
+      <Visit />
       <Doctors doctors={doctors} />
       <Services />
-      <About />
       <Reviews />
-      <Cta />
       <Faq />
+      <Cta />
     </main>
   );
 }

@@ -1,5 +1,5 @@
 import { useTranslations, useLocale } from "next-intl";
-import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 import { LeadFormTrigger } from "./lead-form";
 import type { Locale } from "@/types";
 import type { DoctorView } from "@/lib/doctors";
@@ -21,41 +21,44 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
   if (doctors.length === 0) return null;
 
   return (
-    <section id="doctors" className="border-t border-border py-16 sm:py-20">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+    <section id="doctors" className="border-t border-border bg-white py-16 sm:py-24">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           {t("title")}
         </h2>
-        <p className="mt-1 text-muted-foreground">{t("subtitle")}</p>
+        <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {doctors.map((doc) => (
             <div
               key={doc.id}
-              className="flex flex-col rounded-xl border border-border bg-white p-5 transition-colors hover:border-primary/40"
+              className="flex flex-col justify-between rounded-2xl border border-border bg-white p-6 transition-colors hover:border-primary/40"
             >
-              <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+              <div>
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
                   {monogram(doc.name[locale])}
                 </div>
-                <div className="min-w-0">
-                  <a
-                    href={`doctors/${doc.id}`}
-                    className="block truncate text-base font-semibold text-foreground transition-colors hover:text-primary"
-                  >
-                    {doc.name[locale]}
-                  </a>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {doc.specialty[locale]}
-                  </p>
-                </div>
+                {/* Full name, wrapped — never truncated. */}
+                <a
+                  href={`doctors/${doc.id}`}
+                  className="mt-4 block text-lg font-semibold leading-snug text-foreground transition-colors hover:text-primary"
+                >
+                  {doc.name[locale]}
+                </a>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {doc.specialty[locale]}
+                </p>
               </div>
 
-              <div className="mt-4">
+              <div className="mt-5">
                 <LeadFormTrigger doctorId={doc.id}>
-                  <Button className="h-10 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/85">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-opacity hover:opacity-75"
+                  >
                     {t("bookWith")}
-                  </Button>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
                 </LeadFormTrigger>
               </div>
             </div>

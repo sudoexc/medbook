@@ -2,7 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import Image from "next/image";
-import { NAV_LINKS } from "@/lib/constants";
+import { Phone } from "lucide-react";
+import { CONTACT, NAV_LINKS } from "@/lib/constants";
 import { LanguageSwitcher } from "./language-switcher";
 import { MobileNav } from "./mobile-nav";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
@@ -33,13 +34,20 @@ export function Header() {
               href={link.href}
               className="px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "about" | "faq")}
+              {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "visit" | "faq")}
             </a>
           ))}
         </nav>
 
         {/* Desktop Actions */}
-        <div className="hidden lg:flex items-center gap-3">
+        <div className="hidden lg:flex items-center gap-4">
+          <a
+            href={`tel:${CONTACT.phone.replace(/\s/g, "")}`}
+            className="hidden items-center gap-2 text-sm font-semibold text-foreground transition-colors hover:text-primary xl:inline-flex"
+          >
+            <Phone className="h-4 w-4 text-primary" />
+            {CONTACT.phone}
+          </a>
           <LanguageSwitcher />
           <LeadFormTrigger>
             <Button className="h-9 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/85">

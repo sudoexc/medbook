@@ -31,7 +31,7 @@ export function MobileNav() {
               onClick={() => setOpen(false)}
               className="text-lg font-medium text-foreground/80 hover:text-foreground transition-colors"
             >
-              {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "about" | "faq")}
+              {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "visit" | "faq")}
             </a>
           ))}
           <div className="border-t border-border pt-6">

@@ -78,16 +78,16 @@ export function Reviews() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
               {t("title")}
             </h2>
-            <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
+            <p className="mt-2 text-lg text-muted-foreground">{t("subtitle")}</p>
           </div>
           <a
             href={YANDEX_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            className="inline-flex items-center gap-1.5 text-base font-medium text-primary hover:underline"
           >
             {t("source")}
             <ExternalLink className="h-3.5 w-3.5" />
@@ -106,13 +106,13 @@ export function Reviews() {
                     {review.authorName.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{review.authorName}</p>
+                    <p className="text-base font-medium">{review.authorName}</p>
                     <p className="text-xs text-muted-foreground">{review.date}</p>
                   </div>
                 </div>
                 <StarRating rating={review.rating} />
               </div>
-              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
+              <p className="flex-1 text-[15px] leading-relaxed text-muted-foreground">
                 {review.text}
               </p>
             </div>

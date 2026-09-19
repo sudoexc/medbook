@@ -23,29 +23,29 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
   return (
     <section id="doctors" className="border-t border-border bg-white py-16 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+        <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {t("title")}
         </h2>
-        <p className="mt-2 text-muted-foreground">{t("subtitle")}</p>
+        <p className="mt-2 text-lg text-muted-foreground">{t("subtitle")}</p>
 
         <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {doctors.map((doc) => (
             <div
               key={doc.id}
-              className="flex flex-col justify-between rounded-2xl border border-border bg-white p-6 transition-colors hover:border-primary/40"
+              className="flex flex-col justify-between rounded-2xl border border-border bg-white p-7 transition-colors hover:border-primary/40"
             >
               <div>
-                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 text-2xl font-bold text-primary">
                   {monogram(doc.name[locale])}
                 </div>
                 {/* Full name, wrapped — never truncated. */}
                 <a
                   href={`doctors/${doc.id}`}
-                  className="mt-4 block text-lg font-semibold leading-snug text-foreground transition-colors hover:text-primary"
+                  className="mt-5 block text-xl font-semibold leading-snug text-foreground transition-colors hover:text-primary"
                 >
                   {doc.name[locale]}
                 </a>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-1.5 text-base text-muted-foreground">
                   {doc.specialty[locale]}
                 </p>
               </div>
@@ -54,7 +54,7 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
                 <LeadFormTrigger doctorId={doc.id}>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-opacity hover:opacity-75"
+                    className="inline-flex items-center gap-1.5 text-base font-semibold text-primary transition-opacity hover:opacity-75"
                   >
                     {t("bookWith")}
                     <ArrowRight className="h-4 w-4" />

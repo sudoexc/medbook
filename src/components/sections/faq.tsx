@@ -13,8 +13,8 @@ export function Faq() {
 
   return (
     <section id="faq" className="border-t border-border bg-white py-16 sm:py-24">
-      <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6">
+        <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {t("title")}
         </h2>
 
@@ -25,10 +25,10 @@ export function Faq() {
                 key={q}
                 className="rounded-lg border border-border bg-white px-5"
               >
-                <AccordionTrigger className="text-left text-sm font-medium hover:no-underline py-4">
+                <AccordionTrigger className="text-left text-base font-medium hover:no-underline py-5">
                   {t(`${q}.question`)}
                 </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground pb-4">
+                <AccordionContent className="text-base leading-relaxed text-muted-foreground pb-5">
                   {t(`${q}.answer`)}
                 </AccordionContent>
               </AccordionItem>

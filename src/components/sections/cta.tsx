@@ -17,14 +17,14 @@ export function Cta() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl">
               {t("title")}
             </h2>
-            <p className="mt-3 max-w-md text-base leading-relaxed text-white/75">
+            <p className="mt-4 max-w-md text-lg leading-relaxed text-white/75">
               {t("note")}
             </p>
             <LeadFormTrigger>
-              <Button className="mt-8 h-12 rounded-xl bg-white px-8 text-base font-semibold text-primary hover:bg-white/90">
+              <Button className="mt-8 h-14 rounded-xl bg-white px-9 text-lg font-semibold text-primary hover:bg-white/90">
                 {t("formCta")}
               </Button>
             </LeadFormTrigger>
@@ -33,11 +33,11 @@ export function Cta() {
           <div>
             <a
               href={`tel:${CONTACT.phone.replace(/\s/g, "")}`}
-              className="block text-4xl font-bold tracking-tight transition-opacity hover:opacity-85 sm:text-5xl"
+              className="block text-4xl font-bold tracking-tight transition-opacity hover:opacity-85 sm:text-6xl"
             >
               {CONTACT.phone}
             </a>
-            <div className="mt-8 grid grid-cols-1 gap-6 text-sm sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-6 text-base sm:grid-cols-2">
               <div>
                 <p className="text-white/60">{t("addressLabel")}</p>
                 <p className="mt-1 font-medium leading-relaxed">

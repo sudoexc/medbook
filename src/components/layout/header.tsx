@@ -14,14 +14,14 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-white">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Logo */}
         <a href="/" className="flex items-center">
           <Image
             src="/logo.png"
             alt="NeuroFax-B"
-            width={103}
-            height={40}
+            width={118}
+            height={46}
             priority
           />
         </a>
@@ -32,7 +32,7 @@ export function Header() {
             <a
               key={link.href}
               href={link.href}
-              className="px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="px-3 py-2 text-[15px] text-muted-foreground transition-colors hover:text-foreground"
             >
               {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "visit" | "faq")}
             </a>
@@ -43,14 +43,14 @@ export function Header() {
         <div className="hidden lg:flex items-center gap-4">
           <a
             href={`tel:${CONTACT.phone.replace(/\s/g, "")}`}
-            className="hidden items-center gap-2 text-sm font-semibold text-foreground transition-colors hover:text-primary xl:inline-flex"
+            className="hidden items-center gap-2 text-base font-semibold text-foreground transition-colors hover:text-primary xl:inline-flex"
           >
             <Phone className="h-4 w-4 text-primary" />
             {CONTACT.phone}
           </a>
           <LanguageSwitcher />
           <LeadFormTrigger>
-            <Button className="h-9 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/85">
+            <Button className="h-10 rounded-lg bg-primary px-6 text-[15px] font-semibold text-primary-foreground hover:bg-primary/85">
               {t("bookAppointment")}
             </Button>
           </LeadFormTrigger>

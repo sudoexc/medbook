@@ -12,20 +12,20 @@ export function Visit() {
   return (
     <section id="visit" className="border-t border-border bg-[#f4f8fc] py-16 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+        <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {t("title")}
         </h2>
 
         <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((key, i) => (
-            <div key={key} className="bg-white p-6 sm:p-7">
-              <span className="text-sm font-bold tabular-nums text-primary">
+            <div key={key} className="bg-white p-7 sm:p-8">
+              <span className="text-base font-bold tabular-nums text-primary">
                 0{i + 1}
               </span>
-              <h3 className="mt-3 text-lg font-semibold leading-snug text-foreground">
+              <h3 className="mt-3 text-xl font-semibold leading-snug text-foreground">
                 {t(`${key}.title`)}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-2.5 text-base leading-relaxed text-muted-foreground">
                 {t(`${key}.text`)}
               </p>
             </div>

@@ -77,7 +77,6 @@ function removeSnippet(body: string, snippet: string): string {
 }
 
 export function NotesEditorPanel() {
-  const t = useTranslations("doctor.reception");
   const [tab, setTab] = React.useState<EditorTab>("conclusion");
   const { bodyAppendRequest, handoutAppendRequest } = useReceptionContext();
 
@@ -105,48 +104,51 @@ export function NotesEditorPanel() {
   }, [handoutAppendRequest]);
 
   return (
-    <section className="flex min-h-[640px] flex-col rounded-2xl border border-border bg-card">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-2">
-        <TabButton active={tab === "conclusion"} onClick={() => setTab("conclusion")}>
-          {t("editor.tabConclusion")}
-        </TabButton>
-        <TabButton active={tab === "handout"} onClick={() => setTab("handout")}>
-          {t("editor.tabHandout")}
-        </TabButton>
-      </div>
-
+    <section className="flex min-h-[640px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
       <div className={cn("flex flex-1 flex-col", tab !== "conclusion" && "hidden")}>
-        <ConclusionEditor />
+        <ConclusionEditor tab={tab} onTabChange={setTab} />
       </div>
       <div className={cn("flex flex-1 flex-col", tab !== "handout" && "hidden")}>
-        <HandoutEditor />
+        <HandoutEditor tab={tab} onTabChange={setTab} />
       </div>
     </section>
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
+// Both editors render the same segmented control in their own header row —
+// one row of chrome instead of a dedicated tabs bar. Only the visible
+// editor's header is on screen (the hidden wrapper hides the twin), so the
+// control never appears twice.
+function EditorTabs({
+  tab,
+  onTabChange,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  tab: EditorTab;
+  onTabChange: (t: EditorTab) => void;
 }) {
+  const t = useTranslations("doctor.reception");
+  const items: { key: EditorTab; label: string }[] = [
+    { key: "conclusion", label: t("editor.tabConclusion") },
+    { key: "handout", label: t("editor.tabHandout") },
+  ];
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-        active
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
+    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5">
+      {items.map((it) => (
+        <button
+          key={it.key}
+          type="button"
+          onClick={() => onTabChange(it.key)}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+            tab === it.key
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -401,7 +403,13 @@ function useDraftSafety({
 
 // ── Conclusion (clinical bodyMarkdown) ────────────────────────────────
 
-function ConclusionEditor() {
+function ConclusionEditor({
+  tab,
+  onTabChange,
+}: {
+  tab: EditorTab;
+  onTabChange: (t: EditorTab) => void;
+}) {
   const t = useTranslations("doctor.reception");
   const {
     visitNoteId,
@@ -501,16 +509,18 @@ function ConclusionEditor() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border px-4 py-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <EyeIcon className="size-3.5 shrink-0 text-primary" />
-          <span className="truncate">{t("editor.previewHint")}</span>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
+        <EditorTabs tab={tab} onTabChange={onTabChange} />
         <button
           type="button"
           disabled={!note}
           onClick={view === "edit" ? showPreview : () => setView("edit")}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+          className={cn(
+            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            view === "edit"
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "border border-border bg-background text-foreground hover:bg-muted",
+          )}
         >
           {view === "edit" ? (
             <>
@@ -526,16 +536,6 @@ function ConclusionEditor() {
         </button>
       </div>
 
-      <SaveStatusBar
-        saving={patch.isPending}
-        dirty={dirty}
-        error={saveError}
-        onRetry={retrySave}
-        savedAt={savedAt}
-        updatedAt={note?.updatedAt ?? null}
-        label={t("editor.autosaveLabel")}
-      />
-
       {view === "preview" && note ? (
         <iframe
           key={`${note.id}:${note.updatedAt}`}
@@ -545,19 +545,33 @@ function ConclusionEditor() {
         />
       ) : (
         <>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            disabled={!note || isFinalized}
-            placeholder={
-              note
-                ? t("editor.conclusionPlaceholder")
-                : t("editor.conclusionPlaceholderEmpty")
-            }
-            className="flex-1 resize-none border-0 bg-transparent px-5 py-4 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
-          />
+          <div className="flex flex-1 flex-col gap-3 bg-muted/40 p-3 sm:p-4">
+            {saveError && !patch.isPending && (
+              <SaveErrorBanner error={saveError} onRetry={retrySave} />
+            )}
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              disabled={!note || isFinalized}
+              placeholder={
+                note
+                  ? t("editor.conclusionPlaceholder")
+                  : t("editor.conclusionPlaceholderEmpty")
+              }
+              className="w-full flex-1 resize-none rounded-xl border border-border bg-card px-5 py-4 text-[15px] leading-7 text-foreground placeholder:text-muted-foreground/70 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:bg-muted/30 disabled:opacity-70"
+            />
+          </div>
 
-          <StatsFooter chars={chars} words={words} isFinalized={isFinalized} />
+          <EditorFooter
+            chars={chars}
+            words={words}
+            isFinalized={isFinalized}
+            saving={patch.isPending}
+            dirty={dirty}
+            error={saveError}
+            savedAt={savedAt}
+            updatedAt={note?.updatedAt ?? null}
+          />
         </>
       )}
     </div>
@@ -566,7 +580,13 @@ function ConclusionEditor() {
 
 // ── Handout (patient-facing) ──────────────────────────────────────────
 
-function HandoutEditor() {
+function HandoutEditor({
+  tab,
+  onTabChange,
+}: {
+  tab: EditorTab;
+  onTabChange: (t: EditorTab) => void;
+}) {
   const t = useTranslations("doctor.reception");
   const rawLocale = useLocale();
   const locale: HandoutLocale = rawLocale === "uz" ? "uz" : "ru";
@@ -694,29 +714,17 @@ function HandoutEditor() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <SparklesIcon className="size-3.5 text-primary" />
-          {t("editor.handoutComposedHint")}
-        </div>
-        <div className="inline-flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
+        <EditorTabs tab={tab} onTabChange={onTabChange} />
+        <div className="inline-flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             disabled={!note || isFinalized}
             onClick={() => setLibraryOpen(true)}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <BookOpenIcon className="size-3.5" />
             {t("editor.library")}
-          </button>
-          <button
-            type="button"
-            disabled={!note || isFinalized || !hasStructured}
-            onClick={generate}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <SparklesIcon className="size-3.5" />
-            {draft ? t("editor.rebuild") : t("editor.build")}
           </button>
           <a
             href={
@@ -728,39 +736,52 @@ function HandoutEditor() {
             onClick={(e) => {
               if (!note || !draft.trim()) e.preventDefault();
             }}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
           >
             <PrinterIcon className="size-3.5" />
             {t("editor.print")}
           </a>
+          <button
+            type="button"
+            disabled={!note || isFinalized || !hasStructured}
+            onClick={generate}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <SparklesIcon className="size-3.5" />
+            {draft ? t("editor.rebuild") : t("editor.build")}
+          </button>
         </div>
       </div>
 
-      <SaveStatusBar
+      <div className="flex flex-1 flex-col gap-3 bg-muted/40 p-3 sm:p-4">
+        {saveError && !patch.isPending && (
+          <SaveErrorBanner error={saveError} onRetry={retrySave} />
+        )}
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          disabled={!note || isFinalized}
+          placeholder={
+            note
+              ? hasStructured
+                ? t("editor.handoutPlaceholder")
+                : t("editor.handoutPlaceholderNoFields")
+              : t("editor.handoutPlaceholderEmpty")
+          }
+          className="w-full flex-1 resize-none rounded-xl border border-border bg-card px-5 py-4 text-[15px] leading-7 text-foreground placeholder:text-muted-foreground/70 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:bg-muted/30 disabled:opacity-70"
+        />
+      </div>
+
+      <EditorFooter
+        chars={chars}
+        words={words}
+        isFinalized={isFinalized}
         saving={patch.isPending}
         dirty={dirty}
         error={saveError}
-        onRetry={retrySave}
         savedAt={savedAt}
         updatedAt={note?.updatedAt ?? null}
-        label={t("editor.handoutLabel")}
       />
-
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        disabled={!note || isFinalized}
-        placeholder={
-          note
-            ? hasStructured
-              ? t("editor.handoutPlaceholder")
-              : t("editor.handoutPlaceholderNoFields")
-            : t("editor.handoutPlaceholderEmpty")
-        }
-        className="flex-1 resize-none border-0 bg-transparent px-5 py-4 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
-      />
-
-      <StatsFooter chars={chars} words={words} isFinalized={isFinalized} />
 
       <HandoutLibraryDrawer
         open={libraryOpen}
@@ -774,66 +795,96 @@ function HandoutEditor() {
 
 // ── Shared bars ───────────────────────────────────────────────────────
 
-function SaveStatusBar({
+// A save failure gets a loud strip right above the text — not a line lost in
+// a status bar. It appears only when something is actually wrong, so the
+// everyday layout carries zero warning chrome (P0-5 visibility, reworked).
+function SaveErrorBanner({
+  error,
+  onRetry,
+}: {
+  error: SaveErrorKind;
+  onRetry: () => void;
+}) {
+  const t = useTranslations("doctor.reception");
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-xs">
+      <AlertTriangleIcon className="size-4 shrink-0 text-destructive" />
+      <span className="min-w-0 flex-1 font-medium text-destructive">
+        {error === "conflict"
+          ? t("editor.saveErrorConflict")
+          : error === "locked"
+            ? t("editor.saveErrorLocked")
+            : t("editor.saveErrorGeneric")}
+      </span>
+      {error === "generic" && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-destructive/40 bg-card px-2.5 font-semibold text-destructive transition-colors hover:bg-destructive/10"
+        >
+          <RotateCcwIcon className="size-3" />
+          {t("editor.retry")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Stats + autosave state share one slim footer, Google-Docs style. The
+// spinner/saved-time precedence matches the old status bar: an in-flight
+// PATCH shows «Сохранение…» so retries are visible; `dirty` alone must not
+// mask an error, otherwise a dead network reads as eternal saving.
+function EditorFooter({
+  chars,
+  words,
+  isFinalized,
   saving,
   dirty,
   error,
-  onRetry,
   savedAt,
   updatedAt,
-  label,
 }: {
+  chars: number;
+  words: number;
+  isFinalized: boolean;
   saving: boolean;
   dirty: boolean;
   error: SaveErrorKind | null;
-  onRetry: () => void;
   savedAt: number | null;
   updatedAt: string | null;
-  label: string;
 }) {
   const t = useTranslations("doctor.reception");
-  // Precedence: an in-flight PATCH shows the spinner (also covers the retry
-  // attempts, so the doctor sees «trying again»); then a failure — `dirty`
-  // alone must not mask it, otherwise a dead network means an eternal
-  // spinner and the doctor believes the text is being saved.
   const showError = !saving && error !== null;
   const showSpinner = saving || (dirty && !showError);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-border px-4 py-2.5 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="inline-flex min-w-0 items-center gap-1.5">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border px-4 py-2 text-xs text-muted-foreground">
+      <span className="tabular-nums">
+        {t("editor.stats", {
+          chars: chars.toLocaleString("ru-RU"),
+          words: words.toLocaleString("ru-RU"),
+        })}
+      </span>
+      <span className="inline-flex min-w-0 items-center gap-2">
+        {isFinalized && (
+          <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("editor.finalizedBadge")}
+          </span>
+        )}
         {showSpinner ? (
           <>
-            <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
-            <span className="text-muted-foreground">{t("editor.saving")}</span>
+            <Loader2Icon className="size-3 animate-spin" />
+            <span>{t("editor.saving")}</span>
           </>
         ) : showError ? (
-          <>
-            <AlertTriangleIcon className="size-3.5 shrink-0 text-destructive" />
-            <span className="font-medium text-destructive">
-              {error === "conflict"
-                ? t("editor.saveErrorConflict")
-                : error === "locked"
-                  ? t("editor.saveErrorLocked")
-                  : t("editor.saveErrorGeneric")}
-            </span>
-            {error === "generic" && (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-destructive/40 bg-destructive/5 px-2 font-semibold text-destructive transition-colors hover:bg-destructive/10"
-              >
-                <RotateCcwIcon className="size-3" />
-                {t("editor.retry")}
-              </button>
-            )}
-          </>
+          <span className="font-medium text-destructive">
+            {t("editor.saveErrorGeneric")}
+          </span>
         ) : savedAt || updatedAt ? (
           <>
             <span className="inline-flex size-4 items-center justify-center rounded-full bg-success/15 text-success">
               <CheckIcon className="size-3" />
             </span>
-            <span className="text-muted-foreground">
+            <span>
               {t("editor.savedAt", {
                 time: formatSavedAt(
                   savedAt ?? (updatedAt ? new Date(updatedAt).getTime() : null),
@@ -842,36 +893,9 @@ function SaveStatusBar({
             </span>
           </>
         ) : (
-          <span className="text-muted-foreground">{t("editor.noChanges")}</span>
+          <span>{t("editor.noChanges")}</span>
         )}
       </span>
-    </div>
-  );
-}
-
-function StatsFooter({
-  chars,
-  words,
-  isFinalized,
-}: {
-  chars: number;
-  words: number;
-  isFinalized: boolean;
-}) {
-  const t = useTranslations("doctor.reception");
-  return (
-    <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-      <span className="tabular-nums">
-        {t("editor.stats", {
-          chars: chars.toLocaleString("ru-RU"),
-          words: words.toLocaleString("ru-RU"),
-        })}
-      </span>
-      {isFinalized && (
-        <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("editor.finalizedBadge")}
-        </span>
-      )}
     </div>
   );
 }

@@ -47,14 +47,14 @@ const SERVICES = [
   { code: "KONS_KARDIO", nameRu: "Консультация кардиолога", nameUz: "Kardiolog konsultatsiyasi", durationMin: 30, priceBase: SUM(200_000), category: "Консультация" },
   { code: "KONS_PED_NEURO", nameRu: "Консультация детского невролога / педиатра", nameUz: "Bolalar nevrologi / pediatr konsultatsiyasi", durationMin: 30, priceBase: SUM(200_000), category: "Консультация" },
 
-  // ЭЭГ family
-  { code: "EEG", nameRu: "ЭЭГ", nameUz: "EEG", durationMin: 30, priceBase: SUM(100_000), category: "Диагностика" },
-  { code: "EEG_30", nameRu: "ЭЭГ (30 мин)", nameUz: "EEG (30 daq)", durationMin: 30, priceBase: SUM(150_000), category: "Диагностика" },
-  { code: "EEG_60", nameRu: "ЭЭГ (1 час)", nameUz: "EEG (1 soat)", durationMin: 60, priceBase: SUM(250_000), category: "Диагностика" },
+  // ЭЭГ family — варианты и цены строго по прейскуранту клиники от 18.05.2026
+  { code: "EEG", nameRu: "ЭЭГ", nameUz: "EEG", durationMin: 30, priceBase: SUM(150_000), category: "Диагностика" },
+  { code: "EEG_30", nameRu: "ЭЭГ (сон и дети до 6 лет)", nameUz: "EEG (uyqu va 6 yoshgacha bolalar)", durationMin: 30, priceBase: SUM(200_000), category: "Диагностика" },
+  { code: "EEG_60", nameRu: "ЭЭГ (сон 1 час)", nameUz: "EEG (uyqu 1 soat)", durationMin: 60, priceBase: SUM(300_000), category: "Диагностика" },
 
   // Other neuro diagnostics
-  { code: "REO_EG", nameRu: "РеоЭГ", nameUz: "ReoEG", durationMin: 30, priceBase: SUM(60_000), category: "Диагностика" },
-  { code: "EHO_EG", nameRu: "ЭхоЭГ", nameUz: "ExoEG", durationMin: 30, priceBase: SUM(40_000), category: "Диагностика" },
+  { code: "REO_EG", nameRu: "РеоЭГ", nameUz: "ReoEG", durationMin: 30, priceBase: SUM(100_000), category: "Диагностика" },
+  { code: "EHO_EG", nameRu: "ЭхоЭГ", nameUz: "ExoEG", durationMin: 30, priceBase: SUM(50_000), category: "Диагностика" },
 
   // Cardio
   { code: "EKG", nameRu: "ЭКГ", nameUz: "EKG", durationMin: 20, priceBase: SUM(70_000), category: "Диагностика" },
@@ -102,7 +102,8 @@ const DOCTORS: DoctorSpec[] = [
       { weekday: 6, start: "08:00", end: "17:00" },
     ],
     services: [
-      { code: "KONS_NEURO_ADULT", priceOverride: SUM(250_000) },
+      // Кабинет 1 по прейскуранту от 18.05.2026 — 300 000 против базовых 200 000
+      { code: "KONS_NEURO_ADULT", priceOverride: SUM(300_000) },
       { code: "EEG" },
       { code: "REO_EG" },
       { code: "EHO_EG" },

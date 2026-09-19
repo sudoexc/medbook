@@ -60,7 +60,7 @@ export function Footer() {
             <ul className="mt-3 space-y-2 text-sm">
               <li><a href="#doctors" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("doctors")}</a></li>
               <li><a href="#services" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("services")}</a></li>
-              <li><a href="#about" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("about")}</a></li>
+              <li><a href="#visit" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("visit")}</a></li>
               <li><a href="#faq" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("faq")}</a></li>
             </ul>
           </div>

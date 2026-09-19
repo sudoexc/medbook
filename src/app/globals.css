@@ -323,9 +323,12 @@
  */
 .site-brand {
   display: contents;
-  --color-primary: #0065d1;
-  --color-primary-foreground: #ffffff;
-  --color-primary-soft: #e5f1fb;
+  /* @theme inline compiles `bg-primary` to var(--primary) directly, so the
+     source tokens are what must be overridden — the --color-* aliases are
+     never referenced by the emitted utilities. */
+  --primary: #0065d1;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e5f1fb;
 }
 
 @layer base {

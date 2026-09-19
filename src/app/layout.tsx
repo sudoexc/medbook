@@ -1,7 +1,16 @@
+import type { Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+
+// Without an explicit viewport export this custom root layout ships NO
+// viewport meta at all — phones lay the site out at 980px and scale it down,
+// which is exactly the "масштаб хуевый" complaint on the public landing.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 const inter = Inter({
   variable: "--font-sans",

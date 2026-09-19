@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { ticketNumberFor } from "@/server/services/ticket-number";
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePreviousVisit } from "../_hooks/use-previous-visit";
 import { QuickVisitEntry } from "./quick-visit-entry";
@@ -258,6 +259,19 @@ export function ActivePatientCard() {
           </div>
         </div>
 
+        {/* The paper ticket — how the doctor calls the patient out loud.
+            Pure derivation, same formula as every queue surface. */}
+        {(() => {
+          const ticket = ticketNumberFor(
+            activeAppointment.doctor.id,
+            activeAppointment.ticketSeq ?? activeAppointment.queueOrder,
+          );
+          return ticket ? (
+            <MetaCell label={t("activePatient.ticketLabel")}>
+              <span className="font-bold tabular-nums text-primary">{ticket}</span>
+            </MetaCell>
+          ) : null;
+        })()}
         {age !== null && (
           <MetaCell label={t("activePatient.ageLabel")}>
             <span className="tabular-nums">{t("activePatient.ageYears", { age })}</span>

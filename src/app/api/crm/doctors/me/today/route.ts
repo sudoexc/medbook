@@ -19,6 +19,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
+import { ticketNumberFor } from "@/server/services/ticket-number";
 import { ok, err } from "@/server/http";
 import { pickCurrentVisit } from "@/lib/doctor-current-visit";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
@@ -57,6 +58,11 @@ type CurrentPatient = {
   complaints: string;
   lastVisit: { date: string; title: string } | null;
   lastDiagnosis: { codes: { code: string; name: string }[] };
+  /**
+   * The paper ticket the patient holds (e.g. «C-017») — how the doctor
+   * calls them out loud. Null for bookings that never claimed a ticket.
+   */
+  ticketNumber: string | null;
 };
 
 /**
@@ -73,6 +79,15 @@ type LiveQueueEntry = {
   etaMinutes: number;
   /** ISO — when the patient joined the queue. Omitted for legacy rows. */
   queuedAt?: string;
+};
+
+/** A walk-in already served today — the collapsed tail of the queue card. */
+type CompletedWalkin = {
+  appointmentId: string;
+  patientFullName: string;
+  ticketNumber: string | null;
+  /** ISO — when the visit was closed. */
+  completedAt: string | null;
 };
 
 type TodayResponse = {
@@ -92,6 +107,12 @@ type TodayResponse = {
    * picks whom to serve. Bookings never appear here (two-lanes model).
    */
   liveQueue: LiveQueueEntry[];
+  /**
+   * Walk-ins served today, newest first. Shown collapsed under the live
+   * queue («Завершённые») so the working list holds only people still
+   * waiting — clinic feedback from the first live weeks.
+   */
+  completedWalkins: CompletedWalkin[];
 };
 
 function ageFromBirthDate(birthDate: Date | null): number | null {
@@ -156,6 +177,11 @@ export const GET = createApiListHandler(
           status: true,
           startedAt: true,
           calledAt: true,
+          completedAt: true,
+          // Ticket identity — frozen at allocation; queueOrder is the legacy
+          // fallback for rows that predate ticketSeq.
+          ticketSeq: true,
+          queueOrder: true,
           // Two-lanes: pickCurrentVisit uses the channel to keep walk-ins out
           // of the imminent-booking fallback.
           channel: true,
@@ -268,6 +294,10 @@ export const GET = createApiListHandler(
                 ]
               : [],
         },
+        ticketNumber: ticketNumberFor(
+          doctor.id,
+          currentSource.ticketSeq ?? currentSource.queueOrder,
+        ),
       };
     }
 
@@ -298,11 +328,27 @@ export const GET = createApiListHandler(
       };
     });
 
+    // Walk-ins already served today, newest first — the queue card shows
+    // them collapsed so the live list holds only people still waiting.
+    const completedWalkins: CompletedWalkin[] = todayAppts
+      .filter((a) => a.channel === "WALKIN" && a.status === "COMPLETED")
+      .sort(
+        (a, b) =>
+          (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0),
+      )
+      .map((a) => ({
+        appointmentId: a.id,
+        patientFullName: a.patient?.fullName ?? "",
+        ticketNumber: ticketNumberFor(doctor.id, a.ticketSeq ?? a.queueOrder),
+        completedAt: a.completedAt ? a.completedAt.toISOString() : null,
+      }));
+
     const payload: TodayResponse = {
       doctorId: doctor.id,
       current,
       currentIsImplicitNext,
       liveQueue,
+      completedWalkins,
     };
     return ok(payload);
   },

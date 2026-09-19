@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import { Loader2Icon } from "lucide-react";
-import { toast } from "sonner";
 
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
 
@@ -17,14 +16,11 @@ import {
   protocolItemToDraft,
   type ClinicalProtocolRow,
 } from "../_hooks/use-clinical-protocols";
-import {
-  isEditWindowExpired,
-  isVersionConflict,
-  usePatchVisitNote,
-  useVisitNote,
-  type VisitNotePatch,
-  type VisitPrescriptionDraft,
+import type {
+  VisitNotePatch,
+  VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
+import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -57,48 +53,16 @@ export function StructuredFieldsPanel() {
     requestBodyRemove,
     activeAppointment,
   } = useReceptionContext();
-  const noteQuery = useVisitNote(visitNoteId);
-  const patch = usePatchVisitNote(visitNoteId);
+  // Every card in this panel saves through the shared loud-patch hook:
+  // diagnosis, prescription rows (replace-all!), follow-up. See
+  // use-loud-patch.ts for the conflict/rollback contract — the advice
+  // column uses the same hook, so behaviour cannot drift between columns.
+  const { note, isFinalized, applyPatch, patch } =
+    useLoudVisitNotePatch(visitNoteId);
   const presetsQuery = useDoctorPresets();
-  const note = noteQuery.data ?? null;
-  const isFinalized = note?.status === "FINALIZED";
   const [catalogOpen, setCatalogOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
-
-  const noteRefetch = noteQuery.refetch;
-  const applyPatch = React.useCallback(
-    (p: VisitNotePatch) => {
-      if (!note || isFinalized) return;
-      // Every card in this panel saves through here: diagnosis, prescription
-      // rows (replace-all!), follow-up, dynamics. A silent failure means the
-      // doctor believes the data is recorded when it is not — the worst
-      // failure class for a clinical system — so every error must be loud.
-      patch.mutate(p, {
-        onError: (e) => {
-          if (isVersionConflict(e)) {
-            // Another window saved this note first. Do NOT refetch here: the
-            // conclusion editor still holds this window's stale draft, and a
-            // refreshed cache row would hand its autosave a fresh version
-            // token — letting the stale text overwrite the other window.
-            // The doctor is told to reload instead.
-            toast.error(t("structured.saveErrorConflict"));
-            return;
-          }
-          toast.error(
-            isEditWindowExpired(e)
-              ? t("structured.saveErrorLocked")
-              : t("structured.saveErrorGeneric"),
-          );
-          // Explicit rollback: the cards render from the cached server row
-          // (the failed PATCH never touched it), so a refetch snaps every
-          // optimistic-looking control back to server truth.
-          void noteRefetch();
-        },
-      });
-    },
-    [note, isFinalized, patch, noteRefetch, t],
-  );
 
   const presetsByField = React.useMemo(() => {
     const map: Partial<Record<PresetField, DoctorPresetRow[]>> = {};
@@ -197,6 +161,19 @@ export function StructuredFieldsPanel() {
           note.prescriptions ?? [],
           protocol.prescriptionsTemplate,
         );
+      }
+      // The apply-dialog previews the protocol's advice lines and the
+      // «Рекомендации» column now sits right next to it — leaving them
+      // unapplied read as a bug (review finding). Same merge semantics as
+      // prescriptions: dedup, never clobber what the doctor already wrote.
+      if ((protocol.adviceTemplate?.length ?? 0) > 0) {
+        const mergedAdvice = mergeUnique(
+          note.advice ?? [],
+          protocol.adviceTemplate,
+        );
+        if (mergedAdvice.length !== (note.advice ?? []).length) {
+          patch.advice = mergedAdvice;
+        }
       }
       // Ф6 — prefill the control visit from the protocol unless the doctor
       // already set one by hand.

@@ -5890,7 +5890,8 @@
         "phoneCancel": "Отмена",
         "phoneSaved": "Номер обновлён",
         "phoneSaveFailed": "Не удалось сохранить номер",
-        "queuedLabel": "В ОЧЕРЕДИ С"
+        "queuedLabel": "В ОЧЕРЕДИ С",
+        "ticketLabel": "Талон"
       },
       "recentFiles": {
         "title": "Недавние файлы",
@@ -6195,6 +6196,14 @@
         "drugPlaceholder": "Препарат, дозировка — Enter",
         "removeDrug": "Убрать",
         "hint": "Быстрый ввод: Enter — сохранить. Подробности при необходимости ниже."
+      },
+      "advicePanel": {
+        "title": "Рекомендации",
+        "placeholder": "Добавить рекомендацию…",
+        "add": "Добавить",
+        "remove": "Убрать",
+        "emptyFinalized": "Рекомендаций не было.",
+        "hint": "Попадают в печатное заключение и в памятку пациенту автоматически."
       }
     },
     "receptionDialogs": {
@@ -6853,7 +6862,8 @@
         "walkin": "Живой",
         "waitingHm": "ждёт {h} ч {m} мин",
         "waitingSince": "ждёт с {at}",
-        "add": "Добавить"
+        "add": "Добавить",
+        "completedTitle": "Завершённые сегодня: {count}"
       },
       "laneBooking": "Запись",
       "addWalkin": {

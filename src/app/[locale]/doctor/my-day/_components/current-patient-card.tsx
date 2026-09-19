@@ -315,8 +315,17 @@ function ActivePatient({
             }
           />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-semibold text-foreground">
-              {p.fullName}
+            <div className="flex items-center gap-2">
+              <span className="truncate text-base font-semibold text-foreground">
+                {p.fullName}
+              </span>
+              {/* The paper ticket — how the doctor calls the patient out
+                  loud («C-017, заходите»), clinic feedback. */}
+              {p.ticketNumber && (
+                <span className="inline-flex shrink-0 items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-primary">
+                  {p.ticketNumber}
+                </span>
+              )}
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
               {p.age !== null ? t("current.ageYears", { count: p.age }) : "—"}

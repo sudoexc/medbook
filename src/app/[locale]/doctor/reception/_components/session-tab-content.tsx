@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { VisitsSection } from "../../patients/[id]/_components/visits-section";
 
 import { useReceptionContext } from "../_hooks/reception-context";
+import { AdvicePanel } from "./advice-panel";
 import { DiagnosisHistoryCard } from "./diagnosis-history-card";
 import { NotesEditorPanel } from "./notes-editor-panel";
 import { StructuredFieldsPanel } from "./structured-fields-panel";
@@ -28,10 +29,16 @@ export function SessionTabContent({ locale }: { locale: string }) {
   const patientId = activeAppointment?.patient.id ?? null;
 
   if (activeTab === "session") {
+    // Clinic-requested three-column flow: prescriptions/diagnosis on the
+    // left (prescriptions first — that's the clinic's working order), the
+    // conclusion editor in the middle, advice on the right. Below xl the
+    // advice panel drops under the left column rather than squeezing three
+    // columns into a laptop half-screen.
     return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] xl:gap-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,300px)] xl:gap-5">
         <StructuredFieldsPanel />
         <NotesEditorPanel />
+        <AdvicePanel />
       </div>
     );
   }

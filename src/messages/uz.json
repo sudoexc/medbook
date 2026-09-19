@@ -5890,7 +5890,8 @@
         "phoneCancel": "Bekor qilish",
         "phoneSaved": "Raqam yangilandi",
         "phoneSaveFailed": "Raqamni saqlab bo'lmadi",
-        "queuedLabel": "NAVBATDA"
+        "queuedLabel": "NAVBATDA",
+        "ticketLabel": "Talon"
       },
       "recentFiles": {
         "title": "So‘nggi fayllar",
@@ -6195,6 +6196,14 @@
         "drugPlaceholder": "Dori, dozasi — Enter",
         "removeDrug": "Olib tashlash",
         "hint": "Tez kiritish: Enter — saqlash. Batafsili kerak bo'lsa quyida."
+      },
+      "advicePanel": {
+        "title": "Tavsiyalar",
+        "placeholder": "Tavsiya qo'shish…",
+        "add": "Qo'shish",
+        "remove": "Olib tashlash",
+        "emptyFinalized": "Tavsiyalar bo'lmagan.",
+        "hint": "Chop etiladigan xulosaga va bemor eslatmasiga avtomatik tushadi."
       }
     },
     "receptionDialogs": {
@@ -6853,7 +6862,8 @@
         "walkin": "Jonli",
         "waitingHm": "{h} soat {m} daqiqa kutmoqda",
         "waitingSince": "{at} dan beri kutmoqda",
-        "add": "Qo'shish"
+        "add": "Qo'shish",
+        "completedTitle": "Bugun yakunlanganlar: {count}"
       },
       "laneBooking": "Yozuv",
       "addWalkin": {

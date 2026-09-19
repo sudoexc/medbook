@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useTranslations } from "next-intl";
 import {
+  CheckIcon,
+  ChevronDownIcon,
   Loader2Icon,
   MegaphoneIcon,
   TicketIcon,
@@ -10,10 +12,12 @@ import {
   UsersIcon,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
   useDoctorToday,
+  type CompletedWalkin,
   type DoctorToday,
   type LiveQueueEntry,
 } from "../_hooks/use-doctor-today";
@@ -45,7 +49,14 @@ export function LiveQueueCard() {
   );
   const queue = data ?? [];
   const { data: doctorId } = useDoctorToday<string>((d: DoctorToday) => d.doctorId);
+  const { data: completedData } = useDoctorToday<CompletedWalkin[]>(
+    (d: DoctorToday) => d.completedWalkins,
+  );
+  const completed = completedData ?? [];
   const [addOpen, setAddOpen] = React.useState(false);
+  // Collapsed by default — the working list is people still waiting; the
+  // served tail is a receipt the doctor opens on demand (clinic feedback).
+  const [completedOpen, setCompletedOpen] = React.useState(false);
 
   const nowMs = useMinuteClock();
   // The mutation object is shared across rows — pin the spinner to the row
@@ -89,7 +100,9 @@ export function LiveQueueCard() {
         ) : null}
       </header>
 
-      <ul className="flex-1 divide-y divide-border/60 px-2 pb-2">
+      {/* Internal scroll: a 40-person day must not stretch the card to 40
+          rows — the list scrolls, the header and the completed tail stay. */}
+      <ul className="max-h-[min(60vh,560px)] flex-1 divide-y divide-border/60 overflow-y-auto overscroll-contain px-2 pb-2">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <li key={i} className="flex items-center gap-3 px-3 py-2.5">
@@ -185,6 +198,58 @@ export function LiveQueueCard() {
           })
         )}
       </ul>
+
+      {completed.length > 0 && (
+        <div className="border-t border-border/60 px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => setCompletedOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <CheckIcon className="size-3.5 text-success" />
+              {t("completedTitle", { count: completed.length })}
+            </span>
+            <ChevronDownIcon
+              className={cn(
+                "size-4 transition-transform",
+                completedOpen && "rotate-180",
+              )}
+            />
+          </button>
+          {completedOpen && (
+            <ul className="max-h-64 overflow-y-auto overscroll-contain">
+              {completed.map((c) => (
+                <li
+                  key={c.appointmentId}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm"
+                >
+                  <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
+                    <CheckIcon className="size-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-foreground/80">
+                    {c.patientFullName}
+                  </span>
+                  {c.ticketNumber && (
+                    <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground">
+                      {c.ticketNumber}
+                    </span>
+                  )}
+                  {c.completedAt && (
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      {new Date(c.completedAt).toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZone: "Asia/Tashkent",
+                      })}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {doctorId ? (
         <AddWalkinDialog

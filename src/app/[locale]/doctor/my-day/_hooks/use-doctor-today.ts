@@ -60,6 +60,8 @@ export type CurrentPatient = {
   complaints: string;
   lastVisit: { date: string; title: string } | null;
   lastDiagnosis: { codes: { code: string; name: string }[] };
+  /** Paper ticket the patient holds («C-017»); null when never issued. */
+  ticketNumber: string | null;
 };
 
 /**
@@ -104,6 +106,15 @@ export type DoctorToday = {
   currentIsImplicitNext: boolean;
   /** Walk-in FIFO — the live lane, rendered by LiveQueueCard. */
   liveQueue: LiveQueueEntry[];
+  /** Walk-ins served today (newest first) — collapsed tail of the queue. */
+  completedWalkins: CompletedWalkin[];
+};
+
+export type CompletedWalkin = {
+  appointmentId: string;
+  patientFullName: string;
+  ticketNumber: string | null;
+  completedAt: string | null;
 };
 
 export const doctorTodayKey = ["doctor", "me", "today"] as const;

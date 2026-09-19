@@ -68,47 +68,61 @@ function toView(row: {
 }
 
 export async function getDoctors(): Promise<DoctorView[]> {
-  const clinicId = await resolveClinicId();
-  if (!clinicId) return [];
+  // Soft-degrade on DB trouble: the landing renders without the doctors
+  // section (and sitemap.ts, which runs inside `next build` where no
+  // database exists, falls back to the base pages) instead of a 500 on the
+  // clinic's public front door.
+  try {
+    const clinicId = await resolveClinicId();
+    if (!clinicId) return [];
 
-  const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.doctor.findMany({
-      where: { clinicId },
-      select: {
-        id: true,
-        slug: true,
-        nameRu: true,
-        nameUz: true,
-        specializationRu: true,
-        specializationUz: true,
-        photoUrl: true,
-      },
-      orderBy: { nameRu: "asc" },
-    }),
-  );
+    const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.doctor.findMany({
+        where: { clinicId },
+        select: {
+          id: true,
+          slug: true,
+          nameRu: true,
+          nameUz: true,
+          specializationRu: true,
+          specializationUz: true,
+          photoUrl: true,
+        },
+        orderBy: { nameRu: "asc" },
+      }),
+    );
 
-  return rows.map(toView);
+    return rows.map(toView);
+  } catch (e) {
+    console.warn(`[site] getDoctors failed: ${(e as Error).message}`);
+    return [];
+  }
 }
 
 export async function getDoctorById(id: string): Promise<DoctorView | null> {
-  const clinicId = await resolveClinicId();
-  if (!clinicId) return null;
+  try {
+    const clinicId = await resolveClinicId();
+    if (!clinicId) return null;
 
-  const row = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.doctor.findFirst({
-      // clinicId keeps the lookup scoped to this clinic even though id is a cuid.
-      where: { id, clinicId },
-      select: {
-        id: true,
-        slug: true,
-        nameRu: true,
-        nameUz: true,
-        specializationRu: true,
-        specializationUz: true,
-        photoUrl: true,
-      },
-    }),
-  );
+    const row = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.doctor.findFirst({
+        // clinicId keeps the lookup scoped to this clinic even though id is a cuid.
+        where: { id, clinicId },
+        select: {
+          id: true,
+          slug: true,
+          nameRu: true,
+          nameUz: true,
+          specializationRu: true,
+          specializationUz: true,
+          photoUrl: true,
+        },
+      }),
+    );
 
-  return row ? toView(row) : null;
+    return row ? toView(row) : null;
+  } catch (e) {
+    console.warn(`[site] getDoctorById failed: ${(e as Error).message}`);
+    return null;
+  }
 }

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
-import { getDoctorById, getDoctors } from "@/lib/doctors";
+import { getDoctorById } from "@/lib/doctors";
 import { SITE_DOMAIN, CONTACT } from "@/lib/constants";
 import type { Locale } from "@/types";
 import ruMessages from "@/messages/ru.json";
@@ -13,14 +13,6 @@ const msgs: Record<string, typeof ruMessages> = { ru: ruMessages, uz: uzMessages
 // Compact 1-letter monogram for the photo-less avatar plaque.
 function monogram(name: string): string {
   return name.trim().charAt(0).toUpperCase();
-}
-
-export async function generateStaticParams() {
-  const doctors = await getDoctors();
-  const locales: Locale[] = ["ru", "uz"];
-  return locales.flatMap((locale) =>
-    doctors.map((doc) => ({ locale, id: doc.id }))
-  );
 }
 
 export async function generateMetadata({

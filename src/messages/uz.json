@@ -2102,11 +2102,33 @@
   },
   "services": {
     "title": "Xizmatlar va narxlar",
-    "subtitle": "Shaffof narxlar",
-    "neurology": "Nevrologiya",
-    "cardiology": "Kardiologiya",
-    "diagnostics": "Diagnostika",
-    "pediatrics": "Bolalar qabuli"
+    "subtitle": "Narxlar jadvali, 18.05.2026 dan",
+    "sum": "so'm",
+    "groups": {
+      "consultations": {
+        "title": "Konsultatsiyalar",
+        "items": [
+          { "name": "Nevropatolog konsultatsiyasi (1-xona, 8:00 dan 17:00 gacha)", "price": "300 000" },
+          { "name": "Nevropatolog konsultatsiyasi (5-xona, 8:30 dan 17:00 gacha)", "price": "200 000" },
+          { "name": "Pediatr va bolalar nevropatologi konsultatsiyasi (9:00 dan 15:00 gacha)", "price": "200 000" },
+          { "name": "Kardiolog konsultatsiyasi (9:00 dan 13:00 gacha)", "price": "200 000" }
+        ]
+      },
+      "diagnostics": {
+        "title": "Diagnostika",
+        "items": [
+          { "name": "EEG (elektroensefalogramma)", "price": "150 000" },
+          { "name": "EEG (uyqu va 6 yoshgacha bolalar)", "price": "200 000" },
+          { "name": "EEG (uyqu, 1 soat)", "price": "300 000" },
+          { "name": "ReoEG (reoensefalografiya)", "price": "100 000" },
+          { "name": "ExoEG (exoensefalografiya)", "price": "50 000" },
+          { "name": "EKG", "price": "70 000" },
+          { "name": "ExoKG", "price": "150 000" },
+          { "name": "BSA doppleri", "price": "150 000" },
+          { "name": "Bitta a'zo UZI / Neyrosonografiya NSG (10:00 dan 14:00 gacha)", "price": "80 000" }
+        ]
+      }
+    }
   },
   "about": {
     "title": "Nima uchun NeuroFax",
@@ -2117,7 +2139,7 @@
     },
     "equipment": {
       "title": "Zamonaviy uskunalar",
-      "description": "EEG, EKG, UZI, ExoKG, dopplerografiya — hammasi bir markazda."
+      "description": "EEG, EKG, UZI, ExoKG va dopplerografiya bir markazda."
     },
     "approach": {
       "title": "Individual yondashuv",
@@ -2140,7 +2162,7 @@
     },
     "q3": {
       "question": "Bolalarni qabul qilasizlarmi?",
-      "answer": "Ha, 6-xonada bolalar nevropatologi va pediatr qabul qiladi. Dushanbadan shanbagacha yozilish mumkin."
+      "answer": "Ha, bolalar nevropatologi va pediatr 9:00 dan 15:00 gacha qabul qiladi. Dushanbadan shanbagacha yozilish mumkin."
     },
     "q4": {
       "question": "Qanday to'lov usullarini qabul qilasiz?",
@@ -2148,7 +2170,7 @@
     },
     "q5": {
       "question": "Qabul qancha davom etadi?",
-      "answer": "Konsultatsiya 20-30 daqiqa. EEG — tekshiruv turiga qarab 30 daqiqadan 1 soatgacha."
+      "answer": "Konsultatsiya 20 dan 30 daqiqagacha davom etadi. EEG tekshiruv turiga qarab 30 daqiqadan 1 soatgacha davom etadi."
     }
   },
   "footer": {
@@ -2156,7 +2178,7 @@
     "navigation": "Navigatsiya",
     "contacts": "Kontaktlar",
     "workingHours": "Ish tartibi",
-    "workingHoursValue": "Du – Sha: 08:00 – 17:00",
+    "workingHoursValue": "Du dan Sha gacha, 08:00 dan 17:00 gacha",
     "rights": "Barcha huquqlar himoyalangan",
     "privacy": "Maxfiylik",
     "terms": "Shartlar"

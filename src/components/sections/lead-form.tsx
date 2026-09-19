@@ -12,16 +12,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useDoctors } from "@/components/providers/doctors-provider";
-import { CheckCircle, Send, MapPin, Clock, Calendar, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { CheckCircle, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Locale } from "@/types";
-import { formatMoney } from "@/lib/format";
-
-// Public-site doctor service prices are stored as whole UZS (legacy shape).
-// formatMoney expects tiins; multiply by 100 then strip the trailing unit so
-// the JSX template can render the localized "сум"/"so'm" via t("sum").
-function formatPrice(price: number, locale: Locale): string {
-  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
-}
 
 const MONTH_NAMES: Record<Locale, string[]> = {
   ru: ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"],
@@ -128,7 +120,6 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedDoctorId, setSelectedDoctorId] = useState(doctorId || "");
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
   const t = useTranslations("leadForm");
   const locale = useLocale() as Locale;
@@ -143,17 +134,10 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
     setOpen(isOpen);
     if (isOpen) {
       setSelectedDoctorId(doctorId || "");
-      setSelectedServices([]);
       setSelectedDate("");
       setSubmitted(false);
       setError(false);
     }
-  }
-
-  function toggleService(name: string) {
-    setSelectedServices((prev) =>
-      prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]
-    );
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -177,8 +161,6 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
 
     setLoading(true);
 
-    const serviceStr = selectedServices.join(", ");
-
     try {
       const res = await fetch("/api/leads", {
         method: "POST",
@@ -187,7 +169,6 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
           name: formData.get("name"),
           phone: formData.get("phone"),
           doctorId: selectedDoctorId || undefined,
-          service: serviceStr || undefined,
           date: selectedDate || undefined,
           locale,
         }),
@@ -232,7 +213,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                 id="lead-doctor"
                 required
                 value={selectedDoctorId}
-                onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedServices([]); setSelectedDate(""); }}
+                onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedDate(""); }}
                 className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="">{t("selectDoctor")}</option>
@@ -247,54 +228,9 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
             {selectedDoctor && (
               <div className="rounded-lg border border-border bg-muted/50 p-3">
                 <p className="text-sm font-medium">{selectedDoctor.name[locale]}</p>
-                <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {t("cabinet")} {selectedDoctor.cabinet}</span>
-                  <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {selectedDoctor.schedule[locale]}</span>
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {selectedDoctor.hours}</span>
-                </div>
-              </div>
-            )}
-
-            {selectedDoctor && selectedDoctor.services.length > 0 && (
-              <div>
-                <label className="text-sm font-medium">{t("service")}</label>
-                <div className="mt-1.5 space-y-1.5">
-                  {selectedDoctor.services.map((svc) => {
-                    const isSelected = selectedServices.includes(svc.name[locale]);
-                    return (
-                      <button
-                        key={svc.name[locale]}
-                        type="button"
-                        onClick={() => toggleService(svc.name[locale])}
-                        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                          isSelected
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:bg-muted/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                            isSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
-                          }`}>
-                            {isSelected && <Check className="h-3 w-3 text-white" />}
-                          </div>
-                          <span>{svc.name[locale]}</span>
-                        </div>
-                        <span className="font-medium tabular-nums">{formatPrice(svc.price, locale)} {t("sum")}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedServices.length > 1 && (
-                  <p className="mt-1.5 text-xs text-muted-foreground text-right">
-                    {t("total")}: {formatPrice(
-                      selectedDoctor.services
-                        .filter((s) => selectedServices.includes(s.name[locale]))
-                        .reduce((sum, s) => sum + s.price, 0),
-                      locale
-                    )} {t("sum")}
-                  </p>
-                )}
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {selectedDoctor.specialty[locale]}
+                </p>
               </div>
             )}
 

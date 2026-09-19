@@ -43,7 +43,7 @@ export default async function Home({
       />
       <Hero />
       <Doctors doctors={doctors} />
-      <Services doctors={doctors} />
+      <Services />
       <About />
       <Reviews />
       <Cta />

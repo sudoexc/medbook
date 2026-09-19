@@ -1,78 +1,59 @@
 import { useTranslations, useLocale } from "next-intl";
-import { Clock, MapPin, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "./lead-form";
 import type { Locale } from "@/types";
 import type { DoctorView } from "@/lib/doctors";
-import { formatMoney } from "@/lib/format";
 
-// Public-site DoctorView stores price as whole UZS (legacy data shape pre-Phase 1).
-// formatMoney expects minor units (tiins), so we multiply by 100 here.
-// Strip the trailing currency unit; the surrounding markup adds the localized
-// "сум" / "so'm" via t("sum") so callers control where it appears.
-function formatPrice(price: number, locale: Locale): string {
-  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
+// Doctors render as an initial-monogram plaque, not a photo. Remote photos
+// live on the private MinIO host, which is not in the site CSP `img-src`
+// (see next.config.ts) nor in `images.remotePatterns`, so a <img>/<Image>
+// would be blocked/throw. A clean monogram is the reliable, on-brand
+// fallback the owner asked for. If photos are ever needed, add the MinIO
+// host to both configs first.
+function monogram(name: string): string {
+  return name.trim().charAt(0).toUpperCase();
 }
 
 export function Doctors({ doctors }: { doctors: DoctorView[] }) {
   const t = useTranslations("doctors");
   const locale = useLocale() as Locale;
 
+  if (doctors.length === 0) return null;
+
   return (
-    <section id="doctors" className="py-16 sm:py-20">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
+    <section id="doctors" className="border-t border-border py-16 sm:py-20">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           {t("title")}
         </h2>
         <p className="mt-1 text-muted-foreground">{t("subtitle")}</p>
 
-        <div className="mt-8 space-y-4">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {doctors.map((doc) => (
             <div
               key={doc.id}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-white p-5 sm:flex-row sm:items-start sm:justify-between hover:border-primary/30 transition-colors"
+              className="flex flex-col rounded-xl border border-border bg-white p-5 transition-colors hover:border-primary/40"
             >
-              <div className="flex gap-4">
+              <div className="flex items-center gap-4">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
-                  {doc.name[locale].charAt(0)}
+                  {monogram(doc.name[locale])}
                 </div>
-                <div>
-                  <a href={`doctors/${doc.id}`} className="text-base font-semibold text-foreground hover:text-primary transition-colors">
+                <div className="min-w-0">
+                  <a
+                    href={`doctors/${doc.id}`}
+                    className="block truncate text-base font-semibold text-foreground transition-colors hover:text-primary"
+                  >
                     {doc.name[locale]}
                   </a>
-                  <p className="text-sm text-primary">{doc.specialty[locale]}</p>
-
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {t("cabinet")} {doc.cabinet}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {doc.schedule[locale]}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {doc.hours}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {doc.services.map((svc) => (
-                      <span
-                        key={svc.name[locale]}
-                        className="inline-flex items-center rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
-                      >
-                        {svc.name[locale]} — {formatPrice(svc.price, locale)} {t("sum")}
-                      </span>
-                    ))}
-                  </div>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {doc.specialty[locale]}
+                  </p>
                 </div>
               </div>
 
-              <div className="shrink-0 sm:self-center">
+              <div className="mt-4">
                 <LeadFormTrigger doctorId={doc.id}>
-                  <Button className="w-full sm:w-auto h-10 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/85">
+                  <Button className="h-10 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/85">
                     {t("bookWith")}
                   </Button>
                 </LeadFormTrigger>

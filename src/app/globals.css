@@ -312,6 +312,22 @@
   --sidebar-ring: #22d39a;
 }
 
+/*
+ * Clinic brand scope for the PUBLIC landing only (`(site)` layout wrapper).
+ * The clinic's print materials (Telegram poster, signage) use #0065d1; the
+ * CRM keeps its own `--brand-primary` (#2353ff). Overriding the *resolved*
+ * Tailwind tokens here is deliberate: `--primary`/`--color-primary` contain
+ * var() chains that compute at :root, so re-declaring `--brand-primary` on a
+ * wrapper would not cascade. `display: contents` keeps the wrapper out of
+ * the flex layout chain.
+ */
+.site-brand {
+  display: contents;
+  --color-primary: #0065d1;
+  --color-primary-foreground: #ffffff;
+  --color-primary-soft: #e5f1fb;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -12,9 +12,12 @@ export default async function SiteLayout({
 
   return (
     <DoctorsProvider doctors={doctors}>
-      <Header />
-      {children}
-      <Footer />
+      {/* Clinic brand blue for the public site only — see .site-brand in globals.css */}
+      <div className="site-brand">
+        <Header />
+        {children}
+        <Footer />
+      </div>
     </DoctorsProvider>
   );
 }

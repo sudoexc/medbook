@@ -1,21 +1,18 @@
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin, Calendar, Clock } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
 import { getDoctorById, getDoctors } from "@/lib/doctors";
 import { SITE_DOMAIN, CONTACT } from "@/lib/constants";
 import type { Locale } from "@/types";
-import { formatMoney } from "@/lib/format";
 import ruMessages from "@/messages/ru.json";
 import uzMessages from "@/messages/uz.json";
 
 const msgs: Record<string, typeof ruMessages> = { ru: ruMessages, uz: uzMessages };
 
-// Public-site doctor service prices are stored as whole UZS (legacy shape).
-// formatMoney expects tiins; multiply by 100 then strip the trailing unit so
-// the JSX template can render the localized "сум"/"so'm" via t.sum.
-function formatPrice(price: number, locale: Locale): string {
-  return formatMoney(price * 100, "UZS", locale).replace(/\s\S+$/, "");
+// Compact 1-letter monogram for the photo-less avatar plaque.
+function monogram(name: string): string {
+  return name.trim().charAt(0).toUpperCase();
 }
 
 export async function generateStaticParams() {
@@ -101,59 +98,27 @@ export default async function DoctorPage({
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <a
           href={`/${locale}#doctors`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
+          className="mb-8 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           {t.backToAll}
         </a>
 
         {/* Doctor header */}
-        <div className="flex gap-5 items-start">
+        <div className="flex items-start gap-5">
           <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
-            {doctor.name[loc].charAt(0)}
+            {monogram(doctor.name[loc])}
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">{doctor.name[loc]}</h1>
-            <p className="text-primary font-medium mt-1">{doctor.specialty[loc]}</p>
-
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4" />
-                {t.cabinet} {doctor.cabinet}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                {doctor.schedule[loc]}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4" />
-                {doctor.hours}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Services table */}
-        <div className="mt-10">
-          <h2 className="text-lg font-semibold text-foreground">{t.services}</h2>
-          <div className="mt-4 rounded-xl border border-border bg-white overflow-hidden">
-            <div className="divide-y divide-border">
-              {doctor.services.map((svc, i) => (
-                <div key={i} className="flex items-center justify-between px-5 py-4">
-                  <span className="text-sm text-foreground">{svc.name[loc]}</span>
-                  <span className="text-sm font-medium tabular-nums whitespace-nowrap ml-4">
-                    {formatPrice(svc.price, loc)} <span className="text-muted-foreground font-normal">{t.sum}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
+            <p className="mt-1 font-medium text-primary">{doctor.specialty[loc]}</p>
           </div>
         </div>
 
         {/* CTA */}
         <div className="mt-10">
           <LeadFormTrigger doctorId={doctor.id}>
-            <Button className="w-full sm:w-auto h-12 rounded-xl bg-primary px-8 text-base font-semibold text-primary-foreground hover:bg-primary/85">
+            <Button className="h-12 w-full rounded-xl bg-primary px-8 text-base font-semibold text-primary-foreground hover:bg-primary/85 sm:w-auto">
               {t.bookAppointment}
             </Button>
           </LeadFormTrigger>

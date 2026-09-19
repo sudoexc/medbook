@@ -8,10 +8,10 @@ export function Cta() {
   const t = useTranslations("nav");
 
   return (
-    <section className="py-16 sm:py-20 bg-[#f8f9fa]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="rounded-xl border border-border bg-white p-8 sm:p-12 text-center">
-          <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
+    <section className="border-t border-border py-16 sm:py-20">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="rounded-xl border border-border bg-white p-8 text-center sm:p-12">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             {t("bookAppointment")}
           </h2>
           <p className="mt-2 text-muted-foreground">

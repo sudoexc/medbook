@@ -1,26 +1,114 @@
-// TODO(public-site-revamp): rewrite against the Phase 1 Doctor schema.
-// The legacy DoctorView shape (specialtyRu/specialtyUz, cabinet, scheduleRu,
-// hours, photo, services) doesn't map cleanly to the new Doctor model
-// (specializationRu/Uz, no per-doctor cabinet, no schedule string). Until the
-// public site is rewritten, both functions return empty so build/runtime stay
-// silent. Callers (sitemap, public site doctors page, layout) handle empty.
+/**
+ * Public-site doctor reads.
+ *
+ * The landing page (`/[locale]/(site)`) and the per-doctor page run with NO
+ * auth session, so they carry no TenantContext. The shared Prisma client
+ * (`@/lib/prisma`) fails closed on tenant-scoped models when there's no
+ * context, so we do exactly what the other anonymous surfaces do
+ * (`/api/c/[slug]/queue/*`, `src/lib/public-clinic.ts`): resolve the concrete
+ * clinic by slug and run the queries inside `runWithTenant({ kind: "SYSTEM" })`
+ * with an explicit `where: { clinicId }`. SYSTEM never auto-injects, so the
+ * explicit clinicId is what keeps these reads tenant-safe.
+ *
+ * `isActive` is deliberately NOT filtered here: the clinic deactivates
+ * doctors in the CRM to declutter the working screens (today only one doctor
+ * uses the system), while the doctors themselves still see patients — the
+ * public price sheet lists their cabinets. Hiding them from the public site
+ * would misrepresent the clinic. If a doctor actually leaves, delete the row
+ * or we add a dedicated "listed on site" flag.
+ *
+ * Doctors with no photo render fine on the client (the sections fall back to
+ * initials), so `photoUrl` is passed through as-is (may be null).
+ */
+import { prisma } from "./prisma";
+import { runWithTenant } from "./tenant-context";
+import { DEFAULT_CLINIC_SLUG } from "./constants";
 import type { Locale } from "@/types";
 
 export interface DoctorView {
   id: string;
+  slug: string;
   name: Record<Locale, string>;
   specialty: Record<Locale, string>;
-  cabinet: number;
-  schedule: Record<Locale, string>;
-  hours: string;
   photo: string | null;
-  services: { name: Record<Locale, string>; price: number }[];
+}
+
+/**
+ * Resolve the public clinic id from the default slug ("neurofax"). Runs in a
+ * SYSTEM scope because Clinic has no clinicId column and we're outside any
+ * tenant context on these routes. Returns null when the slug doesn't resolve
+ * to an active clinic — callers return empty / 404.
+ */
+async function resolveClinicId(): Promise<string | null> {
+  const clinic = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.clinic.findFirst({
+      where: { slug: DEFAULT_CLINIC_SLUG, active: true },
+      select: { id: true },
+    }),
+  );
+  return clinic?.id ?? null;
+}
+
+function toView(row: {
+  id: string;
+  slug: string;
+  nameRu: string;
+  nameUz: string;
+  specializationRu: string;
+  specializationUz: string;
+  photoUrl: string | null;
+}): DoctorView {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: { ru: row.nameRu, uz: row.nameUz },
+    specialty: { ru: row.specializationRu, uz: row.specializationUz },
+    photo: row.photoUrl,
+  };
 }
 
 export async function getDoctors(): Promise<DoctorView[]> {
-  return [];
+  const clinicId = await resolveClinicId();
+  if (!clinicId) return [];
+
+  const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.doctor.findMany({
+      where: { clinicId },
+      select: {
+        id: true,
+        slug: true,
+        nameRu: true,
+        nameUz: true,
+        specializationRu: true,
+        specializationUz: true,
+        photoUrl: true,
+      },
+      orderBy: { nameRu: "asc" },
+    }),
+  );
+
+  return rows.map(toView);
 }
 
-export async function getDoctorById(_id: string): Promise<DoctorView | null> {
-  return null;
+export async function getDoctorById(id: string): Promise<DoctorView | null> {
+  const clinicId = await resolveClinicId();
+  if (!clinicId) return null;
+
+  const row = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.doctor.findFirst({
+      // clinicId keeps the lookup scoped to this clinic even though id is a cuid.
+      where: { id, clinicId },
+      select: {
+        id: true,
+        slug: true,
+        nameRu: true,
+        nameUz: true,
+        specializationRu: true,
+        specializationUz: true,
+        photoUrl: true,
+      },
+    }),
+  );
+
+  return row ? toView(row) : null;
 }

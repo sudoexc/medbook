@@ -75,7 +75,7 @@ export function Reviews() {
   const t = useTranslations("reviews");
 
   return (
-    <section id="reviews" className="border-t border-border bg-[#f4f8fc] py-16 sm:py-24">
+    <section id="reviews" className="border-t border-border bg-white py-16 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>

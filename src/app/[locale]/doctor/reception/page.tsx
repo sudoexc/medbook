@@ -6,6 +6,7 @@ import { ActiveAIRail } from "./_components/active-ai-rail";
 import { ActivePatientCard } from "./_components/active-patient-card";
 import { SessionTabContent } from "./_components/session-tab-content";
 import { SessionTabs } from "./_components/session-tabs";
+import { VisitActionBar } from "./_components/visit-action-bar";
 import { ReceptionProvider } from "./_hooks/reception-context";
 
 export default async function ReceptionPage({
@@ -37,6 +38,7 @@ export default async function ReceptionPage({
           <ActivePatientCard />
           <SessionTabs />
           <SessionTabContent locale={locale} />
+          <VisitActionBar />
         </div>
 
         <div className="hidden xl:block">

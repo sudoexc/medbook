@@ -21,6 +21,8 @@ import type {
   VisitPrescriptionDraft,
 } from "../_hooks/use-visit-note";
 import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
+import { useQueryClient } from "@tanstack/react-query";
+import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -31,6 +33,7 @@ import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
 import { IcdCatalogDrawer } from "./icd-catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
+import { ParsedFromTextCard } from "./parsed-from-text-card";
 import {
   draftFromDrug,
   PrescriptionConstructor,
@@ -60,6 +63,7 @@ export function StructuredFieldsPanel() {
   // column uses the same hook, so behaviour cannot drift between columns.
   const { note, isFinalized, applyPatch, patch } =
     useLoudVisitNotePatch(visitNoteId);
+  const qc = useQueryClient();
   const presetsQuery = useDoctorPresets();
   const [catalogOpen, setCatalogOpen] = React.useState(false);
   const [icdCatalogOpen, setIcdCatalogOpen] = React.useState(false);
@@ -257,6 +261,39 @@ export function StructuredFieldsPanel() {
             }}
             onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
             onOpenCatalog={() => setCatalogOpen(true)}
+          />
+          <ParsedFromTextCard
+            key={note.id}
+            note={note}
+            disabled={isFinalized}
+            onAdopt={(drafts) => {
+              // Same lost-update guard as the advice column: read the
+              // CURRENT cache row and fold the result back synchronously,
+              // so two quick «+» clicks compose instead of the second one
+              // erasing the first (payloads are whole-array replace-all).
+              const key = visitNoteKey(note.id);
+              const cur =
+                qc.getQueryData<VisitNoteRow>(key)?.visitPrescriptions ??
+                note.visitPrescriptions ??
+                [];
+              const existing = cur.map(
+                ({ id: _i, sortOrder: _o, ...rest }) => rest,
+              );
+              const next = [...existing, ...drafts];
+              qc.setQueryData<VisitNoteRow>(key, (prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      visitPrescriptions: next.map((d, i) => ({
+                        ...d,
+                        id: `optimistic-${i}`,
+                        sortOrder: i,
+                      })),
+                    }
+                  : prev,
+              );
+              applyPatch({ visitPrescriptions: next });
+            }}
           />
           <CdsWarningsCard
             patientId={activeAppointment?.patient.id ?? null}

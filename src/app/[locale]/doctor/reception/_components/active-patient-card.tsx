@@ -2,15 +2,12 @@
 
 import * as React from "react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AlertTriangleIcon,
   FilesIcon,
-  Loader2Icon,
   MinusIcon,
   PrinterIcon,
-  SquareCheckIcon,
   TrendingDownIcon,
   TrendingUpIcon,
 } from "lucide-react";
@@ -18,27 +15,16 @@ import {
 import { cn } from "@/lib/utils";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { useReceptionContext } from "../_hooks/reception-context";
 import { usePreviousVisit } from "../_hooks/use-previous-visit";
-import { QuickVisitEntry } from "./quick-visit-entry";
 import { EditablePhone } from "./editable-phone";
 import { TelegramSendPanel } from "../../_components/telegram-send-panel";
 import {
   isVersionConflict,
-  useFinalizeVisitNote,
   usePatchVisitNote,
   useVisitNote,
-  visitNoteKey,
   type VisitNotePatch,
   type VisitNoteRow,
 } from "../_hooks/use-visit-note";
@@ -100,17 +86,12 @@ export function ActivePatientCard() {
   const {
     activeAppointment,
     visitNoteId,
-    flushDraftEdits,
-    pinFinalizedAppointment,
   } = useReceptionContext();
-  const qc = useQueryClient();
   const noteQuery = useVisitNote(visitNoteId);
-  const finalize = useFinalizeVisitNote(visitNoteId);
   const patch = usePatchVisitNote(visitNoteId);
   const previousQuery = usePreviousVisit(visitNoteId);
   const previous = previousQuery.data ?? null;
   const elapsed = useElapsed(activeAppointment?.startedAt ?? null);
-  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   if (!activeAppointment) {
     return (
@@ -134,85 +115,6 @@ export function ActivePatientCard() {
   // Two-lanes: the live lane has no appointment time, only a join moment.
   const isWalkin = activeAppointment.channel === "WALKIN";
 
-  // Ф0 — finalize gate. No diagnosis → button stays disabled (the API
-  // backstops with 400 DIAGNOSIS_REQUIRED). Empty sections don't block but
-  // must be explicitly confirmed so an empty conclusion is never an accident.
-  // A free-text diagnosis counts: the ICD-10 code is for statistics, the name
-  // is what makes the conclusion a valid document (see the finalize gate).
-  const hasDiagnosis = Boolean(
-    note?.diagnosisCode || note?.diagnosisName?.trim(),
-  );
-
-  // P1-5 — the complaints/anamnesis/advice inputs were stripped from this
-  // screen, so we only warn about what the doctor can still fill here: the
-  // conclusion text and the prescriptions (structured rows + legacy lines).
-  const emptySectionsOf = (n: VisitNoteRow | null | undefined): string[] =>
-    !n
-      ? []
-      : [
-          !n.bodyMarkdown?.trim() ? t("activePatient.emptyConclusion") : null,
-          (n.visitPrescriptions?.length ?? 0) === 0 &&
-          n.prescriptions.length === 0
-            ? t("activePatient.emptyPrescriptions")
-            : null,
-        ].filter((s): s is string => s !== null);
-  const emptySections = emptySectionsOf(note);
-
-  // P0-2 — drain both editors' debounced tails into the server before any
-  // finalize decision. A failed flush must abort: finalizing a note whose
-  // text failed to save would sign a truncated legal document.
-  const flushBeforeFinalize = async (): Promise<boolean> => {
-    try {
-      await flushDraftEdits();
-      return true;
-    } catch (e) {
-      // A 409 means another window edited this note — finalizing now would
-      // sign over someone else's text, so name the real cause instead of the
-      // generic flush error.
-      toast.error(
-        isVersionConflict(e)
-          ? t("editor.saveErrorConflict")
-          : t("activePatient.finalizeFlushError"),
-      );
-      return false;
-    }
-  };
-
-  const doFinalize = async () => {
-    if (!visitNoteId || finalize.isPending || isFinalized) return;
-    if (!(await flushBeforeFinalize())) return;
-    try {
-      await finalize.mutateAsync();
-      // P0-3 — the queue refetch flips this appointment to COMPLETED, which
-      // would unmount the card before the doctor can print. Pin it so the
-      // finished-visit view (with the print buttons) stays until they move on.
-      pinFinalizedAppointment(activeAppointment);
-    } catch (error) {
-      // P0-1 — the mutation hook only surfaces the HTTP status in the error
-      // message ("visit-note finalize <status>"); the sole 400 that route
-      // returns is DIAGNOSIS_REQUIRED, so map it to the specific toast.
-      toast.error(
-        error instanceof Error && / 400$/.test(error.message)
-          ? t("activePatient.finalizeErrorDiagnosis")
-          : t("activePatient.finalizeErrorGeneric"),
-      );
-    }
-  };
-
-  const onFinalize = async () => {
-    if (!visitNoteId || finalize.isPending || isFinalized || !hasDiagnosis) return;
-    // Flush BEFORE the emptiness check so text typed seconds ago counts —
-    // otherwise a freshly written conclusion would trip the "empty" dialog.
-    if (!(await flushBeforeFinalize())) return;
-    // The flush updated the query cache; `note` in this closure is stale.
-    const fresh =
-      qc.getQueryData<VisitNoteRow>(visitNoteKey(visitNoteId)) ?? note;
-    if (emptySectionsOf(fresh).length > 0) {
-      setConfirmOpen(true);
-      return;
-    }
-    await doFinalize();
-  };
 
   // Print endpoint returns self-contained HTML with a sticky print bar.
   // We open it in a new tab so the editor state isn't lost; the doctor
@@ -310,23 +212,6 @@ export function ActivePatientCard() {
         </MetaCell>
       </div>
 
-      {note && !isFinalized && (
-        <QuickVisitEntry
-          note={note}
-          disabled={isFinalized}
-          saving={patch.isPending}
-          onChange={(p) =>
-            patch.mutate(p, {
-              onError: (e) =>
-                toast.error(
-                  isVersionConflict(e)
-                    ? t("editor.saveErrorConflict")
-                    : t("structured.saveErrorGeneric"),
-                ),
-            })
-          }
-        />
-      )}
 
       {note && (note.diagnosisCode || note.diagnosisName) && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-5 py-3 text-sm">
@@ -370,36 +255,9 @@ export function ActivePatientCard() {
         />
       )}
 
+      {/* Sign-off moved to the sticky VisitActionBar at the end of the
+          flow — this row keeps the document actions only. */}
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-5 py-4">
-        <span
-          title={
-            note && !hasDiagnosis && !isFinalized
-              ? t("activePatient.finalizeNeedsDiagnosis")
-              : undefined
-          }
-        >
-          <Button
-            type="button"
-            size="lg"
-            disabled={
-              !visitNoteId ||
-              !note ||
-              finalize.isPending ||
-              isFinalized ||
-              !hasDiagnosis
-            }
-            onClick={onFinalize}
-          >
-            {finalize.isPending ? (
-              <Loader2Icon className="size-4 animate-spin" />
-            ) : (
-              <SquareCheckIcon className="size-4" />
-            )}
-            {isFinalized
-              ? t("activePatient.visitFinished")
-              : t("activePatient.finishVisit")}
-          </Button>
-        </span>
         <Button
           type="button"
           variant="outline"
@@ -448,46 +306,6 @@ export function ActivePatientCard() {
         </div>
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("activePatient.confirmEmptyTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("activePatient.confirmEmptyHint")}
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="space-y-1.5">
-            {emptySections.map((section) => (
-              <li
-                key={section}
-                className="flex items-center gap-2 text-sm text-foreground"
-              >
-                <AlertTriangleIcon className="size-4 shrink-0 text-amber-500" />
-                {section}
-              </li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-            >
-              {t("activePatient.confirmEmptyCancel")}
-            </Button>
-            <Button
-              type="button"
-              disabled={finalize.isPending}
-              onClick={async () => {
-                setConfirmOpen(false);
-                await doFinalize();
-              }}
-            >
-              {t("activePatient.confirmEmptyConfirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }

@@ -6080,7 +6080,8 @@
         "catalogButton": "Katalog",
         "favTitle": "Saralangan",
         "favAdd": "Saralanganga qo'shish",
-        "favRemove": "Saralangandan olib tashlash"
+        "favRemove": "Saralangandan olib tashlash",
+        "requiredMark": "majburiy"
       },
       "guide": {
         "title": "Bilimlar bazasi",
@@ -6226,6 +6227,17 @@
         "remove": "Olib tashlash",
         "emptyFinalized": "Tavsiyalar bo'lmagan.",
         "hint": "Chop etiladigan xulosaga va bemor eslatmasiga avtomatik tushadi."
+      },
+      "actionBar": {
+        "ready": "Imzolashga tayyor",
+        "needDiagnosis": "Tashxis ko'rsating, usiz qabulni yakunlab bo'lmaydi"
+      },
+      "parsedRx": {
+        "title": "Matnda topildi: {count}",
+        "addAll": "Hammasini qo'shish",
+        "addOne": "Tayinlovlarga qo'shish",
+        "dismiss": "Yashirish",
+        "hint": "Xulosa matnidagi dorilar. O'zaro ta'sir tekshiruvi va bemor eslatmalari ishlashi uchun ularni tayinlovlarga qo'shing."
       }
     },
     "receptionDialogs": {

@@ -18,6 +18,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import {
   BookOpenIcon,
   CalendarCheckIcon,
+  CheckIcon,
   FileTextIcon,
   HeartPulseIcon,
   HistoryIcon,
@@ -242,6 +243,18 @@ export function DiagnosisCard({
             <FileTextIcon className="size-4" />
           </span>
           <span className="text-sm font-semibold text-foreground">{t("diagnosis.title")}</span>
+          {/* The visit's legal gate wears its state on the sleeve: green
+              check when set, amber «обязательно» while empty. */}
+          {standalone &&
+            (note.diagnosisCode || note.diagnosisName?.trim() ? (
+              <span className="inline-flex size-4.5 items-center justify-center rounded-full bg-success/15 text-success">
+                <CheckIcon className="size-3" />
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600">
+                {t("diagnosis.requiredMark")}
+              </span>
+            ))}
           {saving && (
             <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
           )}

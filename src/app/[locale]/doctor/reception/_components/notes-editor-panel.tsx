@@ -11,8 +11,6 @@ import {
   RotateCcwIcon,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useReceptionContext } from "../_hooks/reception-context";
@@ -77,7 +75,7 @@ export function NotesEditorPanel() {
 
 // ── Autosave with visible failure (P0-5) ──────────────────────────────
 //
-// Both editors autosave on the same debounce; a failed PATCH used to be
+// The editor autosaves on a debounce; a failed PATCH used to be
 // swallowed in an empty catch, leaving the status bar spinning «Сохранение…»
 // forever — on flaky clinic Wi-Fi the doctor could not tell saved text from
 // lost text. This hook owns the debounce for one field, classifies failures,
@@ -106,7 +104,7 @@ function useFieldAutosave({
   patch,
   lastSentRef,
 }: {
-  field: "bodyMarkdown" | "patientHandoutMarkdown";
+  field: "bodyMarkdown";
   note: VisitNoteRow | null;
   isFinalized: boolean;
   draft: string;
@@ -243,7 +241,7 @@ function useDraftSafety({
   patch,
   onFlushed,
 }: {
-  field: "bodyMarkdown" | "patientHandoutMarkdown";
+  field: "bodyMarkdown";
   note: VisitNoteRow | null;
   isFinalized: boolean;
   draft: string;
@@ -434,12 +432,7 @@ function ConclusionEditor() {
           type="button"
           disabled={!note}
           onClick={view === "edit" ? showPreview : () => setView("edit")}
-          className={cn(
-            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-            view === "edit"
-              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-              : "border border-border bg-background text-foreground hover:bg-muted",
-          )}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
         >
           {view === "edit" ? (
             <>

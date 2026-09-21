@@ -19,7 +19,7 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { err, ok } from "@/server/http";
 
-const ENTITY_TYPES = ["DRUG", "PROTOCOL", "HANDOUT", "LAB_TEST", "LAB_PANEL"] as const;
+const ENTITY_TYPES = ["DRUG", "PROTOCOL", "HANDOUT", "LAB_TEST", "LAB_PANEL", "ICD10"] as const;
 
 const BodySchema = z.object({
   entityType: z.enum(ENTITY_TYPES),

@@ -1,33 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import {
   AlertTriangleIcon,
-  BookOpenIcon,
   CheckIcon,
   EyeIcon,
   Loader2Icon,
   PencilLineIcon,
-  PrinterIcon,
   RotateCcwIcon,
-  SparklesIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  composePatientHandout,
-  type HandoutLocale,
-} from "@/lib/catalogs/handout-composer";
-import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
 
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useReceptionContext } from "../_hooks/reception-context";
-import {
-  pickGuideText,
-  useDiagnosisGuide,
-} from "../_hooks/use-diagnosis-guide";
 import {
   isEditWindowExpired,
   isVersionConflict,
@@ -37,11 +25,8 @@ import {
   type VisitNotePatch,
   type VisitNoteRow,
 } from "../_hooks/use-visit-note";
-import { HandoutLibraryDrawer } from "./handout-library-drawer";
 
 const AUTOSAVE_DEBOUNCE_MS = 1_500;
-
-type EditorTab = "conclusion" | "handout";
 
 function formatSavedAt(ts: number | null): string {
   if (!ts) return "—";
@@ -77,78 +62,16 @@ function removeSnippet(body: string, snippet: string): string {
 }
 
 export function NotesEditorPanel() {
-  const [tab, setTab] = React.useState<EditorTab>("conclusion");
-  const { bodyAppendRequest, handoutAppendRequest } = useReceptionContext();
-
-  // Вставка из левых карточек должна быть видна сразу — переключаем таб на
-  // редактор, в который ушёл текст. Сами редакторы смонтированы оба (hidden),
-  // иначе append-канал скрытого таба молча терял бы все вставки кроме
-  // последней, а несохранённый draft умирал бы при переключении.
-  const lastBodyNonce = React.useRef(0);
-  React.useEffect(() => {
-    if (!bodyAppendRequest || bodyAppendRequest.nonce === lastBodyNonce.current)
-      return;
-    lastBodyNonce.current = bodyAppendRequest.nonce;
-    setTab("conclusion");
-  }, [bodyAppendRequest]);
-
-  const lastHandoutNonce = React.useRef(0);
-  React.useEffect(() => {
-    if (
-      !handoutAppendRequest ||
-      handoutAppendRequest.nonce === lastHandoutNonce.current
-    )
-      return;
-    lastHandoutNonce.current = handoutAppendRequest.nonce;
-    setTab("handout");
-  }, [handoutAppendRequest]);
-
+  // The handout tab is gone (clinic decision 21.09.2026): the patient copy
+  // is auto-composed at finalize from the structured fields (diagnosis,
+  // prescriptions, advice) — see finalize/route.ts. The doctor writes ONE
+  // text: the clinical conclusion.
   return (
     <section className="flex min-h-[640px] flex-col overflow-hidden rounded-2xl border border-border bg-card">
-      <div className={cn("flex flex-1 flex-col", tab !== "conclusion" && "hidden")}>
-        <ConclusionEditor tab={tab} onTabChange={setTab} />
-      </div>
-      <div className={cn("flex flex-1 flex-col", tab !== "handout" && "hidden")}>
-        <HandoutEditor tab={tab} onTabChange={setTab} />
+      <div className="flex flex-1 flex-col">
+        <ConclusionEditor />
       </div>
     </section>
-  );
-}
-
-// Both editors render the same segmented control in their own header row —
-// one row of chrome instead of a dedicated tabs bar. Only the visible
-// editor's header is on screen (the hidden wrapper hides the twin), so the
-// control never appears twice.
-function EditorTabs({
-  tab,
-  onTabChange,
-}: {
-  tab: EditorTab;
-  onTabChange: (t: EditorTab) => void;
-}) {
-  const t = useTranslations("doctor.reception");
-  const items: { key: EditorTab; label: string }[] = [
-    { key: "conclusion", label: t("editor.tabConclusion") },
-    { key: "handout", label: t("editor.tabHandout") },
-  ];
-  return (
-    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5">
-      {items.map((it) => (
-        <button
-          key={it.key}
-          type="button"
-          onClick={() => onTabChange(it.key)}
-          className={cn(
-            "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
-            tab === it.key
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {it.label}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -403,13 +326,7 @@ function useDraftSafety({
 
 // ── Conclusion (clinical bodyMarkdown) ────────────────────────────────
 
-function ConclusionEditor({
-  tab,
-  onTabChange,
-}: {
-  tab: EditorTab;
-  onTabChange: (t: EditorTab) => void;
-}) {
+function ConclusionEditor() {
   const t = useTranslations("doctor.reception");
   const {
     visitNoteId,
@@ -510,7 +427,9 @@ function ConclusionEditor({
   return (
     <div className="flex flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
-        <EditorTabs tab={tab} onTabChange={onTabChange} />
+        <h2 className="text-sm font-semibold text-foreground">
+          {t("editor.tabConclusion")}
+        </h2>
         <button
           type="button"
           disabled={!note}
@@ -574,221 +493,6 @@ function ConclusionEditor({
           />
         </>
       )}
-    </div>
-  );
-}
-
-// ── Handout (patient-facing) ──────────────────────────────────────────
-
-function HandoutEditor({
-  tab,
-  onTabChange,
-}: {
-  tab: EditorTab;
-  onTabChange: (t: EditorTab) => void;
-}) {
-  const t = useTranslations("doctor.reception");
-  const rawLocale = useLocale();
-  const locale: HandoutLocale = rawLocale === "uz" ? "uz" : "ru";
-  const { visitNoteId, handoutAppendRequest } = useReceptionContext();
-  const noteQuery = useVisitNote(visitNoteId);
-  const patch = usePatchVisitNote(visitNoteId);
-  const note = noteQuery.data ?? null;
-  const isFinalized = note?.status === "FINALIZED";
-  const guideQuery = useDiagnosisGuide(note?.diagnosisCode);
-  const guide = guideQuery.data?.[0] ?? null;
-
-  const [draft, setDraft] = React.useState<string>("");
-  const hydratedFor = React.useRef<string | null>(null);
-  const hydratedAt = React.useRef<number>(0);
-
-  // Hydrate from the server copy whenever the note changes.
-  React.useEffect(() => {
-    if (!note) return;
-    if (hydratedFor.current === note.id) return;
-    hydratedFor.current = note.id;
-    hydratedAt.current = Date.now();
-    setDraft(note.patientHandoutMarkdown ?? "");
-  }, [note]);
-
-  // One-shot append channel — «Вставить в памятку» from the diagnosis guide
-  // card (Ф1). Same contract as the conclusion's bodyAppendRequest.
-  const lastAppendNonce = React.useRef<number>(0);
-  React.useEffect(() => {
-    if (!note || isFinalized) return;
-    if (!handoutAppendRequest) return;
-    if (handoutAppendRequest.nonce === lastAppendNonce.current) return;
-    lastAppendNonce.current = handoutAppendRequest.nonce;
-    setDraft((d) => {
-      const sep = d.trim() ? "\n\n" : "";
-      return d + sep + handoutAppendRequest.text;
-    });
-  }, [handoutAppendRequest, note, isFinalized]);
-
-  const lastSentRef = React.useRef<string | null>(null);
-  // P0-5 — same visible-failure autosave as the conclusion editor.
-  const { dirty, savedAt, saveError, retrySave, markSaved } = useFieldAutosave({
-    field: "patientHandoutMarkdown",
-    note,
-    isFinalized,
-    draft,
-    patch,
-    lastSentRef,
-  });
-
-  // P0-2/P0-4 — same draft-safety contract as the conclusion editor; the
-  // handout is part of the printed visit package, so its tail matters too.
-  useDraftSafety({
-    field: "patientHandoutMarkdown",
-    note,
-    isFinalized,
-    draft,
-    dirty,
-    lastSentRef,
-    patch,
-    onFlushed: markSaved,
-  });
-
-  const generate = React.useCallback(() => {
-    if (!note) return;
-    const composed = composePatientHandout({
-      locale,
-      patientName: note.patient?.fullName ?? null,
-      doctorName: note.doctor?.user?.name ?? null,
-      doctorSpecialty:
-        locale === "uz"
-          ? note.doctor?.specializationUz ?? note.doctor?.specializationRu ?? null
-          : note.doctor?.specializationRu ?? note.doctor?.specializationUz ?? null,
-      clinicName:
-        locale === "uz"
-          ? note.clinic?.nameUz ?? note.clinic?.nameRu ?? null
-          : note.clinic?.nameRu ?? note.clinic?.nameUz ?? null,
-      visitDate: note.appointment?.date ? new Date(note.appointment.date) : new Date(),
-      diagnosisName: note.diagnosisName,
-      complaints: note.complaints,
-      // Ф2 — structured rows first (with how-to-take text), then legacy lines.
-      prescriptions: [
-        ...formatPrescriptionLines(note.visitPrescriptions ?? [], locale, {
-          withInstruction: true,
-        }),
-        ...note.prescriptions,
-      ],
-      advice: note.advice,
-      guide: guide
-        ? {
-            whatToDo: pickGuideText(locale, guide.whatToDoRu, guide.whatToDoUz),
-            care: pickGuideText(locale, guide.careRu, guide.careUz),
-            lifestyle: pickGuideText(locale, guide.lifestyleRu, guide.lifestyleUz),
-            redFlags: pickGuideText(locale, guide.redFlagsRu, guide.redFlagsUz),
-          }
-        : null,
-    });
-    if (composed) setDraft(composed);
-  }, [note, guide, locale]);
-
-  const { chars, words } = statsOf(draft);
-  const hasStructured =
-    !!note &&
-    ((note.complaints?.length ?? 0) > 0 ||
-      (note.prescriptions?.length ?? 0) > 0 ||
-      (note.visitPrescriptions?.length ?? 0) > 0 ||
-      (note.advice?.length ?? 0) > 0 ||
-      !!note.diagnosisName);
-
-  const [libraryOpen, setLibraryOpen] = React.useState(false);
-
-  const handleLibraryPick = React.useCallback(
-    (bodyMd: string, mode: "APPEND" | "REPLACE") => {
-      if (!bodyMd.trim()) return;
-      if (mode === "REPLACE") {
-        setDraft(bodyMd);
-        return;
-      }
-      setDraft((prev) => {
-        const trimmed = prev.trimEnd();
-        return trimmed ? `${trimmed}\n\n${bodyMd}` : bodyMd;
-      });
-    },
-    [],
-  );
-
-  return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
-        <EditorTabs tab={tab} onTabChange={onTabChange} />
-        <div className="inline-flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            disabled={!note || isFinalized}
-            onClick={() => setLibraryOpen(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <BookOpenIcon className="size-3.5" />
-            {t("editor.library")}
-          </button>
-          <a
-            href={
-              note ? `/api/crm/visit-notes/${note.id}/print?type=handout` : "#"
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-disabled={!note || !draft.trim()}
-            onClick={(e) => {
-              if (!note || !draft.trim()) e.preventDefault();
-            }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
-          >
-            <PrinterIcon className="size-3.5" />
-            {t("editor.print")}
-          </a>
-          <button
-            type="button"
-            disabled={!note || isFinalized || !hasStructured}
-            onClick={generate}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <SparklesIcon className="size-3.5" />
-            {draft ? t("editor.rebuild") : t("editor.build")}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-3 bg-muted/40 p-3 sm:p-4">
-        {saveError && !patch.isPending && (
-          <SaveErrorBanner error={saveError} onRetry={retrySave} />
-        )}
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          disabled={!note || isFinalized}
-          placeholder={
-            note
-              ? hasStructured
-                ? t("editor.handoutPlaceholder")
-                : t("editor.handoutPlaceholderNoFields")
-              : t("editor.handoutPlaceholderEmpty")
-          }
-          className="w-full flex-1 resize-none rounded-xl border border-border bg-card px-5 py-4 text-[15px] leading-7 text-foreground placeholder:text-muted-foreground/70 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:bg-muted/30 disabled:opacity-70"
-        />
-      </div>
-
-      <EditorFooter
-        chars={chars}
-        words={words}
-        isFinalized={isFinalized}
-        saving={patch.isPending}
-        dirty={dirty}
-        error={saveError}
-        savedAt={savedAt}
-        updatedAt={note?.updatedAt ?? null}
-      />
-
-      <HandoutLibraryDrawer
-        open={libraryOpen}
-        onOpenChange={setLibraryOpen}
-        diagnosisCode={note?.diagnosisCode ?? null}
-        onPick={handleLibraryPick}
-      />
     </div>
   );
 }

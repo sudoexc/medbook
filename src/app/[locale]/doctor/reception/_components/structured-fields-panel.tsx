@@ -29,6 +29,7 @@ import {
 } from "../../_components/diagnosis-follow-up-cards";
 import { ApplyProtocolDialog } from "./apply-protocol-dialog";
 import { CatalogDrawer } from "./catalog-drawer";
+import { IcdCatalogDrawer } from "./icd-catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import {
   draftFromDrug,
@@ -61,6 +62,7 @@ export function StructuredFieldsPanel() {
     useLoudVisitNotePatch(visitNoteId);
   const presetsQuery = useDoctorPresets();
   const [catalogOpen, setCatalogOpen] = React.useState(false);
+  const [icdCatalogOpen, setIcdCatalogOpen] = React.useState(false);
   const [protocolToApply, setProtocolToApply] =
     React.useState<ClinicalProtocolRow | null>(null);
 
@@ -232,6 +234,17 @@ export function StructuredFieldsPanel() {
         </p>
       ) : (
         <div className="flex flex-col gap-2">
+          {/* Clinic's working order: diagnosis first, then prescriptions,
+              then (in the middle column) the conclusion text, then advice. */}
+          <DiagnosisCard
+            note={note}
+            disabled={isFinalized}
+            onChange={(code, name) =>
+              applyPatch({ diagnosisCode: code, diagnosisName: name })
+            }
+            onRequestApplyProtocol={(p) => setProtocolToApply(p)}
+            onOpenCatalog={() => setIcdCatalogOpen(true)}
+          />
           <PrescriptionConstructor
             note={note}
             disabled={isFinalized}
@@ -255,14 +268,6 @@ export function StructuredFieldsPanel() {
             appointmentId={activeAppointment?.id ?? null}
             visitNoteId={visitNoteId}
           />
-          <DiagnosisCard
-            note={note}
-            disabled={isFinalized}
-            onChange={(code, name) =>
-              applyPatch({ diagnosisCode: code, diagnosisName: name })
-            }
-            onRequestApplyProtocol={(p) => setProtocolToApply(p)}
-          />
           {(!isFinalized || note.followUpDays != null) && (
             <FollowUpCard
               note={note}
@@ -277,6 +282,15 @@ export function StructuredFieldsPanel() {
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
         onPick={handleCatalogPick}
+      />
+
+      <IcdCatalogDrawer
+        open={icdCatalogOpen}
+        onOpenChange={setIcdCatalogOpen}
+        onPick={(code, name) => {
+          applyPatch({ diagnosisCode: code, diagnosisName: name });
+          setIcdCatalogOpen(false);
+        }}
       />
 
       <ApplyProtocolDialog

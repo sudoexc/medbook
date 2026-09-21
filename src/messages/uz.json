@@ -6076,7 +6076,11 @@
         "pastMore": "Yana {count} ta tashxis",
         "hint": "Yozishni boshlang — MKB-10 ma'lumotnomasidan tanlang yoki tashxisni o'z so'zingiz bilan yozing.",
         "useAsTyped": "Shundayligicha yozish: «{text}»",
-        "clinicBadge": "klinika"
+        "clinicBadge": "klinika",
+        "catalogButton": "Katalog",
+        "favTitle": "Saralangan",
+        "favAdd": "Saralanganga qo'shish",
+        "favRemove": "Saralangandan olib tashlash"
       },
       "guide": {
         "title": "Bilimlar bazasi",
@@ -6479,6 +6483,14 @@
         "success": "Protokol saqlandi",
         "successHint": "{prefix} tashxisida «Standartni qo‘llash» tugmasi paydo bo‘ladi",
         "save": "Saqlash"
+      },
+      "icdCatalog": {
+        "title": "KXT-10 katalogi",
+        "description": "KXT-10 sinflari bo'yicha tashxis qidirish va tanlash",
+        "searchPlaceholder": "Kod yoki nom bo'yicha qidirish…",
+        "noFavorites": "Hozircha saralangan tashxislar yo'q. Kod yonidagi yulduzchani bosing.",
+        "pick": "Tanlash",
+        "loadMore": "Yana ko'rsatish ({shown} / {total})"
       }
     },
     "patients": {

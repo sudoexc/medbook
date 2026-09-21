@@ -1259,6 +1259,7 @@ enum CatalogEntityType {
   LAB_TEST
   LAB_PANEL
   GUIDE
+  ICD10
 }
 
 model ClinicCatalogOverlay {

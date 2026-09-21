@@ -18,7 +18,8 @@ export type CatalogEntityType =
   | "PROTOCOL"
   | "HANDOUT"
   | "LAB_TEST"
-  | "LAB_PANEL";
+  | "LAB_PANEL"
+  | "ICD10";
 
 export type DoctorFavoriteRow = {
   id: string;

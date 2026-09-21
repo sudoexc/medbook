@@ -61,10 +61,13 @@ export function FollowUpCard({
   note,
   disabled,
   onChange,
+  standalone,
 }: {
   note: VisitNoteRow;
   disabled: boolean;
   onChange: (patch: VisitNotePatch) => void;
+  /** Render as a top-level panel card instead of an inset sub-card. */
+  standalone?: boolean;
 }) {
   const t = useTranslations("doctor.reception");
   const fmt = useFormatter();
@@ -87,7 +90,13 @@ export function FollowUpCard({
       : null;
 
   return (
-    <div className="rounded-xl border border-border bg-background p-3">
+    <div
+      className={cn(
+        standalone
+          ? "rounded-2xl border border-border bg-card p-4"
+          : "rounded-xl border border-border bg-background p-3",
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="inline-flex items-center gap-2">
           <span className="inline-flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -171,6 +180,8 @@ export function DiagnosisCard({
   onChange,
   onRequestApplyProtocol,
   onOpenCatalog,
+  standalone,
+  saving,
 }: {
   note: VisitNoteRow;
   disabled: boolean;
@@ -178,6 +189,10 @@ export function DiagnosisCard({
   onRequestApplyProtocol: (protocol: ClinicalProtocolRow) => void;
   /** Opens the ICD catalog drawer; hosts without one just omit it. */
   onOpenCatalog?: () => void;
+  /** Render as a top-level panel card instead of an inset sub-card. */
+  standalone?: boolean;
+  /** Shared save-in-flight flag for the header spinner (standalone hosts). */
+  saving?: boolean;
 }) {
   const t = useTranslations("doctor.reception");
   const [query, setQuery] = React.useState("");
@@ -214,13 +229,22 @@ export function DiagnosisCard({
   const rows = hits.data ?? [];
 
   return (
-    <div className="rounded-xl border border-border bg-background p-3">
+    <div
+      className={cn(
+        standalone
+          ? "rounded-2xl border border-border bg-card p-4"
+          : "rounded-xl border border-border bg-background p-3",
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="inline-flex items-center gap-2">
           <span className="inline-flex size-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
             <FileTextIcon className="size-4" />
           </span>
           <span className="text-sm font-semibold text-foreground">{t("diagnosis.title")}</span>
+          {saving && (
+            <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
+          )}
         </div>
         {onOpenCatalog && !disabled && (
           <button

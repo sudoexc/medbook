@@ -215,30 +215,26 @@ export function StructuredFieldsPanel() {
   );
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-foreground">
-          {t("structured.title")}
-        </h2>
-        {patch.isPending && (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Loader2Icon className="size-3 animate-spin" />
-            {t("editor.saving")}
-          </span>
-        )}
-      </div>
-
+    <div className="flex flex-col gap-4">
       {!note ? (
-        <p className="text-xs text-muted-foreground">
-          {t("structured.empty")}
-        </p>
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <h2 className="text-sm font-semibold text-foreground">
+            {t("structured.title")}
+          </h2>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("structured.empty")}
+          </p>
+        </section>
       ) : (
-        <div className="flex flex-col gap-2">
-          {/* Clinic's working order: diagnosis first, then prescriptions,
-              then (in the middle column) the conclusion text, then advice. */}
+        <>
+          {/* Clinic's working order: diagnosis first as its own card, then
+              prescriptions as its own card — the conclusion sits in the
+              middle column, advice on the right. */}
           <DiagnosisCard
             note={note}
             disabled={isFinalized}
+            standalone
+            saving={patch.isPending}
             onChange={(code, name) =>
               applyPatch({ diagnosisCode: code, diagnosisName: name })
             }
@@ -248,6 +244,8 @@ export function StructuredFieldsPanel() {
           <PrescriptionConstructor
             note={note}
             disabled={isFinalized}
+            standalone
+            saving={patch.isPending}
             presets={presetsByField[RX_FIELD.presetField] ?? []}
             onSaveRows={saveRxRows}
             onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}
@@ -272,10 +270,11 @@ export function StructuredFieldsPanel() {
             <FollowUpCard
               note={note}
               disabled={isFinalized}
+              standalone
               onChange={applyPatch}
             />
           )}
-        </div>
+        </>
       )}
 
       <CatalogDrawer
@@ -301,6 +300,6 @@ export function StructuredFieldsPanel() {
         protocol={protocolToApply}
         onApply={handleApplyProtocol}
       />
-    </section>
+    </div>
   );
 }

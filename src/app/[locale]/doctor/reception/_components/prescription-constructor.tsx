@@ -22,6 +22,7 @@ import {
   BellOffIcon,
   BookOpenIcon,
   ChevronDownIcon,
+  Loader2Icon,
   PillIcon,
   PlusIcon,
   SearchIcon,
@@ -109,6 +110,10 @@ type Props = {
   onAddLegacyLine?: (line: string) => void;
   onRemoveLegacyChip: (chip: string) => void;
   onOpenCatalog: () => void;
+  /** Render as a top-level panel card instead of an inset sub-card. */
+  standalone?: boolean;
+  /** Shared save-in-flight flag for the header spinner (standalone hosts). */
+  saving?: boolean;
 };
 
 export function PrescriptionConstructor({
@@ -120,6 +125,8 @@ export function PrescriptionConstructor({
   onAddLegacyLine,
   onRemoveLegacyChip,
   onOpenCatalog,
+  standalone,
+  saving,
 }: Props) {
   const t = useTranslations("doctor.reception");
   const rawLocale = useLocale();
@@ -221,15 +228,29 @@ export function PrescriptionConstructor({
   const availablePresets = presets.filter((p) => !legacy.includes(p.fieldValue));
 
   return (
-    <div className="rounded-xl border border-border bg-background px-2.5 py-2">
+    <div
+      className={cn(
+        standalone
+          ? "rounded-2xl border border-border bg-card p-4"
+          : "rounded-xl border border-border bg-background px-2.5 py-2",
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="inline-flex items-center gap-1.5">
           <span className="inline-flex size-5 items-center justify-center rounded-md bg-muted text-muted-foreground">
             <PillIcon className="size-3" />
           </span>
-          <span className="text-xs font-semibold text-foreground">
+          <span
+            className={cn(
+              "font-semibold text-foreground",
+              standalone ? "text-sm" : "text-xs",
+            )}
+          >
             {t("fields.prescriptions.label")}
           </span>
+          {saving && (
+            <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
+          )}
           {rows.length + legacy.length > 0 && (
             <span className="rounded-md bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
               {rows.length + legacy.length}

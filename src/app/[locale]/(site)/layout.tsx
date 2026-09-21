@@ -1,5 +1,6 @@
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { MobileCallBar } from "@/components/sections/mobile-call-bar";
 import { DoctorsProvider } from "@/components/providers/doctors-provider";
 import { getDoctors } from "@/lib/doctors";
 
@@ -22,6 +23,7 @@ export default async function SiteLayout({
         <Header />
         {children}
         <Footer />
+        <MobileCallBar />
       </div>
     </DoctorsProvider>
   );

@@ -2083,7 +2083,7 @@
   "hero": {
     "badge": "Toshkentdagi nevrologik markaz",
     "title": "Kattalar va bolalar uchun nevrologiya",
-    "subtitle": "Nevropatolog, bolalar nevrologi va kardiolog qabuli. EEG, UZI va funksional diagnostika bitta binoda.",
+    "subtitle": "Yozuvsiz qabul qilamiz: elektron tablo bilan jonli navbat. EEG, UZI va kardiolog bitta binoda. Shifokor xulosasi Telegramingizga keladi.",
     "cta": "Qabulga yozilish",
     "ctaSecondary": "Shifokorlarimiz",
     "stats": {
@@ -2096,6 +2096,11 @@
       "hours": "Du dan Sha gacha, 8:00 dan 17:00 gacha",
       "patients": "Kattalar va bolalarni qabul qilamiz",
       "diagnostics": "EEG, EKG, ExoKG va UZI klinikada"
+    },
+    "trust": {
+      "rating": "4,9",
+      "ratingOf": "5 dan",
+      "ratingSource": "Yandex Xaritalarda 280+ baho"
     }
   },
   "doctors": {
@@ -2116,19 +2121,23 @@
         "title": "Konsultatsiyalar",
         "items": [
           {
-            "name": "Nevropatolog konsultatsiyasi (1-xona, 8:00 dan 17:00 gacha)",
+            "name": "Nevrolog konsultatsiyasi",
+            "note": "1-kabinet · 8:00 dan 17:00 gacha",
             "price": "300 000"
           },
           {
-            "name": "Nevropatolog konsultatsiyasi (5-xona, 8:30 dan 17:00 gacha)",
+            "name": "Nevrolog konsultatsiyasi",
+            "note": "5-kabinet · 8:30 dan 17:00 gacha",
             "price": "200 000"
           },
           {
-            "name": "Pediatr va bolalar nevropatologi konsultatsiyasi (9:00 dan 15:00 gacha)",
+            "name": "Bolalar nevrologi va pediatr",
+            "note": "9:00 dan 15:00 gacha",
             "price": "200 000"
           },
           {
-            "name": "Kardiolog konsultatsiyasi (9:00 dan 13:00 gacha)",
+            "name": "Kardiolog konsultatsiyasi",
+            "note": "9:00 dan 13:00 gacha",
             "price": "200 000"
           }
         ]
@@ -2137,23 +2146,26 @@
         "title": "Diagnostika",
         "items": [
           {
-            "name": "EEG (elektroensefalogramma)",
+            "name": "EEG",
+            "note": "elektroensefalogramma",
             "price": "150 000"
           },
           {
-            "name": "EEG (uyqu va 6 yoshgacha bolalar)",
+            "name": "Uyqudagi EEG va 6 yoshgacha bolalar",
             "price": "200 000"
           },
           {
-            "name": "EEG (uyqu, 1 soat)",
+            "name": "Uyqudagi EEG, 1 soat",
             "price": "300 000"
           },
           {
-            "name": "ReoEG (reoensefalografiya)",
+            "name": "ReoEG",
+            "note": "reoensefalografiya",
             "price": "100 000"
           },
           {
-            "name": "ExoEG (exoensefalografiya)",
+            "name": "ExoEG",
+            "note": "exoensefalografiya",
             "price": "50 000"
           },
           {
@@ -2162,14 +2174,17 @@
           },
           {
             "name": "ExoKG",
+            "note": "yurak UZI",
             "price": "150 000"
           },
           {
-            "name": "BSA doppleri",
+            "name": "Doppler BSA",
+            "note": "bo'yin tomirlari UZI",
             "price": "150 000"
           },
           {
-            "name": "Bitta a'zo UZI / Neyrosonografiya NSG (10:00 dan 14:00 gacha)",
+            "name": "Bitta organ UZI / neyrosonografiya",
+            "note": "10:00 dan 14:00 gacha",
             "price": "80 000"
           }
         ]
@@ -2279,7 +2294,8 @@
     "title": "Bemorlar sharhlari",
     "subtitle": "Biz haqimizda nima deyishadi",
     "source": "Yandex Xaritalar",
-    "allReviews": "Barcha sharhlar"
+    "allReviews": "Barcha sharhlar",
+    "ratingLine": "5 dan 4,9 · 280+ baho"
   },
   "doctorPage": {
     "backToAll": "Barcha mutaxassislar",
@@ -7666,5 +7682,29 @@
     "addressLabel": "Manzil",
     "hoursLabel": "Ish vaqti",
     "formCta": "Ariza qoldirish"
+  },
+  "tgShowcase": {
+    "title": "Shifokor xulosasi Telegramga keladi",
+    "lead": "Qabuldan keyin qog'ozlarni suratga olish va yo'qotishdan qo'rqish shart emas. Shifokor hujjatlarni to'g'ridan to'g'ri Telegramingizga yuboradi.",
+    "p1": "Har bir qabuldan keyin xulosa va tayinlovlar",
+    "p2": "Eslatma: dorilarni qanday ichish va uyda nima qilish",
+    "p3": "Nazorat tashrifi haqida eslatmalar",
+    "chatName": "NeuroFax",
+    "chatFile": "Shifokor xulosasi.pdf",
+    "chatMsg": "Qabuldan keyingi tayinlovlar va tavsiyalar",
+    "chatReminder": "Eslatma: ertaga soat 10:00 da nazorat tashrifi",
+    "botHandle": "@neurofaxbot"
+  },
+  "directions": {
+    "title": "Qanday borish mumkin",
+    "addressLabel": "Manzil",
+    "hoursLabel": "Ish vaqti",
+    "phoneLabel": "Telefon",
+    "yandexRoute": "Yandex Xaritalarda marshrut",
+    "mapTitle": "NeuroFax klinikasi xaritada"
+  },
+  "mobileBar": {
+    "call": "Qo'ng'iroq qilish",
+    "request": "So'rov"
   }
 }

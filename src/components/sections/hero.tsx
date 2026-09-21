@@ -1,8 +1,8 @@
 import { useTranslations } from "next-intl";
-import { Phone } from "lucide-react";
+import { Phone, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
-import { CONTACT } from "@/lib/constants";
+import { CONTACT, YANDEX_REVIEWS_URL } from "@/lib/constants";
 
 // Signage-style hero: one huge flat headline, the phone number as a
 // first-class CTA (for a clinic, a call IS the conversion), and a strip of
@@ -45,6 +45,22 @@ export function Hero() {
             {CONTACT.phone}
           </a>
         </div>
+
+        {/* Real, verifiable rating — checked on Yandex Maps 21.09.2026
+            (4,9 / 289 оценок); the link lets anyone verify it. */}
+        <a
+          href={YANDEX_REVIEWS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-8 inline-flex items-center gap-2 text-base font-medium text-foreground transition-colors hover:text-primary"
+        >
+          <Star className="h-5 w-5 fill-primary text-primary" />
+          <span className="font-bold">{t("trust.rating")}</span>
+          <span className="text-muted-foreground">{t("trust.ratingOf")}</span>
+          <span className="text-muted-foreground underline decoration-border underline-offset-4">
+            {t("trust.ratingSource")}
+          </span>
+        </a>
 
         <div className="mt-14 grid grid-cols-1 gap-4 border-t border-border pt-6 sm:grid-cols-3 sm:gap-8">
           {facts.map((fact) => (

@@ -1,5 +1,7 @@
 import { Hero } from "@/components/sections/hero";
 import { Visit } from "@/components/sections/visit";
+import { TelegramShowcase } from "@/components/sections/telegram-showcase";
+import { Directions } from "@/components/sections/directions";
 import { Doctors } from "@/components/sections/doctors";
 import { Services } from "@/components/sections/services";
 import { Reviews } from "@/components/sections/reviews";
@@ -43,10 +45,12 @@ export default async function Home({
       />
       <Hero />
       <Visit />
+      <TelegramShowcase />
       <Doctors doctors={doctors} />
       <Services />
       <Reviews />
       <Faq />
+      <Directions />
       <Cta />
     </main>
   );

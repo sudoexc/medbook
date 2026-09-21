@@ -24,6 +24,8 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob: https://api.qrserver.com",
   "font-src 'self' data:",
   "connect-src 'self' https://api.telegram.org",
+  // The landing embeds the clinic's Yandex Maps org widget (keyless iframe).
+  "frame-src 'self' https://yandex.uz https://yandex.ru https://yandex.com",
   "frame-ancestors 'self'",
   "form-action 'self'",
   "base-uri 'self'",

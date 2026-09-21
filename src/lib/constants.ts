@@ -22,6 +22,15 @@ export const CONTACT = {
   },
 } as const;
 
+// The clinic's public Yandex Maps organisation — reviews link + map widget.
+// One place, so the hero trust line, reviews section and directions map can
+// never drift apart.
+export const YANDEX_ORG_ID = "85279497169";
+export const YANDEX_REVIEWS_URL =
+  `https://yandex.uz/maps/org/neyrofaks_b/${YANDEX_ORG_ID}/reviews/`;
+export const YANDEX_MAP_WIDGET_URL =
+  `https://yandex.uz/map-widget/v1/?ol=biz&oid=${YANDEX_ORG_ID}&z=16`;
+
 export const NAV_LINKS = [
   { href: "#doctors", labelKey: "nav.doctors" },
   { href: "#services", labelKey: "nav.services" },

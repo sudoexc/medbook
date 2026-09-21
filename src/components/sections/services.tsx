@@ -1,6 +1,6 @@
 import { useTranslations } from "next-intl";
 
-type PriceItem = { name: string; price: string };
+type PriceItem = { name: string; note?: string; price: string };
 
 const GROUP_KEYS = ["consultations", "diagnostics"] as const;
 
@@ -32,8 +32,15 @@ export function Services() {
                       key={i}
                       className="flex items-baseline justify-between gap-6 py-4"
                     >
-                      <span className="text-[17px] leading-snug text-foreground">
-                        {item.name}
+                      <span className="min-w-0">
+                        <span className="block text-[17px] leading-snug text-foreground">
+                          {item.name}
+                        </span>
+                        {item.note && (
+                          <span className="mt-0.5 block text-sm text-muted-foreground">
+                            {item.note}
+                          </span>
+                        )}
                       </span>
                       <span className="whitespace-nowrap text-[17px] font-bold tabular-nums text-foreground">
                         {item.price}{" "}

@@ -3,11 +3,13 @@
 import { useTranslations } from "next-intl";
 import { Star, ExternalLink } from "lucide-react";
 
+import { YANDEX_REVIEWS_URL as YANDEX_URL } from "@/lib/constants";
+
 // Real patient reviews quoted from the clinic's public Yandex Maps page
 // (yandex.com/maps/org/neyrofaks_b/85279497169). Not invented — each carries
 // its original author + date, and the "read all" link points back to the
-// source so anything shown here is verifiable. No aggregate rating/count is
-// asserted because those move over time and can't be pinned reliably.
+// source so anything shown here is verifiable. The aggregate rating IS
+// shown (verified 21.09.2026: 4,9 / 289 оценок) and links to the source.
 const REVIEWS = [
   {
     id: "1",
@@ -53,7 +55,6 @@ const REVIEWS = [
   },
 ];
 
-const YANDEX_URL = "https://yandex.com/maps/org/neyrofaks_b/85279497169/reviews/";
 
 function StarRating({ rating }: { rating: number }) {
   return (
@@ -87,10 +88,17 @@ export function Reviews() {
             href={YANDEX_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-base font-medium text-primary hover:underline"
+            className="inline-flex flex-col items-end gap-0.5"
           >
-            {t("source")}
-            <ExternalLink className="h-3.5 w-3.5" />
+            {/* Verified on the org page 21.09.2026; the link is the proof. */}
+            <span className="inline-flex items-center gap-1.5 text-base font-bold text-foreground">
+              <Star className="h-4 w-4 fill-primary text-primary" />
+              {t("ratingLine")}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+              {t("source")}
+              <ExternalLink className="h-3.5 w-3.5" />
+            </span>
           </a>
         </div>
 

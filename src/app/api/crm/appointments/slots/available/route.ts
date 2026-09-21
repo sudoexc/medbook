@@ -18,6 +18,24 @@ export const GET = createApiListHandler(
     if (!parsed.ok) return parsed.response;
     const { doctorId, date, serviceIds } = parsed.value;
 
+    // Mirror the mini-app twin (/api/miniapp/slots): a deactivated or
+    // foreign doctor must answer with no slots, not a synthetic free day —
+    // findAvailableSlots falls back to a full 09:00-19:00 window for
+    // doctors without a schedule, which a deactivated doctor always is.
+    // (Tenant extension scopes the lookup to the caller's clinic.)
+    const doctor = await prisma.doctor.findFirst({
+      where: { id: doctorId, isActive: true },
+      select: { id: true },
+    });
+    if (!doctor) {
+      return ok({
+        doctorId,
+        date,
+        slotMin: DEFAULT_SLOT_STEP_MIN,
+        slots: [],
+      });
+    }
+
     // Appointment block = sum of selected services; with none selected it
     // falls back to the 20-min grid step inside findAvailableSlots.
     let blockMin: number | undefined;

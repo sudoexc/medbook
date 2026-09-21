@@ -113,13 +113,15 @@ export async function POST(request: Request) {
   }
 
   // Only attach a doctor that actually belongs to the resolved clinic — an
-  // attacker can't link a lead to another tenant's doctor. Pull the email here
-  // so the notification path doesn't re-query.
+  // attacker can't link a lead to another tenant's doctor. `isActive` is a
+  // server-side guard, not just a UI filter: a lead pinned to a deactivated
+  // doctor sits in a queue nobody processes. The lead itself still lands
+  // (doctor becomes null → reception routes it), the request isn't lost.
   let doctor: { nameRu: string; email: string | null } | null = null;
   if (parsed.data.doctorId) {
     const found = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.doctor.findFirst({
-        where: { id: parsed.data.doctorId, clinicId: clinic.id },
+        where: { id: parsed.data.doctorId, clinicId: clinic.id, isActive: true },
         select: { nameRu: true, user: { select: { email: true } } },
       }),
     );

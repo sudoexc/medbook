@@ -107,13 +107,22 @@ export default async function DoctorPage({
           </div>
         </div>
 
-        {/* CTA */}
+        {/* CTA — only when the CRM can actually serve a new request for
+            this doctor; otherwise the phone is the honest path. */}
         <div className="mt-10">
-          <LeadFormTrigger doctorId={doctor.id}>
-            <Button className="h-12 w-full rounded-xl bg-primary px-8 text-base font-semibold text-primary-foreground hover:bg-primary/85 sm:w-auto">
-              {t.bookAppointment}
-            </Button>
-          </LeadFormTrigger>
+          {doctor.bookable ? (
+            <LeadFormTrigger doctorId={doctor.id}>
+              <Button className="h-12 w-full rounded-xl bg-primary px-8 text-base font-semibold text-primary-foreground hover:bg-primary/85 sm:w-auto">
+                {t.bookAppointment}
+              </Button>
+            </LeadFormTrigger>
+          ) : (
+            <a href={`tel:${CONTACT.phone.replace(/\s/g, "")}`}>
+              <Button className="h-12 w-full rounded-xl bg-primary px-8 text-base font-semibold text-primary-foreground hover:bg-primary/85 sm:w-auto">
+                {CONTACT.phone}
+              </Button>
+            </a>
+          )}
         </div>
       </div>
     </main>

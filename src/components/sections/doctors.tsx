@@ -50,17 +50,21 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
                 </p>
               </div>
 
-              <div className="mt-5">
-                <LeadFormTrigger doctorId={doc.id}>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 text-base font-semibold text-primary transition-opacity hover:opacity-75"
-                  >
-                    {t("bookWith")}
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </LeadFormTrigger>
-              </div>
+              {/* New requests only for doctors the CRM serves; the rest are
+                  presented as staff, booked by phone via reception. */}
+              {doc.bookable && (
+                <div className="mt-5">
+                  <LeadFormTrigger doctorId={doc.id}>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 text-base font-semibold text-primary transition-opacity hover:opacity-75"
+                    >
+                      {t("bookWith")}
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </LeadFormTrigger>
+                </div>
+              )}
             </div>
           ))}
         </div>

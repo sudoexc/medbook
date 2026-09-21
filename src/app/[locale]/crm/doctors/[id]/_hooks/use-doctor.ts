@@ -170,6 +170,16 @@ export function usePatchDoctor(id: string) {
       qc.setQueryData<DoctorDetail>(doctorKey(id), (prev) =>
         prev ? { ...prev, ...fresh } : fresh,
       );
+      // Deactivation succeeded but the doctor still has future visits on
+      // the books — they keep reminding patients while nobody serves them
+      // in the CRM. Silent stranding was the bug; this is the loud part.
+      const stranded = (fresh as { strandedAppointments?: number })
+        .strandedAppointments;
+      if (stranded && stranded > 0) {
+        toast.warning(t("strandedAppointments", { count: stranded }), {
+          duration: 10_000,
+        });
+      }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: doctorKey(id) });

@@ -83,6 +83,18 @@ export const PATCH = createMiniAppHandler(
     }
 
     const doctorId = body.doctorId ?? before.doctorId;
+    // Changing the doctor is NEW work directed at them — validate like the
+    // POST path's bookAppointment kernel does: must exist, belong to THIS
+    // clinic (the FK alone accepts any tenant's doctor), and be active.
+    // Keeping the same doctor is exempt so existing appointments of
+    // deactivated doctors stay reschedulable (time/services).
+    if (doctorId !== before.doctorId) {
+      const target = await prisma.doctor.findFirst({
+        where: { id: doctorId, clinicId: ctx.clinicId, isActive: true },
+        select: { id: true },
+      });
+      if (!target) return err("doctor_not_found", 404);
+    }
     let startAt = before.date;
     let endAt = before.endDate;
     let durationMin = before.durationMin;

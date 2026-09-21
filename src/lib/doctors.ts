@@ -31,6 +31,13 @@ export interface DoctorView {
   name: Record<Locale, string>;
   specialty: Record<Locale, string>;
   photo: string | null;
+  /**
+   * Whether NEW work may be directed at this doctor (Doctor.isActive).
+   * The showcase renders everyone — the staff is real either way — but the
+   * lead form and every «Записаться» CTA must skip non-bookable doctors:
+   * a lead pinned to a doctor nobody processes in the CRM dies silently.
+   */
+  bookable: boolean;
 }
 
 /**
@@ -57,6 +64,7 @@ function toView(row: {
   specializationRu: string;
   specializationUz: string;
   photoUrl: string | null;
+  isActive: boolean;
 }): DoctorView {
   return {
     id: row.id,
@@ -64,6 +72,7 @@ function toView(row: {
     name: { ru: row.nameRu, uz: row.nameUz },
     specialty: { ru: row.specializationRu, uz: row.specializationUz },
     photo: row.photoUrl,
+    bookable: row.isActive,
   };
 }
 
@@ -87,6 +96,7 @@ export async function getDoctors(): Promise<DoctorView[]> {
           specializationRu: true,
           specializationUz: true,
           photoUrl: true,
+          isActive: true,
         },
         orderBy: { nameRu: "asc" },
       }),
@@ -116,6 +126,7 @@ export async function getDoctorById(id: string): Promise<DoctorView | null> {
           specializationRu: true,
           specializationUz: true,
           photoUrl: true,
+          isActive: true,
         },
       }),
     );

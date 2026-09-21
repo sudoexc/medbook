@@ -237,6 +237,20 @@ export function NewAppointmentDialog({
     staleTime: 5 * 60_000,
   });
 
+  // A caller may seed `initialDoctorId` with a DEACTIVATED doctor (doctor
+  // card grid, old case detail, follow-up links). The picker above fetches
+  // only active doctors, so the Select shows its placeholder — but the
+  // hidden id would survive into submit and dead-end on the server's
+  // doctor_inactive. Drop the phantom selection the moment the roster
+  // resolves and doesn't contain it.
+  React.useEffect(() => {
+    if (!open || !state.doctorId || !doctorsQuery.data) return;
+    if (!doctorsQuery.data.some((d) => d.id === state.doctorId)) {
+      setState((s) => ({ ...s, doctorId: null }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, state.doctorId, doctorsQuery.data]);
+
   const servicesQuery = useQuery<ServiceHit[], Error>({
     queryKey: ["services", "dialog"],
     enabled: open,

@@ -23,7 +23,10 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, forbidden, diff } from "@/server/http";
 import { UpdateDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
-import { findServicesOrphanedByDeactivating } from "@/server/doctors/deactivation";
+import {
+  countStrandedAppointments,
+  findServicesOrphanedByDeactivating,
+} from "@/server/doctors/deactivation";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -164,13 +167,24 @@ export const PATCH = createApiHandler(
         before as unknown as Record<string, unknown>,
         after as unknown as Record<string, unknown>
       );
+      // Deactivation must not silently strand the doctor's future visits:
+      // they keep reminding patients while nobody serves them in the CRM.
+      // Counted AFTER the update (non-blocking), surfaced for a loud toast.
+      const strandedAppointments =
+        data.isActive === false && before.isActive
+          ? await countStrandedAppointments(id)
+          : 0;
       await audit(request, {
         action: "doctor.update",
         entityType: "Doctor",
         entityId: id,
-        meta: { ...d, servicesReplaced: Boolean(services) },
+        meta: {
+          ...d,
+          servicesReplaced: Boolean(services),
+          ...(strandedAppointments > 0 ? { strandedAppointments } : {}),
+        },
       });
-      return ok(after);
+      return ok({ ...after, strandedAppointments });
     } catch (e) {
       const msg = (e as Error).message || "";
       if (msg.includes("Unique") && msg.includes("cabinetId")) {
@@ -212,12 +226,17 @@ export const DELETE = createApiHandler(
       where: { id },
       data: { isActive: false },
     });
+    // Same stranded-visits warning as the PATCH path — see deactivation.ts.
+    const strandedAppointments = await countStrandedAppointments(id);
     await audit(request, {
       action: "doctor.deactivate",
       entityType: "Doctor",
       entityId: id,
-      meta: { before },
+      meta: {
+        before,
+        ...(strandedAppointments > 0 ? { strandedAppointments } : {}),
+      },
     });
-    return ok({ id, deactivated: true });
+    return ok({ id, deactivated: true, strandedAppointments });
   }
 );

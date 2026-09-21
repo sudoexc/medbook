@@ -49,3 +49,23 @@ export async function findServicesOrphanedByDeactivating(
     orderBy: { nameRu: "asc" },
   });
 }
+
+/**
+ * Future work still pointed at this doctor. Deactivation does NOT block on
+ * it (the clinic deactivates doctors who simply don't use the CRM, and a
+ * hard block would force cancelling real visits first) — but it must never
+ * be silent: these appointments keep firing patient reminders while nobody
+ * processes them in the CRM. The count rides on the deactivation response
+ * so the UI can warn loudly.
+ */
+export async function countStrandedAppointments(
+  doctorId: string,
+): Promise<number> {
+  return prisma.appointment.count({
+    where: {
+      doctorId,
+      date: { gte: new Date() },
+      status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
+    },
+  });
+}

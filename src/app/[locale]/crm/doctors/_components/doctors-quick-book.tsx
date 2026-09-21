@@ -65,11 +65,14 @@ function isoDate(d: Date): string {
  * Four lightweight fields (doctor, service, date, time) + a CTA.
  */
 export function DoctorsQuickBook({
-  doctors,
+  doctors: allDoctors,
   onCreate,
 }: DoctorsQuickBookProps) {
   const locale = useLocale();
   const t = useTranslations("crmDoctors.quickBook");
+  // Quick booking is NEW work — deactivated doctors are not offered, even
+  // though the page grid deliberately lists everyone.
+  const doctors = allDoctors.filter((d) => d.isActive);
   const [doctorId, setDoctorId] = React.useState<string>("");
   const [service, setService] = React.useState<string>("");
   const [date, setDate] = React.useState<string>(() => isoDate(new Date()));

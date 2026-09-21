@@ -123,7 +123,10 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
   const [selectedDate, setSelectedDate] = useState("");
   const t = useTranslations("leadForm");
   const locale = useLocale() as Locale;
-  const doctors = useDoctors();
+  // The showcase lists the whole staff, but a request may only target a
+  // doctor the CRM actually serves — a lead pinned to a deactivated doctor
+  // is a request nobody processes.
+  const doctors = useDoctors().filter((d) => d.bookable);
 
   const selectedDoctor = useMemo(
     () => doctors.find((d) => d.id === selectedDoctorId),
@@ -133,7 +136,11 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
   function handleOpen(isOpen: boolean) {
     setOpen(isOpen);
     if (isOpen) {
-      setSelectedDoctorId(doctorId || "");
+      // A trigger may carry the id of a non-bookable doctor (stale link) —
+      // fall back to «выберите врача» instead of a phantom preselection.
+      setSelectedDoctorId(
+        doctorId && doctors.some((d) => d.id === doctorId) ? doctorId : "",
+      );
       setSelectedDate("");
       setSubmitted(false);
       setError(false);

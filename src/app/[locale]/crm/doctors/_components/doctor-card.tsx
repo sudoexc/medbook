@@ -105,6 +105,15 @@ export function DoctorCard({
   const palette = pickPalette(doctor.id);
 
   const pill = (() => {
+    // A deactivated doctor must never masquerade as «Свободен» — in this
+    // clinic most cards are deactivated and only one doctor is bookable.
+    if (!doctor.isActive)
+      return {
+        label: t("statusInactive"),
+        bg: "bg-destructive/10",
+        fg: "text-destructive",
+        dot: "bg-destructive",
+      };
     if (status === "busy")
       return {
         label: t("statusBusy"),
@@ -222,16 +231,20 @@ export function DoctorCard({
         >
           {t("schedule")}
         </Link>
-        <button
-          type="button"
-          onClick={() => setBookOpen(true)}
-          className={cn(
-            buttonVariants({ variant: "default", size: "sm" }),
-            "motion-press h-9 flex-1 text-[12px]",
-          )}
-        >
-          {t("book")}
-        </button>
+        {/* New bookings only for active doctors — the server rejects the
+            create anyway (doctor_inactive), no point offering a dead end. */}
+        {doctor.isActive && (
+          <button
+            type="button"
+            onClick={() => setBookOpen(true)}
+            className={cn(
+              buttonVariants({ variant: "default", size: "sm" }),
+              "motion-press h-9 flex-1 text-[12px]",
+            )}
+          >
+            {t("book")}
+          </button>
+        )}
         {doctor.tvToken && (
           <button
             type="button"

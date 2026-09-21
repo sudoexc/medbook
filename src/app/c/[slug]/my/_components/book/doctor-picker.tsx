@@ -41,7 +41,20 @@ export function DoctorPicker() {
     );
   }, [doctors.data, draft.specialization]);
 
-  const canContinue = !!draft.doctorId;
+  // «Записаться на контроль» seeds the draft with the PAST visit's doctor,
+  // who may have been deactivated since — the roster (isActive-filtered)
+  // then renders no card for them, yet the invisible selection would let
+  // the patient continue straight into a slot-screen dead end. Clear it.
+  React.useEffect(() => {
+    if (!doctors.data || !draft.doctorId) return;
+    if (!filtered.some((d) => d.id === draft.doctorId)) {
+      setDraft({ doctorId: null, date: null, time: null });
+    }
+  }, [doctors.data, filtered, draft.doctorId, setDraft]);
+
+  // Continue only with a doctor that actually exists on the roster — the
+  // seeded-but-invisible selection must not count.
+  const canContinue = filtered.some((d) => d.id === draft.doctorId);
 
   const goNext = React.useCallback(() => {
     if (!canContinue) return;

@@ -16,4 +16,10 @@ export const QueryDrugSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   /** Paging offset — the reference browser walks the whole catalog with it. */
   offset: z.coerce.number().int().min(0).default(0),
+  /** Prescription-only filter: true = Rx, false = OTC, absent = both. */
+  rxOnly: z.coerce.boolean().optional(),
+  /** Only drugs carrying curated dosing copy (our 265-strong core). */
+  withDosing: z.coerce.boolean().optional(),
+  /** Explicit id list — how the browser resolves a doctor's favourites. */
+  ids: z.string().max(4000).optional(),
 });

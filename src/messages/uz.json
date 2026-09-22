@@ -7613,17 +7613,25 @@
       "drugs": {
         "searchPlaceholder": "Nomi, XBN yoki brend bo‘yicha qidiruv…",
         "clear": "Tozalash",
-        "loading": "Yuklanmoqda…",
         "loadError": "Dorilar bazasini yuklab bo‘lmadi",
         "retry": "Qayta urinish",
         "empty": "Dorilar bazasi bo‘sh",
-        "foundCount": "Topildi: {count}",
         "clickForDetails": "Bosing — batafsil",
         "emptyQuery": "«{query}» bo‘yicha hech narsa topilmadi",
         "detailDescription": "Shakllari, dozalari, qarshi ko‘rsatmalari va brendlari.",
-        "catalogHint": "{total} tadan {shown} ta dori ko'rsatildi. Quyidagi tugma bilan varaqlang yoki nomi, XPN yoki brendni kiriting.",
-        "foundOfTotal": "{total} ta topildi, {shown} ta ko'rsatildi",
-        "loadMore": "Yana ko'rsatish"
+        "foundOfTotal": "{total} tadan {shown} ta ko'rsatildi",
+        "viewAll": "Hammasi",
+        "viewFavorites": "Saralangan",
+        "viewFrequent": "Tez-tez tayinlayman",
+        "filterRx": "Retsept bo'yicha",
+        "filterOtc": "Retseptsiz",
+        "filterDosing": "Yo'riqnoma bilan",
+        "resetFilters": "Tozalash",
+        "atcAll": "Barcha guruhlar",
+        "pin": "Saralanganga",
+        "unpin": "Saralangandan olib tashlash",
+        "favoritesEmpty": "Hozircha bo'sh. Dori yonidagi yulduzchani bosing, u shu yerda turadi.",
+        "frequentEmpty": "Bu yerda siz eng ko'p tayinlaydigan dorilar paydo bo'ladi."
       }
     },
     "nav": {

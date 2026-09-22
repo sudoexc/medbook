@@ -69,6 +69,19 @@ export const GET = createApiListHandler(
       where.indications = { hasSome: [...prefixes] };
     }
 
+    if (q.rxOnly !== undefined) where.rxOnly = q.rxOnly;
+    // Curated rows are the ones a doctor can lean on for dosing text; the
+    // register import brought names and forms but no instructions.
+    if (q.withDosing) where.defaultDosing = { not: null };
+    if (q.ids && q.ids.trim()) {
+      const ids = q.ids
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .slice(0, 200);
+      where.id = { in: ids };
+    }
+
     // Scope + search are both OR-groups — AND them so a search term can't
     // accidentally widen visibility to other clinics' rows.
     const and: Record<string, unknown>[] = [

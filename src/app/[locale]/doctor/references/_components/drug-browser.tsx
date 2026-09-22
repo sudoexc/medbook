@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { useDrugCatalog } from "../_hooks/use-drug-catalog";
+import { DRUG_PAGE_SIZE, useDrugCatalog } from "../_hooks/use-drug-catalog";
 import {
   DrugDetailView,
   PREGNANCY_TONE,
@@ -68,16 +68,6 @@ const CATEGORY_ORDER = [
   "VACCINE",
   "OTHER",
 ];
-
-function matchesLower(d: DrugDetail, lower: string): boolean {
-  return (
-    d.nameRu.toLowerCase().includes(lower) ||
-    (d.nameUz?.toLowerCase().includes(lower) ?? false) ||
-    d.inn.toLowerCase().includes(lower) ||
-    d.id.toLowerCase().includes(lower) ||
-    d.brands.some((b) => b.name.toLowerCase().includes(lower))
-  );
-}
 
 function groupByCategory(rows: DrugDetail[]): Map<string, DrugDetail[]> {
   const map = new Map<string, DrugDetail[]>();
@@ -160,22 +150,29 @@ function DrugRow({
 export function DrugBrowser() {
   const t = useTranslations("doctor.references");
   const categoryLabel = useCategoryLabel();
-  const { data, isLoading, isError, refetch, isFetching } = useDrugCatalog();
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
   const term = debouncedQ.trim();
   const searching = term.length >= 2;
+  const { data, isLoading, isError, refetch, isFetching } =
+    useDrugCatalog(term);
   const [selected, setSelected] = React.useState<DrugDetail | null>(null);
 
-  const rows = React.useMemo(() => data ?? [], [data]);
-  const grouped = React.useMemo(() => groupByCategory(rows), [rows]);
+  // One server page. While searching it holds the ranked matches; idle it
+  // holds the first page of the catalog, grouped by category as before.
+  const rows = React.useMemo(() => data?.rows ?? [], [data]);
+  const total = data?.total ?? 0;
+  const grouped = React.useMemo(
+    () => (searching ? new Map<string, DrugDetail[]>() : groupByCategory(rows)),
+    [rows, searching],
+  );
   const categories = React.useMemo(() => orderedCategories(grouped), [grouped]);
 
-  const filtered = React.useMemo(() => {
-    if (!searching) return [];
-    const lower = term.toLowerCase();
-    return rows.filter((d) => matchesLower(d, lower));
-  }, [rows, searching, term]);
+  // The server already filtered and ranked — no second pass in the browser.
+  const filtered = searching ? rows : [];
+  // The catalog is far bigger than one page (state register import): say so
+  // instead of letting the category tree look like the whole thing.
+  const truncated = !searching && total > rows.length;
 
   // Open the biggest category by default so first paint isn't a wall of
   // collapsed headers. Recomputed when the data first lands.
@@ -252,7 +249,11 @@ export function DrugBrowser() {
       ) : searching ? (
         <section className="rounded-2xl border border-border bg-card px-3 py-3">
           <div className="mb-2 flex items-center justify-between px-2 text-xs text-muted-foreground">
-            <span>{t("drugs.foundCount", { count: filtered.length })}</span>
+            <span>
+              {filtered.length >= DRUG_PAGE_SIZE
+                ? t("drugs.foundCapped", { count: DRUG_PAGE_SIZE })
+                : t("drugs.foundCount", { count: filtered.length })}
+            </span>
             <span>{t("drugs.clickForDetails")}</span>
           </div>
           {filtered.length === 0 ? (
@@ -277,6 +278,14 @@ export function DrugBrowser() {
         </section>
       ) : (
         <div className="space-y-3">
+          {truncated ? (
+            <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs leading-snug text-muted-foreground">
+              {t("drugs.catalogHint", {
+                shown: rows.length,
+                total,
+              })}
+            </p>
+          ) : null}
           {categories.map((cat) => {
             const list = grouped.get(cat) ?? [];
             if (list.length === 0) return null;

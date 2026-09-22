@@ -7620,7 +7620,9 @@
         "foundCount": "Topildi: {count}",
         "clickForDetails": "Bosing — batafsil",
         "emptyQuery": "«{query}» bo‘yicha hech narsa topilmadi",
-        "detailDescription": "Shakllari, dozalari, qarshi ko‘rsatmalari va brendlari."
+        "detailDescription": "Shakllari, dozalari, qarshi ko‘rsatmalari va brendlari.",
+        "foundCapped": "Birinchi {count} ta moslik ko'rsatildi — so'rovni aniqlashtiring",
+        "catalogHint": "{total} tadan {shown} ta dori ko'rsatildi. Nomi, XPN yoki brendni kirita boshlang — qidiruv butun baza bo'yicha ishlaydi."
       }
     },
     "nav": {

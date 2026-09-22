@@ -53,3 +53,45 @@ export async function bumpPatientLastContact(
     });
   }
 }
+
+/**
+ * Denormalised visit statistics: `Patient.lastVisitAt` + `Patient.visitsCount`.
+ *
+ * Both columns existed from the start and several features read them — the
+ * dormant-patient detector (`server/actions/detectors/dormant-batch.ts`), the
+ * NEW/ACTIVE segment logic, `derivePatientTags` on the doctor's screens,
+ * campaign audiences — but nothing ever WROTE them outside seeds. So the
+ * "спящие пациенты" механика never fired in production and every patient
+ * looked like a first-timer forever.
+ *
+ * Called from the visit-completion paths. `visitsCount` is RECOUNTED rather
+ * than incremented: a completed visit can be reverted (doctor un-does a
+ * mis-click) and an increment would drift permanently; a recount is always
+ * the truth for a handful of rows. `lastVisitAt` is recomputed from the
+ * latest COMPLETED appointment for the same reason.
+ */
+export async function refreshPatientVisitStats(
+  patientId: string,
+): Promise<void> {
+  try {
+    const [visitsCount, latest] = await Promise.all([
+      prisma.appointment.count({
+        where: { patientId, status: "COMPLETED" },
+      }),
+      prisma.appointment.findFirst({
+        where: { patientId, status: "COMPLETED" },
+        orderBy: { date: "desc" },
+        select: { date: true },
+      }),
+    ]);
+    await prisma.patient.updateMany({
+      where: { id: patientId },
+      data: { visitsCount, lastVisitAt: latest?.date ?? null },
+    });
+  } catch (e) {
+    // Never fail a visit over a denormalised counter.
+    console.warn(
+      `[patient-stats] refresh failed for ${patientId}: ${(e as Error).message}`,
+    );
+  }
+}

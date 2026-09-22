@@ -378,7 +378,12 @@ function ActivePatient({
       {p.complaints ? (
         <div className="mx-5 rounded-xl border border-border bg-muted/30 px-3.5 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("current.complaints")}
+            {/* A standing card note is NOT today's complaint — labelling the
+                source keeps the doctor from reading an old allergy warning as
+                the reason for this visit. */}
+            {p.complaintsSource === "card"
+              ? t("current.patientNote")
+              : t("current.complaints")}
           </div>
           <div className="mt-1 text-xs leading-relaxed text-foreground">
             {p.complaints}

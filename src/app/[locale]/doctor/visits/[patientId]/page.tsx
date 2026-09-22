@@ -10,7 +10,6 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { AISummaryPanel } from "../../reception/_components/ai-summary-panel";
 import { LastDiagnosisCard } from "../../reception/_components/last-diagnosis-card";
 import { LastVisitCard } from "../../reception/_components/last-visit-card";
-import { VisitsFilters } from "../../reception/_components/visits-filters";
 import { PatientHeaderLive } from "./_components/patient-header-live";
 import { PatientMetaRowLive } from "./_components/patient-meta-row-live";
 import { VisitsList } from "./_components/visits-list";
@@ -175,7 +174,6 @@ export default async function VisitsPage({
           </a>
         </div>
 
-        <VisitsFilters />
         <VisitsList
           patientId={patientId}
           totalCompleted={data.totalCompleted}

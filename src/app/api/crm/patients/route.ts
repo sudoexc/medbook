@@ -5,6 +5,10 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
+import {
+  birthDateFromYear,
+  parsePatientIdentity,
+} from "@/lib/patients/parse-identity";
 import { ok, err, parseQuery } from "@/server/http";
 import {
   hydratePatientForRead,
@@ -140,6 +144,22 @@ export const POST = createApiHandler(
       return err("ValidationError", 400, { reason: "invalid_phone" });
     }
 
+    // The clinic types «Турматов Отабек 1969» into one field — the doctor's
+    // walk-in dialog already understands that, and the front desk creating
+    // the same patient must not be the one path that stores the year inside
+    // the name (it breaks search, the printed «г.р.» line and age). Parse
+    // here so every create path agrees. An explicit birthDate from the form
+    // always wins: it carries a full date, the name only ever a year.
+    const parsedIdentity = parsePatientIdentity(body.fullName);
+    const fullName = parsedIdentity.matched
+      ? parsedIdentity.fullName
+      : body.fullName;
+    const birthDate =
+      body.birthDate ??
+      (parsedIdentity.birthYear !== null
+        ? birthDateFromYear(parsedIdentity.birthYear)
+        : null);
+
     // unique (clinicId, phoneNormalized) — look up composite key
     const existing = await prisma.patient.findFirst({
       where: { phoneNormalized },
@@ -162,10 +182,10 @@ export const POST = createApiHandler(
     const created = await prisma.$transaction(async (tx) => {
       const patientNumber = await allocatePatientNumber(clinicId, tx);
       const writeData = serializePatientForWrite({
-        fullName: body.fullName,
+        fullName,
         phone: body.phone,
         phoneNormalized,
-        birthDate: body.birthDate ?? null,
+        birthDate,
         gender: body.gender ?? null,
         passport: body.passport ?? null,
         address: body.address ?? null,

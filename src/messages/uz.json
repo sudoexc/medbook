@@ -446,7 +446,9 @@
       "errorToast": "Bemorni yaratib bo'lmadi",
       "phoneExists": "Bu telefon raqamidagi bemor allaqachon mavjud",
       "errorRequired": "Majburiy maydon",
-      "errorPhoneFormat": "Telefon kiriting (3–40 belgi)"
+      "errorPhoneFormat": "Telefon kiriting (3–40 belgi)",
+      "yearInNameParsed": "{year} yili tug'ilgan sanaga o'tadi, ism «{name}» bo'lib saqlanadi",
+      "yearInNameIgnored": "Ismdagi {year} yili kerak emas: tug'ilgan sana quyida ko'rsatilgan"
     },
     "rowActions": {
       "open": "Kartochkani ochish",
@@ -2545,7 +2547,13 @@
       "activate": "Ishga qaytarish",
       "deactivateConfirm": "Shifokor faolsizlantirilsinmi? U jadval, kalendar va yozuv shaklidan yo'qoladi. Qabullar tarixi saqlanadi.",
       "deactivated": "Shifokor faolsizlantirildi",
-      "activated": "Shifokor yana ishda"
+      "activated": "Shifokor yana ishda",
+      "purge": "Butunlay o'chirish",
+      "purgeConfirm": "Shifokor tiklab bo'lmaydigan tarzda o'chiriladi. Tasdiqlash uchun uning familiyasini «{surname}» kiriting:",
+      "purgeSurnameMismatch": "Familiya mos kelmadi, o'chirish bekor qilindi",
+      "purgeHasHistory": "O'chirib bo'lmaydi: shifokorda {appointments} ta qabul va {notes} ta xulosa bor. Bu tibbiy tarix, uni o'chirish mumkin emas. Shifokor faolsizlantirilgan holda qoladi.",
+      "purgeFailed": "Shifokorni o'chirib bo'lmadi",
+      "purged": "Shifokor o'chirildi"
     },
     "finance": {
       "title": "Moliya",
@@ -6534,7 +6542,8 @@
         "allStatuses": "Barcha holatlar",
         "age": "Yosh",
         "visitPeriod": "Tashrif davri",
-        "filters": "Filtrlar"
+        "filters": "Filtrlar",
+        "clear": "Tozalash"
       },
       "table": {
         "loading": "Bemorlar yuklanmoqda…",
@@ -6873,7 +6882,8 @@
         "noShow": "Kelmadi",
         "cancelVisit": "Qabulni bekor qilish",
         "nextBooking": "Keyingi yozuv",
-        "pickHint": "Bemorni tanlang: navbatdan yoki yozuv bo'yicha"
+        "pickHint": "Bemorni tanlang: navbatdan yoki yozuv bo'yicha",
+        "patientNote": "Kartadagi eslatma"
       },
       "statusToast": {
         "called": "Bemor chaqirildi",

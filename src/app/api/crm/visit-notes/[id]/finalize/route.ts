@@ -13,7 +13,10 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound } from "@/server/http";
-import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import {
+  bumpPatientLastContact,
+  refreshPatientVisitStats,
+} from "@/server/patient/last-contacted";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
@@ -271,6 +274,8 @@ export const POST = createApiHandler(
         note.patientId,
         result.appointment.completedAt ?? new Date(),
       );
+      // Same denormalised stats as the appointment-PATCH completion path.
+      await refreshPatientVisitStats(note.patientId);
       // Auto-messages widget — "Спасибо за визит". Idempotent with the
       // appointment-PATCH completion path (shared NotificationSend gate).
       fireTrigger({

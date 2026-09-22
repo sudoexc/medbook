@@ -56,6 +56,8 @@ type CurrentPatient = {
   calledAt: string | null;
   appointmentSecondsLeft: number;
   complaints: string;
+  /** Where the complaint text came from — the UI labels the card note. */
+  complaintsSource: "visit" | "card" | null;
   lastVisit: { date: string; title: string } | null;
   lastDiagnosis: { codes: { code: string; name: string }[] };
   /**
@@ -178,6 +180,9 @@ export const GET = createApiListHandler(
           startedAt: true,
           calledAt: true,
           completedAt: true,
+          // What the patient actually said when booking / at the desk — the
+          // real complaint for this visit.
+          comments: true,
           // Ticket identity — frozen at allocation; queueOrder is the legacy
           // fallback for rows that predate ticketSeq.
           ticketSeq: true,
@@ -271,11 +276,20 @@ export const GET = createApiListHandler(
           ? currentSource.calledAt.toISOString()
           : null,
         appointmentSecondsLeft: secondsLeft,
-        // Patient.notes is the closest analogue we have to "complaints"
-        // without dragging in the whole VisitNote.complaints[] array. v2
-        // can pull the active visit's complaints when the reception flow
-        // starts writing them in real-time.
-        complaints: p.notes?.trim() ?? "",
+        // Precedence, most-specific first: what THIS visit is about beats a
+        // standing note on the card. `Appointment.comments` is written by the
+        // booking form, the walk-in dialog and the mini-app — it is the
+        // patient's own wording for today. `Patient.notes` is a permanent
+        // card annotation ("аллергия на анальгин"), useful but not a
+        // complaint; it stays as the fallback so the block is not empty for
+        // patients booked without a comment.
+        complaints:
+          currentSource.comments?.trim() || p.notes?.trim() || "",
+        complaintsSource: currentSource.comments?.trim()
+          ? ("visit" as const)
+          : p.notes?.trim()
+            ? ("card" as const)
+            : null,
         lastVisit: lastVisit
           ? {
               date: lastVisit.date.toISOString(),

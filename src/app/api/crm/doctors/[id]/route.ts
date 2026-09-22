@@ -24,6 +24,7 @@ import { ok, err, notFound, forbidden, diff } from "@/server/http";
 import { UpdateDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
 import {
+  countDoctorDeleteBlockers,
   countStrandedAppointments,
   findServicesOrphanedByDeactivating,
 } from "@/server/doctors/deactivation";
@@ -204,6 +205,56 @@ export const DELETE = createApiHandler(
     const id = idFromUrl(request);
     const before = await prisma.doctor.findUnique({ where: { id } });
     if (!before) return notFound();
+
+    // `?purge=true` — permanent removal, not the soft default. It exists
+    // because a row created by mistake (typo, test doctor, a colleague who
+    // never started) otherwise haunts every list forever: deactivation is
+    // the right tool for someone who worked here, not for a row that should
+    // never have existed.
+    const purge = new URL(request.url).searchParams.get("purge") === "true";
+    if (purge) {
+      // Anything clinical blocks. Those relations are Restrict in the schema
+      // so the database would refuse anyway — counting first turns a raw FK
+      // error into something the admin can act on.
+      const blockers = await countDoctorDeleteBlockers(id);
+      if (blockers.total > 0) {
+        return err("DoctorHasHistory", 409, {
+          reason: "doctor_has_history",
+          blockers,
+        });
+      }
+
+      const userId = before.userId;
+      await prisma.$transaction(async (tx) => {
+        // A website lead is marketing, not a medical record — detach it
+        // instead of letting it block the delete.
+        await tx.lead.updateMany({
+          where: { doctorId: id },
+          data: { doctorId: null },
+        });
+        // Schedules, time off, presets, service links and slot snapshots are
+        // Cascade in the schema — the row delete takes them along.
+        await tx.doctor.delete({ where: { id } });
+        // The login is useless without its doctor row (the cabinet bounces on
+        // a missing profile). Deactivate rather than delete: audit rows and
+        // authored records still reference this user.
+        if (userId) {
+          await tx.user.update({
+            where: { id: userId },
+            data: { active: false },
+          });
+        }
+      });
+
+      await audit(request, {
+        action: "doctor.delete",
+        entityType: "Doctor",
+        entityId: id,
+        meta: { before, purged: true, userDeactivated: Boolean(userId) },
+      });
+      return ok({ id, deleted: true });
+    }
+
     if (!before.isActive) {
       // Already deactivated — idempotent ok.
       return ok({ id, deactivated: true });

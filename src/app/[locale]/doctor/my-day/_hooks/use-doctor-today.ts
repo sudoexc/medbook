@@ -58,6 +58,8 @@ export type CurrentPatient = {
   calledAt: string | null;
   appointmentSecondsLeft: number;
   complaints: string;
+  /** "visit" = this visit's own comment, "card" = standing patient note. */
+  complaintsSource: "visit" | "card" | null;
   lastVisit: { date: string; title: string } | null;
   lastDiagnosis: { codes: { code: string; name: string }[] };
   /** Paper ticket the patient holds («C-017»); null when never issued. */

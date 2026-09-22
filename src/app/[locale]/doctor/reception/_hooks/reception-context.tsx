@@ -53,13 +53,6 @@ type ReceptionContextValue = {
   bodyRemoveRequest: { text: string; nonce: number } | null;
   requestBodyRemove: (text: string) => void;
   /**
-   * Same one-shot append contract as `bodyAppendRequest`, but targeting the
-   * patient handout editor (Ф1 — «Вставить в памятку» from the diagnosis
-   * guide card). Consumed by HandoutEditor in NotesEditorPanel.
-   */
-  handoutAppendRequest: { text: string; nonce: number } | null;
-  requestHandoutAppend: (text: string) => void;
-  /**
    * P0-3 — right after a successful finalize the queue refetch flips the
    * appointment to COMPLETED, `activeAppointment` collapses to null and the
    * card unmounts before the doctor can press «Печать». Pinning keeps the
@@ -209,18 +202,9 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
     setBodyRemoveRequest({ text: trimmed, nonce: Date.now() });
   }, []);
 
-  const [handoutAppendRequest, setHandoutAppendRequest] = React.useState<
-    { text: string; nonce: number } | null
-  >(null);
-  const requestHandoutAppend = React.useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setHandoutAppendRequest({ text: trimmed, nonce: Date.now() });
-  }, []);
-
-  // P0-2 — flush registry. A Set, not a single slot: the conclusion and the
-  // handout editors are both mounted (hidden tabs) and both autosave on a
-  // debounce, so finalize must be able to drain both tails.
+  // P0-2 — flush registry. A Set rather than a single slot: any editor that
+  // autosaves on a debounce registers here, and finalize drains them all
+  // before signing.
   const draftFlushesRef = React.useRef(new Set<() => Promise<void>>());
   const registerDraftFlush = React.useCallback(
     (flush: () => Promise<void>) => {
@@ -288,8 +272,6 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       requestBodyAppend,
       bodyRemoveRequest,
       requestBodyRemove,
-      handoutAppendRequest,
-      requestHandoutAppend,
       pinFinalizedAppointment,
       registerDraftFlush,
       flushDraftEdits,
@@ -311,8 +293,6 @@ export function ReceptionProvider({ children }: { children: React.ReactNode }) {
       requestBodyAppend,
       bodyRemoveRequest,
       requestBodyRemove,
-      handoutAppendRequest,
-      requestHandoutAppend,
       pinFinalizedAppointment,
       registerDraftFlush,
       flushDraftEdits,

@@ -22,7 +22,10 @@ import {
 } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
-import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import {
+  bumpPatientLastContact,
+  refreshPatientVisitStats,
+} from "@/server/patient/last-contacted";
 import { cancelAppointment } from "@/server/appointments/cancel";
 import { findOtherActiveVisit } from "@/server/appointments/active-visit";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
@@ -218,6 +221,36 @@ export const PATCH = createApiHandler(
           where: { id },
           data: revertData as never,
         });
+
+        // Un-signing the conclusion is part of re-opening the visit. Without
+        // it the doctor lands on a live visit holding a FINALIZED note: the
+        // editor stays read-only and «Завершить приём» answers
+        // `alreadyFinalized` forever — the visit can never be closed again.
+        //
+        // documentNumber is deliberately KEPT: the finalize path reuses it
+        // (`note.documentNumber ?? allocate…`), so the re-signed conclusion
+        // carries the same number the patient may already hold on paper.
+        // PatientDiagnosis rows are kept too — the diagnosis was genuinely
+        // made, and a re-finalize updates the same row.
+        if (fromStatus === "COMPLETED") {
+          const signedNote = await tx.visitNote.findFirst({
+            where: { appointmentId: id, status: "FINALIZED" },
+            select: { id: true },
+          });
+          if (signedNote) {
+            await tx.visitNote.update({
+              where: { id: signedNote.id },
+              data: {
+                status: "DRAFT",
+                finalizedAt: null,
+                // Back to the medication reconciler: on the next finalize it
+                // re-bridges the (possibly edited) prescriptions instead of
+                // leaving the patient's live courses frozen at the old set.
+                medicationsBridgedAt: null,
+              },
+            });
+          }
+        }
         // Re-pricing siblings is needed when un-killing a visit (CANCELLED
         // or NO_SHOW → BOOKED) because the case timeline now has a new
         // active sibling. SKIPPED → WAITING does not affect repricing
@@ -255,6 +288,8 @@ export const PATCH = createApiHandler(
           originalStartedAt: before.startedAt,
           originalCompletedAt: before.completedAt,
           originalCancelledAt: before.cancelledAt,
+          // Un-signing a conclusion is a medico-legal event of its own.
+          unsignedVisitNote: fromStatus === "COMPLETED",
         },
       });
 
@@ -840,6 +875,9 @@ export const PATCH = createApiHandler(
         after.patientId,
         after.completedAt ?? new Date(),
       );
+      // Denormalised visit stats — the dormant detector and the NEW/ACTIVE
+      // segments read them, and until now nothing wrote them.
+      await refreshPatientVisitStats(after.patientId);
     }
 
     return ok(after);

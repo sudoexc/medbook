@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useTranslations } from "next-intl";
-import { Loader2Icon } from "lucide-react";
 
 import { formatPrescriptionLine } from "@/lib/catalogs/prescription-format";
 
@@ -118,18 +117,42 @@ export function StructuredFieldsPanel() {
     [note, applyPatch],
   );
 
+  /**
+   * Legacy chip arrays are saved replace-all, so building the payload from
+   * the render snapshot loses the first of two quick clicks. Read the
+   * CURRENT cache row and fold the result back synchronously — same guard
+   * the advice column and the parsed-prescription adopt path use.
+   */
+  const mutateChips = React.useCallback(
+    (key: FieldDef["key"], updater: (cur: string[]) => string[]): boolean => {
+      if (!note || isFinalized) return false;
+      const cacheKey = visitNoteKey(note.id);
+      const cur = qc.getQueryData<VisitNoteRow>(cacheKey)?.[key] ?? note[key] ?? [];
+      const next = updater(cur);
+      if (next.length === cur.length && next.every((v, i) => v === cur[i])) {
+        return false;
+      }
+      qc.setQueryData<VisitNoteRow>(cacheKey, (prev) =>
+        prev ? { ...prev, [key]: next } : prev,
+      );
+      applyPatch({ [key]: next } as VisitNotePatch);
+      return true;
+    },
+    [note, isFinalized, qc, applyPatch],
+  );
+
   const handlePresetClick = React.useCallback(
     (def: FieldDef, preset: DoctorPresetRow) => {
-      if (!note || isFinalized) return;
-      const arr = note[def.key] ?? [];
-      if (!arr.includes(preset.fieldValue)) {
-        applyPatch({ [def.key]: [...arr, preset.fieldValue] } as VisitNotePatch);
-      }
-      if (preset.noteTemplate && preset.noteTemplate.trim()) {
+      const added = mutateChips(def.key, (cur) =>
+        cur.includes(preset.fieldValue) ? cur : [...cur, preset.fieldValue],
+      );
+      // Template only when the chip actually landed, otherwise a dedupe
+      // no-op orphans the template text in the conclusion editor.
+      if (added && preset.noteTemplate && preset.noteTemplate.trim()) {
         requestBodyAppend(preset.noteTemplate);
       }
     },
-    [note, isFinalized, applyPatch, requestBodyAppend],
+    [mutateChips, requestBodyAppend],
   );
 
   const handleApplyProtocol = React.useCallback(
@@ -199,11 +222,7 @@ export function StructuredFieldsPanel() {
 
   const handleRemoveChip = React.useCallback(
     (def: FieldDef, chip: string) => {
-      if (!note || isFinalized) return;
-      const arr = note[def.key] ?? [];
-      applyPatch({
-        [def.key]: arr.filter((c) => c !== chip),
-      } as VisitNotePatch);
+      if (!mutateChips(def.key, (cur) => cur.filter((c) => c !== chip))) return;
       // If the removed chip matches a preset with a template, strip the
       // template from the conclusion editor too. Match on fieldValue (what
       // got stored) so user-edited / manual chips don't accidentally remove
@@ -215,7 +234,7 @@ export function StructuredFieldsPanel() {
         requestBodyRemove(preset.noteTemplate);
       }
     },
-    [note, isFinalized, applyPatch, presetsByField, requestBodyRemove],
+    [mutateChips, presetsByField, requestBodyRemove],
   );
 
   return (
@@ -254,10 +273,9 @@ export function StructuredFieldsPanel() {
             onSaveRows={saveRxRows}
             onPresetClick={(preset) => handlePresetClick(RX_FIELD, preset)}
             onAddLegacyLine={(line) => {
-              if (!note || isFinalized) return;
-              const arr = note[RX_FIELD.key] ?? [];
-              if (arr.includes(line)) return;
-              applyPatch({ [RX_FIELD.key]: [...arr, line] } as VisitNotePatch);
+              mutateChips(RX_FIELD.key, (cur) =>
+                cur.includes(line) ? cur : [...cur, line],
+              );
             }}
             onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
             onOpenCatalog={() => setCatalogOpen(true)}

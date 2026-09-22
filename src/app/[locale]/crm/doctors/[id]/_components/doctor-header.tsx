@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import {
   CalendarPlusIcon,
   DoorOpenIcon,
   StarIcon,
   StethoscopeIcon,
+  Trash2Icon,
   UserCheckIcon,
   UserMinusIcon,
 } from "lucide-react";
@@ -165,6 +167,11 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
                   ? t("profile.deactivate")
                   : t("profile.activate")}
               </Button>
+              {/* Permanent delete is offered only for a doctor already taken
+                  out of service — it is the exit for a row created by
+                  mistake, never a shortcut past deactivation. The server
+                  refuses when any clinical history exists. */}
+              {!doctor.isActive ? <PurgeDoctorButton doctor={doctor} /> : null}
             </>
           ) : null}
         </div>
@@ -178,5 +185,77 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
         />
       ) : null}
     </section>
+  );
+}
+
+/**
+ * «Удалить навсегда» — the exit for a doctor row that should never have
+ * existed (typo, test entry, a hire who never started). Everything with
+ * clinical history is refused by the server with the counts, which we show
+ * verbatim: the admin then knows deactivation is the only correct tool.
+ */
+function PurgeDoctorButton({ doctor }: { doctor: DoctorDetail }) {
+  const t = useTranslations("crmDoctors");
+  const locale = useLocale();
+  const router = useRouter();
+  const [pending, setPending] = React.useState(false);
+
+  const purge = async () => {
+    const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
+    // Typing the surname is the same guard the patient delete uses: a
+    // permanent delete must never be one stray click away.
+    const surname = (name ?? "").trim().split(/\s+/)[0] ?? "";
+    const answer = window.prompt(
+      t("profile.purgeConfirm", { surname }),
+      "",
+    );
+    if (answer === null) return;
+    if (answer.trim().toLowerCase() !== surname.toLowerCase()) {
+      toast.error(t("profile.purgeSurnameMismatch"));
+      return;
+    }
+
+    setPending(true);
+    try {
+      const res = await fetch(`/api/crm/doctors/${doctor.id}?purge=true`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as {
+          reason?: string;
+          blockers?: { appointments: number; visitNotes: number };
+        } | null;
+        if (j?.reason === "doctor_has_history") {
+          toast.error(
+            t("profile.purgeHasHistory", {
+              appointments: j.blockers?.appointments ?? 0,
+              notes: j.blockers?.visitNotes ?? 0,
+            }),
+            { duration: 10_000 },
+          );
+          return;
+        }
+        toast.error(t("profile.purgeFailed"));
+        return;
+      }
+      toast.success(t("profile.purged"));
+      router.push(`/${locale}/crm/doctors`);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending}
+      onClick={purge}
+      className="border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
+    >
+      <Trash2Icon className="size-4" />
+      {t("profile.purge")}
+    </Button>
   );
 }

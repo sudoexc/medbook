@@ -69,7 +69,7 @@
     "dejavu-fonts-ttf": "^2.37.3",
     "ioredis": "^5.10.1",
     "lucide-react": "^1.7.0",
-    "next": "16.2.2",
+    "next": "^16.3.5",
     "next-auth": "^5.0.0-beta.30",
     "next-intl": "^4.9.0",
     "next-themes": "^0.4.6",

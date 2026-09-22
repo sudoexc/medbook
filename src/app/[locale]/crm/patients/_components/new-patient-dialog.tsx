@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { parsePatientIdentity } from "@/lib/patients/parse-identity";
 import {
   Select,
   SelectContent,
@@ -198,6 +199,13 @@ export function NewPatientDialog({
             <Input id="np-patronymic" {...form.register("patronymic")} />
           </div>
 
+          <BirthYearInNameHint
+            lastName={form.watch("lastName")}
+            firstName={form.watch("firstName")}
+            patronymic={form.watch("patronymic")}
+            hasExplicitBirthDate={Boolean(form.watch("birthDate"))}
+          />
+
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
               <Label htmlFor="np-phone">{t("phone")}</Label>
@@ -293,5 +301,43 @@ export function NewPatientDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The front desk types the way the clinic speaks: «Турматов Отабек 1969»,
+ * year and all, often into the surname box. The server strips that year into
+ * a real birth date (POST /api/crm/patients) — this line makes the silent
+ * rewrite visible, so nobody wonders where the digits went. Nothing is
+ * shown when the form already carries an explicit birth date: that one wins.
+ */
+function BirthYearInNameHint({
+  lastName,
+  firstName,
+  patronymic,
+  hasExplicitBirthDate,
+}: {
+  lastName?: string;
+  firstName?: string;
+  patronymic?: string;
+  hasExplicitBirthDate: boolean;
+}) {
+  const t = useTranslations("patients.newDialog");
+  const joined = [lastName, firstName, patronymic]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const parsed = parsePatientIdentity(joined);
+  if (!parsed.matched || parsed.birthYear === null) return null;
+
+  return (
+    <p className="rounded-lg border border-primary/25 bg-primary/5 px-2.5 py-1.5 text-[11px] leading-snug text-foreground">
+      {hasExplicitBirthDate
+        ? t("yearInNameIgnored", { year: parsed.birthYear })
+        : t("yearInNameParsed", {
+            name: parsed.fullName,
+            year: parsed.birthYear,
+          })}
+    </p>
   );
 }

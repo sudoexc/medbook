@@ -51,6 +51,47 @@ export async function findServicesOrphanedByDeactivating(
 }
 
 /**
+ * What still ties a doctor to clinical history, and therefore blocks a
+ * permanent delete. These relations are `onDelete: Restrict` in the schema —
+ * the database would refuse anyway; counting them first turns a raw FK error
+ * into an explanation the receptionist can act on.
+ *
+ * Deliberately NOT blocking: schedules, time off, presets, service links and
+ * empty-slot snapshots (all `Cascade` — configuration, not history), medical
+ * cases (`SetNull` — the case outlives its doctor) and website leads (we
+ * detach them, a lead is marketing, not a medical record).
+ */
+export interface DoctorDeleteBlockers {
+  appointments: number;
+  visitNotes: number;
+  amendments: number;
+  prescriptions: number;
+  reviews: number;
+  total: number;
+}
+
+export async function countDoctorDeleteBlockers(
+  doctorId: string,
+): Promise<DoctorDeleteBlockers> {
+  const [appointments, visitNotes, amendments, prescriptions, reviews] =
+    await Promise.all([
+      prisma.appointment.count({ where: { doctorId } }),
+      prisma.visitNote.count({ where: { doctorId } }),
+      prisma.visitNoteAmendment.count({ where: { doctorId } }),
+      prisma.prescription.count({ where: { doctorId } }),
+      prisma.patientReview.count({ where: { doctorId } }),
+    ]);
+  return {
+    appointments,
+    visitNotes,
+    amendments,
+    prescriptions,
+    reviews,
+    total: appointments + visitNotes + amendments + prescriptions + reviews,
+  };
+}
+
+/**
  * Future work still pointed at this doctor. Deactivation does NOT block on
  * it (the clinic deactivates doctors who simply don't use the CRM, and a
  * hard block would force cancelling real visits first) — but it must never

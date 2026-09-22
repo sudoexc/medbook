@@ -59,6 +59,7 @@ import {
 } from "../../_components/drug-detail";
 import { Highlight } from "./highlight";
 import { DrugPhotoUpload } from "./drug-photo-upload";
+import { DrugSimilar } from "./drug-similar";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -369,6 +370,16 @@ export function DrugBrowser() {
           {selected ? (
             <>
               <DrugDetailView drug={selected} />
+              <DrugSimilar
+                drugId={selected.id}
+                onOpenDrug={(id) => {
+                  // Hop to the analogue's own card: look it up among the
+                  // loaded rows, otherwise leave the current one open (the
+                  // row may be outside the current page/filter).
+                  const next = rows.find((r) => r.id === id);
+                  if (next) setSelected(next);
+                }}
+              />
               <DrugPhotoUpload
                 drugId={selected.id}
                 photoUrl={selected.photoUrl}

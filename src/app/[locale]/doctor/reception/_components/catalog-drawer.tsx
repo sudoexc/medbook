@@ -37,6 +37,7 @@ import {
   type DrugDetail,
 } from "../../_components/drug-detail";
 import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
+import { DrugSimilar } from "../../references/_components/drug-similar";
 
 async function fetchDrugs(q: string): Promise<DrugDetail[]> {
   const url = `/api/crm/catalogs/drugs?q=${encodeURIComponent(q)}&limit=60`;
@@ -249,19 +250,28 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
             {/* Detail */}
             <div className="flex w-1/2 flex-col overflow-y-auto">
               {selected ? (
-                <DrugDetailView
-                  drug={selected}
-                  footer={
-                    <Button
-                      onClick={() => handlePick(selected)}
-                      className="w-full"
-                      size="sm"
-                    >
-                      <CheckIcon className="mr-1 size-3.5" />
-                      {t("catalog.addToPrescriptions")}
-                    </Button>
-                  }
-                />
+                <>
+                  <DrugDetailView
+                    drug={selected}
+                    footer={
+                      <Button
+                        onClick={() => handlePick(selected)}
+                        className="w-full"
+                        size="sm"
+                      >
+                        <CheckIcon className="mr-1 size-3.5" />
+                        {t("catalog.addToPrescriptions")}
+                      </Button>
+                    }
+                  />
+                  {/* «Чем заменить» right where the prescribing happens:
+                      the patient says the pharmacy had none, the doctor
+                      swaps without leaving the visit. */}
+                  <DrugSimilar
+                    drugId={selected.id}
+                    onOpenDrug={(id) => setSelectedId(id)}
+                  />
+                </>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-muted-foreground">
                   {t("catalog.selectDrug")}

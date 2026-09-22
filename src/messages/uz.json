@@ -7641,7 +7641,11 @@
         "photoBadType": "JPG, PNG yoki WEBP kerak",
         "photoHint": "Qadoq rasmi: o'zingizniki yoki ishlab chiqaruvchi saytidan",
         "filterNoPhoto": "Rasmsiz",
-        "photosDone": "Rasm bilan: {count}"
+        "photosDone": "Rasm bilan: {count}",
+        "similarTitle": "Nima bilan almashtirish mumkin",
+        "sameSubstance": "Xuddi shu ta'sir etuvchi modda, dorixonadagi boshqa nomlar:",
+        "sameClass": "Xuddi shu guruh, boshqa modda:",
+        "sameClassHint": "Guruh ichidagi almashtirish — shifokor qarori, teng qiymatli analog emas."
       }
     },
     "nav": {

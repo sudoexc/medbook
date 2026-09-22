@@ -20,7 +20,10 @@ export function useIcd10Search(rawQuery: string) {
   return useQuery<Icd10Hit[]>({
     queryKey: ["icd10", "search", debounced],
     queryFn: async ({ signal }) => {
-      const params = new URLSearchParams({ q: debounced, limit: "12" });
+      // 12 was too tight once real queries were measured: «невропатия»
+      // has 30 matching rubrics, «остеохондроз» 17 — the right one could
+      // sit just past the cut with nothing on screen saying so.
+      const params = new URLSearchParams({ q: debounced, limit: "25" });
       const res = await fetch(`/api/crm/icd10/search?${params.toString()}`, {
         credentials: "include",
         signal,

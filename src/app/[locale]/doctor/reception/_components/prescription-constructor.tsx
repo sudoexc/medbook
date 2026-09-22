@@ -33,6 +33,10 @@ import {
 
 import { cn } from "@/lib/utils";
 import {
+  matchedBrand,
+  prescriptionLabel,
+} from "@/lib/catalogs/brand-match";
+import {
   formatPrescriptionLine,
   type PrescriptionLocale,
 } from "@/lib/catalogs/prescription-format";
@@ -69,15 +73,27 @@ const MEALS: VisitPrescriptionMealRelation[] = [
 
 const DURATION_PICKS = [5, 7, 10, 14, 30];
 
-/** Build a structured row draft from a catalog drug (search hit or drawer pick). */
+/**
+ * Build a structured row draft from a catalog drug (search hit or drawer
+ * pick). `term` is what the doctor typed: when it names a brand the row is
+ * labelled «Мидокалм (толперизон)» rather than the bare substance — the
+ * clinic reported typing a brand and getting back a word the patient will
+ * never see on the box.
+ */
 export function draftFromDrug(
-  d: Pick<DrugSearchHit, "id" | "nameRu" | "forms" | "defaultDosing">,
+  d: Pick<DrugSearchHit, "id" | "nameRu" | "forms" | "defaultDosing"> & {
+    brands?: { name: string }[];
+  },
+  term = "",
 ): VisitPrescriptionDraft {
   const firstForm = d.forms?.[0] ?? null;
   const strength = firstForm?.strengths?.[0] ?? null;
   return {
     drugId: d.id,
-    displayName: d.nameRu,
+    displayName: prescriptionLabel(
+      { nameRu: d.nameRu, brands: d.brands ?? [] },
+      term,
+    ),
     form: firstForm?.form ?? null,
     strength,
     dose: strength ?? "1",
@@ -197,11 +213,13 @@ export function PrescriptionConstructor({
 
   const addFromDrug = React.useCallback(
     (d: DrugSearchHit) => {
-      addDraft(draftFromDrug(d));
+      // Pass the live query so a brand search prescribes «Мидокалм
+      // (толперизон)» — the name the patient will look for at the counter.
+      addDraft(draftFromDrug(d, query));
       setQuery("");
       setFocused(false);
     },
-    [addDraft],
+    [addDraft, query],
   );
 
   const updateRow = React.useCallback(
@@ -307,8 +325,13 @@ export function PrescriptionConstructor({
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 text-sm">
+                        {/* Lead with what the doctor typed: a brand query
+                            shows the brand, the substance moves below. */}
                         <span className="font-medium text-foreground">
-                          {d.nameRu}
+                          {matchedBrand(
+                            { nameRu: d.nameRu, brands: d.brands },
+                            query,
+                          ) ?? d.nameRu}
                         </span>
                         {d.forms?.[0]?.strengths?.[0] && (
                           <span className="text-xs text-muted-foreground">
@@ -317,7 +340,7 @@ export function PrescriptionConstructor({
                         )}
                       </div>
                       <div className="truncate text-[11px] text-muted-foreground">
-                        {d.inn}
+                        {d.nameRu}
                         {d.brands.length > 0
                           ? ` · ${d.brands.map((b) => b.name).join(", ")}`
                           : ""}

@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useDebounced } from "@/hooks/use-debounced";
 import { ATC_GROUPS } from "@/lib/catalogs/atc-groups";
+import { matchedBrand } from "@/lib/catalogs/brand-match";
 import {
   Dialog,
   DialogContent,
@@ -492,7 +493,14 @@ function DrugRow({
   onOpen: (d: DrugDetail) => void;
   pinLabel: string;
 }) {
+  const brandHit = matchedBrand(
+    { nameRu: drug.nameRu, brands: drug.brands },
+    term,
+  );
   const sub: string[] = [];
+  // When the row leads with a brand, the substance must be the first thing
+  // under it — that is what was actually prescribed.
+  if (brandHit) sub.push(drug.nameRu);
   // Register rows carry a synthetic «uzr:» handle — never show it as an INN.
   if (
     drug.inn &&
@@ -516,7 +524,15 @@ function DrugRow({
         <PillIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-foreground">
-            <Highlight text={drug.nameRu} term={term} />
+            {/* Searching a brand shows the brand — the substance stays in
+                the subtext where it belongs. */}
+            <Highlight
+              text={
+                matchedBrand({ nameRu: drug.nameRu, brands: drug.brands }, term) ??
+                drug.nameRu
+              }
+              term={term}
+            />
           </span>
           {subtext ? (
             <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">

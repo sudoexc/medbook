@@ -107,12 +107,14 @@ export function StructuredFieldsPanel() {
   );
 
   const handleCatalogPick = React.useCallback(
-    (drug: Parameters<typeof draftFromDrug>[0]) => {
+    (drug: Parameters<typeof draftFromDrug>[0], term: string) => {
       if (!note) return;
       const drafts = (note.visitPrescriptions ?? []).map(
         ({ id: _id, sortOrder: _s, ...rest }) => rest,
       );
-      applyPatch({ visitPrescriptions: [...drafts, draftFromDrug(drug)] });
+      applyPatch({
+        visitPrescriptions: [...drafts, draftFromDrug(drug, term)],
+      });
     },
     [note, applyPatch],
   );

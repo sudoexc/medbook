@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { matchedBrand } from "@/lib/catalogs/brand-match";
 
 import {
   DrugDetailView,
@@ -52,7 +53,7 @@ type Props = {
    * Called when the user picks a drug. Ф2 — the caller builds a structured
    * VisitPrescription draft from the full drug record (forms/defaultDosing).
    */
-  onPick: (drug: DrugDetail) => void;
+  onPick: (drug: DrugDetail, term: string) => void;
 };
 
 export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
@@ -107,7 +108,8 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   const handlePick = (drug: DrugDetail) => {
-    onPick(drug);
+    // Carry what was typed: a brand search must prescribe the brand.
+    onPick(drug, query);
     onOpenChange(false);
   };
 
@@ -198,7 +200,13 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                               {isPinned ? (
                                 <StarIcon className="size-3 shrink-0 fill-amber-400 text-amber-500" />
                               ) : null}
-                              <span className="truncate">{d.nameRu}</span>
+                              {/* Lead with the brand the query matched. */}
+                              <span className="truncate">
+                                {matchedBrand(
+                                  { nameRu: d.nameRu, brands: d.brands },
+                                  query,
+                                ) ?? d.nameRu}
+                              </span>
                             </span>
                             <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                               {categoryLabel(d.category)}

@@ -201,16 +201,32 @@ function PurgeDoctorButton({ doctor }: { doctor: DoctorDetail }) {
   const [pending, setPending] = React.useState(false);
 
   const purge = async () => {
-    const name = locale === "uz" ? doctor.nameUz : doctor.nameRu;
+    // Prefer whichever name is actually filled: `nameUz` is required by the
+    // schema but may be an empty string, which would leave a UZ-locale admin
+    // confirming an empty surname.
+    const localised = locale === "uz" ? doctor.nameUz : doctor.nameRu;
+    const name = (localised?.trim() || doctor.nameRu?.trim() || "").trim();
     // Typing the surname is the same guard the patient delete uses: a
     // permanent delete must never be one stray click away.
-    const surname = (name ?? "").trim().split(/\s+/)[0] ?? "";
-    const answer = window.prompt(
-      t("profile.purgeConfirm", { surname }),
-      "",
-    );
+    const surname = name.split(/\s+/)[0] ?? "";
+    if (!surname) {
+      toast.error(t("profile.purgeFailed"));
+      return;
+    }
+    const answer = window.prompt(t("profile.purgeConfirm", { surname }), "");
     if (answer === null) return;
-    if (answer.trim().toLowerCase() !== surname.toLowerCase()) {
+    // Uzbek Latin surnames carry the modifier letter in «Gʻafurov» /
+    // «Oʻrazov» (U+02BB), which nobody types — every keyboard produces an
+    // ASCII quote or a typographic one. Cyrillic ё/е is the same class of
+    // trap. Compare on a folded form so the confirmation is about intent,
+    // not about hitting the exact codepoint.
+    const fold = (v: string) =>
+      v
+        .trim()
+        .toLowerCase()
+        .replace(/[\u02bb\u02bc\u2018\u2019`']/g, "'")
+        .replace(/ё/g, "е");
+    if (fold(answer) !== fold(surname)) {
       toast.error(t("profile.purgeSurnameMismatch"));
       return;
     }

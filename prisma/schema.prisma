@@ -2094,6 +2094,14 @@ model VisitNote {
   status      VisitNoteStatus @default(DRAFT)
   startedAt   DateTime?
   finalizedAt DateTime?
+  // When this conclusion was signed the FIRST time. Stamped once, never
+  // cleared. `finalizedAt` is reset by the revert flow (COMPLETED →
+  // IN_PROGRESS un-signs the note) and re-stamped on the next signature —
+  // which would silently reopen the 24h edit window on a document signed
+  // weeks ago, letting it be rewritten destructively instead of through the
+  // append-only amendment trail. The immutability clock therefore runs from
+  // this column; `finalizedAt` remains "currently signed at".
+  firstFinalizedAt DateTime?
 
   // Ф0 — human-readable conclusion number ("NF-2026-000123"), allocated
   // atomically inside the finalize transaction via DocumentCounter. Printed

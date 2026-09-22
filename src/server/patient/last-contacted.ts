@@ -74,19 +74,27 @@ export async function refreshPatientVisitStats(
   patientId: string,
 ): Promise<void> {
   try {
+    // `completedAt` — when the visit actually ended — not `date`, which is
+    // the booked slot: a next-week slot seen today would otherwise push
+    // `lastVisitAt` into the FUTURE and outrank a visit genuinely completed
+    // yesterday. Rows completed before that column was populated fall back
+    // to the slot time.
     const [visitsCount, latest] = await Promise.all([
       prisma.appointment.count({
         where: { patientId, status: "COMPLETED" },
       }),
       prisma.appointment.findFirst({
         where: { patientId, status: "COMPLETED" },
-        orderBy: { date: "desc" },
-        select: { date: true },
+        orderBy: [{ completedAt: "desc" }, { date: "desc" }],
+        select: { completedAt: true, date: true },
       }),
     ]);
     await prisma.patient.updateMany({
       where: { id: patientId },
-      data: { visitsCount, lastVisitAt: latest?.date ?? null },
+      data: {
+        visitsCount,
+        lastVisitAt: latest ? (latest.completedAt ?? latest.date) : null,
+      },
     });
   } catch (e) {
     // Never fail a visit over a denormalised counter.

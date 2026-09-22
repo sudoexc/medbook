@@ -243,11 +243,31 @@ export const PATCH = createApiHandler(
               data: {
                 status: "DRAFT",
                 finalizedAt: null,
+                // `firstFinalizedAt` is deliberately NOT cleared — it is the
+                // immutability clock, and reopening it would let a document
+                // signed weeks ago be rewritten destructively.
+                //
                 // Back to the medication reconciler: on the next finalize it
                 // re-bridges the (possibly edited) prescriptions instead of
                 // leaving the patient's live courses frozen at the old set.
                 medicationsBridgedAt: null,
+                // The patient may already hold the rendered PDF (and its QR
+                // resolves to it). Marking the handout stale is what puts the
+                // note back into the re-render sweep after the next
+                // signature — without it the sweep skips the note forever
+                // (its Document row already exists) and the patient keeps a
+                // conclusion that contradicts the corrected one in the CRM.
+                handoutStaleAt: new Date(),
               },
+            });
+            // Courses bridged from this note keep reminding the patient
+            // while the visit is reopened — and a doctor reverting to REMOVE
+            // a drug (an adverse reaction is the realistic reason) would
+            // otherwise keep nagging them to take it. Reminders off now; the
+            // reconciler restores or cancels each course on re-signature.
+            await tx.prescription.updateMany({
+              where: { visitNoteId: signedNote.id, status: "ACTIVE" },
+              data: { remindersEnabled: false },
             });
           }
         }
@@ -292,6 +312,13 @@ export const PATCH = createApiHandler(
           unsignedVisitNote: fromStatus === "COMPLETED",
         },
       });
+
+      // The completion bumped the denormalised visit stats; un-completing
+      // must bring them back or the patient reads as having one visit more
+      // than they had — permanently, if the visit is never re-completed.
+      if (fromStatus === "COMPLETED") {
+        await refreshPatientVisitStats(before.patientId);
+      }
 
       return ok(revertedRow);
     }

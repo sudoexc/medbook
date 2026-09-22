@@ -72,7 +72,10 @@ export const PATCH = createApiHandler(
       // 24h post-finalization edit window. Beyond that the note is locked —
       // corrections switch to the append-only amendment flow (see
       // .../amendments/route.ts for the medico-legal rationale).
-      if (isEditWindowExpired(before.finalizedAt)) {
+      // The clock runs from the FIRST signature, not the current one: a
+      // revert + re-sign must never hand back a destructive-edit window on
+      // a document signed weeks ago (that is what amendments are for).
+      if (isEditWindowExpired(before.firstFinalizedAt ?? before.finalizedAt)) {
         return err("Forbidden", 403, { reason: "edit_window_expired" });
       }
     }

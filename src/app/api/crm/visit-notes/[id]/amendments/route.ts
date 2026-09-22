@@ -90,7 +90,7 @@ export const POST = createApiHandler(
       // A draft has no issued artefact to protect — just edit it.
       return conflict("not_finalized");
     }
-    if (!isEditWindowExpired(note.finalizedAt)) {
+    if (!isEditWindowExpired(note.firstFinalizedAt ?? note.finalizedAt)) {
       // Inside the window the direct PATCH edit is the correct tool; letting
       // both regimes run at once would fork the correction history.
       return conflict("edit_window_open");

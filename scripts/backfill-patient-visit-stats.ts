@@ -27,7 +27,10 @@ async function main() {
     by: ["patientId"],
     where: { status: "COMPLETED" },
     _count: { _all: true },
-    _max: { date: true },
+    // `completedAt` is when the visit ended; `date` is the booked slot and
+    // can sit in the future for a visit seen early. Kept as the fallback for
+    // rows completed before that column was populated.
+    _max: { completedAt: true, date: true },
   });
 
   console.log(`[visit-stats] patients with completed visits: ${grouped.length}`);
@@ -42,7 +45,7 @@ async function main() {
     if (!patient) continue;
 
     const nextCount = g._count._all;
-    const nextLast = g._max.date ?? null;
+    const nextLast = g._max.completedAt ?? g._max.date ?? null;
     const same =
       patient.visitsCount === nextCount &&
       (patient.lastVisitAt?.getTime() ?? null) === (nextLast?.getTime() ?? null);

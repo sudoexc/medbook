@@ -137,6 +137,9 @@ export const POST = createApiHandler(
         data: {
           status: "FINALIZED",
           finalizedAt: now,
+          // Stamped only on the first signature — it is the immutability
+          // clock, and a re-sign after a revert must not restart it.
+          ...(note.firstFinalizedAt ? {} : { firstFinalizedAt: now }),
           documentNumber,
           ...(composedHandout
             ? { patientHandoutMarkdown: composedHandout }

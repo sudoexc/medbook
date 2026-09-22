@@ -14,4 +14,6 @@ export const QueryDrugSchema = z.object({
   forDiagnosis: z.string().max(10).optional(),
   active: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** Paging offset — the reference browser walks the whole catalog with it. */
+  offset: z.coerce.number().int().min(0).default(0),
 });

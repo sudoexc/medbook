@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { DRUG_PAGE_SIZE, useDrugCatalog } from "../_hooks/use-drug-catalog";
+import { useDrugCatalog } from "../_hooks/use-drug-catalog";
 import {
   DrugDetailView,
   PREGNANCY_TONE,
@@ -154,14 +154,25 @@ export function DrugBrowser() {
   const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
   const term = debouncedQ.trim();
   const searching = term.length >= 2;
-  const { data, isLoading, isError, refetch, isFetching } =
-    useDrugCatalog(term);
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useDrugCatalog(term);
   const [selected, setSelected] = React.useState<DrugDetail | null>(null);
 
-  // One server page. While searching it holds the ranked matches; idle it
-  // holds the first page of the catalog, grouped by category as before.
-  const rows = React.useMemo(() => data?.rows ?? [], [data]);
-  const total = data?.total ?? 0;
+  // Every page loaded so far. While searching these are ranked matches;
+  // idle they are the catalog in alphabetical order, grouped by category.
+  const rows = React.useMemo(
+    () => (data?.pages ?? []).flatMap((p) => p.rows),
+    [data],
+  );
+  const total = data?.pages?.[0]?.total ?? 0;
   const grouped = React.useMemo(
     () => (searching ? new Map<string, DrugDetail[]>() : groupByCategory(rows)),
     [rows, searching],
@@ -170,9 +181,9 @@ export function DrugBrowser() {
 
   // The server already filtered and ranked — no second pass in the browser.
   const filtered = searching ? rows : [];
-  // The catalog is far bigger than one page (state register import): say so
-  // instead of letting the category tree look like the whole thing.
-  const truncated = !searching && total > rows.length;
+  // Shown-of-total line: the catalog is far bigger than one page after the
+  // state-register import, so never let the tree look like the whole thing.
+  const truncated = total > rows.length;
 
   // Open the biggest category by default so first paint isn't a wall of
   // collapsed headers. Recomputed when the data first lands.
@@ -250,9 +261,10 @@ export function DrugBrowser() {
         <section className="rounded-2xl border border-border bg-card px-3 py-3">
           <div className="mb-2 flex items-center justify-between px-2 text-xs text-muted-foreground">
             <span>
-              {filtered.length >= DRUG_PAGE_SIZE
-                ? t("drugs.foundCapped", { count: DRUG_PAGE_SIZE })
-                : t("drugs.foundCount", { count: filtered.length })}
+              {t("drugs.foundOfTotal", {
+                shown: filtered.length,
+                total,
+              })}
             </span>
             <span>{t("drugs.clickForDetails")}</span>
           </div>
@@ -261,29 +273,35 @@ export function DrugBrowser() {
               {t("drugs.emptyQuery", { query: term })}
             </div>
           ) : (
-            <ul className="space-y-0.5">
-              {filtered.map((d) => (
-                <li key={d.id}>
-                  <DrugRow
-                    drug={d}
-                    term={term}
-                    showCategory
-                    categoryLabel={categoryLabel}
-                    onOpen={setSelected}
-                  />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-0.5">
+                {filtered.map((d) => (
+                  <li key={d.id}>
+                    <DrugRow
+                      drug={d}
+                      term={term}
+                      showCategory
+                      categoryLabel={categoryLabel}
+                      onOpen={setSelected}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <LoadMore
+                visible={hasNextPage}
+                loading={isFetchingNextPage}
+                onClick={() => fetchNextPage()}
+                label={t("drugs.loadMore")}
+                loadingLabel={t("drugs.loading")}
+              />
+            </>
           )}
         </section>
       ) : (
         <div className="space-y-3">
           {truncated ? (
             <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs leading-snug text-muted-foreground">
-              {t("drugs.catalogHint", {
-                shown: rows.length,
-                total,
-              })}
+              {t("drugs.catalogHint", { shown: rows.length, total })}
             </p>
           ) : null}
           {categories.map((cat) => {
@@ -332,6 +350,13 @@ export function DrugBrowser() {
               </section>
             );
           })}
+          <LoadMore
+            visible={hasNextPage}
+            loading={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
+            label={t("drugs.loadMore")}
+            loadingLabel={t("drugs.loading")}
+          />
         </div>
       )}
 
@@ -358,5 +383,35 @@ export function DrugBrowser() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * «Показать ещё» for both views. Rendered as nothing when the catalog has
+ * no further pages, so the list simply ends — no dead control.
+ */
+function LoadMore({
+  visible,
+  loading,
+  onClick,
+  label,
+  loadingLabel,
+}: {
+  visible: boolean;
+  loading: boolean;
+  onClick: () => void;
+  label: string;
+  loadingLabel: string;
+}) {
+  if (!visible) return null;
+  return (
+    <button
+      type="button"
+      disabled={loading}
+      onClick={onClick}
+      className="motion-press mt-2 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/5 disabled:opacity-60"
+    >
+      {loading ? loadingLabel : label}
+    </button>
   );
 }

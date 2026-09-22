@@ -88,14 +88,18 @@ export const GET = createApiListHandler(
     }
     where.AND = and;
 
-    const [allRows, overlays] = await Promise.all([
+    const [allRows, overlays, matchedTotal] = await Promise.all([
       prisma.drug.findMany({
         where,
         orderBy: { nameRu: "asc" },
+        skip: q.offset,
         take: q.limit,
         include: { brands: true },
       }) as unknown as Promise<DrugRow[]>,
       loadClinicOverlays(clinicId, "DRUG"),
+      // The real number of matches, not the page size: the reference browser
+      // pages through ~2.7k rows and must know when to stop offering «ещё».
+      prisma.drug.count({ where }),
     ]);
 
     const rows = allRows
@@ -126,7 +130,9 @@ export const GET = createApiListHandler(
       rows.sort((a, b) => rank(b, needle) - rank(a, needle));
     }
 
-    return ok({ rows, total: rows.length });
+    // `total` counts matches in the database (pre-paging); `rows` is this
+    // page after clinic-hidden overlays are dropped.
+    return ok({ rows, total: matchedTotal, offset: q.offset });
   },
 );
 

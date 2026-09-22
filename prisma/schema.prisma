@@ -971,6 +971,12 @@ model Drug {
   // Rx-only = требует рецепта. Most drugs are rx; OTC includes vitamins,
   // some analgesics. Drives e-recipe formatting in Phase G7.
   rxOnly            Boolean           @default(true)
+  // Packaging photo — what the box looks like on the pharmacy shelf. The
+  // clinic asked for it so a patient can be shown what to buy; the global
+  // catalog ships none, so this is filled per clinic through the overlay
+  // (OVERLAY_FIELD_WHITELIST.DRUG) or directly on a clinic-owned row.
+  // Stored as an internal /files/<bucket>/<key> path, never a hotlink.
+  photoUrl          String?
   // Hide from search without deleting (preserves historical references in
   // VisitNote.prescriptions[]).
   active            Boolean           @default(true)

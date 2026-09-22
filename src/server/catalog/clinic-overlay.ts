@@ -31,6 +31,8 @@ export const OVERLAY_FIELD_WHITELIST = {
     "contraindications",
     "sideEffects",
     "rxOnly",
+    // Packaging photo uploaded by this clinic for a global catalog row.
+    "photoUrl",
   ],
   GUIDE: [
     "titleRu",

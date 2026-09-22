@@ -37,6 +37,7 @@ type DrugRow = {
   defaultDosing: unknown;
   rxOnly: boolean;
   active: boolean;
+  photoUrl: string | null;
   clinicId: string | null;
   brands: { id: string; name: string; manufacturer: string | null }[];
 };

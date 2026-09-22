@@ -58,6 +58,7 @@ import {
   type DrugDetail,
 } from "../../_components/drug-detail";
 import { Highlight } from "./highlight";
+import { DrugPhotoUpload } from "./drug-photo-upload";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -354,7 +355,22 @@ export function DrugBrowser() {
               {t("drugs.detailsDescription")}
             </DialogDescription>
           </DialogHeader>
-          {selected ? <DrugDetailView drug={selected} /> : null}
+          {selected ? (
+            <>
+              <DrugDetailView drug={selected} />
+              <DrugPhotoUpload
+                drugId={selected.id}
+                photoUrl={selected.photoUrl}
+                onChanged={(next) =>
+                  // Patch the open card immediately; the list refreshes
+                  // through its own query invalidation.
+                  setSelected((prev) =>
+                    prev ? { ...prev, photoUrl: next } : prev,
+                  )
+                }
+              />
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>
@@ -521,7 +537,16 @@ function DrugRow({
         onClick={() => onOpen(drug)}
         className="motion-press flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-10 text-left transition-colors hover:bg-muted/60"
       >
-        <PillIcon className="size-4 shrink-0 text-muted-foreground" />
+        {drug.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={drug.photoUrl}
+            alt=""
+            className="size-8 shrink-0 rounded-md border border-border bg-white object-contain"
+          />
+        ) : (
+          <PillIcon className="size-4 shrink-0 text-muted-foreground" />
+        )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-foreground">
             {/* Searching a brand shows the brand — the substance stays in

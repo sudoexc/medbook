@@ -32,6 +32,8 @@ export type DrugDetail = {
   } | null;
   rxOnly: boolean;
   active: boolean;
+  /** Packaging photo uploaded by the clinic; null for most catalog rows. */
+  photoUrl?: string | null;
   brands: DrugBrand[];
 };
 
@@ -152,9 +154,20 @@ export function DrugDetailView({
   return (
     <>
       <div className="flex items-start gap-3 border-b px-4 py-3">
-        <div className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <PillIcon className="size-4" />
-        </div>
+        {/* The box the patient will look for. Falls back to the generic
+            pill mark — most catalog rows have no photo yet. */}
+        {drug.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={drug.photoUrl}
+            alt={drug.nameRu}
+            className="mt-0.5 size-14 shrink-0 rounded-lg border border-border bg-white object-contain"
+          />
+        ) : (
+          <div className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <PillIcon className="size-4" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="text-base font-semibold leading-tight text-foreground">
             {drug.nameRu}

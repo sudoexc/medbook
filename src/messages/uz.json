@@ -7631,7 +7631,15 @@
         "pin": "Saralanganga",
         "unpin": "Saralangandan olib tashlash",
         "favoritesEmpty": "Hozircha bo'sh. Dori yonidagi yulduzchani bosing, u shu yerda turadi.",
-        "frequentEmpty": "Bu yerda siz eng ko'p tayinlaydigan dorilar paydo bo'ladi."
+        "frequentEmpty": "Bu yerda siz eng ko'p tayinlaydigan dorilar paydo bo'ladi.",
+        "photoAdd": "Rasm qo'shish",
+        "photoReplace": "Rasmni almashtirish",
+        "photoRemove": "Olib tashlash",
+        "photoSaved": "Rasm saqlandi",
+        "photoFailed": "Rasmni saqlab bo'lmadi",
+        "photoTooLarge": "Fayl 2 MB dan katta",
+        "photoBadType": "JPG, PNG yoki WEBP kerak",
+        "photoHint": "Qadoq rasmi: o'zingizniki yoki ishlab chiqaruvchi saytidan"
       }
     },
     "nav": {

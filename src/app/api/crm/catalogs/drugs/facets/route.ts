@@ -21,7 +21,7 @@ export const GET = createApiListHandler(
       OR: [{ clinicId: null }, ...(clinicId ? [{ clinicId }] : [])],
     };
 
-    const [rows, total, rxCount, dosingCount] = await Promise.all([
+    const [rows, total, rxCount, dosingCount, photoCount] = await Promise.all([
       prisma.drug.findMany({
         where,
         select: { atcCode: true },
@@ -32,6 +32,7 @@ export const GET = createApiListHandler(
       prisma.drug.count({
         where: { ...where, defaultDosing: { not: Prisma.DbNull } },
       }),
+      prisma.drug.count({ where: { ...where, photoUrl: { not: null } } }),
     ]);
 
     // Group in memory: Prisma cannot group by a computed substring, and the
@@ -56,6 +57,7 @@ export const GET = createApiListHandler(
       rxCount,
       otcCount: total - rxCount,
       dosingCount,
+      photoCount,
     });
   },
 );

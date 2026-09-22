@@ -7639,7 +7639,9 @@
         "photoFailed": "Rasmni saqlab bo'lmadi",
         "photoTooLarge": "Fayl 2 MB dan katta",
         "photoBadType": "JPG, PNG yoki WEBP kerak",
-        "photoHint": "Qadoq rasmi: o'zingizniki yoki ishlab chiqaruvchi saytidan"
+        "photoHint": "Qadoq rasmi: o'zingizniki yoki ishlab chiqaruvchi saytidan",
+        "filterNoPhoto": "Rasmsiz",
+        "photosDone": "Rasm bilan: {count}"
       }
     },
     "nav": {

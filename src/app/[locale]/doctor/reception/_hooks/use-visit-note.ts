@@ -31,6 +31,8 @@ export type VisitPrescriptionRow = {
   instructionUz: string | null;
   remindPatient: boolean;
   sortOrder: number;
+  /** Packaging photo joined from the catalog row, when the clinic has one. */
+  drug?: { photoUrl: string | null } | null;
 };
 
 export type VisitPrescriptionDraft = Omit<

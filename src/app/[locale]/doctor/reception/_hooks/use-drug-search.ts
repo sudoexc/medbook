@@ -23,6 +23,8 @@ export type DrugSearchHit = {
     elderly?: string;
   } | null;
   rxOnly: boolean;
+  /** Packaging photo, when this clinic has uploaded one. */
+  photoUrl?: string | null;
   brands: { id: string; name: string; manufacturer: string | null }[];
 };
 

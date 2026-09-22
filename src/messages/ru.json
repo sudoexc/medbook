@@ -7639,7 +7639,9 @@
         "photoFailed": "Не удалось сохранить фото",
         "photoTooLarge": "Файл больше 2 МБ",
         "photoBadType": "Нужен JPG, PNG или WEBP",
-        "photoHint": "Снимок упаковки: свой или с сайта производителя"
+        "photoHint": "Снимок упаковки: свой или с сайта производителя",
+        "filterNoPhoto": "Без фото",
+        "photosDone": "С фото: {count}"
       }
     },
     "nav": {

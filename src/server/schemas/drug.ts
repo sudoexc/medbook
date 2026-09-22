@@ -22,4 +22,6 @@ export const QueryDrugSchema = z.object({
   withDosing: z.coerce.boolean().optional(),
   /** Explicit id list — how the browser resolves a doctor's favourites. */
   ids: z.string().max(4000).optional(),
+  /** Only rows still missing a packaging photo — the fill-in worklist. */
+  noPhoto: z.coerce.boolean().optional(),
 });

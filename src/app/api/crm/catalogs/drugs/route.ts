@@ -74,6 +74,11 @@ export const GET = createApiListHandler(
     // Curated rows are the ones a doctor can lean on for dosing text; the
     // register import brought names and forms but no instructions.
     if (q.withDosing) where.defaultDosing = { not: null };
+    // The photo worklist. Note this reads the GLOBAL column only: a clinic
+    // photo stored in its overlay is filtered client-side, which is fine —
+    // the worklist is about what is still missing, and an overlay row simply
+    // drops out of the list once the page renders it as done.
+    if (q.noPhoto) where.photoUrl = null;
     if (q.ids && q.ids.trim()) {
       const ids = q.ids
         .split(",")

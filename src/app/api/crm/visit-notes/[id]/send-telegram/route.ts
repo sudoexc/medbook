@@ -83,6 +83,15 @@ export const POST = createApiHandler(
             tgBotUsername: true,
           },
         },
+        // Packaging photos for the prescribed drugs — the patient gets the
+        // box picture next to the paperwork and recognises it at the counter.
+        visitPrescriptions: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            displayName: true,
+            drug: { select: { photoUrl: true } },
+          },
+        },
       },
     });
     if (!note) return notFound();
@@ -161,6 +170,32 @@ export const POST = createApiHandler(
       }
     }
 
+    // Pack shots after the documents: the paperwork is the point, the
+    // pictures are the help. Failures here never spoil the send — the
+    // patient already has everything that matters.
+    let packsSent = 0;
+    for (const rx of note.visitPrescriptions) {
+      const photo = rx.drug?.photoUrl;
+      if (!photo) continue;
+      const ref = storageRefFromFileUrl(photo);
+      if (!ref) continue;
+      try {
+        const obj = await fetchObject(ref.bucket, ref.key);
+        if (!obj.body) continue;
+        const bytes = Buffer.from(await new Response(obj.body).arrayBuffer());
+        await sendDocument(note.clinic, note.patient.telegramId, bytes, {
+          filename: path.basename(ref.key),
+          contentType: obj.contentType ?? "image/jpeg",
+          caption: rx.displayName,
+        });
+        packsSent += 1;
+      } catch (e) {
+        console.warn(
+          `[send-telegram] pack shot failed: ${(e as Error).message}`,
+        );
+      }
+    }
+
     await audit(request, {
       action: "visit_note.documents_sent_telegram",
       entityType: "VisitNote",
@@ -169,6 +204,7 @@ export const POST = createApiHandler(
         patientId: note.patient.id,
         sentDocumentIds: sent,
         failedDocumentIds: failed,
+        packShotsSent: packsSent,
       },
     });
 

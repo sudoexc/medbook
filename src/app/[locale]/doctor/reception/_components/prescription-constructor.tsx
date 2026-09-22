@@ -323,6 +323,16 @@ export function PrescriptionConstructor({
                     }}
                     className="flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted"
                   >
+                    {/* The box itself — the doctor recognises a pack faster
+                        than a name, and can turn the screen to the patient. */}
+                    {d.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={d.photoUrl}
+                        alt=""
+                        className="mt-0.5 size-8 shrink-0 rounded-md border border-border bg-white object-contain"
+                      />
+                    ) : null}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 text-sm">
                         {/* Lead with what the doctor typed: a brand query
@@ -624,6 +634,16 @@ function PrescriptionRowItem({
               expanded ? "" : "-rotate-90",
             )}
           />
+          {/* The pack, right in the prescription line — the doctor can turn
+              the screen and say «вот эту коробку». */}
+          {row.drug?.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.drug.photoUrl}
+              alt=""
+              className="size-7 shrink-0 rounded-md border border-border bg-white object-contain"
+            />
+          ) : null}
           <span className="truncate text-xs font-medium text-foreground">
             {line}
           </span>

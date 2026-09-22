@@ -26,6 +26,8 @@ export type DrugQuery = {
   withDosing: boolean;
   /** Restrict to these ids — the favourites view. */
   ids: string[] | null;
+  /** Worklist mode: only drugs still missing a packaging photo. */
+  noPhoto: boolean;
 };
 
 /**
@@ -55,6 +57,7 @@ export function useDrugCatalog(query: DrugQuery) {
       query.atc,
       query.rx,
       query.withDosing,
+      query.noPhoto,
       query.ids?.join(",") ?? null,
     ],
     enabled,
@@ -67,6 +70,7 @@ export function useDrugCatalog(query: DrugQuery) {
       if (query.atc) url.searchParams.set("atc", query.atc);
       if (query.rx) url.searchParams.set("rxOnly", String(query.rx === "rx"));
       if (query.withDosing) url.searchParams.set("withDosing", "true");
+      if (query.noPhoto) url.searchParams.set("noPhoto", "true");
       if (query.ids?.length) url.searchParams.set("ids", query.ids.join(","));
       const res = await fetch(url.toString(), {
         credentials: "include",
@@ -92,6 +96,7 @@ export type DrugFacets = {
   rxCount: number;
   otcCount: number;
   dosingCount: number;
+  photoCount: number;
 };
 
 /** Counts for the ATC rail and the filter chips. */

@@ -79,6 +79,9 @@ export function DrugBrowser() {
   const [atc, setAtc] = React.useState<string | null>(null);
   const [rx, setRx] = React.useState<"rx" | "otc" | null>(null);
   const [withDosing, setWithDosing] = React.useState(false);
+  // Fill-in mode: show only what still has no pack photo, so a session of
+  // photographing boxes has an obvious worklist and an obvious end.
+  const [noPhoto, setNoPhoto] = React.useState(false);
   const [selected, setSelected] = React.useState<DrugDetail | null>(null);
 
   const facets = useDrugFacets();
@@ -103,6 +106,7 @@ export function DrugBrowser() {
     atc: searching ? null : atc,
     rx,
     withDosing,
+    noPhoto,
     ids:
       view === "favorites"
         ? favoriteIds
@@ -149,8 +153,10 @@ export function DrugBrowser() {
     setAtc(null);
     setRx(null);
     setWithDosing(false);
+    setNoPhoto(false);
   };
-  const filtersActive = atc !== null || rx !== null || withDosing;
+  const filtersActive =
+    atc !== null || rx !== null || withDosing || noPhoto;
 
   const emptyIdView =
     (view === "favorites" && favoriteIds.length === 0) ||
@@ -219,6 +225,11 @@ export function DrugBrowser() {
             onClick={() => setWithDosing((v) => !v)}
             label={t("drugs.filterDosing")}
             count={facets.data?.dosingCount}
+          />
+          <FilterChip
+            active={noPhoto}
+            onClick={() => setNoPhoto((v) => !v)}
+            label={t("drugs.filterNoPhoto")}
           />
 
           {filtersActive ? (

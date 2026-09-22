@@ -168,7 +168,12 @@ export const GET = createApiListHandler(
             startedAt: true,
           },
         },
-        visitPrescriptions: { orderBy: { sortOrder: "asc" } },
+        visitPrescriptions: {
+          orderBy: { sortOrder: "asc" },
+          // Packaging photos ride along so the patient's handout can show
+          // the actual box — the whole point of collecting them.
+          include: { drug: { select: { photoUrl: true } } },
+        },
         // Post-window corrections — printed as an appended block; the
         // original sections above render exactly as issued.
         amendments: {
@@ -698,6 +703,35 @@ export const GET = createApiListHandler(
 
     // Shared by the standalone handout page and the package assembly.
     const quickMetaMdCss = `
+    /* «Как выглядит упаковка» — a printable strip of pack shots. Fixed
+       heights keep the page predictable; object-fit contain never crops. */
+    .packs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .pack {
+      width: 120px;
+      margin: 0;
+      text-align: center;
+      break-inside: avoid;
+    }
+    .pack img {
+      width: 120px;
+      height: 90px;
+      object-fit: contain;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .pack figcaption {
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.25;
+      color: #334155;
+      word-break: break-word;
+    }
     .quick-meta {
       display: flex;
       flex-wrap: wrap;
@@ -753,6 +787,7 @@ export const GET = createApiListHandler(
             visitDate: "Tashrif sanasi",
             print: "Chop etish / PDF",
             generated: "Tayyorlandi",
+            packsTitle: "Qadoq qanday ko'rinadi",
             emptyHint:
               "Eslatma hali shakllantirilmagan. Iltimos, qabul oynasida \"Shakllantirish\" tugmasini bosing.",
           }
@@ -763,6 +798,7 @@ export const GET = createApiListHandler(
             visitDate: "Дата приёма",
             print: "Печать / PDF",
             generated: "Подготовлено",
+            packsTitle: "Как выглядит упаковка",
             emptyHint:
               "Памятка ещё не сформирована. На экране приёма нажмите «Сформировать», затем повторите печать.",
           };
@@ -774,6 +810,33 @@ export const GET = createApiListHandler(
     const handoutGridSection = medGridTable
       ? `<section><h2 class="md-h2">${escapeHtml(labels.gridTitle)}</h2>${medGridTable}</section>`
       : "";
+
+    // «Как выглядит упаковка» — the patient walks into a pharmacy holding a
+    // picture instead of a name they cannot pronounce. Rendered only for the
+    // drugs this clinic has actually photographed; absolute URLs because the
+    // printed page may be opened from a PDF viewer with no page origin.
+    const packShots = note.visitPrescriptions
+      .map((rx) => ({
+        name: rx.displayName,
+        photo: (rx as { drug?: { photoUrl: string | null } | null }).drug
+          ?.photoUrl,
+      }))
+      .filter((x): x is { name: string; photo: string } => Boolean(x.photo));
+    const handoutPacksSection =
+      packShots.length > 0
+        ? `<section><h2 class="md-h2">${escapeHtml(
+            handoutLabels.packsTitle,
+          )}</h2><div class="packs">${packShots
+            .map(
+              (p) =>
+                `<figure class="pack"><img src="${escapeHtml(
+                  p.photo.startsWith("http")
+                    ? p.photo
+                    : `${baseUrl}${p.photo}`,
+                )}" alt=""><figcaption>${escapeHtml(p.name)}</figcaption></figure>`,
+            )
+            .join("")}</div></section>`
+        : "";
 
     // Patient-facing: date only, the reception note stays internal.
     const handoutFollowUpSection = followUpLine
@@ -800,6 +863,8 @@ export const GET = createApiListHandler(
     <article>${handoutBody}</article>
 
     ${handoutGridSection}
+
+    ${handoutPacksSection}
 
     ${handoutDiffSection}
 

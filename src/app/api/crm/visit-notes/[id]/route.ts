@@ -37,7 +37,13 @@ export const GET = createApiListHandler(
           },
         },
         clinic: { select: { nameRu: true, nameUz: true } },
-        visitPrescriptions: { orderBy: { sortOrder: "asc" } },
+        visitPrescriptions: {
+          orderBy: { sortOrder: "asc" },
+          // Carry the packaging photo so the prescription rows can show the
+          // box: the doctor turns the screen to the patient, and the same
+          // image travels on to the handout.
+          include: { drug: { select: { photoUrl: true } } },
+        },
       },
     });
     if (!note) return notFound();
@@ -218,7 +224,12 @@ export const PATCH = createApiHandler(
       const row = await tx.visitNote.update({
         where: { id },
         data: data as never,
-        include: { visitPrescriptions: { orderBy: { sortOrder: "asc" } } },
+        include: {
+          visitPrescriptions: {
+            orderBy: { sortOrder: "asc" },
+            include: { drug: { select: { photoUrl: true } } },
+          },
+        },
       });
 
       // Skip the envelope when the autosave was a no-op — the editor sends a

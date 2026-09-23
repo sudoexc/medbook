@@ -84,6 +84,24 @@ export function DrugBrowser() {
   // photographing boxes has an obvious worklist and an obvious end.
   const [noPhoto, setNoPhoto] = React.useState(false);
   const [selected, setSelected] = React.useState<DrugDetail | null>(null);
+  const searchRef = React.useRef<HTMLInputElement | null>(null);
+
+  // «/» jumps to search from anywhere on the page — the formulary is used by
+  // someone already typing, and reaching for the mouse breaks that.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const facets = useDrugFacets();
   const { pinned, toggle } = useDoctorFavorites("DRUG");
@@ -169,9 +187,18 @@ export function DrugBrowser() {
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={searchRef}
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              // Escape clears without leaving the field — faster than
+              // selecting the text to retype a different drug.
+              if (e.key === "Escape" && q) {
+                e.preventDefault();
+                setQ("");
+              }
+            }}
             placeholder={t("drugs.searchPlaceholder")}
             className="h-11 w-full rounded-xl border border-border bg-card pl-10 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
           />
@@ -370,6 +397,8 @@ export function DrugBrowser() {
           {selected ? (
             <>
               <DrugDetailView drug={selected} />
+              {/* Substitutions sit right under the facts: «чем заменить» is
+                  read many times a day, the photo upload once per drug. */}
               <DrugSimilar
                 drugId={selected.id}
                 onOpenDrug={(id) => {

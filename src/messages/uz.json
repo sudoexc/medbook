@@ -6915,7 +6915,10 @@
         "waitingHm": "{h} soat {m} daqiqa kutmoqda",
         "waitingSince": "{at} dan beri kutmoqda",
         "add": "Qo'shish",
-        "completedTitle": "Bugun yakunlanganlar: {count}"
+        "completedTitle": "Bugun yakunlanganlar: {count}",
+        "remove": "Navbatdan olib tashlash",
+        "removeConfirm": "{name}ni navbatdan olib tashlansinmi? Tashrif bekor qilinadi.",
+        "removed": "Bemor navbatdan olib tashlandi"
       },
       "laneBooking": "Yozuv",
       "addWalkin": {
@@ -6937,7 +6940,9 @@
         "badPhone": "Telefon raqamini tekshiring",
         "failed": "Qo'shib bo'lmadi",
         "parsedYear": "· {year} y. · {age} yosh",
-        "noYearHint": "Tug'ilgan yilni qo'shsangiz bo'ladi — «Familiya I 1969», u alohida saqlanadi."
+        "noYearHint": "Tug'ilgan yilni qo'shsangiz bo'ladi — «Familiya I 1969», u alohida saqlanadi.",
+        "alreadyQueued": "Bemor allaqachon navbatda",
+        "alreadyQueuedWithTicket": "Bemor allaqachon navbatda, talon {ticket}"
       }
     },
     "visits": {

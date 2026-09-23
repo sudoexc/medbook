@@ -10,9 +10,12 @@ import {
   TicketIcon,
   UserPlusIcon,
   UsersIcon,
+  XIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
@@ -72,6 +75,21 @@ export function LiveQueueCard() {
       toStatus: "WAITING",
       call: true,
     });
+
+  // «Убрать из очереди» — the doctor asked for it after a mis-added row
+  // («дубликат бывает иногда, удалить функция кушса буладими?»). It is a
+  // cancel, not a delete: the visit keeps its history and its ticket, it
+  // just leaves the live lane. Confirmation is deliberate — the row sits
+  // next to «Вызвать», and a stray click must not drop a waiting patient.
+  const removeFromQueue = (entry: LiveQueueEntry) => {
+    if (!window.confirm(t("removeConfirm", { name: entry.patientFullName }))) {
+      return;
+    }
+    mutation.mutate(
+      { appointmentId: entry.appointmentId, toStatus: "CANCELLED" },
+      { onSuccess: () => toast.success(t("removed")) },
+    );
+  };
 
   return (
     <section className="flex flex-col rounded-2xl border border-border bg-card">
@@ -180,19 +198,31 @@ export function LiveQueueCard() {
                     ) : null}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  disabled={mutation.isPending}
-                  onClick={() => callIn(entry)}
-                  className="motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-                >
-                  {rowPending ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
-                    <MegaphoneIcon className="size-4" />
-                  )}
-                  {t("call")}
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={mutation.isPending}
+                    onClick={() => callIn(entry)}
+                    className="motion-press inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                  >
+                    {rowPending ? (
+                      <Loader2Icon className="size-4 animate-spin" />
+                    ) : (
+                      <MegaphoneIcon className="size-4" />
+                    )}
+                    {t("call")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={mutation.isPending}
+                    onClick={() => removeFromQueue(entry)}
+                    title={t("remove")}
+                    aria-label={t("remove")}
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-60"
+                  >
+                    <XIcon className="size-4" />
+                  </button>
+                </div>
               </li>
             );
           })

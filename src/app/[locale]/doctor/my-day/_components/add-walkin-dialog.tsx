@@ -112,12 +112,28 @@ export function AddWalkinDialog({
         if (j?.error === "bad_phone") throw new Error(t("badPhone"));
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as { ticketNumber?: string };
+      return (await res.json()) as {
+        ticketNumber?: string;
+        duplicate?: boolean;
+      };
     },
     onSuccess: (r) => {
-      toast.success(
-        r.ticketNumber ? t("addedWithTicket", { ticket: r.ticketNumber }) : t("added"),
-      );
+      // The server refuses to queue the same patient twice for the same
+      // doctor today, so a double press lands here with `duplicate` set —
+      // say so plainly instead of celebrating a ticket that was not issued.
+      if (r.duplicate) {
+        toast.info(
+          r.ticketNumber
+            ? t("alreadyQueuedWithTicket", { ticket: r.ticketNumber })
+            : t("alreadyQueued"),
+        );
+      } else {
+        toast.success(
+          r.ticketNumber
+            ? t("addedWithTicket", { ticket: r.ticketNumber })
+            : t("added"),
+        );
+      }
       void qc.invalidateQueries({ queryKey: doctorTodayKey });
       onOpenChange(false);
     },

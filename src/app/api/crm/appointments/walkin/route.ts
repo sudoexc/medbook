@@ -94,6 +94,10 @@ export const POST = createApiHandler(
     return ok(
       {
         appointmentId: result.appointmentId,
+        // Tells the caller this press found an existing place instead of
+        // creating one — the UI says «уже в очереди» rather than printing a
+        // second ticket for the same person.
+        duplicate: result.duplicate,
         ticketCode: result.ticketCode,
         ticketNumber: result.ticketNumber,
         queueOrder: result.queueOrder,

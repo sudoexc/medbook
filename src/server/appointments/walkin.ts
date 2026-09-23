@@ -20,7 +20,10 @@
  */
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, phoneSearchVariants } from "@/lib/phone";
-import { tashkentComponents } from "@/lib/booking-validation";
+import {
+  tashkentComponents,
+  tashkentDayBounds,
+} from "@/lib/booking-validation";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { allocatePatientNumber } from "@/server/services/patient-number";
@@ -53,6 +56,12 @@ export type RegisterWalkinResult =
   | {
       ok: true;
       appointmentId: string;
+      /**
+       * True when this call found the patient already waiting for the same
+       * doctor today and returned that place instead of creating a second
+       * one. Callers surface it as «уже в очереди», not as a new ticket.
+       */
+      duplicate: boolean;
       ticketCode: string;
       ticketNumber: string;
       queueOrder: number;
@@ -135,6 +144,9 @@ export async function registerWalkin(
   // receptionist can re-time it later. The display column must be Tashkent
   // wall-clock — prod runs UTC and `getHours()` would skew it −5h.
   const start = new Date();
+  // Today in clinic time — the duplicate check must not reach yesterday's
+  // queue (prod runs UTC, so a raw date comparison would skew by 5 hours).
+  const { dayStart, dayEnd } = tashkentDayBounds(start);
   const durationMin = input.durationMin ?? 30;
   const end = new Date(start.getTime() + durationMin * 60_000);
   const time = tashkentComponents(start).time;
@@ -149,7 +161,35 @@ export async function registerWalkin(
   // Allocate the queue slot and create the row atomically under Serializable
   // isolation so two simultaneous walk-ins on the same doctor can't share a
   // queueOrder.
-  const { queueOrder, created } = await runQueueTx(async (tx) => {
+  //
+  // The same transaction also enforces "one live place per patient": the
+  // clinic reported a doctor double-clicking «Добавить» and getting the same
+  // person twice in the queue (C-001 and C-002, both Юсупова Лола). A client
+  // guard alone cannot fix that — a retried request or a second tab produces
+  // the same duplicate — so the rule lives here, inside the serializable
+  // transaction that already owns queue ordering. A patient genuinely coming
+  // back later in the day is unaffected: the earlier visit is no longer
+  // WAITING by then.
+  const { queueOrder, created, duplicate } = await runQueueTx(async (tx) => {
+    const alreadyQueued = await tx.appointment.findFirst({
+      where: {
+        clinicId: input.clinicId,
+        doctorId: doctor.id,
+        patientId: patient.id,
+        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+        date: { gte: dayStart, lt: dayEnd },
+      },
+      orderBy: { queueOrder: "asc" },
+      select: { id: true, queueOrder: true },
+    });
+    if (alreadyQueued) {
+      return {
+        queueOrder: alreadyQueued.queueOrder ?? 0,
+        created: { id: alreadyQueued.id },
+        duplicate: true,
+      };
+    }
+
     const order = await allocateQueueOrder(tx, {
       clinicId: input.clinicId,
       doctorId: doctor.id,
@@ -181,30 +221,37 @@ export async function registerWalkin(
       } as never,
       select: { id: true },
     });
-    return { queueOrder: order, created: c };
+    return { queueOrder: order, created: c, duplicate: false };
   });
 
-  publishEventSafe(input.clinicId, {
-    type: "appointment.created",
-    payload: {
-      appointmentId: created.id,
-      doctorId: doctor.id,
-      patientId: patient.id,
-      status: "WAITING",
-    },
-  });
-  publishEventSafe(input.clinicId, {
-    type: "queue.updated",
-    payload: {
-      appointmentId: created.id,
-      doctorId: doctor.id,
-      queueStatus: "WAITING",
-    },
-  });
+  // A duplicate press changed nothing, so it announces nothing: firing
+  // appointment.created for a row that already existed would light up every
+  // screen in the clinic for a no-op.
+  if (!duplicate) {
+    publishEventSafe(input.clinicId, {
+      type: "appointment.created",
+      payload: {
+        appointmentId: created.id,
+        doctorId: doctor.id,
+        patientId: patient.id,
+        status: "WAITING",
+      },
+    });
+    publishEventSafe(input.clinicId, {
+      type: "queue.updated",
+      payload: {
+        appointmentId: created.id,
+        doctorId: doctor.id,
+        queueStatus: "WAITING",
+      },
+    });
+  }
 
   return {
     ok: true,
     appointmentId: created.id,
+    /** True when the patient was already in this doctor's live queue. */
+    duplicate,
     ticketCode,
     // Non-null: `queueOrder` was just allocated above, so a ticket always
     // prints for a fresh walk-in (ticketNumberFor is null only for seq-less

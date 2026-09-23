@@ -187,6 +187,10 @@ vi.mock("@/lib/prisma", () => ({
     },
     appointment: {
       findUnique: vi.fn(async () => null),
+      // Duplicate guard (added after the clinic reported a double click
+      // queueing the same patient twice): no existing live place by default,
+      // so these scenarios describe a genuinely new walk-in.
+      findFirst: vi.fn(async () => null),
       aggregate: vi.fn(
         async ({
           where,

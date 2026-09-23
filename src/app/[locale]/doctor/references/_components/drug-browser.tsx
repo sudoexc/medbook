@@ -577,7 +577,11 @@ function DrugRow({
     sub.push(drug.inn);
   }
   if (drug.brands.length > 0) {
-    sub.push(drug.brands.map((b) => b.name).join(", "));
+    // Cap the ribbon: popular molecules carry 20+ registered trade names.
+    const shown = drug.brands.slice(0, 4).map((b) => b.name).join(", ");
+    sub.push(
+      drug.brands.length > 4 ? `${shown} +${drug.brands.length - 4}` : shown,
+    );
   }
   const subtext = sub.join(" · ");
 

@@ -77,18 +77,15 @@ export const POST = createApiHandler(
       return ok({ note, appointment: note.appointment, alreadyFinalized: true });
     }
 
-    // Ф0 — a conclusion without a diagnosis is legally void. Hard gate; the
-    // UI disables the button too, this is the API backstop. Empty sections
-    // (complaints/advice/handout) are allowed but confirmed client-side.
-    //
-    // The diagnosis may be free text: requiring an ICD-10 code meant a doctor
-    // whose wording isn't in the reference (or who simply types faster than he
-    // searches) could not close the visit at all. The code is valuable for
-    // statistics, not for the document's validity — a named diagnosis is a
-    // diagnosis. `PatientDiagnosis.icd10Code` is nullable for the same reason.
-    if (!note.diagnosisCode && !note.diagnosisName?.trim()) {
-      return err("DIAGNOSIS_REQUIRED", 400);
-    }
+    // The diagnosis is NOT a hard gate any more (clinic decision
+    // 23.09.2026). It went through three stages: an ICD-10 code was
+    // required, then free text counted too, and now the visit closes
+    // without either. The reason is real work: a patient who came only for
+    // an EEG or a repeat dressing has no new diagnosis to state, and the
+    // doctor was stuck inventing one to finish the visit — which is worse
+    // data than none. The UI still asks for confirmation before signing an
+    // undiagnosed conclusion, so it stays a decision rather than an
+    // accident, and `PatientDiagnosis` simply gets no row.
 
     // The patient's PDF is rendered from `patientHandoutMarkdown` alone — the
     // clinical body deliberately never reaches them. So a doctor who signs a
@@ -206,7 +203,14 @@ export const POST = createApiHandler(
       // Match on the code when there is one; fall back to the label for
       // free-text diagnoses. Matching a null code would collapse every
       // uncoded diagnosis a patient ever had into one row.
-      const existingDx = await tx.patientDiagnosis.findFirst({
+      //
+      // No diagnosis at all (now allowed) means nothing to record here.
+      const hasDiagnosis = Boolean(
+        note.diagnosisCode || note.diagnosisName?.trim(),
+      );
+      const existingDx = !hasDiagnosis
+        ? null
+        : await tx.patientDiagnosis.findFirst({
         where: note.diagnosisCode
           ? { patientId: note.patientId, icd10Code: note.diagnosisCode }
           : {
@@ -216,7 +220,9 @@ export const POST = createApiHandler(
             },
         select: { id: true },
       });
-      const patientDiagnosis = existingDx
+      const patientDiagnosis = !hasDiagnosis
+        ? null
+        : existingDx
         ? await tx.patientDiagnosis.update({
             where: { id: existingDx.id },
             data: {
@@ -268,7 +274,7 @@ export const POST = createApiHandler(
       return {
         note: updatedNote,
         appointment: updatedAppt,
-        patientDiagnosisId: patientDiagnosis.id,
+        patientDiagnosisId: patientDiagnosis?.id ?? null,
       };
     });
 

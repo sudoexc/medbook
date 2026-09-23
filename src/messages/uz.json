@@ -5917,7 +5917,8 @@
         "phoneSaved": "Raqam yangilandi",
         "phoneSaveFailed": "Raqamni saqlab bo'lmadi",
         "queuedLabel": "NAVBATDA",
-        "ticketLabel": "Talon"
+        "ticketLabel": "Talon",
+        "emptyDiagnosis": "Tashxis ko'rsatilmagan"
       },
       "recentFiles": {
         "title": "So‘nggi fayllar",
@@ -6238,7 +6239,8 @@
       },
       "actionBar": {
         "ready": "Imzolashga tayyor",
-        "needDiagnosis": "Tashxis ko'rsating, usiz qabulni yakunlab bo'lmaydi"
+        "needDiagnosis": "Tashxis ko'rsating, usiz qabulni yakunlab bo'lmaydi",
+        "noDiagnosisHint": "Tashxis ko'rsatilmagan — shundayam yakunlash mumkin"
       },
       "parsedRx": {
         "title": "Matnda topildi: {count}",

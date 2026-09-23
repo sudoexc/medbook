@@ -169,7 +169,13 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
 
           <div className="flex flex-1 overflow-hidden">
             {/* List */}
-            <div className="w-1/2 overflow-y-auto border-r">
+            {/* min-w-0: a flex child defaults to min-width:auto and cannot
+                shrink below its content. The register import gave popular
+                molecules 20+ trade names («Найз, Нимесил, НИМЕЛИД, …»), and
+                that one line pushed this column wide enough to shove the
+                detail pane out of the dialog. Same class of bug as the
+                rtxshop gallery strip. */}
+            <div className="w-1/2 min-w-0 overflow-y-auto border-r">
               {drugsQuery.isLoading && rows.length === 0 ? (
                 <div className="px-4 py-8 text-center text-xs text-muted-foreground">
                   {t("common.loading")}
@@ -215,7 +221,13 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                           </div>
                           {d.brands.length > 0 ? (
                             <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                              {d.brands.map((b) => b.name).join(", ")}
+                              {/* Cap the visible list: a molecule with 25
+                                  brands is informative as «first three + N
+                                  more», not as an unreadable ribbon. */}
+                              {d.brands.slice(0, 3).map((b) => b.name).join(", ")}
+                              {d.brands.length > 3
+                                ? ` +${d.brands.length - 3}`
+                                : ""}
                             </div>
                           ) : null}
                         </button>
@@ -248,7 +260,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
             </div>
 
             {/* Detail */}
-            <div className="flex w-1/2 flex-col overflow-y-auto">
+            <div className="flex w-1/2 min-w-0 flex-col overflow-y-auto">
               {selected ? (
                 <>
                   <DrugDetailView

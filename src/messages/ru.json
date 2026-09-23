@@ -5917,7 +5917,8 @@
         "phoneSaved": "Номер обновлён",
         "phoneSaveFailed": "Не удалось сохранить номер",
         "queuedLabel": "В ОЧЕРЕДИ С",
-        "ticketLabel": "Талон"
+        "ticketLabel": "Талон",
+        "emptyDiagnosis": "Диагноз не указан"
       },
       "recentFiles": {
         "title": "Недавние файлы",
@@ -6238,7 +6239,8 @@
       },
       "actionBar": {
         "ready": "Готово к подписанию",
-        "needDiagnosis": "Укажите диагноз, без него нельзя завершить приём"
+        "needDiagnosis": "Укажите диагноз, без него нельзя завершить приём",
+        "noDiagnosisHint": "Диагноз не указан — можно завершить и так"
       },
       "parsedRx": {
         "title": "Найдено в тексте: {count}",

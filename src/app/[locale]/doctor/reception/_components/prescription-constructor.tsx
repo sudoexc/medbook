@@ -351,8 +351,17 @@ export function PrescriptionConstructor({
                       </div>
                       <div className="truncate text-[11px] text-muted-foreground">
                         {d.nameRu}
+                        {/* Register molecules carry up to 25 trade names —
+                            show the first few, count the rest. */}
                         {d.brands.length > 0
-                          ? ` · ${d.brands.map((b) => b.name).join(", ")}`
+                          ? ` · ${d.brands
+                              .slice(0, 3)
+                              .map((b) => b.name)
+                              .join(", ")}${
+                              d.brands.length > 3
+                                ? ` +${d.brands.length - 3}`
+                                : ""
+                            }`
                           : ""}
                       </div>
                     </div>

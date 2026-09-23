@@ -59,8 +59,10 @@ export function VisitActionBar() {
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
 
-  // Ф0 — finalize gate. A free-text diagnosis counts: the ICD-10 code is
-  // for statistics, the name is what makes the conclusion a valid document.
+  // The diagnosis stopped being a hard gate (clinic decision 23.09.2026):
+  // a visit for an EEG or a repeat dressing has no new diagnosis, and
+  // forcing one produced invented data. It joins the other sections that
+  // are merely confirmed before signing.
   const hasDiagnosis = Boolean(
     note?.diagnosisCode || note?.diagnosisName?.trim(),
   );
@@ -69,6 +71,9 @@ export function VisitActionBar() {
     !n
       ? []
       : [
+          !n.diagnosisCode && !n.diagnosisName?.trim()
+            ? t("activePatient.emptyDiagnosis")
+            : null,
           !n.bodyMarkdown?.trim() ? t("activePatient.emptyConclusion") : null,
           (n.visitPrescriptions?.length ?? 0) === 0 &&
           n.prescriptions.length === 0
@@ -111,8 +116,7 @@ export function VisitActionBar() {
   };
 
   const onFinalize = async () => {
-    if (!visitNoteId || finalize.isPending || isFinalized || !hasDiagnosis)
-      return;
+    if (!visitNoteId || finalize.isPending || isFinalized) return;
     // Flush BEFORE the emptiness check so text typed seconds ago counts.
     if (!(await flushBeforeFinalize())) return;
     const fresh =
@@ -139,16 +143,18 @@ export function VisitActionBar() {
             {t("actionBar.ready")}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-600">
-            <AlertTriangleIcon className="size-4" />
-            {t("actionBar.needDiagnosis")}
+          // Informational, not blocking: the doctor may close the visit
+          // without a diagnosis and will be asked to confirm it once.
+          <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertTriangleIcon className="size-4 text-amber-500" />
+            {t("actionBar.noDiagnosisHint")}
           </span>
         )}
 
         <Button
           type="button"
           size="lg"
-          disabled={finalize.isPending || !hasDiagnosis}
+          disabled={finalize.isPending}
           onClick={onFinalize}
         >
           {finalize.isPending ? (

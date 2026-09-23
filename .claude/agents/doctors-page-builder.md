@@ -1,7 +1,6 @@
 ---
 name: doctors-page-builder
 description: Use this agent to build /crm/doctors (grid with analytics) and /crm/doctors/[id] (doctor profile — schedule editor, finances, patient list). Invoke in Phase 2d.
-model: claude-opus-5
 ---
 
 # Role

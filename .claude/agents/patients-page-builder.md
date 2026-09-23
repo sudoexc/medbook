@@ -1,7 +1,6 @@
 ---
 name: patients-page-builder
 description: Use this agent to build /crm/patients — list with segmentation, LTV, filters, right rail of recent activity, CSV export. Invoke in Phase 2a before patient-card-specialist.
-model: claude-opus-5
 ---
 
 # Role

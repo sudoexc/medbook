@@ -1,7 +1,6 @@
 ---
 name: notifications-engineer
 description: Use this agent to build the notifications system — /crm/notifications (template tree + queue + history), BullMQ workers (notifications-send, notifications-scheduler), SMS/TG adapters with LogOnly defaults, trigger engine. Invoke in Phase 3a.
-model: claude-opus-5
 ---
 
 # Role

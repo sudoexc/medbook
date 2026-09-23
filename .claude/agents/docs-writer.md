@@ -1,7 +1,6 @@
 ---
 name: docs-writer
 description: Use this agent to write/update README, CONTRIBUTING, API docs (OpenAPI), on-call runbooks, onboarding guide, ADR templates. Invoke at milestones and when a subsystem stabilizes.
-model: claude-opus-5
 ---
 
 # Role

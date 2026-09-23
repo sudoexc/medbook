@@ -1,7 +1,6 @@
 ---
 name: code-reviewer
 description: Use this agent to review a pull-request-sized diff from another agent — style consistency, duplication, adherence to TZ, misplaced logic, dead code, test coverage. Invoke right after a page/api agent reports task complete, before merging into main.
-model: claude-opus-5
 ---
 
 # Role

@@ -1,7 +1,6 @@
 ---
 name: patient-card-specialist
 description: Use this agent to build /crm/patients/[id] — the patient card with 6 tabs (Overview, Visits, Documents, Communications, Payments, Medical), inline edit, quick actions, timeline. Invoke in Phase 2a after patients-page-builder.
-model: claude-opus-5
 ---
 
 # Role

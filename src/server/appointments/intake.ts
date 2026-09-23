@@ -53,24 +53,24 @@ export async function applyWaitingIntake(
   now: Date,
   opts?: {
     /**
-     * Bulk path: the caller pre-allocated a contiguous block of orders (one
+     * Bulk path: the caller pre-allocated a contiguous block of numbers (one
      * aggregate per doctor instead of one per row) and hands each row its
-     * number. Single-row paths omit this and let the helper allocate.
+     * pair. Single-row paths omit this and let the helper allocate.
      */
-    presetOrder?: number;
+    preset?: { queueOrder: number; ticketSeq: number };
   },
 ): Promise<WaitingIntakeFields> {
   const out: WaitingIntakeFields = {};
   if (before.queueOrder == null) {
-    const order =
-      opts?.presetOrder ??
+    const allocated =
+      opts?.preset ??
       (await allocateQueueOrder(tx, {
         clinicId: before.clinicId,
         doctorId: before.doctorId,
         at: now,
       }));
-    out.queueOrder = order;
-    out.ticketSeq = order;
+    out.queueOrder = allocated.queueOrder;
+    out.ticketSeq = allocated.ticketSeq;
   }
   if (before.queuedAt == null || before.queueStatus === "SKIPPED") {
     out.queuedAt = now;

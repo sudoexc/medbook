@@ -41,6 +41,14 @@ export const GET = createApiListHandler(
       where.doctorId = q.doctorId;
     }
 
+    // A visit cancelled mid-reception leaves its unsigned draft behind. It is
+    // not a conclusion anyone owes, so it must not sit in the list forever —
+    // but it is not deleted either: un-cancelling the visit brings it back.
+    where.NOT = {
+      status: "DRAFT",
+      appointment: { status: { in: ["CANCELLED", "NO_SHOW"] } },
+    };
+
     if (q.q && q.q.trim().length > 0) {
       const term = q.q.trim();
       where.OR = [

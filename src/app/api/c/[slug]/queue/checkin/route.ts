@@ -83,12 +83,13 @@ export async function POST(request: Request) {
     const enteringQueue = appt.queueStatus === "BOOKED";
     const now = new Date();
     const { queueOrder, ticketSeq, updated } = await runQueueTx(async (tx) => {
-      const order = needsOrder
+      const allocated = needsOrder
         ? await allocateQueueOrder(tx, {
             clinicId: ctx.clinicId,
             doctorId: appt.doctorId,
           })
-        : appt.queueOrder!;
+        : null;
+      const order = allocated?.queueOrder ?? appt.queueOrder!;
       const u = await tx.appointment.update({
         where: { id: appt.id },
         data: {
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
           // Freeze the ticket number the first time this slot enters the queue.
           // On a re-check-in (needsOrder false) we leave ticketSeq untouched so
           // a reception reorder of queueOrder never reissues the printed ticket.
-          ...(needsOrder ? { ticketSeq: order } : {}),
+          ...(allocated ? { ticketSeq: allocated.ticketSeq } : {}),
           // Arrival stamp («ждёт с …») the moment a booking flips into
           // the live queue. A re-check-in (already WAITING) keeps its stamp.
           ...(enteringQueue ? { queuedAt: now } : {}),

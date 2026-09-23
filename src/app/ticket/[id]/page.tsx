@@ -29,6 +29,7 @@ export default async function TicketPage({
         where: { id },
         select: {
           queueOrder: true,
+          ticketSeq: true,
           clinicId: true,
           date: true,
           time: true,
@@ -53,7 +54,12 @@ export default async function TicketPage({
 
   // Nullable under two-lanes: a booking printed before check-in has no queue
   // fields — the stub leads with its slot time instead of a fake "C-000".
-  const ticketNumber = ticketNumberFor(appointment.doctor.id, appointment.queueOrder);
+  // ticketSeq is the printed number; queueOrder moves with drag-reorders and
+  // with cancellations, so reprinting from it could show someone else's ticket.
+  const ticketNumber = ticketNumberFor(
+    appointment.doctor.id,
+    appointment.ticketSeq ?? appointment.queueOrder,
+  );
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
   const statusUrl = `${baseUrl}/q/${id}`;
   // Self-hosted QR (the `qrcode` package, same one the PDFs/mini-app use) —

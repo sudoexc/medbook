@@ -112,11 +112,14 @@ export const POST = createApiHandler(
         // does D queries (distinct doctors) instead of N inside the
         // Serializable tx — shrinking the write-conflict window runQueueTx
         // retries on.
-        const nextOrderByDoctor = new Map<string, number>();
+        const nextByDoctor = new Map<
+          string,
+          { queueOrder: number; ticketSeq: number }
+        >();
         for (const row of existing) {
-          let presetOrder: number | undefined;
+          let preset: { queueOrder: number; ticketSeq: number } | undefined;
           if (row.queueOrder == null) {
-            let next = nextOrderByDoctor.get(row.doctorId);
+            let next = nextByDoctor.get(row.doctorId);
             if (next === undefined) {
               next = await allocateQueueOrder(tx, {
                 clinicId: row.clinicId,
@@ -124,10 +127,13 @@ export const POST = createApiHandler(
                 at: now,
               });
             }
-            presetOrder = next;
-            nextOrderByDoctor.set(row.doctorId, next + 1);
+            preset = next;
+            nextByDoctor.set(row.doctorId, {
+              queueOrder: next.queueOrder + 1,
+              ticketSeq: next.ticketSeq + 1,
+            });
           }
-          const intake = await applyWaitingIntake(tx, row, now, { presetOrder });
+          const intake = await applyWaitingIntake(tx, row, now, { preset });
           await tx.appointment.update({
             where: { id: row.id },
             data: { ...data, ...intake } as never,

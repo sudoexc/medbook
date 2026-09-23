@@ -91,14 +91,19 @@ export function ConclusionDetail({
   }, [note]);
 
   const isFinalized = note?.status === "FINALIZED";
-  const editsEndAt = editableWindowEndsAt(note?.finalizedAt ?? null);
+  // A note signed once stays on the clock even after the visit is reverted
+  // to DRAFT: the server counts the window from the FIRST signature, so the
+  // screen must too, or it offers edits the save will refuse.
+  const signedAt = note?.firstFinalizedAt ?? note?.finalizedAt ?? null;
+  const everSigned = isFinalized || signedAt != null;
+  const editsEndAt = editableWindowEndsAt(signedAt);
   const [nowTick, setNowTick] = React.useState(() => Date.now());
   React.useEffect(() => {
     if (!editsEndAt) return;
     const t = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(t);
   }, [editsEndAt]);
-  const canEdit = !isFinalized || (editsEndAt != null && nowTick < editsEndAt);
+  const canEdit = !everSigned || (editsEndAt != null && nowTick < editsEndAt);
   const remainingMs = editsEndAt ? editsEndAt - nowTick : null;
 
   if (noteQuery.isLoading) {
@@ -395,7 +400,7 @@ export function ConclusionDetail({
         </aside>
       </div>
 
-      {isFinalized && (
+      {everSigned && (
         <AmendmentsSection
           noteId={note.id}
           locale={locale}

@@ -86,11 +86,14 @@ export const POST = createApiHandler(
     });
     if (!doctor || doctor.id !== note.doctorId) return forbidden();
 
-    if (note.status !== "FINALIZED") {
-      // A draft has no issued artefact to protect — just edit it.
+    const signedAt = note.firstFinalizedAt ?? note.finalizedAt;
+    if (note.status !== "FINALIZED" && !signedAt) {
+      // A never-signed draft has no issued artefact to protect — just edit
+      // it. A draft that WAS signed (visit reverted) did issue one, and once
+      // its window is closed an amendment is the only way to correct it.
       return conflict("not_finalized");
     }
-    if (!isEditWindowExpired(note.firstFinalizedAt ?? note.finalizedAt)) {
+    if (!isEditWindowExpired(signedAt)) {
       // Inside the window the direct PATCH edit is the correct tool; letting
       // both regimes run at once would fork the correction history.
       return conflict("edit_window_open");

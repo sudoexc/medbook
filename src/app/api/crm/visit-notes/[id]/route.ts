@@ -74,14 +74,17 @@ export const PATCH = createApiHandler(
     });
     if (!doctor || doctor.id !== before.doctorId) return forbidden();
 
-    if (before.status === "FINALIZED") {
-      // 24h post-finalization edit window. Beyond that the note is locked —
-      // corrections switch to the append-only amendment flow (see
-      // .../amendments/route.ts for the medico-legal rationale).
-      // The clock runs from the FIRST signature, not the current one: a
-      // revert + re-sign must never hand back a destructive-edit window on
-      // a document signed weeks ago (that is what amendments are for).
-      if (isEditWindowExpired(before.firstFinalizedAt ?? before.finalizedAt)) {
+    // 24h post-finalization edit window. Beyond that the note is locked —
+    // corrections switch to the append-only amendment flow (see
+    // .../amendments/route.ts for the medico-legal rationale).
+    // The clock runs from the FIRST signature, not the current one, and it
+    // applies to a DRAFT that was signed before: reverting a completed visit
+    // un-signs the note, and that must never hand back a destructive-edit
+    // window on a document signed weeks ago (that is what amendments are
+    // for). Only a note that was never signed is freely editable.
+    const signedAt = before.firstFinalizedAt ?? before.finalizedAt;
+    if (before.status === "FINALIZED" || signedAt) {
+      if (isEditWindowExpired(signedAt)) {
         return err("Forbidden", 403, { reason: "edit_window_expired" });
       }
     }

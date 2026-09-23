@@ -55,6 +55,10 @@ export function VisitActionBar() {
   const noteQuery = useVisitNote(visitNoteId);
   const finalize = useFinalizeVisitNote(visitNoteId);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  // What the confirm dialog lists, captured from the post-flush cache at the
+  // moment it opens. Deriving it from `note` at render time showed the
+  // pre-flush snapshot: text typed a second ago was still listed as empty.
+  const [confirmSections, setConfirmSections] = React.useState<string[]>([]);
 
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
@@ -80,7 +84,6 @@ export function VisitActionBar() {
             ? t("activePatient.emptyPrescriptions")
             : null,
         ].filter((s): s is string => s !== null);
-  const emptySections = emptySectionsOf(note);
 
   // P0-2 — drain the editor's debounced tail before any finalize decision.
   const flushBeforeFinalize = async (): Promise<boolean> => {
@@ -106,12 +109,10 @@ export function VisitActionBar() {
       // P0-3 — the queue refetch flips this appointment to COMPLETED, which
       // would unmount the screen before the doctor can print. Pin it.
       pinFinalizedAppointment(activeAppointment);
-    } catch (error) {
-      toast.error(
-        error instanceof Error && / 400$/.test(error.message)
-          ? t("activePatient.finalizeErrorDiagnosis")
-          : t("activePatient.finalizeErrorGeneric"),
-      );
+    } catch {
+      // The diagnosis is no longer a gate, so no failure here is the
+      // doctor's to fix by filling a field — keep the message generic.
+      toast.error(t("activePatient.finalizeErrorGeneric"));
     }
   };
 
@@ -121,7 +122,9 @@ export function VisitActionBar() {
     if (!(await flushBeforeFinalize())) return;
     const fresh =
       qc.getQueryData<VisitNoteRow>(visitNoteKey(visitNoteId)) ?? note;
-    if (emptySectionsOf(fresh).length > 0) {
+    const missing = emptySectionsOf(fresh);
+    if (missing.length > 0) {
+      setConfirmSections(missing);
       setConfirmOpen(true);
       return;
     }
@@ -175,7 +178,7 @@ export function VisitActionBar() {
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-1.5">
-            {emptySections.map((section) => (
+            {confirmSections.map((section) => (
               <li
                 key={section}
                 className="flex items-center gap-2 text-sm text-foreground"

@@ -170,7 +170,7 @@ export async function registerWalkin(
   // transaction that already owns queue ordering. A patient genuinely coming
   // back later in the day is unaffected: the earlier visit is no longer
   // WAITING by then.
-  const { queueOrder, created, duplicate } = await runQueueTx(async (tx) => {
+  const { queueOrder, ticketSeq, issuedCode, created, duplicate } = await runQueueTx(async (tx) => {
     const alreadyQueued = await tx.appointment.findFirst({
       where: {
         clinicId: input.clinicId,
@@ -180,17 +180,22 @@ export async function registerWalkin(
         date: { gte: dayStart, lt: dayEnd },
       },
       orderBy: { queueOrder: "asc" },
-      select: { id: true, queueOrder: true },
+      select: { id: true, queueOrder: true, ticketSeq: true, ticketCode: true },
     });
     if (alreadyQueued) {
+      // Hand back the ticket the patient ALREADY holds. The code minted above
+      // was never saved, so a kiosk that printed it would issue a slip whose
+      // QR resolves to nothing.
       return {
         queueOrder: alreadyQueued.queueOrder ?? 0,
+        ticketSeq: alreadyQueued.ticketSeq ?? alreadyQueued.queueOrder,
+        issuedCode: alreadyQueued.ticketCode,
         created: { id: alreadyQueued.id },
         duplicate: true,
       };
     }
 
-    const order = await allocateQueueOrder(tx, {
+    const { queueOrder: order, ticketSeq } = await allocateQueueOrder(tx, {
       clinicId: input.clinicId,
       doctorId: doctor.id,
       at: start,
@@ -209,7 +214,7 @@ export async function registerWalkin(
         queueStatus: "WAITING",
         queueOrder: order,
         // Immutable ticket sequence, frozen at creation (see queue-projection).
-        ticketSeq: order,
+        ticketSeq,
         // FIFO anchor of the live lane — a walk-in is served from the moment
         // it joined the queue, which is "now" (== `start`, the display instant).
         queuedAt: start,
@@ -221,7 +226,13 @@ export async function registerWalkin(
       } as never,
       select: { id: true },
     });
-    return { queueOrder: order, created: c, duplicate: false };
+    return {
+      queueOrder: order,
+      ticketSeq,
+      issuedCode: ticketCode,
+      created: c,
+      duplicate: false,
+    };
   });
 
   // A duplicate press changed nothing, so it announces nothing: firing
@@ -252,11 +263,11 @@ export async function registerWalkin(
     appointmentId: created.id,
     /** True when the patient was already in this doctor's live queue. */
     duplicate,
-    ticketCode,
-    // Non-null: `queueOrder` was just allocated above, so a ticket always
-    // prints for a fresh walk-in (ticketNumberFor is null only for seq-less
-    // bookings).
-    ticketNumber: ticketNumberFor(doctor.id, queueOrder)!,
+    ticketCode: issuedCode ?? ticketCode,
+    // The printed number comes from ticketSeq, never queueOrder: the two part
+    // ways once a cancelled ticket is skipped. Non-null for a fresh walk-in
+    // (just allocated); a duplicate falls back to its order.
+    ticketNumber: ticketNumberFor(doctor.id, ticketSeq ?? queueOrder)!,
     queueOrder,
     patient: { id: patient.id, fullName: patient.fullName },
     doctor: {

@@ -54,9 +54,12 @@ export async function POST(request: Request) {
       return err(result.reason, 400);
     }
 
+    // A second press on the kiosk reprints the ticket the patient already
+    // holds (same number, same QR) instead of queueing them twice.
     return ok(
       {
         appointmentId: result.appointmentId,
+        duplicate: result.duplicate,
         ticketCode: result.ticketCode,
         ticketNumber: result.ticketNumber,
         queueOrder: result.queueOrder,
@@ -64,7 +67,7 @@ export async function POST(request: Request) {
         doctor: result.doctor,
         cabinet: result.cabinet,
       },
-      201,
+      result.duplicate ? 200 : 201,
     );
   });
 }

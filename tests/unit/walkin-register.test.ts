@@ -199,10 +199,13 @@ vi.mock("@/lib/prisma", () => ({
             clinicId: string;
             doctorId: string;
             date: { gte: Date; lt: Date };
-            queueStatus: { in: string[] };
+            // Absent on the ticket-watermark read, which spans every row
+            // of the day (cancelled included).
+            queueStatus?: { in: string[] };
           };
         }) => {
           let max: number | null = null;
+          let maxSeq: number | null = null;
           for (const a of state.appointments) {
             if (a.clinicId !== where.clinicId) continue;
             if (a.doctorId !== where.doctorId) continue;
@@ -210,10 +213,14 @@ vi.mock("@/lib/prisma", () => ({
             if (t < where.date.gte.getTime() || t >= where.date.lt.getTime()) {
               continue;
             }
-            if (!where.queueStatus.in.includes(a.queueStatus)) continue;
+            if (where.queueStatus && !where.queueStatus.in.includes(a.queueStatus)) {
+              continue;
+            }
             if (max === null || a.queueOrder > max) max = a.queueOrder;
+            const seq = a.ticketSeq ?? null;
+            if (seq !== null && (maxSeq === null || seq > maxSeq)) maxSeq = seq;
           }
-          return { _max: { queueOrder: max } };
+          return { _max: { queueOrder: max, ticketSeq: maxSeq } };
         },
       ),
       create: vi.fn(

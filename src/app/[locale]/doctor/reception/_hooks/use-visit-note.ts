@@ -60,6 +60,8 @@ export type VisitNoteRow = {
   status: "DRAFT" | "FINALIZED";
   startedAt: string | null;
   finalizedAt: string | null;
+  /** First signature ever; survives a revert to DRAFT. Starts the 24h clock. */
+  firstFinalizedAt: string | null;
   documentNumber: string | null;
   complaints: string[];
   anamnesis: string[];

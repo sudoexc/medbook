@@ -12,6 +12,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { deleteObject } from "@/server/storage/minio";
 import { UpdateDocumentSchema } from "@/server/schemas/document";
+import { storageKeyFromUrl, withStaffFileUrl } from "@/lib/storage-ref";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -19,31 +20,14 @@ function idFromUrl(request: Request): string {
 }
 
 /**
- * Recover the storage key from a Document.fileUrl. Matches:
- *   - Stub URLs:   /api/crm/documents/file?key=clinics/<id>/documents/...
- *   - MinIO URLs:  https://host/<bucket>/clinics/<id>/documents/...
- * Returns null when no `clinics/<id>/...` segment is present (e.g. external
- * URLs the operator pasted in URL mode, base64 data: blobs, or legacy
- * `pending://` / `stub://` orphans).
+ * Recover the storage key from a Document.fileUrl (proxy, MinIO or stub
+ * URL; one parser for the whole app, see storage-ref). Only a document's
+ * own blob under `clinics/<id>/documents/` is ever deleted from here: an
+ * external URL, a data: blob or a legacy orphan yields null.
  */
 function extractStorageKey(fileUrl: string): string | null {
-  if (!fileUrl) return null;
-  try {
-    if (fileUrl.startsWith("/")) {
-      const u = new URL(fileUrl, "http://localhost");
-      const k = u.searchParams.get("key");
-      return k && k.startsWith("clinics/") ? k : null;
-    }
-    const u = new URL(fileUrl);
-    if (u.pathname.includes("/api/crm/documents/file")) {
-      const k = u.searchParams.get("key");
-      return k && k.startsWith("clinics/") ? k : null;
-    }
-    const match = u.pathname.match(/clinics\/[^/]+\/documents\/[^?#]+/);
-    return match ? match[0] : null;
-  } catch {
-    return null;
-  }
+  const key = storageKeyFromUrl(fileUrl);
+  return key && /^clinics\/[^/]+\/documents\//.test(key) ? key : null;
 }
 
 export const GET = createApiListHandler(
@@ -59,7 +43,7 @@ export const GET = createApiListHandler(
       },
     });
     if (!row) return notFound();
-    return ok(row);
+    return ok(withStaffFileUrl(row));
   }
 );
 
@@ -138,7 +122,7 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: changed,
     });
-    return ok(after);
+    return ok(withStaffFileUrl(after));
   }
 );
 

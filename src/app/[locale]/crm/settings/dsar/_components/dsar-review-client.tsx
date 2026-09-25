@@ -143,19 +143,18 @@ function ExportsTab() {
     queryFn: async () => settingsFetch("/api/crm/dsar/exports"),
   });
 
-  const downloadMut = useMutation<{ url: string }, Error, string>({
-    mutationFn: async (id) =>
-      settingsFetch(`/api/crm/dsar/exports/${encodeURIComponent(id)}/download`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      }),
-    onSuccess: (data) => {
-      if (data.url) {
-        window.open(data.url, "_blank", "noopener");
-      }
-    },
-    onError: () => toast.error(t("downloadError")),
-  });
+  // The bundle streams from our own route (a presigned bucket URL cannot
+  // survive the nginx `/files/` rewrite, audit CD-02); the browser saves it
+  // and the count refreshes with the list.
+  const qc = useQueryClient();
+  const download = (id: string) => {
+    window.open(
+      `/api/crm/dsar/exports/${encodeURIComponent(id)}/download`,
+      "_blank",
+      "noopener",
+    );
+    void qc.invalidateQueries({ queryKey: ["crm", "dsar", "exports"] });
+  };
 
   const rows = query.data?.items ?? [];
 
@@ -208,8 +207,8 @@ function ExportsTab() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!canDownload || downloadMut.isPending}
-                onClick={() => downloadMut.mutate(r.id)}
+                disabled={!canDownload}
+                onClick={() => download(r.id)}
               >
                 <DownloadIcon className="size-4" />
                 {t("actions.download")}

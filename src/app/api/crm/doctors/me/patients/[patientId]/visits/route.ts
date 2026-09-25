@@ -17,6 +17,7 @@ import { z } from "zod";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, parseQuery } from "@/server/http";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const QuerySchema = z.object({
   cursor: z.string().min(1).optional(),
@@ -234,7 +235,8 @@ export const GET = createApiListHandler(
           id: d.id,
           title: d.title,
           type: String(d.type),
-          fileUrl: d.fileUrl,
+          // Private bucket: the stored URL is AccessDenied (CD-02).
+          fileUrl: staffFileHref(d.fileUrl),
           createdAt: d.createdAt.toISOString(),
         })),
         labs: a.labOrders.map((l) => ({
@@ -278,7 +280,7 @@ export const GET = createApiListHandler(
             id: d.id,
             title: d.title,
             type: String(d.type),
-            fileUrl: d.fileUrl,
+            fileUrl: staffFileHref(d.fileUrl),
             createdAt: d.createdAt.toISOString(),
           })),
           labs: (

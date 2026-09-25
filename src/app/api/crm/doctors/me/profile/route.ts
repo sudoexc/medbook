@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err } from "@/server/http";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const PatchBody = z
   .object({
@@ -102,7 +103,9 @@ export const GET = createApiListHandler(
       specializationUz: user.doctor.specializationUz,
       bioRu: user.doctor.bioRu,
       bioUz: user.doctor.bioUz,
-      signatureUrl: user.doctor.signatureUrl,
+      // The settings preview renders it: the stored URL points into the
+      // private bucket and showed a broken image (CD-02).
+      signatureUrl: staffFileHref(user.doctor.signatureUrl),
       maxBookableSlotsPerDay: user.doctor.maxBookableSlotsPerDay,
     });
   },

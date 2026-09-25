@@ -67,6 +67,15 @@ type SweepNote = {
   followUpDays: number | null;
   // Re-render anchor as swept — used for the conditional clear (see below).
   handoutStaleAt: Date | null;
+  // The note's version as read: the PDF is linked to the latest revision
+  // only if the note has not moved on since (G1-01).
+  updatedAt?: Date;
+  // Latest revision (0 or 1 element), the one this render shows.
+  revisions?: Array<{
+    id: string;
+    revision: number;
+    pdfObjectKey: string | null;
+  }>;
   amendments: SweepAmendment[];
   patient: { fullName: string; preferredLang: string };
   doctor: { nameRu: string; nameUz: string } | null;
@@ -120,6 +129,21 @@ export function buildPdfAmendments(
     reason: a.reason,
     text: a.text,
   }));
+}
+
+/**
+ * Storage key of one rendered CONCLUSION PDF. Unique per render (audit
+ * G1-01): the key used to be one per note and every re-render overwrote the
+ * file the patient had already been issued, so the clinic could not produce
+ * the signed original. The revision number keeps the bucket readable.
+ */
+export function conclusionPdfKey(
+  clinicId: string,
+  noteId: string,
+  revision: number | null,
+  now: Date,
+): string {
+  return `clinics/${clinicId}/conclusions/${noteId}/r${revision ?? 0}-${now.getTime()}.pdf`;
 }
 
 async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
@@ -202,9 +226,15 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
     brandColor: clinic?.brandColor ?? null,
   });
 
-  // Stable key (per note) so a re-render overwrites in place rather than
-  // littering MinIO with orphans.
-  const objectKey = `clinics/${note.clinicId}/conclusions/${note.id}.pdf`;
+  // A new key per render, never an overwrite: the PDF issued before this
+  // one (possibly the signed original) must stay readable (G1-01).
+  const latest = note.revisions?.[0] ?? null;
+  const objectKey = conclusionPdfKey(
+    note.clinicId,
+    note.id,
+    latest?.revision ?? null,
+    now,
+  );
   const uploaded = await uploadObject(undefined, objectKey, pdf, "application/pdf");
 
   const title =
@@ -261,6 +291,22 @@ async function generateConclusion(note: SweepNote, now: Date): Promise<void> {
         documentType: "CONCLUSION",
       },
     });
+    // G1-01 — link this file to the revision it shows, once. Only when the
+    // note is still at the version this render read: an edit that landed
+    // mid-render has its own newer revision, which this PDF does not show.
+    // Raw SQL for the same reason as the anchor clear below.
+    if (latest && !latest.pdfObjectKey && note.updatedAt) {
+      await tx.$executeRaw`
+        UPDATE "VisitNoteRevision"
+        SET "pdfObjectKey" = ${objectKey}
+        WHERE "id" = ${latest.id}
+          AND "pdfObjectKey" IS NULL
+          AND EXISTS (
+            SELECT 1 FROM "VisitNote"
+            WHERE "id" = ${note.id} AND "updatedAt" = ${note.updatedAt}
+          )
+      `;
+    }
     // Convergence: clear the stale anchor ONLY when it still holds the value
     // we swept. An edit landing mid-render bumps the stamp, this UPDATE then
     // matches zero rows, and the next tick re-renders with the newer text.
@@ -311,6 +357,12 @@ export async function runVisitNoteHandoutTick(
         finalizedAt: true,
         followUpDays: true,
         handoutStaleAt: true,
+        updatedAt: true,
+        revisions: {
+          orderBy: { revision: "desc" },
+          take: 1,
+          select: { id: true, revision: true, pdfObjectKey: true },
+        },
         amendments: {
           orderBy: { createdAt: "asc" },
           select: {

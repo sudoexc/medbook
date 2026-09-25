@@ -26,6 +26,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
+  emptyConclusionSections,
+  type ConclusionSection,
+} from "@/lib/visit-note-sections";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -42,6 +46,12 @@ import {
   visitNoteKey,
   type VisitNoteRow,
 } from "../_hooks/use-visit-note";
+
+const SECTION_LABEL: Record<ConclusionSection, string> = {
+  diagnosis: "activePatient.emptyDiagnosis",
+  conclusion: "activePatient.emptyConclusion",
+  prescriptions: "activePatient.emptyPrescriptions",
+};
 
 export function VisitActionBar() {
   const t = useTranslations("doctor.reception");
@@ -71,19 +81,15 @@ export function VisitActionBar() {
     note?.diagnosisCode || note?.diagnosisName?.trim(),
   );
 
+  // One definition of «empty» for every place that signs (reception, the
+  // conclusion card, the server's My Day gate): see visit-note-sections.
   const emptySectionsOf = (n: VisitNoteRow | null | undefined): string[] =>
     !n
       ? []
-      : [
-          !n.diagnosisCode && !n.diagnosisName?.trim()
-            ? t("activePatient.emptyDiagnosis")
-            : null,
-          !n.bodyMarkdown?.trim() ? t("activePatient.emptyConclusion") : null,
-          (n.visitPrescriptions?.length ?? 0) === 0 &&
-          n.prescriptions.length === 0
-            ? t("activePatient.emptyPrescriptions")
-            : null,
-        ].filter((s): s is string => s !== null);
+      : emptyConclusionSections({
+          ...n,
+          structuredRx: n.visitPrescriptions?.length ?? 0,
+        }).map((section) => t(SECTION_LABEL[section]));
 
   // P0-2 — drain the editor's debounced tail before any finalize decision.
   const flushBeforeFinalize = async (): Promise<boolean> => {

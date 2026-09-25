@@ -40,6 +40,7 @@ const state = {
   findManyWhere: null as Record<string, unknown> | null,
   patchNoteUpdates: [] as Array<Record<string, unknown>>,
   patchNote: null as Record<string, unknown> | null,
+  uploadKeys: [] as string[],
 };
 
 function makeSweepNote(
@@ -103,7 +104,10 @@ vi.mock("@/server/queue", () => ({
 }));
 
 vi.mock("@/server/storage/minio", () => ({
-  uploadObject: vi.fn(async () => ({ url: "https://files/x.pdf" })),
+  uploadObject: vi.fn(async (_b: unknown, key: string) => {
+    state.uploadKeys.push(key);
+    return { url: `https://files/medbook/${key}`, key };
+  }),
 }));
 
 vi.mock("@/server/visit-notes/conclusion-pdf", () => ({
@@ -133,6 +137,15 @@ vi.mock("@/lib/prisma", () => {
         state.upserts.push(args);
         return { id: "doc_1" };
       }),
+      findUnique: vi.fn(async () => null),
+    },
+    // G1-01 — a signed-note correction is recorded as revisions.
+    visitNoteRevision: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async ({ data }: { data: { revision: number } }) => ({
+        id: `rev_${data.revision}`,
+        revision: data.revision,
+      })),
     },
     $executeRaw: vi.fn(
       async (strings: TemplateStringsArray, ...values: unknown[]) => {
@@ -152,6 +165,7 @@ vi.mock("@/lib/prisma", () => {
     visitPrescription: {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async () => ({ count: 0 })),
+      findMany: vi.fn(async () => []),
     },
   };
   return {
@@ -197,6 +211,7 @@ beforeEach(() => {
   state.findManyWhere = null;
   state.patchNoteUpdates = [];
   state.patchNote = null;
+  state.uploadKeys = [];
 });
 
 // ----- worker tests --------------------------------------------------------
@@ -247,6 +262,67 @@ describe("handout sweep — re-render of stale conclusions", () => {
     // landed mid-render bumps the stamp and this clear must match nothing.
     expect(values).toContain("vn_1");
     expect(values).toContain(STALE_AT);
+  });
+
+  it("G1-01: every render gets its own key; the file issued before is never overwritten", async () => {
+    const mod = await import("@/server/workers/visit-note-handout");
+    state.existingDoc = { verifyToken: "tok_PRINTED" };
+
+    state.notes = [makeSweepNote()];
+    await mod.runVisitNoteHandoutTick(NOW);
+    state.notes = [makeSweepNote()];
+    await mod.runVisitNoteHandoutTick(new Date(NOW.getTime() + 60_000));
+
+    expect(state.uploadKeys).toHaveLength(2);
+    expect(state.uploadKeys[0]).not.toBe(state.uploadKeys[1]);
+    for (const key of state.uploadKeys) {
+      expect(key.startsWith("clinics/c1/conclusions/vn_1/")).toBe(true);
+    }
+    // The document now points at the newest file.
+    expect(state.upserts[1].update.fileUrl).toContain(state.uploadKeys[1]);
+  });
+
+  it("G1-01: links the PDF to the revision it shows, only if the note did not move on", async () => {
+    const mod = await import("@/server/workers/visit-note-handout");
+    const readAt = new Date("2026-08-20T09:59:30.000Z");
+    state.notes = [
+      makeSweepNote({
+        updatedAt: readAt,
+        revisions: [{ id: "rev_2", revision: 2, pdfObjectKey: null }],
+      }),
+    ];
+    state.existingDoc = { verifyToken: "tok_PRINTED" };
+
+    await mod.runVisitNoteHandoutTick(NOW);
+
+    expect(state.uploadKeys[0]).toMatch(/\/vn_1\/r2-\d+\.pdf$/);
+    const link = state.rawExecs.find(({ strings }) =>
+      strings.join("?").includes('UPDATE "VisitNoteRevision"'),
+    );
+    expect(link).toBeDefined();
+    const sql = link!.strings.join("?");
+    expect(sql).toContain('"pdfObjectKey" IS NULL');
+    expect(sql).toContain('"updatedAt" =');
+    expect(link!.values).toContain(state.uploadKeys[0]);
+    expect(link!.values).toContain("rev_2");
+    expect(link!.values).toContain(readAt);
+  });
+
+  it("G1-01: a revision that already has its PDF keeps it", async () => {
+    const mod = await import("@/server/workers/visit-note-handout");
+    state.notes = [
+      makeSweepNote({
+        updatedAt: NOW,
+        revisions: [
+          { id: "rev_1", revision: 1, pdfObjectKey: "clinics/c1/conclusions/vn_1/r1-1.pdf" },
+        ],
+      }),
+    ];
+    await mod.runVisitNoteHandoutTick(NOW);
+    const link = state.rawExecs.find(({ strings }) =>
+      strings.join("?").includes('UPDATE "VisitNoteRevision"'),
+    );
+    expect(link).toBeUndefined();
   });
 
   it("first render (no stale anchor) mints a token and skips the anchor clear", async () => {

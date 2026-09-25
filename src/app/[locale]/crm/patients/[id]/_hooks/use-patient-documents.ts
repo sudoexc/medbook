@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { staffFileHref } from "@/lib/storage-ref";
 
 export type PatientDocument = {
   id: string;
@@ -33,17 +34,14 @@ export type PatientDocument = {
 
 /**
  * The stored `fileUrl` is either the raw MinIO URL (private bucket → direct
- * GET fails with AccessDenied) or a base64 signature `data:` URL. The streaming
- * route at `/api/crm/documents/file?key=…` is the only path with tenant scoping
- * + the docker-internal MinIO endpoint, so route every persisted file through
- * it. Signature data URLs are passed through unchanged.
+ * GET fails with AccessDenied), our proxy URL, or a base64 signature `data:`
+ * URL. The streaming route at `/api/crm/documents/file?key=…` is the only
+ * path with tenant scoping + the docker-internal MinIO endpoint, so route
+ * every persisted file through it; data: URLs pass through unchanged. The
+ * parsing is shared with the server (CD-02), so the two cannot disagree.
  */
 export function documentDownloadHref(fileUrl: string): string {
-  if (fileUrl.startsWith("data:")) return fileUrl;
-  const idx = fileUrl.indexOf("/clinics/");
-  if (idx < 0) return fileUrl;
-  const key = fileUrl.slice(idx + 1);
-  return `/api/crm/documents/file?key=${encodeURIComponent(key)}`;
+  return staffFileHref(fileUrl);
 }
 
 export type DocumentsListResponse = {

@@ -45,6 +45,12 @@ import {
 import { escapeHtml } from "@/lib/telegram";
 import { sendMessage } from "@/server/telegram/send";
 import { clientIpForAudit } from "@/lib/client-ip";
+import { storageKeyFromUrl } from "@/lib/storage-ref";
+import {
+  ensureSignedStateOnRecord,
+  revisionContentOf,
+} from "@/server/visit-notes/revisions";
+import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -235,7 +241,7 @@ export const PATCH = createApiHandler(
         if (fromStatus === "COMPLETED") {
           const signedNote = await tx.visitNote.findFirst({
             where: { appointmentId: id, status: "FINALIZED" },
-            select: { id: true },
+            include: { visitPrescriptions: { orderBy: { sortOrder: "asc" } } },
           });
           if (signedNote) {
             await tx.visitNote.update({
@@ -243,6 +249,11 @@ export const PATCH = createApiHandler(
               data: {
                 status: "DRAFT",
                 finalizedAt: null,
+                // The handout is composed from what is signed (audit VW-02);
+                // a reopened note has nothing signed, and the next signature
+                // composes it afresh. Keeping it let a re-sign carry the old
+                // text into the patient's PDF and Mini App.
+                patientHandoutMarkdown: null,
                 // `firstFinalizedAt` is deliberately NOT cleared — it is the
                 // immutability clock, and reopening it would let a document
                 // signed weeks ago be rewritten destructively.
@@ -259,6 +270,26 @@ export const PATCH = createApiHandler(
                 // conclusion that contradicts the corrected one in the CRM.
                 handoutStaleAt: new Date(),
               },
+            });
+            // G1-01 — un-signing does not erase what was signed: when no
+            // revision holds the signed state yet (signed before revisions
+            // existed), it is recorded now, before the edits that follow.
+            await ensureSignedStateOnRecord(tx, {
+              clinicId: signedNote.clinicId,
+              visitNoteId: signedNote.id,
+              content: revisionContentOf(
+                signedNote,
+                signedNote.visitPrescriptions,
+              ),
+              issuedPdfKey: async () =>
+                storageKeyFromUrl(
+                  (
+                    await tx.document.findUnique({
+                      where: { visitNoteId: signedNote.id },
+                      select: { fileUrl: true },
+                    })
+                  )?.fileUrl,
+                ),
             });
             // Courses bridged from this note keep reminding the patient
             // while the visit is reopened — and a doctor reverting to REMOVE
@@ -516,6 +547,22 @@ export const PATCH = createApiHandler(
             role,
           });
         }
+      }
+
+      // DC-01 — the doctor closes his visit by SIGNING it (finalize, which
+      // also completes the visit). Completing it here around a draft with
+      // content left the conclusion unsigned for good: no number, no
+      // diagnosis on the chart, nothing sent to the patient. Refuse and name
+      // the note; My Day then offers to sign it. Reception staff may still
+      // close a visit (the doctor signs later from «Заключения»).
+      if (
+        body.status === "COMPLETED" &&
+        before.status !== "COMPLETED" &&
+        ctx.kind === "TENANT" &&
+        ctx.role === "DOCTOR"
+      ) {
+        const unsigned = await findUnsignedDraft(id);
+        if (unsigned) return conflict("visit_note_unsigned", unsigned);
       }
 
       // Single active visit per doctor — block starting a second visit while

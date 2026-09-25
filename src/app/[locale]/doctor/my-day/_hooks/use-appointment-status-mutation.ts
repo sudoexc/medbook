@@ -68,8 +68,51 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
   const qc = useQueryClient();
   const t = useTranslations("doctor.myDay");
 
+  /**
+   * Close a visit (audit DC-01). The doctor closes a visit by SIGNING its
+   * conclusion; completing it around a draft left the conclusion unsigned
+   * with no screen left to sign it on. The server refuses such a completion
+   * (409 `visit_note_unsigned`, naming the note and what it lacks), and here
+   * the doctor is asked to sign it: finalize signs AND completes the visit.
+   */
+  const completeVisit = async (
+    appointmentId: string,
+  ): Promise<{ signed: boolean }> => {
+    const res = await fetch(`/api/crm/appointments/${appointmentId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "COMPLETED" }),
+    });
+    if (res.ok) return { signed: false };
+    const parsed = await readErrorEnvelope(res);
+    if (
+      res.status === 409 &&
+      parsed.reason === "visit_note_unsigned" &&
+      parsed.visitNoteId
+    ) {
+      const missing = parsed.emptySections
+        .map((s) => t(`statusToast.section.${s}`))
+        .join(", ");
+      const question = missing
+        ? `${t("statusToast.signConfirm")}\n${t("statusToast.signConfirmMissing", { sections: missing })}`
+        : t("statusToast.signConfirm");
+      if (!window.confirm(question)) throw new Error("visit_note_unsigned");
+      const signed = await fetch(
+        `/api/crm/visit-notes/${parsed.visitNoteId}/finalize`,
+        { method: "POST", credentials: "include" },
+      );
+      if (!signed.ok) throw new Error("sign_failed");
+      return { signed: true };
+    }
+    throw new Error(parsed.reason || `HTTP ${res.status}`);
+  };
+
   return useMutation<unknown, Error, StatusMutationArgs, Snapshot>({
     mutationFn: async ({ appointmentId, toStatus, revert, call }) => {
+      if (!call && !revert && toStatus === "COMPLETED") {
+        return completeVisit(appointmentId);
+      }
       const url = call
         ? `/api/crm/appointments/${appointmentId}?call=true`
         : revert
@@ -110,25 +153,18 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
               ? cachedCurrent.appointmentId
               : null);
           if (activeId) {
-            const completed = await fetch(
-              `/api/crm/appointments/${activeId}`,
-              {
-                method: "PATCH",
-                credentials: "include",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ status: "COMPLETED" }),
-              },
-            );
-            if (completed.ok) {
-              // Retry the original transition once, now that the lane is free.
-              res = await patch();
-              if (res.ok) return (await res.json()) as unknown;
-              const retry = await readErrorEnvelope(res);
-              throw new Error(retry.reason || `HTTP ${res.status}`);
-            }
+            // Closing the active visit follows the same rule as the button:
+            // its conclusion gets signed, not abandoned as a draft (DC-01).
+            // A refusal or failure here propagates with its own message.
+            await completeVisit(activeId);
+            // Retry the original transition once, now that the lane is free.
+            res = await patch();
+            if (res.ok) return (await res.json()) as unknown;
+            const retry = await readErrorEnvelope(res);
+            throw new Error(retry.reason || `HTTP ${res.status}`);
           }
-          // No active id resolvable or completion failed — fall through to
-          // the existing errAnotherInProgress toast via messageFor.
+          // No active id resolvable: fall through to the existing
+          // errAnotherInProgress toast via messageFor.
         }
         throw new Error(parsed.reason || `HTTP ${res.status}`);
       }
@@ -259,8 +295,14 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       toast.error(messageFor(args, err.message, t));
     },
 
-    onSuccess: (_data, args) => {
-      const label = successFor(args, t);
+    onSuccess: (data, args) => {
+      const signed =
+        typeof data === "object" &&
+        data !== null &&
+        (data as { signed?: unknown }).signed === true;
+      const label = signed
+        ? t("statusToast.signedAndCompleted")
+        : successFor(args, t);
       if (label) toast.success(label);
     },
 
@@ -272,6 +314,8 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
       // /patients reads `hasActiveAppointment` per row — without this the
       // "На приёме" badge only appears after a manual refresh.
       qc.invalidateQueries({ queryKey: ["doctor", "me", "patients"] });
+      // A visit closed by signing moves its conclusion out of «Черновики».
+      qc.invalidateQueries({ queryKey: ["doctor", "conclusions"] });
     },
   });
 }
@@ -282,9 +326,13 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
  * `activeAppointmentId` extra that `another_visit_in_progress` conflicts
  * attach.
  */
+type ConclusionSection = "diagnosis" | "conclusion" | "prescriptions";
+
 async function readErrorEnvelope(res: Response): Promise<{
   reason: string;
   activeAppointmentId: string | null;
+  visitNoteId: string | null;
+  emptySections: ConclusionSection[];
 }> {
   try {
     const j = (await res.json()) as {
@@ -292,14 +340,23 @@ async function readErrorEnvelope(res: Response): Promise<{
       code?: string;
       message?: string;
       activeAppointmentId?: string;
+      visitNoteId?: string;
+      emptySections?: ConclusionSection[];
     };
     return {
       reason: j.reason ?? j.code ?? j.message ?? "",
       activeAppointmentId: j.activeAppointmentId ?? null,
+      visitNoteId: j.visitNoteId ?? null,
+      emptySections: Array.isArray(j.emptySections) ? j.emptySections : [],
     };
   } catch {
     // body wasn't JSON — fall through to generic message.
-    return { reason: "", activeAppointmentId: null };
+    return {
+      reason: "",
+      activeAppointmentId: null,
+      visitNoteId: null,
+      emptySections: [],
+    };
   }
 }
 
@@ -353,6 +410,12 @@ function messageFor(
   }
   if (raw === "revert_target_mismatch") {
     return t("statusToast.errRevertMismatch");
+  }
+  if (raw === "visit_note_unsigned") {
+    return t("statusToast.errUnsigned");
+  }
+  if (raw === "sign_failed") {
+    return t("statusToast.errSignFailed");
   }
   if (args.call) return t("statusToast.errCallFailed");
   return args.revert

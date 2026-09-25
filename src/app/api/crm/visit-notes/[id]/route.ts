@@ -1,9 +1,11 @@
 /**
  * /api/crm/visit-notes/[id] — GET single note, PATCH autosave.
  *
- * PATCH is hit by the reception editor with 1.5s debounce; allow only DRAFT
- * notes to be mutated by the owning doctor. FINALIZED notes are read-only
- * via this route (Phase 4 will add a 24h edit window with its own gate).
+ * PATCH is hit by the reception editor with 1.5s debounce and by the
+ * conclusion screen's in-window corrections. Only the owning doctor writes;
+ * a signed note is writable for 24h from its first signature, and every such
+ * correction recomposes the patient handout (audit VW-02) and is recorded as
+ * an immutable revision next to the state it replaced (audit G1-01).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +15,16 @@ import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
 import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
 import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
 import { didPrescriptionsChange } from "@/server/visit-notes/prescription-diff";
+import {
+  composeNoteHandout,
+  touchesHandout,
+} from "@/server/visit-notes/handout";
+import {
+  ensureSignedStateOnRecord,
+  recordSignedEdit,
+  revisionContentOf,
+} from "@/server/visit-notes/revisions";
+import { storageKeyFromUrl } from "@/lib/storage-ref";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
@@ -66,12 +78,21 @@ export const PATCH = createApiHandler(
   async ({ request, body, ctx }) => {
     if (ctx.kind !== "TENANT") return forbidden();
     const id = idFromUrl(request);
-    const before = await prisma.visitNote.findUnique({ where: { id } });
+    const before = await prisma.visitNote.findUnique({
+      where: { id },
+      // The handout's letterhead, for recomposing it after a correction.
+      include: {
+        patient: { select: { fullName: true } },
+        doctor: { select: { nameRu: true, specializationRu: true } },
+        clinic: { select: { nameRu: true } },
+        appointment: { select: { date: true } },
+      },
+    });
     if (!before) return notFound();
 
     const doctor = await prisma.doctor.findFirst({
       where: { userId: ctx.userId },
-      select: { id: true },
+      select: { id: true, nameRu: true },
     });
     if (!doctor || doctor.id !== before.doctorId) return forbidden();
 
@@ -133,6 +154,35 @@ export const PATCH = createApiHandler(
 
     const changedFields = Object.keys(data);
     const rxRows = body.visitPrescriptions;
+    const isSigned = before.status === "FINALIZED";
+    // Signed once, reopened by a visit revert: still holds what was signed
+    // until the first edit overwrites it.
+    const isReopened = !isSigned && before.firstFinalizedAt != null;
+
+    // The stored rows: compared against below, and part of the signed state
+    // a correction must keep on record (G1-01).
+    const beforeRows =
+      rxRows !== undefined ||
+      ((isSigned || isReopened) && changedFields.length > 0)
+        ? await prisma.visitPrescription.findMany({
+            where: { visitNoteId: id },
+            orderBy: { sortOrder: "asc" },
+            select: {
+              drugId: true,
+              displayName: true,
+              form: true,
+              strength: true,
+              dose: true,
+              timesOfDay: true,
+              mealRelation: true,
+              durationDays: true,
+              instructionRu: true,
+              instructionUz: true,
+              remindPatient: true,
+              sortOrder: true,
+            },
+          })
+        : null;
 
     // Did the prescription list ACTUALLY change, or did the editor just resend
     // the current one? The constructor saves replace-all on every interaction
@@ -143,30 +193,40 @@ export const PATCH = createApiHandler(
     // LONG, or WHETHER they are reminded at all.
     let rxChanged = false;
     if (rxRows !== undefined) {
-      const beforeRows = await prisma.visitPrescription.findMany({
-        where: { visitNoteId: id },
-        orderBy: { sortOrder: "asc" },
-        select: {
-          displayName: true,
-          strength: true,
-          dose: true,
-          timesOfDay: true,
-          mealRelation: true,
-          durationDays: true,
-          instructionRu: true,
-          instructionUz: true,
-          remindPatient: true,
-        },
-      });
-      rxChanged = didPrescriptionsChange(beforeRows, rxRows);
+      rxChanged = didPrescriptionsChange(beforeRows ?? [], rxRows);
       if (rxChanged) changedFields.push("visitPrescriptions");
+    }
+
+    // VW-02 — the handout is the patient's copy of the diagnosis,
+    // prescriptions, advice and follow-up. On a signed note it used to stay
+    // as composed at the first signature, so a corrected dose reached the
+    // patient's PDF only in the schedule grid, under a text still naming the
+    // old one, and the Mini App kept the old text entirely. Recompose it from
+    // the state this correction produces; the worker then re-renders the PDF
+    // (handoutStaleAt below). Deliberately after changedFields is captured:
+    // it is derived, not something the doctor edited.
+    if (
+      isSigned &&
+      body.patientHandoutMarkdown === undefined &&
+      touchesHandout(changedFields)
+    ) {
+      const next = { ...before, ...data } as typeof before;
+      data.patientHandoutMarkdown = composeNoteHandout(before, {
+        diagnosisName: next.diagnosisName,
+        complaints: next.complaints,
+        prescriptions: next.prescriptions,
+        advice: next.advice,
+        followUpNote: next.followUpNote,
+        visitPrescriptions: rxChanged && rxRows ? rxRows : (beforeRows ?? []),
+      });
     }
 
     // A finalized note already has its CONCLUSION PDF rendered (the patient
     // sees it in the Mini App and via the QR link), so an accepted in-window
     // edit makes that file stale. Stamp the convergence anchor; the handout
-    // worker sweeps it up and re-renders IN PLACE — same MinIO key, same
-    // verifyToken, same documentNumber — so the printed QR keeps resolving.
+    // worker sweeps it up and re-renders it with the same verifyToken and
+    // documentNumber, so the printed QR keeps resolving, under a NEW storage
+    // key: the file issued before stays readable (G1-01).
     // Deliberately after changedFields is captured: the anchor is a technical
     // field and must not appear in the audit/event field list.
     if (before.status === "FINALIZED" && changedFields.length > 0) {
@@ -194,6 +254,7 @@ export const PATCH = createApiHandler(
 
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
+    let revisions: { before: number; after: number } | null = null;
 
     const updated = await prisma.$transaction(async (tx) => {
       // Ф2 — structured prescriptions: replace-all, consistent with the
@@ -236,6 +297,42 @@ export const PATCH = createApiHandler(
         },
       });
 
+      // G1-01 — a correction of a signed note overwrites it in place, so
+      // both states go on record here, in the same transaction: the one
+      // being replaced (unless a revision already holds it) and the new one,
+      // with who made it. The UPDATE above holds the row lock, so revision
+      // numbers of concurrent writers cannot collide.
+      const issuedPdfKey = async () =>
+        storageKeyFromUrl(
+          (
+            await tx.document.findUnique({
+              where: { visitNoteId: id },
+              select: { fileUrl: true },
+            })
+          )?.fileUrl,
+        );
+      if (isSigned && changedFields.length > 0) {
+        revisions = await recordSignedEdit(tx, {
+          clinicId: before.clinicId,
+          visitNoteId: id,
+          before: revisionContentOf(before, beforeRows ?? []),
+          after: revisionContentOf(row, row.visitPrescriptions),
+          authorUserId: actorUserId,
+          authorName: doctor.nameRu,
+          issuedPdfKey,
+        });
+      } else if (isReopened && changedFields.length > 0) {
+        // While reopened the note is a draft again: its edits are not
+        // versioned one by one (the next signature records the result), but
+        // the signed state they overwrite must survive them.
+        await ensureSignedStateOnRecord(tx, {
+          clinicId: before.clinicId,
+          visitNoteId: id,
+          content: revisionContentOf(before, beforeRows ?? []),
+          issuedPdfKey,
+        });
+      }
+
       // Skip the envelope when the autosave was a no-op — the editor sends a
       // PATCH on every debounced keystroke even if nothing changed.
       if (changedFields.length > 0) {
@@ -273,7 +370,13 @@ export const PATCH = createApiHandler(
       action: "visit_note.update",
       entityType: "VisitNote",
       entityId: id,
-      meta: { fields: changedFields, correlationId },
+      // The values themselves live in VisitNoteRevision: `revisions` names
+      // the before/after rows of a signed-note correction.
+      meta: {
+        fields: changedFields,
+        correlationId,
+        ...(revisions ? { revisions } : {}),
+      },
     });
 
     // A diagnosis written in the doctor's own words (or with a code the

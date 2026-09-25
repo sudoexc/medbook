@@ -24,8 +24,15 @@ import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-chang
 import { completionFields } from "@/server/appointments/completion";
 import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
 import { allocateDocumentNumber } from "@/server/services/document-number";
-import { composePatientHandout } from "@/lib/catalogs/handout-composer";
-import { formatPrescriptionLines } from "@/lib/catalogs/prescription-format";
+import { composeNoteHandout } from "@/server/visit-notes/handout";
+import {
+  appendRevision,
+  changedRevisionFields,
+  ensureSignedStateOnRecord,
+  latestRevision,
+  revisionContentOf,
+} from "@/server/visit-notes/revisions";
+import { storageKeyFromUrl } from "@/lib/storage-ref";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -62,14 +69,16 @@ export const POST = createApiHandler(
           select: { nameRu: true, specializationRu: true },
         },
         clinic: { select: { nameRu: true } },
-        visitPrescriptions: true,
+        // In order: the handout lists them and the revision snapshots them
+        // exactly as the doctor arranged them.
+        visitPrescriptions: { orderBy: { sortOrder: "asc" } },
       },
     });
     if (!note) return notFound();
 
     const doctor = await prisma.doctor.findFirst({
       where: { userId: ctx.userId },
-      select: { id: true },
+      select: { id: true, nameRu: true },
     });
     if (!doctor || doctor.id !== note.doctorId) return forbidden();
 
@@ -88,34 +97,22 @@ export const POST = createApiHandler(
     // accident, and `PatientDiagnosis` simply gets no row.
 
     // The patient's PDF is rendered from `patientHandoutMarkdown` alone — the
-    // clinical body deliberately never reaches them. So a doctor who signs a
-    // conclusion without filling the «Памятка пациенту» tab silently sends the
-    // patient nothing: the app shows no document and nobody is told why.
-    // Observed in production — every finalized note of one patient had an
-    // empty handout. Compose it here from the structured fields the doctor did
-    // fill (diagnosis, prescriptions, advice, follow-up); the composer returns
-    // an empty string when there is genuinely nothing to say, and then we
-    // leave it alone rather than issue a blank sheet.
-    const composedHandout = note.patientHandoutMarkdown?.trim()
-      ? null
-      : composePatientHandout({
-          locale: "ru",
-          patientName: note.patient?.fullName ?? null,
-          doctorName: note.doctor?.nameRu ?? null,
-          doctorSpecialty: note.doctor?.specializationRu ?? null,
-          clinicName: note.clinic?.nameRu ?? null,
-          visitDate: note.appointment?.date ?? new Date(),
-          diagnosisName: note.diagnosisName,
-          complaints: note.complaints,
-          prescriptions: [
-            ...formatPrescriptionLines(note.visitPrescriptions ?? [], "ru", {
-              withInstruction: true,
-            }),
-            ...note.prescriptions,
-          ],
-          advice: note.advice,
-          followUp: note.followUpNote,
-        }) || null;
+    // clinical body deliberately never reaches them — and since the handout
+    // tab was removed (21.09.2026) nobody writes it by hand. Compose it from
+    // what is being signed: diagnosis, prescriptions, advice, follow-up.
+    //
+    // At EVERY signature, not only when empty (audit VW-02): a visit reverted,
+    // corrected and signed again kept the handout of the first signature, so
+    // the patient's PDF and Mini App listed a drug the doctor had removed.
+    // Null when there is genuinely nothing to say: no blank sheet is issued.
+    const composedHandout = composeNoteHandout(note, {
+      diagnosisName: note.diagnosisName,
+      complaints: note.complaints,
+      prescriptions: note.prescriptions,
+      advice: note.advice,
+      followUpNote: note.followUpNote,
+      visitPrescriptions: note.visitPrescriptions ?? [],
+    });
 
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
@@ -138,10 +135,49 @@ export const POST = createApiHandler(
           // clock, and a re-sign after a revert must not restart it.
           ...(note.firstFinalizedAt ? {} : { firstFinalizedAt: now }),
           documentNumber,
-          ...(composedHandout
-            ? { patientHandoutMarkdown: composedHandout }
-            : {}),
+          patientHandoutMarkdown: composedHandout,
         },
+      });
+
+      // G1-01 — what was signed, kept immutable next to the note: the note
+      // itself stays correctable for 24h, this row does not. A re-signature
+      // (after a visit revert) first makes sure the previous signed state is
+      // on record, then notes what the new one changed.
+      const signedContent = revisionContentOf(
+        updatedNote,
+        note.visitPrescriptions ?? [],
+      );
+      const previous = !note.firstFinalizedAt
+        ? await latestRevision(tx, id)
+        : await ensureSignedStateOnRecord(tx, {
+            clinicId: note.clinicId,
+            visitNoteId: id,
+            content: revisionContentOf(note, note.visitPrescriptions ?? []),
+            issuedPdfKey: async () =>
+              storageKeyFromUrl(
+                (
+                  await tx.document.findUnique({
+                    where: { visitNoteId: id },
+                    select: { fileUrl: true },
+                  })
+                )?.fileUrl,
+              ),
+          });
+      const signedRevision = await appendRevision(tx, {
+        clinicId: note.clinicId,
+        visitNoteId: id,
+        revision: (previous?.revision ?? 0) + 1,
+        kind: "SIGNED",
+        content: signedContent,
+        changedFields: previous
+          ? changedRevisionFields(
+              previous.content as Record<string, unknown>,
+              signedContent,
+            )
+          : [],
+        authorUserId: actorUserId,
+        authorName: doctor.nameRu,
+        createdAt: now,
       });
 
       let updatedAppt = note.appointment;
@@ -275,6 +311,7 @@ export const POST = createApiHandler(
         note: updatedNote,
         appointment: updatedAppt,
         patientDiagnosisId: patientDiagnosis?.id ?? null,
+        revision: signedRevision.revision,
       };
     });
 
@@ -311,6 +348,7 @@ export const POST = createApiHandler(
         correlationId,
         documentNumber: result.note.documentNumber,
         patientDiagnosisId: result.patientDiagnosisId,
+        revision: result.revision,
       },
     });
 

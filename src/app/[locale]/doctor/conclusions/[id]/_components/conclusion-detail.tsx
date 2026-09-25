@@ -4,7 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
+  AlertTriangleIcon,
   CheckIcon,
+  FileSignatureIcon,
   FileTextIcon,
   Loader2Icon,
   LockIcon,
@@ -14,15 +16,32 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import {
+  emptyConclusionSections,
+  type ConclusionSection,
+} from "@/lib/visit-note-sections";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import {
   isEditWindowExpired,
   isVersionConflict,
+  useFinalizeVisitNote,
   usePatchVisitNote,
   useVisitNote,
+  visitNoteKey,
   type VisitNotePatch,
+  type VisitNoteRow,
   type VisitPrescriptionDraft,
 } from "../../../reception/_hooks/use-visit-note";
 // Same controls the doctor used during the visit — reused, not re-implemented,
@@ -33,6 +52,7 @@ import {
 } from "../../../_components/diagnosis-follow-up-cards";
 import { PrescriptionConstructor } from "../../../reception/_components/prescription-constructor";
 import { AmendmentsSection } from "./amendments-section";
+import { RevisionsSection } from "./revisions-section";
 import { TelegramSendPanel } from "../../../_components/telegram-send-panel";
 
 const EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -75,6 +95,12 @@ export function ConclusionDetail({
   const noteQuery = useVisitNote(noteId);
   const patch = usePatchVisitNote(noteId);
   const note = noteQuery.data ?? null;
+  const qc = useQueryClient();
+  const finalize = useFinalizeVisitNote(noteId);
+  // Sections the doctor is asked to confirm before signing (null = closed).
+  const [signConfirm, setSignConfirm] = React.useState<
+    ConclusionSection[] | null
+  >(null);
 
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
@@ -172,6 +198,41 @@ export function ConclusionDetail({
     });
   };
 
+  // DC-01 — a draft whose visit is already closed (My Day closed it, or
+  // reception did) used to offer only «Открыть в приёме», which opens today's
+  // live visit, not this one: the draft could never be signed. It is signed
+  // right here now; finalize accepts a completed visit. A draft of a visit
+  // still in progress opens that very visit on the reception screen.
+  const appointmentStatus = note.appointment?.status ?? null;
+  const canSign = note.status === "DRAFT" && appointmentStatus === "COMPLETED";
+  const canOpenInReception =
+    note.status === "DRAFT" && appointmentStatus === "IN_PROGRESS";
+
+  const doSign = async () => {
+    try {
+      await finalize.mutateAsync();
+      toast.success(tr("detail.signed"));
+      void qc.invalidateQueries({ queryKey: ["doctor", "conclusions"] });
+    } catch {
+      toast.error(tr("detail.signError"));
+    }
+  };
+
+  const onSign = () => {
+    if (finalize.isPending || editing) return;
+    // The live row: a correction saved a moment ago counts.
+    const live = qc.getQueryData<VisitNoteRow>(visitNoteKey(note.id)) ?? note;
+    const missing = emptyConclusionSections({
+      ...live,
+      structuredRx: live.visitPrescriptions?.length ?? 0,
+    });
+    if (missing.length > 0) {
+      setSignConfirm(missing);
+      return;
+    }
+    void doSign();
+  };
+
   return (
     <div className="flex flex-col gap-4 xl:gap-5">
       <header className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -192,6 +253,11 @@ export function ConclusionDetail({
                 ? tr("detail.finalizedAt", { date: formatDateTime(note.finalizedAt) })
                 : tr("detail.statusDraft")}
             </div>
+            {canSign && (
+              <div className="text-xs text-amber-700">
+                {tr("detail.draftCompletedHint")}
+              </div>
+            )}
           </div>
         </div>
 
@@ -232,14 +298,30 @@ export function ConclusionDetail({
           {note.status === "FINALIZED" ? (
             <TelegramSendPanel patientId={note.patientId} visitNoteId={note.id} />
           ) : null}
-          {note.status === "DRAFT" && (
+          {canOpenInReception && (
             <Link
-              href={`/${locale}/doctor/reception`}
+              href={`/${locale}/doctor/reception?appointment=${encodeURIComponent(note.appointmentId)}`}
               className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <PencilIcon className="size-4" />
               {tr("detail.openInReception")}
             </Link>
+          )}
+          {canSign && (
+            <button
+              type="button"
+              onClick={onSign}
+              disabled={finalize.isPending || editing}
+              title={editing ? tr("detail.signSaveFirst") : undefined}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {finalize.isPending ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <FileSignatureIcon className="size-4" />
+              )}
+              {tr("detail.sign")}
+            </button>
           )}
         </div>
       </header>
@@ -348,10 +430,15 @@ export function ConclusionDetail({
               }
               onPresetClick={() => {}}
               onRemoveLegacyChip={(chip: string) =>
+                // Built on the live cache row, like every replace-all save:
+                // two quick removals must both stick (audit VW-01).
                 applyStructuredPatch({
-                  prescriptions: (note.prescriptions ?? []).filter(
-                    (c) => c !== chip,
-                  ),
+                  prescriptions: (
+                    qc.getQueryData<VisitNoteRow>(visitNoteKey(note.id))
+                      ?.prescriptions ??
+                    note.prescriptions ??
+                    []
+                  ).filter((c) => c !== chip),
                 })
               }
               onOpenCatalog={() => {}}
@@ -402,6 +489,14 @@ export function ConclusionDetail({
       </div>
 
       {everSigned && (
+        <RevisionsSection
+          noteId={note.id}
+          updatedAt={note.updatedAt}
+          locale={locale}
+        />
+      )}
+
+      {everSigned && (
         <AmendmentsSection
           noteId={note.id}
           locale={locale}
@@ -410,6 +505,50 @@ export function ConclusionDetail({
           onFormOpenChange={setAmendFormOpen}
         />
       )}
+
+      <Dialog
+        open={signConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setSignConfirm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tr("detail.signConfirmTitle")}</DialogTitle>
+            <DialogDescription>{tr("detail.signConfirmHint")}</DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-1.5">
+            {(signConfirm ?? []).map((section) => (
+              <li
+                key={section}
+                className="flex items-center gap-2 text-sm text-foreground"
+              >
+                <AlertTriangleIcon className="size-4 shrink-0 text-amber-500" />
+                {tr(`detail.sections.${section}`)}
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSignConfirm(null)}
+            >
+              {tr("detail.signConfirmCancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={finalize.isPending}
+              onClick={() => {
+                setSignConfirm(null);
+                void doSign();
+              }}
+            >
+              {tr("detail.signConfirmConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

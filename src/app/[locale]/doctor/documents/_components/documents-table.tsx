@@ -28,6 +28,7 @@ import {
   type DocumentType,
   type DoctorDocumentRow,
 } from "../_hooks/use-doctor-documents";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const RU_MONTHS_SHORT = [
   "янв.",
@@ -216,7 +217,10 @@ function DocumentRow({
 
   const handleDownload = () => {
     setMenuOpen(false);
-    if (doc.fileUrl) window.open(doc.fileUrl, "_blank", "noopener");
+    // Through our proxy: the stored URL is the private bucket (CD-02).
+    if (doc.fileUrl) {
+      window.open(staffFileHref(doc.fileUrl, { download: true }), "_blank", "noopener");
+    }
   };
 
   return (
@@ -228,7 +232,7 @@ function DocumentRow({
           <FileTextIcon className="size-4 text-destructive" />
         </span>
         <a
-          href={doc.fileUrl || "#"}
+          href={doc.fileUrl ? staffFileHref(doc.fileUrl) : "#"}
           target="_blank"
           rel="noopener"
           className="truncate text-sm font-medium text-foreground hover:underline"

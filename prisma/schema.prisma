@@ -448,6 +448,7 @@ model Clinic {
   telegramInviteTokens     TelegramInviteToken[]
   visitNotes               VisitNote[]
   visitNoteAmendments      VisitNoteAmendment[]
+  visitNoteRevisions       VisitNoteRevision[]
   reminders                Reminder[]
   labResults               LabResult[]
   labOrders                LabOrder[]
@@ -2240,6 +2241,8 @@ model VisitNote {
   // Post-window corrections. The original note stays byte-for-byte intact;
   // see VisitNoteAmendment for the medico-legal rationale.
   amendments           VisitNoteAmendment[]
+  // Every signed state and in-window correction, immutable (audit G1-01).
+  revisions            VisitNoteRevision[]
 
   @@index([clinicId, doctorId, status])
   @@index([clinicId, patientId, finalizedAt])
@@ -2299,6 +2302,43 @@ model VisitPrescription {
 // delete API. A wrong amendment is corrected by issuing another amendment,
 // exactly like the note it corrects.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Audit G1-01 — the immutable history of a signed conclusion. Inside the 24h
+// window the note itself is corrected in place, so without these rows the
+// clinic could not show what was signed, and the PDF was overwritten under
+// the same key. One row per signed state (SIGNED at each signature, EDITED
+// after each in-window correction, PRE_EDIT for a state no earlier row
+// holds); consecutive rows are the before/after of a correction. Rows are
+// never updated, except `pdfObjectKey`, set once by the render worker when
+// the PDF of exactly this content is stored under its own key.
+model VisitNoteRevision {
+  id            String    @id @default(cuid())
+  clinicId      String
+  clinic        Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  visitNoteId   String
+  // Cascade like VisitNoteAmendment: the note itself is delete-protected
+  // upstream (Patient → VisitNote is onDelete: Restrict).
+  visitNote     VisitNote @relation(fields: [visitNoteId], references: [id], onDelete: Cascade)
+  // 1, 2, 3… per note, in the order the states existed.
+  revision      Int
+  // SIGNED | EDITED | PRE_EDIT. String, not enum, like PatientAllergy.severity.
+  kind          String
+  // EDITED only: top-level fields that differ from the previous revision.
+  changedFields String[]  @default([])
+  // Snapshot of the clinical and patient-facing content, prescription rows
+  // included (see RevisionContent in src/server/visit-notes/revisions.ts).
+  content       Json
+  // Storage key of the CONCLUSION PDF rendered from this content, if any.
+  pdfObjectKey  String?
+  // Who signed or corrected. Name copied at write time: the history must
+  // read the same after a staff rename or deactivation.
+  authorUserId  String?
+  authorName    String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([visitNoteId, revision])
+  @@index([clinicId, visitNoteId])
+}
 
 model VisitNoteAmendment {
   id          String    @id @default(cuid())

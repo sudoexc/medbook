@@ -26,6 +26,7 @@ import { runQueueTx } from "@/server/appointments/queue-order";
 import { applyWaitingIntake } from "@/server/appointments/intake";
 import { initials } from "@/lib/format";
 import { sendCallNotice } from "@/server/telegram/call-notice";
+import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -73,6 +74,18 @@ export const PATCH = createApiHandler(
           role,
         });
       }
+    }
+
+    // DC-01 — same rule as the status PATCH: a doctor closes his visit by
+    // signing it, never around an unsigned conclusion.
+    if (
+      tenantPreCheck?.kind === "TENANT" &&
+      tenantPreCheck.role === "DOCTOR" &&
+      body.queueStatus === "COMPLETED" &&
+      before.status !== "COMPLETED"
+    ) {
+      const unsigned = await findUnsignedDraft(id);
+      if (unsigned) return conflict("visit_note_unsigned", unsigned);
     }
 
     // Confirmation is its own write — route through the single entry point so

@@ -26,6 +26,7 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err, forbidden } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const MAX_LETTERHEAD_BYTES = 512 * 1024; // 512 KB — scanned blanks are heavier than logos
 // No SVG: /files serves it straight from storage on our own origin, and an
@@ -145,7 +146,8 @@ export async function POST(request: Request): Promise<Response> {
       meta: { letterheadUrl },
     });
 
-    return ok({ letterheadUrl });
+    // Shown as the preview right away: our proxy, not the private bucket.
+    return ok({ letterheadUrl: staffFileHref(letterheadUrl) });
   });
 }
 

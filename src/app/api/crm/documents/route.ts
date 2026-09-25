@@ -19,6 +19,7 @@ import {
   publishViaOutbox,
 } from "@/server/realtime/outbox";
 import type { ActorRole, Surface } from "@/server/realtime/envelope";
+import { withStaffFileUrl } from "@/lib/storage-ref";
 
 /**
  * Per-patient sequence number — `#1` is the patient's oldest document,
@@ -136,7 +137,9 @@ export const GET = createApiListHandler(
       nextCursor = next?.id ?? null;
     }
     const withSeq = await attachSeq(rows);
-    return ok({ rows: withSeq, nextCursor });
+    // The stored URL points into the private bucket (AccessDenied in a
+    // browser); every row leaves as our streaming proxy URL (CD-02).
+    return ok({ rows: withSeq.map(withStaffFileUrl), nextCursor });
   }
 );
 
@@ -199,6 +202,6 @@ export const POST = createApiHandler(
       entityId: created.id,
       meta: { after: created },
     });
-    return ok(created, 201);
+    return ok(withStaffFileUrl(created), 201);
   }
 );

@@ -13,6 +13,7 @@ import { audit } from "@/lib/audit";
 import { displayPhone } from "@/lib/phone";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
+import { inlineStorageImage } from "@/server/storage/inline-image";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR", "NURSE"] },
@@ -85,7 +86,9 @@ export const GET = createApiListHandler(
           restrictions: sl.restrictions,
           notes: sl.notes,
           issuedAt: sl.issuedAt,
-          signatureUrl: sl.signatureUrl,
+          // Embedded: the stored URL is the private bucket and printed as a
+          // broken image (audit CD-02).
+          signatureUrl: await inlineStorageImage(sl.signatureUrl, ctx.clinicId),
           status: sl.status,
         },
         patient: sl.patient,

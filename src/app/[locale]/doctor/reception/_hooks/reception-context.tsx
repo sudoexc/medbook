@@ -74,17 +74,24 @@ type ReceptionContextValue = {
 
 const ReceptionContext = React.createContext<ReceptionContextValue | null>(null);
 
-export function ReceptionProvider({ children }: { children: React.ReactNode }) {
+export function ReceptionProvider({
+  children,
+  initialAppointmentId = null,
+}: {
+  children: React.ReactNode;
+  /** Deep link from a conclusion draft: open this visit first. */
+  initialAppointmentId?: string | null;
+}) {
   const queueQuery = useDoctorQueue();
   const queue = flattenQueue(queueQuery.data);
 
   const inProgress = queue.find((a) => a.status === "IN_PROGRESS") ?? null;
 
-  // The doctor can explicitly select an appointment via Queue card. Default
-  // picks the IN_PROGRESS one if it exists.
+  // The doctor can explicitly select an appointment via Queue card (or arrive
+  // with one from a conclusion draft). Default picks the IN_PROGRESS one.
   const [pickAppointmentId, setPickAppointmentIdState] = React.useState<
     string | null
-  >(null);
+  >(initialAppointmentId);
 
   // P0-3 — snapshot of the appointment we just finalized. Kept in a ref too
   // so the visit-note effect below can consult it without widening its deps.

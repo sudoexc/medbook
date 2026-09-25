@@ -11,13 +11,20 @@ import { ReceptionProvider } from "./_hooks/reception-context";
 
 export default async function ReceptionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ appointment?: string | string[] }>;
 }) {
   const { locale } = await params;
+  // `?appointment=<id>`: opened from a conclusion draft, show THAT visit
+  // (audit DC-01), not whichever one the queue would pick.
+  const { appointment } = await searchParams;
   const t = await getTranslations("doctor.reception");
   return (
-    <ReceptionProvider>
+    <ReceptionProvider
+      initialAppointmentId={typeof appointment === "string" ? appointment : null}
+    >
       <div className="flex gap-4 p-4 xl:gap-5 xl:p-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4 xl:gap-5">
           <Link

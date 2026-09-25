@@ -215,6 +215,15 @@ vi.mock("@/lib/prisma", () => {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async () => ({ count: 0 })),
     },
+    // G1-01 — a signed-note correction is recorded as revisions.
+    visitNoteRevision: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async ({ data }: { data: { revision: number } }) => ({
+        id: `rev_${data.revision}`,
+        revision: data.revision,
+      })),
+    },
+    document: { findUnique: vi.fn(async () => null) },
     $executeRaw: vi.fn(async () => 1),
   };
 

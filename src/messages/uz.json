@@ -6990,7 +6990,17 @@
         "errCallFailed": "Bemorni chaqirib bo‘lmadi",
         "errRevertFailed": "Qadamni bekor qilib bo‘lmadi",
         "errUpdateFailed": "Holatni yangilab bo‘lmadi",
-        "switchConfirm": "Joriy qabulni yakunlab, yangi bemorni boshlaysizmi?"
+        "switchConfirm": "Joriy qabulni yakunlab, yangi bemorni boshlaysizmi?",
+        "signConfirm": "Bu qabul xulosasi hali imzolanmagan. Uni imzolab, qabulni yakunlaysizmi?",
+        "signConfirmMissing": "To‘ldirilmagan: {sections}.",
+        "section": {
+          "diagnosis": "tashxis",
+          "conclusion": "xulosa matni",
+          "prescriptions": "tayinlovlar"
+        },
+        "signedAndCompleted": "Xulosa imzolandi, qabul yakunlandi",
+        "errUnsigned": "Qabul yakunlanmadi: xulosa imzolanmagan. Uni qabul oynasida yoki «Xulosalar» bo‘limida imzolang.",
+        "errSignFailed": "Xulosani imzolab bo‘lmadi. Uni «Xulosalar» bo‘limida ochib, qayta urinib ko‘ring."
       },
       "liveQueue": {
         "title": "Jonli navbat",
@@ -7465,7 +7475,21 @@
         "finalizedAtLabel": "Yakunlangan",
         "updatedAt": "Yangilangan",
         "ai": "AI",
-        "aiGenerated": "yaratilgan"
+        "aiGenerated": "yaratilgan",
+        "sign": "Imzolash",
+        "signed": "Xulosa imzolandi",
+        "signError": "Xulosani imzolab bo‘lmadi. Qayta urinib ko‘ring.",
+        "signSaveFirst": "Avval xulosa matnini saqlang",
+        "draftCompletedHint": "Qabul yakunlangan, lekin xulosa imzolanmagan. Uni tekshirib, imzolang.",
+        "signConfirmTitle": "Bo‘sh bo‘limlar bilan imzolaysizmi?",
+        "signConfirmHint": "Quyidagi bo‘limlar xulosada bo‘sh qoladi:",
+        "signConfirmConfirm": "Baribir imzolash",
+        "signConfirmCancel": "Bekor qilish",
+        "sections": {
+          "diagnosis": "Tashxis ko‘rsatilmagan",
+          "conclusion": "Xulosa matni",
+          "prescriptions": "Tayinlovlar"
+        }
       },
       "amendments": {
         "title": "Tuzatishlar",
@@ -7486,6 +7510,41 @@
         "errorNotFinalized": "Tuzatishlar faqat yakunlangan xulosalar uchun mavjud.",
         "errorForbidden": "Tuzatishni faqat xulosa muallifi qo‘sha oladi.",
         "errorGeneric": "Saqlanmadi — aloqani tekshirib, yana urinib ko‘ring."
+      },
+      "revisions": {
+        "title": "Versiyalar tarixi",
+        "hint": "Har bir imzo va har bir tuzatish alohida saqlanadi. Imzolangan variant yo‘qolmaydi.",
+        "loading": "Tarix yuklanmoqda…",
+        "loadError": "Versiyalar tarixini yuklab bo‘lmadi.",
+        "empty": "Hozircha versiyalar yo‘q.",
+        "number": "{n}-versiya",
+        "kind": {
+          "SIGNED": "Imzolandi",
+          "EDITED": "Tuzatildi",
+          "PRE_EDIT": "Tuzatishdan oldingi imzolangan variant"
+        },
+        "changed": "O‘zgartirildi: {fields}",
+        "pdf": "PDF",
+        "show": "Mazmuni",
+        "hide": "Yashirish",
+        "none": "yo‘q",
+        "followUpDays": "{n} kundan keyin",
+        "fields": {
+          "diagnosis": "tashxis",
+          "prescriptions": "tayinlovlar",
+          "advice": "tavsiyalar",
+          "complaints": "shikoyatlar",
+          "anamnesis": "anamnez",
+          "examination": "ko‘rik",
+          "body": "xulosa matni",
+          "followUp": "nazorat tashrifi",
+          "handout": "bemor eslatmasi",
+          "dynamics": "dinamika",
+          "bodyMap": "tana xaritasi",
+          "number": "hujjat raqami",
+          "other": "boshqa"
+        },
+        "systemAuthor": "Tizim"
       }
     },
     "documents": {

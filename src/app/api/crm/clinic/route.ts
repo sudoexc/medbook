@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateClinicSettingsSchema } from "@/server/schemas/settings";
+import { staffFileHref } from "@/lib/storage-ref";
 
 /** Strip secret-ish fields before returning to the client. */
 function redactClinic<T extends Record<string, unknown>>(c: T): T {
@@ -18,6 +19,13 @@ function redactClinic<T extends Record<string, unknown>>(c: T): T {
   // Mask tokens but keep presence indicator.
   out.tgBotToken = c.tgBotToken ? "***" : null;
   out.tgWebhookSecret = c.tgWebhookSecret ? "***" : null;
+  // The settings previews render these: the stored URLs point into the
+  // private bucket and showed a broken image (CD-02). The form never sends
+  // them back, uploads go through their own routes.
+  out.logoUrl = staffFileHref(c.logoUrl as string | null | undefined);
+  out.letterheadUrl = staffFileHref(
+    c.letterheadUrl as string | null | undefined,
+  );
   return out as T;
 }
 

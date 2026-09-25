@@ -18,6 +18,7 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
 
 import type { RxItem } from "@/server/schemas/clinical-forms";
+import { inlineStorageImage } from "@/server/storage/inline-image";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR", "NURSE"] },
@@ -88,7 +89,9 @@ export const GET = createApiListHandler(
           items: Array.isArray(rx.items) ? (rx.items as RxItem[]) : [],
           issuedAt: rx.issuedAt,
           validUntilAt: rx.validUntilAt,
-          signatureUrl: rx.signatureUrl,
+          // Embedded: the stored URL is the private bucket and printed as a
+          // broken image (audit CD-02).
+          signatureUrl: await inlineStorageImage(rx.signatureUrl, ctx.clinicId),
           status: rx.status,
         },
         patient: rx.patient,

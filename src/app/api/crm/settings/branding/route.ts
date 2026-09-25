@@ -31,6 +31,7 @@ import { isStubMode, uploadObject } from "@/server/storage/minio";
 import { UpdateBrandingSchema } from "@/server/schemas/settings";
 import { validateSubdomain } from "@/server/platform/subdomain";
 import { getFeatureFlags } from "@/server/platform/get-feature-flags";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const MAX_LOGO_BYTES = 256 * 1024; // 256 KB
 // No SVG: /files serves logos straight from storage on our own origin, and
@@ -94,6 +95,8 @@ export async function GET(request: Request): Promise<Response> {
     const flags = await getFeatureFlags(ctx.clinicId);
     return ok({
       ...clinic,
+      // Rendered as the preview: our proxy, not the private bucket (CD-02).
+      logoUrl: staffFileHref(clinic?.logoUrl),
       hasWhiteLabel: flags.hasWhiteLabel,
       hasCustomSubdomain: flags.hasCustomSubdomain,
     });
@@ -253,7 +256,7 @@ export async function PATCH(request: Request): Promise<Response> {
 
     if (Object.keys(data).length === 0) {
       // No-op write. Return current state without firing an audit row.
-      return ok({ ...before });
+      return ok({ ...before, logoUrl: staffFileHref(before.logoUrl) });
     }
 
     const after = await prisma.clinic.update({
@@ -274,6 +277,6 @@ export async function PATCH(request: Request): Promise<Response> {
       meta: { changed: Object.keys(data) },
     });
 
-    return ok(after);
+    return ok({ ...after, logoUrl: staffFileHref(after.logoUrl) });
   });
 }

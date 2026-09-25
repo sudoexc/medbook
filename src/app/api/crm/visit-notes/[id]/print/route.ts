@@ -57,6 +57,7 @@ import {
   renderMedicationGridHtml,
 } from "@/server/visit-notes/render-handout";
 import { findPreviousFinalizedVisit } from "@/server/visit-notes/previous-visit";
+import { inlineStorageImage } from "@/server/storage/inline-image";
 
 function idFromUrl(request: Request): string {
   // /api/crm/visit-notes/[id]/print — id is segment[-2].
@@ -219,6 +220,16 @@ export const GET = createApiListHandler(
             },
           })
         : null;
+
+    // The bytes themselves, not the stored URL: that one points into the
+    // private bucket and printed as a broken image, and even our proxy URL
+    // dies once the page is saved as PDF (audit CD-02).
+    const [letterheadSrc, logoSrc] = clinic
+      ? await Promise.all([
+          inlineStorageImage(clinic.letterheadUrl, clinic.id),
+          inlineStorageImage(clinic.logoUrl, clinic.id),
+        ])
+      : [null, null];
 
     const clinicName = clinic
       ? locale === "uz"
@@ -396,15 +407,15 @@ export const GET = createApiListHandler(
       ? `<div class="doc-number">№ ${escapeHtml(note.documentNumber)}</div>`
       : "";
     const renderHeader = (titleInner: string): string =>
-      clinic?.letterheadUrl
+      letterheadSrc
         ? `<header class="letterhead">
-      <img src="${escapeHtml(clinic.letterheadUrl)}" alt="${escapeHtml(clinicName)}" />
+      <img src="${escapeHtml(letterheadSrc)}" alt="${escapeHtml(clinicName)}" />
       <div class="letterhead-row"><h2>${titleInner}</h2>${numberHtml}</div>
     </header>`
         : `<header class="header">
       ${
-        clinic?.logoUrl
-          ? `<img class="logo" src="${escapeHtml(clinic.logoUrl)}" alt="" />`
+        logoSrc
+          ? `<img class="logo" src="${escapeHtml(logoSrc)}" alt="" />`
           : `<div class="logo" aria-hidden="true"></div>`
       }
       <div>
@@ -813,15 +824,22 @@ export const GET = createApiListHandler(
 
     // «Как выглядит упаковка» — the patient walks into a pharmacy holding a
     // picture instead of a name they cannot pronounce. Rendered only for the
-    // drugs this clinic has actually photographed; absolute URLs because the
-    // printed page may be opened from a PDF viewer with no page origin.
-    const packShots = note.visitPrescriptions
-      .map((rx) => ({
-        name: rx.displayName,
-        photo: (rx as { drug?: { photoUrl: string | null } | null }).drug
-          ?.photoUrl,
-      }))
-      .filter((x): x is { name: string; photo: string } => Boolean(x.photo));
+    // drugs this clinic has actually photographed. The photo is embedded:
+    // the stored URL is either the private bucket (AccessDenied) or our
+    // proxy, which a PDF viewer with no session cannot open (CD-02). A dev
+    // `/uploads/…` file stays a URL, made absolute for the same reason.
+    const packShots = (
+      await Promise.all(
+        note.visitPrescriptions.map(async (rx) => {
+          const stored = (rx as { drug?: { photoUrl: string | null } | null })
+            .drug?.photoUrl;
+          const photo = clinic
+            ? await inlineStorageImage(stored, clinic.id)
+            : null;
+          return { name: rx.displayName, photo };
+        }),
+      )
+    ).filter((x): x is { name: string; photo: string } => Boolean(x.photo));
     const handoutPacksSection =
       packShots.length > 0
         ? `<section><h2 class="md-h2">${escapeHtml(
@@ -830,7 +848,7 @@ export const GET = createApiListHandler(
             .map(
               (p) =>
                 `<figure class="pack"><img src="${escapeHtml(
-                  p.photo.startsWith("http")
+                  p.photo.startsWith("data:") || p.photo.startsWith("http")
                     ? p.photo
                     : `${baseUrl}${p.photo}`,
                 )}" alt=""><figcaption>${escapeHtml(p.name)}</figcaption></figure>`,

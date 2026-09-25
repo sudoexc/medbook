@@ -20,6 +20,7 @@ import {
   useDoctorPatientVisits,
   type DoctorPatientVisitRow,
 } from "../../_hooks/use-doctor-patient-visits";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const RU_MONTHS_SHORT = [
   "янв.",
@@ -132,7 +133,7 @@ export function VisitsSection({
             {unattached.documents.map((d) => (
               <li key={d.id}>
                 <a
-                  href={d.fileUrl}
+                  href={staffFileHref(d.fileUrl)}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-primary underline-offset-2 hover:underline"
@@ -324,7 +325,7 @@ function VisitEntry({
                       have — the flat tab this replaced opened files, so the
                       timeline must too. */}
                   <a
-                    href={d.fileUrl}
+                    href={staffFileHref(d.fileUrl)}
                     target="_blank"
                     rel="noreferrer"
                     className="text-primary underline-offset-2 hover:underline"

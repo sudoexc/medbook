@@ -28,6 +28,7 @@ import { ok, err } from "@/server/http";
 import { checkUpload } from "@/server/storage/safe-file";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
 import { sanitizeOverrides } from "@/server/catalog/clinic-overlay";
+import { staffKeyHref } from "@/lib/storage-ref";
 
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB — a pack shot, not a scan.
 const ALLOWED_MIME = new Map([
@@ -130,8 +131,12 @@ export const POST = createApiHandler(
       photoUrl = `/uploads/drugs/${ctx.clinicId}/${filename}`;
     } else {
       const key = `drugs/${ctx.clinicId}/${id}/${filename}`;
-      const uploaded = await uploadObject(undefined, key, buf, photoMime);
-      photoUrl = uploaded.url;
+      await uploadObject(undefined, key, buf, photoMime);
+      // Stored as our streaming-proxy URL, as the header promises: the
+      // bucket's own URL is AccessDenied in a browser, so every pack photo
+      // rendered as a broken image (audit CD-02). Rows saved the old way are
+      // rewritten by scripts/fix-cd02-drug-photo-urls.ts.
+      photoUrl = staffKeyHref(key);
     }
 
     if (drug.clinicId) {

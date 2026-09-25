@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err } from "@/server/http";
+import { staffFileHref } from "@/lib/storage-ref";
 
 const PutBody = z.object({
   signatureUrl: z.string().url().max(2000),
@@ -48,7 +49,7 @@ export const PUT = createApiHandler(
       meta: { signatureUrl: body.signatureUrl },
     });
 
-    return ok({ signatureUrl: body.signatureUrl });
+    return ok({ signatureUrl: staffFileHref(body.signatureUrl) });
   },
 );
 

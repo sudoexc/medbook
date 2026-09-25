@@ -22,6 +22,7 @@ import type {
 import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
 import { useQueryClient } from "@tanstack/react-query";
 import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
+import { toPrescriptionDrafts } from "../_hooks/prescription-rows";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -114,17 +115,31 @@ export function StructuredFieldsPanel() {
     [applyPatch],
   );
 
+  /**
+   * The note as the doctor last left it. Every replace-all payload built
+   * here starts from this, not from the render snapshot: the cache already
+   * holds edits whose PATCH is still in flight (usePatchVisitNote writes
+   * them in at once), the snapshot does not, and a payload built on it would
+   * erase them (audit VW-01).
+   */
+  const liveNote = React.useCallback(
+    (): VisitNoteRow | null =>
+      note ? (qc.getQueryData<VisitNoteRow>(visitNoteKey(note.id)) ?? note) : null,
+    [note, qc],
+  );
+
   const handleCatalogPick = React.useCallback(
     (drug: Parameters<typeof draftFromDrug>[0], term: string) => {
-      if (!note) return;
-      const drafts = (note.visitPrescriptions ?? []).map(
-        ({ id: _id, sortOrder: _s, ...rest }) => rest,
-      );
+      const live = liveNote();
+      if (!live) return;
       applyPatch({
-        visitPrescriptions: [...drafts, draftFromDrug(drug, term)],
+        visitPrescriptions: [
+          ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
+          draftFromDrug(drug, term),
+        ],
       });
     },
-    [note, applyPatch],
+    [liveNote, applyPatch],
   );
 
   /**
@@ -167,7 +182,8 @@ export function StructuredFieldsPanel() {
 
   const handleApplyProtocol = React.useCallback(
     (protocol: ClinicalProtocolRow) => {
-      if (!note || isFinalized) return;
+      const live = liveNote();
+      if (!live || isFinalized) return;
       const mergeUnique = (existing: string[], incoming: string[]) => {
         const seen = new Set(existing);
         const out = [...existing];
@@ -185,9 +201,7 @@ export function StructuredFieldsPanel() {
       // free-text lines are the fallback for protocols that predate it.
       const items = (protocol.prescriptionItems ?? []).map(protocolItemToDraft);
       if (items.length > 0) {
-        const existing = (note.visitPrescriptions ?? []).map(
-          ({ id: _id, sortOrder: _s, ...rest }) => rest,
-        );
+        const existing = toPrescriptionDrafts(live.visitPrescriptions ?? []);
         const seen = new Set(existing.map((r) => `${r.displayName}|${r.dose}`));
         const fresh = items.filter(
           (r) => !seen.has(`${r.displayName}|${r.dose}`),
@@ -197,7 +211,7 @@ export function StructuredFieldsPanel() {
         }
       } else {
         patch.prescriptions = mergeUnique(
-          note.prescriptions ?? [],
+          live.prescriptions ?? [],
           protocol.prescriptionsTemplate,
         );
       }
@@ -207,16 +221,16 @@ export function StructuredFieldsPanel() {
       // prescriptions: dedup, never clobber what the doctor already wrote.
       if ((protocol.adviceTemplate?.length ?? 0) > 0) {
         const mergedAdvice = mergeUnique(
-          note.advice ?? [],
+          live.advice ?? [],
           protocol.adviceTemplate,
         );
-        if (mergedAdvice.length !== (note.advice ?? []).length) {
+        if (mergedAdvice.length !== (live.advice ?? []).length) {
           patch.advice = mergedAdvice;
         }
       }
       // Ф6 — prefill the control visit from the protocol unless the doctor
       // already set one by hand.
-      if (protocol.followUpDays != null && note.followUpDays == null) {
+      if (protocol.followUpDays != null && live.followUpDays == null) {
         patch.followUpDays = protocol.followUpDays;
       }
       if (Object.keys(patch).length > 0) {
@@ -227,7 +241,7 @@ export function StructuredFieldsPanel() {
       }
       setProtocolToApply(null);
     },
-    [note, isFinalized, applyPatch, requestBodyAppend],
+    [liveNote, isFinalized, applyPatch, requestBodyAppend],
   );
 
   const handleRemoveChip = React.useCallback(
@@ -295,32 +309,16 @@ export function StructuredFieldsPanel() {
             note={note}
             disabled={isFinalized}
             onAdopt={(drafts) => {
-              // Same lost-update guard as the advice column: read the
-              // CURRENT cache row and fold the result back synchronously,
-              // so two quick «+» clicks compose instead of the second one
-              // erasing the first (payloads are whole-array replace-all).
-              const key = visitNoteKey(note.id);
-              const cur =
-                qc.getQueryData<VisitNoteRow>(key)?.visitPrescriptions ??
-                note.visitPrescriptions ??
-                [];
-              const existing = cur.map(
-                ({ id: _i, sortOrder: _o, ...rest }) => rest,
-              );
-              const next = [...existing, ...drafts];
-              qc.setQueryData<VisitNoteRow>(key, (prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      visitPrescriptions: next.map((d, i) => ({
-                        ...d,
-                        id: `optimistic-${i}`,
-                        sortOrder: i,
-                      })),
-                    }
-                  : prev,
-              );
-              applyPatch({ visitPrescriptions: next });
+              // Same lost-update guard as every other replace-all save:
+              // compose on the live cache row (the patch hook folds the
+              // result back in at once), so two quick «+» clicks both land.
+              const live = liveNote() ?? note;
+              applyPatch({
+                visitPrescriptions: [
+                  ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
+                  ...drafts,
+                ],
+              });
             }}
           />
           <CdsWarningsCard

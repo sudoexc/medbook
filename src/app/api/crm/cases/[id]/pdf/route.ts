@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { notFound } from "@/server/http";
 import { formatDate, formatPhone, formatMoney, type Locale } from "@/lib/format";
+import { inlineStorageImage } from "@/server/storage/inline-image";
 
 function idFromUrl(request: Request): string {
   // /api/crm/cases/[id]/pdf — id is segment[-2].
@@ -154,6 +155,11 @@ export const GET = createApiListHandler(
             },
           })
         : null;
+
+    // Embedded, not the stored private-bucket URL (audit CD-02).
+    const logoSrc = clinic
+      ? await inlineStorageImage(clinic.logoUrl, clinic.id)
+      : null;
 
     const clinicName = clinic
       ? locale === "uz"
@@ -508,8 +514,8 @@ export const GET = createApiListHandler(
   <div class="page">
     <header class="header">
       ${
-        clinic?.logoUrl
-          ? `<img class="logo" src="${escapeHtml(clinic.logoUrl)}" alt="" />`
+        logoSrc
+          ? `<img class="logo" src="${escapeHtml(logoSrc)}" alt="" />`
           : `<div class="logo" aria-hidden="true"></div>`
       }
       <div>

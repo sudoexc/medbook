@@ -7,10 +7,15 @@
  * doesn't match the path MinIO sees → `SignatureDoesNotMatch`. The miniapp
  * proxy made the same call (see `/api/miniapp/documents/[id]/file/route.ts`).
  *
- * Tenant scoping: the key must begin with `clinics/<ctx.clinicId>/` so a
- * caller can only read their own clinic's documents. SUPER_ADMIN without
- * impersonation does not see any tenant data — they have to enter a clinic
- * first (matches the rest of /api/crm).
+ * Tenant scoping: the key must sit in a folder of the caller's clinic —
+ * `clinics/<id>/` (documents, signatures, conclusion PDFs) or the image
+ * folders `drugs/<id>/`, `letterhead/<id>/`, `branding/<id>/` — so a caller
+ * reads only their own clinic's files. Those image folders are served here
+ * too because this is the only working URL for them: the bucket is private
+ * and pages that used the stored bare MinIO URL showed AccessDenied or a
+ * broken image (audit CD-02). SUPER_ADMIN without impersonation does not see
+ * any tenant data — they have to enter a clinic first (matches the rest of
+ * /api/crm).
  */
 import path from "node:path";
 
@@ -18,6 +23,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { err } from "@/server/http";
 import { fetchObject } from "@/server/storage/minio";
 import { safeFileHeaders } from "@/server/storage/safe-file";
+import { isClinicOwnedKey } from "@/lib/storage-ref";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"] },
@@ -29,8 +35,7 @@ export const GET = createApiListHandler(
     const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     if (!clinicId) return err("ClinicNotSelected", 400);
 
-    const expectedPrefix = `clinics/${clinicId}/`;
-    if (!key.startsWith(expectedPrefix)) return err("Forbidden", 403);
+    if (!isClinicOwnedKey(key, clinicId)) return err("Forbidden", 403);
 
     let fetched: Awaited<ReturnType<typeof fetchObject>>;
     try {

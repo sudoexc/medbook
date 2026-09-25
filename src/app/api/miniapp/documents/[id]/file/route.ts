@@ -18,19 +18,19 @@ import { err } from "@/server/http";
 import { safeFileHeaders } from "@/server/storage/safe-file";
 import { resolveMiniAppContext } from "@/server/miniapp/handler";
 import { fetchObject } from "@/server/storage/minio";
+import { isClinicOwnedKey, storageKeyFromUrl } from "@/lib/storage-ref";
 
 /**
  * Stored fileUrls vary by historical encoding —
  *   - `https://neurofax.uz/files/medbook/clinics/<...>/documents/<file>`
  *   - `file:///tmp/medbook-uploads/medbook/clinics/<...>` (stub mode)
- * but the canonical S3 key always begins at `clinics/`. Slice from there
- * so we recover the same key the bucket uses regardless of how the URL
- * was assembled at write time.
+ *   - `/api/crm/documents/file?key=clinics%2F…` (our proxy)
+ * One parser for all of them, shared with the staff side (audit CD-02), and
+ * only a key in this clinic's own folder is ever read.
  */
-function extractKey(fileUrl: string): string | null {
-  const idx = fileUrl.indexOf("/clinics/");
-  if (idx < 0) return null;
-  return fileUrl.slice(idx + 1);
+function extractKey(fileUrl: string, clinicId: string): string | null {
+  const key = storageKeyFromUrl(fileUrl);
+  return key && isClinicOwnedKey(key, clinicId) ? key : null;
 }
 
 export async function GET(
@@ -48,7 +48,7 @@ export async function GET(
       select: { id: true, fileUrl: true, mimeType: true, title: true },
     });
     if (!doc) return err("NotFound", 404);
-    const key = extractKey(doc.fileUrl);
+    const key = extractKey(doc.fileUrl, ctx.clinicId);
     if (!key) return err("BadFileUrl", 422);
 
     let fetched: Awaited<ReturnType<typeof fetchObject>>;

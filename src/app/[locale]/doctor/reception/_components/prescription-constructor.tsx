@@ -22,6 +22,7 @@
  */
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BellIcon,
   BellOffIcon,
@@ -61,13 +62,21 @@ import {
   useDrugSuggestions,
   type DrugSearchHit,
 } from "../_hooks/use-drug-search";
-import type {
-  VisitNoteRow,
-  VisitPrescriptionDraft,
-  VisitPrescriptionMealRelation,
-  VisitPrescriptionRow,
-  VisitPrescriptionTimeOfDay,
+import {
+  visitNoteKey,
+  type VisitNoteRow,
+  type VisitPrescriptionDraft,
+  type VisitPrescriptionMealRelation,
+  type VisitPrescriptionRow,
+  type VisitPrescriptionTimeOfDay,
 } from "../_hooks/use-visit-note";
+import {
+  toggleTimeOfDay,
+  toPrescriptionDrafts,
+  withRowEdited,
+  withRowRemoved,
+  type RowEdit,
+} from "../_hooks/prescription-rows";
 
 const TIMES: VisitPrescriptionTimeOfDay[] = [
   "MORNING",
@@ -166,12 +175,6 @@ function splitFreeLine(line: string): { name: string; dose: string | null } {
   };
 }
 
-function toDrafts(rows: VisitPrescriptionRow[]): VisitPrescriptionDraft[] {
-  return rows.map(
-    ({ id: _id, sortOrder: _sortOrder, ...rest }) => rest,
-  );
-}
-
 type Props = {
   note: VisitNoteRow;
   disabled: boolean;
@@ -264,21 +267,37 @@ export function PrescriptionConstructor({
   const clinicList = (shortlistQuery.data?.clinic ?? []).filter(notOnScreen);
   const [presetsOpen, setPresetsOpen] = React.useState(false);
 
-  // The latest rows, for an add that resolves after an await: saving is
-  // replace-all, so a list captured at click time would undo whatever the
-  // doctor changed while the request was in flight.
+  // Saving is replace-all, so every action (add, edit, remove) is composed
+  // on the rows as the doctor last left them, not on this render's snapshot
+  // (audit VW-01). The query cache holds them: `usePatchVisitNote` writes
+  // each edit there the moment it is made, before the request leaves, and
+  // keeps an older response from overwriting a newer pending edit. The
+  // render snapshot only knows what the last server answer said, so two
+  // quick actions built on it (dose, then a time chip; two drugs in a row)
+  // silently undid the first one. The ref is the fallback for a host whose
+  // note is not in the cache.
+  const qc = useQueryClient();
   const rowsRef = React.useRef(rows);
   React.useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
+  const noteId = note.id;
+  const liveDrafts = React.useCallback(
+    (): VisitPrescriptionDraft[] =>
+      toPrescriptionDrafts(
+        qc.getQueryData<VisitNoteRow>(visitNoteKey(noteId))
+          ?.visitPrescriptions ?? rowsRef.current,
+      ),
+    [qc, noteId],
+  );
 
   const addDraft = React.useCallback(
     (draft: VisitPrescriptionDraft) => {
-      const current = rowsRef.current;
-      onSaveRows([...toDrafts(current), draft]);
+      const current = liveDrafts();
+      onSaveRows([...current, draft]);
       setExpanded(current.length);
     },
-    [onSaveRows],
+    [onSaveRows, liveDrafts],
   );
 
   const addFromDrug = React.useCallback(
@@ -351,24 +370,20 @@ export function PrescriptionConstructor({
   };
 
   const updateRow = React.useCallback(
-    (index: number, patch: Partial<VisitPrescriptionDraft>) => {
-      const drafts = toDrafts(rows);
-      const current = drafts[index];
-      if (!current) return;
-      drafts[index] = { ...current, ...patch };
-      onSaveRows(drafts);
+    (index: number, edit: RowEdit) => {
+      const next = withRowEdited(liveDrafts(), index, edit);
+      if (next) onSaveRows(next);
     },
-    [rows, onSaveRows],
+    [liveDrafts, onSaveRows],
   );
 
   const removeRow = React.useCallback(
     (index: number) => {
-      const drafts = toDrafts(rows);
-      drafts.splice(index, 1);
-      onSaveRows(drafts);
+      const next = withRowRemoved(liveDrafts(), index);
+      if (next) onSaveRows(next);
       setExpanded(null);
     },
-    [rows, onSaveRows],
+    [liveDrafts, onSaveRows],
   );
 
 
@@ -925,7 +940,11 @@ function PrescriptionRowItem({
   disabled: boolean;
   expanded: boolean;
   onToggle: () => void;
-  onChange: (patch: Partial<VisitPrescriptionDraft>) => void;
+  /**
+   * Toggles pass a function of the row's LIVE state: a chip computed from
+   * this render's `row` would drop a value set a moment ago (VW-01).
+   */
+  onChange: (edit: RowEdit) => void;
   onRemove: () => void;
 }) {
   const t = useTranslations("doctor.reception");
@@ -973,7 +992,9 @@ function PrescriptionRowItem({
           <>
             <button
               type="button"
-              onClick={() => onChange({ remindPatient: !row.remindPatient })}
+              onClick={() =>
+                onChange((cur) => ({ remindPatient: !cur.remindPatient }))
+              }
               title={row.remindPatient ? t("rx.remindOn") : t("rx.remindOff")}
               className={cn(
                 "inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
@@ -1022,13 +1043,9 @@ function PrescriptionRowItem({
                     key={tm}
                     active={active}
                     onClick={() =>
-                      onChange({
-                        timesOfDay: active
-                          ? row.timesOfDay.filter((x) => x !== tm)
-                          : TIMES.filter(
-                              (x) => row.timesOfDay.includes(x) || x === tm,
-                            ),
-                      })
+                      onChange((cur) => ({
+                        timesOfDay: toggleTimeOfDay(cur.timesOfDay, tm),
+                      }))
                     }
                   >
                     {t(`rx.times.${tm}`)}
@@ -1061,7 +1078,9 @@ function PrescriptionRowItem({
                   key={d}
                   active={row.durationDays === d}
                   onClick={() =>
-                    onChange({ durationDays: row.durationDays === d ? null : d })
+                    onChange((cur) => ({
+                      durationDays: cur.durationDays === d ? null : d,
+                    }))
                   }
                 >
                   {d}

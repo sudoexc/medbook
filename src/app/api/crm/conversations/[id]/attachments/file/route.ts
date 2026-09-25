@@ -24,6 +24,7 @@
  * documents, DSAR exports, or another conversation's files.
  */
 import { fetchObject } from "@/server/storage/minio";
+import { safeFileHeaders } from "@/server/storage/safe-file";
 
 export const dynamic = "force-dynamic";
 
@@ -67,17 +68,15 @@ export async function GET(request: Request): Promise<Response> {
   }
   if (!obj.body) return new Response("Not Found", { status: 404 });
 
-  const headers = new Headers();
-  headers.set("Content-Type", obj.contentType ?? "application/octet-stream");
+  // Only inert types (photos, PDF, voice/video) preview inline; an SVG or
+  // HTML a patient sent through the bot is a download with nosniff and a
+  // sandbox CSP, never a page on our origin (audit CD-01).
+  const safeName = name.replace(/[\r\n"\\]/g, "").slice(0, 200) || "file";
+  const headers = new Headers(
+    safeFileHeaders(obj.contentType, { filename: safeName }),
+  );
   if (obj.contentLength != null) {
     headers.set("Content-Length", String(obj.contentLength));
-  }
-  const safeName = name.replace(/[\r\n"\\]/g, "").slice(0, 200);
-  if (safeName) {
-    headers.set(
-      "Content-Disposition",
-      `inline; filename*=UTF-8''${encodeURIComponent(safeName)}`,
-    );
   }
   headers.set("Cache-Control", "private, max-age=3600");
   return new Response(obj.body, { status: 200, headers });

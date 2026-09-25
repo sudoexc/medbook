@@ -10,6 +10,7 @@ import {
 import { SaveIcon, RotateCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { sumToTiyin, tiyinToSum } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -114,7 +115,7 @@ export function DoctorServicesEditor({
       next[s.id] = {
         assigned: Boolean(row),
         priceInput:
-          row?.priceOverride != null ? String(row.priceOverride) : "",
+          row?.priceOverride != null ? String(tiyinToSum(row.priceOverride)) : "",
         durationInput:
           row?.durationMinOverride != null
             ? String(row.durationMinOverride)
@@ -127,7 +128,7 @@ export function DoctorServicesEditor({
         next[r.serviceId] = {
           assigned: true,
           priceInput:
-            r.priceOverride != null ? String(r.priceOverride) : "",
+            r.priceOverride != null ? String(tiyinToSum(r.priceOverride)) : "",
           durationInput:
             r.durationMinOverride != null
               ? String(r.durationMinOverride)
@@ -243,9 +244,10 @@ export function DoctorServicesEditor({
     }> = [];
     for (const [serviceId, s] of Object.entries(state)) {
       if (!s.assigned) continue;
-      const price =
-        s.priceInput === "" ? null : Number(s.priceInput);
-      if (price !== null && !Number.isFinite(price)) continue;
+      // The input shows сумы; the override is stored in tiyin.
+      const typed = s.priceInput === "" ? null : Number(s.priceInput);
+      if (typed !== null && !Number.isFinite(typed)) continue;
+      const price = typed === null ? null : sumToTiyin(typed);
       const duration =
         s.durationInput === "" ? null : Number(s.durationInput);
       if (duration !== null && !Number.isFinite(duration)) continue;
@@ -369,7 +371,7 @@ export function DoctorServicesEditor({
                       id={priceId}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      placeholder={String(s.priceBase)}
+                      placeholder={String(tiyinToSum(s.priceBase))}
                       value={priceInput}
                       onChange={(e) =>
                         handlePriceChange(s.id, e.target.value)

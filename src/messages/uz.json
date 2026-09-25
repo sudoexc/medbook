@@ -2403,7 +2403,7 @@
       "color": "Rang",
       "cabinetHint": "Bir kabinet — bir shifokor",
       "cabinetCreate": "Kabinet yaratish",
-      "pricePerVisit": "Qabul narxi (UZS)",
+      "pricePerVisit": "Qabul narxi, so‘m",
       "pricePerVisitPlaceholder": "Belgilanmagan",
       "pricePerVisitHint": "Aniq xizmat tanlanmagan bo'lsa, qabulning bazaviy narxi sifatida ishlatiladi.",
       "salaryPercent": "Ish haqi foizi",
@@ -3631,7 +3631,7 @@
         "documentNumberPrefix": "Hujjat raqami prefiksi",
         "documentNumberPrefixHint": "Masalan NF — xulosalar NF-2026-000123 ko'rinishidagi raqam oladi. Bo'sh bo'lsa — prefiks klinika slugidan olinadi.",
         "letterhead": "Firma blanki (sarlavha)",
-        "letterheadHint": "PNG, SVG yoki JPEG, 512 KB gacha. Xulosalar sarlavhasida matn o'rniga chop etiladi.",
+        "letterheadHint": "PNG yoki JPEG, 512 KB gacha. Xulosalar sarlavhasida matn o'rniga chop etiladi.",
         "letterheadRemove": "Blankni olib tashlash"
       },
       "secretsHint": "Tokenlar va maxfiy sozlamalarni o'zgartirish uchun joriy parolni kiriting. Bo'sh maydon — o'zgarmaydi.",
@@ -3729,7 +3729,7 @@
         "nameRu": "Nomi (RU)",
         "nameUz": "Nomi (UZ)",
         "duration": "Davomiyligi",
-        "priceBase": "Narxi (UZS)",
+        "priceBase": "Narxi, so‘m",
         "category": "Kategoriya",
         "active": "Faol"
       },
@@ -4390,6 +4390,24 @@
           "recommendedLabs": "Tavsiya etiladigan tahlillar"
         }
       }
+    },
+    "kiosk": {
+      "title": "O‘z-o‘ziga xizmat kioski",
+      "hint": "Zaldagi planshet: bemor kelganini belgilaydi yoki jonli navbatga yoziladi. U faqat o‘z havolasi bilan ishlaydi: usiz internetdan hech kim bemorlarni telefon bo‘yicha qidira yoki navbatga qo‘ya olmaydi.",
+      "notPaired": "Kiosk ulanmagan.",
+      "pairedSince": "Kiosk {date} dan beri ulangan.",
+      "issue": "Kiosk uchun havola yaratish",
+      "reissue": "Yangi havola yaratish",
+      "linkOnce": "Bu havolani kiosk planshetida oching. U faqat bir marta ko‘rsatiladi.",
+      "copy": "Nusxalash",
+      "copied": "Havola nusxalandi",
+      "reissueHint": "Klinikaga bitta havola: bir nechta planshetda aynan shu havolani oching. Yangi havola barcha ulangan planshetlarni darhol o‘chiradi.",
+      "revoke": "Kioskni o‘chirish",
+      "confirmOff": "Kiosk ishlamay qoladi. O‘chirilsinmi?",
+      "revokeYes": "Ha, o‘chirish",
+      "cancel": "Bekor qilish",
+      "revoked": "Kiosk o‘chirildi",
+      "error": "Bo‘lmadi, qayta urinib ko‘ring"
     }
   },
   "adminPlatform": {
@@ -5699,7 +5717,7 @@
     "saving": "Saqlanmoqda…",
     "logo": {
       "label": "Logotip",
-      "hint": "PNG yoki SVG, 256 KB gacha. CRM va Mini App sarlavhasida ko'rinadi."
+      "hint": "PNG, JPEG yoki WebP, 256 KB gacha. CRM va Mini App sarlavhasida ko'rinadi."
     },
     "primary": {
       "label": "Asosiy rang"

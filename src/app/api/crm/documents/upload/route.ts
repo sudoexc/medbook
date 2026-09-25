@@ -20,6 +20,14 @@
 import { randomUUID } from "node:crypto";
 
 import { createApiHandler } from "@/lib/api-handler";
+import {
+  DOCUMENT_TYPES,
+  MEDIA_TYPES,
+  OFFICE_TYPES,
+  SCAN_TYPES,
+  TEXT_TYPES,
+  checkUpload,
+} from "@/server/storage/safe-file";
 import { ok, err } from "@/server/http";
 import { uploadObject, isStubMode } from "@/server/storage/minio";
 
@@ -52,8 +60,29 @@ export const POST = createApiHandler(
     const id = randomUUID();
     const safeName = sanitise(file.name || `upload-${id}`);
     const key = `clinics/${clinicId}/documents/${id}-${safeName}`;
-    const contentType = file.type || "application/octet-stream";
     const buffer = Buffer.from(await file.arrayBuffer());
+    // Typed by its bytes, not by the browser's claim: an .html or .svg
+    // «document» would otherwise be served back from our own origin and run
+    // script with the viewer's session (audit CD-01).
+    const checked = checkUpload(
+      buffer,
+      file.type,
+      [
+        ...DOCUMENT_TYPES,
+        ...OFFICE_TYPES,
+        ...TEXT_TYPES,
+        ...MEDIA_TYPES,
+        ...SCAN_TYPES,
+      ],
+      file.name,
+    );
+    if (!checked.ok) {
+      return err("UnsupportedMime", 415, {
+        reason: "mime_not_allowed",
+        detected: checked.detected,
+      });
+    }
+    const contentType = checked.mime;
 
     const stored = await uploadObject(undefined, key, buffer, contentType);
 

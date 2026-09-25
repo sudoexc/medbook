@@ -1,25 +1,29 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { resolvePublicClinic } from "@/lib/public-clinic";
 import { phoneSearchVariants } from "@/lib/phone";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
 import { rateLimit } from "@/lib/rate-limit";
+import {
+  authenticateKiosk,
+  kioskUnauthorized,
+  maskPatientName,
+  realClientIp,
+} from "@/server/kiosk/device";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { z } from "zod";
 
-function clientIp(request: Request): string {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip") ?? "unknown";
-}
-
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone.
-// Rate limited to prevent scraping the patient base by enumerating phone numbers.
+// Only the clinic's paired kiosk may ask (audit SEC-01): otherwise anyone
+// could enumerate phone numbers and learn who is seen at a neurology clinic.
+// Rate limited per real client address (X-Real-IP from nginx — the first
+// X-Forwarded-For entry is client-written and used to bypass the limit).
 // NOTE: `rateLimit` is in-memory and resets on cold start — switch to KV/Redis
 // before real scale. See audit finding MEDIUM #14.
 const PhoneQuery = z.string().regex(/^\+?\d{9,15}$/);
 export async function GET(request: Request) {
-  if (!rateLimit(clientIp(request))) {
+  const device = await authenticateKiosk(request);
+  if (!device) return kioskUnauthorized();
+  if (!rateLimit(`kiosk-lookup:${device.clinicId}:${realClientIp(request)}`, 20)) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
 
@@ -31,10 +35,7 @@ export async function GET(request: Request) {
   }
   const phone = parsed.data;
 
-  const clinic = await resolvePublicClinic(request);
-  if (!clinic) {
-    return Response.json({ patient: null, appointments: [], upcoming: [] });
-  }
+  const clinic = { id: device.clinicId };
 
   // Find patient by any known phone representation (shared helper), scoped to
   // the resolved clinic so an anonymous kiosk request can't probe another
@@ -96,7 +97,9 @@ export async function GET(request: Request) {
   };
 
   return Response.json({
-    patient: { id: patient.id, fullName: patient.fullName, phone: patient.phone },
+    // Masked, no phone: whoever stands at the tablet typed a number, which
+    // does not make them that patient.
+    patient: { id: patient.id, fullName: maskPatientName(patient.fullName) },
     appointments: today.map((a) => ({
       id: a.id,
       doctorName: a.doctor.nameRu,

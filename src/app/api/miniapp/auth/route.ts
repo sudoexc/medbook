@@ -8,19 +8,25 @@
  *
  * This endpoint intentionally does NOT use `createMiniAppHandler` because the
  * patient row may not exist yet — the wrapper would 428 us out.
+ *
+ * It never links a Telegram account to an EXISTING card by a phone number
+ * the client sends (audit MA-01): anyone could put a neighbour's number in
+ * the body and read her conclusions. A new Telegram user gets his own empty
+ * card; joining the card the clinic already keeps goes only through the
+ * reception's invite link (`consumeInviteToken`), which proves the patient
+ * was in front of the desk.
  */
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { normalizePhone } from "@/lib/phone";
 import { err, ok } from "@/server/http";
 import { resolveMiniAppContext } from "@/server/miniapp/handler";
 import { allocatePatientNumber } from "@/server/services/patient-number";
 
+// `phone` is accepted for old clients and IGNORED — see the header.
 const BodySchema = z
   .object({
-    phone: z.string().optional(),
     lang: z.enum(["RU", "UZ"]).optional(),
   })
   .partial();
@@ -53,34 +59,11 @@ export async function POST(request: Request) {
     (tgUser.language_code ?? "").toLowerCase().startsWith("uz") ? "UZ" : "RU";
   const desiredLang = parsedBody.lang ?? codeLang;
 
-  const normalizedPhone = parsedBody.phone
-    ? normalizePhone(parsedBody.phone)
-    : "";
-
   return runWithTenant({ kind: "SYSTEM" }, async () => {
-    // Look for an existing patient by telegramId (preferred) or by
-    // phoneNormalized (link on first run if phone was provided).
+    // Only the card already bound to THIS Telegram account.
     let patient = await prisma.patient.findFirst({
       where: { clinicId: ctx.clinicId, telegramId: tgIdStr },
     });
-    if (!patient && normalizedPhone) {
-      patient = await prisma.patient.findFirst({
-        where: {
-          clinicId: ctx.clinicId,
-          phoneNormalized: normalizedPhone,
-        },
-      });
-      if (patient) {
-        patient = await prisma.patient.update({
-          where: { id: patient.id },
-          data: {
-            telegramId: tgIdStr,
-            telegramUsername: tgUser.username ?? patient.telegramUsername,
-            telegramLinkedAt: patient.telegramLinkedAt ?? new Date(),
-          },
-        });
-      }
-    }
     if (!patient) {
       // Create a minimal patient record — phone can be empty; the client can
       // fill it in via /api/miniapp/profile later.
@@ -92,8 +75,8 @@ export async function POST(request: Request) {
               clinicId: ctx.clinicId,
               patientNumber,
               fullName,
-              phone: normalizedPhone || `tg:${tgIdStr}`,
-              phoneNormalized: normalizedPhone || `tg:${tgIdStr}`,
+              phone: `tg:${tgIdStr}`,
+              phoneNormalized: `tg:${tgIdStr}`,
               telegramId: tgIdStr,
               telegramUsername: tgUser.username ?? null,
               telegramLinkedAt: new Date(),

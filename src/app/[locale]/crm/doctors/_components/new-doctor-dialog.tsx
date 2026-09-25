@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { sumToTiyin, tiyinToSum } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/lib/slugify";
 import { Button } from "@/components/ui/button";
@@ -232,8 +233,9 @@ export function NewDoctorDialog({
     const serviceList = Object.entries(services)
       .filter(([, s]) => s.selected)
       .map(([serviceId, s]) => {
+        // Typed in сумы; stored in tiyin (like Service.priceBase).
         const priceOverride = s.priceInput.trim()
-          ? Math.max(0, Number.parseInt(s.priceInput, 10))
+          ? sumToTiyin(Math.max(0, Number.parseInt(s.priceInput, 10)))
           : null;
         const dn = s.durationInput.trim()
           ? Number.parseInt(s.durationInput, 10)
@@ -245,7 +247,7 @@ export function NewDoctorDialog({
         return { serviceId, priceOverride, durationMinOverride };
       });
     const ppv = pricePerVisit.trim()
-      ? Math.max(0, Number.parseInt(pricePerVisit, 10))
+      ? sumToTiyin(Math.max(0, Number.parseInt(pricePerVisit, 10)))
       : null;
     const sp = Number.parseInt(salaryPercent, 10);
     return {
@@ -571,7 +573,7 @@ export function NewDoctorDialog({
                           pattern="[0-9]*"
                           value={priceInput}
                           onChange={(e) => setServicePrice(s.id, e.target.value)}
-                          placeholder={String(s.priceBase)}
+                          placeholder={String(tiyinToSum(s.priceBase))}
                           disabled={!checked || create.isPending}
                           className="h-8 w-[110px]"
                           aria-label={tServices("priceOverride")}

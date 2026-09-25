@@ -9,6 +9,8 @@ import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
 // ─── Translations ────────────────────────────────────────────────
 const t = {
   ru: {
+    notPairedTitle: "Киоск не подключён",
+    notPairedText: "Администратору: CRM → Настройки → Клиника → «Киоск» → «Создать ссылку» и откройте эту ссылку на этом планшете.",
     enterPhone: "Введите номер телефона",
     enterPhoneDesc: "Для регистрации или check-in по записи",
     next: "Далее",
@@ -53,6 +55,8 @@ const t = {
     touchToStart: "Коснитесь экрана для начала",
   },
   uz: {
+    notPairedTitle: "Kiosk ulanmagan",
+    notPairedText: "Administrator uchun: CRM → Sozlamalar → Klinika → «Kiosk» → «Havola yaratish» va havolani shu planshetda oching.",
     enterPhone: "Telefon raqamingizni kiriting",
     enterPhoneDesc: "Ro'yxatdan o'tish yoki onlayn yozilish uchun",
     next: "Keyingi",
@@ -138,8 +142,74 @@ const GREEN_BADGE = "rgb(22 199 132 / 0.20)";
 const AMBER_TINT = "rgb(245 158 11 / 0.10)";
 const AMBER_BORDER = "rgb(245 158 11 / 0.25)";
 
+const KIOSK_TOKEN_KEY = "medbook-kiosk-token";
+
+/**
+ * The tablet's device token (audit SEC-01). The ADMIN opens the kiosk link
+ * from CRM once (…/kiosk?c=<slug>#k=<token> — in the fragment, so it never
+ * reaches a server log); the token is kept in this browser and removed from
+ * the address bar. Every kiosk API call carries it; a 401 «not paired» means
+ * the kiosk was switched off or a new link was issued, and the pairing
+ * screen comes back.
+ */
+function readKioskToken(): string | null {
+  let fromLink: string | null = null;
+  try {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    fromLink = hash.get("k");
+  } catch {
+    fromLink = null;
+  }
+  if (fromLink) {
+    try {
+      window.localStorage.setItem(KIOSK_TOKEN_KEY, fromLink);
+    } catch {
+      // Storage blocked: the token still works for this session.
+    }
+    try {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    } catch {
+      /* address bar cleanup is cosmetic */
+    }
+    return fromLink;
+  }
+  try {
+    return window.localStorage.getItem(KIOSK_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export default function KioskPage() {
   const slug = usePublicClinicSlug();
+  // undefined = not read yet; null = this tablet is not paired.
+  const [kioskToken, setKioskToken] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    setKioskToken(readKioskToken());
+  }, []);
+  const kioskFetch = async (input: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    if (kioskToken) headers.set("x-kiosk-token", kioskToken);
+    const res = await fetch(input, { ...init, headers });
+    // Only «not paired» unpairs the tablet; any other refusal (a wrong
+    // clinic in the URL, a rate limit) leaves the token alone.
+    if (res.status === 401) {
+      const reason = await res
+        .clone()
+        .json()
+        .then((b: { reason?: string }) => b.reason ?? null)
+        .catch(() => null);
+      if (reason === "kiosk_not_paired") {
+        try {
+          window.localStorage.removeItem(KIOSK_TOKEN_KEY);
+        } catch {
+          /* storage blocked — the pairing screen still shows */
+        }
+        setKioskToken(null);
+      }
+    }
+    return res;
+  };
   const [lang, setLang] = useState<Lang>("ru");
   const [step, setStep] = useState<Step>("welcome");
   const [phone, setPhone] = useState("");
@@ -235,7 +305,7 @@ export default function KioskPage() {
     setLoading(true);
 
     try {
-      const checkinRes = await fetch(`/api/kiosk/checkin?phone=${encodeURIComponent(phone)}`);
+      const checkinRes = await kioskFetch(`/api/kiosk/checkin?phone=${encodeURIComponent(phone)}`);
       const checkinData = await checkinRes.json();
 
       if (checkinData.patient) {
@@ -274,7 +344,7 @@ export default function KioskPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/c/${slug}/queue/checkin`, {
+      const res = await kioskFetch(`/api/c/${slug}/queue/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appointmentId: appointment.id }),
@@ -332,7 +402,7 @@ export default function KioskPage() {
     try {
       // Single transaction-safe walk-in: finds-or-creates the patient by phone,
       // allocates the queue slot, and mints a ticketCode in one call.
-      const res = await fetch(`/api/c/${slug}/queue/walkin`, {
+      const res = await kioskFetch(`/api/c/${slug}/queue/walkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -366,6 +436,21 @@ export default function KioskPage() {
 
   const now = new Date();
   const docName = (doc: Doctor) => lang === "uz" && doc.nameUz ? doc.nameUz : doc.nameRu;
+
+  // Not paired: nothing to do here until the ADMIN opens the kiosk link.
+  if (kioskToken === undefined) {
+    return <div className="min-h-screen bg-[var(--public-bg)]" />;
+  }
+  if (kioskToken === null) {
+    return (
+      <div className="min-h-screen bg-[var(--public-bg)] text-[var(--public-fg)] flex flex-col items-center justify-center gap-4 px-10 text-center select-none">
+        <h1 className="text-4xl font-bold">{L.notPairedTitle}</h1>
+        <p className="max-w-xl text-xl text-[var(--public-fg-muted)] leading-relaxed">
+          {L.notPairedText}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--public-bg)] text-[var(--public-fg)] flex flex-col select-none">

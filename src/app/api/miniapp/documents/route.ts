@@ -22,6 +22,7 @@ import {
   publishViaOutbox,
 } from "@/server/realtime/outbox";
 import { err, ok } from "@/server/http";
+import { DOCUMENT_TYPES, checkUpload } from "@/server/storage/safe-file";
 import {
   createMiniAppListHandler,
   resolveMiniAppContext,
@@ -34,11 +35,6 @@ import { uploadObject } from "@/server/storage/minio";
 // crowding our storage.
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-const ALLOWED_MIME_PREFIXES = ["image/"];
-const ALLOWED_MIME_EXACT = new Set([
-  "application/pdf",
-  "application/x-pdf",
-]);
 
 const ALLOWED_DOCUMENT_TYPES = [
   "REFERRAL",
@@ -146,16 +142,18 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const mime = file.type || "application/octet-stream";
-  const mimeOk =
-    ALLOWED_MIME_EXACT.has(mime) ||
-    ALLOWED_MIME_PREFIXES.some((p) => mime.startsWith(p));
-  if (!mimeOk) {
+  // Typed by its bytes: a patient's «photo» that is really an SVG with a
+  // script would otherwise be served back from our origin to the reception
+  // (audit CD-01). Photos and PDFs only.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const checked = checkUpload(buffer, file.type, DOCUMENT_TYPES, file.name);
+  if (!checked.ok) {
     return err("UnsupportedMime", 415, {
       reason: "mime_not_allowed",
-      mime,
+      mime: file.type || null,
     });
   }
+  const mime = checked.mime;
 
   const rawTitle = (form.get("title") ?? "").toString().trim().slice(0, 200);
   const rawType = (form.get("type") ?? "").toString().trim();
@@ -165,7 +163,6 @@ export async function POST(request: Request): Promise<Response> {
 
   const ext = extFromMime(mime, extFromName(file.name || null));
   const objectKey = `clinics/${ctx.clinicId}/documents/${randomUUID()}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
 
   let uploaded: Awaited<ReturnType<typeof uploadObject>>;
   try {

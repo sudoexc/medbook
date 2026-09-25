@@ -217,6 +217,67 @@ describe("POST /api/miniapp/auth", () => {
     expect(body2.patient.id).toBe(body.patient.id);
   });
 
+  it("never links a Telegram account to someone else's card by a phone in the body (audit MA-01)", async () => {
+    // The clinic's card for a patient, linked to HER Telegram.
+    state.patients.push({
+      id: "victim",
+      clinicId: "c1",
+      fullName: "Юсупова Лола",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      telegramId: "111",
+      telegramUsername: "lola",
+      preferredLang: "RU",
+      consentMarketing: false,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const attacker = signInitData({
+      user: JSON.stringify({ id: 666, first_name: "X" }),
+      auth_date: String(now),
+    });
+    const res = await callAuth({
+      slug: "neurofax",
+      initData: attacker,
+      body: { phone: "+998901234567" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // A fresh card of his own, not hers…
+    expect(body.patient.id).not.toBe("victim");
+    expect(body.patient.fullName).toBe("X");
+    expect(body.patient.phone).toBe("");
+    // …and hers is untouched.
+    const victim = state.patients.find((p) => p.id === "victim")!;
+    expect(victim.telegramId).toBe("111");
+  });
+
+  it("does not link an unlinked card by phone either", async () => {
+    state.patients.push({
+      id: "walkin",
+      clinicId: "c1",
+      fullName: "Каримов Бахтиёр",
+      phone: "+998907654321",
+      phoneNormalized: "+998907654321",
+      telegramId: null,
+      telegramUsername: null,
+      preferredLang: "RU",
+      consentMarketing: false,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const initData = signInitData({
+      user: JSON.stringify({ id: 777, first_name: "Y" }),
+      auth_date: String(now),
+    });
+    const res = await callAuth({
+      slug: "neurofax",
+      initData,
+      body: { phone: "+998907654321" },
+    });
+    const body = await res.json();
+    expect(body.patient.id).not.toBe("walkin");
+    expect(state.patients.find((p) => p.id === "walkin")!.telegramId).toBeNull();
+  });
+
   it("responds 503 when clinic bot token is not configured", async () => {
     state.clinic = {
       id: "c1",

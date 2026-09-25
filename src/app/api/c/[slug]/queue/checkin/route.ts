@@ -1,8 +1,11 @@
 /**
  * POST /api/c/[slug]/queue/checkin
  *
- * Public kiosk endpoint: mark an existing appointment as WAITING (in-clinic
+ * Kiosk endpoint: mark an existing appointment as WAITING (in-clinic
  * queue) and assign it a queueOrder. Returns ticket payload for printing.
+ *
+ * Answers only to the clinic's paired kiosk (`x-kiosk-token`, audit SEC-01):
+ * the slug is public, and anyone could otherwise mark patients «arrived».
  *
  * Body: { appointmentId: string }
  */
@@ -12,6 +15,12 @@ import { prisma } from "@/lib/prisma";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { ok, err } from "@/server/http";
 import { resolvePublicClinic } from "@/server/clinic-public/resolve";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  maskPatientName,
+  realClientIp,
+  requireKioskFor,
+} from "@/server/kiosk/device";
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
@@ -28,6 +37,11 @@ export async function POST(request: Request) {
   const resolved = await resolvePublicClinic(request);
   if (!resolved.ok) return resolved.response;
   const { ctx } = resolved;
+  const kiosk = await requireKioskFor(request, ctx.clinicSlug);
+  if (!kiosk.ok) return kiosk.response;
+  if (!rateLimit(`kiosk-checkin:${ctx.clinicId}:${realClientIp(request)}`, 30)) {
+    return err("too_many_requests", 429);
+  }
 
   let parsed: z.infer<typeof Body>;
   try {
@@ -127,7 +141,10 @@ export async function POST(request: Request) {
       ticketCode: appt.ticketCode,
       ticketNumber: ticketNumberFor(appt.doctorId, ticketSeq ?? queueOrder),
       queueOrder,
-      patient: appt.patient,
+      patient: {
+        id: appt.patient.id,
+        fullName: maskPatientName(appt.patient.fullName),
+      },
       doctor: {
         id: appt.doctor.id,
         nameRu: appt.doctor.nameRu,

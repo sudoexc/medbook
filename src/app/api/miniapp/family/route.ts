@@ -22,7 +22,6 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { normalizePhone } from "@/lib/phone";
 import { err, ok } from "@/server/http";
 import { allocatePatientNumber } from "@/server/services/patient-number";
 import {
@@ -86,9 +85,13 @@ const PostBody = AddFamilyMemberSchema;
 export const POST = createMiniAppHandler(
   { bodySchema: PostBody },
   async ({ request, body, ctx }) => {
-    // Phone normalisation: optional. Empty string + null both mean "no phone".
-    const rawPhone = body.phone?.trim() ?? "";
-    const normalizedPhone = rawPhone ? normalizePhone(rawPhone) : "";
+    // The phone typed for a relative is NOT stored as the card's phone, and
+    // it is never used to find an existing card (audit MA-01/MA-05): with a
+    // stranger's phone + name, the old «claim» path linked HER card as the
+    // caller's «relative» and opened her conclusions via onBehalfOf; and a
+    // stored phone would let a later walk-in by that number attach the real
+    // person's visits to this card. Linking an existing card to a family is
+    // done at the reception desk.
 
     // birthDate accepts "YYYY-MM-DD" or full ISO; coerce to Date | null.
     let birthDate: Date | null = null;
@@ -105,25 +108,9 @@ export const POST = createMiniAppHandler(
     });
     const linkedSet = new Set(existingLinks.map((l) => l.linkedPatientId));
 
-    // Claim path: try to find an existing patient row matching fullName +
-    // phoneNormalized inside the same clinic. If found AND not already
-    // linked, we reuse it instead of inserting a duplicate.
-    let claimCandidateId: string | null = null;
-    if (normalizedPhone) {
-      const match = await prisma.patient.findFirst({
-        where: {
-          clinicId: ctx.clinicId,
-          phoneNormalized: normalizedPhone,
-          fullName: body.fullName.trim(),
-        },
-        select: { id: true },
-      });
-      if (match) claimCandidateId = match.id;
-    }
-
     const validation = validateFamilyAddition({
       ownerPatientId: ctx.patientId,
-      candidateLinkedPatientId: claimCandidateId,
+      candidateLinkedPatientId: null,
       relationship: body.relationship,
       existingLinkCount: existingLinks.length,
       alreadyLinkedPatientIds: linkedSet,
@@ -146,24 +133,17 @@ export const POST = createMiniAppHandler(
       let linkedPatientId: string;
       let createdNew = false;
 
-      if (claimCandidateId) {
-        linkedPatientId = claimCandidateId;
-      } else {
-        // Phone uniqueness inside a clinic: Patient has @@unique([clinicId,
-        // phoneNormalized]). For relatives without a phone, store an empty
-        // phone but keep `phoneNormalized` distinct so we don't collide
-        // with other phone-less relatives. Trick: prefix with `family:` +
-        // a short random tag.
-        const stubNormalized = normalizedPhone
-          ? normalizedPhone
-          : `family:${ctx.patientId}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      {
+        // Always a new card. Patient has @@unique([clinicId, phoneNormalized]),
+        // so a phone-less relative gets a distinct `family:` stub.
+        const stubNormalized = `family:${ctx.patientId}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
         const patientNumber = await allocatePatientNumber(ctx.clinicId, tx);
         const created = await tx.patient.create({
           data: {
             clinicId: ctx.clinicId,
             patientNumber,
             fullName: body.fullName.trim(),
-            phone: rawPhone,
+            phone: "",
             phoneNormalized: stubNormalized,
             birthDate,
             gender: body.gender ?? undefined,

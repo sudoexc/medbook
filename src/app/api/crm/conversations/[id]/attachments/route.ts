@@ -21,6 +21,7 @@ import { auth } from "@/lib/auth";
 import { runWithTenant, type TenantContext, type Role } from "@/lib/tenant-context";
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, forbidden } from "@/server/http";
+import { checkUpload } from "@/server/storage/safe-file";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
 import {
   CHAT_ALLOWED_MIME,
@@ -76,16 +77,24 @@ export async function POST(request: Request): Promise<Response> {
     const file = form.get("file");
     if (!(file instanceof File)) return err("MissingFile", 400);
 
-    const mime = file.type || "application/octet-stream";
-    if (!CHAT_ALLOWED_MIME.has(mime)) {
-      return err("UnsupportedMime", 400, { mimeType: mime });
-    }
     if (file.size <= 0) return err("EmptyFile", 400);
     if (file.size > CHAT_MAX_BYTES) {
       return err("FileTooLarge", 400, { max: CHAT_MAX_BYTES });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    // Typed by its bytes, not by the browser's claim (audit CD-01): an SVG
+    // or HTML «picture» must never be stored as something we serve inline.
+    const checked = checkUpload(
+      buffer,
+      file.type,
+      [...CHAT_ALLOWED_MIME],
+      file.name,
+    );
+    if (!checked.ok) {
+      return err("UnsupportedMime", 400, { mimeType: file.type || null });
+    }
+    const mime = checked.mime;
     const ext = chatExtFor(mime, file.name);
     const id = randomUUID();
     const fileName = `${id}.${ext}`;

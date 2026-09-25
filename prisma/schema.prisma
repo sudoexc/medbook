@@ -310,6 +310,12 @@ model Clinic {
   phone                      String?
   email                      String?
   logoUrl                    String?
+  /// Kiosk device credential (audit SEC-01): sha256 of the token the lobby
+  /// tablet holds. The public kiosk APIs (/api/kiosk/*, /api/c/[slug]/queue/
+  /// {walkin,checkin}) answer only to a request carrying it. The token itself
+  /// is shown once, in the link the ADMIN opens on the tablet.
+  kioskTokenHash             String?   @unique
+  kioskTokenIssuedAt         DateTime?
   brandColor                 String    @default("#3DD5C0")
   timezone                   String    @default("Asia/Tashkent")
   currency                   Currency  @default(UZS)

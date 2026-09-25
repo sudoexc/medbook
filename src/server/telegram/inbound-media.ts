@@ -16,6 +16,7 @@
  * one media per message; albums arrive as separate messages).
  */
 import { promises as fs } from "node:fs";
+import { sniffMime } from "@/server/storage/safe-file";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -146,12 +147,18 @@ export async function ingestTelegramMedia(
     const buffer = Buffer.from(await res.arrayBuffer());
     if (buffer.byteLength === 0) throw new Error("empty download");
 
+    // What the patient sent is typed by its bytes, not by the mime Telegram
+    // relays from the sender's client: an SVG «photo» stored as image/svg+xml
+    // would run script when reception opens it (audit CD-01). Nothing is
+    // refused — an unknown type is simply a plain file, only ever downloaded.
+    const storedMime = sniffMime(buffer) ?? "application/octet-stream";
+
     const ext = extFor(pick.mime, pick.name);
     const id = randomUUID();
     const fileName = `${id}.${ext}`;
     const key = `clinics/${clinic.id}/chat/${conversationId}/${fileName}`;
     const displayName = pick.name || fileName;
-    const kind: InboundAttachment["kind"] = pick.mime.startsWith("image/")
+    const kind: InboundAttachment["kind"] = storedMime.startsWith("image/")
       ? "image"
       : "file";
 
@@ -169,7 +176,7 @@ export async function ingestTelegramMedia(
       await fs.writeFile(path.join(dir, fileName), buffer);
       url = `/uploads/chat/${clinic.id}/${conversationId}/${fileName}`;
     } else {
-      await uploadObject(undefined, key, buffer, pick.mime);
+      await uploadObject(undefined, key, buffer, storedMime);
       const q = new URLSearchParams({ key, name: displayName });
       url = `/api/crm/conversations/${conversationId}/attachments/file?${q.toString()}`;
     }
@@ -178,7 +185,7 @@ export async function ingestTelegramMedia(
       {
         kind,
         url,
-        mimeType: pick.mime,
+        mimeType: storedMime,
         name: displayName,
         sizeBytes: pick.sizeBytes ?? buffer.byteLength,
       },

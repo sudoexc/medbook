@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
+import { KioskDeviceCard } from "./kiosk-device-card";
 import { PasswordReentryDialog } from "../../_components/password-reentry-dialog";
 
 type ClinicRow = {
@@ -466,7 +467,7 @@ export function ClinicSettingsClient() {
               <Input
                 id="letterhead"
                 type="file"
-                accept="image/png,image/svg+xml,image/jpeg"
+                accept="image/png,image/jpeg"
                 className="mt-2"
                 disabled={letterheadUpload.isPending}
                 onChange={(e) => {
@@ -716,6 +717,7 @@ export function ClinicSettingsClient() {
             </Button>
           </div>
         </section>
+        <KioskDeviceCard />
       </div>
 
       <PasswordReentryDialog

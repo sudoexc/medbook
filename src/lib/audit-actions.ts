@@ -543,6 +543,10 @@ export const AUDIT_ACTION = {
   // ("Drug" / "DiagnosisGuide" / "HandoutTemplate"), `entityId` the row id.
   // DELETED = soft-deactivate (active=false); rows stay referenceable from
   // historical visit notes.
+  // Kiosk device credential (audit SEC-01): a new link was issued (the old
+  // one stops working) or the kiosk was switched off.
+  KIOSK_TOKEN_ISSUED: "KIOSK_TOKEN_ISSUED",
+  KIOSK_TOKEN_REVOKED: "KIOSK_TOKEN_REVOKED",
   KNOWLEDGE_DRUG_CREATED: "KNOWLEDGE_DRUG_CREATED",
   KNOWLEDGE_DRUG_UPDATED: "KNOWLEDGE_DRUG_UPDATED",
   KNOWLEDGE_DRUG_DELETED: "KNOWLEDGE_DRUG_DELETED",

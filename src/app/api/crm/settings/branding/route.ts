@@ -25,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err, forbidden } from "@/server/http";
+import { checkUpload } from "@/server/storage/safe-file";
 import { ensureFeature } from "@/server/platform/feature-guard";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
 import { UpdateBrandingSchema } from "@/server/schemas/settings";
@@ -32,10 +33,13 @@ import { validateSubdomain } from "@/server/platform/subdomain";
 import { getFeatureFlags } from "@/server/platform/get-feature-flags";
 
 const MAX_LOGO_BYTES = 256 * 1024; // 256 KB
-const ALLOWED_LOGO_MIME = new Set(["image/png", "image/svg+xml"]);
+// No SVG: /files serves logos straight from storage on our own origin, and
+// an SVG is a script carrier (audit CD-01). Raster only, typed by its bytes.
+const ALLOWED_LOGO_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
-  "image/svg+xml": "svg",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
 };
 
 type TenantOnly = Extract<TenantContext, { kind: "TENANT" }>;
@@ -150,14 +154,16 @@ export async function PATCH(request: Request): Promise<Response> {
         if (file.size > MAX_LOGO_BYTES) {
           return err("LogoTooLarge", 413, { maxBytes: MAX_LOGO_BYTES });
         }
-        if (!ALLOWED_LOGO_MIME.has(file.type)) {
+        const buf = Buffer.from(await file.arrayBuffer());
+        const checked = checkUpload(buf, file.type, [...ALLOWED_LOGO_MIME]);
+        if (!checked.ok) {
           return err("LogoMimeUnsupported", 400, {
             allowed: Array.from(ALLOWED_LOGO_MIME),
           });
         }
-        const ext = MIME_TO_EXT[file.type] ?? "bin";
+        const logoMime = checked.mime;
+        const ext = MIME_TO_EXT[logoMime] ?? "bin";
         const filename = `${randomUUID()}.${ext}`;
-        const buf = Buffer.from(await file.arrayBuffer());
         if (isStubMode()) {
           const dir = path.join(
             process.cwd(),
@@ -171,7 +177,7 @@ export async function PATCH(request: Request): Promise<Response> {
           logoUrl = `/uploads/branding/${ctx.clinicId}/${filename}`;
         } else {
           const key = `branding/${ctx.clinicId}/${filename}`;
-          const uploaded = await uploadObject(undefined, key, buf, file.type);
+          const uploaded = await uploadObject(undefined, key, buf, logoMime);
           logoUrl = uploaded.url;
         }
       }

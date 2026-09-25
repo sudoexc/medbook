@@ -24,13 +24,15 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err, forbidden } from "@/server/http";
+import { checkUpload } from "@/server/storage/safe-file";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
 
 const MAX_LETTERHEAD_BYTES = 512 * 1024; // 512 KB — scanned blanks are heavier than logos
-const ALLOWED_MIME = new Set(["image/png", "image/svg+xml", "image/jpeg"]);
+// No SVG: /files serves it straight from storage on our own origin, and an
+// SVG is a script carrier (audit CD-01). Raster only, typed by its bytes.
+const ALLOWED_MIME = new Set(["image/png", "image/jpeg"]);
 const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
-  "image/svg+xml": "svg",
   "image/jpeg": "jpg",
 };
 
@@ -102,15 +104,17 @@ export async function POST(request: Request): Promise<Response> {
     if (file.size > MAX_LETTERHEAD_BYTES) {
       return err("LetterheadTooLarge", 413, { maxBytes: MAX_LETTERHEAD_BYTES });
     }
-    if (!ALLOWED_MIME.has(file.type)) {
+    const buf = Buffer.from(await file.arrayBuffer());
+    const checked = checkUpload(buf, file.type, [...ALLOWED_MIME]);
+    if (!checked.ok) {
       return err("LetterheadMimeUnsupported", 400, {
         allowed: Array.from(ALLOWED_MIME),
       });
     }
+    const letterheadMime = checked.mime;
 
-    const ext = MIME_TO_EXT[file.type] ?? "bin";
+    const ext = MIME_TO_EXT[letterheadMime] ?? "bin";
     const filename = `${randomUUID()}.${ext}`;
-    const buf = Buffer.from(await file.arrayBuffer());
     let letterheadUrl: string;
     if (isStubMode()) {
       const dir = path.join(
@@ -125,7 +129,7 @@ export async function POST(request: Request): Promise<Response> {
       letterheadUrl = `/uploads/letterhead/${ctx.clinicId}/${filename}`;
     } else {
       const key = `letterhead/${ctx.clinicId}/${filename}`;
-      const uploaded = await uploadObject(undefined, key, buf, file.type);
+      const uploaded = await uploadObject(undefined, key, buf, letterheadMime);
       letterheadUrl = uploaded.url;
     }
 

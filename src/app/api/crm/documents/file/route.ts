@@ -17,6 +17,7 @@ import path from "node:path";
 import { createApiListHandler } from "@/lib/api-handler";
 import { err } from "@/server/http";
 import { fetchObject } from "@/server/storage/minio";
+import { safeFileHeaders } from "@/server/storage/safe-file";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"] },
@@ -46,22 +47,18 @@ export const GET = createApiListHandler(
     // with a ByteString error. The basename here is the storage key suffix
     // (always ASCII), so a plain filename is safe — but we keep the fallback
     // pattern explicit so future changes don't regress silently.
-    const downloadName = path.basename(key);
-    const asciiName = downloadName
-      .replace(/[^\x20-\x7E]/g, "_")
-      .replace(/"/g, "");
-    const utf8Name = encodeURIComponent(downloadName);
-    // `?download=1` forces a Save-As dialog (attachment); default `inline`
-    // lets PDFs/images render in a new tab for quick preview. Matches the
-    // Mini App route's behaviour so the two surfaces stay consistent.
+    // Only inert types (PDF, photos) preview inline; anything else — an old
+    // upload stored as SVG or HTML included — is a download with nosniff and
+    // a sandbox CSP, so it can never run script on our origin (audit CD-01).
+    // `?download=1` forces a Save-As dialog. Same rule as the Mini App route.
     const wantsDownload = url.searchParams.get("download") === "1";
-    const disposition = wantsDownload ? "attachment" : "inline";
     return new Response(fetched.body, {
       status: 200,
       headers: {
-        "Content-Type":
-          fetched.contentType ?? "application/octet-stream",
-        "Content-Disposition": `${disposition}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+        ...safeFileHeaders(fetched.contentType, {
+          download: wantsDownload,
+          filename: path.basename(key),
+        }),
         "Cache-Control": "private, max-age=60",
         ...(fetched.contentLength != null
           ? { "Content-Length": String(fetched.contentLength) }

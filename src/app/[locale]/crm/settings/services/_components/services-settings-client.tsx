@@ -7,6 +7,7 @@ import { PlusIcon, StethoscopeIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageContainer } from "@/components/molecules/page-container";
+import { sumToTiyin, tiyinToSum } from "@/lib/money-input";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -291,10 +292,14 @@ function ServiceRowEditor({
         <input
           type="number"
           className="h-8 w-28 rounded border border-input bg-transparent px-2 text-sm"
-          value={local.priceBase}
+          // Shown and typed in сумы; `priceBase` stays in tiyin.
+          value={tiyinToSum(local.priceBase)}
           min={0}
           onChange={(e) =>
-            setLocal({ ...local, priceBase: Number(e.target.value) })
+            setLocal({
+              ...local,
+              priceBase: sumToTiyin(Number(e.target.value)),
+            })
           }
           onBlur={() =>
             local.priceBase !== row.priceBase &&
@@ -415,7 +420,8 @@ function CreateServiceDialog({
           nameUz: form.nameUz,
           category: form.category || null,
           durationMin: form.durationMin,
-          priceBase: form.priceBase,
+          // The form holds сумы; the API stores tiyin.
+          priceBase: sumToTiyin(form.priceBase),
           freeRepeatDays: form.freeRepeatDays,
           doctorIds: form.doctorIds,
         }),

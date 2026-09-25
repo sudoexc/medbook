@@ -9,6 +9,10 @@
  *
  * The queue insertion itself lives in `registerWalkin` (shared with the CRM
  * front-desk endpoint) so both surfaces allocate the slot identically.
+ *
+ * Answers only to the clinic's paired kiosk (`x-kiosk-token`, audit SEC-01):
+ * the slug is public, and anyone could otherwise fill the live queue with
+ * strangers — or learn a patient's full name by typing her phone.
  */
 import { z } from "zod";
 
@@ -16,6 +20,12 @@ import { ok, err } from "@/server/http";
 import { resolvePublicClinic } from "@/server/clinic-public/resolve";
 import { runWithTenant } from "@/lib/tenant-context";
 import { registerWalkin } from "@/server/appointments/walkin";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  maskPatientName,
+  realClientIp,
+  requireKioskFor,
+} from "@/server/kiosk/device";
 
 const Body = z.object({
   fullName: z.string().trim().min(2).max(120),
@@ -30,6 +40,11 @@ export async function POST(request: Request) {
   const resolved = await resolvePublicClinic(request);
   if (!resolved.ok) return resolved.response;
   const { ctx } = resolved;
+  const kiosk = await requireKioskFor(request, ctx.clinicSlug);
+  if (!kiosk.ok) return kiosk.response;
+  if (!rateLimit(`kiosk-walkin:${ctx.clinicId}:${realClientIp(request)}`, 20)) {
+    return err("too_many_requests", 429);
+  }
 
   let parsed: z.infer<typeof Body>;
   try {
@@ -63,7 +78,12 @@ export async function POST(request: Request) {
         ticketCode: result.ticketCode,
         ticketNumber: result.ticketNumber,
         queueOrder: result.queueOrder,
-        patient: result.patient,
+        // The stored name of an EXISTING patient must not leak to whoever
+        // typed her number: a masked form is enough for the ticket.
+        patient: {
+          id: result.patient.id,
+          fullName: maskPatientName(result.patient.fullName),
+        },
         doctor: result.doctor,
         cabinet: result.cabinet,
       },

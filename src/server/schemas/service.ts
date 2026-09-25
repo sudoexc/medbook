@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+/** Service.priceBase is a Postgres int4, in tiyin: ≈21.4 mln сум. */
+const PRICE_MAX_TIYIN = 2_147_483_647;
+
 export const CreateServiceSchema = z.object({
   code: z
     .string()
@@ -10,7 +13,7 @@ export const CreateServiceSchema = z.object({
   nameUz: z.string().min(1).max(200),
   category: z.string().max(100).optional().nullable(),
   durationMin: z.number().int().min(5).max(480).default(30),
-  priceBase: z.number().int().min(0),
+  priceBase: z.number().int().min(0).max(PRICE_MAX_TIYIN),
   /**
    * Free-repeat policy: when set, a non-first visit in the same MedicalCase
    * within N days of the case's first visit is priced at 0 for this service.

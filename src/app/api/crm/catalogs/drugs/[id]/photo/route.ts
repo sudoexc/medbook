@@ -25,6 +25,7 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err } from "@/server/http";
+import { checkUpload } from "@/server/storage/safe-file";
 import { isStubMode, uploadObject } from "@/server/storage/minio";
 import { sanitizeOverrides } from "@/server/catalog/clinic-overlay";
 
@@ -102,15 +103,19 @@ export const POST = createApiHandler(
     if (file.size > MAX_PHOTO_BYTES) {
       return err("PhotoTooLarge", 413, { maxBytes: MAX_PHOTO_BYTES });
     }
-    const ext = ALLOWED_MIME.get(file.type);
-    if (!ext) {
+    const buf = Buffer.from(await file.arrayBuffer());
+    // Typed by the bytes, not by the browser's claim: /files serves the
+    // stored type straight from storage (audit CD-01).
+    const checked = checkUpload(buf, file.type, [...ALLOWED_MIME.keys()]);
+    const ext = checked.ok ? ALLOWED_MIME.get(checked.mime) : undefined;
+    if (!checked.ok || !ext) {
       return err("PhotoMimeUnsupported", 400, {
         allowed: [...ALLOWED_MIME.keys()],
       });
     }
+    const photoMime = checked.mime;
 
     const filename = `${randomUUID()}.${ext}`;
-    const buf = Buffer.from(await file.arrayBuffer());
     let photoUrl: string;
     if (isStubMode()) {
       const dir = path.join(
@@ -125,7 +130,7 @@ export const POST = createApiHandler(
       photoUrl = `/uploads/drugs/${ctx.clinicId}/${filename}`;
     } else {
       const key = `drugs/${ctx.clinicId}/${id}/${filename}`;
-      const uploaded = await uploadObject(undefined, key, buf, file.type);
+      const uploaded = await uploadObject(undefined, key, buf, photoMime);
       photoUrl = uploaded.url;
     }
 
@@ -139,7 +144,7 @@ export const POST = createApiHandler(
       action: "drug.photo.upload",
       entityType: "Drug",
       entityId: id,
-      meta: { bytes: file.size, mime: file.type, global: !drug.clinicId },
+      meta: { bytes: file.size, mime: photoMime, global: !drug.clinicId },
     });
     return ok({ photoUrl });
   },

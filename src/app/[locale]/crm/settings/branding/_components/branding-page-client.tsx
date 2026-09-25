@@ -133,7 +133,7 @@ export function BrandingPageClient({
             <input
               ref={fileRef}
               type="file"
-              accept="image/png,image/svg+xml"
+              accept="image/png,image/jpeg,image/webp"
               onChange={(e) => setPendingFile(e.target.files?.[0] ?? null)}
               className="block w-full text-sm"
             />

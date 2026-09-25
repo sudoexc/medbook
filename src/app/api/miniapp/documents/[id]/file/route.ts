@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { err } from "@/server/http";
+import { safeFileHeaders } from "@/server/storage/safe-file";
 import { resolveMiniAppContext } from "@/server/miniapp/handler";
 import { fetchObject } from "@/server/storage/minio";
 
@@ -58,23 +59,16 @@ export async function GET(
     }
     if (!fetched.body) return err("EmptyBody", 502);
 
-    const contentType =
-      doc.mimeType || fetched.contentType || "application/octet-stream";
-    // HTTP header values are byte strings, so a Cyrillic title like
-    // "Фото от пациента" (the patient-upload default) crashes the Response
-    // constructor with a TypeError. Per RFC 6266 §5, use `filename*=UTF-8''…`
-    // for non-ASCII names, with an ASCII-safe `filename=` fallback for ancient
-    // clients.
-    const rawTitle = doc.title || "document";
-    const asciiName = rawTitle.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
-    const utf8Name = encodeURIComponent(rawTitle);
-    // `?download=1` forces a Save-As dialog (attachment) — the default is
-    // `inline` so PDFs/images render in the browser tab for quick preview.
+    // Only inert types (PDF, photos) preview inline; anything else — an old
+    // upload stored as SVG or HTML included — is a download with nosniff and
+    // a sandbox CSP, so it can never run script on our origin (audit CD-01).
+    // `?download=1` forces a Save-As dialog.
     const wantsDownload = new URL(request.url).searchParams.get("download") === "1";
-    const disposition = wantsDownload ? "attachment" : "inline";
     const headers: Record<string, string> = {
-      "Content-Type": contentType,
-      "Content-Disposition": `${disposition}; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+      ...safeFileHeaders(
+        doc.mimeType || fetched.contentType || "application/octet-stream",
+        { download: wantsDownload, filename: doc.title || "document" },
+      ),
       "Cache-Control": "private, max-age=60",
     };
     if (fetched.contentLength != null) {

@@ -5,18 +5,21 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { ChevronRightIcon, ZapIcon } from "lucide-react";
 
+import { ACTIONABLE_STATUSES } from "@/lib/actions/types";
+
 import { useActionsList } from "../../action-center/_hooks/use-actions";
 import { ActionCard } from "../../action-center/_components/action-card";
 
 /**
- * Top-of-reception briefing tile that surfaces the five most urgent OPEN
- * actions across the clinic. Hidden entirely when there are zero open
+ * Top-of-reception briefing tile that surfaces the five most urgent open
+ * actions across the clinic (snoozed ones come back once their timer runs
+ * out, see `ACTIONABLE_STATUSES`). Hidden entirely when there are zero open
  * actions — we don't want a permanent "all clear" widget cluttering the
  * dashboard.
  *
  * Data is the same `useActionsList` hook used by the Action Center page,
  * so SSE invalidation and tanstack caching are shared. Filter is fixed at
- * `status=OPEN, limit=5`; the API already handles the
+ * `status=OPEN+SNOOZED, limit=5`; the API already handles the
  * `severity DESC, createdAt DESC` ordering server-side, so the top 5
  * slot we fetch is guaranteed to be the highest-severity open work.
  */
@@ -24,7 +27,7 @@ export function ActionBriefing() {
   const t = useTranslations("reception.briefing");
   const locale = useLocale();
 
-  const query = useActionsList({ status: ["OPEN"], limit: 5 });
+  const query = useActionsList({ status: ACTIONABLE_STATUSES, limit: 5 });
 
   const localePath = React.useCallback(
     (path: string) => {

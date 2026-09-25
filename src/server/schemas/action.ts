@@ -86,26 +86,42 @@ export const ACTION_OUTCOMES = [
   "NO_ANSWER",
 ] as const;
 export const ActionOutcomeEnum = z.enum(ACTION_OUTCOMES);
+export type ActionOutcome = (typeof ACTION_OUTCOMES)[number];
+
+const OutcomeFields = z.object({
+  outcome: ActionOutcomeEnum,
+  note: z.string().max(1000).optional(),
+  callbackAt: z.string().datetime().optional(),
+});
+
+const needsCallbackAt = (v: { outcome: string; callbackAt?: string }) =>
+  (v.outcome !== "CALLBACK" && v.outcome !== "RETURN_LATER") ||
+  Boolean(v.callbackAt);
+const CALLBACK_AT_REQUIRED = {
+  message: "callbackAt is required for CALLBACK / RETURN_LATER",
+};
 
 /**
  * POST /api/crm/actions/[id]/outcome body. `callbackAt` (ISO) is required for
  * CALLBACK (when to resurface) and RETURN_LATER (the return date); ignored for
  * the rest. `note` is what the patient said (reason / return context).
  */
-export const OutcomeActionSchema = z
-  .object({
-    outcome: ActionOutcomeEnum,
-    note: z.string().max(1000).optional(),
-    callbackAt: z.string().datetime().optional(),
-  })
-  .refine(
-    (v) =>
-      (v.outcome !== "CALLBACK" && v.outcome !== "RETURN_LATER") ||
-      Boolean(v.callbackAt),
-    { message: "callbackAt is required for CALLBACK / RETURN_LATER" },
-  );
+export const OutcomeActionSchema = OutcomeFields.refine(
+  needsCallbackAt,
+  CALLBACK_AT_REQUIRED,
+);
+
+/**
+ * POST /api/crm/action-center/risk-today/outcome body: the same outcome,
+ * addressed by the appointment the risk-today row stands for. A row may carry
+ * several Actions or none at all (audit AC-04), so the server resolves them.
+ */
+export const RiskOutcomeSchema = OutcomeFields.extend({
+  appointmentId: z.string().min(1),
+}).refine(needsCallbackAt, CALLBACK_AT_REQUIRED);
 
 export type QueryAction = z.infer<typeof QueryActionSchema>;
 export type SnoozeActionBody = z.infer<typeof SnoozeActionSchema>;
 export type DismissActionBody = z.infer<typeof DismissActionSchema>;
 export type OutcomeActionBody = z.infer<typeof OutcomeActionSchema>;
+export type RiskOutcomeBody = z.infer<typeof RiskOutcomeSchema>;

@@ -44,6 +44,7 @@ const TYPE_LABEL_RU: Record<ActionType, string> = {
   PATIENT_NO_CHANNEL: "Нет канала связи",
   VISIT_FOLLOW_UP_DUE: "Пора на контрольный визит",
   TELEGRAM_LINK_CONFLICT: "Telegram привязан к другой карте",
+  NO_CONTACT_CALL: "Звонок пациенту, который давно не на связи",
 };
 
 const TYPE_LABEL_UZ: Record<ActionType, string> = {
@@ -61,6 +62,7 @@ const TYPE_LABEL_UZ: Record<ActionType, string> = {
   PATIENT_NO_CHANNEL: "Aloqa kanali yo'q",
   VISIT_FOLLOW_UP_DUE: "Nazorat tashrifi vaqti keldi",
   TELEGRAM_LINK_CONFLICT: "Telegram boshqa kartaga bog'langan",
+  NO_CONTACT_CALL: "Uzoq vaqt aloqa bo'lmagan bemorga qo'ng'iroq",
 };
 
 export const searchActionsTool: Tool<SearchActionsInput> = {

@@ -132,6 +132,16 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     clinicCardName: "Каримова Дилноза Рустамовна",
     via: "contact",
   },
+  // Audit AC-04 — call task for a «не на связи»-only risk-today row.
+  NO_CONTACT_CALL: {
+    type: "NO_CONTACT_CALL",
+    appointmentId: "apt_9",
+    patientId: "p_9",
+    patientName: "Каримова Нодира",
+    appointmentAt: "2026-05-07T10:00:00.000Z",
+    doctorName: "Алиев А.А.",
+    daysSinceContact: 31,
+  },
 };
 
 /**
@@ -182,9 +192,11 @@ describe("formatActionTitle / formatActionBody", () => {
   it("interpolates discriminator data (HH:MM, percent, money) into the bag", () => {
     const t = makeEchoTranslator();
 
-    // EMPTY_SLOT_TOMORROW puts slot time + currency in the title
+    // EMPTY_SLOT_TOMORROW puts slot time + currency in the title. Payload
+    // instants are UTC; the card reads the clinic clock (audit AC-02):
+    // 10:00Z is 15:00 in Tashkent.
     const empty = formatActionTitle(t, SAMPLE_PAYLOADS.EMPTY_SLOT_TOMORROW, "ru");
-    expect(empty).toContain("\"slotTime\":\"10:00\"");
+    expect(empty).toContain("\"slotTime\":\"15:00\"");
 
     // NO_SHOW_RISK_HIGH renders risk as an integer percent (0.78 → 78)
     const risk = formatActionTitle(t, SAMPLE_PAYLOADS.NO_SHOW_RISK_HIGH, "ru");
@@ -208,6 +220,111 @@ describe("formatActionTitle / formatActionBody", () => {
     // between Node versions for uz-Latn-UZ).
     expect(ru).toMatch(/"slotDate":"[^"]+"/);
     expect(uz).toMatch(/"slotDate":"[^"]+"/);
+  });
+});
+
+/**
+ * Audit AC-02: slot times rendered the UTC clock (five hours early) and the
+ * UNCONFIRMED_24H title said «завтра» for every row, although the detector
+ * looks 72h ahead starting now. Render the real ICU strings in both languages.
+ */
+describe("appointment time on the clinic clock (real messages)", () => {
+  // 2026-05-07 11:00 in Tashkent.
+  const NOW = new Date("2026-05-07T06:00:00.000Z");
+
+  async function renderer(lang: "ru" | "uz") {
+    const { default: IntlMessageFormat } = await import("intl-messageformat");
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const messages = JSON.parse(
+      readFileSync(path.join(process.cwd(), `src/messages/${lang}.json`), "utf8"),
+    ) as Record<string, unknown>;
+    const t: Translator = (key, values) => {
+      const msg = key
+        .split(".")
+        .reduce<unknown>((node, k) => (node as Record<string, unknown>)[k], messages);
+      return new IntlMessageFormat(msg as string, lang).format(values) as string;
+    };
+    return t;
+  }
+
+  const unconfirmedAt = (appointmentAt: string) => ({
+    ...SAMPLE_PAYLOADS.UNCONFIRMED_24H,
+    appointmentAt,
+  });
+
+  it("09:00Z reads 14:00 on every card that shows the slot time", async () => {
+    const t = await renderer("ru");
+    const at = "2026-05-07T09:00:00.000Z";
+    expect(formatActionTitle(t, unconfirmedAt(at), "ru", NOW)).toContain("14:00");
+    expect(
+      formatActionBody(
+        t,
+        { ...SAMPLE_PAYLOADS.NO_SHOW_RISK_HIGH, appointmentAt: at },
+        "ru",
+        NOW,
+      ),
+    ).toContain("14:00");
+    expect(
+      formatActionTitle(
+        t,
+        { ...SAMPLE_PAYLOADS.EMPTY_SLOT_TOMORROW, slotStart: at },
+        "ru",
+        NOW,
+      ),
+    ).toContain("14:00");
+    expect(
+      formatActionBody(
+        t,
+        { ...SAMPLE_PAYLOADS.PATIENT_NO_CHANNEL, appointmentAt: at },
+        "ru",
+        NOW,
+      ),
+    ).toContain("14:00");
+  });
+
+  it("says «сегодня» for today's visit, «завтра» for tomorrow's, the date beyond", async () => {
+    const ru = await renderer("ru");
+    const today = formatActionTitle(ru, unconfirmedAt("2026-05-07T11:00:00.000Z"), "ru", NOW);
+    expect(today).toContain("сегодня в 16:00");
+    expect(today).not.toContain("завтра");
+    expect(
+      formatActionTitle(ru, unconfirmedAt("2026-05-08T04:00:00.000Z"), "ru", NOW),
+    ).toContain("завтра в 09:00");
+    const later = formatActionTitle(ru, unconfirmedAt("2026-05-09T13:30:00.000Z"), "ru", NOW);
+    expect(later).toContain("09.05 в 18:30");
+    expect(later).not.toMatch(/сегодня|завтра/);
+  });
+
+  it("uses the clinic day, not the UTC day, at the evening boundary", async () => {
+    const ru = await renderer("ru");
+    // 20:30Z on the 7th is 01:30 on the 8th in Tashkent: tomorrow, not today.
+    expect(
+      formatActionTitle(ru, unconfirmedAt("2026-05-07T20:30:00.000Z"), "ru", NOW),
+    ).toContain("завтра в 01:30");
+  });
+
+  it("renders the same choice in Uzbek, without dashes", async () => {
+    const uz = await renderer("uz");
+    const today = formatActionTitle(uz, unconfirmedAt("2026-05-07T11:00:00.000Z"), "uz", NOW);
+    expect(today).toContain("bugun 16:00");
+    expect(today).not.toContain("ertaga");
+    expect(today).not.toMatch(/[—–]/);
+    expect(
+      formatActionTitle(uz, unconfirmedAt("2026-05-08T04:00:00.000Z"), "uz", NOW),
+    ).toContain("ertaga 09:00");
+  });
+
+  it("titles the NO_CONTACT_CALL task with the clinic time in both languages", async () => {
+    for (const lang of ["ru", "uz"] as const) {
+      const t = await renderer(lang);
+      const title = formatActionTitle(t, SAMPLE_PAYLOADS.NO_CONTACT_CALL, lang, NOW);
+      const body = formatActionBody(t, SAMPLE_PAYLOADS.NO_CONTACT_CALL, lang, NOW);
+      expect(title).toContain("Каримова Нодира");
+      expect(title).toContain("15:00");
+      expect(body).toContain("Алиев А.А.");
+      expect(`${title} ${body}`).not.toMatch(/[—–]/);
+    }
   });
 });
 

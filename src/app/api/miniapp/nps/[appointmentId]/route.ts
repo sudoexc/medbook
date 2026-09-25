@@ -43,6 +43,7 @@ import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { runWithTenant } from "@/lib/tenant-context";
 import type { LowNpsReceivedPayload } from "@/lib/actions/types";
 import { upsertAction } from "@/server/actions/repository";
+import { LOW_NPS_ALERT_TTL_DAYS } from "@/server/actions/config";
 import { err, forbidden, notFound, ok } from "@/server/http";
 import {
   createMiniAppHandler,
@@ -307,7 +308,14 @@ export const POST = createMiniAppHandler(
             userId: "system:miniapp-nps",
             role: "ADMIN",
           },
-          () => upsertAction(prisma, ctx.clinicId, payload),
+          () =>
+            upsertAction(prisma, ctx.clinicId, payload, {
+              // Written once, never re-upserted: without an explicit window
+              // the engine's 48h sweep erased the alert over a weekend.
+              expiresAt: new Date(
+                now.getTime() + LOW_NPS_ALERT_TTL_DAYS * 24 * 60 * 60 * 1000,
+              ),
+            }),
         );
         actionEmittedId = emit.id;
 

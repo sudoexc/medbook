@@ -5270,7 +5270,7 @@
       },
       "UNCONFIRMED_24H": {
         "label": "24 soat ichida tasdiqlanmagan",
-        "title": "{patientName} — ertaga {slotTime} dagi yozuv tasdiqlanmagan",
+        "title": "{patientName}: {slotDay, select, today {bugun} tomorrow {ertaga} other {{slotDate}}} {slotTime} dagi yozuv tasdiqlanmagan",
         "body": "Shifokor: {doctorName}. Qo'ng'iroq qiling yoki tasdiq yuboring."
       },
       "NO_SHOW_RISK_HIGH": {
@@ -5327,6 +5327,11 @@
         "label": "Telegram boshqa kartada",
         "title": "{via, select, contactName {{clinicCardName}: raqamni boshqa ismli Telegram tasdiqladi} other {{clinicCardName}: Telegram boshqa kartaga bog'langan}}",
         "body": "{via, select, invite {Bemor klinika taklifini ochdi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contact {Bemor Telegramda o'z raqamini tasdiqladi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contactName {Bu karta raqamini Telegramda «{telegramCardName}» bemor tasdiqladi, lekin kartadagi ism boshqa, shuning uchun Telegram bog'lanmadi. Agar bu o'sha odam bo'lsa, uni kartadan Telegramga taklif qiling. Agar raqam uniki, karta esa qarindoshiniki bo'lsa, raqamni uning o'z kartasiga yozing.} other {Bitta Telegram ikkita kartaga bog'langan edi, bog'lanish «{telegramCardName}» kartasida qoldirildi. Kartalarni solishtirib, qo'lda birlashtiring.}}"
+      },
+      "NO_CONTACT_CALL": {
+        "label": "Qo'ng'iroq: uzoq vaqt aloqa yo'q",
+        "title": "{patientName}: {slotDay, select, today {bugun} tomorrow {ertaga} other {{slotDate}}} {slotTime} dagi yozuv bo'yicha qayta qo'ng'iroq qiling",
+        "body": "Shifokor: {doctorName}. Bemor bilan uzoq vaqt aloqa bo'lmagan. Qo'ng'iroq qiling va natijasini belgilang."
       }
     },
     "dashboard": {
@@ -5393,7 +5398,8 @@
           "back": "Orqaga",
           "confirm": "Saqlash",
           "success": "Yakun yozildi: {outcome}",
-          "error": "Yakunni yozib bo'lmadi: {reason}"
+          "error": "Yakunni yozib bo'lmadi: {reason}",
+          "staleAppointment": "Yozuv allaqachon bekor qilingan yoki yopilgan, yakun yozilmadi. Ro'yxat yangilandi."
         },
         "remindersChip": {
           "confirmed": "{count, plural, one {# eslatma} other {# eslatma}} · tasdiqladi",

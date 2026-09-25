@@ -33,6 +33,11 @@ import { uploadObject } from "@/server/storage/minio";
 import { renderConclusionPdf } from "@/server/visit-notes/conclusion-pdf";
 import { serializePrescriptionForWrite } from "@/server/prescription/cipher-fields";
 import { upsertAction } from "@/server/actions/repository";
+import { clinicMorningBefore } from "@/server/actions/clinic-day";
+import {
+  VISIT_FOLLOW_UP_GRACE_DAYS,
+  VISIT_FOLLOW_UP_LEAD_DAYS,
+} from "@/server/actions/config";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
@@ -701,8 +706,16 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
       },
       {
         deeplinkPath: `/crm/patients/${note.patientId}`,
-        // Keep the card around for a week past due, then auto-expire.
-        expiresAt: new Date(due.getTime() + 7 * 24 * 60 * 60 * 1000),
+        // Keep the card around for a week past due, then auto-expire. The
+        // explicit expiry is also what shields the row from the engine's 48h
+        // sweep: nothing re-upserts it after this bridge (audit AC-03).
+        expiresAt: new Date(
+          due.getTime() + VISIT_FOLLOW_UP_GRACE_DAYS * 24 * 60 * 60 * 1000,
+        ),
+        // Reception needs the call a week ahead of the control visit, not on
+        // the day of finalize: a 30-day follow-up would otherwise sit in the
+        // list for a month and get tuned out. Short intervals show at once.
+        surfaceAt: clinicMorningBefore(dueDate, VISIT_FOLLOW_UP_LEAD_DAYS),
       },
     );
   }

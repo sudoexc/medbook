@@ -107,10 +107,7 @@ export function dropRiskRowFromCache(
 }
 
 export type RecordOutcomeInput = {
-  /** Every open Action attached to the row — the outcome is stamped on each,
-   *  same as the old «Обработано» done-loop. */
-  actionIds: string[];
-  /** Drives the optimistic cache drop; not sent to the server. */
+  /** The risk-today row: the server resolves its Actions (or creates one). */
   appointmentId: string;
   outcome: RiskOutcome;
   /** Free text: refusal reason / callback context. */
@@ -119,39 +116,43 @@ export type RecordOutcomeInput = {
   callbackAt?: string;
 };
 
+/** Wire codes the outcome endpoint answers when the appointment itself can
+ *  no longer take the outcome (someone cancelled or closed it meanwhile). */
+export const STALE_APPOINTMENT_REASONS: readonly string[] = [
+  "cancelled",
+  "completed",
+  "not_cancellable",
+  "NotFound",
+];
+
 /**
  * Records what a risk-today call actually resolved to (TZ-risk-outcomes §4).
- * Supersedes the bare done-loop for risk rows: the endpoint drives the right
- * durable domain action per outcome (confirm / cancel / snooze / attempts),
- * so a handled row stops bouncing back on the 15-min engine recompute.
+ * One request per row, addressed by appointment: the server confirms /
+ * cancels the visit once, stamps every risk Action of it, creates a call task
+ * when the row had none («не на связи» only) and marks the patient contacted
+ * unless nobody answered (audit AC-04).
  */
 export function useRecordOutcome() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: RecordOutcomeInput) => {
-      const body = JSON.stringify({
-        outcome: input.outcome,
-        ...(input.note ? { note: input.note } : {}),
-        ...(input.callbackAt ? { callbackAt: input.callbackAt } : {}),
-      });
-      // One outcome per Action; a risk row can carry several detector rows
-      // (NO_SHOW_RISK_HIGH + UNCONFIRMED_24H) — post to each id.
-      await Promise.all(
-        input.actionIds.map(async (id) => {
-          const res = await fetch(`/api/crm/actions/${id}/outcome`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "content-type": "application/json" },
-            body,
-          });
-          if (!res.ok) {
-            const data = (await res.json().catch(() => null)) as
-              | { error?: string; reason?: string }
-              | null;
-            throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
-          }
+      const res = await fetch(`/api/crm/action-center/risk-today/outcome`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appointmentId: input.appointmentId,
+          outcome: input.outcome,
+          ...(input.note ? { note: input.note } : {}),
+          ...(input.callbackAt ? { callbackAt: input.callbackAt } : {}),
         }),
-      );
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: string; reason?: string }
+          | null;
+        throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
+      }
     },
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: RISK_TODAY_KEY });
@@ -162,39 +163,6 @@ export function useRecordOutcome() {
       // The outcome also closed/snoozed the underlying Action rows — keep the
       // Action Center lists in sync too.
       void qc.invalidateQueries({ queryKey: ["actions"] });
-    },
-  });
-}
-
-/**
- * Marks a patient as "contacted now" by stamping `Patient.lastContactedAt`.
- * Used by the risk-today section when a row's only reason is `no_contact`
- * (no detector Action attached) — without this, clicking "Обработано"
- * just invalidated the cache and the row came right back on refetch.
- */
-export function useMarkPatientContacted() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { patientId: string; appointmentId?: string }) => {
-      const res = await fetch(`/api/crm/action-center/mark-contacted`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as
-          | { error?: string; reason?: string }
-          | null;
-        throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
-      }
-      return (await res.json()) as {
-        patientId: string;
-        lastContactedAt: string;
-      };
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
     },
   });
 }

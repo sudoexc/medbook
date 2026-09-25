@@ -41,8 +41,20 @@ export type UpsertActionOptions = {
   deeplinkPath?: string;
   /** Override the default assignee role. Pass `null` for "any role". */
   assigneeRole?: "ADMIN" | "RECEPTIONIST" | null;
-  /** Optional row-level expiry; the cron sweeper will mark these EXPIRED. */
+  /**
+   * Optional row-level expiry; the cron sweeper will mark these EXPIRED.
+   * A row that carries one is exempt from the 48h `updatedAt` sweep (see
+   * `expireStaleActions`), so event-driven rows nobody re-upserts must set it.
+   */
   expiresAt?: Date | null;
+  /**
+   * Keep the row hidden until this instant: a task created ahead of its time
+   * (the control-visit call a week before the due date). Stored as a snooze,
+   * so every list surfaces it exactly like an elapsed «Отложить». When passed
+   * on an update it re-schedules the row, because the caller recomputed it
+   * from newer input (the doctor edited the follow-up interval).
+   */
+  surfaceAt?: Date | null;
 };
 
 export type UpsertResult = {
@@ -71,7 +83,8 @@ const PAYLOAD_SIGNIFICANT_KEYS: readonly string[] = [
  * Upsert an action keyed by `(clinicId, dedupeKey)`.
  *
  * Behaviour:
- *   - If no row exists, INSERT with status=OPEN and emit ACTION_CREATED.
+ *   - If no row exists, INSERT with status=OPEN (SNOOZED until
+ *     `options.surfaceAt` when that is in the future) and emit ACTION_CREATED.
  *   - If a row exists, UPDATE the payload + severity + meta fields and bump
  *     `updatedAt`. Emit ACTION_UPDATED **only** when severity OR
  *     payload-significant fields change.
@@ -97,6 +110,12 @@ export async function upsertAction(
       : options.assigneeRole;
   const branchId = options.branchId ?? null;
   const expiresAt = options.expiresAt ?? null;
+  const nowMs = Date.now();
+  // Only a future surface time hides the row; a past one means "show now".
+  const scheduledUntil =
+    options.surfaceAt && options.surfaceAt.getTime() > nowMs
+      ? options.surfaceAt
+      : null;
 
   const existing = await prisma.action.findUnique({
     where: { clinicId_dedupeKey: { clinicId, dedupeKey } },
@@ -111,7 +130,8 @@ export async function upsertAction(
         type: payload.type,
         severity,
         payload: payload as never,
-        status: "OPEN",
+        status: scheduledUntil ? "SNOOZED" : "OPEN",
+        snoozeUntil: scheduledUntil,
         assigneeRole,
         deeplinkPath,
         dedupeKey,
@@ -150,7 +170,6 @@ export async function upsertAction(
   // (`expiresAt`). SNOOZED already survives recompute below, so CALLBACK /
   // RETURN_LATER / NO_ANSWER (which snooze) are covered; this guards the
   // DONE outcomes (CONFIRMED / RESCHEDULED / REFUSED).
-  const nowMs = Date.now();
   const outcomeLocked =
     existing.status === "DONE" &&
     (existing as { outcome?: string | null }).outcome != null &&
@@ -161,7 +180,15 @@ export async function upsertAction(
     (existing.status === "DONE" ||
       existing.status === "DISMISSED" ||
       existing.status === "EXPIRED");
-  const newStatus = wasTerminal ? "OPEN" : existing.status;
+  let newStatus = wasTerminal ? "OPEN" : existing.status;
+  // Snooze stays untouched by default: an explicit user-set timer survives
+  // recompute, so the column is not even written. A caller-supplied surface
+  // time re-schedules the row (unless a recorded outcome locks it).
+  const reschedule = options.surfaceAt !== undefined && !outcomeLocked;
+  if (reschedule) {
+    if (scheduledUntil) newStatus = "SNOOZED";
+    else if (newStatus === "SNOOZED") newStatus = "OPEN";
+  }
 
   const oldPayload = existing.payload as ActionPayload | null;
   const payloadChanged =
@@ -188,7 +215,7 @@ export async function upsertAction(
       // Clear terminal stamps when resurrecting.
       doneAt: wasTerminal ? null : existing.doneAt,
       dismissedAt: wasTerminal ? null : existing.dismissedAt,
-      // Snooze stays untouched — explicit user-set timer survives recompute.
+      ...(reschedule ? { snoozeUntil: scheduledUntil } : {}),
     } as never,
   });
 
@@ -228,8 +255,19 @@ export async function upsertAction(
 /**
  * Mark stale OPEN/SNOOZED actions as EXPIRED. Two triggers:
  *   1. `expiresAt` is set and in the past, OR
- *   2. `updatedAt` older than `ttlHours` (default 48h) — protects against
- *      detectors that stop firing without explicitly clearing.
+ *   2. the row has NO `expiresAt` and was last touched more than `ttlHours`
+ *      (default 48h) ago — protects against detectors that stop firing
+ *      without explicitly clearing.
+ *
+ * The 48h sweep is a fallback for detector rows, which the engine re-upserts
+ * every 15 minutes while their signal holds. It must not reach two kinds of
+ * rows (audit AC-01 / AC-03):
+ *   - rows with an explicit deadline. Event-driven tasks (control visit, low
+ *     NPS) are written once and never refreshed, so their `updatedAt` goes
+ *     stale after two days while the task is still weeks from due;
+ *   - rows a user snoozed. «Отложить на неделю» must not quietly expire on
+ *     day two, so the TTL counts from the later of the last refresh and the
+ *     snooze timer.
  *
  * Returns the number of rows expired. Emits one ACTION_EXPIRED audit per
  * row. Caller MUST be inside `runWithTenant(...)`.
@@ -251,7 +289,11 @@ export async function expireStaleActions(
       status: { in: ["OPEN", "SNOOZED"] },
       OR: [
         { expiresAt: { lte: now } },
-        { updatedAt: { lte: ttlCutoff } },
+        {
+          expiresAt: null,
+          updatedAt: { lte: ttlCutoff },
+          OR: [{ snoozeUntil: null }, { snoozeUntil: { lte: ttlCutoff } }],
+        },
       ],
     },
     select: { id: true, type: true, severity: true, status: true },

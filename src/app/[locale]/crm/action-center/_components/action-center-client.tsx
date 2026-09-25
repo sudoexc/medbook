@@ -38,11 +38,12 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { formatActionTitle, formatActionBody } from "@/lib/actions/format";
 import {
+  ACTIONABLE_STATUSES,
   defaultDeeplinkPath,
   type ActionSeverity,
   type ActionType,
 } from "@/lib/actions/types";
-import type { Locale } from "@/lib/format";
+import { formatClinicDateTime, type Locale } from "@/lib/format";
 
 import {
   useActionsPaged,
@@ -95,8 +96,11 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
   const locale = useLocale() as Locale;
   const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
 
+  // OPEN + SNOOZED: the list endpoint hides a snoozed row until its timer
+  // elapses, then serves it again. Asking for OPEN alone made «Отложить» a
+  // silent delete (audit AC-01).
   const { rows: actions, isLoading } = useActionsPaged({
-    status: ["OPEN"],
+    status: ACTIONABLE_STATUSES,
     limit: 50,
   });
   const { data: dashboard } = useReceptionDashboard();
@@ -441,6 +445,7 @@ const ACTION_CTA: Record<
   PATIENT_NO_CHANNEL: { cta: "ctaCall", tone: "warning", Icon: PhoneIcon },
   VISIT_FOLLOW_UP_DUE: { cta: "ctaCall", tone: "info", Icon: CalendarCheck2Icon },
   TELEGRAM_LINK_CONFLICT: { cta: "ctaOpen", tone: "warning", Icon: UsersIcon },
+  NO_CONTACT_CALL: { cta: "ctaCall", tone: "violet", Icon: PhoneIcon },
 };
 
 // Type helper so TypeScript knows the keys are valid i18n paths.
@@ -476,6 +481,7 @@ const CATEGORY_MAP: Record<ActionType, CategoryKey> = {
   LOW_NPS_RECEIVED: "calls",
   PATIENT_NO_CHANNEL: "calls",
   VISIT_FOLLOW_UP_DUE: "calls",
+  NO_CONTACT_CALL: "calls",
   EMPTY_SLOT_TOMORROW: "slots",
   IDLE_ROOM: "slots",
   LOW_DOCTOR_SCHEDULE: "slots",
@@ -838,7 +844,9 @@ function ctaToneClass(tone: keyof typeof TONE_CHIP): string {
 
 function ActionMenu({ row }: { row: ActionRow }) {
   const t = useTranslations("actionCenter.actions");
+  const tac = useTranslations("actionCenter");
   const td = useTranslations("actionCenter.dashboard.actionsList");
+  const locale = useLocale() as Locale;
   const [open, setOpen] = React.useState(false);
 
   const done = useDoneAction();
@@ -880,7 +888,27 @@ function ActionMenu({ row }: { row: ActionRow }) {
           type="button"
           onClick={async () => {
             setOpen(false);
-            await snooze.mutateAsync({ id: row.id, preset: "tomorrow" });
+            // The row leaves the list optimistically; without a toast a
+            // failed request looked like success and the row just came back.
+            try {
+              const after = await snooze.mutateAsync({
+                id: row.id,
+                preset: "tomorrow",
+              });
+              toast.success(
+                tac("snooze.success", {
+                  until: after.snoozeUntil
+                    ? formatClinicDateTime(after.snoozeUntil, locale)
+                    : tac("snooze.tomorrow"),
+                }),
+              );
+            } catch (e) {
+              toast.error(
+                tac("snooze.error", {
+                  reason: e instanceof Error ? e.message : "Error",
+                }),
+              );
+            }
           }}
           className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
         >
@@ -890,7 +918,16 @@ function ActionMenu({ row }: { row: ActionRow }) {
           type="button"
           onClick={async () => {
             setOpen(false);
-            await dismiss.mutateAsync({ id: row.id });
+            try {
+              await dismiss.mutateAsync({ id: row.id });
+              toast.success(tac("dismiss.success"));
+            } catch (e) {
+              toast.error(
+                tac("dismiss.error", {
+                  reason: e instanceof Error ? e.message : "Error",
+                }),
+              );
+            }
           }}
           className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
         >

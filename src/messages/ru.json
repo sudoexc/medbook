@@ -5270,7 +5270,7 @@
       },
       "UNCONFIRMED_24H": {
         "label": "Не подтверждено за 24ч",
-        "title": "{patientName} — запись завтра в {slotTime} не подтверждена",
+        "title": "{patientName}: запись {slotDay, select, today {сегодня} tomorrow {завтра} other {{slotDate}}} в {slotTime} не подтверждена",
         "body": "Врач: {doctorName}. Позвоните или отправьте подтверждение."
       },
       "NO_SHOW_RISK_HIGH": {
@@ -5327,6 +5327,11 @@
         "label": "Telegram на другой карте",
         "title": "{via, select, contactName {{clinicCardName}: номер подтвердил Telegram с другим именем} other {{clinicCardName}: Telegram привязан к другой карте}}",
         "body": "{via, select, invite {Пациент открыл приглашение клиники, но его Telegram уже связан с картой «{telegramCardName}», где есть записи. Сравните карты и объедините их вручную.} contact {Пациент подтвердил свой номер в Telegram, но его Telegram уже связан с картой «{telegramCardName}», где есть записи. Сравните карты и объедините их вручную.} contactName {Номер этой карты подтвердил в Telegram пациент «{telegramCardName}», а в карте другое имя, поэтому Telegram не привязан. Если это тот же человек, пригласите его в Telegram из карты. Если номер его, а карта родственника, запишите номер в его собственную карту.} other {Один Telegram был привязан к двум картам, связь оставлена у карты «{telegramCardName}». Сравните карты и объедините их вручную.}}"
+      },
+      "NO_CONTACT_CALL": {
+        "label": "Звонок: давно не на связи",
+        "title": "{patientName}: перезвонить по записи {slotDay, select, today {сегодня} tomorrow {завтра} other {{slotDate}}} в {slotTime}",
+        "body": "Врач: {doctorName}. Пациент давно не на связи. Позвоните и отметьте исход звонка."
       }
     },
     "dashboard": {
@@ -5393,7 +5398,8 @@
           "back": "Назад",
           "confirm": "Сохранить",
           "success": "Исход записан: {outcome}",
-          "error": "Не удалось записать исход: {reason}"
+          "error": "Не удалось записать исход: {reason}",
+          "staleAppointment": "Запись уже отменена или закрыта, исход не записан. Список обновлён."
         },
         "remindersChip": {
           "confirmed": "{count, plural, one {# напоминание} few {# напоминания} many {# напоминаний} other {# напоминания}} · подтвердил",

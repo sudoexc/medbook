@@ -17,6 +17,7 @@ import {
   FrownIcon,
   HistoryIcon,
   Link2OffIcon,
+  MessageCircleOffIcon,
   PhoneOffIcon,
   RotateCwIcon,
   UsersIcon,
@@ -41,6 +42,8 @@ export const ACTION_ICONS: Record<ActionType, LucideIcon> = {
   PATIENT_NO_CHANNEL: PhoneOffIcon,
   VISIT_FOLLOW_UP_DUE: CalendarCheckIcon,
   TELEGRAM_LINK_CONFLICT: Link2OffIcon,
+  // Same glyph as the «не на связи» reason chip in the risk-today list.
+  NO_CONTACT_CALL: MessageCircleOffIcon,
 };
 
 /** Tailwind colour-token classes for severity dots, borders, and badge tones. */

@@ -19,6 +19,7 @@
  * secondary line" rather than "missing translation".
  */
 import { formatMoney, type Locale } from "@/lib/format";
+import { tashkentPartsOf } from "@/lib/tashkent-time";
 import type { ActionPayload } from "@/lib/actions/types";
 
 /**
@@ -33,21 +34,21 @@ export type Translator = (
 ) => string;
 
 /**
- * Render a short HH:MM in 24h time. Locale-agnostic by design — the wider
- * action card already uses ru-RU/uz-Latn for relative timestamps; the slot
- * time inside the title is just a clock readout.
+ * Render a short HH:MM in 24h time on the clinic wall clock (Asia/Tashkent).
+ * Payload instants are UTC; reading the UTC hours printed every slot five
+ * hours early («запись в 09:00» for a 14:00 visit, audit AC-02).
  */
 function formatHM(iso: string): string {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return iso;
-  const h = String(d.getUTCHours()).padStart(2, "0");
-  const m = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+  const p = tashkentPartsOf(d);
+  return `${String(p.hours).padStart(2, "0")}:${String(p.minutes).padStart(2, "0")}`;
 }
 
 /**
- * Locale-aware short date "DD.MM" — used in titles where we want "10.05" not
- * the full "2026-05-10" string. Falls back to the raw input on parse failure.
+ * Locale-aware short date "DD.MM" on the clinic calendar — used in titles
+ * where we want "10.05" not the full "2026-05-10" string. Falls back to the
+ * raw input on parse failure.
  */
 function formatDM(iso: string, locale: Locale): string {
   const d = new Date(iso);
@@ -56,7 +57,26 @@ function formatDM(iso: string, locale: Locale): string {
   return new Intl.DateTimeFormat(intlLocale, {
     day: "2-digit",
     month: "2-digit",
+    timeZone: "Asia/Tashkent",
   }).format(d);
+}
+
+/**
+ * Which clinic day an instant falls on, relative to `now`: drives the ICU
+ * `select` that prints «сегодня / завтра / 10.05». The UNCONFIRMED_24H
+ * detector looks 72h ahead, today included, so a hardcoded «завтра» was
+ * wrong for most rows.
+ */
+function clinicDayOf(iso: string, now: Date): "today" | "tomorrow" | "other" {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "other";
+  const day = tashkentPartsOf(d).date;
+  if (day === tashkentPartsOf(now).date) return "today";
+  // Tashkent has no DST, so the next clinic day is exactly 24h ahead.
+  if (day === tashkentPartsOf(new Date(now.getTime() + 86_400_000)).date) {
+    return "tomorrow";
+  }
+  return "other";
 }
 
 /**
@@ -67,6 +87,7 @@ function formatDM(iso: string, locale: Locale): string {
 function valuesFor(
   payload: ActionPayload,
   locale: Locale,
+  now: Date,
 ): Record<string, string | number> {
   switch (payload.type) {
     case "EMPTY_SLOT_TOMORROW":
@@ -88,6 +109,7 @@ function valuesFor(
         doctorName: payload.doctorName,
         slotTime: formatHM(payload.appointmentAt),
         slotDate: formatDM(payload.appointmentAt, locale),
+        slotDay: clinicDayOf(payload.appointmentAt, now),
       };
     case "NO_SHOW_RISK_HIGH":
       return {
@@ -159,6 +181,14 @@ function valuesFor(
         telegramCardName: payload.telegramCardName,
         via: payload.via,
       };
+    case "NO_CONTACT_CALL":
+      return {
+        patientName: payload.patientName,
+        doctorName: payload.doctorName,
+        slotTime: formatHM(payload.appointmentAt),
+        slotDate: formatDM(payload.appointmentAt, locale),
+        slotDay: clinicDayOf(payload.appointmentAt, now),
+      };
     default: {
       const _exhaustive: never = payload;
       throw new Error(
@@ -174,14 +204,19 @@ function valuesFor(
  * `t` is a translator scoped to `actionCenter.types.<TYPE>` OR the global
  * translator — we accept either by passing the full `actionCenter.types.<T>.title`
  * key. The default uses the global form so callers don't need to scope the
- * translator per row.
+ * translator per row. `now` anchors the «сегодня / завтра» wording; tests
+ * pin it, the UI takes the render instant.
  */
 export function formatActionTitle(
   t: Translator,
   payload: ActionPayload,
   locale: Locale = "ru",
+  now: Date = new Date(),
 ): string {
-  return t(`actionCenter.types.${payload.type}.title`, valuesFor(payload, locale));
+  return t(
+    `actionCenter.types.${payload.type}.title`,
+    valuesFor(payload, locale, now),
+  );
 }
 
 /**
@@ -194,6 +229,10 @@ export function formatActionBody(
   t: Translator,
   payload: ActionPayload,
   locale: Locale = "ru",
+  now: Date = new Date(),
 ): string {
-  return t(`actionCenter.types.${payload.type}.body`, valuesFor(payload, locale));
+  return t(
+    `actionCenter.types.${payload.type}.body`,
+    valuesFor(payload, locale, now),
+  );
 }

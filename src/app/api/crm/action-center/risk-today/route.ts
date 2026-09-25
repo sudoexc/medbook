@@ -7,7 +7,9 @@
  *   - an open NO_SHOW_RISK_HIGH action (`risk` carries the score)
  *   - an open UNCONFIRMED_24H action (patient hasn't confirmed and start
  *     is inside the unconfirmed look-ahead window)
- *   - patient.lastContactedAt is null OR older than 14 days
+ *   - patient.lastContactedAt older than 14 days, unless a call outcome on
+ *     this appointment snoozed it («не дозвонился», «перезвонить позже»)
+ *   - an open NO_CONTACT_CALL action (such a snooze has run out)
  *
  * One appointment can carry multiple reasons — they collapse onto a single
  * row with a `reasons[]` array and a composite `riskScore` for sorting and
@@ -31,10 +33,12 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
-import type {
-  ActionPayload,
-  NoShowRiskHighPayload,
-  Unconfirmed24hPayload,
+import {
+  RISK_ACTION_TYPES,
+  type ActionPayload,
+  type NoContactCallPayload,
+  type NoShowRiskHighPayload,
+  type Unconfirmed24hPayload,
 } from "@/lib/actions/types";
 
 export type RiskReason =
@@ -191,27 +195,20 @@ export const GET = createApiListHandler(
         primaryService: { select: { id: true, nameRu: true, nameUz: true } },
       },
     });
-    if (appts.length === 0) {
-      const empty: RiskTodayResponse = {
-        appointments: [],
-        handled: [],
-        totals: { total: 0, open: 0, handledToday: 0, estimatedLossTiins: 0 },
-        windowStart: dayStart.toISOString(),
-        windowEnd: dayEnd.toISOString(),
-      };
-      return ok(empty);
-    }
-
+    // No early return on an empty day: a refusal cancels the visit, so the
+    // day's last at-risk appointment leaves `appts` exactly when its outcome
+    // must show up in «Обработано сегодня» below.
     const apptIds = appts.map((a) => a.id);
 
-    // 2) All NO_SHOW_RISK_HIGH + UNCONFIRMED_24H actions touching today's
-    // appointments — both still-OPEN (drives reasons[]) and DONE-today
-    // (drives the handledToday counter). One query keeps the round-trip flat.
+    // 2) All risk actions (NO_SHOW_RISK_HIGH + UNCONFIRMED_24H +
+    // NO_CONTACT_CALL) touching today's appointments — both still-OPEN
+    // (drives reasons[]) and DONE-today (drives the handledToday counter).
+    // One query keeps the round-trip flat.
     // "DONE today" uses the same clinic-day window as the appointment list —
     // a UTC floor would make the counter reset at 05:00 clinic time.
     const actions = await prisma.action.findMany({
       where: {
-        type: { in: ["NO_SHOW_RISK_HIGH", "UNCONFIRMED_24H"] },
+        type: { in: [...RISK_ACTION_TYPES] },
         OR: [
           { status: { in: ["OPEN", "SNOOZED"] } },
           { status: "DONE", doneAt: { gte: dayStart } },
@@ -234,7 +231,7 @@ export const GET = createApiListHandler(
 
     type ActionLite = {
       id: string;
-      type: "NO_SHOW_RISK_HIGH" | "UNCONFIRMED_24H";
+      type: (typeof RISK_ACTION_TYPES)[number];
       status: string;
       payload: ActionPayload;
       doneAt: Date | null;
@@ -250,17 +247,25 @@ export const GET = createApiListHandler(
 
     // Reminder cascade context: how many APPOINTMENT_BEFORE pings actually went
     // out per appointment. Drives the «N напоминаний · не подтвердил» chip.
-    const reminderCounts = await prisma.notificationSend.groupBy({
-      by: ["appointmentId"],
-      where: { appointmentId: { in: apptIds }, sentAt: { not: null } },
-      _count: { _all: true },
-    });
+    const reminderCounts =
+      apptIds.length === 0
+        ? []
+        : await prisma.notificationSend.groupBy({
+            by: ["appointmentId"],
+            where: { appointmentId: { in: apptIds }, sentAt: { not: null } },
+            _count: { _all: true },
+          });
     const remindersByAppt = new Map<string, number>();
     for (const r of reminderCounts) {
       if (r.appointmentId) remindersByAppt.set(r.appointmentId, r._count._all);
     }
 
     const openByAppt = new Map<string, ActionLite[]>();
+    // Appointments with a live snooze: a recorded outcome («не дозвонился»,
+    // «перезвонить позже») or «Отложить» deferred the call. The no-contact
+    // signal must respect that too, otherwise the row bounced straight back
+    // with only its «не на связи» chip.
+    const deferredAppts = new Set<string>();
     type HandledRaw = {
       appointmentId: string;
       outcome: string | null;
@@ -293,6 +298,7 @@ export const GET = createApiListHandler(
       if (a.status === "DONE") continue;
       // Treat SNOOZED with an elapsed timer as OPEN (matches /actions list).
       if (a.status === "SNOOZED" && a.snoozeUntil && a.snoozeUntil > now) {
+        deferredAppts.add(apptId);
         continue;
       }
       const arr = openByAppt.get(apptId) ?? [];
@@ -313,8 +319,13 @@ export const GET = createApiListHandler(
       let riskScore = 0;
 
       const open = openByAppt.get(ap.id) ?? [];
+      let noContactTask: NoContactCallPayload | null = null;
       for (const act of open) {
         actionIds.push(act.id);
+        if (act.type === "NO_CONTACT_CALL") {
+          noContactTask = act.payload as NoContactCallPayload;
+          continue;
+        }
         if (act.type === "NO_SHOW_RISK_HIGH") {
           const p = act.payload as NoShowRiskHighPayload;
           reasons.push({ kind: "high_risk", risk: p.risk });
@@ -341,13 +352,28 @@ export const GET = createApiListHandler(
       // unconfirmed_24h reason already covers them when relevant.
       const lc = ap.patient.lastContactedAt;
       const everContacted = lc !== null;
-      if (everContacted && lc! < noContactCutoff) {
-        const days = Math.floor(
+      let noContactDays: number | null | undefined;
+      if (
+        everContacted &&
+        lc! < noContactCutoff &&
+        (!deferredAppts.has(ap.id) || noContactTask)
+      ) {
+        noContactDays = Math.floor(
           (now.getTime() - lc!.getTime()) / (24 * 60 * 60 * 1000),
         );
-        reasons.push({ kind: "no_contact", daysSinceContact: days });
-        // Slope: 14d → floor, 180d+ → ceiling.
-        const t = Math.min(1, Math.max(0, (days - NO_CONTACT_DAYS) / 166));
+      } else if (noContactTask) {
+        // The call task is due again (its snooze ran out) although the
+        // patient now counts as contacted («перезвонить позже» talked to
+        // them): keep the row, labelled with why it was put on the list.
+        noContactDays = noContactTask.daysSinceContact;
+      }
+      if (noContactDays !== undefined) {
+        reasons.push({ kind: "no_contact", daysSinceContact: noContactDays });
+        // Slope: 14d → floor, 180d+ → ceiling. Never contacted = floor.
+        const t = Math.min(
+          1,
+          Math.max(0, ((noContactDays ?? NO_CONTACT_DAYS) - NO_CONTACT_DAYS) / 166),
+        );
         const score =
           NO_CONTACT_RISK_FLOOR +
           (NO_CONTACT_RISK_CEILING - NO_CONTACT_RISK_FLOOR) * t;

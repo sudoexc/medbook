@@ -8,6 +8,8 @@
  */
 import type { TenantContext } from "@/lib/tenant-context";
 
+import { nextClinicMorning } from "./clinic-day";
+
 /** Parse the trailing `[id]` segment from `/api/crm/actions/<id>/<verb>`. */
 export function actionIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -18,17 +20,6 @@ export function actionIdFromUrl(request: Request): string {
     if (parts[i - 1] === "actions") return parts[i];
   }
   return "";
-}
-
-/**
- * Compute "tomorrow at 09:00 local" given the current time. We anchor to
- * 09:00 because that's the canonical "start of business day" for the CRM.
- */
-function tomorrowAt9(now: Date): Date {
-  const next = new Date(now);
-  next.setUTCDate(next.getUTCDate() + 1);
-  next.setUTCHours(9, 0, 0, 0);
-  return next;
 }
 
 function nextWeek(now: Date): Date {
@@ -51,7 +42,10 @@ export function resolveSnoozePreset(
     case "4h":
       return new Date(now.getTime() + 4 * 60 * 60 * 1000);
     case "tomorrow":
-      return tomorrowAt9(now);
+      // 09:00 of the next clinic day. The old UTC arithmetic landed on 14:00
+      // Tashkent, and when snoozed between local midnight and 05:00 it
+      // picked the same clinic day.
+      return nextClinicMorning(now);
     case "next-week":
       return nextWeek(now);
     default: {

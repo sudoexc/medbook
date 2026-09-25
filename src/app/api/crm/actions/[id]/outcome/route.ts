@@ -14,11 +14,11 @@
  *
  * The outcome + `expiresAt` also LOCK the row against the 15-min engine
  * recompute (see repository.upsertAction) so a handled row stops bouncing back.
+ * The stamps and side effects live in `src/server/actions/outcome.ts`, shared
+ * with the per-appointment risk-today endpoint.
  *
  * RBAC: ADMIN, RECEPTIONIST, DOCTOR (mirrors done/dismiss).
  */
-import type { Prisma } from "@/generated/prisma/client";
-
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -26,13 +26,10 @@ import { ok, err, notFound } from "@/server/http";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { OutcomeActionSchema } from "@/server/schemas/action";
 import { actionIdFromUrl } from "@/server/actions/handler-utils";
-import { confirmAppointment } from "@/server/appointments/confirm";
-import { cancelAppointment } from "@/server/appointments/cancel";
-
-/** How long a «не дозвонился» row hides before it resurfaces, and the attempt
- *  cap after which it escalates to a louder severity. */
-const NO_ANSWER_SNOOZE_MIN = 120;
-const NO_ANSWER_MAX_ATTEMPTS = 3;
+import {
+  applyOutcomeToAppointment,
+  outcomeStamp,
+} from "@/server/actions/outcome";
 
 export const POST = createApiHandler(
   {
@@ -49,76 +46,27 @@ export const POST = createApiHandler(
     const payload = before.payload as { appointmentId?: string } | null;
     const appointmentId = payload?.appointmentId ?? null;
     const now = new Date();
-    const note = body.note?.trim() || null;
-    const callbackAt = body.callbackAt ? new Date(body.callbackAt) : null;
-
-    // Common outcome stamp merged into every write below.
-    const stamp: Prisma.ActionUncheckedUpdateInput = {
+    const input = {
       outcome: body.outcome,
-      outcomeNote: note,
-      callbackAt,
-      resolvedById: ctx.userId,
+      note: body.note?.trim() || null,
+      callbackAt: body.callbackAt ? new Date(body.callbackAt) : null,
     };
 
-    // ── Domain side-effect per outcome ──────────────────────────────────────
-    let domain: unknown = null;
-    switch (body.outcome) {
-      case "CONFIRMED": {
-        if (appointmentId) {
-          domain = await confirmAppointment({
-            appointmentId,
-            clinicId: ctx.clinicId,
-            actorId: ctx.userId,
-            via: "INBOUND_CALL",
-          });
-        }
-        stamp.status = "DONE";
-        stamp.doneAt = now;
-        break;
-      }
-      case "REFUSED": {
-        if (appointmentId) {
-          domain = await cancelAppointment({
-            appointmentId,
-            clinicId: ctx.clinicId,
-            actorId: ctx.userId,
-            reason: note ?? "patient:refused-on-call",
-          });
-        }
-        stamp.status = "DONE";
-        stamp.doneAt = now;
-        break;
-      }
-      case "RESCHEDULED": {
-        // The reschedule itself is done via the appointment dialog (which
-        // re-schedules reminders); here we just close + record the row.
-        stamp.status = "DONE";
-        stamp.doneAt = now;
-        break;
-      }
-      case "CALLBACK":
-      case "RETURN_LATER": {
-        // Snooze survives the engine recompute — the row resurfaces exactly at
-        // callbackAt with the note attached ("перезвонить" / "хотел вернуться").
-        stamp.status = "SNOOZED";
-        stamp.snoozeUntil = callbackAt;
-        break;
-      }
-      case "NO_ANSWER": {
-        const attempts = before.callAttempts + 1;
-        stamp.callAttempts = attempts;
-        stamp.status = "SNOOZED";
-        stamp.snoozeUntil = new Date(
-          now.getTime() + NO_ANSWER_SNOOZE_MIN * 60_000,
-        );
-        if (attempts >= NO_ANSWER_MAX_ATTEMPTS && before.severity !== "critical") {
-          stamp.severity = "high";
-        }
-        break;
-      }
-    }
+    // ── Domain side-effect per outcome (confirm / cancel) ───────────────────
+    const domain = appointmentId
+      ? await applyOutcomeToAppointment({
+          outcome: input.outcome,
+          appointmentId,
+          clinicId: ctx.clinicId,
+          actorId: ctx.userId,
+          note: input.note,
+        })
+      : null;
 
-    const after = await prisma.action.update({ where: { id }, data: stamp });
+    const after = await prisma.action.update({
+      where: { id },
+      data: outcomeStamp(before, input, ctx.userId, now),
+    });
 
     await audit(request, {
       action: AUDIT_ACTION.ACTION_OUTCOME,
@@ -127,9 +75,9 @@ export const POST = createApiHandler(
       meta: {
         type: before.type,
         appointmentId,
-        outcome: body.outcome,
-        note,
-        callbackAt: callbackAt?.toISOString() ?? null,
+        outcome: input.outcome,
+        note: input.note,
+        callbackAt: input.callbackAt?.toISOString() ?? null,
         oldStatus: before.status,
         newStatus: after.status,
         callAttempts: after.callAttempts,

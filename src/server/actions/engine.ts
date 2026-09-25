@@ -232,7 +232,8 @@ export async function runActionEngine(
     }
   }
 
-  // Sweep stale OPEN/SNOOZED actions (TTL 48h or explicit expiresAt elapsed).
+  // Sweep stale OPEN/SNOOZED actions: explicit expiresAt elapsed, or 48h
+  // without a refresh for rows that have no expiresAt (see repository).
   try {
     result.expired = await expireStaleActions(prisma, clinicId, 48);
   } catch (e) {

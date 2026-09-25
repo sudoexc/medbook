@@ -57,3 +57,17 @@ export const DEFAULT_CONFIG: DetectorConfig = {
   paymentOverdueMinDays: 0,
   lowScheduleSlotsThreshold: 5,
 };
+
+// ──────────────────────────────────────────────────────────────────────────
+// Event-driven tasks. These rows are written once by the event that caused
+// them and never re-upserted by the engine, so the 48h `updatedAt` sweep
+// cannot tell a live task from an abandoned one. Each carries an explicit
+// window instead (audit AC-03).
+// ──────────────────────────────────────────────────────────────────────────
+
+/** VISIT_FOLLOW_UP_DUE surfaces this many clinic days before the due date. */
+export const VISIT_FOLLOW_UP_LEAD_DAYS = 7;
+/** VISIT_FOLLOW_UP_DUE stays in the list this many days past the due date. */
+export const VISIT_FOLLOW_UP_GRACE_DAYS = 7;
+/** LOW_NPS_RECEIVED stays in the list this many days after the rating. */
+export const LOW_NPS_ALERT_TTL_DAYS = 14;

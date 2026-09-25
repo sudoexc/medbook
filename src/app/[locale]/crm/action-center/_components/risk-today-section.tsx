@@ -17,9 +17,10 @@
  *   - inline CTAs: call, outcome menu («Обработано»), snooze
  *
  * `Обработано` opens a six-outcome menu (TZ-risk-outcomes §1/§5): each
- * outcome is POSTed to every open Action attached to this appointment
- * (NO_SHOW_RISK_HIGH + UNCONFIRMED_24H) and drives the right durable domain
- * action server-side, so the row stops resurrecting on the engine recompute.
+ * outcome is POSTed once for the appointment; the server stamps every risk
+ * Action attached to it (creating a call task when the row surfaced only as
+ * «не на связи») and drives the right durable domain action, so the row
+ * stops resurrecting on the engine recompute.
  * Optimistic removal from cache so the row disappears immediately; the
  * server response then drives the authoritative refetch.
  *
@@ -69,8 +70,8 @@ import type { Locale } from "@/lib/format";
 import { useSnoozeAction } from "../_hooks/use-actions";
 import {
   RISK_TODAY_KEY,
+  STALE_APPOINTMENT_REASONS,
   dropRiskRowFromCache,
-  useMarkPatientContacted,
   useRecordOutcome,
   useRiskToday,
   type HandledRow,
@@ -370,14 +371,7 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const qc = useQueryClient();
   const snooze = useSnoozeAction();
   const recordOutcome = useRecordOutcome();
-  const markContacted = useMarkPatientContacted();
   const [busy, setBusy] = React.useState(false);
-
-  // A row carries `no_contact` whenever the patient hasn't been touched in
-  // N+ days. Closing the attached detector actions alone isn't enough to
-  // silence it — `Patient.lastContactedAt` has to advance too. Otherwise
-  // the next risk-today refetch resurrects the same row.
-  const hasNoContactReason = row.reasons.some((r) => r.kind === "no_contact");
 
   const doctorName = locale === "uz" ? row.doctorName.uz : row.doctorName.ru;
   const serviceName = row.serviceName
@@ -396,9 +390,11 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
   const patientHref = `/${locale}/crm/patients/${row.patientId}`;
   const apptHref = `/${locale}/crm/appointments/${row.appointmentId}`;
 
-  // Records the call outcome on every attached Action (TZ-risk-outcomes §1).
-  // The mutation optimistically drops the row from the cache in onMutate;
-  // for a pure no_contact row (no detector Actions) we drop it ourselves.
+  // Records the call outcome for this appointment (TZ-risk-outcomes §1).
+  // One request whatever the row carries: the server resolves the attached
+  // Actions, creates a call task for a «не на связи»-only row and decides
+  // whether the patient counts as contacted («не дозвонился» does not). The
+  // mutation optimistically drops the row from the cache in onMutate.
   const onOutcome = async (input: {
     outcome: RiskOutcome;
     note?: string;
@@ -407,37 +403,10 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     if (busy) return;
     setBusy(true);
     try {
-      const writes: Array<Promise<unknown>> = [];
-      if (row.actionIds.length > 0) {
-        writes.push(
-          recordOutcome.mutateAsync({
-            actionIds: row.actionIds,
-            appointmentId: row.appointmentId,
-            ...input,
-          }),
-        );
-      } else {
-        dropRiskRowFromCache(qc, row.appointmentId, true);
-      }
-      // Stamp lastContactedAt whenever the row surfaced (also) from the
-      // no_contact signal — without this the receptionist records the
-      // outcome but the row keeps coming back on the next refetch.
-      if (hasNoContactReason) {
-        writes.push(
-          markContacted.mutateAsync({
-            patientId: row.patientId,
-            appointmentId: row.appointmentId,
-          }),
-        );
-      }
-      if (writes.length === 0) {
-        // Nothing to close on the server (no actions, no no_contact). Just
-        // refresh — this branch is mostly defensive; the row reached the UI
-        // because at least one reason matched.
-        await qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
-      } else {
-        await Promise.all(writes);
-      }
+      await recordOutcome.mutateAsync({
+        appointmentId: row.appointmentId,
+        ...input,
+      });
       // «Перенести» = record the outcome + jump into the appointment drawer.
       // The actual date move happens there; reminders reschedule on save.
       if (input.outcome === "RESCHEDULED") {
@@ -449,10 +418,11 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
         t("outcomeMenu.success", { outcome: t(`outcome.${input.outcome}`) }),
       );
     } catch (e) {
+      const reason = e instanceof Error ? e.message : "Error";
       toast.error(
-        t("outcomeMenu.error", {
-          reason: e instanceof Error ? e.message : "Error",
-        }),
+        STALE_APPOINTMENT_REASONS.includes(reason)
+          ? t("outcomeMenu.staleAppointment")
+          : t("outcomeMenu.error", { reason }),
       );
       await qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
     } finally {

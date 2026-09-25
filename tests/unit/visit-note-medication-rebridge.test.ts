@@ -569,6 +569,29 @@ describe("medication bridge — reconciliation on re-run", () => {
     expect(state.bridgeStamps).toHaveLength(1);
     expect(state.bridgeStamps[0].medicationsBridgedAt).toEqual(now);
   });
+
+  // Audit AC-03: the control-visit call is written once and never refreshed,
+  // so it needs an explicit lifetime (the 48h sweep erased it on day two) and
+  // should reach reception a week ahead, not on the day of finalize.
+  it("schedules the control-visit call a week ahead with an explicit expiry", async () => {
+    vi.resetModules();
+    const mod = await import("@/server/workers/visit-note-handout");
+    const repo = await import("@/server/actions/repository");
+    state.bridgeNotes = [
+      { ...bridgeNote([{ ...RX_BASE, sortOrder: 0 }]), followUpDays: 30 },
+    ];
+
+    await mod.runMedicationBridgeTick(new Date("2026-08-20T10:00:00.000Z"));
+
+    const upsert = vi.mocked(repo.upsertAction);
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const [, , payload, options] = upsert.mock.calls[0]!;
+    // Finalized 20 Aug 11:00 Tashkent + 30 days → due 19 Sep.
+    expect(payload).toMatchObject({ type: "VISIT_FOLLOW_UP_DUE", dueDate: "2026-09-19" });
+    // Visible from 12 Sep 09:00 Tashkent, gone after due + 7 days.
+    expect(options?.surfaceAt?.toISOString()).toBe("2026-09-12T04:00:00.000Z");
+    expect(options?.expiresAt?.toISOString()).toBe("2026-09-26T06:00:00.000Z");
+  });
 });
 
 // ----- pure diff -----------------------------------------------------------

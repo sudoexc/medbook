@@ -40,6 +40,13 @@ export type ActionRow = {
   expiresAt: string | null;
 };
 
+/**
+ * A snoozed row comes back by the clock, not by an event: nothing publishes
+ * `action.updated` when its timer runs out. Screens that stay open all day
+ * (reception briefing, Action Center) poll so it actually reappears.
+ */
+export const ACTIONS_LIST_POLL_MS = 60_000;
+
 export type ListActionsFilters = {
   status?: ActionStatus[];
   type?: ActionType[];
@@ -100,6 +107,7 @@ export function useActionsList(filters: ListActionsFilters) {
       return (await res.json()) as ListActionsPage;
     },
     staleTime: 15_000,
+    refetchInterval: ACTIONS_LIST_POLL_MS,
   });
 
   // Coarse invalidation: any action.* event invalidates every list query.
@@ -138,6 +146,9 @@ export function useActionsPaged(filters: ListActionsFilters) {
       return (await res.json()) as ListActionsPage;
     },
     staleTime: 15_000,
+    // Only the first page polls: re-fetching it resets the accumulator (see
+    // the effect below), which is how a resurfaced snooze shows up.
+    refetchInterval: cursor === null ? ACTIONS_LIST_POLL_MS : false,
   });
 
   React.useEffect(() => {

@@ -17,8 +17,11 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
-import { SEVERITY_RANK } from "@/lib/actions/types";
-import type { ActionRow } from "../../action-center/_hooks/use-actions";
+import { ACTIONABLE_STATUSES, SEVERITY_RANK } from "@/lib/actions/types";
+import {
+  ACTIONS_LIST_POLL_MS,
+  type ActionRow,
+} from "../../action-center/_hooks/use-actions";
 
 export type UnconfirmedActionRow = ActionRow & {
   payload: Extract<ActionRow["payload"], { type: "UNCONFIRMED_24H" }>;
@@ -30,11 +33,13 @@ const UNCONFIRMED_LIMIT = 30;
 
 export function useUnconfirmedActions() {
   const query = useQuery<UnconfirmedActionRow[], Error>({
-    queryKey: ["actions", "list", { type: ["UNCONFIRMED_24H"], status: ["OPEN"], limit: UNCONFIRMED_LIMIT }],
+    queryKey: ["actions", "list", { type: ["UNCONFIRMED_24H"], status: ACTIONABLE_STATUSES, limit: UNCONFIRMED_LIMIT }],
     queryFn: async ({ signal }) => {
       const sp = new URLSearchParams();
       sp.append("type", "UNCONFIRMED_24H");
-      sp.append("status", "OPEN");
+      // A row snoozed from this widget («Завтра») must come back once its
+      // timer elapses; OPEN alone never served it again (audit AC-01).
+      for (const s of ACTIONABLE_STATUSES) sp.append("status", s);
       sp.set("limit", String(UNCONFIRMED_LIMIT));
       const res = await fetch(`/api/crm/actions?${sp.toString()}`, {
         credentials: "include",
@@ -60,6 +65,7 @@ export function useUnconfirmedActions() {
       return rows;
     },
     staleTime: 30_000,
+    refetchInterval: ACTIONS_LIST_POLL_MS,
   });
 
   // Coarse invalidation — same key family used everywhere actions live, so

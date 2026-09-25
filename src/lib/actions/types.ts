@@ -49,8 +49,25 @@ export const ACTION_TYPES = [
   // is already bound to another card that holds real history. Nothing is
   // merged automatically; reception decides. Dedupe keyed on the card pair.
   "TELEGRAM_LINK_CONFLICT",
+  // Audit AC-04 — a risk-today row whose only signal is «не на связи» has no
+  // detector Action, so the call outcome had nowhere to live: «Отказался»
+  // cancelled nothing and «Не дозвонился» vanished. The outcome endpoint
+  // creates this row on demand (dedupe keyed off appointmentId) and records
+  // the outcome on it exactly like on NO_SHOW_RISK_HIGH / UNCONFIRMED_24H.
+  "NO_CONTACT_CALL",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
+
+/**
+ * The Action types a risk-today row (one appointment of the day) is built
+ * from. Shared by the risk-today list and its per-appointment outcome
+ * endpoint so both resolve the same rows.
+ */
+export const RISK_ACTION_TYPES = [
+  "NO_SHOW_RISK_HIGH",
+  "UNCONFIRMED_24H",
+  "NO_CONTACT_CALL",
+] as const satisfies readonly ActionType[];
 
 export const ACTION_SEVERITIES = ["low", "medium", "high", "critical"] as const;
 export type ActionSeverity = (typeof ACTION_SEVERITIES)[number];
@@ -63,6 +80,15 @@ export const ACTION_STATUSES = [
   "EXPIRED",
 ] as const;
 export type ActionStatus = (typeof ACTION_STATUSES)[number];
+
+/**
+ * Statuses every work list asks for (Action Center, reception briefing,
+ * call-center widget). Nothing flips a SNOOZED row back to OPEN when its
+ * timer runs out: the list endpoint simply stops hiding it once
+ * `snoozeUntil <= now`. A list that asked for OPEN only therefore never saw a
+ * snoozed task again, so «Отложить» silently deleted it (audit AC-01).
+ */
+export const ACTIONABLE_STATUSES: ActionStatus[] = ["OPEN", "SNOOZED"];
 
 /**
  * Severity ordering for sort. Higher number = more severe; consumers render
@@ -272,6 +298,25 @@ export type TelegramLinkConflictPayload = {
   via: "invite" | "contact" | "contactName" | "dedupe";
 };
 
+/**
+ * Audit AC-04 — call task for a risk-today appointment whose only risk signal
+ * is that the patient has not been in touch for a long time. Created by
+ * `POST /api/crm/action-center/risk-today/outcome` the first time a call
+ * outcome is recorded for such a row, so CONFIRMED / REFUSED reach the
+ * appointment and CALLBACK / NO_ANSWER can hide the row and bring it back.
+ */
+export type NoContactCallPayload = {
+  type: "NO_CONTACT_CALL";
+  appointmentId: string;
+  patientId: string;
+  patientName: string;
+  /** ISO-8601 datetime of the appointment start (UTC). */
+  appointmentAt: string;
+  doctorName: string;
+  /** Days without contact when the call was logged; null = never contacted. */
+  daysSinceContact: number | null;
+};
+
 export type ActionPayload =
   | EmptySlotTomorrowPayload
   | DormantBatchPayload
@@ -286,7 +331,8 @@ export type ActionPayload =
   | LowNpsReceivedPayload
   | PatientNoChannelPayload
   | VisitFollowUpDuePayload
-  | TelegramLinkConflictPayload;
+  | TelegramLinkConflictPayload
+  | NoContactCallPayload;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -336,6 +382,8 @@ export function dedupeKeyFor(payload: ActionPayload): string {
       return `VISIT_FOLLOW_UP_DUE:visitNoteId=${payload.visitNoteId}`;
     case "TELEGRAM_LINK_CONFLICT":
       return `TELEGRAM_LINK_CONFLICT:clinicCardId=${payload.clinicCardId}:telegramCardId=${payload.telegramCardId}`;
+    case "NO_CONTACT_CALL":
+      return `NO_CONTACT_CALL:appointmentId=${payload.appointmentId}`;
     default: {
       // Compile-time exhaustiveness guard.
       const _exhaustive: never = payload;
@@ -375,6 +423,7 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
     case "IDLE_ROOM":
     case "PATIENT_NO_CHANNEL":
     case "VISIT_FOLLOW_UP_DUE":
+    case "NO_CONTACT_CALL":
       return "medium";
     case "LOW_DOCTOR_SCHEDULE":
       return "low";
@@ -429,6 +478,9 @@ export function defaultDeeplinkPath(type: ActionType): string {
     case "TELEGRAM_LINK_CONFLICT":
       // Emitters override with the clinic card: /crm/patients/<id>.
       return "/crm/patients";
+    case "NO_CONTACT_CALL":
+      // The outcome endpoint overrides with /crm/patients/<id>.
+      return "/crm/action-center";
     default: {
       const _exhaustive: never = type;
       throw new Error(
@@ -460,6 +512,7 @@ export function defaultAssigneeRole(type: ActionType): "ADMIN" | "RECEPTIONIST" 
     case "PATIENT_NO_CHANNEL":
     case "VISIT_FOLLOW_UP_DUE":
     case "TELEGRAM_LINK_CONFLICT":
+    case "NO_CONTACT_CALL":
       return "RECEPTIONIST";
     default: {
       const _exhaustive: never = type;

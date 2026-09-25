@@ -147,12 +147,22 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     clinicCardName: "Каримова Дилноза Рустамовна",
     via: "contact",
   },
+  // Audit AC-04 — call task for a «не на связи»-only risk-today row.
+  NO_CONTACT_CALL: {
+    type: "NO_CONTACT_CALL",
+    appointmentId: "apt_9",
+    patientId: "p_9",
+    patientName: "Каримова Нодира",
+    appointmentAt: "2026-05-07T10:00:00.000Z",
+    doctorName: "Алиев А.А.",
+    daysSinceContact: 31,
+  },
 };
 
 describe("ACTION_TYPES surface", () => {
-  it("ACTION_TYPES has exactly 14 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04)", () => {
-    expect(ACTION_TYPES.length).toBe(14);
-    expect(new Set(ACTION_TYPES).size).toBe(14);
+  it("ACTION_TYPES has exactly 15 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04 + AC-04)", () => {
+    expect(ACTION_TYPES.length).toBe(15);
+    expect(new Set(ACTION_TYPES).size).toBe(15);
   });
 
   it("ACTION_SEVERITIES + ACTION_STATUSES are non-empty and unique", () => {
@@ -249,6 +259,11 @@ describe("dedupeKeyFor", () => {
         "TELEGRAM_LINK_CONFLICT",
         SAMPLE_PAYLOADS.TELEGRAM_LINK_CONFLICT,
         { ...SAMPLE_PAYLOADS.TELEGRAM_LINK_CONFLICT, telegramCardId: "p_other" },
+      ],
+      [
+        "NO_CONTACT_CALL",
+        SAMPLE_PAYLOADS.NO_CONTACT_CALL,
+        { ...SAMPLE_PAYLOADS.NO_CONTACT_CALL, appointmentId: "apt_99" },
       ],
     ];
     for (const [, a, b] of variants) {
@@ -373,6 +388,8 @@ describe("compile-time discriminated-union narrowing", () => {
           return p.patientName;
         case "TELEGRAM_LINK_CONFLICT":
           return p.clinicCardName;
+        case "NO_CONTACT_CALL":
+          return p.patientName;
         default: {
           const _exhaustive: never = p;
           return _exhaustive;

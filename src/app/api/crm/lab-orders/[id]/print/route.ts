@@ -14,6 +14,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { displayPhone } from "@/lib/phone";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
 
@@ -34,6 +35,7 @@ export const GET = createApiListHandler(
           fullName: true,
           birthDate: true,
           gender: true,
+          phone: true,
           phoneNormalized: true,
         },
       },
@@ -122,6 +124,7 @@ type Order = {
     fullName: string;
     birthDate: Date | null;
     gender: string | null;
+    phone: string;
     phoneNormalized: string;
   };
   doctor: { name: string; phone: string | null };
@@ -254,7 +257,7 @@ function renderHtml({
     <div><span class="lbl">Пациент:</span> <b>${escapeHtml(order.patient.fullName)}</b></div>
     <div><span class="lbl">Дата рождения:</span> ${escapeHtml(dob)} (${escapeHtml(age)})</div>
     <div><span class="lbl">Пол:</span> ${order.patient.gender === "M" ? "мужской" : order.patient.gender === "F" ? "женский" : "—"}</div>
-    <div><span class="lbl">Телефон:</span> ${escapeHtml(order.patient.phoneNormalized)}</div>
+    <div><span class="lbl">Телефон:</span> ${escapeHtml(displayPhone(order.patient))}</div>
     <div><span class="lbl">Врач:</span> ${escapeHtml(order.doctor.name)}</div>
     <div><span class="lbl">МКБ-10:</span> ${order.diagnosisCode ? escapeHtml(order.diagnosisCode) : "—"}</div>
   </div>

@@ -153,6 +153,12 @@ function valuesFor(
         dueDate: formatDM(payload.dueDate, locale),
         followUpNote: payload.followUpNote,
       };
+    case "TELEGRAM_LINK_CONFLICT":
+      return {
+        clinicCardName: payload.clinicCardName,
+        telegramCardName: payload.telegramCardName,
+        via: payload.via,
+      };
     default: {
       const _exhaustive: never = payload;
       throw new Error(

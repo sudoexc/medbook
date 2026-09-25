@@ -12,6 +12,11 @@ export type MiniAppPatient = {
   telegramId: string | null;
   telegramUsername: string | null;
   hasPhone: boolean;
+  /**
+   * The number is the clinic's own record or the account's shared contact
+   * (audit PH-01). Until then the Mini App offers «confirm via Telegram».
+   */
+  phoneVerified?: boolean;
 };
 
 export type MiniAppClinic = {

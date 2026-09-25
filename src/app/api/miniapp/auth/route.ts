@@ -23,6 +23,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { err, ok } from "@/server/http";
 import { resolveMiniAppContext } from "@/server/miniapp/handler";
 import { allocatePatientNumber } from "@/server/services/patient-number";
+import { isRealPhone } from "@/server/patient/phone-identity";
 
 // `phone` is accepted for old clients and IGNORED — see the header.
 const BodySchema = z
@@ -93,6 +94,29 @@ export async function POST(request: Request) {
           patient = await prisma.patient.findFirst({
             where: { clinicId: ctx.clinicId, telegramId: tgIdStr },
           });
+          if (!patient) {
+            // This account's own auto-created card lost its link (the
+            // one-card-per-account dedupe kept another card, which was
+            // later unlinked). Its `tg:` stub proves whose it is.
+            const orphan = await prisma.patient.findFirst({
+              where: {
+                clinicId: ctx.clinicId,
+                phoneNormalized: `tg:${tgIdStr}`,
+                telegramId: null,
+                deletedAt: null,
+              },
+              select: { id: true },
+            });
+            if (orphan) {
+              patient = await prisma.patient.update({
+                where: { id: orphan.id },
+                data: {
+                  telegramId: tgIdStr,
+                  telegramUsername: tgUser.username ?? null,
+                },
+              });
+            }
+          }
         }
         if (!patient) return err("create_failed", 500);
       }
@@ -102,17 +126,19 @@ export async function POST(request: Request) {
         data: { preferredLang: parsedBody.lang },
       });
     }
+    const realPhone = isRealPhone(patient.phoneNormalized);
     return ok({
       patient: {
         id: patient.id,
         fullName: patient.fullName,
-        phone: patient.phoneNormalized.startsWith("tg:")
-          ? ""
-          : patient.phoneNormalized,
+        phone: realPhone ? patient.phoneNormalized : "",
         preferredLang: patient.preferredLang,
         telegramId: patient.telegramId,
         telegramUsername: patient.telegramUsername,
-        hasPhone: !patient.phoneNormalized.startsWith("tg:"),
+        hasPhone: realPhone,
+        // Only a number the clinic typed or the account shared as its own
+        // contact (audit PH-01); the Mini App offers to confirm otherwise.
+        phoneVerified: realPhone && patient.phoneVerifiedAt !== null,
       },
       clinic: {
         id: ctx.clinicId,

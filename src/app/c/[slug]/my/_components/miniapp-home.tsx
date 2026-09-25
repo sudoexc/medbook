@@ -16,6 +16,7 @@ import { useMedications } from "../_hooks/use-medications";
 import { useLabs } from "../_hooks/use-labs";
 import { useMinuteClock } from "../_hooks/use-minute-clock";
 import { countUnseenLabs, readLabsSeenAt } from "../_lib/labs-unseen";
+import { bookHref } from "../_lib/booking-context";
 import { MCard, MSpinner, formatTimeISO } from "./mini-ui";
 import { MA_ACCENTS } from "./mini-app-tokens";
 import { HomeHero } from "./home-hero";
@@ -246,7 +247,7 @@ function HomeContent({ slug }: { slug: string }) {
       </div>
       <HomeHero slug={slug} animate={animate} />
       <Link
-        href={`/c/${slug}/my/book/service`}
+        href={bookHref(slug, "service", onBehalfOf)}
         onClick={() => tg.haptic.selection()}
         className={`${animate ? "ma-fade-up " : ""}mb-5 flex min-h-[52px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-semibold text-white ma-press active:scale-[0.98]`}
         style={{

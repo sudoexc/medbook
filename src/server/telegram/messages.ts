@@ -60,6 +60,19 @@ const RU: Dict = {
   // Phase 15 Wave 5 — Voice → SOAP intake replies (doctor-only path).
   // Lives here because the bot already has its own dictionary and threading
   // next-intl through the polling worker would be ceremony.
+  // Audit PH-01 / MA-04 — replies to a contact shared from the Mini App.
+  "contact.verified": "Спасибо, номер подтверждён.",
+  "contact.linked":
+    "Спасибо, номер подтверждён. Мы нашли вашу карту в клинике: история визитов теперь в приложении.",
+  "contact.conflict":
+    "Номер подтверждён, но этот номер уже связан с другой картой. Регистратура проверит и свяжется с вами.",
+  "contact.keptExisting":
+    "В вашей карте уже указан другой номер. Если он изменился, скажите об этом в регистратуре.",
+  "contact.notOwn":
+    "Нужен ваш собственный номер. Нажмите «Подтвердить номер через Telegram» в приложении клиники.",
+  "contact.noCard":
+    "Сначала откройте приложение клиники, затем подтвердите номер.",
+
   "tgVoiceReply.received":
     "Получил, расшифровываю и структурирую SOAP-черновик. Откройте случай в CRM через минуту.",
   "tgVoiceReply.noActiveCase":
@@ -107,6 +120,18 @@ const UZ: Dict = {
   "common.error": "Xatolik yuz berdi, /start ni yuboring",
   "common.unknownCommand":
     "Tushunmadim. Tugmani bosing yoki /start ni yuboring.",
+
+  "contact.verified": "Rahmat, raqam tasdiqlandi.",
+  "contact.linked":
+    "Rahmat, raqam tasdiqlandi. Klinikadagi kartangizni topdik: tashriflar tarixi endi ilovada.",
+  "contact.conflict":
+    "Raqam tasdiqlandi, lekin bu raqam boshqa kartaga bog'langan. Registratura tekshirib, siz bilan bog'lanadi.",
+  "contact.keptExisting":
+    "Kartangizda boshqa raqam ko'rsatilgan. Agar u o'zgargan bo'lsa, registraturaga ayting.",
+  "contact.notOwn":
+    "O'z raqamingiz kerak. Klinika ilovasida «Raqamni Telegram orqali tasdiqlash» tugmasini bosing.",
+  "contact.noCard":
+    "Avval klinika ilovasini oching, so'ng raqamni tasdiqlang.",
 
   "tgVoiceReply.received":
     "Qabul qildim, ovozni matnga aylantirib SOAP-qoralama tayyorlayapman. Bir daqiqadan so'ng CRM'da hodisani oching.",

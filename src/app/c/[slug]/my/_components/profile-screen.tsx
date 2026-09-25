@@ -13,6 +13,7 @@ import {
 import { useT } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useProfile, useUpdateProfile } from "../_hooks/use-profile";
+import { PhoneConfirm } from "./phone-confirm";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 
 export function ProfileScreen() {
@@ -24,7 +25,6 @@ export function ProfileScreen() {
   const update = useUpdateProfile();
 
   const [name, setName] = React.useState("");
-  const [phone, setPhone] = React.useState("");
   const [lang, setLang] = React.useState<"RU" | "UZ">("RU");
   const [consent, setConsent] = React.useState(false);
   // Phase 17 Wave 1 — marketing opt-OUT pathway. UI surfaces the inverse
@@ -35,7 +35,6 @@ export function ProfileScreen() {
   React.useEffect(() => {
     if (profile.data) {
       setName(profile.data.fullName);
-      setPhone(profile.data.phone);
       setLang(profile.data.preferredLang);
       setConsent(profile.data.consentMarketing);
       setMarketingAllowed(!profile.data.marketingOptOut);
@@ -51,7 +50,6 @@ export function ProfileScreen() {
     try {
       await update.mutateAsync({
         fullName: name,
-        phone: phone || undefined,
         lang,
         consentMarketing: consent,
         marketingOptOut: !marketingAllowed,
@@ -60,10 +58,7 @@ export function ProfileScreen() {
       tg.showAlert(t.profile.saved);
     } catch (e) {
       tg.haptic.notification("error");
-      const err = e as Error & { status?: number; data?: { reason?: string } };
-      if (err.data?.reason === "phone_taken") tg.showAlert(t.profile.errorPhoneTaken);
-      else if (err.data?.reason === "bad_phone") tg.showAlert(t.profile.errorPhone);
-      else tg.showAlert(err.message);
+      tg.showAlert((e as Error).message);
     }
   };
 
@@ -97,24 +92,9 @@ export function ProfileScreen() {
               }}
             />
           </label>
-          <label className="block">
-            <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
-              {t.profile.phoneLabel}
-            </div>
-            <input
-              type="tel"
-              inputMode="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+998 90 000 00 00"
-              className="w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-[var(--tg-accent)] focus:ring-2 focus:ring-[var(--tg-accent)] focus:ring-offset-0"
-              style={{
-                backgroundColor: "var(--tg-bg)",
-                borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
-                color: "var(--tg-text)",
-              }}
-            />
-          </label>
+          {/* Read-only: a number is set only by sharing the Telegram
+              contact (audit PH-01). */}
+          <PhoneConfirm />
           <div>
             <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
               {t.profile.langLabel}
@@ -177,9 +157,6 @@ export function ProfileScreen() {
       </MButton>
       {/* Phase 17 Wave 3 — DSAR controls. */}
       <AccountDsarSection clinicSlug={clinicSlug} />
-      <MHint>
-        {t.book.phoneHint}
-      </MHint>
     </div>
   );
 }

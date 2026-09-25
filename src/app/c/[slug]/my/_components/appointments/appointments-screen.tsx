@@ -24,6 +24,7 @@ import {
   MiniAppAppointment,
 } from "../../_hooks/use-appointments";
 import { useActiveContext } from "../../_hooks/use-active-context";
+import { bookHref } from "../../_lib/booking-context";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
@@ -72,10 +73,11 @@ export function AppointmentsScreen() {
         doctorId: appt.doctor.id,
         date: null,
         time: null,
+        onBehalfOf,
       });
-      router.push(`/c/${clinicSlug}/my/book/doctor`);
+      router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
     },
-    [setDraft, router, clinicSlug],
+    [setDraft, router, clinicSlug, onBehalfOf],
   );
   // Realtime invalidation is handled globally by `useMiniAppLiveEvents` in
   // MiniAppShell over the patient-scoped /api/miniapp/events stream (appointment
@@ -270,7 +272,7 @@ export function AppointmentsScreen() {
             icon={tab === "upcoming" ? CalendarCheck : History}
             action={
               tab === "upcoming" ? (
-                <Link href={`/c/${clinicSlug}/my/book/service`}>
+                <Link href={bookHref(clinicSlug, "service", onBehalfOf)}>
                   <MButton variant="primary">{t.home.ctaBook}</MButton>
                 </Link>
               ) : undefined

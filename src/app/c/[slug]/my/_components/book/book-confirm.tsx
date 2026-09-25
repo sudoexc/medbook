@@ -8,16 +8,22 @@ import { useServices } from "../../_hooks/use-services";
 import { useDoctors } from "../../_hooks/use-doctors";
 import { useBookAppointment } from "../../_hooks/use-appointments";
 import { useActiveContext } from "../../_hooks/use-active-context";
+import { useFamily } from "../../_hooks/use-family";
+import {
+  bookHref,
+  bookingContextMatches,
+} from "../../_lib/booking-context";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import {
+  MButton,
   MCard,
   MEmpty,
-  MHint,
   MSpinner,
   formatDateISO,
   formatSum,
 } from "../mini-ui";
+import { PhoneConfirm } from "../phone-confirm";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { WizardHeader } from "./wizard-header";
 import { WizardFooter } from "./wizard-footer";
@@ -43,33 +49,37 @@ export function BookConfirm() {
   const book = useBookAppointment();
   const tg = useTelegramWebApp();
   const { onBehalfOf } = useActiveContext();
+  const family = useFamily();
+
+  // Whom this booking is for (audit MA-02). For a relative the name comes
+  // from the family list, never from the owner's profile, and a relative
+  // who cannot be resolved blocks the booking instead of silently falling
+  // back to the owner.
+  const relative = onBehalfOf
+    ? family.data?.members.find((m) => m.patient.id === onBehalfOf)?.patient ??
+      null
+    : null;
+  const contextOk =
+    bookingContextMatches(draft.onBehalfOf, onBehalfOf) &&
+    (!onBehalfOf || relative !== null);
 
   // Treat placeholder/dev profile values as "no profile" so the form starts
-  // empty (with a UZ country-code seed for phone).
+  // empty.
   const isRealName = (v: string | null | undefined) =>
     !!v && v.trim().length > 0 && !/^dev\s*user$/i.test(v.trim());
-  const isRealPhone = (v: string | null | undefined) =>
-    !!v && v.trim().length > 0;
 
   const [name, setName] = React.useState<string>(
     isRealName(patient?.fullName) ? patient!.fullName! : "",
   );
-  const [phone, setPhone] = React.useState<string>(
-    isRealPhone(patient?.phone) ? patient!.phone! : "+998 ",
-  );
-  // Sync patient profile values into the form ONCE per patient load. Using
+  // Sync the profile name into the form ONCE per patient load. Using
   // `!name` as a guard re-populated the field every time the user cleared
   // it, which made it impossible to edit out a seeded "Dev User".
-  const syncedRef = React.useRef({ name: false, phone: false });
+  const syncedRef = React.useRef(false);
   React.useEffect(() => {
     if (!patient) return;
-    if (isRealName(patient.fullName) && !syncedRef.current.name) {
+    if (isRealName(patient.fullName) && !syncedRef.current) {
       setName(patient.fullName!);
-      syncedRef.current.name = true;
-    }
-    if (isRealPhone(patient.phone) && !syncedRef.current.phone) {
-      setPhone(patient.phone!);
-      syncedRef.current.phone = true;
+      syncedRef.current = true;
     }
   }, [patient]);
 
@@ -92,13 +102,15 @@ export function BookConfirm() {
         : `mb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
   }
 
+  // The phone is not a form field any more (audit PH-01): the clinic's
+  // number or the Telegram-confirmed one is shown read-only below.
   const canSubmit =
+    contextOk &&
     !!draft.doctorId &&
     draft.serviceIds.length > 0 &&
     !!draft.date &&
     !!draft.time &&
-    name.trim().length >= 2 &&
-    phone.trim().length >= 5;
+    (onBehalfOf ? true : name.trim().length >= 2);
 
   const submit = React.useCallback(async () => {
     if (!canSubmit || !draft.date || !draft.time || !draft.doctorId) return;
@@ -108,8 +120,8 @@ export function BookConfirm() {
         doctorId: draft.doctorId,
         serviceIds: draft.serviceIds,
         startAt,
-        patientName: name.trim(),
-        patientPhone: phone.trim(),
+        // A relative's booking must not rename the owner's card.
+        ...(onBehalfOf ? {} : { patientName: name.trim() }),
         lang,
         onBehalfOf,
         idempotencyKey: idemKeyRef.current ?? undefined,
@@ -129,7 +141,7 @@ export function BookConfirm() {
         }
       }
       reset();
-      router.push(`/c/${clinicSlug}/my/book/done?id=${appt.id}`);
+      router.push(bookHref(clinicSlug, "done", onBehalfOf, { id: appt.id }));
     } catch (e) {
       tg.haptic.notification("error");
       const err = e as Error & { status?: number; data?: { reason?: string } };
@@ -141,7 +153,6 @@ export function BookConfirm() {
     canSubmit,
     draft,
     name,
-    phone,
     lang,
     book,
     reset,
@@ -155,12 +166,15 @@ export function BookConfirm() {
 
   React.useEffect(() => {
     const off = tg.setBackButton(() =>
-      router.push(`/c/${clinicSlug}/my/book/slot`),
+      router.push(bookHref(clinicSlug, "slot", onBehalfOf)),
     );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
+  if (onBehalfOf && family.isLoading) {
+    return <MSpinner label={t.common.loading} />;
+  }
   if (!draft.doctorId || !draft.date || !draft.time) {
     return (
       <MEmpty>
@@ -169,10 +183,31 @@ export function BookConfirm() {
           <button
             className="text-sm font-semibold"
             style={{ color: "var(--tg-accent)" }}
-            onClick={() => router.push(`/c/${clinicSlug}/my/book/service`)}
+            onClick={() => router.push(bookHref(clinicSlug, "service", onBehalfOf))}
           >
             {t.common.retry}
           </button>
+        </div>
+      </MEmpty>
+    );
+  }
+  if (!contextOk) {
+    // The draft was put together for someone else than the person this
+    // screen would book: start over rather than book the wrong card.
+    return (
+      <MEmpty>
+        <div className="space-y-3">
+          <p>{t.book.contextChanged}</p>
+          <MButton
+            type="button"
+            variant="primary"
+            onClick={() => {
+              reset();
+              router.push(bookHref(clinicSlug, "service", onBehalfOf));
+            }}
+          >
+            {t.book.restart}
+          </MButton>
         </div>
       </MEmpty>
     );
@@ -239,47 +274,37 @@ export function BookConfirm() {
           </Row>
         </div>
       </MCard>
-      <MCard className="mb-3">
-        <div className="space-y-3 text-sm">
-          <label className="block">
-            <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
-              {t.book.nameLabel}
-            </div>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-xl border px-3 py-3 text-sm"
-              style={{
-                backgroundColor: "var(--tg-bg)",
-                borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
-                color: "var(--tg-text)",
-              }}
-            />
-          </label>
-          <label className="block">
-            <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
-              {t.book.phoneLabel}
-            </div>
-            <input
-              type="tel"
-              inputMode="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+998 90 000 00 00"
-              className="w-full rounded-xl border px-3 py-3 text-sm"
-              style={{
-                backgroundColor: "var(--tg-bg)",
-                borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
-                color: "var(--tg-text)",
-              }}
-            />
-            <div className="mt-1">
-              <MHint>{t.book.phoneHint}</MHint>
-            </div>
-          </label>
-        </div>
-      </MCard>
+      {relative ? (
+        // Booking for a relative: say whose card it lands on, in plain
+        // sight, and do not show the owner's own name and phone.
+        <MCard className="mb-3">
+          <Row label={t.book.bookingFor}>
+            <strong>{relative.fullName}</strong>
+          </Row>
+        </MCard>
+      ) : (
+        <MCard className="mb-3">
+          <div className="space-y-3 text-sm">
+            <label className="block">
+              <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
+                {t.book.nameLabel}
+              </div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-xl border px-3 py-3 text-sm"
+                style={{
+                  backgroundColor: "var(--tg-bg)",
+                  borderColor: "color-mix(in oklch, var(--tg-hint) 30%, transparent)",
+                  color: "var(--tg-text)",
+                }}
+              />
+            </label>
+            <PhoneConfirm />
+          </div>
+        </MCard>
+      )}
       <div
         className="px-2 py-3 text-center text-xs"
         style={{ color: "var(--tg-hint)" }}

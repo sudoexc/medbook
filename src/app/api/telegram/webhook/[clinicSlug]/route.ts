@@ -42,6 +42,12 @@ import {
 import { handleDoctorVoice } from "@/server/telegram/voice-handler";
 import { consumeInviteToken } from "@/server/telegram/invite-token";
 import {
+  applyVerifiedContact,
+  contactReplyKey,
+  type SharedContact,
+} from "@/server/telegram/contact-verify";
+import { t as botT } from "@/server/telegram/messages";
+import {
   ingestTelegramMedia,
   mediaPreviewLabel,
 } from "@/server/telegram/inbound-media";
@@ -93,7 +99,7 @@ type TgIncomingMessage = {
   animation?: unknown;
   voice?: TgVoice;
   audio?: TgAudio;
-  contact?: { phone_number: string; first_name?: string; last_name?: string };
+  contact?: SharedContact;
   date: number;
 };
 type TgCallbackQuery = {
@@ -313,6 +319,43 @@ async function handleFsmMessage(
   }
 }
 
+/**
+ * A contact shared into the bot chat (the Mini App's «Подтвердить номер»
+ * calls `requestContact`, which posts the account's own contact here).
+ * Applies it as verified identity and tells the patient what happened, in
+ * the language of his card.
+ */
+async function handleSharedContact(
+  clinic: TgClinicMinimal,
+  chatId: string,
+  conversationId: string,
+  msg: TgIncomingMessage,
+): Promise<void> {
+  const result = await applyVerifiedContact({
+    clinicId: clinic.id,
+    fromId: msg.from?.id,
+    fromUsername: msg.from?.username ?? null,
+    contact: msg.contact,
+  });
+  console.info(`[tg:webhook clinic=${clinic.slug}] contact → ${result.kind}`);
+  const card = msg.from?.id
+    ? await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.patient.findFirst({
+          where: { clinicId: clinic.id, telegramId: String(msg.from!.id) },
+          select: { preferredLang: true },
+        }),
+      )
+    : null;
+  const lang =
+    card?.preferredLang === "UZ" ||
+    (!card && (msg.from?.language_code ?? "").toLowerCase().startsWith("uz"))
+      ? "uz"
+      : "ru";
+  const text = botT(lang, contactReplyKey(result));
+  const sent = await sendMessage(clinic, chatId, text);
+  await recordOutgoing(clinic.id, conversationId, text, sent.message_id);
+}
+
 /** Mini App URL served by this deployment for a given clinic, or null if
  * the public origin couldn't be determined. Telegram requires HTTPS for
  * `web_app` buttons, so we bail out on plain HTTP.
@@ -439,6 +482,20 @@ export async function POST(
           patientId: recorded.patientId,
         },
       });
+
+      // A shared contact is identity proof, not chat (audit PH-01). It is
+      // handled whatever the bot's auto-reply mode, since the Mini App's
+      // «Подтвердить номер» must work while operators run the inbox, and it
+      // never reaches the FSM, which would answer it with the welcome.
+      if (msg.contact) {
+        await handleSharedContact(
+          clinicMin,
+          chatId,
+          recorded.conversationId,
+          msg,
+        );
+        return jsonResponse({ ok: true });
+      }
 
       const autoReplyEnabled = process.env.TG_BOT_AUTOREPLY === "1";
       if (recorded.mode === "takeover" || !autoReplyEnabled) {

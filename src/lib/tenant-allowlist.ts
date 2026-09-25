@@ -79,6 +79,7 @@ export const MODELS_TENANT_BYPASSABLE: ReadonlySet<string> = new Set([
  */
 export const COMPOSITE_TENANT_UNIQUES: ReadonlySet<string> = new Set([
   "Patient.clinicId_phoneNormalized",
+  "Patient.clinicId_telegramId",
   "Doctor.clinicId_slug",
   "Service.clinicId_code",
   "Cabinet.clinicId_number",

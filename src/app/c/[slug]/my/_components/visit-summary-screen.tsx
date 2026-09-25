@@ -22,6 +22,7 @@ import { useT, useLang } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 import { useActiveContext } from "../_hooks/use-active-context";
+import { bookHref } from "../_lib/booking-context";
 import { useBookingDraft } from "../_hooks/use-booking-draft";
 import { useVisitSummary } from "../_hooks/use-visit-summary";
 
@@ -143,9 +144,10 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
       doctorId: summary.doctor.id,
       date: null,
       time: null,
+      onBehalfOf,
     });
-    router.push(`/c/${clinicSlug}/my/book/doctor`);
-  }, [summary, setDraft, router, clinicSlug]);
+    router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
+  }, [summary, setDraft, router, clinicSlug, onBehalfOf]);
 
   if (query.isLoading) return <MSpinner label={t.common.loading} />;
   if (query.isError) return <MEmpty>{t.common.error}</MEmpty>;

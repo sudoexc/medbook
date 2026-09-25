@@ -98,7 +98,8 @@ export function useBookAppointment() {
       serviceIds: string[];
       startAt: string;
       patientName?: string;
-      patientPhone?: string;
+      // No phone: the server ignores it (audit PH-01); a number reaches the
+      // card only through Telegram contact sharing.
       lang?: "RU" | "UZ";
       comments?: string;
       onBehalfOf?: string | null;

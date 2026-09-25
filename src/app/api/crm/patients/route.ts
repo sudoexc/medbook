@@ -20,6 +20,11 @@ import {
   QueryPatientSchema,
 } from "@/server/schemas/patient";
 import { allocatePatientNumber } from "@/server/services/patient-number";
+import {
+  findVerifiedPhoneOwner,
+  isUniqueViolation,
+  releaseUnverifiedPhone,
+} from "@/server/patient/phone-identity";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -160,11 +165,17 @@ export const POST = createApiHandler(
         ? birthDateFromYear(parsedIdentity.birthYear)
         : null);
 
-    // unique (clinicId, phoneNormalized) — look up composite key
-    const existing = await prisma.patient.findFirst({
-      where: { phoneNormalized },
-      select: { id: true },
-    });
+    if (ctx.kind !== "TENANT") {
+      return err("forbidden", 403, { reason: "tenant_required" });
+    }
+    const clinicId = ctx.clinicId;
+
+    // Only a VERIFIED owner of the number is «this patient already exists»
+    // (audit PH-01). A card that merely claims the number (a Telegram user
+    // typed it into the Mini App) must not be handed back: the booking and
+    // inbox dialogs reuse the returned id, which would put the real person's
+    // visits into a stranger's card. Such a claim gives the number up below.
+    const existing = await findVerifiedPhoneOwner(prisma, clinicId, phoneNormalized);
     if (existing) {
       return err("conflict", 409, {
         reason: "phone_already_exists",
@@ -175,36 +186,51 @@ export const POST = createApiHandler(
     // Allocate the per-clinic patient number and create the row inside a
     // transaction so a unique-violation on the resulting (clinicId,
     // patientNumber) pair rolls back the counter bump as well.
-    if (ctx.kind !== "TENANT") {
-      return err("forbidden", 403, { reason: "tenant_required" });
+    let created;
+    try {
+      created = await prisma.$transaction(async (tx) => {
+        await releaseUnverifiedPhone(tx, clinicId, phoneNormalized, "crm_create");
+        const patientNumber = await allocatePatientNumber(clinicId, tx);
+        const writeData = serializePatientForWrite({
+          fullName,
+          phone: body.phone,
+          phoneNormalized,
+          // Typed by staff for the person in front of them (or on the phone
+          // with them): the clinic's own record of the number.
+          phoneVerifiedAt: new Date(),
+          birthDate,
+          gender: body.gender ?? null,
+          passport: body.passport ?? null,
+          address: body.address ?? null,
+          photoUrl: body.photoUrl ?? null,
+          telegramId: body.telegramId ?? null,
+          telegramUsername: body.telegramUsername ?? null,
+          preferredChannel: body.preferredChannel ?? "TG",
+          preferredLang: body.preferredLang ?? "RU",
+          source: body.source ?? null,
+          segment: body.segment ?? "NEW",
+          tags: body.tags ?? [],
+          notes: body.notes ?? null,
+          discountPct: body.discountPct ?? 0,
+          consentMarketing: body.consentMarketing ?? false,
+        });
+        return tx.patient.create({
+          data: { ...writeData, patientNumber } as never, // tenant ext injects clinicId
+        });
+      });
+    } catch (e) {
+      if (!isUniqueViolation(e)) throw e;
+      // A concurrent create took the number, or the Telegram account is
+      // already bound to another card (one card per account, audit MA-04).
+      const owner = await findVerifiedPhoneOwner(prisma, clinicId, phoneNormalized);
+      if (owner) {
+        return err("conflict", 409, {
+          reason: "phone_already_exists",
+          patientId: owner.id,
+        });
+      }
+      return err("conflict", 409, { reason: "telegram_already_linked" });
     }
-    const clinicId = ctx.clinicId;
-    const created = await prisma.$transaction(async (tx) => {
-      const patientNumber = await allocatePatientNumber(clinicId, tx);
-      const writeData = serializePatientForWrite({
-        fullName,
-        phone: body.phone,
-        phoneNormalized,
-        birthDate,
-        gender: body.gender ?? null,
-        passport: body.passport ?? null,
-        address: body.address ?? null,
-        photoUrl: body.photoUrl ?? null,
-        telegramId: body.telegramId ?? null,
-        telegramUsername: body.telegramUsername ?? null,
-        preferredChannel: body.preferredChannel ?? "TG",
-        preferredLang: body.preferredLang ?? "RU",
-        source: body.source ?? null,
-        segment: body.segment ?? "NEW",
-        tags: body.tags ?? [],
-        notes: body.notes ?? null,
-        discountPct: body.discountPct ?? 0,
-        consentMarketing: body.consentMarketing ?? false,
-      });
-      return tx.patient.create({
-        data: { ...writeData, patientNumber } as never, // tenant ext injects clinicId
-      });
-    });
     const hydrated = hydratePatientForRead(created);
     await audit(request, {
       action: "patient.create",

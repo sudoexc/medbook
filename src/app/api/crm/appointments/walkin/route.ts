@@ -9,13 +9,18 @@
  * Shares the allocation path (`registerWalkin`) with the kiosk so the board,
  * kiosk, and patient ticket never disagree.
  *
- * Body: { doctorId, patientId? , newPatient?: { fullName, phone }, durationMin? }
+ * Body: { doctorId, patientId? , newPatient?: { fullName, phone, phoneOwner? }, durationMin? }
+ *
+ * A new patient whose number already belongs to a card with a different
+ * name is not silently merged into that card (audit Q-03): the route answers
+ * 409 `phone_owner_mismatch` with the owner's name and birth year, and the
+ * dialog re-sends with `phoneOwner: "same" | "other"` once staff has chosen.
  */
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
-import { ok, err } from "@/server/http";
+import { ok, err, conflict } from "@/server/http";
 import { audit } from "@/lib/audit";
 import { registerWalkin } from "@/server/appointments/walkin";
 
@@ -27,6 +32,7 @@ const Body = z
       .object({
         fullName: z.string().trim().min(2).max(120),
         phone: z.string().trim().min(3).max(20),
+        phoneOwner: z.enum(["same", "other"]).optional(),
       })
       .optional(),
     durationMin: z.number().int().min(5).max(480).optional(),
@@ -64,6 +70,7 @@ export const POST = createApiHandler(
         : {
             fullName: body.newPatient!.fullName,
             phone: body.newPatient!.phone,
+            phoneOwner: body.newPatient!.phoneOwner,
           },
       createdById: ctx.userId,
       durationMin: body.durationMin,
@@ -77,6 +84,10 @@ export const POST = createApiHandler(
           return err("patient_not_found", 404);
         case "bad_phone":
           return err("bad_phone", 400);
+        case "phone_owner_mismatch":
+          // Staff are authenticated and see full cards anyway: the owner's
+          // name and birth year are what they need to decide.
+          return conflict("phone_owner_mismatch", { owner: result.owner });
       }
     }
 

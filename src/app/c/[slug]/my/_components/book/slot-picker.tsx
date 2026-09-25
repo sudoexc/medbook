@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
+import { useActiveContext } from "../../_hooks/use-active-context";
+import { bookHref } from "../../_lib/booking-context";
 import { minDoctorPrice, useDoctors } from "../../_hooks/use-doctors";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
@@ -47,6 +49,7 @@ export function SlotPicker() {
   const { clinicSlug, state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const { draft, setDraft, hydrated } = useBookingDraft(clinicSlug);
+  const { onBehalfOf } = useActiveContext();
   const tg = useTelegramWebApp();
   const [expanded, setExpanded] = React.useState(false);
   const doctors = useDoctors(null);
@@ -93,9 +96,9 @@ export function SlotPicker() {
 
   React.useEffect(() => {
     if (hydrated && !draft.doctorId) {
-      router.replace(`/c/${clinicSlug}/my/book/doctor`);
+      router.replace(bookHref(clinicSlug, "doctor", onBehalfOf));
     }
-  }, [hydrated, draft.doctorId, router, clinicSlug]);
+  }, [hydrated, draft.doctorId, router, clinicSlug, onBehalfOf]);
 
   // Seed `draft.date` with the first visible day so "Продолжить" activates
   // after the user picks a time alone (without having to re-tap a date).
@@ -107,17 +110,18 @@ export function SlotPicker() {
 
   React.useEffect(() => {
     const off = tg.setBackButton(() =>
-      router.push(`/c/${clinicSlug}/my/book/doctor`),
+      router.push(bookHref(clinicSlug, "doctor", onBehalfOf)),
     );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   const canContinue = !!draft.date && !!draft.time;
 
   const goNext = React.useCallback(() => {
     if (!canContinue) return;
-    router.push(`/c/${clinicSlug}/my/book/confirm`);
-  }, [canContinue, router, clinicSlug]);
+    setDraft({ onBehalfOf });
+    router.push(bookHref(clinicSlug, "confirm", onBehalfOf));
+  }, [canContinue, router, clinicSlug, onBehalfOf, setDraft]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
 

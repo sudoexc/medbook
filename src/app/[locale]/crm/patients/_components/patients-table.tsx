@@ -36,6 +36,7 @@ import {
   isYearOnlyBirthDate,
 } from "@/lib/patients/parse-identity";
 import { formatDate, formatName, type Locale } from "@/lib/format";
+import { displayPhone } from "@/lib/phone";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { MoneyText } from "@/components/atoms/money-text";
 import { PhoneText } from "@/components/atoms/phone-text";
@@ -477,7 +478,7 @@ export function PatientsTable({
                 label={t("rowActions.call")}
                 onClick={() => {
                   if (typeof window !== "undefined")
-                    window.location.href = `tel:${p.phoneNormalized || p.phone}`;
+                    window.location.href = `tel:${displayPhone(p)}`;
                 }}
               />
               {p.telegramUsername ? (

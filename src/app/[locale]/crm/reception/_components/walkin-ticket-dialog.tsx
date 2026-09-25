@@ -25,6 +25,13 @@ import {
 } from "@/components/appointments/new-appointment-dialog/types";
 
 import { useActiveDoctors } from "../_hooks/use-reception-live";
+import {
+  PhoneOwnerMismatchError,
+  PhoneOwnerPrompt,
+  readPhoneOwnerMismatch,
+  type PhoneOwnerAnswer,
+  type PhoneOwnerSummary,
+} from "@/components/appointments/phone-owner-prompt";
 
 interface WalkinTicket {
   appointmentId: string;
@@ -66,6 +73,10 @@ export function WalkinTicketDialog({
   );
   const [doctorId, setDoctorId] = React.useState<string | null>(null);
   const [ticket, setTicket] = React.useState<WalkinTicket | null>(null);
+  // The new patient's number belongs to a card with another name (audit
+  // Q-03). The ticket waits for reception's «same person / other person».
+  const [ownerConflict, setOwnerConflict] =
+    React.useState<PhoneOwnerSummary | null>(null);
 
   const reset = React.useCallback(() => {
     setPatient(null);
@@ -73,19 +84,25 @@ export function WalkinTicketDialog({
     setNewPatientForm(EMPTY.newPatientForm);
     setDoctorId(initialDoctorId ?? null);
     setTicket(null);
+    setOwnerConflict(null);
   }, [initialDoctorId]);
 
   React.useEffect(() => {
     if (open) {
       setDoctorId(initialDoctorId ?? null);
       setTicket(null);
+      setOwnerConflict(null);
     }
   }, [open, initialDoctorId]);
 
   const doctorsQuery = useActiveDoctors();
 
-  const issueMutation = useMutation<WalkinTicket, Error, void>({
-    mutationFn: async () => {
+  const issueMutation = useMutation<
+    WalkinTicket,
+    Error,
+    PhoneOwnerAnswer | undefined
+  >({
+    mutationFn: async (phoneOwner) => {
       if (!doctorId) throw new Error("DOCTOR_REQUIRED");
 
       let body: Record<string, unknown>;
@@ -96,7 +113,10 @@ export function WalkinTicketDialog({
         const phone = newPatientForm.phone.trim();
         if (!fullName) throw new Error("PATIENT_NAME_REQUIRED");
         if (!phone) throw new Error("PATIENT_PHONE_REQUIRED");
-        body = { doctorId, newPatient: { fullName, phone } };
+        body = {
+          doctorId,
+          newPatient: { fullName, phone, ...(phoneOwner ? { phoneOwner } : {}) },
+        };
       } else {
         throw new Error("PATIENT_REQUIRED");
       }
@@ -111,11 +131,14 @@ export function WalkinTicketDialog({
         const j = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
+        const owner = readPhoneOwnerMismatch(res.status, j);
+        if (owner) throw new PhoneOwnerMismatchError(owner);
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       return (await res.json()) as WalkinTicket;
     },
     onSuccess: (issued) => {
+      setOwnerConflict(null);
       setTicket(issued);
       const opts = { refetchType: "active" } as const;
       qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
@@ -126,6 +149,10 @@ export function WalkinTicketDialog({
       onIssued?.(issued);
     },
     onError: (err) => {
+      if (err instanceof PhoneOwnerMismatchError) {
+        setOwnerConflict(err.owner);
+        return;
+      }
       if (err.message === "DOCTOR_REQUIRED") toast.error(t("errDoctor"));
       else if (
         err.message === "PATIENT_REQUIRED" ||
@@ -139,7 +166,9 @@ export function WalkinTicketDialog({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    issueMutation.mutate();
+    // An open «same person?» question is answered by its own buttons.
+    if (ownerConflict) return;
+    issueMutation.mutate(undefined);
   };
 
   return (
@@ -211,13 +240,26 @@ export function WalkinTicketDialog({
                 onChangePatient={(p) => {
                   setPatient(p);
                   setNewPatient(false);
+                  setOwnerConflict(null);
                 }}
                 onToggleNew={(on) => {
                   setNewPatient(on);
                   if (on) setPatient(null);
+                  setOwnerConflict(null);
                 }}
-                onChangeNewPatient={setNewPatientForm}
+                onChangeNewPatient={(form) => {
+                  setNewPatientForm(form);
+                  setOwnerConflict(null);
+                }}
               />
+
+              {ownerConflict ? (
+                <PhoneOwnerPrompt
+                  owner={ownerConflict}
+                  pending={issueMutation.isPending}
+                  onAnswer={(answer) => issueMutation.mutate(answer)}
+                />
+              ) : null}
 
               <DoctorPicker
                 doctors={doctorsQuery.data ?? []}
@@ -235,7 +277,10 @@ export function WalkinTicketDialog({
               >
                 {t("cancel")}
               </Button>
-              <Button type="submit" disabled={issueMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={issueMutation.isPending || ownerConflict !== null}
+              >
                 {issueMutation.isPending ? t("issuing") : t("submit")}
               </Button>
             </DialogFooter>

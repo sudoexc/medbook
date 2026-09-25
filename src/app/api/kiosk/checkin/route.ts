@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { phoneSearchVariants } from "@/lib/phone";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
 import { rateLimit } from "@/lib/rate-limit";
 import {
@@ -10,6 +9,7 @@ import {
   realClientIp,
 } from "@/server/kiosk/device";
 import { ticketNumberFor } from "@/server/services/ticket-number";
+import { findVerifiedPhoneOwner } from "@/server/patient/phone-identity";
 import { z } from "zod";
 
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone.
@@ -37,14 +37,14 @@ export async function GET(request: Request) {
 
   const clinic = { id: device.clinicId };
 
-  // Find patient by any known phone representation (shared helper), scoped to
-  // the resolved clinic so an anonymous kiosk request can't probe another
-  // tenant's patient base by enumerating phone numbers.
-  const variants = phoneSearchVariants(phone);
+  // Only the VERIFIED owner of the number, scoped to the resolved clinic so
+  // an anonymous kiosk request can't probe another tenant's patient base.
+  // A number someone typed into the Mini App proves nothing (audit PH-01),
+  // and a relative who merely uses this number as a contact is not «you»:
+  // the kiosk asks «Это вы? И.И.» about the owner and, on «Нет», registers
+  // the person by name (audit Q-03).
   const patient = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.patient.findFirst({
-      where: { clinicId: clinic.id, phone: { in: variants } },
-    }),
+    findVerifiedPhoneOwner(prisma, clinic.id, phone),
   );
 
   if (!patient) {

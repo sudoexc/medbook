@@ -19,6 +19,13 @@ import { Input } from "@/components/ui/input";
 
 import { doctorTodayKey } from "../_hooks/use-doctor-today";
 import { parsePatientIdentity } from "@/lib/patients/parse-identity";
+import {
+  PhoneOwnerMismatchError,
+  PhoneOwnerPrompt,
+  readPhoneOwnerMismatch,
+  type PhoneOwnerAnswer,
+  type PhoneOwnerSummary,
+} from "@/components/appointments/phone-owner-prompt";
 
 /**
  * Lets the doctor put a patient into their OWN live queue without routing them
@@ -55,6 +62,11 @@ export function AddWalkinDialog({
   const [creating, setCreating] = React.useState(false);
   const [newName, setNewName] = React.useState("");
   const [newPhone, setNewPhone] = React.useState("");
+  // The typed number belongs to a card with another name (audit Q-03): a
+  // mother's phone given for her son. Shown until the doctor answers or
+  // edits the name / phone.
+  const [ownerConflict, setOwnerConflict] =
+    React.useState<PhoneOwnerSummary | null>(null);
 
   React.useEffect(() => {
     if (!open) {
@@ -63,6 +75,7 @@ export function AddWalkinDialog({
       setCreating(false);
       setNewName("");
       setNewPhone("");
+      setOwnerConflict(null);
     }
   }, [open]);
 
@@ -89,7 +102,7 @@ export function AddWalkinDialog({
   });
 
   const submit = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (phoneOwner?: PhoneOwnerAnswer) => {
       const body = picked
         ? { doctorId, patientId: picked.id }
         : {
@@ -97,6 +110,7 @@ export function AddWalkinDialog({
             newPatient: {
               fullName: newName.trim(),
               phone: newPhone.trim(),
+              ...(phoneOwner ? { phoneOwner } : {}),
             },
           };
       const res = await fetch("/api/crm/appointments/walkin", {
@@ -109,15 +123,19 @@ export function AddWalkinDialog({
         const j = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
+        const owner = readPhoneOwnerMismatch(res.status, j);
+        if (owner) throw new PhoneOwnerMismatchError(owner);
         if (j?.error === "bad_phone") throw new Error(t("badPhone"));
         throw new Error(j?.error ?? `HTTP ${res.status}`);
       }
       return (await res.json()) as {
         ticketNumber?: string;
         duplicate?: boolean;
+        patient?: { fullName?: string };
       };
     },
     onSuccess: (r) => {
+      setOwnerConflict(null);
       // The server refuses to queue the same patient twice for the same
       // doctor today, so a double press lands here with `duplicate` set —
       // say so plainly instead of celebrating a ticket that was not issued.
@@ -128,16 +146,27 @@ export function AddWalkinDialog({
             : t("alreadyQueued"),
         );
       } else {
+        // Name the card the visit landed on, so a wrong match is visible
+        // at once instead of surfacing in the conclusion.
+        const name = r.patient?.fullName;
         toast.success(
-          r.ticketNumber
-            ? t("addedWithTicket", { ticket: r.ticketNumber })
-            : t("added"),
+          name && r.ticketNumber
+            ? t("addedNamedWithTicket", { name, ticket: r.ticketNumber })
+            : r.ticketNumber
+              ? t("addedWithTicket", { ticket: r.ticketNumber })
+              : t("added"),
         );
       }
       void qc.invalidateQueries({ queryKey: doctorTodayKey });
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message || t("failed")),
+    onError: (e: Error) => {
+      if (e instanceof PhoneOwnerMismatchError) {
+        setOwnerConflict(e.owner);
+        return;
+      }
+      toast.error(e.message || t("failed"));
+    },
   });
 
   // Parsed on every keystroke — it is a pure string operation, no request.
@@ -163,7 +192,10 @@ export function AddWalkinDialog({
               </label>
               <Input
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={(e) => {
+                  setNewName(e.target.value);
+                  setOwnerConflict(null);
+                }}
                 placeholder={t("fullNamePlaceholder")}
                 autoFocus
               />
@@ -195,15 +227,28 @@ export function AddWalkinDialog({
               </label>
               <Input
                 value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
+                onChange={(e) => {
+                  setNewPhone(e.target.value);
+                  setOwnerConflict(null);
+                }}
                 placeholder="+998 90 123 45 67"
                 inputMode="tel"
               />
             </div>
+            {ownerConflict ? (
+              <PhoneOwnerPrompt
+                owner={ownerConflict}
+                pending={submit.isPending}
+                onAnswer={(answer) => submit.mutate(answer)}
+              />
+            ) : null}
             <button
               type="button"
               className="justify-self-start text-xs text-primary underline-offset-2 hover:underline"
-              onClick={() => setCreating(false)}
+              onClick={() => {
+                setCreating(false);
+                setOwnerConflict(null);
+              }}
             >
               {t("backToSearch")}
             </button>
@@ -293,8 +338,10 @@ export function AddWalkinDialog({
             {t("cancel")}
           </Button>
           <Button
-            onClick={() => submit.mutate()}
-            disabled={!canSubmit || submit.isPending}
+            onClick={() => submit.mutate(undefined)}
+            // While the «same person?» question is open, the answer buttons
+            // are the only way forward: a plain resubmit would ask again.
+            disabled={!canSubmit || submit.isPending || ownerConflict !== null}
           >
             {submit.isPending ? (
               <Loader2Icon className="size-4 animate-spin" />

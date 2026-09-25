@@ -5,7 +5,12 @@
  * place them at the back of the chosen doctor's live queue, and return the
  * ticket payload for printing.
  *
- * Body: { fullName, phone, doctorId, lang? }
+ * Body: { fullName, phone, doctorId, lang?, phoneOwner? }
+ *
+ * `phoneOwner` is the patient's answer on the kiosk's «Это вы? И.И.» screen:
+ * "same" keeps the visit on the number's owner, "other" registers a
+ * different person who uses that number (audit Q-03). Without an answer a
+ * name that does not match the owner comes back as 409, never merged.
  *
  * The queue insertion itself lives in `registerWalkin` (shared with the CRM
  * front-desk endpoint) so both surfaces allocate the slot identically.
@@ -32,6 +37,7 @@ const Body = z.object({
   phone: z.string().trim().min(3).max(20),
   doctorId: z.string().min(1),
   lang: z.enum(["RU", "UZ"]).optional(),
+  phoneOwner: z.enum(["same", "other"]).optional(),
 });
 
 export const dynamic = "force-dynamic";
@@ -61,11 +67,20 @@ export async function POST(request: Request) {
         fullName: parsed.fullName,
         phone: parsed.phone,
         lang: parsed.lang,
+        phoneOwner: parsed.phoneOwner,
       },
     });
 
     if (!result.ok) {
       if (result.reason === "doctor_not_found") return err("doctor_not_found", 404);
+      if (result.reason === "phone_owner_mismatch") {
+        // Masked, as everywhere on the kiosk: typing a number must not
+        // reveal whose it is.
+        return err("conflict", 409, {
+          reason: "phone_owner_mismatch",
+          owner: { fullName: maskPatientName(result.owner.fullName) },
+        });
+      }
       return err(result.reason, 400);
     }
 

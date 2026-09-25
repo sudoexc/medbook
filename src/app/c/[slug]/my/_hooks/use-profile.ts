@@ -18,6 +18,7 @@ export type MiniAppProfile = {
   marketingOptOut: boolean;
   telegramUsername: string | null;
   hasPhone: boolean;
+  phoneVerified: boolean;
 };
 
 export function useProfile() {
@@ -38,9 +39,10 @@ export function useUpdateProfile() {
   const { request, clinicSlug } = useMiniAppFetch();
   const { updatePatient } = useMiniAppAuth();
   return useMutation({
+    // No `phone`: the number is only set by sharing the Telegram contact
+    // (audit PH-01), see use-share-contact.
     mutationFn: async (body: {
       fullName?: string;
-      phone?: string;
       lang?: "RU" | "UZ";
       consentMarketing?: boolean;
       marketingOptOut?: boolean;
@@ -58,6 +60,7 @@ export function useUpdateProfile() {
         phone: patient.phone,
         preferredLang: patient.preferredLang,
         hasPhone: patient.hasPhone,
+        phoneVerified: patient.phoneVerified,
       });
     },
   });

@@ -16,6 +16,10 @@ import {
 import { UpdatePatientSchema } from "@/server/schemas/patient";
 import { recordPatientView } from "@/server/audit/patient-view";
 import { clientIpForAudit } from "@/lib/client-ip";
+import {
+  isUniqueViolation,
+  releaseUnverifiedPhone,
+} from "@/server/patient/phone-identity";
 
 function idFromUrl(request: Request): string {
   // App Router passes params via the route handler signature, but we're
@@ -71,14 +75,38 @@ export const PATCH = createApiHandler(
     if (!before) return notFound();
 
     const data: Record<string, unknown> = serializePatientForWrite({ ...body });
+    let phoneChanged = false;
     if (body.phone) {
       data.phoneNormalized = normalizePhone(body.phone);
+      phoneChanged = data.phoneNormalized !== before.phoneNormalized;
+      // A number staff typed is the clinic's own record of it (audit
+      // PH-01). Re-saving the form with an unchanged number verifies
+      // nothing: that would bless a number a Telegram user typed.
+      if (phoneChanged) data.phoneVerifiedAt = new Date();
     }
 
-    const after = await prisma.patient.update({
-      where: { id },
-      data: data as never,
-    });
+    let after;
+    try {
+      after = await prisma.$transaction(async (tx) => {
+        if (phoneChanged && typeof data.phoneNormalized === "string") {
+          await releaseUnverifiedPhone(
+            tx,
+            before.clinicId,
+            data.phoneNormalized,
+            "crm_update",
+          );
+        }
+        return tx.patient.update({
+          where: { id },
+          data: data as never,
+        });
+      });
+    } catch (e) {
+      if (!isUniqueViolation(e)) throw e;
+      // The number is another card's verified identity, or the Telegram
+      // account is bound to another card (one card per account, MA-04).
+      return conflict("phone_or_telegram_taken");
+    }
     const beforeHydrated = hydratePatientForRead(
       before as unknown as { passport?: string | null; notes?: string | null },
     );

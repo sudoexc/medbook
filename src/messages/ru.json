@@ -514,7 +514,15 @@
       "segments": "Сегменты",
       "configureTable": "Настроить таблицу"
     },
-    "birthYear": "{year} г.р."
+    "birthYear": "{year} г.р.",
+    "phoneOwner": {
+      "title": "Этот номер уже записан на другого пациента",
+      "body": "Номер принадлежит карте «{name}», а введено другое имя. Это тот же человек?",
+      "bodyWithYear": "Номер принадлежит карте «{name}», {year} г.р., а введено другое имя. Это тот же человек?",
+      "same": "Да, записать на эту карту",
+      "other": "Нет, другой человек",
+      "otherHint": "Для другого человека заведём отдельную карту, а этот номер останется у него контактным."
+    }
   },
   "appointments": {
     "title": "Записи",
@@ -5253,6 +5261,11 @@
         "label": "Контрольный визит",
         "title": "{patientName}: контроль ~{dueDate} ({doctorName})",
         "body": "{followUpNote, select, , {Позвоните пациенту и запишите на контрольный приём.} other{«{followUpNote}» — позвоните и запишите на контроль.}}"
+      },
+      "TELEGRAM_LINK_CONFLICT": {
+        "label": "Telegram на другой карте",
+        "title": "{clinicCardName}: Telegram привязан к другой карте",
+        "body": "{via, select, invite {Пациент открыл приглашение клиники, но его Telegram уже связан с картой «{telegramCardName}», где есть записи.} contact {Пациент подтвердил свой номер в Telegram, но его Telegram уже связан с картой «{telegramCardName}», где есть записи.} other {Один Telegram был привязан к двум картам, связь оставлена у карты «{telegramCardName}».}} Сравните карты и объедините их вручную."
       }
     },
     "dashboard": {
@@ -6988,7 +7001,8 @@
         "parsedYear": "· {year} г.р. · {age} лет",
         "noYearHint": "Можно дописать год рождения — «Фамилия И 1969», он сохранится отдельно.",
         "alreadyQueued": "Пациент уже в очереди",
-        "alreadyQueuedWithTicket": "Пациент уже в очереди, талон {ticket}"
+        "alreadyQueuedWithTicket": "Пациент уже в очереди, талон {ticket}",
+        "addedNamedWithTicket": "{name} в очереди, талон {ticket}"
       }
     },
     "visits": {

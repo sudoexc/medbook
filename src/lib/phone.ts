@@ -44,3 +44,23 @@ export function phoneSearchVariants(input: string): string[] {
   }
   return [...variants];
 }
+
+/**
+ * The number to SHOW for a patient card (prints, `tel:` links).
+ *
+ * `phoneNormalized` is a real number only for the card whose identity it is;
+ * other cards carry internal stubs there (`tg:<id>`, `family:…`, and since
+ * audit Q-03 `contact:…` for a relative who uses the owner's number, whose
+ * `phone` holds that number). Stubs are keys, never something to print on a
+ * sick leave or dial.
+ */
+export function displayPhone(p: {
+  phone?: string | null;
+  phoneNormalized?: string | null;
+}): string {
+  const real = (v: string | null | undefined): v is string =>
+    typeof v === "string" && v.startsWith("+") && v.replace(/\D/g, "").length >= 9;
+  if (real(p.phoneNormalized)) return p.phoneNormalized;
+  if (real(p.phone)) return p.phone;
+  return "";
+}

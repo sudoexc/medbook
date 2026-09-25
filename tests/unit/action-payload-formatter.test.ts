@@ -123,6 +123,15 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     dueDate: "2026-06-20",
     followUpNote: "Контроль ОАК",
   },
+  // Audit MA-04 / PH-01 — Telegram account bound to a card with history.
+  TELEGRAM_LINK_CONFLICT: {
+    type: "TELEGRAM_LINK_CONFLICT",
+    telegramCardId: "p_tg",
+    telegramCardName: "Dilnoza K",
+    clinicCardId: "p_clinic",
+    clinicCardName: "Каримова Дилноза Рустамовна",
+    via: "contact",
+  },
 };
 
 /**

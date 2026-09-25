@@ -163,6 +163,22 @@ export const uzDict = {
     bookInProgress: "Yozib qo‘yilmoqda…",
     errorConflict: "Bu vaqt band. Boshqa vaqtni tanlang.",
     errorBooking: "Yozuv yaratilmadi: {reason}",
+    bookingFor: "Kim uchun yozuv",
+    contextChanged:
+      "Bu yozuv boshqa odam uchun tayyorlangan edi. Kerakli odamni yozish uchun qaytadan boshlang.",
+    restart: "Qaytadan boshlash",
+  },
+  phoneConfirm: {
+    label: "Telefon",
+    verified: "Tasdiqlangan",
+    notVerified: "Raqam tasdiqlanmagan",
+    hint: "Raqamni bitta tugma bilan tasdiqlang: Telegram uni klinikaga o‘zi yuboradi, xatosiz.",
+    button: "Raqamni Telegram orqali tasdiqlash",
+    waiting: "Telegramdan tasdiq kutilmoqda…",
+    done: "Raqam tasdiqlandi",
+    failed: "Tasdiqlab bo‘lmadi. Chatdagi bot xabarini ko‘ring.",
+    unsupported:
+      "Raqamni tasdiqlash uchun Telegramni yangilang yoki chatda botga o‘z kontaktingizni yuboring.",
   },
   done: {
     title: "Siz muvaffaqiyatli yozildingiz!",
@@ -286,8 +302,6 @@ export const uzDict = {
     consentLabel: "Bildirishnomalarga roziman",
     saveBtn: "Saqlash",
     saved: "Saqlandi",
-    errorPhone: "Telefon raqami noto‘g‘ri",
-    errorPhoneTaken: "Bu raqamdan allaqachon foydalanilgan",
     preferencesTitle: "Aloqa sozlamalari",
     marketingToggle: "Marketing bildirishnomalarini olish",
     marketingHint:

@@ -13,11 +13,17 @@
  * (a) the on-behalf-of family resolution, (b) the optional profile-sync
  * side-effect, and (c) translating the kernel's discriminated `BookResult`
  * back into the mini-app's existing JSON shape.
+ *
+ * `patientPhone` is accepted from old clients and IGNORED (audit PH-01,
+ * MA-04). Writing it into the card let anyone claim a stranger's number
+ * (walk-in and CRM lookups trusted it), and a number another card already
+ * held broke the unique index: every booking by a returning patient who
+ * opened the bot for the first time failed with 500. The number reaches the
+ * card only as the Telegram account's own shared contact.
  */
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { normalizePhone } from "@/lib/phone";
 import { conflict, err, ok } from "@/server/http";
 import { createMiniAppHandler, createMiniAppListHandler } from "@/server/miniapp/handler";
 import { withIdempotency } from "@/server/miniapp/idempotency";
@@ -30,6 +36,7 @@ const BookBody = z.object({
   serviceIds: z.array(z.string()).min(1),
   startAt: z.string().datetime(),
   patientName: z.string().trim().min(1).optional(),
+  // Ignored — see the header.
   patientPhone: z.string().trim().optional(),
   lang: z.enum(["RU", "UZ"]).optional(),
   comments: z.string().max(1000).optional(),
@@ -161,22 +168,16 @@ export const POST = createMiniAppHandler(
     const startAt = new Date(body.startAt);
     if (Number.isNaN(startAt.getTime())) return err("bad_start_at", 400);
 
-    // Optional profile update: sync name/phone/lang from the booking form
-    // — but ONLY when booking for self. When acting on behalf of a relative,
+    // Optional profile update: sync name/lang from the booking form — but
+    // ONLY when booking for self. When acting on behalf of a relative,
     // the form fields belong to the relative; we skip this so the owner's
     // TG-tied profile stays intact, and we don't risk clobbering a relative
-    // profile that was created via the family form.
+    // profile that was created via the family form. Never the phone (see
+    // the header).
     if (!active.isOnBehalfOf) {
       const patientUpdate: Record<string, unknown> = {};
       if (body.patientName && body.patientName !== ctx.patient.fullName) {
         patientUpdate.fullName = body.patientName;
-      }
-      if (body.patientPhone) {
-        const normalized = normalizePhone(body.patientPhone);
-        if (normalized && !normalized.startsWith("tg:")) {
-          patientUpdate.phone = body.patientPhone;
-          patientUpdate.phoneNormalized = normalized;
-        }
       }
       if (body.lang && body.lang !== ctx.patient.preferredLang) {
         patientUpdate.preferredLang = body.lang;

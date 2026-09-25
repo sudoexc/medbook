@@ -7,6 +7,7 @@ import { CheckCircle2, Stethoscope } from "lucide-react";
 import { useT, useLang } from "./mini-i18n";
 import { useTreatmentPlan } from "../_hooks/use-treatment-plan";
 import { useActiveContext } from "../_hooks/use-active-context";
+import { bookHref } from "../_lib/booking-context";
 import { MCard, MErrorInline, MSection, MSpinner } from "./mini-ui";
 
 /**
@@ -82,9 +83,7 @@ export function TreatmentPlanCard({
 
   // Booking deep-link pre-selects the case so the booked appointment is
   // attached to the same `MedicalCase` as the rest of the plan.
-  const bookHref = `/c/${slug}/my/book/service?caseId=${encodeURIComponent(active.id)}${
-    onBehalfOf ? `&onBehalfOf=${encodeURIComponent(onBehalfOf)}` : ""
-  }`;
+  const bookUrl = bookHref(slug, "service", onBehalfOf, { caseId: active.id });
 
   return (
     <div
@@ -158,7 +157,7 @@ export function TreatmentPlanCard({
 
           {!progress.completed && !progress.nextVisitAt ? (
             <Link
-              href={bookHref}
+              href={bookUrl}
               className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl px-4 text-sm font-semibold text-white ma-press active:scale-[0.98]"
               style={{ backgroundColor: "var(--tg-accent)" }}
             >

@@ -1,8 +1,15 @@
 /**
  * GET/POST /api/miniapp/profile?clinicSlug=…
  *
- * Read or update the authenticated patient's profile (name, phone, lang).
- * Phone is normalized on the server.
+ * Read or update the authenticated patient's profile (name, lang, consent).
+ *
+ * The phone is NOT writable here (audit PH-01). A number typed into the Mini
+ * App proves nothing, yet walk-in and CRM lookups trusted phones: anyone
+ * could put a stranger's number on his own card and receive her visits. And
+ * the old «phone_taken» 409 told a caller whether a number was a patient of
+ * this clinic. The number now arrives only as the Telegram account's own
+ * shared contact (Mini App `requestContact` → bot webhook →
+ * `applyVerifiedContact`). A `phone` field from an old client is ignored.
  *
  * Phase 17 Wave 1 — POST also accepts `marketingOptOut: boolean`. Flipping
  * the flag stamps `marketingOptOutAt + marketingOptOutSource = 'mini-app'`
@@ -15,8 +22,8 @@ import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { prisma } from "@/lib/prisma";
-import { normalizePhone } from "@/lib/phone";
 import { err, ok } from "@/server/http";
+import { isRealPhone } from "@/server/patient/phone-identity";
 import {
   createMiniAppHandler,
   createMiniAppListHandler,
@@ -27,9 +34,25 @@ import {
 } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 
+/** What the Mini App may show about the card's number. */
+function phoneView(row: {
+  phone: string;
+  phoneNormalized: string;
+  phoneVerifiedAt: Date | null;
+}) {
+  const real = isRealPhone(row.phoneNormalized);
+  return {
+    hasPhone: real,
+    phone: real ? row.phone : "",
+    // The Mini App offers «confirm via Telegram» until this is true.
+    phoneVerified: real && row.phoneVerifiedAt !== null,
+  };
+}
+
 const Body = z
   .object({
     fullName: z.string().trim().min(1).max(200).optional(),
+    // Accepted from old clients and IGNORED — see the header.
     phone: z.string().trim().min(1).max(30).optional(),
     lang: z.enum(["RU", "UZ"]).optional(),
     consentMarketing: z.boolean().optional(),
@@ -53,6 +76,7 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
       fullName: true,
       phone: true,
       phoneNormalized: true,
+      phoneVerifiedAt: true,
       preferredLang: true,
       consentMarketing: true,
       marketingOptOut: true,
@@ -60,24 +84,12 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
     },
   });
   if (!patient) return err("not_found", 404);
-  return ok({
-    patient: {
-      ...patient,
-      hasPhone: !patient.phoneNormalized.startsWith("tg:"),
-      phone: patient.phoneNormalized.startsWith("tg:") ? "" : patient.phone,
-    },
-  });
+  return ok({ patient: { ...patient, ...phoneView(patient) } });
 });
 
 export const POST = createMiniAppHandler({ bodySchema: Body }, async ({ body, ctx, request }) => {
   const data: Record<string, unknown> = {};
   if (body.fullName !== undefined) data.fullName = body.fullName;
-  if (body.phone !== undefined) {
-    const normalized = normalizePhone(body.phone);
-    if (!normalized) return err("bad_phone", 400);
-    data.phone = body.phone;
-    data.phoneNormalized = normalized;
-  }
   if (body.lang !== undefined) data.preferredLang = body.lang;
   if (body.consentMarketing !== undefined) data.consentMarketing = body.consentMarketing;
   // Phase 17 Wave 1 — explicit opt-OUT pathway. Independent from
@@ -93,75 +105,62 @@ export const POST = createMiniAppHandler({ bodySchema: Body }, async ({ body, ct
   // CRM patient card refreshes live. `changedFields` lets the subscriber
   // decide what to invalidate; the field list is derived directly from `data`.
   const changedFields = Object.keys(data);
-  try {
-    const updated = await prisma.$transaction(async (tx) => {
-      const row = await tx.patient.update({
-        where: { id: ctx.patientId },
-        data,
-        select: {
-          id: true,
-          fullName: true,
-          phone: true,
-          phoneNormalized: true,
-          preferredLang: true,
-          consentMarketing: true,
-          marketingOptOut: true,
-        },
-      });
-
-      if (changedFields.length > 0) {
-        const envelope: EventEnvelopeInput = {
-          correlationId: newCorrelationId(),
-          actor: {
-            role: "PATIENT",
-            userId: null,
-            patientId: ctx.patientId,
-            onBehalfOfPatientId: null,
-            label: `patient:${ctx.patientId}`,
-          },
-          surface: "MINIAPP",
-          tenantScope: {
-            clinicId: ctx.clinicId,
-            patientId: ctx.patientId,
-          },
-          type: "patient.profileUpdated",
-          payload: {
-            patientId: ctx.patientId,
-            changedFields,
-          },
-        };
-        await publishViaOutbox(tx, envelope);
-      }
-
-      return row;
-    });
-    if (marketingOptOutChanged) {
-      try {
-        await audit(request, {
-          action: AUDIT_ACTION.MARKETING_OPT_OUT_CHANGED,
-          entityType: "Patient",
-          entityId: updated.id,
-          meta: {
-            source: "mini-app",
-            optedOut: updated.marketingOptOut,
-          },
-        });
-      } catch (e) {
-        console.error("[miniapp:profile] audit failed", e);
-      }
-    }
-    return ok({
-      patient: {
-        ...updated,
-        hasPhone: !updated.phoneNormalized.startsWith("tg:"),
-        phone: updated.phoneNormalized.startsWith("tg:") ? "" : updated.phone,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.patient.update({
+      where: { id: ctx.patientId },
+      data,
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        phoneNormalized: true,
+        phoneVerifiedAt: true,
+        preferredLang: true,
+        consentMarketing: true,
+        marketingOptOut: true,
       },
     });
-  } catch (e) {
-    const msg = (e as Error).message || "";
-    if (msg.includes("Unique")) {
-      return err("phone_taken", 409);
+
+    if (changedFields.length > 0) {
+      const envelope: EventEnvelopeInput = {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "PATIENT",
+          userId: null,
+          patientId: ctx.patientId,
+          onBehalfOfPatientId: null,
+          label: `patient:${ctx.patientId}`,
+        },
+        surface: "MINIAPP",
+        tenantScope: {
+          clinicId: ctx.clinicId,
+          patientId: ctx.patientId,
+        },
+        type: "patient.profileUpdated",
+        payload: {
+          patientId: ctx.patientId,
+          changedFields,
+        },
+      };
+      await publishViaOutbox(tx, envelope);
     }
-    throw e;
+
+    return row;
+  });
+  if (marketingOptOutChanged) {
+    try {
+      await audit(request, {
+        action: AUDIT_ACTION.MARKETING_OPT_OUT_CHANGED,
+        entityType: "Patient",
+        entityId: updated.id,
+        meta: {
+          source: "mini-app",
+          optedOut: updated.marketingOptOut,
+        },
+      });
+    } catch (e) {
+      console.error("[miniapp:profile] audit failed", e);
+    }
   }
+  return ok({ patient: { ...updated, ...phoneView(updated) } });
 });

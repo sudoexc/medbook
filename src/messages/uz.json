@@ -514,7 +514,15 @@
       "segments": "Segmentlar",
       "configureTable": "Jadvalni sozlash"
     },
-    "birthYear": "{year} y.t."
+    "birthYear": "{year} y.t.",
+    "phoneOwner": {
+      "title": "Bu raqam boshqa bemor nomiga yozilgan",
+      "body": "Raqam «{name}» kartasiga tegishli, lekin boshqa ism kiritildi. Bu o'sha odammi?",
+      "bodyWithYear": "Raqam «{name}», {year} y.t. kartasiga tegishli, lekin boshqa ism kiritildi. Bu o'sha odammi?",
+      "same": "Ha, shu kartaga yozish",
+      "other": "Yo'q, boshqa odam",
+      "otherHint": "Boshqa odam uchun alohida karta ochamiz, bu raqam unda aloqa raqami bo'lib qoladi."
+    }
   },
   "appointments": {
     "title": "Yozilishlar",
@@ -5253,6 +5261,11 @@
         "label": "Nazorat tashrifi",
         "title": "{patientName}: nazorat ~{dueDate} ({doctorName})",
         "body": "{followUpNote, select, , {Bemorga qo'ng'iroq qiling va nazorat qabuliga yozing.} other{«{followUpNote}» — qo'ng'iroq qilib, nazoratga yozing.}}"
+      },
+      "TELEGRAM_LINK_CONFLICT": {
+        "label": "Telegram boshqa kartada",
+        "title": "{clinicCardName}: Telegram boshqa kartaga bog'langan",
+        "body": "{via, select, invite {Bemor klinika taklifini ochdi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan.} contact {Bemor Telegramda o'z raqamini tasdiqladi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan.} other {Bitta Telegram ikkita kartaga bog'langan edi, bog'lanish «{telegramCardName}» kartasida qoldirildi.}} Kartalarni solishtirib, qo'lda birlashtiring."
       }
     },
     "dashboard": {
@@ -6988,7 +7001,8 @@
         "parsedYear": "· {year} y. · {age} yosh",
         "noYearHint": "Tug'ilgan yilni qo'shsangiz bo'ladi — «Familiya I 1969», u alohida saqlanadi.",
         "alreadyQueued": "Bemor allaqachon navbatda",
-        "alreadyQueuedWithTicket": "Bemor allaqachon navbatda, talon {ticket}"
+        "alreadyQueuedWithTicket": "Bemor allaqachon navbatda, talon {ticket}",
+        "addedNamedWithTicket": "{name} navbatda, talon {ticket}"
       }
     },
     "visits": {

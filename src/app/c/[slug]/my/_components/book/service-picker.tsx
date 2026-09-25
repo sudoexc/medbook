@@ -15,6 +15,8 @@ import {
 
 import { minDoctorPrice, useDoctors } from "../../_hooks/use-doctors";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
+import { useActiveContext } from "../../_hooks/use-active-context";
+import { bookHref } from "../../_lib/booking-context";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MEmpty, MSpinner, formatSum } from "../mini-ui";
@@ -55,6 +57,7 @@ export function ServicePicker() {
   const { clinicSlug, state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const { draft, setDraft, hydrated } = useBookingDraft(clinicSlug);
+  const { onBehalfOf } = useActiveContext();
   const doctors = useDoctors(null);
   const tg = useTelegramWebApp();
   const [expanded, setExpanded] = React.useState(false);
@@ -91,13 +94,20 @@ export function ServicePicker() {
 
   const goNext = React.useCallback(() => {
     if (!canContinue) return;
-    router.push(`/c/${clinicSlug}/my/book/doctor`);
-  }, [canContinue, router, clinicSlug]);
+    setDraft({ onBehalfOf });
+    router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
+  }, [canContinue, router, clinicSlug, onBehalfOf, setDraft]);
 
   React.useEffect(() => {
-    const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
+    const off = tg.setBackButton(() =>
+      router.push(
+        onBehalfOf
+          ? `/c/${clinicSlug}/my?onBehalfOf=${encodeURIComponent(onBehalfOf)}`
+          : `/c/${clinicSlug}/my`,
+      ),
+    );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
   if (doctors.isLoading) return <SkeletonList rows={5} variant="line" />;

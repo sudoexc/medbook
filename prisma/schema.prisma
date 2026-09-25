@@ -1774,6 +1774,15 @@ model Patient {
   fullName           String
   phone              String
   phoneNormalized    String
+  // When the phone in `phoneNormalized` was proven to belong to this person:
+  // typed by staff at the desk / kiosk (the person is standing there), or
+  // shared from Telegram with `contact.user_id === from.id`. NULL means the
+  // number is only a claim (a Telegram user typed it into the Mini App) and
+  // must never be treated as identity: walk-in, kiosk and CRM lookups by
+  // phone skip such cards, and a verified owner of the number takes it over
+  // (audit PH-01). Stub values (`tg:`, `family:`, `contact:`) are never
+  // verified.
+  phoneVerifiedAt    DateTime?
   birthDate          DateTime?
   gender             Gender?
   passport           String?
@@ -1890,7 +1899,10 @@ model Patient {
   @@index([clinicId, lastVisitAt])
   @@index([clinicId, lastContactedAt])
   @@index([clinicId, createdAt])
-  @@index([clinicId, telegramId])
+  // One card per Telegram account per clinic (audit MA-04): two cards sharing
+  // a telegramId made the Mini App open one or the other at random. Postgres
+  // treats NULLs as distinct, so unlinked cards are unaffected.
+  @@unique([clinicId, telegramId])
 }
 
 model Appointment {

@@ -50,10 +50,49 @@ type PatientRow = {
   fullName: string;
   phone: string;
   phoneNormalized: string;
+  // Audit PH-01: only a verified number is identity.
+  phoneVerifiedAt: Date | null;
+  birthDate: Date | null;
+  deletedAt: Date | null;
   patientNumber: number;
   preferredLang: string;
   source: string;
 };
+
+type PatientWhere = {
+  id?: string;
+  clinicId?: string;
+  phone?: { in: string[] };
+  phoneNormalized?: { in?: string[]; startsWith?: string };
+  phoneVerifiedAt?: { not: null } | null;
+  deletedAt?: null;
+};
+
+/** The subset of Prisma `where` the walk-in path uses, evaluated in memory. */
+function matchesPatient(p: PatientRow, where: PatientWhere): boolean {
+  if (where.id !== undefined && p.id !== where.id) return false;
+  if (where.clinicId !== undefined && p.clinicId !== where.clinicId) return false;
+  if (where.phone && !where.phone.in.includes(p.phone)) return false;
+  if (where.phoneNormalized?.in && !where.phoneNormalized.in.includes(p.phoneNormalized)) {
+    return false;
+  }
+  if (
+    where.phoneNormalized?.startsWith !== undefined &&
+    !p.phoneNormalized.startsWith(where.phoneNormalized.startsWith)
+  ) {
+    return false;
+  }
+  if (where.phoneVerifiedAt === null && p.phoneVerifiedAt !== null) return false;
+  if (
+    where.phoneVerifiedAt &&
+    "not" in where.phoneVerifiedAt &&
+    p.phoneVerifiedAt === null
+  ) {
+    return false;
+  }
+  if (where.deletedAt === null && p.deletedAt !== null) return false;
+  return true;
+}
 
 type AppointmentRow = {
   id: string;
@@ -94,6 +133,10 @@ const state = {
   // How many of the first $transaction invocations should reject with a
   // simulated Postgres write-conflict (drives the runQueueTx retry test).
   failTxTimes: 0,
+  // Simulates a concurrent press: before the NEXT patient.create, another
+  // request inserts this row, and the create hits the unique phone index.
+  raceWinner: null as PatientRow | null,
+  audits: [] as Array<{ action: string; entityId: string | null }>,
 };
 
 const TICKET_CODE = "TIK999";
@@ -153,35 +196,69 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     patient: {
-      findFirst: vi.fn(
+      findFirst: vi.fn(async ({ where }: { where: PatientWhere }) => {
+        const hit = state.patients.find((p) => matchesPatient(p, where));
+        return hit
+          ? { id: hit.id, fullName: hit.fullName, birthDate: hit.birthDate }
+          : null;
+      }),
+      findMany: vi.fn(async ({ where }: { where: PatientWhere }) =>
+        state.patients
+          .filter((p) => matchesPatient(p, where))
+          .map((p) => ({
+            id: p.id,
+            fullName: p.fullName,
+            birthDate: p.birthDate,
+            phone: p.phone,
+            phoneNormalized: p.phoneNormalized,
+          })),
+      ),
+      update: vi.fn(
         async ({
           where,
+          data,
         }: {
-          where: {
-            id?: string;
-            clinicId: string;
-            phone?: { in: string[] };
-          };
+          where: { id: string };
+          data: Partial<PatientRow>;
         }) => {
-          const hit = state.patients.find((p) => {
-            if (p.clinicId !== where.clinicId) return false;
-            if (where.id !== undefined) return p.id === where.id;
-            if (where.phone) return where.phone.in.includes(p.phone);
-            return false;
-          });
-          return hit ? { id: hit.id, fullName: hit.fullName } : null;
+          const row = state.patients.find((p) => p.id === where.id);
+          if (!row) throw new Error("not found");
+          Object.assign(row, data);
+          return { id: row.id };
         },
       ),
       create: vi.fn(
         async ({
           data,
         }: {
-          data: Omit<PatientRow, "id">;
+          data: Omit<PatientRow, "id" | "phoneVerifiedAt" | "birthDate" | "deletedAt"> &
+            Partial<PatientRow>;
         }) => {
+          if (state.raceWinner) {
+            state.patients.push(state.raceWinner);
+            state.raceWinner = null;
+            const e = new Error("Unique constraint failed") as Error & { code?: string };
+            e.code = "P2002";
+            throw e;
+          }
           state.patientSeq += 1;
-          const row: PatientRow = { id: `pat_${state.patientSeq}`, ...data };
+          const row: PatientRow = {
+            id: `pat_${state.patientSeq}`,
+            phoneVerifiedAt: null,
+            birthDate: null,
+            deletedAt: null,
+            ...data,
+          };
           state.patients.push(row);
           return { id: row.id, fullName: row.fullName };
+        },
+      ),
+    },
+    auditLog: {
+      create: vi.fn(
+        async ({ data }: { data: { action: string; entityId?: string | null } }) => {
+          state.audits.push({ action: data.action, entityId: data.entityId ?? null });
+          return { id: "a1" };
         },
       ),
     },
@@ -288,6 +365,9 @@ function seedPatient(overrides: Partial<PatientRow> = {}): PatientRow {
     fullName: "Пётр Петров",
     phone: "+998901112233",
     phoneNormalized: "+998901112233",
+    phoneVerifiedAt: new Date("2026-01-01T00:00:00Z"),
+    birthDate: null,
+    deletedAt: null,
     patientNumber: 1,
     preferredLang: "RU",
     source: "WALKIN",
@@ -314,6 +394,8 @@ beforeEach(() => {
   state.ticketCodeCalls = 0;
   state.txAttempts = 0;
   state.failTxTimes = 0;
+  state.raceWinner = null;
+  state.audits = [];
   vi.useFakeTimers();
   vi.setSystemTime(new Date(FROZEN_UTC));
 });
@@ -499,21 +581,26 @@ describe("registerWalkin — queueOrder allocation (real allocateQueueOrder) (W3
 });
 
 describe("registerWalkin — find-or-create patient by phone (W4)", () => {
-  it("reuses an existing patient matched via a phone variant (no create)", async () => {
+  it("reuses the number's owner matched via a phone variant when the name matches (no create)", async () => {
     seedDoctor();
-    seedPatient({ id: "pat_known", phone: "+998901234567", fullName: "Известный" });
+    seedPatient({
+      id: "pat_known",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      fullName: "Известный Иван",
+    });
     const registerWalkin = await loadRegisterWalkin();
 
     // Caller typed the bare 9-digit local form; phoneSearchVariants must still match.
     const result = await registerWalkin({
       clinicId: "c1",
       doctorId: "doc_alpha",
-      patient: { fullName: "Ignored Name", phone: "901234567" },
+      patient: { fullName: "Известный И", phone: "901234567" },
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.patient).toEqual({ id: "pat_known", fullName: "Известный" });
+    expect(result.patient).toEqual({ id: "pat_known", fullName: "Известный Иван" });
 
     const { prisma } = await import("@/lib/prisma");
     expect(prisma.patient.create).not.toHaveBeenCalled();
@@ -544,6 +631,8 @@ describe("registerWalkin — find-or-create patient by phone (W4)", () => {
     expect(created!.source).toBe("WALKIN");
     expect(created!.phone).toBe("+998901234567"); // normalized
     expect(created!.phoneNormalized).toBe("+998901234567");
+    // In person at the desk / kiosk: the number is verified identity.
+    expect(created!.phoneVerifiedAt).toBeInstanceOf(Date);
     expect(created!.preferredLang).toBe("UZ");
     expect(result.patient.id).toBe(created!.id);
   });
@@ -560,6 +649,196 @@ describe("registerWalkin — find-or-create patient by phone (W4)", () => {
 
     const created = state.patients.find((p) => p.fullName === "Без Языка");
     expect(created!.preferredLang).toBe("RU");
+  });
+});
+
+describe("registerWalkin — a number shared in a family (audit Q-03)", () => {
+  function seedMother() {
+    return seedPatient({
+      id: "pat_mother",
+      fullName: "Каримова Дилноза Рустамовна",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      birthDate: new Date(Date.UTC(1985, 0, 1)),
+    });
+  }
+
+  it("a son typed with his mother's phone is NOT queued into her card: mismatch comes back, nothing is created", async () => {
+    seedDoctor();
+    seedMother();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримов Тимур 2012", phone: "+998 90 123 45 67" },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "phone_owner_mismatch",
+      owner: {
+        id: "pat_mother",
+        fullName: "Каримова Дилноза Рустамовна",
+        birthYear: 1985,
+      },
+    });
+    const { prisma } = await import("@/lib/prisma");
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+    expect(state.appointments).toHaveLength(0);
+  });
+
+  it("the same name with another birth year is a mismatch too (father and son)", async () => {
+    seedDoctor();
+    seedPatient({
+      id: "pat_father",
+      fullName: "Каримов Рустам",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      birthDate: new Date(Date.UTC(1975, 0, 1)),
+    });
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримов Рустам 2005", phone: "901234567" },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("phone_owner_mismatch");
+  });
+
+  it("phoneOwner=same: staff confirmed it is the owner, whatever was typed", async () => {
+    seedDoctor();
+    seedMother();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримова Д.", phone: "901234567", phoneOwner: "same" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).toBe("pat_mother");
+    expect(state.appointments[0]!.patientId).toBe("pat_mother");
+  });
+
+  it("phoneOwner=other: a new card of his own; the number stays a contact phone, never identity", async () => {
+    seedDoctor();
+    seedMother();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримов Тимур 2012", phone: "901234567", phoneOwner: "other" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).not.toBe("pat_mother");
+    const son = state.patients.find((p) => p.id === result.patient.id)!;
+    expect(son.fullName).toBe("Каримов Тимур");
+    expect(son.birthDate?.getUTCFullYear()).toBe(2012);
+    expect(son.phone).toBe("+998901234567");
+    expect(son.phoneNormalized.startsWith("contact:")).toBe(true);
+    expect(son.phoneVerifiedAt).toBeNull();
+    // The mother's card is untouched and still owns the number.
+    const mother = state.patients.find((p) => p.id === "pat_mother")!;
+    expect(mother.phoneNormalized).toBe("+998901234567");
+    expect(state.appointments[0]!.patientId).toBe(son.id);
+  });
+
+  it("the son's next visit with the same phone finds HIS card by name, without asking again", async () => {
+    seedDoctor();
+    seedMother();
+    const son = seedPatient({
+      id: "pat_son",
+      fullName: "Каримов Тимур",
+      phone: "+998901234567",
+      phoneNormalized: "contact:abc123",
+      phoneVerifiedAt: null,
+      birthDate: new Date(Date.UTC(2012, 0, 1)),
+    });
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримов Тимур 2012", phone: "901234567" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).toBe(son.id);
+    const { prisma } = await import("@/lib/prisma");
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+  });
+
+  it("two simultaneous presses with a new number: the loser resolves to the winner's card instead of a 500", async () => {
+    seedDoctor();
+    state.raceWinner = {
+      id: "pat_winner",
+      clinicId: "c1",
+      fullName: "Новый Пациент",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      phoneVerifiedAt: new Date(),
+      birthDate: null,
+      deletedAt: null,
+      patientNumber: 7,
+      preferredLang: "RU",
+      source: "WALKIN",
+    };
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Новый Пациент", phone: "901234567" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).toBe("pat_winner");
+    expect(state.patients.filter((p) => p.phoneNormalized === "+998901234567")).toHaveLength(1);
+  });
+});
+
+describe("registerWalkin — a number typed into the Mini App is not identity (audit PH-01)", () => {
+  it("an unverified claim on the number is never matched; the person at the desk gets a verified card and the claim loses the number", async () => {
+    seedDoctor();
+    // A Telegram user typed a stranger's number into his own Mini App card
+    // and renamed himself after her.
+    seedPatient({
+      id: "pat_attacker",
+      fullName: "Юсупова Лола",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      phoneVerifiedAt: null,
+      source: "TELEGRAM",
+    });
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Юсупова Лола", phone: "901234567" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).not.toBe("pat_attacker");
+    expect(state.appointments[0]!.patientId).toBe(result.patient.id);
+
+    const real = state.patients.find((p) => p.id === result.patient.id)!;
+    expect(real.phoneNormalized).toBe("+998901234567");
+    expect(real.phoneVerifiedAt).toBeInstanceOf(Date);
+    const claim = state.patients.find((p) => p.id === "pat_attacker")!;
+    expect(claim.phone).toBe("");
+    expect(claim.phoneNormalized).toBe("released:pat_attacker");
+    expect(state.audits).toContainEqual({
+      action: "patient.phone_claim_released",
+      entityId: "pat_attacker",
+    });
   });
 });
 

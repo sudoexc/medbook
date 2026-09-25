@@ -44,6 +44,11 @@ export const ACTION_TYPES = [
   // `followUpDays`. Dedupe keyed off visitNoteId — one task per visit no
   // matter how many sweep retries happen.
   "VISIT_FOLLOW_UP_DUE",
+  // Audit MA-04 / PH-01 — one Telegram account proved it is the patient of
+  // a clinic card (invite link or its own shared contact), but the account
+  // is already bound to another card that holds real history. Nothing is
+  // merged automatically; reception decides. Dedupe keyed on the card pair.
+  "TELEGRAM_LINK_CONFLICT",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -245,6 +250,25 @@ export type VisitFollowUpDuePayload = {
   followUpNote: string;
 };
 
+/**
+ * Audit MA-04 / PH-01 — a Telegram account is bound to `telegramCardId`
+ * (usually the card the Mini App created on first open) and has now proven
+ * it is the patient of `clinicCardId` (the card reception keeps). The bot
+ * could not move the link because the Telegram card already has visits,
+ * documents or family links, so reception compares the two and merges by
+ * hand. `via` says how the proof arrived; "dedupe" marks the one-off
+ * cleanup of accounts that were bound to two cards at once
+ * (scripts/fix-patient-telegram-identity.ts).
+ */
+export type TelegramLinkConflictPayload = {
+  type: "TELEGRAM_LINK_CONFLICT";
+  telegramCardId: string;
+  telegramCardName: string;
+  clinicCardId: string;
+  clinicCardName: string;
+  via: "invite" | "contact" | "dedupe";
+};
+
 export type ActionPayload =
   | EmptySlotTomorrowPayload
   | DormantBatchPayload
@@ -258,7 +282,8 @@ export type ActionPayload =
   | LowDoctorSchedulePayload
   | LowNpsReceivedPayload
   | PatientNoChannelPayload
-  | VisitFollowUpDuePayload;
+  | VisitFollowUpDuePayload
+  | TelegramLinkConflictPayload;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -306,6 +331,8 @@ export function dedupeKeyFor(payload: ActionPayload): string {
       return `PATIENT_NO_CHANNEL:patientId=${payload.patientId}:triggerKey=${payload.triggerKey}:bucket=${payload.bucket}`;
     case "VISIT_FOLLOW_UP_DUE":
       return `VISIT_FOLLOW_UP_DUE:visitNoteId=${payload.visitNoteId}`;
+    case "TELEGRAM_LINK_CONFLICT":
+      return `TELEGRAM_LINK_CONFLICT:clinicCardId=${payload.clinicCardId}:telegramCardId=${payload.telegramCardId}`;
     default: {
       // Compile-time exhaustiveness guard.
       const _exhaustive: never = payload;
@@ -337,6 +364,7 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
     case "DOCTOR_OVERLOAD":
     case "CASE_REPEAT_DUE":
     case "LOW_NPS_RECEIVED":
+    case "TELEGRAM_LINK_CONFLICT":
       return "high";
     case "UNCONFIRMED_24H":
     case "OVERDUE_FOLLOW_UP":
@@ -395,6 +423,9 @@ export function defaultDeeplinkPath(type: ActionType): string {
     case "VISIT_FOLLOW_UP_DUE":
       // The bridge worker overrides with /crm/patients/<id>.
       return "/crm/patients";
+    case "TELEGRAM_LINK_CONFLICT":
+      // Emitters override with the clinic card: /crm/patients/<id>.
+      return "/crm/patients";
     default: {
       const _exhaustive: never = type;
       throw new Error(
@@ -425,6 +456,7 @@ export function defaultAssigneeRole(type: ActionType): "ADMIN" | "RECEPTIONIST" 
     case "PAYMENT_OVERDUE":
     case "PATIENT_NO_CHANNEL":
     case "VISIT_FOLLOW_UP_DUE":
+    case "TELEGRAM_LINK_CONFLICT":
       return "RECEPTIONIST";
     default: {
       const _exhaustive: never = type;

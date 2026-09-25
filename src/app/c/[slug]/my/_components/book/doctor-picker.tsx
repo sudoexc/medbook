@@ -10,6 +10,8 @@ import {
   useDoctors,
 } from "../../_hooks/use-doctors";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
+import { useActiveContext } from "../../_hooks/use-active-context";
+import { bookHref } from "../../_lib/booking-context";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import { MEmpty, MSpinner, formatSum } from "../mini-ui";
@@ -25,14 +27,15 @@ export function DoctorPicker() {
   const { clinicSlug, state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const { draft, setDraft, hydrated } = useBookingDraft(clinicSlug);
+  const { onBehalfOf } = useActiveContext();
   const tg = useTelegramWebApp();
   const doctors = useDoctors(null);
 
   React.useEffect(() => {
     if (hydrated && !draft.specialization) {
-      router.replace(`/c/${clinicSlug}/my/book/service`);
+      router.replace(bookHref(clinicSlug, "service", onBehalfOf));
     }
-  }, [hydrated, draft.specialization, router, clinicSlug]);
+  }, [hydrated, draft.specialization, router, clinicSlug, onBehalfOf]);
 
   const filtered = React.useMemo(() => {
     if (!doctors.data || !draft.specialization) return [];
@@ -69,16 +72,17 @@ export function DoctorPicker() {
       serviceIds: defaultService ? [defaultService] : [],
       date: null,
       time: null,
+      onBehalfOf,
     });
-    router.push(`/c/${clinicSlug}/my/book/slot`);
-  }, [canContinue, draft.doctorId, filtered, setDraft, router, clinicSlug]);
+    router.push(bookHref(clinicSlug, "slot", onBehalfOf));
+  }, [canContinue, draft.doctorId, filtered, setDraft, router, clinicSlug, onBehalfOf]);
 
   React.useEffect(() => {
     const off = tg.setBackButton(() =>
-      router.push(`/c/${clinicSlug}/my/book/service`),
+      router.push(bookHref(clinicSlug, "service", onBehalfOf)),
     );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, onBehalfOf]);
 
   if (!hydrated) return <MSpinner label={t.common.loading} />;
 

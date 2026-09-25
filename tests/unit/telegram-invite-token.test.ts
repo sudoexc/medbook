@@ -16,21 +16,41 @@ type TokenRow = {
 };
 type PatientRow = {
   id: string;
+  fullName?: string;
   telegramId: string | null;
+};
+
+/** Another card of the clinic, e.g. the one the Mini App auto-created. */
+type OtherCard = {
+  id: string;
+  fullName: string;
+  telegramId: string | null;
+  source: string;
+  phoneVerifiedAt: Date | null;
+  appointments: number;
 };
 
 const state: {
   token: TokenRow | null;
   patient: PatientRow | null;
+  others: OtherCard[];
   patientUpdates: Array<{ id: string; data: unknown }>;
   tokenUpdates: Array<{ id: string; data: unknown }>;
   audits: Array<{ action: string; meta: unknown }>;
+  conflicts: unknown[];
 } = {
   token: null,
   patient: null,
+  others: [],
   patientUpdates: [],
   tokenUpdates: [],
   audits: [],
+  conflicts: [],
+};
+
+type FindArgs = {
+  where: { id?: string | { not: string }; telegramId?: string };
+  select?: { _count?: unknown };
 };
 
 vi.mock("@/lib/tenant-context", () => ({
@@ -47,7 +67,29 @@ vi.mock("@/lib/prisma", () => ({
       }),
     },
     patient: {
-      findFirst: vi.fn(async () => state.patient),
+      findFirst: vi.fn(async ({ where, select }: FindArgs) => {
+        // isRetirableAutoCard(): the footprint probe on another card.
+        if (select?._count) {
+          const o = state.others.find((c) => c.id === where.id);
+          if (!o) return null;
+          return {
+            source: o.source,
+            phoneVerifiedAt: o.phoneVerifiedAt,
+            _count: { appointments: o.appointments, visitNotes: 0, documents: 0 },
+          };
+        }
+        // «Does this account already own another card here?»
+        if (where.telegramId !== undefined) {
+          const notId =
+            typeof where.id === "object" ? where.id.not : undefined;
+          return (
+            state.others.find(
+              (c) => c.telegramId === where.telegramId && c.id !== notId,
+            ) ?? null
+          );
+        }
+        return state.patient;
+      }),
       update: vi.fn(async (args: { where: { id: string }; data: unknown }) => {
         state.patientUpdates.push({ id: args.where.id, data: args.data });
         return { id: args.where.id };
@@ -63,14 +105,22 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/server/patient/telegram-link-conflict", () => ({
+  raiseTelegramLinkConflict: vi.fn(async (params: unknown) => {
+    state.conflicts.push(params);
+  }),
+}));
+
 import { consumeInviteToken } from "@/server/telegram/invite-token";
 
 function reset() {
   state.token = null;
   state.patient = null;
+  state.others = [];
   state.patientUpdates = [];
   state.tokenUpdates = [];
   state.audits = [];
+  state.conflicts = [];
 }
 
 const NOW = new Date("2026-05-11T12:00:00Z");
@@ -211,5 +261,120 @@ describe("consumeInviteToken", () => {
     });
     expect(result.kind).toBe("linked");
     expect(state.patientUpdates).toHaveLength(1);
+  });
+});
+
+describe("consumeInviteToken — one card per Telegram account (audit MA-04)", () => {
+  beforeEach(reset);
+
+  function validToken() {
+    state.token = {
+      id: "t1",
+      clinicId: "c1",
+      patientId: "p_clinic",
+      expiresAt: new Date(NOW.getTime() + 60_000),
+      consumedAt: null,
+    };
+    state.patient = { id: "p_clinic", fullName: "Каримова Дилноза", telegramId: null };
+  }
+
+  it("a returning patient's empty auto-created card is retired, and the clinic card takes the account", async () => {
+    validToken();
+    state.others = [
+      {
+        id: "p_auto",
+        fullName: "Dilnoza",
+        telegramId: "111",
+        source: "TELEGRAM",
+        phoneVerifiedAt: null,
+        appointments: 0,
+      },
+    ];
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "111",
+      now: NOW,
+    });
+    expect(result).toMatchObject({
+      kind: "linked",
+      patientId: "p_clinic",
+      retiredPatientId: "p_auto",
+    });
+    // Retired FIRST, so the unique (clinicId, telegramId) never sees two.
+    expect(state.patientUpdates[0]).toMatchObject({
+      id: "p_auto",
+      data: {
+        telegramId: null,
+        deletedAt: NOW,
+        deletionReason: "duplicate_of:p_clinic",
+        phoneNormalized: "retired:p_auto",
+      },
+    });
+    expect(state.patientUpdates[1]).toMatchObject({
+      id: "p_clinic",
+      data: { telegramId: "111" },
+    });
+    expect(state.tokenUpdates).toHaveLength(1);
+    expect(state.conflicts).toHaveLength(0);
+  });
+
+  it("an auto card that already holds visits is NOT merged: nothing relinked, token kept, reception gets a task", async () => {
+    validToken();
+    state.others = [
+      {
+        id: "p_auto",
+        fullName: "Dilnoza",
+        telegramId: "111",
+        source: "TELEGRAM",
+        phoneVerifiedAt: null,
+        appointments: 2,
+      },
+    ];
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "111",
+      now: NOW,
+    });
+    expect(result).toEqual({
+      kind: "telegram-has-other-card",
+      tokenId: "t1",
+      patientId: "p_clinic",
+      otherPatientId: "p_auto",
+    });
+    expect(state.patientUpdates).toHaveLength(0);
+    expect(state.tokenUpdates).toHaveLength(0);
+    expect(state.conflicts).toEqual([
+      expect.objectContaining({
+        clinicId: "c1",
+        telegramId: "111",
+        telegramCard: expect.objectContaining({ id: "p_auto", fullName: "Dilnoza" }),
+        clinicCard: { id: "p_clinic", fullName: "Каримова Дилноза" },
+        via: "invite",
+      }),
+    ]);
+  });
+
+  it("a Telegram account already bound to another real card (a mother scanning her child's QR) is not bound to a second one", async () => {
+    validToken();
+    state.others = [
+      {
+        id: "p_mother",
+        fullName: "Каримова Лола",
+        telegramId: "111",
+        source: "WALKIN",
+        phoneVerifiedAt: new Date("2026-01-01"),
+        appointments: 5,
+      },
+    ];
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "111",
+      now: NOW,
+    });
+    expect(result.kind).toBe("telegram-has-other-card");
+    expect(state.patientUpdates).toHaveLength(0);
   });
 });

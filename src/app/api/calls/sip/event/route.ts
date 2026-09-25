@@ -130,13 +130,16 @@ async function linkPatientByPhone(
     variants.push(n);
   }
   return runWithTenant({ kind: "SYSTEM" }, async () => {
+    // Only the verified owner of the number (audit PH-01): a number a
+    // Telegram user typed into the Mini App proves nothing, and showing his
+    // card as «the caller» invites reception to book the real caller into
+    // it. A relative who uses the number as a contact is not the caller's
+    // identity either.
     const match = await prisma.patient.findFirst({
       where: {
         clinicId,
-        OR: [
-          { phoneNormalized: { in: variants } },
-          { phone: { in: variants } },
-        ],
+        phoneNormalized: { in: variants },
+        phoneVerifiedAt: { not: null },
       },
       select: { id: true },
     });

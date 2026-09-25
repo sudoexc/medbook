@@ -27,6 +27,7 @@ type PatientRow = {
   clinicId: string;
   phoneNormalized: string;
   phone: string;
+  phoneVerifiedAt: Date | null;
 };
 
 type ClinicRow = {
@@ -82,22 +83,20 @@ vi.mock("@/lib/prisma", () => ({
     },
     patient: {
       findFirst: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        // Inbound caller match: only the VERIFIED owner of the number
+        // (audit PH-01), by phoneNormalized.
         const w = args.where as {
           clinicId: string;
-          OR?: Array<{ phoneNormalized?: { in: string[] }; phone?: { in: string[] } }>;
+          phoneNormalized?: { in: string[] };
+          phoneVerifiedAt?: { not: null };
         };
-        const variants = new Set<string>();
-        for (const clause of w.OR ?? []) {
-          const pn = clause.phoneNormalized?.in ?? [];
-          const ph = clause.phone?.in ?? [];
-          for (const v of pn) variants.add(v);
-          for (const v of ph) variants.add(v);
-        }
+        const variants = new Set<string>(w.phoneNormalized?.in ?? []);
         return (
           state.patients.find(
             (p) =>
               p.clinicId === w.clinicId &&
-              (variants.has(p.phoneNormalized) || variants.has(p.phone)),
+              variants.has(p.phoneNormalized) &&
+              (!w.phoneVerifiedAt || p.phoneVerifiedAt !== null),
           ) ?? null
         );
       }),
@@ -214,6 +213,7 @@ beforeEach(() => {
     clinicId: "clinic-a",
     phoneNormalized: "+998901234567",
     phone: "+998901234567",
+    phoneVerifiedAt: new Date("2026-01-01T00:00:00Z"),
   });
   (process.env as Record<string, string>).NODE_ENV = "development";
 });
@@ -344,6 +344,28 @@ describe("SIP webhook — event handling", () => {
     expect(row).toBeTruthy();
     expect(row?.direction).toBe("IN");
     expect(row?.patientId).toBe("p1");
+  });
+
+  it("ringing from a number only CLAIMED in the Mini App links no card (audit PH-01)", async () => {
+    // Someone typed this number into his own Telegram card: showing him as
+    // «the caller» would invite reception to book the real caller into it.
+    state.patients.push({
+      id: "p_claim",
+      clinicId: "clinic-a",
+      phoneNormalized: "+998907777777",
+      phone: "+998907777777",
+      phoneVerifiedAt: null,
+    });
+    await POST(
+      buildRequest({
+        kind: "ringing",
+        callId: "log-claim-1",
+        from: "+998907777777",
+        to: "+998712001020",
+        timestamp: new Date("2026-04-22T10:00:00Z"),
+      }) as never,
+    );
+    expect(findCallBySip("clinic-a", "log-claim-1")?.patientId).toBeNull();
   });
 
   it("hangup computes durationSec from createdAt to event timestamp", async () => {

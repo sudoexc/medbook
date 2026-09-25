@@ -10,6 +10,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import { displayPhone } from "@/lib/phone";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
 
@@ -29,6 +30,7 @@ export const GET = createApiListHandler(
             fullName: true,
             birthDate: true,
             gender: true,
+            phone: true,
             phoneNormalized: true,
           },
         },
@@ -134,6 +136,7 @@ function renderHtml({
     fullName: string;
     birthDate: Date | null;
     gender: string | null;
+    phone: string;
     phoneNormalized: string;
   };
   doctor: { name: string; phone: string | null };
@@ -233,7 +236,7 @@ function renderHtml({
     <div><span class="lbl">ФИО:</span> <b>${escapeHtml(patient.fullName)}</b></div>
     <div><span class="lbl">Дата рождения:</span> ${patient.birthDate ? escapeHtml(patient.birthDate.toLocaleDateString("ru-RU")) : "—"}</div>
     <div><span class="lbl">Пол:</span> ${patient.gender === "M" ? "мужской" : patient.gender === "F" ? "женский" : "—"}</div>
-    <div><span class="lbl">Телефон:</span> ${escapeHtml(patient.phoneNormalized)}</div>
+    <div><span class="lbl">Телефон:</span> ${escapeHtml(displayPhone(patient))}</div>
     <div><span class="lbl">МКБ-10:</span> ${sl.diagnosisCode ? escapeHtml(sl.diagnosisCode) + (sl.diagnosisName ? " · " + escapeHtml(sl.diagnosisName) : "") : "—"}</div>
     <div><span class="lbl">Режим:</span> <b>${escapeHtml(regimenLabel)}</b></div>
   </div>

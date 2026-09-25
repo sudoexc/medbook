@@ -138,12 +138,21 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     dueDate: "2026-06-20",
     followUpNote: "Контроль ОАК",
   },
+  // Audit MA-04 / PH-01 — Telegram account bound to a card with history.
+  TELEGRAM_LINK_CONFLICT: {
+    type: "TELEGRAM_LINK_CONFLICT",
+    telegramCardId: "p_tg",
+    telegramCardName: "Dilnoza K",
+    clinicCardId: "p_clinic",
+    clinicCardName: "Каримова Дилноза Рустамовна",
+    via: "contact",
+  },
 };
 
 describe("ACTION_TYPES surface", () => {
-  it("ACTION_TYPES has exactly 13 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6)", () => {
-    expect(ACTION_TYPES.length).toBe(13);
-    expect(new Set(ACTION_TYPES).size).toBe(13);
+  it("ACTION_TYPES has exactly 14 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04)", () => {
+    expect(ACTION_TYPES.length).toBe(14);
+    expect(new Set(ACTION_TYPES).size).toBe(14);
   });
 
   it("ACTION_SEVERITIES + ACTION_STATUSES are non-empty and unique", () => {
@@ -235,6 +244,11 @@ describe("dedupeKeyFor", () => {
         "LOW_DOCTOR_SCHEDULE",
         SAMPLE_PAYLOADS.LOW_DOCTOR_SCHEDULE,
         { ...SAMPLE_PAYLOADS.LOW_DOCTOR_SCHEDULE, doctorId: "doc_42" },
+      ],
+      [
+        "TELEGRAM_LINK_CONFLICT",
+        SAMPLE_PAYLOADS.TELEGRAM_LINK_CONFLICT,
+        { ...SAMPLE_PAYLOADS.TELEGRAM_LINK_CONFLICT, telegramCardId: "p_other" },
       ],
     ];
     for (const [, a, b] of variants) {
@@ -357,6 +371,8 @@ describe("compile-time discriminated-union narrowing", () => {
           return p.patientName;
         case "VISIT_FOLLOW_UP_DUE":
           return p.patientName;
+        case "TELEGRAM_LINK_CONFLICT":
+          return p.clinicCardName;
         default: {
           const _exhaustive: never = p;
           return _exhaustive;

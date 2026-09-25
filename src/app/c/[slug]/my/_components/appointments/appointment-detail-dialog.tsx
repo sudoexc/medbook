@@ -19,6 +19,8 @@ import {
 } from "../../_hooks/use-appointments";
 import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
+import { useActiveContext } from "../../_hooks/use-active-context";
+import { bookHref } from "../../_lib/booking-context";
 import { useClinic } from "../../_hooks/use-clinic";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
@@ -53,6 +55,7 @@ export function AppointmentDetailDialog({
     : "";
   const tg = useTelegramWebApp();
   const { setDraft } = useBookingDraft(clinicSlug);
+  const { onBehalfOf } = useActiveContext();
   const { data: clinic } = useClinic(clinicSlug);
   const [mode, setMode] = React.useState<"view" | "reschedule">(initialMode);
   const [date, setDate] = React.useState<string | null>(null);
@@ -165,8 +168,9 @@ export function AppointmentDetailDialog({
       doctorId: appointment.doctor.id,
       date: null,
       time: null,
+      onBehalfOf,
     });
-    router.push(`/c/${clinicSlug}/my/book/doctor`);
+    router.push(bookHref(clinicSlug, "doctor", onBehalfOf));
   };
 
   return (

@@ -53,6 +53,11 @@ const t = {
     price: "сум",
     welcome: "Добро пожаловать!",
     touchToStart: "Коснитесь экрана для начала",
+    isThisYou: "Это вы?",
+    isThisYouDesc: "Этот номер записан на пациента",
+    yesItsMe: "Да, это я",
+    notMe: "Нет, это не я",
+    enterYourName: "Введите ваше ФИО, мы запишем вас отдельно:",
   },
   uz: {
     notPairedTitle: "Kiosk ulanmagan",
@@ -99,6 +104,11 @@ const t = {
     price: "so'm",
     welcome: "Xush kelibsiz!",
     touchToStart: "Boshlash uchun ekranga bosing",
+    isThisYou: "Bu sizmisiz?",
+    isThisYouDesc: "Bu raqam quyidagi bemor nomiga yozilgan",
+    yesItsMe: "Ha, bu men",
+    notMe: "Yo'q, bu men emasman",
+    enterYourName: "F.I.Sh. kiriting, sizni alohida ro'yxatga olamiz:",
   },
 };
 
@@ -132,7 +142,7 @@ interface UpcomingBooking {
   time: string; // HH:mm
 }
 
-type Step = "welcome" | "phone" | "checkin" | "upcoming" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
+type Step = "welcome" | "phone" | "is-this-you" | "checkin" | "upcoming" | "select-doctor" | "select-service" | "enter-name" | "confirm" | "done";
 
 // Status tints shared with the /tv board — keep the two public surfaces visually
 // identical. Green = active/confirmed, amber = waiting/first-visit.
@@ -215,6 +225,10 @@ export default function KioskPage() {
   const [phone, setPhone] = useState("");
   const [patientName, setPatientName] = useState("");
   const [foundPatientId, setFoundPatientId] = useState<string | null>(null);
+  // The number belongs to someone, and the person at the tablet said it is
+  // not them (a son with his mother's phone). The walk-in then registers
+  // him by name instead of queueing her (audit Q-03).
+  const [notOwner, setNotOwner] = useState(false);
   const [preBooked, setPreBooked] = useState<PreBooked[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -290,6 +304,7 @@ export default function KioskPage() {
     setPhone("");
     setPatientName("");
     setFoundPatientId(null);
+    setNotOwner(false);
     setPreBooked([]);
     setUpcomingBookings([]);
     setSelectedDoctor(null);
@@ -308,26 +323,15 @@ export default function KioskPage() {
       const checkinRes = await kioskFetch(`/api/kiosk/checkin?phone=${encodeURIComponent(phone)}`);
       const checkinData = await checkinRes.json();
 
+      setNotOwner(false);
       if (checkinData.patient) {
         setFoundPatientId(checkinData.patient.id);
         setPatientName(checkinData.patient.fullName);
-
-        const todayAppts: PreBooked[] = checkinData.appointments || [];
-        const upcoming: UpcomingBooking[] = checkinData.upcoming || [];
-
-        if (todayAppts.length > 0) {
-          setPreBooked(todayAppts);
-          setUpcomingBookings([]);
-          setStep("checkin");
-        } else if (upcoming.length > 0) {
-          // Booked, but for a future day — show info instead of falling
-          // through to doctor selection.
-          setUpcomingBookings(upcoming);
-          setPreBooked([]);
-          setStep("upcoming");
-        } else {
-          setStep("select-doctor");
-        }
+        setPreBooked(checkinData.appointments || []);
+        setUpcomingBookings(checkinData.upcoming || []);
+        // A number is shared in families: ask before showing her bookings
+        // or queueing anyone under her card.
+        setStep("is-this-you");
       } else {
         setFoundPatientId(null);
         setPatientName("");
@@ -338,6 +342,29 @@ export default function KioskPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleItsMe() {
+    if (preBooked.length > 0) {
+      setUpcomingBookings([]);
+      setStep("checkin");
+    } else if (upcomingBookings.length > 0) {
+      // Booked, but for a future day — show info instead of falling
+      // through to doctor selection.
+      setPreBooked([]);
+      setStep("upcoming");
+    } else {
+      setStep("select-doctor");
+    }
+  }
+
+  function handleNotMe() {
+    setFoundPatientId(null);
+    setNotOwner(true);
+    setPatientName("");
+    setPreBooked([]);
+    setUpcomingBookings([]);
+    setStep("enter-name");
   }
 
   async function handleCheckin(appointment: PreBooked) {
@@ -410,6 +437,9 @@ export default function KioskPage() {
           phone,
           doctorId: selectedDoctor.id,
           lang: lang.toUpperCase(),
+          // The answer to «Это вы?»: the owner confirmed, or someone else
+          // using the number. Absent for a number nobody owns yet.
+          phoneOwner: foundPatientId ? "same" : notOwner ? "other" : undefined,
         }),
       });
 
@@ -586,6 +616,38 @@ export default function KioskPage() {
             </div>
           )}
 
+          {/* IS THIS YOU — the number has an owner; a family may share it */}
+          {step === "is-this-you" && (
+            <div className="text-center">
+              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
+                <ArrowLeft className="h-5 w-5" /> {L.back}
+              </button>
+
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-[var(--public-panel)] mb-6">
+                <User className="h-10 w-10" style={{ color: "var(--public-accent)" }} />
+              </div>
+              <h1 className="text-3xl font-bold mb-2">{L.isThisYou}</h1>
+              <p className="text-lg text-[var(--public-fg-muted)] mb-2">{L.isThisYouDesc}</p>
+              <p className="text-3xl font-bold mb-8">{patientName}</p>
+
+              <div className="grid gap-3 max-w-sm mx-auto">
+                <button
+                  onClick={handleItsMe}
+                  className="w-full flex items-center justify-center gap-3 rounded-2xl py-4 text-xl font-bold text-white transition-all active:scale-[0.97] hover:brightness-110"
+                  style={{ background: "var(--public-accent)" }}
+                >
+                  <Check className="h-6 w-6" /> {L.yesItsMe}
+                </button>
+                <button
+                  onClick={handleNotMe}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl border border-[var(--public-border-strong)] py-4 text-lg hover:bg-[var(--public-panel)] transition-colors"
+                >
+                  <UserPlus className="h-5 w-5" /> {L.notMe}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* CHECK-IN STEP */}
           {step === "checkin" && (
             <div>
@@ -729,7 +791,7 @@ export default function KioskPage() {
                 className="rounded-2xl px-5 py-4 mb-6 text-left"
                 style={{ background: AMBER_TINT, border: `1px solid ${AMBER_BORDER}` }}
               >
-                <p className="text-sm" style={{ color: "var(--public-waiting)" }}>{L.firstVisit}</p>
+                <p className="text-sm" style={{ color: "var(--public-waiting)" }}>{notOwner ? L.enterYourName : L.firstVisit}</p>
               </div>
 
               <input
@@ -758,7 +820,7 @@ export default function KioskPage() {
               <button onClick={() => {
                 if (preBooked.length > 0) setStep("checkin");
                 else if (upcomingBookings.length > 0) setStep("upcoming");
-                else if (foundPatientId) setStep("phone");
+                else if (foundPatientId) setStep("is-this-you");
                 else setStep(patientName ? "enter-name" : "phone");
               }} className="flex items-center gap-2 text-[var(--public-fg-muted)] mb-6 hover:text-[var(--public-fg)]">
                 <ArrowLeft className="h-5 w-5" /> {L.back}

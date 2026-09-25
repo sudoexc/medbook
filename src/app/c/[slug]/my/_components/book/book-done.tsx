@@ -12,6 +12,8 @@ import {
   type CaseAttachChoice,
 } from "../../_hooks/use-appointments";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
+import { useActiveContext } from "../../_hooks/use-active-context";
+import { bookHref } from "../../_lib/booking-context";
 import { useT } from "../mini-i18n";
 import { MButton, MCard, MSpinner, formatDateISO } from "../mini-ui";
 import { MA_ACCENTS } from "../mini-app-tokens";
@@ -47,7 +49,12 @@ export function BookDone() {
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const search = useSearchParams();
   const id = search.get("id");
-  const upcoming = useAppointments("upcoming");
+  // A booking for a relative lives on HER card (audit MA-02).
+  const { onBehalfOf } = useActiveContext();
+  const upcoming = useAppointments("upcoming", onBehalfOf);
+  const ctxQuery = onBehalfOf
+    ? `?onBehalfOf=${encodeURIComponent(onBehalfOf)}`
+    : "";
   const tg = useTelegramWebApp();
 
   const appointment = upcoming.data?.find((a) => a.id === id) ?? null;
@@ -82,9 +89,11 @@ export function BookDone() {
   }, [ticketCode]);
 
   React.useEffect(() => {
-    const off = tg.setBackButton(() => router.push(`/c/${clinicSlug}/my`));
+    const off = tg.setBackButton(() =>
+      router.push(`/c/${clinicSlug}/my${ctxQuery}`),
+    );
     return off;
-  }, [tg, router, clinicSlug]);
+  }, [tg, router, clinicSlug, ctxQuery]);
 
   // Success haptic exactly once — the booking just landed, let the phone
   // confirm it physically along with the checkmark pop.
@@ -315,12 +324,12 @@ export function BookDone() {
             </span>
           </MButton>
         ) : null}
-        <Link href={`/c/${clinicSlug}/my/appointments`}>
+        <Link href={`/c/${clinicSlug}/my/appointments${ctxQuery}`}>
           <MButton block variant="secondary">
             {t.done.viewMine}
           </MButton>
         </Link>
-        <Link href={`/c/${clinicSlug}/my/book/service`}>
+        <Link href={bookHref(clinicSlug, "service", onBehalfOf)}>
           <MButton block variant="ghost">
             {t.done.bookAnother}
           </MButton>

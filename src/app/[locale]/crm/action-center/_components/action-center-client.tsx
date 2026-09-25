@@ -440,6 +440,7 @@ const ACTION_CTA: Record<
   LOW_NPS_RECEIVED: { cta: "ctaCallback", tone: "pink", Icon: PhoneIcon },
   PATIENT_NO_CHANNEL: { cta: "ctaCall", tone: "warning", Icon: PhoneIcon },
   VISIT_FOLLOW_UP_DUE: { cta: "ctaCall", tone: "info", Icon: CalendarCheck2Icon },
+  TELEGRAM_LINK_CONFLICT: { cta: "ctaOpen", tone: "warning", Icon: UsersIcon },
 };
 
 // Type helper so TypeScript knows the keys are valid i18n paths.
@@ -482,6 +483,7 @@ const CATEGORY_MAP: Record<ActionType, CategoryKey> = {
   DORMANT_BATCH: "reactivation",
   CASE_REPEAT_DUE: "reactivation",
   DOCTOR_OVERLOAD: "operations",
+  TELEGRAM_LINK_CONFLICT: "operations",
 };
 
 const CATEGORY_ORDER: readonly CategoryKey[] = [

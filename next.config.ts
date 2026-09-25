@@ -45,6 +45,13 @@ const buildCsp = (frameAncestors: string) =>
 const contentSecurityPolicy = buildCsp("'self'");
 const siteContentSecurityPolicy = buildCsp(`'self' ${METRIKA_FRAMERS}`);
 
+// Routes that stream user-uploaded files set their OWN Content-Security-
+// Policy (a sandbox for anything that is not a PDF — src/server/storage/
+// safe-file.ts). A config header with the same key would replace it, so the
+// app-wide CSP skips exactly these paths (audit CD-01).
+const USER_FILE_ROUTES =
+  "api/crm/documents/file$|api/miniapp/documents/[^/]+/file$|api/crm/conversations/[^/]+/attachments/file$";
+
 // Public landing routes (ru at the root, uz under /uz — localePrefix
 // "as-needed"). Listed after the catch-all so their CSP wins.
 const SITE_PATHS = [
@@ -59,7 +66,6 @@ const SITE_PATHS = [
 ];
 
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: contentSecurityPolicy },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -107,6 +113,12 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        source: `/:path((?!${USER_FILE_ROUTES}).*)`,
+        headers: [
+          { key: "Content-Security-Policy", value: contentSecurityPolicy },
+        ],
       },
       ...SITE_PATHS.map((source) => ({
         source,

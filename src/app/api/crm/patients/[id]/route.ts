@@ -19,10 +19,16 @@ import { UpdatePatientSchema } from "@/server/schemas/patient";
 import { recordPatientView } from "@/server/audit/patient-view";
 import { clientIpForAudit } from "@/lib/client-ip";
 import {
+  findVerifiedPhoneOwner,
   isRealPhone,
   isUniqueViolation,
   releaseUnverifiedPhone,
 } from "@/server/patient/phone-identity";
+import {
+  birthDateFromYear,
+  birthYearOf,
+  parsePatientIdentity,
+} from "@/lib/patients/parse-identity";
 
 /**
  * The update body plus `verifyPhone`: staff confirm, with the patient in
@@ -33,6 +39,31 @@ import {
 const PatchBody = UpdatePatientSchema.extend({
   verifyPhone: z.boolean().optional(),
 });
+
+/**
+ * A name typed with the birth year, «Турматов Отабек 1969», is stored the
+ * way POST /api/crm/patients stores it: the year goes to `birthDate`, the
+ * name keeps only the name (a year left inside it breaks search, age and
+ * the printed «г.р.» line). An explicit birth date in the same save wins,
+ * and a full date already on the card is kept when its year agrees: the
+ * name only ever carries a year, the card may know the day.
+ */
+function nameAndYearUpdate(
+  fullName: string,
+  birthDate: Date | null | undefined,
+  current: Date | null | undefined,
+): { fullName: string; birthDate?: Date } {
+  const parsed = parsePatientIdentity(fullName);
+  if (!parsed.matched || parsed.birthYear === null) return { fullName };
+  if (birthDate) return { fullName: parsed.fullName };
+  const sameYear =
+    birthDate === undefined &&
+    current != null &&
+    birthYearOf(current) === parsed.birthYear;
+  return sameYear
+    ? { fullName: parsed.fullName }
+    : { fullName: parsed.fullName, birthDate: birthDateFromYear(parsed.birthYear) };
+}
 
 function idFromUrl(request: Request): string {
   // App Router passes params via the route handler signature, but we're
@@ -89,6 +120,9 @@ export const PATCH = createApiHandler(
     if (!before) return notFound();
 
     const data: Record<string, unknown> = serializePatientForWrite({ ...body });
+    if (body.fullName !== undefined) {
+      Object.assign(data, nameAndYearUpdate(body.fullName, body.birthDate, before.birthDate));
+    }
     let phoneChanged = false;
     if (body.phone) {
       data.phoneNormalized = normalizePhone(body.phone);
@@ -97,6 +131,21 @@ export const PATCH = createApiHandler(
       // PH-01). Re-saving the form with an unchanged number verifies
       // nothing: that would bless a number a Telegram user typed.
       if (phoneChanged) data.phoneVerifiedAt = new Date();
+    }
+    if (phoneChanged && typeof data.phoneNormalized === "string") {
+      // The number is another patient's verified identity: say whose, so
+      // the front desk can open that card instead of guessing (audit PT-01).
+      // The unique index below still catches a race.
+      const owner = await findVerifiedPhoneOwner(
+        prisma,
+        before.clinicId,
+        data.phoneNormalized,
+      );
+      if (owner && owner.id !== id) {
+        return conflict("phone_taken", {
+          owner: { id: owner.id, fullName: owner.fullName },
+        });
+      }
     }
     if (
       verifyPhone &&

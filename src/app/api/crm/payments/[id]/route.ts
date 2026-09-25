@@ -13,6 +13,7 @@ import { recalcLtv } from "@/server/services/ltv";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import { tiyinToUsdCents } from "@/lib/fx";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -41,6 +42,14 @@ export const PATCH = createApiHandler(
     }
 
     const data: Record<string, unknown> = { ...body };
+    if (typeof body.amount === "number" && body.amount !== before.amount) {
+      // The USD snapshot follows the corrected amount at the rate the
+      // payment was taken at (сум per 1 USD, audit AN-01).
+      data.amountUsdSnap =
+        before.currency === "USD"
+          ? body.amount
+          : tiyinToUsdCents(body.amount, before.fxRate);
+    }
     if (
       body.status === "PAID" &&
       before.status !== "PAID" &&

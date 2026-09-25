@@ -6,6 +6,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/phone";
+import { patientSearchWhere } from "@/server/patient/search-where";
 import { ok } from "@/server/http";
 
 export const GET = createApiListHandler(
@@ -24,13 +25,6 @@ export const GET = createApiListHandler(
 
     const phoneDigits = q.replace(/\D/g, "");
     const phoneNorm = normalizePhone(q);
-    const patientPhoneOr: Array<Record<string, unknown>> = [
-      { phone: { contains: q } },
-    ];
-    if (phoneDigits.length >= 3) {
-      patientPhoneOr.push({ phoneNormalized: { contains: phoneDigits } });
-      if (phoneNorm) patientPhoneOr.push({ phoneNormalized: { contains: phoneNorm } });
-    }
     const apptPatientPhoneOr: Array<Record<string, unknown>> = [
       { patient: { phone: { contains: q } } },
     ];
@@ -47,12 +41,8 @@ export const GET = createApiListHandler(
 
     const [patients, doctors, appointments, conversations] = await Promise.all([
       prisma.patient.findMany({
-        where: {
-          OR: [
-            { fullName: { contains: q, mode: "insensitive" } },
-            ...patientPhoneOr,
-          ],
-        },
+        // The shared patient search, «Турматов 1969» included (audit PT-03).
+        where: patientSearchWhere(q) ?? {},
         select: {
           id: true,
           fullName: true,

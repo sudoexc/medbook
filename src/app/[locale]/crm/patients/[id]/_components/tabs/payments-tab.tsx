@@ -11,38 +11,16 @@ import { EmptyState } from "@/components/atoms/empty-state";
 import { MoneyText } from "@/components/atoms/money-text";
 import { TagChip } from "@/components/atoms/tag-chip";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  AddPaymentDialog,
+  type PaymentVisitOption,
+} from "@/components/payments/add-payment-dialog";
 
 import type { Patient } from "../../_hooks/use-patient";
 import {
-  useCreatePayment,
   usePatientPayments,
   type PatientPayment,
 } from "../../_hooks/use-patient-payments";
-
-const METHODS: PatientPayment["method"][] = [
-  "CASH",
-  "CARD",
-  "TRANSFER",
-  "PAYME",
-  "CLICK",
-  "UZUM",
-  "OTHER",
-];
+import { usePatientAppointments } from "../../_hooks/use-patient-appointments";
 
 const STATUS_TONE: Record<
   PatientPayment["status"],
@@ -65,8 +43,28 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
   const locale = useLocale() as Locale;
 
   const q = usePatientPayments(patient.id);
+  const apptsQ = usePatientAppointments(patient.id);
   const [addOpen, setAddOpen] = React.useState(false);
   const rows = React.useMemo(() => q.data?.rows ?? [], [q.data?.rows]);
+
+  // The visits a new payment can be filed under (audit AN-02).
+  const visits = React.useMemo<PaymentVisitOption[]>(
+    () =>
+      (apptsQ.data?.rows ?? []).map((a) => ({
+        id: a.id,
+        date: a.date,
+        status: a.status,
+        priceFinal: a.priceFinal,
+        payments: a.payments,
+        doctorName: locale === "uz" ? a.doctor.nameUz : a.doctor.nameRu,
+        serviceName: a.primaryService
+          ? locale === "uz"
+            ? a.primaryService.nameUz
+            : a.primaryService.nameRu
+          : null,
+      })),
+    [apptsQ.data?.rows, locale],
+  );
 
   const totals = React.useMemo(() => {
     const paid = rows
@@ -203,111 +201,8 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
         open={addOpen}
         onOpenChange={setAddOpen}
         patientId={patient.id}
+        visits={visits}
       />
     </div>
-  );
-}
-
-function AddPaymentDialog({
-  open,
-  onOpenChange,
-  patientId,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  patientId: string;
-}) {
-  const t = useTranslations("patientCard.payments.dialog");
-  const tMethod = useTranslations("patientCard.payments.method");
-  const [amount, setAmount] = React.useState("");
-  const [method, setMethod] = React.useState<PatientPayment["method"]>("CASH");
-
-  const create = useCreatePayment(patientId);
-
-  React.useEffect(() => {
-    if (!open) {
-      setAmount("");
-      setMethod("CASH");
-    }
-  }, [open]);
-
-  const parsed = Math.round(Number(amount.replace(/\s/g, "")) * 100);
-  const canSubmit = Number.isFinite(parsed) && parsed > 0 && !create.isPending;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("title")}</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div className="grid gap-1">
-            <Label htmlFor="pay-amount">{t("amount")}</Label>
-            <Input
-              id="pay-amount"
-              inputMode="numeric"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="150 000"
-            />
-            <span className="text-xs text-muted-foreground">{t("hint")}</span>
-          </div>
-          <div className="grid gap-1">
-            <Label htmlFor="pay-method">{t("method")}</Label>
-            <Select
-              value={method}
-              onValueChange={(v) => setMethod(v as PatientPayment["method"])}
-            >
-              <SelectTrigger id="pay-method">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {METHODS.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {tMethod(
-                      m.toLowerCase() as
-                        | "cash"
-                        | "card"
-                        | "transfer"
-                        | "payme"
-                        | "click"
-                        | "uzum"
-                        | "other",
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={create.isPending}
-          >
-            {t("cancel")}
-          </Button>
-          <Button
-            disabled={!canSubmit}
-            onClick={() =>
-              create.mutate(
-                {
-                  patientId,
-                  amount: parsed,
-                  method,
-                  status: "PAID",
-                },
-                {
-                  onSuccess: () => onOpenChange(false),
-                },
-              )
-            }
-          >
-            {create.isPending ? t("saving") : t("submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

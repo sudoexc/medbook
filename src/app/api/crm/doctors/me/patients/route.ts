@@ -26,7 +26,7 @@ import { z } from "zod";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
-import { normalizePhone } from "@/lib/phone";
+import { patientSearchWhere } from "@/server/patient/search-where";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import {
   classifyDoctorSegment,
@@ -90,22 +90,10 @@ export const GET = createApiListHandler(
       appointments: { some: { doctorId } },
     };
 
-    // Search by name / phone — match the CRM /api/crm/patients behaviour so
-    // a doctor's muscle memory works the same.
-    if (q.q) {
-      const term = q.q.trim();
-      const phoneDigits = term.replace(/\D/g, "");
-      const phoneNorm = normalizePhone(term);
-      const or: Array<Record<string, unknown>> = [
-        { fullName: { contains: term, mode: "insensitive" } },
-      ];
-      if (phoneDigits.length >= 3) {
-        or.push({ phone: { contains: term } });
-        or.push({ phoneNormalized: { contains: phoneDigits } });
-        if (phoneNorm) or.push({ phoneNormalized: { contains: phoneNorm } });
-      }
-      where.OR = or;
-    }
+    // Search with the same builder as /api/crm/patients so a doctor's muscle
+    // memory («Турматов 1969», audit PT-03) works the same here.
+    const search = patientSearchWhere(q.q);
+    if (search) where.AND = [search];
 
     // Tab filters use the same classifier as the segmentation donut so the
     // donut counts and the table rows always agree. See

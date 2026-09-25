@@ -11,6 +11,7 @@ import { SectionHeader } from "@/components/molecules/section-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UZS_PER_USD_MAX, UZS_PER_USD_MIN, uzsPerUsd } from "@/lib/fx";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
 
@@ -66,6 +67,10 @@ export function ExchangeRatesClient() {
   });
 
   const rows = listQuery.data?.rows ?? [];
+  // сум per 1 USD, the one convention every payment and LTV reads (audit
+  // AN-01). The old «USD per сум» form (0.0000787) is refused here.
+  const rateInvalid =
+    form.rateUsd.trim() !== "" && uzsPerUsd(form.rateUsd) === null;
 
   return (
     <PageContainer>
@@ -96,12 +101,28 @@ export function ExchangeRatesClient() {
             <Input
               id="fx-rate"
               type="number"
-              step="0.0001"
-              min="0"
+              step="0.01"
+              min={UZS_PER_USD_MIN}
+              max={UZS_PER_USD_MAX}
               placeholder="12600"
               value={form.rateUsd}
               onChange={(e) => setForm({ ...form, rateUsd: e.target.value })}
+              aria-invalid={rateInvalid}
             />
+            <p
+              className={
+                rateInvalid
+                  ? "mt-1 text-xs text-destructive"
+                  : "mt-1 text-xs text-muted-foreground"
+              }
+            >
+              {rateInvalid
+                ? t("exchangeRates.rateOutOfRange", {
+                    min: UZS_PER_USD_MIN,
+                    max: UZS_PER_USD_MAX,
+                  })
+                : t("exchangeRates.rateHint")}
+            </p>
           </div>
           <div>
             <Label htmlFor="fx-source">
@@ -117,7 +138,7 @@ export function ExchangeRatesClient() {
           <div className="flex items-end">
             <Button
               onClick={() => mut.mutate()}
-              disabled={mut.isPending || !form.rateUsd}
+              disabled={mut.isPending || !form.rateUsd || rateInvalid}
               className="w-full"
             >
               <PlusIcon className="size-4" />

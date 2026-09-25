@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftIcon, RefreshCwIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { uzsPerUsd } from "@/lib/fx";
 import { PageContainer } from "@/components/molecules/page-container";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
@@ -50,8 +51,8 @@ function isTabId(v: string): v is TabId {
  * UZS+USD money. Returns `null` if no rate is available; UI falls back to
  * single-currency display.
  *
- * Rate model stores `rateUsd` as tiin-per-cent (see `MoneyText`/LTV service
- * convention), which is what `DoctorFinances.computeUsd` expects.
+ * `rateUsd` is сум per 1 USD, numerically тийин per цент (`src/lib/fx.ts`,
+ * audit AN-01); an implausible legacy value reads as «no rate».
  */
 function useLatestUsdRate(): number | null {
   const q = useQuery<number | null, Error>({
@@ -67,8 +68,7 @@ function useLatestUsdRate(): number | null {
       };
       const first = j.rows?.[0];
       if (!first) return null;
-      const n = Number(first.rateUsd);
-      return Number.isFinite(n) && n > 0 ? n : null;
+      return uzsPerUsd(first.rateUsd);
     },
     staleTime: 10 * 60_000,
   });

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { ShieldCheckIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, formatPhone, intlLocale, type Locale } from "@/lib/format";
@@ -19,7 +20,9 @@ import {
   usePatchPatient,
 } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
+import { useCurrentRole } from "../_hooks/use-current-role";
 import { TagEditor } from "./tag-editor";
+import { EditPatientDialog } from "./edit-patient-dialog";
 
 export interface PatientInfoPanelProps {
   patient: Patient;
@@ -39,7 +42,8 @@ function ageFrom(birthDate: string | null, nowMs: number): number | null {
 
 /**
  * Left sidebar stack on the patient card — docs/7 - Карточка пациента.png.
- * Cards: Следующая информация / Теги / Заметки.
+ * Cards: Основная информация (edited through `EditPatientDialog`) / Теги /
+ * Заметки.
  */
 export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProps) {
   const locale = useLocale() as Locale;
@@ -47,7 +51,14 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
   const tSource = useTranslations("patients.source");
   const tPanel = useTranslations("patientCard.infoPanel");
   const tCommon = useTranslations("common");
+  const tHeader = useTranslations("patientCard.header");
   const [nowMs] = React.useState(() => Date.now());
+  const [editOpen, setEditOpen] = React.useState(false);
+  // Same roles as PATCH /api/crm/patients/[id]: a nurse or a call operator
+  // would only meet a refusal behind the button.
+  const role = useCurrentRole();
+  const canEdit =
+    role === "ADMIN" || role === "RECEPTIONIST" || role === "DOCTOR";
 
   const patch = usePatchPatient(patient.id);
   const save = React.useCallback(
@@ -85,8 +96,29 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
 
   return (
     <div className="flex flex-col gap-3">
-      <SidebarCard title={tPanel("mainInfo")} action={tCommon("edit")}>
+      <SidebarCard
+        title={tPanel("mainInfo")}
+        action={canEdit ? tCommon("edit") : undefined}
+        onAction={() => setEditOpen(true)}
+      >
         <InfoRow label={tPanel("phone")} value={formatPhone(patient.phone)} mono />
+        {canEdit &&
+        patient.phoneVerifiedAt === null &&
+        patient.phoneNormalized.startsWith("+") ? (
+          // The number came from the Mini App and is only a claim (audit
+          // PH-01): walk-ins and the kiosk ask about this card until staff
+          // confirm it with the patient.
+          <button
+            type="button"
+            title={tHeader("phoneUnverifiedHint")}
+            disabled={patch.isPending}
+            onClick={() => void save({ verifyPhone: true })}
+            className="mb-1 inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-warning/20 disabled:opacity-60"
+          >
+            <ShieldCheckIcon className="size-3.5" />
+            {tHeader("verifyPhone")}
+          </button>
+        ) : null}
         <InfoRow
           label="Telegram"
           value={
@@ -128,6 +160,13 @@ export function PatientInfoPanel({ patient, appointments }: PatientInfoPanelProp
           value={patient.consentMarketing ? tCommon("yes") : tCommon("no")}
         />
       </SidebarCard>
+      {canEdit ? (
+        <EditPatientDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          patient={patient}
+        />
+      ) : null}
 
       <SidebarCard title={tPanel("tags")}>
         <TagEditor

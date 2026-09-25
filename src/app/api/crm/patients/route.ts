@@ -7,6 +7,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
+import { patientSearchWhere } from "@/server/patient/search-where";
 import {
   birthDateFromYear,
   parsePatientIdentity,
@@ -87,48 +88,9 @@ export const GET = createApiListHandler(
         ...(q.registeredTo ? { lte: q.registeredTo } : {}),
       };
     }
-    if (q.q) {
-      const term = q.q.trim();
-      const phoneDigits = term.replace(/\D/g, "");
-      const phoneNorm = normalizePhone(term);
-      // Wave 4 note: `passport` is stored encrypted; `contains` only matches
-      // legacy plaintext rows. Searching encrypted passports is out of scope
-      // and would require a blind-index (HMAC) column — see runbook.
-      const or: Array<Record<string, unknown>> = [
-        { fullName: { contains: term, mode: "insensitive" } },
-        { passport: { contains: term, mode: "insensitive" } },
-        { telegramUsername: { contains: term, mode: "insensitive" } },
-      ];
-      if (phoneDigits.length >= 3) {
-        or.push({ phone: { contains: term } });
-        or.push({ phoneNormalized: { contains: phoneDigits } });
-        if (phoneNorm) or.push({ phoneNormalized: { contains: phoneNorm } });
-      }
-      // The doctor records patients as «Турматов О 1969» and searches the same
-      // way. The year now lives in `birthDate` instead of inside the name, so
-      // a trailing year has to match on the date or his habit would silently
-      // stop finding people.
-      const yearMatch = term.match(/(?:^|\s)((?:19|20)\d{2})\s*$/);
-      const year = yearMatch ? Number(yearMatch[1]) : null;
-      if (year !== null && year >= 1900 && year <= new Date().getFullYear()) {
-        const range = {
-          gte: new Date(Date.UTC(year, 0, 1)),
-          lt: new Date(Date.UTC(year + 1, 0, 1)),
-        };
-        const namePart = term.slice(0, yearMatch!.index ?? 0).trim();
-        if (namePart) {
-          // «Турматов 1969» — name AND year must both hold, otherwise a query
-          // naming someone specific would return every patient born that year.
-          where.AND = [
-            { fullName: { contains: namePart, mode: "insensitive" } },
-            { birthDate: range },
-          ];
-        } else {
-          or.push({ birthDate: range });
-        }
-      }
-      where.OR = or;
-    }
+    // Name / phone / passport / Telegram, and «Фамилия ГГГГ» (audit PT-03).
+    const search = patientSearchWhere(q.q);
+    if (search) where.AND = [search];
 
     const take = q.limit + 1;
     const rows = await prisma.patient.findMany({

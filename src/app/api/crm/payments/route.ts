@@ -8,7 +8,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, parseQuery } from "@/server/http";
+import { ok, err, parseQuery } from "@/server/http";
 import {
   CreatePaymentSchema,
   QueryPaymentSchema,
@@ -17,6 +17,7 @@ import { recalcLtv } from "@/server/services/ltv";
 import { fireTrigger } from "@/server/notifications/triggers";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
+import { tiyinToUsdCents, uzsPerUsd } from "@/lib/fx";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "CALL_OPERATOR"] },
@@ -97,13 +98,35 @@ export const POST = createApiHandler(
       if (existing) return ok(existing, 200);
     }
 
+    // A payment for a visit is what every visit-level number reads: the
+    // doctor's revenue, «Топ врачей», the drawer's payments, the «Неоплаченные»
+    // filter and the paid-visit price lock (audit AN-02). The visit must be
+    // this clinic's (the tenant scope) and this patient's: a payment filed
+    // under another patient's visit would mark that visit paid.
+    let patientId = body.patientId ?? null;
+    if (body.appointmentId) {
+      const appt = await prisma.appointment.findUnique({
+        where: { id: body.appointmentId },
+        select: { patientId: true },
+      });
+      if (!appt) {
+        return err("ValidationError", 422, { reason: "appointment_not_found" });
+      }
+      if (patientId && appt.patientId !== patientId) {
+        return err("ValidationError", 422, {
+          reason: "appointment_patient_mismatch",
+        });
+      }
+      patientId = appt.patientId;
+    }
+
     const data: Record<string, unknown> = {
       currency: body.currency,
       amount: body.amount,
       method: body.method,
       status: body.status,
       appointmentId: body.appointmentId ?? null,
-      patientId: body.patientId ?? null,
+      patientId,
       receiptNumber: body.receiptNumber ?? null,
       receiptUrl: body.receiptUrl ?? null,
       externalRef: body.externalRef ?? null,
@@ -111,27 +134,20 @@ export const POST = createApiHandler(
       paidAt: body.status === "PAID" ? (body.paidAt ?? new Date()) : body.paidAt ?? null,
     };
 
-    // Attach USD snapshot via latest FX rate for reporting.
-    if (body.currency === "USD") {
-      const rate = await prisma.exchangeRate.findFirst({
-        orderBy: { date: "desc" },
-        select: { rateUsd: true },
-      });
-      if (rate) {
-        data.fxRate = rate.rateUsd;
-        data.amountUsdSnap = body.amount;
-      }
-    } else {
-      const rate = await prisma.exchangeRate.findFirst({
-        orderBy: { date: "desc" },
-        select: { rateUsd: true },
-      });
-      if (rate) {
-        data.fxRate = rate.rateUsd;
-        data.amountUsdSnap = Math.round(
-          body.amount * Number(rate.rateUsd)
-        );
-      }
+    // USD snapshot for reporting, from the latest rate in the one convention
+    // (сум per 1 USD, audit AN-01). A missing or implausible rate leaves the
+    // snapshot empty: reporting must never be the reason a payment fails.
+    const latest = await prisma.exchangeRate.findFirst({
+      orderBy: { date: "desc" },
+      select: { rateUsd: true },
+    });
+    const rate = uzsPerUsd(latest?.rateUsd);
+    if (rate !== null) {
+      data.fxRate = rate;
+      data.amountUsdSnap =
+        body.currency === "USD"
+          ? body.amount
+          : tiyinToUsdCents(body.amount, rate);
     }
 
     let created;
@@ -148,22 +164,6 @@ export const POST = createApiHandler(
         if (existing) return ok(existing, 200);
       }
       throw e;
-    }
-
-    // Fallback: derive patientId from the appointment if not provided directly.
-    let patientId = created.patientId;
-    if (!patientId && created.appointmentId) {
-      const appt = await prisma.appointment.findUnique({
-        where: { id: created.appointmentId },
-        select: { patientId: true },
-      });
-      patientId = appt?.patientId ?? null;
-      if (patientId) {
-        await prisma.payment.update({
-          where: { id: created.id },
-          data: { patientId },
-        });
-      }
     }
 
     if (created.status === "PAID" && patientId) {

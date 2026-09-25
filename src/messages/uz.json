@@ -784,7 +784,8 @@
         "noMedications": "ko'rsatilmagan",
         "expand": "Javoblarni ko'rsatish",
         "collapse": "Yopish"
-      }
+      },
+      "addPayment": "To'lov qabul qilish"
     },
     "rail": {
       "quickActions": "Tez amallar",
@@ -1130,6 +1131,32 @@
       "notesEmpty": "Izohlar hali yo'q",
       "notesPlaceholder": "Bemor haqida izohlar…"
     },
+    "editDialog": {
+      "title": "Bemor ma'lumotlari",
+      "description": "Tuzatishlar xulosalar, qidiruv va eslatmalarda ko'rinadi.",
+      "fullName": "F.I.Sh.",
+      "fullNameHint": "Tug'ilgan yili bilan ham bo'ladi: «Turmatov Otabek 1969».",
+      "phone": "Telefon",
+      "birthDate": "Tug'ilgan sana",
+      "gender": "Jins",
+      "source": "Manba",
+      "preferredLang": "Muloqot tili",
+      "langRu": "Ruscha",
+      "langUz": "O'zbekcha",
+      "notSet": "Ko'rsatilmagan",
+      "address": "Manzil",
+      "passport": "Pasport",
+      "cancel": "Bekor qilish",
+      "save": "Saqlash",
+      "saving": "Saqlanmoqda…",
+      "saved": "Bemor ma'lumotlari saqlandi",
+      "saveFailed": "Bemor ma'lumotlarini saqlab bo'lmadi",
+      "errorName": "F.I.Sh. kiriting, kamida 2 ta belgi.",
+      "errorPhone": "To'liq telefon raqamini kiriting, masalan +998 90 123 45 67.",
+      "phoneTaken": "Bu raqam {name} bemoriga yozilgan.",
+      "phoneTakenUnknown": "Bu raqam yoki Telegram boshqa kartochkaga bog'langan.",
+      "openOwner": "Uning kartochkasini ochish"
+    },
     "rightRail": {
       "quickActions": "Tez amallar",
       "callPatient": "Bemorga qo'ng'iroq qilish",
@@ -1410,7 +1437,11 @@
         "method": "Usul",
         "cancel": "Bekor qilish",
         "submit": "Qo'shish",
-        "saving": "Saqlanmoqda…"
+        "saving": "Saqlanmoqda…",
+        "visit": "Tashrif",
+        "visitNone": "Tashrifsiz (oldindan to'lov)",
+        "visitPaid": "to'langan",
+        "visitInvalid": "Bu tashrif bemorda topilmadi. Boshqasini tanlang."
       }
     },
     "medical": {
@@ -3847,7 +3878,9 @@
         "date": "Sana",
         "rate": "Kurs (1 USD uchun UZS)",
         "source": "Manba"
-      }
+      },
+      "rateHint": "1 dollar necha so'm turadi, masalan 12600.",
+      "rateOutOfRange": "Kurs 1 dollar uchun so'mda kiritiladi: {min} dan {max} gacha."
     },
     "roles": {
       "title": "Ruxsatlar matritsasi / Permission Matrix",

@@ -57,6 +57,7 @@ import { MoneyText } from "@/components/atoms/money-text";
 import { PhoneText } from "@/components/atoms/phone-text";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { SlotPicker } from "@/components/appointments/SlotPicker";
+import { AddPaymentDialog } from "@/components/payments/add-payment-dialog";
 
 import { CaseSelectorDialog } from "./case-selector-dialog";
 import { AppointmentLifecycle } from "./appointment-lifecycle";
@@ -124,6 +125,10 @@ export function AppointmentDrawer({
   const locale = useLocale() as Locale;
   const role = useCurrentRole();
   const [caseSelectorOpen, setCaseSelectorOpen] = React.useState(false);
+  const [paymentOpen, setPaymentOpen] = React.useState(false);
+  // Money is taken where the visit is (audit AN-02): a payment from here is
+  // filed under this visit. Same roles as POST /api/crm/payments.
+  const canTakePayment = role === "ADMIN" || role === "RECEPTIONIST";
 
   const open = Boolean(appointmentId);
 
@@ -450,15 +455,27 @@ export function AppointmentDrawer({
 
               {/* Payments */}
               <section className="rounded-lg border border-border bg-card/40 p-3">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <h4 className="text-sm font-medium text-foreground">
                     {t("fields.payments")}
                   </h4>
-                  {appt.payments.length === 0 ? (
-                    <Badge variant="destructive">
-                      {tPayment(paymentStatusFor(appt).toLowerCase() as never)}
-                    </Badge>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {appt.payments.length === 0 ? (
+                      <Badge variant="destructive">
+                        {tPayment(paymentStatusFor(appt).toLowerCase() as never)}
+                      </Badge>
+                    ) : null}
+                    {canTakePayment ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setPaymentOpen(true)}
+                      >
+                        {t("addPayment")}
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 {appt.payments.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
@@ -611,6 +628,30 @@ export function AppointmentDrawer({
           // The selector already invalidated relevant queries; the drawer's
           // useAppointment hook will refetch automatically.
         }}
+      />
+    ) : null}
+    {appt && canTakePayment ? (
+      <AddPaymentDialog
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
+        patientId={appt.patient.id}
+        lockedVisitId={appt.id}
+        visits={[
+          {
+            id: appt.id,
+            date: appt.date,
+            status: appt.status,
+            priceFinal: appt.priceFinal,
+            payments: appt.payments,
+            doctorName:
+              locale === "uz" ? appt.doctor.nameUz : appt.doctor.nameRu,
+            serviceName: appt.primaryService
+              ? locale === "uz"
+                ? appt.primaryService.nameUz
+                : appt.primaryService.nameRu
+              : null,
+          },
+        ]}
       />
     ) : null}
     <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>

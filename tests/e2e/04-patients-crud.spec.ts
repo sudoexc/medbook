@@ -2,7 +2,7 @@
  * Patients — create → list → edit inline → soft-delete. TZ §10.Фаза 7 scenario #4.
  *
  * Exercises the REST API behind the UI (the same paths the
- * `new-patient-dialog` and `patient-header` components call).
+ * `new-patient-dialog` and `edit-patient-dialog` components call).
  */
 import { test, expect } from "@playwright/test";
 

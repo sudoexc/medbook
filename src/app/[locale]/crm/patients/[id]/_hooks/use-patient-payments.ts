@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 export type PatientPayment = {
   id: string;
@@ -47,46 +41,5 @@ export function usePatientPayments(patientId: string) {
       return (await res.json()) as PaymentsListResponse;
     },
     staleTime: 15_000,
-  });
-}
-
-export type CreatePaymentInput = {
-  patientId: string;
-  appointmentId?: string | null;
-  amount: number;
-  currency?: "UZS" | "USD";
-  method: PatientPayment["method"];
-  status?: PatientPayment["status"];
-};
-
-export function useCreatePayment(patientId: string) {
-  const qc = useQueryClient();
-  const t = useTranslations("crmToasts.patient");
-  return useMutation<PatientPayment, Error, CreatePaymentInput>({
-    mutationFn: async (input) => {
-      const res = await fetch(`/api/crm/payments`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...input,
-          currency: input.currency ?? "UZS",
-          status: input.status ?? "PAID",
-        }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
-      return (await res.json()) as PatientPayment;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["patient", patientId, "payments"] });
-      qc.invalidateQueries({ queryKey: ["patient", patientId] });
-      toast.success(t("paymentAdded"));
-    },
-    onError: (e) => toast.error(e.message || t("paymentFailed")),
   });
 }

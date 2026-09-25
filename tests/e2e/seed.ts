@@ -205,8 +205,8 @@ async function main() {
     today.setHours(0, 0, 0, 0);
     await prisma.exchangeRate.upsert({
       where: { clinicId_date: { clinicId: clinic.id, date: today } },
-      update: { rateUsd: 1 / 12700, source: "seed" },
-      create: { clinicId: clinic.id, date: today, rateUsd: 1 / 12700, source: "seed" },
+      update: { rateUsd: 12700, source: "seed" },
+      create: { clinicId: clinic.id, date: today, rateUsd: 12700, source: "seed" },
     });
 
     // ADMIN

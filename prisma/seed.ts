@@ -357,13 +357,13 @@ async function main() {
       },
     });
 
-    // ── Exchange rate today: 1 USD = 12700 UZS → store rate as UZS→USD (1/12700)
+    // ── Exchange rate today: 1 USD = 12700 UZS, stored as сум per 1 USD (src/lib/fx.ts)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     await prisma.exchangeRate.upsert({
       where: { clinicId_date: { clinicId: clinic.id, date: today } },
-      update: { rateUsd: 1 / 12700, source: "seed" },
-      create: { clinicId: clinic.id, date: today, rateUsd: 1 / 12700, source: "seed" },
+      update: { rateUsd: 12700, source: "seed" },
+      create: { clinicId: clinic.id, date: today, rateUsd: 12700, source: "seed" },
     });
 
     // ── 1 ADMIN ───────────────────────────────────────────────────────

@@ -572,6 +572,8 @@ function DrugRow({
   if (
     drug.inn &&
     !drug.inn.startsWith("uzr:") &&
+    // A drug a doctor added for the clinic carries a private key, not an INN.
+    !drug.inn.startsWith("clinic:") &&
     drug.inn.toLowerCase() !== drug.nameRu.toLowerCase()
   ) {
     sub.push(drug.inn);

@@ -48,6 +48,11 @@ const RX_FIELD: FieldDef = {
   presetField: "PRESCRIPTIONS",
 };
 
+/** A drug a doctor quick-added to the clinic's base: a name, no substance. */
+function isBareClinicDrug(id: string | null | undefined): boolean {
+  return !!id && id.startsWith("clinic-");
+}
+
 export function StructuredFieldsPanel() {
   const t = useTranslations("doctor.reception");
   const {
@@ -78,13 +83,16 @@ export function StructuredFieldsPanel() {
   }, [presetsQuery.data]);
 
   // CDS v2 inputs: catalog-picked rows go by id (authoritative), custom rows
-  // and legacy text lines keep the best-effort text match.
+  // and legacy text lines keep the best-effort text match. A drug a doctor
+  // added to the clinic's base («clinic-…») has no substance or ATC on its
+  // row, so it is checked by its name like a custom line — by id it would
+  // count as «resolved» and pass every allergy/interaction check blind.
   const rxStructured = note?.visitPrescriptions ?? [];
   const cdsDrugIds = React.useMemo(
     () =>
       rxStructured
         .map((r) => r.drugId)
-        .filter((id): id is string => !!id),
+        .filter((id): id is string => !!id && !isBareClinicDrug(id)),
     [rxStructured],
   );
   const legacyPrescriptions = note?.prescriptions;
@@ -92,7 +100,7 @@ export function StructuredFieldsPanel() {
     () => [
       ...(legacyPrescriptions ?? []),
       ...rxStructured
-        .filter((r) => !r.drugId)
+        .filter((r) => !r.drugId || isBareClinicDrug(r.drugId))
         .map((r) => formatPrescriptionLine(r, "ru")),
     ],
     [legacyPrescriptions, rxStructured],

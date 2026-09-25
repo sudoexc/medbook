@@ -117,6 +117,19 @@ export function useDoctorFavorites(entityType: CatalogEntityType) {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey });
+      // A star reorders «мои частые» (starred first) — but not under the
+      // doctor's cursor while the list is open: mark it stale only, and the
+      // field refetches it the next time it opens.
+      if (entityType === "DRUG" || entityType === "ICD10") {
+        queryClient.invalidateQueries({
+          queryKey: [
+            "doctor",
+            "reception",
+            entityType === "DRUG" ? "rx-shortlist" : "dx-shortlist",
+          ],
+          refetchType: "none",
+        });
+      }
     },
   });
 

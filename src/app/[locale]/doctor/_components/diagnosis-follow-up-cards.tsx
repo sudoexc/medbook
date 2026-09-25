@@ -29,7 +29,6 @@ import {
   WandSparklesIcon,
   XIcon,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -46,6 +45,7 @@ import type {
 } from "../reception/_hooks/use-visit-note";
 import { useAddChronicCondition } from "../reception/_hooks/use-patient-history";
 import { useDoctorFavorites } from "../reception/_hooks/use-doctor-favorites";
+import { useDiagnosisShortlist } from "../reception/_hooks/use-shortlists";
 import {
   usePatientDiagnoses,
   type PatientDiagnosisRow,
@@ -200,6 +200,11 @@ export function DiagnosisCard({
   const [focused, setFocused] = React.useState(false);
   const hits = useIcd10Search(query);
   const { pinned, toggle } = useDoctorFavorites("ICD10");
+  // What opens on a tap with nothing typed: his starred and most-written
+  // diagnoses. The rest of ICD-10 stays behind search (clinic request
+  // 25.09.2026 — one doctor lives on migraine, another on lumbago).
+  const shortlist = useDiagnosisShortlist(!disabled);
+  const shortRows = shortlist.data ?? [];
   const protocolsQuery = useClinicalProtocols(note.diagnosisCode);
   const protocols = protocolsQuery.data ?? [];
   // Ф7 — «в хронические»: один клик копирует диагноз в карточку пациента.
@@ -275,14 +280,93 @@ export function DiagnosisCard({
           <input
             type="text"
             disabled={disabled}
-            placeholder={t("diagnosis.searchPlaceholder")}
+            placeholder={t("diagnosis.searchPlaceholderTap")}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setFocused(true)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setFocused(true);
+            }}
+            // A pick keeps the caret in the field (mousedown is prevented),
+            // so a second tap fires no focus event: reopen on click too.
+            onClick={() => setFocused(true)}
+            onFocus={() => {
+              setFocused(true);
+              if (shortlist.isStale) void shortlist.refetch();
+            }}
             onBlur={() => setTimeout(() => setFocused(false), 150)}
             className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
           />
-          {focused && (rows.length > 0 || query.trim().length >= 2) && (
+          {focused && query.trim().length < 2 && shortRows.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
+              <p className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("diagnosis.shortMine")}
+              </p>
+              <ul>
+                {shortRows.map((r) => (
+                  <li key={`${r.code ?? ""}|${r.name}`}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onChange(r.code, r.name);
+                        setQuery("");
+                        setFocused(false);
+                      }}
+                      className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+                    >
+                      {r.code ? (
+                        <span className="font-mono font-semibold text-primary">
+                          {r.code}
+                        </span>
+                      ) : null}
+                      <span className="min-w-0 flex-1 text-foreground">
+                        {r.name}
+                      </span>
+                      {r.count > 0 ? (
+                        <span
+                          title={t("diagnosis.shortCount", { n: r.count })}
+                          className="mt-0.5 shrink-0 rounded bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                        >
+                          {r.count}
+                        </span>
+                      ) : null}
+                      {r.code ? (
+                        <span
+                          role="button"
+                          tabIndex={-1}
+                          onMouseDown={(e) => {
+                            // Star, don't pick: keep the list open.
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggle(r.code!);
+                          }}
+                          title={
+                            pinned.has(r.code)
+                              ? t("diagnosis.favRemove")
+                              : t("diagnosis.favAdd")
+                          }
+                          className={cn(
+                            "shrink-0 rounded p-0.5 transition-colors",
+                            pinned.has(r.code)
+                              ? "text-amber-500"
+                              : "text-muted-foreground/40 hover:text-amber-500",
+                          )}
+                        >
+                          <StarIcon
+                            className={cn(
+                              "size-3.5",
+                              pinned.has(r.code) ? "fill-amber-400" : "",
+                            )}
+                          />
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {focused && query.trim().length >= 2 && (
             <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
               {rows.map((r) => (
                 <li key={r.code}>
@@ -404,9 +488,6 @@ export function DiagnosisCard({
           <p className="text-[11px] leading-snug text-muted-foreground">
             {t("diagnosis.hint")}
           </p>
-        )}
-        {!disabled && !note.diagnosisCode && !note.diagnosisName && (
-          <FavoriteDiagnosesChips pinned={pinned} onPick={onChange} />
         )}
         <PastDiagnosesBlock note={note} disabled={disabled} onTake={onChange} />
         {(note.diagnosisCode || note.diagnosisName) && (
@@ -602,59 +683,3 @@ function PastDiagnosisRow({
   );
 }
 
-/**
- * The doctor's starred diagnoses as one-tap chips under the search box.
- * Codes live in DoctorFavorite (entityType ICD10); the wording is resolved
- * through the `codes=` mode of the icd10 search route, clinic-taught codes
- * included. Rendered only while the visit has no diagnosis yet — the same
- * moment the search box itself matters.
- */
-function FavoriteDiagnosesChips({
-  pinned,
-  onPick,
-}: {
-  pinned: Set<string>;
-  onPick: (code: string | null, name: string | null) => void;
-}) {
-  const t = useTranslations("doctor.reception");
-  const codes = React.useMemo(() => [...pinned].sort(), [pinned]);
-  const resolveQuery = useQuery({
-    queryKey: ["icd-favorites-resolve", codes.join(",")],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/crm/icd10/search?codes=${encodeURIComponent(codes.join(","))}`,
-        { credentials: "include" },
-      );
-      if (!res.ok) return { rows: [] as { code: string; nameRu: string }[] };
-      return (await res.json()) as {
-        rows: { code: string; nameRu: string }[];
-      };
-    },
-    enabled: codes.length > 0,
-    staleTime: 5 * 60_000,
-  });
-
-  const rows = resolveQuery.data?.rows ?? [];
-  if (codes.length === 0 || rows.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      <span className="inline-flex items-center gap-1 pr-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <StarIcon className="size-3 fill-amber-400 text-amber-500" />
-        {t("diagnosis.favTitle")}
-      </span>
-      {rows.map((r) => (
-        <button
-          key={r.code}
-          type="button"
-          onClick={() => onPick(r.code, r.nameRu)}
-          title={`${r.code} ${r.nameRu}`}
-          className="inline-flex h-6 max-w-[220px] items-center gap-1 rounded-md border border-border bg-card px-1.5 text-[11px] font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-        >
-          <span className="font-mono font-semibold text-primary">{r.code}</span>
-          <span className="truncate">{r.nameRu}</span>
-        </button>
-      ))}
-    </div>
-  );
-}

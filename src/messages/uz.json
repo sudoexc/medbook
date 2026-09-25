@@ -6083,14 +6083,17 @@
         "pastTitle": "Avval boʻlgan",
         "pastTake": "olish",
         "pastMore": "Yana {count} ta tashxis",
-        "hint": "Yozishni boshlang — MKB-10 ma'lumotnomasidan tanlang yoki tashxisni o'z so'zingiz bilan yozing.",
+        "hint": "Tez-tez qo‘yadigan tashxislaringizni ko‘rish uchun maydonni bosing. Yoki yozishni boshlang: MKB-10 kodi yoki o‘z so‘zlaringiz bilan tashxis.",
         "useAsTyped": "Shundayligicha yozish: «{text}»",
         "clinicBadge": "klinika",
         "catalogButton": "Katalog",
         "favTitle": "Saralangan",
         "favAdd": "Saralanganga qo'shish",
         "favRemove": "Saralangandan olib tashlash",
-        "requiredMark": "majburiy"
+        "requiredMark": "majburiy",
+        "searchPlaceholderTap": "Tez-tez qo‘yiladigan tashxislar yoki MKB-10 bo‘yicha qidiruv…",
+        "shortMine": "Men tez-tez qo‘yadigan tashxislar",
+        "shortCount": "Bir yilda {n} marta qo‘yilgan"
       },
       "guide": {
         "title": "Bilimlar bazasi",
@@ -6158,7 +6161,7 @@
       "rx": {
         "custom": "Qo‘lda kiritish",
         "customName": "Nomi",
-        "customDose": "Doza / sxema",
+        "customDose": "Doza / sxema (ixtiyoriy)",
         "add": "Qo‘shish",
         "searchPlaceholder": "Dori: nomi, XBN yoki brend…",
         "suggestTitle": "{code} uchun ko‘p tayinlanadi",
@@ -6186,7 +6189,21 @@
         },
         "duration": "Davomiyligi, kun",
         "instruction": "Qanday qabul qilish",
-        "instructionPlaceholder": "Bemor eslatmasi uchun matn…"
+        "instructionPlaceholder": "Bemor eslatmasi uchun matn…",
+        "searchPlaceholderTap": "Tez-tez yoziladigan dorilar yoki nomi bo‘yicha qidiruv…",
+        "shortMine": "Men tez-tez yozadiganlar",
+        "shortClinic": "Klinikaning asosiy dorilari",
+        "shortTemplates": "Mening shablonlarim ({n})",
+        "shortCount": "Bir yilda {n} marta tayinlangan",
+        "shortEmpty": "Hozircha bo‘sh. Dori nomini yozishni boshlang.",
+        "otc": "retseptsiz",
+        "addToClinic": "«{name}»ni klinika bazasiga qo‘shish",
+        "addedToClinic": "«{name}» klinika bazasiga qo‘shildi, endi uni barcha shifokorlar ko‘radi",
+        "foundInClinic": "«{name}» bazada bor, tayinlov qo‘shildi",
+        "addToClinicError": "Klinika bazasiga qo‘shib bo‘lmadi. Dori faqat shu tashrifga yozildi.",
+        "customSharedHint": "Dori klinika bazasiga tushadi va barcha shifokorlarda paydo bo‘ladi.",
+        "hiddenByClinic": "«{name}» klinika administratori tomonidan yashirilgan. Dori faqat shu tashrifga yozildi.",
+        "addRateLimited": "Bir soatda juda ko‘p yangi dori qo‘shildi. Bu dori faqat shu tashrifga yozildi."
       },
       "copyForward": {
         "title": "Oldingi qabul — {date}",

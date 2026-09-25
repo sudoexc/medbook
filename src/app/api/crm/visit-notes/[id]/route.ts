@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
 import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
+import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
 import { didPrescriptionsChange } from "@/server/visit-notes/prescription-diff";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
@@ -274,6 +275,24 @@ export const PATCH = createApiHandler(
       entityId: id,
       meta: { fields: changedFields, correlationId },
     });
+
+    // A diagnosis written in the doctor's own words (or with a code the
+    // static list lacks) joins the clinic's list the moment it is chosen,
+    // not at signing: most visits here are never signed, so a signing-only
+    // gate meant nothing was ever shared. Choosing is already deliberate —
+    // the field only saves on a pick, never per keystroke. The use is
+    // counted at signing, as before. Fire-and-forget.
+    if (
+      body.diagnosisName !== undefined &&
+      (body.diagnosisName ?? null) !== (before.diagnosisName ?? null)
+    ) {
+      void learnClinicDiagnosis({
+        code: updated.diagnosisCode ?? null,
+        nameRu: updated.diagnosisName ?? null,
+        createdById: ctx.userId,
+        countUse: false,
+      });
+    }
 
     return ok(updated);
   },

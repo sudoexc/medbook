@@ -3,10 +3,11 @@
  *
  * The bundled ICD-10 list (10 414 codes) is complete but not exhaustive of
  * wordings — a working neurologist still hits «в списке нет». Instead of an
- * admin screen nobody will maintain, the catalog learns from practice: every
- * diagnosis a doctor typed by hand and then SIGNED is upserted here and joins
- * the picker for every doctor of the clinic. Signing is the quality gate —
- * abandoned typing and typos never make it in.
+ * admin screen nobody will maintain, the catalog learns from practice: a
+ * diagnosis a doctor writes by hand joins the picker for every doctor of the
+ * clinic as soon as he CHOOSES it for a visit (25.09.2026 — it used to wait
+ * for signing, and in this clinic most visits are never signed, so nothing
+ * was ever shared). `usageCount` still counts signed uses only.
  *
  * Codes: when the doctor supplied one that the static catalog does not know
  * («код знаю, в базе нет»), it is stored and searchable. Pairs that ARE in
@@ -24,6 +25,13 @@ function isStaticCode(code: string): boolean {
   return staticCodes.has(code.toLowerCase());
 }
 
+/** Static wordings, for the same check on free text. */
+let staticNames: Set<string> | null = null;
+function isStaticName(normalized: string): boolean {
+  staticNames ??= new Set(ICD10_ENTRIES.map((e) => normalizeIcdTerm(e.nameRu)));
+  return staticNames.has(normalized);
+}
+
 /** Loose ICD-shaped code: letter, two digits, optional dotted suffix. */
 export function looksLikeIcdCode(s: string): boolean {
   return /^[A-Za-zА-Яа-я][0-9]{2}(?:\.[0-9A-Za-z]{1,3})?$/.test(s.trim());
@@ -37,9 +45,14 @@ export async function learnClinicDiagnosis(args: {
   code: string | null;
   nameRu: string | null;
   createdById: string | null;
+  /** Signing counts a use; choosing it on a draft only makes it known. */
+  countUse?: boolean;
 }): Promise<void> {
+  const countUse = args.countUse ?? true;
   const name = args.nameRu?.trim();
   if (!name || name.length < 3) return;
+  // «F20.0» typed into the name field is a code, not a wording to teach.
+  if (looksLikeIcdCode(name)) return;
 
   const code = args.code?.trim() || null;
   // A coded diagnosis the static catalog already knows — nothing to learn.
@@ -47,6 +60,7 @@ export async function learnClinicDiagnosis(args: {
   // Free text only counts when it is NOT already a static wording either.
   const normalized = normalizeIcdTerm(name);
   if (!normalized) return;
+  if (!code && isStaticName(normalized)) return;
 
   try {
     // find-then-write instead of upsert: the tenant extension reliably scopes
@@ -58,20 +72,24 @@ export async function learnClinicDiagnosis(args: {
       select: { id: true, code: true },
     });
     if (existing) {
-      await prisma.clinicDiagnosis.update({
-        where: { id: existing.id },
-        data: {
-          usageCount: { increment: 1 },
-          // A later signing may supply the code the first one lacked.
-          ...(code && !existing.code ? { code } : {}),
-        },
-      });
+      const data = {
+        ...(countUse ? { usageCount: { increment: 1 } } : {}),
+        // A later pick may supply the code the first one lacked.
+        ...(code && !existing.code ? { code } : {}),
+      };
+      if (Object.keys(data).length > 0) {
+        await prisma.clinicDiagnosis.update({
+          where: { id: existing.id },
+          data,
+        });
+      }
     } else {
       await prisma.clinicDiagnosis.create({
         data: {
           code,
           nameRu: name,
           normalized,
+          usageCount: countUse ? 1 : 0,
           createdById: args.createdById,
         } as never,
       });
@@ -102,7 +120,7 @@ export async function searchClinicCatalog(
   const term = normalizeIcdTerm(rawQuery);
   if (!term) return [];
 
-  const rows = await prisma.clinicDiagnosis.findMany({
+  const found = await prisma.clinicDiagnosis.findMany({
     where: {
       OR: [
         { normalized: { contains: term } },
@@ -111,8 +129,31 @@ export async function searchClinicCatalog(
     },
     select: { code: true, nameRu: true, usageCount: true },
     orderBy: [{ usageCount: "desc" }, { nameRu: "asc" }],
-    take: limit,
+    take: limit * 2,
   });
+
+  // An entry learned from a draft (never signed, usageCount 0) is offered
+  // only while some visit still carries that wording. A typo the doctor
+  // corrected a minute later leaves no trace in everyone's picker.
+  const unsigned = found.filter((r) => r.usageCount === 0);
+  let live = new Set<string>();
+  if (unsigned.length > 0) {
+    const inUse = await prisma.visitNote.findMany({
+      where: {
+        OR: unsigned.map((r) => ({
+          diagnosisName: { equals: r.nameRu, mode: "insensitive" as const },
+        })),
+      },
+      select: { diagnosisName: true },
+      take: 200,
+    });
+    live = new Set(
+      inUse.map((n) => normalizeIcdTerm(n.diagnosisName ?? "")),
+    );
+  }
+  const rows = found
+    .filter((r) => r.usageCount > 0 || live.has(normalizeIcdTerm(r.nameRu)))
+    .slice(0, limit);
 
   return rows.map((r) => ({
     code: r.code ?? "",

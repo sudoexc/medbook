@@ -172,7 +172,10 @@ export function DrugDetailView({
           <div className="text-base font-semibold leading-tight text-foreground">
             {drug.nameRu}
           </div>
-          {drug.inn && drug.inn.toLowerCase() !== drug.nameRu.toLowerCase() ? (
+          {drug.inn &&
+          !drug.inn.startsWith("uzr:") &&
+          !drug.inn.startsWith("clinic:") &&
+          drug.inn.toLowerCase() !== drug.nameRu.toLowerCase() ? (
             <div className="text-xs italic text-muted-foreground">{drug.inn}</div>
           ) : null}
           <div className="mt-1 flex flex-wrap items-center gap-1.5">

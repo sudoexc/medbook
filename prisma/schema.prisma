@@ -452,6 +452,7 @@ model Clinic {
   cdsOverrides             CdsOverride[]
   referrals                Referral[]
   clinicDiagnoses          ClinicDiagnosis[]
+  formularyDrugs           ClinicFormularyDrug[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -991,6 +992,7 @@ model Drug {
   interactionsAsA    DrugInteraction[]   @relation("DrugA")
   interactionsAsB    DrugInteraction[]   @relation("DrugB")
   visitPrescriptions VisitPrescription[]
+  formularyEntries   ClinicFormularyDrug[]
 
   @@index([category, active])
   @@index([atcCode])
@@ -1266,6 +1268,34 @@ enum CatalogEntityType {
   LAB_PANEL
   GUIDE
   ICD10
+}
+
+/// The clinic's core drug list («основные препараты клиники») — the ~50
+/// drugs its doctors write in 90% of prescriptions, as handed over by the
+/// clinic (РЕЦЕПТЫ.docx, 25.09.2026). It is what a doctor sees on tapping the
+/// drug field before he has history of his own, and it carries the clinic's
+/// vocabulary: `label` is the name as the doctors write it («Анаприлин»,
+/// not «Пропранолол»), `aliases` are the other trade names they search by
+/// («Кеппра» for Летирам). Aliases stay per clinic instead of being written
+/// into the global brand table, which every clinic shares.
+model ClinicFormularyDrug {
+  id         String   @id @default(cuid())
+  clinicId   String
+  clinic     Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  drugId     String
+  drug       Drug     @relation(fields: [drugId], references: [id], onDelete: Cascade)
+  label      String
+  aliases    String[] @default([])
+  /// Strengths the clinic actually uses, in its order («10 мг», «20 мг»).
+  strengths  String[] @default([])
+  /// Lowercased, ё→е: label + aliases, for `contains` search.
+  searchText String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([clinicId, drugId])
+  @@index([clinicId, sortOrder])
 }
 
 model ClinicCatalogOverlay {

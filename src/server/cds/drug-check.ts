@@ -125,7 +125,11 @@ async function resolveDrugs(
   if (lines.length === 0) return { resolved, unresolved };
 
   const allDrugs = await prisma.drug.findMany({
-    where: { active: true },
+    // Rows a doctor quick-added for a clinic («clinic:…» key) carry a bare
+    // name and no clinical data. Letting them into text resolution would let
+    // «Кеторол 10 мг» shadow ketorolac — and, Drug being cross-tenant, in
+    // every clinic — and silence allergy/interaction warnings.
+    where: { active: true, NOT: { inn: { startsWith: "clinic:" } } },
     select: {
       id: true,
       inn: true,

@@ -93,10 +93,16 @@ export const GET = createApiListHandler(
       });
     }
 
-    // Clinic-learned entries first: they exist because a doctor of THIS
-    // clinic signed them, which beats generic catalog relevance. The static
-    // list fills the remainder; exact static duplicates are dropped.
-    const custom = await searchClinicCatalog(q ?? "", limit);
+    // Clinic-learned entries first: a doctor of THIS clinic chose that
+    // wording, which beats generic catalog relevance. The static list fills
+    // the remainder; exact static duplicates are dropped.
+    // The clinic's own wordings lead, but never take more than a third of
+    // the list: learning at pick time grows that list, and it must not crowd
+    // the classifier out of the typeahead.
+    const custom = await searchClinicCatalog(
+      q ?? "",
+      Math.max(1, Math.ceil(limit / 3)),
+    );
     const seen = new Set(
       custom.map((c) => `${c.code.toLowerCase()}|${c.nameRu.toLowerCase()}`),
     );

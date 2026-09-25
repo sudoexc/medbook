@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Audit PT-02: a Mini App follow-up that was silently filed under the
@@ -24,6 +24,8 @@ type Appt = {
   priceFinal: number | null;
   discountPct: number;
   discountAmount: number;
+  channel: string;
+  payments: Array<{ id: string; status: string }>;
 };
 type Case = { id: string; patientId: string; status: string; title: string };
 
@@ -60,6 +62,10 @@ function makeTx() {
         store.cases.push(c as Case);
         return { id: c.id, title: c.title };
       }),
+      findFirst: vi.fn(async ({ where }: { where: { id: string; patientId: string } }) => {
+        const c = store.cases.find((x) => x.id === where.id && x.patientId === where.patientId);
+        return c ? { id: c.id, title: c.title, status: c.status } : null;
+      }),
     },
     appointment: {
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<Appt> }) => {
@@ -87,11 +93,36 @@ function makeTx() {
         if (!a) return null;
         return {
           ...a,
-          payments: [],
+          // The engine reads PAID rows only (its paid-lock).
+          payments: a.payments.filter((p) => p.status === "PAID"),
           services: [],
           primaryService: CONSULT,
         };
       }),
+      // The attach-case route's eligibility read (inside the transaction).
+      findFirst: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { id: string; clinicId: string; patientId: string };
+        }) => {
+          store.calls.push("read-appointment");
+          const a = store.appts.find(
+            (x) => x.id === where.id && x.patientId === where.patientId,
+          );
+          if (!a) return null;
+          return {
+            id: a.id,
+            doctorId: "d1",
+            date: a.date,
+            medicalCaseId: a.medicalCaseId,
+            status: a.status,
+            channel: a.channel,
+            // MINIAPP_ATTACH_PAYMENT_FILTER: every row but UNPAID.
+            payments: a.payments.filter((p) => p.status !== "UNPAID"),
+          };
+        },
+      ),
     },
     auditLog: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -140,7 +171,7 @@ vi.mock("@/server/miniapp/handler", () => ({
       }),
 }));
 
-import { autoAttachCase } from "@/server/cases/attach";
+import { autoAttachCase, miniAppAttachRefusal } from "@/server/cases/attach";
 
 const PATIENT_ACTOR = {
   actor: {
@@ -168,6 +199,8 @@ function appt(id: string, date: string, medicalCaseId: string | null = null): Ap
     priceFinal: CONSULT.priceBase,
     discountPct: 0,
     discountAmount: 0,
+    channel: "TELEGRAM",
+    payments: [],
   };
 }
 
@@ -253,34 +286,34 @@ describe("Mini App auto-attach re-prices by the free-repeat rule", () => {
 });
 
 describe("POST /api/miniapp/appointments/[id]/attach-case", () => {
+  // «Now» sits between the case's first visit and the just-booked follow-up,
+  // so the follow-up is an upcoming visit the patient may still file.
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date("2026-09-05T06:00:00Z"), toFake: ["Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function pick(appointmentId: string, body: Record<string, unknown>) {
+    const { POST } = await import("@/app/api/miniapp/appointments/[id]/attach-case/route");
+    return POST(
+      new Request(`https://x/api/miniapp/appointments/${appointmentId}/attach-case`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
   it("the patient's own pick re-prices the visit exactly like the CRM attach", async () => {
     store.cases = [{ id: "case_head", patientId: "p1", status: "OPEN", title: "Головные боли" }];
     store.appts = [
       { ...appt("first", "2026-09-01T05:00:00Z", "case_head"), status: "COMPLETED" },
       appt("repeat", "2026-09-10T05:00:00Z"),
     ];
-    const prismaMod = (await import("@/lib/prisma")) as unknown as {
-      prisma: Record<string, unknown>;
-    };
-    // Route-level reads outside the transaction.
-    prismaMod.prisma.appointment = {
-      findFirst: vi.fn(async () => {
-        const a = store.appts.find((x) => x.id === "repeat")!;
-        return { id: a.id, doctorId: "d1", date: a.date, medicalCaseId: a.medicalCaseId };
-      }),
-    };
-    prismaMod.prisma.medicalCase = {
-      findFirst: vi.fn(async () => ({ id: "case_head", title: "Головные боли", status: "OPEN" })),
-    };
 
-    const { POST } = await import("@/app/api/miniapp/appointments/[id]/attach-case/route");
-    const res = await POST(
-      new Request("https://x/api/miniapp/appointments/repeat/attach-case", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ caseId: "case_head" }),
-      }),
-    );
+    const res = await pick("repeat", { caseId: "case_head" });
     expect(res.status).toBe(200);
     expect(store.appts.find((a) => a.id === "repeat")!.priceFinal).toBe(0);
     expect(store.audits[0]).toMatchObject({
@@ -288,5 +321,126 @@ describe("POST /api/miniapp/appointments/[id]/attach-case", () => {
       entityId: "repeat",
       surface: "MINIAPP",
     });
+    // The eligibility read happens under the per-patient case lock.
+    expect(store.calls.slice(0, 2)).toEqual(["lock", "read-appointment"]);
+  });
+
+  /**
+   * Review of PT-02: the route re-prices, so it must only ever file the visit
+   * the patient just booked. Case A (first visit 01.09, consult free for 14
+   * days) and case B, opened by reception for a new complaint, whose first
+   * visit is a full-price consult on 10.09.
+   */
+  describe("refuses every visit that is not the just-booked, case-less one", () => {
+    const caseA: Case = { id: "case_a", patientId: "p1", status: "OPEN", title: "Головные боли" };
+    const caseB: Case = { id: "case_b", patientId: "p1", status: "OPEN", title: "Боль в спине" };
+
+    function seed(target: Appt) {
+      store.cases = [{ ...caseA }, { ...caseB }];
+      store.appts = [
+        { ...appt("a_first", "2026-09-01T05:00:00Z", "case_a"), status: "COMPLETED" },
+        target,
+      ];
+    }
+
+    async function expectRefused(target: Appt, reason: string) {
+      seed(target);
+      const before = { ...store.appts.find((a) => a.id === target.id)! };
+      const res = await pick(target.id, { caseId: "case_a" });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: "conflict", reason });
+      const after = store.appts.find((a) => a.id === target.id)!;
+      expect(after.medicalCaseId).toBe(before.medicalCaseId);
+      expect(after.priceFinal).toBe(before.priceFinal);
+      expect(store.audits).toHaveLength(0);
+    }
+
+    it("a visit already filed under another case (moving it would make it free)", async () => {
+      await expectRefused(appt("b_consult", "2026-09-10T05:00:00Z", "case_b"), "already_in_case");
+    });
+
+    it("a case-less visit reception booked by phone", async () => {
+      await expectRefused(
+        { ...appt("crm_booked", "2026-09-10T05:00:00Z"), channel: "PHONE" },
+        "not_miniapp_booking",
+      );
+    });
+
+    it("a COMPLETED unpaid visit (a debt)", async () => {
+      await expectRefused(
+        { ...appt("debt", "2026-09-03T05:00:00Z"), status: "COMPLETED" },
+        "not_upcoming",
+      );
+    });
+
+    it("a BOOKED visit whose time has already passed", async () => {
+      await expectRefused(appt("stale", "2026-09-04T05:00:00Z"), "not_upcoming");
+    });
+
+    it("a visit with money on it", async () => {
+      await expectRefused(
+        { ...appt("prepaid", "2026-09-10T05:00:00Z"), payments: [{ id: "pay1", status: "PARTIAL" }] },
+        "has_payment",
+      );
+    });
+
+    it("the «new complaint» branch creates no case for a refused visit", async () => {
+      seed(appt("b_consult", "2026-09-10T05:00:00Z", "case_b"));
+      const res = await pick("b_consult", { create: true });
+      expect(res.status).toBe(409);
+      expect(store.cases).toHaveLength(2);
+      expect(store.appts.find((a) => a.id === "b_consult")!.medicalCaseId).toBe("case_b");
+    });
+  });
+
+  it("two racing picks for the same visit: the second sees it filed and is refused", async () => {
+    store.cases = [
+      { id: "case_head", patientId: "p1", status: "OPEN", title: "Головные боли" },
+      { id: "case_back", patientId: "p1", status: "OPEN", title: "Боль в спине" },
+    ];
+    store.appts = [appt("fresh", "2026-09-10T05:00:00Z")];
+    const [r1, r2] = await Promise.all([
+      pick("fresh", { caseId: "case_head" }),
+      pick("fresh", { caseId: "case_back" }),
+    ]);
+    expect([r1.status, r2.status]).toEqual([200, 409]);
+    expect(store.appts[0]!.medicalCaseId).toBe("case_head");
+  });
+
+  it("someone else's visit is not found", async () => {
+    store.cases = [{ id: "case_head", patientId: "p1", status: "OPEN", title: "Головные боли" }];
+    store.appts = [{ ...appt("theirs", "2026-09-10T05:00:00Z"), patientId: "p2" }];
+    const res = await pick("theirs", { caseId: "case_head" });
+    expect(res.status).toBe(404);
+    expect(store.appts[0]!.medicalCaseId).toBeNull();
+  });
+});
+
+describe("miniAppAttachRefusal", () => {
+  const now = new Date("2026-09-05T06:00:00Z");
+  const base = {
+    medicalCaseId: null,
+    status: "BOOKED",
+    channel: "TELEGRAM",
+    date: new Date("2026-09-10T05:00:00Z"),
+    payments: [],
+  };
+
+  it("accepts the just-booked Mini App visit, BOOKED or CONFIRMED", () => {
+    expect(miniAppAttachRefusal(base, now)).toBeNull();
+    expect(miniAppAttachRefusal({ ...base, status: "CONFIRMED" }, now)).toBeNull();
+  });
+
+  it.each([
+    [{ medicalCaseId: "case_b" }, "already_in_case"],
+    [{ channel: "WEBSITE" }, "not_miniapp_booking"],
+    [{ channel: "KIOSK" }, "not_miniapp_booking"],
+    [{ status: "WAITING" }, "not_upcoming"],
+    [{ status: "COMPLETED" }, "not_upcoming"],
+    [{ status: "CANCELLED" }, "not_upcoming"],
+    [{ date: now }, "not_upcoming"],
+    [{ payments: [{ id: "p" }] }, "has_payment"],
+  ] as const)("%o → %s", (patch, reason) => {
+    expect(miniAppAttachRefusal({ ...base, ...patch }, now)).toBe(reason);
   });
 });

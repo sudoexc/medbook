@@ -132,11 +132,62 @@ export async function auditFreeRepeats(
  * Serialise case auto-creation per patient. Two bookings racing with no open
  * case both read «0 open cases» and each created «Новая жалоба» (PT-02); the
  * transaction-scoped advisory lock makes the second one wait and then see the
- * first one's case. Released automatically at commit / rollback.
+ * first one's case. The patient's own case pick takes it too, so a pick can't
+ * interleave with an auto-attach or with a second pick for the same visit.
+ * Released automatically at commit / rollback.
  */
-async function lockPatientCases(tx: PrismaTx, patientId: string): Promise<void> {
+export async function lockPatientCases(tx: PrismaTx, patientId: string): Promise<void> {
   // 2-key form: a fixed namespace for «patient case attach», then the patient.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(7342, hashtext(${patientId}))`;
+}
+
+/** Why the Mini App refuses to file a visit under a case (409 `reason`). */
+export type MiniAppAttachRefusal =
+  | "already_in_case"
+  | "not_upcoming"
+  | "not_miniapp_booking"
+  | "has_payment";
+
+/** The visit's fields `miniAppAttachRefusal` needs. */
+export type MiniAppAttachCandidate = {
+  medicalCaseId: string | null;
+  status: string;
+  channel: string;
+  date: Date;
+  /** Payment rows other than UNPAID. Read them with `MINIAPP_ATTACH_PAYMENT_FILTER`. */
+  payments: ReadonlyArray<unknown>;
+};
+
+/**
+ * Payments that make a visit ineligible: any money that moved on it (PAID,
+ * PARTIAL, or REFUNDED). A just-booked Mini App visit has none of these, and
+ * re-pricing one that does would disagree with the till.
+ */
+export const MINIAPP_ATTACH_PAYMENT_FILTER = {
+  status: { not: "UNPAID" },
+} as const;
+
+const MINIAPP_ATTACHABLE_STATUSES: ReadonlySet<string> = new Set(["BOOKED", "CONFIRMED"]);
+
+/**
+ * Why the patient may not file this visit under a case from the Mini App, or
+ * null when they may. The patient-facing attach exists for one moment only:
+ * the booking just returned «2+ open cases, pick one» and the visit is still
+ * case-less. Anything else is re-filing, and since every attach re-prices the
+ * visit by the free-repeat rule, an open endpoint let a crafted call move a
+ * full-price consult (or an unpaid COMPLETED visit, i.e. a debt) into an old
+ * case and zero it. Moving visits between cases stays a CRM job.
+ */
+export function miniAppAttachRefusal(
+  appt: MiniAppAttachCandidate,
+  now: Date,
+): MiniAppAttachRefusal | null {
+  if (appt.medicalCaseId !== null) return "already_in_case";
+  if (appt.channel !== "TELEGRAM") return "not_miniapp_booking";
+  if (!MINIAPP_ATTACHABLE_STATUSES.has(appt.status)) return "not_upcoming";
+  if (appt.date.getTime() <= now.getTime()) return "not_upcoming";
+  if (appt.payments.length > 0) return "has_payment";
+  return null;
 }
 
 export type CaseAttachChoice = {

@@ -88,7 +88,11 @@ export const GET = createApiListHandler(
     const take = q.limit + 1;
     const rows = await prisma.appointment.findMany({
       where,
-      orderBy: { [q.sort]: q.dir },
+      // `id` breaks ties: many visits share a start time (one slot, several
+      // doctors), and without a total order Postgres may return the tied rows
+      // in a different order on the next page, so the cursor would land in a
+      // different spot and rows would repeat or vanish between pages.
+      orderBy: [{ [q.sort]: q.dir }, { id: q.dir }],
       take,
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
@@ -112,8 +116,13 @@ export const GET = createApiListHandler(
     });
     let nextCursor: string | null = null;
     if (rows.length > q.limit) {
-      const next = rows.pop();
-      nextCursor = next?.id ?? null;
+      rows.pop();
+      // The cursor is the LAST row this page returned: the next request
+      // starts at it and `skip: 1` steps over it. Pointing it at the popped
+      // look-ahead row (never sent) made `skip: 1` jump that row instead, so
+      // every page boundary silently lost one appointment, and the full-range
+      // readers (fetchAllAppointmentPages, the calendar) under-counted.
+      nextCursor = rows[rows.length - 1]?.id ?? null;
     }
     const total = await prisma.appointment.count({ where });
 

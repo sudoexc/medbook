@@ -15,23 +15,48 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 //  - Image sources include api.qrserver.com for the /ticket QR fallback.
 //  - Telegram API is allowed for server-side fetches (fine) and is listed under
 //    connect-src defensively in case client code ever needs it.
+//  - Yandex Metrika (public site only, see components/analytics) needs its
+//    tag, beacon and session-replay hosts. Its click map and replay player
+//    frame the page from metrika.yandex.*, so the public pages (and only
+//    those) relax frame-ancestors — the CRM stays unframeable.
 const isDev = process.env.NODE_ENV !== "production";
 
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' https://telegram.org${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://api.qrserver.com",
-  "font-src 'self' data:",
-  "connect-src 'self' https://api.telegram.org",
-  // The landing embeds the clinic's Yandex Maps org widget (keyless iframe).
-  "frame-src 'self' https://yandex.uz https://yandex.ru https://yandex.com",
-  "frame-ancestors 'self'",
-  "form-action 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "upgrade-insecure-requests",
-].join("; ");
+const METRIKA = "https://mc.yandex.ru https://mc.yandex.com https://mc.yandex.uz";
+const METRIKA_FRAMERS =
+  "https://metrika.yandex.ru https://metrika.yandex.com https://metrika.yandex.uz https://webvisor.com https://*.webvisor.com";
+
+const buildCsp = (frameAncestors: string) =>
+  [
+    "default-src 'self'",
+    `script-src 'self' 'unsafe-inline' https://telegram.org ${METRIKA} https://yastatic.net${isDev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    `img-src 'self' data: blob: https://api.qrserver.com ${METRIKA}`,
+    "font-src 'self' data:",
+    `connect-src 'self' https://api.telegram.org ${METRIKA} wss://mc.yandex.ru wss://mc.yandex.com`,
+    // The landing embeds the clinic's Yandex Maps org widget (keyless iframe).
+    `frame-src 'self' blob: https://yandex.uz https://yandex.ru https://yandex.com ${METRIKA}`,
+    `frame-ancestors ${frameAncestors}`,
+    "form-action 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+
+const contentSecurityPolicy = buildCsp("'self'");
+const siteContentSecurityPolicy = buildCsp(`'self' ${METRIKA_FRAMERS}`);
+
+// Public landing routes (ru at the root, uz under /uz — localePrefix
+// "as-needed"). Listed after the catch-all so their CSP wins.
+const SITE_PATHS = [
+  "/",
+  "/uz",
+  "/doctors/:path*",
+  "/uz/doctors/:path*",
+  "/privacy",
+  "/uz/privacy",
+  "/terms",
+  "/uz/terms",
+];
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: contentSecurityPolicy },
@@ -83,6 +108,12 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      ...SITE_PATHS.map((source) => ({
+        source,
+        headers: [
+          { key: "Content-Security-Policy", value: siteContentSecurityPolicy },
+        ],
+      })),
     ];
   },
 };

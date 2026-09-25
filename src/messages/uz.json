@@ -2095,7 +2095,7 @@
     },
     "overline": "Nevrologiya markazi · Toshkent",
     "facts": {
-      "hours": "Du dan Sha gacha, 8:00 dan 17:00 gacha",
+      "hours": "Du dan Sha gacha 8:00 dan 17:00 gacha, Yak oldindan yozilish orqali",
       "patients": "Kattalar va bolalarni qabul qilamiz",
       "diagnostics": "EEG, EKG, ExoKG va UZI klinikada"
     },
@@ -2124,12 +2124,12 @@
         "items": [
           {
             "name": "Nevrolog konsultatsiyasi",
-            "note": "1-kabinet · 8:00 dan 17:00 gacha",
+            "note": "Busakov Baxtiyor · 8:00 dan 17:00 gacha",
             "price": "300 000"
           },
           {
             "name": "Nevrolog konsultatsiyasi",
-            "note": "5-kabinet · 8:30 dan 17:00 gacha",
+            "note": "Sultonov Aziz · 8:30 dan 17:00 gacha",
             "price": "200 000"
           },
           {
@@ -2244,7 +2244,8 @@
     "workingHoursValue": "Du dan Sha gacha, 08:00 dan 17:00 gacha",
     "rights": "Barcha huquqlar himoyalangan",
     "privacy": "Maxfiylik",
-    "terms": "Shartlar"
+    "terms": "Shartlar",
+    "sundayValue": "Yak: oldindan yozilish orqali"
   },
   "leadForm": {
     "title": "Qabulga yozilish",
@@ -7761,12 +7762,8 @@
     "botHandle": "@neurofaxbot"
   },
   "directions": {
-    "title": "Qanday borish mumkin",
-    "addressLabel": "Manzil",
-    "hoursLabel": "Ish vaqti",
-    "phoneLabel": "Telefon",
-    "yandexRoute": "Yandex Xaritalarda marshrut",
-    "mapTitle": "NeuroFax klinikasi xaritada"
+    "mapTitle": "NeuroFax klinikasi xaritada",
+    "routeCta": "Marshrut qurish"
   },
   "mobileBar": {
     "call": "Qo'ng'iroq qilish",

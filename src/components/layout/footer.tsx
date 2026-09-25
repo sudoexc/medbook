@@ -98,7 +98,11 @@ export function Footer() {
             </h3>
             <div className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
               <Clock className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{t("workingHoursValue")}</span>
+              <span>
+                {t("workingHoursValue")}
+                <br />
+                {t("sundayValue")}
+              </span>
             </div>
           </div>
         </div>

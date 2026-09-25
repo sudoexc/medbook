@@ -30,6 +30,12 @@ export const YANDEX_REVIEWS_URL =
   `https://yandex.uz/maps/org/neyrofaks_b/${YANDEX_ORG_ID}/reviews/`;
 export const YANDEX_MAP_WIDGET_URL =
   `https://yandex.uz/map-widget/v1/?ol=biz&oid=${YANDEX_ORG_ID}&z=16`;
+// The org's own pin on Yandex Maps («Neurofax-B», 13-mavze, 26), taken from
+// its org card 25.09.2026. `rtext=~point` opens Yandex Maps (the app on a
+// phone) with a ready route from wherever the patient stands to the door.
+const CLINIC_POINT = "41.289885,69.189624";
+export const YANDEX_ROUTE_URL =
+  `https://yandex.uz/maps/?rtext=~${encodeURIComponent(CLINIC_POINT)}&rtt=auto`;
 
 export const NAV_LINKS = [
   { href: "#doctors", labelKey: "nav.doctors" },

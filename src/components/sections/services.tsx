@@ -40,12 +40,15 @@ export function Services() {
                   {items.map((item, i) => (
                     <div key={i} className="px-6 py-4">
                       <div className="flex items-baseline gap-3">
-                        <span className="max-w-[70%] shrink-0 text-[16px] leading-snug text-foreground">
+                        {/* The name may wrap; the price never does and
+                            never leaves the sheet (on a phone a long name
+                            used to push it past the right edge). */}
+                        <span className="min-w-0 text-[16px] leading-snug text-foreground">
                           {item.name}
                         </span>
                         <span
                           aria-hidden
-                          className="flex-1 -translate-y-1 border-b border-dotted border-foreground/25"
+                          className="min-w-4 flex-1 -translate-y-1 border-b border-dotted border-foreground/25"
                         />
                         <span className="shrink-0 whitespace-nowrap text-[16px] font-bold tabular-nums text-foreground">
                           {item.price}{" "}

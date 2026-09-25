@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useDoctors } from "@/components/providers/doctors-provider";
 import { CheckCircle, Send, ChevronLeft, ChevronRight } from "lucide-react";
+import { reachGoal } from "@/lib/site-analytics";
 import type { Locale } from "@/types";
 
 const MONTH_NAMES: Record<Locale, string[]> = {
@@ -136,6 +137,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
   function handleOpen(isOpen: boolean) {
     setOpen(isOpen);
     if (isOpen) {
+      reachGoal("booking-open");
       // A trigger may carry the id of a non-bookable doctor (stale link) —
       // fall back to «выберите врача» instead of a phantom preselection.
       setSelectedDoctorId(
@@ -182,6 +184,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
       });
       if (!res.ok) throw new Error();
 
+      reachGoal("booking-sent");
       setSubmitted(true);
       setTimeout(() => { setSubmitted(false); setOpen(false); }, 2500);
     } catch {

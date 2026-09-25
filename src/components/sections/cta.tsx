@@ -48,6 +48,8 @@ export function Cta() {
                 <p className="text-white/60">{t("hoursLabel")}</p>
                 <p className="mt-1 font-medium leading-relaxed">
                   {tf("workingHoursValue")}
+                  <br />
+                  {tf("sundayValue")}
                 </p>
               </div>
             </div>

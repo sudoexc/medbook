@@ -3,6 +3,7 @@ import { Footer } from "@/components/layout/footer";
 import { MobileCallBar } from "@/components/sections/mobile-call-bar";
 import { DoctorsProvider } from "@/components/providers/doctors-provider";
 import { getDoctors } from "@/lib/doctors";
+import { YandexMetrika } from "@/components/analytics/yandex-metrika";
 
 // The whole public subtree reads doctors from the DB per request. Without
 // this, `next build` prerenders these pages inside the Docker builder where
@@ -25,6 +26,7 @@ export default async function SiteLayout({
         <Footer />
         <MobileCallBar />
       </div>
+      <YandexMetrika />
     </DoctorsProvider>
   );
 }

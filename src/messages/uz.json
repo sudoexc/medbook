@@ -2273,11 +2273,14 @@
   "login": {
     "title": "Shifokorlar uchun kirish",
     "subtitle": "NeuroFax boshqaruv paneli",
+    "staffTitle": "CRMga kirish",
     "email": "Email",
     "password": "Parol",
     "submit": "Kirish",
     "loading": "Kirish...",
     "error": "Email yoki parol noto'g'ri",
+    "networkError": "Tarmoq xatosi. Qayta urinib ko'ring.",
+    "tooManyAttempts": "Kirishga urinishlar juda ko'p. Bir necha daqiqa kuting va qayta urinib ko'ring.",
     "backToSite": "Saytga qaytish"
   },
   "dashboard": {
@@ -5602,15 +5605,21 @@
     "submit": "Klinikani yaratish",
     "submitting": "Yaratilmoqda…",
     "errorEmailTaken": "Bu email allaqachon ro'yxatdan o'tgan. Mavjud akkaunt orqali kiring.",
+    "errorTooMany": "Bu manzildan so'rovlar juda ko'p. Bir soatdan keyin urinib ko'ring.",
     "errorGeneric": "Arizani yuborib bo'lmadi. Qayta urinib ko'ring.",
     "checkInbox": {
       "title": "Pochtani tekshiring",
-      "body": "Tasdiqlash havolasini {email} manziliga yubordik. Klinikani faollashtirish uchun 24 soat ichida unga o'ting.",
-      "devNote": "Ishlab chiqish uchun: havola server konsoliga ham chiqarilgan.",
-      "openConfirm": "Tasdiqlash sahifasini ochish"
+      "body": "Tasdiqlash havolasini {email} manziliga yubordik. Klinikani faollashtirish uchun 24 soat ichida unga o'ting."
     },
     "footnote": "Ro'yxatdan o'tib, siz NeuroFax foydalanish shartlariga rozilik bildirasiz.",
-    "loginCta": "Allaqachon akkauntingiz bormi? Kirish"
+    "loginCta": "Allaqachon akkauntingiz bormi? Kirish",
+    "email": {
+      "subject": "«{clinicName}» klinikasini ro'yxatdan o'tkazishni tasdiqlang",
+      "greeting": "Assalomu alaykum!",
+      "body": "NeuroFax'da «{clinicName}» klinikasini faollashtirish uchun quyidagi havolani oching. Havola 24 soat amal qiladi.",
+      "cta": "Ro'yxatdan o'tishni tasdiqlash",
+      "ignore": "Agar siz klinikani ro'yxatdan o'tkazmagan bo'lsangiz, bu xatni e'tiborsiz qoldiring."
+    }
   },
   "signupConfirm": {
     "loadingTitle": "Klinika faollashtirilmoqda…",
@@ -7161,7 +7170,8 @@
         "activeSessions": "Faol seanslar",
         "lastLogin": "Oxirgi kirish",
         "never": "hech qachon",
-        "cta": "Xavfsizlik sozlamalariga o'tish"
+        "cta": "Xavfsizlik sozlamalariga o'tish",
+        "changePasswordCta": "Parolni o'zgartirish"
       },
       "presets": {
         "intro": "Shablonlar qabul maydoni ostida kichik chiplar shaklida paydo bo'ladi. Chipni bossangiz, qiymat maydonga qo'shiladi va (agar shablon berilgan bo'lsa) xulosaga matn qo'shiladi.",

@@ -10,6 +10,8 @@
  * 15 minutes the IP is locked out for 15 minutes. State is in-memory and
  * per-process — adequate for a single clinic; swap for Redis if scaled.
  */
+import { realClientIp } from "./client-ip";
+
 const PIN = process.env.RECEPTIONIST_PIN;
 
 const MAX_FAILURES = 5;
@@ -24,11 +26,10 @@ interface FailureState {
 const failures = new Map<string, FailureState>();
 
 function clientIp(request: Request): string {
-  // Trust standard proxy headers; fall back to a constant so the limiter
-  // still buckets requests when no header is present.
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip") ?? "unknown";
+  // The peer nginx saw. The first X-Forwarded-For hop is client-written, so
+  // keying the lockout on it let a script reset its counter per request
+  // (audit SEC-03).
+  return realClientIp(request);
 }
 
 function constantTimeEqual(a: string, b: string): boolean {

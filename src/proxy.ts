@@ -1,22 +1,27 @@
 /**
  * Next 16 proxy (formerly `middleware`).
  *
- * Responsibilities, in order:
- *   1. Redirect anonymous visits to any /crm path to /login?callbackUrl=…
- *      so we never render the CRM shell without a session (the layout itself
- *      is intentionally permissive — gating belongs here).
- *   2. Phase 17 Wave 2 — UserSession lifetime enforcement: idle timeout +
- *      8h forced re-rotation. A session whose row is missing or which
- *      tripped either bound is killed (cookie cleared, redirect to
- *      /login?reason=…). lastActivityAt is bumped on every authenticated
- *      hit so a busy user never trips idle.
- *   3. Phase 17 Wave 2 — mandatory TOTP redirect: ADMIN/SUPER_ADMIN, plus
- *      every staff role when the clinic has require2faForAll, must enrol
- *      before they can use any /crm path. The /crm/me/security page is
- *      whitelisted so the form can submit successfully.
- *   4. Force users with `mustChangePassword=true` to /crm/me/change-password
- *      until they pick a new password.
- *   5. Defer locale handling to next-intl.
+ * Staff surfaces are /crm and the doctor cabinet /doctor (each optionally
+ * under /ru or /uz). For both, in order:
+ *   1. Resolve the session. `auth()` runs the NextAuth `jwt` callback, which
+ *      asks `src/server/auth/session-guard.ts` whether the server-side
+ *      UserSession is still alive (idle timeout, 8h cap, one session per user,
+ *      not revoked) and whether the account is still active. Any "no" comes
+ *      back as no session: redirect to /login?callbackUrl=… and drop the dead
+ *      cookies, so Back / a bookmark cannot walk into the CRM again.
+ *      (Audit SEC-06: this used to be checked here, for /crm only, and only
+ *      when the `crm_user_session` cookie happened to arrive.)
+ *   2. Force users with `mustChangePassword=true` to their change-password
+ *      page until they pick a new password.
+ *   3. Mandatory TOTP enrolment: ADMIN/SUPER_ADMIN, plus every staff role
+ *      when the clinic has require2faForAll, must enrol before using any
+ *      staff page.
+ *   4. Defer locale handling to next-intl.
+ *
+ * Steps 2 and 3 send a doctor to /doctor/me/… and everyone else to /crm/me/…
+ * The CRM layout bounces doctors into their cabinet, so before DC-02 a doctor
+ * could reach neither page: a temporary password could not be changed, and
+ * «2FA for everyone» left the cabinet dead on 403 MFA_REQUIRED.
  *
  * Auth gating runs BEFORE next-intl so we don't pay for a locale rewrite on
  * a request we're about to redirect anyway.
@@ -29,212 +34,84 @@ import { auth } from "@/lib/auth";
 import { routing } from "./i18n/routing";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import {
-  SESSION_COOKIE_NAME,
-  hashSessionToken,
-} from "@/server/auth/user-session";
-import {
-  checkSessionLifetime,
-  IDLE_TIMEOUT_DEFAULT,
-} from "@/server/auth/session-security";
+import { SESSION_COOKIE_NAME } from "@/server/auth/user-session";
 import { requiresTotpEnrollment } from "@/server/auth/security-policy";
-import { AUDIT_ACTION } from "@/lib/audit-actions";
+import {
+  CHANGE_PASSWORD_SUBPATH,
+  SECURITY_ENROL_SUBPATH,
+  forcedAccountRedirect,
+  isExemptFromForcedRedirect,
+  parseStaffPath,
+} from "@/server/auth/staff-redirects";
 import type { Role } from "@/lib/tenant-context";
 
 const intlMiddleware = createIntlMiddleware(routing);
 
-// Match /crm and /<locale>/crm — capture the locale (if present) and the
-// subpath beneath /crm so we can detect the gate-exempt pages.
-const CRM_PATH = /^(?:\/(ru|uz))?\/crm(?:\/(.*))?$/;
+// NextAuth's JWT cookie (plain on http, __Secure- on https, split into
+// .0/.1… chunks when large).
+const AUTH_COOKIE = /^(?:__Secure-)?authjs\.session-token(?:\.\d+)?$/;
 
-// CRM subpaths that the proxy must NOT loop on. The user is allowed to
-// visit these even while a forced redirect is pending — otherwise the form
-// can't be submitted.
-const CHANGE_PASSWORD_SUBPATH = "me/change-password";
-const SECURITY_ENROL_SUBPATHS = ["me/security"];
-
-function isExemptFromForcedRedirect(subpath: string, exemptList: string[]) {
-  return exemptList.some((p) => subpath === p || subpath.startsWith(`${p}/`));
-}
-
-function buildLoginUrl(
-  request: NextRequest,
-  reason: "idle" | "forced-rerotate" | "expired" | null,
-  callback: string,
-) {
+function buildLoginUrl(request: NextRequest, callback: string) {
   const url = request.nextUrl.clone();
   url.pathname = "/login";
   const params = new URLSearchParams();
   params.set("callbackUrl", callback);
-  if (reason) params.set("reason", reason);
   url.search = `?${params.toString()}`;
   return url;
 }
 
-function buildCrmRedirect(
+function buildStaffRedirect(
   request: NextRequest,
   locale: string,
-  subpath: string,
+  target: string,
 ) {
   const url = request.nextUrl.clone();
-  url.pathname =
-    locale === "ru" ? `/${subpath}` : `/${locale}/${subpath}`;
-  // Note: `${subpath}` here is the absolute target including the `crm/`
-  // prefix.
+  // `target` is the path under the locale, e.g. "doctor/me/security".
+  url.pathname = locale === "ru" ? `/${target}` : `/${locale}/${target}`;
   url.search = "";
   return url;
 }
 
-export default async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const crm = CRM_PATH.exec(pathname);
-  if (crm) {
-    const locale = crm[1] ?? "ru";
-    const subpath = crm[2] ?? "";
-    const session = await auth();
-    if (!session?.user) {
-      const url = buildLoginUrl(
-        request,
-        null,
-        pathname + request.nextUrl.search,
-      );
-      return NextResponse.redirect(url);
-    }
-
-    // 2. UserSession lifetime check. We hash the cookie and look the row
-    // up under SYSTEM context (UserSession lives outside the tenant
-    // extension allowlist). A missing row → treat as logged out (the
-    // cookie likely belongs to a kicked / re-rotated session).
-    const cookieValue = request.cookies.get(SESSION_COOKIE_NAME)?.value ?? null;
-    let kickReason: "idle" | "forced-rerotate" | "expired" | null = null;
-    let killedSessionId: string | null = null;
-    let bumpSessionId: string | null = null;
-    if (cookieValue) {
-      const tokenHash = hashSessionToken(cookieValue);
-      try {
-        const row = await runWithTenant({ kind: "SYSTEM" }, () =>
-          prisma.userSession.findUnique({
-            where: { tokenHash },
-            select: {
-              id: true,
-              userId: true,
-              clinicId: true,
-              createdAt: true,
-              lastActivityAt: true,
-              user: {
-                select: {
-                  lastSessionRotatedAt: true,
-                  clinic: {
-                    select: { sessionIdleTimeoutMinutes: true },
-                  },
-                },
-              },
-            },
-          }),
-        );
-        if (!row) {
-          kickReason = "expired";
-        } else {
-          const idle =
-            row.user.clinic?.sessionIdleTimeoutMinutes ?? IDLE_TIMEOUT_DEFAULT;
-          const verdict = checkSessionLifetime({
-            lastActivityAt: row.lastActivityAt,
-            lastSessionRotatedAt: row.user.lastSessionRotatedAt,
-            sessionCreatedAt: row.createdAt,
-            idleTimeoutMinutes: idle,
-          });
-          if (verdict) {
-            kickReason = verdict;
-            killedSessionId = row.id;
-          } else {
-            bumpSessionId = row.id;
-          }
-        }
-      } catch {
-        // DB unreachable — fail open on the lifetime check rather than
-        // locking everyone out. Auth itself still gates the request.
-      }
-    } else {
-      // No UserSession cookie at all — the JWT alone is not enough;
-      // sessions minted before Wave 2 (legacy) get a one-time pass: the
-      // proxy treats them as alive. New logins always set the cookie.
-    }
-
-    if (kickReason) {
-      const res = NextResponse.redirect(
-        buildLoginUrl(request, kickReason, pathname + request.nextUrl.search),
-      );
-      res.cookies.set(SESSION_COOKIE_NAME, "", {
+/** Expire whatever session cookies a logged-out browser still carries. */
+function clearDeadSessionCookies(request: NextRequest, res: NextResponse) {
+  const secure = process.env.NODE_ENV === "production";
+  for (const c of request.cookies.getAll()) {
+    if (c.name === SESSION_COOKIE_NAME || AUTH_COOKIE.test(c.name)) {
+      res.cookies.set(c.name, "", {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: secure || c.name.startsWith("__Secure-"),
         sameSite: "lax",
         path: "/",
         maxAge: 0,
       });
-      // Best-effort: drop the dead row + emit an audit. Both are
-      // fire-and-forget so a DB blip can't strand the redirect.
-      if (killedSessionId) {
-        const reasonAction =
-          kickReason === "idle"
-            ? AUDIT_ACTION.SESSION_TIMEOUT_LOGOUT
-            : AUDIT_ACTION.SESSION_FORCED_REROTATE;
-        runWithTenant({ kind: "SYSTEM" }, async () => {
-          await prisma.userSession
-            .delete({ where: { id: killedSessionId! } })
-            .catch(() => {});
-          await prisma.auditLog
-            .create({
-              data: {
-                clinicId: session.user.clinicId ?? null,
-                actorId: session.user.id,
-                action: reasonAction,
-                entityType: "UserSession",
-                entityId: killedSessionId!,
-                meta:
-                  kickReason === "idle"
-                    ? { reason: "idle" }
-                    : { reason: "forced-rerotate" },
-              },
-            })
-            .catch(() => {});
-        }).catch(() => {});
-      }
+    }
+  }
+}
+
+export default async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const staff = parseStaffPath(pathname);
+  if (staff) {
+    const session = await auth();
+    if (!session?.user) {
+      const res = NextResponse.redirect(
+        buildLoginUrl(request, pathname + request.nextUrl.search),
+      );
+      clearDeadSessionCookies(request, res);
       return res;
     }
 
-    // Bump lastActivityAt opportunistically. Skip for static-asset-like
-    // hits (handled by the `matcher` exclusion) and skip for the
-    // "session" API endpoint to avoid write amplification when the JWT
-    // refreshes.
-    if (bumpSessionId) {
-      runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.userSession
-          .update({
-            where: { id: bumpSessionId! },
-            data: { lastActivityAt: new Date() },
-          })
-          .catch(() => {}),
-      ).catch(() => {});
-    }
-
-    // 3. mustChangePassword redirect (Phase 11 / #190).
+    // 3. Phase 17 Wave 2 — mandatory TOTP enrolment. Only looked up when it
+    // can matter: not on the account pages themselves, and not while a
+    // password change is pending (that redirect wins).
+    let owesTotpEnrolment = false;
     if (
-      session.user.mustChangePassword &&
-      !subpath.startsWith(CHANGE_PASSWORD_SUBPATH)
+      !session.user.mustChangePassword &&
+      !isExemptFromForcedRedirect(staff.subpath, [
+        SECURITY_ENROL_SUBPATH,
+        CHANGE_PASSWORD_SUBPATH,
+      ])
     ) {
-      return NextResponse.redirect(
-        buildCrmRedirect(request, locale, "crm/me/change-password"),
-      );
-    }
-
-    // 4. Phase 17 Wave 2 — mandatory TOTP enrolment redirect. We resolve
-    // the user's role + clinic flag once per request when there's a chance
-    // it might fire. Cheap because tableid'd lookups + memory cache.
-    const isEnrolPath = isExemptFromForcedRedirect(subpath, [
-      ...SECURITY_ENROL_SUBPATHS,
-      CHANGE_PASSWORD_SUBPATH,
-    ]);
-    if (!isEnrolPath) {
       try {
         const me = await runWithTenant({ kind: "SYSTEM" }, () =>
           prisma.user.findUnique({
@@ -247,19 +124,29 @@ export default async function proxy(request: NextRequest) {
           }),
         );
         if (me) {
-          const requires = requiresTotpEnrollment({
-            role: me.role as Role,
-            clinicRequire2faForAll: me.clinic?.require2faForAll ?? false,
-          });
-          if (requires && !me.totpEnabledAt) {
-            return NextResponse.redirect(
-              buildCrmRedirect(request, locale, "crm/me/security"),
-            );
-          }
+          owesTotpEnrolment =
+            requiresTotpEnrollment({
+              role: me.role as Role,
+              clinicRequire2faForAll: me.clinic?.require2faForAll ?? false,
+            }) && !me.totpEnabledAt;
         }
       } catch {
         // DB blip — let the request through; the next hit retries.
       }
+    }
+
+    // 2 + 3. mustChangePassword (Phase 11 / #190; the claim is fresh, the jwt
+    // callback re-reads it from the database) and TOTP enrolment.
+    const forced = forcedAccountRedirect({
+      subpath: staff.subpath,
+      role: session.user.role,
+      mustChangePassword: session.user.mustChangePassword,
+      owesTotpEnrolment,
+    });
+    if (forced) {
+      return NextResponse.redirect(
+        buildStaffRedirect(request, staff.locale, forced.target),
+      );
     }
   }
   return intlMiddleware(request);

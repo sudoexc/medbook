@@ -19,6 +19,7 @@ import {
 import { hydratePrescriptionListForRead } from "@/server/prescription/cipher-fields";
 import { UpdateMedicalCaseSchema } from "@/server/schemas/medical-case";
 import { recordPatientView } from "@/server/audit/patient-view";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 function idFromUrl(request: Request): string {
   // /.../cases/[id]
@@ -95,8 +96,7 @@ export const GET = createApiListHandler(
         patientId: row.patientId,
         context: "case.detail",
         contextRef: row.id,
-        ip:
-          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        ip: clientIpForAudit(request),
         userAgent: request.headers.get("user-agent"),
       });
     }

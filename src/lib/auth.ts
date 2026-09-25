@@ -11,8 +11,8 @@
  */
 
 import NextAuth from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
 import { prisma } from "./prisma";
@@ -28,8 +28,24 @@ import {
   consumeRecoveryCode,
   type ConsumeResult,
 } from "@/server/auth/recovery-codes";
-import { mintUserSessionOnSignIn } from "@/server/auth/user-session";
+import {
+  SESSION_COOKIE_NAME,
+  hashSessionToken,
+  mintUserSessionOnSignIn,
+} from "@/server/auth/user-session";
 import { is2faDisabled } from "@/server/auth/security-policy";
+import {
+  deleteSessionById,
+  evaluateStaffSession,
+  type SessionBinding,
+} from "@/server/auth/session-guard";
+import {
+  checkLoginThrottle,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "@/server/auth/login-throttle";
+import { verifyPasswordConstantTime } from "@/server/auth/password";
+import { realClientIp } from "./client-ip";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
   "SUPER_ADMIN",
@@ -47,6 +63,29 @@ function assertRole(value: unknown): Role {
   throw new Error(`Invalid session role: ${String(value)}`);
 }
 
+/**
+ * Which server-side UserSession this JWT belongs to (see session-guard.ts).
+ * New JWTs carry the row id; older ones only have the `crm_user_session`
+ * cookie next to them.
+ */
+async function sessionBindingFor(token: JWT): Promise<SessionBinding> {
+  if (typeof token.sid === "string" && token.sid) {
+    return { kind: "sid", sessionId: token.sid };
+  }
+  if (token.sidUnbound) return { kind: "unbound" };
+  try {
+    const store = await cookies();
+    const value = store.get(SESSION_COOKIE_NAME)?.value;
+    return value
+      ? { kind: "cookie", tokenHash: hashSessionToken(value) }
+      : { kind: "none" };
+  } catch {
+    // No request scope to read cookies from: we cannot tell, so do not
+    // reject on the binding alone (the account checks still run).
+    return { kind: "unbound" };
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // CRM session TTL is capped at 24h per TZ §9.2. `updateAge` rotates the
   // JWT at most hourly while the user is active so the cookie stays fresh
@@ -58,6 +97,44 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   pages: {
     signIn: "/login",
+  },
+  events: {
+    // Sign-out ends the server-side session too, not just the cookie: a copy
+    // of the JWT lifted from this browser stops working at once (audit
+    // SEC-06).
+    async signOut(message) {
+      const token = "token" in message ? message.token : null;
+      const sid = typeof token?.sid === "string" ? token.sid : null;
+      try {
+        if (sid) {
+          await deleteSessionById(sid);
+        } else {
+          const store = await cookies();
+          const value = store.get(SESSION_COOKIE_NAME)?.value;
+          if (value) {
+            await runWithTenant({ kind: "SYSTEM" }, () =>
+              prisma.userSession.deleteMany({
+                where: { tokenHash: hashSessionToken(value) },
+              }),
+            );
+          }
+        }
+      } catch (err) {
+        console.error("[auth] sign-out session cleanup failed", err);
+      }
+      try {
+        const store = await cookies();
+        store.set(SESSION_COOKIE_NAME, "", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: 0,
+        });
+      } catch {
+        // Outside a request scope; the row is gone, which is what matters.
+      }
+    },
   },
   providers: [
     Credentials({
@@ -72,7 +149,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         totp: { label: "TOTP", type: "text" },
         recoveryCode: { label: "Recovery Code", type: "text" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const email =
           typeof credentials?.email === "string" ? credentials.email : null;
         const password =
@@ -90,15 +167,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ? credentials.recoveryCode
             : null;
 
+        // Failed-attempt throttle (audit SEC-02/SEC-03). The route wrapper
+        // already answers 429 before we get here; this is the backstop for
+        // any other way into the credentials provider.
+        const who = { ip: request ? realClientIp(request) : "unknown", email };
+        if (checkLoginThrottle(who).blocked) return null;
+
         // User is in MODELS_WITHOUT_TENANT so the extension will not try
         // to inject a clinicId — and we're outside `runWithTenant` anyway.
         const user = await runWithTenant({ kind: "SYSTEM" }, () =>
           prisma.user.findUnique({ where: { email } }),
         );
-        if (!user?.passwordHash || !user.active) return null;
-
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
+        // One bcrypt comparison on every path, so an unknown or inactive
+        // login costs the same time as a wrong password.
+        const valid = await verifyPasswordConstantTime(
+          password,
+          user?.passwordHash,
+        );
+        if (!user || !user.active || !valid) {
+          recordLoginFailure(who);
+          return null;
+        }
 
         // 2FA gate. When the user has enrolled, we require either a
         // current TOTP code or a recovery code on the same submit. The
@@ -113,6 +202,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             // Stored secret is AES-GCM ciphertext at rest (legacy plaintext
             // tolerated until the backfill runs) — decrypt before verifying.
             if (!verifyTotpCode(readTotpSecret(user.totpSecret), totp)) {
+              recordLoginFailure(who);
               return null;
             }
           } else if (recoveryCode) {
@@ -120,7 +210,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               recoveryCode,
               user.recoveryCodesHash,
             );
-            if (!result.ok) return null;
+            if (!result.ok) {
+              recordLoginFailure(who);
+              return null;
+            }
             await runWithTenant({ kind: "SYSTEM" }, async () => {
               await prisma.user.update({
                 where: { id: user.id },
@@ -156,6 +249,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
 
+        recordLoginSuccess(who);
         return {
           id: user.id,
           email: user.email,
@@ -169,7 +263,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user }) {
       if (user) {
         token.sub = user.id ?? token.sub;
         const u = user as {
@@ -206,37 +300,62 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // cookies, but the jwt callback can. We also stamp
         // `User.lastSessionRotatedAt` so the proxy's 8h hard-cap check
         // has a single source of truth.
+        //
+        // The session id also goes INTO the JWT (`sid`), so every later
+        // request can be checked against that exact row without trusting a
+        // second cookie (audit SEC-06). If minting fails we still let the
+        // sign-in through, flagged `sidUnbound`, instead of looping the user
+        // back to /login on every request.
         if (u.id) {
           try {
-            await mintUserSessionOnSignIn(u.id, u.clinicId ?? null);
+            const minted = await mintUserSessionOnSignIn(u.id, u.clinicId ?? null);
+            token.sid = minted.sessionId;
+            token.sidUnbound = false;
           } catch (err) {
             console.error("[auth] failed to mint UserSession", err);
+            token.sid = null;
+            token.sidUnbound = true;
           }
         }
-      }
-      // Refresh `mustChangePassword` and `active` from the DB on session
-      // update so the middleware redirect releases the moment the user
-      // finishes the change form, and a deactivated user is kicked out
-      // as soon as their session re-validates. Without this we'd have to
-      // wait for the JWT to refresh on its own (up to `updateAge`).
-      // Note: full real-time deactivation across passive sessions still
-      // has up to `updateAge` (1h) of drift; that is documented elsewhere.
-      if (trigger === "update" && token.userId) {
+        // Signed in with an admin-issued temporary password: remember when,
+        // so /api/crm/me/password can let THIS fresh session set a new
+        // password without re-typing the temp one, and only for a short
+        // window (audit SEC-07).
+        token.pwTempAt = u.mustChangePassword ? Date.now() : null;
+      } else {
+        // Every later `auth()` call: is the session still alive and is the
+        // account still allowed? A "no" logs the browser out everywhere at
+        // once (pages redirect to /login, APIs answer 401). A "yes" refreshes
+        // role / clinic / mustChangePassword from the database, so a demotion
+        // or a finished password change applies on the next request instead
+        // of after the 24h JWT expires (audit SEC-05, SEC-06, DC-02).
+        const userId = (token.userId as string | undefined) ?? token.sub;
+        if (!userId || !token.role) return null;
+        let verdict: Awaited<ReturnType<typeof evaluateStaffSession>>;
         try {
-          const fresh = await runWithTenant({ kind: "SYSTEM" }, () =>
-            prisma.user.findUnique({
-              where: { id: token.userId as string },
-              select: { mustChangePassword: true, active: true },
-            }),
-          );
-          if (fresh) {
-            token.mustChangePassword = fresh.mustChangePassword;
-            // Returning null invalidates the session, kicking the user
-            // out on their next request.
-            if (!fresh.active) return null;
+          verdict = await evaluateStaffSession({
+            claims: {
+              userId,
+              role: token.role as Role,
+              clinicId: (token.clinicId as string | null | undefined) ?? null,
+            },
+            binding: await sessionBindingFor(token),
+          });
+        } catch (err) {
+          // An unexpected failure here must not sign the whole clinic out
+          // (and a throw from this callback would). Keep the claims as they
+          // are, like a database error inside the guard does.
+          console.error("[auth] session guard failed, failing open", err);
+          verdict = { ok: true, sessionId: null, fresh: null };
+        }
+        if (!verdict.ok) return null;
+        if (verdict.fresh) {
+          token.role = verdict.fresh.role;
+          if (verdict.fresh.role !== "SUPER_ADMIN") {
+            token.clinicId = verdict.fresh.clinicId;
           }
-        } catch {
-          // Ignore — stale claim is recoverable on the next refresh tick.
+          token.mustChangePassword = verdict.fresh.mustChangePassword;
+          if (!verdict.fresh.mustChangePassword) token.pwTempAt = null;
         }
       }
       // SUPER_ADMIN "impersonate clinic" cookie support. We re-read the
@@ -320,6 +439,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.clinicId =
         (token.clinicId as string | null | undefined) ?? null;
       session.user.mustChangePassword = Boolean(token.mustChangePassword);
+      session.user.sessionId =
+        typeof token.sid === "string" && token.sid ? token.sid : null;
+      session.user.tempPasswordLoginAt =
+        typeof token.pwTempAt === "number" ? token.pwTempAt : null;
       // Phase 19 Wave 4 — surface the active impersonation stamp so the
       // CRM layout and the createApiHandler wrapper can reject writes under
       // VIEW_ONLY without re-reading the grant row on every request.

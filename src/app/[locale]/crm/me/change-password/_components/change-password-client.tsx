@@ -29,7 +29,18 @@ async function postPassword(body: PostBody): Promise<void> {
   }
 }
 
-export function ChangePasswordClient({ forced }: { forced: boolean }) {
+export function ChangePasswordClient({
+  forced,
+  requireCurrent,
+  homeHref,
+}: {
+  forced: boolean;
+  /** Ask for the current password. Only a session freshly opened with a
+   *  temporary password may skip it (the server enforces the same rule). */
+  requireCurrent: boolean;
+  /** Where to go once the new password is saved (the user's own surface). */
+  homeHref: string;
+}) {
   const t = useTranslations("meChangePassword");
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
@@ -39,24 +50,16 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
   const mut = useMutation({
     mutationFn: () =>
       postPassword({
-        currentPassword: forced ? undefined : current,
+        currentPassword: requireCurrent ? current : undefined,
         newPassword: next,
       }),
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success(t("updated"));
-      // Force the JWT to refresh: POST /api/auth/session triggers the
-      // `jwt` callback with trigger='update', which re-reads the user
-      // from the DB and rewrites the cookie. Without this, the proxy
-      // still sees the stale mustChangePassword=true claim on the next
-      // navigation and bounces us right back here. (next-auth's
-      // `useSession().update()` does the same thing, but we don't ship
-      // a SessionProvider so we issue the request directly.)
-      await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      }).catch(() => {});
-      window.location.assign("/crm");
+      // No session refresh dance needed: the jwt callback re-reads
+      // mustChangePassword from the database on every request, so the proxy
+      // releases the forced redirect on this very navigation. (The old POST
+      // to /api/auth/session carried no CSRF token and never ran.)
+      window.location.assign(homeHref);
     },
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Error";
@@ -83,7 +86,7 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
   const canSubmit =
     next.length >= 8 &&
     confirm.length >= 8 &&
-    (forced || current.length > 0) &&
+    (!requireCurrent || current.length > 0) &&
     !mut.isPending;
 
   return (
@@ -106,7 +109,7 @@ export function ChangePasswordClient({ forced }: { forced: boolean }) {
           </div>
         </div>
 
-        {!forced && (
+        {requireCurrent && (
           <div className="grid gap-1.5">
             <Label htmlFor="current">{t("currentLabel")}</Label>
             <Input

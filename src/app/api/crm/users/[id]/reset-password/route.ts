@@ -4,6 +4,11 @@
  * Sets a new password for a clinic user. ADMIN only, tenant-scoped.
  * If `newPassword` is omitted, a random 12-char password is generated
  * and returned once (operator hands it to the user).
+ *
+ * A reset also ends every open session of that user (audit SEC-07): the
+ * usual reason for a reset is a password that leaked, and whoever is already
+ * signed in with it must be pushed out, not left working for the rest of
+ * the day.
  */
 import bcrypt from "bcryptjs";
 
@@ -12,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { ResetPasswordSchema } from "@/server/schemas/settings";
+import { revokeUserSessions } from "@/server/auth/session-guard";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -48,12 +54,13 @@ export const POST = createApiHandler(
       where: { id },
       data: { passwordHash: hash, mustChangePassword: true },
     });
+    const revokedSessions = await revokeUserSessions(id);
 
     await audit(request, {
       action: "user.reset_password",
       entityType: "User",
       entityId: id,
-      meta: { by: ctx.userId, generated: Boolean(generated) },
+      meta: { by: ctx.userId, generated: Boolean(generated), revokedSessions },
     });
 
     return ok({

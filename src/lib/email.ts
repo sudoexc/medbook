@@ -41,3 +41,22 @@ export async function sendNewLeadEmail(data: NewLeadEmail): Promise<void> {
     `,
   });
 }
+
+/**
+ * Clinic self-signup confirmation (audit MA-03). The link inside is the only
+ * way to finish the signup, so a failure here must reach the caller: the
+ * route then withdraws the token instead of telling the visitor to check an
+ * inbox that will stay empty.
+ */
+export async function sendSignupConfirmEmail(data: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
+  await transporter.sendMail({
+    from: `"NeuroFax" <${process.env.SMTP_USER}>`,
+    to: data.to,
+    subject: data.subject,
+    html: data.html,
+  });
+}

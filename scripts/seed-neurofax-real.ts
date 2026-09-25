@@ -8,11 +8,23 @@
  * Idempotent. Existing demo doctors/cabinets/services are flipped to
  * isActive=false (referential integrity is preserved — past appointments
  * still resolve), then the canonical set is upserted on top.
+ *
+ * Doctor logins (audit SEC-04): a doctor account that does not exist yet is
+ * created with a random password (or SEED_PASSWORD), printed once at the end,
+ * and must be changed at first sign-in. An existing account's password is
+ * never touched: this script used to reset all seven real doctors to the
+ * known password «doctor» on every run. On NODE_ENV=production it refuses to
+ * run without SEED_ALLOW_PROD_ACCOUNTS=1.
  */
 import "dotenv/config";
-import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+import {
+  assertAccountSeedAllowed,
+  printIssuedPasswords,
+  upsertSeedUser,
+} from "./_seed-passwords";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -232,6 +244,8 @@ const DOCTORS: DoctorSpec[] = [
 ];
 
 async function main() {
+  assertAccountSeedAllowed("scripts/seed-neurofax-real.ts");
+
   const clinic = await prisma.clinic.findUnique({
     where: { slug: SLUG },
     select: { id: true, nameRu: true },
@@ -241,8 +255,6 @@ async function main() {
       `Clinic ${SLUG} not found — run prisma/seed.ts first to bootstrap the platform.`,
     );
   }
-
-  const doctorPassHash = await bcrypt.hash("doctor", 10);
 
   // ── Cabinets: deactivate all, upsert real, capture ids ────────
   await prisma.cabinet.updateMany({
@@ -317,22 +329,37 @@ async function main() {
     }
 
     // User account (login)
-    const user = await prisma.user.upsert({
-      where: { email: d.email },
-      update: {
-        name: d.nameRu,
-        role: "DOCTOR",
-        clinicId: clinic.id,
-        active: true,
-        passwordHash: doctorPassHash,
-      },
-      create: {
-        email: d.email,
-        name: d.nameRu,
-        role: "DOCTOR",
-        clinicId: clinic.id,
-        passwordHash: doctorPassHash,
-      },
+    const user = await upsertSeedUser({
+      email: d.email,
+      exists: async () =>
+        Boolean(
+          await prisma.user.findUnique({
+            where: { email: d.email },
+            select: { id: true },
+          }),
+        ),
+      create: (pw) =>
+        prisma.user.create({
+          data: {
+            email: d.email,
+            name: d.nameRu,
+            role: "DOCTOR",
+            clinicId: clinic.id,
+            passwordHash: pw.hash,
+            mustChangePassword: pw.mustChangePassword,
+          },
+        }),
+      // No passwordHash here: a re-run must not reset a doctor's password.
+      update: () =>
+        prisma.user.update({
+          where: { email: d.email },
+          data: {
+            name: d.nameRu,
+            role: "DOCTOR",
+            clinicId: clinic.id,
+            active: true,
+          },
+        }),
     });
 
     const doctor = await prisma.doctor.upsert({
@@ -405,6 +432,7 @@ async function main() {
   console.log("  cabinet 5 → Султанов А.Б.           (Пн–Сб 08:00–17:00)");
   console.log("  cabinet 6 → Исраилова Ф.К.          (Вт/Чт/Сб 09:00–15:00)");
   console.log("            + Вазирова Ю.Н.           (Пн/Ср/Пт 09:00–15:00)");
+  printIssuedPasswords();
 
   await prisma.$disconnect();
 }

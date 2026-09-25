@@ -91,19 +91,10 @@ export async function requireKioskFor(
 /**
  * The caller's address as nginx saw it. `X-Real-IP` is set by our proxy from
  * the TCP peer; the first `X-Forwarded-For` entry is whatever the client
- * wrote, so a rate limit keyed on it is bypassed by changing a header.
+ * wrote, so a rate limit keyed on it is bypassed by changing a header. Shared
+ * with the auth and audit code, so it lives in `@/lib/client-ip`.
  */
-export function realClientIp(request: Request): string {
-  const real = request.headers.get("x-real-ip")?.trim();
-  if (real) return real;
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const parts = xff.split(",").map((p) => p.trim()).filter(Boolean);
-    // The right-most hop is the one our proxy appended.
-    if (parts.length > 0) return parts[parts.length - 1]!;
-  }
-  return "unknown";
-}
+export { realClientIp } from "@/lib/client-ip";
 
 /** «Юсупова Лола Анваровна» → «Юсупова Л.» — enough to confirm, not to harvest. */
 export function maskPatientName(fullName: string | null | undefined): string {

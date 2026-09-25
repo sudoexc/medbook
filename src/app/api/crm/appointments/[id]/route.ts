@@ -44,6 +44,7 @@ import {
 } from "@/lib/appointments/lifecycle";
 import { escapeHtml } from "@/lib/telegram";
 import { sendMessage } from "@/server/telegram/send";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -121,8 +122,7 @@ export const GET = createApiListHandler(
         patientId: row.patientId,
         context: "appointment.drawer",
         contextRef: row.id,
-        ip:
-          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        ip: clientIpForAudit(request),
         userAgent: request.headers.get("user-agent"),
       });
     }

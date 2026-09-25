@@ -1,7 +1,12 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import bcrypt from "bcryptjs";
+
+import {
+  assertAccountSeedAllowed,
+  printIssuedPasswords,
+  upsertSeedUser,
+} from "../scripts/_seed-passwords";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -228,30 +233,54 @@ const TEMPLATE_SEEDS = [
 // Main
 // ──────────────────────────────────────────────────────────────────────────
 
+/**
+ * Create a seeded staff login with a fresh password, or refresh an existing
+ * one WITHOUT touching its password (audit SEC-04).
+ */
+async function upsertStaff(
+  email: string,
+  data: {
+    name: string;
+    role: "SUPER_ADMIN" | "ADMIN" | "DOCTOR" | "RECEPTIONIST";
+    clinicId: string | null;
+  },
+  envVar?: string,
+) {
+  return upsertSeedUser({
+    email,
+    envVar,
+    exists: async () =>
+      Boolean(await prisma.user.findUnique({ where: { email }, select: { id: true } })),
+    create: (pw) =>
+      prisma.user.create({
+        data: {
+          email,
+          ...data,
+          passwordHash: pw.hash,
+          mustChangePassword: pw.mustChangePassword,
+        },
+      }),
+    update: () =>
+      prisma.user.update({
+        where: { email },
+        data: { ...data, active: true },
+      }),
+  });
+}
+
 async function main() {
   console.log("Seeding MedBook/NeuroFax phase-1 data…");
 
-  const superPassHash = await bcrypt.hash("super", 10);
-  const adminPassHash = await bcrypt.hash("admin", 10);
-  const doctorPassHash = await bcrypt.hash("doctor", 10);
-  const receptPassHash = await bcrypt.hash("recept", 10);
-  const devShortcutPassHash = await bcrypt.hash("1", 10);
+  // Audit SEC-04: no known passwords. Each account gets SEED_PASSWORD (set it
+  // in your local .env for a convenient dev login) or a random password
+  // printed once at the end; an existing account's password is never reset.
+  assertAccountSeedAllowed("prisma/seed.ts");
 
   // ── SUPER_ADMIN (no clinicId) ─────────────────────────────────────────
-  await prisma.user.upsert({
-    where: { email: "super@neurofax.uz" },
-    update: {
-      role: "SUPER_ADMIN",
-      name: "Super Admin",
-      passwordHash: superPassHash,
-      active: true,
-    },
-    create: {
-      email: "super@neurofax.uz",
-      role: "SUPER_ADMIN",
-      name: "Super Admin",
-      passwordHash: superPassHash,
-    },
+  await upsertStaff("super@neurofax.uz", {
+    role: "SUPER_ADMIN",
+    name: "Super Admin",
+    clinicId: null,
   });
 
   for (const cs of clinicsToSeed) {
@@ -339,65 +368,33 @@ async function main() {
 
     // ── 1 ADMIN ───────────────────────────────────────────────────────
     const adminEmail = `admin@${cs.slug === "neurofax" ? "neurofax.uz" : "demo-clinic.uz"}`;
-    await prisma.user.upsert({
-      where: { email: adminEmail },
-      update: {
-        name: `${cs.nameRu} — Администратор`,
-        passwordHash: adminPassHash,
-        role: "ADMIN",
-        clinicId: clinic.id,
-        active: true,
-      },
-      create: {
-        email: adminEmail,
-        name: `${cs.nameRu} — Администратор`,
-        passwordHash: adminPassHash,
-        role: "ADMIN",
-        clinicId: clinic.id,
-      },
+    await upsertStaff(adminEmail, {
+      name: `${cs.nameRu} — Администратор`,
+      role: "ADMIN",
+      clinicId: clinic.id,
     });
 
-    // ── DEV SHORTCUT: "1"/"1" ADMIN for the primary clinic only ───────
+    // ── DEV SHORTCUT ADMIN for the primary clinic only. Its password is
+    //    DEV_ADMIN_PASSWORD / SEED_PASSWORD from your local .env, never a
+    //    literal (it used to be «1», on production too).
     if (cs.slug === "neurofax") {
-      await prisma.user.upsert({
-        where: { email: "1@1.uz" },
-        update: {
-          name: "Dev Admin (1/1)",
-          passwordHash: devShortcutPassHash,
+      await upsertStaff(
+        "1@1.uz",
+        {
+          name: "Dev Admin",
           role: "ADMIN",
           clinicId: clinic.id,
-          active: true,
-          mustChangePassword: false,
         },
-        create: {
-          email: "1@1.uz",
-          name: "Dev Admin (1/1)",
-          passwordHash: devShortcutPassHash,
-          role: "ADMIN",
-          clinicId: clinic.id,
-          mustChangePassword: false,
-        },
-      });
+        "DEV_ADMIN_PASSWORD",
+      );
     }
 
     // ── 1 RECEPTIONIST ────────────────────────────────────────────────
     const receptEmail = `recept@${cs.slug === "neurofax" ? "neurofax.uz" : "demo-clinic.uz"}`;
-    await prisma.user.upsert({
-      where: { email: receptEmail },
-      update: {
-        name: `${cs.nameRu} — Ресепшн`,
-        passwordHash: receptPassHash,
-        role: "RECEPTIONIST",
-        clinicId: clinic.id,
-        active: true,
-      },
-      create: {
-        email: receptEmail,
-        name: `${cs.nameRu} — Ресепшн`,
-        passwordHash: receptPassHash,
-        role: "RECEPTIONIST",
-        clinicId: clinic.id,
-      },
+    await upsertStaff(receptEmail, {
+      name: `${cs.nameRu} — Ресепшн`,
+      role: "RECEPTIONIST",
+      clinicId: clinic.id,
     });
 
     // ── 2 DOCTORs ─────────────────────────────────────────────────────
@@ -409,22 +406,10 @@ async function main() {
     const createdDoctors: { id: string; userId: string | null }[] = [];
     for (const d of doctorDefs) {
       const docEmail = `${d.slug}@${cs.slug}.uz`;
-      const user = await prisma.user.upsert({
-        where: { email: docEmail },
-        update: {
-          name: d.nameRu,
-          passwordHash: doctorPassHash,
-          role: "DOCTOR",
-          clinicId: clinic.id,
-          active: true,
-        },
-        create: {
-          email: docEmail,
-          name: d.nameRu,
-          passwordHash: doctorPassHash,
-          role: "DOCTOR",
-          clinicId: clinic.id,
-        },
+      const user = await upsertStaff(docEmail, {
+        name: d.nameRu,
+        role: "DOCTOR",
+        clinicId: clinic.id,
       });
 
       // Upsert doctor via composite unique (clinicId, slug)
@@ -835,14 +820,10 @@ async function main() {
   }
 
   console.log("Done.");
-  console.log("Accounts:");
-  console.log("  super@neurofax.uz / super         (SUPER_ADMIN)");
-  console.log("  admin@neurofax.uz / admin         (ADMIN neurofax)");
-  console.log("  admin@demo-clinic.uz / admin      (ADMIN demo-clinic)");
-  console.log("  recept@neurofax.uz / recept       (RECEPTIONIST neurofax)");
-  console.log("  1@1.uz / 1                        (ADMIN neurofax — dev shortcut)");
-  console.log("  recept@demo-clinic.uz / recept    (RECEPTIONIST demo-clinic)");
-  console.log("  <slug>@<clinic>.uz / doctor       (DOCTOR)");
+  console.log("Accounts: super@neurofax.uz, admin@<clinic>, recept@<clinic>,");
+  console.log("          1@1.uz (dev shortcut), <slug>@<clinic>.uz (DOCTOR).");
+  console.log("Existing accounts keep their passwords; new ones are listed below.");
+  printIssuedPasswords();
 }
 
 main()

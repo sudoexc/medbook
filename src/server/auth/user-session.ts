@@ -16,15 +16,18 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { clientIpForAudit } from "@/lib/client-ip";
 import { pickSessionsToKick } from "./session-security";
 
 export const SESSION_COOKIE_NAME = "crm_user_session";
 
-// Cookie lifetime. Set to the 8h forced re-rotation window so a browser that
-// suspends a tab past 8h doesn't carry a cookie for a session the proxy
-// would just delete on the next hit anyway. The proxy still owns the
-// authoritative idle/forced-rotate checks; this is just a UA-side hint.
-const COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60;
+// Cookie lifetime: as long as the JWT it travels with (24h). It used to be
+// exactly the 8h forced re-rotation window, so the browser dropped the cookie
+// at the very moment the server-side 8h check would have fired, and a request
+// without the cookie was then waved through as "legacy": the 8h cap never
+// applied (audit SEC-06). The server-side check in session-guard.ts is what
+// ends a session; this is only how long the browser keeps the handle.
+const COOKIE_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 export function generateSessionToken(): string {
   return randomBytes(32).toString("base64url");
@@ -67,12 +70,8 @@ export async function mintUserSessionOnSignIn(
   const reqHeaders = await headers().catch(() => null);
   const userAgent =
     reqHeaders?.get("user-agent")?.slice(0, 500) ?? null;
-  // x-forwarded-for can carry a comma-separated chain; first hop is the
-  // public client, the rest are intermediate proxies.
-  const xff = reqHeaders?.get("x-forwarded-for") ?? null;
-  const ip = xff
-    ? xff.split(",")[0]!.trim()
-    : reqHeaders?.get("x-real-ip") ?? null;
+  // The peer nginx saw, not the client-written first X-Forwarded-For hop.
+  const ip = reqHeaders ? clientIpForAudit({ headers: reqHeaders }) : null;
 
   const newSession = await runWithTenant({ kind: "SYSTEM" }, async () => {
     const prior = await prisma.userSession.findMany({

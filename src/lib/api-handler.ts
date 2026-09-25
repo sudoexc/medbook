@@ -25,6 +25,7 @@ import {
   isTotpEnrollmentExemptPath,
   requiresTotpEnrollment,
 } from "@/server/auth/security-policy";
+import { clientIpForAudit } from "./client-ip";
 
 // Re-export the pure helper so existing imports `from "@/lib/api-handler"`
 // still resolve (the unit tests import it directly from `./view-only`).
@@ -132,10 +133,7 @@ async function emitViewAsBlocked(
           path: url.pathname,
           clinicId: ctx.clinicId,
         } as never,
-        ip:
-          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-          request.headers.get("x-real-ip") ??
-          null,
+        ip: clientIpForAudit(request),
         userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
       },
     });
@@ -152,6 +150,13 @@ function readBranchIdFromRequest(request: Request): string | null {
   return readActiveBranchFromCookieHeader(request.headers.get("cookie"));
 }
 
+/**
+ * `auth()` is also the server-side session check (audit SEC-05/SEC-06,
+ * DC-02): the NextAuth `jwt` callback consults `session-guard.ts`, so a
+ * revoked, idled-out, kicked or deactivated session arrives here as null (401),
+ * and role / clinicId are the account's current ones, not the ones frozen in
+ * the JWT at sign-in. Do not add a second UserSession lookup here.
+ */
 async function readSession() {
   const session = await auth();
   if (!session?.user) return null;

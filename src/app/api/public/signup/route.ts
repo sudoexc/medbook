@@ -5,15 +5,17 @@
  *
  * Anonymous endpoint (no session, no tenant context). The visitor submits
  * `clinicName + email + phone? + planSlug + playbookSlug? + preferredLocale`,
- * we mint a `ClinicSignupToken` row with a 24h TTL, and return the token
- * to the caller. The client surfaces a "check your email" confirmation
- * screen and the visitor clicks the magic link to land on
- * `/[locale]/signup/confirm/[token]` which finishes provisioning via the
+ * we mint a `ClinicSignupToken` row with a 24h TTL and EMAIL the magic link
+ * to that address. The visitor clicks it to land on
+ * `/[locale]/signup/confirm/[token]`, which finishes provisioning via the
  * companion `confirm` route.
  *
- * Email delivery is NOT in scope for Wave 2 — we just `console.info` the
- * confirm-link so it's discoverable in dev. Wave 3+ wires the real email
- * service.
+ * Audit MA-03: switched off unless PUBLIC_SIGNUP_ENABLED=1 (404 otherwise),
+ * and the token is never returned to the caller: it used to be, which let
+ * anyone create a clinic and an ADMIN on production under any address. In
+ * production, no configured email delivery means no signup. Outside
+ * production without SMTP the link is printed to the server console so local
+ * development still works.
  *
  * The audit row lands BEFORE any clinic exists, so `clinicId` is null. The
  * `audit()` helper allows that — see `src/lib/audit.ts`.
@@ -26,6 +28,17 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err } from "@/server/http";
 import { SignupRequestSchema } from "@/server/schemas/signup";
+import { rateLimit } from "@/lib/rate-limit";
+import { realClientIp } from "@/lib/client-ip";
+import { sendSignupConfirmEmail } from "@/lib/email";
+import {
+  SIGNUP_LIMITS,
+  isPublicSignupEnabled,
+  renderSignupConfirmEmail,
+  signupConfirmUrl,
+  signupDisabledResponse,
+  signupEmailConfigured,
+} from "@/lib/public-signup";
 
 // Token lifetime — long enough for a busy clinic owner to come back to it
 // the next morning, short enough that a stolen confirm-link decays fast.
@@ -35,7 +48,22 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 // (we read JSON body + write to the DB on every call).
 export const dynamic = "force-dynamic";
 
+const HOUR_MS = 60 * 60 * 1000;
+
 export async function POST(request: Request): Promise<Response> {
+  if (!isPublicSignupEnabled()) return signupDisabledResponse();
+
+  if (
+    !rateLimit(
+      `signup-ip:${realClientIp(request)}`,
+      SIGNUP_LIMITS.perIpPerHour,
+      HOUR_MS,
+      "signup",
+    )
+  ) {
+    return err("too_many_requests", 429);
+  }
+
   let raw: unknown;
   try {
     raw = await request.json();
@@ -47,6 +75,23 @@ export async function POST(request: Request): Promise<Response> {
     return err("ValidationError", 400, { issues: parsed.error.issues });
   }
   const body = parsed.data;
+
+  if (
+    !rateLimit(
+      `signup-email:${body.email}`,
+      SIGNUP_LIMITS.perEmailPerHour,
+      HOUR_MS,
+      "signup",
+    )
+  ) {
+    return err("too_many_requests", 429);
+  }
+
+  const canEmail = signupEmailConfigured();
+  if (!canEmail && process.env.NODE_ENV === "production") {
+    console.error("[signup] PUBLIC_SIGNUP_ENABLED is on but SMTP is not configured");
+    return err("email_unavailable", 503);
+  }
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
     // Reject signup if a User with this email already exists. We DO NOT
@@ -79,13 +124,34 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
 
-    // Wave 2: email service is out of scope. Log the confirm-link so dev
-    // can pick it up; Wave 3 wires Resend / Postmark / whatever.
-    const localePath = body.preferredLocale === "ru" ? "" : `/${body.preferredLocale}`;
-    const confirmPath = `${localePath}/signup/confirm/${token}`;
-    console.info(
-      `[signup] confirm-link clinic="${body.clinicName}" email=${body.email} url=${confirmPath} expiresAt=${expiresAt.toISOString()}`,
-    );
+    const confirmUrl = signupConfirmUrl({
+      requestUrl: request.url,
+      locale: body.preferredLocale,
+      token,
+    });
+    if (canEmail) {
+      try {
+        const mail = renderSignupConfirmEmail({
+          locale: body.preferredLocale,
+          clinicName: body.clinicName,
+          confirmUrl,
+        });
+        await sendSignupConfirmEmail({ to: body.email, ...mail });
+      } catch (e) {
+        // Nobody can receive the link: withdraw the token rather than tell
+        // the visitor to wait for an email that is not coming.
+        console.error("[signup] confirmation email failed", e);
+        await prisma.clinicSignupToken
+          .delete({ where: { id: row.id } })
+          .catch(() => {});
+        return err("email_unavailable", 503);
+      }
+    } else {
+      // Local development only (production without SMTP returned above).
+      console.info(
+        `[signup] dev confirm-link clinic="${body.clinicName}" email=${body.email} url=${confirmUrl} expiresAt=${expiresAt.toISOString()}`,
+      );
+    }
 
     await audit(request, {
       action: AUDIT_ACTION.CLINIC_SELF_SIGNUP_REQUESTED,
@@ -100,10 +166,8 @@ export async function POST(request: Request): Promise<Response> {
       },
     });
 
-    // We return the token to the caller. The confirm-link is only useful
-    // to the visitor through email, but exposing the token from the POST
-    // response also unblocks dev/test (no email service yet) — Wave 3
-    // tightens this to "ok: true, message: ..." once email lands.
-    return ok({ ok: true, token, expiresAt });
+    // Never the token: the confirm link must only be reachable through the
+    // inbox of the address being registered.
+    return ok({ ok: true, expiresAt });
   });
 }

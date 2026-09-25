@@ -92,13 +92,25 @@ export function SecurityTab({ locale }: { locale: string }) {
           </li>
         </ul>
 
-        <Link
-          href={`/${locale}/crm/me/security`}
-          className="motion-press mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          {t("security.cta")}
-          <ArrowRightIcon className="size-4" />
-        </Link>
+        {/* Both pages live inside the cabinet: the CRM layout sends doctors
+            back to /doctor, so the old /crm/me/security link bounced to «Мой
+            день» (audit DC-02). */}
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Link
+            href={`/${locale}/doctor/me/security`}
+            className="motion-press inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t("security.cta")}
+            <ArrowRightIcon className="size-4" />
+          </Link>
+          <Link
+            href={`/${locale}/doctor/me/change-password`}
+            className="motion-press inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+          >
+            <KeyRoundIcon className="size-4" />
+            {t("security.changePasswordCta")}
+          </Link>
+        </div>
       </div>
     </div>
   );

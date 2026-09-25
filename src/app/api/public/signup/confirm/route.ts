@@ -15,6 +15,8 @@
  * Returns the temp password ONCE; the client surfaces it on the confirm
  * page and never persists it. The user is forced to change it at first
  * login by the existing `mustChangePassword` middleware redirect.
+ *
+ * 404 unless PUBLIC_SIGNUP_ENABLED=1 (audit MA-03), same as the intake route.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -26,6 +28,10 @@ import { generateTempPassword, hashPassword } from "@/server/auth/password";
 import { slugify } from "@/lib/slugify";
 import { applyPlaybook } from "@/server/onboarding/apply-playbook";
 import { isPlaybookSlug } from "@/server/onboarding/playbooks";
+import {
+  isPublicSignupEnabled,
+  signupDisabledResponse,
+} from "@/lib/public-signup";
 
 const TRIAL_DAYS = 14;
 
@@ -63,6 +69,8 @@ async function pickAvailableSlug(base: string): Promise<string> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (!isPublicSignupEnabled()) return signupDisabledResponse();
+
   let raw: unknown;
   try {
     raw = await request.json();

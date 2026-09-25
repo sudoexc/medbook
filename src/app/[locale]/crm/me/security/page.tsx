@@ -14,17 +14,13 @@ import { isMandatory2faRole } from "@/server/auth/security-policy";
 
 import { SecurityClient } from "./_components/security-client";
 
-type Params = Promise<{ locale: string }>;
-
-export default async function MeSecurityPage({
-  params,
-}: {
-  params: Params;
-}) {
-  const { locale } = await params;
+// Also rendered as /doctor/me/security: the CRM layout bounces doctors into
+// their cabinet, so the cabinet serves this same page itself (audit DC-02).
+export default async function MeSecurityPage() {
   const session = await auth();
   if (!session?.user) {
-    redirect(`/${locale}/login`);
+    // /login lives outside the [locale] segment; `/${locale}/login` is a 404.
+    redirect("/login");
   }
 
   const me = await runWithTenant({ kind: "SYSTEM" }, () =>
@@ -42,7 +38,7 @@ export default async function MeSecurityPage({
     }),
   );
 
-  if (!me) redirect(`/${locale}/login`);
+  if (!me) redirect("/login");
 
   const enrolled = Boolean(me.totpEnabledAt);
   const mandatory =

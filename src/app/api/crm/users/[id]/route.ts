@@ -6,6 +6,10 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
+import {
+  invalidateSessionGuardCache,
+  revokeUserSessions,
+} from "@/server/auth/session-guard";
 import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateUserSchema } from "@/server/schemas/user";
 
@@ -109,6 +113,15 @@ export const PATCH = createApiHandler(
       return updated;
     });
 
+    // Deactivation takes effect at once, not when the JWT expires (audit
+    // SEC-05). A role change needs no revocation: the session guard re-reads
+    // the role on every request, so a demoted user hits 403 on the next call.
+    if (rest.active === false && before.active) {
+      await revokeUserSessions(id);
+    } else {
+      invalidateSessionGuardCache(id);
+    }
+
     const d = diff(
       redactUser(before) as unknown as Record<string, unknown>,
       redactUser(after) as unknown as Record<string, unknown>
@@ -161,11 +174,15 @@ export const DELETE = createApiHandler(
         data: { userId: null },
       });
     });
+    // A deactivated employee is out on their very next request (audit
+    // SEC-05); the session guard also rejects inactive accounts, this just
+    // drops the rows so no stale session is left behind.
+    const revokedSessions = await revokeUserSessions(id);
     await audit(request, {
       action: "user.deactivate",
       entityType: "User",
       entityId: id,
-      meta: { before: redactUser(before) },
+      meta: { before: redactUser(before), revokedSessions },
     });
     return ok({ id, deactivated: true });
   }

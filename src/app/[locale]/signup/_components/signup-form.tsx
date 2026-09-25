@@ -5,10 +5,11 @@
  *
  * Anonymous client form. POSTs `clinicName + email + phone? + planSlug +
  * playbookSlug? + preferredLocale` to `/api/public/signup`. On success the
- * server returns `{ ok, token, expiresAt }` and we surface the
- * "check-your-inbox" state. The dev confirm-link is rendered behind a
- * `process.env.NODE_ENV !== "production"` gate so a real visitor never
- * sees it but a developer can click straight through during local work.
+ * server answers `{ ok, expiresAt }` and we surface the "check-your-inbox"
+ * state. The confirm link travels ONLY by email: it used to come back in the
+ * response (and was shown here), so anyone could register a clinic under
+ * someone else's address without ever seeing that inbox (audit MA-03). In
+ * local development the server prints the link to its console instead.
  */
 
 import * as React from "react";
@@ -37,12 +38,6 @@ type PlaybookSlug =
   | "cosmetology";
 type SupportedLocale = "ru" | "uz";
 
-interface SignupResponse {
-  ok: true;
-  token: string;
-  expiresAt: string;
-}
-
 interface SignupErrorBody {
   error?: string;
   reason?: string;
@@ -63,10 +58,7 @@ export function SignupForm({ locale }: { locale: SupportedLocale }) {
 
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<{
-    token: string;
-    confirmUrl: string;
-  } | null>(null);
+  const [success, setSuccess] = React.useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,6 +87,8 @@ export function SignupForm({ locale }: { locale: SupportedLocale }) {
           | null;
         if (res.status === 409 && body?.reason === "email_taken") {
           setError(t("errorEmailTaken"));
+        } else if (res.status === 429) {
+          setError(t("errorTooMany"));
         } else {
           setError(t("errorGeneric"));
         }
@@ -102,10 +96,7 @@ export function SignupForm({ locale }: { locale: SupportedLocale }) {
         return;
       }
 
-      const data = (await res.json()) as SignupResponse;
-      const localePath = preferredLocale === "ru" ? "" : `/${preferredLocale}`;
-      const confirmUrl = `${localePath}/signup/confirm/${data.token}`;
-      setSuccess({ token: data.token, confirmUrl });
+      setSuccess(true);
     } catch {
       setError(t("errorGeneric"));
     } finally {
@@ -122,19 +113,6 @@ export function SignupForm({ locale }: { locale: SupportedLocale }) {
             {t("checkInbox.body", { email })}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {process.env.NODE_ENV !== "production" ? (
-            <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              <p className="font-medium">{t("checkInbox.devNote")}</p>
-              <a
-                href={success.confirmUrl}
-                className="mt-1 inline-block break-all text-amber-900 underline underline-offset-2"
-              >
-                {t("checkInbox.openConfirm")}
-              </a>
-            </div>
-          ) : null}
-        </CardContent>
       </Card>
     );
   }

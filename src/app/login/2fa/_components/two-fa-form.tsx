@@ -1,18 +1,15 @@
 "use client";
 
 /**
- * /login/2fa form. Lives outside the [locale] segment (parent /login does
- * the same), so there is no NextIntlClientProvider in scope. We use
- * inline Russian strings here to match the parent login page rather than
- * pull a provider in for one form. The login flow has always been
- * Russian-only and is not a hot surface for non-RU users — every staff
- * member configures their account through CRM-internal pages, which DO
- * have full RU/UZ parity.
+ * /login/2fa form. Lives outside the [locale] segment like /login; the
+ * translations come from `src/app/login/layout.tsx`, which provides the
+ * `login` and `login2fa` namespaces in the browser's last-used language.
  */
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, signIn } from "next-auth/react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +60,8 @@ function clearPending() {
 }
 
 export function TwoFaForm() {
+  const t = useTranslations("login2fa");
+  const tLogin = useTranslations("login");
   const router = useRouter();
   const search = useSearchParams();
   const callbackUrl = search.get("callbackUrl");
@@ -89,16 +88,30 @@ export function TwoFaForm() {
     if (!pending) return;
     setError(null);
     setSubmitting(true);
-    const res = await signIn("credentials", {
-      email: pending.email,
-      password: pending.password,
-      totp: mode === "totp" ? code : "",
-      recoveryCode: mode === "recovery" ? recovery : "",
-      redirect: false,
-    });
+    let res: Awaited<ReturnType<typeof signIn>>;
+    try {
+      res = await signIn("credentials", {
+        email: pending.email,
+        password: pending.password,
+        totp: mode === "totp" ? code : "",
+        recoveryCode: mode === "recovery" ? recovery : "",
+        redirect: false,
+      });
+    } catch {
+      // Never leave the button stuck on «Проверяем…» (audit SEC-03).
+      setSubmitting(false);
+      setError(tLogin("networkError"));
+      return;
+    }
     setSubmitting(false);
-    if (res?.error) {
-      setError("Неверный код. Попробуйте ещё раз.");
+    // Wrong codes count as failed sign-ins: after too many, the server
+    // answers 429 until the window passes.
+    if (res?.status === 429 || res?.error === "RateLimited") {
+      setError(tLogin("tooManyAttempts"));
+      return;
+    }
+    if (!res || res.error) {
+      setError(t("errorInvalid"));
       return;
     }
     clearPending();
@@ -117,35 +130,33 @@ export function TwoFaForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Подтвердите вход</CardTitle>
-        <CardDescription>
-          Введите 6-значный код из приложения-аутентификатора
-        </CardDescription>
+        <CardTitle>{t("title")}</CardTitle>
+        <CardDescription>{t("subtitle")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           {mode === "totp" ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="code">Код</Label>
+              <Label htmlFor="code">{t("codeLabel")}</Label>
               <Input
                 id="code"
                 inputMode="numeric"
                 maxLength={6}
                 required
                 autoComplete="one-time-code"
-                placeholder="123 456"
+                placeholder={t("codePlaceholder")}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               />
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="recovery">Резервный код</Label>
+              <Label htmlFor="recovery">{t("recoveryLabel")}</Label>
               <Input
                 id="recovery"
                 required
                 autoComplete="off"
-                placeholder="XXXX-XXXX-XXXX"
+                placeholder={t("recoveryPlaceholder")}
                 value={recovery}
                 onChange={(e) => setRecovery(e.target.value)}
               />
@@ -163,7 +174,7 @@ export function TwoFaForm() {
               (mode === "totp" ? code.length !== 6 : recovery.length < 12)
             }
           >
-            {submitting ? "Проверяем…" : "Войти"}
+            {submitting ? t("loading") : t("submit")}
           </Button>
           <button
             type="button"
@@ -173,15 +184,13 @@ export function TwoFaForm() {
               setMode((m) => (m === "totp" ? "recovery" : "totp"));
             }}
           >
-            {mode === "totp"
-              ? "Использовать резервный код"
-              : "Использовать код приложения"}
+            {mode === "totp" ? t("useRecovery") : t("useTotp")}
           </button>
           <Link
             href="/login"
             className="text-xs text-muted-foreground underline-offset-2 hover:underline"
           >
-            Вернуться к входу
+            {t("backToLogin")}
           </Link>
         </form>
       </CardContent>

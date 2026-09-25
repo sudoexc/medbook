@@ -9,6 +9,7 @@ import { QueryProvider } from "@/components/providers/query-provider";
 
 import { DoctorSidebar } from "./_components/doctor-sidebar";
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts";
+import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch";
 import { DoctorTopbar } from "./_components/doctor-topbar";
 
 // Doctor cabinet is LIVE — unpaused on prod (DOCTOR_CABINET_ENABLED=1). All
@@ -25,10 +26,15 @@ export default async function DoctorLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+  // `auth()` already applied the session guard (idle timeout, 8h cap, one
+  // session per user, deactivation), and src/proxy.ts runs the same gates for
+  // /doctor as for /crm: forced password change and mandatory 2FA land on
+  // /doctor/me/… (audit DC-02). This check is the backstop.
   const session = await auth();
 
   if (!session?.user) {
-    redirect(`/${locale}/login`);
+    // /login lives outside the [locale] segment; `/${locale}/login` is a 404.
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/${locale}/doctor`)}`);
   }
   // Same helper the CRM layout consults, so the two guards cannot disagree and
   // trap a doctor bouncing between them (see src/lib/doctor-cabinet.ts).
@@ -69,6 +75,7 @@ export default async function DoctorLayout({
     <QueryProvider>
       <div className="flex h-screen min-h-0 w-full bg-background">
         <GlobalTgAlerts inboxPath="/doctor/messages" />
+        <SessionExpiryWatch />
         <DoctorSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <DoctorTopbar

@@ -34,6 +34,14 @@ declare module "next-auth" {
       // and the API wrapper consults `mode === "VIEW_ONLY"` to reject
       // mutations.
       impersonation?: ImpersonationSessionStamp;
+      // The server-side UserSession row this browser is bound to (null for
+      // sessions minted before JWTs carried it). Not a secret: it only
+      // matters together with the encrypted JWT that names it.
+      sessionId?: string | null;
+      // Epoch ms of a sign-in made with an admin-issued temporary password,
+      // null otherwise. Lets that fresh session set a new password without
+      // re-typing the temporary one, for a short window only.
+      tempPasswordLoginAt?: number | null;
     };
   }
 }
@@ -46,5 +54,11 @@ declare module "next-auth/jwt" {
     mustChangePassword?: boolean;
     impersonationGrantId?: string | null;
     impersonationMode?: "WRITE" | "VIEW_ONLY" | null;
+    /** UserSession row id minted at sign-in (see session-guard.ts). */
+    sid?: string | null;
+    /** Minting the UserSession row failed at sign-in: skip the row binding. */
+    sidUnbound?: boolean;
+    /** Epoch ms of a sign-in made with a temporary password. */
+    pwTempAt?: number | null;
   }
 }

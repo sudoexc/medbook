@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { getSession, signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ function readLocaleCookie(): string {
 }
 
 function LoginForm() {
+  const t = useTranslations("login");
   const router = useRouter();
   const search = useSearchParams();
   const callbackUrl = search.get("callbackUrl");
@@ -33,32 +35,38 @@ function LoginForm() {
     e.preventDefault();
     setError(null);
     setPending(true);
+    try {
+      await submit();
+    } catch {
+      // signIn() throws on responses it cannot parse; whatever happened, the
+      // button must not stay stuck on «Входим…» (audit SEC-03).
+      setError(t("networkError"));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submit() {
     // Phase 17 Wave 2 — precheck whether 2FA is required. Doing this in
     // a dedicated endpoint (instead of attempting signIn first and reading
     // the error) lets us distinguish "wrong password" from "missing 2fa"
     // without minting a partially-authenticated session.
-    let requiresTotp = false;
-    try {
-      const r = await fetch("/api/crm/auth/totp-required", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!r.ok) {
-        if (r.status === 401) {
-          setError("Неверный email или пароль");
-          setPending(false);
-          return;
-        }
-        throw new Error(`HTTP ${r.status}`);
+    const r = await fetch("/api/crm/auth/totp-required", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!r.ok) {
+      if (r.status === 401) {
+        setError(t("error"));
+      } else if (r.status === 429) {
+        setError(t("tooManyAttempts"));
+      } else {
+        setError(t("networkError"));
       }
-      const data = (await r.json()) as { requiresTotp: boolean };
-      requiresTotp = data.requiresTotp;
-    } catch {
-      setError("Ошибка сети");
-      setPending(false);
       return;
     }
+    const { requiresTotp } = (await r.json()) as { requiresTotp: boolean };
 
     if (requiresTotp) {
       try {
@@ -83,9 +91,12 @@ function LoginForm() {
       password,
       redirect: false,
     });
-    setPending(false);
-    if (res?.error) {
-      setError("Неверный email или пароль");
+    if (res?.status === 429 || res?.error === "RateLimited") {
+      setError(t("tooManyAttempts"));
+      return;
+    }
+    if (!res || res.error) {
+      setError(t("error"));
       return;
     }
     // Pull the freshly-minted session to learn the user's role, then send
@@ -104,13 +115,13 @@ function LoginForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Вход в CRM</CardTitle>
+        <CardTitle>{t("staffTitle")}</CardTitle>
         <CardDescription>MedBook · NeuroFax</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("email")}</Label>
             <Input
               id="email"
               type="email"
@@ -121,7 +132,7 @@ function LoginForm() {
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Пароль</Label>
+            <Label htmlFor="password">{t("password")}</Label>
             <Input
               id="password"
               type="password"
@@ -137,7 +148,7 @@ function LoginForm() {
             </p>
           ) : null}
           <Button type="submit" disabled={pending}>
-            {pending ? "Входим…" : "Войти"}
+            {pending ? t("loading") : t("submit")}
           </Button>
         </form>
       </CardContent>

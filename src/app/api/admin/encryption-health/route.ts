@@ -30,6 +30,7 @@ import {
   getActiveKeyVersion,
   getKnownKeyVersions,
 } from "@/server/crypto/field-cipher";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 interface ColumnCounts {
   total: number;
@@ -207,10 +208,7 @@ export async function GET(request: Request): Promise<Response> {
                 ]),
               ),
             } as never,
-            ip:
-              request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-              request.headers.get("x-real-ip") ??
-              null,
+            ip: clientIpForAudit(request),
             userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
           },
         });

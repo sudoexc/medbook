@@ -28,6 +28,7 @@ import {
 } from "@/server/ai/marketing-copy";
 import { LLMRateLimitError } from "@/server/ai/llm";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 // "SMS" was removed from this enum in Wave 3 of
 // `docs/TZ-sms-removal.md` together with the underlying generator.
@@ -89,8 +90,7 @@ export const POST = createApiHandler(
             actorId: ctx.userId,
             actorRole: ctx.role ?? null,
             actorLabel: null,
-            ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-              request.headers.get("x-real-ip") ?? null,
+            ip: clientIpForAudit(request),
             userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
             meta: {
               channel: body.channel,

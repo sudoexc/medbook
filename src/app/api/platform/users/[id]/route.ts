@@ -9,6 +9,10 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err, notFound } from "@/server/http";
 import { platformAudit } from "@/server/platform/handler";
 import { PatchPlatformUserSchema } from "@/server/schemas/platform";
+import {
+  invalidateSessionGuardCache,
+  revokeUserSessions,
+} from "@/server/auth/session-guard";
 
 function idFromUrl(request: Request): string | null {
   try {
@@ -100,6 +104,19 @@ export async function PATCH(request: Request): Promise<Response> {
         clinicId: true,
       },
     });
+
+    // Moving someone to another clinic or deactivating them ends their open
+    // sessions (audit SEC-05): the old JWT still names the old clinic, and
+    // the session guard would reject it anyway; dropping the rows makes the
+    // cut immediate and leaves nothing behind.
+    const movedClinic = updated.clinicId !== target.clinicId;
+    const deactivated = target.active && !updated.active;
+    if (movedClinic || deactivated) {
+      await revokeUserSessions(id);
+    } else {
+      // A role change applies on the next request (the guard re-reads it).
+      invalidateSessionGuardCache(id);
+    }
 
     await platformAudit({
       request,

@@ -15,6 +15,7 @@ import {
 } from "@/server/patient/cipher-fields";
 import { UpdatePatientSchema } from "@/server/schemas/patient";
 import { recordPatientView } from "@/server/audit/patient-view";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 function idFromUrl(request: Request): string {
   // App Router passes params via the route handler signature, but we're
@@ -51,8 +52,7 @@ export const GET = createApiListHandler(
         viewerRole: ctx.role,
         patientId: id,
         context: "patient.detail",
-        ip:
-          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+        ip: clientIpForAudit(request),
         userAgent: request.headers.get("user-agent"),
       });
     }

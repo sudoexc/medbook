@@ -21,6 +21,7 @@ import { ok, err } from "@/server/http";
 import { askAssistant } from "@/server/ai/tool-loop";
 import { LLMRateLimitError } from "@/server/ai/llm";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 const BodySchema = z.object({
   question: z.string().min(2).max(2000),
@@ -58,8 +59,7 @@ export const POST = createApiHandler(
             actorId: ctx.userId,
             actorRole: ctx.role ?? null,
             actorLabel: null,
-            ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-              request.headers.get("x-real-ip") ?? null,
+            ip: clientIpForAudit(request),
             userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
             meta: {
               question_preview: body.question.slice(0, 100),

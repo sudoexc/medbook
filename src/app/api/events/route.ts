@@ -32,6 +32,11 @@
  *     we respect the `admin_clinic_override` cookie (HMAC-signed) so the
  *     platform operator can "impersonate" a clinic's event stream.
  *   - SYSTEM / missing clinicId → 403.
+ *   - The stream lives up to an hour, so the session is re-checked every
+ *     minute while it is open (audit SEC-05): once the user is deactivated,
+ *     moved, signed out, kicked by a newer login or idled out, the stream is
+ *     closed and the browser's reconnect gets 401. The re-check does not
+ *     count as user activity, or an open tab would never idle out.
  *
  * Cleanup:
  *   - On `req.signal.abort()` (client closed) we unsubscribe from the bus
@@ -47,6 +52,15 @@ import { NextRequest } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type { Role } from "@/lib/tenant-context";
+import {
+  evaluateStaffSession,
+  type SessionBinding,
+} from "@/server/auth/session-guard";
+import {
+  SESSION_COOKIE_NAME,
+  hashSessionToken,
+} from "@/server/auth/user-session";
 import { runWithTenant } from "@/lib/tenant-context";
 import { getEventBus } from "@/server/realtime/event-bus";
 import { clinicChannel } from "@/server/realtime/channels";
@@ -64,6 +78,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const HEARTBEAT_MS = 20_000;
+const SESSION_RECHECK_MS = 60_000;
 const encoder = new TextEncoder();
 
 function jsonResponse(data: unknown, status: number): Response {
@@ -93,6 +108,23 @@ export async function GET(request: NextRequest): Promise<Response> {
       console.warn("[sse] ensureRedisSubscriber failed", msg);
     }
   }
+
+  // What to re-check the session against while the stream is open: the
+  // UserSession named in the JWT, or (pre-`sid` sessions) the one behind the
+  // session cookie.
+  const binding: SessionBinding = user.sessionId
+    ? { kind: "sid", sessionId: user.sessionId }
+    : (() => {
+        const v = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+        return v
+          ? { kind: "cookie" as const, tokenHash: hashSessionToken(v) }
+          : { kind: "unbound" as const };
+      })();
+  const claims = {
+    userId: user.id,
+    role: user.role as Role,
+    clinicId: user.clinicId ?? null,
+  };
 
   const channel = clinicChannel(clinicId);
   const bus = getEventBus();
@@ -183,10 +215,22 @@ export async function GET(request: NextRequest): Promise<Response> {
         safeEnqueue(`: ping\n\n`);
       }, HEARTBEAT_MS);
 
+      // Close the stream as soon as the session stops being valid. Errors
+      // fail open inside evaluateStaffSession, so a DB blip never drops a
+      // healthy stream.
+      const sessionCheck = setInterval(() => {
+        evaluateStaffSession({ claims, binding, countAsActivity: false })
+          .then((verdict) => {
+            if (!verdict.ok) cleanup();
+          })
+          .catch(() => {});
+      }, SESSION_RECHECK_MS);
+
       const cleanup = () => {
         if (closed) return;
         closed = true;
         clearInterval(heartbeat);
+        clearInterval(sessionCheck);
         try {
           unsubscribe();
         } catch {

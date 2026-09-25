@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { resolvePublicClinic } from "@/lib/public-clinic";
 import { rateLimit } from "@/lib/rate-limit";
+import { realClientIp } from "@/lib/client-ip";
 import { sendNewLeadEmail } from "@/lib/email";
 import { normalizePhone } from "@/lib/phone";
 import { z } from "zod";
@@ -78,9 +79,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  // Rate limit: 10 submissions per minute per IP
-  const ip = request.headers.get("x-forwarded-for") || "unknown";
-  if (!rateLimit(ip)) {
+  // Rate limit: 10 submissions per minute per IP. The real peer address, not
+  // the raw client-written X-Forwarded-For header (audit SEC-03), and its own
+  // store so a flood here cannot evict other limiters' counters.
+  if (!rateLimit(`lead:${realClientIp(request)}`, 10, 60_000, "leads")) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
 

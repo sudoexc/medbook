@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 
 import { routing } from "@/i18n/routing";
 import { hasLocale } from "next-intl";
+import { isPublicSignupEnabled } from "@/lib/public-signup";
 
 import { SignupForm } from "./_components/signup-form";
 
@@ -36,7 +37,8 @@ export default async function SignupPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  if (!hasLocale(routing.locales, locale)) {
+  // Self-signup is off unless explicitly enabled (audit MA-03).
+  if (!hasLocale(routing.locales, locale) || !isPublicSignupEnabled()) {
     notFound();
   }
   return (

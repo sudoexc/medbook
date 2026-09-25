@@ -14,6 +14,7 @@ import type { ZodSchema } from "zod";
 import { auth } from "@/lib/auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { err } from "@/server/http";
+import { clientIpForAudit } from "@/lib/client-ip";
 
 type PlatformArgs<TBody> = {
   request: Request;
@@ -131,10 +132,7 @@ export async function platformAudit(input: {
         entityType: input.entityType,
         entityId: input.entityId ?? null,
         meta: (input.meta ?? null) as never,
-        ip:
-          input.request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-          input.request.headers.get("x-real-ip") ??
-          null,
+        ip: clientIpForAudit(input.request),
         userAgent:
           input.request.headers.get("user-agent")?.slice(0, 500) ?? null,
       },

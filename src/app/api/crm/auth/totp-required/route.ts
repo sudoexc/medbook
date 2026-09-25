@@ -13,6 +13,12 @@
  * page reads it but does not require it (defence-in-depth — if the cookie
  * is stripped, the 2fa form just falls back to re-typing the password).
  *
+ * It checks a password, so it is subject to the same failed-attempt throttle
+ * as the NextAuth credentials callback (audit SEC-02): failures here and there
+ * count together, the 6th wrong password for one email within 15 minutes gets
+ * 429 on both, and an unknown email costs the same bcrypt time as a known one
+ * (it used to answer instantly, which told an attacker which logins exist).
+ *
  * Why this is a separate endpoint instead of using signIn directly:
  *   - signIn returns null on "wrong credentials" AND on "missing 2fa". We
  *     need to distinguish them so the client can route to the right page
@@ -20,7 +26,6 @@
  *   - We never want a partially-authenticated session: until the second
  *     factor is confirmed, no session cookie is issued.
  */
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { cookies } from "next/headers";
 
@@ -29,6 +34,13 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err } from "@/server/http";
 import { PENDING_COOKIE_NAME, signPending } from "@/server/auth/totp-pending";
 import { is2faDisabled } from "@/server/auth/security-policy";
+import { verifyPasswordConstantTime } from "@/server/auth/password";
+import {
+  checkLoginThrottle,
+  recordLoginFailure,
+  tooManyAttemptsResponse,
+} from "@/server/auth/login-throttle";
+import { realClientIp } from "@/lib/client-ip";
 
 const Schema = z.object({
   email: z.string().email().max(200),
@@ -48,9 +60,13 @@ export async function POST(request: Request): Promise<Response> {
   }
   const { email, password } = parsed.data;
 
+  const who = { ip: realClientIp(request), email };
+  const throttle = checkLoginThrottle(who);
+  if (throttle.blocked) return tooManyAttemptsResponse(throttle);
+
   // We don't want to leak account existence via timing or response body.
   // Returning the same shape on both wrong-creds and unknown-user keeps
-  // the surface uniform.
+  // the surface uniform, and every path spends one bcrypt comparison.
   const user = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.user.findUnique({
       where: { email },
@@ -63,12 +79,11 @@ export async function POST(request: Request): Promise<Response> {
     }),
   );
 
-  if (!user || !user.passwordHash || !user.active) {
+  const valid = await verifyPasswordConstantTime(password, user?.passwordHash);
+  if (!user || !user.active || !valid) {
+    recordLoginFailure(who);
     return err("invalid_credentials", 401);
   }
-
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) return err("invalid_credentials", 401);
 
   // Kill-switch: when DISABLE_2FA is set we never gate the login on TOTP,
   // even for enrolled users. Skip the pending-cookie too — the login

@@ -1,44 +1,59 @@
 /**
  * NextAuth catch-all route.
  *
- * Per TZ §9.2 we throttle `/api/auth/*` to 5 req/min/IP to slow credential
- * stuffing and brute-force attempts on the credentials provider. GET is left
- * unthrottled because the sign-in flow legitimately pulls `providers`,
- * `session`, and `csrf` endpoints during every render.
- *
- * The in-memory `rateLimit()` helper is not cluster-safe — tracked as M3 in
- * `docs/security/phase-7.md`. Phase 6 will swap the backing store for Redis.
+ * Brute-force protection lives on the credentials callback only, and counts
+ * FAILED password checks per real client IP and per email (see
+ * `src/server/auth/login-throttle.ts`, audit SEC-02 / SEC-03). It used to be a
+ * flat "5 POSTs a minute per X-Forwarded-For value" on every POST under
+ * /api/auth, which:
+ *   - a script bypassed by writing a new X-Forwarded-For on every request;
+ *   - locked out the sixth colleague signing in from the clinic's single
+ *     office IP within a minute (successful logins spent the budget too);
+ *   - could answer 429 to «Выйти»: next-auth then sent the user to /login
+ *     without clearing the session cookie, so the next person at a shared
+ *     reception PC opened /crm under the previous user's account.
+ * Sign-out, CSRF and session refreshes are never throttled now.
  */
 import type { NextRequest } from "next/server";
 
 import { handlers } from "@/lib/auth";
-import { rateLimit } from "@/lib/rate-limit";
+import { realClientIp } from "@/lib/client-ip";
+import {
+  checkLoginThrottle,
+  tooManyAttemptsResponse,
+} from "@/server/auth/login-throttle";
 
 export const { GET } = handlers;
 
-function clientIp(request: NextRequest): string {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return request.headers.get("x-real-ip") ?? "unknown";
+function isCredentialsCallback(pathname: string): boolean {
+  return /\/api\/auth\/callback\/credentials\/?$/.test(pathname);
 }
 
-// Dev / CI bypass for the login throttle. Same shape as DISABLE_2FA —
-// set DISABLE_AUTH_RATE_LIMIT=1 to allow the Playwright e2e suite (and
-// brute-force ops bypass) to log in many users in a single minute.
-function authRateLimitDisabled(): boolean {
-  const v = process.env.DISABLE_AUTH_RATE_LIMIT;
-  return v === "1" || v === "true";
+/** The email being tried, read from a clone so NextAuth still gets the body. */
+async function peekEmail(request: NextRequest): Promise<string | null> {
+  try {
+    const form = await request.clone().formData();
+    const email = form.get("email");
+    return typeof email === "string" ? email : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-  if (!authRateLimitDisabled() && !rateLimit(`auth:${clientIp(request)}`, 5, 60_000)) {
-    return Response.json(
-      { error: "Too many requests" },
-      { status: 429, headers: { "retry-after": "60" } },
-    );
+  if (isCredentialsCallback(request.nextUrl.pathname)) {
+    const status = checkLoginThrottle({
+      ip: realClientIp(request),
+      email: await peekEmail(request),
+    });
+    if (status.blocked) {
+      // next-auth/react's signIn() reads `url` from the JSON body and parses
+      // `error` out of it; without a url it throws and the login button
+      // stays stuck on «Входим…». Give it one it can parse.
+      const url = new URL("/login", request.nextUrl.origin);
+      url.searchParams.set("error", "RateLimited");
+      return tooManyAttemptsResponse(status, { url: url.toString() });
+    }
   }
   return handlers.POST(request);
 }

@@ -10,6 +10,9 @@
  *
  * If the clinic somehow has no ADMIN we 404 — the operator should look at
  * /admin/users instead.
+ *
+ * Like the clinic-side reset, this ends the owner's open sessions (audit
+ * SEC-07): a reset has to push out whoever holds the old password.
  */
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound } from "@/server/http";
@@ -19,6 +22,7 @@ import {
   idFromUrl,
 } from "@/server/platform/handler";
 import { generateTempPassword, hashPassword } from "@/server/auth/password";
+import { revokeUserSessions } from "@/server/auth/session-guard";
 
 export const POST = createPlatformHandler(
   { /* no body */ },
@@ -48,6 +52,7 @@ export const POST = createPlatformHandler(
       where: { id: owner.id },
       data: { passwordHash, mustChangePassword: true },
     });
+    const revokedSessions = await revokeUserSessions(owner.id);
 
     await platformAudit({
       request,
@@ -56,7 +61,7 @@ export const POST = createPlatformHandler(
       action: "clinic.reset_owner_password",
       entityType: "User",
       entityId: owner.id,
-      meta: { ownerEmail: owner.email },
+      meta: { ownerEmail: owner.email, revokedSessions },
     });
 
     return ok({

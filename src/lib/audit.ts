@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { auth } from "./auth";
 import { hasValidPin } from "./pin";
 import { getTenant } from "./tenant-context";
+import { clientIpForAudit } from "./client-ip";
 
 /**
  * Fire-and-forget audit log. Failures are logged to console but never throw —
@@ -16,11 +17,6 @@ interface AuditInput {
   meta?: unknown;
 }
 
-function clientIp(request: Request): string | null {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip");
-}
 
 export async function audit(request: Request, input: AuditInput): Promise<void> {
   try {
@@ -45,7 +41,9 @@ export async function audit(request: Request, input: AuditInput): Promise<void> 
         actorId: session?.user?.id ?? null,
         actorRole: session?.user?.role ?? (viaPin ? "TERMINAL" : null),
         actorLabel: session?.user?.email ?? (viaPin ? "terminal" : null),
-        ip: clientIp(request),
+        // The peer nginx saw; the first X-Forwarded-For hop is client-written
+        // and made the audit IP forgeable (audit SEC-03).
+        ip: clientIpForAudit(request),
         userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
       },
     });

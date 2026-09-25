@@ -2,8 +2,12 @@
  * End-to-end fixture for the "one active visit per doctor" guard.
  *
  *   npx tsx scripts/guard-e2e.ts setup    → builds a fresh cabinet + doctor
- *     (login: guard-e2e@neurofax.uz / Guard12345, 2FA off) with two WAITING
- *     appointments today, and prints their ids for the HTTP test.
+ *     (login: guard-e2e@neurofax.uz, 2FA off) with two WAITING appointments
+ *     today, and prints their ids and the login password for the HTTP test.
+ *     The password is GUARD_E2E_PASSWORD or random per run, never a fixed
+ *     one (audit SEC-04): this creates a working DOCTOR login on whatever
+ *     database DATABASE_URL points at. Refuses NODE_ENV=production without
+ *     SEED_ALLOW_PROD_ACCOUNTS=1.
  *   npx tsx scripts/guard-e2e.ts cleanup  → removes every artifact it created,
  *     restoring the empty-clinic shell.
  *
@@ -14,6 +18,9 @@ import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { generateTempPassword } from "../src/server/auth/password";
+import { assertAccountSeedAllowed } from "./_seed-passwords";
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
@@ -21,7 +28,8 @@ const prisma = new PrismaClient({
 const CABINET_NO = "T-901";
 const DOCTOR_SLUG = "guard-e2e";
 const LOGIN_EMAIL = "guard-e2e@neurofax.uz";
-const LOGIN_PASSWORD = "Guard12345";
+const LOGIN_PASSWORD =
+  process.env.GUARD_E2E_PASSWORD || generateTempPassword(14);
 const PATIENT_TAG = "guard-e2e";
 
 async function getClinicId(): Promise<string> {
@@ -131,6 +139,7 @@ async function main() {
     await cleanup(clinicId);
     console.log("CLEANUP_OK");
   } else {
+    assertAccountSeedAllowed("scripts/guard-e2e.ts setup");
     await setup(clinicId);
   }
   await prisma.$disconnect();

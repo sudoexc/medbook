@@ -71,3 +71,13 @@ export const VISIT_FOLLOW_UP_LEAD_DAYS = 7;
 export const VISIT_FOLLOW_UP_GRACE_DAYS = 7;
 /** LOW_NPS_RECEIVED stays in the list this many days after the rating. */
 export const LOW_NPS_ALERT_TTL_DAYS = 14;
+/**
+ * PATIENT_NO_CHANNEL stays in the list this many hours after its UTC day
+ * bucket ends. That is about the lifetime the 48h sweep used to give it (48h
+ * after the bucket's last missed reminder); the sweep now covers detector
+ * rows only, so the row carries it itself.
+ */
+export const PATIENT_NO_CHANNEL_TTL_HOURS = 48;
+// TELEGRAM_LINK_CONFLICT deliberately has no window: a Telegram account bound
+// to the wrong card stays wrong until reception merges or dismisses, so the
+// task lives until a person closes it.

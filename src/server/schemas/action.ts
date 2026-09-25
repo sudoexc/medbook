@@ -28,8 +28,9 @@ export const ActionAssigneeRoleEnum = z.enum(["ADMIN", "RECEPTIONIST"]);
  * - Repeated keys collapse into arrays via `parseQuery` (e.g. `?status=OPEN&status=SNOOZED`).
  * - Default `status` is OPEN-only when omitted (handler enforces this; the
  *   schema accepts an optional list).
- * - `cursor` is the createdAt ISO timestamp of the last seen row from the
- *   previous page; results are sorted by severity DESC, createdAt DESC.
+ * - `cursor` is the `id` of the last row of the previous page (`nextCursor`);
+ *   results are sorted by severity DESC, surfacedAt DESC (see
+ *   `src/server/actions/list.ts`).
  */
 export const QueryActionSchema = z.object({
   status: z

@@ -38,6 +38,8 @@ export type ActionRow = {
   createdAt: string;
   updatedAt: string;
   expiresAt: string | null;
+  /** When the row last became actionable; the list is ordered by it. */
+  surfacedAt: string;
 };
 
 /**

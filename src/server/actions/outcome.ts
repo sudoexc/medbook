@@ -24,6 +24,8 @@ import { confirmAppointment } from "@/server/appointments/confirm";
 import { cancelAppointment } from "@/server/appointments/cancel";
 import type { ActionOutcome } from "@/server/schemas/action";
 
+import { surfaceMoment } from "./repository";
+
 /** How long a «не дозвонился» row hides before it resurfaces, and the attempt
  *  cap after which it escalates to a louder severity. */
 export const NO_ANSWER_SNOOZE_MIN = 120;
@@ -78,6 +80,11 @@ export function outcomeStamp(
       }
       break;
     }
+  }
+  // A snoozing outcome brings the task back later: it returns at the top of
+  // its severity, not at the position of its original insert.
+  if (stamp.status === "SNOOZED") {
+    stamp.surfacedAt = surfaceMoment(now, stamp.snoozeUntil as Date | null);
   }
   return stamp;
 }

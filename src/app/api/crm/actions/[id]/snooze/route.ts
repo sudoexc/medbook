@@ -5,7 +5,10 @@
  *
  * Sets `snoozeUntil` and flips `status='SNOOZED'`. The list endpoint hides
  * rows whose `snoozeUntil > now`; once the timer elapses the row resurfaces
- * automatically.
+ * automatically. `surfacedAt` moves to that moment, so the returning task
+ * sits at the top of its severity rather than at its original insert position
+ * (a «1 час» snooze used to come back below five newer rows and miss the
+ * reception briefing).
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -17,6 +20,7 @@ import {
   actionIdFromUrl,
   resolveSnoozePreset,
 } from "@/server/actions/handler-utils";
+import { surfaceMoment } from "@/server/actions/repository";
 
 export const POST = createApiHandler(
   {
@@ -38,6 +42,7 @@ export const POST = createApiHandler(
       data: {
         snoozeUntil,
         status: "SNOOZED",
+        surfacedAt: surfaceMoment(new Date(), snoozeUntil),
       },
     });
 

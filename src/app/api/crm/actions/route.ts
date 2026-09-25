@@ -13,28 +13,23 @@
  *   - severity: optional, accepts repeated values.
  *   - assigneeRole: ADMIN | RECEPTIONIST (null assigneeRole is always
  *     visible regardless of this filter — those are "any role" actions).
- *   - cursor: createdAt ISO of last seen row. Pagination secondary key is
- *     `id` to break ties deterministically.
+ *   - cursor: `id` of the last row of the previous page (`nextCursor`).
  *   - limit: 1..100, default 50.
  *
  * Visibility rules (always applied):
  *   - Hide rows where status='EXPIRED' OR (expiresAt is set and ≤ now).
  *   - Hide rows where snoozeUntil > now (the user explicitly silenced them).
  *
- * Sort: severity DESC (critical → low), then createdAt DESC, then id DESC
- * for stable ordering. Severity ranks come from `SEVERITY_RANK` in
- * `src/lib/actions/types.ts`; we translate to a numeric sort key in JS
- * after fetching to keep the SQL simple (severity is a free-form string
- * column — adding a CASE WHEN per query would clutter the index plan).
+ * Sort: severity DESC (critical → low), then surfacedAt DESC, then id DESC,
+ * applied BEFORE the limit, so `limit=5` is the five most urgent rows and a
+ * task that just came back from a snooze or a scheduled surface time sits at
+ * the top of its severity (see `listActionsPage` for why not createdAt).
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
 import { QueryActionSchema } from "@/server/schemas/action";
-import {
-  SEVERITY_RANK,
-  type ActionSeverity,
-} from "@/lib/actions/types";
+import { listActionsPage } from "@/server/actions/list";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
@@ -62,10 +57,8 @@ export const GET = createApiListHandler(
     if (q.type && q.type.length > 0) {
       where.type = q.type.length === 1 ? q.type[0] : { in: q.type };
     }
-    if (q.severity && q.severity.length > 0) {
-      where.severity =
-        q.severity.length === 1 ? q.severity[0] : { in: q.severity };
-    }
+    // Severity is applied by `listActionsPage`, which reads one severity
+    // bucket at a time in rank order.
     if (q.assigneeRole) {
       // Show rows assigned to this role OR rows assigned to "any role"
       // (assigneeRole IS NULL).
@@ -96,35 +89,12 @@ export const GET = createApiListHandler(
       },
     ];
 
-    // Cursor pagination: createdAt ISO. We over-fetch by one to compute
-    // the next cursor, then trim. For deterministic ordering when many rows
-    // share a createdAt timestamp we add `id` as the tiebreaker.
-    const take = q.limit + 1;
-    const rows = await prisma.action.findMany({
-      where,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take,
-      ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
+    const page = await listActionsPage(prisma, where, {
+      limit: q.limit,
+      cursor: q.cursor ?? null,
+      severities: q.severity ?? null,
     });
-
-    let nextCursor: string | null = null;
-    if (rows.length > q.limit) {
-      const next = rows.pop();
-      nextCursor = next?.id ?? null;
-    }
-
-    // Severity sort happens in JS — see file header rationale.
-    rows.sort((a, b) => {
-      const sa = SEVERITY_RANK[a.severity as ActionSeverity] ?? 0;
-      const sb = SEVERITY_RANK[b.severity as ActionSeverity] ?? 0;
-      if (sa !== sb) return sb - sa;
-      const ta = new Date(a.createdAt).getTime();
-      const tb = new Date(b.createdAt).getTime();
-      if (ta !== tb) return tb - ta;
-      return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
-    });
-
-    return ok({ rows, nextCursor });
+    return ok(page);
   },
 );
 

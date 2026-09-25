@@ -31,6 +31,8 @@ export const POST = createApiHandler(
         doneAt: null,
         dismissedAt: null,
         snoozeUntil: null,
+        // Back in the list now, at the top of its severity.
+        surfacedAt: new Date(),
       },
     });
 

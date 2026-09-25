@@ -19,9 +19,10 @@ import { ActionCard } from "../../action-center/_components/action-card";
  *
  * Data is the same `useActionsList` hook used by the Action Center page,
  * so SSE invalidation and tanstack caching are shared. Filter is fixed at
- * `status=OPEN+SNOOZED, limit=5`; the API already handles the
- * `severity DESC, createdAt DESC` ordering server-side, so the top 5
- * slot we fetch is guaranteed to be the highest-severity open work.
+ * `status=OPEN+SNOOZED, limit=5`; the API orders by
+ * `severity DESC, surfacedAt DESC` before applying the limit, so the five
+ * rows are the most urgent open work, and a task that just came back from a
+ * snooze or a scheduled surface time leads its severity.
  */
 export function ActionBriefing() {
   const t = useTranslations("reception.briefing");

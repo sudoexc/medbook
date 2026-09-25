@@ -13,6 +13,8 @@
  *   6. Swallows errors from `upsertAction` so the materializer never bombs
  *      when the DB hiccups — the original code path silently skipped, this
  *      helper preserves that contract.
+ *   7. Carries its own lifetime (48h after the UTC day bucket): the engine's
+ *      48h sweep now covers detector rows only (review of audit AC-03).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -87,6 +89,22 @@ describe("recordPatientNoChannel", () => {
     expect(options).toMatchObject({
       deeplinkPath: `/crm/patients/${patientId}`,
     });
+  });
+
+  it("expires 48h after its day bucket, the same for every call in that bucket", async () => {
+    await recordPatientNoChannel({
+      ...baseParams,
+      now: new Date("2026-06-08T00:05:00.000Z"),
+    });
+    await recordPatientNoChannel({
+      ...baseParams,
+      now: new Date("2026-06-08T23:55:00.000Z"),
+    });
+    const [first, second] = upsertMock.mock.calls.map((c) => c[3] as { expiresAt: Date });
+    // Bucket 2026-06-08 ends at 06-09T00:00Z; plus 48h.
+    expect(first!.expiresAt.toISOString()).toBe("2026-06-11T00:00:00.000Z");
+    // Stable within the bucket, so a repeat is a no-op upsert, not a change.
+    expect(second!.expiresAt).toEqual(first!.expiresAt);
   });
 
   it("runs the upsert inside a SYSTEM tenant context", async () => {

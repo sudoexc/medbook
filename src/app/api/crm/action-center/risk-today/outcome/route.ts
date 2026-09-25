@@ -8,10 +8,14 @@
  * client looping over Action ids; `recordRiskOutcome` documents the rules.
  *
  * Responses: 200 with the stamped rows; 404 for an appointment outside the
- * clinic; 409 when the appointment refused the side effect (e.g. «Подтвердил»
- * on a visit someone already cancelled), with nothing recorded.
+ * clinic; 409 `not_risk_today` for an appointment the risk-today list cannot
+ * show (another day, or a visit that is already over); 409 when the
+ * appointment refused the side effect (e.g. «Подтвердил» on a visit someone
+ * cancelled a moment ago). Nothing is recorded on any 409.
  *
- * RBAC: ADMIN, RECEPTIONIST, DOCTOR (mirrors /api/crm/actions/[id]/outcome).
+ * RBAC: ADMIN, RECEPTIONIST, the roles of the canonical cancel
+ * (DELETE /api/crm/appointments/[id]). «Отказался» cancels the visit, and the
+ * risk-today widget lives in the CRM, which doctors do not use.
  */
 import { createApiHandler } from "@/lib/api-handler";
 import { audit } from "@/lib/audit";
@@ -22,7 +26,7 @@ import { conflict, err, notFound, ok } from "@/server/http";
 
 export const POST = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
+    roles: ["ADMIN", "RECEPTIONIST"],
     bodySchema: RiskOutcomeSchema,
   },
   async ({ request, body, ctx }) => {
@@ -43,6 +47,7 @@ export const POST = createApiHandler(
     });
     if (!result.ok) {
       if (result.reason === "not_found") return notFound();
+      if (result.reason === "not_risk_today") return conflict("not_risk_today");
       return conflict(result.detail);
     }
 

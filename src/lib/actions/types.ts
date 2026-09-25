@@ -69,6 +69,45 @@ export const RISK_ACTION_TYPES = [
   "NO_CONTACT_CALL",
 ] as const satisfies readonly ActionType[];
 
+/**
+ * Appointment statuses a risk-today row can stand for: the visit is still
+ * ahead or under way. The risk-today list and its outcome endpoint share the
+ * list, so an outcome can only be recorded for a row the list could show
+ * (audit review of AC-04: the endpoint used to cancel any visit by id). Every
+ * one of them may still move to CANCELLED, which «Отказался» relies on.
+ */
+export const RISK_TODAY_APPOINTMENT_STATUSES = [
+  "BOOKED",
+  "CONFIRMED",
+  "WAITING",
+  "IN_PROGRESS",
+] as const;
+
+/**
+ * Types the Action engine (`src/server/actions/engine.ts`) re-upserts on
+ * every 15-minute pass while their signal holds. Only these rows fall back
+ * to the 48h `updatedAt` sweep in `expireStaleActions`: a stale `updatedAt`
+ * there means the detector stopped firing. Every other type is written once
+ * by the event that caused it (control visit, low NPS, Telegram card
+ * conflict, …), so its `updatedAt` says nothing about whether the task is
+ * still live. Such a row lives until its own `expiresAt`, or until a person
+ * closes it (audit AC-03). The engine's spec list is typed against this list,
+ * so a new detector cannot be added without joining the sweep.
+ */
+export const DETECTOR_ACTION_TYPES = [
+  "EMPTY_SLOT_TOMORROW",
+  "DORMANT_BATCH",
+  "UNCONFIRMED_24H",
+  "NO_SHOW_RISK_HIGH",
+  "CASE_REPEAT_DUE",
+  "OVERDUE_FOLLOW_UP",
+  "DOCTOR_OVERLOAD",
+  "IDLE_ROOM",
+  "PAYMENT_OVERDUE",
+  "LOW_DOCTOR_SCHEDULE",
+] as const satisfies readonly ActionType[];
+export type DetectorActionType = (typeof DETECTOR_ACTION_TYPES)[number];
+
 export const ACTION_SEVERITIES = ["low", "medium", "high", "critical"] as const;
 export type ActionSeverity = (typeof ACTION_SEVERITIES)[number];
 

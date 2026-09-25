@@ -19,7 +19,10 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { upsertAction } from "@/server/actions/repository";
+import { PATIENT_NO_CHANNEL_TTL_HOURS } from "@/server/actions/config";
 import type { PatientNoChannelPayload } from "@/lib/actions/types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** YYYY-MM-DD in UTC. Stable per-day bucket for the 24h dedupe window. */
 function utcBucket(d: Date): string {
@@ -68,10 +71,19 @@ export async function recordPatientNoChannel(params: {
   };
   const deeplinkPath =
     params.deeplinkPath ?? `/crm/patients/${params.patientId}`;
+  // Event-driven: the engine never refreshes this row, and its 48h sweep
+  // covers detector rows only, so the row carries its own lifetime. It is
+  // anchored to the end of the UTC day bucket, not to `now`, so a second
+  // missed reminder in the same bucket stays a silent no-op upsert instead of
+  // a payload change (audit row + realtime event) on every call.
+  const bucketEnd = new Date(`${payload.bucket}T00:00:00.000Z`).getTime() + DAY_MS;
+  const expiresAt = new Date(
+    bucketEnd + PATIENT_NO_CHANNEL_TTL_HOURS * 60 * 60 * 1000,
+  );
 
   try {
     const result = await runWithTenant({ kind: "SYSTEM" }, () =>
-      upsertAction(prisma, params.clinicId, payload, { deeplinkPath }),
+      upsertAction(prisma, params.clinicId, payload, { deeplinkPath, expiresAt }),
     );
     if (result.created) {
       publishEventSafe(params.clinicId, {

@@ -14,8 +14,10 @@
  *   - list filters by status, severity, type
  *   - list hides actively snoozed rows (snoozeUntil > now)
  *   - list excludes EXPIRED rows
+ *   - list orders by severity, then by when a row became actionable
+ *     (`surfacedAt`), before the limit; a resurfaced task is not buried
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ----- shared in-memory state ---------------------------------------------
 
@@ -36,6 +38,7 @@ type ActionRow = {
   expiresAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  surfacedAt: Date;
 };
 
 const state = {
@@ -110,11 +113,29 @@ function matches(row: ActionRow, where: Record<string, unknown>): boolean {
       if (rowVal !== null && rowVal !== undefined) return false;
       continue;
     }
+    if (val instanceof Date) {
+      if (!(rowVal instanceof Date) || rowVal.getTime() !== val.getTime()) return false;
+      continue;
+    }
     if (typeof val === "object" && val) {
       const v = val as Record<string, unknown>;
       if ("in" in v) {
         const arr = v.in as unknown[];
         if (!arr.includes(rowVal)) return false;
+        continue;
+      }
+      if ("notIn" in v) {
+        const arr = v.notIn as unknown[];
+        if (arr.includes(rowVal)) return false;
+        continue;
+      }
+      if ("lt" in v) {
+        const lt = v.lt;
+        const ok =
+          lt instanceof Date
+            ? rowVal instanceof Date && rowVal.getTime() < lt.getTime()
+            : String(rowVal) < String(lt);
+        if (!ok) return false;
         continue;
       }
       if ("gt" in v) {
@@ -181,6 +202,7 @@ vi.mock("@/lib/prisma", () => ({
                           : String(av) < String(bv)
                             ? -1
                             : 1;
+                  if (cmp === 0) continue; // equal Dates: fall to the next key
                   return dir === "asc" ? cmp : -cmp;
                 }
               }
@@ -191,6 +213,23 @@ vi.mock("@/lib/prisma", () => ({
           return rows;
         },
       ),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          const now = new Date();
+          const row = {
+            id: `act_new_${state.rows.length + 1}`,
+            branchId: null,
+            snoozeUntil: null,
+            dismissedAt: null,
+            doneAt: null,
+            expiresAt: null,
+            createdAt: now,
+            surfacedAt: now,
+            ...(data as Partial<ActionRow>),
+            updatedAt: now,
+          } as ActionRow;
+          state.rows.push(row);
+          return row;
+        }),
       update: vi.fn(
         async ({
           where,
@@ -251,9 +290,14 @@ function makeRow(overrides: Partial<ActionRow> = {}): ActionRow {
     expiresAt: null,
     createdAt: now,
     updatedAt: now,
+    surfacedAt: overrides.createdAt ?? now,
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   state.rows = [];
@@ -555,5 +599,176 @@ describe("GET /api/crm/actions (list)", () => {
     const body = (await res.json()) as { rows: ActionRow[] };
     const ids = body.rows.map((r) => r.id).sort();
     expect(ids).toEqual(["a1", "a3"]);
+  });
+});
+
+// ----- list order: severity, then surfacedAt, before the limit -------------
+//
+// Review of AC-01 / AC-03: a snoozed or scheduled row resurfaced with its
+// original createdAt, and the list took the newest N by createdAt before the
+// severity sort. The briefing (limit=5) and the Action Center (limit=50, no
+// «load more») therefore never showed a control-visit call or a «1 час»
+// snooze once enough newer rows existed.
+
+describe("GET /api/crm/actions (order)", () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+
+  async function list(qs = ""): Promise<{ rows: ActionRow[]; nextCursor: string | null }> {
+    const mod = await loadRoute("@/app/api/crm/actions/route");
+    const res = await mod.GET(getReq(`https://x/api/crm/actions${qs}`));
+    expect(res.status).toBe(200);
+    return (await res.json()) as { rows: ActionRow[]; nextCursor: string | null };
+  }
+
+  /** `n` medium rows created (and surfaced) in the hours before `now`. */
+  function freshMediums(now: number, n: number): void {
+    for (let i = 0; i < n; i++) {
+      const at = new Date(now - (i + 1) * HOUR);
+      state.rows.push(
+        makeRow({
+          id: `fresh_${i}`,
+          type: "UNCONFIRMED_24H",
+          severity: "medium",
+          dedupeKey: `UNCONFIRMED_24H:appointmentId=ap_${i}`,
+          createdAt: at,
+          updatedAt: at,
+          surfacedAt: at,
+        }),
+      );
+    }
+  }
+
+  it("a control-visit call scheduled on finalize leads the briefing on its surface day", async () => {
+    // 01.09, 11:00 Tashkent: the doctor finalizes with followUpDays=30.
+    const finalized = new Date("2026-09-01T06:00:00.000Z");
+    vi.useFakeTimers({ now: finalized, toFake: ["Date"] });
+    const { upsertAction } = await import("@/server/actions/repository");
+    const { prisma } = await import("@/lib/prisma");
+    const surfaceAt = new Date("2026-09-24T04:00:00.000Z"); // 24.09 09:00
+    const { id } = await upsertAction(
+      prisma as never,
+      "c1",
+      {
+        type: "VISIT_FOLLOW_UP_DUE",
+        visitNoteId: "vn_1",
+        patientId: "p_1",
+        patientName: "Иванова Мария",
+        doctorId: "doc_1",
+        doctorName: "Алиев А.А.",
+        dueDate: "2026-10-01",
+        followUpNote: "",
+      },
+      { surfaceAt, expiresAt: new Date("2026-10-08T00:00:00.000Z") },
+    );
+    const row = state.rows.find((r) => r.id === id)!;
+    expect(row.status).toBe("SNOOZED");
+    expect(row.createdAt).toEqual(finalized);
+    expect(row.surfacedAt).toEqual(surfaceAt);
+
+    // 24.09 10:00: plenty of rows were created in the 23 days since.
+    const now = surfaceAt.getTime() + HOUR;
+    vi.setSystemTime(now);
+    freshMediums(now - HOUR, 8);
+
+    const briefing = await list("?status=OPEN&status=SNOOZED&limit=5");
+    expect(briefing.rows.map((r) => r.id)[0]).toBe(id);
+    expect(briefing.rows).toHaveLength(5);
+  });
+
+  it("«Отложить на 1 час» brings the task back at the top of its severity", async () => {
+    const now = new Date("2026-09-25T06:00:00.000Z").getTime();
+    vi.useFakeTimers({ now, toFake: ["Date"] });
+    const old = new Date(now - 3 * DAY);
+    state.rows.push(
+      makeRow({
+        id: "debt",
+        type: "PAYMENT_OVERDUE",
+        severity: "medium",
+        dedupeKey: "PAYMENT_OVERDUE:appointmentId=ap_debt",
+        createdAt: old,
+        updatedAt: old,
+        surfacedAt: old,
+      }),
+    );
+    const snooze = await loadRoute("@/app/api/crm/actions/[id]/snooze/route");
+    const res = await snooze.POST(
+      postReq("https://x/api/crm/actions/debt/snooze", { preset: "1h" }),
+    );
+    expect(res.status).toBe(200);
+
+    // Five newer rows appear while it is hidden.
+    freshMediums(now + HOUR, 5);
+    expect((await list("?limit=5")).rows.map((r) => r.id)).not.toContain("debt");
+
+    vi.setSystemTime(now + HOUR + 60_000);
+    const back = await list("?status=OPEN&status=SNOOZED&limit=5");
+    expect(back.rows[0]!.id).toBe("debt");
+  });
+
+  it("applies the severity order before the limit", async () => {
+    const now = new Date("2026-09-25T06:00:00.000Z").getTime();
+    vi.useFakeTimers({ now, toFake: ["Date"] });
+    freshMediums(now, 6);
+    const old = new Date(now - 10 * DAY);
+    state.rows.push(
+      makeRow({
+        id: "critical_old",
+        severity: "critical",
+        createdAt: old,
+        updatedAt: old,
+        surfacedAt: old,
+      }),
+    );
+    const top = await list("?limit=5");
+    // The old code took the five newest rows (all medium) and sorted those.
+    expect(top.rows[0]!.id).toBe("critical_old");
+    expect(top.rows.slice(1).map((r) => r.id)).toEqual([
+      "fresh_0",
+      "fresh_1",
+      "fresh_2",
+      "fresh_3",
+    ]);
+  });
+
+  it("pages through every row exactly once, severity first", async () => {
+    const now = new Date("2026-09-25T06:00:00.000Z").getTime();
+    vi.useFakeTimers({ now, toFake: ["Date"] });
+    const specs: Array<[string, string, number]> = [
+      ["c1", "critical", 5],
+      ["c2", "critical", 1],
+      ["h1", "high", 9],
+      ["h2", "high", 2],
+      ["h3", "high", 2], // same surfacedAt as h2: the id breaks the tie
+      ["m1", "medium", 3],
+      ["l1", "low", 1],
+    ];
+    for (const [id, severity, hoursAgo] of specs) {
+      const at = new Date(now - hoursAgo * HOUR);
+      state.rows.push(
+        makeRow({ id, severity, createdAt: at, updatedAt: at, surfacedAt: at }),
+      );
+    }
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 10; guard++) {
+      const page = await list(`?limit=3${cursor ? `&cursor=${cursor}` : ""}`);
+      seen.push(...page.rows.map((r) => r.id));
+      cursor = page.nextCursor;
+      if (!cursor) break;
+    }
+    expect(seen).toEqual(["c2", "c1", "h3", "h2", "h1", "m1", "l1"]);
+  });
+
+  it("keeps its place when the cursor row is closed between pages", async () => {
+    const now = new Date("2026-09-25T06:00:00.000Z").getTime();
+    vi.useFakeTimers({ now, toFake: ["Date"] });
+    freshMediums(now, 4);
+    const first = await list("?limit=2");
+    expect(first.rows.map((r) => r.id)).toEqual(["fresh_0", "fresh_1"]);
+    state.rows.find((r) => r.id === "fresh_1")!.status = "DONE";
+    const second = await list(`?limit=2&cursor=${first.nextCursor}`);
+    expect(second.rows.map((r) => r.id)).toEqual(["fresh_2", "fresh_3"]);
+    expect(second.nextCursor).toBeNull();
   });
 });

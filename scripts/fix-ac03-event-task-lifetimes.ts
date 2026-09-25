@@ -22,13 +22,25 @@
  *   is reopened; older ones only get the stamp (and stay or become expired
  *   on the next engine pass).
  *
+ *   PATIENT_NO_CHANNEL without expiresAt, status OPEN or SNOOZED. The 48h
+ *   sweep now covers detector types only, and new rows carry their own
+ *   lifetime (48h after the UTC day bucket). Rows written before that would
+ *   otherwise never leave the list, so they get expiresAt 48h after the
+ *   later of updatedAt and snoozeUntil, the moment the old sweep would have
+ *   expired them. Rows already past it expire on the next engine pass, as
+ *   they would have.
+ *
+ * Every row this script shows or schedules also gets `surfacedAt`: the
+ * moment it (re)appears in the list, which is what the lists order by. A
+ * reopened row surfaces now; a scheduled follow-up at its surface time.
+ *
  * Dry run (default, writes nothing):
  *   docker compose exec -T worker npx tsx scripts/fix-ac03-event-task-lifetimes.ts
  * Apply:
  *   docker compose exec -T -e APPLY=1 worker npx tsx scripts/fix-ac03-event-task-lifetimes.ts
  *
  * Idempotent: a second run finds every follow-up already in its scheduled
- * state and every low-NPS alert already carrying expiresAt.
+ * state and every low-NPS / no-channel row already carrying expiresAt.
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -37,6 +49,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { clinicMorningBefore } from "../src/server/actions/clinic-day";
 import {
   LOW_NPS_ALERT_TTL_DAYS,
+  PATIENT_NO_CHANNEL_TTL_HOURS,
   VISIT_FOLLOW_UP_LEAD_DAYS,
 } from "../src/server/actions/config";
 
@@ -50,7 +63,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type Change = {
   id: string;
   label: string;
-  data: { status: string; snoozeUntil?: Date | null; expiresAt?: Date };
+  data: {
+    status: string;
+    snoozeUntil?: Date | null;
+    expiresAt?: Date;
+    surfacedAt?: Date;
+  };
 };
 
 async function followUpChanges(now: Date): Promise<Change[]> {
@@ -78,7 +96,8 @@ async function followUpChanges(now: Date): Promise<Change[]> {
       label:
         `follow-up ${p.patientName ?? r.id} due ${p.dueDate}: ${r.status} → ${status}` +
         (snoozeUntil ? ` until ${snoozeUntil.toISOString()}` : ""),
-      data: { status, snoozeUntil },
+      // Hidden until the surface time, or visible from now on.
+      data: { status, snoozeUntil, surfacedAt: snoozeUntil ?? now },
     });
   }
   return changes;
@@ -104,14 +123,47 @@ async function lowNpsChanges(now: Date): Promise<Change[]> {
       label:
         `low NPS ${p.patientName ?? r.id} (${p.score ?? "?"}/10): expires ${expiresAt.toISOString()}` +
         (reopen ? ", reopened" : ""),
-      data: { status, expiresAt },
+      data: { status, expiresAt, ...(reopen ? { surfacedAt: now } : {}) },
+    };
+  });
+}
+
+async function noChannelChanges(): Promise<Change[]> {
+  const rows = await prisma.action.findMany({
+    where: {
+      type: "PATIENT_NO_CHANNEL",
+      status: { in: ["OPEN", "SNOOZED"] },
+      expiresAt: null,
+    },
+    select: {
+      id: true,
+      status: true,
+      updatedAt: true,
+      snoozeUntil: true,
+      payload: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => {
+    const p = r.payload as { patientName?: string; triggerKey?: string };
+    // The old sweep counted its TTL from the later of both.
+    const from = Math.max(r.updatedAt.getTime(), r.snoozeUntil?.getTime() ?? 0);
+    const expiresAt = new Date(from + PATIENT_NO_CHANNEL_TTL_HOURS * 60 * 60 * 1000);
+    return {
+      id: r.id,
+      label: `no channel ${p.patientName ?? r.id} (${p.triggerKey ?? "?"}): expires ${expiresAt.toISOString()}`,
+      data: { status: r.status, expiresAt },
     };
   });
 }
 
 async function main() {
   const now = new Date();
-  const changes = [...(await followUpChanges(now)), ...(await lowNpsChanges(now))];
+  const changes = [
+    ...(await followUpChanges(now)),
+    ...(await lowNpsChanges(now)),
+    ...(await noChannelChanges()),
+  ];
 
   console.log(
     `┌─ ${APPLY ? "APPLY" : "DRY RUN"}: ${changes.length} event-driven Action Center tasks to fix`,

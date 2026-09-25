@@ -6,7 +6,11 @@
  *         snoozed for a week; and the «Завтра» preset meant 14:00 Tashkent.
  *   AC-03 Event-driven tasks (control visit, low NPS) are written once and
  *         never refreshed, so the 48h `updatedAt` sweep erased them two days
- *         after creation, weeks before the control date.
+ *         after creation, weeks before the control date. Review: the fix was
+ *         per emitter, so TELEGRAM_LINK_CONFLICT (no expiresAt) still vanished
+ *         over a weekend; the sweep is now scoped to the engine's own types.
+ *   Order Rows record when they (re)became actionable (`surfacedAt`), which
+ *         the work lists order by.
  *
  * `upsertAction` / `expireStaleActions` take `prisma` as a parameter, so an
  * in-memory stub that evaluates the Prisma `where` subset they use is enough
@@ -17,7 +21,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ACTIONABLE_STATUSES, type ActionPayload } from "@/lib/actions/types";
+import {
+  ACTIONABLE_STATUSES,
+  ACTION_TYPES,
+  DETECTOR_ACTION_TYPES,
+  type ActionPayload,
+} from "@/lib/actions/types";
 import { resolveSnoozePreset } from "@/server/actions/handler-utils";
 import { clinicMorningBefore, nextClinicMorning } from "@/server/actions/clinic-day";
 import { expireStaleActions, upsertAction } from "@/server/actions/repository";
@@ -43,6 +52,7 @@ type Row = {
   doneAt: Date | null;
   expiresAt: Date | null;
   updatedAt: Date;
+  surfacedAt?: Date;
   branchId: string | null;
 };
 
@@ -247,6 +257,141 @@ describe("expireStaleActions", () => {
     expect(await expireStaleActions(store.prisma, "c1")).toBe(1);
     expect(store.rows.get("nps")!.status).toBe("OPEN");
     expect(store.rows.get("past-due")!.status).toBe("EXPIRED");
+  });
+});
+
+// ── AC-03 review: the 48h sweep belongs to the engine's detectors only ───────
+
+describe("expireStaleActions scope", () => {
+  const NOW = new Date("2026-09-25T10:00:00.000Z");
+
+  it("sweeps idle detector rows and leaves every write-once type alone", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const store = makeStore();
+    for (const type of ACTION_TYPES) {
+      seed(store, { id: type, type, updatedAt: new Date(NOW.getTime() - 30 * DAY) });
+    }
+    await expireStaleActions(store.prisma, "c1");
+    for (const type of ACTION_TYPES) {
+      const detector = (DETECTOR_ACTION_TYPES as readonly string[]).includes(type);
+      expect(store.rows.get(type)!.status, type).toBe(detector ? "EXPIRED" : "OPEN");
+    }
+  });
+
+  it("keeps a Telegram card conflict raised on Friday evening through the weekend", async () => {
+    // Friday 25 Sep, 18:00 Tashkent.
+    const friday = new Date("2026-09-25T13:00:00.000Z");
+    vi.useFakeTimers({ now: friday });
+    const store = makeStore();
+    // Exactly what raiseTelegramLinkConflict writes: no expiresAt.
+    const { id } = await upsertAction(
+      store.prisma,
+      "c1",
+      {
+        type: "TELEGRAM_LINK_CONFLICT",
+        telegramCardId: "p_tg",
+        telegramCardName: "Каримова Н.",
+        clinicCardId: "p_clinic",
+        clinicCardName: "Каримова Нодира",
+        via: "contact",
+      },
+      { deeplinkPath: "/crm/patients/p_clinic" },
+    );
+    // The engine sweeps every 15 minutes until Monday 09:00.
+    const monday = new Date("2026-09-28T04:00:00.000Z");
+    for (let t = friday.getTime(); t <= monday.getTime(); t += 15 * 60 * 1000) {
+      vi.setSystemTime(t);
+      await expireStaleActions(store.prisma, "c1");
+    }
+    expect(store.rows.get(id)!.status).toBe("OPEN");
+  });
+
+  it("the engine runs exactly the detector types the sweep covers", () => {
+    const src = readFileSync(
+      path.join(process.cwd(), "src/server/actions/engine.ts"),
+      "utf8",
+    );
+    const specs = src.slice(src.indexOf("const specs: Spec[] = ["));
+    const block = specs.slice(0, specs.indexOf("\n  ];"));
+    const types = [...block.matchAll(/^ {6}type: "([A-Z0-9_]+)",$/gm)].map((m) => m[1]);
+    expect(types.sort()).toEqual([...DETECTOR_ACTION_TYPES].sort());
+    expect(src).toMatch(/type: DetectorActionType;/);
+  });
+});
+
+// ── surfacedAt: when a row (re)became actionable ────────────────────────────
+
+describe("upsertAction stamps surfacedAt", () => {
+  const T0 = new Date("2026-09-25T06:00:00.000Z");
+  const debt: ActionPayload = {
+    type: "PAYMENT_OVERDUE",
+    appointmentId: "ap_1",
+    patientId: "p_1",
+    patientName: "Каримов",
+    amountUzs: 45_000_000,
+    daysOverdue: 3,
+  };
+
+  it("at insert, or at the scheduled surface time", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const now = await upsertAction(store.prisma, "c1", debt);
+    expect(store.rows.get(now.id)!.surfacedAt).toEqual(T0);
+
+    const surfaceAt = new Date(T0.getTime() + 20 * DAY);
+    const later = await upsertAction(
+      store.prisma,
+      "c1",
+      { ...debt, appointmentId: "ap_2" },
+      { surfaceAt },
+    );
+    expect(store.rows.get(later.id)!.surfacedAt).toEqual(surfaceAt);
+  });
+
+  it("keeps its place on a detector refresh, moves on a resurrection", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const { id } = await upsertAction(store.prisma, "c1", debt);
+
+    vi.setSystemTime(T0.getTime() + 6 * HOUR);
+    await upsertAction(store.prisma, "c1", { ...debt, daysOverdue: 4 });
+    expect(store.rows.get(id)!.surfacedAt).toEqual(T0);
+
+    store.rows.get(id)!.status = "EXPIRED";
+    const back = new Date(T0.getTime() + 3 * DAY);
+    vi.setSystemTime(back);
+    await upsertAction(store.prisma, "c1", debt);
+    expect(store.rows.get(id)!.status).toBe("OPEN");
+    expect(store.rows.get(id)!.surfacedAt).toEqual(back);
+  });
+
+  it("follows a re-schedule: pushed out, or brought forward from a live snooze", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const followUp: ActionPayload = {
+      type: "VISIT_FOLLOW_UP_DUE",
+      visitNoteId: "vn_1",
+      patientId: "p_1",
+      patientName: "Иванова Мария",
+      doctorId: "doc_1",
+      doctorName: "Алиев А.А.",
+      dueDate: "2026-10-25",
+      followUpNote: "",
+    };
+    const first = new Date(T0.getTime() + 20 * DAY);
+    const { id } = await upsertAction(store.prisma, "c1", followUp, { surfaceAt: first });
+
+    const edited = new Date(T0.getTime() + 25 * DAY);
+    await upsertAction(store.prisma, "c1", followUp, { surfaceAt: edited });
+    expect(store.rows.get(id)!.surfacedAt).toEqual(edited);
+
+    // The doctor shortens the interval: the call is due at once.
+    vi.setSystemTime(T0.getTime() + HOUR);
+    await upsertAction(store.prisma, "c1", followUp, {
+      surfaceAt: new Date(T0.getTime() - DAY),
+    });
+    expect(store.rows.get(id)!.status).toBe("OPEN");
+    expect(store.rows.get(id)!.surfacedAt).toEqual(new Date(T0.getTime() + HOUR));
   });
 });
 

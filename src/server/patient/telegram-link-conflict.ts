@@ -7,6 +7,11 @@
  * cards as they are and hands reception a TELEGRAM_LINK_CONFLICT task that
  * opens the clinic's card, plus an audit row with both ids.
  *
+ * The task has no `expiresAt` on purpose: the conflict stays real until a
+ * person merges the cards or dismisses it. Nothing re-upserts it, and the
+ * engine's 48h `updatedAt` sweep only covers detector types
+ * (`DETECTOR_ACTION_TYPES`), so it cannot quietly expire over a weekend.
+ *
  * Best-effort: a failure here is logged, never thrown, so the bot still
  * answers the patient and the invite / contact flow still completes.
  */

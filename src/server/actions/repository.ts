@@ -15,6 +15,7 @@
 
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
+  DETECTOR_ACTION_TYPES,
   defaultAssigneeRole,
   defaultDeeplinkPath,
   defaultSeverity,
@@ -43,8 +44,9 @@ export type UpsertActionOptions = {
   assigneeRole?: "ADMIN" | "RECEPTIONIST" | null;
   /**
    * Optional row-level expiry; the cron sweeper will mark these EXPIRED.
-   * A row that carries one is exempt from the 48h `updatedAt` sweep (see
-   * `expireStaleActions`), so event-driven rows nobody re-upserts must set it.
+   * Detector rows without one fall back to the 48h `updatedAt` sweep; an
+   * event-driven row without one stays until a person closes it (see
+   * `expireStaleActions`).
    */
   expiresAt?: Date | null;
   /**
@@ -70,6 +72,17 @@ export type UpsertResult = {
   severityChanged: boolean;
 };
 
+/**
+ * The instant a row written now becomes visible in the work lists: the end of
+ * its snooze when that is still ahead, otherwise now. Every writer that hides
+ * or reopens a row stamps `surfacedAt` with it, and the lists order by
+ * `surfacedAt`, so a task that comes back sits at the top of its severity
+ * instead of at the position of its original insert.
+ */
+export function surfaceMoment(now: Date, snoozeUntil: Date | null | undefined): Date {
+  return snoozeUntil && snoozeUntil.getTime() > now.getTime() ? snoozeUntil : now;
+}
+
 /** Fields whose change the audit pipeline considers "payload-significant". */
 const PAYLOAD_SIGNIFICANT_KEYS: readonly string[] = [
   "type",
@@ -85,12 +98,16 @@ const PAYLOAD_SIGNIFICANT_KEYS: readonly string[] = [
  * Behaviour:
  *   - If no row exists, INSERT with status=OPEN (SNOOZED until
  *     `options.surfaceAt` when that is in the future) and emit ACTION_CREATED.
+ *     `surfacedAt` is the moment the row becomes visible.
  *   - If a row exists, UPDATE the payload + severity + meta fields and bump
  *     `updatedAt`. Emit ACTION_UPDATED **only** when severity OR
  *     payload-significant fields change.
  *   - If the existing row is in a terminal state (DONE/DISMISSED/EXPIRED),
  *     the upsert resurrects it back to OPEN and clears the terminal stamps
  *     so the user sees the signal again. Emits ACTION_UPDATED in that case.
+ *   - `surfacedAt` moves only when the row (re)appears: a resurrection, or a
+ *     re-schedule that hides it or brings a hidden row forward. A detector
+ *     refresh of a visible row keeps its place in the list.
  *
  * Caller MUST be inside `runWithTenant(...)`. The tenant Prisma extension
  * scopes the unique lookup to the active clinic.
@@ -110,7 +127,8 @@ export async function upsertAction(
       : options.assigneeRole;
   const branchId = options.branchId ?? null;
   const expiresAt = options.expiresAt ?? null;
-  const nowMs = Date.now();
+  const now = new Date();
+  const nowMs = now.getTime();
   // Only a future surface time hides the row; a past one means "show now".
   const scheduledUntil =
     options.surfaceAt && options.surfaceAt.getTime() > nowMs
@@ -132,6 +150,7 @@ export async function upsertAction(
         payload: payload as never,
         status: scheduledUntil ? "SNOOZED" : "OPEN",
         snoozeUntil: scheduledUntil,
+        surfacedAt: surfaceMoment(now, scheduledUntil),
         assigneeRole,
         deeplinkPath,
         dedupeKey,
@@ -189,6 +208,17 @@ export async function upsertAction(
     if (scheduledUntil) newStatus = "SNOOZED";
     else if (newStatus === "SNOOZED") newStatus = "OPEN";
   }
+  // The row reappears (or is scheduled to) when it is resurrected, pushed to
+  // a future surface time, or brought forward from a live snooze. Otherwise
+  // it keeps its `surfacedAt`: the 15-minute refresh of a visible detector
+  // row must not reshuffle the list.
+  const snoozeAfter = reschedule ? scheduledUntil : existing.snoozeUntil;
+  const wasHidden =
+    existing.status === "SNOOZED" &&
+    existing.snoozeUntil != null &&
+    existing.snoozeUntil.getTime() > nowMs;
+  const resurfaces =
+    wasTerminal || (reschedule && (scheduledUntil != null || wasHidden));
 
   const oldPayload = existing.payload as ActionPayload | null;
   const payloadChanged =
@@ -216,6 +246,7 @@ export async function upsertAction(
       doneAt: wasTerminal ? null : existing.doneAt,
       dismissedAt: wasTerminal ? null : existing.dismissedAt,
       ...(reschedule ? { snoozeUntil: scheduledUntil } : {}),
+      ...(resurfaces ? { surfacedAt: surfaceMoment(now, snoozeAfter) } : {}),
     } as never,
   });
 
@@ -255,16 +286,19 @@ export async function upsertAction(
 /**
  * Mark stale OPEN/SNOOZED actions as EXPIRED. Two triggers:
  *   1. `expiresAt` is set and in the past, OR
- *   2. the row has NO `expiresAt` and was last touched more than `ttlHours`
- *      (default 48h) ago — protects against detectors that stop firing
- *      without explicitly clearing.
+ *   2. a DETECTOR row (`DETECTOR_ACTION_TYPES`) has NO `expiresAt` and was
+ *      last touched more than `ttlHours` (default 48h) ago — protects
+ *      against detectors that stop firing without explicitly clearing.
  *
  * The 48h sweep is a fallback for detector rows, which the engine re-upserts
- * every 15 minutes while their signal holds. It must not reach two kinds of
+ * every 15 minutes while their signal holds. It must not reach three kinds of
  * rows (audit AC-01 / AC-03):
- *   - rows with an explicit deadline. Event-driven tasks (control visit, low
- *     NPS) are written once and never refreshed, so their `updatedAt` goes
- *     stale after two days while the task is still weeks from due;
+ *   - rows with an explicit deadline: that deadline alone decides;
+ *   - event-driven rows (control visit, low NPS, Telegram card conflict, …).
+ *     They are written once and never refreshed, so their `updatedAt` goes
+ *     stale after two days while the task is still live. The sweep is scoped
+ *     to the engine's own types rather than exempting known event types, so
+ *     a new write-once emitter cannot be erased by forgetting `expiresAt`;
  *   - rows a user snoozed. «Отложить на неделю» must not quietly expire on
  *     day two, so the TTL counts from the later of the last refresh and the
  *     snooze timer.
@@ -291,6 +325,7 @@ export async function expireStaleActions(
         { expiresAt: { lte: now } },
         {
           expiresAt: null,
+          type: { in: [...DETECTOR_ACTION_TYPES] },
           updatedAt: { lte: ttlCutoff },
           OR: [{ snoozeUntil: null }, { snoozeUntil: { lte: ttlCutoff } }],
         },

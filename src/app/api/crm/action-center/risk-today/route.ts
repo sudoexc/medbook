@@ -20,7 +20,9 @@
  * Sort: by `appointmentAt ASC` (timeline order). Receptionists work the day
  * top-to-bottom; pure risk-DESC would jump them around chronologically.
  *
- * Status filter: only BOOKED|CONFIRMED|WAITING|IN_PROGRESS. Once an
+ * Status filter: only BOOKED|CONFIRMED|WAITING|IN_PROGRESS
+ * (`RISK_TODAY_APPOINTMENT_STATUSES`, shared with the outcome endpoint so it
+ * accepts exactly the rows listed here). Once an
  * appointment is COMPLETED / CANCELLED / NO_SHOW / SKIPPED it's no longer
  * actionable, so it drops off the triage even if its Action rows are still
  * hanging around for audit. CONFIRMED rows can still land here via high_risk
@@ -33,8 +35,10 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err } from "@/server/http";
+import { clinicTodayBounds } from "@/server/actions/clinic-day";
 import {
   RISK_ACTION_TYPES,
+  RISK_TODAY_APPOINTMENT_STATUSES,
   type ActionPayload,
   type NoContactCallPayload,
   type NoShowRiskHighPayload,
@@ -109,55 +113,6 @@ const UNCONFIRMED_RISK_BASE = 0.6;
 // (e.g. a brand-new booking awaiting service catalog assignment).
 const FALLBACK_PRICE_TIINS = 8_000_000; // 80,000 UZS — matches AVG_VISIT_TIINS on the client
 
-function clinicTodayBounds(now: Date, tz: string): { start: Date; end: Date } {
-  // Resolve the clinic's local calendar date and TZ offset at `now`, then
-  // back-solve the UTC instant of midnight in that TZ. Using only standard
-  // Intl APIs to avoid adding `date-fns-tz` for one helper.
-  let y: string | undefined;
-  let m: string | undefined;
-  let d: string | undefined;
-  let offName: string | undefined;
-  try {
-    const dateParts = new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      timeZone: tz,
-    }).formatToParts(now);
-    y = dateParts.find((p) => p.type === "year")?.value;
-    m = dateParts.find((p) => p.type === "month")?.value;
-    d = dateParts.find((p) => p.type === "day")?.value;
-    const offParts = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      timeZoneName: "longOffset",
-    }).formatToParts(now);
-    offName = offParts.find((p) => p.type === "timeZoneName")?.value;
-  } catch {
-    // Bad tz string → fall through to UTC bounds below.
-  }
-  if (!y || !m || !d) {
-    const fallback = new Date(now);
-    fallback.setUTCHours(0, 0, 0, 0);
-    return {
-      start: fallback,
-      end: new Date(fallback.getTime() + 24 * 60 * 60 * 1000),
-    };
-  }
-  let offMin = 0;
-  const oh = /GMT([+-])(\d{1,2}):?(\d{2})?/.exec(offName ?? "");
-  if (oh) {
-    const sign = oh[1] === "-" ? -1 : 1;
-    offMin = sign * (parseInt(oh[2]!, 10) * 60 + parseInt(oh[3] ?? "0", 10));
-  }
-  const localMidnightUtc =
-    Date.UTC(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)) -
-    offMin * 60 * 1000;
-  return {
-    start: new Date(localMidnightUtc),
-    end: new Date(localMidnightUtc + 24 * 60 * 60 * 1000),
-  };
-}
-
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
   async ({ ctx }) => {
@@ -175,7 +130,7 @@ export const GET = createApiListHandler(
     const appts = await prisma.appointment.findMany({
       where: {
         date: { gte: dayStart, lt: dayEnd },
-        status: { in: ["BOOKED", "CONFIRMED", "WAITING", "IN_PROGRESS"] },
+        status: { in: [...RISK_TODAY_APPOINTMENT_STATUSES] },
       },
       orderBy: { date: "asc" },
       select: {

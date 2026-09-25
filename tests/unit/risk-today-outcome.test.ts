@@ -9,10 +9,20 @@
  * appointment. These tests drive it and the risk-today GET against one
  * in-memory clinic, so «строка возвращается позже» and «исход виден в
  * Обработано сегодня» are checked end to end.
+ *
+ * Review of that fix: the endpoint takes a bare appointment id, so it must
+ * accept exactly the rows the risk-today list can show (today's clinic day,
+ * a visit still ahead or under way) and only the roles of the canonical
+ * cancel. Otherwise a DOCTOR could cancel another doctor's visit next week,
+ * and any id opened a call task and marked the patient «на связи».
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { RISK_ACTION_TYPES } from "@/lib/actions/types";
+import {
+  RISK_ACTION_TYPES,
+  RISK_TODAY_APPOINTMENT_STATUSES,
+} from "@/lib/actions/types";
+import { canTransition } from "@/lib/appointment-transitions";
 
 type Appt = {
   id: string;
@@ -34,6 +44,7 @@ type Patient = {
 type ActionRow = Record<string, unknown> & { id: string };
 
 const db = {
+  role: "RECEPTIONIST" as "RECEPTIONIST" | "ADMIN" | "DOCTOR",
   appts: new Map<string, Appt>(),
   patients: new Map<string, Patient>(),
   actions: new Map<string, ActionRow>(),
@@ -66,7 +77,7 @@ function matches(row: Record<string, unknown>, where: Record<string, unknown>): 
 
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({
-    user: { id: "u_recept", role: "RECEPTIONIST", clinicId: "c1", email: "r@x.t" },
+    user: { id: "u_recept", role: db.role, clinicId: "c1", email: "r@x.t" },
   })),
 }));
 vi.mock("@/lib/pin", () => ({ hasValidPin: () => false }));
@@ -76,7 +87,7 @@ vi.mock("@/lib/tenant-context", () => ({
     kind: "TENANT" as const,
     clinicId: "c1",
     userId: "u_recept",
-    role: "RECEPTIONIST" as const,
+    role: db.role,
   }),
 }));
 vi.mock("@/server/platform/branch-cookie", () => ({
@@ -278,6 +289,7 @@ async function riskToday(get: (req: Request) => Promise<Response>) {
 }
 
 beforeEach(() => {
+  db.role = "RECEPTIONIST";
   db.appts.clear();
   db.patients.clear();
   db.actions.clear();
@@ -397,8 +409,13 @@ describe("risk-today outcome for a «не на связи»-only row", () => {
   });
 
   it("refuses an outcome the appointment can no longer take, recording nothing", async () => {
-    db.appts.get("ap_1")!.status = "CANCELLED";
     const { post } = await routes();
+    // Someone cancelled the visit a moment after the eligibility read.
+    const { confirmAppointment } = await import("@/server/appointments/confirm");
+    vi.mocked(confirmAppointment).mockResolvedValueOnce({
+      ok: false,
+      reason: "cancelled",
+    } as never);
     const res = await post(postOutcome({ outcome: "CONFIRMED" }));
     expect(res.status).toBe(409);
     expect(((await res.json()) as { reason: string }).reason).toBe("cancelled");
@@ -412,6 +429,103 @@ describe("risk-today outcome for a «не на связи»-only row", () => {
     const res = await post(postOutcome({ outcome: "REFUSED", note: "x" }));
     expect(res.status).toBe(404);
     expect(db.cancelCalls).toHaveLength(0);
+  });
+});
+
+describe("only a risk-today row takes an outcome", () => {
+  async function refused(body: Record<string, unknown>) {
+    const { post } = await routes();
+    const res = await post(postOutcome(body));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { reason: string }).reason).toBe("not_risk_today");
+    // Nothing happened: no side effect, no task, no contact stamp.
+    expect(db.cancelCalls).toHaveLength(0);
+    expect(db.confirmCalls).toHaveLength(0);
+    expect(db.actions.size).toBe(0);
+    expect(db.patients.get("p_1")!.lastContactedAt).toEqual(LAST_CONTACT);
+    expect(db.audits).toHaveLength(0);
+  }
+
+  it("does not cancel a visit next week", async () => {
+    Object.assign(db.appts.get("ap_1")!, {
+      status: "CONFIRMED",
+      date: new Date(APPT_AT.getTime() + 7 * 24 * 60 * 60 * 1000),
+    });
+    await refused({ outcome: "REFUSED", note: "x" });
+    expect(db.appts.get("ap_1")!.status).toBe("CONFIRMED");
+  });
+
+  it("opens no call task for yesterday's visit", async () => {
+    db.appts.get("ap_1")!.date = new Date(APPT_AT.getTime() - 24 * 60 * 60 * 1000);
+    await refused({ outcome: "NO_ANSWER" });
+  });
+
+  it("does not mark the patient contacted through tomorrow's visit", async () => {
+    db.appts.get("ap_1")!.date = new Date(APPT_AT.getTime() + 24 * 60 * 60 * 1000);
+    await refused({
+      outcome: "CALLBACK",
+      callbackAt: new Date(NOW.getTime() + 60 * 60 * 1000).toISOString(),
+    });
+  });
+
+  it("refuses a visit of today that is already over, which the client shows as stale", async () => {
+    for (const status of ["CANCELLED", "COMPLETED", "NO_SHOW", "SKIPPED"]) {
+      db.appts.get("ap_1")!.status = status;
+      await refused({ outcome: "CONFIRMED" });
+    }
+    const { STALE_APPOINTMENT_REASONS } = await import(
+      "@/app/[locale]/crm/action-center/_hooks/use-risk-today"
+    );
+    expect(STALE_APPOINTMENT_REASONS).toContain("not_risk_today");
+  });
+
+  it("reads «today» on the clinic clock, like the list", async () => {
+    // 23:30 Tashkent on 25 Sep is still today (18:30Z).
+    db.appts.get("ap_1")!.date = new Date("2026-09-25T18:30:00.000Z");
+    const { post } = await routes();
+    expect((await post(postOutcome({ outcome: "NO_ANSWER" }))).status).toBe(200);
+
+    // 00:30 Tashkent on 26 Sep is tomorrow, although still 25 Sep in UTC.
+    db.actions.clear();
+    db.appts.get("ap_1")!.date = new Date("2026-09-25T19:30:00.000Z");
+    const res = await post(postOutcome({ outcome: "NO_ANSWER" }));
+    expect(res.status).toBe(409);
+  });
+
+  it("every status the list shows can still be cancelled by «Отказался»", () => {
+    for (const status of RISK_TODAY_APPOINTMENT_STATUSES) {
+      expect(canTransition(status, "CANCELLED"), status).toBe(true);
+    }
+  });
+
+  it("is closed to doctors, like the canonical cancel", async () => {
+    db.role = "DOCTOR";
+    const { post } = await routes();
+    const res = await post(postOutcome({ outcome: "REFUSED", note: "x" }));
+    expect(res.status).toBe(403);
+    expect(db.cancelCalls).toHaveLength(0);
+    expect(db.appts.get("ap_1")!.status).toBe("CONFIRMED");
+  });
+
+  it("stays open to reception and admins", async () => {
+    db.role = "ADMIN";
+    const { post } = await routes();
+    expect((await post(postOutcome({ outcome: "CONFIRMED" }))).status).toBe(200);
+  });
+});
+
+describe("a snoozing outcome brings the task back at the top of the list", () => {
+  it("stamps surfacedAt with the moment the row returns", async () => {
+    const { post } = await routes();
+    await post(postOutcome({ outcome: "NO_ANSWER" }));
+    const [task] = [...db.actions.values()];
+    expect(task!.surfacedAt).toEqual(new Date(NOW.getTime() + 2 * 60 * 60 * 1000));
+
+    const callbackAt = new Date(NOW.getTime() + 5 * 60 * 60 * 1000);
+    await post(
+      postOutcome({ outcome: "CALLBACK", callbackAt: callbackAt.toISOString() }),
+    );
+    expect(db.actions.get(task!.id)!.surfacedAt).toEqual(callbackAt);
   });
 });
 

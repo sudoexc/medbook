@@ -117,11 +117,13 @@ export type RecordOutcomeInput = {
 };
 
 /** Wire codes the outcome endpoint answers when the appointment itself can
- *  no longer take the outcome (someone cancelled or closed it meanwhile). */
+ *  no longer take the outcome (someone cancelled or closed it meanwhile, or
+ *  the page stayed open past the clinic day it lists). */
 export const STALE_APPOINTMENT_REASONS: readonly string[] = [
   "cancelled",
   "completed",
   "not_cancellable",
+  "not_risk_today",
   "NotFound",
 ];
 

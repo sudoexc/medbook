@@ -10,6 +10,11 @@
  * patient as contacted.
  *
  * Here the server resolves the row itself:
+ *   0. the appointment must be one the risk-today list can show: today's
+ *      clinic day, still ahead or under way. Anything else is refused before
+ *      a single write, because the endpoint takes a bare appointment id: it
+ *      must not become a way to cancel next week's visit, or to open a call
+ *      task and mark «на связи» for an arbitrary card;
  *   1. the appointment side effect runs once (confirm / cancel), before any
  *      Action is written, so a refused side effect leaves nothing behind;
  *   2. the outcome is stamped on every actionable risk Action of the
@@ -21,11 +26,15 @@
  *
  * Caller MUST be inside a TENANT context (the route wrapper provides it).
  */
-import { tashkentDayBounds } from "@/lib/booking-validation";
-import { dedupeKeyFor, type NoContactCallPayload } from "@/lib/actions/types";
+import {
+  RISK_TODAY_APPOINTMENT_STATUSES,
+  dedupeKeyFor,
+  type NoContactCallPayload,
+} from "@/lib/actions/types";
 import { prisma } from "@/lib/prisma";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
+import { clinicTodayBounds } from "./clinic-day";
 import {
   applyOutcomeToAppointment,
   outcomeReachedPatient,
@@ -65,6 +74,9 @@ export type StampedAction = {
 
 export type RiskOutcomeResult =
   | { ok: false; reason: "not_found" }
+  /** Not a risk-today row: another day, or the visit is already over
+   *  (cancelled, completed, no-show). Nothing was recorded. */
+  | { ok: false; reason: "not_risk_today" }
   /** The appointment refused the side effect (already cancelled, completed…):
    *  nothing was recorded, the row is stale. */
   | { ok: false; reason: "not_applied"; detail: string }
@@ -97,12 +109,26 @@ export async function recordRiskOutcome(params: {
       id: true,
       clinicId: true,
       date: true,
+      status: true,
       patientId: true,
       patient: { select: { fullName: true, lastContactedAt: true } },
       doctor: { select: { nameRu: true } },
     },
   });
   if (!appt || appt.clinicId !== clinicId) return { ok: false, reason: "not_found" };
+
+  // The same eligibility as the risk-today GET: the clinic's today, in its
+  // own timezone, and a status the list shows.
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: clinicId },
+    select: { timezone: true },
+  });
+  const today = clinicTodayBounds(now, clinic?.timezone || "Asia/Tashkent");
+  const listed =
+    appt.date >= today.start &&
+    appt.date < today.end &&
+    (RISK_TODAY_APPOINTMENT_STATUSES as readonly string[]).includes(appt.status);
+  if (!listed) return { ok: false, reason: "not_risk_today" };
 
   // Actionable = what the risk-today row was built from: OPEN, or SNOOZED
   // with an elapsed timer (a live snooze keeps the row off the list).
@@ -146,8 +172,8 @@ export async function recordRiskOutcome(params: {
     const created = await upsertAction(prisma, clinicId, payload, {
       deeplinkPath: `/crm/patients/${appt.patientId}`,
       // The call is about this visit: once its clinic day is over the task
-      // is moot. The explicit expiry also keeps it out of the 48h sweep.
-      expiresAt: tashkentDayBounds(appt.date).dayEnd,
+      // is moot.
+      expiresAt: today.end,
     });
     createdActionId = created.id;
     const row = await prisma.action.findUnique({ where: { id: created.id } });

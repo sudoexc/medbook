@@ -2990,6 +2990,11 @@ model Action {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   expiresAt    DateTime?
+  // When the row last became actionable: its insert, the end of a snooze or
+  // of a scheduled surface time, or a reopen. Work lists order by it, because
+  // a task that comes back from «Отложить» (or a control-visit call scheduled
+  // weeks ahead) keeps its old `createdAt` and was buried under newer rows.
+  surfacedAt   DateTime  @default(now())
 
   // Call-outcome capture (TZ-risk-outcomes) — the receptionist records what
   // the risk-call resolved to, so a "handled" row behaves predictably and the
@@ -3008,6 +3013,7 @@ model Action {
   @@index([clinicId, status, severity])
   @@index([clinicId, type, status])
   @@index([clinicId, assigneeRole, status])
+  @@index([clinicId, severity, surfacedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

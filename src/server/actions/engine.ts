@@ -21,6 +21,7 @@ import type {
   ActionPayload,
   ActionSeverity,
   ActionType,
+  DetectorActionType,
 } from "@/lib/actions/types";
 import { defaultSeverity } from "@/lib/actions/types";
 import type { TenantScopedPrisma } from "@/lib/prisma";
@@ -96,7 +97,9 @@ export async function runActionEngine(
   };
 
   type Spec = {
-    type: ActionType;
+    // Typed against DETECTOR_ACTION_TYPES: a detector must be listed there to
+    // be run here, which is what keeps its rows under the 48h sweep.
+    type: DetectorActionType;
     run: () => Promise<ActionPayload[]>;
     severityFor?: (payload: ActionPayload, now: Date) => ActionSeverity;
     expiresAtFor?: (payload: ActionPayload, now: Date) => Date | null | undefined;

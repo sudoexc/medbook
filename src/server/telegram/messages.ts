@@ -68,6 +68,8 @@ const RU: Dict = {
     "Номер подтверждён, но этот номер уже связан с другой картой. Регистратура проверит и свяжется с вами.",
   "contact.keptExisting":
     "В вашей карте уже указан другой номер. Если он изменился, скажите об этом в регистратуре.",
+  "contact.nameMismatch":
+    "Номер получен, но в клинике он записан на пациента с другим именем. Регистратура проверит и свяжется с вами.",
   "contact.notOwn":
     "Нужен ваш собственный номер. Нажмите «Подтвердить номер через Telegram» в приложении клиники.",
   "contact.noCard":
@@ -128,6 +130,8 @@ const UZ: Dict = {
     "Raqam tasdiqlandi, lekin bu raqam boshqa kartaga bog'langan. Registratura tekshirib, siz bilan bog'lanadi.",
   "contact.keptExisting":
     "Kartangizda boshqa raqam ko'rsatilgan. Agar u o'zgargan bo'lsa, registraturaga ayting.",
+  "contact.nameMismatch":
+    "Raqam qabul qilindi, lekin klinikada u boshqa ismli bemor nomiga yozilgan. Registratura tekshirib, siz bilan bog'lanadi.",
   "contact.notOwn":
     "O'z raqamingiz kerak. Klinika ilovasida «Raqamni Telegram orqali tasdiqlash» tugmasini bosing.",
   "contact.noCard":

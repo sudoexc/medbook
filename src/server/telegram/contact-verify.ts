@@ -11,24 +11,32 @@
  * What the proof does:
  *   - the sender's own card gets the number as VERIFIED identity;
  *   - «I already have a card here» (MA-04): when the number is the verified
- *     identity of a clinic card nobody's Telegram is bound to, the account
- *     moves to THAT card, and the empty card the Mini App auto-created on
- *     first open is retired. If that auto card already holds history
- *     (visits booked in the Mini App, family links...), both stay as they
- *     are and reception gets a task to merge them by hand;
+ *     identity of a clinic card nobody's Telegram is bound to AND the
+ *     account goes by that card's name, the account moves to THAT card.
+ *     The card the Mini App auto-created on first open is retired; bookings
+ *     made on it that nobody has started yet move along first (a returning
+ *     patient usually books before confirming the number). If that auto
+ *     card holds real history (visits, documents, family links...), both
+ *     stay as they are and reception gets a task to merge them by hand;
  *   - a card that merely CLAIMED the number (typed into the Mini App by some
  *     other account) loses it.
+ * The number proves whose PHONE it is, not whose CARD: reception often
+ * writes a son's number on his elderly mother's card, and the migration
+ * verified every staff-typed number. So a name that does not match the
+ * clinic card links nothing: reception gets a task instead (audit Q-03).
  * A clinic card already bound to a different Telegram account is never
- * taken over: that is reception's call.
+ * taken over either: that is reception's call.
  */
 import { prisma } from "@/lib/prisma";
 import { phoneSearchVariants } from "@/lib/phone";
 import { runWithTenant } from "@/lib/tenant-context";
+import { nameOrders, sameNameLikely } from "@/lib/patients/identity-match";
 import {
+  autoCardFootprint,
   canonicalPhone,
   isRealPhone,
-  isRetirableAutoCard,
   isUniqueViolation,
+  moveBookingsToCard,
   releaseUnverifiedPhone,
   retiredCardData,
 } from "@/server/patient/phone-identity";
@@ -56,6 +64,11 @@ export type ContactVerifyResult =
   | { kind: "kept-existing"; patientId: string }
   /** Needs reception: nothing was relinked. */
   | { kind: "conflict"; patientId: string | null; clinicCardId: string }
+  /**
+   * The number is a clinic card's identity, but the account does not go by
+   * that card's name: nothing was linked, reception checks who it is.
+   */
+  | { kind: "unconfirmed"; patientId: string; clinicCardId: string }
   /** A concurrent write won the unique index; nothing changed. */
   | { kind: "failed" };
 
@@ -75,9 +88,32 @@ export function isOwnContact(
   );
 }
 
+/**
+ * Does the Telegram account go by the clinic card's name? Telegram writes the
+ * given name first («Dilnoza Karimova»), the clinic the surname first, and
+ * the card the Mini App keeps for the account carries either (it starts as
+ * the Telegram name; the booking form lets the patient correct it). Strict
+ * like the walk-in check: a surname or an initial alone is not a match.
+ */
+export function accountNameMatches(
+  contact: SharedContact,
+  senderCardName: string | null,
+  clinicCardName: string,
+): boolean {
+  const names: string[] = [];
+  const fromTelegram = [contact.first_name, contact.last_name]
+    .filter((v): v is string => !!v && v.trim().length > 0)
+    .join(" ");
+  if (fromTelegram) names.push(...nameOrders(fromTelegram));
+  if (senderCardName) names.push(...nameOrders(senderCardName));
+  return names.some((n) => sameNameLikely(n, clinicCardName));
+}
+
 type ConflictToRaise = {
   telegramCard: { id: string; fullName: string };
   clinicCard: { id: string; fullName: string };
+  /** "contactName": the number matched, the name did not. */
+  via: "contact" | "contactName";
 };
 
 export async function applyVerifiedContact(input: {
@@ -142,7 +178,7 @@ export async function applyVerifiedContact(input: {
           if (holder.telegramId) {
             // Bound to another Telegram account: never taken over here.
             if (sender) {
-              toRaise = { telegramCard: sender, clinicCard: holder };
+              toRaise = { telegramCard: sender, clinicCard: holder, via: "contact" };
             }
             return {
               kind: "conflict",
@@ -150,17 +186,39 @@ export async function applyVerifiedContact(input: {
               clinicCardId: holder.id,
             };
           }
+          if (!accountNameMatches(input.contact!, sender?.fullName ?? null, holder.fullName)) {
+            // His own number on someone else's card (his mother's, his
+            // child's): moving the account there would show him her
+            // conclusions and book his visits into her record. Nothing is
+            // linked; reception sees both names and decides.
+            if (!sender) return { kind: "no-card" };
+            toRaise = { telegramCard: sender, clinicCard: holder, via: "contactName" };
+            return { kind: "unconfirmed", patientId: sender.id, clinicCardId: holder.id };
+          }
           let retiredPatientId: string | null = null;
+          let movedAppointmentIds: string[] = [];
           if (sender) {
-            if (!(await isRetirableAutoCard(tx, sender.id))) {
+            const footprint = await autoCardFootprint(tx, sender.id);
+            if (footprint === "history") {
               // The auto card already holds history: two records of one
               // person. Merging them is a human decision.
-              toRaise = { telegramCard: sender, clinicCard: holder };
+              toRaise = { telegramCard: sender, clinicCard: holder, via: "contact" };
               return {
                 kind: "conflict",
                 patientId: sender.id,
                 clinicCardId: holder.id,
               };
+            }
+            if (footprint === "bookings") {
+              // Booked in the Mini App before confirming the number: the
+              // visits belong on the card with her history, where the
+              // doctor will look and reception will call.
+              movedAppointmentIds = await moveBookingsToCard(
+                tx,
+                clinicId,
+                sender.id,
+                holder.id,
+              );
             }
             // Free the telegramId before the clinic card takes it (one card
             // per account is a unique index).
@@ -185,7 +243,7 @@ export async function applyVerifiedContact(input: {
               action: "patient.telegram.contact_linked",
               entityType: "Patient",
               entityId: holder.id,
-              meta: { telegramId: tgId, retiredPatientId },
+              meta: { telegramId: tgId, retiredPatientId, movedAppointmentIds },
             },
           });
           return { kind: "linked", patientId: holder.id, retiredPatientId };
@@ -232,7 +290,7 @@ export async function applyVerifiedContact(input: {
         telegramId: tgId,
         telegramCard: conflict.telegramCard,
         clinicCard: conflict.clinicCard,
-        via: "contact",
+        via: conflict.via,
       });
     }
     return result;
@@ -248,6 +306,8 @@ export function contactReplyKey(result: ContactVerifyResult): string {
       return "contact.linked";
     case "conflict":
       return "contact.conflict";
+    case "unconfirmed":
+      return "contact.nameMismatch";
     case "kept-existing":
       return "contact.keptExisting";
     case "not-own-contact":

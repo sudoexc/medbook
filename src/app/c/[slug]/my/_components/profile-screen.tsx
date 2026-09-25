@@ -14,6 +14,7 @@ import { useT } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { useProfile, useUpdateProfile } from "../_hooks/use-profile";
 import { PhoneConfirm } from "./phone-confirm";
+import { useShareContact } from "../_hooks/use-share-contact";
 import { useTelegramWebApp } from "@/hooks/use-telegram-webapp";
 
 export function ProfileScreen() {
@@ -23,6 +24,7 @@ export function ProfileScreen() {
   const tg = useTelegramWebApp();
   const profile = useProfile();
   const update = useUpdateProfile();
+  const share = useShareContact();
 
   const [name, setName] = React.useState("");
   const [lang, setLang] = React.useState<"RU" | "UZ">("RU");
@@ -94,7 +96,7 @@ export function ProfileScreen() {
           </label>
           {/* Read-only: a number is set only by sharing the Telegram
               contact (audit PH-01). */}
-          <PhoneConfirm />
+          <PhoneConfirm share={share} />
           <div>
             <div className="mb-1 text-xs font-medium" style={{ color: "var(--tg-hint)" }}>
               {t.profile.langLabel}

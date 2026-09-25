@@ -167,6 +167,8 @@ export const uzDict = {
     contextChanged:
       "Bu yozuv boshqa odam uchun tayyorlangan edi. Kerakli odamni yozish uchun qaytadan boshlang.",
     restart: "Qaytadan boshlash",
+    confirmPhoneFirst:
+      "Yozilishdan oldin yuqoridagi tugma bilan raqamni tasdiqlang: shunda registratura sizga qo‘ng‘iroq qila oladi, klinika esa tashriflar tarixi bor kartangizni topadi.",
   },
   phoneConfirm: {
     label: "Telefon",

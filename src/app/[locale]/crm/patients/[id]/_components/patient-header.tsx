@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { ShieldCheckIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, formatPhone, type Locale } from "@/lib/format";
@@ -143,6 +144,22 @@ export function PatientHeader({
                 allowEmpty={false}
                 className="min-w-[160px]"
               />
+              {patient.phoneVerifiedAt === null &&
+              patient.phoneNormalized.startsWith("+") ? (
+                // The number came from the Mini App and is only a claim
+                // (audit PH-01): walk-ins and the kiosk will ask about this
+                // card until staff confirm it with the patient.
+                <button
+                  type="button"
+                  title={t("phoneUnverifiedHint")}
+                  disabled={patch.isPending}
+                  onClick={() => void save({ verifyPhone: true })}
+                  className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-warning/20 disabled:opacity-60"
+                >
+                  <ShieldCheckIcon className="size-3.5" />
+                  {t("verifyPhone")}
+                </button>
+              ) : null}
             </div>
 
             {/* Inline-edit grid: DOB, gender, source */}

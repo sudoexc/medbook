@@ -1,6 +1,8 @@
 /**
  * /api/crm/patients — list + create. See docs/TZ.md §6.4.
  */
+import { z } from "zod";
+
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -20,11 +22,47 @@ import {
   QueryPatientSchema,
 } from "@/server/schemas/patient";
 import { allocatePatientNumber } from "@/server/services/patient-number";
+import { birthYearOf } from "@/lib/patients/identity-match";
 import {
-  findVerifiedPhoneOwner,
+  contactPhoneStub,
   isUniqueViolation,
   releaseUnverifiedPhone,
+  verifyPhoneInPerson,
 } from "@/server/patient/phone-identity";
+import {
+  decidePhoneOwner,
+  type PhoneOwnerDecision,
+} from "@/server/patient/phone-owner";
+
+/**
+ * The create body plus staff's answer to «is this the number's owner?»
+ * (audit Q-03), asked only when the typed name does not settle it.
+ */
+const CreateBody = CreatePatientSchema.extend({
+  phoneOwner: z.enum(["same", "other"]).optional(),
+});
+
+/**
+ * The 409 for a number that already leads to an existing card: either the
+ * card to reuse (the dialogs book into it), or the card staff must be asked
+ * about. A mismatch never hands out a reusable id: the booking dialog and
+ * the inbox used to take that id and put a son's visit into his mother's
+ * card.
+ */
+function existingCardConflict(
+  decision: Exclude<PhoneOwnerDecision, { kind: "create" }>,
+): Response {
+  if (decision.kind === "ask") {
+    return err("conflict", 409, {
+      reason: "phone_owner_mismatch",
+      owner: decision.owner,
+    });
+  }
+  return err("conflict", 409, {
+    reason: "phone_already_exists",
+    patientId: decision.card.id,
+  });
+}
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -141,7 +179,7 @@ export const GET = createApiListHandler(
 export const POST = createApiHandler(
   {
     roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
-    bodySchema: CreatePatientSchema,
+    bodySchema: CreateBody,
   },
   async ({ request, body, ctx }) => {
     const phoneNormalized = normalizePhone(body.phone);
@@ -170,18 +208,27 @@ export const POST = createApiHandler(
     }
     const clinicId = ctx.clinicId;
 
-    // Only a VERIFIED owner of the number is «this patient already exists»
-    // (audit PH-01). A card that merely claims the number (a Telegram user
-    // typed it into the Mini App) must not be handed back: the booking and
-    // inbox dialogs reuse the returned id, which would put the real person's
-    // visits into a stranger's card. Such a claim gives the number up below.
-    const existing = await findVerifiedPhoneOwner(prisma, clinicId, phoneNormalized);
-    if (existing) {
-      return err("conflict", 409, {
-        reason: "phone_already_exists",
-        patientId: existing.id,
-      });
+    // «This patient already exists» is decided the way the walk-in decides
+    // it (audit Q-03, PH-01): a verified owner whose name and birth year
+    // match, a relative registered under the number by name, or a card
+    // staff explicitly confirmed. A different name, or a card that merely
+    // claims the number (typed into the Mini App), is a question for staff,
+    // never a silent reuse.
+    const probe = {
+      fullName,
+      birthYear: birthDate ? birthYearOf(birthDate) : parsedIdentity.birthYear,
+    };
+    const decide = () =>
+      decidePhoneOwner(prisma, clinicId, phoneNormalized, probe, body.phoneOwner);
+    const decision = await decide();
+    if (decision.kind === "use" && decision.verifyClaim) {
+      // Staff confirmed a Mini App claim is this patient (at the desk or on
+      // the phone with her): her Telegram card becomes the clinic's card
+      // instead of a duplicate taking the number away from it.
+      await verifyPhoneInPerson(prisma, clinicId, decision.card.id, "crm_create");
     }
+    if (decision.kind !== "create") return existingCardConflict(decision);
+    const { asContact } = decision;
 
     // Allocate the per-clinic patient number and create the row inside a
     // transaction so a unique-violation on the resulting (clinicId,
@@ -189,15 +236,21 @@ export const POST = createApiHandler(
     let created;
     try {
       created = await prisma.$transaction(async (tx) => {
-        await releaseUnverifiedPhone(tx, clinicId, phoneNormalized, "crm_create");
+        if (!asContact) {
+          await releaseUnverifiedPhone(tx, clinicId, phoneNormalized, "crm_create");
+        }
         const patientNumber = await allocatePatientNumber(clinicId, tx);
         const writeData = serializePatientForWrite({
           fullName,
-          phone: body.phone,
-          phoneNormalized,
+          // A relative using an owned number (staff answered «other»)
+          // keeps it as a contact phone: a `contact:` stub keeps the unique
+          // index intact and the number is never taken for his identity.
+          // Stored canonical, so the next visit finds him by it.
+          phone: asContact ? phoneNormalized : body.phone,
+          phoneNormalized: asContact ? contactPhoneStub() : phoneNormalized,
           // Typed by staff for the person in front of them (or on the phone
           // with them): the clinic's own record of the number.
-          phoneVerifiedAt: new Date(),
+          phoneVerifiedAt: asContact ? null : new Date(),
           birthDate,
           gender: body.gender ?? null,
           passport: body.passport ?? null,
@@ -222,13 +275,8 @@ export const POST = createApiHandler(
       if (!isUniqueViolation(e)) throw e;
       // A concurrent create took the number, or the Telegram account is
       // already bound to another card (one card per account, audit MA-04).
-      const owner = await findVerifiedPhoneOwner(prisma, clinicId, phoneNormalized);
-      if (owner) {
-        return err("conflict", 409, {
-          reason: "phone_already_exists",
-          patientId: owner.id,
-        });
-      }
+      const again = await decide();
+      if (again.kind !== "create") return existingCardConflict(again);
       return err("conflict", 409, { reason: "telegram_already_linked" });
     }
     const hydrated = hydratePatientForRead(created);

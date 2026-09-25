@@ -42,6 +42,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
+import {
+  PhoneOwnerMismatchError,
+  PhoneOwnerPrompt,
+  readPhoneOwnerMismatch,
+  type PhoneOwnerAnswer,
+  type PhoneOwnerSummary,
+} from "@/components/appointments/phone-owner-prompt";
 
 import type { InboxConversation, InboxMessage } from "../_hooks/types";
 import { conversationsKey } from "../_hooks/use-conversations";
@@ -1190,9 +1197,13 @@ function CreatePatientForm({
 
   const [fullName, setFullName] = React.useState("");
   const [phone, setPhone] = React.useState("");
+  // The number leads to a card with another name, or to an unconfirmed Mini
+  // App card (audit Q-03, PH-01): linking the chat to it needs an answer.
+  const [ownerConflict, setOwnerConflict] =
+    React.useState<PhoneOwnerSummary | null>(null);
 
   const create = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (phoneOwner?: PhoneOwnerAnswer) => {
       if (!fullName.trim()) {
         throw new Error("NAME_REQUIRED");
       }
@@ -1207,6 +1218,7 @@ function CreatePatientForm({
           fullName: fullName.trim(),
           phone: phone.trim(),
           source: "TELEGRAM",
+          ...(phoneOwner ? { phoneOwner } : {}),
         }),
       });
 
@@ -1221,6 +1233,8 @@ function CreatePatientForm({
           reason?: string;
           patientId?: string;
         } | null;
+        const owner = readPhoneOwnerMismatch(res.status, j);
+        if (owner) throw new PhoneOwnerMismatchError(owner);
         if (j?.reason === "phone_already_exists" && j.patientId) {
           patientId = j.patientId;
           reused = true;
@@ -1249,6 +1263,7 @@ function CreatePatientForm({
       return { id: patientId, reused };
     },
     onSuccess: ({ reused }) => {
+      setOwnerConflict(null);
       toast.success(reused ? t("patientLinked") : t("patientCreated"));
       void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
       void qc.invalidateQueries({
@@ -1262,6 +1277,10 @@ function CreatePatientForm({
       });
     },
     onError: (err) => {
+      if (err instanceof PhoneOwnerMismatchError) {
+        setOwnerConflict(err.owner);
+        return;
+      }
       toast.error(err instanceof Error ? err.message : "Create failed");
     },
   });
@@ -1281,7 +1300,10 @@ function CreatePatientForm({
           <Input
             id="tg-new-patient-name"
             value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            onChange={(e) => {
+              setFullName(e.target.value);
+              setOwnerConflict(null);
+            }}
             placeholder={t("fullNamePlaceholder")}
             autoComplete="off"
             className="h-8"
@@ -1297,15 +1319,28 @@ function CreatePatientForm({
             inputMode="tel"
             autoComplete="off"
             value={phone}
-            onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s()-]/g, ""))}
+            onChange={(e) => {
+              setPhone(e.target.value.replace(/[^\d+\s()-]/g, ""));
+              setOwnerConflict(null);
+            }}
             placeholder="+998 ..."
             className="h-8"
           />
         </div>
+        {ownerConflict ? (
+          <PhoneOwnerPrompt
+            owner={ownerConflict}
+            pending={create.isPending}
+            onAnswer={(answer) => create.mutate(answer)}
+          />
+        ) : null}
         <Button
-          onClick={() => create.mutate()}
+          onClick={() => create.mutate(undefined)}
           disabled={
-            create.isPending || fullName.trim() === "" || phone.trim() === ""
+            create.isPending ||
+            fullName.trim() === "" ||
+            phone.trim() === "" ||
+            ownerConflict !== null
           }
           size="sm"
           className="w-full"

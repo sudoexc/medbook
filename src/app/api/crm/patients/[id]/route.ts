@@ -4,6 +4,8 @@
  * Phase 17 Wave 1 — GET also records a PatientView audit row (5-minute
  * throttle) so PHI access is forensically reviewable from /crm/settings/audit.
  */
+import { z } from "zod";
+
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
@@ -17,9 +19,20 @@ import { UpdatePatientSchema } from "@/server/schemas/patient";
 import { recordPatientView } from "@/server/audit/patient-view";
 import { clientIpForAudit } from "@/lib/client-ip";
 import {
+  isRealPhone,
   isUniqueViolation,
   releaseUnverifiedPhone,
 } from "@/server/patient/phone-identity";
+
+/**
+ * The update body plus `verifyPhone`: staff confirm, with the patient in
+ * front of them or on the phone, that the number already on the card is
+ * hers (audit PH-01). A number that arrived from the Mini App stays a mere
+ * claim until then, and re-saving the form cannot bless it by accident.
+ */
+const PatchBody = UpdatePatientSchema.extend({
+  verifyPhone: z.boolean().optional(),
+});
 
 function idFromUrl(request: Request): string {
   // App Router passes params via the route handler signature, but we're
@@ -67,9 +80,10 @@ export const GET = createApiListHandler(
 export const PATCH = createApiHandler(
   {
     roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
-    bodySchema: UpdatePatientSchema,
+    bodySchema: PatchBody,
   },
-  async ({ request, body }) => {
+  async ({ request, body: rawBody }) => {
+    const { verifyPhone, ...body } = rawBody;
     const id = idFromUrl(request);
     const before = await prisma.patient.findUnique({ where: { id } });
     if (!before) return notFound();
@@ -83,6 +97,17 @@ export const PATCH = createApiHandler(
       // PH-01). Re-saving the form with an unchanged number verifies
       // nothing: that would bless a number a Telegram user typed.
       if (phoneChanged) data.phoneVerifiedAt = new Date();
+    }
+    if (
+      verifyPhone &&
+      !phoneChanged &&
+      before.phoneVerifiedAt === null &&
+      isRealPhone(before.phoneNormalized)
+    ) {
+      // The explicit «confirm the number» action: the Mini App claim becomes
+      // the clinic's record, so the next walk-in finds this card instead of
+      // asking about it again.
+      data.phoneVerifiedAt = new Date();
     }
 
     let after;

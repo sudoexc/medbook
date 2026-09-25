@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   birthYearOf,
   foldNameToken,
+  nameOrders,
   nameTokens,
   probeFromTyped,
+  sameNameLikely,
   samePersonLikely,
 } from "@/lib/patients/identity-match";
 
@@ -36,10 +38,19 @@ describe("samePersonLikely", () => {
     expect(samePersonLikely(probeFromTyped("Каримов Тимур 2012", TODAY), mother)).toBe(false);
   });
 
-  it("the owner typed the doctor's way (surname + initial) is her", () => {
-    expect(samePersonLikely(probeFromTyped("Каримова Д", TODAY), mother)).toBe(true);
+  it("the owner written out in full, with her birth year, is her (either alphabet)", () => {
     expect(samePersonLikely(probeFromTyped("Каримова Дилноза 1985", TODAY), mother)).toBe(true);
-    expect(samePersonLikely(probeFromTyped("Karimova Dilnoza", TODAY), mother)).toBe(true);
+    expect(samePersonLikely(probeFromTyped("Karimova Dilnoza 1985", TODAY), mother)).toBe(true);
+    expect(
+      samePersonLikely(probeFromTyped("Каримова Дилноза Р 1985", TODAY), mother),
+    ).toBe(true);
+  });
+
+  it("an initial is «not sure», never «same»: it fits the whole family", () => {
+    // Surname + initial is how the doctor writes, and exactly how a father
+    // and his son look alike.
+    expect(samePersonLikely(probeFromTyped("Каримова Д 1985", TODAY), mother)).toBe(false);
+    expect(samePersonLikely(probeFromTyped("Каримова Д. 1985", TODAY), mother)).toBe(false);
   });
 
   it("a surname alone is never enough: relatives share it", () => {
@@ -59,9 +70,52 @@ describe("samePersonLikely", () => {
     expect(samePersonLikely(probeFromTyped("Каримов Рустам 1975", TODAY), father)).toBe(true);
   });
 
-  it("an unknown birth date on either side does not block a name match", () => {
+  it("a birth year known on one side only is «not sure»", () => {
     const noDate = { fullName: "Каримова Дилноза", birthDate: null };
-    expect(samePersonLikely(probeFromTyped("Каримова Дилноза 1985", TODAY), noDate)).toBe(true);
+    expect(samePersonLikely(probeFromTyped("Каримова Дилноза 1985", TODAY), noDate)).toBe(false);
+    expect(samePersonLikely(probeFromTyped("Каримова Дилноза", TODAY), mother)).toBe(false);
+    // Neither side knows the year: the full name decides.
+    expect(samePersonLikely(probeFromTyped("Каримова Дилноза", TODAY), noDate)).toBe(true);
+  });
+
+  it("review Q-03 family cases: none of them is silently the same person", () => {
+    // The son typed the doctor's way against his father's dateless card.
+    const father = { fullName: "Каримов Тахир", birthDate: null };
+    expect(samePersonLikely(probeFromTyped("Каримов Т 2012", TODAY), father)).toBe(false);
+    // The son written out against a dateless card that holds only an initial.
+    const initialCard = { fullName: "Каримов Т", birthDate: null };
+    expect(samePersonLikely(probeFromTyped("Каримов Тимур 2012", TODAY), initialCard)).toBe(false);
+    // A daughter-in-law typed with an initial against the mother-in-law.
+    const motherInLaw = {
+      fullName: "Каримова Дильбар Анваровна",
+      birthDate: new Date(Date.UTC(1975, 0, 1)),
+    };
+    expect(samePersonLikely(probeFromTyped("Каримова Д", TODAY), motherInLaw)).toBe(false);
+  });
+});
+
+describe("sameNameLikely", () => {
+  it("compares names only: surname and full given name, patronymic when both have one", () => {
+    expect(sameNameLikely("Karimova Dilnoza", "Каримова Дилноза Рустамовна")).toBe(true);
+    expect(sameNameLikely("Каримова Дилноза Р.", "Каримова Дилноза Рустамовна")).toBe(true);
+    expect(sameNameLikely("Каримова Дилноза Анваровна", "Каримова Дилноза Рустамовна")).toBe(false);
+    expect(sameNameLikely("Каримов Тимур", "Каримова Дилноза")).toBe(false);
+    expect(sameNameLikely("Каримова Д", "Каримова Дилноза")).toBe(false);
+    expect(sameNameLikely("Dilnoza", "Каримова Дилноза")).toBe(false);
+  });
+
+  it("a one-letter Cyrillic initial that folds to two Latin letters is still an initial", () => {
+    // «Ш» → "sh": without counting written letters it would pass as a name.
+    expect(sameNameLikely("Юсупов Ш", "Юсупов Ш")).toBe(false);
+    expect(sameNameLikely("Yusupov Sh.", "Yusupov Sh.")).toBe(false);
+    expect(sameNameLikely("Юсупов Шерзод", "Yusupov Sherzod")).toBe(true);
+  });
+});
+
+describe("nameOrders", () => {
+  it("adds the surname-first order of a Telegram-style name", () => {
+    expect(nameOrders("Dilnoza Karimova")).toEqual(["Dilnoza Karimova", "Karimova Dilnoza"]);
+    expect(nameOrders("  Dilnoza  ")).toEqual(["Dilnoza"]);
   });
 });
 

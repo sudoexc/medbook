@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   bookHref,
   bookingContextMatches,
+  contactStepPending,
 } from "@/app/c/[slug]/my/_lib/booking-context";
 
 /**
@@ -78,5 +79,46 @@ describe("wizard navigation never builds a context-less booking URL", () => {
       )
       .filter((f) => readFileSync(f, "utf8").includes("/my/book/"));
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Review of MA-04: a returning patient's first Mini App booking landed on the
+ * empty card the Mini App created (no number, no history), because the
+ * Telegram contact step was optional. A self booking from a card with no
+ * number now waits for it, but never for good.
+ */
+describe("contactStepPending", () => {
+  const base = {
+    onBehalfOf: null,
+    hasPhone: false,
+    contactSupported: true,
+    contactStatus: "idle",
+  };
+
+  it("a self booking from a card with no number waits for the contact step", () => {
+    expect(contactStepPending(base)).toBe(true);
+    expect(contactStepPending({ ...base, contactStatus: "asking" })).toBe(true);
+    expect(contactStepPending({ ...base, contactStatus: "waiting" })).toBe(true);
+  });
+
+  it("a card with a number, or a relative's booking, does not wait", () => {
+    expect(contactStepPending({ ...base, hasPhone: true })).toBe(false);
+    expect(contactStepPending({ ...base, onBehalfOf: "rel_mom" })).toBe(false);
+  });
+
+  it("never blocks for good: an old Telegram, or a share reception has to sort out", () => {
+    expect(contactStepPending({ ...base, contactSupported: false })).toBe(false);
+    expect(contactStepPending({ ...base, contactStatus: "unsupported" })).toBe(false);
+    expect(contactStepPending({ ...base, contactStatus: "failed" })).toBe(false);
+  });
+
+  it("the confirm screen actually gates «Записаться» on it", () => {
+    const src = readFileSync(
+      path.join(process.cwd(), "src/app/c/[slug]/my/_components/book/book-confirm.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/contactStepPending\(/);
+    expect(src).toMatch(/!waitingForContact/);
   });
 });

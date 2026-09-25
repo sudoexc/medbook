@@ -55,6 +55,7 @@ const t = {
     touchToStart: "Коснитесь экрана для начала",
     isThisYou: "Это вы?",
     isThisYouDesc: "Этот номер записан на пациента",
+    isThisYouTelegramDesc: "Этот номер указали при записи через Telegram-бот клиники на имя",
     yesItsMe: "Да, это я",
     notMe: "Нет, это не я",
     enterYourName: "Введите ваше ФИО, мы запишем вас отдельно:",
@@ -106,6 +107,7 @@ const t = {
     touchToStart: "Boshlash uchun ekranga bosing",
     isThisYou: "Bu sizmisiz?",
     isThisYouDesc: "Bu raqam quyidagi bemor nomiga yozilgan",
+    isThisYouTelegramDesc: "Bu raqam klinikaning Telegram-boti orqali yozilishda quyidagi ism bilan ko'rsatilgan",
     yesItsMe: "Ha, bu men",
     notMe: "Yo'q, bu men emasman",
     enterYourName: "F.I.Sh. kiriting, sizni alohida ro'yxatga olamiz:",
@@ -229,6 +231,10 @@ export default function KioskPage() {
   // not them (a son with his mother's phone). The walk-in then registers
   // him by name instead of queueing her (audit Q-03).
   const [notOwner, setNotOwner] = useState(false);
+  // The card found holds the number only as a Mini App claim (audit PH-01):
+  // the question then names the Telegram booking, so someone whose number
+  // a stranger typed into the bot recognises it is not them.
+  const [foundUnverified, setFoundUnverified] = useState(false);
   const [preBooked, setPreBooked] = useState<PreBooked[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<UpcomingBooking[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -305,6 +311,7 @@ export default function KioskPage() {
     setPatientName("");
     setFoundPatientId(null);
     setNotOwner(false);
+    setFoundUnverified(false);
     setPreBooked([]);
     setUpcomingBookings([]);
     setSelectedDoctor(null);
@@ -326,6 +333,7 @@ export default function KioskPage() {
       setNotOwner(false);
       if (checkinData.patient) {
         setFoundPatientId(checkinData.patient.id);
+        setFoundUnverified(checkinData.patient.unverified === true);
         setPatientName(checkinData.patient.fullName);
         setPreBooked(checkinData.appointments || []);
         setUpcomingBookings(checkinData.upcoming || []);
@@ -334,6 +342,7 @@ export default function KioskPage() {
         setStep("is-this-you");
       } else {
         setFoundPatientId(null);
+        setFoundUnverified(false);
         setPatientName("");
         setStep("enter-name");
       }
@@ -627,7 +636,9 @@ export default function KioskPage() {
                 <User className="h-10 w-10" style={{ color: "var(--public-accent)" }} />
               </div>
               <h1 className="text-3xl font-bold mb-2">{L.isThisYou}</h1>
-              <p className="text-lg text-[var(--public-fg-muted)] mb-2">{L.isThisYouDesc}</p>
+              <p className="text-lg text-[var(--public-fg-muted)] mb-2">
+                {foundUnverified ? L.isThisYouTelegramDesc : L.isThisYouDesc}
+              </p>
               <p className="text-3xl font-bold mb-8">{patientName}</p>
 
               <div className="grid gap-3 max-w-sm mx-auto">

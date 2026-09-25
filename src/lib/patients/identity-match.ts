@@ -8,7 +8,8 @@
  * birth year the doctor habitually appends) is compared with that card
  * before the visit is attached. The comparison is deliberately strict:
  * a false «different» only costs staff one confirmation click, while a false
- * «same» puts medical data into a stranger's record.
+ * «same» puts medical data into a stranger's record. Hence initials and a
+ * birth year known on one side only never count as a match.
  *
  * Pure module, shared by the server (walk-in resolution) and tests.
  */
@@ -70,31 +71,79 @@ function tokensCompatible(a: string, b: string): boolean {
   return a.startsWith(b) || b.startsWith(a);
 }
 
+/** A name token and whether it was written as an initial («Т», «Т.»). */
+type NamePart = { folded: string; initial: boolean };
+
+function nameParts(fullName: string): NamePart[] {
+  const parts: NamePart[] = [];
+  for (const raw of fullName.split(/\s+/)) {
+    const folded = foldNameToken(raw);
+    if (!folded) continue;
+    // Counted before folding: «Ш» folds to two Latin letters, yet it is one
+    // written letter. A trailing dot marks «Sh.» as an initial too.
+    const letters = raw.replace(/[^\p{L}]/gu, "").length;
+    parts.push({ folded, initial: letters <= 1 || /\.$/.test(raw) });
+  }
+  return parts;
+}
+
 /**
- * True only when the typed identity is very likely the card's owner:
- *   - surnames equal (after alphabet folding), so «Каримов» ≠ «Каримова»;
- *   - both carry a given name and one is a prefix of the other;
- *   - patronymics, when both are present, likewise;
- *   - birth years, when both are known, equal.
+ * The same two names, written out? Surname, then given name, then
+ * patronymic (the clinic's writing order):
+ *   - surnames equal after alphabet folding, so «Каримов» ≠ «Каримова»;
+ *   - given names BOTH written in full and equal. An initial fits the whole
+ *     family: «Каримов Т» is Тахир the father and Тимур the son alike;
+ *   - patronymics, when both are present, compatible (an initial may stand
+ *     for the other): the given name already told siblings apart.
  * A surname alone is never enough: relatives share it.
+ */
+export function sameNameLikely(a: string, b: string): boolean {
+  const x = nameParts(a);
+  const y = nameParts(b);
+  if (x.length < 2 || y.length < 2) return false;
+  if (x[0]!.initial || y[0]!.initial || x[0]!.folded !== y[0]!.folded) {
+    return false;
+  }
+  if (x[1]!.initial || y[1]!.initial || x[1]!.folded !== y[1]!.folded) {
+    return false;
+  }
+  if (
+    x.length >= 3 &&
+    y.length >= 3 &&
+    !tokensCompatible(x[2]!.folded, y[2]!.folded)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * True only when the typed identity is very likely the card's owner: the
+ * names match (see `sameNameLikely`) and so do the birth years. A year
+ * known on one side only is «not sure», not «same»: the father's card
+ * without a date and his namesake son typed «2012» look identical
+ * otherwise. «Not sure» makes staff confirm, which is the point.
  */
 export function samePersonLikely(
   probe: IdentityProbe,
   card: IdentityCard,
 ): boolean {
-  const a = nameTokens(probe.fullName);
-  const b = nameTokens(card.fullName);
-  if (a.length < 2 || b.length < 2) return false;
-  if (a[0] !== b[0]) return false;
-  if (!tokensCompatible(a[1]!, b[1]!)) return false;
-  if (a.length >= 3 && b.length >= 3 && !tokensCompatible(a[2]!, b[2]!)) {
-    return false;
-  }
+  if (!sameNameLikely(probe.fullName, card.fullName)) return false;
   const cardYear = birthYearOf(card.birthDate);
-  if (probe.birthYear !== null && cardYear !== null && probe.birthYear !== cardYear) {
-    return false;
-  }
-  return true;
+  if ((probe.birthYear === null) !== (cardYear === null)) return false;
+  return probe.birthYear === cardYear;
+}
+
+/**
+ * A name in the clinic's order and in the «given name first» order a
+ * Telegram profile uses («Dilnoza Karimova» → «Karimova Dilnoza»), so one
+ * person written both ways still compares equal.
+ */
+export function nameOrders(fullName: string): string[] {
+  const words = fullName.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return [fullName.trim()];
+  const lastFirst = [words[words.length - 1]!, ...words.slice(0, -1)].join(" ");
+  return [words.join(" "), lastFirst];
 }
 
 /**

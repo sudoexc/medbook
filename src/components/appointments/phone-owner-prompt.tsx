@@ -11,15 +11,21 @@ import { Button } from "@/components/ui/button";
  *
  * A walk-in typed as name + phone used to land silently in whichever card
  * held the number, so a son registered with his mother's phone was treated
- * in her record. `/api/crm/appointments/walkin` now answers 409
- * `phone_owner_mismatch` with the owner, and the doctor's and the front
- * desk's dialogs render this prompt; the chosen answer is re-sent as
- * `phoneOwner`.
+ * in her record. `/api/crm/appointments/walkin` and `/api/crm/patients`
+ * now answer 409 `phone_owner_mismatch` with the owner, and the doctor's,
+ * the front desk's, the booking and the inbox dialogs render this prompt;
+ * the chosen answer is re-sent as `phoneOwner`.
+ *
+ * `unverified`: the card only CLAIMS the number (a Telegram user typed it
+ * into the Mini App, audit PH-01). Staff then ask whether the patient booked
+ * through the bot: «same» keeps her Telegram and bookings on that card,
+ * «other» gives the number to a new card.
  */
 export type PhoneOwnerSummary = {
   id: string;
   fullName: string;
   birthYear: number | null;
+  unverified?: boolean;
 };
 
 export type PhoneOwnerAnswer = "same" | "other";
@@ -46,6 +52,7 @@ export function readPhoneOwnerMismatch(
     id: o.id,
     fullName: o.fullName,
     birthYear: typeof o.birthYear === "number" ? o.birthYear : null,
+    unverified: o.unverified === true,
   };
 }
 
@@ -66,12 +73,14 @@ export function PhoneOwnerPrompt({
     >
       <p className="flex items-center gap-2 font-medium text-foreground">
         <UsersIcon className="size-4 shrink-0" />
-        {t("title")}
+        {owner.unverified ? t("claimTitle") : t("title")}
       </p>
       <p className="text-muted-foreground">
-        {owner.birthYear !== null
-          ? t("bodyWithYear", { name: owner.fullName, year: owner.birthYear })
-          : t("body", { name: owner.fullName })}
+        {owner.unverified
+          ? t("claimBody", { name: owner.fullName })
+          : owner.birthYear !== null
+            ? t("bodyWithYear", { name: owner.fullName, year: owner.birthYear })
+            : t("body", { name: owner.fullName })}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -92,7 +101,9 @@ export function PhoneOwnerPrompt({
           {t("other")}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">{t("otherHint")}</p>
+      <p className="text-xs text-muted-foreground">
+        {owner.unverified ? t("claimOtherHint") : t("otherHint")}
+      </p>
     </div>
   );
 }

@@ -36,30 +36,25 @@ import {
   birthDateFromYear,
   parsePatientIdentity,
 } from "@/lib/patients/parse-identity";
-import {
-  birthYearOf,
-  samePersonLikely,
-  type IdentityProbe,
-} from "@/lib/patients/identity-match";
+import type { IdentityProbe } from "@/lib/patients/identity-match";
 import {
   contactPhoneStub,
-  findContactSharers,
-  findVerifiedPhoneOwner,
   isUniqueViolation,
   releaseUnverifiedPhone,
+  verifyPhoneInPerson,
 } from "@/server/patient/phone-identity";
+import {
+  decidePhoneOwner,
+  type PhoneOwnerAnswer,
+  type PhoneOwnerSummary,
+} from "@/server/patient/phone-owner";
 
 /**
- * The caller's answer to «is this the person the number belongs to?»:
- *   - "same"  → attach to the number's owner, whatever name was typed
- *               (the kiosk's «Это вы?» → «Да», staff's explicit choice);
- *   - "other" → someone else using that number (a child with the mother's
- *               phone): find or create his own card, the number stays a
- *               contact phone.
- * Omitted, the typed name decides, and a mismatch comes back as
- * `phone_owner_mismatch` for the caller to ask.
+ * The caller's answer to «is this the person the number belongs to?»
+ * (see `decidePhoneOwner`). Omitted, the typed name decides, and anything
+ * uncertain comes back as `phone_owner_mismatch` for the caller to ask.
  */
-export type PhoneOwnerAnswer = "same" | "other";
+export type { PhoneOwnerAnswer, PhoneOwnerSummary };
 
 /** Existing patient by id, or details to find-or-create by phone. */
 export type WalkinPatientInput =
@@ -70,13 +65,6 @@ export type WalkinPatientInput =
       lang?: "RU" | "UZ";
       phoneOwner?: PhoneOwnerAnswer;
     };
-
-/** Who the typed number already belongs to, for the confirmation prompt. */
-export type PhoneOwnerSummary = {
-  id: string;
-  fullName: string;
-  birthYear: number | null;
-};
 
 export type RegisterWalkinInput = {
   clinicId: string;
@@ -115,7 +103,8 @@ export type RegisterWalkinResult =
       ok: false;
       /**
        * The number belongs to a card whose name does not match what was
-       * typed. Nothing was created; the caller shows the owner and asks.
+       * typed, or is only claimed by a Mini App card. Nothing was created;
+       * the caller shows the card and asks.
        */
       reason: "phone_owner_mismatch";
       owner: PhoneOwnerSummary;
@@ -134,19 +123,16 @@ type ResolvedByPhone =
  *
  * The number alone never decides (audit Q-03): the old path took whichever
  * card had the number and dropped the typed name, so a son registered with
- * his mother's phone was treated in HER record. Now:
- *   1. only a VERIFIED owner of the number is a candidate (PH-01: a number
- *      someone typed into the Mini App proves nothing);
- *   2. the owner is used when the typed name matches, or the caller said
- *      "same";
- *   3. otherwise a relative already registered under this number (contact
- *      sharer) whose name matches is used;
- *   4. otherwise, if an owner exists and the caller has not answered, the
- *      mismatch goes back to the caller; with "other" a new card is created
- *      that keeps the number as a contact phone only.
- * With no verified owner, the new card becomes the owner (the person is
- * standing at the desk or the kiosk), and any unverified claim on the
- * number is released first.
+ * his mother's phone was treated in HER record. `decidePhoneOwner` holds the
+ * rules shared with the CRM «new patient» form; this function carries them
+ * out:
+ *   - an existing card is used as is, and a Mini App claim the person just
+ *     confirmed becomes verified (her bookings and Telegram stay with it,
+ *     instead of a second card taking the number and stranding them);
+ *   - a question goes back to the caller as `phone_owner_mismatch`;
+ *   - a new card either owns the number (any unverified claim on it is
+ *     released first: the person is standing at the desk or the kiosk) or,
+ *     for a relative on an owned number, keeps it as a contact phone.
  *
  * Creation runs outside the queue's serializable transaction, so two
  * simultaneous presses can both try to create the owner; the loser hits the
@@ -168,32 +154,26 @@ async function resolvePatientByPhone(
   const probe: IdentityProbe = { fullName, birthYear: parsed.birthYear };
 
   for (let attempt = 0; ; attempt += 1) {
-    const owner = await findVerifiedPhoneOwner(prisma, clinicId, phoneNorm);
-    if (owner && typed.phoneOwner === "same") {
-      return { ok: true, patient: { id: owner.id, fullName: owner.fullName } };
+    const decision = await decidePhoneOwner(
+      prisma,
+      clinicId,
+      phoneNorm,
+      probe,
+      typed.phoneOwner,
+    );
+    if (decision.kind === "ask") {
+      return { ok: false, reason: "phone_owner_mismatch", owner: decision.owner };
     }
-    if (owner && typed.phoneOwner !== "other" && samePersonLikely(probe, owner)) {
-      return { ok: true, patient: { id: owner.id, fullName: owner.fullName } };
-    }
-    const sharers = await findContactSharers(prisma, clinicId, phoneNorm);
-    const sharer = sharers.find((s) => samePersonLikely(probe, s));
-    if (sharer) {
-      return { ok: true, patient: { id: sharer.id, fullName: sharer.fullName } };
-    }
-    if (owner && typed.phoneOwner !== "other") {
-      return {
-        ok: false,
-        reason: "phone_owner_mismatch",
-        owner: {
-          id: owner.id,
-          fullName: owner.fullName,
-          birthYear: birthYearOf(owner.birthDate),
-        },
-      };
+    if (decision.kind === "use") {
+      const { card } = decision;
+      if (decision.verifyClaim) {
+        await verifyPhoneInPerson(prisma, clinicId, card.id, "walkin");
+      }
+      return { ok: true, patient: { id: card.id, fullName: card.fullName } };
     }
 
     // A second person on an owned number keeps it as a contact phone only.
-    const asContact = owner !== null;
+    const { asContact } = decision;
     const birthDate =
       parsed.birthYear !== null ? birthDateFromYear(parsed.birthYear) : null;
     try {

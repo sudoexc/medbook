@@ -595,7 +595,7 @@ describe("registerWalkin — find-or-create patient by phone (W4)", () => {
     const result = await registerWalkin({
       clinicId: "c1",
       doctorId: "doc_alpha",
-      patient: { fullName: "Известный И", phone: "901234567" },
+      patient: { fullName: "Известный Иван", phone: "901234567" },
     });
 
     expect(result.ok).toBe(true);
@@ -681,6 +681,7 @@ describe("registerWalkin — a number shared in a family (audit Q-03)", () => {
         id: "pat_mother",
         fullName: "Каримова Дилноза Рустамовна",
         birthYear: 1985,
+        unverified: false,
       },
     });
     const { prisma } = await import("@/lib/prisma");
@@ -707,6 +708,30 @@ describe("registerWalkin — a number shared in a family (audit Q-03)", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("phone_owner_mismatch");
+  });
+
+  it("review: the son typed the doctor's way («Каримов Т 2012») is not silently his dateless father", async () => {
+    seedDoctor();
+    seedPatient({
+      id: "pat_father",
+      fullName: "Каримов Тахир",
+      phone: "+998901234567",
+      phoneNormalized: "+998901234567",
+      birthDate: null,
+    });
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримов Т 2012", phone: "901234567" },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "phone_owner_mismatch",
+      owner: { id: "pat_father", unverified: false },
+    });
+    expect(state.appointments).toHaveLength(0);
   });
 
   it("phoneOwner=same: staff confirmed it is the owner, whatever was typed", async () => {
@@ -805,18 +830,23 @@ describe("registerWalkin — a number shared in a family (audit Q-03)", () => {
 });
 
 describe("registerWalkin — a number typed into the Mini App is not identity (audit PH-01)", () => {
-  it("an unverified claim on the number is never matched; the person at the desk gets a verified card and the claim loses the number", async () => {
-    seedDoctor();
-    // A Telegram user typed a stranger's number into his own Mini App card
-    // and renamed himself after her.
-    seedPatient({
-      id: "pat_attacker",
+  function seedClaim() {
+    // A Telegram card whose number was typed into the Mini App: maybe her
+    // own, maybe a stranger renamed himself after her. The name proves
+    // nothing, so only the person at the desk can say.
+    return seedPatient({
+      id: "pat_claim",
       fullName: "Юсупова Лола",
       phone: "+998901234567",
       phoneNormalized: "+998901234567",
       phoneVerifiedAt: null,
       source: "TELEGRAM",
     });
+  }
+
+  it("a claim is never matched by name alone: the caller is asked, nothing is created or released", async () => {
+    seedDoctor();
+    seedClaim();
     const registerWalkin = await loadRegisterWalkin();
 
     const result = await registerWalkin({
@@ -824,20 +854,68 @@ describe("registerWalkin — a number typed into the Mini App is not identity (a
       doctorId: "doc_alpha",
       patient: { fullName: "Юсупова Лола", phone: "901234567" },
     });
+    expect(result).toEqual({
+      ok: false,
+      reason: "phone_owner_mismatch",
+      owner: { id: "pat_claim", fullName: "Юсупова Лола", birthYear: null, unverified: true },
+    });
+    const { prisma } = await import("@/lib/prisma");
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+    expect(state.patients.find((p) => p.id === "pat_claim")!.phoneNormalized).toBe(
+      "+998901234567",
+    );
+    expect(state.appointments).toHaveLength(0);
+  });
+
+  it("review: «same» keeps a returning Mini App patient on her own card and verifies the number there", async () => {
+    seedDoctor();
+    seedClaim();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Юсупова Лола", phone: "901234567", phoneOwner: "same" },
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.patient.id).not.toBe("pat_attacker");
+    expect(result.patient.id).toBe("pat_claim");
+    expect(state.appointments[0]!.patientId).toBe("pat_claim");
+    const claim = state.patients.find((p) => p.id === "pat_claim")!;
+    // Not released, not duplicated: the number is now her verified identity.
+    expect(claim.phoneNormalized).toBe("+998901234567");
+    expect(claim.phoneVerifiedAt).toBeInstanceOf(Date);
+    expect(state.patients).toHaveLength(1);
+    expect(state.audits).toContainEqual({
+      action: "patient.phone_verified_in_person",
+      entityId: "pat_claim",
+    });
+  });
+
+  it("«other»: the person at the desk gets a verified card and the claim loses the number", async () => {
+    seedDoctor();
+    seedClaim();
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Юсупова Лола", phone: "901234567", phoneOwner: "other" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).not.toBe("pat_claim");
     expect(state.appointments[0]!.patientId).toBe(result.patient.id);
 
     const real = state.patients.find((p) => p.id === result.patient.id)!;
     expect(real.phoneNormalized).toBe("+998901234567");
     expect(real.phoneVerifiedAt).toBeInstanceOf(Date);
-    const claim = state.patients.find((p) => p.id === "pat_attacker")!;
+    const claim = state.patients.find((p) => p.id === "pat_claim")!;
     expect(claim.phone).toBe("");
-    expect(claim.phoneNormalized).toBe("released:pat_attacker");
+    expect(claim.phoneNormalized).toBe("released:pat_claim");
     expect(state.audits).toContainEqual({
       action: "patient.phone_claim_released",
-      entityId: "pat_attacker",
+      entityId: "pat_claim",
     });
   });
 });

@@ -9,7 +9,10 @@ import {
   realClientIp,
 } from "@/server/kiosk/device";
 import { ticketNumberFor } from "@/server/services/ticket-number";
-import { findVerifiedPhoneOwner } from "@/server/patient/phone-identity";
+import {
+  findPhoneClaim,
+  findVerifiedPhoneOwner,
+} from "@/server/patient/phone-identity";
 import { z } from "zod";
 
 // GET /api/kiosk/checkin?phone=... — find today's pre-booked appointments for this phone.
@@ -37,15 +40,27 @@ export async function GET(request: Request) {
 
   const clinic = { id: device.clinicId };
 
-  // Only the VERIFIED owner of the number, scoped to the resolved clinic so
-  // an anonymous kiosk request can't probe another tenant's patient base.
-  // A number someone typed into the Mini App proves nothing (audit PH-01),
-  // and a relative who merely uses this number as a contact is not «you»:
-  // the kiosk asks «Это вы? И.И.» about the owner and, on «Нет», registers
-  // the person by name (audit Q-03).
-  const patient = await runWithTenant({ kind: "SYSTEM" }, () =>
-    findVerifiedPhoneOwner(prisma, clinic.id, phone),
-  );
+  // The VERIFIED owner of the number, scoped to the resolved clinic so an
+  // anonymous kiosk request can't probe another tenant's patient base. A
+  // relative who merely uses this number as a contact is not «you»: the
+  // kiosk asks «Это вы? И.И.» about the owner and, on «Нет», registers the
+  // person by name (audit Q-03).
+  //
+  // With no verified owner, the card that only CLAIMS the number (typed
+  // into the Mini App) goes through the same question, flagged so the
+  // kiosk says the number came from a Telegram booking. A claim proves
+  // nothing on its own (PH-01), but hiding it stranded every returning
+  // Mini App patient: «first visit», her booking invisible, and the walk-in
+  // created a second card that took her number away. «Да» keeps her on her
+  // own card; «Нет» registers the person by name and the claim loses the
+  // number.
+  const found = await runWithTenant({ kind: "SYSTEM" }, async () => {
+    const owner = await findVerifiedPhoneOwner(prisma, clinic.id, phone);
+    if (owner) return { card: owner, unverified: false };
+    const claim = await findPhoneClaim(prisma, clinic.id, phone);
+    return claim ? { card: claim, unverified: true } : null;
+  });
+  const patient = found?.card ?? null;
 
   if (!patient) {
     return Response.json({ patient: null, appointments: [], upcoming: [] });
@@ -99,7 +114,11 @@ export async function GET(request: Request) {
   return Response.json({
     // Masked, no phone: whoever stands at the tablet typed a number, which
     // does not make them that patient.
-    patient: { id: patient.id, fullName: maskPatientName(patient.fullName) },
+    patient: {
+      id: patient.id,
+      fullName: maskPatientName(patient.fullName),
+      unverified: found!.unverified,
+    },
     appointments: today.map((a) => ({
       id: a.id,
       doctorName: a.doctor.nameRu,

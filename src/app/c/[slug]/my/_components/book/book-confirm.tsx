@@ -12,13 +12,16 @@ import { useFamily } from "../../_hooks/use-family";
 import {
   bookHref,
   bookingContextMatches,
+  contactStepPending,
 } from "../../_lib/booking-context";
+import { useShareContact } from "../../_hooks/use-share-contact";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useT } from "../mini-i18n";
 import {
   MButton,
   MCard,
   MEmpty,
+  MHint,
   MSpinner,
   formatDateISO,
   formatSum,
@@ -50,6 +53,7 @@ export function BookConfirm() {
   const tg = useTelegramWebApp();
   const { onBehalfOf } = useActiveContext();
   const family = useFamily();
+  const share = useShareContact();
 
   // Whom this booking is for (audit MA-02). For a relative the name comes
   // from the family list, never from the owner's profile, and a relative
@@ -71,16 +75,19 @@ export function BookConfirm() {
   const [name, setName] = React.useState<string>(
     isRealName(patient?.fullName) ? patient!.fullName! : "",
   );
-  // Sync the profile name into the form ONCE per patient load. Using
-  // `!name` as a guard re-populated the field every time the user cleared
-  // it, which made it impossible to edit out a seeded "Dev User".
-  const syncedRef = React.useRef(false);
+  // Sync the profile name into the form ONCE per card. Using `!name` as a
+  // guard re-populated the field every time the user cleared it, which made
+  // it impossible to edit out a seeded "Dev User". Keyed by card id: when
+  // confirming the number moves the account to the clinic's card, the form
+  // must show THAT card's name, or booking would rename it to the Telegram
+  // name the auto card carried.
+  const syncedForRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!patient) return;
-    if (isRealName(patient.fullName) && !syncedRef.current) {
-      setName(patient.fullName!);
-      syncedRef.current = true;
-    }
+    if (!patient || syncedForRef.current === patient.id) return;
+    const first = syncedForRef.current === null;
+    syncedForRef.current = patient.id;
+    if (isRealName(patient.fullName)) setName(patient.fullName!);
+    else if (!first) setName("");
   }, [patient]);
 
   const selectedServices =
@@ -103,9 +110,17 @@ export function BookConfirm() {
   }
 
   // The phone is not a form field any more (audit PH-01): the clinic's
-  // number or the Telegram-confirmed one is shown read-only below.
+  // number or the Telegram-confirmed one is shown read-only below. A card
+  // with no number waits for the Telegram contact step (audit MA-04).
+  const waitingForContact = contactStepPending({
+    onBehalfOf,
+    hasPhone: !!patient?.hasPhone,
+    contactSupported: share.supported,
+    contactStatus: share.status,
+  });
   const canSubmit =
     contextOk &&
+    !waitingForContact &&
     !!draft.doctorId &&
     draft.serviceIds.length > 0 &&
     !!draft.date &&
@@ -301,7 +316,10 @@ export function BookConfirm() {
                 }}
               />
             </label>
-            <PhoneConfirm />
+            <PhoneConfirm share={share} />
+            {waitingForContact ? (
+              <MHint>{t.book.confirmPhoneFirst}</MHint>
+            ) : null}
           </div>
         </MCard>
       )}

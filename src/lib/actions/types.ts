@@ -258,7 +258,10 @@ export type VisitFollowUpDuePayload = {
  * documents or family links, so reception compares the two and merges by
  * hand. `via` says how the proof arrived; "dedupe" marks the one-off
  * cleanup of accounts that were bound to two cards at once
- * (scripts/fix-patient-telegram-identity.ts).
+ * (scripts/fix-patient-telegram-identity.ts). "contactName": the account
+ * shared the clinic card's number, but its name is not the card's (a son's
+ * number on his mother's card), so nothing was linked and reception checks
+ * who the account belongs to.
  */
 export type TelegramLinkConflictPayload = {
   type: "TELEGRAM_LINK_CONFLICT";
@@ -266,7 +269,7 @@ export type TelegramLinkConflictPayload = {
   telegramCardName: string;
   clinicCardId: string;
   clinicCardName: string;
-  via: "invite" | "contact" | "dedupe";
+  via: "invite" | "contact" | "contactName" | "dedupe";
 };
 
 export type ActionPayload =

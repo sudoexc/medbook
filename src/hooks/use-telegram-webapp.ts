@@ -93,6 +93,8 @@ export type TgWebApp = {
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void;
   openTelegramLink: (url: string) => void;
   requestContact?: (cb?: (ok: boolean) => void) => void;
+  // Bot API version gate: `requestContact` throws below 6.9.
+  isVersionAtLeast?: (version: string) => boolean;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   onEvent?: (eventType: string, cb: () => void) => void;

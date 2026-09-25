@@ -35,6 +35,8 @@ export type Patient = {
   fullName: string;
   phone: string;
   phoneNormalized: string;
+  /** NULL: the number is only a Mini App claim, not the clinic's record. */
+  phoneVerifiedAt: string | null;
   birthDate: string | null;
   gender: "MALE" | "FEMALE" | null;
   passport: string | null;
@@ -76,6 +78,7 @@ export type PatientUpdateInput = Partial<
     | "id"
     | "clinicId"
     | "phoneNormalized"
+    | "phoneVerifiedAt"
     | "ltv"
     | "visitsCount"
     | "balance"
@@ -86,7 +89,10 @@ export type PatientUpdateInput = Partial<
     | "updatedAt"
     | "appointments"
   >
->;
+> & {
+  /** Staff confirm the number already on the card (audit PH-01). */
+  verifyPhone?: boolean;
+};
 
 export const patientKey = (id: string) => ["patient", id] as const;
 

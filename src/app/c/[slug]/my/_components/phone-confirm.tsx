@@ -6,7 +6,7 @@ import { CheckCircle2, Phone } from "lucide-react";
 import { useT } from "./mini-i18n";
 import { useMiniAppAuth } from "./miniapp-auth-provider";
 import { MButton, MHint } from "./mini-ui";
-import { useShareContact } from "../_hooks/use-share-contact";
+import type { ShareContact } from "../_hooks/use-share-contact";
 
 /**
  * The patient's number, read-only (audit PH-01).
@@ -14,12 +14,14 @@ import { useShareContact } from "../_hooks/use-share-contact";
  * A typed number used to be written straight into the card, and walk-in /
  * CRM lookups trusted it: anyone could claim a stranger's number and later
  * receive her visits. The number is now shown as the clinic has it, and the
- * only way to set or confirm it is Telegram's own contact sharing.
+ * only way to set or confirm it is Telegram's own contact sharing. The
+ * screen owns the `useShareContact()` state, so the booking confirm screen
+ * can wait for the step (audit MA-04).
  */
-export function PhoneConfirm() {
+export function PhoneConfirm({ share }: { share: ShareContact }) {
   const t = useT();
   const { state } = useMiniAppAuth();
-  const { status, start } = useShareContact();
+  const { status, start } = share;
   const patient = state.status === "ready" ? state.patient : null;
   const verified = !!patient?.phoneVerified;
   const phone = patient?.hasPhone ? patient.phone : "";

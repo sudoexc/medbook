@@ -34,7 +34,19 @@ export type ShareContactStatus =
 const POLL_INTERVAL_MS = 1500;
 const POLL_ATTEMPTS = 10;
 
-export function useShareContact() {
+/** What a screen needs to drive and read the «confirm my number» step. */
+export type ShareContact = {
+  status: ShareContactStatus;
+  start: () => void;
+  /**
+   * This Telegram client can share the account's contact at all
+   * (`requestContact` exists from Bot API 6.9). An older client can never
+   * finish the step, so nothing may wait for it.
+   */
+  supported: boolean;
+};
+
+export function useShareContact(): ShareContact {
   const tg = useTelegramWebApp();
   const qc = useQueryClient();
   const { request } = useMiniAppFetch();
@@ -111,5 +123,9 @@ export function useShareContact() {
     }
   }, [tg.tg, poll]);
 
-  return { status, start };
+  const webApp = tg.tg;
+  const supported =
+    !!webApp?.requestContact && (webApp.isVersionAtLeast?.("6.9") ?? true);
+
+  return { status, start, supported };
 }

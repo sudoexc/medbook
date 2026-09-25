@@ -41,3 +41,28 @@ export function bookingContextMatches(
 ): boolean {
   return (draftFor ?? null) === (active ?? null);
 }
+
+/**
+ * Must the confirm screen wait for «confirm my number» before booking?
+ * (audit MA-04)
+ *
+ * A self booking from a card with no number at all (the card the Mini App
+ * created on first open) would land on that empty card: reception has no
+ * number to call, and a returning patient's history stays out of the
+ * doctor's sight on the clinic's own card. The Telegram contact step fixes
+ * both, and may move the account to that card first. It never blocks for
+ * good: a relative's booking, a Telegram too old to share a contact, or a
+ * share the clinic could not match (reception then gets a task) all let
+ * the patient book.
+ */
+export function contactStepPending(input: {
+  onBehalfOf: string | null | undefined;
+  hasPhone: boolean;
+  contactSupported: boolean;
+  contactStatus: string;
+}): boolean {
+  if (input.onBehalfOf) return false;
+  if (input.hasPhone) return false;
+  if (!input.contactSupported) return false;
+  return input.contactStatus !== "failed" && input.contactStatus !== "unsupported";
+}

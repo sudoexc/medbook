@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Audit PH-01 / MA-04: a Telegram account's OWN shared contact is the only
  * way a number reaches a Telegram-born card, and it is also the patient's
- * path to «I already have a card at this clinic».
+ * path to «I already have a card at this clinic». The number proves whose
+ * phone it is, not whose card: the account moves to a clinic card only when
+ * its name is that card's name too, and bookings made on the auto card
+ * before confirming follow it there.
  */
 
 type Card = {
@@ -18,14 +21,58 @@ type Card = {
   telegramLinkedAt: Date | null;
   deletedAt: Date | null;
   source: string;
-  appointments: number;
 };
+
+type Appt = { id: string; clinicId: string; patientId: string; status: string };
+type Linked = { id: string; patientId: string; appointmentId: string | null };
 
 const state = vi.hoisted(() => ({
   cards: [] as Card[],
-  audits: [] as Array<{ action: string; entityId: string | null }>,
+  appts: [] as Appt[],
+  // Rows that carry the patient next to a booking.
+  sends: [] as Linked[],
+  reminders: [] as Linked[],
+  calls: [] as Linked[],
+  cases: [] as Array<{ id: string; clinicId: string; patientId: string }>,
+  audits: [] as Array<{ action: string; entityId: string | null; meta?: unknown }>,
   conflicts: [] as unknown[],
 }));
+
+type ApptWhere = {
+  clinicId?: string;
+  patientId?: string;
+  id?: { in: string[] };
+  status?: { notIn: string[] };
+};
+
+function apptMatch(a: Appt, w: ApptWhere): boolean {
+  if (w.clinicId !== undefined && a.clinicId !== w.clinicId) return false;
+  if (w.patientId !== undefined && a.patientId !== w.patientId) return false;
+  if (w.id && !w.id.in.includes(a.id)) return false;
+  if (w.status && w.status.notIn.includes(a.status)) return false;
+  return true;
+}
+
+function linkedTable(rows: () => Linked[]) {
+  return {
+    updateMany: vi.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: { patientId: string; appointmentId: { in: string[] } };
+        data: { patientId: string };
+      }) => {
+        for (const r of rows()) {
+          if (r.patientId === where.patientId && where.appointmentId.in.includes(r.appointmentId ?? "")) {
+            r.patientId = data.patientId;
+          }
+        }
+        return { count: 0 };
+      },
+    ),
+  };
+}
 
 type Where = {
   id?: string;
@@ -61,7 +108,11 @@ vi.mock("@/lib/prisma", () => {
             return {
               source: c.source,
               phoneVerifiedAt: c.phoneVerifiedAt,
-              _count: { appointments: c.appointments, documents: 0 },
+              _count: {
+                appointments: state.appts.filter((a) => a.patientId === c.id).length,
+                cases: state.cases.filter((x) => x.patientId === c.id).length,
+                documents: 0,
+              },
             };
           }
           return { ...c };
@@ -90,10 +141,51 @@ vi.mock("@/lib/prisma", () => {
       ),
     },
     auditLog: {
-      create: vi.fn(async ({ data }: { data: { action: string; entityId?: string } }) => {
-        state.audits.push({ action: data.action, entityId: data.entityId ?? null });
-        return { id: "a" };
-      }),
+      create: vi.fn(
+        async ({ data }: { data: { action: string; entityId?: string; meta?: unknown } }) => {
+          state.audits.push({
+            action: data.action,
+            entityId: data.entityId ?? null,
+            meta: data.meta,
+          });
+          return { id: "a" };
+        },
+      ),
+    },
+    appointment: {
+      count: vi.fn(async ({ where }: { where: ApptWhere }) =>
+        state.appts.filter((a) => apptMatch(a, where)).length,
+      ),
+      findMany: vi.fn(async ({ where }: { where: ApptWhere }) =>
+        state.appts.filter((a) => apptMatch(a, where)).map((a) => ({ id: a.id })),
+      ),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: ApptWhere; data: { patientId: string } }) => {
+          for (const a of state.appts) if (apptMatch(a, where)) a.patientId = data.patientId;
+          return { count: 0 };
+        },
+      ),
+    },
+    notificationSend: linkedTable(() => state.sends),
+    reminder: linkedTable(() => state.reminders),
+    call: linkedTable(() => state.calls),
+    medicalCase: {
+      updateMany: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { clinicId: string; patientId: string };
+          data: { patientId: string };
+        }) => {
+          for (const x of state.cases) {
+            if (x.clinicId === where.clinicId && x.patientId === where.patientId) {
+              x.patientId = data.patientId;
+            }
+          }
+          return { count: 0 };
+        },
+      ),
     },
   };
   return {
@@ -133,7 +225,6 @@ function card(over: Partial<Card> & { id: string }): Card {
     telegramLinkedAt: null,
     deletedAt: null,
     source: "TELEGRAM",
-    appointments: 0,
     ...over,
   };
   state.cards.push(c);
@@ -142,18 +233,47 @@ function card(over: Partial<Card> & { id: string }): Card {
 
 const byId = (id: string) => state.cards.find((c) => c.id === id)!;
 
-function share(fromId: number, userId: number | undefined, phone = "998901234567") {
+function share(
+  fromId: number,
+  userId: number | undefined,
+  phone = "998901234567",
+  names: { first_name?: string; last_name?: string } = {},
+) {
   return applyVerifiedContact({
     clinicId: "c1",
     fromId,
     fromUsername: "handle",
-    contact: { phone_number: phone, user_id: userId },
+    contact: { phone_number: phone, user_id: userId, ...names },
     now: NOW,
   });
 }
 
+/** Her own Telegram profile name, given name first as Telegram writes it. */
+const DILNOZA = { first_name: "Dilnoza", last_name: "Karimova" };
+
+function clinicCard(over: Partial<Card> = {}) {
+  return card({
+    id: "clinic",
+    fullName: "Каримова Дилноза Рустамовна",
+    phone: PHONE,
+    phoneNormalized: PHONE,
+    phoneVerifiedAt: new Date("2026-01-01"),
+    source: "WALKIN",
+    ...over,
+  });
+}
+
+function appt(id: string, patientId: string, status: string) {
+  state.appts.push({ id, clinicId: "c1", patientId, status });
+}
+
 beforeEach(() => {
   state.cards = [];
+  state.appts = [];
+  state.sends = [];
+  state.reminders = [];
+  state.calls = [];
+  state.cases = [];
   state.audits = [];
   state.conflicts = [];
 });
@@ -195,18 +315,11 @@ describe("applyVerifiedContact", () => {
     expect(byId("me").phoneVerifiedAt).toEqual(NOW);
   });
 
-  it("MA-04: the number belongs to the clinic's card → the account moves there and the empty auto card is retired", async () => {
-    card({ id: "auto", telegramId: "111", fullName: "Dilnoza" });
-    card({
-      id: "clinic",
-      fullName: "Каримова Дилноза",
-      phone: PHONE,
-      phoneNormalized: PHONE,
-      phoneVerifiedAt: new Date("2026-01-01"),
-      source: "WALKIN",
-      appointments: 3,
-    });
-    const r = await share(111, 111);
+  it("MA-04: the number belongs to the clinic's card and the account goes by its name → the account moves there and the empty auto card is retired", async () => {
+    card({ id: "auto", telegramId: "111", fullName: "Dilnoza Karimova" });
+    clinicCard();
+    appt("visit_old", "clinic", "COMPLETED");
+    const r = await share(111, 111, undefined, DILNOZA);
     expect(r).toEqual({ kind: "linked", patientId: "clinic", retiredPatientId: "auto" });
     expect(byId("clinic")).toMatchObject({
       telegramId: "111",
@@ -223,20 +336,87 @@ describe("applyVerifiedContact", () => {
     expect(state.conflicts).toHaveLength(0);
   });
 
-  it("MA-04: an auto card that already holds visits is not merged: both stay, reception gets a task", async () => {
-    card({ id: "auto", telegramId: "111", fullName: "Dilnoza", appointments: 1 });
-    card({
-      id: "clinic",
-      fullName: "Каримова Дилноза",
-      phone: PHONE,
-      phoneNormalized: PHONE,
-      phoneVerifiedAt: new Date("2026-01-01"),
-      source: "WALKIN",
-    });
-    const r = await share(111, 111);
+  it("review: the son's own number on his mother's card does NOT move his Telegram onto her card", async () => {
+    // Reception wrote the son's number on his elderly mother's card, and
+    // the migration verified it. He confirms his number from the booking
+    // screen, as every user is prompted to.
+    card({ id: "auto", telegramId: "111", fullName: "Timur Karimov" });
+    clinicCard();
+    const r = await share(111, 111, undefined, { first_name: "Timur", last_name: "Karimov" });
+    expect(r).toEqual({ kind: "unconfirmed", patientId: "auto", clinicCardId: "clinic" });
+    // Nothing moved: her card keeps no Telegram, his card stays his.
+    expect(byId("clinic").telegramId).toBeNull();
+    expect(byId("auto")).toMatchObject({ telegramId: "111", deletedAt: null });
+    expect(byId("clinic").phoneNormalized).toBe(PHONE);
+    expect(state.audits.map((a) => a.action)).not.toContain("patient.telegram.contact_linked");
+    // Reception decides, seeing both names.
+    expect(state.conflicts).toEqual([
+      expect.objectContaining({
+        telegramId: "111",
+        clinicCard: expect.objectContaining({ id: "clinic" }),
+        telegramCard: expect.objectContaining({ id: "auto", fullName: "Timur Karimov" }),
+        via: "contactName",
+      }),
+    ]);
+    expect(contactReplyKey(r)).toBe("contact.nameMismatch");
+  });
+
+  it("an account with no card here is not bound to a clinic card of another name either", async () => {
+    clinicCard();
+    const r = await share(111, 111, undefined, { first_name: "Timur", last_name: "Karimov" });
+    expect(r).toEqual({ kind: "no-card" });
+    expect(byId("clinic").telegramId).toBeNull();
+  });
+
+  it("a surname alone (a relative's Telegram) is not enough to link", async () => {
+    card({ id: "auto", telegramId: "111", fullName: "Karimova" });
+    clinicCard();
+    const r = await share(111, 111, undefined, { last_name: "Karimova" });
+    expect(r.kind).toBe("unconfirmed");
+    expect(byId("clinic").telegramId).toBeNull();
+  });
+
+  it("the name she corrected on her card counts when her Telegram name is a nickname", async () => {
+    card({ id: "auto", telegramId: "111", fullName: "Каримова Дилноза" });
+    clinicCard();
+    const r = await share(111, 111, undefined, { first_name: "Dilya" });
+    expect(r).toEqual({ kind: "linked", patientId: "clinic", retiredPatientId: "auto" });
+  });
+
+  it("review MA-04: she booked in the Mini App before confirming → the booking moves to her clinic card, then the auto card is retired", async () => {
+    card({ id: "auto", telegramId: "111", fullName: "Dilnoza Karimova" });
+    clinicCard();
+    appt("booked_1", "auto", "BOOKED");
+    appt("cancelled_1", "auto", "CANCELLED");
+    state.cases.push({ id: "case_auto", clinicId: "c1", patientId: "auto" });
+    state.sends.push({ id: "send_24h", patientId: "auto", appointmentId: "booked_1" });
+    state.reminders.push({ id: "rem_1", patientId: "auto", appointmentId: "booked_1" });
+
+    const r = await share(111, 111, undefined, DILNOZA);
+    expect(r).toEqual({ kind: "linked", patientId: "clinic", retiredPatientId: "auto" });
+    // Her visit is on the card with her history, where the doctor looks.
+    expect(state.appts.map((a) => a.patientId)).toEqual(["clinic", "clinic"]);
+    expect(state.cases[0]!.patientId).toBe("clinic");
+    // The queued reminder follows it, or it would go to a card with no Telegram.
+    expect(state.sends[0]!.patientId).toBe("clinic");
+    expect(state.reminders[0]!.patientId).toBe("clinic");
+    expect(byId("auto")).toMatchObject({ telegramId: null, deletedAt: NOW });
+    expect(byId("clinic").telegramId).toBe("111");
+    expect(state.conflicts).toHaveLength(0);
+    const linked = state.audits.find((a) => a.action === "patient.telegram.contact_linked");
+    expect(linked?.meta).toMatchObject({ movedAppointmentIds: ["booked_1", "cancelled_1"] });
+  });
+
+  it("MA-04: an auto card that already holds a visit is not merged: both stay, reception gets a task", async () => {
+    card({ id: "auto", telegramId: "111", fullName: "Dilnoza Karimova" });
+    clinicCard();
+    appt("seen_1", "auto", "COMPLETED");
+    const r = await share(111, 111, undefined, DILNOZA);
     expect(r).toEqual({ kind: "conflict", patientId: "auto", clinicCardId: "clinic" });
     expect(byId("auto").telegramId).toBe("111");
     expect(byId("clinic").telegramId).toBeNull();
+    // Nothing moved either.
+    expect(state.appts[0]!.patientId).toBe("auto");
     expect(state.conflicts).toEqual([
       expect.objectContaining({
         clinicId: "c1",
@@ -310,6 +490,7 @@ describe("contactReplyKey", () => {
       { kind: "linked", patientId: "p", retiredPatientId: null },
       { kind: "kept-existing", patientId: "p" },
       { kind: "conflict", patientId: null, clinicCardId: "c" },
+      { kind: "unconfirmed", patientId: "p", clinicCardId: "c" },
       { kind: "failed" },
     ];
     for (const o of outcomes) {

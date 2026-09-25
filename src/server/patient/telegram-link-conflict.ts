@@ -21,7 +21,7 @@ export async function raiseTelegramLinkConflict(params: {
   telegramId: string;
   telegramCard: { id: string; fullName: string };
   clinicCard: { id: string; fullName: string };
-  via: "invite" | "contact";
+  via: "invite" | "contact" | "contactName";
 }): Promise<void> {
   const payload: TelegramLinkConflictPayload = {
     type: "TELEGRAM_LINK_CONFLICT",

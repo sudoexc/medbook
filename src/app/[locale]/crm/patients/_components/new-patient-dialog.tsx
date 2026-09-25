@@ -21,6 +21,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { parsePatientIdentity } from "@/lib/patients/parse-identity";
 import {
+  PhoneOwnerMismatchError,
+  PhoneOwnerPrompt,
+  readPhoneOwnerMismatch,
+  type PhoneOwnerAnswer,
+  type PhoneOwnerSummary,
+} from "@/components/appointments/phone-owner-prompt";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -93,13 +100,32 @@ export function NewPatientDialog({
     },
   });
 
+  // The number leads to a card with another name (a mother's phone for her
+  // son) or to an unconfirmed Mini App card (audit Q-03, PH-01): staff
+  // answer before anything is created. Any edit to the form withdraws it.
+  const [ownerConflict, setOwnerConflict] =
+    React.useState<PhoneOwnerSummary | null>(null);
+  React.useEffect(() => {
+    const sub = form.watch(() => setOwnerConflict(null));
+    return () => sub.unsubscribe();
+  }, [form]);
+
   // Reset on close so re-opening is fresh.
   React.useEffect(() => {
-    if (!open) form.reset();
+    if (!open) {
+      form.reset();
+      setOwnerConflict(null);
+    }
   }, [open, form]);
 
   const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
+    mutationFn: async ({
+      values,
+      phoneOwner,
+    }: {
+      values: FormValues;
+      phoneOwner?: PhoneOwnerAnswer;
+    }) => {
       const fullName = [values.lastName, values.firstName, values.patronymic]
         .filter(Boolean)
         .join(" ")
@@ -116,6 +142,7 @@ export function NewPatientDialog({
               .map((x) => x.trim())
               .filter(Boolean)
           : undefined,
+        ...(phoneOwner ? { phoneOwner } : {}),
       };
       const res = await fetch("/api/crm/patients", {
         method: "POST",
@@ -128,6 +155,8 @@ export function NewPatientDialog({
           error?: string;
           reason?: string;
         } | null;
+        const owner = readPhoneOwnerMismatch(res.status, err);
+        if (owner) throw new PhoneOwnerMismatchError(owner);
         if (res.status === 409 && err?.reason === "phone_already_exists") {
           throw new Error("PHONE_EXISTS");
         }
@@ -142,6 +171,10 @@ export function NewPatientDialog({
       if (onCreated) onCreated(created.id);
     },
     onError: (e: Error) => {
+      if (e instanceof PhoneOwnerMismatchError) {
+        setOwnerConflict(e.owner);
+        return;
+      }
       triggerShake();
       if (e.message === "PHONE_EXISTS") {
         toast.error(t("phoneExists"));
@@ -152,7 +185,7 @@ export function NewPatientDialog({
   });
 
   const submit = form.handleSubmit(
-    (values) => mutation.mutate(values),
+    (values) => mutation.mutate({ values }),
     () => triggerShake(),
   );
 
@@ -285,6 +318,16 @@ export function NewPatientDialog({
             />
           </div>
 
+          {ownerConflict ? (
+            <PhoneOwnerPrompt
+              owner={ownerConflict}
+              pending={mutation.isPending}
+              onAnswer={(answer) =>
+                mutation.mutate({ values: form.getValues(), phoneOwner: answer })
+              }
+            />
+          ) : null}
+
           <DialogFooter className="mt-2">
             <Button
               type="button"
@@ -294,7 +337,10 @@ export function NewPatientDialog({
             >
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button
+              type="submit"
+              disabled={mutation.isPending || ownerConflict !== null}
+            >
               {t("submit")}
             </Button>
           </DialogFooter>

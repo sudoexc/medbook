@@ -30,6 +30,13 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { CaseSelectorDialog } from "@/app/[locale]/crm/appointments/_components/case-selector-dialog";
 
+import {
+  PhoneOwnerMismatchError,
+  PhoneOwnerPrompt,
+  readPhoneOwnerMismatch,
+  type PhoneOwnerAnswer,
+  type PhoneOwnerSummary,
+} from "./phone-owner-prompt";
 import { SlotPicker } from "./SlotPicker";
 import { DoctorPicker } from "./new-appointment-dialog/doctor-picker";
 import { PatientPicker } from "./new-appointment-dialog/patient-picker";
@@ -118,6 +125,11 @@ export function NewAppointmentDialog({
       | "outside_schedule";
     until?: string;
   } | null>(null);
+  // The new patient's number leads to a card with another name, or to a
+  // Mini App card that only claims it (audit Q-03, PH-01). Shown until
+  // staff answer or edit the new patient's details.
+  const [ownerConflict, setOwnerConflict] =
+    React.useState<PhoneOwnerSummary | null>(null);
   // Tracks which doctor we've already auto-applied the services filter for
   // so we don't re-run on every render. Reset whenever the dialog opens.
   const lastDoctorRef = React.useRef<string | null>(null);
@@ -125,6 +137,7 @@ export function NewAppointmentDialog({
   React.useEffect(() => {
     if (!open) return;
     setConflict(null);
+    setOwnerConflict(null);
     lastDoctorRef.current = null;
     setState((prev) => ({
       ...EMPTY,
@@ -325,10 +338,10 @@ export function NewAppointmentDialog({
   const createMutation = useMutation<
     { id: string; patientId: string; doctorId: string },
     Error,
-    FormState,
+    { values: FormState; phoneOwner?: PhoneOwnerAnswer },
     unknown
   >({
-    mutationFn: async (values) => {
+    mutationFn: async ({ values, phoneOwner }) => {
       let resolvedPatientId: string | null = values.patient?.id ?? null;
       if (values.newPatient) {
         if (!values.newPatientForm.fullName.trim()) {
@@ -346,6 +359,7 @@ export function NewAppointmentDialog({
             phone: values.newPatientForm.phone.trim(),
             gender: values.newPatientForm.gender || undefined,
             source: values.newPatientForm.source || undefined,
+            ...(phoneOwner ? { phoneOwner } : {}),
           }),
         });
         if (!patientRes.ok) {
@@ -354,9 +368,14 @@ export function NewAppointmentDialog({
             reason?: string;
             patientId?: string;
           } | null;
-          // Phone already in the clinic's patient base — the server hands back
-          // the existing id so we don't ask the receptionist to retype anything.
-          // Reuse it and proceed straight to booking.
+          // The number leads to a card whose name does not match (a mother's
+          // phone given for her son) or to an unconfirmed Mini App card: the
+          // server hands back no id to reuse, staff decide (audit Q-03).
+          const owner = readPhoneOwnerMismatch(patientRes.status, j);
+          if (owner) throw new PhoneOwnerMismatchError(owner);
+          // The same person is already in the clinic's patient base: the
+          // server hands back the existing id so we don't ask the
+          // receptionist to retype anything. Reuse it and proceed to booking.
           if (
             patientRes.status === 409 &&
             j?.reason === "phone_already_exists" &&
@@ -438,6 +457,7 @@ export function NewAppointmentDialog({
       };
     },
     onSuccess: async (created) => {
+      setOwnerConflict(null);
       const opts = { refetchType: "active" } as const;
       qc.invalidateQueries({ queryKey: ["appointments", "list"], ...opts });
       qc.invalidateQueries({ queryKey: ["appointments", "slots"], ...opts });
@@ -474,6 +494,10 @@ export function NewAppointmentDialog({
       if (onCreated) onCreated(created.id);
     },
     onError: (err) => {
+      if (err instanceof PhoneOwnerMismatchError) {
+        setOwnerConflict(err.owner);
+        return;
+      }
       if (err.message.startsWith("conflict:")) return;
       if (err.message === "PATIENT_REQUIRED") toast.error(t("err.patient"));
       else if (err.message === "DOCTOR_REQUIRED") toast.error(t("err.doctor"));
@@ -489,7 +513,7 @@ export function NewAppointmentDialog({
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setConflict(null);
-    createMutation.mutate(state);
+    createMutation.mutate({ values: state });
   };
 
   return (
@@ -506,21 +530,33 @@ export function NewAppointmentDialog({
             value={state.patient}
             newPatient={state.newPatient}
             newPatientForm={state.newPatientForm}
-            onChangePatient={(p) =>
-              setState((s) => ({ ...s, patient: p, newPatient: false }))
-            }
-            onToggleNew={(on) =>
+            onChangePatient={(p) => {
+              setOwnerConflict(null);
+              setState((s) => ({ ...s, patient: p, newPatient: false }));
+            }}
+            onToggleNew={(on) => {
+              setOwnerConflict(null);
               setState((s) => ({
                 ...s,
                 newPatient: on,
                 patient: on ? null : s.patient,
-              }))
-            }
-            onChangeNewPatient={(next) =>
-              setState((s) => ({ ...s, newPatientForm: next }))
-            }
+              }));
+            }}
+            onChangeNewPatient={(next) => {
+              setOwnerConflict(null);
+              setState((s) => ({ ...s, newPatientForm: next }));
+            }}
             disabled={Boolean(patientId)}
           />
+          {ownerConflict && state.newPatient ? (
+            <PhoneOwnerPrompt
+              owner={ownerConflict}
+              pending={createMutation.isPending}
+              onAnswer={(answer) =>
+                createMutation.mutate({ values: state, phoneOwner: answer })
+              }
+            />
+          ) : null}
 
           <DoctorPicker
             doctors={doctorsQuery.data ?? []}
@@ -627,7 +663,12 @@ export function NewAppointmentDialog({
             >
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              type="submit"
+              // While the «same person?» question is open, its answers are
+              // the only way forward: a plain resubmit would ask again.
+              disabled={createMutation.isPending || ownerConflict !== null}
+            >
               {createMutation.isPending ? t("saving") : t("submit")}
             </Button>
           </DialogFooter>

@@ -210,3 +210,37 @@ describe("formatActionTitle / formatActionBody", () => {
     expect(uz).toMatch(/"slotDate":"[^"]+"/);
   });
 });
+
+/**
+ * Review of PH-01: a shared contact whose name is not the clinic card's name
+ * links nothing and raises TELEGRAM_LINK_CONFLICT with via "contactName".
+ * The real ICU strings must render that branch in both languages.
+ */
+describe("TELEGRAM_LINK_CONFLICT copy (real messages)", () => {
+  it("renders every `via` in ru and uz, the contactName branch naming both cards, without dashes", async () => {
+    const { default: IntlMessageFormat } = await import("intl-messageformat");
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    for (const lang of ["ru", "uz"] as const) {
+      const messages = JSON.parse(
+        readFileSync(path.join(process.cwd(), `src/messages/${lang}.json`), "utf8"),
+      ) as { actionCenter: { types: Record<string, { title: string; body: string }> } };
+      const copy = messages.actionCenter.types.TELEGRAM_LINK_CONFLICT!;
+      for (const via of ["invite", "contact", "contactName", "dedupe"]) {
+        const values = {
+          clinicCardName: "Каримова Дилноза",
+          telegramCardName: "Timur Karimov",
+          via,
+        };
+        const title = new IntlMessageFormat(copy.title, lang).format(values) as string;
+        const body = new IntlMessageFormat(copy.body, lang).format(values) as string;
+        expect(title).toContain("Каримова Дилноза");
+        expect(body).toContain("Timur Karimov");
+        if (via === "contactName") {
+          expect(title).not.toMatch(/[—–]/);
+          expect(body).not.toMatch(/[—–]/);
+        }
+      }
+    }
+  });
+});

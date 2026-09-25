@@ -5,11 +5,15 @@
  * POST creates an OUT Message row, dispatches it to the channel (Telegram
  * for tg conversations) and updates the parent Conversation. Inline
  * keyboards are forwarded as Telegram inline_keyboard markup.
+ *
+ * A message is SENT only when Telegram accepted it, FAILED with a reason
+ * code otherwise; it is never DELIVERED without a send (audit TG-04).
+ * Attachments must belong to this conversation (audit G6-01).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, parseQuery } from "@/server/http";
+import { err, ok, notFound, parseQuery } from "@/server/http";
 import {
   QueryMessagesSchema,
   SendMessageSchema,
@@ -17,7 +21,13 @@ import {
 import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { sendMessage, sendPhoto, sendDocumentUrl } from "@/server/telegram/send";
+import { tgFailReason } from "@/server/telegram/send-errors";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
+import {
+  adoptTelegramChat,
+  isOwnChatAttachmentUrl,
+  telegramChatIdFor,
+} from "@/server/conversations/staff-send";
 
 function conversationIdFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -73,7 +83,7 @@ export const POST = createApiHandler(
         channel: true,
         externalId: true,
         patientId: true,
-        patient: { select: { phone: true } },
+        patient: { select: { phone: true, telegramId: true } },
         clinic: {
           select: {
             id: true,
@@ -89,6 +99,21 @@ export const POST = createApiHandler(
     const senderId = ctx.kind === "TENANT" ? ctx.userId : null;
 
     const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    // A file goes out only from the conversation it was uploaded into. The
+    // composer once kept patient A's MRI in the draft after the operator
+    // switched to patient B, and this route sent it on (audit G6-01).
+    const foreign = attachments.filter(
+      (a) =>
+        !isOwnChatAttachmentUrl(a.url, {
+          clinicId: conv.clinic.id,
+          conversationId: conv.id,
+        }),
+    );
+    if (foreign.length > 0) {
+      return err("AttachmentNotInConversation", 400, {
+        count: foreign.length,
+      });
+    }
     const imageCount = attachments.filter((a) => a.kind === "image").length;
     const fileCount = attachments.length - imageCount;
     const attachmentPreview = (): string => {
@@ -129,19 +154,17 @@ export const POST = createApiHandler(
     });
 
     let dispatched = msg;
-    // Mini-App in-band delivery: the conversation channel is "TG" (because the
-    // patient is in our TG bot/Mini App), but `externalId` (= bot chat_id) is
-    // null — meaning the patient hasn't DM'd the bot directly, only opened the
-    // Mini App. There is nothing to dispatch outward: the patient reads staff
-    // replies via the Mini App SSE stream, which already invalidates on
-    // `tg.message.new`. Marking the row `DELIVERED` clears the staff-side
-    // "hourglass" optimistic status the moment the POST returns.
-    if (conv.channel === "TG" && !conv.externalId) {
+    // Where in Telegram this goes. A thread the clinic opened from the patient
+    // card has no bot chat id yet (`externalId` null) and used to be marked
+    // DELIVERED with nothing sent, the patient never saw it (audit TG-04). A
+    // private chat's id is the user's id, so the card's telegramId reaches it.
+    const chatId = telegramChatIdFor(conv);
+    if (conv.channel === "TG" && !chatId) {
       dispatched = await prisma.message.update({
         where: { id: msg.id },
-        data: { status: "DELIVERED" },
+        data: { status: "FAILED", failedReason: "no_telegram" },
       });
-    } else if (conv.channel === "TG" && conv.externalId) {
+    } else if (conv.channel === "TG" && chatId) {
       try {
         const inlineKeyboard = Array.isArray(body.buttons)
           ? (body.buttons as Array<
@@ -177,14 +200,8 @@ export const POST = createApiHandler(
             const url = absolute(att.url);
             const r =
               att.kind === "image"
-                ? await sendPhoto(conv.clinic, conv.externalId, url, caption, opts)
-                : await sendDocumentUrl(
-                    conv.clinic,
-                    conv.externalId,
-                    url,
-                    caption,
-                    opts,
-                  );
+                ? await sendPhoto(conv.clinic, chatId, url, caption, opts)
+                : await sendDocumentUrl(conv.clinic, chatId, url, caption, opts);
             if (r && typeof r === "object" && "message_id" in r) {
               lastResult = r as { message_id: number };
             }
@@ -192,7 +209,7 @@ export const POST = createApiHandler(
         } else {
           const sent = await sendMessage(
             conv.clinic,
-            conv.externalId,
+            chatId,
             body.body,
             replyMarkup,
           );
@@ -208,15 +225,27 @@ export const POST = createApiHandler(
             externalId: lastResult ? String(lastResult.message_id) : null,
           },
         });
+        if (!conv.externalId) await adoptTelegramChat(conv.id, chatId);
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         console.error(
           `[crm:send] tg dispatch failed conv=${conversationId}: ${reason}`,
         );
+        const failedReason = tgFailReason(reason);
         dispatched = await prisma.message.update({
           where: { id: msg.id },
-          data: { status: "FAILED" },
+          data: { status: "FAILED", failedReason },
         });
+        // Same fallback block signal as the notification worker: reachability
+        // counters and broadcast audiences drop the patient.
+        if (failedReason === "tg_blocked" && conv.patientId) {
+          await prisma.patient
+            .updateMany({
+              where: { id: conv.patientId, tgBlockedAt: null },
+              data: { tgBlockedAt: new Date() },
+            })
+            .catch(() => undefined);
+        }
       }
     } else if (conv.channel === "SMS") {
       // Legacy SMS conversation — SMS channel was removed (see
@@ -225,7 +254,7 @@ export const POST = createApiHandler(
       // of leaving the row stuck QUEUED forever.
       dispatched = await prisma.message.update({
         where: { id: msg.id },
-        data: { status: "FAILED" },
+        data: { status: "FAILED", failedReason: "channel_unavailable" },
       });
     }
 

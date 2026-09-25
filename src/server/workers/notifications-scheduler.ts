@@ -5,9 +5,10 @@
  *   1. Run trigger materialisation (birthday, 5d/3d/1d/3h reminders,
  *      payment.due) via the legacy `runScheduledTriggers()` pass — this
  *      honors the seeded offsetMin values (-7200, -4320, -1440, -180) and is
- *      idempotent (TZ-risk-outcomes §7 cascade). The -4320 (T-3d) band is
- *      additionally gated on `confirmedAt IS NULL` so PHONE/KIOSK/WALKIN
- *      auto-confirms never receive the gentle ping.
+ *      idempotent (TZ-risk-outcomes §7 cascade). Only the band that asks to
+ *      confirm (T-3d, `skipsWhenConfirmed`) is gated on `confirmedAt IS
+ *      NULL`, so PHONE/KIOSK/WALKIN auto-confirms skip that ping and still
+ *      get the 5d / 1d / 3h reminders (audit TG-03).
  *   2. Run a *dynamic* pass for any APPOINTMENT_BEFORE templates whose
  *      `triggerConfig.offsetMin` was customised by the admin in
  *      /crm/settings/notifications. The dynamic pass uses the same
@@ -20,7 +21,6 @@
  * actual delivery + retry lives in `notifications-send.ts`.
  */
 import { prisma } from "@/lib/prisma";
-import { tashkentComponents } from "@/lib/booking-validation";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { recordPatientNoChannel } from "@/server/notifications/no-channel-action";
@@ -28,9 +28,14 @@ import {
   isTriggerEnabled,
   resolveChannels,
   resolveOffsetMin,
+  skipsWhenConfirmed,
 } from "@/server/notifications/rules";
-import { render } from "@/server/notifications/template";
-import { runScheduledTriggers } from "@/server/notifications/triggers";
+import {
+  APPOINTMENT_REFS_INCLUDE,
+  renderAppointmentBody,
+  runScheduledTriggers,
+  type AppointmentWithRefs,
+} from "@/server/notifications/triggers";
 import { enqueue, getQueue } from "@/server/queue";
 
 import {
@@ -50,17 +55,36 @@ export type TickResult = {
   dispatched: number;
 };
 
+/** Canonical cascade offsets, owned by `runScheduledTriggers`. */
+const CANONICAL_OFFSETS = new Set([-7200, -4320, -1440, -180]);
+
+/** The editor's widest offset (rules.ts `sanitizeTriggerConfig`): 7 days. */
+const MAX_OFFSET_MIN = 7 * 24 * 60;
+
+/**
+ * A row whose fire moment passed more than this long ago is not built: a
+ * «before» reminder that drifted would go out at once, which is unwanted.
+ */
+const LATE_GRACE_MS = 5 * 60 * 1000;
+
 /**
  * Dynamic-rules pass: schedule reminders for templates whose
  * `triggerConfig.offsetMin` was customised by an admin (i.e. not the seeded
  * -7200/-4320/-1440/-180 cascade). The legacy pass owns those canonical
  * values via Prisma JSON-path WHERE clauses.
+ *
+ * Audit TG-02: this pass used to render with only the patient's name and the
+ * date (time, doctor, service and clinic came out blank, always in Russian),
+ * looked only 72 hours ahead while the editor allows 7 days (so «за 4 дня»
+ * never fired), and raised a PATIENT_NO_CHANNEL call task on every tick,
+ * days before the reminder was due. It now renders exactly like the cascade
+ * (`renderAppointmentBody`: full appointment context, the patient's
+ * language), looks as far ahead as the widest active offset, and raises the
+ * call task only once the reminder's moment has come.
  */
-async function runDynamicReminders(): Promise<{ created: number; skipped: number }> {
-  const now = new Date();
-  // 72-hour horizon matches the editor's max offset.
-  const horizon = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-
+export async function runDynamicReminders(
+  now: Date = new Date(),
+): Promise<{ created: number; skipped: number }> {
   // Fetch every active APPOINTMENT_BEFORE template across all clinics. The
   // tenant-scope extension is bypassed by SYSTEM context — we filter by
   // clinicId per appointment downstream.
@@ -100,36 +124,33 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
     // 5d/3d/1d/3h per TZ-risk-outcomes §7 (the -4320 band stays gated on
     // confirmedAt there). Ex-canon offsets (-300, -120, -60) now flow
     // through this dynamic pass like any admin-customised value.
-    return (
-      off !== null &&
-      off !== -7200 &&
-      off !== -4320 &&
-      off !== -1440 &&
-      off !== -180
-    );
+    return off !== null && !CANONICAL_OFFSETS.has(off);
   });
 
   if (dynamicTemplates.length === 0) {
     return { created: 0, skipped: 0 };
   }
 
+  // Look as far ahead as the widest active offset (plus an hour of slack for
+  // a late tick), capped at the editor's maximum. A fixed 72h horizon made
+  // every offset beyond three days «already past» by the time its
+  // appointment was first seen.
+  const widestLeadMin = Math.min(
+    MAX_OFFSET_MIN,
+    Math.max(
+      ...dynamicTemplates.map((t) =>
+        Math.abs(resolveOffsetMin(t.triggerConfig, -1440)),
+      ),
+    ),
+  );
+  const horizon = new Date(now.getTime() + (widestLeadMin + 60) * 60 * 1000);
+
   const clinicIds = Array.from(
     new Set(dynamicTemplates.map((t: TplRow) => t.clinicId)),
   );
 
-  // Pull upcoming appointments per clinic in one shot.
-  type ApptRow = {
-    id: string;
-    clinicId: string;
-    patientId: string;
-    date: Date;
-    patient: {
-      fullName: string;
-      phone: string;
-      telegramId: string | null;
-      preferredChannel: string;
-    };
-  };
+  // Pull upcoming appointments per clinic in one shot, with everything the
+  // body can name (the same include the cascade renders from).
   const appts = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
       where: {
@@ -140,27 +161,16 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
         // so a confirmed patient is already silent on that specific template.
         status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
       },
-      select: {
-        id: true,
-        clinicId: true,
-        patientId: true,
-        date: true,
-        patient: {
-          select: {
-            fullName: true,
-            phone: true,
-            telegramId: true,
-            preferredChannel: true,
-          },
-        },
-      },
+      include: APPOINTMENT_REFS_INCLUDE,
+      // Nearest first, so a busy horizon never starves tomorrow's visits.
+      orderBy: { date: "asc" },
       take: 2000,
     }),
-  )) as ApptRow[];
+  )) as AppointmentWithRefs[];
 
   // Index existing queued/sent rows for idempotency.
   const tplIds = dynamicTemplates.map((t: TplRow) => t.id);
-  const apptIds = appts.map((a: ApptRow) => a.id);
+  const apptIds = appts.map((a) => a.id);
   type ExistingRow = { appointmentId: string | null; templateId: string | null };
   const existing: ExistingRow[] =
     apptIds.length === 0
@@ -211,7 +221,13 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
       const scheduledFor = new Date(appt.date.getTime() + offset * 60 * 1000);
       // Skip if the fire-time has already passed (we'd dispatch immediately
       // which is generally unwanted for "before" reminders that drifted).
-      if (scheduledFor.getTime() < now.getTime() - 5 * 60 * 1000) {
+      if (scheduledFor.getTime() < now.getTime() - LATE_GRACE_MS) {
+        skipped += 1;
+        continue;
+      }
+      // A reminder that asks to confirm is not built for a confirmed visit
+      // (audit TG-03); the send worker applies the same rule at send time.
+      if (appt.confirmedAt !== null && skipsWhenConfirmed(tpl.triggerConfig)) {
         skipped += 1;
         continue;
       }
@@ -221,48 +237,32 @@ async function runDynamicReminders(): Promise<{ created: number; skipped: number
         telegramId: appt.patient.telegramId,
       });
       const channel = channels[0] as Insert["channel"] | undefined;
-      if (!channel) {
-        // Wave 4 of `docs/TZ-sms-removal.md` — legacy template.channel=SMS
-        // resolves to []; surface the missed reminder as a PATIENT_NO_CHANNEL
-        // Action so the receptionist can call the patient.
-        await recordPatientNoChannel({
-          clinicId: appt.clinicId,
-          patientId: appt.patientId,
-          patientName: appt.patient.fullName,
-          triggerKey: "appointment.before",
-          appointmentId: appt.id,
-          appointmentAt: appt.date,
-        });
+      const recipient = !channel
+        ? null
+        : channel === "TG"
+          ? appt.patient.telegramId
+          : appt.patient.phone;
+      if (!channel || !recipient) {
+        // Wave 4 of `docs/TZ-sms-removal.md`: no way to reach the patient,
+        // so reception gets a call task instead. Only once the reminder's
+        // moment has come (audit TG-02): raised days ahead it asked reception
+        // to call about a reminder that was not due yet, and was raised again
+        // on every tick. Nothing is inserted for this pair, so ticks inside
+        // the grace window repeat the call; the action dedupes per day.
+        if (scheduledFor.getTime() <= now.getTime()) {
+          await recordPatientNoChannel({
+            clinicId: appt.clinicId,
+            patientId: appt.patientId,
+            patientName: appt.patient.fullName,
+            triggerKey: "appointment.before",
+            appointmentId: appt.id,
+            appointmentAt: appt.date,
+          });
+        }
         skipped += 1;
         continue;
       }
-      const recipient =
-        channel === "TG" ? appt.patient.telegramId : appt.patient.phone;
-      if (!recipient) {
-        // Same compensator path as above — recipient is null when the
-        // patient has no telegramId AND no other resolvable address.
-        await recordPatientNoChannel({
-          clinicId: appt.clinicId,
-          patientId: appt.patientId,
-          patientName: appt.patient.fullName,
-          triggerKey: "appointment.before",
-          appointmentId: appt.id,
-          appointmentAt: appt.date,
-        });
-        skipped += 1;
-        continue;
-      }
-      const body = render(tpl.bodyRu, {
-        patient: {
-          name: appt.patient.fullName,
-          firstName: appt.patient.fullName.split(/\s+/)[0] ?? "",
-          phone: appt.patient.phone,
-        },
-        // Tashkent civil date — the ISO/UTC date is a day early for
-        // appointments before 05:00 clinic time.
-        appointment: { date: tashkentComponents(appt.date).date },
-        clinic: { name: "", phone: "", address: "" },
-      });
+      const body = renderAppointmentBody(tpl, appt);
       toInsert.push({
         clinicId: appt.clinicId,
         patientId: appt.patientId,

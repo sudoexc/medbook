@@ -132,102 +132,124 @@ export async function findOrCreateConversation(
       ? `user:${input.initiatorUserId}`
       : `patient:${patient.id}`);
 
-  const created = await prisma.$transaction(async (tx) => {
-    const row = await tx.conversation.create({
-      data: {
-        clinicId: input.clinicId,
-        channel,
-        // takeover = staff is driving the thread; reserved bot-mode is the AI
-        // auto-responder loop we haven't wired yet.
-        mode: "takeover",
-        patientId: patient.id,
-        assignedToId: assigneeUserId,
-        status: "OPEN",
-        // externalId stays null — Postgres treats NULLs as distinct under
-        // the @@unique([clinicId, externalId]) constraint, so two cold
-        // outbound threads to different patients won't collide.
-      },
-      select: { id: true, channel: true },
-    });
+  // The thread is bound to the patient's Telegram chat (in a private chat the
+  // chat id IS the user id), so staff messages are really sent there and the
+  // patient's reply comes back into this thread (audit TG-04: the chat id
+  // used to stay null and messages were marked DELIVERED with no send). The
+  // chat can already belong to another thread (the patient's own chat with
+  // the bot, or a doctor's thread): `(clinicId, externalId)` is unique, so
+  // this one then stays unbound and the send route reaches the patient
+  // through the card's telegramId.
+  const telegramId = patient.telegramId;
+  const chatTaken = await prisma.conversation.findFirst({
+    where: { clinicId: input.clinicId, externalId: telegramId },
+    select: { id: true },
+  });
 
-    // Legacy audit row — coexists with the pumper-materialised one until the
-    // unified path lands in Phase F, mirrors the cancel.ts pattern.
-    await tx.auditLog.create({
-      data: {
-        clinicId: input.clinicId,
-        actorId: input.initiatorUserId,
-        actorRole: null,
-        actorLabel: null,
-        action: AUDIT_ACTION.CONVERSATION_CREATED,
-        entityType: "Conversation",
-        entityId: row.id,
-        meta: {
+  const createThread = (externalId: string | null) =>
+    prisma.$transaction(async (tx) => {
+      const row = await tx.conversation.create({
+        data: {
+          clinicId: input.clinicId,
+          channel,
+          // takeover = staff is driving the thread; reserved bot-mode is the AI
+          // auto-responder loop we haven't wired yet.
+          mode: "takeover",
+          patientId: patient.id,
+          assignedToId: assigneeUserId,
+          status: "OPEN",
+          externalId,
+        },
+        select: { id: true, channel: true },
+      });
+
+      // Legacy audit row — coexists with the pumper-materialised one until the
+      // unified path lands in Phase F, mirrors the cancel.ts pattern.
+      await tx.auditLog.create({
+        data: {
+          clinicId: input.clinicId,
+          actorId: input.initiatorUserId,
+          actorRole: null,
+          actorLabel: null,
+          action: AUDIT_ACTION.CONVERSATION_CREATED,
+          entityType: "Conversation",
+          entityId: row.id,
+          meta: {
+            patientId: patient.id,
+            channel: row.channel,
+            initiatorRole: input.initiatorRole,
+            initiatorUserId: input.initiatorUserId,
+            assigneeUserId,
+            correlationId,
+          } as never,
+          ip: null,
+          userAgent: null,
+          surface,
+          correlationId,
+        },
+      });
+
+      const baseEnvelope = {
+        correlationId,
+        causedByEventId: input.causedByEventId,
+        actor: {
+          role: input.initiatorRole,
+          userId: input.initiatorUserId,
+          // When the patient opens the thread (Mini App), the actor IS the
+          // patient — surface that on the envelope so downstream policies can
+          // attribute the action correctly.
+          patientId:
+            input.initiatorRole === "PATIENT" ? patient.id : null,
+          onBehalfOfPatientId: null,
+          label: actorLabel,
+        },
+        surface,
+        tenantScope: {
+          clinicId: input.clinicId,
+          patientId: patient.id,
+        },
+      } as const;
+
+      const createdEnvelope: EventEnvelopeInput = {
+        ...baseEnvelope,
+        type: "conversation.created",
+        payload: {
+          conversationId: row.id,
           patientId: patient.id,
           channel: row.channel,
           initiatorRole: input.initiatorRole,
           initiatorUserId: input.initiatorUserId,
           assigneeUserId,
-          correlationId,
-        } as never,
-        ip: null,
-        userAgent: null,
-        surface,
-        correlationId,
-      },
+        },
+      };
+      const { eventId } = await publishViaOutbox(tx, createdEnvelope);
+
+      // Follow-up `tg.conversation.updated` keeps existing CRM inbox SSE
+      // subscribers reactive — same shape they already render against.
+      const updatedEnvelope: EventEnvelopeInput = {
+        ...baseEnvelope,
+        causedByEventId: eventId,
+        type: "tg.conversation.updated",
+        payload: {
+          conversationId: row.id,
+          mode: "takeover",
+          status: "OPEN",
+          assigneeId: assigneeUserId,
+        },
+      };
+      await publishViaOutbox(tx, updatedEnvelope);
+
+      return row;
     });
 
-    const baseEnvelope = {
-      correlationId,
-      causedByEventId: input.causedByEventId,
-      actor: {
-        role: input.initiatorRole,
-        userId: input.initiatorUserId,
-        // When the patient opens the thread (Mini App), the actor IS the
-        // patient — surface that on the envelope so downstream policies can
-        // attribute the action correctly.
-        patientId:
-          input.initiatorRole === "PATIENT" ? patient.id : null,
-        onBehalfOfPatientId: null,
-        label: actorLabel,
-      },
-      surface,
-      tenantScope: {
-        clinicId: input.clinicId,
-        patientId: patient.id,
-      },
-    } as const;
-
-    const createdEnvelope: EventEnvelopeInput = {
-      ...baseEnvelope,
-      type: "conversation.created",
-      payload: {
-        conversationId: row.id,
-        patientId: patient.id,
-        channel: row.channel,
-        initiatorRole: input.initiatorRole,
-        initiatorUserId: input.initiatorUserId,
-        assigneeUserId,
-      },
-    };
-    const { eventId } = await publishViaOutbox(tx, createdEnvelope);
-
-    // Follow-up `tg.conversation.updated` keeps existing CRM inbox SSE
-    // subscribers reactive — same shape they already render against.
-    const updatedEnvelope: EventEnvelopeInput = {
-      ...baseEnvelope,
-      causedByEventId: eventId,
-      type: "tg.conversation.updated",
-      payload: {
-        conversationId: row.id,
-        mode: "takeover",
-        status: "OPEN",
-        assigneeId: assigneeUserId,
-      },
-    };
-    await publishViaOutbox(tx, updatedEnvelope);
-
-    return row;
-  });
+  let created: Pick<Conversation, "id" | "channel">;
+  try {
+    created = await createThread(chatTaken ? null : telegramId);
+  } catch (e) {
+    // The patient's first message to the bot raced us to the chat id.
+    if (chatTaken || (e as { code?: unknown } | null)?.code !== "P2002") throw e;
+    created = await createThread(null);
+  }
 
   return {
     ok: true,

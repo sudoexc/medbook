@@ -23,7 +23,7 @@
  * ever read `clinics/<clinic>/chat/<thisConversation>/<file>` — never patient
  * documents, DSAR exports, or another conversation's files.
  */
-import { fetchObject } from "@/server/storage/minio";
+import { fetchObject, parseSingleByteRange } from "@/server/storage/minio";
 import { safeFileHeaders } from "@/server/storage/safe-file";
 
 export const dynamic = "force-dynamic";
@@ -60,11 +60,20 @@ export async function GET(request: Request): Promise<Response> {
     return new Response("Forbidden", { status: 403 });
   }
 
+  // Byte ranges let the bubble's <audio>/<video> seek, and Safari refuses to
+  // play media from a server that ignores them (audit TG-01).
+  const range = parseSingleByteRange(request.headers.get("range"));
   let obj;
   try {
-    obj = await fetchObject(undefined, key);
+    obj = await fetchObject(undefined, key, { range });
   } catch {
-    return new Response("Not Found", { status: 404 });
+    // An unsatisfiable range (416 from storage) falls back to the whole file.
+    try {
+      if (!range) throw new Error("not found");
+      obj = await fetchObject(undefined, key);
+    } catch {
+      return new Response("Not Found", { status: 404 });
+    }
   }
   if (!obj.body) return new Response("Not Found", { status: 404 });
 
@@ -78,6 +87,11 @@ export async function GET(request: Request): Promise<Response> {
   if (obj.contentLength != null) {
     headers.set("Content-Length", String(obj.contentLength));
   }
+  headers.set("Accept-Ranges", "bytes");
   headers.set("Cache-Control", "private, max-age=3600");
+  if (obj.contentRange) {
+    headers.set("Content-Range", obj.contentRange);
+    return new Response(obj.body, { status: 206, headers });
+  }
   return new Response(obj.body, { status: 200, headers });
 }

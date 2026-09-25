@@ -31,6 +31,10 @@ import { recordNotificationDelivery } from "@/server/notifications/record-delive
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
 import { MANUAL_APPOINTMENT_REMINDER_KEY } from "@/server/notifications/default-templates";
+import { skipsWhenConfirmed } from "@/server/notifications/rules";
+// A fallback block signal for patients whose `my_chat_member` update we never
+// saw (e.g. blocks predating Layer 2).
+import { isTgBlockedError } from "@/server/telegram/send-errors";
 
 export const QUEUE_NAME = "notifications:send";
 export const JOB_NAME = "deliver";
@@ -41,21 +45,6 @@ const FUTURE_SLACK_MS = 5_000;
 const BACKOFF_MS = [60_000, 300_000, 1_800_000];
 
 export type DeliverJob = { sendId: string };
-
-/**
- * Telegram hard-fail errors that mean the patient can no longer receive the
- * bot's messages — they blocked it, deleted their account, or the chat is gone.
- * Used as a fallback block signal for patients whose `my_chat_member` update we
- * never saw (e.g. blocks predating Layer 2).
- */
-function isTgBlockedError(message: string): boolean {
-  const m = message.toLowerCase();
-  return (
-    m.includes("bot was blocked") ||
-    m.includes("user is deactivated") ||
-    m.includes("chat not found")
-  );
-}
 
 /**
  * D-1 — atomically claim a QUEUED send for dispatch. The flip QUEUED→SENDING
@@ -115,20 +104,15 @@ async function deliver(job: DeliverJob): Promise<void> {
   // future row stays QUEUED untouched; the dispatch loop delivers it on time.
   if (send.scheduledFor.getTime() > Date.now() + FUTURE_SLACK_MS) return;
 
-  // Stage 2.D — no-spam guard for the confirm cascade. If the patient
-  // has already confirmed (any path: TG_BUTTON, MANUAL_CRM, INBOUND_CALL,
-  // BOOKING_AUTO; SMS_REPLY is legacy/no longer emitted — SMS removed in
-  // `docs/TZ-sms-removal.md`) by the time the worker fires, skip the
-  // send entirely. Same gate the detector uses (`confirmedAt IS NULL`).
-  //
-  // D-3 — decide this by the template's `trigger` enum, NOT its `key` slug.
-  // The slug is admin-editable and the seeded reminder keys
+  // D-3 — decide reminder handling by the template's `trigger` enum, NOT its
+  // `key` slug. The slug is admin-editable and the seeded reminder keys
   // (`appointment.reminder-24h`, …) never matched the old hardcoded
-  // `reminder.24h`/`reminder.2h` checks, so the guard + confirm button were
-  // silently dead. Every APPOINTMENT_BEFORE reminder asks "are you coming?",
-  // so once the patient confirms (or the appointment closes) we suppress the
-  // rest of the cascade.
+  // `reminder.24h`/`reminder.2h` checks, so the guards + confirm button were
+  // silently dead.
   const isBeforeReminder = send.template?.trigger === "APPOINTMENT_BEFORE";
+  // Whether the visit is already confirmed; read with the appointment below
+  // and used again for the confirm button.
+  let alreadyConfirmed = false;
   // The staff-sent reminder («Напомнить всем», AP-02) asks the same «are you
   // coming?», so it gets the confirm button and the closed-appointment
   // guard, but not the cascade's confirmed / drift checks: staff chose to
@@ -163,10 +147,7 @@ async function deliver(job: DeliverJob): Promise<void> {
         select: { confirmedAt: true, status: true, date: true },
       }),
     );
-    if (
-      appt &&
-      (appt.confirmedAt !== null || isPastReminderStage(appt.status))
-    ) {
+    if (appt && isPastReminderStage(appt.status)) {
       await runWithTenant({ kind: "SYSTEM" }, () =>
         prisma.notificationSend.updateMany({
           // Guard on QUEUED so we never clobber a row another worker has
@@ -174,7 +155,25 @@ async function deliver(job: DeliverJob): Promise<void> {
           where: { id: send.id, status: "QUEUED" },
           data: {
             status: "CANCELLED",
-            failedReason: "patient already confirmed (or appointment closed)",
+            failedReason: "appointment closed or patient already arrived",
+          },
+        }),
+      );
+      return;
+    }
+    alreadyConfirmed = Boolean(appt && appt.confirmedAt !== null);
+    // Stage 2.D no-spam guard, narrowed by audit TG-03: once the visit is
+    // confirmed (any path: TG_BUTTON, MANUAL_CRM, INBOUND_CALL, BOOKING_AUTO
+    // for every PHONE / KIOSK booking), only the reminder that ASKS to confirm
+    // is pointless. «Завтра в 11:00 ждём вас» still goes out: dropping it left
+    // phone bookings, the bulk of reception's work, with no reminder at all.
+    if (alreadyConfirmed && skipsWhenConfirmed(send.template?.triggerConfig)) {
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.updateMany({
+          where: { id: send.id, status: "QUEUED" },
+          data: {
+            status: "CANCELLED",
+            failedReason: "patient already confirmed",
           },
         }),
       );
@@ -284,11 +283,13 @@ async function deliver(job: DeliverJob): Promise<void> {
       // can confirm in one tap. The callback_data shape is
       // `confirm:<appointmentId>` — the Stage 3.G webhook (not wired here)
       // routes it back through `confirmAppointment({ via: 'TG_BUTTON' })`.
-      // D-3 — gate on the APPOINTMENT_BEFORE trigger (see no-spam guard
-      // above), not the template slug. Once a patient confirms, the no-spam
-      // guard cancels the remaining cascade so they aren't asked again.
+      // D-3 — gate on the APPOINTMENT_BEFORE trigger, not the template slug.
+      // A confirmed visit's reminders go out without it (audit TG-03): asking
+      // again is noise. The staff-sent reminder keeps it, its text asks for
+      // the tap.
       const wantsConfirmButton =
-        (isBeforeReminder || isManualReminder) && Boolean(send.appointmentId);
+        Boolean(send.appointmentId) &&
+        (isManualReminder || (isBeforeReminder && !alreadyConfirmed));
       const replyMarkup = wantsConfirmButton
         ? {
             inline_keyboard: [

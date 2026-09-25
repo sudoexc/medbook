@@ -369,8 +369,10 @@ export function ChatPane({ conversation, railOpen, onToggleRail }: ChatPaneProps
         ) : null}
       </div>
 
-      {/* Composer */}
-      <MessageComposer conversation={conversation} />
+      {/* Composer: keyed by dialog so no local state (drag-over, textarea
+          height) carries over; the draft itself is stored per conversation
+          (audit G6-01). */}
+      <MessageComposer key={conversation.id} conversation={conversation} />
     </div>
   );
 }

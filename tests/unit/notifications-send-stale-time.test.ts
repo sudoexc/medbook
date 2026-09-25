@@ -212,7 +212,7 @@ describe("notifications-send worker — stale-time guard", () => {
     expect(state.sentBodies.length).toBe(1);
   });
 
-  it("keeps cancelling on the pre-existing confirmed/closed guard", async () => {
+  it("keeps cancelling on the pre-existing closed-appointment guard", async () => {
     const { _deliverForTests } = await import(
       "@/server/workers/notifications-send"
     );
@@ -225,7 +225,7 @@ describe("notifications-send worker — stale-time guard", () => {
     expect(state.sentBodies).toEqual([]);
     expect(state.send!.status).toBe("CANCELLED");
     expect(state.send!.failedReason).toBe(
-      "patient already confirmed (or appointment closed)",
+      "appointment closed or patient already arrived",
     );
   });
 });

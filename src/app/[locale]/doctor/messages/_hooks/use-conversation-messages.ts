@@ -16,6 +16,10 @@ export type MessageAttachment = {
   name?: string;
   size?: number;
   mime?: string;
+  /** The stored type (sniffed from the bytes); what the server actually writes. */
+  mimeType?: string;
+  /** Telegram's name for media a patient sent: "voice", "video_note", … */
+  tgType?: string;
 };
 
 export type MessageRow = {
@@ -28,6 +32,8 @@ export type MessageRow = {
   buttons: unknown[] | null;
   senderId: string | null;
   status: MessageStatus;
+  /** Why a FAILED staff message did not reach Telegram (see message-delivery.ts). */
+  failedReason?: string | null;
   externalId: string | null;
   replyToId: string | null;
   createdAt: string;

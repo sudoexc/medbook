@@ -48,7 +48,35 @@ export type TriggerConfigShape = {
    * through the editor without dropping unknown keys.
    */
   days?: number | null;
+  /**
+   * `APPOINTMENT_BEFORE` only: the reminder asks the patient to confirm, so
+   * it is dropped once the visit is confirmed. Ordinary reminders («завтра в
+   * 11:00 ждём вас») go out to confirmed visits too. See `skipsWhenConfirmed`.
+   */
+  skipIfConfirmed?: boolean | null;
 };
+
+/**
+ * Whether an `APPOINTMENT_BEFORE` reminder is dropped for a visit that is
+ * already confirmed (audit TG-03).
+ *
+ * Only the reminder that ASKS for confirmation is: the T-3d band («подтвердите
+ * визит кнопкой ниже»). Every PHONE / KIOSK booking is confirmed at creation
+ * and a patient who tapped «Подтверждаю» is confirmed too; suppressing the 1d
+ * and 3h reminders for them left most visits without any reminder at all.
+ *
+ * An explicit `triggerConfig.skipIfConfirmed` boolean decides. Rows saved
+ * before the flag existed fall back to the T-3d offset, the one band whose
+ * default text asks to confirm.
+ */
+export function skipsWhenConfirmed(triggerConfig: unknown): boolean {
+  const cfg =
+    triggerConfig && typeof triggerConfig === "object"
+      ? (triggerConfig as TriggerConfigShape)
+      : {};
+  if (typeof cfg.skipIfConfirmed === "boolean") return cfg.skipIfConfirmed;
+  return cfg.offsetMin === -4320;
+}
 
 /**
  * Map (trigger enum, triggerConfig.offsetMin, key) → the logical key used
@@ -250,6 +278,11 @@ export function sanitizeTriggerConfig(
 
   if ("enabled" in incoming) {
     incoming.enabled = Boolean(incoming.enabled);
+  }
+
+  if ("skipIfConfirmed" in incoming) {
+    if (incoming.skipIfConfirmed === null) delete incoming.skipIfConfirmed;
+    else incoming.skipIfConfirmed = Boolean(incoming.skipIfConfirmed);
   }
 
   return incoming;

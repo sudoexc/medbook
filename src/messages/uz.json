@@ -3426,7 +3426,22 @@
     },
     "message": {
       "noText": "Matn yo'q",
-      "file": "Fayl"
+      "file": "Fayl",
+      "voice": "Ovozli xabar",
+      "videoNote": "Video xabar",
+      "audio": "Audio",
+      "download": "Yuklab olish",
+      "failed": {
+        "title": "Yetkazilmadi",
+        "toast": "Xabar yetkazilmadi: {reason}",
+        "tg_blocked": "bemor botni bloklagan",
+        "tg_not_started": "bemor bot bilan chatni hali boshlamagan",
+        "no_telegram": "bemorda Telegram yo'q",
+        "tg_error": "Telegram xabarni qabul qilmadi",
+        "channel_unavailable": "bu suhbat kanali endi ishlamaydi",
+        "not_sent": "xabar Telegramga yuborilmagan",
+        "unknown": "yuborishda xatolik"
+      }
     },
     "globalToast": {
       "titleFrom": "{name} dan xabar",

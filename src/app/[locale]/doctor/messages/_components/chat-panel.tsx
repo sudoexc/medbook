@@ -16,6 +16,8 @@ import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { cn } from "@/lib/utils";
 
+import { failedReasonText } from "@/app/[locale]/crm/telegram/_lib/failed-reason";
+
 import { useMessagesContext } from "../_hooks/messages-context";
 import {
   conversationInitials,
@@ -161,7 +163,9 @@ export function ChatPanel() {
         )}
       </div>
 
-      <Composer conversationId={selectedId} />
+      {/* Keyed by thread: a half-typed reply to one patient must never be
+          sent to the next one opened (audit G6-01). */}
+      <Composer key={selectedId} conversationId={selectedId} />
     </section>
   );
 }
@@ -219,6 +223,7 @@ const STATUS_ICON: Record<MessageStatus, React.ReactNode> = {
 };
 
 function MessageBubble({ m }: { m: MessageRow }) {
+  const tInbox = useTranslations("tgInbox");
   const out = m.direction === "OUT";
   const time = new Date(m.createdAt).toLocaleTimeString("ru-RU", {
     hour: "2-digit",
@@ -241,7 +246,30 @@ function MessageBubble({ m }: { m: MessageRow }) {
               the doctor's chat swallowed it. Images inline, the rest as
               download links; both hit the same capability URL Telegram uses. */}
           {(m.attachments ?? []).map((a, idx) =>
-            a.kind === "image" ? (
+            // A patient's voice note or video (audit TG-01) plays in place.
+            (a.mimeType ?? "").startsWith("audio/") ? (
+              <audio
+                key={idx}
+                src={a.url}
+                controls
+                preload="metadata"
+                className="mb-1.5 block h-9 w-64 max-w-full"
+              />
+            ) : (a.mimeType ?? "").startsWith("video/") ? (
+              <video
+                key={idx}
+                src={a.url}
+                controls
+                playsInline
+                preload="metadata"
+                className={cn(
+                  "mb-1.5 block bg-muted",
+                  a.tgType === "video_note"
+                    ? "size-48 rounded-full object-cover"
+                    : "max-h-64 max-w-full rounded-lg",
+                )}
+              />
+            ) : a.kind === "image" ? (
               <a
                 key={idx}
                 href={a.url}
@@ -280,6 +308,13 @@ function MessageBubble({ m }: { m: MessageRow }) {
         >
           {time}
           {out ? STATUS_ICON[m.status] : null}
+          {out && m.status === "FAILED" ? (
+            // Not delivered, and why (audit TG-04).
+            <span className="text-destructive">
+              {tInbox("message.failed.title")}:{" "}
+              {failedReasonText(tInbox, m.failedReason)}
+            </span>
+          ) : null}
         </div>
       </div>
     </li>

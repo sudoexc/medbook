@@ -64,6 +64,11 @@ import {
 } from "../_hooks/use-canned";
 import { useClinicInfo } from "../_hooks/use-conversation-meta";
 import { fillPlaceholders, firstNameOf } from "../_lib/placeholders";
+import {
+  createDraftStore,
+  type ComposerDraft,
+  type InlineBtn,
+} from "../_lib/composer-drafts";
 import { FileTypeIcon } from "./file-icon";
 
 export interface MessageComposerProps {
@@ -80,8 +85,6 @@ type Template = {
   bodyUz: string;
 };
 
-type InlineBtn = { text: string; callback_data?: string; url?: string };
-
 type LocalAttachment = {
   id: string;
   file: File;
@@ -91,12 +94,78 @@ type LocalAttachment = {
   errorMessage?: string;
 };
 
+/**
+ * Drafts outlive the composer: it remounts per dialog, and an operator who
+ * steps into another chat comes back to what she had typed. Each draft is
+ * keyed by its conversation, so nothing typed or attached for one patient
+ * can be sent to another (audit G6-01). Object URLs of attachment previews
+ * are released when the attachment is removed or sent, not on unmount.
+ */
+const composerDrafts = createDraftStore<LocalAttachment>();
+
+type Updater<T> = T | ((prev: T) => T);
+function apply<T>(next: Updater<T>, prev: T): T {
+  return typeof next === "function" ? (next as (p: T) => T)(prev) : next;
+}
+
+/** The draft of one conversation, with setters that only ever touch it. */
+function useComposerDraft(conversationId: string) {
+  const draft = React.useSyncExternalStore(
+    composerDrafts.subscribe,
+    () => composerDrafts.get(conversationId),
+    () => composerDrafts.get(conversationId),
+  );
+  const patch = React.useCallback(
+    <K extends keyof ComposerDraft<LocalAttachment>>(
+      key: K,
+      next: Updater<ComposerDraft<LocalAttachment>[K]>,
+    ) =>
+      composerDrafts.update(conversationId, (d) => ({
+        ...d,
+        [key]: apply(next, d[key]),
+      })),
+    [conversationId],
+  );
+  return {
+    ...draft,
+    setText: React.useCallback(
+      (next: Updater<string>) => patch("text", next),
+      [patch],
+    ),
+    setButtonRows: React.useCallback(
+      (next: Updater<InlineBtn[][]>) => patch("buttonRows", next),
+      [patch],
+    ),
+    setAttachments: React.useCallback(
+      (next: Updater<LocalAttachment[]>) => patch("attachments", next),
+      [patch],
+    ),
+  };
+}
+
+/** Update one attachment of a given conversation's draft, wherever the operator is now. */
+function patchAttachment(
+  conversationId: string,
+  attachmentId: string,
+  fn: (a: LocalAttachment) => LocalAttachment,
+): void {
+  composerDrafts.update(conversationId, (d) => ({
+    ...d,
+    attachments: d.attachments.map((a) => (a.id === attachmentId ? fn(a) : a)),
+  }));
+}
+
 export function MessageComposer({ conversation }: MessageComposerProps) {
   const t = useTranslations("tgInbox.composer");
   const locale = useLocale();
-  const [text, setText] = React.useState("");
-  const [buttonRows, setButtonRows] = React.useState<InlineBtn[][]>([]);
-  const [attachments, setAttachments] = React.useState<LocalAttachment[]>([]);
+  const {
+    text,
+    buttonRows,
+    attachments,
+    setText,
+    setButtonRows,
+    setAttachments,
+  } = useComposerDraft(conversation.id);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -119,14 +188,6 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     });
   });
   const send = useSendMessage();
-
-  React.useEffect(() => {
-    return () => {
-      attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
-    };
-    // intentionally only on unmount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Auto-grow the textarea up to a cap; beyond that it scrolls internally.
   React.useEffect(() => {
@@ -156,13 +217,15 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     });
   };
 
+  // The upload is bound to the conversation it was attached in: its result
+  // is written to THAT draft even if the operator has moved on meanwhile.
   const uploadOne = React.useCallback(
-    async (id: string, file: File) => {
+    async (conversationId: string, id: string, file: File) => {
       try {
         const form = new FormData();
         form.append("file", file);
         const res = await fetch(
-          `/api/crm/conversations/${conversation.id}/attachments`,
+          `/api/crm/conversations/${conversationId}/attachments`,
           {
             method: "POST",
             credentials: "include",
@@ -180,34 +243,28 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
           sizeBytes: number;
           name: string;
         };
-        setAttachments((prev) =>
-          prev.map((a) =>
-            a.id === id
-              ? {
-                  ...a,
-                  status: "ready",
-                  remote: {
-                    kind: data.kind ?? chatAttachmentKind(data.mimeType),
-                    url: data.url,
-                    mimeType: data.mimeType,
-                    sizeBytes: data.sizeBytes,
-                    name: data.name,
-                  },
-                }
-              : a,
-          ),
-        );
+        patchAttachment(conversationId, id, (a) => ({
+          ...a,
+          status: "ready",
+          remote: {
+            kind: data.kind ?? chatAttachmentKind(data.mimeType),
+            url: data.url,
+            mimeType: data.mimeType,
+            sizeBytes: data.sizeBytes,
+            name: data.name,
+          },
+        }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Upload failed";
-        setAttachments((prev) =>
-          prev.map((a) =>
-            a.id === id ? { ...a, status: "error", errorMessage: msg } : a,
-          ),
-        );
+        patchAttachment(conversationId, id, (a) => ({
+          ...a,
+          status: "error",
+          errorMessage: msg,
+        }));
         toast.error(msg);
       }
     },
-    [conversation.id],
+    [],
   );
 
   const addFiles = React.useCallback(
@@ -254,18 +311,21 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
             status: "uploading" as const,
           })),
         ];
-        slice.forEach((s) => void uploadOne(s.id, s.file));
+        slice.forEach((s) => void uploadOne(conversation.id, s.id, s.file));
         return next;
       });
     },
-    [t, uploadOne],
+    [t, uploadOne, conversation.id, setAttachments],
   );
 
   const onSend = async () => {
     if (!canSend) return;
     const body = text.trim();
+    // Everything below is this conversation's own draft: the text, buttons
+    // and files typed and attached here, never another dialog's.
+    const sentFor = conversation.id;
     const payload = {
-      conversationId: conversation.id,
+      conversationId: sentFor,
       body,
       buttons: buttonRows.length > 0 ? buttonRows : undefined,
       attachments:
@@ -273,12 +333,10 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     };
     try {
       await send.mutateAsync(payload);
-      setText("");
-      setButtonRows([]);
-      setAttachments((prev) => {
-        prev.forEach((a) => URL.revokeObjectURL(a.previewUrl));
-        return [];
-      });
+      composerDrafts.get(sentFor).attachments.forEach((a) =>
+        URL.revokeObjectURL(a.previewUrl),
+      );
+      composerDrafts.clear(sentFor);
     } catch {
       // toast handled in hook
     }
@@ -291,36 +349,42 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     }
   };
 
-  const appendText = React.useCallback((body: string) => {
-    setText((prev) => (prev ? `${prev}\n${body}` : body));
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
-      el.scrollTop = el.scrollHeight;
-    });
-  }, []);
+  const appendText = React.useCallback(
+    (body: string) => {
+      setText((prev) => (prev ? `${prev}\n${body}` : body));
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        el.scrollTop = el.scrollHeight;
+      });
+    },
+    [setText],
+  );
 
   const onPickTemplate = (tpl: Template) => {
     appendText(locale === "uz" ? tpl.bodyUz : tpl.bodyRu);
   };
 
-  const insertEmoji = React.useCallback((emoji: string) => {
-    const el = textareaRef.current;
-    if (!el) {
-      setText((prev) => prev + emoji);
-      return;
-    }
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
-    requestAnimationFrame(() => {
-      el.focus();
-      const caret = start + emoji.length;
-      el.setSelectionRange(caret, caret);
-    });
-  }, []);
+  const insertEmoji = React.useCallback(
+    (emoji: string) => {
+      const el = textareaRef.current;
+      if (!el) {
+        setText((prev) => prev + emoji);
+        return;
+      }
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      setText((prev) => prev.slice(0, start) + emoji + prev.slice(end));
+      requestAnimationFrame(() => {
+        el.focus();
+        const caret = start + emoji.length;
+        el.setSelectionRange(caret, caret);
+      });
+    },
+    [setText],
+  );
 
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;

@@ -2551,6 +2551,9 @@ model Message {
   senderId       String?
   sender         User?            @relation("MessageSender", fields: [senderId], references: [id])
   status         MessageStatus    @default(SENT)
+  /// Why a FAILED staff message did not reach the patient: a short code
+  /// (`tg_blocked`, `no_telegram`, `tg_error`, `not_sent`), shown in the chat.
+  failedReason   String?
   externalId     String?
   replyToId      String?
   createdAt      DateTime         @default(now())

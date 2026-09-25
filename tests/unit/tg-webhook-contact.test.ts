@@ -78,6 +78,7 @@ vi.mock("@/server/telegram/invite-token", () => ({
 vi.mock("@/server/telegram/inbound-media", () => ({
   ingestTelegramMedia: vi.fn(async () => []),
   mediaPreviewLabel: vi.fn(() => ""),
+  inboundLocationText: vi.fn(() => null),
 }));
 vi.mock("@/server/realtime/publish", () => ({ publishEventSafe: vi.fn() }));
 vi.mock("@/server/patient/last-contacted", () => ({

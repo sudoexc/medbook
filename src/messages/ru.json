@@ -3426,7 +3426,22 @@
     },
     "message": {
       "noText": "Без текста",
-      "file": "Файл"
+      "file": "Файл",
+      "voice": "Голосовое сообщение",
+      "videoNote": "Видеосообщение",
+      "audio": "Аудио",
+      "download": "Скачать",
+      "failed": {
+        "title": "Не доставлено",
+        "toast": "Сообщение не доставлено: {reason}",
+        "tg_blocked": "пациент заблокировал бота",
+        "tg_not_started": "пациент ещё не начал чат с ботом",
+        "no_telegram": "у пациента нет Telegram",
+        "tg_error": "Telegram не принял сообщение",
+        "channel_unavailable": "канал этого диалога больше не работает",
+        "not_sent": "сообщение не было отправлено в Telegram",
+        "unknown": "ошибка отправки"
+      }
     },
     "globalToast": {
       "titleFrom": "Сообщение от {name}",

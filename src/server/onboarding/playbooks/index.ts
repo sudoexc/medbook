@@ -95,21 +95,20 @@ const RU_3D =
 const UZ_3D =
   "Eslatma: {{appointment.doctor}} qabuluvingiz {{appointment.date}} kuni soat {{appointment.time}} da. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.";
 
-// Stage 2.D — append the "reply YES to confirm" CTA. The TG channel
-// surfaces an inline "✅ Подтверждаю" button (wired in notifications-send.ts).
-// The trailing sentence is a legacy artefact from the SMS-fallback era
-// (SMS removed in `docs/TZ-sms-removal.md` Wave 3); we keep both RU and
-// UZ trigger words ("YES / ДА / HA") because patients still type them
-// into the chat thread by reflex and the TG webhook tolerates the input.
+// No «reply YES / ДА / HA to confirm» (audit TG-02): that sentence is from
+// the SMS era and nothing parses a text reply, so a patient who answered
+// «ДА» stayed unconfirmed. An unconfirmed visit's reminder carries the
+// «✅ Подтверждаю» button instead (notifications-send.ts); a confirmed one
+// gets none, so the text does not mention it.
 const RU_24H =
-  "Напоминание: завтра в {{appointment.time}} у вас приём в {{clinic.name}} — {{appointment.doctor}}. Адрес: {{clinic.address}}. Чтобы подтвердить, ответьте YES (или ДА / HA).";
+  "Напоминание: завтра в {{appointment.time}} у вас приём в {{clinic.name}}, врач {{appointment.doctor}}. Адрес: {{clinic.address}}. Если планы изменились, позвоните: {{clinic.phone}}.";
 const UZ_24H =
-  "Eslatma: ertaga soat {{appointment.time}} da {{clinic.name}}da qabuluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.";
+  "Eslatma: ertaga soat {{appointment.time}} da {{clinic.name}}da qabuluvingiz bor, shifokor {{appointment.doctor}}. Manzil: {{clinic.address}}. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.";
 
 const RU_2H =
-  "Через 2 часа ваш приём в {{clinic.name}} ({{appointment.doctor}}). Если не сможете — позвоните: {{clinic.phone}}. Чтобы подтвердить, ответьте YES (или ДА / HA).";
+  "Через 2 часа ваш приём в {{clinic.name}} ({{appointment.doctor}}). Если не сможете прийти, позвоните: {{clinic.phone}}.";
 const UZ_2H =
-  "2 soatdan so'ng {{clinic.name}}da qabuluvingiz bor ({{appointment.doctor}}). Kelolmasangiz qo'ng'iroq qiling: {{clinic.phone}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.";
+  "2 soatdan so'ng {{clinic.name}}da qabuluvingiz bor ({{appointment.doctor}}). Kelolmasangiz qo'ng'iroq qiling: {{clinic.phone}}.";
 
 function trio(
   flavour: { confirmRu: string; confirmUz: string },
@@ -484,7 +483,11 @@ export function triggerKeyToDbShape(trigger: TriggerKey): {
     | "PATIENT_INACTIVE_DAYS"
     | "CASE_REPEAT_DUE"
     | "CRON";
-  triggerConfig: { offsetMin?: number; daysBefore?: number } | null;
+  triggerConfig: {
+    offsetMin?: number;
+    daysBefore?: number;
+    skipIfConfirmed?: boolean;
+  } | null;
   /** A stable per-trigger key for `NotificationTemplate.key` (composite-unique with clinicId). */
   key: string;
 } | null {
@@ -494,7 +497,8 @@ export function triggerKeyToDbShape(trigger: TriggerKey): {
     case "appointment.reminder-3d":
       return {
         trigger: "APPOINTMENT_BEFORE",
-        triggerConfig: { offsetMin: -4320 },
+        // Only for visits not yet confirmed (see `skipsWhenConfirmed`).
+        triggerConfig: { offsetMin: -4320, skipIfConfirmed: true },
         key: "reminder.3d",
       };
     case "appointment.reminder-24h":

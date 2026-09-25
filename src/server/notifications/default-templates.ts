@@ -99,7 +99,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     bodyUz:
       "{{patient.firstName}}, 3 kundan keyin, {{appointment.date}} kuni soat {{appointment.time}} da — {{appointment.doctor}} bilan qabulingiz ({{clinic.name}}). Tashrifni quyidagi tugma bilan tasdiqlang yoki ilovadan bekor qiling.",
     trigger: "APPOINTMENT_BEFORE",
-    triggerConfig: { offsetMin: -4320 },
+    // The one band that asks to confirm: dropped once the visit is confirmed
+    // (audit TG-03). The 5d, 1d and 3h reminders reach confirmed visits too.
+    triggerConfig: { offsetMin: -4320, skipIfConfirmed: true },
     variables: COMMON_VARS,
   },
   {

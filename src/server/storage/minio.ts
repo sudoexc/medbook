@@ -218,29 +218,76 @@ export type ObjectFetchResult = {
   body: ReadableStream<Uint8Array> | null;
   contentType: string | null;
   contentLength: number | null;
+  /** Set when a byte range was served: `bytes <start>-<end>/<total>`. */
+  contentRange?: string | null;
 };
 
+/** A single `bytes=a-b` / `bytes=a-` / `bytes=-n` range header, else null. */
+export function parseSingleByteRange(
+  header: string | null | undefined,
+): string | null {
+  const h = (header ?? "").trim();
+  return /^bytes=(\d+-\d*|-\d+)$/.test(h) ? h : null;
+}
+
+/** Resolve a validated range against a known size; null = serve it all. */
+function resolveRange(
+  range: string,
+  size: number,
+): { start: number; end: number } | null {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!m || size === 0) return null;
+  let start: number;
+  let end: number;
+  if (m[1] === "") {
+    start = Math.max(0, size - Number(m[2]));
+    end = size - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] === "" ? size - 1 : Math.min(Number(m[2]), size - 1);
+  }
+  return start <= end && start < size ? { start, end } : null;
+}
+
+/**
+ * `opts.range` (from `parseSingleByteRange`) asks for part of the object.
+ * Browsers need it to seek in, and Safari to play at all, a voice note or
+ * video served through our proxy (audit TG-01).
+ */
 export async function fetchObject(
   bucket: string | undefined,
   key: string,
+  opts?: { range?: string | null },
 ): Promise<ObjectFetchResult> {
   const b = resolveBucket(bucket);
   if (isStubMode()) {
     const filePath = stubPath(b, key);
     const bytes = await fs.readFile(filePath);
+    const part = opts?.range ? resolveRange(opts.range, bytes.byteLength) : null;
+    const slice = part
+      ? new Uint8Array(bytes).subarray(part.start, part.end + 1)
+      : new Uint8Array(bytes);
     return {
-      body: new Response(new Uint8Array(bytes)).body,
+      body: new Response(slice).body,
       contentType: "application/octet-stream",
-      contentLength: bytes.byteLength,
+      contentLength: slice.byteLength,
+      contentRange: part
+        ? `bytes ${part.start}-${part.end}/${bytes.byteLength}`
+        : null,
     };
   }
   const out = await getClient().send(
-    new GetObjectCommand({ Bucket: b, Key: key }),
+    new GetObjectCommand({
+      Bucket: b,
+      Key: key,
+      ...(opts?.range ? { Range: opts.range } : {}),
+    }),
   );
   return {
     body: (out.Body as ReadableStream<Uint8Array> | undefined) ?? null,
     contentType: out.ContentType ?? null,
     contentLength: out.ContentLength ?? null,
+    contentRange: out.ContentRange ?? null,
   };
 }
 

@@ -52,6 +52,8 @@ export type InboxMessage = {
   senderId: string | null;
   sender: { id: string; name: string } | null;
   status: "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED";
+  /** Why a FAILED staff message did not reach Telegram (`tg_blocked`, …). */
+  failedReason?: string | null;
   externalId: string | null;
   replyToId: string | null;
   createdAt: string;

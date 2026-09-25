@@ -10,6 +10,8 @@ import {
   BotIcon,
   HeadsetIcon,
   DownloadIcon,
+  MicIcon,
+  MusicIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -17,6 +19,7 @@ import { formatBytes } from "@/lib/chat-attachments";
 import { DateText } from "@/components/atoms/date-text";
 
 import type { InboxMessage } from "../_hooks/types";
+import { failedReasonText } from "../_lib/failed-reason";
 import { FileTypeIcon } from "./file-icon";
 
 /**
@@ -58,6 +61,8 @@ type ImageAttachment = {
   name?: string;
   width?: number;
   height?: number;
+  /** Set on media a patient sent through the bot (see inbound-media.ts). */
+  tgType?: string;
 };
 
 function isImageAttachment(x: unknown): x is ImageAttachment {
@@ -76,7 +81,28 @@ type FileAttachment = {
   mimeType?: string;
   name?: string;
   sizeBytes?: number;
+  tgType?: string;
+  durationSec?: number;
 };
+
+/**
+ * Voice notes, audio and video are stored as files typed by their bytes
+ * (`audio/ogg`, `video/mp4`, …) and served inline by the attachment proxy, so
+ * they play right in the bubble instead of being a download (audit TG-01).
+ */
+function isAudio(f: FileAttachment): boolean {
+  return (f.mimeType ?? "").startsWith("audio/");
+}
+function isVideo(f: FileAttachment): boolean {
+  return (f.mimeType ?? "").startsWith("video/");
+}
+
+/** 75 → "1:15". */
+function formatDuration(sec: number | undefined): string | null {
+  if (typeof sec !== "number" || !Number.isFinite(sec) || sec <= 0) return null;
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 function isFileAttachment(x: unknown): x is FileAttachment {
   if (!x || typeof x !== "object") return false;
@@ -117,9 +143,12 @@ export function MessageBubble({
   const images = Array.isArray(message.attachments)
     ? (message.attachments as unknown[]).filter(isImageAttachment)
     : [];
-  const files = Array.isArray(message.attachments)
+  const allFiles = Array.isArray(message.attachments)
     ? (message.attachments as unknown[]).filter(isFileAttachment)
     : [];
+  const audios = allFiles.filter(isAudio);
+  const videos = allFiles.filter(isVideo);
+  const files = allFiles.filter((f) => !isAudio(f) && !isVideo(f));
 
   const isBotReply = isOut && !message.senderId;
   const onRight = isOut;
@@ -197,11 +226,87 @@ export function MessageBubble({
                 <img
                   src={img.url}
                   alt={img.name ?? ""}
-                  className="block max-h-72 w-full rounded-md object-cover"
+                  className={
+                    img.tgType === "sticker"
+                      ? "block size-32 object-contain"
+                      : "block max-h-72 w-full rounded-md object-cover"
+                  }
                   loading="lazy"
                 />
               </a>
             ))}
+          </div>
+        ) : null}
+        {videos.length > 0 ? (
+          <div className="mb-1 space-y-1">
+            {videos.map((v, i) => (
+              <div key={i}>
+                {v.tgType === "video_note" ? (
+                  <div className="mb-0.5 text-[11px] text-muted-foreground">
+                    {t("message.videoNote")}
+                    {formatDuration(v.durationSec)
+                      ? ` · ${formatDuration(v.durationSec)}`
+                      : null}
+                  </div>
+                ) : null}
+                <video
+                  src={v.url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className={
+                    v.tgType === "video_note"
+                      ? "block size-48 rounded-full bg-muted object-cover"
+                      : "block max-h-72 w-full rounded-md bg-muted"
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {audios.length > 0 ? (
+          <div className="mb-1 space-y-1">
+            {audios.map((a, i) => {
+              const voice = a.tgType === "voice";
+              const length = formatDuration(a.durationSec);
+              return (
+                <div
+                  key={i}
+                  className="rounded-lg border border-border bg-card/60 px-2.5 py-2"
+                >
+                  <div className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+                    {voice ? (
+                      <MicIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <MusicIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="min-w-0 truncate">
+                      {voice ? t("message.voice") : (a.name ?? t("message.audio"))}
+                    </span>
+                    {length ? (
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {length}
+                      </span>
+                    ) : null}
+                    <a
+                      href={a.url}
+                      download={a.name ?? true}
+                      className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+                      aria-label={t("message.download")}
+                      title={t("message.download")}
+                    >
+                      <DownloadIcon className="size-3.5" />
+                    </a>
+                  </div>
+                  <audio
+                    src={a.url}
+                    controls
+                    preload="metadata"
+                    className="block h-9 w-64 max-w-full"
+                  />
+                </div>
+              );
+            })}
           </div>
         ) : null}
         {files.length > 0 ? (
@@ -240,7 +345,7 @@ export function MessageBubble({
             // Safe: escaped + limited tags.
             dangerouslySetInnerHTML={{ __html: html }}
           />
-        ) : images.length === 0 && files.length === 0 ? (
+        ) : images.length === 0 && allFiles.length === 0 ? (
           <div className="italic opacity-70">{t("message.noText")}</div>
         ) : null}
         {buttons && buttons.length > 0 ? (
@@ -268,6 +373,11 @@ export function MessageBubble({
           <DateText date={message.createdAt} style="time" />
           {isOut ? <DeliveryIcon status={message.status} /> : null}
         </div>
+        {isOut && message.status === "FAILED" ? (
+          <div className="mt-0.5 text-right text-[11px] font-medium text-destructive">
+            {t("message.failed.title")}: {failedReasonText(t, message.failedReason)}
+          </div>
+        ) : null}
       </div>
     </div>
   );

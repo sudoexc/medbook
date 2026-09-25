@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { failedReasonText } from "../_lib/failed-reason";
 import type { InboxMessage, MessagesResponse } from "./types";
 import { messagesKey } from "./use-tg-messages";
 
@@ -31,6 +33,7 @@ export type SendPayload = {
  */
 export function useSendMessage() {
   const qc = useQueryClient();
+  const t = useTranslations("tgInbox");
 
   return useMutation({
     mutationFn: async (payload: SendPayload): Promise<InboxMessage> => {
@@ -99,7 +102,16 @@ export function useSendMessage() {
       toast.error(err instanceof Error ? err.message : "Send failed");
     },
 
-    onSuccess: (_data, payload) => {
+    onSuccess: (data, payload) => {
+      // The row is saved either way; say so when Telegram did not take it,
+      // rather than leaving a quiet red mark (audit TG-04).
+      if (data?.status === "FAILED") {
+        toast.error(
+          t("message.failed.toast", {
+            reason: failedReasonText(t, data.failedReason),
+          }),
+        );
+      }
       void qc.invalidateQueries({
         queryKey: messagesKey(payload.conversationId),
       });

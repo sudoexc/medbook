@@ -48,6 +48,7 @@ import {
 } from "@/server/telegram/contact-verify";
 import { t as botT } from "@/server/telegram/messages";
 import {
+  inboundLocationText,
   ingestTelegramMedia,
   mediaPreviewLabel,
 } from "@/server/telegram/inbound-media";
@@ -99,6 +100,10 @@ type TgIncomingMessage = {
   animation?: unknown;
   voice?: TgVoice;
   audio?: TgAudio;
+  video_note?: unknown;
+  sticker?: unknown;
+  location?: unknown;
+  venue?: unknown;
   contact?: SharedContact;
   date: number;
 };
@@ -194,7 +199,9 @@ async function recordIncoming(
   const textBody =
     message.text ??
     message.caption ??
-    (message.contact ? message.contact.phone_number : "");
+    (message.contact ? message.contact.phone_number : null) ??
+    inboundLocationText(message) ??
+    "";
   const now = new Date();
   const contact = {
     contactFirstName: message.from?.first_name ?? null,
@@ -229,11 +236,13 @@ async function recordIncoming(
       select: { id: true, mode: true, patientId: true },
     });
 
-    // Download any inbound photo/document/video and re-host as attachments.
+    // Download any inbound photo/document/video/voice/sticker and re-host it
+    // as an attachment (audit TG-01: voice notes used to be dropped).
     const attachments = await ingestTelegramMedia(clinic, conv.id, message);
-    const preview = previewOf(textBody) || mediaPreviewLabel(attachments);
+    const preview =
+      previewOf(textBody) || mediaPreviewLabel(attachments, message);
 
-    // Photo with no caption left the upsert preview empty — refine it so the
+    // Media with no caption left the upsert preview empty — refine it so the
     // inbox row doesn't show a blank last message.
     if (!previewOf(textBody) && preview) {
       await prisma.conversation.update({

@@ -33,6 +33,7 @@ import {
   MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
 } from "./default-templates";
 import { recordPatientNoChannel } from "./no-channel-action";
+import { skipsWhenConfirmed } from "./rules";
 import { render } from "./template";
 
 export const TRIGGER_KEYS = [
@@ -177,7 +178,7 @@ function formatTime(d: Date | null | undefined, tz = "Asia/Tashkent"): string {
   }
 }
 
-type AppointmentWithRefs = {
+export type AppointmentWithRefs = {
   id: string;
   clinicId: string;
   patientId: string;
@@ -193,6 +194,8 @@ type AppointmentWithRefs = {
     phone: string;
     telegramId: string | null;
     preferredChannel: string;
+    /** The language reminders are written in; absent reads as Russian. */
+    preferredLang?: "RU" | "UZ";
     birthDate: Date | null;
   };
   doctor: { nameRu: string; nameUz: string };
@@ -208,39 +211,70 @@ type AppointmentWithRefs = {
   };
 };
 
+/**
+ * Everything a reminder body can name: the patient (and the language they
+ * read), the doctor, the service, the cabinet, the clinic. Shared by every
+ * materialiser, the scheduler's custom-offset pass included (audit TG-02:
+ * that pass used to render with an empty clinic and no time or doctor).
+ */
+export const APPOINTMENT_REFS_INCLUDE = {
+  patient: {
+    select: {
+      id: true,
+      fullName: true,
+      phone: true,
+      telegramId: true,
+      preferredChannel: true,
+      preferredLang: true,
+      birthDate: true,
+    },
+  },
+  doctor: { select: { nameRu: true, nameUz: true } },
+  primaryService: { select: { nameRu: true, nameUz: true } },
+  cabinet: { select: { number: true } },
+  clinic: {
+    select: {
+      id: true,
+      nameRu: true,
+      nameUz: true,
+      phone: true,
+      addressRu: true,
+      timezone: true,
+    },
+  },
+} as const;
+
 async function loadAppointment(
   appointmentId: string,
 ): Promise<AppointmentWithRefs | null> {
   return (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findUnique({
       where: { id: appointmentId },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            fullName: true,
-            phone: true,
-            telegramId: true,
-            preferredChannel: true,
-            birthDate: true,
-          },
-        },
-        doctor: { select: { nameRu: true, nameUz: true } },
-        primaryService: { select: { nameRu: true, nameUz: true } },
-        cabinet: { select: { number: true } },
-        clinic: {
-          select: {
-            id: true,
-            nameRu: true,
-            nameUz: true,
-            phone: true,
-            addressRu: true,
-            timezone: true,
-          },
-        },
-      },
+      include: APPOINTMENT_REFS_INCLUDE,
     }),
   )) as AppointmentWithRefs | null;
+}
+
+/** The language a patient reads: their card's choice, Russian by default. */
+export function patientLang(patient: { preferredLang?: string | null }): "ru" | "uz" {
+  return patient.preferredLang === "UZ" ? "uz" : "ru";
+}
+
+/**
+ * A template rendered for one appointment, in the patient's language. A blank
+ * Uzbek text (a template only ever edited in Russian) falls back to Russian
+ * rather than sending an empty message.
+ */
+export function renderAppointmentBody(
+  tpl: { bodyRu: string; bodyUz: string },
+  appt: AppointmentWithRefs,
+): string {
+  const lang =
+    patientLang(appt.patient) === "uz" && tpl.bodyUz.trim() !== "" ? "uz" : "ru";
+  return render(
+    lang === "uz" ? tpl.bodyUz : tpl.bodyRu,
+    buildContext(appt, lang) as unknown as Record<string, unknown>,
+  );
 }
 
 function buildContext(
@@ -284,8 +318,10 @@ function buildContext(
 
 type FindTemplateResult = {
   templateId: string;
-  body: string;
+  bodyRu: string;
+  bodyUz: string;
   channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+  triggerConfig: unknown;
 } | null;
 
 /**
@@ -433,7 +469,6 @@ function whereForTrigger(
 async function findTemplateFor(
   clinicId: string,
   trigger: TriggerKey,
-  lang: "ru" | "uz",
 ): Promise<FindTemplateResult> {
   const where = whereForTrigger(trigger);
   if (!where) return null;
@@ -449,17 +484,33 @@ async function findTemplateFor(
         bodyRu: true,
         bodyUz: true,
         channel: true,
+        triggerConfig: true,
       },
     }),
   );
   if (!row) return null;
   return {
     templateId: row.id,
-    body: lang === "uz" ? row.bodyUz : row.bodyRu,
+    bodyRu: row.bodyRu,
+    bodyUz: row.bodyUz,
     channel: row.channel as FindTemplateResult extends null
       ? never
       : "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP",
+    triggerConfig: row.triggerConfig,
   };
+}
+
+/** A reminder band that asks to confirm, for a visit already confirmed. */
+function isPointlessForConfirmed(
+  trigger: TriggerKey,
+  tpl: NonNullable<FindTemplateResult>,
+  appt: { confirmedAt: Date | null },
+): boolean {
+  return (
+    trigger.startsWith("appointment.reminder-") &&
+    appt.confirmedAt !== null &&
+    skipsWhenConfirmed(tpl.triggerConfig)
+  );
 }
 
 /**
@@ -540,36 +591,11 @@ export async function materializeForAppointmentsBulk(
 ): Promise<{ created: number; skipped: number }> {
   if (jobs.length === 0) return { created: 0, skipped: 0 };
   const apptIds = jobs.map((j) => j.appointmentId);
-  const lang = "ru";
 
   const appts = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
       where: { id: { in: apptIds } },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            fullName: true,
-            phone: true,
-            telegramId: true,
-            preferredChannel: true,
-            birthDate: true,
-          },
-        },
-        doctor: { select: { nameRu: true, nameUz: true } },
-        primaryService: { select: { nameRu: true, nameUz: true } },
-        cabinet: { select: { number: true } },
-        clinic: {
-          select: {
-            id: true,
-            nameRu: true,
-            nameUz: true,
-            phone: true,
-            addressRu: true,
-            timezone: true,
-          },
-        },
-      },
+      include: APPOINTMENT_REFS_INCLUDE,
     }),
   )) as AppointmentWithRefs[];
   const apptMap = new Map(appts.map((a) => [a.id, a]));
@@ -577,7 +603,7 @@ export async function materializeForAppointmentsBulk(
   const clinicIds = Array.from(new Set(appts.map((a) => a.clinicId)));
   const tplEntries = await Promise.all(
     clinicIds.map(async (cid) => {
-      const tpl = await findTemplateFor(cid, trigger, lang);
+      const tpl = await findTemplateFor(cid, trigger);
       return [cid, tpl] as const;
     }),
   );
@@ -628,18 +654,14 @@ export async function materializeForAppointmentsBulk(
       skipped += 1;
       continue;
     }
-    // Stage 2.D — race-safety: skip the T-3d reminder if the patient
-    // confirmed between the scheduler's scan loop and this bulk insert.
-    // Same gate as the detector / scheduler band predicate.
-    if (
-      trigger === "appointment.reminder-3d" &&
-      appt.confirmedAt !== null
-    ) {
+    const tpl = templates.get(appt.clinicId);
+    if (!tpl) {
       skipped += 1;
       continue;
     }
-    const tpl = templates.get(appt.clinicId);
-    if (!tpl) {
+    // Stage 2.D — the band that asks to confirm (T-3d) is not built for a
+    // visit already confirmed; the other bands are (audit TG-03).
+    if (isPointlessForConfirmed(trigger, tpl, appt)) {
       skipped += 1;
       continue;
     }
@@ -664,10 +686,7 @@ export async function materializeForAppointmentsBulk(
       skipped += 1;
       continue;
     }
-    const body = render(
-      tpl.body,
-      buildContext(appt, lang) as unknown as Record<string, unknown>,
-    );
+    const body = renderAppointmentBody(tpl, appt);
     toInsert.push({
       clinicId: appt.clinicId,
       patientId: appt.patientId,
@@ -823,38 +842,9 @@ export async function materializeManualReminders(params: {
         status: { in: ["BOOKED", "CONFIRMED"] },
         date: { gt: params.now },
       },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            fullName: true,
-            phone: true,
-            telegramId: true,
-            preferredChannel: true,
-            preferredLang: true,
-            birthDate: true,
-          },
-        },
-        doctor: { select: { nameRu: true, nameUz: true } },
-        primaryService: { select: { nameRu: true, nameUz: true } },
-        cabinet: { select: { number: true } },
-        clinic: {
-          select: {
-            id: true,
-            nameRu: true,
-            nameUz: true,
-            phone: true,
-            addressRu: true,
-            timezone: true,
-          },
-        },
-      },
+      include: APPOINTMENT_REFS_INCLUDE,
     }),
-  )) as Array<
-    AppointmentWithRefs & {
-      patient: AppointmentWithRefs["patient"] & { preferredLang: "RU" | "UZ" };
-    }
-  >;
+  )) as AppointmentWithRefs[];
 
   const already = new Set(
     (
@@ -899,11 +889,7 @@ export async function materializeManualReminders(params: {
       noChannel += 1;
       continue;
     }
-    const lang = appt.patient.preferredLang === "UZ" ? "uz" : "ru";
-    const body = render(
-      lang === "uz" ? tpl.bodyUz : tpl.bodyRu,
-      buildContext(appt, lang) as unknown as Record<string, unknown>,
-    );
+    const body = renderAppointmentBody(tpl, appt);
     const base = {
       clinicId: appt.clinicId,
       patientId: appt.patientId,
@@ -952,9 +938,13 @@ async function materializeForAppointment(
 ): Promise<{ created: number; skipped: number }> {
   const appt = await loadAppointment(apptId);
   if (!appt) return { created: 0, skipped: 0 };
-  const lang = "ru"; // MVP: always Russian; lang per patient → Phase 4
-  const tpl = await findTemplateFor(appt.clinicId, trigger, lang);
+  const tpl = await findTemplateFor(appt.clinicId, trigger);
   if (!tpl) return { created: 0, skipped: 1 };
+  // A PHONE / KIOSK booking is confirmed at creation: its T-3d «подтвердите»
+  // row would only be cancelled by the worker, so it is not built.
+  if (isPointlessForConfirmed(trigger, tpl, appt)) {
+    return { created: 0, skipped: 1 };
+  }
   const already = await alreadyScheduled({
     clinicId: appt.clinicId,
     patientId: appt.patientId,
@@ -975,7 +965,7 @@ async function materializeForAppointment(
     });
     return { created: 0, skipped: 1 };
   }
-  const body = render(tpl.body, buildContext(appt, lang) as unknown as Record<string, unknown>);
+  const body = renderAppointmentBody(tpl, appt);
   await createSend({
     clinicId: appt.clinicId,
     patientId: appt.patientId,
@@ -1242,7 +1232,10 @@ export async function runScheduledTriggers(): Promise<{
     prisma.appointment.findMany({
       where: {
         date: { gte: now, lte: horizon },
-        status: { in: ["BOOKED", "WAITING"] },
+        // CONFIRMED too (audit TG-03): every PHONE / KIOSK booking is
+        // confirmed at creation and still needs its 5d / 1d / 3h reminders.
+        // The T-3d band drops confirmed visits in the materialiser.
+        status: { in: ["BOOKED", "CONFIRMED", "WAITING"] },
       },
       select: { id: true, date: true, confirmedAt: true },
       take: 500,
@@ -1355,7 +1348,7 @@ async function runBirthdays(): Promise<number> {
   const clinicIds = Array.from(new Set(matches.map((p) => p.clinicId)));
   const tplEntries = await Promise.all(
     clinicIds.map(async (cid) => {
-      const tpl = await findTemplateFor(cid, "birthday", "ru");
+      const tpl = await findTemplateFor(cid, "birthday");
       return [cid, tpl] as const;
     }),
   );
@@ -1409,7 +1402,7 @@ async function runBirthdays(): Promise<number> {
       telegramId: p.telegramId,
     });
     if (!recipient) continue;
-    const body = render(tpl.body, {
+    const body = render(tpl.bodyRu, {
       patient: {
         name: p.fullName,
         firstName: firstName(p.fullName),

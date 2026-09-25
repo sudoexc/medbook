@@ -146,16 +146,18 @@ export function ChatRightRail({ conversation }: ChatRightRailProps) {
     );
   }
 
+  // Keyed by dialog: the name and phone typed for one unlinked chat, or an
+  // open booking dialog, must not carry over to the next chat (audit G6-01).
   if (!conversation.patientId) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        <CreatePatientForm conversation={conversation} />
-        <TagsCard conversation={conversation} />
+        <CreatePatientForm key={conversation.id} conversation={conversation} />
+        <TagsCard key={`tags-${conversation.id}`} conversation={conversation} />
       </div>
     );
   }
 
-  return <LinkedPatientRail conversation={conversation} />;
+  return <LinkedPatientRail key={conversation.id} conversation={conversation} />;
 }
 
 function LinkedPatientRail({ conversation }: { conversation: InboxConversation }) {

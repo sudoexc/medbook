@@ -7479,6 +7479,7 @@
         "sign": "Imzolash",
         "signed": "Xulosa imzolandi",
         "signError": "Xulosani imzolab bo‘lmadi. Qayta urinib ko‘ring.",
+        "signUnsaved": "Imzolanmadi: oxirgi tuzatish saqlanmadi. Kartani tekshirib, qayta imzolang.",
         "signSaveFirst": "Avval xulosa matnini saqlang",
         "draftCompletedHint": "Qabul yakunlangan, lekin xulosa imzolanmagan. Uni tekshirib, imzolang.",
         "signConfirmTitle": "Bo‘sh bo‘limlar bilan imzolaysizmi?",

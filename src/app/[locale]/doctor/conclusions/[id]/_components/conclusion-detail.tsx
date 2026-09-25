@@ -19,10 +19,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
-import {
-  emptyConclusionSections,
-  type ConclusionSection,
-} from "@/lib/visit-note-sections";
+import { type ConclusionSection } from "@/lib/visit-note-sections";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,6 +33,8 @@ import {
 import {
   isEditWindowExpired,
   isVersionConflict,
+  prepareVisitNoteSignature,
+  settleVisitNotePatches,
   useFinalizeVisitNote,
   usePatchVisitNote,
   useVisitNote,
@@ -101,6 +100,11 @@ export function ConclusionDetail({
   const [signConfirm, setSignConfirm] = React.useState<
     ConclusionSection[] | null
   >(null);
+  // True from the click until finalize answers, including the wait for the
+  // queued corrections. The ref guards a double click the state would only
+  // reflect after the next render.
+  const [signing, setSigning] = React.useState(false);
+  const signingRef = React.useRef(false);
 
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
@@ -208,30 +212,66 @@ export function ConclusionDetail({
   const canOpenInReception =
     note.status === "DRAFT" && appointmentStatus === "IN_PROGRESS";
 
-  const doSign = async () => {
+  /**
+   * Sign the draft. Every correction the doctor made before the click is
+   * saved first: the finalize POST does not wait in the PATCH queue, so a
+   * dose typed and a time chip clicked just before «Подписать» used to reach
+   * the server after the signature. The signed revision and its PDF lacked
+   * them, and the late PATCH then failed as a stale version.
+   *
+   * The button is deliberately not disabled while a PATCH is pending: the
+   * dose field commits on blur, i.e. on the mousedown of this very click, and
+   * a button disabled before mouseup never receives the click. It shows its
+   * spinner and waits for the queue instead.
+   *
+   * `confirmed` is the second pass from the empty-sections dialog, which
+   * already ran the check on the saved row.
+   */
+  const sign = async (confirmed: boolean) => {
+    if (signingRef.current || editing) return;
+    signingRef.current = true;
+    setSigning(true);
     try {
+      if (confirmed) {
+        if (!(await settleVisitNotePatches(note.id))) {
+          toast.error(tr("detail.signUnsaved"));
+          void noteQuery.refetch();
+          return;
+        }
+      } else {
+        const ready = await prepareVisitNoteSignature(note.id, async () => {
+          // What the server holds, not the optimistic cache: the check must
+          // judge exactly what finalize is about to sign.
+          const fresh = await noteQuery.refetch();
+          if (fresh.isError || !fresh.data) {
+            throw fresh.error ?? new Error("visit-note refetch failed");
+          }
+          return fresh.data;
+        });
+        if (ready.kind === "unsaved") {
+          // The failed save may not have toasted itself (TanStack runs a
+          // mutate() callback only for the latest call), and the card still
+          // shows the optimistic value: say so and snap it back.
+          toast.error(tr("detail.signUnsaved"));
+          void noteQuery.refetch();
+          return;
+        }
+        if (ready.missing.length > 0) {
+          setSignConfirm(ready.missing);
+          return;
+        }
+      }
       await finalize.mutateAsync();
       toast.success(tr("detail.signed"));
       void qc.invalidateQueries({ queryKey: ["doctor", "conclusions"] });
     } catch {
       toast.error(tr("detail.signError"));
+    } finally {
+      signingRef.current = false;
+      setSigning(false);
     }
   };
-
-  const onSign = () => {
-    if (finalize.isPending || editing) return;
-    // The live row: a correction saved a moment ago counts.
-    const live = qc.getQueryData<VisitNoteRow>(visitNoteKey(note.id)) ?? note;
-    const missing = emptyConclusionSections({
-      ...live,
-      structuredRx: live.visitPrescriptions?.length ?? 0,
-    });
-    if (missing.length > 0) {
-      setSignConfirm(missing);
-      return;
-    }
-    void doSign();
-  };
+  const signBusy = signing || finalize.isPending;
 
   return (
     <div className="flex flex-col gap-4 xl:gap-5">
@@ -310,12 +350,13 @@ export function ConclusionDetail({
           {canSign && (
             <button
               type="button"
-              onClick={onSign}
-              disabled={finalize.isPending || editing}
+              onClick={() => void sign(false)}
+              disabled={signBusy || editing}
+              aria-busy={signBusy}
               title={editing ? tr("detail.signSaveFirst") : undefined}
               className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
-              {finalize.isPending ? (
+              {signBusy ? (
                 <Loader2Icon className="size-4 animate-spin" />
               ) : (
                 <FileSignatureIcon className="size-4" />
@@ -334,7 +375,7 @@ export function ConclusionDetail({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                disabled={!canEdit}
+                disabled={!canEdit || signBusy}
                 className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:opacity-50"
               >
                 <PencilIcon className="size-3" />
@@ -391,7 +432,18 @@ export function ConclusionDetail({
               fixable in the same control that created it, not only as free
               text. After the window they render disabled (read-only) and the
               amendment flow in the header takes over. */}
-          <section className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4">
+          {/* Frozen while a signature is on its way: an edit made after the
+              queue was drained would race the finalize POST again. `inert`
+              rather than the cards' `disabled`, which would fold away the
+              search box and the open row editor for that second. */}
+          <section
+            inert={signBusy}
+            aria-busy={signBusy}
+            className={cn(
+              "flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4 transition-opacity",
+              signBusy && "opacity-60",
+            )}
+          >
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-foreground">
                 {tr("detail.clinicalHeading")}
@@ -538,10 +590,10 @@ export function ConclusionDetail({
             </Button>
             <Button
               type="button"
-              disabled={finalize.isPending}
+              disabled={signBusy}
               onClick={() => {
                 setSignConfirm(null);
-                void doSign();
+                void sign(true);
               }}
             >
               {tr("detail.signConfirmConfirm")}

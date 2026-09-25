@@ -2,6 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import {
+  emptyConclusionSections,
+  type ConclusionSection,
+} from "@/lib/visit-note-sections";
+
 export type VisitPrescriptionTimeOfDay =
   | "MORNING"
   | "NOON"
@@ -197,6 +202,11 @@ export function isEditWindowExpired(e: unknown): boolean {
 // been folded into the cache, so ordinary same-window sequences always pass.
 const patchQueues = new Map<string, Promise<unknown>>();
 
+// Refused or failed PATCHes per note, only ever counted up. A caller that
+// waited on the queue compares the count before and after to learn whether
+// one of the requests it waited for did not land.
+const patchFailures = new Map<string, number>();
+
 /**
  * Fields whose payload is a whole replace-all array the client composes from
  * what it has on screen (audit VW-01). Each is written into the cache the
@@ -362,15 +372,61 @@ export function enqueueVisitNotePatch(
   const send = () => sendVisitNotePatch(qc, noteId, patch, optimistic);
   const run = prev.then(send, send);
   // Store a settled-safe tail so an unhandled rejection never escapes
-  // through the map entry.
+  // through the map entry. The failure is counted inside the tail, so it is
+  // recorded before anyone awaiting the tail resumes.
   patchQueues.set(
     noteId,
     run.then(
       () => undefined,
-      () => undefined,
+      () => {
+        patchFailures.set(noteId, (patchFailures.get(noteId) ?? 0) + 1);
+      },
     ),
   );
   return run;
+}
+
+/**
+ * Resolves once every PATCH queued for this note so far has answered: true
+ * when all of them were accepted, false when one was refused or failed.
+ * An idle note resolves true at once.
+ *
+ * For whatever must act on what the server holds rather than on what the
+ * screen shows. The finalize POST does not go through the queue, so a
+ * signature sent while a correction is still queued reaches the server
+ * first: the signed revision lacks the correction, which then fails as a
+ * stale version and vanishes from the screen.
+ */
+export async function settleVisitNotePatches(noteId: string): Promise<boolean> {
+  const failedBefore = patchFailures.get(noteId) ?? 0;
+  await patchQueues.get(noteId);
+  return (patchFailures.get(noteId) ?? 0) === failedBefore;
+}
+
+export type SignReadiness =
+  | { kind: "unsaved" }
+  | { kind: "ready"; row: VisitNoteRow; missing: ConclusionSection[] };
+
+/**
+ * The steps before a signature, in order: wait for every queued correction,
+ * then read the row back from the server and check it for empty sections.
+ * The cache is not good enough for that check: it already holds the
+ * optimistic replace-all rows (VW-01), so a drug whose save is still in
+ * flight, or is about to fail, would count as prescribed. "unsaved" means a
+ * queued correction did not land and nothing should be signed until the
+ * doctor has seen the card snap back.
+ */
+export async function prepareVisitNoteSignature(
+  noteId: string,
+  readSavedRow: () => Promise<VisitNoteRow>,
+): Promise<SignReadiness> {
+  if (!(await settleVisitNotePatches(noteId))) return { kind: "unsaved" };
+  const row = await readSavedRow();
+  const missing = emptyConclusionSections({
+    ...row,
+    structuredRx: row.visitPrescriptions?.length ?? 0,
+  });
+  return { kind: "ready", row, missing };
 }
 
 export function usePatchVisitNote(noteId: string | null) {

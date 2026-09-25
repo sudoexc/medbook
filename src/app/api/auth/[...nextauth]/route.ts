@@ -22,6 +22,7 @@ import {
   checkLoginThrottle,
   tooManyAttemptsResponse,
 } from "@/server/auth/login-throttle";
+import { isKnownLoginSource } from "@/server/auth/login-sources";
 
 export const { GET } = handlers;
 
@@ -42,10 +43,15 @@ async function peekEmail(request: NextRequest): Promise<string | null> {
 
 export async function POST(request: NextRequest): Promise<Response> {
   if (isCredentialsCallback(request.nextUrl.pathname)) {
-    const status = checkLoginThrottle({
-      ip: realClientIp(request),
-      email: await peekEmail(request),
-    });
+    // A read-only look, so a locked-out caller gets a 429 the login form can
+    // show. The slot itself is taken inside `authorize`, right before the
+    // password check: that is what holds under a burst of parallel requests.
+    const ip = realClientIp(request);
+    const email = await peekEmail(request);
+    const status = await checkLoginThrottle(
+      { ip, email },
+      { isKnownSource: () => isKnownLoginSource(email, ip) },
+    );
     if (status.blocked) {
       // next-auth/react's signIn() reads `url` from the JSON body and parses
       // `error` out of it; without a url it throws and the login button

@@ -18,6 +18,9 @@
  * count together, the 6th wrong password for one email within 15 minutes gets
  * 429 on both, and an unknown email costs the same bcrypt time as a known one
  * (it used to answer instantly, which told an attacker which logins exist).
+ * The slot is taken before bcrypt runs, so a burst of parallel requests gets
+ * 5 password checks, not 500. A right password here only gives the slot back:
+ * the sign-in is not complete until NextAuth has seen the second factor.
  *
  * Why this is a separate endpoint instead of using signIn directly:
  *   - signIn returns null on "wrong credentials" AND on "missing 2fa". We
@@ -36,10 +39,10 @@ import { PENDING_COOKIE_NAME, signPending } from "@/server/auth/totp-pending";
 import { is2faDisabled } from "@/server/auth/security-policy";
 import { verifyPasswordConstantTime } from "@/server/auth/password";
 import {
-  checkLoginThrottle,
-  recordLoginFailure,
+  beginLoginAttempt,
   tooManyAttemptsResponse,
 } from "@/server/auth/login-throttle";
+import { isKnownLoginSource } from "@/server/auth/login-sources";
 import { realClientIp } from "@/lib/client-ip";
 
 const Schema = z.object({
@@ -60,30 +63,42 @@ export async function POST(request: Request): Promise<Response> {
   }
   const { email, password } = parsed.data;
 
-  const who = { ip: realClientIp(request), email };
-  const throttle = checkLoginThrottle(who);
-  if (throttle.blocked) return tooManyAttemptsResponse(throttle);
-
-  // We don't want to leak account existence via timing or response body.
-  // Returning the same shape on both wrong-creds and unknown-user keeps
-  // the surface uniform, and every path spends one bcrypt comparison.
-  const user = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        passwordHash: true,
-        active: true,
-        totpEnabledAt: true,
-      },
-    }),
+  const ip = realClientIp(request);
+  const attempt = await beginLoginAttempt(
+    { ip, email },
+    { isKnownSource: () => isKnownLoginSource(email, ip) },
   );
+  if (attempt.blocked) return tooManyAttemptsResponse(attempt);
 
-  const valid = await verifyPasswordConstantTime(password, user?.passwordHash);
+  let user;
+  let valid: boolean;
+  try {
+    // We don't want to leak account existence via timing or response body.
+    // Returning the same shape on both wrong-creds and unknown-user keeps
+    // the surface uniform, and every path spends one bcrypt comparison.
+    user = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          passwordHash: true,
+          active: true,
+          totpEnabledAt: true,
+        },
+      }),
+    );
+    valid = await verifyPasswordConstantTime(password, user?.passwordHash);
+  } catch (e) {
+    // A crash is not a wrong password: do not spend the caller's budget.
+    attempt.release();
+    throw e;
+  }
   if (!user || !user.active || !valid) {
-    recordLoginFailure(who);
+    // The slot taken above already counts as this failure.
     return err("invalid_credentials", 401);
   }
+  // Right password, but no session yet: NextAuth counts the real sign-in.
+  attempt.release();
 
   // Kill-switch: when DISABLE_2FA is set we never gate the login on TOTP,
   // even for enrolled users. Skip the pending-cookie too — the login

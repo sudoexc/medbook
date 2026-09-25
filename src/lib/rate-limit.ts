@@ -137,6 +137,25 @@ export function recordFailure(
   return entry.count;
 }
 
+/**
+ * Give back one failure counted up front for an attempt that turned out not to
+ * be a failure. `windowResetAt` is the window the failure was counted in: if
+ * that window has since expired (or was cleared and restarted), there is
+ * nothing of ours left to give back.
+ */
+export function refundFailure(
+  storeName: string,
+  key: string,
+  windowResetAt: number,
+  now = Date.now(),
+): void {
+  const store = storeFor(storeName);
+  const entry = liveEntry(store, key, now);
+  if (!entry || entry.resetAt !== windowResetAt) return;
+  entry.count--;
+  if (entry.count <= 0) store.map.delete(key);
+}
+
 export function clearFailures(storeName: string, key: string): void {
   storeFor(storeName).map.delete(key);
 }

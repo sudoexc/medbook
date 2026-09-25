@@ -3,6 +3,7 @@ import type * as React from "react";
 
 import { auth } from "@/lib/auth";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch";
 import { AdminSidebar } from "./_components/admin-sidebar";
 import { AdminTopbar } from "./_components/admin-topbar";
 
@@ -51,6 +52,9 @@ export default async function AdminLayout({
 
   return (
     <QueryProvider>
+      {/* Idle timeout counts only real input (audit SEC-06): without the
+          heartbeat a SUPER_ADMIN clicking through /admin would time out. */}
+      <SessionExpiryWatch />
       <div className="flex h-screen min-h-0 w-full bg-background">
         <AdminSidebar />
         <div className="flex min-w-0 flex-1 flex-col">

@@ -43,6 +43,74 @@ export function assertAccountSeedAllowed(scriptName: string): void {
   process.exit(1);
 }
 
+/** The database name in a Postgres connection URL, or null. */
+function databaseName(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.replace(/^\/+/, ""));
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
+const TEST_DB_WORDS = new Set(["e2e", "test", "tests"]);
+
+/**
+ * Why `tests/e2e/seed.ts` must not run against this environment, or null
+ * when it may (SEC-04 review).
+ *
+ * That seed is the one exception to the rules above, on purpose: Playwright
+ * signs in with fixed passwords (tests/e2e/fixtures/seed-handles.ts), so it
+ * writes super / admin / recept / operator / doctor for super@neurofax.uz,
+ * admin@neurofax.uz and the other accounts of clinic "neurofax", the slug and
+ * logins production uses, and resets them on every run. `npm run e2e:seed`
+ * reads DATABASE_URL from .env; from a checkout whose .env points at
+ * production it would hand the live accounts to anyone who has read the
+ * repository. So it runs only against a database that is plainly a test one
+ * (a name with an e2e / test part: neurofax_e2e, medbook_e2e), or one named
+ * explicitly in E2E_SEED_ALLOW_DB for this run. Never with
+ * NODE_ENV=production: SEED_ALLOW_PROD_ACCOUNTS does not apply to known
+ * passwords.
+ */
+export function e2eSeedRefusal(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  if (env.NODE_ENV === "production") {
+    return "NODE_ENV=production. Сид e2e пишет известные пароли и на проде не запускается никогда.";
+  }
+  const db = databaseName(env.DATABASE_URL);
+  if (!db) return "DATABASE_URL не задан или в нём нет имени базы.";
+  const words = db.toLowerCase().split(/[^a-z0-9]+/);
+  if (words.some((w) => TEST_DB_WORDS.has(w))) return null;
+  if (env.E2E_SEED_ALLOW_DB && env.E2E_SEED_ALLOW_DB === db) return null;
+  return `База «${db}» не похожа на тестовую (в имени нет e2e или test).`;
+}
+
+export function assertE2eSeedAllowed(
+  scriptName: string,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  const reason = e2eSeedRefusal(env);
+  if (!reason) return;
+  const db = databaseName(env.DATABASE_URL) ?? "<имя базы>";
+  console.error(
+    [
+      "",
+      `⛔ ${scriptName} ставит учёткам super@, admin@, recept@, operator@ и врачам`,
+      "   клиники neurofax известные пароли из tests/e2e/fixtures/seed-handles.ts.",
+      `   ${reason}`,
+      "",
+      "   Запускай его на отдельной тестовой базе, например:",
+      "     DATABASE_URL=postgresql://…/neurofax_e2e npm run e2e:seed",
+      "   Если эта база точно тестовая, подтверди её имя явно:",
+      `     E2E_SEED_ALLOW_DB=${db} npm run e2e:seed`,
+      "",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
 type Issued = { email: string; password: string; source: "env" | "generated" };
 
 const issued: Issued[] = [];

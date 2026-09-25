@@ -101,7 +101,7 @@ export type StaffSessionVerdict =
  * log out exactly the people who are working. For cookie-bound (legacy)
  * sessions the idle clock therefore starts no earlier than this process's
  * start. Such sessions are gone within 8h (forced re-rotation); sessions
- * minted from now on are bumped by every request and get no grace.
+ * minted from now on are bumped by user activity and get no grace.
  */
 const PROCESS_STARTED_AT = new Date();
 
@@ -341,17 +341,20 @@ function bumpActivity(snap: Snapshot, now: Date): void {
 }
 
 /**
- * Decide on a live request. Any request that reaches here counts as activity
- * (throttled to one write a minute), so a receptionist working on a page that
- * refreshes itself is never timed out while she is there, and an abandoned PC
- * times out once its tab stops talking to the server.
+ * Decide on a live request. Only a request made by a person counts as
+ * activity (throttled to one write a minute): the client's input heartbeat or
+ * a full page load, see `src/lib/user-activity.ts`. Counting every request
+ * kept an abandoned reception PC signed in for the whole 8h, because the
+ * queue page polls the API on its own. Someone clicking or typing on one
+ * screen for 40 minutes is kept alive by the heartbeat.
  */
 export async function evaluateStaffSession(input: {
   claims: GuardClaims;
   binding: SessionBinding;
   now?: Date;
-  /** False for server-initiated re-checks (an open SSE stream), which must
-   *  not keep an abandoned PC's session alive by themselves. */
+  /** True only when a person made this request. Polling, SSE re-checks and
+   *  background refetches leave it false, so they cannot keep an abandoned
+   *  PC's session alive by themselves. */
   countAsActivity?: boolean;
 }): Promise<StaffSessionVerdict> {
   const now = input.now ?? new Date();
@@ -380,7 +383,7 @@ export async function evaluateStaffSession(input: {
     afterReject(verdict, input.claims);
     return verdict;
   }
-  if (input.countAsActivity !== false) bumpActivity(snap, now);
+  if (input.countAsActivity === true) bumpActivity(snap, now);
   return verdict;
 }
 

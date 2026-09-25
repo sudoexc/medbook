@@ -49,7 +49,9 @@ The in-memory queue, SSE fallback, and `/tmp` upload stub kick in automatically 
   `neurofax_e2e` → миграции → сид → build → прогон против `next start`.
   Требует локальный Postgres и остановленный `npm run dev` —
   см. [`tests/e2e/README.md`](./tests/e2e/README.md).
-- `npm run e2e:seed` — идемпотентный сид e2e-базы (`tests/e2e/seed.ts`).
+- `npm run e2e:seed` — идемпотентный сид e2e-базы (`tests/e2e/seed.ts`). Ставит
+  известные пароли, поэтому работает только на базе с e2e или test в имени
+  (или с явным `E2E_SEED_ALLOW_DB=<имя базы>`) и никогда при NODE_ENV=production.
 - `npm run test:e2e` — только прогон Playwright (окружение готовишь сам).
 - `npx tsx src/server/workers/start.ts` — run background workers locally.
 - `npx tsx scripts/seed-demo-data.ts` — populate the `neurofax` clinic with a

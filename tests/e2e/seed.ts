@@ -11,8 +11,15 @@
  *   - 10 notification templates per clinic
  *
  * Usage:
- *   npm run e2e:seed                         # idempotent
- *   DATABASE_URL=postgresql://... e2e:seed   # override DB
+ *   DATABASE_URL=postgresql://.../neurofax_e2e npm run e2e:seed   # idempotent
+ *   E2E_SEED_ALLOW_DB=<db> npm run e2e:seed   # a test DB without e2e/test in its name
+ *
+ * The passwords below are fixed and public (Playwright signs in with them,
+ * tests/e2e/fixtures/seed-handles.ts) and the logins and clinic slug are the
+ * production ones, so every run resets those accounts to the known passwords.
+ * That is what an e2e database needs and exactly what production must never
+ * get (audit SEC-04): `assertE2eSeedAllowed` refuses NODE_ENV=production and
+ * any database that is not plainly a test one, before anything is written.
  *
  * Pure side-effect script — no exports beyond `main`.
  */
@@ -21,6 +28,8 @@ import "dotenv/config";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+
+import { assertE2eSeedAllowed } from "../../scripts/_seed-passwords";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -108,6 +117,8 @@ const TEMPLATE_SEEDS = [
 ];
 
 async function main() {
+  // First, before any query: this run writes known passwords.
+  assertE2eSeedAllowed("tests/e2e/seed.ts");
   console.log("[e2e-seed] start");
 
   const superHash = await bcrypt.hash("super", 10);

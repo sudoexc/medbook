@@ -769,6 +769,7 @@ model User {
   auditLogs                   AuditLog[]
   patientViews                PatientView[]
   userSessions                UserSession[]
+  loginSources                StaffLoginSource[]
   assignedConvs               Conversation[]          @relation("ConversationAssignee")
   calls                       Call[]                  @relation("CallOperator")
   sentMessages                Message[]               @relation("MessageSender")
@@ -3319,6 +3320,22 @@ model UserSession {
 
   @@index([userId])
   @@index([userId, createdAt])
+}
+
+// Addresses a staff account has completed a sign-in from (audit SEC-02,
+// throttle review). The failed-login throttle's account-wide and per-address
+// buckets do not block a pair seen here within 30 days, so an outsider cannot
+// lock a doctor out of the clinic PC by failing logins in her name. `source`
+// is an IPv4 address or the /64 of an IPv6 one (lib/client-ip ipBucket).
+// Rows unused for 30 days are pruned on the user's next sign-in.
+model StaffLoginSource {
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source        String
+  firstSeenAt   DateTime @default(now())
+  lastSuccessAt DateTime @default(now())
+
+  @@id([userId, source])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

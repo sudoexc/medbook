@@ -10,8 +10,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *     one-time pass" let a kicked or idled-out browser straight back in);
  *   - a deactivated or moved account is refused on the next request; a
  *     demoted one keeps its session but with the NEW role;
- *   - idle and the 8h cap apply everywhere, while a user whose requests keep
- *     coming (the live queue screen) is never timed out;
+ *   - idle and the 8h cap apply everywhere; a user who keeps clicking or
+ *     typing (the input heartbeat) is never timed out, while a page that only
+ *     polls on its own (the live queue screen) no longer keeps an abandoned
+ *     PC signed in;
  *   - revoking sessions (password reset/change, deactivation) cuts every open
  *     browser off at the next request.
  */
@@ -280,16 +282,36 @@ describe("evaluateStaffSession", () => {
     });
   });
 
-  it("a user working 40 minutes on one page (API calls only) is never timed out", async () => {
-    // One request a minute for 40 minutes, no page navigation at all.
-    for (let m = 0; m <= 40; m++) {
-      const at = new Date(NOW.getTime() + m * MIN);
-      const v = await evaluateStaffSession({ claims, binding: sid, now: at });
+  it("a user working 40 minutes on one page (input heartbeats, no navigation) is never timed out", async () => {
+    // The page polls every 15 s; the person clicks or types, so a heartbeat
+    // goes out once a minute.
+    for (let s = 0; s <= 40 * 60; s += 15) {
+      const at = new Date(NOW.getTime() + s * 1000);
+      const v = await evaluateStaffSession({ claims, binding: sid, now: at, countAsActivity: s % 60 === 0 });
       expect(v.ok).toBe(true);
     }
     // ...and the activity writes were throttled, not one per request.
     expect(state.updates.length).toBeGreaterThan(0);
     expect(state.updates.length).toBeLessThanOrEqual(41);
+  });
+
+  it("an abandoned reception PC times out even though its queue page keeps polling (review of 4308b0f)", async () => {
+    // Last touched 5 minutes before NOW, then only the page's own polling.
+    let kicked: Awaited<ReturnType<typeof evaluateStaffSession>> | null = null;
+    let kickedAtMin = -1;
+    for (let s = 0; s <= 60 * 60 && !kicked; s += 15) {
+      const at = new Date(NOW.getTime() + s * 1000);
+      const v = await evaluateStaffSession({ claims, binding: sid, now: at });
+      if (!v.ok) {
+        kicked = v;
+        kickedAtMin = s / 60;
+      }
+    }
+    expect(kicked).toMatchObject({ ok: false, reason: "idle" });
+    // 30-minute idle window, last activity 5 minutes before the polling began.
+    expect(kickedAtMin).toBeGreaterThan(24);
+    expect(kickedAtMin).toBeLessThanOrEqual(26);
+    expect(state.updates).toHaveLength(0);
   });
 
   it("does not bump activity for server-side re-checks (an open SSE stream)", async () => {

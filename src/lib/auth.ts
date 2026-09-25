@@ -13,7 +13,7 @@
 import NextAuth from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import Credentials from "next-auth/providers/credentials";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { prisma } from "./prisma";
 import { runUnscoped, runWithTenant } from "./tenant-context";
@@ -40,12 +40,16 @@ import {
   type SessionBinding,
 } from "@/server/auth/session-guard";
 import {
-  checkLoginThrottle,
-  recordLoginFailure,
-  recordLoginSuccess,
+  beginLoginAttempt,
+  type LoginAttempt,
 } from "@/server/auth/login-throttle";
+import {
+  isKnownLoginSource,
+  rememberLoginSource,
+} from "@/server/auth/login-sources";
 import { verifyPasswordConstantTime } from "@/server/auth/password";
 import { realClientIp } from "./client-ip";
+import { isUserActivityRequest } from "./user-activity";
 
 const APP_ROLES: ReadonlySet<Role> = new Set([
   "SUPER_ADMIN",
@@ -84,6 +88,125 @@ async function sessionBindingFor(token: JWT): Promise<SessionBinding> {
     // reject on the binding alone (the account checks still run).
     return { kind: "unbound" };
   }
+}
+
+/**
+ * Does this request show a person at the keyboard (their input heartbeat, or
+ * a full page load)? Background polling does not, so it cannot keep an
+ * abandoned PC signed in past the idle timeout (audit SEC-06).
+ */
+async function requestIsUserActivity(): Promise<boolean> {
+  try {
+    return isUserActivityRequest(await headers());
+  } catch {
+    // No request scope: nothing to go on, and not counting is the safe side.
+    return false;
+  }
+}
+
+type OpenLoginAttempt = Extract<LoginAttempt, { blocked: false }>;
+
+/**
+ * The credentials check proper: password, then the second factor when the
+ * account has one. `attempt` already counts as a failed login; every
+ * `return null` below leaves it that way. Only a complete sign-in calls
+ * `succeeded()` (and remembers the address, see login-sources.ts); a right
+ * password still waiting for its second factor calls `release()`.
+ */
+async function checkStaffCredentials(
+  input: {
+    email: string;
+    password: string;
+    totp: string | null;
+    recoveryCode: string | null;
+    ip: string;
+  },
+  attempt: OpenLoginAttempt,
+) {
+  const { totp, recoveryCode } = input;
+  // User is in MODELS_WITHOUT_TENANT so the extension will not try
+  // to inject a clinicId — and we're outside `runWithTenant` anyway.
+  const user = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.user.findUnique({ where: { email: input.email } }),
+  );
+  // One bcrypt comparison on every path, so an unknown or inactive
+  // login costs the same time as a wrong password.
+  const valid = await verifyPasswordConstantTime(
+    input.password,
+    user?.passwordHash,
+  );
+  if (!user || !user.active || !valid) return null;
+
+  // 2FA gate. When the user has enrolled, we require either a
+  // current TOTP code or a recovery code on the same submit. The
+  // `/login/2fa` page collects exactly one of these and re-submits
+  // the credentials together; the password-only path is rejected.
+  //
+  // `DISABLE_2FA=1` short-circuits the gate entirely — even enrolled
+  // users can log in with password alone. Used in dev/staging and as
+  // a short-term ops bypass.
+  if (user.totpEnabledAt && user.totpSecret && !is2faDisabled()) {
+    if (totp) {
+      // Stored secret is AES-GCM ciphertext at rest (legacy plaintext
+      // tolerated until the backfill runs) — decrypt before verifying.
+      if (!verifyTotpCode(readTotpSecret(user.totpSecret), totp)) {
+        return null;
+      }
+    } else if (recoveryCode) {
+      const result: ConsumeResult = await consumeRecoveryCode(
+        recoveryCode,
+        user.recoveryCodesHash,
+      );
+      if (!result.ok) return null;
+      await runWithTenant({ kind: "SYSTEM" }, async () => {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { recoveryCodesHash: result.remainingHashes },
+        });
+        // RECOVERY_CODE_USED audit fires inside the SYSTEM context so
+        // it can write across tenants (the AuditLog model is in
+        // MODELS_WITHOUT_TENANT but emit must still pick a clinicId).
+        await prisma.auditLog
+          .create({
+            data: {
+              clinicId: user.clinicId ?? null,
+              actorId: user.id,
+              actorRole: user.role,
+              actorLabel: user.email,
+              action: "RECOVERY_CODE_USED",
+              entityType: "User",
+              entityId: user.id,
+              meta: { remaining: result.remaining },
+            },
+          })
+          .catch((err: unknown) => {
+            console.error("[auth] RECOVERY_CODE_USED audit failed", err);
+          });
+      });
+    } else {
+      // Password is correct but a second factor is required and
+      // missing. Returning null tells next-auth "wrong credentials"
+      // — the login client maps this signal to a redirect to the
+      // /login/2fa page (it knows the password worked because the
+      // pre-flight /api/crm/auth/totp-required check returned true).
+      // Not a failure: the right password must not use up the budget.
+      attempt.release();
+      return null;
+    }
+  }
+
+  attempt.succeeded();
+  // Never throws: a failed write only means this address is not trusted yet.
+  await rememberLoginSource({ userId: user.id, email: user.email, ip: input.ip });
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role as Role,
+    clinicId: user.clinicId ?? null,
+    mustChangePassword: user.mustChangePassword,
+    preferredLocale: user.preferredLocale,
+  };
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -167,98 +290,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ? credentials.recoveryCode
             : null;
 
-        // Failed-attempt throttle (audit SEC-02/SEC-03). The route wrapper
-        // already answers 429 before we get here; this is the backstop for
-        // any other way into the credentials provider.
-        const who = { ip: request ? realClientIp(request) : "unknown", email };
-        if (checkLoginThrottle(who).blocked) return null;
-
-        // User is in MODELS_WITHOUT_TENANT so the extension will not try
-        // to inject a clinicId — and we're outside `runWithTenant` anyway.
-        const user = await runWithTenant({ kind: "SYSTEM" }, () =>
-          prisma.user.findUnique({ where: { email } }),
+        // Failed-attempt throttle (audit SEC-02/SEC-03). The slot is taken
+        // BEFORE the password is checked and counts as a failure unless this
+        // attempt proves otherwise, so a burst of parallel requests cannot
+        // all get past a "0 failures so far" reading. The route wrapper's
+        // 429 is only the friendly answer for a caller already locked out.
+        const ip = request ? realClientIp(request) : "unknown";
+        const attempt = await beginLoginAttempt(
+          { ip, email },
+          { isKnownSource: () => isKnownLoginSource(email, ip) },
         );
-        // One bcrypt comparison on every path, so an unknown or inactive
-        // login costs the same time as a wrong password.
-        const valid = await verifyPasswordConstantTime(
-          password,
-          user?.passwordHash,
-        );
-        if (!user || !user.active || !valid) {
-          recordLoginFailure(who);
-          return null;
+        if (attempt.blocked) return null;
+        try {
+          return await checkStaffCredentials(
+            { email, password, totp, recoveryCode, ip },
+            attempt,
+          );
+        } catch (err) {
+          // A crash is not a wrong password: give the slot back.
+          attempt.release();
+          throw err;
         }
-
-        // 2FA gate. When the user has enrolled, we require either a
-        // current TOTP code or a recovery code on the same submit. The
-        // `/login/2fa` page collects exactly one of these and re-submits
-        // the credentials together; the password-only path is rejected.
-        //
-        // `DISABLE_2FA=1` short-circuits the gate entirely — even enrolled
-        // users can log in with password alone. Used in dev/staging and as
-        // a short-term ops bypass.
-        if (user.totpEnabledAt && user.totpSecret && !is2faDisabled()) {
-          if (totp) {
-            // Stored secret is AES-GCM ciphertext at rest (legacy plaintext
-            // tolerated until the backfill runs) — decrypt before verifying.
-            if (!verifyTotpCode(readTotpSecret(user.totpSecret), totp)) {
-              recordLoginFailure(who);
-              return null;
-            }
-          } else if (recoveryCode) {
-            const result: ConsumeResult = await consumeRecoveryCode(
-              recoveryCode,
-              user.recoveryCodesHash,
-            );
-            if (!result.ok) {
-              recordLoginFailure(who);
-              return null;
-            }
-            await runWithTenant({ kind: "SYSTEM" }, async () => {
-              await prisma.user.update({
-                where: { id: user.id },
-                data: { recoveryCodesHash: result.remainingHashes },
-              });
-              // RECOVERY_CODE_USED audit fires inside the SYSTEM context so
-              // it can write across tenants (the AuditLog model is in
-              // MODELS_WITHOUT_TENANT but emit must still pick a clinicId).
-              await prisma.auditLog
-                .create({
-                  data: {
-                    clinicId: user.clinicId ?? null,
-                    actorId: user.id,
-                    actorRole: user.role,
-                    actorLabel: user.email,
-                    action: "RECOVERY_CODE_USED",
-                    entityType: "User",
-                    entityId: user.id,
-                    meta: { remaining: result.remaining },
-                  },
-                })
-                .catch((err: unknown) => {
-                  console.error("[auth] RECOVERY_CODE_USED audit failed", err);
-                });
-            });
-          } else {
-            // Password is correct but a second factor is required and
-            // missing. Returning null tells next-auth "wrong credentials"
-            // — the login client maps this signal to a redirect to the
-            // /login/2fa page (it knows the password worked because the
-            // pre-flight /api/crm/auth/totp-required check returned true).
-            return null;
-          }
-        }
-
-        recordLoginSuccess(who);
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role as Role,
-          clinicId: user.clinicId ?? null,
-          mustChangePassword: user.mustChangePassword,
-          preferredLocale: user.preferredLocale,
-        };
       },
     }),
   ],
@@ -340,6 +392,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               clinicId: (token.clinicId as string | null | undefined) ?? null,
             },
             binding: await sessionBindingFor(token),
+            countAsActivity: await requestIsUserActivity(),
           });
         } catch (err) {
           // An unexpected failure here must not sign the whole clinic out

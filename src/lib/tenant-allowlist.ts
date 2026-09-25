@@ -52,6 +52,9 @@ export const MODELS_WITHOUT_TENANT: ReadonlySet<string> = new Set([
   "LabTest",
   "LabPanel",
   "LabPanelTest",
+  // Sign-in sources for the login throttle: read and written at sign-in,
+  // before any tenant is known, keyed by userId (audit SEC-02).
+  "StaffLoginSource",
 ]);
 
 /**

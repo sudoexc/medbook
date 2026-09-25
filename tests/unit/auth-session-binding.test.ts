@@ -23,7 +23,9 @@ const h = vi.hoisted(() => ({
     providers: Array<{ options: { authorize: (c: Record<string, string>, r: Request) => Promise<unknown> } }>;
   },
   cookieJar: new Map<string, string>(),
+  requestHeaders: new Headers(),
   users: new Map<string, Record<string, unknown>>(),
+  remember: vi.fn(async () => {}),
   mint: vi.fn(async () => ({ sessionId: "s-new", token: "tok" })),
   evaluate: vi.fn(),
   deleteSessionById: vi.fn(async () => {}),
@@ -39,6 +41,7 @@ vi.mock("next-auth/providers/credentials", () => ({
   default: (options: unknown) => ({ id: "credentials", type: "credentials", options }),
 }));
 vi.mock("next/headers", () => ({
+  headers: async () => h.requestHeaders,
   cookies: async () => ({
     get: (name: string) =>
       h.cookieJar.has(name) ? { name, value: h.cookieJar.get(name)! } : undefined,
@@ -79,6 +82,10 @@ vi.mock("@/server/auth/session-guard", () => ({
   evaluateStaffSession: h.evaluate,
   deleteSessionById: h.deleteSessionById,
 }));
+vi.mock("@/server/auth/login-sources", () => ({
+  isKnownLoginSource: async () => false,
+  rememberLoginSource: h.remember,
+}));
 
 import "@/lib/auth";
 import { __resetRateLimitsForTests } from "@/lib/rate-limit";
@@ -90,7 +97,10 @@ function cfg() {
 
 beforeEach(() => {
   h.cookieJar.clear();
+  // A browser running the current client, which reports real input.
+  h.requestHeaders = new Headers({ cookie: "mb_activity_hb=1" });
   h.users.clear();
+  h.remember.mockClear();
   h.mint.mockClear();
   h.mint.mockImplementation(async () => ({ sessionId: "s-new", token: "tok" }));
   h.evaluate.mockReset();
@@ -145,8 +155,30 @@ describe("jwt callback: every later auth() call", () => {
     expect(h.evaluate).toHaveBeenCalledWith({
       claims: { userId: "u1", role: "ADMIN", clinicId: "c1" },
       binding: { kind: "sid", sessionId: "s1" },
+      countAsActivity: false,
     });
     expect(token).toMatchObject({ role: "RECEPTIONIST", mustChangePassword: false, pwTempAt: null });
+  });
+
+  it("only a person's request keeps the session from idling out, not background polling (SEC-06)", async () => {
+    h.evaluate.mockResolvedValue({ ok: true, sessionId: "s1", fresh: null });
+    const counted = async (headers: Record<string, string>) => {
+      // A browser running the current client (it reports input).
+      h.requestHeaders = new Headers({ cookie: "mb_activity_hb=1", ...headers });
+      h.evaluate.mockClear();
+      await cfg().callbacks.jwt({ token: { ...base, sid: "s1" } });
+      return h.evaluate.mock.calls[0]![0].countAsActivity;
+    };
+    // The reception queue polling the API, an SSE reconnect, router.refresh().
+    expect(await counted({ "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" })).toBe(false);
+    expect(await counted({ rsc: "1", "sec-fetch-mode": "cors" })).toBe(false);
+    // The input heartbeat from SessionExpiryWatch, and a full page load.
+    expect(await counted({ "x-user-activity": "1" })).toBe(true);
+    expect(await counted({ "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" })).toBe(true);
+    // A navigation inside an iframe is not the person opening a page.
+    expect(await counted({ "sec-fetch-mode": "navigate", "sec-fetch-dest": "iframe" })).toBe(false);
+    // A tab still running the pre-heartbeat script is counted the old way.
+    expect(await counted({ cookie: "authjs.session-token=x" })).toBe(true);
   });
 
   it("returns no session at all when the guard says no (pages → /login, APIs → 401)", async () => {
@@ -244,7 +276,64 @@ describe("authorize: failed attempts are counted per real IP + email (SEC-02/SEC
       expect(await authorize({ email: "ghost@x.uz", password: "p" }, req("192.0.2.9"))).toBeNull();
     }
     const { checkLoginThrottle } = await import("@/server/auth/login-throttle");
-    expect(checkLoginThrottle({ ip: "192.0.2.9", email: "ghost@x.uz" }).blocked).toBe(true);
+    expect((await checkLoginThrottle({ ip: "192.0.2.9", email: "ghost@x.uz" })).blocked).toBe(true);
+  });
+
+  it("a burst of parallel sign-ins checks at most 5 passwords (slot before bcrypt)", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const lookups = vi.mocked(prisma.user.findUnique);
+    lookups.mockClear();
+    h.users.set("doc@x.uz", {
+      id: "u1",
+      email: "doc@x.uz",
+      name: "Doc",
+      role: "DOCTOR",
+      clinicId: "c1",
+      active: true,
+      passwordHash: await bcrypt.hash("right-password", 4),
+      mustChangePassword: false,
+      totpEnabledAt: null,
+    });
+    const authorize = cfg().providers[0]!.options.authorize;
+    const results = await Promise.all(
+      Array.from({ length: 100 }, (_, i) =>
+        authorize({ email: "doc@x.uz", password: i === 60 ? "right-password" : `guess-${i}` }, req("198.51.100.99")),
+      ),
+    );
+    expect(lookups).toHaveBeenCalledTimes(5);
+    expect(results.every((r) => r === null)).toBe(true);
+  });
+
+  it("a complete sign-in remembers its address; a right password still owing 2FA does not, and costs nothing", async () => {
+    const hash = await bcrypt.hash("pw", 4);
+    const base2 = { name: "S", role: "ADMIN", clinicId: "c1", active: true, passwordHash: hash, mustChangePassword: false };
+    h.users.set("plain@x.uz", { ...base2, id: "u1", email: "plain@x.uz", totpEnabledAt: null });
+    h.users.set("tfa@x.uz", { ...base2, id: "u2", email: "tfa@x.uz", totpEnabledAt: new Date(), totpSecret: "s" });
+    const authorize = cfg().providers[0]!.options.authorize;
+
+    expect(await authorize({ email: "plain@x.uz", password: "pw" }, req("203.0.113.8"))).toMatchObject({ id: "u1" });
+    expect(h.remember).toHaveBeenCalledWith({ userId: "u1", email: "plain@x.uz", ip: "203.0.113.8" });
+
+    const saved = process.env.DISABLE_2FA;
+    delete process.env.DISABLE_2FA;
+    try {
+      h.remember.mockClear();
+      for (let i = 0; i < 8; i++) {
+        // Password right, no code yet: the login form goes on to /login/2fa.
+        expect(await authorize({ email: "tfa@x.uz", password: "pw" }, req("203.0.113.9"))).toBeNull();
+      }
+      expect(h.remember).not.toHaveBeenCalled();
+      const { checkLoginThrottle } = await import("@/server/auth/login-throttle");
+      expect((await checkLoginThrottle({ ip: "203.0.113.9", email: "tfa@x.uz" })).blocked).toBe(false);
+      // A wrong second factor is a failure like a wrong password.
+      for (let i = 0; i < 5; i++) {
+        expect(await authorize({ email: "tfa@x.uz", password: "pw", totp: "000000" }, req("203.0.113.9"))).toBeNull();
+      }
+      expect((await checkLoginThrottle({ ip: "203.0.113.9", email: "tfa@x.uz" })).blocked).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.DISABLE_2FA;
+      else process.env.DISABLE_2FA = saved;
+    }
   });
 });
 

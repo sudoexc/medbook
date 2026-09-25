@@ -28,6 +28,10 @@ import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
 import { isAllowedToReceive } from "./consent-gate";
+import {
+  MANUAL_APPOINTMENT_REMINDER_KEY,
+  MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
+} from "./default-templates";
 import { recordPatientNoChannel } from "./no-channel-action";
 import { render } from "./template";
 
@@ -710,6 +714,235 @@ export async function materializeForAppointmentsBulk(
   }
 
   return { created: toInsert.length, skipped };
+}
+
+/**
+ * The clinic's manual-reminder template, created from the default on first
+ * use. Clinics are not seeded automatically, and a button that silently found
+ * no template is exactly how «Напомнить всем» came to send nothing (AP-02).
+ * `update: {}` keeps an admin's edits (text, `isActive`) untouched.
+ */
+async function ensureManualReminderTemplate(clinicId: string): Promise<{
+  id: string;
+  bodyRu: string;
+  bodyUz: string;
+  channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+  isActive: boolean;
+}> {
+  const tpl = MANUAL_APPOINTMENT_REMINDER_TEMPLATE;
+  const select = {
+    id: true,
+    bodyRu: true,
+    bodyUz: true,
+    channel: true,
+    isActive: true,
+  } as const;
+  const upsert = () =>
+    runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.notificationTemplate.upsert({
+        where: { clinicId_key: { clinicId, key: tpl.key } },
+        create: {
+          clinicId,
+          key: tpl.key,
+          nameRu: tpl.nameRu,
+          nameUz: tpl.nameUz,
+          channel: tpl.channel,
+          category: tpl.category,
+          trigger: tpl.trigger,
+          bodyRu: tpl.bodyRu,
+          bodyUz: tpl.bodyUz,
+          variables: tpl.variables,
+          isActive: true,
+        },
+        update: {},
+        select,
+      }),
+    );
+  let row;
+  try {
+    row = await upsert();
+  } catch (e) {
+    // Two desks pressing the button at once: the loser of the insert race
+    // reads the row the winner created.
+    if ((e as { code?: unknown } | null)?.code !== "P2002") throw e;
+    row = await upsert();
+  }
+  return row as typeof row & {
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+  };
+}
+
+export type ManualReminderResult = {
+  /** Rows created by THIS call (TG + in-app mirror), the only ones to dispatch. */
+  sendIds: string[];
+  /** Appointments that got a reminder. */
+  reminded: number;
+  /** Not reminded: already reminded, patient already here, visit passed. */
+  skipped: number;
+  /** No Telegram: a call task went to the action center instead. */
+  noChannel: number;
+  /** The clinic switched the template off in /crm/notifications. */
+  templateDisabled: boolean;
+};
+
+/**
+ * «Напомнить всем» on the Appointments page (audit AP-02): one staff-sent
+ * reminder per upcoming, not-yet-arrived appointment, due now.
+ *
+ * It has its own MANUAL template and creates its own rows, returning their
+ * ids so the caller dispatches exactly those. The cascade rows (5d/3d/1d/3h)
+ * are never touched: they stay QUEUED for their own time. At most one manual
+ * reminder per appointment, so a second click reminds nobody twice.
+ */
+export async function materializeManualReminders(params: {
+  clinicId: string;
+  appointmentIds: ReadonlyArray<string>;
+  now: Date;
+}): Promise<ManualReminderResult> {
+  const ids = Array.from(new Set(params.appointmentIds));
+  const empty: ManualReminderResult = {
+    sendIds: [],
+    reminded: 0,
+    skipped: ids.length,
+    noChannel: 0,
+    templateDisabled: false,
+  };
+  if (ids.length === 0) return empty;
+
+  const tpl = await ensureManualReminderTemplate(params.clinicId);
+  if (!tpl.isActive) return { ...empty, templateDisabled: true };
+
+  const appts = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findMany({
+      where: {
+        id: { in: ids },
+        clinicId: params.clinicId,
+        // Only a visit still ahead whose patient has not arrived yet: «ждём
+        // вас» to someone sitting in the hall, or about a slot that already
+        // passed, is wrong.
+        status: { in: ["BOOKED", "CONFIRMED"] },
+        date: { gt: params.now },
+      },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            telegramId: true,
+            preferredChannel: true,
+            preferredLang: true,
+            birthDate: true,
+          },
+        },
+        doctor: { select: { nameRu: true, nameUz: true } },
+        primaryService: { select: { nameRu: true, nameUz: true } },
+        cabinet: { select: { number: true } },
+        clinic: {
+          select: {
+            id: true,
+            nameRu: true,
+            nameUz: true,
+            phone: true,
+            addressRu: true,
+            timezone: true,
+          },
+        },
+      },
+    }),
+  )) as Array<
+    AppointmentWithRefs & {
+      patient: AppointmentWithRefs["patient"] & { preferredLang: "RU" | "UZ" };
+    }
+  >;
+
+  const already = new Set(
+    (
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.findMany({
+          where: {
+            appointmentId: { in: appts.map((a) => a.id) },
+            templateId: tpl.id,
+            status: { in: ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"] },
+          },
+          select: { appointmentId: true },
+        }),
+      )
+    ).map((r) => r.appointmentId),
+  );
+
+  const rows: Array<{
+    clinicId: string;
+    patientId: string;
+    appointmentId: string;
+    templateId: string;
+    channel: "TG" | "EMAIL" | "CALL" | "VISIT" | "INAPP";
+    recipient: string;
+    body: string;
+    scheduledFor: Date;
+    status: "QUEUED";
+  }> = [];
+  let reminded = 0;
+  let noChannel = 0;
+  for (const appt of appts) {
+    if (already.has(appt.id)) continue;
+    const recipient = pickRecipient(tpl.channel, appt.patient);
+    if (!recipient) {
+      await recordPatientNoChannel({
+        clinicId: appt.clinicId,
+        patientId: appt.patientId,
+        patientName: appt.patient.fullName,
+        triggerKey: MANUAL_APPOINTMENT_REMINDER_KEY,
+        appointmentId: appt.id,
+        appointmentAt: appt.date,
+      });
+      noChannel += 1;
+      continue;
+    }
+    const lang = appt.patient.preferredLang === "UZ" ? "uz" : "ru";
+    const body = render(
+      lang === "uz" ? tpl.bodyUz : tpl.bodyRu,
+      buildContext(appt, lang) as unknown as Record<string, unknown>,
+    );
+    const base = {
+      clinicId: appt.clinicId,
+      patientId: appt.patientId,
+      appointmentId: appt.id,
+      templateId: tpl.id,
+      body,
+      scheduledFor: params.now,
+      status: "QUEUED" as const,
+    };
+    rows.push({ ...base, channel: tpl.channel, recipient });
+    // Same in-app mirror as the cascade (see materializeForAppointmentsBulk).
+    if (
+      appt.patient.telegramId &&
+      tpl.channel !== "INAPP" &&
+      tpl.channel !== "VISIT" &&
+      tpl.channel !== "CALL"
+    ) {
+      rows.push({ ...base, channel: "INAPP", recipient: appt.patientId });
+    }
+    reminded += 1;
+  }
+
+  const created =
+    rows.length === 0
+      ? []
+      : await runWithTenant({ kind: "SYSTEM" }, () =>
+          prisma.notificationSend.createManyAndReturn({
+            data: rows as never,
+            select: { id: true },
+          }),
+        );
+
+  return {
+    sendIds: created.map((r) => r.id),
+    reminded,
+    skipped: ids.length - reminded - noChannel,
+    noChannel,
+    templateDisabled: false,
+  };
 }
 
 async function materializeForAppointment(

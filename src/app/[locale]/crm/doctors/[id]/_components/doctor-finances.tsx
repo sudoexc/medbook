@@ -14,8 +14,8 @@ import { MoneyText } from "@/components/atoms/money-text";
 import { KpiTile } from "@/components/atoms/kpi-tile";
 
 import { useDoctorFinance } from "../_hooks/use-doctor-finance";
-import { useDoctorAppointments } from "../_hooks/use-doctor-appointments";
 import { usePeriodRange, type PeriodKey } from "../../_hooks/use-doctors-filters";
+import { useDoctorsStats } from "../../_hooks/use-doctors-stats";
 
 const PERIODS: PeriodKey[] = ["today", "week", "month", "quarter"];
 
@@ -43,32 +43,21 @@ export function DoctorFinances({
   const range = usePeriodRange(period);
 
   const finance = useDoctorFinance(doctorId, range);
-  const appts = useDoctorAppointments(doctorId, range);
+  // Avg check and no-show rate from the grouped stats of the same period
+  // (DR-01: the raw-rows request was refused with a 400 and read as 0).
+  const stats = useDoctorsStats(range, doctorId);
 
   const extra = React.useMemo(() => {
-    const rows = appts.data?.rows ?? [];
-    let completed = 0;
-    let noShow = 0;
-    let revenue = 0;
-    let eligible = 0;
-    for (const r of rows) {
-      if (
-        r.status === "COMPLETED" ||
-        r.status === "NO_SHOW" ||
-        r.status === "CANCELLED"
-      ) {
-        eligible += 1;
-      }
-      if (r.status === "COMPLETED") {
-        completed += 1;
-        revenue += r.priceFinal ?? 0;
-      }
-      if (r.status === "NO_SHOW") noShow += 1;
-    }
-    const avgCheck = completed > 0 ? Math.round(revenue / completed) : 0;
-    const noShowRate = eligible > 0 ? Math.round((noShow / eligible) * 100) : 0;
+    const row = stats.data?.find((r) => r.doctorId === doctorId);
+    if (!row) return { avgCheck: 0, noShowRate: 0 };
+    const eligible = row.completed + row.noShow + row.cancelled;
+    const avgCheck =
+      row.completed > 0 ? Math.round(row.revenue / row.completed) : 0;
+    const noShowRate =
+      eligible > 0 ? Math.round((row.noShow / eligible) * 100) : 0;
     return { avgCheck, noShowRate };
-  }, [appts.data]);
+  }, [stats.data, doctorId]);
+  const failed = finance.isError || stats.isError;
 
   const revenue = finance.data?.revenue ?? 0;
   const apptCount = finance.data?.appointments ?? 0;
@@ -106,38 +95,54 @@ export function DoctorFinances({
         </div>
       </div>
 
+      {failed ? (
+        <p role="alert" className="mb-3 text-xs text-destructive">
+          {t("loadError")}
+        </p>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiTile
           label={t("revenue")}
           tone="primary"
           icon={<TrendingUpIcon className="size-4" />}
           value={
-            <MoneyText amount={revenue} currency="UZS" showDual={false} />
+            finance.isError ? (
+              "—"
+            ) : (
+              <MoneyText amount={revenue} currency="UZS" showDual={false} />
+            )
           }
         />
         <KpiTile
           label={t("appointments")}
           tone="info"
           icon={<CalendarDaysIcon className="size-4" />}
-          value={apptCount}
+          value={finance.isError ? "—" : apptCount}
         />
         <KpiTile
           label={t("avgCheck")}
           tone="success"
           icon={<BanknoteIcon className="size-4" />}
           value={
-            <MoneyText
-              amount={extra.avgCheck}
-              currency="UZS"
-              showDual={false}
-            />
+            stats.isError ? (
+              "—"
+            ) : (
+              <MoneyText
+                amount={extra.avgCheck}
+                currency="UZS"
+                showDual={false}
+              />
+            )
           }
         />
         <KpiTile
           label={t("noShow")}
           tone={extra.noShowRate > 20 ? "warning" : "neutral"}
           icon={<PercentIcon className="size-4" />}
-          value={t("noShowRate", { rate: extra.noShowRate })}
+          value={
+            stats.isError ? "—" : t("noShowRate", { rate: extra.noShowRate })
+          }
         />
       </div>
 

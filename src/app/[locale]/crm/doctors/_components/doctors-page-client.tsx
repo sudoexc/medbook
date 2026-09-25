@@ -21,8 +21,9 @@ import {
   type DoctorRow,
 } from "../_hooks/use-doctors-list";
 import {
-  aggregateByDoctor,
-  useDoctorsAppointmentsAgg,
+  toAggMap,
+  useDoctorsDayAppointments,
+  useDoctorsStats,
   type DoctorAgg,
   type DoctorAggregateAppointment,
 } from "../_hooks/use-doctors-stats";
@@ -123,26 +124,34 @@ export function DoctorsPageClient() {
   useDoctorsListRealtime();
 
   const t = useTranslations("crmDoctors");
+  const tCommon = useTranslations("common");
   const { apiFilters, effectivePeriod, setFilter } = useDoctorsFilters();
 
   const listQuery = useDoctorsList(apiFilters);
 
   const periodRange = usePeriodRange(effectivePeriod);
-  const periodAggQuery = useDoctorsAppointmentsAgg(periodRange);
+  const periodAggQuery = useDoctorsStats(periodRange);
 
   const [activeTab, setActiveTab] = React.useState<DoctorsTabKey>("all");
   const [nowMs] = React.useState(() => Date.now());
   const [newDoctorOpen, setNewDoctorOpen] = React.useState(false);
 
   const todayR = React.useMemo(() => todayRange(nowMs), [nowMs]);
-  const todayAggQuery = useDoctorsAppointmentsAgg(todayR);
+  const todayAggQuery = useDoctorsDayAppointments(todayR);
 
   const allDoctors = flattenDoctors(listQuery.data);
 
   const periodAggByDoctor = React.useMemo(
-    () => aggregateByDoctor(periodAggQuery.data ?? []),
+    () => toAggMap(periodAggQuery.data ?? []),
     [periodAggQuery.data],
   );
+  // A failed load must read as a failure, not as a quiet clinic: the page
+  // used to turn a 400 into zero revenue and 0 % load (DR-01).
+  const statsFailed = periodAggQuery.isError || todayAggQuery.isError;
+  const retryStats = () => {
+    if (periodAggQuery.isError) void periodAggQuery.refetch();
+    if (todayAggQuery.isError) void todayAggQuery.refetch();
+  };
 
   const todayAppts = React.useMemo(
     () => todayAggQuery.data ?? [],
@@ -251,10 +260,23 @@ export function DoctorsPageClient() {
             </Button>
           </div>
 
+          {statsFailed ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
+            >
+              <span>{t("statsError")}</span>
+              <Button size="sm" variant="outline" onClick={retryStats}>
+                {tCommon("retry")}
+              </Button>
+            </div>
+          ) : null}
+
           <DoctorsTiles
             aggByDoctor={periodAggByDoctor}
             doctorsCount={allDoctors.length}
             capacity={periodCapacity}
+            unavailable={periodAggQuery.isError}
           />
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">

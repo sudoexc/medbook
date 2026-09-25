@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { APPOINTMENTS_LIST_MAX_LIMIT } from "@/lib/appointments/fetch-all-pages";
+
 export const AppointmentStatusEnum = z.enum([
   "BOOKED",
   "CONFIRMED",
@@ -95,7 +97,14 @@ export const QueryAppointmentSchema = z.object({
   unpaid: z.coerce.boolean().optional(),
   q: z.string().optional(),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  // Clients that need a whole range page through `nextCursor`
+  // (`fetchAllAppointmentPages`), never ask for more than this (DR-01).
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(APPOINTMENTS_LIST_MAX_LIMIT)
+    .default(50),
   sort: z.enum(["date", "createdAt"]).default("date"),
   dir: z.enum(["asc", "desc"]).default("asc"),
 });

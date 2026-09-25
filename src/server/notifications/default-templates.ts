@@ -47,6 +47,31 @@ const COMMON_VARS = [
   "clinic.phone",
 ];
 
+/**
+ * Slug of the staff-sent reminder behind «Напомнить всем» on the Appointments
+ * page (audit AP-02). Its own MANUAL template, not a cascade band: the button
+ * used to borrow the retired -120 band, found no template, materialised
+ * nothing and then pushed the day's FUTURE cascade rows out early. A
+ * MANUAL-trigger row carries no offset, so the worker's drift check (which
+ * would cancel a «now» row of a cascade band) never applies to it.
+ */
+export const MANUAL_APPOINTMENT_REMINDER_KEY = "appointment.reminder-manual";
+
+export const MANUAL_APPOINTMENT_REMINDER_TEMPLATE: DefaultTemplate = {
+  key: MANUAL_APPOINTMENT_REMINDER_KEY,
+  nameRu: "Напоминание о приёме (вручную)",
+  nameUz: "Qabul haqida eslatma (qo'lda)",
+  channel: "TG",
+  category: "REMINDER",
+  bodyRu:
+    "{{patient.firstName}}, напоминаем о вашем приёме: {{appointment.date}} в {{appointment.time}}, врач {{appointment.doctor}} ({{clinic.name}}). Подтвердите визит кнопкой ниже. Если планы изменились, отмените запись в приложении или позвоните {{clinic.phone}}.",
+  bodyUz:
+    "{{patient.firstName}}, qabulingizni eslatamiz: {{appointment.date}} kuni soat {{appointment.time}} da, shifokor {{appointment.doctor}} ({{clinic.name}}). Tashrifni quyidagi tugma bilan tasdiqlang. Rejalar o'zgargan bo'lsa, ilovadan bekor qiling yoki {{clinic.phone}} ga qo'ng'iroq qiling.",
+  trigger: "MANUAL",
+  triggerConfig: null,
+  variables: COMMON_VARS,
+};
+
 export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
   // ── Reminder cascade (5d / 3d / 1d / 3h) — TZ-risk-outcomes §7 ────────
   {
@@ -187,6 +212,9 @@ export const DEFAULT_APPOINTMENT_TEMPLATES: DefaultTemplate[] = [
     triggerConfig: null,
     variables: COMMON_VARS,
   },
+
+  // ── Staff-sent reminder («Напомнить всем») ─────────────────────────────
+  MANUAL_APPOINTMENT_REMINDER_TEMPLATE,
 ];
 
 /** Idempotent upsert array shaped for `prisma.notificationTemplate.create`. */

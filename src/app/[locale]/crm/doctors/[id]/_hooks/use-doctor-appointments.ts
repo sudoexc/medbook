@@ -2,11 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { fetchAllAppointmentPages } from "@/lib/appointments/fetch-all-pages";
+
 /**
  * Per-doctor appointments — used by:
  *   - heat-grid (current week intensity)
  *   - patients tab (derive patient list from appointments)
- *   - finance page derived stats (avg check, no-show rate)
+ * The finance tab's avg check / no-show rate come from the stats endpoint
+ * (`useDoctorsStats`), not from raw rows.
  */
 export type DoctorAppointment = {
   id: string;
@@ -16,6 +19,7 @@ export type DoctorAppointment = {
   durationMin: number;
   status:
     | "BOOKED"
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"
@@ -35,22 +39,17 @@ export function useDoctorAppointments(
   doctorId: string,
   range: { from: string; to: string } | null,
 ) {
-  return useQuery<{ rows: DoctorAppointment[] }, Error>({
+  return useQuery<{ rows: DoctorAppointment[]; truncated: boolean }, Error>({
     queryKey: ["doctor", doctorId, "appointments", range],
     enabled: Boolean(range),
-    queryFn: async ({ signal }) => {
-      const qs = new URLSearchParams({
-        doctorId,
-        limit: "500",
-        ...(range ? { from: range.from, to: range.to } : {}),
-      });
-      const res = await fetch(`/api/crm/appointments?${qs.toString()}`, {
-        credentials: "include",
-        signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as { rows: DoctorAppointment[] };
-    },
+    // Every page of the range: one request with `limit=500` was refused by
+    // the list API (max 200) and the tabs rendered the 400 as «no data»
+    // (audit DR-01).
+    queryFn: ({ signal }) =>
+      fetchAllAppointmentPages<DoctorAppointment>(
+        { doctorId, ...(range ? { from: range.from, to: range.to } : {}) },
+        { signal },
+      ),
     staleTime: 30_000,
   });
 }

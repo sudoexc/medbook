@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
 
 import { usePublicClinicSlug } from "@/hooks/use-public-clinic-slug";
 import { useQueueBoard, type BoardDoctor } from "@/hooks/use-queue-board";
+import { useCallOverlayOpen } from "@/hooks/use-call-overlay";
 import {
   CallTakeover,
   announce,
@@ -28,12 +29,10 @@ export default function TVQueuePage() {
   useAudioUnlock();
 
   const [time, setTime] = useState(new Date());
-  const [overlay, setOverlay] = useState<Overlay | null>(null);
 
   const lastCallSeq = useRef(0);
-  const overlayTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const doctors = board?.doctors ?? [];
+  const doctors = useMemo(() => board?.doctors ?? [], [board]);
   const clinicName = board?.clinic.nameRu ?? "Электронная очередь";
 
   // Live clock.
@@ -42,26 +41,33 @@ export default function TVQueuePage() {
     return () => clearInterval(id);
   }, []);
 
-  // React to a `queue.called` signal: resolve the called patient/doctor from
-  // the current board snapshot, chime, announce, and show the overlay once.
+  // Side effects of a fresh `queue.called`: chime + voice, once per seq.
+  // The board refetch this same call triggers re-runs the effect; the seq
+  // guard keeps it from chiming twice.
   useEffect(() => {
     if (!call || call.seq === lastCallSeq.current) return;
     lastCallSeq.current = call.seq;
-
     const doc = doctors.find((d) => d.id === call.doctorId);
     const cabinet = call.cabinetNumber ?? doc?.cabinet ?? "";
     const ticketNumber = call.ticketNumber ?? doc?.current?.ticketNumber ?? "";
-    const patientName = doc?.current?.fullName ?? "";
-    const doctorName = doc?.nameRu ?? "";
-
-    setOverlay({ ticketNumber, cabinet, patientName, doctorName });
     playChime();
-    announce(patientName, cabinet, ticketNumber);
-
-    clearTimeout(overlayTimer.current);
-    overlayTimer.current = setTimeout(() => setOverlay(null), 15000);
-    return () => clearTimeout(overlayTimer.current);
+    announce(doc?.current?.fullName ?? "", cabinet, ticketNumber);
   }, [call, doctors]);
+
+  // The takeover is derived from the call, and its auto-dismiss timer is
+  // keyed on the call's seq alone (see useCallOverlayOpen, audit Q-02).
+  const overlayOpen = useCallOverlayOpen(call?.seq);
+  const calledDoc = call ? doctors.find((d) => d.id === call.doctorId) : undefined;
+  const overlay: Overlay | null =
+    call && overlayOpen
+      ? {
+          ticketNumber:
+            call.ticketNumber ?? calledDoc?.current?.ticketNumber ?? "",
+          cabinet: call.cabinetNumber ?? calledDoc?.cabinet ?? "",
+          patientName: calledDoc?.current?.fullName ?? "",
+          doctorName: calledDoc?.nameRu ?? "",
+        }
+      : null;
 
   const dateStr = time.toLocaleDateString("ru-RU", {
     weekday: "long",

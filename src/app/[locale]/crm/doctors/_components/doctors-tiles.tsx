@@ -25,6 +25,8 @@ export interface DoctorsTilesProps {
   doctorsCount: number;
   /** Capacity baseline per doctor for the current period */
   capacity: number;
+  /** Stats failed to load: show «—», never zeros that look real (DR-01). */
+  unavailable?: boolean;
   className?: string;
 }
 
@@ -66,6 +68,7 @@ export function DoctorsTiles({
   aggByDoctor,
   doctorsCount,
   capacity,
+  unavailable = false,
   className,
 }: DoctorsTilesProps) {
   const locale = useLocale();
@@ -215,6 +218,10 @@ export function DoctorsTiles({
     },
   ];
 
+  const shown: Tile[] = unavailable
+    ? tiles.map((tile) => ({ ...tile, value: "—", hint: undefined, sub: undefined }))
+    : tiles;
+
   return (
     <div
       className={cn(
@@ -223,7 +230,7 @@ export function DoctorsTiles({
         className,
       )}
     >
-      {tiles.map((tile) => {
+      {shown.map((tile) => {
         const Icon = tile.icon;
         const tone = TONE[tile.tone];
         return (

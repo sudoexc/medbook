@@ -2,18 +2,23 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { fetchAllAppointmentPages } from "@/lib/appointments/fetch-all-pages";
+
 /**
- * Appointments query shape used by the doctors list right rail and the
- * per-card load/revenue aggregation.
+ * Data for the doctors list page and the profile finance tab.
  *
- * We lean on `GET /api/crm/appointments?from=&to=` and aggregate client-side
- * because there is no dedicated `doctors/stats` endpoint in Phase 1.
+ * Period aggregates come from `GET /api/crm/doctors/stats`, grouped in the
+ * database. The page used to download the period's raw appointments with
+ * `limit=500`, which the list API refuses (max 200): every load was a 400
+ * and every tile, card and chart showed zeros (audit DR-01). Only today's
+ * rows are still read raw (live status, hour heatmap), through every page.
  */
 export type DoctorAggregateAppointment = {
   id: string;
   date: string;
   status:
     | "BOOKED"
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"
@@ -24,64 +29,52 @@ export type DoctorAggregateAppointment = {
   doctor: { id: string; nameRu: string; nameUz: string };
 };
 
+/** Mirrors `DoctorStatsRow` (server/doctors/stats.ts). */
 export type DoctorAgg = {
   doctorId: string;
   total: number;
   completed: number;
   noShow: number;
+  cancelled: number;
   revenue: number;
   todayCount: number;
 };
 
-export function aggregateByDoctor(
-  rows: DoctorAggregateAppointment[],
-): Map<string, DoctorAgg> {
-  const acc = new Map<string, DoctorAgg>();
-  const todayKey = new Date().toISOString().slice(0, 10);
-  for (const r of rows) {
-    const id = r.doctor.id;
-    const prev = acc.get(id) ?? {
-      doctorId: id,
-      total: 0,
-      completed: 0,
-      noShow: 0,
-      revenue: 0,
-      todayCount: 0,
-    };
-    prev.total += 1;
-    if (r.status === "COMPLETED") {
-      prev.completed += 1;
-      prev.revenue += r.priceFinal ?? 0;
-    }
-    if (r.status === "NO_SHOW") prev.noShow += 1;
-    if (r.date.slice(0, 10) === todayKey) prev.todayCount += 1;
-    acc.set(id, prev);
-  }
-  return acc;
+export function toAggMap(rows: ReadonlyArray<DoctorAgg>): Map<string, DoctorAgg> {
+  return new Map(rows.map((r) => [r.doctorId, r]));
 }
 
-export function useDoctorsAppointmentsAgg(range: {
-  from: string;
-  to: string;
-}) {
-  return useQuery<DoctorAggregateAppointment[], Error>({
-    queryKey: ["doctors", "appointments-agg", range],
+export function useDoctorsStats(
+  range: { from: string; to: string },
+  doctorId?: string,
+) {
+  return useQuery<DoctorAgg[], Error>({
+    queryKey: ["doctors", "stats", range, doctorId ?? null],
     queryFn: async ({ signal }) => {
-      const qs = new URLSearchParams({
-        from: range.from,
-        to: range.to,
-        limit: "500",
-      });
-      const res = await fetch(`/api/crm/appointments?${qs.toString()}`, {
+      const qs = new URLSearchParams({ from: range.from, to: range.to });
+      if (doctorId) qs.set("doctorId", doctorId);
+      const res = await fetch(`/api/crm/doctors/stats?${qs.toString()}`, {
         credentials: "include",
         signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = (await res.json()) as {
-        rows: DoctorAggregateAppointment[];
-        nextCursor: string | null;
-      };
+      const j = (await res.json()) as { rows: DoctorAgg[] };
       return j.rows;
+    },
+    staleTime: 60_000,
+  });
+}
+
+/** Today's raw appointments of every doctor, all pages. */
+export function useDoctorsDayAppointments(range: { from: string; to: string }) {
+  return useQuery<DoctorAggregateAppointment[], Error>({
+    queryKey: ["doctors", "day-appointments", range],
+    queryFn: async ({ signal }) => {
+      const { rows } = await fetchAllAppointmentPages<DoctorAggregateAppointment>(
+        { from: range.from, to: range.to },
+        { signal },
+      );
+      return rows;
     },
     staleTime: 60_000,
   });

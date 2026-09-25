@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, err, notFound } from "@/server/http";
 import { AttachAppointmentSchema } from "@/server/schemas/medical-case";
-import { recomputeAppointmentPrice } from "@/server/pricing/recompute-appointment-price";
+import { attachAppointmentToCase } from "@/server/cases/attach";
 
 function caseIdFromUrl(request: Request): string {
   // /api/crm/cases/[id]/attach-appointment → [id] is segment[-2].
@@ -58,40 +58,15 @@ export const POST = createApiHandler(
     }
 
     // Attach + reprice every visit whose "first vs repeat" position can flip
-    // from this single move:
-    //   - the appointment itself (now potentially a repeat in the new case)
-    //   - every sibling already in the destination case (its first-visit
-    //     status may shift if the new attachment becomes the new earliest)
-    //   - if the appointment was previously in another case, every sibling
-    //     in that prior case (the old first-visit may now be a repeat-of-
-    //     nothing, or vice versa)
-    const recomputed = await prisma.$transaction(async (tx) => {
-      await tx.appointment.update({
-        where: { id: appt.id },
-        data: { medicalCaseId: caseId } as never,
-      });
-
-      // Collect all appointment ids we need to re-price.
-      const affected = new Set<string>([appt.id]);
-      const targetSiblings = await tx.appointment.findMany({
-        where: { medicalCaseId: caseId },
-        select: { id: true },
-      });
-      for (const s of targetSiblings) affected.add(s.id);
-      if (appt.medicalCaseId && appt.medicalCaseId !== caseId) {
-        const prevSiblings = await tx.appointment.findMany({
-          where: { medicalCaseId: appt.medicalCaseId },
-          select: { id: true },
-        });
-        for (const s of prevSiblings) affected.add(s.id);
-      }
-
-      const results = [];
-      for (const id of affected) {
-        results.push(await recomputeAppointmentPrice(tx, id));
-      }
-      return results;
-    });
+    // (the visit, the destination case, the case it left). Shared with the
+    // Mini App paths so the price never depends on the channel (PT-02).
+    const recomputed = await prisma.$transaction((tx) =>
+      attachAppointmentToCase(tx, {
+        appointmentId: appt.id,
+        caseId,
+        previousCaseId: appt.medicalCaseId,
+      }),
+    );
 
     const updated = await prisma.appointment.findUniqueOrThrow({
       where: { id: appt.id },

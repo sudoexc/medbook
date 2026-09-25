@@ -789,13 +789,15 @@
     "rail": {
       "quickActions": "Быстрые действия",
       "sendReminders": "Напоминания всем",
-      "remindersSent": "Поставлено в очередь: {count}",
+      "remindersSent": "Напоминание отправлено пациентам: {count}",
+      "remindersNoChannel": "Без Telegram: {count}. Задачи на звонок добавлены в центр действий.",
+      "remindersTemplateOff": "Шаблон ручного напоминания выключен в настройках уведомлений.",
       "remindersAllSkipped": "Все эти пациенты уже получили напоминание",
       "remindersNothing": "Нет записей для напоминания",
       "remindersFailed": "Не удалось отправить напоминания",
       "exportCsv": "Экспорт CSV",
       "freeSlots": "Свободные слоты сегодня",
-      "freeSlotsUpdated": "Обновлено {min} мин назад",
+      "freeSlotsUpdated": "Обновлено в {time}",
       "freeSlotsBook": "Записать",
       "freeSlotsShowAll": "Показать все ({count}) →",
       "freeSlotsCollapse": "Свернуть",
@@ -806,12 +808,11 @@
       "actionRemindTitle": "Напомнить пациентам",
       "actionRemindHint": "Записи на сегодня",
       "actionRemindCta": "Напомнить всем",
-      "actionConfirmTitle": "Подтвердить прибытие",
-      "actionConfirmHint": "Ожидают в клинике",
-      "actionConfirmCta": "Подтвердить всех",
+      "actionWaitingTitle": "Ожидают в клинике",
+      "actionWaitingHint": "Пришли и ждут приёма",
+      "actionWaitingCta": "Открыть очередь",
       "actionBroadcastTitle": "Telegram-рассылки",
-      "actionBroadcastHint": "Запланирована на {time}",
-      "actionBroadcastBody": "Напоминание о приеме",
+      "actionBroadcastHint": "Кампании и история рассылок",
       "actionBroadcastCta": "Открыть кампании",
       "morePlus": "+{count}",
       "moreActions": "Ещё действия",
@@ -2336,6 +2337,7 @@
     "back": "Назад к списку",
     "openProfile": "Открыть профиль",
     "loading": "Загрузка…",
+    "statsError": "Не удалось загрузить статистику врачей. Цифры на странице могут быть неполными.",
     "hourShort": "ч",
     "minuteShort": "м",
     "filters": {
@@ -2581,7 +2583,8 @@
       "bonus": "Премия к выплате",
       "noShowRate": "{rate}%",
       "period": "За период",
-      "empty": "Нет данных о выручке за период"
+      "empty": "Нет данных о выручке за период",
+      "loadError": "Не удалось загрузить финансы за период."
     },
     "cases": {
       "title": "Случаи",
@@ -2599,6 +2602,7 @@
       "legendLow": "мало",
       "legendHigh": "много",
       "empty": "На выбранной неделе записей нет",
+      "loadError": "Не удалось загрузить записи недели.",
       "prev": "Предыдущая неделя",
       "next": "Следующая неделя",
       "currentWeek": "Эта неделя",
@@ -2617,6 +2621,8 @@
       "title": "Расписание",
       "subtitle": "График работы по дням недели. Кабинет опционально.",
       "emptyDay": "Нет слотов",
+      "dayOff": "Выходной",
+      "noScheduleHint": "График не задан, поэтому запись открыта каждый день с 09:00 до 19:00. Как только вы добавите рабочие часы, дни без них станут выходными.",
       "addSlot": "Добавить слот",
       "removeSlot": "Удалить слот",
       "startTime": "Начало",
@@ -2661,6 +2667,7 @@
         "ltv": "LTV"
       },
       "empty": "У врача пока нет пациентов",
+      "loadError": "Не удалось загрузить пациентов врача.",
       "openCard": "Открыть карточку"
     },
     "reviews": {

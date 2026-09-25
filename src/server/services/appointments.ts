@@ -18,6 +18,10 @@ import {
   tashkentDayBounds,
   toTashkentDate,
 } from "@/lib/booking-validation";
+import {
+  workingWindowsFor,
+  type ScheduleRowLike,
+} from "@/lib/doctor-working-windows";
 
 type PrismaLike =
   | typeof prisma
@@ -31,6 +35,32 @@ export type ConflictResult =
 // local Date.getHours() — prod runs UTC, which would skew the result by 5h.
 function fmt(d: Date): string {
   return tashkentComponents(d).time;
+}
+
+function hhmmToMinutes(v: string): number {
+  const [h, m] = v.split(":").map((x) => Number(x));
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+/**
+ * Every active schedule row of the doctor, all weekdays: whether the doctor
+ * has a schedule at all decides between «day off» and the no-schedule
+ * fallback (see `workingWindowsFor`).
+ */
+async function loadActiveScheduleRows(
+  client: PrismaLike,
+  doctorId: string,
+): Promise<ScheduleRowLike[]> {
+  return client.doctorSchedule.findMany({
+    where: { doctorId, isActive: true },
+    select: {
+      weekday: true,
+      startTime: true,
+      endTime: true,
+      validFrom: true,
+      validTo: true,
+    },
+  });
 }
 
 export function computeEndDate(start: Date, durationMin: number): Date {
@@ -130,29 +160,34 @@ export async function detectConflicts(
     };
   }
 
-  // DoctorSchedule — ensure the slot falls inside a working window for that
-  // weekday. All comparisons must use Tashkent wall clock; server-local
+  // DoctorSchedule — the slot must fall inside one of that day's working
+  // windows. All comparisons use Tashkent wall clock; server-local
   // `getDay()` / `getHours()` skews by 5h on the UTC prod box and flips
   // weekday near midnight, so we route everything through tashkentComponents.
-  const startComp = tashkentComponents(args.startAt);
-  const endComp = tashkentComponents(args.endAt);
-  const weekday = startComp.dow;
-  const schedules = await client.doctorSchedule.findMany({
-    where: {
-      doctorId: args.doctorId,
-      weekday,
-      isActive: true,
-    },
-    select: { startTime: true, endTime: true },
-  });
-  if (schedules.length > 0) {
+  //
+  // Once the doctor has any schedule, a weekday without rows is a day off
+  // (audit AP-01): the check used to run only when THAT weekday had rows, so
+  // a day off accepted any time. A doctor with no schedule at all stays
+  // unconstrained here, as before; the slot picker offers them the
+  // 09:00-19:00 fallback, and staff may still book outside it by hand.
+  const scheduleRows = await loadActiveScheduleRows(client, args.doctorId);
+  if (scheduleRows.length > 0) {
+    const startComp = tashkentComponents(args.startAt);
+    const endComp = tashkentComponents(args.endAt);
+    const windows = workingWindowsFor(scheduleRows, startComp.date);
     const slotStart = startComp.minutes;
-    const slotEnd = endComp.minutes;
-    const inWindow = schedules.some((s) => {
-      const [sh, sm] = s.startTime.split(":").map((v) => Number(v));
-      const [eh, em] = s.endTime.split(":").map((v) => Number(v));
-      const start = sh * 60 + sm;
-      const end = eh * 60 + em;
+    // A slot running past midnight never fits a day's window; one ending
+    // exactly at midnight reads as 24:00 of the same day.
+    const slotEnd =
+      endComp.date === startComp.date
+        ? endComp.minutes
+        : endComp.minutes === 0 &&
+            args.endAt.getTime() - args.startAt.getTime() <= 24 * 60 * 60_000
+          ? 24 * 60
+          : Number.POSITIVE_INFINITY;
+    const inWindow = windows.some((w) => {
+      const start = hhmmToMinutes(w.start);
+      const end = hhmmToMinutes(w.end);
       return slotStart >= start && slotEnd <= end;
     });
     if (!inWindow) {
@@ -179,7 +214,9 @@ export const DEFAULT_SLOT_STEP_MIN = 20;
  * so there is nothing to reserve. Walk-in rows don't block slots either: they
  * are order-based, their `[now, now+30)` window is technical (mirrors
  * `detectConflicts` + the DB EXCLUDE constraints' `channel <> WALKIN`).
- * If no DoctorSchedule exists for that weekday, uses the 09:00-19:00 fallback.
+ * Working windows come from `workingWindowsFor`: a weekday without schedule
+ * rows is a day off, and only a doctor with no schedule at all gets the
+ * 09:00-19:00 fallback.
  */
 export async function findAvailableSlots(args: {
   doctorId: string;
@@ -196,18 +233,15 @@ export async function findAvailableSlots(args: {
   // (`getDay`, `setHours(0,0,0,0)`) silently skew ±5h on UTC prod and used
   // to leak today's already-passed slots into the picker.
   const dateComp = tashkentComponents(args.date);
-  const weekday = dateComp.dow;
   const { dayStart, dayEnd } = tashkentDayBounds(args.date);
 
-  const schedules = await prisma.doctorSchedule.findMany({
-    where: { doctorId: args.doctorId, weekday, isActive: true },
-    select: { startTime: true, endTime: true },
-  });
-
-  const windows =
-    schedules.length > 0
-      ? schedules.map((s) => ({ start: s.startTime, end: s.endTime }))
-      : [{ start: "09:00", end: "19:00" }];
+  // A weekday without rows is a day off (no slots); only a doctor with no
+  // schedule at all keeps the 09:00-19:00 fallback (audit AP-01).
+  const windows = workingWindowsFor(
+    await loadActiveScheduleRows(prisma, args.doctorId),
+    dateComp.date,
+  );
+  if (windows.length === 0) return [];
 
   const now = new Date();
   const isToday = tashkentComponents(now).date === dateComp.date;

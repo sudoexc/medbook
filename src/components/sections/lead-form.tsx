@@ -14,6 +14,8 @@ import {
 import { useDoctors } from "@/components/providers/doctors-provider";
 import { CheckCircle, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import { reachGoal } from "@/lib/site-analytics";
+import { isLeadDayOpen } from "@/lib/doctor-working-windows";
+import type { PublicScheduleRow } from "@/lib/doctors";
 import type { Locale } from "@/types";
 
 const MONTH_NAMES: Record<Locale, string[]> = {
@@ -26,7 +28,11 @@ const DAY_HEADERS: Record<Locale, string[]> = {
   uz: ["Du", "Se", "Chor", "Pay", "Ju", "Sha", "Ya"],
 };
 
-function MiniCalendar({ locale, selectedDate, onSelect }: { locale: Locale; selectedDate: string; onSelect: (d: string) => void }) {
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function MiniCalendar({ locale, selectedDate, onSelect, schedule }: { locale: Locale; selectedDate: string; onSelect: (d: string) => void; schedule?: PublicScheduleRow[] }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -77,11 +83,13 @@ function MiniCalendar({ locale, selectedDate, onSelect }: { locale: Locale; sele
         {cells.map((day, i) => {
           if (day === null) return <div key={`e${i}`} />;
           const date = new Date(viewYear, viewMonth, day);
-          const dateStr = date.toISOString().split("T")[0];
+          // The calendar day as shown. `toISOString()` of a local midnight
+          // is the PREVIOUS day in Tashkent (UTC+5), which both sent the
+          // wrong date and would test the wrong weekday.
+          const dateStr = `${viewYear}-${pad2(viewMonth + 1)}-${pad2(day)}`;
           const isPast = date < today;
-          const isSunday = date.getDay() === 0;
           const isTooFar = date > maxDate;
-          const disabled = isPast || isSunday || isTooFar;
+          const disabled = isPast || isTooFar || !isLeadDayOpen(dateStr, schedule);
           const isSelected = dateStr === selectedDate;
           const isToday = date.getTime() === today.getTime();
 
@@ -251,6 +259,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                   locale={locale}
                   selectedDate={selectedDate}
                   onSelect={(d) => setSelectedDate(d)}
+                  schedule={selectedDoctor?.schedule}
                 />
               </div>
             </div>

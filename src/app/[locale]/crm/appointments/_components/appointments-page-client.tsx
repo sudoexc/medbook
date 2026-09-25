@@ -123,20 +123,21 @@ export function AppointmentsPageClient() {
 
   const selectedIds = React.useMemo(() => Array.from(selected), [selected]);
 
-  const remindersMutation = useMutation<
-    { requested: number; scoped: number; created: number; skipped: number; dispatched: number },
-    Error,
-    { ids: string[]; trigger?: "appointment.reminder-24h" | "appointment.reminder-5h" | "appointment.reminder-2h" }
-  >({
+  type RemindersResult = {
+    requested: number;
+    scoped: number;
+    reminded: number;
+    skipped: number;
+    noChannel: number;
+    templateDisabled: boolean;
+  };
+  const remindersMutation = useMutation<RemindersResult, Error, { ids: string[] }>({
     mutationFn: async (input) => {
       const res = await fetch(`/api/crm/appointments/bulk-reminders`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          appointmentIds: input.ids,
-          ...(input.trigger ? { trigger: input.trigger } : {}),
-        }),
+        body: JSON.stringify({ appointmentIds: input.ids }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as
@@ -144,17 +145,24 @@ export function AppointmentsPageClient() {
           | null;
         throw new Error(data?.reason ?? data?.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as {
-        requested: number;
-        scoped: number;
-        created: number;
-        skipped: number;
-        dispatched: number;
-      };
+      return (await res.json()) as RemindersResult;
     },
+    // The toast reports what really happened: patients reminded, not queue
+    // rows (each reminder also has an in-app mirror), and who could not be
+    // reached at all (AP-02).
     onSuccess: (result) => {
-      if (result.dispatched > 0) {
-        toast.success(t("rail.remindersSent", { count: result.dispatched }));
+      const noChannel =
+        result.noChannel > 0
+          ? t("rail.remindersNoChannel", { count: result.noChannel })
+          : undefined;
+      if (result.templateDisabled) {
+        toast.info(t("rail.remindersTemplateOff"));
+      } else if (result.reminded > 0) {
+        toast.success(t("rail.remindersSent", { count: result.reminded }), {
+          description: noChannel,
+        });
+      } else if (result.noChannel > 0) {
+        toast.info(noChannel);
       } else if (result.skipped > 0) {
         toast.info(t("rail.remindersAllSkipped"));
       } else {
@@ -167,18 +175,12 @@ export function AppointmentsPageClient() {
   });
 
   const sendReminders = React.useCallback(
-    (
-      ids: string[],
-      trigger?:
-        | "appointment.reminder-24h"
-        | "appointment.reminder-5h"
-        | "appointment.reminder-2h",
-    ) => {
+    (ids: string[]) => {
       if (ids.length === 0) {
         toast.info(t("rail.remindersNothing"));
         return;
       }
-      remindersMutation.mutate({ ids, trigger });
+      remindersMutation.mutate({ ids });
     },
     [remindersMutation, t],
   );

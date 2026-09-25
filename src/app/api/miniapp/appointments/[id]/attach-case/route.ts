@@ -12,6 +12,11 @@
  * authenticated patient. A failure here is non-fatal client-side — the
  * appointment is already booked; the patient just won't have a case linked.
  *
+ * Both branches link through `attachAppointmentToCase`, which re-prices the
+ * visit and its case siblings in the same transaction: a follow-up the
+ * patient files under an open case inside the free-repeat window becomes
+ * free here exactly as it would at the CRM desk (audit PT-02).
+ *
  * Spec: docs/TZ.md §6.10.2-6, MedicalCase task brief.
  */
 import { z } from "zod";
@@ -19,6 +24,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { err, notFound, ok } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
+import {
+  attachAppointmentToCase,
+  auditFreeRepeats,
+  type CaseAttachAuditActor,
+} from "@/server/cases/attach";
 
 const Body = z
   .object({
@@ -52,6 +62,18 @@ export const POST = createMiniAppHandler(
     });
     if (!appt) return notFound();
 
+    const who: CaseAttachAuditActor = {
+      clinicId: ctx.clinicId,
+      actor: {
+        role: "PATIENT",
+        userId: null,
+        patientId: ctx.patientId,
+        onBehalfOfPatientId: null,
+        label: `patient:${ctx.patientId}`,
+      },
+      surface: "MINIAPP",
+    };
+
     // Branch 1 — create a brand-new case from the patient's wording.
     if (body.create) {
       const isUz = ctx.patient.preferredLang === "UZ";
@@ -67,20 +89,27 @@ export const POST = createMiniAppHandler(
       const fallbackTitle = isUz
         ? `Yangi shikoyat, ${dStr}`
         : `Новая жалоба, ${dStr}`;
-      const created = await prisma.medicalCase.create({
-        data: {
-          clinicId: ctx.clinicId,
-          patientId: ctx.patientId,
-          title: body.title?.trim() || fallbackTitle,
-          primaryDoctorId: appt.doctorId,
-          primaryComplaint: body.primaryComplaint?.trim() || null,
-          status: "OPEN",
-        },
-        select: { id: true, title: true },
-      });
-      await prisma.appointment.update({
-        where: { id: appt.id },
-        data: { medicalCaseId: created.id },
+      const created = await prisma.$transaction(async (tx) => {
+        const c = await tx.medicalCase.create({
+          data: {
+            clinicId: ctx.clinicId,
+            patientId: ctx.patientId,
+            title: body.title?.trim() || fallbackTitle,
+            primaryDoctorId: appt.doctorId,
+            primaryComplaint: body.primaryComplaint?.trim() || null,
+            status: "OPEN",
+          },
+          select: { id: true, title: true },
+        });
+        // Leaving another case can turn a visit left behind back into a
+        // paid «first» one, so the old case is re-priced too.
+        const results = await attachAppointmentToCase(tx, {
+          appointmentId: appt.id,
+          caseId: c.id,
+          previousCaseId: appt.medicalCaseId,
+        });
+        await auditFreeRepeats(tx, who, c.id, results, "miniapp_attach");
+        return c;
       });
       return ok({ caseId: created.id, kind: "created", title: created.title });
     }
@@ -98,9 +127,13 @@ export const POST = createMiniAppHandler(
     if (target.status !== "OPEN") {
       return err("case_not_open", 400, { reason: "case_not_open" });
     }
-    await prisma.appointment.update({
-      where: { id: appt.id },
-      data: { medicalCaseId: target.id },
+    await prisma.$transaction(async (tx) => {
+      const results = await attachAppointmentToCase(tx, {
+        appointmentId: appt.id,
+        caseId: target.id,
+        previousCaseId: appt.medicalCaseId,
+      });
+      await auditFreeRepeats(tx, who, target.id, results, "miniapp_attach");
     });
     return ok({ caseId: target.id, kind: "attached", title: target.title });
   },

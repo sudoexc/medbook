@@ -1,45 +1,40 @@
 /**
- * /api/crm/appointments/bulk-reminders — fan out manual reminders.
+ * /api/crm/appointments/bulk-reminders — «Напомнить всем» on the
+ * Appointments page.
  *
- * Body: `{ appointmentIds: string[]; trigger?: "appointment.reminder-24h"
- *        | "appointment.reminder-5h" | "appointment.reminder-2h" }`.
+ * Body: `{ appointmentIds: string[] }`.
  *
- * Materialises one NotificationSend row per appointment via the existing
- * bulk helper (idempotent on (appointmentId, templateId) — re-clicks won't
- * double-send), then directly enqueues each newly-created row on
- * `notifications:send` so delivery is immediate instead of waiting for
- * the next scheduler tick.
+ * Sends one staff reminder per upcoming, not-yet-arrived appointment through
+ * its own MANUAL template (`materializeManualReminders`) and dispatches
+ * exactly the rows that call created.
  *
- * Idempotency rationale: the receptionist often clicks "Remind everyone"
- * after a flurry of new bookings; the existing 24h-cascade rows for those
- * patients are already QUEUED, and we don't want to spam. The bulk helper's
- * `(appointmentId, templateId)` skip already covers this.
+ * Why not a cascade band (audit AP-02): the button used to ask for the
+ * retired -120 band, found no template, created nothing, and then enqueued
+ * «every QUEUED row of these appointments scheduled from now on», i.e. the
+ * day's FUTURE cascade rows. The worker did not check `scheduledFor`, so
+ * «через 3 часа, в 16:00» went out at 09:00, the real reminder was spent, and
+ * the toast still reported success. Cascade rows are no longer touched here,
+ * and the worker now refuses rows that are not yet due.
+ *
+ * Idempotent: at most one manual reminder per appointment, so a second click
+ * reminds nobody twice.
  */
 import { z } from "zod";
 
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok } from "@/server/http";
-import { materializeForAppointmentsBulk } from "@/server/notifications/triggers";
+import { err, ok } from "@/server/http";
+import { materializeManualReminders } from "@/server/notifications/triggers";
 import { enqueue } from "@/server/queue";
 import {
   JOB_NAME as SEND_JOB,
   QUEUE_NAME as SEND_QUEUE,
 } from "@/server/workers/notifications-send";
 
-const TriggerKeySchema = z.enum([
-  "appointment.reminder-24h",
-  "appointment.reminder-5h",
-  "appointment.reminder-2h",
-]);
-
-export const BulkRemindersSchema = z.object({
+const BulkRemindersSchema = z.object({
   appointmentIds: z.array(z.string().min(1)).min(1).max(500),
-  trigger: TriggerKeySchema.default("appointment.reminder-2h"),
 });
-
-const MAX_DISPATCH = 500;
 
 export const POST = createApiHandler(
   {
@@ -47,45 +42,27 @@ export const POST = createApiHandler(
     bodySchema: BulkRemindersSchema,
   },
   async ({ request, body, ctx }) => {
+    if (ctx.kind !== "TENANT") return err("ClinicNotSelected", 400);
     const now = new Date();
 
     // Tenant scope: refuse IDs outside the caller's clinic. We don't trust
     // the client-supplied list — a stale tab could theoretically forward an
     // appointment ID from another clinic.
-    const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
     const scoped = await prisma.appointment.findMany({
-      where: {
-        id: { in: body.appointmentIds },
-        ...(clinicId ? { clinicId } : {}),
-      },
+      where: { id: { in: body.appointmentIds }, clinicId: ctx.clinicId },
       select: { id: true },
     });
     const allowedIds = scoped.map((a) => a.id);
 
-    const jobs = allowedIds.map((id) => ({
-      appointmentId: id,
-      scheduledFor: now,
-    }));
-
-    const result = await materializeForAppointmentsBulk(jobs, body.trigger);
-
-    // Pull the rows we just created so we can dispatch immediately. We can't
-    // know which ones bulk-helper actually created (it does skipDuplicates),
-    // so we read back QUEUED rows for these appointments + scheduledFor=now.
-    // The window is ±5s to absorb clock skew.
-    const cutoff = new Date(now.getTime() - 5_000);
-    const fresh = await prisma.notificationSend.findMany({
-      where: {
-        appointmentId: { in: allowedIds },
-        status: "QUEUED",
-        scheduledFor: { gte: cutoff },
-      },
-      select: { id: true },
-      take: MAX_DISPATCH,
+    const result = await materializeManualReminders({
+      clinicId: ctx.clinicId,
+      appointmentIds: allowedIds,
+      now,
     });
 
+    // Only the rows created above: never another row of these appointments.
     await Promise.all(
-      fresh.map((row) => enqueue(SEND_QUEUE, SEND_JOB, { sendId: row.id })),
+      result.sendIds.map((id) => enqueue(SEND_QUEUE, SEND_JOB, { sendId: id })),
     );
 
     await audit(request, {
@@ -94,19 +71,21 @@ export const POST = createApiHandler(
       meta: {
         requested: body.appointmentIds.length,
         scoped: allowedIds.length,
-        created: result.created,
+        reminded: result.reminded,
         skipped: result.skipped,
-        dispatched: fresh.length,
-        trigger: body.trigger,
+        noChannel: result.noChannel,
+        dispatched: result.sendIds.length,
+        templateDisabled: result.templateDisabled,
       },
     });
 
     return ok({
       requested: body.appointmentIds.length,
       scoped: allowedIds.length,
-      created: result.created,
+      reminded: result.reminded,
       skipped: result.skipped,
-      dispatched: fresh.length,
+      noChannel: result.noChannel,
+      templateDisabled: result.templateDisabled,
     });
   },
 );

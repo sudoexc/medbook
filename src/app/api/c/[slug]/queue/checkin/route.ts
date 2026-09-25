@@ -4,6 +4,11 @@
  * Kiosk endpoint: mark an existing appointment as WAITING (in-clinic
  * queue) and assign it a queueOrder. Returns ticket payload for printing.
  *
+ * Same intake as reception's «Пришёл» (`applyWaitingIntake`), and `status`
+ * moves together with `queueStatus`: the NO_SHOW sweep reads `status`, so a
+ * CONFIRMED booking that got a ticket but kept `status=CONFIRMED` was later
+ * swept as a no-show while the patient sat in the hall (audit Q-01).
+ *
  * Answers only to the clinic's paired kiosk (`x-kiosk-token`, audit SEC-01):
  * the slug is public, and anyone could otherwise mark patients «arrived».
  *
@@ -24,10 +29,9 @@ import {
 import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
-import {
-  allocateQueueOrder,
-  runQueueTx,
-} from "@/server/appointments/queue-order";
+import { runQueueTx } from "@/server/appointments/queue-order";
+import { applyWaitingIntake } from "@/server/appointments/intake";
+import { kioskCheckinEntersQueue } from "@/server/kiosk/checkin-statuses";
 
 const Body = z.object({ appointmentId: z.string().min(1) });
 
@@ -55,11 +59,16 @@ export async function POST(request: Request) {
       where: { id: parsed.appointmentId, clinicId: ctx.clinicId },
       select: {
         id: true,
+        clinicId: true,
         doctorId: true,
+        patientId: true,
         date: true,
         time: true,
+        status: true,
         queueStatus: true,
         queueOrder: true,
+        ticketSeq: true,
+        queuedAt: true,
         ticketCode: true,
         patient: { select: { id: true, fullName: true } },
         doctor: {
@@ -88,51 +97,71 @@ export async function POST(request: Request) {
       return err("not_eligible", 400);
     }
 
-    // Allocate queueOrder + flip to WAITING atomically under Serializable
-    // isolation so two kiosks (or kiosk + reception) can't hand out the same
-    // number. allocateQueueOrder is a no-op read when the row already owns a
-    // slot (already WAITING/IN_PROGRESS), so we only re-allocate from BOOKED
-    // or when the order is missing.
-    const needsOrder = !appt.queueOrder || appt.queueStatus === "BOOKED";
-    const enteringQueue = appt.queueStatus === "BOOKED";
+    // A booking (BOOKED / CONFIRMED) or a skipped patient coming back
+    // enters the live queue: shared intake claims queueOrder/ticketSeq once
+    // and stamps queuedAt, exactly like reception's «Пришёл». Both status
+    // columns flip together. A row already WAITING / IN_PROGRESS is a second
+    // tap: reprint the same ticket, except a legacy WAITING row that never
+    // got a number, which the intake numbers now. Serializable (runQueueTx)
+    // so two kiosks, or kiosk + reception, can't hand out the same number.
+    const entering = kioskCheckinEntersQueue(appt.queueStatus);
+    const needsNumber = appt.queueStatus === "WAITING" && appt.queueOrder == null;
     const now = new Date();
-    const { queueOrder, ticketSeq, updated } = await runQueueTx(async (tx) => {
-      const allocated = needsOrder
-        ? await allocateQueueOrder(tx, {
-            clinicId: ctx.clinicId,
-            doctorId: appt.doctorId,
+    const updated =
+      entering || needsNumber
+        ? await runQueueTx(async (tx) => {
+            const intake = await applyWaitingIntake(tx, appt, now);
+            return tx.appointment.update({
+              where: { id: appt.id },
+              data: {
+                ...intake,
+                ...(entering
+                  ? { queueStatus: "WAITING" as const, status: "WAITING" as const }
+                  : {}),
+              },
+              select: {
+                queueStatus: true,
+                status: true,
+                queueOrder: true,
+                ticketSeq: true,
+              },
+            });
           })
-        : null;
-      const order = allocated?.queueOrder ?? appt.queueOrder!;
-      const u = await tx.appointment.update({
-        where: { id: appt.id },
-        data: {
-          queueStatus:
-            appt.queueStatus === "BOOKED" ? "WAITING" : appt.queueStatus,
-          queueOrder: order,
-          // Freeze the ticket number the first time this slot enters the queue.
-          // On a re-check-in (needsOrder false) we leave ticketSeq untouched so
-          // a reception reorder of queueOrder never reissues the printed ticket.
-          ...(allocated ? { ticketSeq: allocated.ticketSeq } : {}),
-          // Arrival stamp («ждёт с …») the moment a booking flips into
-          // the live queue. A re-check-in (already WAITING) keeps its stamp.
-          ...(enteringQueue ? { queuedAt: now } : {}),
-          status: appt.queueStatus === "BOOKED" ? "WAITING" : undefined,
-        },
-        select: { queueStatus: true, queueOrder: true, ticketSeq: true },
-      });
-      return { queueOrder: order, ticketSeq: u.ticketSeq, updated: u };
-    });
+        : {
+            queueStatus: appt.queueStatus,
+            status: appt.status,
+            queueOrder: appt.queueOrder,
+            ticketSeq: appt.ticketSeq,
+          };
+    const queueOrder = updated.queueOrder;
+    const ticketSeq = updated.ticketSeq;
 
-    publishEventSafe(ctx.clinicId, {
-      type: "queue.updated",
-      payload: {
-        appointmentId: appt.id,
-        doctorId: appt.doctorId,
-        queueStatus: updated.queueStatus,
-        previousStatus: appt.queueStatus,
-      },
-    });
+    if (entering || needsNumber) {
+      publishEventSafe(ctx.clinicId, {
+        type: "queue.updated",
+        payload: {
+          appointmentId: appt.id,
+          doctorId: appt.doctorId,
+          patientId: appt.patientId,
+          queueStatus: updated.queueStatus,
+          previousStatus: appt.queueStatus,
+        },
+      });
+    }
+    if (entering) {
+      // Reception's list shows the row's `status` («Пришёл»); without this
+      // poke it kept showing the booking as expected until a reload.
+      publishEventSafe(ctx.clinicId, {
+        type: "appointment.statusChanged",
+        payload: {
+          appointmentId: appt.id,
+          doctorId: appt.doctorId,
+          patientId: appt.patientId,
+          status: updated.status,
+          previousStatus: appt.status,
+        },
+      });
+    }
 
     const cabinetNumber = appt.doctor.cabinet?.number ?? null;
 

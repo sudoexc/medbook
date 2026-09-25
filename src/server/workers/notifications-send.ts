@@ -30,11 +30,14 @@ import { resolveAdapters } from "@/server/notifications/adapters";
 import { recordNotificationDelivery } from "@/server/notifications/record-delivery";
 import { getRateLimiter } from "@/server/notifications/rate-limit";
 import { enqueue, getQueue } from "@/server/queue";
+import { MANUAL_APPOINTMENT_REMINDER_KEY } from "@/server/notifications/default-templates";
 
 export const QUEUE_NAME = "notifications:send";
 export const JOB_NAME = "deliver";
 
 const MAX_ATTEMPTS = 3;
+/** Clock slack between the web and worker processes for the «not yet due» check. */
+const FUTURE_SLACK_MS = 5_000;
 const BACKOFF_MS = [60_000, 300_000, 1_800_000];
 
 export type DeliverJob = { sendId: string };
@@ -74,6 +77,21 @@ async function claimForDispatch(sendId: string): Promise<boolean> {
   return claimed.count === 1;
 }
 
+/**
+ * An appointment reminder («ждём вас …») is pointless once the visit is
+ * closed, and wrong once the patient is already in the hall (WAITING) or in
+ * the cabinet (IN_PROGRESS).
+ */
+function isPastReminderStage(status: string): boolean {
+  return (
+    status === "CANCELLED" ||
+    status === "NO_SHOW" ||
+    status === "COMPLETED" ||
+    status === "WAITING" ||
+    status === "IN_PROGRESS"
+  );
+}
+
 async function deliver(job: DeliverJob): Promise<void> {
   const send = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.notificationSend.findUnique({
@@ -89,6 +107,14 @@ async function deliver(job: DeliverJob): Promise<void> {
   if (!send) return;
   if (send.status !== "QUEUED") return;
 
+  // Never before its time. The dispatch loop only hands over rows whose
+  // `scheduledFor` has passed, but a direct enqueue does not: the manual
+  // «Напомнить всем» button used to pick up the day's future cascade rows
+  // and push them here, so «ждём вас через 3 часа» went out at 09:00 for a
+  // 16:00 visit and the real 13:00 reminder was spent (audit AP-02). A
+  // future row stays QUEUED untouched; the dispatch loop delivers it on time.
+  if (send.scheduledFor.getTime() > Date.now() + FUTURE_SLACK_MS) return;
+
   // Stage 2.D — no-spam guard for the confirm cascade. If the patient
   // has already confirmed (any path: TG_BUTTON, MANUAL_CRM, INBOUND_CALL,
   // BOOKING_AUTO; SMS_REPLY is legacy/no longer emitted — SMS removed in
@@ -103,6 +129,33 @@ async function deliver(job: DeliverJob): Promise<void> {
   // so once the patient confirms (or the appointment closes) we suppress the
   // rest of the cascade.
   const isBeforeReminder = send.template?.trigger === "APPOINTMENT_BEFORE";
+  // The staff-sent reminder («Напомнить всем», AP-02) asks the same «are you
+  // coming?», so it gets the confirm button and the closed-appointment
+  // guard, but not the cascade's confirmed / drift checks: staff chose to
+  // send it now, to this patient.
+  const isManualReminder =
+    send.template?.key === MANUAL_APPOINTMENT_REMINDER_KEY &&
+    Boolean(send.appointmentId);
+  if (isManualReminder) {
+    const appt = await runWithTenant({ kind: "SYSTEM" }, () =>
+      prisma.appointment.findUnique({
+        where: { id: send.appointmentId! },
+        select: { status: true },
+      }),
+    );
+    if (!appt || isPastReminderStage(appt.status)) {
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.notificationSend.updateMany({
+          where: { id: send.id, status: "QUEUED" },
+          data: {
+            status: "CANCELLED",
+            failedReason: "appointment closed or patient already arrived",
+          },
+        }),
+      );
+      return;
+    }
+  }
   if (isBeforeReminder && send.appointmentId) {
     const appt = await runWithTenant({ kind: "SYSTEM" }, () =>
       prisma.appointment.findUnique({
@@ -112,10 +165,7 @@ async function deliver(job: DeliverJob): Promise<void> {
     );
     if (
       appt &&
-      (appt.confirmedAt !== null ||
-        appt.status === "CANCELLED" ||
-        appt.status === "NO_SHOW" ||
-        appt.status === "COMPLETED")
+      (appt.confirmedAt !== null || isPastReminderStage(appt.status))
     ) {
       await runWithTenant({ kind: "SYSTEM" }, () =>
         prisma.notificationSend.updateMany({
@@ -237,7 +287,8 @@ async function deliver(job: DeliverJob): Promise<void> {
       // D-3 — gate on the APPOINTMENT_BEFORE trigger (see no-spam guard
       // above), not the template slug. Once a patient confirms, the no-spam
       // guard cancels the remaining cascade so they aren't asked again.
-      const wantsConfirmButton = isBeforeReminder && Boolean(send.appointmentId);
+      const wantsConfirmButton =
+        (isBeforeReminder || isManualReminder) && Boolean(send.appointmentId);
       const replyMarkup = wantsConfirmButton
         ? {
             inline_keyboard: [

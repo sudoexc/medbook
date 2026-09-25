@@ -181,6 +181,14 @@ export function DoctorHeatGrid({ doctorId, className }: DoctorHeatGridProps) {
 
       {query.isLoading ? (
         <div className="h-40 animate-pulse rounded-md bg-muted" />
+      ) : query.isError ? (
+        // A failed load is not «no appointments this week» (DR-01).
+        <div
+          role="alert"
+          className="rounded-md border border-dashed border-destructive/40 bg-destructive/5 px-4 py-10 text-center text-xs text-destructive"
+        >
+          {t("loadError")}
+        </div>
       ) : totalThisWeek === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-10 text-center text-xs text-muted-foreground">
           {t("empty")}

@@ -789,13 +789,15 @@
     "rail": {
       "quickActions": "Tez amallar",
       "sendReminders": "Barchaga eslatmalar",
-      "remindersSent": "Navbatga qo'shildi: {count}",
+      "remindersSent": "Bemorlarga eslatma yuborildi: {count}",
+      "remindersNoChannel": "Telegram yo'q: {count}. Qo'ng'iroq vazifalari amallar markaziga qo'shildi.",
+      "remindersTemplateOff": "Qo'lda eslatma shabloni bildirishnoma sozlamalarida o'chirilgan.",
       "remindersAllSkipped": "Bu bemorlar allaqachon eslatma olishgan",
       "remindersNothing": "Eslatma yuboriladigan tashriflar yo'q",
       "remindersFailed": "Eslatmalarni yuborib bo'lmadi",
       "exportCsv": "CSV eksport",
       "freeSlots": "Bugungi bo'sh slotlar",
-      "freeSlotsUpdated": "{min} daqiqa oldin yangilandi",
+      "freeSlotsUpdated": "{time} da yangilandi",
       "freeSlotsBook": "Yozish",
       "freeSlotsShowAll": "Barchasini ko'rsatish ({count}) →",
       "freeSlotsCollapse": "Yopish",
@@ -806,12 +808,11 @@
       "actionRemindTitle": "Bemorlarga eslatish",
       "actionRemindHint": "Bugungi yozuvlar",
       "actionRemindCta": "Barchaga eslatish",
-      "actionConfirmTitle": "Tashrifni tasdiqlash",
-      "actionConfirmHint": "Klinikada kutmoqda",
-      "actionConfirmCta": "Barchasini tasdiqlash",
+      "actionWaitingTitle": "Klinikada kutmoqda",
+      "actionWaitingHint": "Kelib, qabulni kutmoqda",
+      "actionWaitingCta": "Navbatni ochish",
       "actionBroadcastTitle": "Telegram tarqatuvi",
-      "actionBroadcastHint": "{time} ga rejalashtirilgan",
-      "actionBroadcastBody": "Qabul haqida eslatma",
+      "actionBroadcastHint": "Kampaniyalar va tarqatuvlar tarixi",
       "actionBroadcastCta": "Kampaniyalarni ochish",
       "morePlus": "+{count}",
       "moreActions": "Yana amallar",
@@ -2336,6 +2337,7 @@
     "back": "Ro'yxatga qaytish",
     "openProfile": "Profilni ochish",
     "loading": "Yuklanmoqda…",
+    "statsError": "Shifokorlar statistikasini yuklab bo'lmadi. Sahifadagi raqamlar to'liq bo'lmasligi mumkin.",
     "hourShort": "s",
     "minuteShort": "d",
     "filters": {
@@ -2581,7 +2583,8 @@
       "bonus": "To'lovga bonus",
       "noShowRate": "{rate}%",
       "period": "Davr uchun",
-      "empty": "Bu davr uchun tushum ma'lumotlari yo'q"
+      "empty": "Bu davr uchun tushum ma'lumotlari yo'q",
+      "loadError": "Davr uchun moliyaviy ma'lumotlarni yuklab bo'lmadi."
     },
     "cases": {
       "title": "Holatlar",
@@ -2599,6 +2602,7 @@
       "legendLow": "kam",
       "legendHigh": "ko'p",
       "empty": "Tanlangan haftada qabullar yo'q",
+      "loadError": "Hafta yozuvlarini yuklab bo'lmadi.",
       "prev": "Oldingi hafta",
       "next": "Keyingi hafta",
       "currentWeek": "Shu hafta",
@@ -2617,6 +2621,8 @@
       "title": "Jadval",
       "subtitle": "Hafta kunlari bo'yicha ish jadvali. Xona ixtiyoriy.",
       "emptyDay": "Slotlar yo'q",
+      "dayOff": "Dam olish kuni",
+      "noScheduleHint": "Ish jadvali kiritilmagan, shuning uchun yozilish har kuni 09:00 dan 19:00 gacha ochiq. Ish soatlarini qo'shganingizdan so'ng, soatlari belgilanmagan kunlar dam olish kuni bo'ladi.",
       "addSlot": "Slot qo'shish",
       "removeSlot": "Slotni o'chirish",
       "startTime": "Boshlanishi",
@@ -2661,6 +2667,7 @@
         "ltv": "LTV"
       },
       "empty": "Shifokorning hali bemorlari yo'q",
+      "loadError": "Shifokor bemorlarini yuklab bo'lmadi.",
       "openCard": "Kartani ochish"
     },
     "reviews": {

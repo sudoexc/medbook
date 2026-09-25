@@ -178,6 +178,12 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
         </div>
       </div>
 
+      {slots.length === 0 ? (
+        <p className="mb-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {t("noScheduleHint")}
+        </p>
+      ) : null}
+
       <div className="divide-y divide-border">
         {WEEKDAY_ORDER.map((wd, dayOrderIdx) => {
           const dayKey = DAY_KEYS[dayOrderIdx]!;
@@ -190,7 +196,10 @@ export function ScheduleEditor({ doctor, className }: ScheduleEditorProps) {
               <div className="flex flex-col gap-2">
                 {daySlots.length === 0 ? (
                   <span className="text-xs italic text-muted-foreground">
-                    {t("emptyDay")}
+                    {/* With any hours set, an empty day is closed for
+                        booking (AP-01); only a doctor with no schedule at
+                        all is bookable on the default hours. */}
+                    {slots.length > 0 ? t("dayOff") : t("emptyDay")}
                   </span>
                 ) : (
                   daySlots.map(({ idx, slot }) => {

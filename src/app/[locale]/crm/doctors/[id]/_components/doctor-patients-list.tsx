@@ -79,6 +79,14 @@ export function DoctorPatientsList({
 
       {query.isLoading ? (
         <div className="h-40 animate-pulse rounded-md bg-muted" />
+      ) : query.isError ? (
+        // A failed load is not «the doctor has no patients» (DR-01).
+        <p
+          role="alert"
+          className="rounded-md border border-dashed border-destructive/40 bg-destructive/5 px-4 py-6 text-center text-xs text-destructive"
+        >
+          {t("loadError")}
+        </p>
       ) : patients.length === 0 ? (
         <EmptyState title={t("empty")} />
       ) : (

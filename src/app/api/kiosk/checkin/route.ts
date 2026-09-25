@@ -10,6 +10,10 @@ import {
 } from "@/server/kiosk/device";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import {
+  KIOSK_TODAY_STATUSES,
+  KIOSK_UPCOMING_STATUSES,
+} from "@/server/kiosk/checkin-statuses";
+import {
   findPhoneClaim,
   findVerifiedPhoneOwner,
 } from "@/server/patient/phone-identity";
@@ -23,6 +27,7 @@ import { z } from "zod";
 // NOTE: `rateLimit` is in-memory and resets on cold start — switch to KV/Redis
 // before real scale. See audit finding MEDIUM #14.
 const PhoneQuery = z.string().regex(/^\+?\d{9,15}$/);
+
 export async function GET(request: Request) {
   const device = await authenticateKiosk(request);
   if (!device) return kioskUnauthorized();
@@ -66,13 +71,12 @@ export async function GET(request: Request) {
     return Response.json({ patient: null, appointments: [], upcoming: [] });
   }
 
-  // Pull all upcoming appointments for this patient in [today, today+7 days).
-  // Intentionally permissive:
-  //  - any source (ONLINE booking, WALKIN already at kiosk, etc.)
-  //  - WAITING or IN_PROGRESS (skip CANCELLED/SKIPPED/COMPLETED)
-  // The frontend splits these into "today" (check-in flow) vs "upcoming"
-  // (info-only) so the receptionist's confirmed lead is always visible
-  // even if it was booked for a different day than the kiosk visit.
+  // Pull the patient's live bookings in [today, today+7 days), any source
+  // (ONLINE booking, WALKIN already at the kiosk, …). The frontend splits
+  // them into "today" (check-in flow) vs "upcoming" (info-only), so the
+  // receptionist's confirmed booking is visible even for another day.
+  // Pre-arrival BOOKED/CONFIRMED rows are the point of the lookup: see
+  // `checkin-statuses.ts` for why a WAITING-only filter broke it (Q-01).
   const { dayStart, dayEnd } = tashkentDayBounds();
   const weekEnd = new Date(dayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -81,8 +85,16 @@ export async function GET(request: Request) {
       where: {
         clinicId: clinic.id,
         patientId: patient.id,
-        date: { gte: dayStart, lt: weekEnd },
-        queueStatus: { in: ["WAITING", "IN_PROGRESS"] },
+        OR: [
+          {
+            date: { gte: dayStart, lt: dayEnd },
+            queueStatus: { in: [...KIOSK_TODAY_STATUSES] },
+          },
+          {
+            date: { gte: dayEnd, lt: weekEnd },
+            queueStatus: { in: [...KIOSK_UPCOMING_STATUSES] },
+          },
+        ],
       },
       select: {
         id: true,

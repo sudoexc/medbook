@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
-  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClockIcon,
@@ -14,6 +13,7 @@ import {
   MoreHorizontalIcon,
   SendHorizontalIcon,
   SettingsIcon,
+  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,19 +53,12 @@ function useDoctors() {
   });
 }
 
-export type ReminderTrigger =
-  | "appointment.reminder-24h"
-  | "appointment.reminder-5h"
-  | "appointment.reminder-2h";
-
 export interface AppointmentsRightRailProps {
   rows: AppointmentRow[];
   selectedDoctorId?: string | null;
   onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
-  onSendReminders: (
-    appointmentIds: string[],
-    trigger?: ReminderTrigger,
-  ) => void;
+  /** «Напомнить всем»: one staff reminder per appointment (AP-02). */
+  onSendReminders: (appointmentIds: string[]) => void;
   remindersBusy?: boolean;
 }
 
@@ -170,8 +163,7 @@ export function AppointmentsRightRail({
     .reduce((acc, p) => acc + p.amount, 0);
   const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
-  const broadcastTime = "14:00";
-  const lastUpdatedMin = 5;
+  const locale = useLocale();
 
   return (
     <div className="flex flex-col gap-3">
@@ -188,9 +180,12 @@ export function AppointmentsRightRail({
         ctaLabel={t("actionRemindCta")}
         ctaIcon={SendHorizontalIcon}
         onCta={() =>
+          // Only visits still ahead: a reminder about a slot that has
+          // already passed is noise (the server skips those too).
           onSendReminders(
-            bookedRows.map((r) => r.id),
-            "appointment.reminder-2h",
+            bookedRows
+              .filter((r) => new Date(r.date).getTime() > Date.now())
+              .map((r) => r.id),
           )
         }
         ctaDisabled={remindersBusy || bookedRows.length === 0}
@@ -203,21 +198,18 @@ export function AppointmentsRightRail({
         />
       </ActionBigCard>
 
+      {/* Patients already in the hall need no reminder: this card only
+          shows who is waiting and leads to the live queue (AP-02: its
+          button used to text them «ждём вас через 3 часа»). */}
       <ActionBigCard
         icon={ClockIcon}
-        title={t("actionConfirmTitle")}
-        subtitle={t("actionConfirmHint")}
+        title={t("actionWaitingTitle")}
+        subtitle={t("actionWaitingHint")}
         count={waitingRows.length}
         tone="primary"
-        ctaLabel={t("actionConfirmCta")}
-        ctaIcon={CheckIcon}
-        onCta={() =>
-          onSendReminders(
-            waitingRows.map((r) => r.id),
-            "appointment.reminder-2h",
-          )
-        }
-        ctaDisabled={remindersBusy || waitingRows.length === 0}
+        ctaLabel={t("actionWaitingCta")}
+        ctaIcon={UsersIcon}
+        ctaHref={`/${locale}/crm/reception`}
         moreLabel={t("moreActions")}
       >
         <InitialsChipsRow rows={waitingRows} max={4} />
@@ -226,35 +218,19 @@ export function AppointmentsRightRail({
       <ActionBigCard
         icon={SendHorizontalIcon}
         title={t("actionBroadcastTitle")}
-        subtitle={t("actionBroadcastHint", { time: broadcastTime })}
-        count={1}
+        subtitle={t("actionBroadcastHint")}
         tone="primary"
         ctaLabel={t("actionBroadcastCta")}
         ctaIcon={SendHorizontalIcon}
-        onCta={() =>
-          onSendReminders(
-            todayRows
-              .filter(
-                (r) => r.status === "BOOKED" || r.status === "WAITING",
-              )
-              .map((r) => r.id),
-            "appointment.reminder-2h",
-          )
-        }
-        ctaDisabled={remindersBusy || todayRows.length === 0}
+        ctaHref={`/${locale}/crm/notifications/campaigns`}
         moreLabel={t("moreActions")}
-      >
-        <p className="px-1 text-[12px] text-muted-foreground">
-          {t("actionBroadcastBody")}
-        </p>
-      </ActionBigCard>
+      />
 
       {/* Free slots */}
       <FreeSlotsSection
         doctors={freeSlotDoctors}
         today={today}
         onSlotPick={onSlotPick}
-        lastUpdatedMin={lastUpdatedMin}
       />
 
       {/* Day stats */}
@@ -307,12 +283,10 @@ function FreeSlotsSection({
   doctors,
   today,
   onSlotPick,
-  lastUpdatedMin,
 }: {
   doctors: DoctorOption[];
   today: Date;
   onSlotPick: (params: { doctorId: string; date: Date; time: string }) => void;
-  lastUpdatedMin: number;
 }) {
   const t = useTranslations("appointments.rail");
   const [expanded, setExpanded] = React.useState(false);
@@ -346,6 +320,12 @@ function FreeSlotsSection({
   );
 
   const anyLoading = slotQueries.some((q) => q.isLoading);
+  // When the slot lists were actually fetched (the newest of them), not a
+  // constant «5 мин назад».
+  const updatedAt = slotQueries.reduce(
+    (max, q) => (q.dataUpdatedAt > max ? q.dataUpdatedAt : max),
+    0,
+  );
   const visible = expanded ? withSlots : withSlots.slice(0, 3);
 
   return (
@@ -354,9 +334,11 @@ function FreeSlotsSection({
         <h5 className="text-[13px] font-semibold text-foreground">
           {t("freeSlots")}
         </h5>
-        <span className="text-[10px] text-muted-foreground">
-          {t("freeSlotsUpdated", { min: lastUpdatedMin })}
-        </span>
+        {updatedAt > 0 ? (
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {t("freeSlotsUpdated", { time: fmtClock(new Date(updatedAt)) })}
+          </span>
+        ) : null}
       </div>
       {/* Empty-state <p> lives OUTSIDE the <ul>: axe's `list` rule forbids
           non-<li> children. The empty ul rendered nothing anyway, so the
@@ -417,6 +399,7 @@ function ActionBigCard({
   ctaLabel,
   ctaIcon: CtaIcon,
   onCta,
+  ctaHref,
   ctaDisabled = false,
   moreLabel,
   children,
@@ -424,16 +407,26 @@ function ActionBigCard({
   icon: LucideIcon;
   title: string;
   subtitle: string;
-  count: number;
+  /** Omitted when the card has no real number to show. */
+  count?: number;
   tone: Tone;
   ctaLabel: string;
   ctaIcon: LucideIcon;
-  onCta: () => void;
+  /** Either an action… */
+  onCta?: () => void;
+  /** …or plain navigation. */
+  ctaHref?: string;
   ctaDisabled?: boolean;
   moreLabel: string;
   children?: React.ReactNode;
 }) {
   const palette = TONE[tone];
+  const ctaClass = cn(
+    "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-semibold transition-colors motion-press",
+    "hover:border-primary/40 hover:bg-primary/5",
+    "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-background",
+    palette.iconFg,
+  );
   return (
     <section className="motion-fade-in flex flex-col gap-3 rounded-2xl border border-border bg-card p-3.5">
       <header className="flex items-start gap-2.5">
@@ -452,15 +445,17 @@ function ActionBigCard({
             <span className="truncate text-[14px] font-semibold text-foreground">
               {title}
             </span>
-            <span
-              className={cn(
-                "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1.5 text-[11px] font-bold tabular-nums",
-                palette.chipBg,
-                palette.chipFg,
-              )}
-            >
-              {count}
-            </span>
+            {typeof count === "number" ? (
+              <span
+                className={cn(
+                  "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1.5 text-[11px] font-bold tabular-nums",
+                  palette.chipBg,
+                  palette.chipFg,
+                )}
+              >
+                {count}
+              </span>
+            ) : null}
           </div>
           <p className="truncate text-[12px] text-muted-foreground">
             {subtitle}
@@ -471,20 +466,22 @@ function ActionBigCard({
       {children ? <div>{children}</div> : null}
 
       <footer className="flex items-stretch gap-1.5">
-        <button
-          type="button"
-          onClick={onCta}
-          disabled={ctaDisabled}
-          className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-semibold transition-colors motion-press",
-            "hover:border-primary/40 hover:bg-primary/5",
-            "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-background",
-            palette.iconFg,
-          )}
-        >
-          <CtaIcon className="size-4" />
-          {ctaLabel}
-        </button>
+        {ctaHref ? (
+          <Link href={ctaHref} className={ctaClass}>
+            <CtaIcon className="size-4" />
+            {ctaLabel}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onCta}
+            disabled={ctaDisabled}
+            className={ctaClass}
+          >
+            <CtaIcon className="size-4" />
+            {ctaLabel}
+          </button>
+        )}
         <ActionBigCardMenu moreLabel={moreLabel} />
       </footer>
     </section>

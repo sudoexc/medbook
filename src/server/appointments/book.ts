@@ -129,7 +129,7 @@ export type BookInput = {
   correlationId?: string;
 
   /** When set, runs `autoAttachCase` after the booking commits (mini-app path). */
-  autoAttachCaseOptions?: Omit<AutoAttachCaseInput, "appointmentId">;
+  autoAttachCaseOptions?: Omit<AutoAttachCaseInput, "appointmentId" | "audit">;
 };
 
 export type BookedAppointmentProjection = {
@@ -657,16 +657,32 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   // omits this and either pre-attaches via `medicalCaseId` or leaves the
   // appointment case-less for the receptionist to attach later.
   let caseAttach: CaseAttachOutcome | null = null;
+  let appointment = txResult.appt;
   if (input.autoAttachCaseOptions) {
     caseAttach = await autoAttachCase({
       ...input.autoAttachCaseOptions,
       appointmentId: txResult.appt.id,
+      audit: {
+        actor: input.actor,
+        surface: input.surface,
+        correlationId,
+      },
     });
+    // The attach re-prices the visit (a follow-up inside the free-repeat
+    // window becomes free, PT-02), so answer with the price it now has, not
+    // the one the booking transaction wrote.
+    if (caseAttach.kind === "auto" || caseAttach.kind === "created") {
+      const priced = await prisma.appointment.findUnique({
+        where: { id: txResult.appt.id },
+        select: { priceBase: true, priceService: true, priceFinal: true },
+      });
+      if (priced) appointment = { ...appointment, ...priced };
+    }
   }
 
   return {
     ok: true,
-    appointment: txResult.appt,
+    appointment,
     eventId: txResult.eventId,
     autoConfirmed: autoConfirm,
     recomputed: txResult.recomputed,

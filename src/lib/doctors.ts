@@ -23,7 +23,18 @@
 import { prisma } from "./prisma";
 import { runWithTenant } from "./tenant-context";
 import { DEFAULT_CLINIC_SLUG } from "./constants";
+import type { ScheduleRowLike } from "./doctor-working-windows";
 import type { Locale } from "@/types";
+
+/**
+ * One active weekly schedule row, dates as ISO strings so the view crosses
+ * the server/client boundary as plain JSON. Working hours are public anyway
+ * (they are what the clinic advertises).
+ */
+export type PublicScheduleRow = ScheduleRowLike & {
+  validFrom: string | null;
+  validTo: string | null;
+};
 
 export interface DoctorView {
   id: string;
@@ -38,6 +49,12 @@ export interface DoctorView {
    * a lead pinned to a doctor nobody processes in the CRM dies silently.
    */
   bookable: boolean;
+  /**
+   * Active schedule rows, so the lead form greys out the doctor's days off
+   * with the same rule the booking engine applies (`workingWindowsFor`,
+   * audit AP-01). Empty = no schedule set up.
+   */
+  schedule: PublicScheduleRow[];
 }
 
 /**
@@ -56,16 +73,19 @@ async function resolveClinicId(): Promise<string | null> {
   return clinic?.id ?? null;
 }
 
-function toView(row: {
-  id: string;
-  slug: string;
-  nameRu: string;
-  nameUz: string;
-  specializationRu: string;
-  specializationUz: string;
-  photoUrl: string | null;
-  isActive: boolean;
-}): DoctorView {
+function toView(
+  row: {
+    id: string;
+    slug: string;
+    nameRu: string;
+    nameUz: string;
+    specializationRu: string;
+    specializationUz: string;
+    photoUrl: string | null;
+    isActive: boolean;
+  },
+  schedule: PublicScheduleRow[],
+): DoctorView {
   return {
     id: row.id,
     slug: row.slug,
@@ -73,7 +93,42 @@ function toView(row: {
     specialty: { ru: row.specializationRu, uz: row.specializationUz },
     photo: row.photoUrl,
     bookable: row.isActive,
+    schedule,
   };
+}
+
+/** Active schedule rows of the given doctors, keyed by doctor id. */
+async function loadSchedules(
+  clinicId: string,
+  doctorIds: string[],
+): Promise<Map<string, PublicScheduleRow[]>> {
+  const out = new Map<string, PublicScheduleRow[]>();
+  if (doctorIds.length === 0) return out;
+  const rows = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.doctorSchedule.findMany({
+      where: { clinicId, doctorId: { in: doctorIds }, isActive: true },
+      select: {
+        doctorId: true,
+        weekday: true,
+        startTime: true,
+        endTime: true,
+        validFrom: true,
+        validTo: true,
+      },
+    }),
+  );
+  for (const r of rows) {
+    const list = out.get(r.doctorId) ?? [];
+    list.push({
+      weekday: r.weekday,
+      startTime: r.startTime,
+      endTime: r.endTime,
+      validFrom: r.validFrom?.toISOString() ?? null,
+      validTo: r.validTo?.toISOString() ?? null,
+    });
+    out.set(r.doctorId, list);
+  }
+  return out;
 }
 
 export async function getDoctors(): Promise<DoctorView[]> {
@@ -102,7 +157,11 @@ export async function getDoctors(): Promise<DoctorView[]> {
       }),
     );
 
-    return rows.map(toView);
+    const schedules = await loadSchedules(
+      clinicId,
+      rows.map((r) => r.id),
+    );
+    return rows.map((r) => toView(r, schedules.get(r.id) ?? []));
   } catch (e) {
     console.warn(`[site] getDoctors failed: ${(e as Error).message}`);
     return [];
@@ -131,7 +190,9 @@ export async function getDoctorById(id: string): Promise<DoctorView | null> {
       }),
     );
 
-    return row ? toView(row) : null;
+    if (!row) return null;
+    const schedules = await loadSchedules(clinicId, [row.id]);
+    return toView(row, schedules.get(row.id) ?? []);
   } catch (e) {
     console.warn(`[site] getDoctorById failed: ${(e as Error).message}`);
     return null;

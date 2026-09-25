@@ -11,12 +11,17 @@
  *     the chat id IS the user's id, which the card already holds as
  *     `telegramId`, so the message can simply be sent there.
  *
+ *     A clinic whose bot was disconnected (Integrations «Отключить» clears
+ *     `tgBotToken`) cannot send either: send.ts then logs and returns a
+ *     made up message id, which the route used to take for a real send.
+ *
  *   • G6-01: an attachment is a capability URL minted for ONE conversation.
  *     The composer used to carry a file picked in patient A's chat over to
  *     patient B's, and the route sent whatever URL the body named. Only a
  *     file uploaded into this very conversation may go out from it.
  */
 import { prisma } from "@/lib/prisma";
+import { readTgBotToken } from "@/server/crypto/secret-fields";
 
 /** The Telegram chat a message in this thread goes to, or null if none. */
 export function telegramChatIdFor(conv: {
@@ -26,6 +31,24 @@ export function telegramChatIdFor(conv: {
 }): string | null {
   if (conv.channel !== "TG") return null;
   return conv.externalId ?? conv.patient?.telegramId ?? null;
+}
+
+/**
+ * Whether the clinic has a bot to send through. Without a token send.ts does
+ * not fail: it logs and hands back a random message id (the dev/test no-op),
+ * so a staff message would read SENT while nothing left. A stored token that
+ * no longer decrypts (APP_SECRET rotated) cannot send either; it is logged
+ * loudly and treated as not connected, since reconnecting the bot fixes both.
+ */
+export function clinicBotConnected(storedToken: string | null): boolean {
+  try {
+    return Boolean(readTgBotToken(storedToken));
+  } catch (e) {
+    console.error(
+      `[crm:send] clinic bot token unreadable: ${(e as Error).message}`,
+    );
+    return false;
+  }
 }
 
 const SAFE_SEGMENT = /^[A-Za-z0-9_-]+$/;

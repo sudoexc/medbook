@@ -38,7 +38,7 @@ export type TgVoiceLike = {
   file_id: string;
 };
 
-type DoctorContext = {
+export type DoctorContext = {
   userId: string;
   doctorId: string;
   lang: BotLang;
@@ -47,8 +47,13 @@ type DoctorContext = {
 /**
  * Resolve a TG sender to an authenticated DOCTOR for this clinic, or null
  * when the sender is unknown / not a doctor / inactive.
+ *
+ * The webhook asks this BEFORE it records the message: a doctor's voice note
+ * is a SOAP dictation about a named patient, so it must not be re-hosted as
+ * a playable attachment in the shared Telegram inbox, where reception, call
+ * operators, nurses and other doctors can open the unlinked thread.
  */
-async function resolveDoctorContext(
+export async function resolveDictatingDoctor(
   clinicId: string,
   tgUserId: string,
 ): Promise<DoctorContext | null> {
@@ -101,6 +106,8 @@ export type HandleDoctorVoiceInput = {
   chatId: string;
   tgUserId: string;
   voice: TgVoiceLike;
+  /** Already resolved by the caller (`resolveDictatingDoctor`), saving a lookup. */
+  doctor?: DoctorContext | null;
 };
 
 export type HandleDoctorVoiceResult =
@@ -117,7 +124,10 @@ export type HandleDoctorVoiceResult =
 export async function handleDoctorVoice(
   input: HandleDoctorVoiceInput,
 ): Promise<HandleDoctorVoiceResult> {
-  const ctx = await resolveDoctorContext(input.clinic.id, input.tgUserId);
+  const ctx =
+    input.doctor !== undefined
+      ? input.doctor
+      : await resolveDictatingDoctor(input.clinic.id, input.tgUserId);
   if (!ctx) return { kind: "not-doctor" };
 
   const caseId = await findActiveCaseId(input.clinic.id, ctx.doctorId);

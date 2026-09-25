@@ -3439,6 +3439,7 @@
         "no_telegram": "у пациента нет Telegram",
         "tg_error": "Telegram не принял сообщение",
         "channel_unavailable": "канал этого диалога больше не работает",
+        "bot_not_connected": "бот клиники не подключён к Telegram",
         "not_sent": "сообщение не было отправлено в Telegram",
         "unknown": "ошибка отправки"
       }

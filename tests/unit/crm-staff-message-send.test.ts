@@ -13,6 +13,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Audit G6-01: the route sent whatever attachment URL the body named, so a
  * file uploaded in patient A's chat went to patient B. Only files uploaded
  * into this very conversation may leave it.
+ *
+ * A clinic whose bot was disconnected has no token; send.ts then returns a
+ * made up message id, and the route marked the message SENT with it. It is
+ * FAILED (bot_not_connected) now, with nothing sent and nothing adopted.
  */
 
 type Conv = {
@@ -21,7 +25,7 @@ type Conv = {
   externalId: string | null;
   patientId: string | null;
   patient: { phone: string; telegramId: string | null } | null;
-  clinic: { id: string; slug: string; tgBotToken: string; tgBotUsername: string };
+  clinic: { id: string; slug: string; tgBotToken: string | null; tgBotUsername: string };
 };
 
 const state = vi.hoisted(() => ({
@@ -58,6 +62,17 @@ vi.mock("@/server/realtime/publish", () => ({ publishEventSafe: vi.fn() }));
 vi.mock("@/server/patient/last-contacted", () => ({
   bumpPatientLastContact: vi.fn(async () => undefined),
 }));
+vi.mock("@/server/crypto/secrets", async (importOriginal) => {
+  // A real envelope that no longer decrypts: the key was rotated.
+  const real = await importOriginal<typeof import("@/server/crypto/secrets")>();
+  return {
+    ...real,
+    decrypt: (v: string) => {
+      if (v === "v1:iv:tag:rotated") throw new Error("decrypt: auth tag mismatch");
+      return real.decrypt(v);
+    },
+  };
+});
 
 vi.mock("@/lib/prisma", () => {
   const message = {
@@ -113,7 +128,11 @@ vi.mock("@/server/telegram/send", () => {
 });
 
 import { POST } from "@/app/api/crm/conversations/[id]/messages/route";
-import { isOwnChatAttachmentUrl } from "@/server/conversations/staff-send";
+import {
+  clinicBotConnected,
+  isOwnChatAttachmentUrl,
+} from "@/server/conversations/staff-send";
+import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 
 const CLINIC = { id: "clinic_A", slug: "alpha", tgBotToken: "T", tgBotUsername: "bot" };
 
@@ -194,6 +213,47 @@ describe("staff message in a thread opened from the patient card (audit TG-04)",
     expect((await res.json()).status).toBe("SENT");
     expect(state.sends[0]!.chatId).toBe("555");
     expect(state.convAdopted).toEqual([]);
+  });
+});
+
+describe("staff message while the clinic bot is disconnected", () => {
+  beforeEach(() => vi.mocked(bumpPatientLastContact).mockClear());
+
+  it("is FAILED (bot_not_connected), sends nothing and adopts no chat", async () => {
+    state.conv = coldThread({ clinic: { ...CLINIC, tgBotToken: null } });
+    const res = await post({ body: "Ваши анализы готовы" });
+    expect(res.status).toBe(201);
+    const row = await res.json();
+    expect(row.status).toBe("FAILED");
+    expect(row.failedReason).toBe("bot_not_connected");
+    expect(row.externalId ?? null).toBeNull();
+    expect(state.sends).toEqual([]);
+    expect(state.convAdopted).toEqual([]);
+    expect(bumpPatientLastContact).not.toHaveBeenCalled();
+  });
+
+  it("is FAILED the same way in a bound thread and with an attachment", async () => {
+    state.conv = coldThread({ externalId: "555", clinic: { ...CLINIC, tgBotToken: null } });
+    const res = await post({
+      body: "Результаты МРТ",
+      attachments: [{ kind: "file", url: fileUrl("conv_B"), mimeType: "application/pdf" }],
+    });
+    const row = await res.json();
+    expect(row.status).toBe("FAILED");
+    expect(row.failedReason).toBe("bot_not_connected");
+    expect(state.sends).toEqual([]);
+  });
+
+  it("treats an emptied or undecryptable token as not connected", async () => {
+    state.conv = coldThread({ clinic: { ...CLINIC, tgBotToken: "" } });
+    expect((await (await post({ body: "Здравствуйте" })).json()).failedReason).toBe(
+      "bot_not_connected",
+    );
+    expect(clinicBotConnected(null)).toBe(false);
+    expect(clinicBotConnected("")).toBe(false);
+    expect(clinicBotConnected("v1:iv:tag:rotated")).toBe(false);
+    expect(clinicBotConnected("123456:AA-legacy-plaintext")).toBe(true);
+    expect(state.sends).toEqual([]);
   });
 });
 

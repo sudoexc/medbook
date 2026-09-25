@@ -10,6 +10,7 @@ const FAILED_REASONS = new Set([
   "no_telegram",
   "tg_error",
   "channel_unavailable",
+  "bot_not_connected",
   "not_sent",
 ]);
 

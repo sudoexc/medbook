@@ -378,6 +378,14 @@ export async function ingestTelegramMedia(
   }
 }
 
+/**
+ * Body and inbox preview of a doctor's voice dictation. The audio itself goes
+ * only to that doctor's SOAP draft (voice-handler.ts); the shared inbox keeps
+ * this neutral line so the thread does not look empty. Stored like the other
+ * preview labels here, as Russian text on the row.
+ */
+export const DOCTOR_DICTATION_LABEL = "🎤 Диктовка врача";
+
 const PREVIEW_BY_TYPE: Partial<Record<TgMediaType, string>> = {
   photo: "📷 Фото",
   voice: "🎤 Голосовое",

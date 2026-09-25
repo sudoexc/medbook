@@ -71,6 +71,7 @@ vi.mock("@/server/telegram/state", () => ({
 }));
 vi.mock("@/server/telegram/voice-handler", () => ({
   handleDoctorVoice: vi.fn(async () => ({ kind: "not-doctor" as const })),
+  resolveDictatingDoctor: vi.fn(async () => null),
 }));
 vi.mock("@/server/telegram/invite-token", () => ({
   consumeInviteToken: vi.fn(async () => ({ kind: "not-found" as const })),

@@ -39,7 +39,10 @@ import {
   saveSnapshot,
   step,
 } from "@/server/telegram/state";
-import { handleDoctorVoice } from "@/server/telegram/voice-handler";
+import {
+  handleDoctorVoice,
+  resolveDictatingDoctor,
+} from "@/server/telegram/voice-handler";
 import { consumeInviteToken } from "@/server/telegram/invite-token";
 import {
   applyVerifiedContact,
@@ -48,6 +51,7 @@ import {
 } from "@/server/telegram/contact-verify";
 import { t as botT } from "@/server/telegram/messages";
 import {
+  DOCTOR_DICTATION_LABEL,
   inboundLocationText,
   ingestTelegramMedia,
   mediaPreviewLabel,
@@ -185,23 +189,33 @@ function loadBotCatalog(
   return { miniAppUrl, welcome };
 }
 
-/** Upsert Conversation + append incoming Message. */
+/**
+ * Upsert Conversation + append incoming Message.
+ *
+ * `doctorDictation`: the sender is an active DOCTOR and the voice/audio goes
+ * to his SOAP draft. The row then carries only a neutral line, no media and
+ * no caption: the doctor's bot thread is unlinked, so everyone working the
+ * inbox (and other doctors, through the unlinked «front door» scope) could
+ * otherwise play a dictation about a named patient.
+ */
 async function recordIncoming(
   clinic: TgClinicMinimal & { tgWebhookSecret: string | null },
   chatId: string,
   message: TgIncomingMessage,
+  opts: { doctorDictation?: boolean } = {},
 ): Promise<{
   conversationId: string;
   mode: "bot" | "takeover";
   patientId: string | null;
   preview: string;
 }> {
-  const textBody =
-    message.text ??
-    message.caption ??
-    (message.contact ? message.contact.phone_number : null) ??
-    inboundLocationText(message) ??
-    "";
+  const textBody = opts.doctorDictation
+    ? DOCTOR_DICTATION_LABEL
+    : (message.text ??
+      message.caption ??
+      (message.contact ? message.contact.phone_number : null) ??
+      inboundLocationText(message) ??
+      "");
   const now = new Date();
   const contact = {
     contactFirstName: message.from?.first_name ?? null,
@@ -237,8 +251,11 @@ async function recordIncoming(
     });
 
     // Download any inbound photo/document/video/voice/sticker and re-host it
-    // as an attachment (audit TG-01: voice notes used to be dropped).
-    const attachments = await ingestTelegramMedia(clinic, conv.id, message);
+    // as an attachment (audit TG-01: voice notes used to be dropped). Never a
+    // doctor's dictation: its audio is fetched by the SOAP pipeline alone.
+    const attachments = opts.doctorDictation
+      ? []
+      : await ingestTelegramMedia(clinic, conv.id, message);
     const preview =
       previewOf(textBody) || mediaPreviewLabel(attachments, message);
 
@@ -430,42 +447,46 @@ export async function POST(
     if (update.message) {
       const msg = update.message;
       const chatId = String(msg.chat.id);
+      // Phase 15 Wave 5 — voice/audio from a doctor → SOAP draft pipeline.
+      // Who sent it is settled BEFORE recording: a dictation must not be
+      // re-hosted as a playable attachment in the shared inbox. Anyone else's
+      // voice note is ordinary chat and is ingested as media (audit TG-01).
+      const voiceLike = msg.voice ?? msg.audio ?? null;
+      const dictatingDoctor =
+        voiceLike && msg.from?.id
+          ? await resolveDictatingDoctor(clinic.id, String(msg.from.id))
+          : null;
       const recorded = await recordIncoming(
         { ...clinicMin, tgWebhookSecret: clinic.tgWebhookSecret },
         chatId,
         msg,
+        { doctorDictation: dictatingDoctor !== null },
       );
       if (recorded.patientId) {
         await bumpPatientLastContact(recorded.patientId);
       }
-      // Phase 15 Wave 5 — voice/audio from a doctor → SOAP draft pipeline.
-      // Try the doctor-specific handler first. If the sender isn't an
-      // authenticated DOCTOR, fall through to the regular flow so the
-      // message still lands in the operator inbox.
-      const voiceLike = msg.voice ?? msg.audio ?? null;
-      if (voiceLike && msg.from?.id) {
-        const result = await handleDoctorVoice({
+      if (voiceLike && msg.from?.id && dictatingDoctor) {
+        await handleDoctorVoice({
           clinic: clinicMin,
           chatId,
           tgUserId: String(msg.from.id),
           voice: { duration: voiceLike.duration, file_id: voiceLike.file_id },
+          doctor: dictatingDoctor,
         });
-        if (result.kind !== "not-doctor") {
-          // Doctor path — we already replied. Skip FSM dispatch but still
-          // emit the realtime event so the inbox surfaces the message.
-          publishEventSafe(clinic.id, {
-            type: "tg.message.new",
-            payload: {
-              conversationId: recorded.conversationId,
-              chatId,
-              direction: "IN",
-              messageId: String(msg.message_id),
-              preview: "[voice]",
-              contactName: null,
-            },
-          });
-          return jsonResponse({ ok: true });
-        }
+        // Doctor path — we already replied. Skip FSM dispatch but still
+        // emit the realtime event so the inbox surfaces the message.
+        publishEventSafe(clinic.id, {
+          type: "tg.message.new",
+          payload: {
+            conversationId: recorded.conversationId,
+            chatId,
+            direction: "IN",
+            messageId: String(msg.message_id),
+            preview: recorded.preview,
+            contactName: null,
+          },
+        });
+        return jsonResponse({ ok: true });
       }
 
       const contactDisplayName = (() => {

@@ -7,7 +7,8 @@
  * keyboards are forwarded as Telegram inline_keyboard markup.
  *
  * A message is SENT only when Telegram accepted it, FAILED with a reason
- * code otherwise; it is never DELIVERED without a send (audit TG-04).
+ * code otherwise; it is never DELIVERED without a send (audit TG-04), and
+ * never SENT through a clinic whose bot is disconnected.
  * Attachments must belong to this conversation (audit G6-01).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
@@ -25,6 +26,7 @@ import { tgFailReason } from "@/server/telegram/send-errors";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import {
   adoptTelegramChat,
+  clinicBotConnected,
   isOwnChatAttachmentUrl,
   telegramChatIdFor,
 } from "@/server/conversations/staff-send";
@@ -159,7 +161,14 @@ export const POST = createApiHandler(
     // DELIVERED with nothing sent, the patient never saw it (audit TG-04). A
     // private chat's id is the user's id, so the card's telegramId reaches it.
     const chatId = telegramChatIdFor(conv);
-    if (conv.channel === "TG" && !chatId) {
+    if (conv.channel === "TG" && !clinicBotConnected(conv.clinic.tgBotToken)) {
+      // No bot: send.ts would answer with a made up message id and the row
+      // would read SENT (and adopt the chat) while the patient got nothing.
+      dispatched = await prisma.message.update({
+        where: { id: msg.id },
+        data: { status: "FAILED", failedReason: "bot_not_connected" },
+      });
+    } else if (conv.channel === "TG" && !chatId) {
       dispatched = await prisma.message.update({
         where: { id: msg.id },
         data: { status: "FAILED", failedReason: "no_telegram" },

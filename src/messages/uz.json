@@ -3439,6 +3439,7 @@
         "no_telegram": "bemorda Telegram yo'q",
         "tg_error": "Telegram xabarni qabul qilmadi",
         "channel_unavailable": "bu suhbat kanali endi ishlamaydi",
+        "bot_not_connected": "klinika boti Telegramga ulanmagan",
         "not_sent": "xabar Telegramga yuborilmagan",
         "unknown": "yuborishda xatolik"
       }

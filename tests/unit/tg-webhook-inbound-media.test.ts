@@ -5,6 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * with a playable attachment and a non-empty inbox preview, and a shared
  * location becomes readable text. Before, both were stored with no body and
  * no attachment, shown as «Без текста».
+ *
+ * A doctor's voice note is a SOAP dictation, not chat: it goes to his draft
+ * only and never becomes a playable attachment in the shared inbox.
  */
 
 const state = vi.hoisted(() => ({
@@ -18,6 +21,7 @@ const state = vi.hoisted(() => ({
   messages: [] as Array<Record<string, unknown>>,
   convUpdates: [] as Array<Record<string, unknown>>,
   events: [] as Array<{ type: string; payload: Record<string, unknown> }>,
+  doctor: null as null | { userId: string; doctorId: string; lang: "ru" },
 }));
 
 vi.mock("@/lib/tenant-context", () => ({
@@ -69,8 +73,13 @@ vi.mock("@/server/telegram/state", () => ({
   step: vi.fn(() => ({ next: {}, outgoing: null })),
 }));
 vi.mock("@/server/telegram/voice-handler", () => ({
-  // The sender is a patient, not a doctor dictating a SOAP note.
-  handleDoctorVoice: vi.fn(async () => ({ kind: "not-doctor" as const })),
+  // By default the sender is a patient, not a doctor dictating a SOAP note.
+  resolveDictatingDoctor: vi.fn(async () => state.doctor),
+  handleDoctorVoice: vi.fn(async () =>
+    state.doctor
+      ? { kind: "queued" as const, replyText: "ok", caseId: "case_1" }
+      : { kind: "not-doctor" as const },
+  ),
 }));
 vi.mock("@/server/telegram/invite-token", () => ({
   consumeInviteToken: vi.fn(async () => ({ kind: "not-found" as const })),
@@ -94,6 +103,8 @@ vi.mock("@/server/notifications/auto-messages", () => ({
 }));
 
 import { POST } from "@/app/api/telegram/webhook/[clinicSlug]/route";
+import { handleDoctorVoice } from "@/server/telegram/voice-handler";
+import { getFile } from "@/server/telegram/bot-api";
 
 const OGG = new Uint8Array([
   ..."OggS".split("").map((c) => c.charCodeAt(0)),
@@ -128,6 +139,9 @@ beforeEach(() => {
   state.messages = [];
   state.convUpdates = [];
   state.events = [];
+  state.doctor = null;
+  vi.mocked(handleDoctorVoice).mockClear();
+  vi.mocked(getFile).mockClear();
   vi.stubGlobal("fetch", vi.fn(async () => new Response(OGG, { status: 200 })));
 });
 
@@ -158,6 +172,45 @@ describe("TG webhook — patient media (audit TG-01)", () => {
     expect(state.messages[0]!.body).toBe(
       "📍 41.311081, 69.240562\nhttps://maps.google.com/?q=41.311081,69.240562",
     );
+    expect(state.messages[0]!.attachments).toBeNull();
+  });
+});
+
+describe("TG webhook — a doctor's voice dictation", () => {
+  const doctor = { userId: "u_doc", doctorId: "d_doc", lang: "ru" as const };
+
+  it("leaves no attachment on the Message and goes to the SOAP pipeline only", async () => {
+    state.doctor = doctor;
+    const res = await send({
+      voice: { file_id: "v9", file_unique_id: "u9", duration: 41, mime_type: "audio/ogg" },
+    });
+    expect(res.status).toBe(200);
+    expect(state.messages).toHaveLength(1);
+    const m = state.messages[0]!;
+    expect(m.attachments).toBeNull();
+    expect(m.body).toBe("🎤 Диктовка врача");
+    // Nothing was fetched or re-hosted for the inbox: the voice handler is
+    // the only reader of the file.
+    expect(getFile).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(handleDoctorVoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tgUserId: "555",
+        voice: { duration: 41, file_id: "v9" },
+        doctor,
+      }),
+    );
+    const newMsg = state.events.find((e) => e.type === "tg.message.new");
+    expect(newMsg?.payload.preview).toBe("🎤 Диктовка врача");
+  });
+
+  it("drops the caption of a dictated audio file too", async () => {
+    state.doctor = doctor;
+    await send({
+      audio: { file_id: "a1", file_unique_id: "ua1", duration: 60, mime_type: "audio/mpeg" },
+      caption: "Каримова, 54 года, после карбамазепина атаксия",
+    });
+    expect(state.messages[0]!.body).toBe("🎤 Диктовка врача");
     expect(state.messages[0]!.attachments).toBeNull();
   });
 });

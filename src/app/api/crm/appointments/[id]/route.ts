@@ -731,6 +731,14 @@ export const PATCH = createApiHandler(
       body.medicalCaseId !== undefined ||
       body.serviceId !== undefined ||
       discountChanged;
+    // A change to the visit's own services is staff asking to bill something
+    // different, so it reprices even a visit that already has a payment: the
+    // payments stay and the rest shows as owed (drawer, «Неоплаченные», the
+    // payment dialog's prefill). A moved date or a case change is not such a
+    // request and keeps a paid visit's price (recomputeAppointmentPrice).
+    const servicesEdited =
+      services !== undefined ||
+      (body.serviceId !== undefined && body.serviceId !== before.serviceId);
 
     // Status transitions that "destroy" a visit (CANCELLED / NO_SHOW) must
     // re-evaluate every sibling in the same case: the row being killed can
@@ -789,7 +797,7 @@ export const PATCH = createApiHandler(
       // Reprice the row itself first (idempotent — recomputeCaseAppointments
       // below covers it again, but this keeps the audit-meta path simple).
       const recomputed = recomputeNeeded
-        ? await recomputeAppointmentPrice(tx, id)
+        ? await recomputeAppointmentPrice(tx, id, { servicesEdited })
         : null;
       // Now repropagate to every sibling whose "first vs repeat" answer
       // could have flipped from this single change. Cover both old and new

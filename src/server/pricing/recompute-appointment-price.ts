@@ -40,8 +40,14 @@
  * same row.
  *
  * PAID-immutability: an appointment that already carries a PAID Payment is
- * frozen — re-pricing it would invalidate cash that's already in the till.
- * The function returns reason="paid_locked" without writing anything.
+ * frozen against re-pricing nobody asked for (the visit moved, it joined or
+ * left a case, a sibling's change flipped "first vs repeat", a legacy row's
+ * catalog price drifted): that would rewrite a price cash was already taken
+ * against. The function returns reason="paid_locked" without writing
+ * anything. The one exception is `servicesEdited`: staff changed this
+ * visit's own services, which is a request to bill something different, so
+ * the price follows the new lines and whatever the payments do not cover
+ * shows as owed (see RecomputeOptions).
  */
 import type { prisma } from "@/lib/prisma";
 
@@ -80,6 +86,19 @@ export interface RecomputeResult {
   }>;
 }
 
+export interface RecomputeOptions {
+  /**
+   * The caller has just replaced this visit's own service lines (PATCH
+   * `services`, or a new primary `serviceId`). Payments are often filed
+   * under the visit before the consult (audit AN-02), so an EEG added after
+   * the patient paid for the consult must still be billed: under the lock
+   * the new line would sit in the visit with the old price, the visit would
+   * read as settled and nothing would ever ask for the rest. Cascades and
+   * other implicit reprices never pass this, so they stay locked.
+   */
+  servicesEdited?: boolean;
+}
+
 /**
  * Inclusive day-window check: `(b - a) / 1d <= window`.
  * Uses calendar-day diff (floor on milliseconds) so a visit exactly N*24h
@@ -95,6 +114,7 @@ function withinDayWindow(first: Date, current: Date, days: number): boolean {
 export async function recomputeAppointmentPrice(
   client: PrismaLike,
   appointmentId: string,
+  opts: RecomputeOptions = {},
 ): Promise<RecomputeResult> {
   const appt = await client.appointment.findUnique({
     where: { id: appointmentId },
@@ -134,8 +154,9 @@ export async function recomputeAppointmentPrice(
     throw new Error(`recomputeAppointmentPrice: appointment ${appointmentId} not found`);
   }
 
-  // PAID-locked: leave row untouched. Caller can detect via reason.
-  if (appt.payments.length > 0) {
+  // PAID-locked: leave row untouched. Caller can detect via reason. An
+  // explicit edit of the visit's services goes through (RecomputeOptions).
+  if (appt.payments.length > 0 && !opts.servicesEdited) {
     return {
       appointmentId: appt.id,
       priceFinal: appt.priceFinal,

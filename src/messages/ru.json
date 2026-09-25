@@ -74,7 +74,8 @@
       "analyticsFinancial": "Финансы",
       "analyticsScheduleHeatmap": "Heatmap расписания",
       "analyticsReports": "Отчёты",
-      "settings": "Настройки"
+      "settings": "Настройки",
+      "onlineRequests": "Заявки"
     },
     "footer": {
       "todayCount": "Записей сегодня",
@@ -6263,7 +6264,9 @@
           "MILD": "Лёгкая",
           "MODERATE": "Средняя",
           "SEVERE": "Тяжёлая"
-        }
+        },
+        "noInteractionData": "Нет данных о взаимодействиях: {names}.",
+        "noInteractionDataHint": "Совместимость этих препаратов база не проверяет, оцените её самостоятельно."
       },
       "rx": {
         "custom": "Свой препарат",
@@ -7954,5 +7957,57 @@
   "mobileBar": {
     "call": "Позвонить",
     "request": "Заявка"
+  },
+  "onlineRequests": {
+    "title": "Заявки с сайта",
+    "subtitle": "Запросы на запись, оставленные на сайте. Позвоните, запишите пациента или закройте заявку.",
+    "tabs": {
+      "NEW": "Новые",
+      "CONTACTED": "Связались",
+      "CONVERTED": "Записаны",
+      "CANCELLED": "Отменены",
+      "ALL": "Все"
+    },
+    "source": {
+      "WEBSITE": "Сайт",
+      "TELEGRAM": "Telegram",
+      "INSTAGRAM": "Instagram",
+      "CALL": "Звонок",
+      "WALKIN": "Визит",
+      "REFERRAL": "Рекомендация",
+      "ADS": "Реклама",
+      "OTHER": "Другое"
+    },
+    "fields": {
+      "doctor": "Врач",
+      "noDoctor": "не выбран",
+      "wantedDate": "Желаемая дата",
+      "service": "Услуга",
+      "receivedAt": "Получена {when}",
+      "bookedFor": "Записан на {when}",
+      "openPatient": "Карточка пациента"
+    },
+    "actions": {
+      "book": "Записать",
+      "contacted": "Связались",
+      "cancel": "Отменить",
+      "reopen": "Вернуть в новые",
+      "note": "Заметка",
+      "notePlaceholder": "Итог звонка, удобное время для связи…",
+      "saveNote": "Сохранить"
+    },
+    "toasts": {
+      "updated": "Заявка обновлена",
+      "updateError": "Не удалось обновить заявку"
+    },
+    "toast": {
+      "title": "Новая заявка с сайта",
+      "noName": "Имя не указано",
+      "open": "Открыть"
+    },
+    "empty": "Заявок нет",
+    "emptyNew": "Все заявки обработаны",
+    "forbidden": "Заявки доступны регистратуре, call-центру и администратору.",
+    "loadError": "Не удалось загрузить заявки"
   }
 }

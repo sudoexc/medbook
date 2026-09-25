@@ -63,6 +63,8 @@ export const SURFACES = [
   "TG_WEBHOOK",
   "WORKER",
   "CALL_CENTER",
+  // Audit LD-01 — the public site's booking form (anonymous visitor).
+  "WEBSITE",
 ] as const;
 export type Surface = (typeof SURFACES)[number];
 

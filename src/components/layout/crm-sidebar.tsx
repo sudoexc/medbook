@@ -12,6 +12,7 @@ import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   ClipboardListIcon,
+  InboxIcon,
   LayoutDashboardIcon,
   PhoneCallIcon,
   SendIcon,
@@ -32,7 +33,7 @@ import {
 
 type BadgeTone = "danger" | "info" | "warning" | "success"
 /** Keys into ShellSummary.unread — drives the live badge count for each nav item. */
-type BadgeKey = "calls" | "telegram" | "notifications"
+type BadgeKey = "calls" | "telegram" | "notifications" | "leads"
 
 /**
  * `feature` is the gate consumed by `computeVisibleNav` (Phase 9d). When set,
@@ -81,6 +82,15 @@ export const CRM_NAV: NavGroup[] = [
     items: [
       { href: "reception", labelKey: "reception", icon: LayoutDashboardIcon },
       { href: "action-center", labelKey: "actionCenter", icon: ZapIcon },
+      // Site booking requests (audit LD-01). The badge counts requests
+      // nobody has called back yet; the API gates the page by role.
+      {
+        href: "online-requests",
+        labelKey: "onlineRequests",
+        icon: InboxIcon,
+        badgeKey: "leads",
+        badgeTone: "warning",
+      },
       { href: "appointments", labelKey: "appointments", icon: ClipboardListIcon },
       { href: "calendar", labelKey: "calendar", icon: CalendarDaysIcon },
       { href: "patients", labelKey: "patients", icon: UsersIcon },

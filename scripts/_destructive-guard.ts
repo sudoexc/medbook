@@ -82,3 +82,36 @@ export async function assertDestructiveAllowed(
     );
   }
 }
+
+/**
+ * Interlock for scripts that ADD demo rows next to real ones (audit G2-01):
+ * demo patients, visits and payments show up in the live clinic's lists,
+ * schedules and revenue. Same activity probe as above; there is no `--force`
+ * step because nothing is deleted, but a clinic in real use still needs an
+ * explicit `--i-know-there-is-real-data`.
+ */
+export async function assertDemoWriteAllowed(
+  prisma: PrismaClient,
+  scriptName: string,
+): Promise<void> {
+  const acknowledged = process.argv.slice(2).includes("--i-know-there-is-real-data");
+  const since = new Date(Date.now() - ACTIVITY_WINDOW_HOURS * 3600_000);
+  const recentAudit = await prisma.auditLog.count({
+    where: { createdAt: { gte: since } },
+  });
+  if (recentAudit >= ACTIVITY_ROW_THRESHOLD && !acknowledged) {
+    console.error(
+      [
+        "",
+        `⛔ Отказ: за последние ${ACTIVITY_WINDOW_HOURS} ч в системе ${recentAudit} действий`,
+        "   пользователей. Клиника работает по-настоящему: демо-пациенты,",
+        "   визиты и оплаты попадут в её списки, расписание и выручку.",
+        "",
+        "   Только если это действительно нужно:",
+        `     APPLY=1 npx tsx scripts/${scriptName}.ts --i-know-there-is-real-data`,
+        "",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+}

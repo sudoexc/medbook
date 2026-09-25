@@ -20,6 +20,7 @@ import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { ok, err } from "@/server/http";
 import { staffFileHref } from "@/lib/storage-ref";
+import { doctorDisplayText } from "@/server/schemas/doctor";
 
 const PatchBody = z
   .object({
@@ -33,10 +34,12 @@ const PatchBody = z
     // when the doctor edits the russian one we also mirror the latin one to
     // keep the public page consistent. The combobox-y UI on the client only
     // shows the RU variant.
-    nameRu: z.string().trim().min(1).max(200).optional(),
-    nameUz: z.string().trim().min(1).max(200).optional(),
-    specializationRu: z.string().trim().max(200).optional(),
-    specializationUz: z.string().trim().max(200).optional(),
+    // These four are rendered on the public doctor page and its JSON-LD;
+    // markup characters are refused here (audit LD-02).
+    nameRu: doctorDisplayText({ min: 1, max: 200 }).optional(),
+    nameUz: doctorDisplayText({ min: 1, max: 200 }).optional(),
+    specializationRu: doctorDisplayText({ min: 0, max: 200 }).optional(),
+    specializationUz: doctorDisplayText({ min: 0, max: 200 }).optional(),
     bioRu: z.string().trim().max(5000).optional().nullable(),
     bioUz: z.string().trim().max(5000).optional().nullable(),
 

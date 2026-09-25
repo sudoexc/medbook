@@ -4,6 +4,7 @@ import { routing } from "@/i18n/routing";
 import type { Metadata } from "next";
 import { SITE_NAME, SITE_DOMAIN, CONTACT } from "@/lib/constants";
 import { LocaleHtmlLang } from "@/components/locale-html-lang";
+import { serializeJsonLd } from "@/lib/json-ld";
 
 const meta: Record<string, { title: string; description: string }> = {
   ru: {
@@ -98,7 +99,7 @@ export default async function LocaleLayout({
       <LocaleHtmlLang locale={locale} />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       {children}
     </NextIntlClientProvider>

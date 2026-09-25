@@ -74,7 +74,8 @@
       "analyticsFinancial": "Moliya",
       "analyticsScheduleHeatmap": "Jadval Heatmap",
       "analyticsReports": "Hisobotlar",
-      "settings": "Sozlamalar"
+      "settings": "Sozlamalar",
+      "onlineRequests": "Arizalar"
     },
     "footer": {
       "todayCount": "Bugungi yozuvlar",
@@ -6263,7 +6264,9 @@
           "MILD": "Yengil",
           "MODERATE": "O‘rtacha",
           "SEVERE": "Og‘ir"
-        }
+        },
+        "noInteractionData": "O‘zaro ta’sir haqida ma’lumot yo‘q: {names}.",
+        "noInteractionDataHint": "Baza bu dorilarning mosligini tekshirmaydi, uni o‘zingiz baholang."
       },
       "rx": {
         "custom": "Qo‘lda kiritish",
@@ -7954,5 +7957,57 @@
   "mobileBar": {
     "call": "Qo'ng'iroq qilish",
     "request": "So'rov"
+  },
+  "onlineRequests": {
+    "title": "Saytdan arizalar",
+    "subtitle": "Saytda qoldirilgan qabulga yozilish so‘rovlari. Qo‘ng‘iroq qiling, bemorni yozing yoki arizani yoping.",
+    "tabs": {
+      "NEW": "Yangi",
+      "CONTACTED": "Bog‘lanildi",
+      "CONVERTED": "Yozildi",
+      "CANCELLED": "Bekor qilingan",
+      "ALL": "Hammasi"
+    },
+    "source": {
+      "WEBSITE": "Sayt",
+      "TELEGRAM": "Telegram",
+      "INSTAGRAM": "Instagram",
+      "CALL": "Qo‘ng‘iroq",
+      "WALKIN": "Tashrif",
+      "REFERRAL": "Tavsiya",
+      "ADS": "Reklama",
+      "OTHER": "Boshqa"
+    },
+    "fields": {
+      "doctor": "Shifokor",
+      "noDoctor": "tanlanmagan",
+      "wantedDate": "Istalgan sana",
+      "service": "Xizmat",
+      "receivedAt": "Qabul qilindi: {when}",
+      "bookedFor": "Yozildi: {when}",
+      "openPatient": "Bemor kartasi"
+    },
+    "actions": {
+      "book": "Yozish",
+      "contacted": "Bog‘lanildi",
+      "cancel": "Bekor qilish",
+      "reopen": "Yangilarga qaytarish",
+      "note": "Izoh",
+      "notePlaceholder": "Qo‘ng‘iroq natijasi, bog‘lanish uchun qulay vaqt…",
+      "saveNote": "Saqlash"
+    },
+    "toasts": {
+      "updated": "Ariza yangilandi",
+      "updateError": "Arizani yangilab bo‘lmadi"
+    },
+    "toast": {
+      "title": "Saytdan yangi ariza",
+      "noName": "Ism ko‘rsatilmagan",
+      "open": "Ochish"
+    },
+    "empty": "Arizalar yo‘q",
+    "emptyNew": "Barcha arizalar ko‘rib chiqilgan",
+    "forbidden": "Arizalar registratura, call-markaz va administrator uchun ochiq.",
+    "loadError": "Arizalarni yuklab bo‘lmadi"
   }
 }

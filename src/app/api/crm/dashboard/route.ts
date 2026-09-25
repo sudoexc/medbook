@@ -98,7 +98,9 @@ export const GET = createApiListHandler(
           createdAt: { gte: todayStart, lt: tomorrow },
         },
       }),
-      prisma.onlineRequest.count({
+      // Site requests land in `Lead` (audit LD-01); `OnlineRequest` has no
+      // writer, so counting it always showed zero.
+      prisma.lead.count({
         where: {
           status: "NEW",
           createdAt: { gte: todayStart, lt: tomorrow },

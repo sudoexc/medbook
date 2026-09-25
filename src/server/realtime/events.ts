@@ -133,6 +133,13 @@ export const EVENT_TYPES = [
   // reception desk, NOT a status change: intake (Пришёл → WAITING) stays
   // owned by the receptionist per `appointment-transitions`.
   "patient.arrived",
+  // Audit LD-01 — a booking request from the public site landed in `Lead`.
+  // Nobody watched that table, so requests were lost; reception now gets a
+  // toast + sidebar badge, and the «Заявки» screen refreshes live.
+  "lead.created",
+  // Status changed (contacted / converted / cancelled) so every open
+  // «Заявки» screen and badge stays in sync across operators.
+  "lead.updated",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -629,6 +636,22 @@ export const PatientArrivedPayload = z
   .passthrough();
 export type PatientArrivedEventPayload = z.infer<typeof PatientArrivedPayload>;
 
+/**
+ * Audit LD-01 — site booking request. `name` rides on the envelope (same
+ * precedent as `PatientArrivedPayload.patientName`) so the reception toast
+ * can say who without a fetch; the phone never goes on the bus.
+ */
+export const LeadEventPayload = z
+  .object({
+    leadId: z.string().min(1),
+    status: z.enum(["NEW", "CONTACTED", "CONVERTED", "CANCELLED"]),
+    source: z.string().optional(),
+    name: z.string().optional(),
+    doctorId: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type LeadEventPayloadT = z.infer<typeof LeadEventPayload>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -696,6 +719,8 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("nps.submitted", NpsSubmittedPayload),
   makeEvent("previsit.submitted", PreVisitSubmittedPayload),
   makeEvent("patient.arrived", PatientArrivedPayload),
+  makeEvent("lead.created", LeadEventPayload),
+  makeEvent("lead.updated", LeadEventPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

@@ -16,6 +16,7 @@
  *
  *   In tx — committed atomically with the appointment row:
  *     • detectConflicts → fail-fast on overlap (Serializable isolation)
+ *     • lead.updateMany → claim + CONVERTED (when `leadId`, site request)
  *     • appointment.create
  *     • appointmentService.createMany (when `services[]` provided)
  *     • referralReward.update (when `applyReferralReward` matched a pending)
@@ -24,6 +25,7 @@
  *     • auditLog.create for REFERRAL_REWARD_APPLIED
  *     • auditLog.create for appointment.free_repeat_applied
  *     • publishViaOutbox → appointment.created + queue.updated envelopes
+ *       (+ lead.updated when a site request was converted)
  *
  *   Post tx — separate side-effects, do not block the booking:
  *     • fireTrigger("appointment.created") — notification scheduling
@@ -262,6 +264,18 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
   const endAt = computeEndDate(startAt, durationMin);
   const correlationId = input.correlationId ?? newCorrelationId();
 
+  // Audit LD-01 — booking a site request from the «Заявки» screen passes its
+  // lead. It must belong to this clinic (the id comes from the client); a
+  // lead that is gone is simply not linked and the booking still goes ahead.
+  const leadId = input.leadId
+    ? ((
+        await prisma.lead.findFirst({
+          where: { id: input.leadId, clinicId: input.clinicId },
+          select: { id: true },
+        })
+      )?.id ?? null)
+    : null;
+
   // Referral reward look-up runs OUTSIDE the tx but the APPLIED stamp is
   // written INSIDE the tx so concurrent bookings cannot double-apply (the
   // Serializable isolation level surfaces the conflict as a P2034 retry).
@@ -335,6 +349,23 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
           return { kind: "conflict" as const, reason: c.reason, until: c.until };
         }
 
+        // Claim the lead only while it has no visit yet: two operators booking
+        // the same request must not both link it (Appointment.leadId is
+        // unique). The claim also closes the request as CONVERTED and ties it
+        // to the patient, which is the conversion TZ §7.2 describes.
+        let linkedLeadId: string | null = null;
+        if (leadId) {
+          const claimed = await tx.lead.updateMany({
+            where: {
+              id: leadId,
+              clinicId: input.clinicId,
+              appointment: { is: null },
+            },
+            data: { status: "CONVERTED", patientId: input.patientId },
+          });
+          if (claimed.count === 1) linkedLeadId = leadId;
+        }
+
         const created = await tx.appointment.create({
           data: {
             clinicId: input.clinicId,
@@ -351,7 +382,7 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
             status: autoConfirm ? "CONFIRMED" : "BOOKED",
             queueStatus: autoConfirm ? "CONFIRMED" : "BOOKED",
             channel: input.channel,
-            leadId: input.leadId ?? null,
+            leadId: linkedLeadId,
             priceService,
             priceBase,
             discountPct,
@@ -540,6 +571,19 @@ export async function bookAppointment(input: BookInput): Promise<BookResult> {
           },
         };
         await publishViaOutbox(tx, queueEnvelope);
+
+        if (linkedLeadId) {
+          await publishViaOutbox(tx, {
+            ...baseEnvelope,
+            causedByEventId: eventId,
+            type: "lead.updated",
+            payload: {
+              leadId: linkedLeadId,
+              status: "CONVERTED",
+              doctorId: created.doctorId,
+            },
+          });
+        }
 
         const projection: BookedAppointmentProjection = {
           id: created.id,

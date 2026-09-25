@@ -5,8 +5,11 @@
  * VisitNote.prescriptions[]), this engine resolves each line to a Drug
  * row (best-effort INN/nameRu prefix match), then emits warnings:
  *
- *   - ALLERGY              — patient-recorded allergy substance matches the drug
- *   - INTERACTION          — known DrugInteraction pair in basket
+ *   - ALLERGY              — recorded (or pre-visit questionnaire) allergy
+ *                            matches the drug by substance or by class
+ *                            (see allergy-match.ts)
+ *   - INTERACTION          — known DrugInteraction pair in basket, or a
+ *                            class-level rule (see interaction-rules.ts)
  *   - DUPLICATE_CLASS      — two drugs share the 5-char ATC prefix (class stack)
  *   - PREGNANCY            — pregnancyCat D/X for female patients of fertile age
  *   - DIAGNOSIS_RISK       — interaction's riskDiagnoses matches active dx
@@ -18,6 +21,10 @@
  * path; manually typed lines may slip through, which is acceptable for MVP.
  */
 import { prisma } from "@/lib/prisma";
+import { parsePreVisitData } from "@/lib/patient-experience/pre-visit";
+
+import { matchAllergy } from "./allergy-match";
+import { findRuleInteractions, isCoveredByRules } from "./interaction-rules";
 
 export type CdsWarningKind =
   | "ALLERGY"
@@ -69,6 +76,12 @@ export type CdsCheckResult = {
   warnings: CdsWarning[];
   resolvedDrugs: ResolvedDrug[];
   unresolvedLines: number[];
+  /**
+   * Ids of resolved drugs that no curated pair and no class rule covers.
+   * For these the engine cannot say «no conflicts», it simply does not know
+   * (audit G4-01): the card must say so instead of showing an all-clear.
+   */
+  noInteractionData: string[];
 };
 
 const SEVERITY_RANK: Record<CdsSeverity, number> = {
@@ -242,71 +255,118 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
   }
 
   if (resolved.length === 0) {
-    return { warnings: [], resolvedDrugs: [], unresolvedLines: unresolved };
+    return {
+      warnings: [],
+      resolvedDrugs: [],
+      unresolvedLines: unresolved,
+      noInteractionData: [],
+    };
   }
 
   const drugIds = resolved.map((d) => d.id);
 
-  const [allergies, patient, interactions] = await Promise.all([
-    prisma.patientAllergy.findMany({
-      where: { clinicId, patientId },
-      select: { id: true, substance: true, severity: true, reaction: true },
-    }),
-    prisma.patient.findFirst({
-      where: { id: patientId, clinicId },
-      select: { birthDate: true, gender: true },
-    }),
-    prisma.drugInteraction.findMany({
-      where: {
-        OR: [
-          { drugAId: { in: drugIds }, drugBId: { in: drugIds } },
-        ],
-      },
-      include: {
-        drugA: { select: { id: true, nameRu: true, inn: true } },
-        drugB: { select: { id: true, nameRu: true, inn: true } },
-      },
-    }),
-  ]);
+  const [allergies, patient, interactions, coveredRows, preVisit] =
+    await Promise.all([
+      prisma.patientAllergy.findMany({
+        where: { clinicId, patientId },
+        select: { id: true, substance: true, severity: true, reaction: true },
+      }),
+      prisma.patient.findFirst({
+        where: { id: patientId, clinicId },
+        select: { birthDate: true, gender: true },
+      }),
+      prisma.drugInteraction.findMany({
+        where: {
+          OR: [
+            { drugAId: { in: drugIds }, drugBId: { in: drugIds } },
+          ],
+        },
+        include: {
+          drugA: { select: { id: true, nameRu: true, inn: true } },
+          drugB: { select: { id: true, nameRu: true, inn: true } },
+        },
+      }),
+      // Which of the basket's drugs appear in ANY curated pair: a drug with
+      // no pair and no class rule has no interaction data at all.
+      prisma.drugInteraction.findMany({
+        where: {
+          OR: [{ drugAId: { in: drugIds } }, { drugBId: { in: drugIds } }],
+        },
+        select: { drugAId: true, drugBId: true },
+      }),
+      // Allergies the patient listed in the Mini App questionnaire before the
+      // visit (audit G4-02). They are not in PatientAllergy until someone
+      // copies them over, and the doctor must not miss them meanwhile.
+      prisma.appointment.findFirst({
+        where: { clinicId, patientId, preVisitSubmittedAt: { not: null } },
+        orderBy: { preVisitSubmittedAt: "desc" },
+        select: { preVisitData: true },
+      }),
+    ]);
 
   const warnings: CdsWarning[] = [];
 
   // ── Allergies ────────────────────────────────────────────────────────
-  for (const allergy of allergies) {
-    const sub = normaliseToken(allergy.substance);
-    if (!sub) continue;
+  type AllergyEntry = {
+    substance: string;
+    severity: string | null;
+    reaction: string | null;
+    patientReported: boolean;
+  };
+  const allergyEntries: AllergyEntry[] = allergies.map((a) => ({
+    substance: a.substance,
+    severity: a.severity,
+    reaction: a.reaction,
+    patientReported: false,
+  }));
+  const recordedKeys = new Set(
+    allergies.map((a) => normaliseToken(a.substance)),
+  );
+  for (const raw of parsePreVisitData(preVisit?.preVisitData)?.allergies ?? []) {
+    const key = normaliseToken(raw);
+    if (!key || recordedKeys.has(key)) continue;
+    recordedKeys.add(key);
+    allergyEntries.push({
+      substance: raw,
+      severity: null,
+      reaction: null,
+      patientReported: true,
+    });
+  }
+
+  for (const allergy of allergyEntries) {
     for (const drug of resolved) {
-      const inn = normaliseToken(drug.inn);
-      const nameRu = normaliseToken(drug.nameRu);
-      // Match if the allergy substance string contains, or is contained in,
-      // the INN, the RU name or any brand name ("Конкор" → bisoprolol).
-      // Cheap & forgiving.
-      const matches =
-        inn.includes(sub) ||
-        sub.includes(inn) ||
-        nameRu.includes(sub) ||
-        sub.includes(nameRu) ||
-        (drug.brandNames ?? []).some((b) => {
-          const nb = normaliseToken(b);
-          return !!nb && (nb.includes(sub) || sub.includes(nb));
-        });
-      if (matches) {
-        const severityFromAllergy =
-          allergy.severity === "SEVERE"
-            ? "CONTRAINDICATED"
-            : allergy.severity === "MODERATE"
-              ? "MAJOR"
-              : "MODERATE";
-        warnings.push({
-          kind: "ALLERGY",
-          severity: severityFromAllergy,
-          title: `Аллергия: ${allergy.substance}`,
-          detail: allergy.reaction
-            ? `Реакция в анамнезе: ${allergy.reaction}. Не назначать.`
-            : "Зафиксирована аллергия. Не назначать.",
-          drugA: { id: drug.id, nameRu: drug.nameRu, inn: drug.inn },
-        });
-      }
+      const match = matchAllergy(allergy.substance, drug);
+      if (!match) continue;
+      // Unverified questionnaire entries have no recorded severity: treat
+      // them as serious until the doctor has asked the patient.
+      const severity: CdsSeverity = allergy.patientReported
+        ? "MAJOR"
+        : allergy.severity === "SEVERE"
+          ? "CONTRAINDICATED"
+          : allergy.severity === "MODERATE"
+            ? "MAJOR"
+            : "MODERATE";
+      const why =
+        match.kind === "CLASS"
+          ? match.namedClass
+            ? `${drug.nameRu} относится к группе «${match.cls.labelRu}». `
+            : `${drug.nameRu} из той же группы, что и «${allergy.substance}» (${match.cls.labelRu}): возможна перекрёстная реакция. `
+          : "";
+      const history = allergy.patientReported
+        ? "Указано пациентом в анкете перед визитом, уточните перед назначением."
+        : allergy.reaction
+          ? `Реакция в анамнезе: ${allergy.reaction}. Не назначать.`
+          : "Зафиксирована аллергия. Не назначать.";
+      warnings.push({
+        kind: "ALLERGY",
+        severity,
+        title: allergy.patientReported
+          ? `Аллергия со слов пациента: ${allergy.substance}`
+          : `Аллергия: ${allergy.substance}`,
+        detail: `${why}${history}`,
+        drugA: { id: drug.id, nameRu: drug.nameRu, inn: drug.inn },
+      });
     }
   }
 
@@ -329,11 +389,37 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     });
   }
 
-  // ── Duplicate class (ATC 5-char prefix stacking) ─────────────────────
-  // Skip pairs we already flagged via the curated interactions table.
+  // ── Interactions (class rules) ───────────────────────────────────────
+  // A curated pair is more specific than a class rule, so it wins for the
+  // same two drugs.
   const flaggedPairs = new Set(
     interactions.map((it) => [it.drugAId, it.drugBId].sort().join("|")),
   );
+  const curatedPairs = new Set(flaggedPairs);
+  for (const hit of findRuleInteractions(resolved)) {
+    const pairKey = [hit.drugA.id, hit.drugB.id].sort().join("|");
+    if (curatedPairs.has(pairKey)) continue;
+    flaggedPairs.add(pairKey);
+    warnings.push({
+      kind: "INTERACTION",
+      severity: hit.rule.severity,
+      title: `${hit.drugA.nameRu} + ${hit.drugB.nameRu}`,
+      detail: `${hit.rule.mechanism}. ${hit.rule.advice}`,
+      drugA: { id: hit.drugA.id, nameRu: hit.drugA.nameRu, inn: hit.drugA.inn },
+      drugB: { id: hit.drugB.id, nameRu: hit.drugB.nameRu, inn: hit.drugB.inn },
+    });
+  }
+
+  // ── Interaction coverage ─────────────────────────────────────────────
+  const curatedIds = new Set(
+    coveredRows.flatMap((r) => [r.drugAId, r.drugBId]),
+  );
+  const noInteractionData = resolved
+    .filter((d) => !curatedIds.has(d.id) && !isCoveredByRules(d))
+    .map((d) => d.id);
+
+  // ── Duplicate class (ATC 5-char prefix stacking) ─────────────────────
+  // Skip pairs we already flagged via a curated pair or a class rule.
   for (let i = 0; i < resolved.length; i += 1) {
     for (let j = i + 1; j < resolved.length; j += 1) {
       const a = resolved[i];
@@ -378,5 +464,10 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
 
   warnings.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 
-  return { warnings, resolvedDrugs: resolved, unresolvedLines: unresolved };
+  return {
+    warnings,
+    resolvedDrugs: resolved,
+    unresolvedLines: unresolved,
+    noInteractionData,
+  };
 }

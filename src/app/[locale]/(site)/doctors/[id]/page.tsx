@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
 import { getDoctorById } from "@/lib/doctors";
+import { serializeJsonLd } from "@/lib/json-ld";
 import { SITE_DOMAIN, CONTACT } from "@/lib/constants";
 import type { Locale } from "@/types";
 import ruMessages from "@/messages/ru.json";
@@ -82,9 +83,11 @@ export default async function DoctorPage({
 
   return (
     <main className="flex-1 py-10 sm:py-16">
+      {/* name/specialty are written by the doctor from their profile, so
+          the block must go through the escaping serialiser (audit LD-02). */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 
       <div className="mx-auto max-w-3xl px-4 sm:px-6">

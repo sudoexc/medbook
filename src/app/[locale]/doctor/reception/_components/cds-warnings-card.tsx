@@ -96,7 +96,11 @@ type Props = {
 
 function warningKey(w: CdsWarning): string {
   // Stable identity for collapsing duplicate renders + dedupe storage.
-  return `${w.kind}:${w.severity}:${w.title}`;
+  // One allergy now reaches every drug of its class («пенициллин» →
+  // Амоксиклав and ампициллин), all under the same title, so an allergy
+  // warning is keyed per drug: each one is acknowledged on its own.
+  const base = `${w.kind}:${w.severity}:${w.title}`;
+  return w.kind === "ALLERGY" ? `${base}:${w.drugA.id}` : base;
 }
 
 export function CdsWarningsCard({
@@ -147,6 +151,31 @@ export function CdsWarningsCard({
   // Nothing resolved → silent. We don't claim "all clear" when we never
   // matched any drug from the chips (manually typed lines may slip through).
   if (result.resolvedDrugs.length === 0) return null;
+
+  // Drugs the interaction base knows nothing about. «Конфликтов не найдено»
+  // would be a false all-clear for them (audit G4-01), so the card names
+  // them instead and never shows the green bar while any are left.
+  const noDataNames = result.resolvedDrugs
+    .filter((d) => (result.noInteractionData ?? []).includes(d.id))
+    .map((d) => d.nameRu);
+
+  if (result.warnings.length === 0 && noDataNames.length > 0) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <NoInteractionDataNote names={noDataNames} />
+        {result.unresolvedLines.length > 0 && (
+          <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <InfoIcon className="size-2.5" />
+            {t("cds.unresolvedNote", { count: result.unresolvedLines.length })}
+          </p>
+        )}
+        <AllergyQuickRecord
+          patientId={patientId}
+          suggestions={result.resolvedDrugs}
+        />
+      </div>
+    );
+  }
 
   if (result.warnings.length === 0) {
     return (
@@ -199,6 +228,7 @@ export function CdsWarningsCard({
           );
         })}
       </ul>
+      {noDataNames.length > 0 && <NoInteractionDataNote names={noDataNames} />}
       {result.unresolvedLines.length > 0 && (
         <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           <InfoIcon className="size-2.5" />
@@ -209,6 +239,26 @@ export function CdsWarningsCard({
         patientId={patientId}
         suggestions={result.resolvedDrugs}
       />
+    </div>
+  );
+}
+
+/**
+ * Honest «we don't know» line for drugs outside the interaction base. Neutral
+ * (not green, not red): the check did not find a problem because it had
+ * nothing to check against.
+ */
+function NoInteractionDataNote({ names }: { names: string[] }) {
+  const t = useTranslations("doctor.reception");
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+      <InfoIcon className="mt-0.5 size-3 shrink-0" />
+      <span>
+        <span className="font-medium text-foreground">
+          {t("cds.noInteractionData", { names: names.join(", ") })}
+        </span>{" "}
+        {t("cds.noInteractionDataHint")}
+      </span>
     </div>
   );
 }

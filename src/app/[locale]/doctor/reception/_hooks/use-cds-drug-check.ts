@@ -33,6 +33,8 @@ export type CdsResult = {
   warnings: CdsWarning[];
   resolvedDrugs: CdsResolvedDrug[];
   unresolvedLines: number[];
+  /** Ids of resolved drugs the interaction base knows nothing about. */
+  noInteractionData: string[];
 };
 
 type Args = {
@@ -56,7 +58,12 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
     }),
   });
   if (!res.ok) {
-    return { warnings: [], resolvedDrugs: [], unresolvedLines: [] };
+    return {
+      warnings: [],
+      resolvedDrugs: [],
+      unresolvedLines: [],
+      noInteractionData: [],
+    };
   }
   return (await res.json()) as CdsResult;
 }

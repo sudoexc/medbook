@@ -2748,6 +2748,8 @@ model Call {
   @@index([clinicId, status, createdAt])
 }
 
+// Legacy: nothing writes this model. Site booking requests land in `Lead`
+// (POST /api/leads) and the CRM «Заявки» screen reads `Lead` (audit LD-01).
 model OnlineRequest {
   id          String      @id @default(cuid())
   clinicId    String

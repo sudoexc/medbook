@@ -22,6 +22,17 @@ import {
   tashkentComponents,
 } from "@/lib/booking-validation";
 import { ok } from "@/server/http";
+import type { TenantContext } from "@/lib/tenant-context";
+import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
+
+function canWorkLeads(ctx: TenantContext): boolean {
+  if (ctx.kind === "SUPER_ADMIN") return true;
+  if (ctx.kind !== "TENANT") return false;
+  return (
+    ctx.role === "SUPER_ADMIN" ||
+    (ONLINE_REQUEST_ROLES as readonly string[]).includes(ctx.role)
+  );
+}
 
 /** Convert "HH:MM" → minutes since midnight. Defensive against bad input. */
 function hhmmToMinutes(s: string): number {
@@ -40,7 +51,7 @@ export const GET = createApiListHandler(
       "CALL_OPERATOR",
     ],
   },
-  async () => {
+  async ({ ctx }) => {
     // Clinic day (Asia/Tashkent), not server-local — prod runs UTC.
     const now = new Date();
     const { dayStart: todayStart, dayEnd: todayEnd } = tashkentDayBounds(now);
@@ -53,6 +64,7 @@ export const GET = createApiListHandler(
       missedCallsToday,
       tgUnread,
       failedNotificationsToday,
+      newLeads,
     ] = await Promise.all([
       // Today's appointments — every status, the sidebar wants raw volume.
       prisma.appointment.count({
@@ -97,6 +109,12 @@ export const GET = createApiListHandler(
           createdAt: { gte: todayStart, lt: todayEnd },
         },
       }),
+      // «Заявки» badge: site requests nobody has called back yet (audit
+      // LD-01). Not day-bounded: yesterday's unanswered request is still work.
+      // Only the roles that work requests see it; the rest get 0.
+      canWorkLeads(ctx)
+        ? prisma.lead.count({ where: { status: "NEW" } })
+        : Promise.resolve(0),
     ]);
 
     const availableMinutes = schedulesToday.reduce(
@@ -118,6 +136,7 @@ export const GET = createApiListHandler(
         calls: missedCallsToday,
         telegram: tgUnread,
         notifications: failedNotificationsToday,
+        leads: newLeads,
       },
     });
   },

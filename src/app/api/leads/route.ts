@@ -6,6 +6,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { realClientIp } from "@/lib/client-ip";
 import { sendNewLeadEmail } from "@/lib/email";
 import { normalizePhone } from "@/lib/phone";
+import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import { z } from "zod";
 
 // Phone accepts Uzbek numbers, with or without leading "+" and typical grouping
@@ -27,6 +28,14 @@ const LeadSchema = z.object({
 });
 
 const VALID_STATUSES = ["NEW", "CONTACTED", "CONVERTED", "CANCELLED"] as const;
+
+/** Absolute origin for links in emails (env first, request origin fallback). */
+function appBaseUrl(request: Request): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ||
+    new URL(request.url).origin
+  );
+}
 type LeadStatus = (typeof VALID_STATUSES)[number];
 
 export async function GET(request: Request) {
@@ -136,22 +145,54 @@ export async function POST(request: Request) {
       ? new Date(parsed.data.date)
       : null;
 
+  const doctorId = doctor ? (parsed.data.doctorId ?? null) : null;
+  // The row and its `lead.created` event commit together (outbox): a request
+  // that reached the table always reaches reception too (audit LD-01). Before
+  // this, the only reaction was an SMTP email that silently never went out,
+  // and the request sat in a table no screen read.
   const lead = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.lead.create({
-      data: {
-        clinicId: clinic.id,
-        name: parsed.data.name,
-        phone: normalizedPhone,
-        service: parsed.data.service ?? null,
-        date,
-        doctorId: doctor ? parsed.data.doctorId : null,
-        source: "WEBSITE",
-      },
-      select: { id: true, name: true, phone: true, service: true },
+    prisma.$transaction(async (tx) => {
+      const row = await tx.lead.create({
+        data: {
+          clinicId: clinic.id,
+          name: parsed.data.name,
+          phone: normalizedPhone,
+          service: parsed.data.service ?? null,
+          date,
+          doctorId,
+          source: "WEBSITE",
+        },
+        select: { id: true, name: true, phone: true, service: true },
+      });
+      await publishViaOutbox(tx, {
+        correlationId: newCorrelationId(),
+        actor: {
+          role: "EXTERNAL",
+          userId: null,
+          patientId: null,
+          onBehalfOfPatientId: null,
+          label: "website",
+        },
+        surface: "WEBSITE",
+        tenantScope: {
+          clinicId: clinic.id,
+          ...(doctorId ? { doctorId } : {}),
+        },
+        type: "lead.created",
+        payload: {
+          leadId: row.id,
+          status: "NEW",
+          source: "WEBSITE",
+          name: row.name,
+          doctorId,
+        },
+      });
+      return row;
     }),
   );
 
-  // Fire-and-forget doctor notification (already validated to this clinic).
+  // Fire-and-forget heads-up to the chosen doctor (already validated to this
+  // clinic). Reception handles the request; the email is informational.
   if (doctor?.email) {
     sendNewLeadEmail({
       doctorEmail: doctor.email,
@@ -160,6 +201,7 @@ export async function POST(request: Request) {
       patientPhone: lead.phone,
       service: lead.service || undefined,
       date: parsed.data.date || undefined,
+      cabinetUrl: `${appBaseUrl(request)}/doctor`,
     }).catch((err) => console.error("[email]", err));
   }
 

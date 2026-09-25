@@ -1,44 +1,64 @@
 /**
- * Idempotent demo-data seed for prod neurofax clinic.
+ * Demo patients for the neurofax clinic, safe to point at the live database
+ * (audit G2-01).
  *
- *   - Upserts all 11 NotificationTemplate keys (with proper RU/UZ bodies).
- *   - Adds 30 demo patients in the +998999100XXXX phone range (so they're easy
- *     to spot vs. real ones). Idempotent via clinicId_phoneNormalized unique.
- *   - For each demo patient with no appointments yet, creates 1 past
- *     COMPLETED + 1 future BOOKED appointment using existing real
- *     doctors / services / cabinets / default branch. Past appts also get a
- *     PAID Payment row.
+ * What it does:
+ *   - Keeps DEMO_COUNT (30) demo patients with phones in the +998 00 100 XX XX
+ *     range: operator code 00 does not exist, so no real patient can own one.
+ *     Every demo patient carries the tag `demo-seed`.
+ *   - Gives a demo patient visits ONLY when it has none at all, so a re-run
+ *     never adds rows (the old seed booked a fresh future visit per patient
+ *     on every run, hundreds at a time).
+ *   - Per such patient: one past COMPLETED visit with a PAID payment, and
+ *     with `--with-future` also one future BOOKED visit. Future demo bookings
+ *     are opt-in because they take real doctors' free slots and pull
+ *     reminders and confirm-call tasks into the live action center.
+ *   - Visits sit inside the doctor's own schedule in Tashkent time, in the
+ *     doctor's own cabinet, with `time` filled and a schedule-lane channel
+ *     (never WALKIN), and never overlap an existing visit of that doctor.
+ *   - Marks: Patient.tags = ["demo-seed"], Appointment.notes = "[demo-seed]",
+ *     Payment.externalRef = "demo-seed", Payment.idempotencyKey =
+ *     "demo-seed:<appointmentId>". Demo rows can be found and removed.
  *
- * What it does NOT touch:
- *   - Existing real users (doctors, admin, super, receptionist).
- *   - Existing real Doctor / Service / Cabinet / Branch rows.
- *   - The `demo-clinic` clinic — never created on prod.
- *   - The `1@1.uz` dev shortcut user — never created on prod.
+ * What it no longer does: upsert notification templates. It used to rewrite
+ * every template of the clinic, reverting the TG-02 reminder text fix and any
+ * admin wording. Missing templates are backfilled by
+ * scripts/backfill-new-templates.ts.
  *
- * Run:
- *   docker compose exec worker npx tsx scripts/seed-prod-demo.ts
+ * Dry run (default, writes nothing, prints the plan):
+ *   docker compose exec -T worker npx tsx scripts/seed-prod-demo.ts
+ * Apply:
+ *   docker compose exec -T -e APPLY=1 worker npx tsx scripts/seed-prod-demo.ts
+ * Flags:
+ *   --with-future                 also book one future visit per new patient
+ *   --i-know-there-is-real-data   required with APPLY=1 when the clinic shows
+ *                                 real activity (see _destructive-guard.ts)
+ * Env:
+ *   DEMO_CLINIC_SLUG (default "neurofax")
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { assertDemoWriteAllowed } from "./_destructive-guard";
+import {
+  DEMO_APPOINTMENT_NOTE,
+  DEMO_CHANNELS,
+  DEMO_COUNT,
+  DEMO_PAYMENT_REF,
+  DEMO_TAG,
+  candidateSlots,
+  demoPhone,
+  type PlannedSlot,
+} from "./_demo-seed-plan";
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-function addDays(d: Date, days: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + days);
-  return r;
-}
-function atHour(d: Date, h: number, m = 0): Date {
-  const r = new Date(d);
-  r.setHours(h, m, 0, 0);
-  return r;
-}
+const APPLY = process.env.APPLY === "1";
+const WITH_FUTURE = process.argv.slice(2).includes("--with-future");
+const SLUG = process.env.DEMO_CLINIC_SLUG?.trim() || "neurofax";
 
 const FIRST_NAMES = [
   "Азиза", "Иван", "Феруза", "Мухаммад", "Ойбек", "Сардор", "Камила", "Бобур",
@@ -48,425 +68,278 @@ const LAST_NAMES = [
   "Каримов", "Усманов", "Юлдашев", "Хасанов", "Турсунов", "Махмудов", "Рахимов",
 ];
 
-const TEMPLATES = [
-  // Stage 2.D — soft T-3d "gentle ping" for unconfirmed TELEGRAM/WEBSITE
-  // bookings. PHONE/KIOSK/WALKIN auto-confirm at booking and never receive
-  // this template (gated by `confirmedAt: null` in the scheduler band).
-  {
-    key: "reminder.3d",
-    nameRu: "Напоминание за 3 дня",
-    nameUz: "3 kun oldin eslatma",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_BEFORE" as const,
-    triggerConfig: { offsetMin: -4320 },
-    bodyRu:
-      "Напоминаем: визит к {{appointment.doctor}} {{appointment.date}} в {{appointment.time}}. Если планы изменились — позвоните: {{clinic.phone}}.",
-    bodyUz:
-      "Eslatma: {{appointment.doctor}} qabuluvingiz {{appointment.date}} kuni soat {{appointment.time}} da. Rejalar o'zgargan bo'lsa qo'ng'iroq qiling: {{clinic.phone}}.",
-    variables: [
-      "appointment.date", "appointment.time", "appointment.doctor",
-      "clinic.phone",
-    ],
-  },
-  {
-    key: "reminder.24h",
-    nameRu: "Напоминание за 24 часа",
-    nameUz: "24 soat oldin eslatma",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_BEFORE" as const,
-    triggerConfig: { offsetMin: -1440 },
-    // Stage 2.D — SMS now ends with the "reply YES" CTA. On TG the
-    // notifications-send worker also attaches an inline "✅ Подтверждаю"
-    // button with callback_data `confirm:<appointmentId>`.
-    bodyRu:
-      "Напоминание: завтра в {{appointment.time}} у вас приём — {{appointment.doctor}}. Чтобы подтвердить, ответьте YES (или ДА / HA).",
-    bodyUz:
-      "Eslatma: ertaga soat {{appointment.time}} da qabuluvingiz bor — {{appointment.doctor}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.",
-    variables: [
-      "patient.firstName", "appointment.time", "appointment.doctor",
-      "clinic.address", "clinic.phone",
-    ],
-  },
-  {
-    key: "reminder.5h",
-    nameRu: "Напоминание за 5 часов",
-    nameUz: "5 soat oldin eslatma",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_BEFORE" as const,
-    triggerConfig: { offsetMin: -300 },
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Напоминаем: сегодня в {{appointment.time}} у вас приём — {{appointment.doctor}}. Адрес: {{clinic.address}}. Тел: {{clinic.phone}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Eslatma: bugun soat {{appointment.time}} da qabulga yoziluvingiz bor — {{appointment.doctor}}. Manzil: {{clinic.address}}. Tel: {{clinic.phone}}.",
-    variables: [
-      "patient.firstName", "appointment.time", "appointment.doctor",
-      "clinic.address", "clinic.phone",
-    ],
-  },
-  {
-    key: "reminder.2h",
-    nameRu: "Напоминание за 2 часа",
-    nameUz: "2 soat oldin eslatma",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_BEFORE" as const,
-    triggerConfig: { offsetMin: -120 },
-    // Stage 2.D — SMS now ends with the "reply YES" CTA. TG channel also
-    // attaches the inline "✅ Подтверждаю" button (see 24h note above).
-    bodyRu:
-      "Через 2 часа приём — {{appointment.doctor}}. Чтобы подтвердить, ответьте YES (или ДА / HA).",
-    bodyUz:
-      "2 soatdan so'ng qabul — {{appointment.doctor}}. Tasdiqlash uchun HA (yoki YES / ДА) deb javob bering.",
-    variables: ["patient.firstName", "appointment.doctor", "clinic.address"],
-  },
-  {
-    key: "reminder.confirm",
-    nameRu: "Подтверждение записи",
-    nameUz: "Yozuv tasdiqlash",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_CREATED" as const,
-    triggerConfig: null,
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Вы записаны на {{appointment.date}} в {{appointment.time}} к врачу {{appointment.doctor}}. Адрес: {{clinic.address}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Siz {{appointment.date}} kuni soat {{appointment.time}} da {{appointment.doctor}} qabuliga yozildingiz. Manzil: {{clinic.address}}.",
-    variables: [
-      "patient.firstName", "appointment.date", "appointment.time",
-      "appointment.doctor", "clinic.address",
-    ],
-  },
-  {
-    key: "reminder.missed",
-    nameRu: "Не пришли на приём",
-    nameUz: "Qabulga kelmadingiz",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_MISSED" as const,
-    triggerConfig: { offsetMin: 30 },
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Сегодня вы не пришли на приём в {{clinic.name}}. Перезаписаться: {{clinic.phone}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Bugun {{clinic.name}}dagi qabulga kelmadingiz. Qayta yozilish: {{clinic.phone}}.",
-    variables: ["patient.firstName", "clinic.name", "clinic.phone"],
-  },
-  {
-    key: "reminder.feedback",
-    nameRu: "Оставьте отзыв",
-    nameUz: "Fikr qoldiring",
-    category: "REMINDER" as const,
-    trigger: "APPOINTMENT_COMPLETED" as const,
-    triggerConfig: { offsetMin: 60 },
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Спасибо за визит в {{clinic.name}}. Будем благодарны за отзыв.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! {{clinic.name}}ga tashrif uchun rahmat. Fikringizdan minnatdor bo'lamiz.",
-    variables: ["patient.firstName", "clinic.name"],
-  },
-  {
-    key: "case.repeat-due",
-    nameRu: "Бесплатный повторный визит",
-    nameUz: "Bepul takroriy qabul",
-    category: "REMINDER" as const,
-    trigger: "CASE_REPEAT_DUE" as const,
-    triggerConfig: { daysBefore: 2 },
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! У вас осталось {{case.daysLeft}} дн. на бесплатный повторный приём в {{clinic.name}}. Запишитесь до {{case.deadline}}. Тел: {{clinic.phone}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! {{clinic.name}}da bepul takroriy qabulga {{case.daysLeft}} kun qoldi. {{case.deadline}} gacha yozilib oling. Tel: {{clinic.phone}}.",
-    variables: [
-      "patient.firstName", "case.daysLeft", "case.deadline",
-      "clinic.name", "clinic.phone",
-    ],
-  },
-  {
-    key: "marketing.birthday",
-    nameRu: "С днём рождения",
-    nameUz: "Tug'ilgan kuningiz bilan",
-    category: "MARKETING" as const,
-    trigger: "PATIENT_BIRTHDAY" as const,
-    triggerConfig: null,
-    bodyRu:
-      "С днём рождения, {{patient.firstName}}! {{clinic.name}} желает вам крепкого здоровья. В подарок — скидка 10% на любой приём в течение месяца.",
-    bodyUz:
-      "Tug'ilgan kuningiz muborak, {{patient.firstName}}! {{clinic.name}} sizga sog'liq tilaydi. Bir oy davomida har qanday qabulga 10% chegirma — sovg'a sifatida.",
-    variables: ["patient.firstName", "clinic.name"],
-  },
-  {
-    key: "marketing.dormant",
-    nameRu: "Давно не были",
-    nameUz: "Uzoqdan ko'rinmadingiz",
-    category: "MARKETING" as const,
-    trigger: "PATIENT_INACTIVE_DAYS" as const,
-    triggerConfig: { days: 180 },
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Вы давно не были в {{clinic.name}}. Запишитесь на приём: {{clinic.phone}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Siz {{clinic.name}}da uzoq vaqt bo'lmadingiz. Qabulga yoziling: {{clinic.phone}}.",
-    variables: ["patient.firstName", "clinic.name", "clinic.phone"],
-  },
-  {
-    key: "marketing.promo",
-    nameRu: "Акция месяца",
-    nameUz: "Oy aksiyasi",
-    category: "MARKETING" as const,
-    trigger: "MANUAL" as const,
-    triggerConfig: null,
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! В {{clinic.name}} специальное предложение этого месяца. Подробности: {{clinic.phone}}.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! {{clinic.name}}da bu oyning maxsus taklifi. Batafsil: {{clinic.phone}}.",
-    variables: ["patient.firstName", "clinic.name", "clinic.phone"],
-  },
-  {
-    key: "transactional.payment",
-    nameRu: "Чек об оплате",
-    nameUz: "To'lov cheki",
-    category: "TRANSACTIONAL" as const,
-    trigger: "MANUAL" as const,
-    triggerConfig: null,
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Ваш чек по оплате услуг в {{clinic.name}} готов.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! {{clinic.name}}dagi xizmatlar uchun chekingiz tayyor.",
-    variables: ["patient.firstName", "clinic.name"],
-  },
-  {
-    key: "transactional.document",
-    nameRu: "Готов ваш документ",
-    nameUz: "Hujjatingiz tayyor",
-    category: "TRANSACTIONAL" as const,
-    trigger: "MANUAL" as const,
-    triggerConfig: null,
-    bodyRu:
-      "Здравствуйте, {{patient.firstName}}! Ваш документ готов и доступен в личном кабинете.",
-    bodyUz:
-      "Assalomu alaykum, {{patient.firstName}}! Hujjatingiz tayyor va shaxsiy kabinetda mavjud.",
-    variables: ["patient.firstName"],
-  },
-];
+/** Deterministic picks: a re-run plans the same names and choices. */
+function pickAt<T>(arr: readonly T[], i: number): T {
+  return arr[i % arr.length];
+}
+
+type Doctor = {
+  id: string;
+  cabinetId: string;
+  schedules: {
+    weekday: number;
+    startTime: string;
+    endTime: string;
+    isActive: boolean;
+    validFrom: Date | null;
+    validTo: Date | null;
+  }[];
+};
 
 async function main() {
-  console.log("Seeding prod demo data for neurofax (idempotent)…\n");
-
-  const clinic = await prisma.clinic.findUnique({
-    where: { slug: "neurofax" },
-  });
-  if (!clinic) throw new Error("[seed] neurofax clinic not found");
-  console.log(`✔ clinic: ${clinic.slug} (${clinic.id})`);
-
-  // ── Phase 1: NotificationTemplates ──────────────────────────────────────
-  let tplCreated = 0;
-  let tplRefreshed = 0;
-  for (const t of TEMPLATES) {
-    const existing = await prisma.notificationTemplate.findUnique({
-      where: { clinicId_key: { clinicId: clinic.id, key: t.key } },
-      select: { id: true },
-    });
-    await prisma.notificationTemplate.upsert({
-      where: { clinicId_key: { clinicId: clinic.id, key: t.key } },
-      update: {
-        nameRu: t.nameRu,
-        nameUz: t.nameUz,
-        category: t.category,
-        trigger: t.trigger,
-        triggerConfig: t.triggerConfig as any,
-        bodyRu: t.bodyRu,
-        bodyUz: t.bodyUz,
-        variables: t.variables,
-        isActive: true,
-      },
-      create: {
-        clinicId: clinic.id,
-        key: t.key,
-        nameRu: t.nameRu,
-        nameUz: t.nameUz,
-        channel: "TG",
-        category: t.category,
-        trigger: t.trigger,
-        triggerConfig: t.triggerConfig as any,
-        bodyRu: t.bodyRu,
-        bodyUz: t.bodyUz,
-        variables: t.variables,
-        isActive: true,
-      },
-    });
-    if (existing) tplRefreshed++;
-    else tplCreated++;
-  }
-  console.log(`✔ templates: +${tplCreated} created, ${tplRefreshed} refreshed\n`);
-
-  // ── Phase 2: Demo patients + appointments ───────────────────────────────
-  // Branch is optional on prod — existing 448 appts have branchId=null, so
-  // we follow the same pattern. If a default branch happens to exist, use it.
-  const branch = await prisma.branch.findFirst({
-    where: { clinicId: clinic.id, isDefault: true, isActive: true },
-  });
-
-  const doctors = await prisma.doctor.findMany({
-    where: { clinicId: clinic.id, isActive: true },
-  });
-  const services = await prisma.service.findMany({
-    where: { clinicId: clinic.id, isActive: true },
-  });
-  const cabinets = await prisma.cabinet.findMany({
-    where: { clinicId: clinic.id, isActive: true },
-  });
-  if (doctors.length === 0 || services.length === 0 || cabinets.length === 0) {
-    throw new Error(
-      `[seed] need doctors/services/cabinets — got ${doctors.length}/${services.length}/${cabinets.length}`,
-    );
-  }
   console.log(
-    `  found ${doctors.length} doctors / ${services.length} services / ${cabinets.length} cabinets`,
+    `seed-prod-demo: ${APPLY ? "APPLY" : "DRY RUN (set APPLY=1 to write)"}` +
+      `${WITH_FUTURE ? ", with future visits" : ""}\n`,
   );
 
-  const DEMO_COUNT = 540;
+  const clinic = await prisma.clinic.findUnique({ where: { slug: SLUG } });
+  if (!clinic) throw new Error(`[seed] clinic '${SLUG}' not found`);
+  console.log(`✔ clinic: ${clinic.slug} (${clinic.id})`);
+
+  if (APPLY) await assertDemoWriteAllowed(prisma, "seed-prod-demo");
+
+  const branch = await prisma.branch.findFirst({
+    where: { clinicId: clinic.id, isDefault: true, isActive: true },
+    select: { id: true },
+  });
+  // Only doctors that can take a visit: active, with an active cabinet of
+  // their own and a schedule. The cabinet is the doctor's, never random.
+  const doctors: Doctor[] = (
+    await prisma.doctor.findMany({
+      where: {
+        clinicId: clinic.id,
+        isActive: true,
+        cabinet: { isActive: true },
+      },
+      select: {
+        id: true,
+        cabinetId: true,
+        schedules: {
+          select: {
+            weekday: true,
+            startTime: true,
+            endTime: true,
+            isActive: true,
+            validFrom: true,
+            validTo: true,
+          },
+        },
+      },
+    })
+  ).filter((d) => d.schedules.some((s) => s.isActive));
+  const services = await prisma.service.findMany({
+    where: { clinicId: clinic.id, isActive: true },
+    select: { id: true, durationMin: true, priceBase: true },
+  });
+  if (doctors.length === 0 || services.length === 0) {
+    throw new Error(
+      `[seed] need scheduled doctors with a cabinet and services: got ${doctors.length}/${services.length}`,
+    );
+  }
+  console.log(`  ${doctors.length} scheduled doctors · ${services.length} services`);
+
+  const now = new Date();
   let patientsNew = 0;
   let apptsNew = 0;
   let paymentsNew = 0;
-  const now = new Date();
+  let skipped = 0;
 
   for (let i = 0; i < DEMO_COUNT; i++) {
-    const phone = `99910${String(i).padStart(4, "0")}`; // 9 digits: 99910 + 0000..0029
-    const phoneNormalized = `+998${phone}`;
-    const first = pick(FIRST_NAMES);
-    const last = pick(LAST_NAMES);
-
-    let patient = await prisma.patient.findUnique({
+    const phoneNormalized = demoPhone(i);
+    const existing = await prisma.patient.findUnique({
       where: {
         clinicId_phoneNormalized: { clinicId: clinic.id, phoneNormalized },
       },
+      select: { id: true, tags: true },
     });
-    if (!patient) {
-      patient = await prisma.$transaction(async (tx) => {
-        const c = await tx.clinic.update({
-          where: { id: clinic.id },
-          data: { patientCounter: { increment: 1 } },
-          select: { patientCounter: true },
-        });
-        return tx.patient.create({
-          data: {
-            clinicId: clinic.id,
-            patientNumber: c.patientCounter,
-            fullName: `${last} ${first}`,
-            phone,
-            phoneNormalized,
-            gender: i % 2 === 0 ? "MALE" : "FEMALE",
-            segment: pick(["NEW", "ACTIVE", "DORMANT", "VIP"] as const),
-            preferredChannel: "TG",
-            preferredLang: "RU",
-            consentMarketing: true,
-          },
-        });
-      });
+
+    let patientId: string | null = existing?.id ?? null;
+    if (!existing) {
       patientsNew++;
+      if (APPLY) {
+        const created = await prisma.$transaction(async (tx) => {
+          const c = await tx.clinic.update({
+            where: { id: clinic.id },
+            data: { patientCounter: { increment: 1 } },
+            select: { patientCounter: true },
+          });
+          return tx.patient.create({
+            data: {
+              clinicId: clinic.id,
+              patientNumber: c.patientCounter,
+              fullName: `${pickAt(LAST_NAMES, i)} ${pickAt(FIRST_NAMES, i * 7 + 3)}`,
+              phone: phoneNormalized,
+              phoneNormalized,
+              gender: i % 2 === 0 ? "MALE" : "FEMALE",
+              segment: pickAt(["NEW", "ACTIVE", "DORMANT", "VIP"] as const, i),
+              preferredChannel: "TG",
+              preferredLang: "RU",
+              tags: [DEMO_TAG],
+              notes: "Демо-пациент (seed-prod-demo).",
+            },
+            select: { id: true },
+          });
+        });
+        patientId = created.id;
+      }
+    } else if (!existing.tags.includes(DEMO_TAG)) {
+      // A number from the unassigned 00 range can only be ours: stamp the
+      // marker on rows an earlier run of this version created without it.
+      if (APPLY) {
+        await prisma.patient.update({
+          where: { id: existing.id },
+          data: { tags: { push: DEMO_TAG } },
+        });
+      }
     }
 
-    // Idempotent per-kind: each demo patient should end up with ≥1 past
-    // COMPLETED + ≥1 future BOOKED. Re-runs backfill whichever side is missing.
-    const [existingPast, existingFuture] = await Promise.all([
-      prisma.appointment.count({
-        where: { clinicId: clinic.id, patientId: patient.id, date: { lt: now } },
-      }),
-      prisma.appointment.count({
-        where: { clinicId: clinic.id, patientId: patient.id, date: { gte: now } },
-      }),
-    ]);
+    // Idempotency: visits are created only for a patient with none at all.
+    // The old seed topped up a future visit on every run.
+    if (patientId) {
+      const any = await prisma.appointment.count({
+        where: { clinicId: clinic.id, patientId },
+      });
+      if (any > 0) continue;
+    }
 
-    const targets: Array<{
-      kind: "past" | "future";
-      status: "COMPLETED" | "BOOKED";
-    }> = [];
-    if (existingPast === 0)
-      targets.push({ kind: "past", status: "COMPLETED" });
-    if (existingFuture === 0)
-      targets.push({ kind: "future", status: "BOOKED" });
-    if (targets.length === 0) continue;
+    const kinds: Array<"past" | "future"> = WITH_FUTURE
+      ? ["past", "future"]
+      : ["past"];
+    for (const kind of kinds) {
+      const doctor = pickAt(doctors, i + (kind === "future" ? 1 : 0));
+      const service = pickAt(services, i);
+      const slot = await firstFreeSlot(doctor, {
+        kind,
+        durationMin: service.durationMin,
+        now,
+        seed: i,
+      });
+      if (!slot) {
+        skipped++;
+        console.warn(`  [skip ${kind}] demo #${i}: no free slot in the schedule`);
+        continue;
+      }
+      apptsNew++;
+      if (kind === "past") paymentsNew++;
+      if (!APPLY || !patientId) continue;
 
-    for (const target of targets) {
-      const MAX_RETRIES = 12;
-      let placed = false;
-      for (let attempt = 0; attempt < MAX_RETRIES && !placed; attempt++) {
-        const doctor = pick(doctors);
-        const cabinet = pick(cabinets);
-        const service = pick(services);
-        // Past: -30..-1 days; Future: 0..+7 days (today included, denser dashboards).
-        // Past hour 9..17, future hour biased to current/upcoming hours of today.
-        const dayOffset =
-          target.kind === "past"
-            ? -1 - Math.floor(Math.random() * 30)
-            : Math.floor(Math.random() * 8);
-        const hour = 9 + Math.floor(Math.random() * 9);
-        const minute = pick([0, 15, 30, 45]);
-        const date = atHour(addDays(now, dayOffset), hour, minute);
-        const duration = service.durationMin;
-        const endDate = new Date(date.getTime() + duration * 60_000);
-        const slot = { status: target.status };
-        try {
-        const appt = await prisma.appointment.create({
-          data: {
-            clinicId: clinic.id,
-            branchId: branch?.id ?? null,
-            patientId: patient.id,
-            doctorId: doctor.id,
-            cabinetId: cabinet.id,
-            serviceId: service.id,
-            date,
-            durationMin: duration,
-            endDate,
-            status: slot.status,
-            queueStatus: slot.status,
-            channel: pick(["WALKIN", "PHONE", "TELEGRAM", "WEBSITE"] as const),
-            priceService: service.priceBase,
-            priceBase: service.priceBase,
-            priceFinal: service.priceBase,
-            completedAt:
-              slot.status === "COMPLETED" ? new Date(endDate.getTime()) : null,
-          },
-        });
-        apptsNew++;
-        await prisma.appointmentService.create({
-          data: {
-            clinicId: clinic.id,
-            appointmentId: appt.id,
-            serviceId: service.id,
-            priceSnap: service.priceBase,
-            quantity: 1,
-          },
-        });
-        if (slot.status === "COMPLETED") {
-          await prisma.payment.create({
+      const status = kind === "past" ? "COMPLETED" : "BOOKED";
+      try {
+        await prisma.$transaction(async (tx) => {
+          const appt = await tx.appointment.create({
+            data: {
+              clinicId: clinic.id,
+              branchId: branch?.id ?? null,
+              patientId: patientId!,
+              doctorId: doctor.id,
+              cabinetId: doctor.cabinetId,
+              serviceId: service.id,
+              date: slot.date,
+              time: slot.time,
+              durationMin: service.durationMin,
+              endDate: slot.endDate,
+              status,
+              queueStatus: status,
+              channel: pickAt(DEMO_CHANNELS, i),
+              priceService: service.priceBase,
+              priceBase: service.priceBase,
+              priceFinal: service.priceBase,
+              notes: DEMO_APPOINTMENT_NOTE,
+              completedAt: kind === "past" ? slot.endDate : null,
+            },
+            select: { id: true },
+          });
+          await tx.appointmentService.create({
             data: {
               clinicId: clinic.id,
               appointmentId: appt.id,
-              patientId: patient.id,
-              currency: "UZS",
-              amount: service.priceBase,
-              method: pick(["CASH", "CARD", "PAYME", "CLICK"] as const),
-              status: "PAID",
-              paidAt: new Date(endDate.getTime()),
+              serviceId: service.id,
+              priceSnap: service.priceBase,
+              quantity: 1,
             },
           });
-          paymentsNew++;
-        }
-        placed = true;
-        } catch (e: any) {
-          // Slot collision (Appointment_doctor_no_overlap) — try a different
-          // random slot. Log only on final failure.
-          if (attempt === MAX_RETRIES - 1) {
-            console.warn(
-              `  [skip ${target.kind}] patient=${patient.id}: ${e.message}`,
-            );
+          if (kind === "past") {
+            await tx.payment.create({
+              data: {
+                clinicId: clinic.id,
+                appointmentId: appt.id,
+                patientId: patientId!,
+                currency: "UZS",
+                amount: service.priceBase,
+                method: pickAt(["CASH", "CARD", "PAYME", "CLICK"] as const, i),
+                status: "PAID",
+                paidAt: slot.endDate,
+                externalRef: DEMO_PAYMENT_REF,
+                idempotencyKey: `${DEMO_TAG}:${appt.id}`,
+              },
+            });
           }
-        }
+        });
+      } catch (e) {
+        // A visit booked between the overlap check and the insert trips the
+        // doctor overlap constraint; the patient simply stays without it.
+        skipped++;
+        apptsNew--;
+        if (kind === "past") paymentsNew--;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`  [skip ${kind}] demo #${i}: ${msg.slice(0, 160)}`);
       }
     }
   }
 
-  console.log(`✔ patients: +${patientsNew}`);
-  console.log(`✔ appointments: +${apptsNew}`);
-  console.log(`✔ payments: +${paymentsNew}`);
-
+  const verb = APPLY ? "" : " (would be)";
+  console.log(`✔ patients: +${patientsNew}${verb}`);
+  console.log(`✔ appointments: +${apptsNew}${verb}`);
+  console.log(`✔ payments: +${paymentsNew}${verb}`);
+  if (skipped > 0) console.log(`  skipped: ${skipped}`);
   await prisma.$disconnect();
-  console.log("\nDone.");
+  console.log(APPLY ? "\nDone." : "\nDry run: nothing written.");
+}
+
+/**
+ * First planned slot inside the doctor's schedule that overlaps none of the
+ * doctor's existing visits (cancelled ones free their slot) and none of the
+ * doctor's time off.
+ */
+async function firstFreeSlot(
+  doctor: Doctor,
+  args: { kind: "past" | "future"; durationMin: number; now: Date; seed: number },
+): Promise<PlannedSlot | null> {
+  const candidates = candidateSlots({
+    kind: args.kind,
+    schedules: doctor.schedules,
+    durationMin: args.durationMin,
+    now: args.now,
+    seed: args.seed,
+  });
+  if (candidates.length === 0) return null;
+  const from = new Date(Math.min(...candidates.map((c) => c.date.getTime())));
+  const to = new Date(Math.max(...candidates.map((c) => c.endDate.getTime())));
+  const [visits, timeOff] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        doctorId: doctor.id,
+        status: { notIn: ["CANCELLED"] },
+        date: { lt: to },
+        endDate: { gt: from },
+      },
+      select: { date: true, endDate: true },
+    }),
+    prisma.doctorTimeOff.findMany({
+      where: { doctorId: doctor.id, startAt: { lt: to }, endAt: { gt: from } },
+      select: { startAt: true, endAt: true },
+    }),
+  ]);
+  const busy = [
+    ...visits,
+    ...timeOff.map((t) => ({ date: t.startAt, endDate: t.endAt })),
+  ];
+  return (
+    candidates.find(
+      (c) =>
+        !busy.some((b) => c.date < b.endDate && c.endDate > b.date),
+    ) ?? null
+  );
 }
 
 main().catch((e) => {

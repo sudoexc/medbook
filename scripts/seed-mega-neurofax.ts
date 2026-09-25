@@ -15,8 +15,13 @@
  *   LabOrder + LabResult + MedicationReminderSend + Reminder + CdsOverride
  *   Payment + Invoice + Document + Communication
  *   Conversation + Message
- *   NotificationSend + Campaign + Call + OnlineRequest + Lead + Action
+ *   NotificationSend + Campaign + Call + OnlineRequest + Action
  *   AuditLog (this clinic only) + DataExportJob + DataDeletionJob + LLMUsage
+ *
+ * Never touches `Lead`: those are real booking requests from the public
+ * site, and reception now works them on the «Заявки» screen (audit LD-01).
+ * Wiping them lost requests; seeding fake ones put random real-looking
+ * +998 numbers in the call queue.
  *
  * Run from worker container:
  *   docker compose exec worker npx tsx scripts/seed-mega-neurofax.ts
@@ -172,7 +177,7 @@ async function main() {
     "MedicalCase",
     "Call",
     "OnlineRequest",
-    "Lead",
+    // "Lead" deliberately absent: real site requests (audit LD-01).
     "Action",
     "EmptySlotSnapshot",
     "ReferralReward",
@@ -540,8 +545,8 @@ async function main() {
   }
   console.log(`  ✓ medical cases: +${caseN}\n`);
 
-  // ── 8. Calls (~80) + Leads (~15) ──────────────────────────────────────────
-  console.log("┌─ SEED calls + leads");
+  // ── 8. Calls (~80) ────────────────────────────────────────────────────────
+  console.log("┌─ SEED calls");
   let callN = 0;
   for (let i = 0; i < 170; i++) {
     const patient = chance(0.8) ? pick(patients) : null;
@@ -574,25 +579,9 @@ async function main() {
     });
     callN++;
   }
-  let leadN = 0;
-  for (let i = 0; i < 40; i++) {
-    const useUz = chance(0.7);
-    const first = useUz ? pick(FIRST_MALE_UZ.concat(FIRST_FEM_UZ)) : pick(FIRST_MALE_RU.concat(FIRST_FEM_RU));
-    const last = useUz ? pick(LAST_UZ) : pick(LAST_RU);
-    await prisma.lead.create({
-      data: {
-        clinicId,
-        name: `${last} ${first}`,
-        phone: `+998${9}${rand(10)}${String(1000000 + rand(9000000))}`,
-        source: pick(["TELEGRAM", "WEBSITE", "INSTAGRAM", "CALL"] as const),
-        status: pick(["NEW", "CONTACTED", "CONVERTED", "CANCELLED"] as const),
-        comment: chance(0.5) ? pick(["Хочет к кардиологу", "Интересовался ценами на УЗИ", "Просил перезвонить вечером"]) : null,
-        createdAt: addDays(now, -rand(14)),
-      },
-    });
-    leadN++;
-  }
-  console.log(`  ✓ calls: +${callN} · leads: +${leadN}\n`);
+  // No fake leads (audit LD-01): «Заявки» is a live work queue, a made-up
+  // request with a random +998 number would have reception calling strangers.
+  console.log(`  ✓ calls: +${callN}\n`);
 
   // ── 9. NotificationSends (~300) ───────────────────────────────────────────
   console.log("┌─ SEED notification sends");
@@ -878,7 +867,7 @@ async function main() {
   await prisma.$disconnect();
   console.log("\n═══ MEGA SEED COMPLETE ═══");
   console.log(`  ${patients.length} patients · ${appointments.length} appointments · ${caseN} cases`);
-  console.log(`  ${callN} calls · ${leadN} leads · ${actionN} actions`);
+  console.log(`  ${callN} calls · ${actionN} actions`);
   console.log(`  ${notifN} notifications · ${docN} documents · ${convN} conversations`);
   console.log(`  ${reviewN} reviews · ${payN} payments`);
 }

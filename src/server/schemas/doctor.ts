@@ -11,16 +11,39 @@ export const DoctorServiceLinkSchema = z.object({
   durationMinOverride: z.number().int().min(5).max(480).optional().nullable(),
 });
 
+/**
+ * Characters a doctor's public name or specialty may contain: letters in any
+ * script (Cyrillic, Uzbek Latin with o‘/gʻ), digits, spaces and the
+ * punctuation real titles use («Детский невролог / педиатр», «(доп.)»,
+ * «Sultonov Aziz o‘g‘li»). These strings land on the public doctor page and
+ * in its JSON-LD, so markup characters (`<`, `>`, braces, brackets, `=`)
+ * are refused at the write boundary (audit LD-02) on top of the escaping
+ * serialiser there. The list is generous on purpose: an admin re-saving an
+ * existing doctor must not trip over an ordinary colon or quote.
+ */
+export const DOCTOR_DISPLAY_TEXT_RE =
+  /^[\p{L}\p{M}\p{N}\s.,:;!?"&'’‘ʻʼ`()\/«»№+\u2013\u2014-]*$/u;
+
+/** Name / specialty string for the public doctor profile. */
+export function doctorDisplayText(opts: { min: number; max: number }) {
+  return z
+    .string()
+    .trim()
+    .min(opts.min)
+    .max(opts.max)
+    .regex(DOCTOR_DISPLAY_TEXT_RE, "invalid_characters");
+}
+
 export const CreateDoctorSchema = z.object({
   slug: z
     .string()
     .min(2)
     .max(100)
     .regex(/^[a-z0-9-]+$/),
-  nameRu: z.string().min(1).max(200),
-  nameUz: z.string().min(1).max(200),
-  specializationRu: z.string().min(1).max(200),
-  specializationUz: z.string().min(1).max(200),
+  nameRu: doctorDisplayText({ min: 1, max: 200 }),
+  nameUz: doctorDisplayText({ min: 1, max: 200 }),
+  specializationRu: doctorDisplayText({ min: 1, max: 200 }),
+  specializationUz: doctorDisplayText({ min: 1, max: 200 }),
   userId: z.string().optional().nullable(),
   photoUrl: z.string().url().optional().nullable(),
   bioRu: z.string().max(5000).optional().nullable(),

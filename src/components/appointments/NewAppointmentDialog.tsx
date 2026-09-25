@@ -69,6 +69,18 @@ export interface NewAppointmentDialogProps {
   initialDoctorId?: string | null;
   initialDate?: Date | null;
   initialTime?: string | null;
+  /**
+   * Name for the «new patient» form when the phone matches no single card
+   * (site request: the visitor typed their name on the form).
+   */
+  initialPatientName?: string | null;
+  /** Booking channel preset; defaults to PHONE. */
+  initialChannel?: ChannelType;
+  /**
+   * Site request being converted («Заявки» screen). The booking links it and
+   * marks it CONVERTED server-side (bookAppointment), audit LD-01.
+   */
+  leadId?: string | null;
   /** Called after successful creation with the new appointment id. */
   onCreated?: (appointmentId: string) => void;
 }
@@ -99,6 +111,9 @@ export function NewAppointmentDialog({
   initialDoctorId,
   initialDate,
   initialTime,
+  initialPatientName,
+  initialChannel,
+  leadId,
   onCreated,
 }: NewAppointmentDialogProps) {
   const t = useTranslations("appointments.newDialog");
@@ -150,10 +165,10 @@ export function NewAppointmentDialog({
       time: initialTime ?? null,
       // Schedule-lane default. Never WALKIN — that channel is the live-lane
       // discriminator and belongs exclusively to «Выдать талон».
-      channel: "PHONE",
+      channel: initialChannel ?? "PHONE",
       comments: "",
     }));
-  }, [open, initialDoctorId, initialDate, initialTime]);
+  }, [open, initialDoctorId, initialDate, initialTime, initialChannel]);
 
   const preloadPatient = useQuery<PatientHit | null, Error>({
     queryKey: ["patient-preload", patientId],
@@ -223,7 +238,10 @@ export function NewAppointmentDialog({
         patient: null,
         newPatientForm: {
           ...s.newPatientForm,
+          fullName: s.newPatientForm.fullName || initialPatientName || "",
           phone: s.newPatientForm.phone || initialPatientPhone,
+          // A card born from a site request keeps its acquisition source.
+          source: s.newPatientForm.source || (leadId ? "WEBSITE" : ""),
         },
       };
     });
@@ -233,6 +251,8 @@ export function NewAppointmentDialog({
     patientId,
     phoneLookup.isLoading,
     phoneLookup.data,
+    initialPatientName,
+    leadId,
   ]);
 
   const doctorsQuery = useQuery<DoctorHit[], Error>({
@@ -420,6 +440,7 @@ export function NewAppointmentDialog({
         durationMin: totalDuration,
         channel: values.channel,
         comments: values.comments || undefined,
+        ...(leadId ? { leadId } : {}),
       };
 
       const res = await fetch(`/api/crm/appointments`, {
@@ -464,6 +485,9 @@ export function NewAppointmentDialog({
       qc.invalidateQueries({ queryKey: ["calendar", "appointments"], ...opts });
       qc.invalidateQueries({ queryKey: ["reception"], ...opts });
       qc.invalidateQueries({ queryKey: ["crm", "shell-summary"], ...opts });
+      if (leadId) {
+        qc.invalidateQueries({ queryKey: ["crm", "online-requests"], ...opts });
+      }
       toast.success(t("createdToast"));
 
       // Resolve which MedicalCase this booking belongs to. Failures are

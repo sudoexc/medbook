@@ -17,6 +17,8 @@ export type ShellSummary = {
     calls: number;
     telegram: number;
     notifications: number;
+    /** NEW site booking requests (0 for roles that don't work them). */
+    leads: number;
   };
 };
 

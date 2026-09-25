@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { CrmSidebar } from "@/components/layout/crm-sidebar"
 import { GlobalTgAlerts } from "@/components/layout/global-tg-alerts"
+import { GlobalLeadAlerts } from "@/components/layout/global-lead-alerts"
 import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch"
 import { CrmTopbar } from "@/components/layout/crm-topbar"
 import { ImpersonationBanner } from "@/components/layout/impersonation-banner"
@@ -172,6 +173,16 @@ export default async function CrmLayout({
           a property of the shift, not of the section the user happens to be
           in. The inbox page keeps its own focus-aware alerting. */}
       <GlobalTgAlerts inboxPath="/crm/telegram" />
+      {/* Site booking requests (audit LD-01): toast for the roles that call
+          people back, badge refresh for everyone. */}
+      <GlobalLeadAlerts
+        canWork={
+          session?.user?.role === "ADMIN" ||
+          session?.user?.role === "SUPER_ADMIN" ||
+          session?.user?.role === "RECEPTIONIST" ||
+          session?.user?.role === "CALL_OPERATOR"
+        }
+      />
       <SessionExpiryWatch />
       {brandStyle ? (
         <style dangerouslySetInnerHTML={{ __html: brandStyle }} />

@@ -20,6 +20,14 @@
  * formula would name every patient a debtor, so debt is unknown (null) and
  * the balance reads 0 until the clinic records its first payment.
  *
+ * Once it does, only visits from that moment on are charged
+ * (`billingSince`, the first real payment's creation time): the visits
+ * before it were paid at the till and never entered, so charging them
+ * would turn every earlier patient into a debtor the day the first payment
+ * is entered. A visit with a payment filed under it is charged whenever it
+ * happened, so a visit paid the day after (or the very payment that started
+ * the recording) is settled rather than read as credit.
+ *
  * Client-safe: no server imports, so the card can import the type.
  */
 
@@ -27,14 +35,25 @@
 export const BILLABLE_VISIT_STATUS = "COMPLETED";
 
 export type PatientFinance = {
-  /** Sum of `priceFinal` over COMPLETED visits, тийин. */
+  /**
+   * Sum of `priceFinal` over the visits the patient is charged for, тийин:
+   * every COMPLETED visit while payments are not recorded, the billed ones
+   * (see `isBilledVisit`) once they are.
+   */
   visitsTotal: number;
-  /** How many COMPLETED visits went into `visitsTotal`. */
+  /** How many visits went into `visitsTotal`. */
   completedVisits: number;
+  /** COMPLETED visits left out because they predate `billingSince`. */
+  unbilledVisits: number;
   /** PAID payments net of refunds, тийин (USD converted). */
   paid: number;
   /** Whether the clinic records payments in the CRM at all. */
   tracksPayments: boolean;
+  /**
+   * ISO time the clinic entered its first real payment in the CRM; visits
+   * completed before it are not charged. Null when payments are not recorded.
+   */
+  billingSince: string | null;
   /** What the patient still owes, тийин; null when payments are not recorded. */
   debt: number | null;
   /** paid - visitsTotal (negative: owes); 0 when payments are not recorded. */
@@ -44,27 +63,70 @@ export type PatientFinance = {
 export type FinanceVisit = {
   status: string;
   priceFinal: number | null;
+  /** When the visit was completed; older rows may lack it, then `date` counts. */
+  completedAt?: Date | string | null;
+  /** The visit's start. */
+  date: Date | string;
+  /** Whether a PAID payment is filed under this visit. */
+  hasPaidPayment?: boolean;
 };
+
+/**
+ * Whether the patient is charged for this visit, given when the clinic
+ * started recording payments (null: it does not). The server's
+ * `billedVisitWhere` is the same rule as a Prisma filter for the list.
+ */
+export function isBilledVisit(
+  visit: FinanceVisit,
+  billingSince: Date | string | null,
+): boolean {
+  if (visit.status !== BILLABLE_VISIT_STATUS || billingSince === null) {
+    return false;
+  }
+  if (visit.hasPaidPayment) return true;
+  const at = new Date(visit.completedAt ?? visit.date).getTime();
+  return at >= new Date(billingSince).getTime();
+}
+
+/**
+ * A charged visit with no PAID payment filed under it: the «Визиты» tab
+ * paints its price red and says «Долг».
+ */
+export function isOwedVisit(
+  visit: FinanceVisit,
+  billingSince: Date | string | null,
+): boolean {
+  return !visit.hasPaidPayment && isBilledVisit(visit, billingSince);
+}
 
 export function summarizePatientFinance(input: {
   visits: FinanceVisit[];
   /** PAID payments of the patient net of refunds, тийин. */
   paidTiyin: number;
-  tracksPayments: boolean;
+  /** When the clinic started recording payments; null: it does not. */
+  billingSince: Date | string | null;
 }): PatientFinance {
+  const { billingSince } = input;
   let visitsTotal = 0;
   let completedVisits = 0;
+  let unbilledVisits = 0;
   for (const v of input.visits) {
     if (v.status !== BILLABLE_VISIT_STATUS) continue;
+    if (billingSince !== null && !isBilledVisit(v, billingSince)) {
+      unbilledVisits += 1;
+      continue;
+    }
     completedVisits += 1;
     visitsTotal += v.priceFinal ?? 0;
   }
-  if (!input.tracksPayments) {
+  if (billingSince === null) {
     return {
       visitsTotal,
       completedVisits,
+      unbilledVisits: 0,
       paid: 0,
       tracksPayments: false,
+      billingSince: null,
       debt: null,
       balance: 0,
     };
@@ -73,8 +135,10 @@ export function summarizePatientFinance(input: {
   return {
     visitsTotal,
     completedVisits,
+    unbilledVisits,
     paid,
     tracksPayments: true,
+    billingSince: new Date(billingSince).toISOString(),
     debt: Math.max(0, visitsTotal - paid),
     balance: paid - visitsTotal,
   };

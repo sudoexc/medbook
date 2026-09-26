@@ -14,12 +14,17 @@ import {
   tashkentComponents,
   toTashkentDate,
 } from "../src/lib/booking-validation";
+import { DEMO_SEED_MARK } from "../src/lib/demo-seed";
 
 /** How many demo patients the seed maintains. The header promised 30. */
 export const DEMO_COUNT = 30;
 
-/** Marker on every row the seed writes, so demo data can be told apart. */
-export const DEMO_TAG = "demo-seed";
+/**
+ * Marker on every row the seed writes, so demo data can be told apart. The
+ * app reads the same value: its «does this clinic record payments» rule
+ * (audit PT-08) skips demo payments and payments on demo patients.
+ */
+export const DEMO_TAG = DEMO_SEED_MARK;
 /** Appointment.notes value (staff-only field). */
 export const DEMO_APPOINTMENT_NOTE = `[${DEMO_TAG}]`;
 /** Payment.externalRef value; idempotencyKey is `${DEMO_TAG}:<appointmentId>`. */

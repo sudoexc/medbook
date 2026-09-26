@@ -1204,6 +1204,7 @@
       "debt": "Задолженность",
       "zeroSum": "0 сум",
       "paymentsNotTracked": "Оплаты в CRM не вносятся, поэтому долг не считается.",
+      "billingSinceHint": "Визиты до первой оплаты в CRM ({date}) не входят в расчёт.",
       "donutAttendance": "Посещаемость",
       "attendanceHint": "из {count} визитов",
       "attendanceEmpty": "Нет завершённых визитов"

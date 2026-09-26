@@ -6,7 +6,7 @@ import { CalendarPlusIcon, CalendarXIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
-import { BILLABLE_VISIT_STATUS } from "@/lib/patients/finance";
+import { isOwedVisit } from "@/lib/patients/finance";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { MoneyText } from "@/components/atoms/money-text";
@@ -96,7 +96,7 @@ export function VisitsTab({ patient, onCreate }: VisitsTabProps) {
             <VisitRow
               key={row.id}
               row={row}
-              tracksPayments={patient.finance?.tracksPayments === true}
+              billingSince={patient.finance?.billingSince ?? null}
               locale={locale}
               t={t}
               statusLabel={(s) => {
@@ -136,13 +136,13 @@ export function VisitsTab({ patient, onCreate }: VisitsTabProps) {
 
 function VisitRow({
   row,
-  tracksPayments,
+  billingSince,
   locale,
   t,
   statusLabel,
 }: {
   row: PatientAppointment;
-  tracksPayments: boolean;
+  billingSince: string | null;
   locale: Locale;
   t: (key: string) => string;
   statusLabel: (s: string) => string;
@@ -161,10 +161,19 @@ function VisitRow({
   const doctorName = locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu;
   const paid = row.payments.some((p) => p.status === "PAID");
   // Same rule as «Финансы» (audit PT-08): only a completed visit is owed,
-  // and only in a clinic that records payments. Every unpaid price used to
-  // be red, a booking for next week and a cancelled visit included.
-  const owed =
-    tracksPayments && row.status === BILLABLE_VISIT_STATUS && !paid;
+  // only in a clinic that records payments, and only from its first
+  // recorded payment on. Every unpaid price used to be red, a booking for
+  // next week and a cancelled visit included.
+  const owed = isOwedVisit(
+    {
+      status: row.status,
+      priceFinal: row.priceFinal,
+      completedAt: row.completedAt,
+      date: row.date,
+      hasPaidPayment: paid,
+    },
+    billingSince,
+  );
   const tone = STATUS_TONE[row.status] ?? "neutral";
 
   return (

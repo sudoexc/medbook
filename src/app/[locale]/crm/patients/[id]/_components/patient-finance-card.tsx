@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { CircleDollarSignIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatDate, type Locale } from "@/lib/format";
 import { useCountUp } from "@/components/atoms/count-up";
 import { MoneyText } from "@/components/atoms/money-text";
 
@@ -22,7 +23,8 @@ export interface PatientFinanceCardProps {
  * from the server's one formula (`patient.finance`): only COMPLETED visits
  * cost, every PAID payment counts. While the clinic records no payments in
  * the CRM there is no «Долг» at all, only what the visits cost, so the
- * front desk is not told that every patient owes money.
+ * front desk is not told that every patient owes money. Once it does, the
+ * visits before its first recorded payment are left out, and a line says so.
  */
 export function PatientFinanceCard({
   patient,
@@ -30,6 +32,7 @@ export function PatientFinanceCard({
   className,
 }: PatientFinanceCardProps) {
   const t = useTranslations("patientCard.finance");
+  const locale = useLocale() as Locale;
   const finance = patient.finance;
   const attendance = React.useMemo(() => {
     let completed = 0;
@@ -96,6 +99,13 @@ export function PatientFinanceCard({
           {finance && !tracksPayments ? (
             <p className="text-[11px] leading-snug text-muted-foreground">
               {t("paymentsNotTracked")}
+            </p>
+          ) : null}
+          {finance?.billingSince && finance.unbilledVisits > 0 ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              {t("billingSinceHint", {
+                date: formatDate(finance.billingSince, locale, "short"),
+              })}
             </p>
           ) : null}
         </div>

@@ -9,6 +9,7 @@ export type PatientAppointment = {
   durationMin: number;
   status: string;
   queueStatus: string;
+  completedAt: string | null;
   priceFinal: number | null;
   priceBase: number | null;
   discountPct: number;

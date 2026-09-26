@@ -1204,6 +1204,7 @@
       "debt": "Qarz",
       "zeroSum": "0 so'm",
       "paymentsNotTracked": "To'lovlar CRM'ga kiritilmaydi, shuning uchun qarz hisoblanmaydi.",
+      "billingSinceHint": "CRM'dagi birinchi to'lovgacha ({date}) bo'lgan tashriflar hisobga kirmaydi.",
       "donutAttendance": "Davomat",
       "attendanceHint": "{count} ta tashrifdan",
       "attendanceEmpty": "Yakunlangan tashrif yo'q"

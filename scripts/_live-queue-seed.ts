@@ -37,6 +37,7 @@ import {
   tashkentDayBounds,
   toTashkentDate,
 } from "../src/lib/booking-validation";
+import { DEMO_SEED_MARK } from "../src/lib/demo-seed";
 
 /** The worker-script client (full PrismaClient or an interactive tx handle). */
 type Db = Pick<
@@ -277,6 +278,9 @@ export async function seedTodayLiveQueue(
           method: (["CASH", "CARD", "PAYME", "CLICK"] as const)[rand(4)],
           status: "PAID",
           paidAt: toTashkentDate(dateStr, hhmm(slot + SLOT_MIN)),
+          // Marked demo: on a live clinic these rows must not switch it to
+          // «records payments» (audit PT-08, src/server/patient/finance.ts).
+          externalRef: DEMO_SEED_MARK,
         },
       });
       created++;

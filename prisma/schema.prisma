@@ -2275,7 +2275,9 @@ model VisitPrescription {
   timesOfDay    String[]     @default([])
   mealRelation  MealRelation @default(NO_MATTER)
   durationDays  Int?
-  // Auto-filled from Drug.defaultDosing / the guide, then hand-editable.
+  // What the patient reads (handout, print, reminders): written by the
+  // doctor. Never pre-filled from Drug.defaultDosing, which is reference
+  // text for the doctor (audit G4-06).
   instructionRu String?      @db.Text
   instructionUz String?      @db.Text
   // Bridge into patient reminders (Ф6).

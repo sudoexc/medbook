@@ -5,9 +5,9 @@
  *
  * Replaces the free-text chip input for the prescriptions field. Doctor
  * searches the DB drug catalog (brand/INN/ATC, top-12), picking a drug
- * auto-fills form/strength from Drug.forms and the how-to-take text from
- * Drug.defaultDosing.adult; the schedule (times of day, meal relation,
- * duration) is set with segment controls. «Свой препарат» adds the drug to
+ * auto-fills form/strength from Drug.forms; the schedule (times of day, meal
+ * relation, duration) is set with segment controls, and the how-to-take text
+ * is the doctor's own (see draftFromDrug). «Свой препарат» adds the drug to
  * the clinic's base (visible to every doctor from then on) and prescribes it.
  *
  * Tapping the empty search field opens the doctor's shortlist — his own most
@@ -40,10 +40,7 @@ import {
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
-import {
-  matchedBrand,
-  prescriptionLabel,
-} from "@/lib/catalogs/brand-match";
+import { matchedBrand } from "@/lib/catalogs/brand-match";
 import {
   formatPrescriptionLine,
   type PrescriptionLocale,
@@ -71,6 +68,7 @@ import {
   type VisitPrescriptionTimeOfDay,
 } from "../_hooks/use-visit-note";
 import {
+  draftFromDrug,
   toggleTimeOfDay,
   toPrescriptionDrafts,
   withRowEdited,
@@ -94,39 +92,6 @@ const MEALS: VisitPrescriptionMealRelation[] = [
 ];
 
 const DURATION_PICKS = [5, 7, 10, 14, 30];
-
-/**
- * Build a structured row draft from a catalog drug (search hit or drawer
- * pick). `term` is what the doctor typed: when it names a brand the row is
- * labelled «Мидокалм (толперизон)» rather than the bare substance — the
- * clinic reported typing a brand and getting back a word the patient will
- * never see on the box.
- */
-export function draftFromDrug(
-  d: Pick<DrugSearchHit, "id" | "nameRu" | "forms" | "defaultDosing"> & {
-    brands?: { name: string }[];
-  },
-  term = "",
-): VisitPrescriptionDraft {
-  const firstForm = d.forms?.[0] ?? null;
-  const strength = firstForm?.strengths?.[0] ?? null;
-  return {
-    drugId: d.id,
-    displayName: prescriptionLabel(
-      { nameRu: d.nameRu, brands: d.brands ?? [] },
-      term,
-    ),
-    form: firstForm?.form ?? null,
-    strength,
-    dose: strength ?? "1",
-    timesOfDay: [],
-    mealRelation: "NO_MATTER",
-    durationDays: null,
-    instructionRu: d.defaultDosing?.adult?.trim() || null,
-    instructionUz: null,
-    remindPatient: true,
-  };
-}
 
 /**
  * A shortlist pick as a row draft. His own items keep the wording he used
@@ -948,7 +913,9 @@ function PrescriptionRowItem({
   onRemove: () => void;
 }) {
   const t = useTranslations("doctor.reception");
-  const line = formatPrescriptionLine(row, locale);
+  // With the instruction: whatever reaches the patient's handout and print
+  // must be readable without expanding the row (audit G4-06).
+  const line = formatPrescriptionLine(row, locale, { withInstruction: true });
 
   return (
     <li

@@ -8,7 +8,8 @@
  * panel with forms, indications, contraindications, side effects,
  * pregnancy category, and a one-click "insert into prescriptions" action.
  * Ф2 — the pick hands the full drug record to the caller, which builds a
- * structured VisitPrescription row (form/strength/instruction auto-filled).
+ * structured VisitPrescription row (form/strength auto-filled; the reference
+ * dosing stays in this panel for the doctor, see draftFromDrug).
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -53,7 +54,7 @@ type Props = {
   onOpenChange: (next: boolean) => void;
   /**
    * Called when the user picks a drug. Ф2 — the caller builds a structured
-   * VisitPrescription draft from the full drug record (forms/defaultDosing).
+   * VisitPrescription draft from the full drug record (forms, brands).
    */
   onPick: (drug: DrugDetail, term: string) => void;
 };

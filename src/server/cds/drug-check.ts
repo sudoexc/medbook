@@ -3,28 +3,35 @@
  *
  * Given a list of free-text prescription lines (as stored in
  * VisitNote.prescriptions[]), this engine resolves each line to a Drug
- * row (best-effort INN/nameRu prefix match), then emits warnings:
+ * row (whole-word match on names, brands and INNs, see drug-text-match.ts),
+ * then emits warnings:
  *
  *   - ALLERGY              — recorded (or pre-visit questionnaire) allergy
  *                            matches the drug by substance or by class
  *                            (see allergy-match.ts)
  *   - INTERACTION          — known DrugInteraction pair in basket, or a
  *                            class-level rule (see interaction-rules.ts)
- *   - DUPLICATE_CLASS      — two drugs share the 5-char ATC prefix (class stack)
- *   - PREGNANCY            — pregnancyCat D/X for female patients of fertile age
+ *   - DUPLICATE_CLASS      — one substance twice, or two drugs of one
+ *                            therapeutic class (see duplicate-therapy.ts)
+ *   - PREGNANCY            — category D/X for a patient who may be pregnant
+ *                            (see pregnancy.ts)
  *   - DIAGNOSIS_RISK       — interaction's riskDiagnoses matches active dx
  *
  * Free-text lines that don't resolve to a Drug row are reported back as
  * `unresolvedLines` so the UI can show a "manual entry — CDS skipped" hint.
- * This is deliberately best-effort: the catalog drawer + dosage builder
- * always emit the drug nameRu first, so resolution works for the canonical
- * path; manually typed lines may slip through, which is acceptable for MVP.
  */
 import { prisma } from "@/lib/prisma";
 import { parsePreVisitData } from "@/lib/patient-experience/pre-visit";
 
 import { matchAllergy } from "./allergy-match";
+import { buildDrugTextIndex, matchDrugLine } from "./drug-text-match";
+import { shareSubstance, sharedDuplicateClass } from "./duplicate-therapy";
 import { findRuleInteractions, isCoveredByRules } from "./interaction-rules";
+import {
+  effectivePregnancyCat,
+  pregnancyContext,
+  pregnancyWarning,
+} from "./pregnancy";
 
 export type CdsWarningKind =
   | "ALLERGY"
@@ -82,6 +89,12 @@ export type CdsCheckResult = {
    * (audit G4-01): the card must say so instead of showing an all-clear.
    */
   noInteractionData: string[];
+  /**
+   * Ids of resolved drugs with no known pregnancy category, reported only
+   * when the patient may be pregnant (audit G4-13): the card says the
+   * pregnancy check was not done for them instead of an all-clear.
+   */
+  noPregnancyData: string[];
 };
 
 const SEVERITY_RANK: Record<CdsSeverity, number> = {
@@ -96,11 +109,6 @@ function normaliseToken(s: string): string {
     .toLowerCase()
     .replace(/[^a-zа-яё0-9]+/giu, " ")
     .trim();
-}
-
-function firstToken(line: string): string {
-  const t = normaliseToken(line).split(" ")[0];
-  return t ?? "";
 }
 
 type DrugPick = {
@@ -124,18 +132,28 @@ function toResolved(d: DrugPick, lineIndex: number): ResolvedDrug {
   };
 }
 
+/** One prescription line that named a catalog drug, and how it named it. */
+type LineHit = {
+  drug: DrugPick;
+  lineIndex: number;
+  /** The brand or name as the line spelled it («Нурофен»). */
+  label: string;
+  /** `brand:<key>` or `generic`, see DrugLineMatch. */
+  nameKey: string;
+};
+
 /**
- * Resolve prescription lines to Drug rows. Match strategy:
- *   1. exact INN match on first token (e.g. "ibuprofen 400 мг…" → ibuprofen)
- *   2. nameRu starts-with on the line (case-insensitive)
- *   3. brand name match against DrugBrand.name (case-insensitive)
+ * Resolve prescription lines to Drug rows (see drug-text-match.ts for the
+ * matching rules). Every hit is returned, not one per drug: two lines naming
+ * the same substance differently («Ибупрофен» and «Нурофен») are a double
+ * dose the engine must report, not merge away (audit G4-12).
  */
 async function resolveDrugs(
   lines: string[],
-): Promise<{ resolved: ResolvedDrug[]; unresolved: number[] }> {
-  const resolved: ResolvedDrug[] = [];
+): Promise<{ hits: LineHit[]; unresolved: number[] }> {
+  const hits: LineHit[] = [];
   const unresolved: number[] = [];
-  if (lines.length === 0) return { resolved, unresolved };
+  if (lines.length === 0) return { hits, unresolved };
 
   const allDrugs = await prisma.drug.findMany({
     // Rows a doctor quick-added for a clinic («clinic:…» key) carry a bare
@@ -152,77 +170,23 @@ async function resolveDrugs(
       brands: { select: { name: true } },
     },
   });
-
-  // Pre-index for fast lookup.
-  const byInn = new Map<string, (typeof allDrugs)[number]>();
-  const byNamePrefix: { prefix: string; drug: (typeof allDrugs)[number] }[] = [];
-  const byBrand: { brand: string; drug: (typeof allDrugs)[number] }[] = [];
-  for (const d of allDrugs) {
-    byInn.set(d.inn.toLowerCase(), d);
-    byNamePrefix.push({ prefix: d.nameRu.toLowerCase(), drug: d });
-    for (const b of d.brands) {
-      byBrand.push({ brand: b.name.toLowerCase(), drug: d });
-    }
-  }
-  // Sort by length descending so "ацетилсалициловая кислота" wins over "ацетил".
-  byNamePrefix.sort((a, b) => b.prefix.length - a.prefix.length);
-  byBrand.sort((a, b) => b.brand.length - a.brand.length);
+  const index = buildDrugTextIndex(allDrugs);
 
   lines.forEach((line, idx) => {
-    const normalised = normaliseToken(line);
-    if (!normalised) {
+    const m = matchDrugLine(index, line);
+    if (!m) {
       unresolved.push(idx);
       return;
     }
-
-    // 1) INN as the first token
-    const innHit = byInn.get(firstToken(line));
-    if (innHit) {
-      resolved.push(toResolved(innHit, idx));
-      return;
-    }
-
-    // 2) nameRu starts-with on the line text
-    const nameHit = byNamePrefix.find((n) => normalised.startsWith(n.prefix));
-    if (nameHit) {
-      resolved.push(toResolved(nameHit.drug, idx));
-      return;
-    }
-
-    // 3) brand starts-with
-    const brandHit = byBrand.find((b) => normalised.startsWith(b.brand));
-    if (brandHit) {
-      resolved.push(toResolved(brandHit.drug, idx));
-      return;
-    }
-
-    unresolved.push(idx);
+    hits.push({ drug: m.drug, lineIndex: idx, label: m.label, nameKey: m.nameKey });
   });
-
-  // Dedupe by drug id but keep the first occurrence.
-  const seen = new Set<string>();
-  const deduped = resolved.filter((d) => {
-    if (seen.has(d.id)) return false;
-    seen.add(d.id);
-    return true;
-  });
-  return { resolved: deduped, unresolved };
-}
-
-function ageFromBirthDate(birthDate: Date | null): number | null {
-  if (!birthDate) return null;
-  const now = new Date();
-  let age = now.getFullYear() - birthDate.getFullYear();
-  const m = now.getMonth() - birthDate.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) age -= 1;
-  return age;
+  return { hits, unresolved };
 }
 
 export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult> {
   const { clinicId, patientId, prescriptionLines, diagnosisCode } = input;
 
-  const { resolved: textResolved, unresolved } =
-    await resolveDrugs(prescriptionLines);
+  const { hits: textHits, unresolved } = await resolveDrugs(prescriptionLines);
 
   // Ф2 — id-pinned drugs from structured rows resolve directly, no text
   // matching. They take precedence in the dedupe below.
@@ -244,14 +208,24 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
 
   const seenIds = new Set<string>();
   const resolved: ResolvedDrug[] = [];
+  // Every name each drug appears under: a structured row counts as the
+  // drug's own name, a text line as the brand or name it was written with.
+  const namesById = new Map<string, Map<string, string>>();
+  const noteName = (id: string, nameKey: string, label: string) => {
+    const names = namesById.get(id) ?? new Map<string, string>();
+    if (!names.has(nameKey)) names.set(nameKey, label);
+    namesById.set(id, names);
+  };
   for (const d of pinnedDrugs) {
     seenIds.add(d.id);
     resolved.push(toResolved(d, -1));
+    noteName(d.id, "generic", d.nameRu);
   }
-  for (const d of textResolved) {
-    if (seenIds.has(d.id)) continue;
-    seenIds.add(d.id);
-    resolved.push(d);
+  for (const h of textHits) {
+    noteName(h.drug.id, h.nameKey, h.label);
+    if (seenIds.has(h.drug.id)) continue;
+    seenIds.add(h.drug.id);
+    resolved.push(toResolved(h.drug, h.lineIndex));
   }
 
   if (resolved.length === 0) {
@@ -260,6 +234,7 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
       resolvedDrugs: [],
       unresolvedLines: unresolved,
       noInteractionData: [],
+      noPregnancyData: [],
     };
   }
 
@@ -273,7 +248,7 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
       }),
       prisma.patient.findFirst({
         where: { id: patientId, clinicId },
-        select: { birthDate: true, gender: true },
+        select: { birthDate: true, gender: true, fullName: true },
       }),
       prisma.drugInteraction.findMany({
         where: {
@@ -418,22 +393,57 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     .filter((d) => !curatedIds.has(d.id) && !isCoveredByRules(d))
     .map((d) => d.id);
 
-  // ── Duplicate class (ATC 5-char prefix stacking) ─────────────────────
-  // Skip pairs we already flagged via a curated pair or a class rule.
+  // ── One substance twice ──────────────────────────────────────────────
+  // Two lines under different names of one drug («Ибупрофен 400 мг» and
+  // «Нурофен 200 мг») are a double dose. The same name twice is left alone:
+  // a split dose («Карбамазепин 200 мг утром», «… 400 мг вечером») is
+  // written that way on purpose and the doctor sees both lines.
+  for (const drug of resolved) {
+    const labels = [...(namesById.get(drug.id)?.values() ?? [])];
+    if (labels.length < 2) continue;
+    warnings.push({
+      kind: "DUPLICATE_CLASS",
+      severity: "MAJOR",
+      title: `Одно вещество дважды: ${drug.nameRu}`,
+      detail: `${labels.map((l) => `«${l}»`).join(", ")}: это один и тот же препарат. Проверьте, не удваивается ли доза.`,
+      drugA: { id: drug.id, nameRu: drug.nameRu, inn: drug.inn },
+    });
+  }
+  // Two catalog rows with one substance: the register's twin of a curated
+  // row, or a combination next to its own component.
+  const substancePairs = new Set<string>();
   for (let i = 0; i < resolved.length; i += 1) {
     for (let j = i + 1; j < resolved.length; j += 1) {
       const a = resolved[i];
       const b = resolved[j];
-      if (!a.atcCode || !b.atcCode) continue;
-      const aPrefix = a.atcCode.slice(0, 5);
-      const bPrefix = b.atcCode.slice(0, 5);
-      if (aPrefix !== bPrefix) continue;
+      if (!shareSubstance(a, b)) continue;
+      substancePairs.add([a.id, b.id].sort().join("|"));
+      warnings.push({
+        kind: "DUPLICATE_CLASS",
+        severity: "MAJOR",
+        title: `Одно вещество дважды: ${a.nameRu} и ${b.nameRu}`,
+        detail: "Препараты содержат одно и то же действующее вещество. Проверьте, не удваивается ли доза.",
+        drugA: { id: a.id, nameRu: a.nameRu, inn: a.inn },
+        drugB: { id: b.id, nameRu: b.nameRu, inn: b.inn },
+      });
+    }
+  }
+
+  // ── Duplicate class ──────────────────────────────────────────────────
+  // Skip pairs already flagged via a curated pair, a class rule or a shared
+  // substance.
+  for (let i = 0; i < resolved.length; i += 1) {
+    for (let j = i + 1; j < resolved.length; j += 1) {
+      const a = resolved[i];
+      const b = resolved[j];
       const pairKey = [a.id, b.id].sort().join("|");
-      if (flaggedPairs.has(pairKey)) continue;
+      if (flaggedPairs.has(pairKey) || substancePairs.has(pairKey)) continue;
+      const shared = sharedDuplicateClass(a, b);
+      if (!shared) continue;
       warnings.push({
         kind: "DUPLICATE_CLASS",
         severity: "MODERATE",
-        title: `Один класс ATC: ${aPrefix}`,
+        title: shared.title,
         detail: "Препараты относятся к одному классу. Проверьте необходимость дублирования.",
         drugA: { id: a.id, nameRu: a.nameRu, inn: a.inn },
         drugB: { id: b.id, nameRu: b.nameRu, inn: b.inn },
@@ -441,26 +451,20 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     }
   }
 
-  // ── Pregnancy category D/X ───────────────────────────────────────────
-  const age = ageFromBirthDate(patient?.birthDate ?? null);
-  const fertileFemale =
-    patient?.gender === "FEMALE" && age !== null && age >= 12 && age <= 55;
-  if (fertileFemale) {
-    for (const drug of resolved) {
-      if (drug.pregnancyCat === "D" || drug.pregnancyCat === "X") {
-        warnings.push({
-          kind: "PREGNANCY",
-          severity: drug.pregnancyCat === "X" ? "CONTRAINDICATED" : "MAJOR",
-          title: `Категория беременности ${drug.pregnancyCat}: ${drug.nameRu}`,
-          detail:
-            drug.pregnancyCat === "X"
-              ? "Противопоказан при беременности. Уточнить статус и исключить беременность."
-              : "Применять только при крайней необходимости у женщин фертильного возраста. Исключить беременность.",
-          drugA: { id: drug.id, nameRu: drug.nameRu, inn: drug.inn },
-        });
-      }
-    }
+  // ── Pregnancy ────────────────────────────────────────────────────────
+  // One warning per drug of category D/X (the catalog's own, or its class's
+  // when the catalog is silent), for any patient who may be pregnant.
+  const pregnancy = pregnancyContext(patient);
+  for (const drug of resolved) {
+    const w = pregnancyWarning(drug, pregnancy);
+    if (w) warnings.push(w);
   }
+  const noPregnancyData =
+    pregnancy === "NONE"
+      ? []
+      : resolved
+          .filter((d) => effectivePregnancyCat(d) === "UNKNOWN")
+          .map((d) => d.id);
 
   warnings.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 
@@ -469,5 +473,6 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     resolvedDrugs: resolved,
     unresolvedLines: unresolved,
     noInteractionData,
+    noPregnancyData,
   };
 }

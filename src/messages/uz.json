@@ -6269,7 +6269,9 @@
           "SEVERE": "Og‘ir"
         },
         "noInteractionData": "O‘zaro ta’sir haqida ma’lumot yo‘q: {names}.",
-        "noInteractionDataHint": "Baza bu dorilarning mosligini tekshirmaydi, uni o‘zingiz baholang."
+        "noInteractionDataHint": "Baza bu dorilarning mosligini tekshirmaydi, uni o‘zingiz baholang.",
+        "noPregnancyData": "Homiladorlikda xavfsizligi haqida ma’lumot yo‘q: {names}.",
+        "noPregnancyDataHint": "Ular uchun homiladorlik tekshiruvi bajarilmadi, xavfni o‘zingiz baholang."
       },
       "rx": {
         "custom": "Qo‘lda kiritish",

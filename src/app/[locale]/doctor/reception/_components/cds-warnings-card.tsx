@@ -158,11 +158,22 @@ export function CdsWarningsCard({
   const noDataNames = result.resolvedDrugs
     .filter((d) => (result.noInteractionData ?? []).includes(d.id))
     .map((d) => d.nameRu);
+  // Same honesty for pregnancy (audit G4-13): a drug with no known category
+  // was not checked, so the patient who may be pregnant gets no green bar.
+  const noPregnancyNames = result.resolvedDrugs
+    .filter((d) => (result.noPregnancyData ?? []).includes(d.id))
+    .map((d) => d.nameRu);
 
-  if (result.warnings.length === 0 && noDataNames.length > 0) {
+  if (
+    result.warnings.length === 0 &&
+    (noDataNames.length > 0 || noPregnancyNames.length > 0)
+  ) {
     return (
       <div className="flex flex-col gap-1.5">
-        <NoInteractionDataNote names={noDataNames} />
+        {noDataNames.length > 0 && <NoInteractionDataNote names={noDataNames} />}
+        {noPregnancyNames.length > 0 && (
+          <NoPregnancyDataNote names={noPregnancyNames} />
+        )}
         {result.unresolvedLines.length > 0 && (
           <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
             <InfoIcon className="size-2.5" />
@@ -229,6 +240,9 @@ export function CdsWarningsCard({
         })}
       </ul>
       {noDataNames.length > 0 && <NoInteractionDataNote names={noDataNames} />}
+      {noPregnancyNames.length > 0 && (
+        <NoPregnancyDataNote names={noPregnancyNames} />
+      )}
       {result.unresolvedLines.length > 0 && (
         <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           <InfoIcon className="size-2.5" />
@@ -258,6 +272,25 @@ function NoInteractionDataNote({ names }: { names: string[] }) {
           {t("cds.noInteractionData", { names: names.join(", ") })}
         </span>{" "}
         {t("cds.noInteractionDataHint")}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Neutral line for drugs whose pregnancy category nobody knows: the check
+ * found no problem only because it had nothing to check against.
+ */
+function NoPregnancyDataNote({ names }: { names: string[] }) {
+  const t = useTranslations("doctor.reception");
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+      <BabyIcon className="mt-0.5 size-3 shrink-0" />
+      <span>
+        <span className="font-medium text-foreground">
+          {t("cds.noPregnancyData", { names: names.join(", ") })}
+        </span>{" "}
+        {t("cds.noPregnancyDataHint")}
       </span>
     </div>
   );

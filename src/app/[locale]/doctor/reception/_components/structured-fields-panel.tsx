@@ -22,7 +22,10 @@ import type {
 import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
 import { useQueryClient } from "@tanstack/react-query";
 import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
-import { toPrescriptionDrafts } from "../_hooks/prescription-rows";
+import {
+  draftFromDrug,
+  toPrescriptionDrafts,
+} from "../_hooks/prescription-rows";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -34,10 +37,7 @@ import { CatalogDrawer } from "./catalog-drawer";
 import { IcdCatalogDrawer } from "./icd-catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import { ParsedFromTextCard } from "./parsed-from-text-card";
-import {
-  draftFromDrug,
-  PrescriptionConstructor,
-} from "./prescription-constructor";
+import { PrescriptionConstructor } from "./prescription-constructor";
 
 type FieldDef = {
   key: "prescriptions";

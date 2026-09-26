@@ -66,7 +66,7 @@ export function drugInClass(drug: RuleDrug, cls: DrugClass): boolean {
 // Catalog ids come from prisma/_drug-catalog*.ts and the clinic formulary
 // (scripts/data/formulary-neurofax.ts); ATC codes from the WHO ATC index.
 
-const SSRI: DrugClass = {
+export const SSRI: DrugClass = {
   atc: ["N06AB"],
   ids: ["fluoxetine", "paroxetine", "fluvoxamine", "sertraline", "escitalopram"],
 };
@@ -82,13 +82,13 @@ const TRAMADOL: DrugClass = {
   ids: ["tramadol"],
 };
 const OPIOIDS = union({ atc: ["N02A"], ids: [] }, TRAMADOL);
-const TRIPTANS: DrugClass = {
+export const TRIPTANS: DrugClass = {
   atc: ["N02CC"],
   ids: ["sumatriptan", "zolmitriptan", "rizatriptan", "eletriptan"],
 };
 // Tofisopam (Грандаксин, N05BA23) is a 2,3-benzodiazepine without the
 // sedative / respiratory profile the warnings are about.
-const BENZODIAZEPINES: DrugClass = {
+export const BENZODIAZEPINES: DrugClass = {
   atc: ["N05BA", "N05CD", "N03AE"],
   ids: ["diazepam", "phenazepam", "clonazepam"],
   excludeIds: ["tofisopam"],
@@ -151,8 +151,8 @@ const DOAC: DrugClass = {
   atc: ["B01AF", "B01AE07"],
   ids: ["rivaroxaban", "apixaban", "dabigatran"],
 };
-const ANTICOAGULANTS = union(VKA, DOAC);
-const NSAIDS: DrugClass = {
+export const ANTICOAGULANTS = union(VKA, DOAC);
+export const NSAIDS: DrugClass = {
   atc: ["M01A"],
   // M01AX also holds the slow-acting «хондропротекторы», which are not
   // NSAIDs and carry none of their bleeding risk: glucosamine (M01AX05),

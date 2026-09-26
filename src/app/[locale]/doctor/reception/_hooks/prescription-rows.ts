@@ -10,6 +10,9 @@
  * which `usePatchVisitNote` updates the moment an edit is made) and get
  * back the array to send.
  */
+import { prescriptionLabel } from "@/lib/catalogs/brand-match";
+
+import type { DrugSearchHit } from "./use-drug-search";
 import type {
   VisitPrescriptionDraft,
   VisitPrescriptionRow,
@@ -27,6 +30,47 @@ const TIME_ORDER: VisitPrescriptionTimeOfDay[] = [
   "EVENING",
   "NIGHT",
 ];
+
+/**
+ * Build a structured row draft from a catalog drug (search hit, drawer pick
+ * or shortlist item). `term` is what the doctor typed: when it names a brand
+ * the row is labelled «Мидокалм (толперизон)» rather than the bare substance
+ * — the clinic reported typing a brand and getting back a word the patient
+ * will never see on the box.
+ *
+ * The how-to-take text starts EMPTY (audit G4-06). It used to be copied from
+ * `defaultDosing.adult`, which is reference text for the doctor («Старт
+ * 100–200 мг, титровать до 400–1200 мг/сут», «Депрессия: …; нейропатическая
+ * боль: …»): it reached the patient's handout and print under the doctor's
+ * signature, with dose ranges to climb on his own and diagnoses he does not
+ * have, while the collapsed row never showed it. What the patient reads is
+ * now only what the doctor writes.
+ */
+export function draftFromDrug(
+  d: Pick<DrugSearchHit, "id" | "nameRu" | "forms"> & {
+    brands?: { name: string }[];
+  },
+  term = "",
+): VisitPrescriptionDraft {
+  const firstForm = d.forms?.[0] ?? null;
+  const strength = firstForm?.strengths?.[0] ?? null;
+  return {
+    drugId: d.id,
+    displayName: prescriptionLabel(
+      { nameRu: d.nameRu, brands: d.brands ?? [] },
+      term,
+    ),
+    form: firstForm?.form ?? null,
+    strength,
+    dose: strength ?? "1",
+    timesOfDay: [],
+    mealRelation: "NO_MATTER",
+    durationDays: null,
+    instructionRu: null,
+    instructionUz: null,
+    remindPatient: true,
+  };
+}
 
 /** Stored rows → PATCH drafts (the server assigns ids and sortOrder). */
 export function toPrescriptionDrafts(

@@ -35,6 +35,12 @@ export type CdsResult = {
   unresolvedLines: number[];
   /** Ids of resolved drugs the interaction base knows nothing about. */
   noInteractionData: string[];
+  /**
+   * Ids of resolved drugs with no known pregnancy category, sent only when
+   * the patient may be pregnant. Optional: a server still on the previous
+   * build omits it.
+   */
+  noPregnancyData?: string[];
 };
 
 type Args = {
@@ -63,6 +69,7 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
       resolvedDrugs: [],
       unresolvedLines: [],
       noInteractionData: [],
+      noPregnancyData: [],
     };
   }
   return (await res.json()) as CdsResult;

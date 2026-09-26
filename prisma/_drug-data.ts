@@ -1343,7 +1343,10 @@ export const DRUG_ENRICHMENT: Record<string, DrugEnrichment> = {
     },
   },
   phenazepam: {
-    atcCode: "N05BX",
+    // A benzodiazepine: N05BA, as in the Russian register. It sat in N05BX
+    // («other anxiolytics») next to afobazole, so феназепам + диазепам never
+    // read as a duplicate (audit G4-12).
+    atcCode: "N05BA",
     indications: ["F41", "F40", "G47", "F10"],
     contraindications: ["Миастения", "Тяжёлая дыхательная недостаточность", "Закрытоугольная глаукома", "Беременность"],
     sideEffects: ["Седация", "Атаксия", "Зависимость", "Снижение концентрации внимания"],

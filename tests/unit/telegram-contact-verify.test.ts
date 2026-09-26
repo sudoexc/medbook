@@ -206,6 +206,7 @@ import {
   applyVerifiedContact,
   contactReplyKey,
   isOwnContact,
+  pickContactHolder,
   type ContactVerifyResult,
 } from "@/server/telegram/contact-verify";
 import { t as botT } from "@/server/telegram/messages";
@@ -497,6 +498,119 @@ describe("applyVerifiedContact", () => {
   it("an account with no card here is told to open the app first", async () => {
     const r = await share(111, 111);
     expect(r).toEqual({ kind: "no-card" });
+  });
+});
+
+// Final review of LD-10: the lookup reaches both shapes of a number, so a
+// pre-LD-10 «+334125567» card and a newer «+998334125567» card (often a
+// mother and her son) can both hold the shared number. The holder was an
+// unordered findFirst: the son's own contact could land on his mother's
+// card and raise a conflict instead of linking his.
+describe("applyVerifiedContact: two cards on the two shapes of one number", () => {
+  const SHORT = "+334125567";
+  const FULL = "+998334125567";
+  const TIMUR = { first_name: "Timur", last_name: "Karimov" };
+
+  it("the son's contact links his own clinic card, not his mother's", async () => {
+    card({
+      id: "mother",
+      fullName: "Каримова Дилноза",
+      phone: SHORT,
+      phoneNormalized: SHORT,
+      phoneVerifiedAt: new Date("2026-01-01"),
+      telegramId: "999",
+      source: "WALKIN",
+    });
+    card({
+      id: "son",
+      fullName: "Каримов Тимур",
+      phone: FULL,
+      phoneNormalized: FULL,
+      phoneVerifiedAt: new Date("2026-08-01"),
+      source: "WALKIN",
+    });
+    card({ id: "auto", telegramId: "111", fullName: "Timur Karimov" });
+
+    const r = await share(111, 111, "998334125567", TIMUR);
+
+    expect(r).toEqual({ kind: "linked", patientId: "son", retiredPatientId: "auto" });
+    expect(byId("son").telegramId).toBe("111");
+    expect(byId("mother").telegramId).toBe("999");
+    expect(state.conflicts).toEqual([]);
+  });
+
+  it("the sender's own card holding one shape wins over an older card holding the other", async () => {
+    card({
+      id: "older",
+      fullName: "Каримова Дилноза",
+      phone: SHORT,
+      phoneNormalized: SHORT,
+      phoneVerifiedAt: new Date("2026-01-01"),
+      source: "WALKIN",
+    });
+    card({ id: "me", telegramId: "111", phone: FULL, phoneNormalized: FULL });
+
+    const r = await share(111, 111, "998334125567", TIMUR);
+
+    expect(r).toEqual({ kind: "verified", patientId: "me" });
+    expect(byId("me").phoneVerifiedAt).toEqual(NOW);
+    expect(state.conflicts).toEqual([]);
+  });
+
+  it("her clinic card by name wins over the claim her Mini App card made on the other shape", async () => {
+    card({
+      id: "clinic",
+      fullName: "Каримова Дилноза",
+      phone: SHORT,
+      phoneNormalized: SHORT,
+      phoneVerifiedAt: new Date("2026-01-01"),
+      source: "WALKIN",
+    });
+    card({ id: "auto", telegramId: "111", fullName: "Dilnoza Karimova", phone: FULL, phoneNormalized: FULL });
+
+    const r = await share(111, 111, "998334125567", DILNOZA);
+
+    // The usual «I already have a card here» path, not a second verified
+    // card of the same person.
+    expect(r).toEqual({ kind: "linked", patientId: "clinic", retiredPatientId: "auto" });
+    expect(byId("auto").phoneVerifiedAt).toBeNull();
+  });
+
+  it("the holders are read oldest first", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const findMany = vi.mocked(prisma.patient.findMany);
+    findMany.mockClear();
+    card({ id: "me", telegramId: "111" });
+    await share(111, 111, "998334125567");
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: "asc" } }),
+    );
+  });
+});
+
+describe("pickContactHolder", () => {
+  const contact = { phone_number: "998334125567", first_name: "Timur", last_name: "Karimov" };
+  const v = new Date("2026-01-01");
+  const mother = { id: "m", fullName: "Каримова Дилноза", phoneVerifiedAt: v };
+  const son = { id: "s", fullName: "Каримов Тимур", phoneVerifiedAt: v };
+  const claim = { id: "c", fullName: "Кто-то", phoneVerifiedAt: null };
+
+  it("own verified card, a verified card by name, own claim, the oldest verified, a claim", () => {
+    // 1. The sender's own card already verified on the number.
+    expect(pickContactHolder([mother, son], { id: "m", fullName: "x" }, contact)).toBe(mother);
+    // 2. A verified card by the account's name beats the sender's own claim.
+    expect(pickContactHolder([mother, son, claim], { id: "c", fullName: "x" }, contact)).toBe(son);
+    // 3. Otherwise the sender's own claim.
+    expect(
+      pickContactHolder([mother, claim], { id: "c", fullName: "x" }, { phone_number: "1" }),
+    ).toBe(claim);
+    expect(pickContactHolder([mother, son], null, contact)).toBe(son);
+    // 4. Nobody by name: the oldest verified card.
+    expect(pickContactHolder([mother, son], null, { phone_number: "1" })).toBe(mother);
+    expect(pickContactHolder([claim, mother], null, { phone_number: "1" })).toBe(mother);
+    // 5. Only somebody else's claim.
+    expect(pickContactHolder([claim], null, contact)).toBe(claim);
+    expect(pickContactHolder([], null, contact)).toBeNull();
   });
 });
 

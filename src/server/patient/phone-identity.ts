@@ -10,7 +10,8 @@
  *
  * Three kinds of cards can carry a number:
  *   - the verified OWNER: `phoneNormalized` = the number, `phoneVerifiedAt`
- *     set. At most one per clinic (unique phoneNormalized).
+ *     set. At most one per clinic (unique phoneNormalized), except while
+ *     two cards hold the two shapes of one number (findVerifiedPhoneOwners).
  *   - an unverified CLAIM: same columns, `phoneVerifiedAt` NULL. Never
  *     matched on its own. At the desk or the kiosk it is shown to the
  *     person standing there: «that is me» verifies it in place (her Mini
@@ -57,25 +58,34 @@ export type PhoneCard = {
   birthDate: Date | null;
 };
 
-/** The card whose verified identity this number is, or null. */
-export async function findVerifiedPhoneOwner(
+/**
+ * Every card whose verified identity this number is, oldest first.
+ *
+ * Normally one. Two while a pre-LD-10 card holds «+334125567» and a newer
+ * card holds «+998334125567»: the old lookup of the full number never saw
+ * the short shape, so the second card was created for whoever typed it,
+ * often ANOTHER person on the family's number (a son on his mother's).
+ * scripts/fix-ld10-local-phones.ts cannot move such a card and leaves the
+ * pair to reception. Callers that know who is standing there pick by name
+ * among these; taking the oldest alone asked the son «Это <мать>?» and, on
+ * «Нет», created a third card while his own was never offered.
+ */
+export async function findVerifiedPhoneOwners(
   db: PrismaLike,
   clinicId: string,
   phone: string,
-): Promise<PhoneCard | null> {
+): Promise<PhoneCard[]> {
   const variants = phoneSearchVariants(phone);
-  if (variants.length === 0) return null;
-  return db.patient.findFirst({
+  if (variants.length === 0) return [];
+  return db.patient.findMany({
     where: {
       clinicId,
       phoneNormalized: { in: variants },
       phoneVerifiedAt: { not: null },
       deletedAt: null,
     },
-    // Two verified cards can hold one number in two shapes (a pre-LD-10
-    // «+334125567» and a newer «+998334125567», until reception merges
-    // them): always the same one, the older with the history, so visits do
-    // not alternate between them.
+    // Oldest first, so a caller with no better clue always lands on the
+    // same card and visits do not alternate between the two.
     orderBy: { createdAt: "asc" },
     select: { id: true, fullName: true, birthDate: true },
   });

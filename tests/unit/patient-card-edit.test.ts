@@ -45,7 +45,7 @@ vi.mock("@/lib/api-handler", () => {
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/server/audit/patient-view", () => ({ recordPatientView: vi.fn() }));
 vi.mock("@/server/patient/phone-identity", () => ({
-  findVerifiedPhoneOwner: vi.fn(async () => state.owner),
+  findVerifiedPhoneOwners: vi.fn(async () => (state.owner ? [state.owner] : [])),
   releaseUnverifiedPhone: vi.fn(async (_db: unknown, _c: string, phone: string) => {
     state.released.push(phone);
     return [];

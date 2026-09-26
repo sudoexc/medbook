@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { tashkentDayBounds, tashkentComponents } from "@/lib/booking-validation";
@@ -15,7 +16,7 @@ import {
 } from "@/server/kiosk/checkin-statuses";
 import {
   findPhoneClaim,
-  findVerifiedPhoneOwner,
+  findVerifiedPhoneOwners,
 } from "@/server/patient/phone-identity";
 import { z } from "zod";
 
@@ -27,6 +28,32 @@ import { z } from "zod";
 // NOTE: `rateLimit` is in-memory and resets on cold start — switch to KV/Redis
 // before real scale. See audit finding MEDIUM #14.
 const PhoneQuery = z.string().regex(/^\+?\d{9,15}$/);
+
+/**
+ * Which verified card the kiosk asks «Это вы?» about. Usually there is one.
+ * Two cards can hold the two shapes of one number (LD-10, see
+ * findVerifiedPhoneOwners), often a mother and her son; the kiosk knows no
+ * name yet, only that someone came to check in, so the card with a live
+ * booking (the earliest) is the one to show. The oldest otherwise: on «Нет»
+ * the walk-in by name finds the other card itself (decidePhoneOwner).
+ */
+async function pickKioskOwner<T extends { id: string }>(
+  clinicId: string,
+  owners: T[],
+  liveBookings: Prisma.AppointmentWhereInput[],
+): Promise<T> {
+  if (owners.length === 1) return owners[0]!;
+  const booked = await prisma.appointment.findFirst({
+    where: {
+      clinicId,
+      patientId: { in: owners.map((o) => o.id) },
+      OR: liveBookings,
+    },
+    orderBy: { date: "asc" },
+    select: { patientId: true },
+  });
+  return owners.find((o) => o.id === booked?.patientId) ?? owners[0]!;
+}
 
 export async function GET(request: Request) {
   const device = await authenticateKiosk(request);
@@ -59,9 +86,34 @@ export async function GET(request: Request) {
   // created a second card that took her number away. «Да» keeps her on her
   // own card; «Нет» registers the person by name and the claim loses the
   // number.
+  //
+  // The patient's live bookings are those in [today, today+7 days), any
+  // source (ONLINE booking, WALKIN already at the kiosk, …). The frontend
+  // splits them into "today" (check-in flow) vs "upcoming" (info-only), so
+  // the receptionist's confirmed booking is visible even for another day.
+  // Pre-arrival BOOKED/CONFIRMED rows are the point of the lookup: see
+  // `checkin-statuses.ts` for why a WAITING-only filter broke it (Q-01).
+  const { dayStart, dayEnd } = tashkentDayBounds();
+  const weekEnd = new Date(dayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const liveBookings: Prisma.AppointmentWhereInput[] = [
+    {
+      date: { gte: dayStart, lt: dayEnd },
+      queueStatus: { in: [...KIOSK_TODAY_STATUSES] },
+    },
+    {
+      date: { gte: dayEnd, lt: weekEnd },
+      queueStatus: { in: [...KIOSK_UPCOMING_STATUSES] },
+    },
+  ];
+
   const found = await runWithTenant({ kind: "SYSTEM" }, async () => {
-    const owner = await findVerifiedPhoneOwner(prisma, clinic.id, phone);
-    if (owner) return { card: owner, unverified: false };
+    const owners = await findVerifiedPhoneOwners(prisma, clinic.id, phone);
+    if (owners.length > 0) {
+      return {
+        card: await pickKioskOwner(clinic.id, owners, liveBookings),
+        unverified: false,
+      };
+    }
     const claim = await findPhoneClaim(prisma, clinic.id, phone);
     return claim ? { card: claim, unverified: true } : null;
   });
@@ -71,30 +123,12 @@ export async function GET(request: Request) {
     return Response.json({ patient: null, appointments: [], upcoming: [] });
   }
 
-  // Pull the patient's live bookings in [today, today+7 days), any source
-  // (ONLINE booking, WALKIN already at the kiosk, …). The frontend splits
-  // them into "today" (check-in flow) vs "upcoming" (info-only), so the
-  // receptionist's confirmed booking is visible even for another day.
-  // Pre-arrival BOOKED/CONFIRMED rows are the point of the lookup: see
-  // `checkin-statuses.ts` for why a WAITING-only filter broke it (Q-01).
-  const { dayStart, dayEnd } = tashkentDayBounds();
-  const weekEnd = new Date(dayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
-
   const all = await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
       where: {
         clinicId: clinic.id,
         patientId: patient.id,
-        OR: [
-          {
-            date: { gte: dayStart, lt: dayEnd },
-            queueStatus: { in: [...KIOSK_TODAY_STATUSES] },
-          },
-          {
-            date: { gte: dayEnd, lt: weekEnd },
-            queueStatus: { in: [...KIOSK_UPCOMING_STATUSES] },
-          },
-        ],
+        OR: liveBookings,
       },
       select: {
         id: true,

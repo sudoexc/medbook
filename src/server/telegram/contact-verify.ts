@@ -109,6 +109,41 @@ export function accountNameMatches(
   return names.some((n) => sameNameLikely(n, clinicCardName));
 }
 
+type ContactHolder = {
+  id: string;
+  fullName: string;
+  phoneVerifiedAt: Date | null;
+};
+
+/**
+ * Which card holding the shared number the proof is about. Usually one.
+ * Since the lookup reaches both shapes of a number (LD-10), a pre-LD-10
+ * «+334125567» card and a newer «+998334125567» card, often a mother and
+ * her son, can both hold it, and an unordered pick answered the son's own
+ * card with a conflict about his mother's. In order:
+ *   1. the sender's own card when it already holds the number verified;
+ *   2. a verified card that goes by the account's name: her clinic card
+ *      wins over the claim her Mini App card made on the other shape, so
+ *      the usual «I already have a card here» checks run instead of a
+ *      second verified card of one person;
+ *   3. the sender's own claim, which the proof now verifies;
+ *   4. the oldest verified card (someone else's: reception decides);
+ *   5. somebody else's claim, which the proof takes away.
+ */
+export function pickContactHolder<T extends ContactHolder>(
+  holders: T[],
+  sender: { id: string; fullName: string } | null,
+  contact: SharedContact,
+): T | null {
+  const own = sender ? holders.find((h) => h.id === sender.id) : undefined;
+  if (own && own.phoneVerifiedAt !== null) return own;
+  const verified = holders.filter((h) => h.phoneVerifiedAt !== null);
+  const byName = verified.find((h) =>
+    accountNameMatches(contact, sender?.fullName ?? null, h.fullName),
+  );
+  return byName ?? own ?? verified[0] ?? holders[0] ?? null;
+}
+
 type ConflictToRaise = {
   telegramCard: { id: string; fullName: string };
   clinicCard: { id: string; fullName: string };
@@ -148,12 +183,13 @@ export async function applyVerifiedContact(input: {
             phoneVerifiedAt: true,
           },
         });
-        const holder = await tx.patient.findFirst({
+        const holders = await tx.patient.findMany({
           where: {
             clinicId,
             phoneNormalized: { in: variants },
             deletedAt: null,
           },
+          orderBy: { createdAt: "asc" },
           select: {
             id: true,
             fullName: true,
@@ -162,6 +198,7 @@ export async function applyVerifiedContact(input: {
             phoneVerifiedAt: true,
           },
         });
+        const holder = pickContactHolder(holders, sender, input.contact!);
 
         // The sender's own card already carries the number: now proven.
         if (holder && sender && holder.id === sender.id) {

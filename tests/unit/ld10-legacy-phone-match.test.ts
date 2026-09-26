@@ -5,7 +5,7 @@
  * made «+334125567» of it, and every card, relative's contact phone and lead
  * written then keeps that shape until scripts/fix-ld10-local-phones.ts runs
  * (and a card whose corrected number clashes keeps it until reception
- * merges). The walk-in and the CRM «Новый пациент» look a number up through
+ * sorts the pair out). The walk-in and the CRM «Новый пациент» look a number up through
  * phoneSearchVariants(normalizePhone(typed)); without the old shape among
  * the variants the returning patient was missed and a second verified card
  * was created without the «это тот же пациент?» question. Pinned here:
@@ -257,12 +257,77 @@ describe("decidePhoneOwner: a returning patient stored before LD-10", () => {
         createdAt: new Date("2026-03-01T00:00:00Z"),
       }),
     ]);
-    const { findVerifiedPhoneOwner } = await import("@/server/patient/phone-identity");
-    const owner = await findVerifiedPhoneOwner(db as never, "c1", "+998334125567");
-    expect(owner?.id).toBe("p_old");
-    expect(db.patient.findFirst).toHaveBeenCalledWith(
+    const { findVerifiedPhoneOwners } = await import("@/server/patient/phone-identity");
+    const owners = await findVerifiedPhoneOwners(db as never, "c1", "+998334125567");
+    expect(owners.map((o) => o.id)).toEqual(["p_old", "p_new"]);
+    expect(db.patient.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { createdAt: "asc" } }),
     );
+  });
+});
+
+// Final review: the pair is often two people. The mother's card was stored
+// as «+334125567»; her son was later typed with 998 at the kiosk, and the
+// old lookup of the full number never saw her card, so he got his own
+// verified card on «+998334125567». Taking the oldest owner alone asked him
+// «Это Каримова Дилноза?» and, on «Нет», created a third card; his own card
+// (and today's booking on it) was never offered.
+describe("decidePhoneOwner: two people on the two shapes of one number", () => {
+  function family() {
+    return fakeDb([
+      row({
+        id: "p_mother",
+        fullName: "Каримова Дилноза",
+        birthDate: new Date(Date.UTC(1985, 0, 1)),
+        phone: "+334125567",
+        phoneNormalized: "+334125567",
+        createdAt: new Date("2026-03-01T00:00:00Z"),
+      }),
+      row({
+        id: "p_son",
+        patientNumber: 2,
+        fullName: "Каримов Тимур",
+        birthDate: new Date(Date.UTC(2012, 0, 1)),
+        phone: "+998334125567",
+        phoneNormalized: "+998334125567",
+        createdAt: new Date("2026-08-01T00:00:00Z"),
+      }),
+    ]);
+  }
+  async function decide(
+    typed: string,
+    probe: { fullName: string; birthYear: number | null },
+    answer?: "same" | "other",
+  ) {
+    const { decidePhoneOwner } = await import("@/server/patient/phone-owner");
+    return decidePhoneOwner(family() as never, "c1", normalizePhone(typed), probe, answer);
+  }
+
+  it("the son's name finds his own card, typed either way", async () => {
+    for (const typed of ["+998 33 412 55 67", "33 412 55 67"]) {
+      const d = await decide(typed, { fullName: "Каримов Тимур", birthYear: 2012 });
+      expect(d.kind, typed).toBe("use");
+      if (d.kind === "use") expect(d.card.id, typed).toBe("p_son");
+    }
+  });
+
+  it("the mother's name finds hers", async () => {
+    const d = await decide("+998 33 412 55 67", {
+      fullName: "Каримова Дилноза",
+      birthYear: 1985,
+    });
+    expect(d.kind).toBe("use");
+    if (d.kind === "use") expect(d.card.id).toBe("p_mother");
+  });
+
+  it("no name matches: asks about the oldest, and «same» takes exactly that card", async () => {
+    const probe = { fullName: "Каримова Мадина", birthYear: 2015 };
+    const asked = await decide("+998 33 412 55 67", probe);
+    expect(asked).toMatchObject({ kind: "ask", owner: { id: "p_mother" } });
+    const same = await decide("+998 33 412 55 67", probe, "same");
+    expect(same).toMatchObject({ kind: "use", card: { id: "p_mother" } });
+    const other = await decide("+998 33 412 55 67", probe, "other");
+    expect(other).toEqual({ kind: "create", asContact: true });
   });
 });
 
@@ -297,6 +362,37 @@ describe("scripts/fix-ld10-local-phones: relatives' contact phones too", () => {
       [{ id: "lead_1", phone: "+881234567" }],
     );
   }
+
+  it("a clash is listed with both names and birth years, not as a duplicate", async () => {
+    const { fixLd10LocalPhones } = await import("../../scripts/fix-ld10-local-phones");
+    const db = fakeDb([
+      row({
+        id: "p_mother",
+        patientNumber: 10,
+        fullName: "Каримова Дилноза",
+        birthDate: new Date(Date.UTC(1985, 4, 1)),
+        phone: "+334125567",
+        phoneNormalized: "+334125567",
+      }),
+      row({
+        id: "p_son",
+        patientNumber: 11,
+        fullName: "Каримов Тимур",
+        phone: "+998334125567",
+        phoneNormalized: "+998334125567",
+      }),
+    ]);
+    const lines: string[] = [];
+    const s = await fixLd10LocalPhones(db as never, true, (l) => lines.push(l));
+    const out = lines.join("\n");
+    expect(out).toContain("check before merging");
+    expect(out).not.toMatch(/duplicate/i);
+    expect(out).toContain("P-10 Каримова Дилноза, 1985 (p_mother) +334125567");
+    expect(out).toContain("P-11 Каримов Тимур, birth year unknown (p_son) +998334125567");
+    expect(s).toMatchObject({ sameNumber: 1, patientsWritten: 0 });
+    // Neither card is touched.
+    expect(db.patients.find((r) => r.id === "p_mother")!.phoneNormalized).toBe("+334125567");
+  });
 
   it("dry run lists the contact phone and writes nothing", async () => {
     const { fixLd10LocalPhones } = await import("../../scripts/fix-ld10-local-phones");
@@ -335,7 +431,7 @@ describe("scripts/fix-ld10-local-phones: relatives' contact phones too", () => {
       patientsWritten: 0,
       contactPhonesWritten: 0,
       leadsWritten: 0,
-      duplicates: 0,
+      sameNumber: 0,
     });
   });
 

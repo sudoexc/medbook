@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileTextIcon,
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { formatDate, type Locale } from "@/lib/format";
 
 import { settingsFetch } from "../../_hooks/use-settings-api";
 import { KioskDeviceCard } from "./kiosk-device-card";
@@ -57,13 +58,23 @@ type ClinicRow = {
   // Ф0 (TZ-smart-constructor) — printed-document settings.
   letterheadUrl: string | null;
   documentNumberPrefix: string | null;
+  // Audit PT-08 — when «Учёт оплат в CRM» was turned on; null = off.
+  paymentsTrackedSince: string | null;
 };
+
+/**
+ * The form: the clinic row plus the «Учёт оплат» switch, which the API takes
+ * as a boolean and turns into `paymentsTrackedSince` itself. Undefined until
+ * the admin touches it, so a save never sends it by accident.
+ */
+type ClinicForm = Partial<ClinicRow> & { tracksPayments?: boolean };
 
 const TIMEZONES = ["Asia/Tashkent", "Asia/Samarkand"];
 
 export function ClinicSettingsClient() {
   const t = useTranslations("settings");
   const tSec = useTranslations("clinicSecurity");
+  const locale = useLocale() as Locale;
   const qc = useQueryClient();
 
   const clinicQuery = useQuery({
@@ -71,7 +82,7 @@ export function ClinicSettingsClient() {
     queryFn: () => settingsFetch<ClinicRow>("/api/crm/clinic"),
   });
 
-  const [form, setForm] = React.useState<Partial<ClinicRow> | null>(null);
+  const [form, setForm] = React.useState<ClinicForm | null>(null);
   React.useEffect(() => {
     if (clinicQuery.data && !form) {
       setForm({ ...clinicQuery.data });
@@ -168,6 +179,10 @@ export function ClinicSettingsClient() {
     );
   }
 
+  // Off unless an admin turned it on: debt is shown only while it is on.
+  const tracksPayments =
+    form.tracksPayments ?? form.paymentsTrackedSince != null;
+
   const handleSave = () => {
     const payload: Record<string, unknown> = {};
     const keys = [
@@ -194,6 +209,9 @@ export function ClinicSettingsClient() {
     for (const k of keys) {
       const v = form[k];
       if (v !== undefined) payload[k] = v;
+    }
+    if (form.tracksPayments !== undefined) {
+      payload.tracksPayments = form.tracksPayments;
     }
     // Currency is UZS-only for now — pin both fields so any stale USD value
     // gets cleared on the next save without touching the schema.
@@ -563,6 +581,39 @@ export function ClinicSettingsClient() {
                 {t("clinic.fields.medicationRemindersEnabledHint")}
               </p>
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-border bg-card p-5 lg:col-span-2">
+          <h3 className="text-sm font-semibold">
+            {t("clinic.sections.payments")}
+          </h3>
+          <div className="flex flex-col">
+            <Label htmlFor="tracksPayments">
+              {t("clinic.fields.tracksPayments")}
+            </Label>
+            <div className="mt-2 flex items-center gap-2">
+              <Switch
+                id="tracksPayments"
+                checked={tracksPayments}
+                onCheckedChange={(v: boolean) =>
+                  setForm({ ...form, tracksPayments: v })
+                }
+              />
+              <span className="text-xs text-muted-foreground">
+                {tracksPayments ? t("common.on") : t("common.off")}
+              </span>
+            </div>
+            {tracksPayments && form.paymentsTrackedSince ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("clinic.fields.tracksPaymentsSince", {
+                  date: formatDate(form.paymentsTrackedSince, locale, "short"),
+                })}
+              </p>
+            ) : null}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("clinic.fields.tracksPaymentsHint")}
+            </p>
           </div>
         </section>
 

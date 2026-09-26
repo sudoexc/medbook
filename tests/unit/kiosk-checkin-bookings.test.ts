@@ -40,7 +40,10 @@ const state = vi.hoisted(() => ({
   findManyResult: [] as Array<Record<string, unknown>>,
   events: [] as Array<{ type: string; payload: Record<string, unknown> }>,
   allocations: 0,
+  owners: [] as Array<{ id: string; fullName: string; birthDate: Date | null }>,
 }));
+
+const MOTHER = { id: "p1", fullName: "Каримова Дилноза", birthDate: null };
 
 vi.mock("@/lib/tenant-context", () => ({
   runWithTenant: (_c: unknown, fn: () => unknown) => fn(),
@@ -63,11 +66,7 @@ vi.mock("@/server/kiosk/device", () => ({
 }));
 
 vi.mock("@/server/patient/phone-identity", () => ({
-  findVerifiedPhoneOwner: vi.fn(async () => ({
-    id: "p1",
-    fullName: "Каримова Дилноза",
-    birthDate: null,
-  })),
+  findVerifiedPhoneOwners: vi.fn(async () => state.owners),
   findPhoneClaim: vi.fn(async () => null),
 }));
 
@@ -158,6 +157,7 @@ beforeEach(() => {
   state.findManyResult = [];
   state.events = [];
   state.allocations = 0;
+  state.owners = [MOTHER];
 });
 
 describe("GET /api/kiosk/checkin — which bookings the kiosk offers", () => {
@@ -203,6 +203,58 @@ describe("GET /api/kiosk/checkin — which bookings the kiosk offers", () => {
     expect(body.appointments.map((a: { id: string }) => a.id)).toEqual(["today"]);
     expect(body.appointments[0].queueStatus).toBe("CONFIRMED");
     expect(body.upcoming.map((a: { id: string }) => a.id)).toEqual(["tomorrow"]);
+  });
+});
+
+// Final review of LD-10: a pre-LD-10 card holds «+334125567» and a newer
+// card, often another person on the family's number, holds «+998334125567».
+// The lookup now reaches both shapes, and the kiosk always showed the older
+// card: the son's booking on his own card stayed invisible and later decayed
+// to NO_SHOW.
+describe("GET /api/kiosk/checkin — two verified cards on the two shapes of one number", () => {
+  const SON = { id: "p_son", fullName: "Каримов Тимур", birthDate: null };
+
+  it("shows the card that has the live booking", async () => {
+    state.owners = [MOTHER, SON];
+    const { prisma } = await import("@/lib/prisma");
+    const findFirst = vi.mocked(prisma.appointment.findFirst);
+    findFirst.mockClear();
+    findFirst.mockResolvedValueOnce({ patientId: "p_son" } as never);
+
+    const { GET } = await import("@/app/api/kiosk/checkin/route");
+    const res = await GET(new Request("https://x/api/kiosk/checkin?phone=%2B998334125567"));
+    const body = await res.json();
+
+    expect(body.patient.id).toBe("p_son");
+    const pickArgs = findFirst.mock.calls[0]![0] as {
+      where: { patientId: { in: string[] }; OR: unknown[] };
+    };
+    expect(pickArgs.where.patientId.in).toEqual(["p1", "p_son"]);
+    // The same live-booking window the kiosk then lists.
+    expect(pickArgs.where.OR).toEqual(
+      (state.findManyArgs[0]!.where as { OR: unknown[] }).OR,
+    );
+    expect((state.findManyArgs[0]!.where as { patientId: string }).patientId).toBe("p_son");
+  });
+
+  it("with no booking on either card, the oldest", async () => {
+    state.owners = [MOTHER, SON];
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValueOnce(null);
+
+    const { GET } = await import("@/app/api/kiosk/checkin/route");
+    const res = await GET(new Request("https://x/api/kiosk/checkin?phone=%2B998334125567"));
+    expect((await res.json()).patient.id).toBe("p1");
+  });
+
+  it("one owner: no extra query", async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const findFirst = vi.mocked(prisma.appointment.findFirst);
+    findFirst.mockClear();
+    const { GET } = await import("@/app/api/kiosk/checkin/route");
+    const res = await GET(new Request("https://x/api/kiosk/checkin?phone=%2B998901234567"));
+    expect((await res.json()).patient.id).toBe("p1");
+    expect(findFirst).not.toHaveBeenCalled();
   });
 });
 

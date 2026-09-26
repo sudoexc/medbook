@@ -25,8 +25,12 @@
  *
  * A patient whose corrected number already belongs to another card of the
  * same clinic is NOT rewritten (phoneNormalized is unique per clinic): both
- * cards are listed as a likely duplicate for reception to merge by hand. A
- * relative's contact phone never clashes: his phoneNormalized stays the stub.
+ * cards are listed with their names and birth years for reception. Such a
+ * pair is often two people on one family number (the old lookup of the full
+ * number never saw the short shape, so a son typed with 998 got his own
+ * card next to his mother's): reception checks who is who before merging
+ * anything. A relative's contact phone never clashes: his phoneNormalized
+ * stays the stub.
  *
  * WHEN: run with APPLY=1 right after the deploy that ships LD-10. Lookups
  * try the old shape as well (phoneSearchVariants), so a returning patient is
@@ -57,13 +61,27 @@ function digitsOf(v: string): string {
   return v.replace(/\D/g, "");
 }
 
+type CardLabel = {
+  id: string;
+  patientNumber: number;
+  fullName: string;
+  birthDate: Date | null;
+};
+
+/** «P-10 Каримова Дилноза, 1985 (id)», the way reception tells cards apart. */
+function cardLabel(c: CardLabel): string {
+  const year = c.birthDate ? `, ${c.birthDate.getUTCFullYear()}` : ", birth year unknown";
+  return `P-${c.patientNumber} ${c.fullName}${year} (${c.id})`;
+}
+
 /** The tables this fix reads and writes; the unit test passes a fake. */
 export type Ld10Db = Pick<PrismaClient, "patient" | "lead">;
 
 export type Ld10Summary = {
   patientsWritten: number;
   clashed: number;
-  duplicates: number;
+  /** Cards left in the old shape because another card holds the new one. */
+  sameNumber: number;
   contactPhonesWritten: number;
   leadsWritten: number;
 };
@@ -80,6 +98,8 @@ export async function fixLd10LocalPhones(
         id: true,
         clinicId: true,
         patientNumber: true,
+        fullName: true,
+        birthDate: true,
         phone: true,
         phoneNormalized: true,
       },
@@ -93,30 +113,23 @@ export async function fixLd10LocalPhones(
     to: string;
     phone: string | null;
   }> = [];
-  const duplicates: Array<{
-    id: string;
-    patientNumber: number;
+  // Both cards as reception will see them: a name and a birth year tell a
+  // mother from her son; P-numbers and ids alone read as one person twice.
+  const sameNumber: Array<{
+    card: CardLabel;
     from: string;
     to: string;
-    ownerId: string;
-    ownerNumber: number;
+    owner: CardLabel;
   }> = [];
 
   for (const p of patients) {
     const to = normalizePhone(p.phoneNormalized);
     const owner = await db.patient.findFirst({
       where: { clinicId: p.clinicId, phoneNormalized: to },
-      select: { id: true, patientNumber: true },
+      select: { id: true, patientNumber: true, fullName: true, birthDate: true },
     });
     if (owner) {
-      duplicates.push({
-        id: p.id,
-        patientNumber: p.patientNumber,
-        from: p.phoneNormalized,
-        to,
-        ownerId: owner.id,
-        ownerNumber: owner.patientNumber,
-      });
+      sameNumber.push({ card: p, from: p.phoneNormalized, to, owner });
       continue;
     }
     patientPlan.push({
@@ -164,9 +177,12 @@ export async function fixLd10LocalPhones(
   for (const p of patientPlan) {
     log(`│   P-${p.patientNumber} (${p.id})  ${p.from} → ${p.to}${p.phone ? " (phone too)" : ""}`);
   }
-  log(`│ likely duplicates, left for reception to merge: ${duplicates.length}`);
-  for (const d of duplicates) {
-    log(`│   P-${d.patientNumber} (${d.id}) ${d.from} is P-${d.ownerNumber} (${d.ownerId}) ${d.to}`);
+  log(
+    `│ same number on two cards, left as is (often two people; check before merging): ${sameNumber.length}`,
+  );
+  for (const d of sameNumber) {
+    log(`│   ${cardLabel(d.card)} ${d.from}`);
+    log(`│     and ${cardLabel(d.owner)} ${d.to}`);
   }
   log(`│ relatives' contact phones to fix: ${contactPhones.length}`);
   for (const c of contactPhones) {
@@ -180,7 +196,7 @@ export async function fixLd10LocalPhones(
   const summary: Ld10Summary = {
     patientsWritten: 0,
     clashed: 0,
-    duplicates: duplicates.length,
+    sameNumber: sameNumber.length,
     contactPhonesWritten: 0,
     leadsWritten: 0,
   };
@@ -200,8 +216,7 @@ export async function fixLd10LocalPhones(
       summary.patientsWritten += res.count;
     } catch (e) {
       // Another card took the corrected number between the read and this
-      // write (unique per clinic). Skip; a second dry run lists it as a
-      // duplicate.
+      // write (unique per clinic). Skip; a second dry run lists the pair.
       if ((e as { code?: string }).code !== "P2002") throw e;
       summary.clashed += 1;
       log(`  skipped P-${p.patientNumber}: ${p.to} was just taken`);

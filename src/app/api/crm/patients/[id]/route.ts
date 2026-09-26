@@ -20,7 +20,7 @@ import { recordPatientView } from "@/server/audit/patient-view";
 import { loadPatientFinance } from "@/server/patient/finance";
 import { clientIpForAudit } from "@/lib/client-ip";
 import {
-  findVerifiedPhoneOwner,
+  findVerifiedPhoneOwners,
   isRealPhone,
   isUniqueViolation,
   releaseUnverifiedPhone,
@@ -140,13 +140,17 @@ export const PATCH = createApiHandler(
     if (phoneChanged && typeof data.phoneNormalized === "string") {
       // The number is another patient's verified identity: say whose, so
       // the front desk can open that card instead of guessing (audit PT-01).
-      // The unique index below still catches a race.
-      const owner = await findVerifiedPhoneOwner(
+      // The unique index below still catches a race. Every owner is read:
+      // this card may itself hold the old «+334125567» shape of the number
+      // another card holds in full (LD-10), and the oldest alone was then
+      // this card, so the clash surfaced as a nameless error.
+      const owners = await findVerifiedPhoneOwners(
         prisma,
         before.clinicId,
         data.phoneNormalized,
       );
-      if (owner && owner.id !== id) {
+      const owner = owners.find((o) => o.id !== id);
+      if (owner) {
         return conflict("phone_taken", {
           owner: { id: owner.id, fullName: owner.fullName },
         });

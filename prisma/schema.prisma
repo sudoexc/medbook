@@ -394,6 +394,13 @@ model Clinic {
   // prefix from the clinic slug.
   letterheadUrl              String?
   documentNumberPrefix       String?
+  // Audit PT-08, final review — when an admin turned on «Учёт оплат в CRM»
+  // (clinic settings); null = off. Patient debt is computed only while it is
+  // set and only for visits completed from this moment on. It used to be
+  // inferred from the clinic's first PAID payment, so one card payment
+  // entered in the drawer showed every later walk-in paid at the till as
+  // «Долг» on the card, in «Должники» and on the call-center rails.
+  paymentsTrackedSince       DateTime?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 

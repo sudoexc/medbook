@@ -11,10 +11,10 @@ import { describe, expect, it, vi } from "vitest";
  * patient read «Долг».
  *
  * One formula now: COMPLETED visits cost, every PAID payment counts (filed
- * under a visit or not, net of refunds), and a clinic that records no
- * payments shows no debt at all. Demo rows do not count as «the clinic
- * records payments», and visits before the first real payment are not
- * charged.
+ * under a visit or not, net of refunds), and a clinic that has not turned on
+ * «Учёт оплат в CRM» shows no debt at all. Payments never switch it on (one
+ * payment entered in the drawer used to), and visits before the moment an
+ * admin turned it on are not charged.
  */
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -315,7 +315,10 @@ function fakeDb(
   pays: Pay[],
   patients: PatientRow[] = [],
   rate: number | null = 12_600,
+  /** c1's «Учёт оплат в CRM» moment; null: off. c2 always tracks. */
+  trackedSince: Date | null = EARLY,
 ) {
+  const clinics: Record<string, Date | null> = { c1: trackedSince, c2: EARLY };
   const apptRow = (a: Appt): Row => ({
     ...a,
     payments: pays.filter((p) => p.appointmentId === a.id),
@@ -366,6 +369,11 @@ function fakeDb(
     exchangeRate: {
       findFirst: vi.fn(async () => (rate === null ? null : { rateUsd: rate })),
     },
+    clinic: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+        where.id in clinics ? { paymentsTrackedSince: clinics[where.id] } : null,
+      ),
+    },
   };
   return db;
 }
@@ -404,7 +412,7 @@ describe("loadPatientFinance", () => {
   ];
 
   it("future + cancelled visits, no completed ones: debt 0 (PT-08 acceptance)", async () => {
-    // The clinic does record payments (someone else's), so debt is computed.
+    // The clinic tracks payments (the fake's default), so debt is computed.
     const db = fakeDb(APPTS, [PAID({ patientId: "p-other", amount: 1 })]);
     const f = await loadPatientFinance("c1", "p1", asDb(db));
     expect(f.tracksPayments).toBe(true);
@@ -459,75 +467,89 @@ describe("loadPatientFinance", () => {
     expect(f.debt).toBe(50_000_000 - 27_600_000);
   });
 
-  it("no payments recorded in this clinic: no debt, even if another clinic records them", async () => {
+  it("payments not tracked in this clinic: no debt, even if another clinic tracks them", async () => {
     const appts: Appt[] = [
       APPT({ id: "a-done", patientId: "p1", status: "COMPLETED", priceFinal: 25_000_000 }),
     ];
-    const db = fakeDb(appts, [PAID({ clinicId: "c2", patientId: "p-elsewhere", amount: 1 })]);
+    const db = fakeDb(
+      appts,
+      [PAID({ clinicId: "c2", patientId: "p-elsewhere", amount: 1 })],
+      [],
+      12_600,
+      null,
+    );
     const f = await loadPatientFinance("c1", "p1", asDb(db));
     expect(f).toMatchObject({ visitsTotal: 25_000_000, tracksPayments: false, debt: null, balance: 0 });
     // The clinic is pinned on every query: the DSAR worker runs unscoped.
-    for (const call of db.payment.findFirst.mock.calls) {
-      expect(call[0].where?.clinicId).toBe("c1");
-    }
+    expect(db.clinic.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "c1" } }),
+    );
     for (const call of db.appointment.findMany.mock.calls) {
       expect(call[0].where?.clinicId).toBe("c1");
     }
   });
 });
 
-// Review of PT-08: «does this clinic record payments» counted any PAID row,
-// so the demo seed (meant for the live DB) or one test payment flipped every
-// real walk-in paid at the till into debt, and the clinic's first real
-// payment billed all the visits before it.
-describe("demo payments and the billing start", () => {
+// Final review of PT-08: «does this clinic record payments» was inferred
+// from its first real PAID payment. The clinic takes money at the till, so
+// one card payment a receptionist entered in the visit drawer turned every
+// walk-in completed after it into «Долг» on the card, in «Должники» and on
+// the call-center and Telegram rails; recording only some payments did the
+// same to everyone else. Now only the admin's switch turns it on.
+describe("the billing start is the clinic's switch, never a payment", () => {
   const DEMO_PATIENT: PatientRow = { id: "p-demo", tags: ["demo-seed"] };
   const REAL_VISIT = APPT({ id: "a-real", patientId: "p-real", status: "COMPLETED" });
   const DEMO_VISIT = APPT({ id: "a-demo", patientId: "p-demo", status: "COMPLETED" });
+  const CARD_VISIT = APPT({ id: "a-card", patientId: "p-card", status: "COMPLETED" });
 
-  const DEMO_ROWS: Array<[string, Pay]> = [
+  const PAYMENTS_WITH_SWITCH_OFF: Array<[string, Pay[]]> = [
+    [
+      "one real card payment entered in the drawer, before the walk-in",
+      [PAID({ patientId: "p-card", appointmentId: "a-card", amount: 25_000_000, createdAt: EARLY })],
+    ],
     [
       "the demo seed's payment",
-      PAID({
-        patientId: "p-demo",
-        appointmentId: "a-demo",
-        amount: 25_000_000,
-        externalRef: "demo-seed",
-        idempotencyKey: "demo-seed:a-demo",
-      }),
+      [
+        PAID({
+          patientId: "p-demo",
+          appointmentId: "a-demo",
+          amount: 25_000_000,
+          externalRef: "demo-seed",
+          idempotencyKey: "demo-seed:a-demo",
+        }),
+      ],
     ],
     [
-      "a row carrying only the seed's idempotency key",
-      PAID({ appointmentId: "a-demo", amount: 25_000_000, idempotencyKey: "demo-seed:a-demo" }),
-    ],
-    [
-      "a test payment taken on a demo patient's card",
-      PAID({ patientId: "p-demo", amount: 25_000_000 }),
+      "a deposit taken on a card's «Оплаты» tab",
+      [PAID({ patientId: "p-card", amount: 10_000_000 })],
     ],
   ];
 
-  it.each(DEMO_ROWS)("%s does not switch the clinic to recording payments", async (_, pay) => {
-    const db = fakeDb([REAL_VISIT, DEMO_VISIT], [pay], [DEMO_PATIENT]);
+  it.each(PAYMENTS_WITH_SWITCH_OFF)("%s: no debt anywhere while the switch is off", async (_, pays) => {
+    const db = fakeDb([REAL_VISIT, DEMO_VISIT, CARD_VISIT], pays, [DEMO_PATIENT], 12_600, null);
     const f = await loadPatientFinance("c1", "p-real", asDb(db));
-    expect(f).toMatchObject({ tracksPayments: false, debt: null, balance: 0 });
+    expect(f).toMatchObject({ tracksPayments: false, billingSince: null, debt: null, balance: 0 });
     expect(await patientBalanceIdWhere("c1", "debt", asDb(db))).toEqual({ in: [] });
+    expect(await patientBalanceIdWhere("c1", "credit", asDb(db))).toEqual({ in: [] });
     expect(await patientBalanceIdWhere("c1", "zero", asDb(db))).toBeNull();
+    // No payment is even read to decide it.
+    expect(db.payment.findFirst).not.toHaveBeenCalled();
   });
 
-  // First real payment: 5 Oct 14:00 Tashkent, for a visit completed at 13:40.
+  // The admin turned the switch on at 14:00 Tashkent on 5 Oct.
   const FIRST = new Date("2026-10-05T09:00:00Z");
   const H = 3600_000;
   const at = (ms: number) => new Date(FIRST.getTime() + ms);
   const CLINIC_APPTS: Appt[] = [
     // Paid at the till the day before, never entered.
     APPT({ id: "b-1", patientId: "p1", status: "COMPLETED", date: at(-25 * H), completedAt: at(-24 * H) }),
-    // Completed after the first payment, nothing entered: owes.
+    // Completed after the switch, nothing entered: owes.
     APPT({ id: "b-2", patientId: "p2", status: "COMPLETED", date: at(1 * H), completedAt: at(2 * H) }),
-    // The visit the first payment was filed under.
+    // Completed before the switch, its payment entered right after.
     APPT({ id: "b-3", patientId: "p3", status: "COMPLETED", date: at(-1 * H), completedAt: at(-H / 3) }),
     // Older row without a completion time, started after: owes.
     APPT({ id: "b-4", patientId: "p4", status: "COMPLETED", date: at(3 * H), completedAt: null }),
-    // Demo patient, seeded before the clinic started: settled by its payment.
+    // Demo patient, seeded long before: settled by its payment.
     APPT({ id: "b-5", patientId: "p-demo", status: "COMPLETED", date: at(-240 * H), completedAt: at(-240 * H) }),
   ];
   const CLINIC_PAYS: Pay[] = [
@@ -541,9 +563,9 @@ describe("demo payments and the billing start", () => {
     }),
     PAID({ patientId: "p3", appointmentId: "b-3", amount: 25_000_000, createdAt: FIRST }),
   ];
-  const clinic = () => fakeDb(CLINIC_APPTS, CLINIC_PAYS, [DEMO_PATIENT]);
+  const clinic = () => fakeDb(CLINIC_APPTS, CLINIC_PAYS, [DEMO_PATIENT], 12_600, FIRST);
 
-  it("bills only from the first real payment on; a demo row does not move the start", async () => {
+  it("bills only from the moment the switch was turned on", async () => {
     const p1 = await loadPatientFinance("c1", "p1", asDb(clinic()));
     expect(p1).toMatchObject({
       tracksPayments: true,
@@ -614,8 +636,8 @@ describe("patientBalanceIdWhere («должники» filter)", () => {
     expect((zero as { notIn: string[] }).notIn).not.toContain("p3");
   });
 
-  it("a clinic that records no payments has no debtors", async () => {
-    const db = fakeDb(APPTS, []);
+  it("a clinic that does not track payments has no debtors, whatever was entered", async () => {
+    const db = fakeDb(APPTS, PAYS, [], 12_600, null);
     expect(await patientBalanceIdWhere("c1", "debt", asDb(db))).toEqual({ in: [] });
     expect(await patientBalanceIdWhere("c1", "credit", asDb(db))).toEqual({ in: [] });
     expect(await patientBalanceIdWhere("c1", "zero", asDb(db))).toBeNull();
@@ -662,7 +684,7 @@ describe("PatientFinanceCard", () => {
     expect(html).not.toContain("patientCard.finance.billingSinceHint");
   });
 
-  it("says when visits before the first recorded payment are left out", () => {
+  it("says when visits before the switch was turned on are left out", () => {
     const since = new Date("2026-10-05T09:00:00Z");
     const html = cardHtml(
       summarizePatientFinance({

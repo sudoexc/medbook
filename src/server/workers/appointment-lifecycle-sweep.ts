@@ -1,8 +1,8 @@
 /**
  * Appointment lifecycle sweep — auto-flip stale pre-arrival rows to NO_SHOW.
  *
- * Why it exists: CONFIRMED / BOOKED / SKIPPED rows whose `endDate` has passed
- * without anyone marking the patient as arrived or no-show stay in the queue
+ * Why it exists: CONFIRMED / BOOKED rows whose `endDate` has passed without
+ * anyone marking the patient as arrived or no-show stay in the queue
  * forever, deflate the no-show metric, and clutter the table for reception.
  * Reception eventually reconciles them by eye, but that work is wasted: if
  * an hour has passed since the scheduled end and no one acted, the patient
@@ -29,6 +29,13 @@
  *     who waited 90 minutes and was skipped while in the corridor became a
  *     NO_SHOW on the next tick and got «вы не пришли» in Telegram while
  *     standing at the desk.
+ *   - Nor is any row that already joined the live queue. SKIPPED is reached
+ *     only from WAITING, so it means the patient came: a phone booking
+ *     checked in at 09:00 and skipped while she was at the ECG used to
+ *     become NO_SHOW at 10:30, dropped out of reception's lanes, and
+ *     «Вызвать» / «Пришёл» refused it. The queue column is checked as well,
+ *     so a row whose `status` drifted behind a WAITING `queueStatus` is
+ *     left alone too.
  *
  * Tenant context: cross-clinic scan in SYSTEM, then audit + outbox events
  * fanned out per-row with explicit clinicId.
@@ -61,15 +68,14 @@ export const QUEUE_NAME = "appointment-lifecycle-sweep";
 export const JOB_NAME = "scan";
 
 /**
- * Pre-arrival statuses that can decay into NO_SHOW. WAITING is excluded —
- * the patient is already inside the clinic; that's a different problem
- * (the doctor is overdue, not the patient). IN_PROGRESS / COMPLETED /
- * CANCELLED / NO_SHOW are terminal or in-flight.
+ * Pre-arrival statuses that can decay into NO_SHOW. WAITING and SKIPPED are
+ * excluded: the patient already came to the clinic (SKIPPED is reached only
+ * from WAITING), so a late call is the queue's problem, not a no-show.
+ * IN_PROGRESS / COMPLETED / CANCELLED / NO_SHOW are terminal or in-flight.
  */
 const SWEEP_STATUSES: ReadonlyArray<AppointmentStatus> = [
   "BOOKED",
   "CONFIRMED",
-  "SKIPPED",
 ];
 
 export type SweepCandidate = {
@@ -81,16 +87,21 @@ export type SweepCandidate = {
   endDate: Date;
   /** WALKIN rows are live-queue patients and never decay into NO_SHOW. */
   channel?: string;
+  /** Reception's lane column; a row already in the queue is never swept. */
+  queueStatus?: AppointmentStatus;
 };
 
 /**
  * The scan's filter, shared with the tests so the SQL and the pure selector
  * below cannot drift: scheduled bookings still waiting for their patient,
- * an hour past their end.
+ * an hour past their end. Both status columns must say so: reception's
+ * lanes read `queueStatus`, and a row it shows as waiting or skipped is a
+ * patient who came.
  */
 export function autoNoShowWhere(cutoff: Date) {
   return {
     status: { in: [...SWEEP_STATUSES] },
+    queueStatus: { in: [...SWEEP_STATUSES] },
     channel: { not: "WALKIN" as const },
     endDate: { lt: cutoff },
   };
@@ -109,6 +120,7 @@ export function selectAutoNoShows<T extends SweepCandidate>(
   const out: T[] = [];
   for (const row of rows) {
     if (!SWEEP_STATUSES.includes(row.status)) continue;
+    if (row.queueStatus && !SWEEP_STATUSES.includes(row.queueStatus)) continue;
     if (row.channel === "WALKIN") continue;
     if (row.endDate.getTime() < cutoff) {
       out.push(row);
@@ -262,6 +274,7 @@ async function tick(): Promise<void> {
         clinicId: true,
         doctorId: true,
         status: true,
+        queueStatus: true,
         date: true,
         endDate: true,
         channel: true,
@@ -287,11 +300,16 @@ async function tick(): Promise<void> {
     if (!check.ok) continue;
 
     try {
-      // Conditional on the status the scan saw, so a receptionist's click in
-      // between wins; both status columns move together (Q-14).
+      // Conditional on the status the scan saw and on the row still being
+      // outside the queue, so a receptionist's click in between wins; both
+      // status columns move together (Q-14).
       const res = await runWithTenant({ kind: "SYSTEM" }, () =>
         prisma.appointment.updateMany({
-          where: { id: row.id, status: row.status },
+          where: {
+            id: row.id,
+            status: row.status,
+            queueStatus: { in: [...SWEEP_STATUSES] },
+          },
           data: { status: "NO_SHOW", queueStatus: "NO_SHOW" },
         }),
       );

@@ -29,7 +29,7 @@ import {
 import {
   findContactSharers,
   findPhoneClaim,
-  findVerifiedPhoneOwner,
+  findVerifiedPhoneOwners,
   type PhoneCard,
 } from "@/server/patient/phone-identity";
 
@@ -86,12 +86,21 @@ export async function decidePhoneOwner(
   probe: IdentityProbe,
   answer?: PhoneOwnerAnswer,
 ): Promise<PhoneOwnerDecision> {
-  const owner = await findVerifiedPhoneOwner(db, clinicId, phone);
+  // Usually one owner. With two (the two shapes of one number, see
+  // findVerifiedPhoneOwners) the one whose name matches is the person here;
+  // only without a match does the oldest stand for the number, and it is
+  // the card a person is asked about and «same» then refers to.
+  const owners = await findVerifiedPhoneOwners(db, clinicId, phone);
+  const matched =
+    answer === "other"
+      ? undefined
+      : owners.find((o) => samePersonLikely(probe, o));
+  const owner = matched ?? owners[0] ?? null;
   if (owner && answer === "same") {
     return { kind: "use", card: owner, verifyClaim: false };
   }
-  if (owner && answer !== "other" && samePersonLikely(probe, owner)) {
-    return { kind: "use", card: owner, verifyClaim: false };
+  if (matched) {
+    return { kind: "use", card: matched, verifyClaim: false };
   }
   const sharers = await findContactSharers(db, clinicId, phone);
   const sharer = sharers.find((s) => samePersonLikely(probe, s));

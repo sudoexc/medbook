@@ -46,6 +46,10 @@ export const UpdateClinicSettingsSchema = z.object({
   // Pro / Enterprise (the API rejects the flip on Basic). The schema only
   // type-checks here; the gate is in the route handler.
   require2faForAll: z.boolean().optional(),
+  // Audit PT-08, final review: «Учёт оплат в CRM». Turning it on stamps
+  // `Clinic.paymentsTrackedSince` (debt counts visits from then on); turning
+  // it off clears it. A boolean here so the form can never backdate it.
+  tracksPayments: z.boolean().optional(),
   // Phase 17 Wave 2 — Per-clinic idle-session timeout in minutes. Bound is
   // [5, 240]; 30 is the default.
   sessionIdleTimeoutMinutes: z.number().int().min(5).max(240).optional(),

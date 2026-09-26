@@ -18,15 +18,16 @@
  * The clinic may not record payments in the CRM at all (this one does not:
  * money is taken at the till). Then «paid» is zero for everyone and the
  * formula would name every patient a debtor, so debt is unknown (null) and
- * the balance reads 0 until the clinic records its first payment.
+ * the balance reads 0 until an admin turns on «Учёт оплат в CRM». Never
+ * inferred from the payments: one payment entered in the drawer used to
+ * switch it on and turn every later walk-in paid at the till into debt.
  *
- * Once it does, only visits from that moment on are charged
- * (`billingSince`, the first real payment's creation time): the visits
- * before it were paid at the till and never entered, so charging them
- * would turn every earlier patient into a debtor the day the first payment
- * is entered. A visit with a payment filed under it is charged whenever it
- * happened, so a visit paid the day after (or the very payment that started
- * the recording) is settled rather than read as credit.
+ * Once it is on, only visits from that moment on are charged
+ * (`billingSince`, when it was turned on): the visits before it were paid
+ * at the till and never entered, so charging them would turn every earlier
+ * patient into a debtor that day. A visit with a payment filed under it is
+ * charged whenever it happened, so a visit paid the day after is settled
+ * rather than read as credit.
  *
  * Client-safe: no server imports, so the card can import the type.
  */
@@ -50,8 +51,8 @@ export type PatientFinance = {
   /** Whether the clinic records payments in the CRM at all. */
   tracksPayments: boolean;
   /**
-   * ISO time the clinic entered its first real payment in the CRM; visits
-   * completed before it are not charged. Null when payments are not recorded.
+   * ISO time «Учёт оплат в CRM» was turned on; visits completed before it
+   * are not charged. Null when payments are not tracked.
    */
   billingSince: string | null;
   /** What the patient still owes, тийин; null when payments are not recorded. */

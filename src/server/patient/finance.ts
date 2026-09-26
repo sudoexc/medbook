@@ -2,8 +2,8 @@
  * Loads a patient's money on the one formula of `src/lib/patients/finance.ts`
  * (audit PT-08): COMPLETED visits cost, every PAID payment counts (filed
  * under a visit or not, net of refunds, USD converted like LTV), and a
- * clinic that records no payments shows no debt. Once it records them, only
- * visits from its first real payment on are charged.
+ * clinic that has not turned on «Учёт оплат в CRM» shows no debt. Once an
+ * admin turns it on, only visits from that moment on are charged.
  *
  * `Patient.balance` is never written by the app, so every reader (the card,
  * «Оплаты», the call-center and Telegram rails, the stats endpoint, the
@@ -15,7 +15,6 @@
  */
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { DEMO_SEED_MARK } from "@/lib/demo-seed";
 import {
   BILLABLE_VISIT_STATUS,
   balanceBucketOf,
@@ -47,49 +46,27 @@ function paidTiyinOf(rows: PaidRow[], latestRate: unknown): number {
 }
 
 /**
- * Payments that show the clinic records money in the CRM. Not the demo
- * seed's rows (scripts/seed-prod-demo.ts is meant to run on the live
- * database, audit G2-01) nor a payment on a demo patient's card (staff
- * trying the «Оплаты» tab): one such row used to switch the whole clinic to
- * «records payments» and every real walk-in paid at the till into debt.
+ * When the clinic started recording payments in the CRM, or null when it
+ * does not: the moment an admin turned on «Учёт оплат в CRM» in the clinic
+ * settings.
  *
- * Every arm keeps an explicit NULL branch: a negated condition on a NULL
- * column is NULL in SQL, which would drop every ordinary payment.
- */
-const REAL_PAYMENT_WHERE = {
-  AND: [
-    { OR: [{ externalRef: null }, { externalRef: { not: DEMO_SEED_MARK } }] },
-    {
-      OR: [
-        { idempotencyKey: null },
-        { NOT: { idempotencyKey: { startsWith: `${DEMO_SEED_MARK}:` } } },
-      ],
-    },
-    {
-      OR: [
-        { patientId: null },
-        { NOT: { patient: { tags: { has: DEMO_SEED_MARK } } } },
-      ],
-    },
-  ],
-} satisfies Prisma.PaymentWhereInput;
-
-/**
- * When the clinic entered its first real PAID payment in the CRM, or null
- * when it records none. `createdAt`, not `paidAt`: the payment form accepts
- * a backdated `paidAt`, and the question is when the front desk started
- * entering money here.
+ * An explicit switch, never inferred from the payments themselves. It used
+ * to be the clinic's first real PAID payment, and this clinic takes money
+ * at the till: one card payment a receptionist entered in the visit drawer
+ * turned every walk-in completed after it into «Долг» on the card, in the
+ * «Должники» filter and on the call-center and Telegram rails. Recording
+ * only some payments (card ones, some patients) did the same to everyone
+ * else. Only the clinic knows when it records every payment.
  */
 export async function paymentsRecordedSince(
   clinicId: string,
   db: Db = prisma,
 ): Promise<Date | null> {
-  const first = await db.payment.findFirst({
-    where: { clinicId, status: "PAID", ...REAL_PAYMENT_WHERE },
-    orderBy: { createdAt: "asc" },
-    select: { createdAt: true },
+  const clinic = await db.clinic.findUnique({
+    where: { id: clinicId },
+    select: { paymentsTrackedSince: true },
   });
-  return first?.createdAt ?? null;
+  return clinic?.paymentsTrackedSince ?? null;
 }
 
 /**
@@ -187,7 +164,7 @@ export async function patientBalanceIdWhere(
 ): Promise<{ in: string[] } | { notIn: string[] } | null> {
   const since = await paymentsRecordedSince(clinicId, db);
   if (!since) {
-    // Nothing recorded: everyone's balance is 0, nobody is a debtor.
+    // Payments are not tracked: everyone's balance is 0, nobody is a debtor.
     return bucket === "zero" ? null : { in: [] };
   }
   const [billed, payments, rate] = await Promise.all([

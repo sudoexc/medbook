@@ -74,7 +74,8 @@ export function isValidUzPhone(input: string | null | undefined): boolean {
  * it: «+334125567» (see normalizePhone, audit LD-10). Cards, relatives'
  * contact phones and leads written before that fix keep the old shape until
  * scripts/fix-ld10-local-phones.ts rewrites them, and a card whose corrected
- * number clashes with a newer card keeps it until reception merges the two.
+ * number clashes with a newer card keeps it until reception sorts the two
+ * out (often two people on one family number, not one person twice).
  * Without the old shape here the walk-in and «Новый пациент» miss the
  * returning patient and silently create a second card. A 9x number always
  * got +998, so it has no old shape to look for.

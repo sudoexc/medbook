@@ -217,6 +217,76 @@ describe("Q-14: the auto no-show moves both status columns", () => {
     });
   });
 
+  // Final review: SKIPPED is reached only from WAITING, so a skipped phone
+  // booking is a patient who came. Once the sweep moved `queueStatus` too,
+  // she dropped out of reception's lanes at 10:30 and «Вызвать» / «Пришёл»
+  // refused her (queue-status will not leave NO_SHOW).
+  it("a phone booking that checked in and was skipped is left in the queue, no message", async () => {
+    const slot = new Date(Date.now() - 2 * HOUR);
+    state.rows = [
+      row({
+        id: "skipped-booking",
+        channel: "PHONE",
+        status: "SKIPPED",
+        queueStatus: "SKIPPED",
+        date: slot,
+        endDate: new Date(slot.getTime() + 30 * 60_000),
+        queueOrder: 3,
+        queuedAt: new Date(slot.getTime() - 10 * 60_000),
+      }),
+    ];
+
+    await tick();
+
+    expect(state.rows[0]).toMatchObject({
+      status: "SKIPPED",
+      queueStatus: "SKIPPED",
+    });
+    expect(h.fireTrigger).not.toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "skipped-booking",
+    });
+    expect(h.publishes.some((p) => p.payload.appointmentId === "skipped-booking")).toBe(false);
+  });
+
+  it("a booking whose status lags behind a WAITING queue column is left alone", async () => {
+    state.rows = [row({ id: "drifted", status: "CONFIRMED", queueStatus: "WAITING" })];
+
+    await tick();
+
+    expect(state.rows[0]).toMatchObject({
+      status: "CONFIRMED",
+      queueStatus: "WAITING",
+    });
+    expect(h.fireTrigger).not.toHaveBeenCalledWith({
+      kind: "appointment.no-show",
+      appointmentId: "drifted",
+    });
+  });
+
+  it("the scan filter and the pure selector agree: arrived rows never qualify", () => {
+    const where = autoNoShowWhere(new Date());
+    expect(where.status.in).not.toContain("SKIPPED");
+    expect(where.queueStatus.in).toEqual(["BOOKED", "CONFIRMED"]);
+    const old = new Date(Date.now() - 5 * HOUR);
+    const base = {
+      clinicId: "c1",
+      doctorId: "doc_1",
+      date: new Date(old.getTime() - 30 * 60_000),
+      endDate: old,
+      channel: "PHONE",
+    };
+    const picked = selectAutoNoShows(
+      [
+        { ...base, id: "c", status: "CONFIRMED", queueStatus: "CONFIRMED" },
+        { ...base, id: "s", status: "SKIPPED", queueStatus: "SKIPPED" },
+        { ...base, id: "d", status: "CONFIRMED", queueStatus: "WAITING" },
+      ],
+      new Date(),
+    );
+    expect(picked.map((r) => r.id)).toEqual(["c"]);
+  });
+
   it("the scan filter and the pure selector agree: walk-ins never qualify", () => {
     const cutoff = new Date();
     expect(autoNoShowWhere(cutoff)).toMatchObject({

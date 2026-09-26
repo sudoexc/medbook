@@ -86,9 +86,21 @@ export const PATCH = createApiHandler(
       }
     }
 
+    // «Учёт оплат в CRM» (audit PT-08): the form sends a switch, the column
+    // keeps when it was turned on. Re-saving the form with the switch still
+    // on keeps the original moment, or every save would forgive the debt of
+    // visits completed before it.
+    const { tracksPayments, ...fields } = body;
+    const data: Record<string, unknown> = { ...fields };
+    if (tracksPayments === true && before.paymentsTrackedSince === null) {
+      data.paymentsTrackedSince = new Date();
+    } else if (tracksPayments === false) {
+      data.paymentsTrackedSince = null;
+    }
+
     const after = await prisma.clinic.update({
       where: { id: ctx.clinicId },
-      data: body as never,
+      data: data as never,
     });
 
     const d = diff(

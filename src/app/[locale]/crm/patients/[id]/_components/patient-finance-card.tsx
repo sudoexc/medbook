@@ -21,10 +21,10 @@ export interface PatientFinanceCardProps {
 /**
  * «Финансы» on the patient overview (audit PT-08). The money figures come
  * from the server's one formula (`patient.finance`): only COMPLETED visits
- * cost, every PAID payment counts. While the clinic records no payments in
- * the CRM there is no «Долг» at all, only what the visits cost, so the
- * front desk is not told that every patient owes money. Once it does, the
- * visits before its first recorded payment are left out, and a line says so.
+ * cost, every PAID payment counts. While «Учёт оплат в CRM» is off there is
+ * no «Долг» at all, only what the visits cost, so the front desk is not told
+ * that every patient owes money. Once an admin turns it on, the visits
+ * before that moment are left out, and a line says so.
  */
 export function PatientFinanceCard({
   patient,

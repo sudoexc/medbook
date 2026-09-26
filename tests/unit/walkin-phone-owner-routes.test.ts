@@ -78,7 +78,7 @@ vi.mock("@/server/kiosk/device", () => ({
 }));
 
 vi.mock("@/server/patient/phone-identity", () => ({
-  findVerifiedPhoneOwner: vi.fn(async () => state.owner),
+  findVerifiedPhoneOwners: vi.fn(async () => (state.owner ? [state.owner] : [])),
   findPhoneClaim: vi.fn(async () => state.claim),
   findContactSharers: vi.fn(async () => state.sharers),
   verifyPhoneInPerson: vi.fn(async (_db: unknown, _c: string, id: string, via: string) => {
@@ -221,13 +221,13 @@ describe("POST /api/c/[slug]/queue/walkin (kiosk)", () => {
 
 describe("GET /api/kiosk/checkin", () => {
   it("asks about the VERIFIED owner first", async () => {
-    const { findVerifiedPhoneOwner } = await import("@/server/patient/phone-identity");
+    const { findVerifiedPhoneOwners } = await import("@/server/patient/phone-identity");
     state.owner = { id: "p_mother", fullName: "Каримова Дилноза", birthDate: null };
     state.claim = { id: "p_claim", fullName: "Someone Else", birthDate: null };
     const { GET } = await import("@/app/api/kiosk/checkin/route");
     const res = await GET(new Request("https://x/api/kiosk/checkin?phone=%2B998901234567"));
     expect(res.status).toBe(200);
-    expect(findVerifiedPhoneOwner).toHaveBeenCalledWith(expect.anything(), "c1", "+998901234567");
+    expect(findVerifiedPhoneOwners).toHaveBeenCalledWith(expect.anything(), "c1", "+998901234567");
     const body = await res.json();
     expect(body.patient).toEqual({ id: "p_mother", fullName: "Каримова Д.", unverified: false });
   });

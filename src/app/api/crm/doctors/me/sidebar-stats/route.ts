@@ -30,6 +30,7 @@ import {
   tashkentComponents,
 } from "@/lib/booking-validation";
 import { ok, err } from "@/server/http";
+import { isActiveVisitStatus } from "@/lib/appointments/active-statuses";
 
 const DEFAULT_SLOT_MINUTES = 30;
 
@@ -105,12 +106,10 @@ export const GET = createApiListHandler(
 
     // "Мой день" badge = appointments that still need the doctor's
     // attention today. COMPLETED / SKIPPED / NO_SHOW are removed so the
-    // number drops as the day progresses.
-    const todayBadge = todayAppointments.filter(
-      (a) =>
-        a.status === "BOOKED" ||
-        a.status === "WAITING" ||
-        a.status === "IN_PROGRESS",
+    // number drops as the day progresses. CONFIRMED counts (DC-05): every
+    // phone booking starts there, and leaving it out shrank the badge.
+    const todayBadge = todayAppointments.filter((a) =>
+      isActiveVisitStatus(a.status),
     ).length;
 
     const todayCount = todayAppointments.length;

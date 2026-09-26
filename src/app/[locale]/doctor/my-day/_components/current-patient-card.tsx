@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
 import {
   birthYearOf,
   isYearOnlyBirthDate,
@@ -234,11 +235,9 @@ function ActivePatient({
     | { kind: "call" }
     | { kind: "status"; toStatus: StatusTarget };
   // CONFIRMED counts as pre-visit too: CRM bookings auto-confirm, so the
-  // doctor's default starting point is CONFIRMED, not BOOKED.
-  const isPreVisit =
-    p.status === "BOOKED" ||
-    p.status === "CONFIRMED" ||
-    p.status === "WAITING";
+  // doctor's default starting point is CONFIRMED, not BOOKED. The list is
+  // the shared one (DC-05) so this card and the endpoints never disagree.
+  const isPreVisit = isUpcomingVisitStatus(p.status);
   const primary: {
     label: string;
     Icon: typeof PlayIcon;

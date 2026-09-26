@@ -6019,6 +6019,8 @@
         "emptyPrescriptions": "Tayinlovlar",
         "finalizeErrorGeneric": "Tashrifni yakunlab bo‘lmadi. Ulanishni tekshirib, qayta urinib ko‘ring.",
         "finalizeFlushError": "Hujjatdagi o‘zgarishlar saqlanmadi — tashrif yakunlanmadi. Qayta urinib ko‘ring.",
+        "finalizeUnsaved": "Tashrif yakunlanmadi: oxirgi o‘zgarish saqlanmadi. Kartani tekshirib, qayta bosing.",
+        "finalizeNotActive": "Qabul endi davom etmayapti: u bekor qilingan yoki kelmadi deb belgilangan. Xulosa imzolanmadi.",
         "docNumber": "Xulosa №",
         "phoneEdit": "Raqamni tuzatish",
         "phoneSave": "Saqlash",
@@ -6973,6 +6975,9 @@
         "revertToWaiting": "Kutish holatiga qaytarish",
         "revertToPlanned": "Rejalashtirilganlarga qaytarish",
         "revertRestore": "Qabulni tiklash",
+        "revertConfirm": "Xulosa imzodan olinadi, dori eslatmalari to‘xtatiladi. Qabul qayta ochilsinmi?",
+        "revertConfirmYes": "Ha, ochish",
+        "revertConfirmCancel": "Bekor qilish",
         "finishedTitle": "Bugun yakunlangan ({count})",
         "book": "Yozib qoʻyish"
       },
@@ -7043,7 +7048,8 @@
         },
         "signedAndCompleted": "Xulosa imzolandi, qabul yakunlandi",
         "errUnsigned": "Qabul yakunlanmadi: xulosa imzolanmagan. Uni qabul oynasida yoki «Xulosalar» bo‘limida imzolang.",
-        "errSignFailed": "Xulosani imzolab bo‘lmadi. Uni «Xulosalar» bo‘limida ochib, qayta urinib ko‘ring."
+        "errSignFailed": "Xulosani imzolab bo‘lmadi. Uni «Xulosalar» bo‘limida ochib, qayta urinib ko‘ring.",
+        "errNotActive": "Qabul endi davom etmayapti: u bekor qilingan yoki kelmadi deb belgilangan. Xulosa imzolanmadi."
       },
       "liveQueue": {
         "title": "Jonli navbat",

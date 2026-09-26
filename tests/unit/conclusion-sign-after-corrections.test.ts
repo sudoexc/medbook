@@ -24,6 +24,7 @@ import {
   enqueueVisitNotePatch,
   prepareVisitNoteSignature,
   settleVisitNotePatches,
+  signVisitNoteWhenSaved,
   visitNoteKey,
   type VisitNotePatch,
   type VisitNoteRow,
@@ -342,5 +343,180 @@ describe("settleVisitNotePatches", () => {
     expect(await settleVisitNotePatches(noteId)).toBe(true);
     await next;
     expect(server.row.visitPrescriptions?.[0].dose).toBe("3 мг");
+  });
+});
+
+/**
+ * Audit VW-04: the visit screen's «Завершить приём» (visit-action-bar)
+ * flushed only the conclusion text and then sent finalize straight past the
+ * PATCH queue. It now signs through `signVisitNoteWhenSaved`: text flush
+ * (which joins the queue), drain, read back, and only then finalize.
+ */
+describe("VW-04: «Завершить приём» on the visit screen waits for the queued saves", () => {
+  const noFlush = async () => undefined;
+
+  it("a drug picked just before the click is in the signed row: finalize goes after the PATCH, no 409", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([
+      draft("Карбамазепин"),
+    ]);
+
+    // Pick a drug, click at once (the PATCH is still on the wire).
+    const pending = act((cur) => [...cur, draft("Конкор", { dose: "5 мг" })]);
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: noFlush,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.log.map((e) => `${e.kind} ${e.status}`)).toEqual([
+      "PATCH 200",
+      "GET 200",
+      "FINALIZE 200",
+    ]);
+    expect(
+      server.signed?.visitPrescriptions?.map((r) => r.displayName),
+    ).toEqual(["Карбамазепин", "Конкор"]);
+  });
+
+  it("a diagnosis picked a second ago does not trigger «sign without a diagnosis?»", async () => {
+    const { noteId, server, readSavedRow, finalize } = setup(
+      [draft("Карбамазепин")],
+      { diagnosisCode: null, diagnosisName: null },
+    );
+
+    const pending = enqueueVisitNotePatch(qc, noteId, {
+      diagnosisCode: "G43.0",
+      diagnosisName: "Мигрень без ауры",
+    });
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: noFlush,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.signed?.diagnosisCode).toBe("G43.0");
+  });
+
+  it("the conclusion text flush joins the same queue, behind a card save already in flight", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([
+      draft("Карбамазепин"),
+    ]);
+
+    const pending = act((cur) => withRowEdited(cur, 0, { dose: "200 мг" }));
+    // What the editor's registered flush does: a PATCH through the queue.
+    const flushDraftEdits = async () => {
+      await enqueueVisitNotePatch(qc, noteId, {
+        bodyMarkdown: "Заключение, дописанное перед кликом",
+      });
+    };
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.log.map((e) => `${e.kind} ${e.status}`)).toEqual([
+      "PATCH 200",
+      "PATCH 200",
+      "GET 200",
+      "FINALIZE 200",
+    ]);
+    expect(server.signed?.bodyMarkdown).toBe(
+      "Заключение, дописанное перед кликом",
+    );
+    expect(server.signed?.visitPrescriptions?.[0].dose).toBe("200 мг");
+  });
+
+  it("a refused card save stops the signature", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([
+      draft("Карбамазепин"),
+    ]);
+
+    server.failNextPatch = true;
+    const pending = act((cur) => [...cur, draft("Конкор")]);
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: noFlush,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "unsaved" });
+    expect(server.log.some((e) => e.kind === "FINALIZE")).toBe(false);
+  });
+
+  it("empty sections are judged on the saved row and asked about, not signed", async () => {
+    const { noteId, server, readSavedRow, finalize } = setup([], {
+      diagnosisCode: null,
+      diagnosisName: null,
+    });
+
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: noFlush,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+
+    expect(step).toEqual({
+      kind: "confirm",
+      missing: ["diagnosis", "prescriptions"],
+    });
+    expect(server.log.some((e) => e.kind === "FINALIZE")).toBe(false);
+  });
+
+  it("the confirmed second pass drains the queue again before signing", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([], {
+      diagnosisCode: null,
+      diagnosisName: null,
+    });
+
+    // The doctor adds a drug while the dialog is up, then confirms.
+    const pending = act((cur) => [...cur, draft("Конкор")]);
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: noFlush,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: true,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.log.map((e) => e.kind)).toEqual(["PATCH", "FINALIZE"]);
+    expect(server.signed?.visitPrescriptions).toHaveLength(1);
+  });
+
+  it("a text flush that fails is reported and nothing is signed", async () => {
+    const { noteId, server, readSavedRow, finalize } = setup([draft("A")]);
+    const boom = new Error("flush failed");
+
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: async () => {
+        throw boom;
+      },
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+
+    expect(step).toEqual({ kind: "flushFailed", error: boom });
+    expect(server.log).toEqual([]);
   });
 });

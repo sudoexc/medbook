@@ -22,6 +22,7 @@ import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { ok, err } from "@/server/http";
 import { pickCurrentVisit } from "@/lib/doctor-current-visit";
+import { hydratePatientForRead } from "@/server/patient/cipher-fields";
 import type { AppointmentStatus } from "@/lib/appointment-transitions";
 
 type PatientTag = "active" | "first_visit" | "vip" | "new";
@@ -116,6 +117,29 @@ type TodayResponse = {
    */
   completedWalkins: CompletedWalkin[];
 };
+
+/**
+ * The patient's standing card note as the doctor should read it.
+ *
+ * `Patient.notes` is encrypted at rest (`v1:<iv>:<tag>:<ct>`, see
+ * serializePatientForWrite). Read raw, the card showed the doctor ciphertext
+ * where the «аллергия на анальгин» note belonged (audit DC-08). Legacy
+ * plaintext passes through unchanged. A note that cannot be decrypted (a
+ * retired key) is dropped rather than failing the doctor's whole screen.
+ */
+function readableCardNote(
+  patientId: string,
+  notes: string | null,
+): string | null {
+  try {
+    return hydratePatientForRead({ notes }).notes?.trim() || null;
+  } catch (e) {
+    console.warn(
+      `[doctor-today] patient ${patientId} note not decryptable: ${(e as Error).message}`,
+    );
+    return null;
+  }
+}
 
 function ageFromBirthDate(birthDate: Date | null): number | null {
   if (!birthDate) return null;
@@ -227,6 +251,7 @@ export const GET = createApiListHandler(
     let current: CurrentPatient | null = null;
     if (currentSource && currentSource.patient) {
       const p = currentSource.patient;
+      const cardNote = readableCardNote(p.id, p.notes);
       const endAt = new Date(
         currentSource.date.getTime() + currentSource.durationMin * 60_000,
       );
@@ -283,11 +308,10 @@ export const GET = createApiListHandler(
         // card annotation ("аллергия на анальгин"), useful but not a
         // complaint; it stays as the fallback so the block is not empty for
         // patients booked without a comment.
-        complaints:
-          currentSource.comments?.trim() || p.notes?.trim() || "",
+        complaints: currentSource.comments?.trim() || cardNote || "",
         complaintsSource: currentSource.comments?.trim()
           ? ("visit" as const)
-          : p.notes?.trim()
+          : cardNote
             ? ("card" as const)
             : null,
         lastVisit: lastVisit

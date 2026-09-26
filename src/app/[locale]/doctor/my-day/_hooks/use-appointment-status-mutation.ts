@@ -102,7 +102,17 @@ export function useAppointmentStatusMutation(dateKey: string | null) {
         `/api/crm/visit-notes/${parsed.visitNoteId}/finalize`,
         { method: "POST", credentials: "include" },
       );
-      if (!signed.ok) throw new Error("sign_failed");
+      if (!signed.ok) {
+        // VW-03 — reception cancelled the visit (or marked a no-show) in the
+        // meantime; finalize refuses and signs nothing. Say that, not «try
+        // again from Заключения».
+        const refused = await readErrorEnvelope(signed);
+        throw new Error(
+          refused.reason === "appointment_not_active"
+            ? "appointment_not_active"
+            : "sign_failed",
+        );
+      }
       return { signed: true };
     }
     throw new Error(parsed.reason || `HTTP ${res.status}`);
@@ -416,6 +426,9 @@ function messageFor(
   }
   if (raw === "sign_failed") {
     return t("statusToast.errSignFailed");
+  }
+  if (raw === "appointment_not_active") {
+    return t("statusToast.errNotActive");
   }
   if (args.call) return t("statusToast.errCallFailed");
   return args.revert

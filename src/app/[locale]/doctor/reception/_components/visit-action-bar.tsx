@@ -10,8 +10,10 @@
  * exactly what is missing (the diagnosis gate).
  *
  * The finalize flow MOVED here from ActivePatientCard (not copied): flush
- * the editors' debounced tails, confirm empty sections explicitly, then
- * finalize and pin the appointment so the card survives the queue refetch.
+ * the editors' debounced tails, wait for every queued card save, confirm
+ * empty sections explicitly (judged on the saved row), then finalize and pin
+ * the appointment so the card survives the queue refetch. The ordering lives
+ * in `signVisitNoteWhenSaved`, shared in spirit with the conclusion card.
  */
 import * as React from "react";
 import { useTranslations } from "next-intl";
@@ -25,10 +27,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  emptyConclusionSections,
-  type ConclusionSection,
-} from "@/lib/visit-note-sections";
+import { type ConclusionSection } from "@/lib/visit-note-sections";
 import {
   Dialog,
   DialogContent,
@@ -40,11 +39,11 @@ import {
 
 import { useReceptionContext } from "../_hooks/reception-context";
 import {
+  isAppointmentNotActive,
   isVersionConflict,
+  signVisitNoteWhenSaved,
   useFinalizeVisitNote,
   useVisitNote,
-  visitNoteKey,
-  type VisitNoteRow,
 } from "../_hooks/use-visit-note";
 
 const SECTION_LABEL: Record<ConclusionSection, string> = {
@@ -65,10 +64,14 @@ export function VisitActionBar() {
   const noteQuery = useVisitNote(visitNoteId);
   const finalize = useFinalizeVisitNote(visitNoteId);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  // What the confirm dialog lists, captured from the post-flush cache at the
-  // moment it opens. Deriving it from `note` at render time showed the
-  // pre-flush snapshot: text typed a second ago was still listed as empty.
+  // What the confirm dialog lists, judged on the row read back from the
+  // server after every queued save landed (VW-04), not on the render-time
+  // cache, which showed text typed a second ago as still empty.
   const [confirmSections, setConfirmSections] = React.useState<string[]>([]);
+  // The whole sequence (flush, drain, read back, sign) takes a round trip or
+  // three; the ref stops a double click from starting it twice.
+  const [signing, setSigning] = React.useState(false);
+  const signingRef = React.useRef(false);
 
   const note = noteQuery.data ?? null;
   const isFinalized = note?.status === "FINALIZED";
@@ -81,61 +84,80 @@ export function VisitActionBar() {
     note?.diagnosisCode || note?.diagnosisName?.trim(),
   );
 
-  // One definition of «empty» for every place that signs (reception, the
-  // conclusion card, the server's My Day gate): see visit-note-sections.
-  const emptySectionsOf = (n: VisitNoteRow | null | undefined): string[] =>
-    !n
-      ? []
-      : emptyConclusionSections({
-          ...n,
-          structuredRx: n.visitPrescriptions?.length ?? 0,
-        }).map((section) => t(SECTION_LABEL[section]));
-
-  // P0-2 — drain the editor's debounced tail before any finalize decision.
-  const flushBeforeFinalize = async (): Promise<boolean> => {
+  /**
+   * «Завершить приём». The button is deliberately not disabled while a card
+   * save is pending (same reasoning as the conclusion card): the dose field
+   * commits on blur, i.e. on the mousedown of this very click, and a button
+   * disabled before mouseup never receives it. It waits for the queue
+   * instead, with its spinner on.
+   *
+   * `emptyConfirmed` is the second pass from the empty-sections dialog.
+   */
+  const runFinalize = async (emptyConfirmed: boolean) => {
+    if (!visitNoteId || !activeAppointment || isFinalized) return;
+    if (signingRef.current) return;
+    signingRef.current = true;
+    setSigning(true);
+    const appointment = activeAppointment;
     try {
-      await flushDraftEdits();
-      return true;
-    } catch (e) {
-      toast.error(
-        isVersionConflict(e)
-          ? t("editor.saveErrorConflict")
-          : t("activePatient.finalizeFlushError"),
-      );
-      return false;
-    }
-  };
-
-  const doFinalize = async () => {
-    if (!visitNoteId || !activeAppointment || finalize.isPending || isFinalized)
-      return;
-    if (!(await flushBeforeFinalize())) return;
-    try {
-      await finalize.mutateAsync();
+      const step = await signVisitNoteWhenSaved({
+        noteId: visitNoteId,
+        flushDraftEdits,
+        readSavedRow: async () => {
+          // What the server holds, not the optimistic cache: the check must
+          // judge exactly what finalize is about to sign.
+          const fresh = await noteQuery.refetch();
+          if (fresh.isError || !fresh.data) {
+            throw fresh.error ?? new Error("visit-note refetch failed");
+          }
+          return fresh.data;
+        },
+        finalize: () => finalize.mutateAsync(),
+        emptyConfirmed,
+      });
+      if (step.kind === "flushFailed") {
+        toast.error(
+          isVersionConflict(step.error)
+            ? t("editor.saveErrorConflict")
+            : t("activePatient.finalizeFlushError"),
+        );
+        return;
+      }
+      if (step.kind === "unsaved") {
+        // A queued card save was refused. Its own toast may not have shown
+        // (TanStack runs mutate() callbacks for the latest call only) and
+        // the card still shows the optimistic value: say so, snap it back.
+        toast.error(t("activePatient.finalizeUnsaved"));
+        void noteQuery.refetch();
+        return;
+      }
+      if (step.kind === "confirm") {
+        setConfirmSections(
+          step.missing.map((section) => t(SECTION_LABEL[section])),
+        );
+        setConfirmOpen(true);
+        return;
+      }
       // P0-3 — the queue refetch flips this appointment to COMPLETED, which
       // would unmount the screen before the doctor can print. Pin it.
-      pinFinalizedAppointment(activeAppointment);
-    } catch {
+      pinFinalizedAppointment(appointment);
+    } catch (e) {
+      if (isAppointmentNotActive(e)) {
+        // VW-03 — reception cancelled the visit (or marked a no-show) while
+        // this screen was stale. Nothing was signed; show the real state.
+        toast.error(t("activePatient.finalizeNotActive"));
+        void qc.invalidateQueries({ queryKey: ["doctor", "reception"] });
+        return;
+      }
       // The diagnosis is no longer a gate, so no failure here is the
       // doctor's to fix by filling a field — keep the message generic.
       toast.error(t("activePatient.finalizeErrorGeneric"));
+    } finally {
+      signingRef.current = false;
+      setSigning(false);
     }
   };
-
-  const onFinalize = async () => {
-    if (!visitNoteId || finalize.isPending || isFinalized) return;
-    // Flush BEFORE the emptiness check so text typed seconds ago counts.
-    if (!(await flushBeforeFinalize())) return;
-    const fresh =
-      qc.getQueryData<VisitNoteRow>(visitNoteKey(visitNoteId)) ?? note;
-    const missing = emptySectionsOf(fresh);
-    if (missing.length > 0) {
-      setConfirmSections(missing);
-      setConfirmOpen(true);
-      return;
-    }
-    await doFinalize();
-  };
+  const signBusy = signing || finalize.isPending;
 
   // Nothing to sign: no visit, or already signed (the header card shows the
   // finished state and the print buttons).
@@ -163,10 +185,10 @@ export function VisitActionBar() {
         <Button
           type="button"
           size="lg"
-          disabled={finalize.isPending}
-          onClick={onFinalize}
+          disabled={signBusy}
+          onClick={() => void runFinalize(false)}
         >
-          {finalize.isPending ? (
+          {signBusy ? (
             <Loader2Icon className="size-4 animate-spin" />
           ) : (
             <SquareCheckIcon className="size-4" />
@@ -204,10 +226,10 @@ export function VisitActionBar() {
             </Button>
             <Button
               type="button"
-              disabled={finalize.isPending}
+              disabled={signBusy}
               onClick={async () => {
                 setConfirmOpen(false);
-                await doFinalize();
+                await runFinalize(true);
               }}
             >
               {t("activePatient.confirmEmptyConfirm")}

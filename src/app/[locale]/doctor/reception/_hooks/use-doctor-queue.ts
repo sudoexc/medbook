@@ -9,6 +9,9 @@ export type QueueAppointment = {
   durationMin: number;
   status:
     | "BOOKED"
+    // Phone bookings arrive CONFIRMED (DC-05); the type used to pretend
+    // the status could not occur.
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"

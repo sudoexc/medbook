@@ -96,8 +96,18 @@ vi.mock("@/server/appointments/confirm", () => ({
   confirmAppointment: vi.fn(),
 }));
 
+// The single-active check runs inside the start write's own transaction
+// (Q-13); here the doctor never has another visit on the table, so the
+// wrapper just runs the write in the mocked transaction.
 vi.mock("@/server/appointments/active-visit", () => ({
-  findOtherActiveVisit: vi.fn(async () => null),
+  AnotherVisitInProgressError: class AnotherVisitInProgressError extends Error {},
+  orActiveVisitConflict: <T,>(run: Promise<T>) => run,
+  runStartVisitTx: vi.fn(
+    async (_params: unknown, write: (tx: unknown) => Promise<unknown>) => {
+      const { prisma } = await import("@/lib/prisma");
+      return prisma.$transaction(write as never);
+    },
+  ),
 }));
 
 vi.mock("@/lib/prisma", () => {

@@ -3,9 +3,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+import { tashkentToday } from "@/lib/tashkent-time";
 
 import {
   eventTargetsDoctor,
+  MY_DAY_REFETCH_INTERVAL_MS,
   type ScheduleEntry,
   type DaySummary,
 } from "./use-doctor-today";
@@ -47,6 +49,10 @@ export function useDoctorSchedule(date: string) {
       return (await res.json()) as DoctorSchedule;
     },
     staleTime: 15_000,
+    // Same safety net as the /today aggregate (INF-06), for today's page
+    // only: a past or future day does not change under the doctor's eyes.
+    refetchInterval: date === tashkentToday() ? MY_DAY_REFETCH_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
   });
 
   useLiveQueryInvalidation({

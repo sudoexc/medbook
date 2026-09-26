@@ -58,7 +58,9 @@ async function main() {
   // rows to NO_SHOW once the scheduled end has passed by an hour. Definition
   // of "stale" is shared with the CRM table via `src/lib/appointments/overdue`.
   // 10-minute cadence: twice the UI grace, so a row is visibly "Просрочена"
-  // for at least one tick before the worker can act.
+  // for at least one tick before the worker can act. The same tick closes
+  // IN_PROGRESS visits left over from earlier days (audit Q-13), drafts
+  // untouched.
   const lifecycleSweep = startAppointmentLifecycleSweepWorker(10 * 60_000);
 
   // Phase 13 Wave 2 — Action Center recompute every 15 minutes. Iterates

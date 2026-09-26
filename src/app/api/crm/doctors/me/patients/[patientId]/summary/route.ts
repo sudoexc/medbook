@@ -9,6 +9,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound } from "@/server/http";
+import { ACTIVE_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 
 type SummaryResponse = {
   id: string;
@@ -92,7 +93,9 @@ export const GET = createApiListHandler(
         where: {
           patientId: patient.id,
           doctorId: doctor.id,
-          status: { in: ["BOOKED", "WAITING", "IN_PROGRESS"] },
+          // Shared list (DC-05): phone bookings are CONFIRMED, and the old
+          // hand-written one showed «Ближайшая запись: нет записей» for them.
+          status: { in: [...ACTIVE_VISIT_STATUSES] },
           date: { gte: new Date(Date.now() - 60 * 60_000) },
         },
         orderBy: { date: "asc" },

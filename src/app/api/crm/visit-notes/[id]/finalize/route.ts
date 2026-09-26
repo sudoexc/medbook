@@ -12,7 +12,11 @@
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, err, forbidden, notFound } from "@/server/http";
+import { ok, err, forbidden, notFound, conflict } from "@/server/http";
+import {
+  canTransitionAt,
+  type AppointmentStatus,
+} from "@/lib/appointment-transitions";
 import {
   bumpPatientLastContact,
   refreshPatientVisitStats,
@@ -33,6 +37,13 @@ import {
   revisionContentOf,
 } from "@/server/visit-notes/revisions";
 import { storageKeyFromUrl } from "@/lib/storage-ref";
+
+/**
+ * Thrown inside the transaction when the visit left IN_PROGRESS between the
+ * guard above and the write (reception cancelled it that very second). The
+ * whole signature rolls back and the route answers like the guard does.
+ */
+class AppointmentNoLongerActive extends Error {}
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -84,6 +95,29 @@ export const POST = createApiHandler(
 
     if (note.status === "FINALIZED") {
       return ok({ note, appointment: note.appointment, alreadyFinalized: true });
+    }
+
+    // VW-03 — signing closes the visit, so it obeys the same state machine
+    // as every other completion (the appointment PATCH checks
+    // `canTransitionAt` too). It used to test only `!== COMPLETED` and apply
+    // the completion fields regardless: a visit reception had cancelled
+    // while the doctor's screen was stale became COMPLETED, the patient got
+    // «Спасибо за визит» and an NPS request, and the visit counted in the
+    // stats. Only IN_PROGRESS may close; a visit already COMPLETED keeps
+    // being signable (the «sign later» path from «Заключения»). Refused
+    // before anything is written: no number, no revision, no triggers.
+    if (note.appointment.status !== "COMPLETED") {
+      const closable = canTransitionAt(
+        note.appointment.status as AppointmentStatus,
+        "COMPLETED",
+        note.appointment.date,
+      );
+      if (!closable.ok) {
+        return conflict("appointment_not_active", {
+          appointmentId: note.appointment.id,
+          from: note.appointment.status,
+        });
+      }
     }
 
     // The diagnosis is NOT a hard gate any more (clinic decision
@@ -187,25 +221,36 @@ export const POST = createApiHandler(
         // doctor closes the visit ahead of schedule so the freed tail is
         // re-bookable. Both status columns move together — see
         // `completionFields`.
-        updatedAppt = await tx.appointment.update({
-          where: { id: note.appointment.id },
-          data: completionFields({
-            now,
-            date: note.appointment.date,
-            endDate: note.appointment.endDate,
-          }),
-          select: {
-            id: true,
-            status: true,
-            completedAt: true,
-            date: true,
-            endDate: true,
-            queueStatus: true,
-            doctorId: true,
-            patientId: true,
-            cabinetId: true,
-          },
-        });
+        updatedAppt = await tx.appointment
+          .update({
+            // Conditional on the status the guard approved (VW-03): a cancel
+            // that lands between the guard and this write makes the update
+            // match nothing instead of completing a cancelled visit.
+            where: { id: note.appointment.id, status: note.appointment.status },
+            data: completionFields({
+              now,
+              date: note.appointment.date,
+              endDate: note.appointment.endDate,
+            }),
+            select: {
+              id: true,
+              status: true,
+              completedAt: true,
+              date: true,
+              endDate: true,
+              queueStatus: true,
+              doctorId: true,
+              patientId: true,
+              cabinetId: true,
+            },
+          })
+          .catch((e: unknown) => {
+            // P2025: no row matched the conditional where.
+            if ((e as { code?: string } | null)?.code === "P2025") {
+              throw new AppointmentNoLongerActive();
+            }
+            throw e;
+          });
         const { eventId } = await emitAppointmentChangeViaOutbox({
           tx,
           kind: "statusChanged",
@@ -313,7 +358,16 @@ export const POST = createApiHandler(
         patientDiagnosisId: patientDiagnosis?.id ?? null,
         revision: signedRevision.revision,
       };
+    }).catch((e: unknown) => {
+      if (e instanceof AppointmentNoLongerActive) return null;
+      throw e;
     });
+    if (!result) {
+      return conflict("appointment_not_active", {
+        appointmentId: note.appointment.id,
+        from: note.appointment.status,
+      });
+    }
 
     if (note.appointment.status !== "COMPLETED") {
       await bumpPatientLastContact(

@@ -27,7 +27,12 @@ import {
   refreshPatientVisitStats,
 } from "@/server/patient/last-contacted";
 import { cancelAppointment } from "@/server/appointments/cancel";
-import { findOtherActiveVisit } from "@/server/appointments/active-visit";
+import {
+  AnotherVisitInProgressError,
+  orActiveVisitConflict,
+  runStartVisitTx,
+  type TxClient,
+} from "@/server/appointments/active-visit";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { publishEventSafe } from "@/server/realtime/publish";
@@ -55,6 +60,18 @@ import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "";
+}
+
+/**
+ * The 409 every start path answers when the doctor already has a visit on
+ * the table. My Day reads `activeAppointmentId` to offer «close it and
+ * switch».
+ */
+function anotherVisitConflict(e: AnotherVisitInProgressError): Response {
+  return conflict("another_visit_in_progress", {
+    activeAppointmentId: e.activeAppointmentId,
+    activePatientName: e.activePatientName,
+  });
 }
 
 export const GET = createApiListHandler(
@@ -189,20 +206,16 @@ export const PATCH = createApiHandler(
       // Reverting COMPLETED → IN_PROGRESS re-opens the visit, so it must obey
       // the same single-active-visit rule as the forward "Начать приём" path —
       // otherwise a doctor can complete one patient, start the next, then
-      // revert the first and end up with two visits live at once.
-      if (expected === "IN_PROGRESS") {
-        const active = await findOtherActiveVisit({
-          clinicId: ctx.clinicId,
-          doctorId: before.doctorId,
-          excludeAppointmentId: id,
-        });
-        if (active) {
-          return conflict("another_visit_in_progress", {
-            activeAppointmentId: active.id,
-            activePatientName: active.patientName,
-          });
-        }
-      }
+      // revert the first and end up with two visits live at once. The check
+      // runs inside the revert's own transaction (Q-13, `runStartVisitTx`).
+      const clinicId = ctx.clinicId;
+      const runRevertTx = <T,>(fn: (tx: TxClient) => Promise<T>): Promise<T> =>
+        expected === "IN_PROGRESS"
+          ? runStartVisitTx(
+              { clinicId, doctorId: before.doctorId, appointmentId: id },
+              fn,
+            )
+          : prisma.$transaction(fn);
       // Build a tight data set — revert only flips status and clears the
       // matching timestamp. We deliberately do NOT touch endDate / durationMin
       // (the COMPLETED branch may have shrunk them; restoring is best-effort
@@ -222,7 +235,7 @@ export const PATCH = createApiHandler(
         revertData.cancelReason = null;
       }
 
-      const revertedRow = await prisma.$transaction(async (tx) => {
+      const revertOutcome = await orActiveVisitConflict(runRevertTx(async (tx) => {
         const row = await tx.appointment.update({
           where: { id },
           data: revertData as never,
@@ -326,7 +339,11 @@ export const PATCH = createApiHandler(
           alsoQueueUpdate: row.queueStatus !== before.queueStatus,
         });
         return row;
-      });
+      }));
+      if (revertOutcome instanceof AnotherVisitInProgressError) {
+        return anotherVisitConflict(revertOutcome);
+      }
+      const revertedRow = revertOutcome;
 
       await audit(request, {
         action: AUDIT_ACTION.APPOINTMENT_STATUS_REVERTED,
@@ -393,17 +410,7 @@ export const PATCH = createApiHandler(
       // (calledAt + IN_PROGRESS in a single click), so it must obey the same
       // single-active-visit rule as the forward path — a doctor can't pull a
       // second patient onto the table until the current one is fully closed.
-      const active = await findOtherActiveVisit({
-        clinicId: ctx.clinicId,
-        doctorId: before.doctorId,
-        excludeAppointmentId: id,
-      });
-      if (active) {
-        return conflict("another_visit_in_progress", {
-          activeAppointmentId: active.id,
-          activePatientName: active.patientName,
-        });
-      }
+      // Checked inside the write's transaction below (Q-13).
 
       // «Вызвать» === «Начать приём»: stamp calledAt (still fires the patient
       // Telegram "вас вызывают") and move straight into IN_PROGRESS so the
@@ -418,56 +425,63 @@ export const PATCH = createApiHandler(
       };
 
       const callCorrelationId = newCorrelationId();
-      const updatedRow = await prisma.$transaction(async (tx) => {
-        const row = await tx.appointment.update({
-          where: { id },
-          data: callData as never,
-          select: {
-            id: true,
-            status: true,
-            queueStatus: true,
-            queueOrder: true,
-            ticketSeq: true,
-            calledAt: true,
-            date: true,
-            doctorId: true,
-            patientId: true,
-            cabinetId: true,
-            patient: { select: { fullName: true, telegramId: true } },
-            doctor: {
-              select: {
-                nameRu: true,
-                cabinet: { select: { number: true } },
+      const callOutcome = await orActiveVisitConflict(runStartVisitTx(
+        { clinicId: ctx.clinicId, doctorId: before.doctorId, appointmentId: id },
+        async (tx) => {
+          const row = await tx.appointment.update({
+            where: { id },
+            data: callData as never,
+            select: {
+              id: true,
+              status: true,
+              queueStatus: true,
+              queueOrder: true,
+              ticketSeq: true,
+              calledAt: true,
+              date: true,
+              doctorId: true,
+              patientId: true,
+              cabinetId: true,
+              patient: { select: { fullName: true, telegramId: true } },
+              doctor: {
+                select: {
+                  nameRu: true,
+                  cabinet: { select: { number: true } },
+                },
+              },
+              clinic: {
+                select: {
+                  id: true,
+                  slug: true,
+                  tgBotToken: true,
+                  tgBotUsername: true,
+                },
               },
             },
-            clinic: {
-              select: {
-                id: true,
-                slug: true,
-                tgBotToken: true,
-                tgBotUsername: true,
-              },
-            },
-          },
-        });
-        // The call always flips status into IN_PROGRESS now, so always emit
-        // the `statusChanged` event (drives the queue board + doctor surface).
-        const actorUserId = ctx.userId || null;
-        await emitAppointmentChangeViaOutbox({
-          tx,
-          kind: "statusChanged",
-          before,
-          after: row,
-          clinicId: ctx.clinicId,
-          actorId: actorUserId,
-          actorRole: "DOCTOR",
-          actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
-          surface: "DOCTOR_CABINET",
-          correlationId: callCorrelationId,
-          alsoQueueUpdate: row.queueStatus !== before.queueStatus,
-        });
-        return row;
-      });
+          });
+          // The call always flips status into IN_PROGRESS now, so always emit
+          // the `statusChanged` event (drives the queue board + doctor surface).
+          const actorUserId = ctx.userId || null;
+          await emitAppointmentChangeViaOutbox({
+            tx,
+            kind: "statusChanged",
+            before,
+            after: row,
+            clinicId: ctx.clinicId,
+            actorId: actorUserId,
+            actorRole: "DOCTOR",
+            actorLabel: actorUserId ? `user:${actorUserId}` : "user:anonymous",
+            surface: "DOCTOR_CABINET",
+            correlationId: callCorrelationId,
+            alsoQueueUpdate: row.queueStatus !== before.queueStatus,
+          });
+          return row;
+        },
+      ));
+      if (callOutcome instanceof AnotherVisitInProgressError) {
+        return anotherVisitConflict(callOutcome);
+      }
+      const updatedRow = callOutcome;
 
       // Ephemeral board signal — drives the public waiting-room board's
       // "now calling" banner + chime. Fire-and-forget (no outbox/replay) so a
@@ -564,27 +578,16 @@ export const PATCH = createApiHandler(
         const unsigned = await findUnsignedDraft(id);
         if (unsigned) return conflict("visit_note_unsigned", unsigned);
       }
-
-      // Single active visit per doctor — block starting a second visit while
-      // one is already IN_PROGRESS (any surface / stale tab / scripted call).
-      if (
-        body.status === "IN_PROGRESS" &&
-        before.status !== "IN_PROGRESS" &&
-        ctx.kind === "TENANT"
-      ) {
-        const active = await findOtherActiveVisit({
-          clinicId: ctx.clinicId,
-          doctorId: before.doctorId,
-          excludeAppointmentId: id,
-        });
-        if (active) {
-          return conflict("another_visit_in_progress", {
-            activeAppointmentId: active.id,
-            activePatientName: active.patientName,
-          });
-        }
-      }
     }
+
+    // Single active visit per doctor — block starting a second visit while
+    // one is already IN_PROGRESS (any surface / stale tab / scripted call).
+    // The check runs inside the update's own Serializable transaction below
+    // (Q-13): a read before a separate write let two starts both pass.
+    const startsVisit =
+      body.status === "IN_PROGRESS" &&
+      before.status !== "IN_PROGRESS" &&
+      ctx.kind === "TENANT";
 
     // If any time/doctor change, re-run conflict detection. Cabinet is no
     // longer client-controlled (Phase 11 binding) — when doctorId changes we
@@ -761,7 +764,14 @@ export const PATCH = createApiHandler(
       caseChanged;
 
     const patchCorrelationId = newCorrelationId();
-    const txOut = await prisma.$transaction(async (tx) => {
+    const runPatchTx = <T,>(fn: (tx: TxClient) => Promise<T>): Promise<T> =>
+      startsVisit && ctx.kind === "TENANT"
+        ? runStartVisitTx(
+            { clinicId: ctx.clinicId, doctorId: before.doctorId, appointmentId: id },
+            fn,
+          )
+        : prisma.$transaction(fn);
+    const patchOutcome = await orActiveVisitConflict(runPatchTx(async (tx) => {
       if (services !== undefined) {
         await tx.appointmentService.deleteMany({
           where: { appointmentId: id },
@@ -862,7 +872,11 @@ export const PATCH = createApiHandler(
         });
       }
       return { after: fresh, recomputed };
-    });
+    }));
+    if (patchOutcome instanceof AnotherVisitInProgressError) {
+      return anotherVisitConflict(patchOutcome);
+    }
+    const txOut = patchOutcome;
     const after = txOut.after;
 
     const d = diff(

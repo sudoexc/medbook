@@ -114,6 +114,18 @@ export function canRevert(status: AppointmentStatus): boolean {
   return revertTargetFor(status) !== null;
 }
 
+/**
+ * True when walking this status back does more than move a row. Reverting a
+ * COMPLETED visit un-signs its conclusion (FINALIZED → DRAFT) and turns off
+ * the medication reminders bridged from it (PATCH `?revert=true`). The undo
+ * arrow sat right next to «Уже был», so one stray click did all of that
+ * silently; the doctor surface now asks first (audit DC-07). The other
+ * reverts only move the patient between queue states.
+ */
+export function revertUnsignsConclusion(status: AppointmentStatus): boolean {
+  return status === "COMPLETED";
+}
+
 /** Per-row action availability — the UI consults this to enable buttons. */
 export interface AppointmentActions {
   /** Mark "Пришёл" → queueStatus=WAITING. Valid only when not yet arrived. */

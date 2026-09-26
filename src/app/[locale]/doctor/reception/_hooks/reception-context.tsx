@@ -261,6 +261,11 @@ export function ReceptionProvider({
         "appointment.cancelled",
         "queue.updated",
       ],
+      // INF-06 — a dropped stream (deploy, Wi-Fi) loses the events above;
+      // refetch the queue once it is back instead of trusting the cache.
+      onResync: React.useCallback(() => {
+        qc.invalidateQueries({ queryKey: doctorQueueKey });
+      }, [qc]),
     },
   );
 

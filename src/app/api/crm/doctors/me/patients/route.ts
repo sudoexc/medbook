@@ -11,8 +11,9 @@
  *   - lastVisit:  the most recent COMPLETED appointment + its VisitNote
  *                 diagnosis (if any) — drives the "Последний визит /
  *                 диагноз" columns in the table.
- *   - nextBooked: the next BOOKED/WAITING appointment in the future —
- *                 drives the "Следующий приём" column.
+ *   - nextBooked: the next upcoming (booked / confirmed / waiting)
+ *                 appointment in the future — drives the "Следующий
+ *                 приём" column.
  *   - hasActiveAppointment: true while an IN_PROGRESS appointment exists
  *                 (lights up the "На приёме" status badge in real time).
  *
@@ -28,6 +29,10 @@ import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
 import { patientSearchWhere } from "@/server/patient/search-where";
 import { tashkentDayBounds } from "@/lib/booking-validation";
+import {
+  TODAY_VISIT_STATUSES,
+  UPCOMING_VISIT_STATUSES,
+} from "@/lib/appointments/active-statuses";
 import {
   classifyDoctorSegment,
   DAY_MS,
@@ -103,9 +108,11 @@ export const GET = createApiListHandler(
     // bucket, then layer `id: { in: ids }` on the main query.
     //
     // «Сегодняшние» — patients this doctor has an appointment with *today*
-    // (Tashkent wall clock), any live status (booked / waiting / on-visit /
-    // done — cancels & no-shows excluded). Not a donut segment, just a
-    // day filter, so it's handled before the segment classifier below.
+    // (Tashkent wall clock), any live status (booked / confirmed / waiting /
+    // on-visit / done — cancels & no-shows excluded). Not a donut segment,
+    // just a day filter, so it's handled before the segment classifier
+    // below. The status list is shared (audit DC-05): phone bookings are
+    // CONFIRMED and the hand-written list here left them out.
     //
     // `tab === "all"` skips both branches and falls through to the plain
     // doctor-caseload filter above.
@@ -115,7 +122,7 @@ export const GET = createApiListHandler(
         where: {
           doctorId,
           date: { gte: dayStart, lt: dayEnd },
-          status: { in: ["BOOKED", "WAITING", "IN_PROGRESS", "COMPLETED"] },
+          status: { in: [...TODAY_VISIT_STATUSES] },
         },
         select: { patientId: true },
         distinct: ["patientId"],
@@ -187,7 +194,7 @@ export const GET = createApiListHandler(
 
     // ── Enrichment ────────────────────────────────────────────────────────
     // 1. Last COMPLETED appointment per patient + its VisitNote diagnosis.
-    // 2. Next BOOKED/WAITING appointment in the future per patient.
+    // 2. Next upcoming appointment in the future per patient.
     // 3. Whether the patient currently has an IN_PROGRESS appointment.
     //
     // Each query returns at most O(patientIds.length) rows because we sort
@@ -221,7 +228,9 @@ export const GET = createApiListHandler(
           where: {
             doctorId,
             patientId: { in: patientIds },
-            status: { in: ["BOOKED", "WAITING"] },
+            // CONFIRMED included (DC-05): without it a patient booked by
+            // phone read «Следующий приём: —» and «Давно не был».
+            status: { in: [...UPCOMING_VISIT_STATUSES] },
             date: { gte: now },
           },
           select: { patientId: true, date: true },

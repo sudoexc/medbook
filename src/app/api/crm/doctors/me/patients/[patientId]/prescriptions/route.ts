@@ -14,6 +14,7 @@ import { z } from "zod";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, notFound, parseQuery } from "@/server/http";
+import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
 
 const QuerySchema = z.object({
   cursor: z.string().min(1).optional(),
@@ -117,7 +118,9 @@ export const GET = createApiListHandler(
       drugName: p.drugName,
       dosage: p.dosage,
       schedule: p.schedule,
-      notes: p.notes,
+      // Encrypted at rest like Patient.notes (DC-08): the handout bridge
+      // writes it through serializePrescriptionForWrite.
+      notes: hydratePrescriptionForRead({ notes: p.notes }).notes ?? null,
       status: p.status,
       remindersEnabled: p.remindersEnabled,
       caseId: p.caseId,

@@ -18,7 +18,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { revertTargetFor } from "@/lib/appointment-transitions";
+import {
+  revertTargetFor,
+  revertUnsignsConclusion,
+} from "@/lib/appointment-transitions";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useDoctorSchedule } from "../_hooks/use-doctor-schedule";
@@ -585,6 +588,17 @@ function RowAction({
                 ? t("schedule.revertToWaiting")
                 : t("schedule.revertReopen")
             }
+            // Reopening a completed visit un-signs its conclusion and pauses
+            // the patient's reminders (DC-07): never on a single click.
+            confirm={
+              revertUnsignsConclusion(entry.appointmentStatus)
+                ? {
+                    text: t("schedule.revertConfirm"),
+                    yes: t("schedule.revertConfirmYes"),
+                    cancel: t("schedule.revertConfirmCancel"),
+                  }
+                : undefined
+            }
           />
         ) : null}
       </div>
@@ -660,16 +674,59 @@ function RevertButton({
   isPending,
   onClick,
   tooltip,
+  confirm,
 }: {
   isPending: boolean;
   onClick: () => void;
   tooltip: string;
+  /**
+   * When set, the first click only asks: the row shows `text` with explicit
+   * yes / cancel buttons, and the revert fires on yes. Inline rather than a
+   * modal, the same pattern as the kiosk card's «Отключить».
+   */
+  confirm?: { text: string; yes: string; cancel: string };
 }) {
+  const [asking, setAsking] = React.useState(false);
+
+  if (asking && confirm) {
+    return (
+      <div
+        role="group"
+        aria-label={tooltip}
+        className="flex max-w-[17rem] flex-col gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-2.5 py-2"
+      >
+        <span className="text-xs leading-snug text-foreground">
+          {confirm.text}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => {
+              setAsking(false);
+              onClick();
+            }}
+            className="motion-press inline-flex h-7 items-center rounded-lg bg-destructive/10 px-2.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-60"
+          >
+            {confirm.yes}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAsking(false)}
+            className="motion-press inline-flex h-7 items-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            {confirm.cancel}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
       disabled={isPending}
-      onClick={onClick}
+      onClick={() => (confirm ? setAsking(true) : onClick())}
       aria-label={tooltip}
       title={tooltip}
       className="motion-press flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"

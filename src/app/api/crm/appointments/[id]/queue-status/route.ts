@@ -21,7 +21,11 @@ import {
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
 import { confirmAppointment } from "@/server/appointments/confirm";
-import { findOtherActiveVisit } from "@/server/appointments/active-visit";
+import {
+  AnotherVisitInProgressError,
+  orActiveVisitConflict,
+  runStartVisitTx,
+} from "@/server/appointments/active-visit";
 import { runQueueTx } from "@/server/appointments/queue-order";
 import { applyWaitingIntake } from "@/server/appointments/intake";
 import { initials } from "@/lib/format";
@@ -122,27 +126,16 @@ export const PATCH = createApiHandler(
 
     // Single active visit per doctor — same invariant as the status PATCH
     // route. Block moving a second appointment into IN_PROGRESS while this
-    // doctor already has one on the table.
-    if (
+    // doctor already has one on the table. Checked inside the write's own
+    // Serializable transaction (Q-13): reception's «Вызвать из очереди» and
+    // the doctor's «Вызвать» racing each other used to both pass a
+    // read-then-write check and leave two patients IN_PROGRESS.
+    const startClinicId =
       body.queueStatus === "IN_PROGRESS" &&
-      before.queueStatus !== "IN_PROGRESS"
-    ) {
-      const tenant = getTenant();
-      const clinicId = tenant?.kind === "TENANT" ? tenant.clinicId : null;
-      if (clinicId) {
-        const active = await findOtherActiveVisit({
-          clinicId,
-          doctorId: before.doctorId,
-          excludeAppointmentId: id,
-        });
-        if (active) {
-          return conflict("another_visit_in_progress", {
-            activeAppointmentId: active.id,
-            activePatientName: active.patientName,
-          });
-        }
-      }
-    }
+      before.queueStatus !== "IN_PROGRESS" &&
+      tenantPreCheck?.kind === "TENANT"
+        ? tenantPreCheck.clinicId
+        : null;
 
     const data: Record<string, unknown> = {
       queueStatus: body.queueStatus,
@@ -223,6 +216,20 @@ export const PATCH = createApiHandler(
         Object.assign(data, await applyWaitingIntake(tx, before, now));
         return tx.appointment.update({ where: { id }, data, include: callInclude });
       });
+    } else if (startClinicId) {
+      const started = await orActiveVisitConflict(
+        runStartVisitTx(
+          { clinicId: startClinicId, doctorId: before.doctorId, appointmentId: id },
+          (tx) => tx.appointment.update({ where: { id }, data, include: callInclude }),
+        ),
+      );
+      if (started instanceof AnotherVisitInProgressError) {
+        return conflict("another_visit_in_progress", {
+          activeAppointmentId: started.activeAppointmentId,
+          activePatientName: started.activePatientName,
+        });
+      }
+      after = started;
     } else {
       after = await prisma.appointment.update({ where: { id }, data, include: callInclude });
     }

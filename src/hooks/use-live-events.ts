@@ -15,6 +15,13 @@
  *   - Accepts both envelope generations (v1 `AppEvent` + v2 outbox
  *     `EventEnvelope`) — see `parseLiveEvent` below.
  *   - Optional `filter` to narrow the subscription to a set of event types.
+ *   - Catch-up after a gap (audit INF-06): the last v2 `eventId` is kept on
+ *     the shared source and sent back as `?since=` on every reconnect, so
+ *     the server replays what the outbox recorded meanwhile. Replay cannot
+ *     be the whole answer: v1 events (`publishEventSafe`) never reach the
+ *     outbox. So every reconnect after a drop, and every server resync
+ *     signal (`cursor-too-old` and friends, see SSE_RESYNC_EVENTS), also
+ *     calls the subscribers' `onResync`, which refetch what they show.
  */
 
 import * as React from "react";
@@ -27,6 +34,28 @@ import {
 import { EventEnvelopeSchema } from "@/server/realtime/envelope";
 
 type Listener = (event: AppEvent) => void;
+type ResyncListener = () => void;
+
+/**
+ * Named SSE events the server sends when a replay cannot be trusted to be
+ * complete. They are named events on purpose: an SSE comment (`: …`) is
+ * invisible to JS, which is how the old `: cursor-too-old` signal was dead.
+ *   - cursor-too-old:   the `since` row is gone (outbox TTL) or foreign.
+ *   - replay-truncated: more rows were missed than one replay carries.
+ *   - replay-failed:    the replay query itself failed.
+ */
+export const SSE_RESYNC_EVENTS = [
+  "cursor-too-old",
+  "replay-truncated",
+  "replay-failed",
+] as const;
+
+/** The stream URL, resuming after `lastEventId` when we have one. */
+export function liveEventsUrl(lastEventId: string | null): string {
+  return lastEventId
+    ? `/api/events?since=${encodeURIComponent(lastEventId)}`
+    : "/api/events";
+}
 
 /**
  * Normalize a raw SSE frame into an `AppEvent`, accepting BOTH envelope
@@ -66,6 +95,8 @@ export function parseLiveEvent(parsed: unknown): AppEvent | null {
 type SharedSource = {
   es: EventSource | null;
   listeners: Set<Listener>;
+  /** Called after a reconnect or a server resync signal (INF-06). */
+  resyncListeners: Set<ResyncListener>;
   refCount: number;
   retryAttempt: number;
   retryTimer: ReturnType<typeof setTimeout> | null;
@@ -77,6 +108,15 @@ type SharedSource = {
    * short grace window and only close if nobody re-subscribed.
    */
   idleCloseTimer: ReturnType<typeof setTimeout> | null;
+  /**
+   * Id of the newest v2 envelope delivered. A fresh `new EventSource(url)`
+   * does not send `Last-Event-ID` (only the browser's own retry of the SAME
+   * object does), and we always reconnect with a fresh object, so the id is
+   * carried here and sent as `?since=`.
+   */
+  lastEventId: string | null;
+  /** True once a connection has opened: every later open is a reconnect. */
+  hasOpened: boolean;
 };
 
 /**
@@ -99,6 +139,29 @@ function isTestEnv(): boolean {
   );
 }
 
+type EventSourceCtor = new (
+  url: string,
+  init?: EventSourceInit,
+) => EventSource;
+
+// Test seam: unit tests run in node with no EventSource, and the hook
+// refuses to connect under vitest. A test installs a fake constructor here
+// to drive the real reconnect / replay / resync logic.
+let transportForTests: EventSourceCtor | null = null;
+
+/** Test-only: route connections through a fake EventSource (null restores). */
+export function __setLiveEventsTransportForTests(
+  ctor: EventSourceCtor | null,
+): void {
+  transportForTests = ctor;
+}
+
+function resolveTransport(): EventSourceCtor | null {
+  if (transportForTests) return transportForTests;
+  if (!isBrowser() || isTestEnv()) return null;
+  return EventSource;
+}
+
 // Module-scoped singleton; one per tab.
 let shared: SharedSource | null = null;
 
@@ -107,13 +170,26 @@ function getShared(): SharedSource {
     shared = {
       es: null,
       listeners: new Set(),
+      resyncListeners: new Set(),
       refCount: 0,
       retryAttempt: 0,
       retryTimer: null,
       idleCloseTimer: null,
+      lastEventId: null,
+      hasOpened: false,
     };
   }
   return shared;
+}
+
+function notifyResync(s: SharedSource): void {
+  for (const listener of Array.from(s.resyncListeners)) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn("[useLiveEvents] resync listener threw", err);
+    }
+  }
 }
 
 function backoffDelayMs(attempt: number): number {
@@ -122,16 +198,34 @@ function backoffDelayMs(attempt: number): number {
 }
 
 function openConnection(): void {
-  if (!isBrowser() || isTestEnv()) return;
+  const Transport = resolveTransport();
+  if (!Transport) return;
   const s = getShared();
   if (s.es) return;
 
-  const es = new EventSource("/api/events", { withCredentials: true });
+  const es = new Transport(liveEventsUrl(s.lastEventId), {
+    withCredentials: true,
+  });
   s.es = es;
 
   es.onopen = () => {
     s.retryAttempt = 0;
+    // INF-06 — anything published while we were away is unknown to us: a
+    // deploy, a Wi-Fi blink or a sleeping laptop used to leave the doctor's
+    // screen on «ожидается» until some unrelated event happened to land.
+    // The first open is not a gap (the queries have just fetched).
+    const reconnected = s.hasOpened;
+    s.hasOpened = true;
+    if (reconnected) notifyResync(s);
   };
+
+  for (const name of SSE_RESYNC_EVENTS) {
+    es.addEventListener(name, () => {
+      // A cursor the server no longer knows must not be offered again.
+      if (name === "cursor-too-old") s.lastEventId = null;
+      notifyResync(s);
+    });
+  }
 
   es.onmessage = (ev) => {
     if (!ev.data) return;
@@ -140,6 +234,14 @@ function openConnection(): void {
       parsed = JSON.parse(ev.data as string);
     } catch {
       return;
+    }
+    // The `id:` line rides v2 envelopes only; `lastEventId` keeps the last
+    // one seen across v1 frames, which is exactly the resume point.
+    const eventId =
+      (ev as MessageEvent).lastEventId ||
+      (parsed as { eventId?: unknown } | null)?.eventId;
+    if (typeof eventId === "string" && eventId.length > 0) {
+      s.lastEventId = eventId;
     }
     // Both envelope dialects (v1 AppEvent + v2 outbox EventEnvelope) arrive
     // on this stream — normalize instead of parsing v1-only, or every
@@ -226,18 +328,51 @@ export type UseLiveEventsOptions = {
   filter?: ReadonlyArray<EventType>;
   /** Disable the subscription entirely without unmounting. */
   enabled?: boolean;
+  /**
+   * Called when events may have been missed: after the shared stream
+   * reconnects, or when the server says its replay is incomplete. Refetch
+   * whatever this subscriber keeps live (INF-06).
+   */
+  onResync?: () => void;
 };
+
+/**
+ * Attach a listener to the shared stream (opening it if needed). The hook
+ * below is a thin effect around this; kept separate so the connection
+ * logic can be unit-tested without React. Returns the unsubscribe.
+ */
+export function subscribeLiveEvents(
+  listener: Listener,
+  onResync?: ResyncListener,
+): () => void {
+  const s = getShared();
+  cancelIdleClose();
+  s.listeners.add(listener);
+  if (onResync) s.resyncListeners.add(onResync);
+  s.refCount += 1;
+  openConnection();
+  return () => {
+    s.listeners.delete(listener);
+    if (onResync) s.resyncListeners.delete(onResync);
+    s.refCount = Math.max(0, s.refCount - 1);
+    if (s.refCount === 0) scheduleIdleClose();
+  };
+}
 
 export function useLiveEvents(
   onEvent: Listener,
   options: UseLiveEventsOptions = {},
 ): void {
-  const { filter, enabled = true } = options;
+  const { filter, enabled = true, onResync } = options;
   // Stable ref so consumers can pass inline callbacks without re-subscribing.
   const cbRef = React.useRef(onEvent);
   React.useEffect(() => {
     cbRef.current = onEvent;
   }, [onEvent]);
+  const resyncRef = React.useRef(onResync);
+  React.useEffect(() => {
+    resyncRef.current = onResync;
+  }, [onResync]);
 
   const filterKey = React.useMemo(() => {
     if (!filter) return "*";
@@ -268,17 +403,7 @@ export function useLiveEvents(
       cbRef.current(event);
     };
 
-    const s = getShared();
-    cancelIdleClose();
-    s.listeners.add(listener);
-    s.refCount += 1;
-    openConnection();
-
-    return () => {
-      s.listeners.delete(listener);
-      s.refCount = Math.max(0, s.refCount - 1);
-      if (s.refCount === 0) scheduleIdleClose();
-    };
+    return subscribeLiveEvents(listener, () => resyncRef.current?.());
   }, [enabled, filterKey]);
 }
 
@@ -286,7 +411,10 @@ export function useLiveEvents(
 export function __resetLiveEventsForTests(): void {
   const s = getShared();
   s.listeners.clear();
+  s.resyncListeners.clear();
   s.refCount = 0;
   closeConnectionIfIdle();
   s.retryAttempt = 0;
+  s.lastEventId = null;
+  s.hasOpened = false;
 }

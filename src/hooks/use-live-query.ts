@@ -160,7 +160,26 @@ export function useLiveQueryInvalidation(
     [flush, queryKey, queryKeys, shouldInvalidate],
   );
 
-  useLiveEvents(handler, { filter: events, enabled });
+  // INF-06 — after a reconnect (or a server "replay incomplete" signal) the
+  // events that would have invalidated these keys may be lost for good:
+  // v1 events never reach the outbox replay. Refetch every key we can name
+  // without an event. `shouldInvalidate` is skipped on purpose: there is no
+  // event to judge, and a spare refetch is cheap next to a stale screen.
+  // Key factories need an event to produce a key, so they cannot take part.
+  const onResync = React.useCallback(() => {
+    const keys: QueryKey[] = [];
+    if (queryKey && typeof queryKey !== "function") keys.push(queryKey);
+    if (queryKeys && typeof queryKeys !== "function") {
+      keys.push(...flattenKeys(queryKeys));
+    }
+    if (keys.length === 0) return;
+    for (const k of keys) pendingRef.current.set(stringifyKey(k), k);
+    if (timerRef.current === null) {
+      timerRef.current = setTimeout(flush, SSE_INVALIDATION_DEBOUNCE_MS);
+    }
+  }, [flush, queryKey, queryKeys]);
+
+  useLiveEvents(handler, { filter: events, enabled, onResync });
 }
 
 /**

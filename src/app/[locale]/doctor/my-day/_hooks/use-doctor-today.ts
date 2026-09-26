@@ -122,6 +122,17 @@ export type CompletedWalkin = {
 export const doctorTodayKey = ["doctor", "me", "today"] as const;
 
 /**
+ * Safety-net poll for «Мой день» (audit INF-06). SSE drives the screen, but
+ * a stream that dropped silently, or events lost across a deploy, used to
+ * leave the doctor looking at «ожидается» for a patient reception had
+ * already checked in. Once a minute is cheap for one doctor's aggregate.
+ * TanStack pauses the interval while the tab is hidden
+ * (`refetchIntervalInBackground` stays false), so a backgrounded tab costs
+ * nothing.
+ */
+export const MY_DAY_REFETCH_INTERVAL_MS = 60_000;
+
+/**
  * True when an SSE event concerns the given doctor — or can't be ruled out.
  *
  * `appointment.*` / `queue.updated` payloads carry the Doctor row id (see
@@ -172,6 +183,8 @@ export function useDoctorToday<TSelected = DoctorToday>(
     },
     select,
     staleTime: 15_000,
+    refetchInterval: MY_DAY_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 
   useLiveQueryInvalidation({

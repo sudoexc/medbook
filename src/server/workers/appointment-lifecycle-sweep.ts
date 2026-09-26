@@ -21,6 +21,9 @@
  *
  * Tenant context: cross-clinic scan in SYSTEM, then audit + outbox events
  * fanned out per-row with explicit clinicId.
+ *
+ * Second job (audit Q-13): IN_PROGRESS visits left over from an earlier
+ * clinic day are closed as COMPLETED, see `closeStaleInProgressVisits`.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -36,6 +39,12 @@ import {
   minutesPastStart,
 } from "@/lib/appointments/overdue";
 import { fireTrigger } from "@/server/notifications/triggers";
+import { tashkentDayBounds } from "@/lib/booking-validation";
+import {
+  staleInProgressWhere,
+  staleVisitCompletedAt,
+} from "@/server/appointments/stale-visit";
+import { refreshPatientVisitStats } from "@/server/patient/last-contacted";
 
 export const QUEUE_NAME = "appointment-lifecycle-sweep";
 export const JOB_NAME = "scan";
@@ -81,8 +90,139 @@ export function selectAutoNoShows<T extends SweepCandidate>(
   return out;
 }
 
+/** The slice of a stale IN_PROGRESS row the close-out needs. */
+export type StaleVisitRow = {
+  id: string;
+  clinicId: string;
+  doctorId: string;
+  patientId: string;
+  date: Date;
+  startedAt: Date | null;
+  durationMin: number;
+};
+
+/**
+ * Q-13 — close IN_PROGRESS visits left over from an earlier clinic day.
+ *
+ * The doctor forgot to press «Завершить приём» yesterday (with 177 drafts
+ * against 8 signatures this is daily, not rare). The row then stayed
+ * IN_PROGRESS forever: the next morning «Вызвать» answered «уже идёт
+ * приём: <вчерашний пациент>» while «Мой день» and the board, which read
+ * today only, showed nobody on the table. The start guard now ignores such
+ * rows (`findOtherActiveVisit` is bounded to today); this pass closes them.
+ *
+ * What it deliberately does NOT do: touch the conclusion. The visit becomes
+ * COMPLETED exactly as when reception closes it; its draft stays a DRAFT —
+ * never signed on the doctor's behalf, never deleted — and waits in
+ * «Заключения → Черновики», where the doctor signs a completed visit's
+ * draft (the audit row names it). No «Спасибо за визит» either: it would
+ * reach the patient after midnight, a day late.
+ *
+ * Idempotent: the write is conditional on the row still being IN_PROGRESS,
+ * so a doctor closing the visit at that very moment wins.
+ */
+export async function closeStaleInProgressVisits(
+  now: Date = new Date(),
+): Promise<{ scanned: number; closed: number }> {
+  const { dayStart } = tashkentDayBounds(now);
+  const stale = (await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findMany({
+      where: staleInProgressWhere(dayStart),
+      select: {
+        id: true,
+        clinicId: true,
+        doctorId: true,
+        patientId: true,
+        date: true,
+        startedAt: true,
+        durationMin: true,
+      },
+      take: 200,
+      orderBy: { date: "asc" },
+    }),
+  )) as StaleVisitRow[];
+
+  let closed = 0;
+  for (const row of stale) {
+    try {
+      const completedAt = staleVisitCompletedAt(row);
+      const res = await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.appointment.updateMany({
+          where: { id: row.id, status: "IN_PROGRESS" },
+          // Both status columns move together, like every other completion.
+          data: { status: "COMPLETED", queueStatus: "COMPLETED", completedAt },
+        }),
+      );
+      if (res.count === 0) continue;
+
+      const draft = await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.visitNote.findFirst({
+          where: { appointmentId: row.id, status: "DRAFT" },
+          select: { id: true },
+        }),
+      );
+
+      await prisma.auditLog.create({
+        data: {
+          clinicId: row.clinicId,
+          action: "appointment.auto-close-stale-visit",
+          entityType: "Appointment",
+          entityId: row.id,
+          meta: {
+            from: "IN_PROGRESS",
+            to: "COMPLETED",
+            startedAt: row.startedAt?.toISOString() ?? null,
+            completedAt: completedAt.toISOString(),
+            // The conclusion the doctor still owes, if any.
+            unsignedVisitNoteId: draft?.id ?? null,
+          },
+          actorId: null,
+          actorRole: null,
+          actorLabel: "system",
+        },
+      });
+
+      publishEventSafe(row.clinicId, {
+        type: "appointment.statusChanged",
+        payload: {
+          appointmentId: row.id,
+          doctorId: row.doctorId,
+          status: "COMPLETED",
+          previousStatus: "IN_PROGRESS",
+        },
+      });
+
+      // Same denormalised visit stats every completion path refreshes.
+      await runWithTenant({ kind: "SYSTEM" }, () =>
+        refreshPatientVisitStats(row.patientId),
+      );
+      closed += 1;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `[lifecycle-sweep] stale visit close failed appt=${row.id} clinic=${row.clinicId} err=${msg}`,
+      );
+    }
+  }
+  return { scanned: stale.length, closed };
+}
+
 async function tick(): Promise<void> {
   const now = new Date();
+
+  // Q-13 — independent of the no-show pass below, which returns early when
+  // it has nothing to do; a failure here must not skip that pass either.
+  try {
+    const staleVisits = await closeStaleInProgressVisits(now);
+    if (staleVisits.closed > 0) {
+      console.info(
+        `[lifecycle-sweep] closed stale visits ${staleVisits.closed}/${staleVisits.scanned}`,
+      );
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[lifecycle-sweep] stale visit scan failed err=${msg}`);
+  }
   const cutoff = new Date(now.getTime() - AUTO_NO_SHOW_GRACE_MIN * 60_000);
 
   // SYSTEM context: scan across every tenant. The branch-scope extension

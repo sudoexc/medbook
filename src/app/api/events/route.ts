@@ -23,9 +23,12 @@
  *     cursor (capped at `REPLAY_LIMIT`). After the replay we switch to the
  *     live in-process bus. The two pathways are deduplicated by `eventId`
  *     so a row that lands during the replay isn't re-emitted live.
- *   - If the cursor row is missing (TTL expired, manual delete) we emit
- *     a sentinel comment `: cursor-too-old\n\n` so the client can fully
- *     invalidate its cache and refetch.
+ *   - If the cursor row is missing (TTL expired, manual delete) we emit a
+ *     NAMED event `event: cursor-too-old` so the client can fully
+ *     invalidate its cache and refetch. It used to be only an SSE comment,
+ *     which the spec hides from JS: the recovery never ran (audit INF-06).
+ *     A replay that hit REPLAY_LIMIT sends `replay-truncated`, a failed one
+ *     `replay-failed`; the client (`useLiveEvents`) resyncs on all three.
  *
  * Auth:
  *   - `auth()` is required; a missing session returns 401. For SUPER_ADMIN
@@ -71,6 +74,16 @@ import {
 } from "@/server/realtime/redis-adapter";
 
 const REPLAY_LIMIT = 200;
+
+/**
+ * A named SSE event with an empty body. Must stay in step with
+ * `SSE_RESYNC_EVENTS` in `src/hooks/use-live-events.ts`.
+ */
+function resyncFrame(
+  name: "cursor-too-old" | "replay-truncated" | "replay-failed",
+): string {
+  return `event: ${name}\ndata: {}\n\n`;
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -183,8 +196,11 @@ export async function GET(request: NextRequest): Promise<Response> {
             });
             if (!cursor || cursor.clinicId !== clinicId) {
               // Cursor either expired or belongs to a different tenant.
-              // Client should discard caches and refetch.
+              // Client should discard caches and refetch. The comment stays
+              // for humans reading the stream with curl; JS only sees the
+              // named event.
               safeEnqueue(`: cursor-too-old\n\n`);
+              safeEnqueue(resyncFrame("cursor-too-old"));
               return;
             }
             const missed = await prisma.eventOutbox.findMany({
@@ -200,11 +216,17 @@ export async function GET(request: NextRequest): Promise<Response> {
             for (const row of missed) {
               emit(row.envelope);
             }
+            // A full page means there may be more we did not send: the
+            // client must refetch rather than assume it caught up.
+            if (missed.length >= REPLAY_LIMIT) {
+              safeEnqueue(resyncFrame("replay-truncated"));
+            }
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.warn("[sse] replay failed", msg);
           safeEnqueue(`: replay-failed\n\n`);
+          safeEnqueue(resyncFrame("replay-failed"));
         }
       }
 

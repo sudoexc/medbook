@@ -429,6 +429,56 @@ export async function prepareVisitNoteSignature(
   return { kind: "ready", row, missing };
 }
 
+export type VisitFinalizeStep =
+  | { kind: "flushFailed"; error: unknown }
+  | { kind: "unsaved" }
+  | { kind: "confirm"; missing: ConclusionSection[] }
+  | { kind: "finalized" };
+
+/**
+ * «Завершить приём» on the visit screen, in the order the conclusion card
+ * already signs in (audit VW-04). The visit screen used to flush only the
+ * conclusion text and then POST finalize straight past the PATCH queue: a
+ * drug or diagnosis picked a second before the click was still in flight,
+ * so the signature (and the patient's handout) went out without it, the
+ * late PATCH then failed as a stale version, and the empty-sections check
+ * read an optimistic cache and asked «sign without a diagnosis?» about a
+ * diagnosis already on screen.
+ *
+ *   1. push the editors' debounced text tails (they join the same queue);
+ *   2. wait for every queued PATCH and stop if one did not land;
+ *   3. judge empty sections on the row read back from the server;
+ *   4. only then finalize.
+ *
+ * `emptyConfirmed` is the second pass from the empty-sections dialog: the
+ * doctor accepted them, so only the queue is drained again. Not a hook, so
+ * the unit test drives it against a slow fake server.
+ */
+export async function signVisitNoteWhenSaved(args: {
+  noteId: string;
+  flushDraftEdits: () => Promise<void>;
+  readSavedRow: () => Promise<VisitNoteRow>;
+  finalize: () => Promise<unknown>;
+  emptyConfirmed: boolean;
+}): Promise<VisitFinalizeStep> {
+  try {
+    await args.flushDraftEdits();
+  } catch (error) {
+    return { kind: "flushFailed", error };
+  }
+  if (args.emptyConfirmed) {
+    if (!(await settleVisitNotePatches(args.noteId))) return { kind: "unsaved" };
+  } else {
+    const ready = await prepareVisitNoteSignature(args.noteId, args.readSavedRow);
+    if (ready.kind === "unsaved") return ready;
+    if (ready.missing.length > 0) {
+      return { kind: "confirm", missing: ready.missing };
+    }
+  }
+  await args.finalize();
+  return { kind: "finalized" };
+}
+
 export function usePatchVisitNote(noteId: string | null) {
   const qc = useQueryClient();
   return useMutation<VisitNoteRow, Error, VisitNotePatch>({
@@ -450,6 +500,31 @@ export function usePatchVisitNote(noteId: string | null) {
   });
 }
 
+/**
+ * Typed finalize failure, same idea as VisitNotePatchError: the caller can
+ * tell «the visit is no longer running» (409 `appointment_not_active`,
+ * audit VW-03: reception cancelled it or marked a no-show) from a network
+ * failure, and say so instead of a generic «try again».
+ */
+export class VisitNoteFinalizeError extends Error {
+  readonly status: number;
+  readonly reason: string | null;
+  constructor(status: number, reason: string | null) {
+    super(`visit-note finalize ${status}`);
+    this.name = "VisitNoteFinalizeError";
+    this.status = status;
+    this.reason = reason;
+  }
+}
+
+export function isAppointmentNotActive(e: unknown): boolean {
+  return (
+    e instanceof VisitNoteFinalizeError &&
+    e.status === 409 &&
+    e.reason === "appointment_not_active"
+  );
+}
+
 export function useFinalizeVisitNote(noteId: string | null) {
   const qc = useQueryClient();
   return useMutation<
@@ -463,7 +538,15 @@ export function useFinalizeVisitNote(noteId: string | null) {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) throw new Error(`visit-note finalize ${res.status}`);
+      if (!res.ok) {
+        let reason: string | null = null;
+        try {
+          reason = ((await res.json()) as { reason?: string }).reason ?? null;
+        } catch {
+          reason = null;
+        }
+        throw new VisitNoteFinalizeError(res.status, reason);
+      }
       return (await res.json()) as {
         note: VisitNoteRow;
         appointment: { id: string; status: string };

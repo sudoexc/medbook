@@ -207,3 +207,138 @@ describe("ICD search: words that change the meaning (CT-08)", () => {
     );
   });
 });
+
+/**
+ * Review of the CT-07/CT-08 rescoring. A partial match scored every word the
+ * same, so two region words («шейного», «отдела») outscored the one diagnosis
+ * word and «дорсопатия шейного отдела» opened with C15.0, oesophageal cancer.
+ * The tumour sites of chapter II are named by anatomy alone, so the same
+ * thing happened to «ишемия спинного мозга» (C72.0) and friends.
+ */
+describe("ICD search: region words qualify a diagnosis, they never make one", () => {
+  const top = (q: string, n = 5) => searchIcd10(q, n).map((r) => r.code);
+  const noTumour = (q: string) => {
+    for (const code of top(q)) {
+      expect(code, `${q} → ${code}`).not.toMatch(/^(C\d|D[0-4]\d)/);
+    }
+  };
+
+  it("puts the diagnosis first, not the oesophagus that shares the region", () => {
+    expect(top("дорсопатия шейного отдела")[0]).toBe("M53.9");
+    expect(top("дорсалгия шейного отдела")[0]).toBe("M54.9");
+    expect(top("спондилез шейного отдела")[0]).toBe("M47.9");
+    for (const q of [
+      "дорсопатия шейного отдела",
+      "дорсалгия шейного отдела",
+      "спондилез шейного отдела",
+      "остеохондроз шейного отдела позвоночника",
+      "миофасциальный синдром шейного отдела",
+    ]) {
+      expect(top(q)[0], q).toMatch(/^M/);
+      noTumour(q);
+    }
+  });
+
+  it("does not lead with a sprain for the lumbar region", () => {
+    expect(top("дорсопатия поясничного отдела")[0]).toBe("M53.9");
+    for (const code of top("дорсопатия поясничного отдела")) {
+      expect(code).not.toMatch(/^S/);
+    }
+  });
+
+  it("keeps limbs and sides out of the match for a nerve diagnosis", () => {
+    // «нижних конечностей» used to bring in limb melanomas and leg thromboses.
+    const codes = top("полинейропатия нижних конечностей");
+    for (const code of codes) expect(code).toMatch(/^G6[23]/);
+    expect(top("невропатия лицевого нерва справа")[0]).toMatch(/^G51/);
+  });
+
+  it("never reaches a tumour site through anatomy alone", () => {
+    for (const q of [
+      "ишемия спинного мозга",
+      "невропатия слухового нерва",
+      "киста головного мозга",
+      "полинейропатия нижних конечностей",
+    ]) {
+      noTumour(q);
+    }
+    expect(top("невропатия слухового нерва")[0]).toBe("H93.3");
+  });
+
+  it("still finds the tumour when the doctor names one", () => {
+    expect(top("опухоль спинного мозга")).toContain("C72.0");
+    expect(top("аденома гипофиза")).toContain("D35.2");
+    expect(top("рак пищевода")).toContain("C15.9");
+    // A full literal match on the site is still a match.
+    expect(top("спинного мозга")).toContain("C72.0");
+  });
+
+  it("keeps the siblings of the named category over a homonym", () => {
+    // «грыжа» alone finds groin hernias; the spoken form names M50.2, so
+    // the rest of M50 follows it instead.
+    for (const code of top("грыжа шейного отдела позвоночника")) {
+      expect(code).toMatch(/^M50/);
+    }
+    expect(top("протрузия шейного отдела")[0]).toBe("M50.2");
+  });
+});
+
+/**
+ * Review: spoken forms matched only when their words stood back to back, so
+ * «последствия перенесенного ОНМК» missed «последствия онмк», matched the
+ * bare «ОНМК», and a follow-up visit was offered acute stroke codes first.
+ */
+describe("ICD search: sequelae worded with a word in between", () => {
+  const top = (q: string, n = 5) => searchIcd10(q, n).map((r) => r.code);
+
+  it("reads «последствия перенесенного ОНМК» as stroke sequelae", () => {
+    const codes = top("последствия перенесенного онмк");
+    expect(codes[0]).toMatch(/^I69/);
+    expect(codes[1]).toMatch(/^I69/);
+    for (const code of codes) expect(code).not.toMatch(/^I6[0-4]/);
+    expect(top("последствия перенесенного ОНМК")).toEqual(codes);
+  });
+
+  it("reads «последствия перенесенной ЧМТ» as head injury sequelae", () => {
+    const codes = top("последствия перенесенной чмт");
+    expect(codes[0]).toBe("T90.5");
+    for (const code of codes) expect(code).not.toMatch(/^S06/);
+  });
+
+  it("lets the longer form win over the abbreviation inside it", () => {
+    expect(expandSynonyms("последствия перенесенного онмк").codes).toEqual([
+      "I69.4",
+      "I69.3",
+    ]);
+    expect(expandSynonyms("последствия онмк").codes).toEqual(["I69.4", "I69.3"]);
+    expect(expandSynonyms("последствия перенесенной ЧМТ").codes).toEqual(["T90.5"]);
+    expect(top("последствия онмк")).not.toContain("I64");
+  });
+
+  it("names the stroke type when the doctor does", () => {
+    expect(top("последствия ишемического инсульта")[0]).toBe("I69.3");
+    expect(top("последствия перенесенного ишемического инсульта")[0]).toBe("I69.3");
+    expect(top("последствия геморрагического инсульта")[0]).toBe("I69.1");
+    for (const code of top("последствия ишемического инсульта")) {
+      expect(code).not.toBe("I63.9");
+    }
+  });
+
+  it("finds a form with a side or a detail inside it", () => {
+    expect(top("неврит левого лицевого нерва")[0]).toMatch(/^G51/);
+    expect(top("хроническая ишемия головного мозга")[0]).toBe("I67.8");
+  });
+
+  it("keeps a form's words within one phrase", () => {
+    // Three words apart is another thought, not the same diagnosis.
+    expect(
+      expandSynonyms("последствия травмы ноги давней онмк").codes,
+    ).toEqual(["I64", "I63.9", "I61.9"]);
+    // The key's order matters: «онмк» then «последствия» is not the form.
+    expect(expandSynonyms("онмк последствия").codes).toEqual([
+      "I64",
+      "I63.9",
+      "I61.9",
+    ]);
+  });
+});

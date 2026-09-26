@@ -19,7 +19,9 @@
  *     phrase leading them (see SPOKEN_FORMS)
  *   - the codes a spoken form names when the classifier words it differently
  *   - a spoken form found inside a longer query
- *   - literal matches on some of the words
+ *   - literal matches on some of the words, as long as they are not only
+ *     region words («шейного отдела») and not a tumour site the query never
+ *     called a tumour
  * Ties break on code so the order is stable between identical queries.
  *
  * Normalisation folds ё→е and case. Cyrillic ё is typed inconsistently and
@@ -66,6 +68,8 @@ export const SPOKEN_FORMS: Readonly<Record<string, SpokenForm>> = {
   "ишемический инсульт": { codes: ["I63.9"] },
   "геморрагический инсульт": { codes: ["I61.9"] },
   "последствия инсульта": { codes: ["I69.4", "I69.3"] },
+  "последствия ишемического инсульта": { codes: ["I69.3"] },
+  "последствия геморрагического инсульта": { codes: ["I69.1"] },
   "последствия онмк": { codes: ["I69.4", "I69.3"] },
   ДЭП: { codes: ["I67.8", "I67.9"] },
   дисциркуляторная: { codes: ["I67.8", "I67.9"] },
@@ -317,26 +321,60 @@ function isAbbreviation(word: string): boolean {
 type FormHit = { form: SpokenForm; direct: boolean };
 
 /**
+ * How many query words a multi-word form may step over between two of its
+ * own. The standard follow-up wording is «последствия перенесенного ОНМК»:
+ * requiring the key's words back to back missed «последствия онмк» there and
+ * left only the bare «ОНМК», whose acute codes then led the list at a
+ * follow-up visit. Two covers «последствия перенесенного ишемического
+ * инсульта» while keeping the words of one form in one phrase.
+ */
+const MAX_FORM_GAP = 2;
+
+/**
+ * Query positions of the key's stems, in the key's order with at most
+ * `MAX_FORM_GAP` other words between neighbours, or null. Backtracks, so an
+ * early repeat of a stem cannot hide a later occurrence that fits.
+ */
+function matchForm(key: readonly string[], q: readonly Token[]): number[] | null {
+  const walk = (ki: number, from: number, to: number): number[] | null => {
+    for (let qi = from; qi <= Math.min(to, q.length - 1); qi += 1) {
+      if (q[qi]!.stem !== key[ki]) continue;
+      if (ki === key.length - 1) return [qi];
+      const rest = walk(ki + 1, qi + 1, qi + 1 + MAX_FORM_GAP);
+      if (rest) return [qi, ...rest];
+    }
+    return null;
+  };
+  return walk(0, 0, q.length - 1);
+}
+
+/**
  * Spoken forms in the query, matched on whole-word stems. `direct` = the
  * query IS the form («грыжа диска»); otherwise the form sits inside a longer
  * query («грыжа диска шейного отдела»). Word boundaries are the point: the old
  * substring check found «тиа» inside «тиамин» and offered TIA codes for a
  * vitamin.
+ *
+ * A form whose words all belong to a longer form that also matched is
+ * dropped: «последствия онмк» says what the doctor means, and the «ОНМК»
+ * inside it would otherwise add acute stroke codes to a sequelae query.
  */
 function findSpokenForms(query: Token[]): FormHit[] {
   const q = significantTokens(query);
-  const hits: FormHit[] = [];
+  const found: { form: SpokenForm; at: number[] }[] = [];
   for (const f of getForms()) {
-    const k = f.stems;
-    if (k.length === 0 || k.length > q.length) continue;
-    for (let start = 0; start + k.length <= q.length; start += 1) {
-      if (k.every((stem, i) => q[start + i]!.stem === stem)) {
-        hits.push({ form: f.form, direct: k.length === q.length });
-        break;
-      }
-    }
+    if (f.stems.length === 0 || f.stems.length > q.length) continue;
+    const at = matchForm(f.stems, q);
+    if (at) found.push({ form: f.form, at });
   }
-  return hits;
+  return found
+    .filter(
+      (h) =>
+        !found.some(
+          (o) => o.at.length > h.at.length && h.at.every((p) => o.at.includes(p)),
+        ),
+    )
+    .map((h) => ({ form: h.form, direct: h.at.length === q.length }));
 }
 
 /**
@@ -366,6 +404,8 @@ type Indexed = {
   code: string;
   /** Every word of the name, in order, with its stem and polarity. */
   tokens: Token[];
+  /** Chapter II, neoplasms (C00–D48). See `namesTumour`. */
+  neoplasm: boolean;
 };
 
 let index: Indexed[] | null = null;
@@ -377,9 +417,48 @@ function getIndex(): Indexed[] {
     entry,
     code: entry.code.toLowerCase(),
     tokens: tokenize(normalizeIcdTerm(entry.nameRu)),
+    neoplasm: /^(c\d|d[0-4]\d)/i.test(entry.code),
   }));
   byCode = new Map(index.map((r) => [r.code, r]));
   return index;
+}
+
+/**
+ * Where the problem is, never what it is: spinal regions, limbs, sides.
+ * The doctor adds them to a diagnosis («дорсопатия шейного отдела»); on
+ * their own they match sprains, fractures and oesophageal cancer just as
+ * well as the spine. A partial match carried only by these words is noise
+ * as long as another query word found something (see `searchIcd10`).
+ * Kept as stems, so every case form of a listed word counts.
+ */
+const REGION_STEMS = new Set(
+  [
+    "шейный", "грудной", "поясничный", "крестцовый", "копчиковый", "отдел",
+    "позвоночник", "позвоночный", "позвонок", "позвонка", "левый", "правый",
+    "левосторонний", "правосторонний", "двусторонний", "слева", "справа",
+    "верхний", "нижний", "конечность",
+  ].map(stemRu),
+);
+
+function isRegionWord(t: Token): boolean {
+  // `stemRu` keeps the plural genitive («нижних», «шейных»): drop it first.
+  return REGION_STEMS.has(t.stem) || REGION_STEMS.has(stemRu(t.text.replace(/[ыи]х$/, "")));
+}
+
+/**
+ * The query asks about a tumour. Without one of these words, a query that
+ * only partly matches a chapter II row matched it on anatomy: the names there
+ * are sites («Шейного отдела пищевода», «Спинного мозга», «Слухового нерва»)
+ * whose «Злокачественное новообразование» lives in a heading the catalog
+ * leaves out, so «ишемия спинного мозга» put C72.0 first. «Образование»
+ * counts, because «объемное образование головного мозга» is how a lesion is
+ * written before histology names it.
+ */
+const TUMOUR_WORD =
+  /^рак(а|у|ом|е|и|ов)?$|опухол|новообраз|образован|злокачеств|онко|метастаз|карцином|сарком|лимфом|лейкоз|лейкем|меланом|миелом|бластом|глиом|астроцитом|менингиом|неврином|шванном|аденом|эпендимом|гемангиом|папиллом|липом|фибром|хордом|краниофарингиом|ходжкин/;
+
+function namesTumour(tokens: Token[]): boolean {
+  return tokens.some((t) => TUMOUR_WORD.test(t.text));
 }
 
 /**
@@ -410,6 +489,8 @@ type QueryWord = Token & {
   abbr: boolean;
   /** May match the start of a longer word. */
   prefix: boolean;
+  /** Says where, not what: see `REGION_STEMS`. */
+  region: boolean;
 };
 
 /**
@@ -464,28 +545,39 @@ const BAND = {
   spokenInside: 100,
 } as const;
 
-type Scored = { entry: Icd10Entry; code: string; score: number; full: boolean };
+type Scored = {
+  entry: Icd10Entry;
+  code: string;
+  score: number;
+  full: boolean;
+  /** A partial match that found only region words (see `REGION_STEMS`). */
+  regionOnly: boolean;
+};
+
+type Literal = { score: number; full: boolean; regionOnly: boolean };
 
 /** Literal score of one row: a full match, a partial one, or nothing. */
-function literalScore(
-  row: Indexed,
-  words: QueryWord[],
-): { score: number; full: boolean } {
+function literalScore(row: Indexed, words: QueryWord[]): Literal {
   const scores = words.map((w) => wordScore(row, w));
   const matched = scores.filter((s) => s > 0).length;
-  if (matched === 0) return { score: 0, full: false };
+  if (matched === 0) return { score: 0, full: false, regionOnly: false };
   const head = scores[0]!;
   const sum = scores.reduce((a, b) => a + b, 0);
   if (matched === words.length) {
-    return { score: BAND.full + head + (sum - head) / 10, full: true };
+    return { score: BAND.full + head + (sum - head) / 10, full: true, regionOnly: false };
   }
   // Partial matching, but full matches always win. Requiring every word
   // meant «остеохондроз шейного отдела» returned NOTHING while
   // «остеохондроз» alone returned 17 codes — the classifier does not
   // spell the region the way the doctor does. More words matched ranks
   // higher; the spoken forms, not word order, say which word is the
-  // diagnosis («шейный остеохондроз» leads with the adjective).
-  return { score: sum / words.length + matched, full: false };
+  // diagnosis («шейный остеохондроз» leads with the adjective). Which
+  // partial matches are allowed at all is decided in `searchIcd10`.
+  return {
+    score: sum / words.length + matched,
+    full: false,
+    regionOnly: scores.every((s, i) => s === 0 || words[i]!.region),
+  };
 }
 
 export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
@@ -506,19 +598,26 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
     ...t,
     abbr: isAbbreviation(t.text),
     prefix: i === significant.length - 1 || t.text.length >= MIN_PREFIX,
+    region: isRegionWord(t),
   }));
   // «мигрень без» typed so far: lean towards the names that say «без».
   const lastRaw = term.split(/[^a-zа-я0-9]+/).filter(Boolean).pop() ?? "";
   const trailingMarker = isMarker(lastRaw) ? lastRaw : null;
+  const tumourQuery = namesTumour(tokens);
 
   const scored = new Map<string, Scored>();
   for (const row of rows) {
     let score = 0;
     let full = false;
+    let regionOnly = false;
     if (row.code === term) score = BAND.exactCode;
     else if (row.code.startsWith(term)) score = BAND.codePrefix;
     else if (words.length > 0) {
-      ({ score, full } = literalScore(row, words));
+      ({ score, full, regionOnly } = literalScore(row, words));
+      // A tumour site reached by part of a query that names no tumour was
+      // reached on anatomy alone (see `TUMOUR_WORD`). A full match still
+      // counts: «спинного мозга» lists C72.0 among the others.
+      if (row.neoplasm && !full && !tumourQuery) score = 0;
       if (
         score > 0 &&
         trailingMarker &&
@@ -528,7 +627,7 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
       }
     }
     if (score > 0) {
-      scored.set(row.code, { entry: row.entry, code: row.code, score, full });
+      scored.set(row.code, { entry: row.entry, code: row.code, score, full, regionOnly });
     }
   }
 
@@ -540,19 +639,46 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
     }
   }
 
+  const spoken = findSpokenForms(tokens);
+
+  // «дорсопатия шейного отдела»: the diagnosis word finds M53.9, the region
+  // words find every row that says «шейного отдела», and two of them outscore
+  // one. Rows reached through region words alone go once any other word has
+  // found something, so the sprain and the oesophagus cannot lead. The
+  // exception is a category a spoken form in the query names: in «грыжа
+  // шейного отдела позвоночника» the M50 siblings of the named M50.2 are the
+  // next best answers, not the groin hernias that «грыжа» finds.
+  if ([...scored.values()].some((s) => !s.full && !s.regionOnly && s.score < BAND.codePrefix)) {
+    const named = new Set(
+      spoken.flatMap((h) => (h.form.codes ?? []).map((c) => c.toLowerCase().split(".")[0]!)),
+    );
+    for (const [code, s] of scored) {
+      if (s.regionOnly && !named.has(code.split(".")[0]!)) scored.delete(code);
+    }
+  }
+
   // What the doctor MEANT: «ТИА» → G45.9. Always attempted, not only when
   // the literal search came back empty — a spoken form often has noisy
   // literal matches («грыжа» → паховые грыжи) that would otherwise bury the
   // rubric actually being asked for. A literal match on every word still
-  // outranks a code reached only through the spoken form.
-  const literal = (row: Indexed) =>
-    words.length > 0 ? literalScore(row, words) : { score: 0, full: false };
+  // outranks a code reached only through the spoken form. The raw literal
+  // score, region words included, orders a form's codes: «протрузия шейного
+  // отдела» puts the cervical M50.2 above the lumbar M51.1.
+  const literal = (row: Indexed): Literal =>
+    words.length > 0 ? literalScore(row, words) : { score: 0, full: false, regionOnly: false };
   const raise = (row: Indexed, score: number) => {
     const existing = scored.get(row.code);
     if (existing) existing.score = Math.max(existing.score, score);
-    else scored.set(row.code, { entry: row.entry, code: row.code, score, full: false });
+    else {
+      scored.set(row.code, {
+        entry: row.entry,
+        code: row.code,
+        score,
+        full: false,
+        regionOnly: false,
+      });
+    }
   };
-  const spoken = findSpokenForms(tokens);
   // The whole query is a phrase we understand: rows matching only some of
   // its words are noise by definition («хроническая ишемия мозга» used to
   // continue with «Хроническая эритремия»).

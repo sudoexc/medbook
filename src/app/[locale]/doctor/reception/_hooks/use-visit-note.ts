@@ -387,6 +387,15 @@ export function enqueueVisitNotePatch(
 }
 
 /**
+ * How many PATCHes for this note have been refused or failed so far. A
+ * caller that does more than one step before settling the queue reads this
+ * first and hands it to `settleVisitNotePatches` as the baseline.
+ */
+export function visitNotePatchFailureCount(noteId: string): number {
+  return patchFailures.get(noteId) ?? 0;
+}
+
+/**
  * Resolves once every PATCH queued for this note so far has answered: true
  * when all of them were accepted, false when one was refused or failed.
  * An idle note resolves true at once.
@@ -396,11 +405,20 @@ export function enqueueVisitNotePatch(
  * signature sent while a correction is still queued reaches the server
  * first: the signed revision lacks the correction, which then fails as a
  * stale version and vanishes from the screen.
+ *
+ * `failedBefore` is the failure count the caller read when the doctor
+ * clicked. It matters when the caller awaited other queued work first (the
+ * visit screen's text flush): a card save queued ahead of that flush can be
+ * refused while the flush waits, and a baseline read only now would already
+ * include that refusal and report the queue as clean. Without it the count
+ * is read on entry, which is the click for a caller with no earlier step.
  */
-export async function settleVisitNotePatches(noteId: string): Promise<boolean> {
-  const failedBefore = patchFailures.get(noteId) ?? 0;
+export async function settleVisitNotePatches(
+  noteId: string,
+  failedBefore: number = visitNotePatchFailureCount(noteId),
+): Promise<boolean> {
   await patchQueues.get(noteId);
-  return (patchFailures.get(noteId) ?? 0) === failedBefore;
+  return visitNotePatchFailureCount(noteId) === failedBefore;
 }
 
 export type SignReadiness =
@@ -414,13 +432,17 @@ export type SignReadiness =
  * optimistic replace-all rows (VW-01), so a drug whose save is still in
  * flight, or is about to fail, would count as prescribed. "unsaved" means a
  * queued correction did not land and nothing should be signed until the
- * doctor has seen the card snap back.
+ * doctor has seen the card snap back. `failedBefore` is passed through to
+ * `settleVisitNotePatches`.
  */
 export async function prepareVisitNoteSignature(
   noteId: string,
   readSavedRow: () => Promise<VisitNoteRow>,
+  failedBefore: number = visitNotePatchFailureCount(noteId),
 ): Promise<SignReadiness> {
-  if (!(await settleVisitNotePatches(noteId))) return { kind: "unsaved" };
+  if (!(await settleVisitNotePatches(noteId, failedBefore))) {
+    return { kind: "unsaved" };
+  }
   const row = await readSavedRow();
   const missing = emptyConclusionSections({
     ...row,
@@ -446,7 +468,8 @@ export type VisitFinalizeStep =
  * diagnosis already on screen.
  *
  *   1. push the editors' debounced text tails (they join the same queue);
- *   2. wait for every queued PATCH and stop if one did not land;
+ *   2. wait for every queued PATCH and stop if one still pending at the
+ *      click did not land, including one refused while step 1 waited;
  *   3. judge empty sections on the row read back from the server;
  *   4. only then finalize.
  *
@@ -461,15 +484,28 @@ export async function signVisitNoteWhenSaved(args: {
   finalize: () => Promise<unknown>;
   emptyConfirmed: boolean;
 }): Promise<VisitFinalizeStep> {
+  // The failure baseline is the click, not the moment the queue is settled.
+  // The text flush below queues its PATCH behind any card save already in
+  // flight and waits for it; if that card save is refused, the refusal is
+  // counted before the flush resolves, and a baseline read after the flush
+  // would swallow it: the drug the doctor just added would be missing from
+  // the signed conclusion and handout.
+  const failedBefore = visitNotePatchFailureCount(args.noteId);
   try {
     await args.flushDraftEdits();
   } catch (error) {
     return { kind: "flushFailed", error };
   }
   if (args.emptyConfirmed) {
-    if (!(await settleVisitNotePatches(args.noteId))) return { kind: "unsaved" };
+    if (!(await settleVisitNotePatches(args.noteId, failedBefore))) {
+      return { kind: "unsaved" };
+    }
   } else {
-    const ready = await prepareVisitNoteSignature(args.noteId, args.readSavedRow);
+    const ready = await prepareVisitNoteSignature(
+      args.noteId,
+      args.readSavedRow,
+      failedBefore,
+    );
     if (ready.kind === "unsaved") return ready;
     if (ready.missing.length > 0) {
       return { kind: "confirm", missing: ready.missing };

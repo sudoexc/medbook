@@ -26,6 +26,7 @@ import {
   settleVisitNotePatches,
   signVisitNoteWhenSaved,
   visitNoteKey,
+  visitNotePatchFailureCount,
   type VisitNotePatch,
   type VisitNoteRow,
   type VisitPrescriptionDraft,
@@ -107,7 +108,8 @@ type LogEntry = { kind: "PATCH" | "GET" | "FINALIZE"; status: number };
 
 /**
  * PATCH, GET and finalize of one note, each applied after LATENCY_MS in
- * arrival order. `failNextPatch` makes the next PATCH answer 500.
+ * arrival order. `failNextPatch` makes the next PATCH answer
+ * `failPatchStatus` (500 unless a test sets it).
  */
 function fakeServer(initial: VisitNoteRow) {
   const server = {
@@ -116,6 +118,7 @@ function fakeServer(initial: VisitNoteRow) {
     log: [] as LogEntry[],
     signed: null as VisitNoteRow | null,
     failNextPatch: false,
+    failPatchStatus: 500,
   };
   const bump = () => {
     server.version += 1;
@@ -151,8 +154,8 @@ function fakeServer(initial: VisitNoteRow) {
     const { expectedUpdatedAt, ...patch } = body;
     if (server.failNextPatch) {
       server.failNextPatch = false;
-      server.log.push({ kind: "PATCH", status: 500 });
-      return new Response("", { status: 500 });
+      server.log.push({ kind: "PATCH", status: server.failPatchStatus });
+      return new Response("", { status: server.failPatchStatus });
     }
     if (expectedUpdatedAt && expectedUpdatedAt !== server.row.updatedAt) {
       server.log.push({ kind: "PATCH", status: 409 });
@@ -500,6 +503,111 @@ describe("VW-04: «Завершить приём» on the visit screen waits for
     expect(step).toEqual({ kind: "finalized" });
     expect(server.log.map((e) => e.kind)).toEqual(["PATCH", "FINALIZE"]);
     expect(server.signed?.visitPrescriptions).toHaveLength(1);
+  });
+
+  /**
+   * Review of VW-04: the refusal of a card save queued ahead of the text
+   * flush is counted while the flush waits behind it. The flush's own PATCH
+   * then lands (its version token is unchanged), so a failure baseline read
+   * after the flush already included the refusal and the drug the doctor
+   * had just added was signed away. The baseline is now read at the click.
+   */
+  it("a card save refused while the text flush waits behind it stops the signature", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([
+      draft("Карбамазепин"),
+    ]);
+
+    // Adds a drug (PATCH A), the zod schema refuses it (an empty dose).
+    server.failNextPatch = true;
+    server.failPatchStatus = 400;
+    const pending = act((cur) => [...cur, draft("Конкор", { dose: "" })]);
+    // The conclusion debounce has not fired yet, so the click flushes it:
+    // PATCH B joins the queue behind A.
+    const flushDraftEdits = async () => {
+      await enqueueVisitNotePatch(qc, noteId, {
+        bodyMarkdown: "Заключение, дописанное перед кликом",
+      });
+    };
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits,
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "unsaved" });
+    expect(server.log.map((e) => `${e.kind} ${e.status}`)).toEqual([
+      "PATCH 400",
+      "PATCH 200",
+    ]);
+    expect(readSavedRow).not.toHaveBeenCalled();
+    expect(server.signed).toBeNull();
+  });
+
+  it("the confirmed second pass also counts a refusal from before its text flush", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([], {
+      diagnosisCode: null,
+      diagnosisName: null,
+    });
+
+    server.failNextPatch = true;
+    const pending = act((cur) => [...cur, draft("Конкор")]);
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: async () => {
+        await enqueueVisitNotePatch(qc, noteId, { bodyMarkdown: "Текст" });
+      },
+      readSavedRow,
+      finalize,
+      emptyConfirmed: true,
+    });
+    await pending;
+
+    expect(step).toEqual({ kind: "unsaved" });
+    expect(server.log.map((e) => `${e.kind} ${e.status}`)).toEqual([
+      "PATCH 500",
+      "PATCH 200",
+    ]);
+    expect(server.signed).toBeNull();
+  });
+
+  it("control: a baseline read after the flush misses that refusal, one read at the click catches it", async () => {
+    const { noteId, server, act } = setup([draft("Карбамазепин")]);
+
+    server.failNextPatch = true;
+    const pending = act((cur) => [...cur, draft("Конкор")]);
+    const atClick = visitNotePatchFailureCount(noteId);
+    await enqueueVisitNotePatch(qc, noteId, { bodyMarkdown: "Текст" });
+    await pending;
+
+    // The old order: the refusal is already in the count it compares to.
+    expect(await settleVisitNotePatches(noteId)).toBe(true);
+    expect(await settleVisitNotePatches(noteId, atClick)).toBe(false);
+  });
+
+  it("an older refusal that settled before the click does not block the visit screen either", async () => {
+    const { noteId, server, act, readSavedRow, finalize } = setup([
+      draft("Карбамазепин"),
+    ]);
+
+    // Refused and snapped back before the doctor clicked.
+    server.failNextPatch = true;
+    await act((cur) => [...cur, draft("Конкор")]);
+
+    const step = await signVisitNoteWhenSaved({
+      noteId,
+      flushDraftEdits: async () => {
+        await enqueueVisitNotePatch(qc, noteId, { bodyMarkdown: "Текст" });
+      },
+      readSavedRow,
+      finalize,
+      emptyConfirmed: false,
+    });
+
+    expect(step).toEqual({ kind: "finalized" });
+    expect(server.signed?.bodyMarkdown).toBe("Текст");
   });
 
   it("a text flush that fails is reported and nothing is signed", async () => {

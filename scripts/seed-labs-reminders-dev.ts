@@ -1,110 +1,92 @@
 /**
- * Standalone dev-only seed for Phase 20 Wave 5a (Reminder + LabResult).
+ * Dev-only seed: doctor reminders and lab results, so the doctor screens have
+ * something to render on a LOCAL database.
  *
- * Why a separate file: `prisma/seed.ts` has a Prisma-7 strict-mode bug at
- * the upstream `doctor.upsert` call (clinic relation isn't connected) that
- * is out of scope for this phase. This script reads existing clinics +
- * doctor users + patients from the local DB and only adds reminders +
- * labs, so dev surfaces have something to render while the full seed
- * remains broken.
+ * Audit G2-02: it used to run over every clinic of the platform and give real
+ * patients invented results (a CRITICAL cholesterol among them) and real
+ * doctors reminder tasks, unmarked. Now:
+ *   - refused with NODE_ENV=production (the worker image), no override, and
+ *     on a clinic with real data unless ALLOW_DEMO_SEED_ON_REAL_DATA names it
+ *     (scripts/_destructive-guard.ts);
+ *   - one clinic, named explicitly with CLINIC_SLUG;
+ *   - only patients tagged `demo-seed` (create them with seed-prod-demo.ts);
+ *   - every row carries LABS_REMINDERS_MARK in Reminder.body / LabResult.notes,
+ *     so it can be found and removed exactly:
+ *       DELETE FROM "LabResult" WHERE notes = '[demo-seed:labs-reminders-dev]';
+ *       DELETE FROM "Reminder"  WHERE body  = '[demo-seed:labs-reminders-dev]';
  *
- *   npx tsx scripts/seed-labs-reminders-dev.ts
+ *   CLINIC_SLUG=neurofax npx tsx scripts/seed-labs-reminders-dev.ts
  *
- * Idempotent — skips a doctor if they already have reminders/labs.
+ * Idempotent: a doctor who already has marked rows gets no more.
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+import { DEMO_SEED_MARK } from "../src/lib/demo-seed";
+import { assertSeedAllowed, requireClinicSlug } from "./_destructive-guard";
+import { LABS_REMINDERS_MARK, planLabsReminders } from "./_labs-reminders-plan";
+
+const SCRIPT = "seed-labs-reminders-dev";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" });
 const prisma = new PrismaClient({ adapter });
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)] as T;
-}
-
 async function main() {
-  const now = new Date();
+  const slug = requireClinicSlug(SCRIPT);
+  const { clinicId } = await assertSeedAllowed(prisma, {
+    script: SCRIPT,
+    clinicSlug: slug,
+    devOnly: true,
+  });
 
-  const reminderTitles = [
-    "Перезвонить пациенту по результатам",
-    "Заказать повторный ОАК",
-    "Уточнить дозу препарата у фармацевта",
-    "Подготовить выписку",
-    "Проверить рецепт",
-  ];
-  type LabFlag = "NORMAL" | "LOW" | "HIGH" | "CRITICAL";
-  type LabValue = { v: string; f: LabFlag };
-  const labCatalog: Array<{
-    testName: string;
-    unit: string;
-    refRange: string;
-    values: LabValue[];
-  }> = [
-    { testName: "Глюкоза крови", unit: "ммоль/л", refRange: "3.3-5.5", values: [{ v: "5.1", f: "NORMAL" }, { v: "6.4", f: "HIGH" }, { v: "3.0", f: "LOW" }] },
-    { testName: "Гемоглобин", unit: "г/л", refRange: "120-160", values: [{ v: "135", f: "NORMAL" }, { v: "108", f: "LOW" }] },
-    { testName: "Холестерин общий", unit: "ммоль/л", refRange: "3.0-5.2", values: [{ v: "4.5", f: "NORMAL" }, { v: "7.8", f: "HIGH" }, { v: "9.2", f: "CRITICAL" }] },
-    { testName: "ТТГ", unit: "мЕд/л", refRange: "0.4-4.0", values: [{ v: "2.1", f: "NORMAL" }, { v: "5.8", f: "HIGH" }] },
-    { testName: "СОЭ", unit: "мм/ч", refRange: "2-15", values: [{ v: "8", f: "NORMAL" }, { v: "32", f: "HIGH" }] },
-  ];
-
-  const clinics = await prisma.clinic.findMany({ select: { id: true, slug: true } });
-  for (const clinic of clinics) {
-    const doctors = await prisma.user.findMany({
-      where: { clinicId: clinic.id, role: "DOCTOR" },
+  const [doctors, patients] = await Promise.all([
+    prisma.user.findMany({
+      where: { clinicId, role: "DOCTOR" },
       select: { id: true, name: true },
-    });
-    const patients = await prisma.patient.findMany({
-      where: { clinicId: clinic.id },
-      select: { id: true },
+    }),
+    prisma.patient.findMany({
+      where: { clinicId, tags: { has: DEMO_SEED_MARK }, deletedAt: null },
+      select: { id: true, tags: true },
       take: 50,
-    });
-    if (doctors.length === 0 || patients.length === 0) continue;
-
-    for (const d of doctors) {
-      const remCount = await prisma.reminder.count({ where: { clinicId: clinic.id, doctorId: d.id } });
-      if (remCount === 0) {
-        for (let i = 0; i < 3; i++) {
-          await prisma.reminder.create({
-            data: {
-              clinicId: clinic.id,
-              doctorId: d.id,
-              patientId: i === 0 ? null : pick(patients).id,
-              title: pick(reminderTitles),
-              remindAt: new Date(now.getTime() + Math.random() * 22 * 3_600_000),
-              status: "PENDING",
-            },
-          });
-        }
-      }
-
-      const labCount = await prisma.labResult.count({ where: { clinicId: clinic.id, doctorId: d.id } });
-      if (labCount === 0) {
-        const total = 3 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < total; i++) {
-          const test = pick(labCatalog);
-          const v = pick(test.values);
-          await prisma.labResult.create({
-            data: {
-              clinicId: clinic.id,
-              doctorId: d.id,
-              patientId: pick(patients).id,
-              testName: test.testName,
-              value: v.v,
-              unit: test.unit,
-              refRange: test.refRange,
-              flag: v.f,
-              status: "RESULTED",
-              receivedAt: new Date(now.getTime() - Math.random() * 14 * 24 * 3_600_000),
-            },
-          });
-        }
-      }
-      console.log(`  [${clinic.slug}] ${d.name}: reminders=${remCount}->${await prisma.reminder.count({ where: { clinicId: clinic.id, doctorId: d.id } })}, labs=${labCount}->${await prisma.labResult.count({ where: { clinicId: clinic.id, doctorId: d.id } })}`);
-    }
+    }),
+  ]);
+  if (patients.length === 0) {
+    console.log(
+      `no demo patients (tag «${DEMO_SEED_MARK}») in ${slug}: run APPLY=1 npx tsx scripts/seed-prod-demo.ts first.`,
+    );
+    return;
   }
+
+  const seededByDoctor = new Map<string, { reminders: number; labs: number }>();
+  for (const d of doctors) {
+    const [reminders, labs] = await Promise.all([
+      prisma.reminder.count({ where: { clinicId, doctorId: d.id, body: LABS_REMINDERS_MARK } }),
+      prisma.labResult.count({ where: { clinicId, doctorId: d.id, notes: LABS_REMINDERS_MARK } }),
+    ]);
+    seededByDoctor.set(d.id, { reminders, labs });
+  }
+
+  const plan = planLabsReminders({
+    doctorIds: doctors.map((d) => d.id),
+    patients,
+    seededByDoctor,
+    now: new Date(),
+  });
+  for (const r of plan.reminders) {
+    await prisma.reminder.create({ data: { clinicId, status: "PENDING", ...r } });
+  }
+  for (const l of plan.labs) {
+    await prisma.labResult.create({ data: { clinicId, status: "RESULTED", ...l } });
+  }
+  console.log(
+    `[${slug}] +${plan.reminders.length} reminders, +${plan.labs.length} lab results (marked ${LABS_REMINDERS_MARK})`,
+  );
 }
 
 main()
   .then(() => prisma.$disconnect())
-  .catch((e) => { console.error(e); return prisma.$disconnect().then(() => process.exit(1)); });
+  .catch((e) => {
+    console.error(e);
+    return prisma.$disconnect().then(() => process.exit(1));
+  });

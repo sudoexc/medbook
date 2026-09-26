@@ -12,6 +12,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -27,6 +28,13 @@ function rand(min: number, max: number): number {
 }
 
 async function main() {
+  // Test data only, never on the real clinic (audit G2-02/G2-06).
+  await assertSeedAllowed(prisma, {
+    script: "total-stress-seed",
+    clinicSlug: "neurofax",
+    devOnly: true,
+    destructive: true,
+  });
   const clinic = await prisma.clinic.findUnique({ where: { slug: "neurofax" } });
   if (!clinic) throw new Error("neurofax clinic missing — run base seed first");
   const clinicId = clinic.id;

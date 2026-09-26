@@ -54,11 +54,13 @@ The in-memory queue, SSE fallback, and `/tmp` upload stub kick in automatically 
   (или с явным `E2E_SEED_ALLOW_DB=<имя базы>`) и никогда при NODE_ENV=production.
 - `npm run test:e2e` — только прогон Playwright (окружение готовишь сам).
 - `npx tsx src/server/workers/start.ts` — run background workers locally.
-- `npx tsx scripts/seed-demo-data.ts` — populate the `neurofax` clinic with a
-  realistic demo load: ~150 patients, today's storyline of ~270 appointments
+- `CLINIC_SLUG=<slug> npx tsx scripts/seed-demo-data.ts` — populate a LOCAL or
+  demo clinic with a realistic demo load: ~150 patients, today's storyline
   (mix of completed / in-chair / waiting / no-show / cancelled), payments,
-  documents (placeholder PDFs in `public/uploads/demo/`), conversations, calls,
-  and leads. Idempotent — tagged via `demo:` markers, safe to re-run.
+  documents (placeholder PDFs in `public/uploads/demo/`), conversations and
+  calls. Idempotent (tagged `demo:` / `demo-seed`). Production neurofax is the
+  real clinic: `scripts/_destructive-guard.ts` refuses demo seeds there
+  (docs/operations/RUNBOOK.md §5).
 
 ## Documentation
 

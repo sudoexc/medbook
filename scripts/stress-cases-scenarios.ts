@@ -26,6 +26,7 @@ import {
   recomputeCaseAppointments,
 } from "../src/server/pricing/recompute-appointment-price";
 import { prisma as scopedPrisma } from "../src/lib/prisma";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 // Raw client: no tenant scoping. We control clinicId on every write.
 const raw = new PrismaClient({
@@ -820,6 +821,13 @@ async function purgeStressData() {
 }
 
 async function main() {
+  // Test data only, never on the real clinic (audit G2-02/G2-06).
+  await assertSeedAllowed(raw, {
+    script: "stress-cases-scenarios",
+    clinicSlug: "neurofax",
+    devOnly: true,
+    destructive: true,
+  });
   console.log("==> stress-cases-scenarios — local DB");
   try {
     await purgeStressData();

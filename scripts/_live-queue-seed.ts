@@ -38,6 +38,7 @@ import {
   toTashkentDate,
 } from "../src/lib/booking-validation";
 import { DEMO_SEED_MARK } from "../src/lib/demo-seed";
+import { DEMO_APPOINTMENT_NOTE } from "./_demo-seed-plan";
 
 /** The worker-script client (full PrismaClient or an interactive tx handle). */
 type Db = Pick<
@@ -178,6 +179,9 @@ async function makeAppointment(
       confirmedAt: args.confirmed ? toDate(Math.max(0, args.atMin - 120)) : null,
       confirmedVia: args.confirmed ? "BOOKING_AUTO" : null,
       channel: args.channel,
+      // Demo mark (staff-only column): `clearTodayAppointments` deletes only
+      // rows carrying it, so a rebuild never removes a real visit (audit G2-03).
+      notes: DEMO_APPOINTMENT_NOTE,
       ticketCode: randomTicketCode(),
       createdById: args.channel === "WALKIN" || args.channel === "PHONE" ? args.operatorId : null,
       priceService: price,
@@ -445,19 +449,33 @@ export async function todayScheduledDoctors(
 }
 
 /**
- * Delete every appointment dated today (Tashkent) for this clinic, child rows
- * first, so the live queue can be rebuilt from scratch. Past/future days are
- * left untouched. Returns the number of appointments removed.
+ * Today's (Tashkent) appointments this seeder wrote: the ones carrying the
+ * demo mark. It used to be every appointment of the day, so a rebuild on the
+ * live clinic deleted real visits with their signed conclusions and payments
+ * (audit G2-03).
+ */
+export function todayDemoAppointmentsWhere(clinicId: string, now: Date = new Date()) {
+  const { dayStart, dayEnd } = tashkentDayBounds(now);
+  return {
+    clinicId,
+    date: { gte: dayStart, lt: dayEnd },
+    notes: DEMO_APPOINTMENT_NOTE,
+  };
+}
+
+/**
+ * Delete today's demo appointments (see above), child rows first, so the live
+ * queue can be rebuilt. Unmarked rows and past/future days are left
+ * untouched. Returns the number of appointments removed.
  */
 export async function clearTodayAppointments(
   prisma: Db,
   clinicId: string,
   now: Date = new Date(),
 ): Promise<number> {
-  const { dayStart, dayEnd } = tashkentDayBounds(now);
   const ids = (
     await prisma.appointment.findMany({
-      where: { clinicId, date: { gte: dayStart, lt: dayEnd } },
+      where: todayDemoAppointmentsWhere(clinicId, now),
       select: { id: true },
     })
   ).map((a) => a.id);

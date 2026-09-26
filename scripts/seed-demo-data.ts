@@ -4,12 +4,27 @@
  * работы». Идемпотентный — повторный запуск ничего не сломает (использует
  * uniqueBy phoneNormalized + помечает данные prefix-ом demo:).
  *
- * Запуск:
- *   npx tsx scripts/seed-demo-data.ts            # 80 пациентов
- *   PATIENTS=120 npx tsx scripts/seed-demo-data.ts
+ * Audit G2-07: production neurofax is the real clinic. This seed used to
+ * default to it, fill every free slot of the real doctors (in UTC, so 5 hours
+ * off), book invisible WALKIN «bookings» and add PAID payments to the day's
+ * revenue. Now:
+ *   - CLINIC_SLUG has no default, and scripts/_destructive-guard.ts refuses a
+ *     clinic with real data or NODE_ENV=production unless
+ *     ALLOW_DEMO_SEED_ON_REAL_DATA names it (never do that for the real one);
+ *   - times are Tashkent wall clock (toTashkentDate), `date` and `time` agree;
+ *   - future bookings use schedule-lane channels, never WALKIN;
+ *   - demo patients carry `demo:` and `demo-seed`, payments externalRef
+ *     `demo-seed`, so the app can tell them apart;
+ *   - a patient card without the `demo:` tag is never touched;
+ *   - CLEAN runs in one transaction, clinical child rows first: every demo
+ *     row goes, or none.
+ *
+ * Запуск (локальная база или отдельная демо-клиника):
+ *   CLINIC_SLUG=<slug> npx tsx scripts/seed-demo-data.ts            # 150 пациентов
+ *   CLINIC_SLUG=<slug> PATIENTS=120 npx tsx scripts/seed-demo-data.ts
  *
  * Чистка (если нужно):
- *   CLEAN=1 npx tsx scripts/seed-demo-data.ts
+ *   CLINIC_SLUG=<slug> CLEAN=1 npx tsx scripts/seed-demo-data.ts --force
  */
 import "dotenv/config";
 import * as fs from "node:fs";
@@ -17,11 +32,23 @@ import * as path from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import {
+  tashkentComponents,
+  tashkentDayBounds,
+  toTashkentDate,
+} from "../src/lib/booking-validation";
+import { DEMO_SEED_MARK } from "../src/lib/demo-seed";
+import { deleteDemoPatients } from "./_demo-clean";
+import { DEMO_CHANNELS, tashkentDayString } from "./_demo-seed-plan";
+import { assertSeedAllowed, requireClinicSlug } from "./_destructive-guard";
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
-const SLUG = process.env.CLINIC_SLUG ?? "neurofax";
+const SCRIPT = "seed-demo-data";
+// No default: it used to be "neurofax", the real clinic (audit G2-07).
+const SLUG = requireClinicSlug(SCRIPT);
 const PATIENTS = Number(process.env.PATIENTS ?? "150");
 const CONVERSATIONS = Number(process.env.CONVERSATIONS ?? "18");
 const CALLS = Number(process.env.CALLS ?? "30");
@@ -125,6 +152,17 @@ function rndInt(lo: number, hi: number) {
 }
 function pad(n: number) {
   return String(n).padStart(2, "0");
+}
+/** Minutes since midnight to "HH:mm". */
+function hhmm(min: number): string {
+  return `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+}
+/**
+ * A Tashkent wall-clock instant. The container runs UTC, so `setHours` put
+ * an 08:00 visit at 13:00 in Tashkent while the `time` column said 08:00.
+ */
+function atTashkent(dayStr: string, minutes: number): Date {
+  return toTashkentDate(dayStr, hhmm(minutes));
 }
 function birthDate(): Date {
   const year = rndInt(1955, 2008);
@@ -234,68 +272,57 @@ function sampleFileUrl(type: string): string {
 }
 
 async function main() {
-  ensureDemoFiles();
-  const clinic = await prisma.clinic.findFirst({
-    where: { slug: SLUG },
-    select: { id: true },
+  const { clinicId } = await assertSeedAllowed(prisma, {
+    script: SCRIPT,
+    clinicSlug: SLUG,
+    // CLEAN deletes every demo patient with their visits and documents.
+    destructive: CLEAN,
   });
-  if (!clinic) {
-    console.error(`clinic "${SLUG}" not found`);
-    process.exit(1);
-  }
-  const clinicId = clinic.id;
+  ensureDemoFiles();
 
   if (CLEAN) {
-    // Wipe demo-tagged data only (idempotent reset).
-    const demo = { tags: { has: TAG } };
-    const apptIds = (
-      await prisma.patient.findMany({
-        where: { clinicId, ...demo },
-        select: { appointments: { select: { id: true } } },
-      })
-    ).flatMap((p) => p.appointments.map((a) => a.id));
-    if (apptIds.length > 0) {
-      await prisma.appointmentService.deleteMany({
-        where: { appointmentId: { in: apptIds } },
-      });
-      await prisma.payment.deleteMany({
-        where: { OR: [{ appointmentId: { in: apptIds } }, { patient: { tags: { has: TAG } } }] },
-      });
-      await prisma.notificationSend.deleteMany({
-        where: { appointmentId: { in: apptIds } },
-      });
-      await prisma.appointment.deleteMany({ where: { id: { in: apptIds } } });
-    }
-    await prisma.document.deleteMany({
-      where: { clinicId, patient: { tags: { has: TAG } } },
-    });
-    // Conversations / messages tagged with demo:.
-    const convIds = (
-      await prisma.conversation.findMany({
-        where: {
-          clinicId,
-          OR: [
-            { tags: { has: TAG } },
-            { externalId: { startsWith: "demo-" } },
-          ],
-        },
-        select: { id: true },
-      })
-    ).map((r) => r.id);
-    if (convIds.length > 0) {
-      await prisma.message.deleteMany({ where: { conversationId: { in: convIds } } });
-      await prisma.conversation.deleteMany({ where: { id: { in: convIds } } });
-    }
-    await prisma.call.deleteMany({
-      where: { clinicId, sipCallId: { startsWith: "demo-" } },
-    });
-    await prisma.lead.deleteMany({
-      where: { clinicId, comment: { startsWith: "[demo]" } },
-    });
-    const del = await prisma.patient.deleteMany({
-      where: { clinicId, tags: { has: TAG } },
-    });
-    console.log(`cleaned ${del.count} demo patients + ${convIds.length} convs + dependents`);
+    // Demo-tagged data only, in ONE transaction: the old sequence of
+    // deletes stopped at patient.deleteMany on RESTRICT links (visit notes,
+    // e-prescriptions, cases from seed-clinical-life) and left the clinic
+    // half cleaned.
+    const res = await prisma.$transaction(
+      async (tx) => {
+        const patientIds = (
+          await tx.patient.findMany({
+            where: { clinicId, tags: { has: TAG } },
+            select: { id: true },
+          })
+        ).map((p) => p.id);
+        // Conversations / messages tagged with demo: that may not be linked
+        // to a demo patient.
+        const convIds = (
+          await tx.conversation.findMany({
+            where: {
+              clinicId,
+              OR: [{ tags: { has: TAG } }, { externalId: { startsWith: "demo-" } }],
+            },
+            select: { id: true },
+          })
+        ).map((r) => r.id);
+        if (convIds.length > 0) {
+          await tx.message.deleteMany({ where: { conversationId: { in: convIds } } });
+          await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
+        }
+        await tx.call.deleteMany({
+          where: { clinicId, sipCallId: { startsWith: "demo-" } },
+        });
+        await tx.lead.deleteMany({
+          where: { clinicId, comment: { startsWith: "[demo]" } },
+        });
+        const deleted = await deleteDemoPatients(tx, patientIds);
+        return { deleted, convs: convIds.length };
+      },
+      { timeout: 120_000 },
+    );
+    console.log(
+      `cleaned ${res.deleted.patient ?? 0} demo patients + ${res.convs} convs + dependents`,
+      res.deleted,
+    );
     await prisma.$disconnect();
     return;
   }
@@ -375,8 +402,17 @@ async function main() {
     const phoneNormalized = normalizePhone(phone);
     const existing = await prisma.patient.findUnique({
       where: { clinicId_phoneNormalized: { clinicId, phoneNormalized } },
-      select: { id: true },
+      select: { id: true, tags: true },
     });
+    // A card with this number that is not ours is a real patient: never
+    // attach demo visits, documents or payments to it.
+    if (existing && !existing.tags.includes(TAG)) continue;
+    if (existing && !existing.tags.includes(DEMO_SEED_MARK)) {
+      await prisma.patient.update({
+        where: { id: existing.id },
+        data: { tags: { push: DEMO_SEED_MARK } },
+      });
+    }
     const patient = existing
       ? existing
       : await prisma.$transaction(async (tx) => {
@@ -401,7 +437,9 @@ async function main() {
               preferredLang: i % 4 === 0 ? "UZ" : "RU",
               source,
               segment,
-              tags: [TAG, source.toLowerCase()],
+              // DEMO_SEED_MARK too: the app ignores payments on these cards
+              // (audit PT-08) and the demo tools find them by it.
+              tags: [TAG, DEMO_SEED_MARK, source.toLowerCase()],
               consentMarketing: i % 3 !== 0,
               ltv: 0,
               visitsCount: 0,
@@ -442,11 +480,9 @@ async function main() {
     let lastVisit: Date | null = null;
     for (let p = 0; p < pastN; p++) {
       const daysAgo = rndInt(2, 90);
-      const date = new Date();
-      date.setDate(date.getDate() - daysAgo);
       const hour = rndInt(9, 17);
       const min = (rndInt(0, 1) === 0 ? 0 : 30);
-      date.setHours(hour, min, 0, 0);
+      const date = atTashkent(tashkentDayString(new Date(), -daysAgo), hour * 60 + min);
       const endDate = new Date(date.getTime() + 30 * 60_000);
       const svc = pick(services, i + p);
       const doc = pick(doctors, i + p);
@@ -511,6 +547,7 @@ async function main() {
                 | "UZUM",
               status: "PAID",
               paidAt: date,
+              externalRef: DEMO_SEED_MARK,
             },
           });
           createdPay++;
@@ -520,11 +557,9 @@ async function main() {
     // Future booking — try 1-3 times to find a free slot.
     for (let f = 0; f < futureN; f++) {
       const daysAhead = rndInt(1, 14);
-      const date = new Date();
-      date.setDate(date.getDate() + daysAhead);
       const hour = rndInt(9, 17);
       const min = rndInt(0, 1) === 0 ? 0 : 30;
-      date.setHours(hour, min, 0, 0);
+      const date = atTashkent(tashkentDayString(new Date(), daysAhead), hour * 60 + min);
       const endDate = new Date(date.getTime() + 30 * 60_000);
       const svc = pick(services, i + f + 5);
       const doc = pick(doctors, i + f + 5);
@@ -550,10 +585,9 @@ async function main() {
           endDate,
           status: "BOOKED",
           queueStatus: "BOOKED",
-          channel: pick(["WALKIN", "PHONE", "TELEGRAM"], i + f) as
-            | "WALKIN"
-            | "PHONE"
-            | "TELEGRAM",
+          // Never WALKIN: that is the live-queue discriminator, a WALKIN
+          // «booking» holds the slot and shows on neither reception panel.
+          channel: pick(DEMO_CHANNELS, i + f),
           priceService: svc.priceBase,
           priceBase: svc.priceBase,
           priceFinal: svc.priceBase,
@@ -1214,7 +1248,7 @@ async function rebuildTodayStoryline(args: {
 
   // Today's weekday (0=Sun..6=Sat). If today is Sunday and no schedule
   // exists, fall back to Monday so the boss-demo always has data.
-  const todayWeekday = new Date().getDay();
+  const todayWeekday = tashkentComponents(new Date()).dow;
   // Cabinet is bound to doctor (Phase 11); pull it via doctor.cabinet rather
   // than DoctorSchedule.cabinetId (which no longer exists).
   type DemoSchedule = {
@@ -1291,10 +1325,9 @@ async function rebuildTodayStoryline(args: {
     }
   }
   const servicesById = new Map(services.map((s) => [s.id, s]));
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  // Tashkent day: the container clock is UTC.
+  const { dayStart, dayEnd } = tashkentDayBounds(new Date());
+  const todayStr = tashkentComponents(new Date()).date;
 
   // Wipe today's appointments tied to demo patients so we can rebuild a
   // fresh storyline aligned with the current wall clock.
@@ -1404,8 +1437,7 @@ async function rebuildTodayStoryline(args: {
         continue;
       }
 
-      const startAt = new Date(dayStart);
-      startAt.setMinutes(cursorMin);
+      const startAt = atTashkent(todayStr, cursorMin);
       const endAt = new Date(startAt.getTime() + dur * 60_000);
       const priceBase =
         overrideByPair.get(`${doctor.id}|${svc.id}`) ?? svc.priceBase;
@@ -1432,7 +1464,10 @@ async function rebuildTodayStoryline(args: {
 
       const patient = patients[patientCursor % patients.length]!;
       patientCursor += 1;
-      const channel = pickChannel(seed);
+      // A patient who has not arrived yet is a booking: schedule-lane
+      // channel, never WALKIN/KIOSK (those are live-queue rows).
+      const channel =
+        status === "BOOKED" ? DEMO_CHANNELS[seed % DEMO_CHANNELS.length]! : pickChannel(seed);
 
       // Discount: 12% of completed get 5-25% off.
       const discountPct =
@@ -1453,7 +1488,7 @@ async function rebuildTodayStoryline(args: {
         cabinetId: cab.id,
         serviceId: svc.id,
         date: startAt,
-        time: `${pad(startAt.getHours())}:${pad(startAt.getMinutes())}`,
+        time: hhmm(cursorMin),
         durationMin: dur,
         endDate: endAt,
         status,
@@ -1516,6 +1551,7 @@ async function rebuildTodayStoryline(args: {
                 method: payMethods[(seed * 3) % payMethods.length]!,
                 status: "PAID",
                 paidAt: endAt,
+                externalRef: DEMO_SEED_MARK,
               },
             });
             if (discountPct > 0) stats.discounted++;
@@ -1546,8 +1582,7 @@ async function rebuildTodayStoryline(args: {
   const walkInCount = Math.min(10, uniqueDoctors.length * 2);
   for (let w = 0; w < walkInCount; w++) {
     const m = 10 * 60 + (w * 23) % (8 * 60); // spread across the day
-    const startAt = new Date(dayStart);
-    startAt.setMinutes(m);
+    const startAt = atTashkent(todayStr, m);
     if (startAt < now) continue; // only future
     const doctor = uniqueDoctors[w % uniqueDoctors.length]!;
     const allowed = allowedByDoctor.get(doctor.id);
@@ -1582,7 +1617,7 @@ async function rebuildTodayStoryline(args: {
         cabinetId: docCabinetId,
         serviceId: svc.id,
         date: startAt,
-        time: `${pad(startAt.getHours())}:${pad(startAt.getMinutes())}`,
+        time: hhmm(m),
         durationMin: svc.durationMin,
         endDate: endAt,
         status: "BOOKED",

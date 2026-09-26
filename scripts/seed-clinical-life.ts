@@ -1,12 +1,26 @@
 /**
- * Ultra-realistic clinical seeder for the `neurofax` clinic.
+ * Clinical seeder for a DEMO clinic on a LOCAL database.
  *
  * Runs AFTER `seed-demo-data.ts` so the demo patients/appointments already
  * exist. Layers on the clinical artefacts that turn a populated DB into a
  * "clinic that's been operating all year": visit notes, lab orders+results,
  * e-prescriptions, prescriptions w/ medication reminders, patient medical
- * history (allergies / chronic conditions / diagnoses), reviews, the
- * Communication audit trail, and a year of AuditLog noise.
+ * history (allergies / chronic conditions / diagnoses), reviews and the
+ * Communication trail.
+ *
+ * Audit G2-06: every note, e-prescription and reminder here is signed with a
+ * doctor of the clinic, so on the real clinic it forged conclusions and
+ * working recipe links in real doctors' names, and it wrote (and on re-run
+ * deleted) 1500 fake AuditLog rows with their user ids. Now:
+ *   - refused with NODE_ENV=production, and on any clinic that shows real
+ *     staff work, with NO opt-in (scripts/_destructive-guard.ts): the doctors
+ *     it signs as must be demo doctors, and a clinic without real work is the
+ *     only place where every doctor is one;
+ *   - CLINIC_SLUG has to be named (it defaulted to the real clinic);
+ *   - it never writes or deletes AuditLog rows: the audit trail is evidence
+ *     and only the app writes it.
+ *
+ *   CLINIC_SLUG=<demo clinic> npx tsx scripts/seed-clinical-life.ts --force
  *
  * Idempotent: rows are tagged with the `[ultra]` marker in notes/title/
  * meta fields, and previous-run rows are wiped before re-creating.
@@ -15,11 +29,14 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { assertSeedAllowed, requireClinicSlug } from "./_destructive-guard";
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
 });
 
-const SLUG = process.env.CLINIC_SLUG ?? "neurofax";
+const SCRIPT = "seed-clinical-life";
+const SLUG = requireClinicSlug(SCRIPT);
 const TAG_DEMO = "demo:";
 const TAG_ULTRA = "[ultra]";
 
@@ -406,9 +423,8 @@ async function wipeUltra(clinicId: string): Promise<void> {
   await prisma.reminder.deleteMany({
     where: { clinicId, body: { contains: TAG_ULTRA } },
   });
-  await prisma.auditLog.deleteMany({
-    where: { clinicId, meta: { path: ["seed"], equals: "ultra" } },
-  });
+  // No AuditLog cleanup (audit G2-06): the journal is evidence, a seed never
+  // deletes from it. Rows an old version wrote stay, tagged meta.seed=ultra.
 }
 
 // ─── Seeders ────────────────────────────────────────────────────────────
@@ -890,73 +906,14 @@ async function seedReminders(
   return n;
 }
 
-async function seedAuditLog(
-  clinicId: string,
-  doctorUsers: { userId: string }[],
-  patients: { id: string }[],
-): Promise<number> {
-  // 1500 audit rows scattered across the past 365 days. Action mix mirrors
-  // what a real working clinic would emit.
-  const TOTAL = 1500;
-  const actions = [
-    { action: "user.signin", entityType: "User", weight: 25 },
-    { action: "appointment.create", entityType: "Appointment", weight: 20 },
-    { action: "appointment.update", entityType: "Appointment", weight: 15 },
-    { action: "appointment.complete", entityType: "Appointment", weight: 12 },
-    { action: "payment.create", entityType: "Payment", weight: 10 },
-    { action: "document.upload", entityType: "Document", weight: 5 },
-    { action: "communication.sms.send", entityType: "Communication", weight: 5 },
-    { action: "visitnote.finalize", entityType: "VisitNote", weight: 4 },
-    { action: "patient.update", entityType: "Patient", weight: 3 },
-    { action: "lab.result.review", entityType: "LabResult", weight: 1 },
-  ];
-  const total = actions.reduce((s, a) => s + a.weight, 0);
-  let n = 0;
-  for (let i = 0; i < TOTAL; i++) {
-    let r = rndInt(0, total - 1);
-    let pickAction = actions[0]!;
-    for (const a of actions) {
-      if (r < a.weight) {
-        pickAction = a;
-        break;
-      }
-      r -= a.weight;
-    }
-    const actor = doctorUsers.length > 0 ? pick(doctorUsers) : null;
-    const daysBack = Math.floor(Math.pow(Math.random(), 0.5) * 365);
-    const hour = rndInt(8, 19);
-    const min = rndInt(0, 59);
-    const createdAt = new Date();
-    createdAt.setDate(createdAt.getDate() - daysBack);
-    createdAt.setHours(hour, min, 0, 0);
-    await prisma.auditLog.create({
-      data: {
-        clinicId,
-        actorId: actor?.userId ?? null,
-        actorRole: chance(0.6) ? "DOCTOR" : pick(["ADMIN", "RECEPTIONIST", "CALL_OPERATOR"]),
-        actorLabel: actor ? `User#${actor.userId.slice(-6)}` : "System",
-        action: pickAction.action,
-        entityType: pickAction.entityType,
-        entityId: chance(0.7) && patients.length > 0 ? pick(patients).id : null,
-        meta: { seed: "ultra", iter: i },
-        ip: `192.168.${rndInt(1, 50)}.${rndInt(1, 250)}`,
-        userAgent: pick([
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15",
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0",
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X)",
-          "MedBook/Telegram-MiniApp",
-        ]),
-        createdAt,
-      },
-    });
-    n++;
-  }
-  return n;
-}
-
-// ─── Main ───────────────────────────────────────────────────────────────
-
 async function main() {
+  await assertSeedAllowed(prisma, {
+    script: SCRIPT,
+    clinicSlug: SLUG,
+    destructive: true,
+    devOnly: true,
+    neverOnRealData: true,
+  });
   const clinic = await prisma.clinic.findFirst({
     where: { slug: SLUG },
     select: { id: true, nameRu: true },
@@ -1017,10 +974,6 @@ async function main() {
   console.log(`→ doctor reminders (My Day)…`);
   const remCount = await seedReminders(clinicId, doctorUsers, demoPatients);
   console.log(`  +${remCount} reminders`);
-
-  console.log(`→ audit log (1 year)…`);
-  const auditCount = await seedAuditLog(clinicId, doctorUsers, demoPatients);
-  console.log(`  +${auditCount} audit rows`);
 
   console.log("");
   console.log("✅ done");

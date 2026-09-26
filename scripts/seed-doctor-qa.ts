@@ -22,6 +22,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -117,6 +118,13 @@ async function clean(clinicId: string, doctorId: string, doctorUserId: string) {
 }
 
 async function main() {
+  // Test data only, never on the real clinic (audit G2-02/G2-06).
+  await assertSeedAllowed(prisma, {
+    script: "seed-doctor-qa",
+    clinicSlug: "neurofax",
+    devOnly: true,
+    destructive: true,
+  });
   const doctorUser = await prisma.user.findFirst({
     where: { email: DOCTOR_EMAIL, role: "DOCTOR" },
     select: { id: true, clinicId: true, name: true },

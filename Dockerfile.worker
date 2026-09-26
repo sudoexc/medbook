@@ -22,6 +22,12 @@ RUN npm ci
 COPY . .
 # Generate Prisma client in the same image so the worker can talk to Postgres.
 RUN npx prisma generate
+# Test and QA seeds never run on production (audit G2-02): keep them out of
+# the image the runner copies `scripts/` from. Each also refuses
+# NODE_ENV=production by itself (scripts/_destructive-guard.ts).
+RUN rm -f scripts/seed-labs-reminders-dev.ts scripts/seed-doctor-qa.ts \
+      scripts/seed-joe-two.ts scripts/seed-clinical-life.ts \
+      scripts/total-stress-seed.ts scripts/stress-*.ts
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app

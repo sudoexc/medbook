@@ -21,6 +21,7 @@ import {
   runScheduledTriggers,
   scheduleAppointmentReminders,
 } from "../src/server/notifications/triggers";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const raw = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -443,6 +444,13 @@ async function scenarioNonTgUserGetsSmsOnly(s: Setup): Promise<void> {
 // ── runner ────────────────────────────────────────────────────────────────
 
 async function main() {
+  // Test data only, never on the real clinic (audit G2-02/G2-06).
+  await assertSeedAllowed(raw, {
+    script: "stress-reminders-scenarios",
+    clinicSlug: "neurofax",
+    devOnly: true,
+    destructive: true,
+  });
   console.log(`run id: ${RUN_ID}\n`);
   const s = await setup();
   await scenarioApptIn4h30(s);

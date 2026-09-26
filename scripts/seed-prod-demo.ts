@@ -1,6 +1,9 @@
 /**
- * Demo patients for the neurofax clinic, safe to point at the live database
- * (audit G2-01).
+ * Demo patients for a demo clinic (audit G2-01). Written to be harmless next
+ * to real rows (marked, idempotent, Tashkent times), but production neurofax
+ * is the real clinic now: with APPLY=1 the shared guard refuses a clinic with
+ * real data or NODE_ENV=production unless ALLOW_DEMO_SEED_ON_REAL_DATA names
+ * it (audit G2-03, scripts/_destructive-guard.ts).
  *
  * What it does:
  *   - Keeps DEMO_COUNT (30) demo patients with phones in the +998 00 100 XX XX
@@ -31,16 +34,18 @@
  *   docker compose exec -T -e APPLY=1 worker npx tsx scripts/seed-prod-demo.ts
  * Flags:
  *   --with-future                 also book one future visit per new patient
- *   --i-know-there-is-real-data   required with APPLY=1 when the clinic shows
- *                                 real activity (see _destructive-guard.ts)
  * Env:
  *   DEMO_CLINIC_SLUG (default "neurofax")
+ *   ALLOW_DEMO_SEED_ON_REAL_DATA=<slug>  required with APPLY=1 when the clinic
+ *                                 holds real data or NODE_ENV=production
+ *                                 (see _destructive-guard.ts). Production IS
+ *                                 the real clinic: do not run this there.
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { assertDemoWriteAllowed } from "./_destructive-guard";
+import { assertSeedAllowed } from "./_destructive-guard";
 import {
   DEMO_APPOINTMENT_NOTE,
   DEMO_CHANNELS,
@@ -96,7 +101,9 @@ async function main() {
   if (!clinic) throw new Error(`[seed] clinic '${SLUG}' not found`);
   console.log(`✔ clinic: ${clinic.slug} (${clinic.id})`);
 
-  if (APPLY) await assertDemoWriteAllowed(prisma, "seed-prod-demo");
+  if (APPLY) {
+    await assertSeedAllowed(prisma, { script: "seed-prod-demo", clinicSlug: SLUG });
+  }
 
   const branch = await prisma.branch.findFirst({
     where: { clinicId: clinic.id, isDefault: true, isActive: true },

@@ -9,13 +9,15 @@
  * This is the WIPE phase of seed-mega-neurofax.ts, extracted to run on its own
  * with NO re-seed. Irreversible.
  *
- * Run from the worker container:
- *   docker compose exec -T worker npx tsx scripts/wipe-neurofax-demo.ts
+ * Production neurofax is the real clinic: _destructive-guard.ts refuses this
+ * script there (it would delete patients, visits and signed conclusions).
+ * Local or demo database only:
+ *   npx tsx scripts/wipe-neurofax-demo.ts --force
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { assertDestructiveAllowed } from "./_destructive-guard";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -67,7 +69,11 @@ const wipeOrder = [
 ];
 
 async function main() {
-  await assertDestructiveAllowed(prisma, "wipe-neurofax-demo");
+  await assertSeedAllowed(prisma, {
+    script: "wipe-neurofax-demo",
+    clinicSlug: "neurofax",
+    destructive: true,
+  });
   const clinic = await prisma.clinic.findUnique({ where: { slug: "neurofax" } });
   if (!clinic) throw new Error("clinic 'neurofax' not found");
   const clinicId = clinic.id;

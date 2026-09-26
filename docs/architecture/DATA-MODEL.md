@@ -368,18 +368,18 @@ Action Center (Phase 13): атомарная системная рекоменд
 
 ## 6. Сиды
 
-Все — в `scripts/` (не в `prisma/seed.ts`; штатный `prisma/seed.ts` сломан на Prisma 7 strict mode — отмечено в заголовке `seed-labs-reminders-dev.ts`). Запуск на проде — из worker-контейнера: `docker compose exec -T worker npx tsx scripts/<имя>.ts`. Прод neurofax — демо-среда без реальных пациентов.
+Все — в `scripts/` (не в `prisma/seed.ts`; штатный `prisma/seed.ts` сломан на Prisma 7 strict mode — отмечено в заголовке `seed-labs-reminders-dev.ts`). Прод neurofax — **реальная клиника**: демо- и тестовые сиды там запрещены (RUNBOOK §5), их общий предохранитель `scripts/_destructive-guard.ts` отказывает на клинике с реальными данными и при `NODE_ENV=production`, пока `ALLOW_DEMO_SEED_ON_REAL_DATA` не назовёт клинику (для neurofax не ставить никогда). На проде из worker-контейнера запускаются только исправления данных (DRY RUN, затем `APPLY=1`).
 
 ### ⚠️ Деструктивные (вытирают данные)
 
 | Скрипт | Что делает |
 |---|---|
 | `wipe-neurofax-demo.ts` | **Только WIPE, без пересева. Необратимо.** Сносит все patient-derived строки клиники neurofax (записи, платежи, чаты, документы, лиды, аудит…), строго по clinicId; сохраняет каркас: Clinic/Branch/User/Doctor/Service/Cabinet/расписания/шаблоны. Удаление child-before-parent под FK |
-| `seed-mega-neurofax.ts` | **WIPE + пересев** (~888 строк): та же чистка, затем богатый снапшот «клиника в разгаре работы» — пациенты с историей/семьями/аллергиями, визиты, кейсы, VisitNote, рецепты, больничные, лабы, платежи, инвойсы, чаты, звонки, Actions, AuditLog. Основной демо-ресид прода |
-| `seed-today-live.ts` | **Удаляет ТОЛЬКО сегодняшние записи** (child rows first) и перестраивает живую очередь «на сейчас» через общий билдер `_live-queue-seed.ts`: корректные two-lanes, иммутабельный `ticketSeq`, `queuedAt`, «срочно»-буст, поздний приход — по каждому врачу с активным расписанием на ташкентский день недели (фикс UTC→Tashkent для TV-борда). Идемпотентен, безопасен для многократного прогона между показами |
-| `seed-neurofax-real.ts` | Перезаписывает каталог neurofax реальным продовым составом: 5 кабинетов (№3 намеренно нет), 7 врачей с фикс-кабинетами, 13 услуг. Не удаляет — деактивирует старые (isActive=false), история сохраняется |
-| `seed-demo-data.ts` | ~80 (env `PATIENTS=N`) демо-пациентов с документами/записями/платежами; идемпотентен (phoneNormalized + префикс `demo:`); **`CLEAN=1` — режим чистки** |
-| `seed-clinical-life.ts` | Слой поверх seed-demo-data: visit notes, lab orders+results, э-рецепты, meds-напоминания, med-история, отзывы, год AuditLog-шума. Идемпотентен через тег `[ultra]` — **строки прошлого прогона вычищает** перед пересевом |
+| `seed-mega-neurofax.ts` | **WIPE + пересев** (~888 строк): та же чистка, затем богатый снапшот «клиника в разгаре работы» — пациенты с историей/семьями/аллергиями, визиты, кейсы, VisitNote, рецепты, больничные, лабы, платежи, инвойсы, чаты, звонки, Actions, AuditLog. Только локальная база: `--force`, на проде отказ |
+| `seed-today-live.ts` | **Удаляет ТОЛЬКО сегодняшние записи с демо-меткой** (`notes = "[demo-seed]"`, child rows first), пациентов берёт только с тегом `demo-seed`, и перестраивает живую очередь «на сейчас» через общий билдер `_live-queue-seed.ts`: корректные two-lanes, иммутабельный `ticketSeq`, `queuedAt`, «срочно»-буст, поздний приход — по каждому врачу с активным расписанием на ташкентский день недели (фикс UTC→Tashkent для TV-борда). `--force`, на проде отказ |
+| `seed-neurofax-real.ts` | Каталог neurofax на момент запуска: 5 кабинетов (№3 намеренно нет), 7 врачей с фикс-кабинетами, 13 услуг. DRY RUN по умолчанию, `APPLY=1` пишет в одной транзакции; только добавляет недостающее, цены/расписания/активность не трогает без флагов `--reset-prices`, `--reset-schedules`, `--reset-doctor-services`, `--reactivate`, `--deactivate-others` |
+| `seed-demo-data.ts` | ~150 (env `PATIENTS=N`) демо-пациентов с документами/записями/платежами; обязателен `CLINIC_SLUG`; время по Ташкенту; идемпотентен (phoneNormalized + теги `demo:`/`demo-seed`); **`CLEAN=1 … --force` — чистка одной транзакцией** |
+| `seed-clinical-life.ts` | Слой поверх seed-demo-data: visit notes, lab orders+results, э-рецепты, meds-напоминания, med-история, отзывы. AuditLog не пишет и не удаляет. Только локальная база без реальных данных (обхода нет), обязателен `CLINIC_SLUG`, `--force`. Идемпотентен через тег `[ultra]`: **строки прошлого прогона вычищает** перед пересевом |
 | `seed-doctor-qa.ts` | QA-сид кабинета врача (neurologist@neurofax.uz / пароль doctor): все состояния /doctor/*. Идемпотентен, **чистит строки с QA_TAG** перед пересевом |
 | `seed-joe-two.ts` | Два WAITING-визита подряд для врача joe (ручной тест single-active-visit guard); чистит свои прошлые остатки |
 
@@ -387,10 +387,10 @@ Action Center (Phase 13): атомарная системная рекоменд
 
 | Скрипт | Что делает |
 |---|---|
-| `seed-prod-demo.ts` | Прод-безопасный: апсерт 11 NotificationTemplate + 30 демо-пациентов в диапазоне `+998999100XXXX` (легко отличить), по 1 прошлому COMPLETED (+PAID Payment) и 1 будущему BOOKED. Не трогает реальных юзеров/врачей/услуги; не создаёт demo-clinic и `1@1.uz` на проде |
+| `seed-prod-demo.ts` | 30 демо-пациентов (тег `demo-seed`, телефоны `+99800100XXXX`), по 1 прошлому COMPLETED (+PAID Payment с меткой) и с `--with-future` 1 будущему BOOKED. DRY RUN по умолчанию, `APPLY=1` пишет; на клинике с реальными данными и при `NODE_ENV=production` отказ без `ALLOW_DEMO_SEED_ON_REAL_DATA=<slug>` |
 | `seed-knowledge.ts` | Глобальная база `DiagnosisGuide` (clinicId=null), нейро-профиль RU+UZ; глобальные строки обновляет (сид — источник истины), клиничные не трогает |
 | `seed-notification-templates.ts` | 8 дефолтных шаблонов уведомлений каждой клинике; существующие `(clinicId, key)` не перезаписывает (правки админа выживают) |
-| `seed-labs-reminders-dev.ts` | Dev-only: Reminder + LabResult к существующим врачам/пациентам; скипает врача, у которого уже есть |
+| `seed-labs-reminders-dev.ts` | Dev-only (при `NODE_ENV=production` отказ): Reminder + LabResult одной клинике (`CLINIC_SLUG`) только для пациентов с тегом `demo-seed`, каждая строка помечена `[demo-seed:labs-reminders-dev]`; скипает врача, у которого помеченные уже есть |
 | `total-stress-seed.ts` | Стресс-объём для neurofax (~30 пациентов, ~150 записей во всех статусах, платежи); идемпотентен по префиксу `STRESS-` |
 | `bootstrap-super-admin.ts` | Апсерт `super@neurofax.uz` (SUPER_ADMIN), пароль из env `SUPER_PASS` |
 | `upsert-dev-admin.ts` | Dev-шорткат `1@1.uz` / пароль «1», ADMIN клиники neurofax |

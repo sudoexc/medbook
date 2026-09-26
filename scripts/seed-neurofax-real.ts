@@ -1,29 +1,55 @@
 /**
- * scripts/seed-neurofax-real.ts — overwrites the neurofax clinic catalog
- * (cabinets, services, doctors, schedules, ServiceOnDoctor) with the real
- * production line-up: 5 cabinets (1, 2, 4, 5, 6 — №3 intentionally absent),
- * 7 doctors anchored to a fixed cabinet, 13 services with per-doctor
- * priceOverrides where applicable.
+ * scripts/seed-neurofax-real.ts — the NeuroFax clinic catalog as launched:
+ * 5 cabinets (1, 2, 4, 5, 6 — №3 intentionally absent, 2-Б and 6-Б are
+ * scheduling siblings), 7 doctors anchored to a fixed cabinet, 13 services
+ * with per-doctor priceOverrides from the 18.05.2026 price list.
  *
- * Idempotent. Existing demo doctors/cabinets/services are flipped to
- * isActive=false (referential integrity is preserved — past appointments
- * still resolve), then the canonical set is upserted on top.
+ * Audit G2-08: it used to deactivate every cabinet, service and doctor of the
+ * clinic, re-upsert this line-up with the 18.05 prices and grids and set
+ * `active: true` on every doctor's login, without a transaction. On the live
+ * clinic that reverted the admin's prices and schedules, hid doctors and
+ * services added since, let a dismissed doctor sign in again, and a unique
+ * cabinet clash halfway left the clinic with no active doctor.
+ *
+ * Now (plan in scripts/_catalog-plan.ts):
+ *   - DRY RUN by default: prints what it would do. APPLY=1 writes.
+ *   - Strictly additive by default: creates only what is missing. Existing
+ *     cabinets, services and doctors keep their prices, schedules, links,
+ *     names and isActive. A login's `active` flag is never touched.
+ *   - Everything else is an explicit flag:
+ *       --reactivate             canonical rows that exist but are inactive
+ *                                (never the login: re-enable that in the UI)
+ *       --deactivate-others      rows of the clinic not in this line-up
+ *       --reset-prices           Service.priceBase and priceOverride
+ *       --reset-schedules        weekly grids of the canonical doctors
+ *       --reset-doctor-services  service links of the canonical doctors
+ *   - All writes run in ONE transaction: a failure changes nothing.
+ *
+ *   docker compose exec -T worker npx tsx scripts/seed-neurofax-real.ts
+ *   docker compose exec -T -e APPLY=1 worker npx tsx scripts/seed-neurofax-real.ts
  *
  * Doctor logins (audit SEC-04): a doctor account that does not exist yet is
  * created with a random password (or SEED_PASSWORD), printed once at the end,
  * and must be changed at first sign-in. An existing account's password is
- * never touched: this script used to reset all seven real doctors to the
- * known password «doctor» on every run. On NODE_ENV=production it refuses to
- * run without SEED_ALLOW_PROD_ACCOUNTS=1.
+ * never touched. Creating an account with NODE_ENV=production needs
+ * SEED_ALLOW_PROD_ACCOUNTS=1.
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import {
+  CATALOG_FLAG_NAMES,
+  parseCatalogFlags,
+  planCatalog,
+  writesOf,
+  type CatalogOp,
+} from "./_catalog-plan";
+import {
   assertAccountSeedAllowed,
   printIssuedPasswords,
-  upsertSeedUser,
+  seedPasswordFor,
+  type SeedPassword,
 } from "./_seed-passwords";
 
 const prisma = new PrismaClient({
@@ -243,9 +269,31 @@ const DOCTORS: DoctorSpec[] = [
   },
 ];
 
-async function main() {
-  assertAccountSeedAllowed("scripts/seed-neurofax-real.ts");
+const APPLY = process.env.APPLY === "1";
+const FLAGS = parseCatalogFlags(process.argv.slice(2));
 
+function describe(op: CatalogOp): string {
+  switch (op.kind) {
+    case "cabinet.create":
+    case "cabinet.activate":
+    case "cabinet.deactivate":
+      return `${op.kind.padEnd(18)} №${op.number}`;
+    case "service.create":
+    case "service.activate":
+    case "service.deactivate":
+      return `${op.kind.padEnd(18)} ${op.code}`;
+    case "service.price":
+      return `${op.kind.padEnd(18)} ${op.code}: ${op.from / 100} → ${op.to / 100} сум`;
+    case "doctor.create":
+      return `${op.kind.padEnd(18)} ${op.slug}${op.userId ? " (existing login)" : " (new login)"}`;
+    case "skip":
+      return `${"skip".padEnd(18)} ${op.what}: ${op.reason}`;
+    default:
+      return `${op.kind.padEnd(18)} ${op.slug}`;
+  }
+}
+
+async function main() {
   const clinic = await prisma.clinic.findUnique({
     where: { slug: SLUG },
     select: { id: true, nameRu: true },
@@ -255,189 +303,241 @@ async function main() {
       `Clinic ${SLUG} not found — run prisma/seed.ts first to bootstrap the platform.`,
     );
   }
+  const clinicId = clinic.id;
 
-  // ── Cabinets: deactivate all, upsert real, capture ids ────────
-  await prisma.cabinet.updateMany({
-    where: { clinicId: clinic.id },
-    data: { isActive: false },
-  });
-  const cabIds = new Map<string, string>();
-  for (const c of CABINETS) {
-    const cab = await prisma.cabinet.upsert({
-      where: { clinicId_number: { clinicId: clinic.id, number: c.number } },
-      update: {
-        floor: c.floor,
-        nameRu: c.nameRu,
-        nameUz: c.nameUz,
-        isActive: true,
-        equipment: [],
-      },
-      create: {
-        clinicId: clinic.id,
-        number: c.number,
-        floor: c.floor,
-        nameRu: c.nameRu,
-        nameUz: c.nameUz,
-        isActive: true,
-        equipment: [],
-      },
-    });
-    cabIds.set(c.number, cab.id);
+  const [cabinets, services, doctors, users] = await Promise.all([
+    prisma.cabinet.findMany({
+      where: { clinicId },
+      select: { id: true, number: true, isActive: true },
+    }),
+    prisma.service.findMany({
+      where: { clinicId },
+      select: { id: true, code: true, isActive: true, priceBase: true },
+    }),
+    prisma.doctor.findMany({
+      where: { clinicId },
+      select: { id: true, slug: true, isActive: true, cabinetId: true, userId: true },
+    }),
+    prisma.user.findMany({
+      where: { email: { in: DOCTORS.map((d) => d.email) } },
+      select: { id: true, email: true },
+    }),
+  ]);
+  const ops = planCatalog(
+    {
+      cabinets: [...CABINETS],
+      services: [...SERVICES],
+      doctors: DOCTORS,
+    },
+    { cabinets, services, doctors, users },
+    FLAGS,
+  );
+  const writes = writesOf(ops);
+  const flagsOn = (Object.keys(FLAGS) as Array<keyof typeof FLAGS>)
+    .filter((k) => FLAGS[k])
+    .map((k) => CATALOG_FLAG_NAMES[k]);
+
+  console.log(
+    `seed-neurofax-real: ${APPLY ? "APPLY" : "DRY RUN (set APPLY=1 to write)"}` +
+      `${flagsOn.length > 0 ? `, flags ${flagsOn.join(" ")}` : ", additive only"}\n`,
+  );
+  for (const op of ops) console.log(`  ${describe(op)}`);
+  if (writes.length === 0) {
+    console.log("\n✔ nothing to change");
+    await prisma.$disconnect();
+    return;
+  }
+  if (!APPLY) {
+    console.log(`\n${writes.length} change(s) planned, nothing written.`);
+    await prisma.$disconnect();
+    return;
   }
 
-  // ── Services: deactivate all, upsert real catalog, capture ids ────
-  await prisma.service.updateMany({
-    where: { clinicId: clinic.id },
-    data: { isActive: false },
-  });
-  const svcIds = new Map<string, string>();
-  for (const s of SERVICES) {
-    const svc = await prisma.service.upsert({
-      where: { clinicId_code: { clinicId: clinic.id, code: s.code } },
-      update: {
-        nameRu: s.nameRu,
-        nameUz: s.nameUz,
-        durationMin: s.durationMin,
-        priceBase: s.priceBase,
-        category: s.category,
-        isActive: true,
-      },
-      create: {
-        clinicId: clinic.id,
-        code: s.code,
-        nameRu: s.nameRu,
-        nameUz: s.nameUz,
-        durationMin: s.durationMin,
-        priceBase: s.priceBase,
-        category: s.category,
-        isActive: true,
-      },
-    });
-    svcIds.set(s.code, svc.id);
+  // Passwords are prepared before the transaction: bcrypt is slow, and a
+  // new login must not be half-created.
+  const newLogins = writes.filter(
+    (o): o is Extract<CatalogOp, { kind: "doctor.create" }> =>
+      o.kind === "doctor.create" && o.userId === null,
+  );
+  if (newLogins.length > 0) assertAccountSeedAllowed("scripts/seed-neurofax-real.ts");
+  const passwords = new Map<string, SeedPassword>();
+  for (const op of newLogins) {
+    const spec = DOCTORS.find((d) => d.slug === op.slug)!;
+    passwords.set(op.slug, await seedPasswordFor(spec.email));
   }
 
-  // ── Doctors: deactivate everyone, upsert real lineup ────────────
-  await prisma.doctor.updateMany({
-    where: { clinicId: clinic.id },
-    data: { isActive: false },
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      const cabinetId = async (number: string) => {
+        const row = await tx.cabinet.findUnique({
+          where: { clinicId_number: { clinicId, number } },
+          select: { id: true },
+        });
+        if (!row) throw new Error(`cabinet №${number} missing`);
+        return row.id;
+      };
+      const serviceId = async (code: string) => {
+        const row = await tx.service.findUnique({
+          where: { clinicId_code: { clinicId, code } },
+          select: { id: true },
+        });
+        if (!row) throw new Error(`service ${code} missing`);
+        return row.id;
+      };
+      const specOf = (slug: string) => DOCTORS.find((d) => d.slug === slug)!;
+      const writeLinks = async (doctorId: string, slug: string) => {
+        await tx.serviceOnDoctor.deleteMany({ where: { doctorId } });
+        for (const sv of specOf(slug).services) {
+          await tx.serviceOnDoctor.create({
+            data: {
+              doctorId,
+              serviceId: await serviceId(sv.code),
+              priceOverride: sv.priceOverride ?? null,
+            },
+          });
+        }
+      };
+      const writeSchedule = async (doctorId: string, slug: string) => {
+        await tx.doctorSchedule.deleteMany({ where: { doctorId } });
+        for (const sch of specOf(slug).schedule) {
+          await tx.doctorSchedule.create({
+            data: {
+              clinicId,
+              doctorId,
+              weekday: sch.weekday,
+              startTime: sch.start,
+              endTime: sch.end,
+              isActive: true,
+            },
+          });
+        }
+      };
 
-  for (const d of DOCTORS) {
-    const cabId = cabIds.get(d.cabinetNumber);
-    if (!cabId) {
-      throw new Error(`cabinet №${d.cabinetNumber} missing for ${d.slug}`);
-    }
+      for (const op of writes) {
+        switch (op.kind) {
+          case "cabinet.create": {
+            const c = CABINETS.find((x) => x.number === op.number)!;
+            await tx.cabinet.create({
+              data: {
+                clinicId,
+                number: c.number,
+                floor: c.floor,
+                nameRu: c.nameRu,
+                nameUz: c.nameUz,
+                isActive: true,
+                equipment: [],
+              },
+            });
+            break;
+          }
+          case "cabinet.activate":
+          case "cabinet.deactivate":
+            await tx.cabinet.update({
+              where: { id: op.id },
+              data: { isActive: op.kind === "cabinet.activate" },
+            });
+            break;
+          case "service.create": {
+            const sv = SERVICES.find((x) => x.code === op.code)!;
+            await tx.service.create({
+              data: {
+                clinicId,
+                code: sv.code,
+                nameRu: sv.nameRu,
+                nameUz: sv.nameUz,
+                durationMin: sv.durationMin,
+                priceBase: sv.priceBase,
+                category: sv.category,
+                isActive: true,
+              },
+            });
+            break;
+          }
+          case "service.activate":
+          case "service.deactivate":
+            await tx.service.update({
+              where: { id: op.id },
+              data: { isActive: op.kind === "service.activate" },
+            });
+            break;
+          case "service.price":
+            await tx.service.update({ where: { id: op.id }, data: { priceBase: op.to } });
+            break;
+          case "doctor.create": {
+            const d = specOf(op.slug);
+            let userId = op.userId;
+            if (!userId) {
+              const pw = passwords.get(op.slug)!;
+              const user = await tx.user.create({
+                data: {
+                  email: d.email,
+                  name: d.nameRu,
+                  role: "DOCTOR",
+                  clinicId,
+                  passwordHash: pw.hash,
+                  mustChangePassword: pw.mustChangePassword,
+                },
+                select: { id: true },
+              });
+              userId = user.id;
+            }
+            const doctor = await tx.doctor.create({
+              data: {
+                clinicId,
+                slug: d.slug,
+                nameRu: d.nameRu,
+                nameUz: d.nameUz,
+                specializationRu: d.specializationRu,
+                specializationUz: d.specializationUz,
+                color: d.color,
+                userId,
+                cabinetId: await cabinetId(d.cabinetNumber),
+                isActive: true,
+              },
+              select: { id: true },
+            });
+            await writeLinks(doctor.id, d.slug);
+            await writeSchedule(doctor.id, d.slug);
+            break;
+          }
+          case "doctor.activate":
+          case "doctor.deactivate":
+            // Doctor.isActive only: the login (User.active) stays as the
+            // admin left it, a dismissed doctor must not sign in again.
+            await tx.doctor.update({
+              where: { id: op.id },
+              data: { isActive: op.kind === "doctor.activate" },
+            });
+            break;
+          case "doctor.services":
+            await writeLinks(op.id, op.slug);
+            break;
+          case "doctor.prices":
+            for (const sv of specOf(op.slug).services) {
+              await tx.serviceOnDoctor.updateMany({
+                where: { doctorId: op.id, serviceId: await serviceId(sv.code) },
+                data: {
+                  priceOverride: sv.priceOverride ?? null,
+                },
+              });
+            }
+            break;
+          case "doctor.schedule":
+            await writeSchedule(op.id, op.slug);
+            break;
+        }
+      }
+    },
+    { timeout: 60_000 },
+  );
 
-    // User account (login)
-    const user = await upsertSeedUser({
-      email: d.email,
-      exists: async () =>
-        Boolean(
-          await prisma.user.findUnique({
-            where: { email: d.email },
-            select: { id: true },
-          }),
-        ),
-      create: (pw) =>
-        prisma.user.create({
-          data: {
-            email: d.email,
-            name: d.nameRu,
-            role: "DOCTOR",
-            clinicId: clinic.id,
-            passwordHash: pw.hash,
-            mustChangePassword: pw.mustChangePassword,
-          },
-        }),
-      // No passwordHash here: a re-run must not reset a doctor's password.
-      update: () =>
-        prisma.user.update({
-          where: { email: d.email },
-          data: {
-            name: d.nameRu,
-            role: "DOCTOR",
-            clinicId: clinic.id,
-            active: true,
-          },
-        }),
-    });
-
-    const doctor = await prisma.doctor.upsert({
-      where: { clinicId_slug: { clinicId: clinic.id, slug: d.slug } },
-      update: {
-        nameRu: d.nameRu,
-        nameUz: d.nameUz,
-        specializationRu: d.specializationRu,
-        specializationUz: d.specializationUz,
-        color: d.color,
-        userId: user.id,
-        cabinetId: cabId,
-        isActive: true,
-      },
-      create: {
-        clinicId: clinic.id,
-        slug: d.slug,
-        nameRu: d.nameRu,
-        nameUz: d.nameUz,
-        specializationRu: d.specializationRu,
-        specializationUz: d.specializationUz,
-        color: d.color,
-        userId: user.id,
-        cabinetId: cabId,
-        isActive: true,
-      },
-    });
-
-    // Replace ServiceOnDoctor links with the doctor's actual catalogue.
-    await prisma.serviceOnDoctor.deleteMany({ where: { doctorId: doctor.id } });
-    for (const sv of d.services) {
-      const sid = svcIds.get(sv.code);
-      if (!sid) throw new Error(`service ${sv.code} missing`);
-      await prisma.serviceOnDoctor.create({
-        data: {
-          doctorId: doctor.id,
-          serviceId: sid,
-          priceOverride: sv.priceOverride ?? null,
-        },
-      });
-    }
-
-    // Replace DoctorSchedule with the real weekly grid. Cabinet is now bound
-    // to the doctor (Doctor.cabinetId), so no per-shift cabinet column.
-    await prisma.doctorSchedule.deleteMany({ where: { doctorId: doctor.id } });
-    for (const sch of d.schedule) {
-      await prisma.doctorSchedule.create({
-        data: {
-          clinicId: clinic.id,
-          doctorId: doctor.id,
-          weekday: sch.weekday,
-          startTime: sch.start,
-          endTime: sch.end,
-          isActive: true,
-        },
-      });
-    }
-  }
-
-  console.log("");
-  console.log("✅ neurofax-real seeded");
-  console.log(`  cabinets   ${CABINETS.length} active (1, 2, 4, 5, 6)`);
-  console.log(`  services   ${SERVICES.length} active`);
-  console.log(`  doctors    ${DOCTORS.length} anchored to fixed cabinets`);
-  console.log("");
-  console.log("  cabinet 1 → Бусаков Б.С.            (Пн–Сб 08:00–17:00)");
-  console.log("  cabinet 2 → Тынчерова Н.Ю.          (Пн/Ср/Пт/Сб 09:00–15:00)");
-  console.log("            + Мухитдинова Ш.С.        (Вт/Чт 09:30–15:00)");
-  console.log("  cabinet 4 → Рахманова Н.Б.          (Пн–Сб 10:00–14:00)");
-  console.log("  cabinet 5 → Султанов А.Б.           (Пн–Сб 08:00–17:00)");
-  console.log("  cabinet 6 → Исраилова Ф.К.          (Вт/Чт/Сб 09:00–15:00)");
-  console.log("            + Вазирова Ю.Н.           (Пн/Ср/Пт 09:00–15:00)");
+  console.log(`\n✅ neurofax catalog: ${writes.length} change(s) applied in one transaction`);
   printIssuedPasswords();
-
   await prisma.$disconnect();
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(e);
+  await prisma.$disconnect();
   process.exit(1);
 });

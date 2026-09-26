@@ -92,7 +92,7 @@ describe("the script itself", () => {
 
   it("is a dry run unless APPLY=1, and guards a clinic in real use", () => {
     expect(src).toMatch(/process\.env\.APPLY === "1"/);
-    expect(src).toMatch(/assertDemoWriteAllowed\(/);
+    expect(src).toMatch(/assertSeedAllowed\(prisma, \{ script: "seed-prod-demo", clinicSlug: SLUG \}\)/);
   });
 
   it("takes the doctor's own cabinet and fills time", () => {

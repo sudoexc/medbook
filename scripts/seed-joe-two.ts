@@ -4,11 +4,12 @@
  * start the first → IN_PROGRESS, then try to start the second → blocked with a
  * warning. Sequential slots (the doctor's cabinet has a no-overlap constraint).
  *
- *   docker compose exec -T worker npx tsx scripts/seed-joe-two.ts
+ *   npx tsx scripts/seed-joe-two.ts --force   (local database only)
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -18,6 +19,13 @@ const DOCTOR_ID = "cmq6oqd1x000407mjs6unib0l"; // joe, невролог
 const TAG = "joe-guard-test";
 
 async function main() {
+  // Test data only, never on the real clinic (audit G2-02/G2-06).
+  await assertSeedAllowed(prisma, {
+    script: "seed-joe-two",
+    clinicSlug: "neurofax",
+    devOnly: true,
+    destructive: true,
+  });
   const clinic = await prisma.clinic.findUnique({ where: { slug: "neurofax" } });
   if (!clinic) throw new Error("clinic 'neurofax' not found");
   const clinicId = clinic.id;

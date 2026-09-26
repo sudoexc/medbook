@@ -1,117 +1,315 @@
 /**
- * Safety interlock for the destructive demo-seed scripts.
+ * The one safety interlock for every script that writes demo or test data
+ * (audit G2-01, G2-02, G2-06, G2-07).
  *
- * The seeds wipe and rebuild domain data. That was harmless while prod was a
- * pure demo, but a real doctor now runs consultations on the same database —
- * a stray seed run would delete signed conclusions, i.e. medical records.
+ * Production is the real NeuroFax clinic: reception runs the live queue,
+ * doctors sign conclusions, patients book through Telegram. A seed run
+ * against it deletes medical records, signs made-up conclusions in real
+ * doctors' names, takes real patients' slots and adds revenue nobody paid.
+ * So every demo or test seed calls `assertSeedAllowed` before its first
+ * write, and this helper decides, in order:
  *
- * Two gates, both must pass:
- *   1. An explicit `--force` flag. No flag, no destruction — this alone stops
- *      an absent-minded copy-paste of a command from the runbook.
- *   2. A recent-activity probe. Real logins write AuditLog rows; the seeds do
- *      not. If the clinic has been used in the last ACTIVITY_WINDOW_HOURS the
- *      script refuses even with `--force`, unless `--i-know-there-is-real-data`
- *      is also passed. Deleting a doctor's work should take a sentence, not a
- *      keystroke.
+ *   1. Dev-only scripts (stress tests, QA seeds, fake clinical history) never
+ *      run with NODE_ENV=production. There is no override: the worker image
+ *      is production, and nothing those scripts write belongs there.
+ *   2. Scripts that DELETE rows need `--force`, so a command copied from a
+ *      doc or the shell history does nothing by itself.
+ *   3. A clinic that holds real data, or any clinic with NODE_ENV=production,
+ *      needs `ALLOW_DEMO_SEED_ON_REAL_DATA=<clinic slug>`. The value names the
+ *      clinic: an opt-in exported for one clinic cannot carry over to another,
+ *      and nobody reaches the real clinic without typing its slug. Scripts
+ *      that sign documents as the clinic's doctors get no opt-in at all.
  *
- * Usage at the top of a destructive script:
+ * Real data is read from the audit trail, the one thing seeds do not write
+ * for these actions: rows by a signed-in staff member for work only the
+ * running app does (a patient card created at reception, a walk-in ticket, a
+ * conclusion written or signed). The older whole-deployment probe (many audit
+ * rows in the last 72 h) stays as a second signal.
  *
- *   import { assertDestructiveAllowed } from "./_destructive-guard";
- *   await assertDestructiveAllowed(prisma, "seed-mega-neurofax");
+ * Usage, first thing in main():
+ *
+ *   import { assertSeedAllowed } from "./_destructive-guard";
+ *   await assertSeedAllowed(prisma, { script: "seed-today-live", clinicSlug: "neurofax", destructive: true });
+ *
+ * Not for the production data fixes (backfills and fix-* scripts with DRY RUN
+ * and APPLY=1): those are written for the real clinic on purpose.
  */
-import type { PrismaClient } from "../src/generated/prisma/client";
 
+/** Env var that lets a demo seed touch a clinic with real data. Value: the clinic slug. */
+export const REAL_DATA_OPT_IN_ENV = "ALLOW_DEMO_SEED_ON_REAL_DATA";
+
+/**
+ * Audit actions only the running app writes, always on behalf of a signed-in
+ * staff member. Seeds never write these: the fake «year of audit noise» that
+ * seed-clinical-life used to add was `user.signin`, `appointment.create`,
+ * `payment.create`, `visitnote.finalize` and the like, which is why none of
+ * those are here (a dev database it once ran on must not look «real»).
+ */
+export const REAL_WORK_ACTIONS = [
+  "patient.create",
+  "appointment.walkin_issued",
+  "visit_note.create",
+  "visit_note.update",
+  "visit_note.finalize",
+  "visit_note.print",
+  "document.create",
+  "medical_case.create",
+] as const;
+
+/** Any staff row above counts: one real walk-in means real patients. */
+const REAL_WORK_THRESHOLD = 1;
 const ACTIVITY_WINDOW_HOURS = 72;
-/** Below this, the rows are almost certainly our own tooling, not clinic work. */
+/** Below this, recent rows are almost certainly our own tooling. */
 const ACTIVITY_ROW_THRESHOLD = 20;
 
-export async function assertDestructiveAllowed(
-  prisma: PrismaClient,
-  scriptName: string,
-): Promise<void> {
-  const argv = process.argv.slice(2);
-  const forced = argv.includes("--force");
-  const acknowledged = argv.includes("--i-know-there-is-real-data");
+export type SeedPolicy = {
+  /** Script name without extension, for the messages. */
+  script: string;
+  /** The clinic the script writes to. */
+  clinicSlug: string;
+  /** Deletes rows: needs `--force`. */
+  destructive?: boolean;
+  /** Test or QA tooling: refused outright with NODE_ENV=production. */
+  devOnly?: boolean;
+  /**
+   * Writes documents signed by the clinic's doctors (seed-clinical-life): on
+   * a clinic with real data those are real people, so the opt-in does not
+   * apply and the only way is a fresh database.
+   */
+  neverOnRealData?: boolean;
+};
 
-  if (!forced) {
-    console.error(
-      [
+export type RealDataSignals = {
+  /** Staff-authored audit rows for REAL_WORK_ACTIONS in this clinic, all time. */
+  staffActions: number;
+  /** Audit rows in the whole database over the last ACTIVITY_WINDOW_HOURS. */
+  recentActivity: number;
+};
+
+export type SeedGuardInput = {
+  policy: SeedPolicy;
+  signals: RealDataSignals;
+  env: Record<string, string | undefined>;
+  argv: string[];
+};
+
+export type SeedGuardDecision =
+  | { ok: true; realData: boolean; warning: string | null }
+  | {
+      ok: false;
+      reason: "dev_only_in_production" | "needs_force" | "real_data";
+      message: string;
+    };
+
+export function hasRealData(s: RealDataSignals): boolean {
+  return (
+    s.staffActions >= REAL_WORK_THRESHOLD ||
+    s.recentActivity >= ACTIVITY_ROW_THRESHOLD
+  );
+}
+
+function describeSignals(s: RealDataSignals): string[] {
+  const out: string[] = [];
+  if (s.staffActions >= REAL_WORK_THRESHOLD) {
+    out.push(
+      `   В журнале ${s.staffActions} действий персонала: карточки пациентов, талоны живой очереди, заключения.`,
+    );
+  }
+  if (s.recentActivity >= ACTIVITY_ROW_THRESHOLD) {
+    out.push(
+      `   За последние ${ACTIVITY_WINDOW_HOURS} ч в системе ${s.recentActivity} действий пользователей.`,
+    );
+  }
+  return out;
+}
+
+/** Pure decision, unit tested; `assertSeedAllowed` wires it to the database. */
+export function decideSeedGuard(input: SeedGuardInput): SeedGuardDecision {
+  const { policy, signals, env, argv } = input;
+  const production = env.NODE_ENV === "production";
+  const realData = hasRealData(signals);
+  const cmd = `npx tsx scripts/${policy.script}.ts`;
+
+  if (policy.devOnly && production) {
+    return {
+      ok: false,
+      reason: "dev_only_in_production",
+      message: [
         "",
-        `⛔ ${scriptName} УДАЛЯЕТ данные клиники и пересобирает их заново.`,
-        "",
-        "   Прод neurofax сейчас используется живым врачом — запуск без",
-        "   подтверждения уничтожил бы подписанные заключения (медицинские",
-        "   документы).",
-        "",
-        "   Если это действительно то, что нужно, добавь флаг:",
-        `     npx tsx scripts/${scriptName}.ts --force`,
+        `⛔ ${policy.script} пишет тестовые данные и работает только на локальной базе.`,
+        "   Сейчас NODE_ENV=production. Обхода нет: на проде этот скрипт не нужен никогда.",
         "",
       ].join("\n"),
-    );
-    process.exit(1);
+    };
   }
 
-  const since = new Date(Date.now() - ACTIVITY_WINDOW_HOURS * 3600_000);
-  // Counted across the whole DB on purpose: the seeds are clinic-scoped, but
-  // the question here is "is anyone actually working in this deployment".
-  const recentAudit = await prisma.auditLog.count({
-    where: { createdAt: { gte: since } },
-  });
-
-  if (recentAudit >= ACTIVITY_ROW_THRESHOLD && !acknowledged) {
-    console.error(
-      [
+  if (policy.destructive && !argv.includes("--force")) {
+    return {
+      ok: false,
+      reason: "needs_force",
+      message: [
         "",
-        `⛔ Отказ: за последние ${ACTIVITY_WINDOW_HOURS} ч в системе ${recentAudit} действий`,
-        "   пользователей — похоже, ей уже пользуются по-настоящему.",
-        "",
-        "   Сначала сделай бэкап:",
-        "     cd /opt/neurofax && ./ops/backup.sh",
-        "",
-        "   И только если точно уверен, что демо-данные важнее реальных:",
-        `     npx tsx scripts/${scriptName}.ts --force --i-know-there-is-real-data`,
+        `⛔ ${policy.script} УДАЛЯЕТ данные клиники «${policy.clinicSlug}».`,
+        "   Без флага --force он ничего не делает:",
+        `     ${cmd} --force`,
         "",
       ].join("\n"),
-    );
-    process.exit(1);
+    };
   }
 
-  if (recentAudit >= ACTIVITY_ROW_THRESHOLD) {
-    console.warn(
-      `⚠️  ${recentAudit} действий пользователей за ${ACTIVITY_WINDOW_HOURS} ч — стираю по явному подтверждению.\n`,
-    );
+  if (policy.neverOnRealData && realData) {
+    return {
+      ok: false,
+      reason: "real_data",
+      message: [
+        "",
+        `⛔ Отказ: в клинике «${policy.clinicSlug}» реальные данные.`,
+        ...describeSignals(signals),
+        `   ${policy.script} подписывает заключения, рецепты и задачи от имени врачей клиники,`,
+        "   здесь это были бы реальные люди. Обхода нет: только чистая локальная база.",
+        "",
+      ].join("\n"),
+    };
   }
+
+  const optIn = env[REAL_DATA_OPT_IN_ENV];
+  if ((realData || production) && optIn !== policy.clinicSlug) {
+    const why = realData
+      ? describeSignals(signals)
+      : ["   NODE_ENV=production: это боевая среда."];
+    const lines = [
+      "",
+      `⛔ Отказ: ${policy.script} не пишет в клинику «${policy.clinicSlug}».`,
+      ...why,
+      "   Демо-пациенты, визиты и оплаты попали бы в списки, расписание и выручку",
+      "   клиники, а удаление задело бы медицинские документы.",
+      "",
+    ];
+    if (optIn && optIn !== policy.clinicSlug) {
+      lines.push(
+        `   ${REAL_DATA_OPT_IN_ENV}=${optIn} называет другую клинику.`,
+        "",
+      );
+    }
+    if (argv.includes("--i-know-there-is-real-data")) {
+      lines.push(
+        "   Флаг --i-know-there-is-real-data больше не действует.",
+        "",
+      );
+    }
+    lines.push(
+      "   Демо-данные живут в отдельной демо-клинике или на локальной базе.",
+      "   Только если это действительно демо-клиника, назови её явно:",
+      `     ${REAL_DATA_OPT_IN_ENV}=${policy.clinicSlug} ${cmd}${policy.destructive ? " --force" : ""}`,
+      "",
+    );
+    return { ok: false, reason: "real_data", message: lines.join("\n") };
+  }
+
+  return {
+    ok: true,
+    realData,
+    warning:
+      realData || production
+        ? `⚠️  ${policy.script}: клиника «${policy.clinicSlug}» названа в ${REAL_DATA_OPT_IN_ENV}, продолжаю по явному подтверждению.\n`
+        : null,
+  };
+}
+
+/** The slice of PrismaClient the probe reads; a real client fits as is. */
+export type SeedGuardDb = {
+  clinic: {
+    findUnique(args: {
+      where: { slug: string };
+      select: { id: true };
+    }): Promise<{ id: string } | null>;
+  };
+  auditLog: {
+    count(args: { where: Record<string, unknown> }): Promise<number>;
+  };
+};
+
+export async function probeRealData(
+  db: SeedGuardDb,
+  clinicId: string,
+  now: Date = new Date(),
+): Promise<RealDataSignals> {
+  const since = new Date(now.getTime() - ACTIVITY_WINDOW_HOURS * 3600_000);
+  const [staffActions, recentActivity] = await Promise.all([
+    db.auditLog.count({
+      where: {
+        clinicId,
+        actorId: { not: null },
+        action: { in: [...REAL_WORK_ACTIONS] },
+      },
+    }),
+    // Whole database on purpose: the question is «is anyone working in this
+    // deployment», and a seed pointed at a sibling clinic is still a mistake.
+    db.auditLog.count({ where: { createdAt: { gte: since } } }),
+  ]);
+  return { staffActions, recentActivity };
 }
 
 /**
- * Interlock for scripts that ADD demo rows next to real ones (audit G2-01):
- * demo patients, visits and payments show up in the live clinic's lists,
- * schedules and revenue. Same activity probe as above; there is no `--force`
- * step because nothing is deleted, but a clinic in real use still needs an
- * explicit `--i-know-there-is-real-data`.
+ * Resolve the clinic, probe it and stop the process (exit 1) before the
+ * first write when the policy refuses. Returns the clinic id.
  */
-export async function assertDemoWriteAllowed(
-  prisma: PrismaClient,
-  scriptName: string,
-): Promise<void> {
-  const acknowledged = process.argv.slice(2).includes("--i-know-there-is-real-data");
-  const since = new Date(Date.now() - ACTIVITY_WINDOW_HOURS * 3600_000);
-  const recentAudit = await prisma.auditLog.count({
-    where: { createdAt: { gte: since } },
-  });
-  if (recentAudit >= ACTIVITY_ROW_THRESHOLD && !acknowledged) {
-    console.error(
-      [
-        "",
-        `⛔ Отказ: за последние ${ACTIVITY_WINDOW_HOURS} ч в системе ${recentAudit} действий`,
-        "   пользователей. Клиника работает по-настоящему: демо-пациенты,",
-        "   визиты и оплаты попадут в её списки, расписание и выручку.",
-        "",
-        "   Только если это действительно нужно:",
-        `     APPLY=1 npx tsx scripts/${scriptName}.ts --i-know-there-is-real-data`,
-        "",
-      ].join("\n"),
-    );
+export async function assertSeedAllowed(
+  db: SeedGuardDb,
+  policy: SeedPolicy,
+  env: Record<string, string | undefined> = process.env,
+  argv: string[] = process.argv.slice(2),
+): Promise<{ clinicId: string; realData: boolean }> {
+  if (!policy.clinicSlug) {
+    console.error(`⛔ ${policy.script}: не указана клиника (CLINIC_SLUG).`);
     process.exit(1);
   }
+  // Dev-only refusal first: it must not depend on the database answering.
+  if (policy.devOnly && env.NODE_ENV === "production") {
+    const d = decideSeedGuard({
+      policy,
+      signals: { staffActions: 0, recentActivity: 0 },
+      env,
+      argv,
+    });
+    if (!d.ok) console.error(d.message);
+    process.exit(1);
+  }
+  const clinic = await db.clinic.findUnique({
+    where: { slug: policy.clinicSlug },
+    select: { id: true },
+  });
+  if (!clinic) {
+    console.error(`⛔ ${policy.script}: клиника «${policy.clinicSlug}» не найдена.`);
+    process.exit(1);
+  }
+  const signals = await probeRealData(db, clinic.id);
+  const decision = decideSeedGuard({ policy, signals, env, argv });
+  if (!decision.ok) {
+    console.error(decision.message);
+    process.exit(1);
+  }
+  if (decision.warning) console.warn(decision.warning);
+  return { clinicId: clinic.id, realData: decision.realData };
+}
+
+/**
+ * CLINIC_SLUG for scripts that used to default to "neurofax" (the real
+ * clinic): now it has to be named for every run.
+ */
+export function requireClinicSlug(
+  script: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const slug = env.CLINIC_SLUG?.trim();
+  if (slug) return slug;
+  console.error(
+    [
+      "",
+      `⛔ ${script}: укажи клинику явно, умолчания больше нет.`,
+      `     CLINIC_SLUG=<slug демо-клиники> npx tsx scripts/${script}.ts`,
+      "",
+    ].join("\n"),
+  );
+  process.exit(1);
 }

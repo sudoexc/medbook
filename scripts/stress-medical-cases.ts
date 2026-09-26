@@ -30,6 +30,7 @@ import * as path from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const BASE = process.env.STRESS_BASE_URL ?? "http://localhost:3000";
 const RECEPT_EMAIL = "recept@neurofax.uz";
@@ -288,6 +289,12 @@ async function loginCookie(): Promise<string | null> {
 }
 
 async function main() {
+  // Test data only, never on the real clinic (audit G2-02/G2-06).
+  await assertSeedAllowed(prisma, {
+    script: "stress-medical-cases",
+    clinicSlug: "neurofax",
+    devOnly: true,
+  });
   console.log("BASE:", BASE);
   await inventory();
 

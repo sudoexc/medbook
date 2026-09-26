@@ -16,6 +16,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { conflict, err, notFound, ok } from "@/server/http";
 import { createMiniAppHandler } from "@/server/miniapp/handler";
+import { toMiniAppAppointmentSummary } from "@/server/miniapp/appointment-view";
 import {
   computeEndDate,
   detectConflicts,
@@ -79,7 +80,7 @@ export const PATCH = createMiniAppHandler(
         if (result.reason === "completed") return err("not_editable", 409);
         return err("not_cancellable", 409);
       }
-      return ok({ appointment: result.appointment });
+      return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
     }
 
     const doctorId = body.doctorId ?? before.doctorId;
@@ -230,7 +231,8 @@ export const PATCH = createMiniAppHandler(
     });
 
     fireTrigger({ kind: "appointment.updated", appointmentId: id });
-    return ok({ appointment: updated });
+    // Patient-safe fields only (audit MA-10): `updated` is the full row.
+    return ok({ appointment: toMiniAppAppointmentSummary(updated) });
   },
 );
 
@@ -276,5 +278,5 @@ export const DELETE = createMiniAppHandler({}, async ({ request, ctx }) => {
     if (result.reason === "completed") return err("not_editable", 409);
     return err("not_cancellable", 409);
   }
-  return ok({ appointment: result.appointment });
+  return ok({ appointment: toMiniAppAppointmentSummary(result.appointment) });
 });

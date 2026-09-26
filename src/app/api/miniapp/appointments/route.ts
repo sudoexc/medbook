@@ -29,6 +29,7 @@ import { createMiniAppHandler, createMiniAppListHandler } from "@/server/miniapp
 import { withIdempotency } from "@/server/miniapp/idempotency";
 import { bookAppointment } from "@/server/appointments/book";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
+import { MINIAPP_APPOINTMENT_SELECT } from "@/server/miniapp/appointment-view";
 import { getMetrics } from "@/server/observability/metrics";
 
 const BookBody = z.object({
@@ -78,44 +79,13 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       { date: { lt: now } },
     ];
   }
+  // Explicit select, never include + spread (audit MA-10): the row carries
+  // reception notes and cancel internals the patient must not receive.
   const rows = await prisma.appointment.findMany({
     where,
     orderBy: { date: scope === "upcoming" ? "asc" : "desc" },
     take: limit,
-    include: {
-      doctor: {
-        select: {
-          id: true,
-          nameRu: true,
-          nameUz: true,
-          specializationRu: true,
-          specializationUz: true,
-          photoUrl: true,
-        },
-      },
-      cabinet: { select: { id: true, number: true } },
-      primaryService: { select: { id: true, nameRu: true, nameUz: true } },
-      services: {
-        include: {
-          service: {
-            select: { id: true, nameRu: true, nameUz: true, priceBase: true },
-          },
-        },
-      },
-      payments: { select: { id: true, amount: true, status: true, method: true } },
-      // P1.1 — a finalized visit note may carry an auto-generated CONCLUSION
-      // document. Surface a direct link so the patient can open it straight
-      // from the past-visit detail instead of hunting the documents list.
-      // Ф6 — followUpDays/finalizedAt feed the «book a control visit» CTA
-      // (date only; the doctor's followUpNote is reception-internal).
-      visitNote: {
-        select: {
-          followUpDays: true,
-          finalizedAt: true,
-          conclusionDocument: { select: { id: true } },
-        },
-      },
-    },
+    select: MINIAPP_APPOINTMENT_SELECT,
   });
   const appointments = rows.map(({ visitNote, ...row }) => ({
     ...row,

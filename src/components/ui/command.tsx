@@ -137,6 +137,7 @@ function CommandDialog({
   onOpenChange,
   children,
   className,
+  shouldFilter,
 }: {
   title?: string
   description?: string
@@ -144,6 +145,12 @@ function CommandDialog({
   onOpenChange?: (open: boolean) => void
   children?: React.ReactNode
   className?: string
+  /**
+   * false when the items are already the server's answer to the query:
+   * cmdk's own fuzzy match over `value` would hide hits the server found
+   * by fields the value does not carry (audit CM-04).
+   */
+  shouldFilter?: boolean
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -157,6 +164,7 @@ function CommandDialog({
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
         <Command
+          shouldFilter={shouldFilter}
           className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
         >
           {children}

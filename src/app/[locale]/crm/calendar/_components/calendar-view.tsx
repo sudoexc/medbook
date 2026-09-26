@@ -31,6 +31,7 @@ import uzLocale from "@fullcalendar/core/locales/uz";
 
 import { cn } from "@/lib/utils";
 import { computeRescheduledSlot } from "@/lib/calendar/reschedule-math";
+import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type {
   CabinetRef,
@@ -679,7 +680,7 @@ function tConflictSafe(
     return (tConflict as unknown as (
       k: string,
       v?: Record<string, string>,
-    ) => string)(reason, { until });
+    ) => string)(reason, conflictMessageValues(until));
   } catch {
     return reason;
   }

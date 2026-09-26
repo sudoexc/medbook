@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeftIcon, UploadIcon } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
@@ -181,10 +182,17 @@ export default async function VisitsPage({
       </div>
 
       <aside className="hidden w-[320px] shrink-0 flex-col gap-4 xl:flex xl:gap-5">
-        <AISummaryPanel
-          patientId={patientId}
-          chronicConditions={data.chronic.map((c) => c.name)}
-        />
+        {/*
+         * Not mounted at all while AI is paused (audit UX-01): the dimmed
+         * panel still fetched the summary, which queued an LLM job and put a
+         * mock «резюме» into the card on every open.
+         */}
+        {AI_ENABLED ? (
+          <AISummaryPanel
+            patientId={patientId}
+            chronicConditions={data.chronic.map((c) => c.name)}
+          />
+        ) : null}
         <LastVisitCard patientId={patientId} />
         <LastDiagnosisCard patientId={patientId} />
       </aside>

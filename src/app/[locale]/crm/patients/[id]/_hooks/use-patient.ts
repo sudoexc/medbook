@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import type { PatientFinance } from "@/lib/patients/finance";
+
 /**
  * Shape of the `GET /api/crm/patients/[id]` response.
  * Mirrors the fields the Patient card actually renders; kept local to
@@ -61,7 +63,13 @@ export type Patient = {
   notes: string | null;
   ltv: number;
   visitsCount: number;
+  /** Computed by the server, same as `finance.balance` (audit PT-08). */
   balance: number;
+  /**
+   * The one money formula (audit PT-08). Only GET returns it; a PATCH
+   * response merges into the cached card and keeps it.
+   */
+  finance?: PatientFinance;
   discountPct: number;
   lastVisitAt: string | null;
   nextVisitAt: string | null;
@@ -82,6 +90,7 @@ export type PatientUpdateInput = Partial<
     | "ltv"
     | "visitsCount"
     | "balance"
+    | "finance"
     | "lastVisitAt"
     | "nextVisitAt"
     | "lastContactedAt"

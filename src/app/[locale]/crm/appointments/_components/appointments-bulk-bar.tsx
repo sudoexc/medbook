@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { actionsForMany } from "@/lib/appointment-transitions";
+import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 import {
   AppointmentConflictError,
   useBulkStatus,
@@ -55,7 +56,7 @@ export function AppointmentsBulkBar({
     (err: Error) => {
       if (err instanceof AppointmentConflictError) {
         toast.error(
-          tConflict(err.conflict.reason, { until: err.conflict.until ?? "" }),
+          tConflict(err.conflict.reason, conflictMessageValues(err.conflict.until)),
         );
       } else {
         toast.error(err.message || t("error"));

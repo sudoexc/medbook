@@ -339,6 +339,11 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       onOpenChange={onOpenChange}
       title={t("title")}
       description={t("description")}
+      // The results already are /api/crm/search's answer: phone digits
+      // («90 123 45 67»), «Фамилия ГГГГ», visit comments, the doctor's uz
+      // name. cmdk re-filtering them by the item `value` hid every such hit
+      // and printed «Ничего не найдено» (audit CM-04).
+      shouldFilter={false}
     >
       {AI_ENABLED ? (
         <div className="flex items-center gap-1 border-b bg-card/60 px-2 py-1.5 text-xs">

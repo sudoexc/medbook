@@ -64,12 +64,27 @@ export interface NewPatientDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated?: (patientId: string) => void;
+  /** The caller's number when opened from the call center (audit CM-02). */
+  initialPhone?: string;
 }
+
+const EMPTY_VALUES: FormValues = {
+  lastName: "",
+  firstName: "",
+  patronymic: "",
+  phone: "",
+  email: "",
+  birthDate: "",
+  gender: undefined,
+  source: undefined,
+  tags: "",
+};
 
 export function NewPatientDialog({
   open,
   onOpenChange,
   onCreated,
+  initialPhone,
 }: NewPatientDialogProps) {
   const t = useTranslations("patients.newDialog");
   const tSource = useTranslations("patients.source");
@@ -87,17 +102,7 @@ export function NewPatientDialog({
 
   const form = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
-    defaultValues: {
-      lastName: "",
-      firstName: "",
-      patronymic: "",
-      phone: "",
-      email: "",
-      birthDate: "",
-      gender: undefined,
-      source: undefined,
-      tags: "",
-    },
+    defaultValues: EMPTY_VALUES,
   });
 
   // The number leads to a card with another name (a mother's phone for her
@@ -110,13 +115,16 @@ export function NewPatientDialog({
     return () => sub.unsubscribe();
   }, [form]);
 
-  // Reset on close so re-opening is fresh.
+  // Reset on close so re-opening is fresh; on open, fill in the number the
+  // call center passed.
   React.useEffect(() => {
     if (!open) {
-      form.reset();
+      form.reset(EMPTY_VALUES);
       setOwnerConflict(null);
+    } else if (initialPhone) {
+      form.reset({ ...EMPTY_VALUES, phone: initialPhone });
     }
-  }, [open, form]);
+  }, [open, initialPhone, form]);
 
   const mutation = useMutation({
     mutationFn: async ({

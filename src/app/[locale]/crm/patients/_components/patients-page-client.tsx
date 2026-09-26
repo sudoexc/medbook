@@ -3,10 +3,14 @@
 import * as React from "react";
 import { PlusIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { PageContainer } from "@/components/molecules/page-container";
 import { Button } from "@/components/ui/button";
+import {
+  readNewPatientIntent,
+  withoutNewPatientParams,
+} from "@/lib/patients/new-patient-intent";
 
 import { usePatientsFilters } from "../_hooks/use-patients-filters";
 import {
@@ -65,6 +69,27 @@ export function PatientsPageClient() {
   const [nowMs] = React.useState(() => Date.now());
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [prefillPhone, setPrefillPhone] = React.useState("");
+
+  // `?new=true&phone=` from the call center's «Создать карточку» and the
+  // topbar's «Создать пациента» (audit CM-02): open the dialog with the
+  // caller's number, then drop the parameters so the next click on the
+  // same link changes the URL again and reopens it.
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  React.useEffect(() => {
+    const intent = readNewPatientIntent(searchParams);
+    if (!intent) return;
+    setPrefillPhone(intent.phone);
+    setDialogOpen(true);
+    const qs = withoutNewPatientParams(searchParams);
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, pathname, router]);
+
+  const handleDialogOpenChange = React.useCallback((next: boolean) => {
+    setDialogOpen(next);
+    if (!next) setPrefillPhone("");
+  }, []);
 
   const [visibleColumns, setVisibleColumns] = React.useState<
     Record<OptionalColumnId, boolean>
@@ -206,7 +231,8 @@ export function PatientsPageClient() {
 
       <NewPatientDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
+        initialPhone={prefillPhone}
         onCreated={(id) => router.push(`/${locale}/crm/patients/${id}`)}
       />
     </div>

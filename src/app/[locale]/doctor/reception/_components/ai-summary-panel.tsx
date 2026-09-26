@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2Icon,
@@ -25,7 +25,7 @@ type SummaryResponse = {
  * Right-rail AI summary on the patient visits-history page.
  *
  * Data sources:
- *  - `GET /api/crm/patients/{id}/summary?locale=ru` — cached LLM summary,
+ *  - `GET /api/crm/patients/{id}/summary?locale=…` — cached LLM summary,
  *    refreshed asynchronously by the worker (`patient.summary.refreshed`
  *    SSE event triggers refetch downstream). Text is one paragraph block;
  *    we split on `\n\n` to render visually if the LLM segmented it.
@@ -44,13 +44,15 @@ export function AISummaryPanel({
   chronicConditions?: string[];
 }) {
   const t = useTranslations("doctor.reception");
+  const summaryLocale = useLocale() === "uz" ? "uz" : "ru";
   const summary = useQuery<SummaryResponse>({
-    queryKey: ["doctor", "patient-summary", patientId],
-    enabled: !!patientId,
+    queryKey: ["doctor", "patient-summary", patientId, summaryLocale],
+    // Never ask for a summary while AI is paused (audit UX-01).
+    enabled: AI_ENABLED && !!patientId,
     staleTime: 60_000,
     queryFn: async ({ signal }) => {
       const res = await fetch(
-        `/api/crm/patients/${patientId}/summary?locale=ru`,
+        `/api/crm/patients/${patientId}/summary?locale=${summaryLocale}`,
         { credentials: "include", signal },
       );
       if (!res.ok) throw new Error(`summary ${res.status}`);

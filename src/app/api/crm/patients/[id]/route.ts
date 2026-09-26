@@ -17,6 +17,7 @@ import {
 } from "@/server/patient/cipher-fields";
 import { UpdatePatientSchema } from "@/server/schemas/patient";
 import { recordPatientView } from "@/server/audit/patient-view";
+import { loadPatientFinance } from "@/server/patient/finance";
 import { clientIpForAudit } from "@/lib/client-ip";
 import {
   findVerifiedPhoneOwner,
@@ -104,7 +105,11 @@ export const GET = createApiListHandler(
         userAgent: request.headers.get("user-agent"),
       });
     }
-    return ok(hydratePatientForRead(row));
+    // `Patient.balance` is never written; every reader of this response
+    // (the card, «Оплаты», the call-center and Telegram rails) gets the one
+    // computed figure instead (audit PT-08).
+    const finance = await loadPatientFinance(row.clinicId, id);
+    return ok({ ...hydratePatientForRead(row), balance: finance.balance, finance });
   }
 );
 

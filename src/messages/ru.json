@@ -766,8 +766,8 @@
       "cancelKeep": "Не отменять",
       "cancelled": "Запись отменена",
       "conflict": {
-        "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
-        "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
+        "doctor_busy": "Врач занят{hasUntil, select, yes { до {until}} other {}}",
+        "cabinet_busy": "Кабинет занят{hasUntil, select, yes { до {until}} other {}}",
         "doctor_time_off": "Врач в отпуске в это время",
         "outside_schedule": "Вне графика работы",
         "in_past": "Это время уже прошло",
@@ -885,8 +885,8 @@
         "sourcePlaceholder": "Откуда пришёл"
       },
       "conflict": {
-        "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
-        "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
+        "doctor_busy": "Врач занят{hasUntil, select, yes { до {until}} other {}}",
+        "cabinet_busy": "Кабинет занят{hasUntil, select, yes { до {until}} other {}}",
         "doctor_time_off": "Врач в отпуске в это время",
         "outside_schedule": "Вне графика работы",
         "in_past": "Это время уже прошло"
@@ -959,8 +959,8 @@
     },
     "conflict": {
       "title": "Конфликт расписания",
-      "doctor_busy": "Врач занят{until, select, , {} other{ до {until}}}",
-      "cabinet_busy": "Кабинет занят{until, select, , {} other{ до {until}}}",
+      "doctor_busy": "Врач занят{hasUntil, select, yes { до {until}} other {}}",
+      "cabinet_busy": "Кабинет занят{hasUntil, select, yes { до {until}} other {}}",
       "doctor_time_off": "Врач в отпуске в это время",
       "outside_schedule": "Вне графика работы",
       "in_past": "Это время уже прошло"
@@ -1198,11 +1198,11 @@
     },
     "finance": {
       "title": "Финансы",
-      "totalIncome": "Общий доход",
+      "visitsTotal": "Стоимость визитов",
       "paid": "Оплачено",
       "debt": "Задолженность",
       "zeroSum": "0 сум",
-      "editAppointment": "Изменить запись",
+      "paymentsNotTracked": "Оплаты в CRM не вносятся, поэтому долг не считается.",
       "donutAttendance": "Посещаемость",
       "attendanceHint": "из {count} визитов",
       "attendanceEmpty": "Нет завершённых визитов"
@@ -2890,7 +2890,7 @@
       "nameUz": "Название (uz)",
       "bodyRu": "Текст (ru)",
       "bodyUz": "Текст (uz)",
-      "bodyPlaceholder": "Здравствуйте, {{patient.firstName}}! Напоминаем о записи {{appointment.date}} в {{appointment.time}}…",
+      "bodyPlaceholder": "Здравствуйте, '{{patient.firstName}}'! Напоминаем о записи '{{appointment.date}}' в '{{appointment.time}}'…",
       "placeholders": "Плейсхолдеры",
       "preview": "Предпросмотр",
       "previewEmpty": "Введите текст шаблона",
@@ -5322,7 +5322,7 @@
       "LOW_NPS_RECEIVED": {
         "label": "Низкая оценка визита",
         "title": "{patientName}: оценка {score}/10 ({doctorName})",
-        "body": "{commentPreview, select, , {Свяжитесь с пациентом и узнайте подробности.} other{«{commentPreview}»}}"
+        "body": "{hasComment, select, yes {«{commentPreview}»} other {Свяжитесь с пациентом и узнайте подробности.}}"
       },
       "PATIENT_NO_CHANNEL": {
         "label": "Нет канала связи",
@@ -5332,7 +5332,7 @@
       "VISIT_FOLLOW_UP_DUE": {
         "label": "Контрольный визит",
         "title": "{patientName}: контроль ~{dueDate} ({doctorName})",
-        "body": "{followUpNote, select, , {Позвоните пациенту и запишите на контрольный приём.} other{«{followUpNote}» — позвоните и запишите на контроль.}}"
+        "body": "{hasNote, select, yes {«{followUpNote}». Позвоните и запишите на контроль.} other {Позвоните пациенту и запишите на контрольный приём.}}"
       },
       "TELEGRAM_LINK_CONFLICT": {
         "label": "Telegram на другой карте",

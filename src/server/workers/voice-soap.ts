@@ -21,6 +21,7 @@
  * failure `LLMUsage` row (errorCode populated), so the dashboard sees it.
  */
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
@@ -78,6 +79,13 @@ async function loadCaseContext(
 }
 
 export async function process(job: VoiceSoapJob): Promise<void> {
+  // AI is paused (audit UX-01): no transcription, no LLM, and above all no
+  // overwrite of the case's SOAP draft with «[mock-transcript] Пациент
+  // жалуется на головную боль».
+  if (!AI_ENABLED) {
+    console.info(`[voice-soap] AI paused, job for case ${job.caseId} dropped`);
+    return;
+  }
   await runWithTenant({ kind: "SYSTEM" }, async () => {
     const ctx = await loadCaseContext(job.caseId);
     if (!ctx) {

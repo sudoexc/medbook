@@ -81,6 +81,8 @@ const RU: Dict = {
     "Получил, расшифровываю и структурирую SOAP-черновик. Откройте случай в CRM через минуту.",
   "tgVoiceReply.noActiveCase":
     "Нет активного случая. Откройте случай в CRM, чтобы получить SOAP-черновик.",
+  "tgVoiceReply.aiPaused":
+    "Голосовые SOAP-черновики сейчас отключены. Запишите осмотр в CRM.",
 };
 
 const UZ: Dict = {
@@ -145,6 +147,8 @@ const UZ: Dict = {
     "Qabul qildim, ovozni matnga aylantirib SOAP-qoralama tayyorlayapman. Bir daqiqadan so'ng CRM'da hodisani oching.",
   "tgVoiceReply.noActiveCase":
     "Faol hodisa yo'q. SOAP-qoralama olish uchun CRM'da hodisani oching.",
+  "tgVoiceReply.aiPaused":
+    "Ovozli SOAP-qoralamalar hozircha o'chirilgan. Ko'rikni CRM'da yozing.",
 };
 
 const TABLES: Record<BotLang, Dict> = { ru: RU, uz: UZ };

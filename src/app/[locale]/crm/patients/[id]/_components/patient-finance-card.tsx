@@ -7,7 +7,6 @@ import { CircleDollarSignIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCountUp } from "@/components/atoms/count-up";
 import { MoneyText } from "@/components/atoms/money-text";
-import { Button } from "@/components/ui/button";
 
 import type { Patient } from "../_hooks/use-patient";
 import type { PatientAppointment } from "../_hooks/use-patient-appointments";
@@ -18,42 +17,39 @@ export interface PatientFinanceCardProps {
   className?: string;
 }
 
+/**
+ * «Финансы» on the patient overview (audit PT-08). The money figures come
+ * from the server's one formula (`patient.finance`): only COMPLETED visits
+ * cost, every PAID payment counts. While the clinic records no payments in
+ * the CRM there is no «Долг» at all, only what the visits cost, so the
+ * front desk is not told that every patient owes money.
+ */
 export function PatientFinanceCard({
   patient,
   appointments,
   className,
 }: PatientFinanceCardProps) {
   const t = useTranslations("patientCard.finance");
-  const stats = React.useMemo(() => {
-    let billed = 0;
-    let paid = 0;
+  const finance = patient.finance;
+  const attendance = React.useMemo(() => {
     let completed = 0;
     let missed = 0;
     for (const a of appointments) {
-      billed += a.priceFinal ?? 0;
-      for (const p of a.payments) {
-        if (p.status === "PAID") paid += p.amount;
-      }
       if (a.status === "COMPLETED") completed += 1;
       else if (a.status === "NO_SHOW" || a.status === "SKIPPED") missed += 1;
     }
-    const debt = Math.max(0, billed - paid);
     const closedVisits = completed + missed;
     const attendancePct =
       closedVisits > 0 ? Math.round((completed / closedVisits) * 100) : 100;
-    return {
-      total: Math.max(billed, patient.ltv),
-      paid,
-      debt,
-      attendancePct,
-      closedVisits,
-    };
-  }, [appointments, patient.ltv]);
+    return { attendancePct, closedVisits };
+  }, [appointments]);
 
-  const animatedTotal = useCountUp(stats.total);
-  const animatedPaid = useCountUp(stats.paid);
-  const animatedDebt = useCountUp(stats.debt);
-  const animatedPct = useCountUp(stats.attendancePct);
+  const debt = finance?.debt ?? 0;
+  const animatedTotal = useCountUp(finance?.visitsTotal ?? 0);
+  const animatedPaid = useCountUp(finance?.paid ?? 0);
+  const animatedDebt = useCountUp(debt);
+  const animatedPct = useCountUp(attendance.attendancePct);
+  const tracksPayments = finance?.tracksPayments === true;
 
   return (
     <section
@@ -67,47 +63,52 @@ export function PatientFinanceCard({
       </div>
 
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_120px] items-center gap-4">
-        <dl className="divide-y divide-border rounded-xl border border-border">
-          <FinanceRow
-            icon={CircleDollarSignIcon}
-            label={t("totalIncome")}
-            value={<MoneyText amount={Math.round(animatedTotal)} currency="UZS" />}
-          />
-          <FinanceRow
-            icon={CreditCardIcon}
-            label={t("paid")}
-            value={<MoneyText amount={Math.round(animatedPaid)} currency="UZS" />}
-            tone="success"
-          />
-          <FinanceRow
-            icon={WalletIcon}
-            label={t("debt")}
-            value={
-              stats.debt > 0 ? (
-                <MoneyText amount={Math.round(animatedDebt)} currency="UZS" />
-              ) : (
-                t("zeroSum")
-              )
-            }
-            tone={stats.debt > 0 ? "danger" : undefined}
-          />
-        </dl>
+        <div className="flex min-w-0 flex-col gap-2">
+          <dl className="divide-y divide-border rounded-xl border border-border">
+            <FinanceRow
+              icon={CircleDollarSignIcon}
+              label={t("visitsTotal")}
+              value={<MoneyText amount={Math.round(animatedTotal)} currency="UZS" />}
+            />
+            {tracksPayments ? (
+              <>
+                <FinanceRow
+                  icon={CreditCardIcon}
+                  label={t("paid")}
+                  value={<MoneyText amount={Math.round(animatedPaid)} currency="UZS" />}
+                  tone="success"
+                />
+                <FinanceRow
+                  icon={WalletIcon}
+                  label={t("debt")}
+                  value={
+                    debt > 0 ? (
+                      <MoneyText amount={Math.round(animatedDebt)} currency="UZS" />
+                    ) : (
+                      t("zeroSum")
+                    )
+                  }
+                  tone={debt > 0 ? "danger" : undefined}
+                />
+              </>
+            ) : null}
+          </dl>
+          {finance && !tracksPayments ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              {t("paymentsNotTracked")}
+            </p>
+          ) : null}
+        </div>
 
         <Donut
           pct={animatedPct}
           label={t("donutAttendance")}
           hint={
-            stats.closedVisits > 0
-              ? t("attendanceHint", { count: stats.closedVisits })
+            attendance.closedVisits > 0
+              ? t("attendanceHint", { count: attendance.closedVisits })
               : t("attendanceEmpty")
           }
         />
-      </div>
-
-      <div className="mt-3 flex">
-        <Button variant="outline" size="sm" className="ml-auto h-8 text-[12px]">
-          {t("editAppointment")}
-        </Button>
       </div>
     </section>
   );

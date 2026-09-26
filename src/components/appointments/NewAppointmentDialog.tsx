@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { probeFromTyped, sameNameLikely } from "@/lib/patients/identity-match";
+import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 import {
   Dialog,
   DialogContent,
@@ -686,9 +687,7 @@ export function NewAppointmentDialog({
                   k: string,
                   v?: Record<string, string>,
                 ) => string
-              )(conflict.reason, {
-                until: conflict.until ?? "",
-              })}
+              )(conflict.reason, conflictMessageValues(conflict.until))}
             </div>
           ) : null}
 

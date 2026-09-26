@@ -6,8 +6,11 @@
  * the Telegram inbox right-rail gets accurate no-show% / avg-check without
  * over-fetching the whole appointment list.
  *
- *   visitsCount / ltv / balance / lastVisitAt / segment / birthDate
+ *   visitsCount / ltv / lastVisitAt / segment / birthDate
  *     → denormalised columns on the Patient row.
+ *   balance
+ *     → computed by `loadPatientFinance` (audit PT-08): the column of that
+ *       name is never written.
  *   noShowCount / totalAppointments / noShowPct / avgCheck
  *     → aggregated from Appointment (avgCheck = mean priceFinal of COMPLETED).
  *
@@ -17,6 +20,7 @@
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, notFound } from "@/server/http";
+import { loadPatientFinance } from "@/server/patient/finance";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -31,17 +35,17 @@ export const GET = createApiListHandler(
     const patient = await prisma.patient.findUnique({
       where: { id },
       select: {
+        clinicId: true,
         segment: true,
         visitsCount: true,
         ltv: true,
-        balance: true,
         lastVisitAt: true,
         birthDate: true,
       },
     });
     if (!patient) return notFound();
 
-    const [byStatus, completedAgg] = await Promise.all([
+    const [byStatus, completedAgg, finance] = await Promise.all([
       prisma.appointment.groupBy({
         by: ["status"],
         where: { patientId: id },
@@ -51,6 +55,7 @@ export const GET = createApiListHandler(
         where: { patientId: id, status: "COMPLETED" },
         _avg: { priceFinal: true },
       }),
+      loadPatientFinance(patient.clinicId, id),
     ]);
 
     let totalAppointments = 0;
@@ -71,7 +76,7 @@ export const GET = createApiListHandler(
       segment: patient.segment,
       visitsCount: patient.visitsCount,
       ltv: patient.ltv,
-      balance: patient.balance,
+      balance: finance.balance,
       lastVisitAt: patient.lastVisitAt,
       birthDate: patient.birthDate,
       noShowCount,

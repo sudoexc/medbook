@@ -18,6 +18,7 @@ import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
+import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -219,9 +220,10 @@ export function AppointmentDrawer({
                   k: string,
                   v?: Record<string, string>,
                 ) => string
-              )(`conflict.${err.conflict.reason}`, {
-                until: err.conflict.until ?? "",
-              }),
+              )(
+                `conflict.${err.conflict.reason}`,
+                conflictMessageValues(err.conflict.until),
+              ),
             );
           } else {
             toast.error(err.message);

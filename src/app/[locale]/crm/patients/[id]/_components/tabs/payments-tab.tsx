@@ -75,6 +75,8 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
       .reduce((acc, r) => acc + r.amount, 0);
     return { paid, debt };
   }, [rows]);
+  // The server's one formula (audit PT-08), not the never-written column.
+  const balance = patient.finance?.balance ?? 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -98,7 +100,7 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
         <div
           className={cn(
             "rounded-xl border p-4",
-            patient.balance < 0
+            balance < 0
               ? "border-destructive/40 bg-destructive/5"
               : "border-border bg-card",
           )}
@@ -109,10 +111,10 @@ export function PaymentsTab({ patient }: PaymentsTabProps) {
           <div
             className={cn(
               "mt-1 text-xl font-semibold",
-              patient.balance < 0 && "text-destructive",
+              balance < 0 && "text-destructive",
             )}
           >
-            <MoneyText amount={patient.balance} currency="UZS" />
+            <MoneyText amount={balance} currency="UZS" />
           </div>
           {totals.debt > 0 ? (
             <div className="mt-1 text-xs text-muted-foreground">

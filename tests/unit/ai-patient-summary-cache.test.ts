@@ -8,6 +8,10 @@
 
 import { describe, it, expect, vi } from "vitest";
 
+// These cases cover the pipeline as it runs with AI switched on; the paused
+// behaviour (audit UX-01) lives in ai-paused.test.ts.
+vi.mock("@/lib/ai-enabled", () => ({ AI_ENABLED: true }));
+
 import {
   classifyCacheAge,
   readOrRefreshPatientSummary,

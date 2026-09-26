@@ -16,6 +16,7 @@
  * `notifications-send`.
  */
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
@@ -135,6 +136,12 @@ async function loadPatientContext(
 }
 
 async function refresh(job: RefreshJob): Promise<void> {
+  // A job queued before AI was paused (or by an old build) must not reach
+  // the provider nor write a summary into the card (audit UX-01).
+  if (!AI_ENABLED) {
+    console.info(`[patient-summary] AI paused, job for ${job.patientId} dropped`);
+    return;
+  }
   // SYSTEM context bypasses the Prisma tenant scope; we filter explicitly
   // by patientId (which already implies the clinic). The clinic id passed
   // to `generatePatientSummary` is what gets recorded against rate limit /

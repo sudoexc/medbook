@@ -11,6 +11,7 @@
  * tokens.
  */
 import { createApiListHandler } from "@/lib/api-handler";
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
@@ -37,6 +38,9 @@ export const POST = createApiListHandler(
     const id = idFromUrl(request);
     if (!id) return err("MissingPatientId", 400);
     if (ctx.kind !== "TENANT") return err("Forbidden", 403);
+    // AI is paused (audit UX-01): no job, and no audit row claiming a
+    // regeneration that never happens.
+    if (!AI_ENABLED) return err("ai_disabled", 409);
 
     const locale = readLocale(request);
     const result = await readOrRefreshPatientSummary(

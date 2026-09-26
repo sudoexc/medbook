@@ -155,6 +155,9 @@ function valuesFor(
         doctorName: payload.doctorName,
         score: payload.score,
         commentPreview: payload.commentPreview,
+        // ICU cannot test a value for emptiness (the old empty select case
+        // did not even parse, audit UX-07): the flag picks the wording.
+        hasComment: payload.commentPreview?.trim() ? "yes" : "no",
       };
     case "PATIENT_NO_CHANNEL":
       return {
@@ -174,6 +177,7 @@ function valuesFor(
         doctorName: payload.doctorName,
         dueDate: formatDM(payload.dueDate, locale),
         followUpNote: payload.followUpNote,
+        hasNote: payload.followUpNote?.trim() ? "yes" : "no",
       };
     case "TELEGRAM_LINK_CONFLICT":
       return {

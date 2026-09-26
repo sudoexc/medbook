@@ -6,6 +6,7 @@ import { CalendarPlusIcon, CalendarXIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatDate, type Locale } from "@/lib/format";
+import { BILLABLE_VISIT_STATUS } from "@/lib/patients/finance";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/atoms/empty-state";
 import { MoneyText } from "@/components/atoms/money-text";
@@ -95,6 +96,7 @@ export function VisitsTab({ patient, onCreate }: VisitsTabProps) {
             <VisitRow
               key={row.id}
               row={row}
+              tracksPayments={patient.finance?.tracksPayments === true}
               locale={locale}
               t={t}
               statusLabel={(s) => {
@@ -134,11 +136,13 @@ export function VisitsTab({ patient, onCreate }: VisitsTabProps) {
 
 function VisitRow({
   row,
+  tracksPayments,
   locale,
   t,
   statusLabel,
 }: {
   row: PatientAppointment;
+  tracksPayments: boolean;
   locale: Locale;
   t: (key: string) => string;
   statusLabel: (s: string) => string;
@@ -156,7 +160,11 @@ function VisitRow({
   ].filter((x): x is string => Boolean(x));
   const doctorName = locale === "uz" ? row.doctor.nameUz : row.doctor.nameRu;
   const paid = row.payments.some((p) => p.status === "PAID");
-  const hasPayment = row.payments.length > 0;
+  // Same rule as «Финансы» (audit PT-08): only a completed visit is owed,
+  // and only in a clinic that records payments. Every unpaid price used to
+  // be red, a booking for next week and a cancelled visit included.
+  const owed =
+    tracksPayments && row.status === BILLABLE_VISIT_STATUS && !paid;
   const tone = STATUS_TONE[row.status] ?? "neutral";
 
   return (
@@ -191,11 +199,11 @@ function VisitRow({
             <span
               className={cn(
                 "inline-flex items-center gap-1",
-                paid ? "text-foreground" : "text-destructive",
+                owed ? "text-destructive" : "text-foreground",
               )}
             >
               <MoneyText amount={row.priceFinal} currency="UZS" />
-              {hasPayment && !paid ? (
+              {owed ? (
                 <span className="text-xs">{t("debt")}</span>
               ) : null}
             </span>

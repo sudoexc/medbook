@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 
 import {
   AppointmentConflictError,
@@ -92,9 +93,10 @@ export function BulkRescheduleDialog({
         onError: (err) => {
           if (err instanceof AppointmentConflictError) {
             toast.error(
-              tConflict(err.conflict.reason, {
-                until: err.conflict.until ?? "",
-              }),
+              tConflict(
+                err.conflict.reason,
+                conflictMessageValues(err.conflict.until),
+              ),
             );
           }
         },

@@ -50,6 +50,7 @@ import {
 import { generatePassphrase, packDsarBundle } from "@/server/dsar/zip";
 import { hydrateMedicalCaseForRead } from "@/server/medical-case/cipher-fields";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
+import { loadPatientFinance } from "@/server/patient/finance";
 import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
 import { getQueue, enqueue } from "@/server/queue";
 import { uploadObject } from "@/server/storage/minio";
@@ -158,7 +159,6 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
             notes: true,
             ltv: true,
             visitsCount: true,
-            balance: true,
             consentMarketing: true,
             marketingOptOut: true,
             marketingOptOutAt: true,
@@ -242,6 +242,10 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
         throw new Error("patient or clinic missing");
       }
 
+      // The balance column is never written; the bundle carries the same
+      // computed figure the patient card shows (audit PT-08).
+      const finance = await loadPatientFinance(patientRow.clinicId, patientRow.id);
+
       stage = "generate";
 
       // Wave 4 — `passport` and `notes` are encrypted at rest. The DSAR
@@ -270,7 +274,7 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
         notes: patientHydrated.notes ?? null,
         ltv: patientRow.ltv,
         visitsCount: patientRow.visitsCount,
-        balance: patientRow.balance,
+        balance: finance.balance,
         consentMarketing: patientRow.consentMarketing,
         marketingOptOut: patientRow.marketingOptOut,
         marketingOptOutAt: patientRow.marketingOptOutAt,

@@ -48,7 +48,6 @@ export const GET = createApiListHandler(
           fullName: true,
           phone: true,
           photoUrl: true,
-          balance: true,
         },
         take: 5,
       }),

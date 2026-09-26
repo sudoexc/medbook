@@ -19,6 +19,7 @@
  * `messages.ts` to keep the bot's i18n surface single-sourced.
  */
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 
@@ -112,6 +113,7 @@ export type HandleDoctorVoiceInput = {
 
 export type HandleDoctorVoiceResult =
   | { kind: "not-doctor" }
+  | { kind: "ai-paused"; replyText: string }
   | { kind: "no-active-case"; replyText: string }
   | { kind: "queued"; replyText: string; caseId: string };
 
@@ -129,6 +131,18 @@ export async function handleDoctorVoice(
       ? input.doctor
       : await resolveDictatingDoctor(input.clinic.id, input.tgUserId);
   if (!ctx) return { kind: "not-doctor" };
+
+  // AI is paused (audit UX-01): the dictation is not sent to Whisper or the
+  // LLM, and no job is queued to overwrite the case's SOAP draft. The note
+  // stays a doctor's dictation (never re-hosted in the shared inbox); the
+  // doctor is told to write the exam up in the CRM instead.
+  if (!AI_ENABLED) {
+    const replyText = t(ctx.lang, "tgVoiceReply.aiPaused");
+    await sendMessage(input.clinic, input.chatId, replyText).catch((e) => {
+      console.warn(`[tg:voice-soap] sendMessage failed: ${(e as Error).message}`);
+    });
+    return { kind: "ai-paused", replyText };
+  }
 
   const caseId = await findActiveCaseId(input.clinic.id, ctx.doctorId);
   if (!caseId) {

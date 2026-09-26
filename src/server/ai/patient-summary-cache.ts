@@ -17,6 +17,7 @@
  * without polling.
  */
 
+import { AI_ENABLED } from "@/lib/ai-enabled";
 import { enqueue } from "@/server/queue";
 import { JOB_NAME, QUEUE_NAME } from "@/server/workers/patient-summary-refresh";
 
@@ -104,10 +105,23 @@ async function defaultEnqueue(
   await enqueue(QUEUE_NAME, JOB_NAME, payload);
 }
 
+/** What the endpoint answers while AI is paused: nothing to show. */
+export const AI_PAUSED_SUMMARY: ReadOrRefreshResult = {
+  text: "",
+  cacheAge: "missing",
+  pendingRefresh: false,
+  updatedAt: null,
+};
+
 /**
  * Read the cached summary; if stale / missing / forced, enqueue an async
  * refresh and return the current text immediately. The UI subscribes to
  * `patient.summary.refreshed` and refetches when the worker publishes.
+ *
+ * While AI is paused (`AI_ENABLED` false) nothing is read or queued (audit
+ * UX-01): every open of a patient's history used to queue an LLM job that
+ * wrote «[mock-llm: mock] Пациент: …» into the card, and the cached text
+ * is returned as empty because whatever sits there was written by that.
  */
 export async function readOrRefreshPatientSummary(
   prisma: PrismaLike,
@@ -117,6 +131,7 @@ export async function readOrRefreshPatientSummary(
   locale: "ru" | "uz",
   options?: ReadOrRefreshOptions,
 ): Promise<ReadOrRefreshResult> {
+  if (!AI_ENABLED) return AI_PAUSED_SUMMARY;
   const now = options?.now ?? new Date();
   const enqueueRefresh = options?.enqueueRefresh ?? defaultEnqueue;
   const forceRefresh = options?.forceRefresh === true;

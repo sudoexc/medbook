@@ -766,8 +766,8 @@
       "cancelKeep": "Bekor qilmaslik",
       "cancelled": "Yozilish bekor qilindi",
       "conflict": {
-        "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
-        "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
+        "doctor_busy": "Shifokor band{hasUntil, select, yes { {until} gacha} other {}}",
+        "cabinet_busy": "Kabinet band{hasUntil, select, yes { {until} gacha} other {}}",
         "doctor_time_off": "Shifokor ta'tilda",
         "outside_schedule": "Ish vaqtidan tashqari",
         "in_past": "Bu vaqt allaqachon o'tib ketgan",
@@ -885,8 +885,8 @@
         "sourcePlaceholder": "Qayerdan keldi"
       },
       "conflict": {
-        "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
-        "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
+        "doctor_busy": "Shifokor band{hasUntil, select, yes { {until} gacha} other {}}",
+        "cabinet_busy": "Kabinet band{hasUntil, select, yes { {until} gacha} other {}}",
         "doctor_time_off": "Shifokor ta'tilda",
         "outside_schedule": "Ish vaqtidan tashqari",
         "in_past": "Bu vaqt allaqachon o'tib ketgan"
@@ -959,8 +959,8 @@
     },
     "conflict": {
       "title": "Jadval nizosi",
-      "doctor_busy": "Shifokor band{until, select, , {} other{ {until} gacha}}",
-      "cabinet_busy": "Kabinet band{until, select, , {} other{ {until} gacha}}",
+      "doctor_busy": "Shifokor band{hasUntil, select, yes { {until} gacha} other {}}",
+      "cabinet_busy": "Kabinet band{hasUntil, select, yes { {until} gacha} other {}}",
       "doctor_time_off": "Bu vaqtda shifokor ta'tilda",
       "outside_schedule": "Ish vaqtidan tashqarida",
       "in_past": "Bu vaqt allaqachon o'tib ketgan"
@@ -1198,11 +1198,11 @@
     },
     "finance": {
       "title": "Moliya",
-      "totalIncome": "Umumiy daromad",
+      "visitsTotal": "Tashriflar qiymati",
       "paid": "To'langan",
       "debt": "Qarz",
       "zeroSum": "0 so'm",
-      "editAppointment": "Yozuvni tahrirlash",
+      "paymentsNotTracked": "To'lovlar CRM'ga kiritilmaydi, shuning uchun qarz hisoblanmaydi.",
       "donutAttendance": "Davomat",
       "attendanceHint": "{count} ta tashrifdan",
       "attendanceEmpty": "Yakunlangan tashrif yo'q"
@@ -2890,7 +2890,7 @@
       "nameUz": "Nomi (uz)",
       "bodyRu": "Matn (ru)",
       "bodyUz": "Matn (uz)",
-      "bodyPlaceholder": "Assalomu alaykum, {{patient.firstName}}! {{appointment.date}} kuni {{appointment.time}} da qabulingiz bor…",
+      "bodyPlaceholder": "Assalomu alaykum, '{{patient.firstName}}'! '{{appointment.date}}' kuni '{{appointment.time}}' da qabulingiz bor…",
       "placeholders": "Joylashtiruvchilar",
       "preview": "Oldindan ko'rish",
       "previewEmpty": "Shablon matnini kiriting",
@@ -5322,7 +5322,7 @@
       "LOW_NPS_RECEIVED": {
         "label": "Past tashrif bahosi",
         "title": "{patientName}: baho {score}/10 ({doctorName})",
-        "body": "{commentPreview, select, , {Bemor bilan bog‘laning va tafsilotlarni so‘rang.} other{«{commentPreview}»}}"
+        "body": "{hasComment, select, yes {«{commentPreview}»} other {Bemor bilan bog‘laning va tafsilotlarni so‘rang.}}"
       },
       "PATIENT_NO_CHANNEL": {
         "label": "Aloqa kanali yo'q",
@@ -5332,7 +5332,7 @@
       "VISIT_FOLLOW_UP_DUE": {
         "label": "Nazorat tashrifi",
         "title": "{patientName}: nazorat ~{dueDate} ({doctorName})",
-        "body": "{followUpNote, select, , {Bemorga qo'ng'iroq qiling va nazorat qabuliga yozing.} other{«{followUpNote}» — qo'ng'iroq qilib, nazoratga yozing.}}"
+        "body": "{hasNote, select, yes {«{followUpNote}». Qo'ng'iroq qilib, nazoratga yozing.} other {Bemorga qo'ng'iroq qiling va nazorat qabuliga yozing.}}"
       },
       "TELEGRAM_LINK_CONFLICT": {
         "label": "Telegram boshqa kartada",

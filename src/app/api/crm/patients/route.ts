@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
 import { patientSearchWhere } from "@/server/patient/search-where";
+import { patientBalanceIdWhere } from "@/server/patient/finance";
 import {
   birthDateFromYear,
   parsePatientIdentity,
@@ -67,7 +68,7 @@ function existingCardConflict(
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const parsed = parseQuery(request, QueryPatientSchema);
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
@@ -79,9 +80,12 @@ export const GET = createApiListHandler(
     if (q.tag) where.tags = { has: q.tag };
     if (q.consent === "yes") where.consentMarketing = true;
     if (q.consent === "no") where.consentMarketing = false;
-    if (q.balance === "debt") where.balance = { lt: 0 };
-    if (q.balance === "zero") where.balance = 0;
-    if (q.balance === "credit") where.balance = { gt: 0 };
+    // «Должники» on the computed balance (audit PT-08): the `balance` column
+    // is never written, so filtering on it matched nobody, or everybody.
+    if (q.balance && ctx.kind === "TENANT") {
+      const idWhere = await patientBalanceIdWhere(ctx.clinicId, q.balance);
+      if (idWhere) where.id = idWhere;
+    }
     if (q.registeredFrom || q.registeredTo) {
       where.createdAt = {
         ...(q.registeredFrom ? { gte: q.registeredFrom } : {}),

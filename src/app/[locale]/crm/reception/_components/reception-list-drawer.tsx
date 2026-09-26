@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { isLiveLane, splitReceptionLanes } from "@/lib/queue-ordering";
+import { isLiveLane } from "@/lib/queue-ordering";
+import { receptionQueueSheet } from "@/lib/reception-kpi";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -40,11 +41,14 @@ interface DrawerSection {
   /** Subsection header; null renders the rows without one. */
   title: string | null;
   rows: AppointmentRow[];
+  /** False for a booking that has not arrived yet: not in the hall. */
+  present: boolean;
 }
 
 /**
  * Side-drawer that opens off the KPI strip for the two live-data tiles:
- *  - "queue"        — patients waiting / scheduled but not yet in cabinet
+ *  - "queue"        — patients waiting now (the badge), then today's bookings
+ *                     still to come, listed apart and not counted
  *  - "in_progress"  — appointments currently happening
  *
  * Unlike `/crm/appointments?bucket=...` (which yanks the receptionist out of
@@ -63,8 +67,16 @@ export function ReceptionListDrawer({
   const tQueue = useTranslations("reception.queueColumn");
   const locale = useLocale();
 
-  const { sections, total } = React.useMemo(() => {
-    if (!mode) return { sections: [] as DrawerSection[], total: 0 };
+  // `count` is the header badge; `total` only decides the empty state. For
+  // the queue they differ: bookings still to come are listed, not counted.
+  const { sections, count, total, expectedCount } = React.useMemo(() => {
+    if (!mode)
+      return {
+        sections: [] as DrawerSection[],
+        count: 0,
+        total: 0,
+        expectedCount: 0,
+      };
     if (mode === "in_progress") {
       const list = rows
         .filter((r) => (r.queueStatus ?? r.status) === "IN_PROGRESS")
@@ -74,30 +86,51 @@ export function ReceptionListDrawer({
           return sb - sa;
         });
       return {
-        sections: [{ key: "in_progress", title: null, rows: list }],
+        sections: [
+          { key: "in_progress", title: null, rows: list, present: true },
+        ],
+        count: list.length,
         total: list.length,
+        expectedCount: 0,
       };
     }
     // Two lanes (docs/TZ-two-lanes.md), membership by channel: live FIFO
     // first (queue position = what the receptionist announces), bookings
     // after, on their own calendar axis. The shared selector also enforces
     // the booked-status filter, so terminal/SKIPPED rows never surface here.
-    const { live, booked } = splitReceptionLanes(rows);
+    // Bookings split by arrival (audit UX-02): the badge under «В очереди
+    // сейчас» is who is WAITING, the tile's own number, and the rest of the
+    // day's bookings get a section of their own instead of inflating it.
+    const { live, arrived, expected, waitingNow } = receptionQueueSheet(rows);
     const sections: DrawerSection[] = [];
     if (live.length > 0)
       sections.push({
         key: "live",
         title: tQueue("subsectionLive"),
         rows: live,
+        present: true,
       });
-    if (booked.length > 0)
+    if (arrived.length > 0)
       sections.push({
-        key: "booked",
-        title: tQueue("subsectionBooked"),
-        rows: booked,
+        key: "arrived",
+        title: t("subsectionArrived"),
+        rows: arrived,
+        present: true,
       });
-    return { sections, total: live.length + booked.length };
-  }, [mode, rows, tQueue]);
+    if (expected.length > 0)
+      sections.push({
+        key: "expected",
+        title: t("subsectionExpected"),
+        rows: expected,
+        present: false,
+      });
+    return {
+      sections,
+      count: waitingNow,
+      total: waitingNow + expected.length,
+      expectedCount: expected.length,
+    };
+  }, [mode, rows, t, tQueue]);
 
   const fullListHref =
     mode === "queue"
@@ -139,13 +172,16 @@ export function ReceptionListDrawer({
                   variant="secondary"
                   className="h-5 min-w-5 justify-center px-1.5 text-[11px] tabular-nums"
                 >
-                  {total}
+                  {count}
                 </Badge>
               </div>
               <SheetDescription className="mt-0.5 text-xs text-muted-foreground">
                 {mode === "in_progress"
                   ? t("inProgressSubtitle")
-                  : t("queueSubtitle")}
+                  : t("queueSubtitle", {
+                      waiting: count,
+                      expected: expectedCount,
+                    })}
               </SheetDescription>
             </div>
           </div>
@@ -191,6 +227,7 @@ export function ReceptionListDrawer({
                         index={i + 1}
                         row={row}
                         mode={mode!}
+                        present={section.present}
                         locale={locale}
                         onClick={() => {
                           onRowClick(row.id);
@@ -222,12 +259,14 @@ function DrawerRow({
   index,
   row,
   mode,
+  present,
   locale,
   onClick,
 }: {
   index: number;
   row: AppointmentRow;
   mode: ReceptionListMode;
+  present: boolean;
   locale: string;
   onClick: () => void;
 }) {
@@ -258,7 +297,9 @@ function DrawerRow({
         name={row.patient.fullName}
         src={row.patient.photoUrl}
         size="sm"
-        status={mode === "in_progress" ? "busy" : "online"}
+        status={
+          mode === "in_progress" ? "busy" : present ? "online" : "offline"
+        }
         className="shrink-0"
       />
       <div className="min-w-0 flex-1">

@@ -11,6 +11,11 @@
  * Client-safe: no server imports.
  */
 
+import {
+  splitReceptionLanes,
+  type ReceptionLaneRow,
+} from "@/lib/queue-ordering";
+
 /** One `queueStatus` bucket of the dashboard's snapshot. */
 export interface QueueBucket {
   status: string;
@@ -52,6 +57,41 @@ export function receptionQueueKpis(
     inProgress: count("IN_PROGRESS"),
     completed: count("COMPLETED"),
     noShow: count("NO_SHOW"),
+  };
+}
+
+/** The «В очереди сейчас» sheet, split so its count agrees with the tile. */
+export interface ReceptionQueueSheet<T> {
+  /** Walk-ins waiting, in the FIFO order the desk announces. */
+  live: T[];
+  /** Bookings that checked in and wait for their doctor, by slot time. */
+  arrived: T[];
+  /** BOOKED / CONFIRMED bookings still to come today, by slot time. */
+  expected: T[];
+  /** Everyone WAITING: the same number the tile shows. */
+  waitingNow: number;
+}
+
+/**
+ * The sheet the «В очереди сейчас» tile opens (audit UX-02). Its badge used
+ * to be live + every booking of the day, so the tile read 3 and the sheet
+ * under the same title read 23. The count is WAITING rows only (the walk-ins
+ * plus the bookings that arrived), exactly the tile's bucket; bookings still
+ * to come stay listed, but in their own section with their own count.
+ */
+export function receptionQueueSheet<T extends ReceptionLaneRow>(
+  rows: T[],
+): ReceptionQueueSheet<T> {
+  const { live, booked } = splitReceptionLanes(rows);
+  const arrived: T[] = [];
+  const expected: T[] = [];
+  for (const r of booked)
+    ((r.queueStatus ?? r.status) === "WAITING" ? arrived : expected).push(r);
+  return {
+    live,
+    arrived,
+    expected,
+    waitingNow: live.length + arrived.length,
   };
 }
 

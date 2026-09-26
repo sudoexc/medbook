@@ -1927,7 +1927,9 @@
     },
     "listDrawer": {
       "queueTitle": "В очереди сейчас",
-      "queueSubtitle": "Ожидают и записаны на приём",
+      "queueSubtitle": "Ожидают сейчас: {waiting}. Ожидаются по записи: {expected}.",
+      "subsectionArrived": "Пришли по записи",
+      "subsectionExpected": "Ожидаются по записи",
       "queueEmpty": "Очередь пуста",
       "queueEmptyHint": "Новые записи появятся здесь автоматически.",
       "inProgressTitle": "Идут приёмы",

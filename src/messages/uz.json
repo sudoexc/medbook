@@ -1927,7 +1927,9 @@
     },
     "listDrawer": {
       "queueTitle": "Hozir navbatda",
-      "queueSubtitle": "Kutayotgan va yozilgan bemorlar",
+      "queueSubtitle": "Hozir kutmoqda: {waiting}. Yozuv bo'yicha kutilmoqda: {expected}.",
+      "subsectionArrived": "Yozuv bo'yicha kelganlar",
+      "subsectionExpected": "Yozuv bo'yicha kutilmoqda",
       "queueEmpty": "Navbat bo'sh",
       "queueEmptyHint": "Yangi yozuvlar bu yerda avtomatik paydo bo'ladi.",
       "inProgressTitle": "Qabul jarayonida",

@@ -154,6 +154,11 @@ const DOAC: DrugClass = {
 const ANTICOAGULANTS = union(VKA, DOAC);
 const NSAIDS: DrugClass = {
   atc: ["M01A"],
+  // M01AX also holds the slow-acting «хондропротекторы», which are not
+  // NSAIDs and carry none of their bleeding risk: glucosamine (M01AX05),
+  // diacerein (M01AX21), chondroitin (M01AX25), avocado/soy unsaponifiables
+  // (M01AX26). WHO ATC index.
+  excludeAtc: ["M01AX05", "M01AX21", "M01AX25", "M01AX26"],
   ids: ["dexketoprofen", "lornoxicam", "etoricoxib", "aceclofenac", "piroxicam"],
 };
 const ASPIRIN: DrugClass = {

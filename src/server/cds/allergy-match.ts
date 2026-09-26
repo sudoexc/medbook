@@ -47,6 +47,8 @@ export type AllergyClass = {
   memberTerms: string[];
   /** ATC prefixes of the class (WHO ATC index). */
   atc: string[];
+  /** ATC codes under those prefixes that are NOT in the class. */
+  excludeAtc?: string[];
   /** Catalog ids that carry no ATC code in the static catalog. */
   ids: string[];
 };
@@ -194,6 +196,9 @@ export const ALLERGY_CLASSES: AllergyClass[] = [
       "кетонал", "кардиомагнил",
     ],
     atc: ["M01A", "N02BA", "B01AC06", "B01AC56"],
+    // Glucosamine, diacerein, chondroitin, ASU sit under M01AX but are not
+    // NSAIDs (WHO ATC index).
+    excludeAtc: ["M01AX05", "M01AX21", "M01AX25", "M01AX26"],
     ids: [
       "dexketoprofen", "lornoxicam", "etoricoxib", "aceclofenac", "piroxicam",
       "aspirin_cardio",
@@ -256,7 +261,8 @@ const STOPWORDS = new Set([
   "таблетка", "капсулы", "раствор", "мазь", "гель", "сироп", "капли",
   "экстракт", "витамин", "витамины", "препарат", "препараты", "лекарства",
   "лекарство", "аллергия", "аллергии", "реакция", "непереносимость",
-  "acid", "sodium", "potassium", "forte", "retard",
+  "acid", "sodium", "potassium", "forte", "retard", "sulfate", "sulphate",
+  "hydrochloride",
 ]);
 
 /** Lowercase, fold ё→е, drop apostrophes (o‘g‘li → ogli), keep letters/digits. */
@@ -271,24 +277,41 @@ export function allergyTokens(s: string): string[] {
     .filter(Boolean);
 }
 
-/** Crude stem: tolerate one or two trailing letters (Russian case endings). */
-function stem(t: string): string {
-  if (t.length >= 7) return t.slice(0, -2);
-  if (t.length >= 6) return t.slice(0, -1);
-  return t;
-}
+/** A case ending is at most two letters: «цефтриаксон» / «цефтриаксону». */
+const MAX_ENDING = 2;
 
 /**
- * Two words name the same thing: equal, or (both long enough) one starts
- * with the other's stem. Short words must be equal, which is what keeps
- * «мед» away from «медаксон».
+ * Two words name the same thing: equal, or the same word with a different
+ * case ending. Only the ending may differ, never the body of the word.
+ *
+ * The first version allowed any word to start with the other's stem, and a
+ * 6 or 7 letter word stems to five letters. That let «Сумамед» reach
+ * Сумамигрен (sumatriptan), «Кларитромицин» reach Кларитин (loratadine),
+ * «Супракс» reach Супрастин and «Кардиомагнил» reach Кардил (diltiazem):
+ * red «Не назначать» on core drugs, the very alarm fatigue this module was
+ * written to remove. Now the lengths may differ by an ending at most, so a
+ * short word can never swallow a longer, different name.
+ *
+ * Salt and form words («сульфат») match only themselves: «сульфа» (the
+ * sulfonamide class) plus one letter is iron sulfate, not a sulfonamide.
  */
 function tokensMatch(a: string, b: string): boolean {
   if (a === b) return true;
-  const sa = stem(a);
-  const sb = stem(b);
-  if (sa.length < 5 || sb.length < 5) return false;
-  return a.startsWith(sb) || b.startsWith(sa);
+  if (STOPWORDS.has(a) !== STOPWORDS.has(b)) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (long.length - short.length > MAX_ENDING) return false;
+  let common = 0;
+  while (common < short.length && short[common] === long[common]) common += 1;
+  // «пенициллин» → «пенициллины»: the shorter word is the whole stem. Short
+  // words must be equal, which is what keeps «мед» away from «медь».
+  if (common === short.length) return common >= 5;
+  // «цефтриаксона» ↔ «цефтриаксону»: both carry an ending on a shared stem.
+  // Six letters of stem, so «кардио» and «кардил» stay different words.
+  return (
+    common >= 6 &&
+    short.length - common <= MAX_ENDING &&
+    long.length - common <= MAX_ENDING
+  );
 }
 
 function isSignificant(tokens: string[]): boolean {
@@ -319,15 +342,27 @@ function components(name: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * A name a drug is known by. `exactOnly` marks a short multi-word brand
+ * («Но-шпа»: two words under five letters) — too short to match inside
+ * other text, but an allergy recorded as exactly that name must warn.
+ */
+type DrugPhrase = { toks: string[]; exactOnly: boolean };
+
 /** Every name a drug is known by, as token phrases. */
-function drugPhrases(drug: AllergyDrug): string[][] {
-  const out: string[][] = [];
+function drugPhrases(drug: AllergyDrug): DrugPhrase[] {
+  const out: DrugPhrase[] = [];
   const push = (s: string, minLen: number) => {
     const toks = allergyTokens(s);
     if (toks.length === 0) return;
     if (toks.join("").length < minLen) return;
-    if (!isSignificant(toks)) return;
-    out.push(toks);
+    if (!isSignificant(toks)) {
+      if (toks.length > 1 && toks.join("").length >= 5) {
+        out.push({ toks, exactOnly: true });
+      }
+      return;
+    }
+    out.push({ toks, exactOnly: false });
   };
   // Catalog ids like «clinic:…» or «uzr-…» are not names; the INN column
   // mirrors the id for a few seeded rows, so skip anything slug-shaped.
@@ -342,15 +377,20 @@ function drugPhrases(drug: AllergyDrug): string[][] {
   return out;
 }
 
-function drugInClass(drug: AllergyDrug, cls: AllergyClass, phrases: string[][]): boolean {
+function drugInClass(drug: AllergyDrug, cls: AllergyClass, phrases: DrugPhrase[]): boolean {
   if (cls.ids.includes(drug.id)) return true;
   const atc = drug.atcCode?.toUpperCase();
+  if (atc && cls.excludeAtc?.some((p) => atc.startsWith(p))) return false;
   if (atc && cls.atc.some((p) => atc.startsWith(p))) return true;
   // Registry rows often lack an ATC code: fall back to the substance name.
   return cls.memberTerms.some((m) => {
     const needle = allergyTokens(m);
-    return phrases.some((p) => containsPhrase(p, needle));
+    return phrases.some((p) => !p.exactOnly && containsPhrase(p.toks, needle));
   });
+}
+
+function sameTokens(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((t, i) => t === b[i]);
 }
 
 /** Does the allergy entry name the class, or one of its members? */
@@ -387,13 +427,20 @@ export function matchAllergy(
   const phrases = drugPhrases(drug);
 
   // 1. Substance: a drug name appears in the entry…
-  if (phrases.some((p) => containsPhrase(tokens, p))) {
+  if (
+    phrases.some((p) =>
+      p.exactOnly ? sameTokens(core, p.toks) : containsPhrase(tokens, p.toks),
+    )
+  ) {
     return { kind: "SUBSTANCE" };
   }
   // …or the entry itself names the drug («ацетилсалициловая кислота» in
   // «Ацетилсалициловая кислота кардио»). Only for a meaningful entry, so a
   // three-letter food allergy never matches by being short.
-  if (isSignificant(core) && phrases.some((p) => containsPhrase(p, core))) {
+  if (
+    isSignificant(core) &&
+    phrases.some((p) => !p.exactOnly && containsPhrase(p.toks, core))
+  ) {
     return { kind: "SUBSTANCE" };
   }
 

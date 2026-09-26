@@ -53,7 +53,9 @@ const wipeOrder = [
   "MedicalCase",
   "Call",
   "OnlineRequest",
-  "Lead",
+  // "Lead" deliberately absent: those are real booking requests from the
+  // public site (audit LD-01); demo leads are tagged «[demo]» and removed
+  // by seed-demo-data itself.
   "Action",
   "EmptySlotSnapshot",
   "ReferralReward",

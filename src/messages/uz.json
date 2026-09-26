@@ -7994,7 +7994,8 @@
       "reopen": "Yangilarga qaytarish",
       "note": "Izoh",
       "notePlaceholder": "Qo‘ng‘iroq natijasi, bog‘lanish uchun qulay vaqt…",
-      "saveNote": "Saqlash"
+      "saveNote": "Saqlash",
+      "bookByReception": "Registratura yozadi: arizani unga topshiring"
     },
     "toasts": {
       "updated": "Ariza yangilandi",

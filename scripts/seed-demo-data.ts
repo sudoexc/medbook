@@ -25,7 +25,9 @@ const SLUG = process.env.CLINIC_SLUG ?? "neurofax";
 const PATIENTS = Number(process.env.PATIENTS ?? "150");
 const CONVERSATIONS = Number(process.env.CONVERSATIONS ?? "18");
 const CALLS = Number(process.env.CALLS ?? "30");
-const LEADS = Number(process.env.LEADS ?? "16");
+// Demo leads land in the live «Заявки» queue next to real site requests
+// (audit LD-01): none unless explicitly asked for with LEADS=<n>.
+const LEADS = Number(process.env.LEADS ?? "0");
 const CLEAN = process.env.CLEAN === "1";
 
 const TAG = "demo:";

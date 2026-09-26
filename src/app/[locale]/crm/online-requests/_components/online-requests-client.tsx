@@ -69,7 +69,7 @@ function bookingDay(iso: string | null): Date {
  * appointment dialog. Booking passes `leadId`, so the server links the
  * request to the new visit and closes it as CONVERTED in one transaction.
  */
-export function OnlineRequestsClient() {
+export function OnlineRequestsClient({ canBook = true }: { canBook?: boolean }) {
   const t = useTranslations("onlineRequests");
   const locale = (useLocale() === "uz" ? "uz" : "ru") as Locale;
   const [tab, setTab] = React.useState<Tab>("NEW");
@@ -175,6 +175,7 @@ export function OnlineRequestsClient() {
               row={row}
               locale={locale}
               busy={update.isPending && update.variables?.id === row.id}
+              canBook={canBook}
               onBook={() => setConverting(row)}
               onStatus={(s) => setStatus(row, s)}
             />
@@ -182,7 +183,10 @@ export function OnlineRequestsClient() {
         </ul>
       )}
 
+      {/* Keyed by the request: a fresh dialog per conversion, so the previous
+          request's name and phone never prefill the next one. */}
       <NewAppointmentDialog
+        key={converting?.id ?? "none"}
         open={converting !== null}
         onOpenChange={(v) => {
           if (!v) setConverting(null);
@@ -203,12 +207,14 @@ function RequestRow({
   row,
   locale,
   busy,
+  canBook,
   onBook,
   onStatus,
 }: {
   row: OnlineRequestRow;
   locale: Locale;
   busy: boolean;
+  canBook: boolean;
   onBook: () => void;
   onStatus: (s: LeadStatus) => void;
 }) {
@@ -311,11 +317,16 @@ function RequestRow({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {open ? (
+          {open && canBook ? (
             <Button size="sm" onClick={onBook} disabled={busy}>
               <CalendarPlusIcon />
               {t("actions.book")}
             </Button>
+          ) : null}
+          {open && !canBook ? (
+            <span className="text-xs text-muted-foreground">
+              {t("actions.bookByReception")}
+            </span>
           ) : null}
           {row.status === "NEW" ? (
             <Button

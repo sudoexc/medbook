@@ -28,7 +28,11 @@ const D: Record<string, AllergyDrug> = {
   aspirinCardio: { id: "aspirin_cardio", inn: "aspirin_cardio", nameRu: "Ацетилсалициловая кислота кардио", atcCode: "B01AC06", brandNames: ["Кардиомагнил", "Аспирин Кардио"] },
   oxcarbazepine: { id: "oxcarbazepine", inn: "Oxcarbazepine", nameRu: "Окскарбазепин", atcCode: null, brandNames: ["Трилептал"] },
   paracetamol: { id: "paracetamol", inn: "Paracetamol", nameRu: "Парацетамол", atcCode: "N02BE01", brandNames: ["Панадол"] },
-  otipax: { id: "otipax", inn: "otipax", nameRu: "Лидокаин + феназон", atcCode: "S02DA30", brandNames: ["Отипакс"] },
+  otipax: { id: "otipax", inn: "otipax", nameRu: "Лидокаин + феназон", atcCode: "S02DA30", brandNames: ["Отипакс"] },  sumatriptan: { id: "sumatriptan", inn: "Sumatriptan", nameRu: "Суматриптан", atcCode: "N02CC01", brandNames: ["Сумамигрен", "Имигран"] },
+  loratadine: { id: "loratadine", inn: "Loratadine", nameRu: "Лоратадин", atcCode: "R06AX13", brandNames: ["Кларитин"] },
+  chloropyramine: { id: "chloropyramine", inn: "Chloropyramine", nameRu: "Хлоропирамин", atcCode: "R06AC03", brandNames: ["Супрастин"] },
+  diltiazem: { id: "diltiazem", inn: "Diltiazem", nameRu: "Дилтиазем", atcCode: "C08DB01", brandNames: ["Кардил"] },
+  drotaverine: { id: "drotaverine", inn: "Drotaverine", nameRu: "Дротаверин", atcCode: "A03AD02", brandNames: ["Но-шпа"] },
 };
 
 const hits = (allergy: string, drug: AllergyDrug) => matchAllergy(allergy, drug) !== null;
@@ -109,5 +113,47 @@ describe("same substance, other spellings", () => {
     expect(viaMember).toMatchObject({ kind: "CLASS", namedClass: false });
     if (viaMember?.kind === "CLASS") expect(viaMember.cls.labelRu).toBe("пенициллины");
     expect(matchAllergy("Амоксициллин", D.amoxicillin)?.kind).toBe("SUBSTANCE");
+  });
+});
+
+describe("no false alarms on different drugs with a similar start (review fix)", () => {
+  it("a macrolide or Сумамед allergy does not hit sumatriptan (Сумамигрен)", () => {
+    expect(hits("Сумамед", D.sumatriptan)).toBe(false);
+    expect(hits("Азитромицин", D.sumatriptan)).toBe(false);
+  });
+  it("clarithromycin does not hit loratadine (Кларитин)", () => {
+    expect(hits("Кларитромицин", D.loratadine)).toBe(false);
+  });
+  it("a cephalosporin allergy (Супракс) does not hit Супрастин", () => {
+    expect(hits("Супракс", D.chloropyramine)).toBe(false);
+    expect(hits("цефалоспорины", D.chloropyramine)).toBe(false);
+  });
+  it("aspirin (Кардиомагнил) does not hit diltiazem (Кардил)", () => {
+    expect(hits("Кардиомагнил", D.diltiazem)).toBe(false);
+    expect(hits("Аспирин", D.diltiazem)).toBe(false);
+  });
+  it("case endings still match the same word", () => {
+    expect(hits("аллергия на цефтриаксону", D.ceftriaxone)).toBe(true);
+  });
+});
+
+describe("short multi-word brands", () => {
+  it("an allergy recorded as «Но-шпа» warns on drotaverine", () => {
+    expect(hits("Но-шпа", D.drotaverine)).toBe(true);
+    expect(hits("но шпа", D.drotaverine)).toBe(true);
+  });
+  it("but «шпа» or «но» alone matches nothing", () => {
+    expect(hits("шпа", D.drotaverine)).toBe(false);
+    expect(hits("но", D.drotaverine)).toBe(false);
+  });
+});
+
+describe("chondroprotectors are not NSAIDs", () => {
+  it("an aspirin/NSAID allergy does not hit glucosamine or chondroitin", () => {
+    const glucosamine: AllergyDrug = { id: "glucosamine", inn: "Glucosamine", nameRu: "Глюкозамин", atcCode: "M01AX05", brandNames: ["Дона"] };
+    const chondroitin: AllergyDrug = { id: "chondroitin", inn: "Chondroitin sulfate", nameRu: "Хондроитина сульфат", atcCode: "M01AX25", brandNames: ["Структум"] };
+    expect(hits("НПВС", glucosamine)).toBe(false);
+    expect(hits("аспирин", chondroitin)).toBe(false);
+    expect(hits("НПВС", D.ibuprofen)).toBe(true);
   });
 });

@@ -68,6 +68,16 @@ export function isValidUzPhone(input: string | null | undefined): boolean {
  * Return all phone variants worth trying when searching the DB, so a user
  * who typed "901234567" in the kiosk still matches a patient stored as
  * "+998901234567". Returns a deduplicated array with the canonical form first.
+ *
+ * Callers usually pass a number that is already normalized, so the variants
+ * of «+998334125567» must also reach the shape the old normalizer stored for
+ * it: «+334125567» (see normalizePhone, audit LD-10). Cards, relatives'
+ * contact phones and leads written before that fix keep the old shape until
+ * scripts/fix-ld10-local-phones.ts rewrites them, and a card whose corrected
+ * number clashes with a newer card keeps it until reception merges the two.
+ * Without the old shape here the walk-in and «Новый пациент» miss the
+ * returning patient and silently create a second card. A 9x number always
+ * got +998, so it has no old shape to look for.
  */
 export function phoneSearchVariants(input: string): string[] {
   const canonical = normalizePhone(input);
@@ -78,7 +88,9 @@ export function phoneSearchVariants(input: string): string[] {
     variants.add(digits);
     variants.add("+" + digits);
     if (digits.startsWith("998") && digits.length === 12) {
-      variants.add(digits.slice(3)); // local part
+      const national = digits.slice(3);
+      variants.add(national); // local part
+      if (!national.startsWith("9")) variants.add("+" + national);
     }
     if (digits.length === 9) {
       variants.add("998" + digits);

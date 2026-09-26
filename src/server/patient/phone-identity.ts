@@ -72,6 +72,11 @@ export async function findVerifiedPhoneOwner(
       phoneVerifiedAt: { not: null },
       deletedAt: null,
     },
+    // Two verified cards can hold one number in two shapes (a pre-LD-10
+    // «+334125567» and a newer «+998334125567», until reception merges
+    // them): always the same one, the older with the history, so visits do
+    // not alternate between them.
+    orderBy: { createdAt: "asc" },
     select: { id: true, fullName: true, birthDate: true },
   });
 }

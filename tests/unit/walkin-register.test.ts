@@ -647,6 +647,29 @@ describe("registerWalkin — find-or-create patient by phone (W4)", () => {
     expect(prisma.patient.create).not.toHaveBeenCalled();
   });
 
+  it("reuses a card stored before LD-10 as «+334125567» when the same digits are typed (no second card)", async () => {
+    seedDoctor();
+    seedPatient({
+      id: "pat_legacy",
+      phone: "+334125567",
+      phoneNormalized: "+334125567",
+      fullName: "Каримова Дилноза",
+    });
+    const registerWalkin = await loadRegisterWalkin();
+
+    const result = await registerWalkin({
+      clinicId: "c1",
+      doctorId: "doc_alpha",
+      patient: { fullName: "Каримова Дилноза", phone: "33 412 55 67" },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.patient.id).toBe("pat_legacy");
+    const { prisma } = await import("@/lib/prisma");
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+  });
+
   it("creates a new patient when no phone match: WALKIN source, normalized phone, lang", async () => {
     seedDoctor();
     const registerWalkin = await loadRegisterWalkin();

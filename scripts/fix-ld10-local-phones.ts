@@ -13,6 +13,10 @@
  *   Patient.phoneNormalized "+334125567" → "+998334125567", and
  *   Patient.phone too when it holds the same nine digits (it was written by
  *   normalizePhone, or typed as those digits);
+ *   Patient.phone "+334125567" → "+998334125567" on a relative who uses
+ *   someone's number (a `contact:` stub in phoneNormalized, audit Q-03): the
+ *   number lives only in `phone` there, and that is the column the walk-in
+ *   looks him up by and his prints show;
  *   Lead.phone "+334125567" → "+998334125567".
  *
  * Only the exact shape "+" plus nine digits is touched: stubs (`tg:`,
@@ -21,7 +25,13 @@
  *
  * A patient whose corrected number already belongs to another card of the
  * same clinic is NOT rewritten (phoneNormalized is unique per clinic): both
- * cards are listed as a likely duplicate for reception to merge by hand.
+ * cards are listed as a likely duplicate for reception to merge by hand. A
+ * relative's contact phone never clashes: his phoneNormalized stays the stub.
+ *
+ * WHEN: run with APPLY=1 right after the deploy that ships LD-10. Lookups
+ * try the old shape as well (phoneSearchVariants), so a returning patient is
+ * still found before the run, but until it the cards show and dial a number
+ * nobody can reach.
  *
  * Dry run (default, writes nothing):
  *   docker compose exec -T worker npx tsx scripts/fix-ld10-local-phones.ts
@@ -37,22 +47,34 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { normalizePhone } from "../src/lib/phone";
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
-});
-
-const APPLY = process.env.APPLY === "1";
-
 /** "+" and exactly nine digits: what the old rule made of a local number. */
 const LOCAL_ONLY = /^\+\d{9}$/;
+
+/** `phoneNormalized` prefix of a relative using someone's number (Q-03). */
+const CONTACT_PREFIX = "contact:";
 
 function digitsOf(v: string): string {
   return v.replace(/\D/g, "");
 }
 
-async function main() {
+/** The tables this fix reads and writes; the unit test passes a fake. */
+export type Ld10Db = Pick<PrismaClient, "patient" | "lead">;
+
+export type Ld10Summary = {
+  patientsWritten: number;
+  clashed: number;
+  duplicates: number;
+  contactPhonesWritten: number;
+  leadsWritten: number;
+};
+
+export async function fixLd10LocalPhones(
+  db: Ld10Db,
+  apply: boolean,
+  log: (line: string) => void = console.log,
+): Promise<Ld10Summary> {
   const patients = (
-    await prisma.patient.findMany({
+    await db.patient.findMany({
       where: { phoneNormalized: { startsWith: "+" } },
       select: {
         id: true,
@@ -82,7 +104,7 @@ async function main() {
 
   for (const p of patients) {
     const to = normalizePhone(p.phoneNormalized);
-    const owner = await prisma.patient.findFirst({
+    const owner = await db.patient.findFirst({
       where: { clinicId: p.clinicId, phoneNormalized: to },
       select: { id: true, patientNumber: true },
     });
@@ -108,71 +130,128 @@ async function main() {
     });
   }
 
+  // A relative on someone's number keeps it in `phone` behind a `contact:`
+  // stub, written by the same old normalizer. The rewrite above moves the
+  // owner to +998… and would leave him behind in the old shape: his prints
+  // keep a number nobody can dial, and he is found only through the old
+  // shape phoneSearchVariants still tries.
+  const contactPhones = (
+    await db.patient.findMany({
+      where: {
+        phoneNormalized: { startsWith: CONTACT_PREFIX },
+        phone: { startsWith: "+" },
+      },
+      select: { id: true, patientNumber: true, phone: true },
+    })
+  )
+    .filter((p) => LOCAL_ONLY.test(p.phone))
+    .map((p) => ({
+      id: p.id,
+      patientNumber: p.patientNumber,
+      from: p.phone,
+      to: normalizePhone(p.phone),
+    }));
+
   const leads = (
-    await prisma.lead.findMany({
+    await db.lead.findMany({
       where: { phone: { startsWith: "+" } },
       select: { id: true, phone: true },
     })
   ).filter((l) => LOCAL_ONLY.test(l.phone));
 
-  console.log(`┌─ ${APPLY ? "APPLY" : "DRY RUN"}`);
-  console.log(`│ patients to fix: ${patientPlan.length}`);
+  log(`┌─ ${apply ? "APPLY" : "DRY RUN"}`);
+  log(`│ patients to fix: ${patientPlan.length}`);
   for (const p of patientPlan) {
-    console.log(`│   P-${p.patientNumber} (${p.id})  ${p.from} → ${p.to}${p.phone ? " (phone too)" : ""}`);
+    log(`│   P-${p.patientNumber} (${p.id})  ${p.from} → ${p.to}${p.phone ? " (phone too)" : ""}`);
   }
-  console.log(`│ likely duplicates, left for reception to merge: ${duplicates.length}`);
+  log(`│ likely duplicates, left for reception to merge: ${duplicates.length}`);
   for (const d of duplicates) {
-    console.log(`│   P-${d.patientNumber} (${d.id}) ${d.from} is P-${d.ownerNumber} (${d.ownerId}) ${d.to}`);
+    log(`│   P-${d.patientNumber} (${d.id}) ${d.from} is P-${d.ownerNumber} (${d.ownerId}) ${d.to}`);
   }
-  console.log(`│ leads to fix: ${leads.length}`);
+  log(`│ relatives' contact phones to fix: ${contactPhones.length}`);
+  for (const c of contactPhones) {
+    log(`│   P-${c.patientNumber} (${c.id})  ${c.from} → ${c.to}`);
+  }
+  log(`│ leads to fix: ${leads.length}`);
   for (const l of leads) {
-    console.log(`│   ${l.id}  ${l.phone} → ${normalizePhone(l.phone)}`);
+    log(`│   ${l.id}  ${l.phone} → ${normalizePhone(l.phone)}`);
   }
 
-  if (!APPLY) {
-    console.log("└─ nothing written; run again with APPLY=1");
-    await prisma.$disconnect();
-    return;
+  const summary: Ld10Summary = {
+    patientsWritten: 0,
+    clashed: 0,
+    duplicates: duplicates.length,
+    contactPhonesWritten: 0,
+    leadsWritten: 0,
+  };
+  if (!apply) {
+    log("└─ nothing written; run again with APPLY=1");
+    return summary;
   }
 
-  let patientsWritten = 0;
-  let clashed = 0;
   for (const p of patientPlan) {
     try {
       // Only while the row still holds what was read: a number staff
       // corrected in the meantime stays theirs.
-      const res = await prisma.patient.updateMany({
+      const res = await db.patient.updateMany({
         where: { id: p.id, phoneNormalized: p.from },
         data: { phoneNormalized: p.to, ...(p.phone ? { phone: p.phone } : {}) },
       });
-      patientsWritten += res.count;
+      summary.patientsWritten += res.count;
     } catch (e) {
       // Another card took the corrected number between the read and this
       // write (unique per clinic). Skip; a second dry run lists it as a
       // duplicate.
       if ((e as { code?: string }).code !== "P2002") throw e;
-      clashed += 1;
-      console.log(`  skipped P-${p.patientNumber}: ${p.to} was just taken`);
+      summary.clashed += 1;
+      log(`  skipped P-${p.patientNumber}: ${p.to} was just taken`);
     }
   }
 
-  let leadsWritten = 0;
+  for (const c of contactPhones) {
+    // Same guard: still a contact sharer, still the number that was read.
+    const res = await db.patient.updateMany({
+      where: {
+        id: c.id,
+        phone: c.from,
+        phoneNormalized: { startsWith: CONTACT_PREFIX },
+      },
+      data: { phone: c.to },
+    });
+    summary.contactPhonesWritten += res.count;
+  }
+
   for (const l of leads) {
-    const res = await prisma.lead.updateMany({
+    const res = await db.lead.updateMany({
       where: { id: l.id, phone: l.phone },
       data: { phone: normalizePhone(l.phone) },
     });
-    leadsWritten += res.count;
+    summary.leadsWritten += res.count;
   }
 
-  console.log(
-    `└─ patients written: ${patientsWritten}, clashed: ${clashed}; leads written: ${leadsWritten}`,
+  log(
+    `└─ patients written: ${summary.patientsWritten}, clashed: ${summary.clashed}; ` +
+      `contact phones written: ${summary.contactPhonesWritten}; leads written: ${summary.leadsWritten}`,
   );
-  await prisma.$disconnect();
+  return summary;
 }
 
-main().catch(async (e) => {
-  console.error(e);
-  await prisma.$disconnect();
-  process.exit(1);
-});
+async function main() {
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
+  });
+  try {
+    await fixLd10LocalPhones(prisma, process.env.APPLY === "1");
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// `tsx scripts/fix-ld10-local-phones.ts` is the entry point; the unit test
+// imports fixLd10LocalPhones without touching a database.
+if (process.argv[1]?.includes("fix-ld10-local-phones")) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

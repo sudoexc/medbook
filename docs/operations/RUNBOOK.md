@@ -420,15 +420,21 @@ docker run --rm --network medbook_default \
 - `seed-labs-reminders-dev.ts`, `seed-doctor-qa.ts`, `seed-joe-two.ts`,
   `total-stress-seed.ts`, `stress-*.ts` (тестовые, только локальная база).
 
-Все они проходят через один предохранитель `scripts/_destructive-guard.ts`:
+В образ worker они не входят (`Dockerfile.worker` удаляет их при сборке).
+Кроме того, все они проходят через один предохранитель
+`scripts/_destructive-guard.ts`:
 
-- тестовые скрипты при `NODE_ENV=production` (образ worker) отказывают всегда,
-  обхода нет;
-- удаляющие скрипты без `--force` ничего не делают;
+- тестовые скрипты, а также `seed-mega-neurofax.ts` и `wipe-neurofax-demo.ts`
+  (жёстко нацелены на slug `neurofax`) при `NODE_ENV=production` (образ
+  worker) отказывают всегда, обхода нет;
+- удаляющие скрипты при `NODE_ENV=production` тоже отказывают всегда, ни
+  `--force`, ни переменные окружения не помогают;
+- в остальных случаях удаляющие скрипты без `--force` ничего не делают;
 - в клинике с реальными данными (в журнале есть действия персонала: карточки
   пациентов, талоны живой очереди, заключения) или при `NODE_ENV=production`
   отказ, пока `ALLOW_DEMO_SEED_ON_REAL_DATA` не назовёт клинику по slug.
-  **Для neurofax эту переменную не ставить никогда.**
+  Готовую команду с именем клиники отказ не печатает: slug демо-клиники
+  вписывают сами. **Для neurofax эту переменную не ставить никогда.**
   `seed-clinical-life.ts` на клинике с реальными данными не запускается даже
   с ней: он подписывает документы от имени врачей.
 
@@ -441,7 +447,8 @@ docker run --rm --network medbook_default \
 - Локальная база разработчика: `npx tsx scripts/seed-mega-neurofax.ts --force`,
   затем `APPLY=1 npx tsx scripts/seed-prod-demo.ts` (демо-пациенты с тегом
   `demo-seed`) и `npx tsx scripts/seed-today-live.ts --force`.
-- Отдельная демо-клиника на стейджинге (свой slug): `seed-demo-data.ts`,
+- Отдельная демо-клиника на стейджинге (свой slug, запуск из рабочей копии
+  репозитория, не из образа worker): `seed-demo-data.ts`,
   `seed-clinical-life.ts` и `seed-labs-reminders-dev.ts` без `CLINIC_SLUG` не
   запускаются, `seed-today-live.ts` берёт `CLINIC_SLUG`, `seed-prod-demo.ts`
   берёт `DEMO_CLINIC_SLUG`. `seed-mega-neurofax.ts` и `wipe-neurofax-demo.ts`
@@ -468,10 +475,12 @@ ssh root@167.233.142.75 'cd /opt/neurofax && docker compose exec -T -e APPLY=1 w
 
 `seed-neurofax-real.ts` (каталог клиники) тоже по умолчанию DRY RUN и только
 добавляет недостающее: цены, расписания, услуги врачей, активность врачей и
-учёток он не меняет. Перезапись требует явных флагов (`--reset-prices`,
-`--reset-schedules`, `--reset-doctor-services`, `--reactivate`,
-`--deactivate-others`). Цены и расписания на проде меняются в настройках CRM,
-не этим скриптом.
+учёток он не меняет. Удалённое в CRM он не возвращает: врача, удалённого
+навсегда (или чья учётка осталась без профиля врача), и услугу со сменённым
+кодом он пропускает и пишет почему. Перезапись требует явных флагов
+(`--reset-prices`, `--reset-schedules`, `--reset-doctor-services`,
+`--reactivate`, `--recreate-removed`, `--deactivate-others`). Цены и
+расписания на проде меняются в настройках CRM, не этим скриптом.
 
 ---
 

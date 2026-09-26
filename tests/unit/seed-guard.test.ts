@@ -34,7 +34,10 @@ describe("decideSeedGuard", () => {
     expect(refused.ok).toBe(false);
     if (!refused.ok) {
       expect(refused.reason).toBe("real_data");
-      expect(refused.message).toContain(`${REAL_DATA_OPT_IN_ENV}=neurofax`);
+      // The hint is a placeholder: the refused slug is never spelled out as
+      // a ready-to-paste bypass (review of 895cded).
+      expect(refused.message).toContain(`${REAL_DATA_OPT_IN_ENV}=<slug демо-клиники>`);
+      expect(refused.message).not.toContain("=neurofax");
     }
 
     const otherClinic = decideSeedGuard({
@@ -93,6 +96,50 @@ describe("decideSeedGuard", () => {
       reason: "needs_force",
     });
     expect(decideSeedGuard({ policy, signals: CLEAN, env: {}, argv: ["--force"] }).ok).toBe(true);
+  });
+
+  it("refuses a destructive seed in production with no opt-in and no --force hint", () => {
+    for (const script of ["seed-mega-neurofax", "wipe-neurofax-demo", "seed-today-live"]) {
+      const d = decideSeedGuard({
+        policy: { script, clinicSlug: "neurofax", destructive: true },
+        signals: REAL,
+        env: { NODE_ENV: "production", [REAL_DATA_OPT_IN_ENV]: "neurofax" },
+        argv: ["--force"],
+      });
+      expect(d).toMatchObject({ ok: false, reason: "destructive_in_production" });
+      // Without --force it refuses the same way: the old «add --force» hint
+      // was the first step towards the bypass.
+      const bare = decideSeedGuard({
+        policy: { script, clinicSlug: "neurofax", destructive: true },
+        signals: CLEAN,
+        env: { NODE_ENV: "production" },
+        argv: [],
+      });
+      expect(bare).toMatchObject({ ok: false, reason: "destructive_in_production" });
+      if (!bare.ok) expect(bare.message).not.toContain("--force\n");
+    }
+  });
+
+  it("never prints a ready opt-in for the clinic it refuses", () => {
+    const policies: SeedPolicy[] = [
+      demo,
+      { ...demo, destructive: true },
+      { script: "seed-mega-neurofax", clinicSlug: "neurofax", destructive: true, devOnly: true },
+      { script: "seed-prod-demo", clinicSlug: "neurofax" },
+    ];
+    const cases = [
+      { signals: REAL, env: {}, argv: ["--force"] },
+      { signals: CLEAN, env: { NODE_ENV: "production" }, argv: ["--force"] },
+      { signals: REAL, env: { NODE_ENV: "production" }, argv: [] },
+      { signals: REAL, env: { [REAL_DATA_OPT_IN_ENV]: "demo-clinic" }, argv: ["--force"] },
+    ];
+    for (const policy of policies) {
+      for (const c of cases) {
+        const d = decideSeedGuard({ policy, ...c });
+        expect(d.ok).toBe(false);
+        if (!d.ok) expect(d.message).not.toContain("=neurofax");
+      }
+    }
   });
 
   it("gives a script that signs as the clinic's doctors no opt-in on real data", () => {
@@ -193,6 +240,21 @@ describe("assertSeedAllowed", () => {
     expect(findUnique).not.toHaveBeenCalled();
   });
 
+  it("refuses a destructive seed in production without touching the database", async () => {
+    exitSpy();
+    const findUnique = vi.fn(async () => ({ id: "c1" }));
+    const db: SeedGuardDb = { clinic: { findUnique }, auditLog: { count: async () => 0 } };
+    await expect(
+      assertSeedAllowed(
+        db,
+        { ...demo, destructive: true },
+        { NODE_ENV: "production", [REAL_DATA_OPT_IN_ENV]: "neurofax" },
+        ["--force"],
+      ),
+    ).rejects.toThrow("exit 1");
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
   it("returns the clinic id when the clinic is clean", async () => {
     const db: SeedGuardDb = {
       clinic: { findUnique: async () => ({ id: "c9" }) },
@@ -229,7 +291,15 @@ describe("the scripts use the guard", () => {
   });
 
   it("dev-only tooling declares devOnly", () => {
-    for (const f of ["seed-labs-reminders-dev.ts", "seed-clinical-life.ts", "total-stress-seed.ts"]) {
+    for (const f of [
+      "seed-labs-reminders-dev.ts",
+      "seed-clinical-life.ts",
+      "total-stress-seed.ts",
+      // Hard-wired to slug neurofax: their only possible production target
+      // is the real clinic (review of 895cded).
+      "seed-mega-neurofax.ts",
+      "wipe-neurofax-demo.ts",
+    ]) {
       expect(read(f)).toMatch(/devOnly: true/);
     }
   });
@@ -263,9 +333,20 @@ describe("the scripts use the guard", () => {
     expect(src).toMatch(/tags: \{ has: DEMO_SEED_MARK \}/);
   });
 
-  it("the worker image leaves the test seeds out (G2-02)", () => {
+  it("the worker image leaves the test and demo seeds out (G2-02, G2-03)", () => {
     const docker = readFileSync(path.resolve(__dirname, "../../Dockerfile.worker"), "utf8");
     expect(docker).toMatch(/rm -f scripts\/seed-labs-reminders-dev\.ts/);
     expect(docker).toMatch(/scripts\/stress-\*\.ts/);
+    const rmStart = docker.indexOf("RUN rm -f scripts/");
+    const rm = docker.slice(rmStart, docker.indexOf("FROM", rmStart));
+    for (const f of [
+      "seed-mega-neurofax.ts",
+      "wipe-neurofax-demo.ts",
+      "seed-today-live.ts",
+      "seed-demo-data.ts",
+      "seed-prod-demo.ts",
+    ]) {
+      expect(rm).toContain(`scripts/${f}`);
+    }
   });
 });

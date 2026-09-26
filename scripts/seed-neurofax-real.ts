@@ -16,9 +16,14 @@
  *   - Strictly additive by default: creates only what is missing. Existing
  *     cabinets, services and doctors keep their prices, schedules, links,
  *     names and isActive. A login's `active` flag is never touched.
+ *   - «Missing» on purpose stays missing: a doctor the admin purged (or whose
+ *     login is left without a doctor profile) and a service whose code the
+ *     admin changed are skipped, read from the audit trail and the logins.
  *   - Everything else is an explicit flag:
  *       --reactivate             canonical rows that exist but are inactive
  *                                (never the login: re-enable that in the UI)
+ *       --recreate-removed       canonical doctors and services the admin
+ *                                removed in the CRM (never the login either)
  *       --deactivate-others      rows of the clinic not in this line-up
  *       --reset-prices           Service.priceBase and priceOverride
  *       --reset-schedules        weekly grids of the canonical doctors
@@ -39,11 +44,15 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import {
+  CATALOG_AUDIT_ACTIONS,
   CATALOG_FLAG_NAMES,
   parseCatalogFlags,
   planCatalog,
+  removalsFromAudit,
+  renamedServiceCodes,
   writesOf,
   type CatalogOp,
+  type ExistingCatalog,
 } from "./_catalog-plan";
 import {
   assertAccountSeedAllowed,
@@ -305,7 +314,7 @@ async function main() {
   }
   const clinicId = clinic.id;
 
-  const [cabinets, services, doctors, users] = await Promise.all([
+  const [cabinets, services, doctors, users, auditRows] = await Promise.all([
     prisma.cabinet.findMany({
       where: { clinicId },
       select: { id: true, number: true, isActive: true },
@@ -320,16 +329,30 @@ async function main() {
     }),
     prisma.user.findMany({
       where: { email: { in: DOCTORS.map((d) => d.email) } },
-      select: { id: true, email: true },
+      select: { id: true, email: true, active: true },
+    }),
+    // Purged doctors and renamed service codes leave no row behind: the
+    // audit trail is what remembers them (see removalsFromAudit).
+    prisma.auditLog.findMany({
+      where: { clinicId, action: { in: [...CATALOG_AUDIT_ACTIONS] } },
+      select: { action: true, entityId: true, meta: true },
     }),
   ]);
+  const existing: ExistingCatalog = {
+    cabinets,
+    services,
+    doctors,
+    users,
+    removed: removalsFromAudit(auditRows),
+  };
+  const renamed = renamedServiceCodes(existing);
   const ops = planCatalog(
     {
       cabinets: [...CABINETS],
       services: [...SERVICES],
       doctors: DOCTORS,
     },
-    { cabinets, services, doctors, users },
+    existing,
     FLAGS,
   );
   const writes = writesOf(ops);
@@ -377,10 +400,15 @@ async function main() {
         return row.id;
       };
       const serviceId = async (code: string) => {
-        const row = await tx.service.findUnique({
-          where: { clinicId_code: { clinicId, code } },
-          select: { id: true },
-        });
+        const find = (c: string) =>
+          tx.service.findUnique({
+            where: { clinicId_code: { clinicId, code: c } },
+            select: { id: true },
+          });
+        // A canonical service the admin renamed was skipped, not recreated:
+        // the doctor's link goes to the renamed row.
+        const alias = renamed.get(code);
+        const row = (await find(code)) ?? (alias ? await find(alias) : null);
         if (!row) throw new Error(`service ${code} missing`);
         return row.id;
       };

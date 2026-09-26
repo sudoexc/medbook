@@ -10,9 +10,10 @@
  * Audit G2-03: it used to delete EVERY appointment of the day and deal real
  * patients into the fake queue. Now it deletes only demo-marked appointments
  * and takes only demo patients (tag `demo-seed`, see seed-prod-demo.ts). And
- * production neurofax is the real clinic: _destructive-guard.ts refuses to run
- * there unless ALLOW_DEMO_SEED_ON_REAL_DATA names the clinic, which on the
- * real clinic nobody should ever do.
+ * production neurofax is the real clinic: _destructive-guard.ts refuses it
+ * under NODE_ENV=production with no override (it deletes rows), the worker
+ * image does not ship it, and a database with real data needs
+ * ALLOW_DEMO_SEED_ON_REAL_DATA naming the clinic.
  *
  * Local or demo database:
  *   npx tsx scripts/seed-today-live.ts --force

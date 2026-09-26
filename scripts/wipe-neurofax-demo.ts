@@ -10,8 +10,10 @@
  * with NO re-seed. Irreversible.
  *
  * Production neurofax is the real clinic: _destructive-guard.ts refuses this
- * script there (it would delete patients, visits and signed conclusions).
- * Local or demo database only:
+ * script under NODE_ENV=production with no override, and the worker image
+ * does not ship it (Dockerfile.worker). It refuses a database with real data
+ * too (it would delete patients, visits and signed conclusions).
+ * Local database only:
  *   npx tsx scripts/wipe-neurofax-demo.ts --force
  */
 import "dotenv/config";
@@ -73,6 +75,9 @@ async function main() {
     script: "wipe-neurofax-demo",
     clinicSlug: "neurofax",
     destructive: true,
+    // Hard-wired to slug neurofax, which in production is the real clinic:
+    // there is no demo clinic this script could ever target on the server.
+    devOnly: true,
   });
   const clinic = await prisma.clinic.findUnique({ where: { slug: "neurofax" } });
   if (!clinic) throw new Error("clinic 'neurofax' not found");

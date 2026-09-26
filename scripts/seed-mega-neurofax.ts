@@ -24,7 +24,9 @@
  * +998 numbers in the call queue.
  *
  * Production neurofax is the real clinic: _destructive-guard.ts refuses this
- * script there. It is for a local database or a dedicated demo clinic:
+ * script under NODE_ENV=production with no override, and the worker image
+ * does not ship it (Dockerfile.worker). It refuses a database with real data
+ * too. It is for a local database only:
  *   npx tsx scripts/seed-mega-neurofax.ts --force
  */
 import "dotenv/config";
@@ -131,6 +133,9 @@ async function main() {
     script: "seed-mega-neurofax",
     clinicSlug: "neurofax",
     destructive: true,
+    // Hard-wired to slug neurofax, which in production is the real clinic:
+    // there is no demo clinic this script could ever target on the server.
+    devOnly: true,
   });
   const slug = "neurofax";
   const clinic = await prisma.clinic.findUnique({ where: { slug } });

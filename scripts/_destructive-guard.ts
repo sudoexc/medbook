@@ -9,16 +9,22 @@
  * So every demo or test seed calls `assertSeedAllowed` before its first
  * write, and this helper decides, in order:
  *
- *   1. Dev-only scripts (stress tests, QA seeds, fake clinical history) never
- *      run with NODE_ENV=production. There is no override: the worker image
- *      is production, and nothing those scripts write belongs there.
- *   2. Scripts that DELETE rows need `--force`, so a command copied from a
- *      doc or the shell history does nothing by itself.
- *   3. A clinic that holds real data, or any clinic with NODE_ENV=production,
+ *   1. Dev-only scripts (stress tests, QA seeds, fake clinical history, and
+ *      the seeds hard-wired to the real clinic's slug) never run with
+ *      NODE_ENV=production. There is no override: the worker image is
+ *      production, and nothing those scripts write belongs there.
+ *   2. Scripts that DELETE rows never run with NODE_ENV=production either,
+ *      opt-in or not (audit G2-03 review): the only production database is
+ *      the real clinic, and a wipe there takes signed conclusions with it.
+ *   3. Elsewhere they need `--force`, so a command copied from a doc or the
+ *      shell history does nothing by itself.
+ *   4. A clinic that holds real data, or any clinic with NODE_ENV=production,
  *      needs `ALLOW_DEMO_SEED_ON_REAL_DATA=<clinic slug>`. The value names the
- *      clinic: an opt-in exported for one clinic cannot carry over to another,
- *      and nobody reaches the real clinic without typing its slug. Scripts
- *      that sign documents as the clinic's doctors get no opt-in at all.
+ *      clinic: an opt-in exported for one clinic cannot carry over to another.
+ *      The refusal never prints the slug it refused (it used to end with a
+ *      ready-to-paste bypass for the real clinic): whoever opts in types the
+ *      demo clinic's slug themselves. Scripts that sign documents as the
+ *      clinic's doctors get no opt-in at all.
  *
  * Real data is read from the audit trail, the one thing seeds do not write
  * for these actions: rows by a signed-in staff member for work only the
@@ -29,7 +35,7 @@
  * Usage, first thing in main():
  *
  *   import { assertSeedAllowed } from "./_destructive-guard";
- *   await assertSeedAllowed(prisma, { script: "seed-today-live", clinicSlug: "neurofax", destructive: true });
+ *   await assertSeedAllowed(prisma, { script: "seed-today-live", clinicSlug: SLUG, destructive: true });
  *
  * Not for the production data fixes (backfills and fix-* scripts with DRY RUN
  * and APPLY=1): those are written for the real clinic on purpose.
@@ -97,7 +103,11 @@ export type SeedGuardDecision =
   | { ok: true; realData: boolean; warning: string | null }
   | {
       ok: false;
-      reason: "dev_only_in_production" | "needs_force" | "real_data";
+      reason:
+        | "dev_only_in_production"
+        | "destructive_in_production"
+        | "needs_force"
+        | "real_data";
       message: string;
     };
 
@@ -138,6 +148,23 @@ export function decideSeedGuard(input: SeedGuardInput): SeedGuardDecision {
         "",
         `⛔ ${policy.script} пишет тестовые данные и работает только на локальной базе.`,
         "   Сейчас NODE_ENV=production. Обхода нет: на проде этот скрипт не нужен никогда.",
+        "",
+      ].join("\n"),
+    };
+  }
+
+  // Before the --force check: on production its hint («add --force») was
+  // the first step of the walk to the bypass.
+  if (policy.destructive && production) {
+    return {
+      ok: false,
+      reason: "destructive_in_production",
+      message: [
+        "",
+        `⛔ ${policy.script} УДАЛЯЕТ данные клиники «${policy.clinicSlug}».`,
+        "   Сейчас NODE_ENV=production, а на проде работает реальная клиника.",
+        "   Обхода нет: ни --force, ни переменные окружения здесь не помогут.",
+        "   Демо показывают на локальной базе (docs/operations/RUNBOOK.md §5.2).",
         "",
       ].join("\n"),
     };
@@ -197,10 +224,12 @@ export function decideSeedGuard(input: SeedGuardInput): SeedGuardDecision {
         "",
       );
     }
+    // A placeholder, never the refused slug: a hint that spells out
+    // `=neurofax` is a bypass for the real clinic one paste away.
     lines.push(
       "   Демо-данные живут в отдельной демо-клинике или на локальной базе.",
-      "   Только если это действительно демо-клиника, назови её явно:",
-      `     ${REAL_DATA_OPT_IN_ENV}=${policy.clinicSlug} ${cmd}${policy.destructive ? " --force" : ""}`,
+      "   Только если это действительно демо-клиника, впиши её slug сам:",
+      `     ${REAL_DATA_OPT_IN_ENV}=<slug демо-клиники> ${cmd}${policy.destructive ? " --force" : ""}`,
       "",
     );
     return { ok: false, reason: "real_data", message: lines.join("\n") };
@@ -264,8 +293,8 @@ export async function assertSeedAllowed(
     console.error(`⛔ ${policy.script}: не указана клиника (CLINIC_SLUG).`);
     process.exit(1);
   }
-  // Dev-only refusal first: it must not depend on the database answering.
-  if (policy.devOnly && env.NODE_ENV === "production") {
+  // Production refusals first: they must not depend on the database answering.
+  if ((policy.devOnly || policy.destructive) && env.NODE_ENV === "production") {
     const d = decideSeedGuard({
       policy,
       signals: { staffActions: 0, recentActivity: 0 },

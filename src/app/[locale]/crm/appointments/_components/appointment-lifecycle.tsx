@@ -42,7 +42,12 @@ import {
   isOwnershipLocked,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
-import type { AppointmentStatus } from "@/lib/appointment-transitions";
+import {
+  canTransition,
+  isOnClinicDay,
+  requiresVisitDay,
+  type AppointmentStatus,
+} from "@/lib/appointment-transitions";
 
 export interface AppointmentLifecycleProps {
   /** Current status of the appointment. Both `status` and `queueStatus`
@@ -171,7 +176,20 @@ export function AppointmentLifecycle({
           // the doctor has done it, it shows ✓ as normal.
           const isRoleLocked =
             canMutate && state === "future" && isOwnershipLocked(role, step);
-          const roleLockedTitle = isRoleLocked ? t("roleLocked") : undefined;
+          // Arrival and the call wait for the visit's own day (Q-05): say so
+          // on the greyed pill rather than leave it silently disabled.
+          const isDayLocked =
+            canMutate &&
+            !isRoleLocked &&
+            state === "future" &&
+            canTransition(status, step) &&
+            requiresVisitDay(status, step) &&
+            !isOnClinicDay(apptDate);
+          const roleLockedTitle = isRoleLocked
+            ? t("roleLocked")
+            : isDayLocked
+              ? t("notToday")
+              : undefined;
 
           return (
             <React.Fragment key={step}>

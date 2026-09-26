@@ -15,9 +15,20 @@
  * the UI "Просрочена" badge).
  *
  * Idempotency: re-running the tick is safe. The Prisma `where` already
- * excludes NO_SHOW rows, and `canTransitionAt` is the second gate — if a
- * concurrent receptionist click moved the row to WAITING between scan and
- * update, we skip it.
+ * excludes NO_SHOW rows, and the write is conditional on the status the scan
+ * saw: if a receptionist moved the row to WAITING between scan and update,
+ * the write matches nothing and the row is skipped.
+ *
+ * Audit Q-14, two rules the auto no-show must keep:
+ *   - Both status columns move together. The sweep used to write `status`
+ *     alone; reception lays its lanes out by `queueStatus`, so the auto
+ *     no-show stayed in «Записи» as «Подтверждена» with a «Пришёл» button
+ *     while the doctor saw a no-show.
+ *   - Walk-ins are never swept. A live-queue row has no appointment time:
+ *     its `endDate` is registration + 30 min, a technical window. A walk-in
+ *     who waited 90 minutes and was skipped while in the corridor became a
+ *     NO_SHOW on the next tick and got «вы не пришли» in Telegram while
+ *     standing at the desk.
  *
  * Tenant context: cross-clinic scan in SYSTEM, then audit + outbox events
  * fanned out per-row with explicit clinicId.
@@ -68,7 +79,22 @@ export type SweepCandidate = {
   status: AppointmentStatus;
   date: Date;
   endDate: Date;
+  /** WALKIN rows are live-queue patients and never decay into NO_SHOW. */
+  channel?: string;
 };
+
+/**
+ * The scan's filter, shared with the tests so the SQL and the pure selector
+ * below cannot drift: scheduled bookings still waiting for their patient,
+ * an hour past their end.
+ */
+export function autoNoShowWhere(cutoff: Date) {
+  return {
+    status: { in: [...SWEEP_STATUSES] },
+    channel: { not: "WALKIN" as const },
+    endDate: { lt: cutoff },
+  };
+}
 
 /**
  * Pure helper. Given a list of candidates and "now", return those that
@@ -83,6 +109,7 @@ export function selectAutoNoShows<T extends SweepCandidate>(
   const out: T[] = [];
   for (const row of rows) {
     if (!SWEEP_STATUSES.includes(row.status)) continue;
+    if (row.channel === "WALKIN") continue;
     if (row.endDate.getTime() < cutoff) {
       out.push(row);
     }
@@ -229,10 +256,7 @@ async function tick(): Promise<void> {
   // would otherwise hide rows from clinics other than the worker's (none).
   const stale = (await runWithTenant({ kind: "SYSTEM" }, () =>
     prisma.appointment.findMany({
-      where: {
-        status: { in: SWEEP_STATUSES as unknown as AppointmentStatus[] },
-        endDate: { lt: cutoff },
-      },
+      where: autoNoShowWhere(cutoff),
       select: {
         id: true,
         clinicId: true,
@@ -240,6 +264,7 @@ async function tick(): Promise<void> {
         status: true,
         date: true,
         endDate: true,
+        channel: true,
       },
       // Bound the batch so a long outage backlog doesn't blow the event
       // loop on first tick. 500 stale rows per tick × every 10 min drains
@@ -262,13 +287,15 @@ async function tick(): Promise<void> {
     if (!check.ok) continue;
 
     try {
-      const after = await runWithTenant({ kind: "SYSTEM" }, () =>
-        prisma.appointment.update({
-          where: { id: row.id },
-          data: { status: "NO_SHOW" },
-          select: { id: true, doctorId: true, status: true },
+      // Conditional on the status the scan saw, so a receptionist's click in
+      // between wins; both status columns move together (Q-14).
+      const res = await runWithTenant({ kind: "SYSTEM" }, () =>
+        prisma.appointment.updateMany({
+          where: { id: row.id, status: row.status },
+          data: { status: "NO_SHOW", queueStatus: "NO_SHOW" },
         }),
       );
+      if (res.count === 0) continue;
 
       // Worker audit: no Request/session, write to AuditLog directly with
       // the actorLabel stamp other workers use so compliance dashboards
@@ -295,8 +322,18 @@ async function tick(): Promise<void> {
         type: "appointment.statusChanged",
         payload: {
           appointmentId: row.id,
-          doctorId: after.doctorId,
-          status: after.status,
+          doctorId: row.doctorId,
+          status: "NO_SHOW",
+          previousStatus: row.status,
+        },
+      });
+      // Reception's lanes read `queueStatus`: tell the boards it moved.
+      publishEventSafe(row.clinicId, {
+        type: "queue.updated",
+        payload: {
+          appointmentId: row.id,
+          doctorId: row.doctorId,
+          queueStatus: "NO_SHOW",
           previousStatus: row.status,
         },
       });

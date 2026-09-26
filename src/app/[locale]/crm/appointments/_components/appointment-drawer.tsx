@@ -182,9 +182,9 @@ export function AppointmentDrawer({
       });
       return;
     }
-    setQueueStatus.mutate(next, {
-      onError: () => toast.error(t("statusError")),
-    });
+    // The mutation toasts its own failure, the refusal reason included
+    // (e.g. «not today»); a second generic toast here only doubled it.
+    setQueueStatus.mutate(next);
   };
 
   const onChannelChange = (next: (typeof CHANNELS)[number]) => {

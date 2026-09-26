@@ -7,6 +7,8 @@ import { useTranslations } from "next-intl";
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { AI_ENABLED } from "@/lib/ai-enabled";
+import { isUpcomingVisitStatus } from "@/lib/appointments/active-statuses";
+import { tashkentDayWindow, tashkentToday } from "@/lib/tashkent-time";
 
 import type {
   AppointmentRow,
@@ -126,24 +128,6 @@ export type ConversationRow = {
 const RECEPTION_POLL_MS = 60_000;
 const RECEPTION_STALE_MS = 15_000;
 
-/** Today's date range [00:00, tomorrow 00:00). */
-export function todayRange(now = new Date()): { from: Date; to: Date } {
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
-  return { from, to };
-}
-
-/** Range for a specific calendar day [00:00, next day 00:00). */
-export function dayRange(date: Date): { from: Date; to: Date } {
-  const from = new Date(date);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
-  return { from, to };
-}
-
 /** KPI counters for today. */
 export function useReceptionDashboard() {
   return useQuery<DashboardResponse, Error>({
@@ -162,11 +146,12 @@ export function useReceptionDashboard() {
 }
 
 /**
- * All appointments for a given calendar day. Defaults to today (preserving
- * the existing call-sites). Pass a `Date` to fetch a different day.
+ * All appointments of one clinic (Asia/Tashkent) day, `YYYY-MM-DD`. Defaults
+ * to today. The reception page passes the day from `useClinicToday`, so a tab
+ * left open overnight moves to the new day by itself (audit AP-12).
  */
-export function useTodayAppointments(forDate?: Date) {
-  const { from, to } = forDate ? dayRange(forDate) : todayRange();
+export function useTodayAppointments(day?: string) {
+  const { from, to } = tashkentDayWindow(day ?? tashkentToday());
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
   return useQuery<AppointmentRow[], Error>({
@@ -436,8 +421,10 @@ export function computeUpcomingReminders(
   const horizon = new Date(now.getTime() + 2 * 60 * 60 * 1000);
   const out: UpcomingReminder[] = [];
   for (const r of rows) {
-    // Only BOOKED / WAITING — not in-progress / completed / cancelled.
-    if (r.status !== "BOOKED" && r.status !== "WAITING") continue;
+    // Visits still ahead: booked, confirmed or already waiting. CONFIRMED is
+    // the normal state of a phone booking here (UX-02); leaving it out hid
+    // most of the day's arrivals from this list.
+    if (!isUpcomingVisitStatus(r.status)) continue;
     const start = new Date(r.date);
     if (start <= now) continue;
     if (start > horizon) continue;

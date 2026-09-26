@@ -14,6 +14,8 @@ import { ticketNumberFor } from "@/server/services/ticket-number";
 import { getTenant } from "@/lib/tenant-context";
 import {
   canTransition,
+  isOnClinicDay,
+  requiresVisitDay,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 import {
@@ -27,7 +29,11 @@ import {
   runStartVisitTx,
 } from "@/server/appointments/active-visit";
 import { runQueueTx } from "@/server/appointments/queue-order";
-import { applyWaitingIntake } from "@/server/appointments/intake";
+import {
+  applyWaitingIntake,
+  NotVisitDayError,
+} from "@/server/appointments/intake";
+import { runCompletionEffects } from "@/server/appointments/completion-effects";
 import { initials } from "@/lib/format";
 import { sendCallNotice } from "@/server/telegram/call-notice";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
@@ -53,8 +59,18 @@ export const PATCH = createApiHandler(
     // can drift out of sync if a row was edited through legacy paths or
     // direct DB mutation. We then re-sync both in the update below.
     const fromStatus = before.queueStatus as AppointmentStatus;
+    const target = body.queueStatus as AppointmentStatus;
+    // A terminal `status` wins over a drifted `queueStatus` (Q-14): the old
+    // no-show sweep wrote `status` alone, and a row still reading CONFIRMED
+    // in the queue column was silently brought back to life by «Пришёл».
+    const statusIsTerminal =
+      before.status === "COMPLETED" ||
+      before.status === "CANCELLED" ||
+      before.status === "NO_SHOW";
     if (
-      !canTransition(fromStatus, body.queueStatus as AppointmentStatus)
+      !canTransition(fromStatus, target) ||
+      (statusIsTerminal &&
+        !canTransition(before.status as AppointmentStatus, target))
     ) {
       return conflict("invalid_transition", {
         from: before.queueStatus,
@@ -78,6 +94,18 @@ export const PATCH = createApiHandler(
           role,
         });
       }
+    }
+
+    // Q-05 / AP-12 — «Пришёл» and «Вызвать» only on the visit's own clinic
+    // day. The reception panel can browse any day; from tomorrow's list
+    // «Пришёл» used to take today's ticket number and «Начать запись» sent
+    // the patient at home a Telegram «Вас вызывают».
+    const now = new Date();
+    if (requiresVisitDay(fromStatus, target) && !isOnClinicDay(before.date, now)) {
+      return conflict("not_today", {
+        from: before.queueStatus,
+        to: body.queueStatus,
+      });
     }
 
     // DC-01 — same rule as the status PATCH: a doctor closes his visit by
@@ -141,7 +169,6 @@ export const PATCH = createApiHandler(
       queueStatus: body.queueStatus,
       status: body.queueStatus,
     };
-    const now = new Date();
     if (body.queueStatus === "IN_PROGRESS" && !before.startedAt) {
       data.startedAt = now;
     }
@@ -217,10 +244,20 @@ export const PATCH = createApiHandler(
       // a SKIPPED return, clear startedAt on an IN_PROGRESS put-back.
       // Serializable via runQueueTx so two desks racing the same doctor can't
       // hand out a duplicate order.
-      after = await runQueueTx(async (tx) => {
+      const intake = await runQueueTx(async (tx) => {
         Object.assign(data, await applyWaitingIntake(tx, before, now));
         return tx.appointment.update({ where: { id }, data, include: callInclude });
+      }).catch((e: unknown) => {
+        if (e instanceof NotVisitDayError) return e;
+        throw e;
       });
+      if (intake instanceof NotVisitDayError) {
+        return conflict("not_today", {
+          from: before.queueStatus,
+          to: body.queueStatus,
+        });
+      }
+      after = intake;
     } else if (startClinicId) {
       const started = await orActiveVisitConflict(
         runStartVisitTx(
@@ -318,6 +355,23 @@ export const PATCH = createApiHandler(
           },
         });
       }
+    }
+
+    // AP-07 / PT-06 — reception closing the current patient («Вызвать из
+    // очереди», «Начать запись») is a completion like the doctor's: visit
+    // stats, last contact, «Спасибо за визит» and the referral reward all
+    // run here, through the same function as every other completion path.
+    // Keyed on the visit's `status`, like the PATCH: re-syncing a drifted
+    // queue column on a visit already closed is not a second completion.
+    if (body.queueStatus === "COMPLETED" && before.status !== "COMPLETED") {
+      await runCompletionEffects({
+        request,
+        clinicId: after.clinicId,
+        appointmentId: id,
+        patientId: after.patientId,
+        completedAt: after.completedAt ?? now,
+        thankPatient: true,
+      });
     }
 
     // Same "📢 Вас вызывают" push the doctor cabinet sends — reception

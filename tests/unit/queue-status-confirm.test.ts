@@ -153,7 +153,8 @@ function patchReq(id: string, body: unknown): Request {
 }
 
 function makeAppt(overrides: Partial<Appt> = {}): Appt {
-  const start = new Date("2026-06-01T10:00:00.000Z");
+  // Today: arrival is only accepted on the visit's own clinic day (Q-05).
+  const start = new Date();
   return {
     id: "appt_1",
     clinicId: "c1",

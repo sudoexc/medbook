@@ -16,16 +16,13 @@ import {
 import { tashkentComponents } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
 import { applyWaitingIntake } from "@/server/appointments/intake";
+import { runCompletionEffects } from "@/server/appointments/completion-effects";
 import {
   recomputeAppointmentPrice,
   recomputeCaseAppointments,
 } from "@/server/pricing/recompute-appointment-price";
 import { fireTrigger } from "@/server/notifications/triggers";
-import { mintReferralRewardOnCompletion } from "@/server/patient-experience/referral-mint";
-import {
-  bumpPatientLastContact,
-  refreshPatientVisitStats,
-} from "@/server/patient/last-contacted";
+import { refreshPatientVisitStats } from "@/server/patient/last-contacted";
 import { cancelAppointment } from "@/server/appointments/cancel";
 import {
   AnotherVisitInProgressError,
@@ -40,6 +37,8 @@ import { ticketNumberFor } from "@/server/services/ticket-number";
 import { recordPatientView } from "@/server/audit/patient-view";
 import {
   canTransitionAt,
+  isOnClinicDay,
+  requiresVisitDay,
   revertTargetFor,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
@@ -405,6 +404,11 @@ export const PATCH = createApiHandler(
       if (fromStatus === "IN_PROGRESS") {
         return conflict("already_in_progress", { from: fromStatus });
       }
+      // Q-05 — the call starts the visit and pushes «Вас вызывают» to the
+      // patient's phone: only on the visit's own clinic day, like reception's.
+      if (!isOnClinicDay(before.date)) {
+        return conflict("not_today", { from: fromStatus });
+      }
 
       // One patient at a time: calling a patient in now *starts* their visit
       // (calledAt + IN_PROGRESS in a single click), so it must obey the same
@@ -674,6 +678,29 @@ export const PATCH = createApiHandler(
       data.queuedAt = null;
     }
 
+    // Q-05 — arrival and the call only on the visit's own clinic day, judged
+    // on the slot as it will be after this PATCH. `canTransitionAt` above
+    // already refused a status flip on another day; this also covers a raw
+    // `queueStatus` write and a PATCH that moves the visit off today while
+    // flipping it.
+    const entersBuilding =
+      (body.status !== undefined &&
+        requiresVisitDay(
+          before.status as AppointmentStatus,
+          body.status as AppointmentStatus,
+        )) ||
+      (body.queueStatus !== undefined &&
+        requiresVisitDay(
+          before.queueStatus as AppointmentStatus,
+          body.queueStatus as AppointmentStatus,
+        ));
+    if (entersBuilding && !isOnClinicDay(startAt)) {
+      return conflict("not_today", {
+        from: before.status,
+        to: body.status ?? body.queueStatus,
+      });
+    }
+
     // When the discount changes and the caller hasn't pinned `priceFinal`
     // explicitly in the same PATCH, recompute priceFinal from the stored
     // priceBase snapshot. Without this, doctor commission and patient LTV
@@ -799,7 +826,10 @@ export const PATCH = createApiHandler(
       // isolation is preserved (the queue-status route is the Serializable
       // hot path; this mirror mostly serves drawer/legacy flips).
       if (movesToWaiting) {
-        Object.assign(data, await applyWaitingIntake(tx, before, new Date()));
+        Object.assign(
+          data,
+          await applyWaitingIntake(tx, { ...before, date: startAt }, new Date()),
+        );
       }
       const updated = await tx.appointment.update({
         where: { id },
@@ -948,33 +978,20 @@ export const PATCH = createApiHandler(
       });
     }
 
-    // Phase 16 Wave 3 — mint a referral reward when this is the patient's
-    // very first COMPLETED visit AND the lead was tagged with a referrer
-    // at sign-up. Idempotent + best-effort: a duplicate (referrer, referred)
-    // pair silently no-ops and any throw is logged but never rolls back the
-    // appointment status change.
-    if (body.status === "COMPLETED" && !before.completedAt) {
-      // Auto-messages widget — "Спасибо за визит" on the COMPLETED transition.
-      // Best-effort + idempotent; no-op when the clinic has it toggled off.
-      fireTrigger({ kind: "appointment.completed", appointmentId: id });
-      try {
-        await mintReferralRewardOnCompletion({
-          tx: prisma,
-          request,
-          clinicId: after.clinicId,
-          appointmentId: id,
-          patientId: after.patientId,
-        });
-      } catch (e) {
-        console.error("[referral-mint] failed for appointment", id, e);
-      }
-      await bumpPatientLastContact(
-        after.patientId,
-        after.completedAt ?? new Date(),
-      );
-      // Denormalised visit stats — the dormant detector and the NEW/ACTIVE
-      // segments read them, and until now nothing wrote them.
-      await refreshPatientVisitStats(after.patientId);
+    // The completion's side effects ("Спасибо за визит", the referral
+    // reward for a first visit, last contact, visit stats) run through the
+    // one function every completion path shares (AP-07). Keyed on the
+    // transition, not on `completedAt`: a revert clears the stamp, and a row
+    // reaching COMPLETED is what closes the visit.
+    if (body.status === "COMPLETED" && before.status !== "COMPLETED") {
+      await runCompletionEffects({
+        request,
+        clinicId: after.clinicId,
+        appointmentId: id,
+        patientId: after.patientId,
+        completedAt: after.completedAt ?? new Date(),
+        thankPatient: true,
+      });
     }
 
     return ok(after);

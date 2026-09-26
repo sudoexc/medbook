@@ -48,6 +48,30 @@ export function tashkentPartsOf(iso: string | Date) {
   };
 }
 
+/** The Tashkent calendar day (YYYY-MM-DD) an instant falls on. */
+export function tashkentDateOf(at: string | Date | number): string {
+  return tashkentPartsOf(new Date(at)).date;
+}
+
+/**
+ * Calendar arithmetic on a Tashkent YYYY-MM-DD day. Tashkent has no DST, so
+ * stepping whole days from local noon can never land on the wrong date.
+ */
+export function addTashkentDays(dateStr: string, days: number): string {
+  const noon = Date.parse(`${dateStr}T12:00:00+05:00`);
+  return tashkentDateOf(noon + days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * The instants bounding one Tashkent day: `from` is its midnight and `to` its
+ * last millisecond. The appointments list filters `to` with `lte`, so handing
+ * it the next midnight would pull in a 00:00 slot of the following day.
+ */
+export function tashkentDayWindow(dateStr: string): { from: Date; to: Date } {
+  const from = new Date(`${dateStr}T00:00:00+05:00`);
+  return { from, to: new Date(from.getTime() + 24 * 60 * 60 * 1000 - 1) };
+}
+
 /**
  * Snap any ISO/Date to its 30-min slot key in Tashkent wall clock.
  */

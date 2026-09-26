@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
 import { splitReceptionLanes } from "@/lib/queue-ordering";
+import { tashkentDateOf } from "@/lib/tashkent-time";
 import { Button } from "@/components/ui/button";
 import { AvatarWithStatus } from "@/components/atoms/avatar-with-status";
 import {
@@ -25,6 +26,8 @@ export interface DoctorQueueCardProps {
   index: number;
   doctor: DoctorRef;
   appointments: AppointmentRow[];
+  /** Today's clinic day, `YYYY-MM-DD` (see `startable` below). */
+  clinicToday: string;
   onRowClick: (appointmentId: string) => void;
   onAddAppointment?: (doctorId: string) => void;
   className?: string;
@@ -58,6 +61,7 @@ export function DoctorQueueCard({
   index,
   doctor,
   appointments,
+  clinicToday,
   onRowClick,
   onAddAppointment,
   className,
@@ -78,6 +82,12 @@ export function DoctorQueueCard({
   // Shared reception split: live = waiting walk-ins in FIFO order (slot time
   // never orders them), bookings keep the calendar axis (two-lanes TZ I2).
   const { live, booked: bookings } = splitReceptionLanes(appointments);
+
+  // AP-12 / Q-05 — starting or calling a patient only on the visit's own
+  // clinic day. With «Завтра» picked on the panel, «Начать запись» used to
+  // start tomorrow's visit and send that patient «Вас вызывают» at home.
+  const startable = (a: AppointmentRow) =>
+    tashkentDateOf(a.date) === clinicToday;
 
   const cabinetNumber =
     (current ?? live[0] ?? bookings[0])?.cabinet?.number ??
@@ -122,7 +132,9 @@ export function DoctorQueueCard({
     toast.error(
       reason === "another_visit_in_progress"
         ? tToast("startConflict")
-        : t("startFailed"),
+        : reason === "not_today"
+          ? tToast("notToday")
+          : t("startFailed"),
     );
   };
 
@@ -178,7 +190,7 @@ export function DoctorQueueCard({
   // auto-advance, the receptionist starts them per row.
   const advanceQueue = () => {
     const head = live[0];
-    if (head) void startVisit(head);
+    if (head && startable(head)) void startVisit(head);
   };
 
   const scrollable = live.length > SCROLL_AFTER;
@@ -331,15 +343,17 @@ export function DoctorQueueCard({
                           </span>
                         ) : null}
                       </button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 shrink-0 px-2 text-[11px]"
-                        disabled={pending}
-                        onClick={() => void startVisit(a)}
-                      >
-                        {t("startBooking")}
-                      </Button>
+                      {startable(a) ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 shrink-0 px-2 text-[11px]"
+                          disabled={pending}
+                          onClick={() => void startVisit(a)}
+                        >
+                          {t("startBooking")}
+                        </Button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -374,7 +388,7 @@ export function DoctorQueueCard({
               "motion-press w-full",
               popKey > 0 && "motion-success-pop",
             )}
-            disabled={pending || live.length === 0}
+            disabled={pending || !live[0] || !startable(live[0])}
             onClick={advanceQueue}
           >
             {t("callNextLive")}

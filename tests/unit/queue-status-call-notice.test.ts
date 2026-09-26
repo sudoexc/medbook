@@ -96,6 +96,11 @@ vi.mock("@/server/appointments/confirm", () => ({
   confirmAppointment: vi.fn(),
 }));
 
+// Completion side effects have their own suite (reception-queue-statuses).
+vi.mock("@/server/appointments/completion-effects", () => ({
+  runCompletionEffects: vi.fn(async () => undefined),
+}));
+
 // The single-active check runs inside the start write's own transaction
 // (Q-13); here the doctor never has another visit on the table, so the
 // wrapper just runs the write in the mocked transaction.
@@ -173,7 +178,8 @@ function patchReq(id: string, body: unknown): Request {
 }
 
 function makeAppt(overrides: Partial<Appt> = {}): Appt {
-  const start = new Date("2026-06-01T10:00:00.000Z");
+  // Today: the call is only accepted on the visit's own clinic day (Q-05).
+  const start = new Date();
   return {
     id: "appt_1",
     clinicId: "c1",

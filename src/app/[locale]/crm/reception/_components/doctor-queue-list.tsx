@@ -28,6 +28,8 @@ export interface DoctorQueueListProps {
   doctors: DoctorRef[];
   appointmentsByDoctor: Map<string, AppointmentRow[]>;
   isLoading: boolean;
+  /** Today's clinic day; only its rows offer «Пришёл» / «Начать». */
+  clinicToday: string;
   onRowClick: (appointmentId: string) => void;
   onAddAppointment?: (doctorId: string) => void;
   density?: DoctorPanelDensity;
@@ -61,6 +63,7 @@ export function DoctorQueueList({
   doctors,
   appointmentsByDoctor,
   isLoading,
+  clinicToday,
   onRowClick,
   onAddAppointment,
   density = "comfortable",
@@ -327,6 +330,7 @@ export function DoctorQueueList({
                     <DoctorQueuePanel
                       appointments={items}
                       doctorId={doctor.id}
+                      clinicToday={clinicToday}
                       onOpenAppointment={onRowClick}
                       onAddAppointment={(id) => onAddAppointment?.(id)}
                     />

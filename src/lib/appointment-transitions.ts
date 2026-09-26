@@ -6,6 +6,7 @@
  * reception "вызвать следующего", and the server-side guard on
  * status-changing endpoints.
  */
+import { tashkentDateOf } from "@/lib/tashkent-time";
 
 export type AppointmentStatus =
   | "BOOKED"
@@ -48,11 +49,44 @@ export function canTransition(
 }
 
 /**
+ * Arrival (WAITING) and the call (IN_PROGRESS) mean the patient is in the
+ * building, which is only true on the visit's own clinic day (audit Q-05,
+ * AP-12). Reception browsing tomorrow on the doctors panel pressed «Пришёл»
+ * and the booking took today's ticket number and hung in WAITING forever; a
+ * «Начать запись» there sent a patient at home «Вас вызывают! Кабинет 5».
+ */
+const VISIT_DAY_TARGETS: ReadonlySet<AppointmentStatus> = new Set([
+  "WAITING",
+  "IN_PROGRESS",
+]);
+
+/** True when moving `from` → `to` needs the visit to be on today's clinic day. */
+export function requiresVisitDay(
+  from: AppointmentStatus,
+  to: AppointmentStatus,
+): boolean {
+  return from !== to && VISIT_DAY_TARGETS.has(to);
+}
+
+/**
+ * True when the appointment falls on the same Asia/Tashkent calendar day as
+ * `now`. Clinic time, not the machine's: prod runs UTC, where midnight is
+ * 05:00 in the clinic.
+ */
+export function isOnClinicDay(
+  appointmentDate: Date | string,
+  now: Date = new Date(),
+): boolean {
+  return tashkentDateOf(appointmentDate) === tashkentDateOf(now);
+}
+
+/**
  * Time-aware extension of `canTransition`. NO_SHOW only makes sense once the
  * scheduled start time has passed — until then the patient is not yet "late".
  * `graceMinutes` lets the caller decide how soon after the start a no-show
  * call is allowed (default: 0, i.e., the moment the visit was supposed to
- * begin).
+ * begin). Arrival and the call are refused on any other day than the visit's
+ * own (`not_today`, see `requiresVisitDay`).
  */
 export function canTransitionAt(
   from: AppointmentStatus,
@@ -60,7 +94,12 @@ export function canTransitionAt(
   appointmentDate: Date,
   now: Date = new Date(),
   graceMinutes = 0,
-): { ok: true } | { ok: false; reason: "invalid_transition" | "too_early_for_no_show" } {
+):
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "invalid_transition" | "too_early_for_no_show" | "not_today";
+    } {
   if (!canTransition(from, to)) {
     return { ok: false, reason: "invalid_transition" };
   }
@@ -71,6 +110,9 @@ export function canTransitionAt(
     if (now < threshold) {
       return { ok: false, reason: "too_early_for_no_show" };
     }
+  }
+  if (requiresVisitDay(from, to) && !isOnClinicDay(appointmentDate, now)) {
+    return { ok: false, reason: "not_today" };
   }
   return { ok: true };
 }

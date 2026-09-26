@@ -21,6 +21,8 @@ import { newCorrelationId } from "@/server/realtime/outbox";
 import { applyWaitingIntake, type PrismaTx } from "@/server/appointments/intake";
 import { allocateQueueOrder } from "@/server/appointments/queue-order";
 import { runQueueTx } from "@/server/appointments/queue-order";
+import { completionFields } from "@/server/appointments/completion";
+import { runCompletionEffects } from "@/server/appointments/completion-effects";
 
 export const POST = createApiHandler(
   {
@@ -59,12 +61,17 @@ export const POST = createApiHandler(
         patientId: true,
         cabinetId: true,
         date: true,
+        // Completion shrinks the slot to the actual end (completionFields).
+        endDate: true,
         // Intake inputs for the WAITING target (see applyWaitingIntake).
         clinicId: true,
         queueOrder: true,
         queuedAt: true,
       },
     });
+    // `canTransitionAt` also refuses arrival and the call on any day but the
+    // visit's own (`not_today`, Q-05): a bulk «Пришёл» over tomorrow's list
+    // used to hand each booking one of today's ticket numbers.
     const blocked = existing
       .map((a) => ({
         a,
@@ -93,7 +100,12 @@ export const POST = createApiHandler(
       data.cancelledAt = now;
       if (body.cancelReason) data.cancelReason = body.cancelReason;
     }
-    if (target === "COMPLETED") data.completedAt = now;
+    // Rows this batch actually closes. One already COMPLETED keeps its own
+    // `completedAt` and has had its completion effects.
+    const completing =
+      target === "COMPLETED"
+        ? existing.filter((a) => a.status !== "COMPLETED")
+        : [];
 
     const correlationId = newCorrelationId();
     // WAITING is the one target with per-row side-effects — each row claims
@@ -101,8 +113,8 @@ export const POST = createApiHandler(
     // which updateMany can't express. That branch loops row-by-row and runs
     // under Serializable via runQueueTx (same isolation as the single
     // queue-status intake, so a concurrent kiosk check-in can't share an
-    // order). Every other target keeps the original updateMany + default
-    // isolation — no behavioral change there.
+    // order). COMPLETED also writes per row (below); every other target
+    // keeps the original updateMany + default isolation.
     const txBody = async (tx: PrismaTx) => {
       let count: number;
       if (target === "WAITING") {
@@ -140,6 +152,21 @@ export const POST = createApiHandler(
           });
           count += 1;
         }
+      } else if (target === "COMPLETED") {
+        // Same completion fields as every other path: both status columns,
+        // `completedAt`, and the slot shrunk to the actual end so the freed
+        // tail is bookable. Per row because the end differs per row.
+        for (const row of completing) {
+          await tx.appointment.update({
+            where: { id: row.id },
+            data: completionFields({
+              now,
+              date: row.date,
+              endDate: row.endDate,
+            }),
+          });
+        }
+        count = completing.length;
       } else {
         const updated = await tx.appointment.updateMany({
           where: { id: { in: body.ids } },
@@ -184,6 +211,20 @@ export const POST = createApiHandler(
       entityType: "Appointment",
       meta: { ids: body.ids, status: target, count: result.count },
     });
+
+    // AP-07 / PT-06 — a bulk close is a completion like any other: visit
+    // stats, last contact, «Спасибо за визит» and the referral reward run
+    // per closed row through the shared function.
+    for (const row of completing) {
+      await runCompletionEffects({
+        request,
+        clinicId: row.clinicId,
+        appointmentId: row.id,
+        patientId: row.patientId,
+        completedAt: now,
+        thankPatient: true,
+      });
+    }
 
     // TZ-notifications-cancel-sync §8.4 — manual NO_SHOW bulk action mirrors
     // the auto-sweep path. Each just-flipped row gets a "sorry it didn't

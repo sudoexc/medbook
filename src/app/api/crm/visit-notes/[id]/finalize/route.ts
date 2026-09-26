@@ -17,15 +17,11 @@ import {
   canTransitionAt,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
-import {
-  bumpPatientLastContact,
-  refreshPatientVisitStats,
-} from "@/server/patient/last-contacted";
-import { fireTrigger } from "@/server/notifications/triggers";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import type { EventEnvelopeInput } from "@/server/realtime/envelope";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
 import { completionFields } from "@/server/appointments/completion";
+import { runCompletionEffects } from "@/server/appointments/completion-effects";
 import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
 import { allocateDocumentNumber } from "@/server/services/document-number";
 import { composeNoteHandout } from "@/server/visit-notes/handout";
@@ -369,20 +365,24 @@ export const POST = createApiHandler(
       });
     }
 
-    if (note.appointment.status !== "COMPLETED") {
-      await bumpPatientLastContact(
-        note.patientId,
-        result.appointment.completedAt ?? new Date(),
-      );
-      // Same denormalised stats as the appointment-PATCH completion path.
-      await refreshPatientVisitStats(note.patientId);
-      // Auto-messages widget — "Спасибо за визит". Idempotent with the
-      // appointment-PATCH completion path (shared NotificationSend gate).
-      fireTrigger({
-        kind: "appointment.completed",
-        appointmentId: note.appointment.id,
-      });
-    }
+    // AP-07 — the completion's side effects, through the function every
+    // completion path shares. They run on every signature, not only when
+    // this signature closes the visit: a visit reception closed before these
+    // effects were shared never had them, and the doctor's signature is the
+    // one moment it is still touched. Each effect is idempotent, so a visit
+    // whose effects already ran gets nothing twice. Only the thank-you stays
+    // with the closing itself: a conclusion signed hours or days after
+    // someone else closed the visit must not greet the patient again.
+    const closedHere = note.appointment.status !== "COMPLETED";
+    await runCompletionEffects({
+      request,
+      clinicId: note.clinicId,
+      appointmentId: note.appointment.id,
+      patientId: note.patientId,
+      completedAt:
+        result.appointment.completedAt ?? note.appointment.date,
+      thankPatient: closedHere,
+    });
 
     // The clinic catalog learns from every SIGNED diagnosis — free text and
     // codes the static list lacks become suggestions for all doctors here.

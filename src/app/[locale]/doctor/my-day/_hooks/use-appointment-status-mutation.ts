@@ -430,6 +430,10 @@ function messageFor(
   if (raw === "appointment_not_active") {
     return t("statusToast.errNotActive");
   }
+  // Q-05: the call and the start only on the visit's own clinic day.
+  if (raw === "not_today") {
+    return t("statusToast.errNotToday");
+  }
   if (args.call) return t("statusToast.errCallFailed");
   return args.revert
     ? t("statusToast.errRevertFailed")

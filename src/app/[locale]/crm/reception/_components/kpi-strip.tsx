@@ -15,39 +15,43 @@ import {
 
 import { cn } from "@/lib/utils";
 import { CountUp, useCountUp } from "@/components/atoms/count-up";
-import { KpiTile } from "@/components/atoms/kpi-tile";
+import { KpiTile, type KpiTileProps } from "@/components/atoms/kpi-tile";
 import { MoneyText } from "@/components/atoms/money-text";
-import type {
-  DashboardResponse,
-  DashboardQueueBucket,
-} from "../_hooks/use-reception-live";
+import {
+  canSeeClinicRevenue,
+  receptionQueueKpis,
+} from "@/lib/reception-kpi";
+import type { DashboardResponse } from "../_hooks/use-reception-live";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
+import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 
 export interface KpiStripProps {
   dashboard: DashboardResponse | undefined;
+  /** Today's rows (the real clinic day, never the doctors panel's pick). */
   todayRows: AppointmentRow[];
   /** Total active doctors — used for the "% busy" cabinet subtitle. */
   totalDoctors?: number;
   className?: string;
 }
 
-function pickBucket(
-  buckets: DashboardQueueBucket[] | undefined,
-  status: DashboardQueueBucket["status"],
-): number {
-  if (!buckets) return 0;
-  for (const b of buckets) {
-    if (b.status === status) return b.count;
-  }
-  return 0;
+interface StripTile {
+  key: string;
+  href: string;
+  label: string;
+  value: React.ReactNode;
+  unit?: string;
+  subtitle?: string;
+  tone: KpiTileProps["tone"];
+  icon: React.ReactNode;
 }
 
 /**
- * 6 KPI tiles per TZ §6.1.2:
- *  - Total today, In progress, Waiting, Completed, No-show, Revenue.
+ * KPI tiles per TZ §6.1.2: total today, waiting now, in progress, arrived,
+ * no-show, and revenue for the roles that may see it (see
+ * `receptionQueueKpis` / `canSeeClinicRevenue`, audit UX-02).
  *
- * Each tile links to `/crm/appointments` pre-filtered on status so the
- * receptionist can drill into the list.
+ * Each tile links to a surface every role here can open: the appointments
+ * list, the side drawer, or (revenue, admins only) the financial dashboard.
  */
 export function KpiStrip({
   dashboard,
@@ -56,28 +60,23 @@ export function KpiStrip({
   className,
 }: KpiStripProps) {
   const t = useTranslations("reception.kpi");
+  const showRevenue = canSeeClinicRevenue(useCurrentRole());
 
-  const today = dashboard?.today;
-  const queue = dashboard?.queue;
   const totalToday = todayRows.length;
-  const waiting =
-    pickBucket(queue, "WAITING") +
-    pickBucket(queue, "BOOKED") +
-    pickBucket(queue, "CONFIRMED");
-  const inProgress = today?.inProgress ?? pickBucket(queue, "IN_PROGRESS");
-  const completed = today?.completed ?? pickBucket(queue, "COMPLETED");
-  const noShow = pickBucket(queue, "NO_SHOW");
-  const revenue = today?.revenue ?? 0;
+  const { waitingNow, arrived, inProgress, noShow } = receptionQueueKpis(
+    dashboard?.queue,
+  );
+  const revenue = dashboard?.today.revenue ?? 0;
   const animatedRevenue = useCountUp(Number(revenue));
 
   const inProgressPct =
     totalDoctors > 0 ? Math.round((inProgress / totalDoctors) * 100) : null;
-  const completedPct =
-    totalToday > 0 ? Math.round((completed / totalToday) * 100) : null;
+  const arrivedPct =
+    totalToday > 0 ? Math.round((arrived / totalToday) * 100) : null;
   const noShowPct =
     totalToday > 0 ? Math.round((noShow / totalToday) * 100) : null;
 
-  const tiles = [
+  const tiles: StripTile[] = [
     {
       key: "today",
       href: "/crm/appointments?dateMode=today",
@@ -91,7 +90,7 @@ export function KpiStrip({
       key: "waiting",
       href: "?panel=queue",
       label: t("waiting"),
-      value: <CountUp to={waiting} className="tabular-nums" />,
+      value: <CountUp to={waitingNow} className="tabular-nums" />,
       unit: t("unitPersons"),
       subtitle: t("subtitleWaitingQueue"),
       tone: "warning" as const,
@@ -111,14 +110,16 @@ export function KpiStrip({
       icon: <ActivityIcon />,
     },
     {
-      key: "completed",
-      href: "/crm/appointments?dateMode=today&bucket=completed",
+      key: "arrived",
+      // Today's full list: arrivals span several statuses and no single
+      // status bucket of the appointments page matches this count.
+      href: "/crm/appointments?dateMode=today",
       label: t("checkedIn"),
-      value: <CountUp to={completed} className="tabular-nums" />,
+      value: <CountUp to={arrived} className="tabular-nums" />,
       unit: t("unitPatients"),
       subtitle:
-        completedPct !== null
-          ? t("subtitlePctOfBookings", { pct: completedPct })
+        arrivedPct !== null
+          ? t("subtitlePctOfBookings", { pct: arrivedPct })
           : undefined,
       tone: "violet" as const,
       icon: <CheckCircle2Icon />,
@@ -136,28 +137,34 @@ export function KpiStrip({
       tone: "pink" as const,
       icon: <XCircleIcon />,
     },
-    {
-      key: "revenue",
-      href: "/crm/analytics/financial",
-      label: t("revenue"),
-      value: (
-        <MoneyText
-          amount={Math.round(animatedRevenue)}
-          currency="UZS"
-          className="tabular-nums"
-        />
-      ),
-      unit: t("unitMoney"),
-      tone: "success" as const,
-      icon: <BanknoteIcon />,
-    },
+    ...(showRevenue
+      ? [
+          {
+            key: "revenue",
+            href: "/crm/analytics/financial",
+            label: t("revenue"),
+            // MoneyText already ends in «сум»: no separate unit, or the tile
+            // read «1 500 000 сум сум».
+            value: (
+              <MoneyText
+                amount={Math.round(animatedRevenue)}
+                currency="UZS"
+                className="tabular-nums"
+              />
+            ),
+            tone: "success" as const,
+            icon: <BanknoteIcon />,
+          },
+        ]
+      : []),
   ];
 
   return (
     <div
       className={cn(
         "grid gap-3",
-        "grid-cols-2 md:grid-cols-3 xl:grid-cols-6",
+        "grid-cols-2 md:grid-cols-3",
+        tiles.length > 5 ? "xl:grid-cols-6" : "xl:grid-cols-5",
         className,
       )}
       aria-live="polite"

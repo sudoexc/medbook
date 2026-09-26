@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useClinicToday } from "@/hooks/use-clinic-today";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/atoms/status-dot";
 
@@ -27,6 +28,11 @@ import {
   useUnreadConversations,
 } from "../_hooks/use-reception-live";
 import { useDoctorPanelPrefs } from "../_hooks/use-panel-prefs";
+import {
+  panelDayFor,
+  pickPanelDay,
+  type PanelDayPick,
+} from "../_hooks/panel-day";
 import { AppointmentDrawer } from "../../appointments/_components/appointment-drawer";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 
@@ -70,15 +76,21 @@ export function ReceptionPageClient() {
   const searchParams = useSearchParams();
 
   const { prefs, setPrefs, reset: resetPrefs } = useDoctorPanelPrefs();
-  const [selectedDate, setSelectedDate] = React.useState<Date>(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
+  // AP-12 — "today" follows the clock, and the day picked on the doctors
+  // panel is kept apart from it. The page used to fix one Date at mount and
+  // feed it to every widget: after midnight the desk worked on yesterday's
+  // list, and picking «Завтра» on the panel turned the queue column, the
+  // KPIs and the alerts into tomorrow's too. See `panelDayFor`.
+  const clinicToday = useClinicToday();
+  const [pick, setPick] = React.useState<PanelDayPick | null>(null);
+  const panelDay = panelDayFor(pick, clinicToday);
+  const panelIsToday = panelDay === clinicToday;
   const [settingsOpen, setSettingsOpen] = React.useState(false);
 
   const dashboard = useReceptionDashboard();
-  const today = useTodayAppointments(selectedDate);
+  // Both read the same query while the panel shows today.
+  const today = useTodayAppointments(clinicToday);
+  const panel = useTodayAppointments(panelDay);
   const doctors = useActiveDoctors();
   const cabinets = useReceptionCabinets();
   const calls = useIncomingCalls();
@@ -88,10 +100,14 @@ export function ReceptionPageClient() {
     () => today.data ?? [],
     [today.data],
   );
+  const panelRows = React.useMemo<AppointmentRow[]>(
+    () => panel.data ?? [],
+    [panel.data],
+  );
 
   const appointmentsByDoctor = React.useMemo(() => {
     const map = new Map<string, AppointmentRow[]>();
-    for (const row of todayRows) {
+    for (const row of panelRows) {
       const list = map.get(row.doctor.id) ?? [];
       list.push(row);
       map.set(row.doctor.id, list);
@@ -102,7 +118,7 @@ export function ReceptionPageClient() {
       );
     }
     return map;
-  }, [todayRows]);
+  }, [panelRows]);
 
   const upcomingReminders = React.useMemo(
     () => computeUpcomingReminders(todayRows),
@@ -185,7 +201,7 @@ export function ReceptionPageClient() {
   );
 
   const isLoading =
-    dashboard.isLoading || today.isLoading || doctors.isLoading;
+    dashboard.isLoading || panel.isLoading || doctors.isLoading;
 
   const sortedDoctors = React.useMemo(() => {
     const list = (doctors.data ?? []).slice();
@@ -265,8 +281,9 @@ export function ReceptionPageClient() {
             </h2>
             <div className="flex items-center gap-1.5">
               <DayPickerDropdown
-                selected={selectedDate}
-                onChange={setSelectedDate}
+                selected={panelDay}
+                today={clinicToday}
+                onChange={(day) => setPick(pickPanelDay(day, clinicToday))}
               />
               <div className="inline-flex overflow-hidden rounded-md border border-border">
                 <button
@@ -309,11 +326,17 @@ export function ReceptionPageClient() {
               </Button>
             </div>
           </div>
+          {!panelIsToday ? (
+            <p className="px-1 text-xs text-muted-foreground">
+              {t("doctorsPanel.otherDayHint")}
+            </p>
+          ) : null}
           {prefs.view === "grid" ? (
             <DoctorQueueGrid
               doctors={sortedDoctors}
               appointmentsByDoctor={appointmentsByDoctor}
               isLoading={isLoading}
+              clinicToday={clinicToday}
               onRowClick={(id) => openRow(id)}
               onAddAppointment={(doctorId) => openCreate({ doctorId })}
             />
@@ -322,6 +345,7 @@ export function ReceptionPageClient() {
               doctors={sortedDoctors}
               appointmentsByDoctor={appointmentsByDoctor}
               isLoading={isLoading}
+              clinicToday={clinicToday}
               onRowClick={(id) => openRow(id)}
               onAddAppointment={(doctorId) => openCreate({ doctorId })}
               density={prefs.density}

@@ -79,21 +79,33 @@ export async function refreshPatientVisitStats(
     // `lastVisitAt` into the FUTURE and outrank a visit genuinely completed
     // yesterday. Rows completed before that column was populated fall back
     // to the slot time.
-    const [visitsCount, latest] = await Promise.all([
-      prisma.appointment.count({
-        where: { patientId, status: "COMPLETED" },
+    //
+    // That is MAX(COALESCE(completedAt, date)), read as two queries (audit
+    // PT-06). One `orderBy completedAt desc` let Postgres sort NULLs FIRST,
+    // so a single legacy row without `completedAt` beat every real visit
+    // and «Последний визит» froze on its March slot for good.
+    const completed = { patientId, status: "COMPLETED" } as const;
+    const [visitsCount, latestStamped, latestLegacy] = await Promise.all([
+      prisma.appointment.count({ where: completed }),
+      prisma.appointment.findFirst({
+        where: { ...completed, completedAt: { not: null } },
+        orderBy: { completedAt: "desc" },
+        select: { completedAt: true },
       }),
       prisma.appointment.findFirst({
-        where: { patientId, status: "COMPLETED" },
-        orderBy: [{ completedAt: "desc" }, { date: "desc" }],
-        select: { completedAt: true, date: true },
+        where: { ...completed, completedAt: null },
+        orderBy: { date: "desc" },
+        select: { date: true },
       }),
     ]);
     await prisma.patient.updateMany({
       where: { id: patientId },
       data: {
         visitsCount,
-        lastVisitAt: latest ? (latest.completedAt ?? latest.date) : null,
+        lastVisitAt: latestVisitAt(
+          latestStamped?.completedAt ?? null,
+          latestLegacy?.date ?? null,
+        ),
       },
     });
   } catch (e) {
@@ -102,4 +114,19 @@ export async function refreshPatientVisitStats(
       `[patient-stats] refresh failed for ${patientId}: ${(e as Error).message}`,
     );
   }
+}
+
+/**
+ * The later of the newest stamped completion and the newest legacy slot
+ * (a completed row with no `completedAt`). Null when there is neither.
+ */
+export function latestVisitAt(
+  latestCompletedAt: Date | null,
+  latestLegacySlot: Date | null,
+): Date | null {
+  if (!latestCompletedAt) return latestLegacySlot;
+  if (!latestLegacySlot) return latestCompletedAt;
+  return latestLegacySlot > latestCompletedAt
+    ? latestLegacySlot
+    : latestCompletedAt;
 }

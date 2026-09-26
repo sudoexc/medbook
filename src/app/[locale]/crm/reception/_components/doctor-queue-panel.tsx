@@ -91,6 +91,11 @@ import { useCurrentRole } from "../../patients/[id]/_hooks/use-current-role";
 export interface DoctorQueuePanelProps {
   appointments: AppointmentRow[];
   doctorId: string;
+  /**
+   * Today's clinic day. The quick actions are recomputed when it turns, so a
+   * row from yesterday loses «Пришёл» / «Начать» at midnight (AP-12).
+   */
+  clinicToday: string;
   onOpenAppointment: (id: string) => void;
   onAddAppointment: (doctorId: string) => void;
 }
@@ -116,6 +121,7 @@ const REORDER_ROLES = new Set<LifecycleRole>([
 export function DoctorQueuePanel({
   appointments,
   doctorId,
+  clinicToday,
   onOpenAppointment,
   onAddAppointment,
 }: DoctorQueuePanelProps) {
@@ -227,6 +233,7 @@ export function DoctorQueuePanel({
           key={row.id}
           index={i + 1}
           row={row}
+          clinicToday={clinicToday}
           onOpenAppointment={onOpenAppointment}
         />
       ))}
@@ -248,6 +255,7 @@ export function DoctorQueuePanel({
               key={row.id}
               index={i + 1}
               row={row}
+              clinicToday={clinicToday}
               draggable={canReorder}
               onOpenAppointment={onOpenAppointment}
             />
@@ -263,6 +271,7 @@ export function DoctorQueuePanel({
           key={row.id}
           index={i + 1}
           row={row}
+          clinicToday={clinicToday}
           onOpenAppointment={onOpenAppointment}
         />
       ))}
@@ -272,6 +281,7 @@ export function DoctorQueuePanel({
           key={row.id}
           index={i + 1}
           row={row}
+          clinicToday={clinicToday}
           onOpenAppointment={onOpenAppointment}
         />
       ))}
@@ -295,6 +305,7 @@ function SectionHeading({ label, hint }: { label: string; hint?: string }) {
 interface SortableQueueRowProps {
   index: number;
   row: AppointmentRow;
+  clinicToday: string;
   draggable: boolean;
   onOpenAppointment: (id: string) => void;
 }
@@ -302,6 +313,7 @@ interface SortableQueueRowProps {
 function SortableQueueRow({
   index,
   row,
+  clinicToday,
   draggable,
   onOpenAppointment,
 }: SortableQueueRowProps) {
@@ -331,6 +343,7 @@ function SortableQueueRow({
       dragHandleProps={draggable ? { ...attributes, ...listeners } : undefined}
       index={index}
       row={row}
+      clinicToday={clinicToday}
       onOpenAppointment={onOpenAppointment}
     />
   );
@@ -339,6 +352,7 @@ function SortableQueueRow({
 interface QueuePanelRowProps {
   index: number;
   row: AppointmentRow;
+  clinicToday: string;
   onOpenAppointment: (id: string) => void;
   dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
   isDragging?: boolean;
@@ -347,7 +361,15 @@ interface QueuePanelRowProps {
 
 const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
   function QueuePanelRow(
-    { index, row, onOpenAppointment, dragHandleProps, isDragging, style },
+    {
+      index,
+      row,
+      clinicToday,
+      onOpenAppointment,
+      dragHandleProps,
+      isDragging,
+      style,
+    },
     ref,
   ) {
     const t = useTranslations("reception.doctorsPanel.panel");
@@ -360,9 +382,12 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
     const mutation = useSetQueueStatus(row.id);
     const priorityMutation = useSetQueuePriority(row.id);
 
+    // `getQuickActions` drops «Пришёл» / «Начать» for a row not on today's
+    // clinic day (Q-05); `clinicToday` re-runs it when the day turns.
     const actions = React.useMemo(
-      () => getQuickActions(row.queueStatus, role, apptDate),
-      [row.queueStatus, role, apptDate],
+      () => getQuickActions(row.queueStatus, role, apptDate, new Date()),
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- clinicToday is the midnight trigger
+      [row.queueStatus, role, apptDate, clinicToday],
     );
 
     const primary = actions.find((a) => !a.confirm) ?? null;

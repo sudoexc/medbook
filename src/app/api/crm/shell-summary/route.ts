@@ -22,6 +22,7 @@ import {
   tashkentComponents,
 } from "@/lib/booking-validation";
 import { ok } from "@/server/http";
+import { TODAY_VISIT_STATUSES } from "@/lib/appointments/active-statuses";
 import type { TenantContext } from "@/lib/tenant-context";
 import { ONLINE_REQUEST_ROLES } from "@/server/schemas/online-request";
 
@@ -72,10 +73,13 @@ export const GET = createApiListHandler(
       }),
       // Sum of `durationMin` for non-cancelled appointments today — the numerator
       // of the load %. CANCELLED/NO_SHOW/SKIPPED don't consume the chair.
+      // CONFIRMED does (UX-02): phone bookings are created CONFIRMED and a
+      // patient pressing «Подтверждаю» in Telegram used to drop out of the
+      // load, so the sidebar fell exactly when the day filled up.
       prisma.appointment.aggregate({
         where: {
           date: { gte: todayStart, lt: todayEnd },
-          status: { in: ["BOOKED", "WAITING", "IN_PROGRESS", "COMPLETED"] },
+          status: { in: [...TODAY_VISIT_STATUSES] },
         },
         _sum: { durationMin: true },
       }),

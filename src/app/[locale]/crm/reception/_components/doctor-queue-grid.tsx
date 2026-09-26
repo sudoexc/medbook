@@ -16,6 +16,8 @@ export interface DoctorQueueGridProps {
   doctors: DoctorRef[];
   appointmentsByDoctor: Map<string, AppointmentRow[]>;
   isLoading: boolean;
+  /** Today's clinic day; only its rows offer «Начать» / «Вызвать». */
+  clinicToday: string;
   onRowClick: (appointmentId: string) => void;
   onAddAppointment?: (doctorId: string) => void;
   className?: string;
@@ -36,6 +38,7 @@ export function DoctorQueueGrid({
   doctors,
   appointmentsByDoctor,
   isLoading,
+  clinicToday,
   onRowClick,
   onAddAppointment,
   className,
@@ -92,6 +95,7 @@ export function DoctorQueueGrid({
           index={i + 1}
           doctor={doctor}
           appointments={appointmentsByDoctor.get(doctor.id) ?? []}
+          clinicToday={clinicToday}
           onRowClick={onRowClick}
           onAddAppointment={onAddAppointment}
         />

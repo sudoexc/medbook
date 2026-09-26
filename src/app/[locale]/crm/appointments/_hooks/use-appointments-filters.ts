@@ -3,6 +3,9 @@
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { useClinicToday } from "@/hooks/use-clinic-today";
+import { addTashkentDays, tashkentDayWindow } from "@/lib/tashkent-time";
+
 import type { AppointmentsListFilters } from "./use-appointments-list";
 
 /**
@@ -130,46 +133,30 @@ function serialize(state: AppointmentsFilterState): URLSearchParams {
   return sp;
 }
 
-function startOfDay(d: Date): Date {
-  const out = new Date(d);
-  out.setHours(0, 0, 0, 0);
-  return out;
-}
-
-function endOfDay(d: Date): Date {
-  const out = new Date(d);
-  out.setHours(23, 59, 59, 999);
-  return out;
-}
-
 /**
- * Translate `dateMode` + explicit `from`/`to` to a concrete window.
- * "today"         → [startOfDay, endOfDay] of now.
+ * Translate `dateMode` + explicit `from`/`to` to a concrete window, relative
+ * to `today` (the clinic's Asia/Tashkent day, `YYYY-MM-DD`).
+ * "today"         → that whole day.
  * "tomorrow"      → single day, +1 from today.
  * "afterTomorrow" → single day, +2 from today.
  * "range"         → respect explicit `from`/`to` as-is.
+ *
+ * `today` is an input rather than `new Date()` inside: the window is
+ * memoised, and a clock read in here froze «Сегодня» on the day the page
+ * was opened (audit AP-12).
  */
-function resolveWindow(
+export function resolveWindow(
   state: AppointmentsFilterState,
+  today: string,
 ): { from?: string; to?: string } {
   const mode = state.dateMode ?? (state.from || state.to ? "range" : "today");
-  const now = new Date();
-  const offsetByDays = (n: number) =>
-    new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
-  if (mode === "today") {
-    return {
-      from: startOfDay(now).toISOString(),
-      to: endOfDay(now).toISOString(),
-    };
-  }
-  if (mode === "tomorrow") {
-    const d = offsetByDays(1);
-    return { from: startOfDay(d).toISOString(), to: endOfDay(d).toISOString() };
-  }
-  if (mode === "afterTomorrow") {
-    const d = offsetByDays(2);
-    return { from: startOfDay(d).toISOString(), to: endOfDay(d).toISOString() };
-  }
+  const dayWindow = (offset: number) => {
+    const { from, to } = tashkentDayWindow(addTashkentDays(today, offset));
+    return { from: from.toISOString(), to: to.toISOString() };
+  };
+  if (mode === "today") return dayWindow(0);
+  if (mode === "tomorrow") return dayWindow(1);
+  if (mode === "afterTomorrow") return dayWindow(2);
   return {
     from: state.from || undefined,
     to: state.to || undefined,
@@ -197,6 +184,7 @@ export function useAppointmentsFilters() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const clinicToday = useClinicToday();
 
   const state = React.useMemo(
     () => parse(new URLSearchParams(searchParams?.toString() ?? "")),
@@ -240,7 +228,7 @@ export function useAppointmentsFilters() {
    * `dateMode` to concrete `from`/`to` and `bucket` to `status`.
    */
   const apiFilters: AppointmentsListFilters = React.useMemo(() => {
-    const { from, to } = resolveWindow(state);
+    const { from, to } = resolveWindow(state, clinicToday);
     const status =
       state.bucket && state.bucket !== "all"
         ? BUCKET_TO_STATUS[state.bucket]
@@ -258,7 +246,7 @@ export function useAppointmentsFilters() {
       sort: state.sort ?? "date",
       dir: state.dir ?? "asc",
     };
-  }, [state]);
+  }, [state, clinicToday]);
 
   return {
     state,

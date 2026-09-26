@@ -133,7 +133,8 @@ vi.mock("@/server/realtime/publish", () => ({
   }),
 }));
 
-vi.mock("@/lib/appointment-transitions", () => ({
+vi.mock("@/lib/appointment-transitions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/appointment-transitions")>()),
   canTransitionAt: () => ({ ok: true }),
 }));
 

@@ -142,7 +142,9 @@ export type AppointmentConflict = {
     | "doctor_time_off"
     | "outside_schedule"
     | "invalid_transition"
-    | "in_past";
+    | "in_past"
+    // Arrival or the call on a visit that is not today's (Q-05).
+    | "not_today";
   until?: string;
 };
 
@@ -310,6 +312,16 @@ export function useSetQueueStatus(id: string) {
     onError: (err, _p, context) => {
       if (context?.previous) {
         qc.setQueryData(appointmentKey(id), context.previous);
+      }
+      // A refused transition says why in the operator's language; the raw
+      // `conflict:<reason>` message never reaches the screen.
+      if (err instanceof AppointmentConflictError) {
+        toast.error(
+          err.conflict.reason === "not_today"
+            ? t("notToday")
+            : t("statusFailed"),
+        );
+        return;
       }
       toast.error(err.message || t("actionFailed"));
     },

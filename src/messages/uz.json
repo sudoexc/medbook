@@ -771,7 +771,8 @@
         "doctor_time_off": "Shifokor ta'tilda",
         "outside_schedule": "Ish vaqtidan tashqari",
         "in_past": "Bu vaqt allaqachon o'tib ketgan",
-        "invalid_transition": "Bunday status o'zgarishi mumkin emas"
+        "invalid_transition": "Bunday status o'zgarishi mumkin emas",
+        "not_today": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin."
       },
       "preVisit": {
         "title": "Tashrifdan oldin anketa",
@@ -1808,6 +1809,7 @@
       "configure": "Sozlash",
       "viewGrid": "To'r",
       "viewList": "Ro'yxat",
+      "otherDayHint": "Siz boshqa kunni ko'ryapsiz. Kelganini belgilash, qabulni boshlash va bemorni chaqirish faqat bugun mumkin.",
       "dayPicker": {
         "today": "Bugun",
         "yesterday": "Kecha",
@@ -1947,7 +1949,6 @@
       "unitPatients": "bemor",
       "unitPersons": "kishi",
       "unitRooms": "kabinet",
-      "unitMoney": "so'm",
       "subtitleWaitingQueue": "Qabulni kutmoqda",
       "subtitlePctBusy": "{pct}% band",
       "subtitlePctOfBookings": "{pct}% yozuvlardan",
@@ -2107,6 +2108,7 @@
     "saving": "Saqlanmoqda…",
     "noShowTooEarly": "Qabul vaqti hali kelmadi",
     "roleLocked": "Bu bosqichni shifokor o'zgartiradi",
+    "notToday": "Faqat qabul kunida",
     "offpath": {
       "NO_SHOW": "Kelmadi",
       "CANCELLED": "Bekor qilingan",
@@ -5919,7 +5921,8 @@
       "reorderFailed": "Navbat tartibini o'zgartirib bo'lmadi",
       "statusFailed": "Statusni o'zgartirishda xato",
       "reorderNotLive": "Yozuvlarni jonli navbat ichida siljitib bo'lmaydi — ro'yxat yangilandi",
-      "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang"
+      "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang",
+      "notToday": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin."
     },
     "case": {
       "saveFailed": "Saqlash imkonsiz",
@@ -7060,7 +7063,8 @@
         "signedAndCompleted": "Xulosa imzolandi, qabul yakunlandi",
         "errUnsigned": "Qabul yakunlanmadi: xulosa imzolanmagan. Uni qabul oynasida yoki «Xulosalar» bo‘limida imzolang.",
         "errSignFailed": "Xulosani imzolab bo‘lmadi. Uni «Xulosalar» bo‘limida ochib, qayta urinib ko‘ring.",
-        "errNotActive": "Qabul endi davom etmayapti: u bekor qilingan yoki kelmadi deb belgilangan. Xulosa imzolanmadi."
+        "errNotActive": "Qabul endi davom etmayapti: u bekor qilingan yoki kelmadi deb belgilangan. Xulosa imzolanmadi.",
+        "errNotToday": "Qabul bugunga emas. Uni faqat qabul kunida boshlash mumkin."
       },
       "liveQueue": {
         "title": "Jonli navbat",

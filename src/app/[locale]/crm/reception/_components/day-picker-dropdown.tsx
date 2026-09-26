@@ -12,26 +12,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
-}
-
-function addDays(d: Date, n: number): Date {
-  const c = new Date(d);
-  c.setDate(c.getDate() + n);
-  return c;
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return startOfDay(a).getTime() === startOfDay(b).getTime();
-}
+import { addTashkentDays } from "@/lib/tashkent-time";
 
 export interface DayPickerDropdownProps {
-  selected: Date;
-  onChange: (next: Date) => void;
+  /** The chosen clinic day, `YYYY-MM-DD` (Asia/Tashkent). */
+  selected: string;
+  /** Today's clinic day; the shortcuts and labels are relative to it. */
+  today: string;
+  onChange: (next: string) => void;
 }
 
 /**
@@ -41,36 +29,36 @@ export interface DayPickerDropdownProps {
  * - Native `<input type="date">` for arbitrary day pick
  * - Active label compresses to "Сегодня" / "Вчера" / "Завтра" when applicable,
  *   otherwise localised "DD MMM" (e.g. "5 мая").
+ *
+ * Days are clinic calendar days as strings, and "today" comes from the
+ * parent's clock-following hook: a Date fixed at mount kept calling
+ * yesterday «Сегодня» after midnight (audit AP-12).
  */
-export function DayPickerDropdown({ selected, onChange }: DayPickerDropdownProps) {
+export function DayPickerDropdown({
+  selected,
+  today,
+  onChange,
+}: DayPickerDropdownProps) {
   const t = useTranslations("reception.doctorsPanel.dayPicker");
   const locale = useLocale();
   const [open, setOpen] = React.useState(false);
 
-  const today = startOfDay(new Date());
-  const yesterday = addDays(today, -1);
-  const tomorrow = addDays(today, 1);
+  const yesterday = addTashkentDays(today, -1);
+  const tomorrow = addTashkentDays(today, 1);
 
   const label = React.useMemo(() => {
-    if (isSameDay(selected, today)) return t("labelToday");
-    if (isSameDay(selected, yesterday)) return t("labelYesterday");
-    if (isSameDay(selected, tomorrow)) return t("labelTomorrow");
-    return selected.toLocaleDateString(locale === "uz" ? "uz-UZ" : "ru-RU", {
-      day: "numeric",
-      month: "short",
-    });
+    if (selected === today) return t("labelToday");
+    if (selected === yesterday) return t("labelYesterday");
+    if (selected === tomorrow) return t("labelTomorrow");
+    return new Date(`${selected}T12:00:00+05:00`).toLocaleDateString(
+      locale === "uz" ? "uz-UZ" : "ru-RU",
+      { day: "numeric", month: "short", timeZone: "Asia/Tashkent" },
+    );
   }, [selected, today, yesterday, tomorrow, t, locale]);
 
-  const dateInputValue = React.useMemo(() => {
-    const d = startOfDay(selected);
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${d.getFullYear()}-${m}-${day}`;
-  }, [selected]);
-
   const handlePick = React.useCallback(
-    (next: Date) => {
-      onChange(startOfDay(next));
+    (next: string) => {
+      onChange(next);
       setOpen(false);
     },
     [onChange],
@@ -78,10 +66,9 @@ export function DayPickerDropdown({ selected, onChange }: DayPickerDropdownProps
 
   const onDateInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
-    if (!raw) return;
-    const [y, m, d] = raw.split("-").map((s) => Number.parseInt(s, 10));
-    if (!y || !m || !d) return;
-    handlePick(new Date(y, m - 1, d));
+    // The native input already speaks YYYY-MM-DD.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+    handlePick(raw);
   };
 
   return (
@@ -110,7 +97,7 @@ export function DayPickerDropdown({ selected, onChange }: DayPickerDropdownProps
           </label>
           <input
             type="date"
-            value={dateInputValue}
+            value={selected}
             onChange={onDateInput}
             className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
           />

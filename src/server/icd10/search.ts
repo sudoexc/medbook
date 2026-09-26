@@ -7,94 +7,199 @@
  * not what the doctor meant. Typing «мигрень» would surface codes from chapter
  * A before the migraine ones in G43.
  *
- * So matches are scored and the best ones win. The tiers, highest first:
- *   - exact code            («G43.0» → G43.0)
- *   - code prefix           («G43»   → G43.0, G43.1, …)
- *   - name starts with term («мигрень» → «Мигрень без ауры»)
- *   - a word in the name starts with term («аура» → «Мигрень с аурой»)
- *   - term appears anywhere in the name
+ * So matches are scored and the best ones win. Per query word, highest first:
+ *   - the word itself, first in the name («мигрень» → «Мигрень без ауры»)
+ *   - the word itself, anywhere in the name
+ *   - a name word that starts with it (typeahead: «мигр» → «Мигрень»)
+ *   - the same word in another case («аура» → «с аурой»)
+ *   - a longer word sharing its stem, or a compound containing it
+ * and across the whole query, highest band first:
+ *   - exact code («G43.0»), then code prefix («G43»)
+ *   - literal matches on every word, with the clinic's usual code for that
+ *     phrase leading them (see SPOKEN_FORMS)
+ *   - the codes a spoken form names when the classifier words it differently
+ *   - a spoken form found inside a longer query
+ *   - literal matches on some of the words
  * Ties break on code so the order is stable between identical queries.
- *
- * Multi-word queries require every word to match somewhere — «мигрень аура»
- * narrows instead of widening, which is how people expect search to behave.
  *
  * Normalisation folds ё→е and case. Cyrillic ё is typed inconsistently and
  * costing a doctor a result over a diacritic is not acceptable mid-visit.
  */
 import { ICD10_ENTRIES, type Icd10Entry } from "./data";
 
-/**
- * What the doctor says → what the classifier calls it.
- *
- * The register's wording is official; the clinic's is spoken. «Цефалгия»,
- * «ВСД», «ДЭП», «грыжа диска» return NOTHING against the raw catalog, which
- * is exactly the «не могу найти нужный диагноз» the neurologist reported —
- * the code is in there, under a name nobody uses out loud. Each entry maps a
- * spoken form to terms that DO appear in ICD-10 names; matches from an
- * expansion are ranked below a literal hit (see SCORE.synonym).
- *
- * Neurology-first, because that is this clinic. Extend freely: a wrong
- * expansion only adds a candidate the doctor can ignore, a missing one costs
- * them the search.
- */
-const SYNONYMS: Record<string, string[]> = {
-  цефалгия: ["головная боль"],
-  цефалгии: ["головная боль"],
-  всд: ["расстройство вегетативной нервной системы"],
-  вегетососудистая: ["расстройство вегетативной нервной системы"],
-  "вегето-сосудистая": ["расстройство вегетативной нервной системы"],
-  дэп: ["цереброваскулярная болезнь"],
-  дисциркуляторная: ["цереброваскулярная болезнь"],
-  "грыжа диска": ["поражение межпозвоночного диска"],
-  "межпозвоночная грыжа": ["поражение межпозвоночного диска"],
-  протрузия: ["поражение межпозвоночного диска"],
-  онмк: ["инфаркт мозга"],
-  тиа: ["преходящие транзиторные церебральные ишемические"],
-  "защемление нерва": ["сдавления нервных корешков"],
-  "ущемление нерва": ["сдавления нервных корешков"],
-  прострел: ["люмбаго"],
-  бессонница: ["нарушения засыпания"],
-  инсомния: ["нарушения засыпания"],
-  "паническая атака": ["паническое расстройство"],
-  "сотрясение мозга": ["внутричерепная травма"],
+type SpokenForm = {
+  /** Codes the phrase names, the clinic's usual pick first. */
+  codes?: readonly string[];
+  /**
+   * Official wording, for a family too wide to list code by code. Matched as
+   * whole words of the name, all of them.
+   */
+  phrases?: readonly string[];
 };
 
 /**
- * Terms the catalog might actually contain for a spoken word.
+ * What the doctor says → what the classifier calls it.
  *
- * `direct` = the whole query IS a known spoken form («грыжа диска»). That is
- * a strong signal and must outrank literal partial matches, otherwise
- * «грыжа диска» keeps answering with abdominal hernias just because they
- * happen to contain the word «грыжа».
+ * The register's wording is official; the clinic's is spoken. «ТИА»,
+ * «люмбалгия», «ДЭП», «грыжа диска» find nothing (or the wrong chapter)
+ * against the raw catalog: the code is in there, under a name nobody uses out
+ * loud. Most forms name their codes directly, which is precise where a phrase
+ * expansion was not: «сотрясение мозга» used to expand to «внутричерепная
+ * травма» and put S06.7 (prolonged coma) above the concussion itself.
+ *
+ * Keys written in CAPITALS are abbreviations. They match whole words only,
+ * both as a key and as a literal search word, so «ТИА» never reaches тиамин
+ * and «ХИМ» never reaches химические ожоги.
+ *
+ * Every code here must exist in data.json (a unit test checks), and they are
+ * the standard ICD-10 rubrics a Russian-speaking neurologist writes for the
+ * phrase. Matching is by word stems, so one key covers its case forms
+ * («грыжа диска», «грыжи диска»); «нейро»/«невро» spellings are folded
+ * before lookup, see `foldSpelling`.
  */
-export function expandSynonyms(term: string): { terms: string[]; direct: boolean } {
-  const exact = SYNONYMS[term];
-  if (exact) return { terms: exact, direct: true };
-  const out: string[] = [];
-  for (const [spoken, official] of Object.entries(SYNONYMS)) {
-    if (term.includes(spoken)) out.push(...official);
-  }
-  return { terms: out, direct: false };
-}
+export const SPOKEN_FORMS: Readonly<Record<string, SpokenForm>> = {
+  // Cerebrovascular.
+  ТИА: { codes: ["G45.9", "G45.8"] },
+  ВБН: { codes: ["G45.0"] },
+  "вертебробазилярная недостаточность": { codes: ["G45.0"] },
+  ОНМК: { codes: ["I64", "I63.9", "I61.9"] },
+  "ишемический инсульт": { codes: ["I63.9"] },
+  "геморрагический инсульт": { codes: ["I61.9"] },
+  "последствия инсульта": { codes: ["I69.4", "I69.3"] },
+  "последствия онмк": { codes: ["I69.4", "I69.3"] },
+  ДЭП: { codes: ["I67.8", "I67.9"] },
+  дисциркуляторная: { codes: ["I67.8", "I67.9"] },
+  "дисциркуляторная энцефалопатия": { codes: ["I67.8", "I67.9"] },
+  ХИМ: { codes: ["I67.8"] },
+  "хроническая ишемия мозга": { codes: ["I67.8"] },
+  "хроническая ишемия головного мозга": { codes: ["I67.8"] },
+  ЦВБ: { codes: ["I67.9", "I67.8"] },
+  "гипертоническая энцефалопатия": { codes: ["I67.4"] },
+  "атеросклероз сосудов мозга": { codes: ["I67.2"] },
+  "атеросклероз сосудов головного мозга": { codes: ["I67.2"] },
+
+  // Headache.
+  цефалгия: { codes: ["G44.2", "G44.1", "G44.8", "R51"] },
+  ГБН: { codes: ["G44.2"] },
+  "головная боль напряжения": { codes: ["G44.2"] },
+  "кластерная головная боль": { codes: ["G44.0"] },
+  "пучковая головная боль": { codes: ["G44.0"] },
+  "абузусная головная боль": { codes: ["G44.4"] },
+  "лекарственная головная боль": { codes: ["G44.4"] },
+
+  // Vertigo.
+  вертиго: { codes: ["R42", "H81.1", "H81.4"] },
+  головокружение: { codes: ["R42", "H81.1", "H81.4", "H81.3"] },
+  ДППГ: { codes: ["H81.1"] },
+  "доброкачественное пароксизмальное головокружение": { codes: ["H81.1"] },
+  "доброкачественное пароксизмальное позиционное головокружение": {
+    codes: ["H81.1"],
+  },
+  вестибулопатия: { codes: ["H81.9", "H81.3"] },
+
+  // Spine and back pain.
+  "боль в шее": { codes: ["M54.2"] },
+  "боль шеи": { codes: ["M54.2"] },
+  цервикокраниалгия: { codes: ["M53.0"] },
+  цервикобрахиалгия: { codes: ["M53.1"] },
+  торакалгия: { codes: ["M54.6"] },
+  люмбалгия: { codes: ["M54.5"] },
+  "боль в пояснице": { codes: ["M54.5"] },
+  "боль в спине": { codes: ["M54.5", "M54.9"] },
+  люмбоишиалгия: { codes: ["M54.4"] },
+  ишиалгия: { codes: ["M54.3"] },
+  радикулит: { codes: ["M54.1"] },
+  прострел: { phrases: ["люмбаго"] },
+  остеохондроз: { codes: ["M42.1", "M42.9"] },
+  "шейный остеохондроз": { codes: ["M42.1", "M42.9"] },
+  "остеохондроз шейного отдела": { codes: ["M42.1", "M42.9"] },
+  "грудной остеохондроз": { codes: ["M42.1", "M42.9"] },
+  "остеохондроз грудного отдела": { codes: ["M42.1", "M42.9"] },
+  "поясничный остеохондроз": { codes: ["M42.1", "M42.9"] },
+  "остеохондроз поясничного отдела": { codes: ["M42.1", "M42.9"] },
+  "грыжа диска": { codes: ["M51.1", "M51.2", "M50.2"] },
+  "грыжа межпозвоночного диска": { codes: ["M51.1", "M51.2", "M50.2"] },
+  "межпозвоночная грыжа": { codes: ["M51.1", "M51.2", "M50.2"] },
+  протрузия: { codes: ["M51.1", "M51.2", "M50.2"] },
+  "протрузия диска": { codes: ["M51.1", "M51.2", "M50.2"] },
+  "грыжа шейного отдела": { codes: ["M50.2", "M50.1"] },
+  "шейная грыжа": { codes: ["M50.2", "M50.1"] },
+  "грыжа поясничного отдела": { codes: ["M51.1", "M51.2"] },
+  "поясничная грыжа": { codes: ["M51.1", "M51.2"] },
+  спондилоартроз: { codes: ["M47.8", "M47.9"] },
+  "стеноз позвоночного канала": { codes: ["M48.0"] },
+
+  // Peripheral nerves.
+  полинейропатия: { codes: ["G62.9", "G63.2*"] },
+  карпальный: { codes: ["G56.0"] },
+  "карпальный синдром": { codes: ["G56.0"] },
+  "туннельный синдром": { codes: ["G56.0"] },
+  "карпальный туннельный синдром": { codes: ["G56.0"] },
+  "синдром карпального канала": { codes: ["G56.0"] },
+  "неврит лицевого нерва": { codes: ["G51.0", "G51.9"] },
+  "нейропатия лицевого нерва": { codes: ["G51.0", "G51.9"] },
+  "паралич лицевого нерва": { codes: ["G51.0", "G51.9"] },
+  "межреберная невралгия": { codes: ["G58.0"] },
+  "неврит седалищного нерва": { codes: ["G57.0"] },
+  "нейропатия седалищного нерва": { codes: ["G57.0"] },
+  "синдром грушевидной мышцы": { codes: ["G57.0"] },
+  "защемление нерва": { phrases: ["сдавления нервных корешков"] },
+  "ущемление нерва": { phrases: ["сдавления нервных корешков"] },
+
+  // Autonomic and neurotic.
+  ВСД: { codes: ["G90.8", "G90.9", "F45.3"] },
+  СВД: { codes: ["G90.8"] },
+  НЦД: { codes: ["F45.3"] },
+  вегетососудистая: { codes: ["G90.8", "G90.9", "F45.3"] },
+  "вегетососудистая дистония": { codes: ["G90.8", "G90.9", "F45.3"] },
+  "вегето-сосудистая": { codes: ["G90.8", "G90.9", "F45.3"] },
+  "вегето-сосудистая дистония": { codes: ["G90.8", "G90.9", "F45.3"] },
+  невроз: { codes: ["F48.9", "F48.8"] },
+  "тревожно-депрессивный синдром": { codes: ["F41.2"] },
+  "тревожно-депрессивное расстройство": { codes: ["F41.2"] },
+  "паническая атака": { codes: ["F41.0"] },
+  бессонница: { codes: ["G47.0", "F51.0"] },
+  инсомния: { codes: ["G47.0", "F51.0"] },
+
+  // Head injury.
+  "сотрясение мозга": { codes: ["S06.0"] },
+  СГМ: { codes: ["S06.0"] },
+  ЧМТ: { codes: ["S06.9", "S06.0"] },
+  "последствия чмт": { codes: ["T90.5"] },
+  "последствия черепно-мозговой травмы": { codes: ["T90.5"] },
+
+  // Other.
+  ДЦП: { codes: ["G80.9"] },
+};
 
 /**
  * Words that match everything and therefore mean nothing here. Without this
  * «прострел в пояснице» scored every row carrying «в» — the search answered
  * with cholera.
+ *
+ * «с», «со» and «без» are deliberately NOT here: they flip the meaning of the
+ * word after them («мигрень с аурой» vs «мигрень без ауры»), so they are read
+ * as polarity markers instead of being thrown away (see `tokenize`).
  */
 const STOP_WORDS = new Set([
-  "в", "во", "и", "с", "со", "на", "по", "при", "для", "без", "от", "до",
+  "в", "во", "и", "на", "по", "при", "для", "от", "до",
   "из", "у", "к", "о", "об", "не", "или",
 ]);
-
-/** Query words worth matching on: not stop words, long enough to mean it. */
-function significantWords(words: string[]): string[] {
-  const kept = words.filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
-  return kept.length > 0 ? kept : words;
-}
+const NEGATION = "без";
+const WITH = new Set(["с", "со"]);
 
 export function normalizeIcdTerm(s: string): string {
   return s.trim().toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ");
+}
+
+/**
+ * Spelling variants the classifier never uses. The register writes
+ * «полиневропатия», doctors write «полинейропатия» as often as not, and the
+ * query used to come back empty. Applied to both sides, only for matching:
+ * `normalizeIcdTerm` also keys the clinic-learned catalog and stays as is.
+ */
+function foldSpelling(s: string): string {
+  return s.replace(/нейропат/g, "невропат");
 }
 
 /**
@@ -136,6 +241,122 @@ export function stemRu(word: string): string {
 }
 
 /**
+ * Where a word stands relative to «без» / «с». `neg` = under «без» («мигрень
+ * без ауры»: «ауры» is neg), `pos` = under «с», `any` = neither.
+ */
+type Polarity = "neg" | "pos" | "any";
+
+type Token = { text: string; stem: string; pol: Polarity };
+
+/**
+ * Words with the polarity each one carries, for a catalog name and a query
+ * alike. «без» and «с» govern the words after them until the clause ends: a
+ * comma or bracket, or another preposition («без ауры при беременности»
+ * does not negate the pregnancy). «и» continues the clause
+ * («без психотических и ...»). The markers themselves stay in the list so a
+ * name's word positions are unchanged.
+ */
+function tokenize(text: string): Token[] {
+  const out: Token[] = [];
+  let mode: Polarity = "any";
+  for (const raw of foldSpelling(text).match(/[a-zа-я0-9]+|[,;:()[\]]/g) ?? []) {
+    if (!/[a-zа-я0-9]/.test(raw)) {
+      mode = "any";
+      continue;
+    }
+    const pol = mode;
+    if (raw === NEGATION) mode = "neg";
+    else if (WITH.has(raw)) mode = "pos";
+    else if (STOP_WORDS.has(raw) && raw !== "и") mode = "any";
+    out.push({ text: raw, stem: stemRu(raw), pol });
+  }
+  return out;
+}
+
+function isMarker(word: string): boolean {
+  return word === NEGATION || WITH.has(word);
+}
+
+/** Query words worth matching on: not stop words, long enough to mean it. */
+function significantTokens(tokens: Token[]): Token[] {
+  const kept = tokens.filter(
+    (t) => t.text.length >= 3 && !STOP_WORDS.has(t.text) && !isMarker(t.text),
+  );
+  return kept.length > 0 ? kept : tokens.filter((t) => !isMarker(t.text));
+}
+
+/** Content words of a spoken-form key, as stems, plus whether it is an abbreviation. */
+type CompiledForm = {
+  stems: string[];
+  abbr: boolean;
+  form: SpokenForm;
+};
+
+let compiled: CompiledForm[] | null = null;
+let abbreviations: Set<string> | null = null;
+
+function getForms(): CompiledForm[] {
+  if (compiled) return compiled;
+  compiled = Object.entries(SPOKEN_FORMS).map(([key, form]) => ({
+    stems: significantTokens(tokenize(normalizeIcdTerm(key))).map((t) => t.stem),
+    // «ТИА» in the source: every letter a capital, more than one of them.
+    abbr: key.length > 1 && key === key.toUpperCase() && key !== key.toLowerCase(),
+    form,
+  }));
+  abbreviations = new Set(
+    compiled.filter((f) => f.abbr).map((f) => f.stems.join(" ")),
+  );
+  return compiled;
+}
+
+function isAbbreviation(word: string): boolean {
+  getForms();
+  return abbreviations!.has(word);
+}
+
+type FormHit = { form: SpokenForm; direct: boolean };
+
+/**
+ * Spoken forms in the query, matched on whole-word stems. `direct` = the
+ * query IS the form («грыжа диска»); otherwise the form sits inside a longer
+ * query («грыжа диска шейного отдела»). Word boundaries are the point: the old
+ * substring check found «тиа» inside «тиамин» and offered TIA codes for a
+ * vitamin.
+ */
+function findSpokenForms(query: Token[]): FormHit[] {
+  const q = significantTokens(query);
+  const hits: FormHit[] = [];
+  for (const f of getForms()) {
+    const k = f.stems;
+    if (k.length === 0 || k.length > q.length) continue;
+    for (let start = 0; start + k.length <= q.length; start += 1) {
+      if (k.every((stem, i) => q[start + i]!.stem === stem)) {
+        hits.push({ form: f.form, direct: k.length === q.length });
+        break;
+      }
+    }
+  }
+  return hits;
+}
+
+/**
+ * Codes and official wording the query's spoken forms stand for. `direct` =
+ * the whole query is a known spoken form, the strongest signal there is.
+ */
+export function expandSynonyms(rawQuery: string): {
+  codes: string[];
+  phrases: string[];
+  direct: boolean;
+} {
+  const hits = findSpokenForms(tokenize(normalizeIcdTerm(rawQuery)));
+  return {
+    codes: [...new Set(hits.flatMap((h) => h.form.codes ?? []))],
+    phrases: [...new Set(hits.flatMap((h) => h.form.phrases ?? []))],
+    direct: hits.some((h) => h.direct),
+  };
+}
+
+/**
  * Pre-normalised mirror of the catalog, built once per process. 10k rows is
  * cheap to hold but not cheap to lowercase on every keystroke of every
  * doctor — and the picker fires on each character.
@@ -143,68 +364,128 @@ export function stemRu(word: string): string {
 type Indexed = {
   entry: Icd10Entry;
   code: string;
-  name: string;
-  /** Word starts inside the name, for prefix-of-word matching. */
-  words: string[];
-  /** Same words with case endings stripped — see `stemRu`. */
-  stems: string[];
+  /** Every word of the name, in order, with its stem and polarity. */
+  tokens: Token[];
 };
 
 let index: Indexed[] | null = null;
+let byCode: Map<string, Indexed> | null = null;
 
 function getIndex(): Indexed[] {
   if (index) return index;
-  index = ICD10_ENTRIES.map((entry) => {
-    const name = normalizeIcdTerm(entry.nameRu);
-    const words = name.split(/[^a-zа-я0-9]+/i).filter(Boolean);
-    return {
-      entry,
-      code: entry.code.toLowerCase(),
-      name,
-      words,
-      stems: words.map(stemRu),
-    };
-  });
+  index = ICD10_ENTRIES.map((entry) => ({
+    entry,
+    code: entry.code.toLowerCase(),
+    tokens: tokenize(normalizeIcdTerm(entry.nameRu)),
+  }));
+  byCode = new Map(index.map((r) => [r.code, r]));
   return index;
 }
 
-/** True when a query word matches a word of the name, allowing inflection. */
-function wordMatches(row: Indexed, word: string): boolean {
-  if (row.name.includes(word) || row.code.includes(word)) return true;
-  const stem = stemRu(word);
-  return row.stems.some((s) => s === stem || s.startsWith(stem));
-}
+/**
+ * The shortest word that may match as a prefix of a longer one when it is
+ * not the word still being typed. «боль» is a whole word and must not reach
+ * «больших»; «остеохондр» can only mean one thing.
+ */
+const MIN_PREFIX = 5;
 
-const SCORE = {
-  exactCode: 100,
-  codePrefix: 80,
-  nameStarts: 60,
-  wordStarts: 40,
-  contains: 20,
-  /** Matched only after stripping a case ending — correct, but weakest. */
-  inflected: 10,
+const WORD = {
   /**
-   * Reached through a spoken-form synonym. `synonymDirect` applies when the
-   * whole query is a known spoken form — it must beat partial literal
-   * matches (which top out near `nameStarts`), because a doctor typing
-   * «грыжа диска» means the disc, not the groin.
+   * Bonus for the name's first word, literal matches only: «Мигрень без
+   * ауры» over «Другая мигрень».
    */
-  synonymDirect: 70,
-  synonym: 15,
+  first: 20,
+  exact: 45,
+  prefix: 40,
+  /** Same word in another case («аура» vs «аурой»). */
+  inflected: 35,
+  /** A longer word sharing a long stem («ишемия» vs «ишемическая»). */
+  stemPrefix: 25,
+  /** Inside a compound: «невропатия» in «полиневропатия». */
+  infix: 20,
 } as const;
 
-function scoreOne(row: Indexed, term: string): number {
-  if (row.code === term) return SCORE.exactCode;
-  if (row.code.startsWith(term)) return SCORE.codePrefix;
-  if (row.name.startsWith(term)) return SCORE.nameStarts;
-  if (row.words.some((w) => w.startsWith(term))) return SCORE.wordStarts;
-  if (row.name.includes(term)) return SCORE.contains;
-  // Last resort: the same word in another case («аура» vs «аурой»).
-  const stem = stemRu(term);
-  if (row.stems.some((s) => s === stem || s.startsWith(stem))) {
-    return SCORE.inflected;
+type QueryWord = Token & {
+  /** A curated abbreviation: whole-word matches only. */
+  abbr: boolean;
+  /** May match the start of a longer word. */
+  prefix: boolean;
+};
+
+/**
+ * How well one query word matches the name; 0 = not at all.
+ *
+ * Prefixes are where the old search went wrong: «боль» matched «Большой
+ * слюнной железы» and «ТИА» matched «тиамина», because any word starting
+ * with the term counted. Now a prefix only counts while the word may still
+ * be half typed (the query's last word) or once it is long enough to be
+ * unambiguous, and the whole word always outranks it.
+ */
+function wordScore(row: Indexed, q: QueryWord): number {
+  let best = 0;
+  row.tokens.forEach((w, i) => {
+    // «без ауры» only matches a name that also says «без ауры», and
+    // «аура» / «с аурой» never matches one that does.
+    if ((q.pol === "neg") !== (w.pol === "neg")) return;
+    const first = i === 0 ? WORD.first : 0;
+    let s = 0;
+    if (w.text === q.text) s = WORD.exact + first;
+    else if (q.abbr) s = 0;
+    else if (q.prefix && w.text.startsWith(q.text)) s = WORD.prefix + first;
+    // No first-word bonus from here on: «Сосудистая головная боль» is a
+    // better answer to «головная боль» than «Головные боли, вызванные
+    // спинномозговой анестезией».
+    else if (w.stem === q.stem) s = WORD.inflected;
+    else if (q.stem.length >= MIN_PREFIX && w.stem.startsWith(q.stem)) {
+      s = WORD.stemPrefix;
+    } else if (q.text.length >= MIN_PREFIX && w.text.includes(q.text)) {
+      s = WORD.infix;
+    }
+    // Both sides said «с» (or both «без»): the marker itself matched too.
+    if (s > 0 && q.pol !== "any" && q.pol === w.pol) s += 2;
+    if (s > best) best = s;
+  });
+  return best;
+}
+
+/** Score bands. A band always beats everything below it, whatever the in-band score. */
+const BAND = {
+  exactCode: 1000,
+  codePrefix: 800,
+  /** A code the spoken form names that ALSO matches every word literally. */
+  promoted: 400,
+  /** Every query word matched literally. */
+  full: 300,
+  /** The whole query is a spoken form; these are its codes. */
+  spokenCode: 200,
+  /** The whole query is a spoken form; these rows carry its official wording. */
+  spokenPhrase: 150,
+  /** A spoken form inside a longer query. */
+  spokenInside: 100,
+} as const;
+
+type Scored = { entry: Icd10Entry; code: string; score: number; full: boolean };
+
+/** Literal score of one row: a full match, a partial one, or nothing. */
+function literalScore(
+  row: Indexed,
+  words: QueryWord[],
+): { score: number; full: boolean } {
+  const scores = words.map((w) => wordScore(row, w));
+  const matched = scores.filter((s) => s > 0).length;
+  if (matched === 0) return { score: 0, full: false };
+  const head = scores[0]!;
+  const sum = scores.reduce((a, b) => a + b, 0);
+  if (matched === words.length) {
+    return { score: BAND.full + head + (sum - head) / 10, full: true };
   }
-  return 0;
+  // Partial matching, but full matches always win. Requiring every word
+  // meant «остеохондроз шейного отдела» returned NOTHING while
+  // «остеохондроз» alone returned 17 codes — the classifier does not
+  // spell the region the way the doctor does. More words matched ranks
+  // higher; the spoken forms, not word order, say which word is the
+  // diagnosis («шейный остеохондроз» leads with the adjective).
+  return { score: sum / words.length + matched, full: false };
 }
 
 export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
@@ -219,76 +500,94 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
     return [];
   }
 
-  const words = significantWords(term.split(" ").filter(Boolean));
+  const tokens = tokenize(term);
+  const significant = significantTokens(tokens);
+  const words: QueryWord[] = significant.map((t, i) => ({
+    ...t,
+    abbr: isAbbreviation(t.text),
+    prefix: i === significant.length - 1 || t.text.length >= MIN_PREFIX,
+  }));
+  // «мигрень без» typed so far: lean towards the names that say «без».
+  const lastRaw = term.split(/[^a-zа-я0-9]+/).filter(Boolean).pop() ?? "";
+  const trailingMarker = isMarker(lastRaw) ? lastRaw : null;
 
-  const full: { entry: Icd10Entry; score: number; code: string }[] = [];
-  const partial: { entry: Icd10Entry; score: number; code: string }[] = [];
+  const scored = new Map<string, Scored>();
   for (const row of rows) {
-    if (words.length > 1) {
-      // Partial matching, but full matches always win. Requiring every word
-      // meant «остеохондроз шейного отдела» returned NOTHING while
-      // «остеохондроз» alone returned 17 codes — the classifier does not
-      // spell the region the way the doctor does. Ranking by how many words
-      // matched surfaces the right rubric instead of an empty list, and the
-      // full-match bucket keeps precise queries precise.
-      const matched = words.filter((w) => wordMatches(row, w));
-      if (matched.length === 0) continue;
-      const base = scoreOne(row, words[0]!);
-      if (matched.length === words.length) {
-        full.push({ entry: row.entry, score: base + words.length, code: row.code });
-      } else {
-        partial.push({
-          entry: row.entry,
-          score: base * (matched.length / words.length) + matched.length,
-          code: row.code,
-        });
+    let score = 0;
+    let full = false;
+    if (row.code === term) score = BAND.exactCode;
+    else if (row.code.startsWith(term)) score = BAND.codePrefix;
+    else if (words.length > 0) {
+      ({ score, full } = literalScore(row, words));
+      if (
+        score > 0 &&
+        trailingMarker &&
+        row.tokens.some((t) => t.text === trailingMarker)
+      ) {
+        score += 3;
       }
-    } else {
-      const score = scoreOne(row, term);
-      if (score === 0) continue;
-      full.push({ entry: row.entry, score, code: row.code });
+    }
+    if (score > 0) {
+      scored.set(row.code, { entry: row.entry, code: row.code, score, full });
     }
   }
 
-  const scored = full.length > 0 ? full : partial;
+  // Literal full matches crowd out partial ones: «мигрень аура» narrows
+  // instead of widening, which is how people expect search to behave.
+  if ([...scored.values()].some((s) => s.full || s.score >= BAND.codePrefix)) {
+    for (const [code, s] of scored) {
+      if (!s.full && s.score < BAND.codePrefix) scored.delete(code);
+    }
+  }
 
-  // What the doctor MEANT: «цефалгия» → «головная боль». Always attempted,
-  // not only when the literal search came back empty — a spoken form often
-  // has noisy literal matches («грыжа» → паховые грыжи) that would
-  // otherwise bury the rubric actually being asked for. The expansion is
-  // matched as a whole phrase so it can never drag in a rubric that merely
-  // shares one common word.
-  {
-    const { terms: expansions, direct } = expandSynonyms(term);
-    const synScore = direct ? SCORE.synonymDirect : SCORE.synonym;
-    // By code, so a rubric the literal pass already found WEAKLY gets
-    // promoted rather than skipped: «грыжа диска» literally matches M50 on
-    // the single word «диска» (a low partial score) while «грыжа» matches
-    // every abdominal hernia strongly — without promotion the right answer
-    // stays buried under the groin.
-    const byCode = new Map(scored.map((x) => [x.code, x]));
-    for (const alt of expansions) {
-      const altTerm = normalizeIcdTerm(alt);
-      const altWords = significantWords(altTerm.split(" ").filter(Boolean));
+  // What the doctor MEANT: «ТИА» → G45.9. Always attempted, not only when
+  // the literal search came back empty — a spoken form often has noisy
+  // literal matches («грыжа» → паховые грыжи) that would otherwise bury the
+  // rubric actually being asked for. A literal match on every word still
+  // outranks a code reached only through the spoken form.
+  const literal = (row: Indexed) =>
+    words.length > 0 ? literalScore(row, words) : { score: 0, full: false };
+  const raise = (row: Indexed, score: number) => {
+    const existing = scored.get(row.code);
+    if (existing) existing.score = Math.max(existing.score, score);
+    else scored.set(row.code, { entry: row.entry, code: row.code, score, full: false });
+  };
+  const spoken = findSpokenForms(tokens);
+  // The whole query is a phrase we understand: rows matching only some of
+  // its words are noise by definition («хроническая ишемия мозга» used to
+  // continue with «Хроническая эритремия»).
+  if (spoken.some((h) => h.direct)) {
+    for (const [code, s] of scored) {
+      if (!s.full && s.score < BAND.codePrefix) scored.delete(code);
+    }
+  }
+  for (const { form, direct } of spoken) {
+    const codes = form.codes ?? [];
+    codes.forEach((code, i) => {
+      const row = byCode!.get(code.toLowerCase());
+      if (!row) return;
+      const order = codes.length - i;
+      const lit = literal(row);
+      if (lit.full) raise(row, BAND.promoted + order);
+      else if (direct) raise(row, BAND.spokenCode + order);
+      else raise(row, BAND.spokenInside + lit.score + order / 10);
+    });
+    for (const phrase of form.phrases ?? []) {
+      const need = significantTokens(tokenize(normalizeIcdTerm(phrase)));
       for (const row of rows) {
-        const hit =
-          altWords.length > 1
-            ? altWords.every((w) => row.name.includes(w))
-            : row.name.includes(altTerm);
+        const hit = need.every((n) => row.tokens.some((t) => t.text === n.text));
         if (!hit) continue;
-        const existing = byCode.get(row.code);
-        if (existing) {
-          existing.score = Math.max(existing.score, synScore);
-          continue;
-        }
-        const added = { entry: row.entry, score: synScore, code: row.code };
-        byCode.set(row.code, added);
-        scored.push(added);
+        const lit = literal(row);
+        raise(
+          row,
+          direct ? BAND.spokenPhrase + lit.score / 10 : BAND.spokenInside + lit.score,
+        );
       }
     }
   }
 
-  scored.sort((a, b) => b.score - a.score || a.code.localeCompare(b.code));
-  return scored.slice(0, limit).map((s) => s.entry);
+  return [...scored.values()]
+    .sort((a, b) => b.score - a.score || a.code.localeCompare(b.code))
+    .slice(0, limit)
+    .map((s) => s.entry);
 }
-

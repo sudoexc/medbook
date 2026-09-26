@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { matchedBrand } from "@/lib/catalogs/brand-match";
+import { drawerSelection } from "@/lib/catalogs/drawer-selection";
 
 import {
   DrugDetailView,
@@ -62,6 +63,12 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
   const categoryLabel = useCategoryLabel();
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  // A card opened from «Чем заменить». The analogue is usually not among
+  // the search results, and it must stay open anyway: falling back to the
+  // first result showed a DIFFERENT drug under the doctor's click.
+  const [openedAnalogue, setOpenedAnalogue] = React.useState<DrugDetail | null>(
+    null,
+  );
   const [favoritesOnly, setFavoritesOnly] = React.useState(false);
 
   const drugsQuery = useQuery({
@@ -78,6 +85,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
     if (!open) {
       setQuery("");
       setSelectedId(null);
+      setOpenedAnalogue(null);
       setFavoritesOnly(false);
     }
   }, [open]);
@@ -97,20 +105,27 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
     return [...pin, ...rest];
   }, [filteredRows, pinned]);
 
-  // Auto-select first result when results refresh.
+  // The first result when results refresh, unless the doctor is looking at
+  // an analogue: that card was chosen, it is not a stale default.
+  const { selected, selectedId: settledId } = drawerSelection(
+    rows,
+    selectedId,
+    openedAnalogue,
+  );
   React.useEffect(() => {
-    if (rows.length === 0) {
-      setSelectedId(null);
-    } else if (!selectedId || !rows.some((r) => r.id === selectedId)) {
-      setSelectedId(rows[0]!.id);
-    }
-  }, [rows, selectedId]);
+    if (settledId !== selectedId) setSelectedId(settledId);
+  }, [settledId, selectedId]);
 
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  const selectRow = (id: string) => {
+    setOpenedAnalogue(null);
+    setSelectedId(id);
+  };
 
   const handlePick = (drug: DrugDetail) => {
-    // Carry what was typed: a brand search must prescribe the brand.
-    onPick(drug, query);
+    // Carry what was typed: a brand search must prescribe the brand. Not for
+    // an analogue, though: the search was about another drug, and its text
+    // must not pick one of the analogue's brands by accident.
+    onPick(drug, rows.some((r) => r.id === drug.id) ? query : "");
     onOpenChange(false);
   };
 
@@ -134,7 +149,12 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
               autoFocus
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                // A new search is a new question: the analogue card yields
+                // to its results.
+                setOpenedAnalogue(null);
+                setQuery(e.target.value);
+              }}
               placeholder={t("catalog.searchPlaceholder")}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
@@ -194,7 +214,7 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                       <li key={d.id} className="group relative">
                         <button
                           type="button"
-                          onClick={() => setSelectedId(d.id)}
+                          onClick={() => selectRow(d.id)}
                           className={cn(
                             "w-full rounded-md px-2 py-1.5 pr-8 text-left transition-colors",
                             selectedId === d.id
@@ -281,7 +301,10 @@ export function CatalogDrawer({ open, onOpenChange, onPick }: Props) {
                       swaps without leaving the visit. */}
                   <DrugSimilar
                     drugId={selected.id}
-                    onOpenDrug={(id) => setSelectedId(id)}
+                    onOpenDrug={(drug) => {
+                      setOpenedAnalogue(drug);
+                      setSelectedId(drug.id);
+                    }}
                   />
                 </>
               ) : (

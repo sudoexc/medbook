@@ -9,7 +9,10 @@
  * hidden globals in the response and flags them `hiddenByClinic: true`
  * instead of filtering, so the admin can un-hide them.
  *
- * Search ranks: exact INN match → brand exact → name prefix → contains.
+ * Search ranks: the clinic's own names → exact id/INN/name → brand exact →
+ * prefix → contains, and the order is decided BEFORE paging (see
+ * `@/server/catalog/drug-rank`): ranking only the alphabetical first page
+ * lost «Парацетамол» behind a dozen combinations that contain it.
  * The drawer UI (⌘K) hits this with `?q=` on every keystroke (debounced).
  *
  * The clinic's core list (ClinicFormularyDrug) takes part too: its label and
@@ -23,6 +26,11 @@ import {
   applyClinicOverlay,
   loadClinicOverlays,
 } from "@/server/catalog/clinic-overlay";
+import {
+  orderStrongTier,
+  splitPageWindow,
+  strongMatchWhere,
+} from "@/server/catalog/drug-rank";
 import {
   formularyBrands,
   loadFormulary,
@@ -53,6 +61,15 @@ type DrugRow = {
   clinicId: string | null;
   brands: { id: string; name: string; manufacturer: string | null }[];
 };
+
+/**
+ * Most strong-tier rows a search ranks in memory. The whole catalog is ~3k
+ * drugs and a real two-letter prefix matches a few hundred; hitting this
+ * means a one-letter term, and such a request falls back to plain
+ * alphabetical paging rather than rank a truncated tier (rows past the cap
+ * would belong to neither tier and vanish from the pages).
+ */
+const STRONG_TIER_CAP = 1500;
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "DOCTOR", "NURSE", "RECEPTIONIST"] },
@@ -100,11 +117,6 @@ export const GET = createApiListHandler(
       where.id = { in: ids };
     }
 
-    // Scope + search are both OR-groups — AND them so a search term can't
-    // accidentally widen visibility to other clinics' rows.
-    const and: Record<string, unknown>[] = [
-      { OR: [{ clinicId: null }, ...(clinicId ? [{ clinicId }] : [])] },
-    ];
     // «Конкор 5» searches for Конкор: doctors type the dose right after the
     // name, and a whole-string `contains` then finds nothing at all.
     const rawTerm = q.q?.trim() ?? "";
@@ -113,8 +125,27 @@ export const GET = createApiListHandler(
     // The clinic's own names («Летирам», «Мускамед») match as part of the
     // search itself, so every filter, the total and paging treat them like
     // any other match.
-    const formularyHits =
-      tenant && term ? await searchFormulary(term, 20) : [];
+    const [overlays, formularyHits, formulary] = await Promise.all([
+      loadClinicOverlays(clinicId, "DRUG"),
+      tenant && term
+        ? searchFormulary(term, 20)
+        : Promise.resolve([] as FormularyEntry[]),
+      tenant ? loadFormulary() : Promise.resolve([] as FormularyEntry[]),
+    ]);
+    const formularyIds = formularyHits.map((f) => f.drugId);
+
+    // Scope + search are both OR-groups — AND them so a search term can't
+    // accidentally widen visibility to other clinics' rows.
+    const and: Record<string, unknown>[] = [
+      { OR: [{ clinicId: null }, ...(clinicId ? [{ clinicId }] : [])] },
+    ];
+    // Globals the clinic hid are dropped in the query, not after it: a page
+    // trimmed after the fact came back short, and `total` counted drugs the
+    // doctor can never see. Ids are unique across the table, so this only
+    // ever removes the hidden global rows.
+    if (!includeHidden && overlays.hidden.size > 0) {
+      and.push({ id: { notIn: [...overlays.hidden] } });
+    }
     if (term) {
       and.push({
         OR: [
@@ -123,62 +154,28 @@ export const GET = createApiListHandler(
           { inn: { contains: term, mode: "insensitive" } },
           { id: { contains: term, mode: "insensitive" } },
           { brands: { some: { name: { contains: term, mode: "insensitive" } } } },
-          ...(formularyHits.length > 0
-            ? [{ id: { in: formularyHits.map((f) => f.drugId) } }]
-            : []),
+          ...(formularyIds.length > 0 ? [{ id: { in: formularyIds } }] : []),
         ],
       });
     }
     where.AND = and;
 
-    // A typeahead (the visit screen's search box: first page, a short list,
-    // no other filter) must show a clinic-name hit even when the alphabetical
-    // page would cut it: «Кеппра» must not lose to twelve earlier «Ке…».
-    const typeahead =
-      term.length > 0 &&
-      q.offset === 0 &&
-      q.limit <= 30 &&
-      !includeHidden &&
-      !q.category &&
-      !q.atc &&
-      !q.indication &&
-      !q.forDiagnosis &&
-      q.rxOnly === undefined &&
-      !q.withDosing &&
-      !q.noPhoto &&
-      !(q.ids && q.ids.trim()) &&
-      (q.active ?? true) === true;
-
-    const [pageRows, overlays, matchedTotal, formulary] =
-      await Promise.all([
-        prisma.drug.findMany({
-          where,
-          orderBy: { nameRu: "asc" },
-          skip: q.offset,
-          take: q.limit,
-          include: { brands: true },
-        }) as unknown as Promise<DrugRow[]>,
-        loadClinicOverlays(clinicId, "DRUG"),
-        // The real number of matches, not the page size: the reference browser
-        // pages through ~2.7k rows and must know when to stop offering «ещё».
-        prisma.drug.count({ where }),
-        tenant ? loadFormulary() : Promise.resolve([] as FormularyEntry[]),
-      ]);
+    const [pageRows, matchedTotal] = await Promise.all([
+      term
+        ? loadRankedPage(where, and, term, formularyIds, q.offset, q.limit)
+        : (prisma.drug.findMany({
+            where,
+            orderBy: { nameRu: "asc" },
+            skip: q.offset,
+            take: q.limit,
+            include: { brands: true },
+          }) as unknown as Promise<DrugRow[]>),
+      // The real number of matches, not the page size: the reference browser
+      // pages through ~2.7k rows and must know when to stop offering «ещё».
+      prisma.drug.count({ where }),
+    ]);
 
     let allRows = pageRows;
-    const seen = new Set(pageRows.map((r) => r.id));
-    const extraIds = typeahead
-      ? formularyHits.map((f) => f.drugId).filter((id) => !seen.has(id)).slice(0, 8)
-      : [];
-    if (extraIds.length > 0) {
-      // Same `where`, narrowed to the missing ids: every visibility rule
-      // still applies to them.
-      const extra = (await prisma.drug.findMany({
-        where: { ...where, id: { in: extraIds } },
-        include: { brands: true },
-      })) as unknown as DrugRow[];
-      allRows = [...extra, ...pageRows];
-    }
     if (formulary.length > 0) {
       const byDrug = new Map(formulary.map((f) => [f.drugId, f]));
       allRows = allRows.map((r) => {
@@ -186,9 +183,6 @@ export const GET = createApiListHandler(
         return f ? { ...r, brands: [...formularyBrands(f), ...r.brands] } : r;
       });
     }
-    const formularyRank = new Map(
-      formularyHits.map((f, i) => [f.drugId, formularyHits.length - i]),
-    );
 
     const rows = allRows
       .filter(
@@ -211,32 +205,67 @@ export const GET = createApiListHandler(
       DrugRow & { clinicOverridden: boolean; hiddenByClinic: boolean }
     >;
 
-    // Re-rank: items where the query string matches exactly (INN or brand)
-    // bubble to the top so /q=bisoprolol returns bisoprolol first.
-    if (term) {
-      const needle = term.toLowerCase();
-      const score = (d: DrugRow) =>
-        (formularyRank.has(d.id) ? 1000 + formularyRank.get(d.id)! : 0) +
-        rank(d, needle);
-      rows.sort((a, b) => score(b) - score(a));
-    }
-
-    // `total` counts matches in the database (pre-paging); `rows` is this
-    // page after clinic-hidden overlays are dropped (plus, for a typeahead,
-    // up to 8 clinic-name hits the alphabetical page had cut).
+    // `total` counts the visible matches (pre-paging); `rows` is this page,
+    // already in search order.
     return ok({ rows, total: matchedTotal, offset: q.offset });
   },
 );
 
-function rank(d: DrugRow, needle: string): number {
-  const inn = d.inn.toLowerCase();
-  const id = d.id.toLowerCase();
-  const ru = d.nameRu.toLowerCase();
-  const brands = d.brands.map((b) => b.name.toLowerCase());
+/**
+ * One page of a search, ranked before it is cut (audit CT-09). The strong
+ * tier (id / INN / name / brand starts with the term, or the clinic's core
+ * list names it) is ranked in memory from its keys alone; the rest only
+ * contain the term and page alphabetically in the database. Both tiers carry
+ * the full `where`, so every filter and visibility rule applies to each.
+ */
+async function loadRankedPage(
+  where: Record<string, unknown>,
+  and: Record<string, unknown>[],
+  term: string,
+  formularyIds: string[],
+  offset: number,
+  limit: number,
+): Promise<DrugRow[]> {
+  const strong = strongMatchWhere(term, formularyIds);
+  const keys = await prisma.drug.findMany({
+    where: { ...where, AND: [...and, strong] },
+    select: { id: true, inn: true, nameRu: true, brands: { select: { name: true } } },
+    orderBy: { nameRu: "asc" },
+    take: STRONG_TIER_CAP,
+  });
+  if (keys.length >= STRONG_TIER_CAP) {
+    return (await prisma.drug.findMany({
+      where,
+      orderBy: { nameRu: "asc" },
+      skip: offset,
+      take: limit,
+      include: { brands: true },
+    })) as unknown as DrugRow[];
+  }
 
-  if (id === needle || inn === needle) return 100;
-  if (brands.includes(needle)) return 90;
-  if (id.startsWith(needle) || inn.startsWith(needle) || ru.startsWith(needle)) return 50;
-  if (brands.some((b) => b.startsWith(needle))) return 40;
-  return 0;
+  const ranked = orderStrongTier(keys, term, formularyIds);
+  const win = splitPageWindow(ranked.length, offset, limit);
+  const strongIds = ranked.slice(win.strongStart, win.strongEnd).map((r) => r.id);
+  const [strongRows, restRows] = await Promise.all([
+    strongIds.length > 0
+      ? (prisma.drug.findMany({
+          where: { id: { in: strongIds } },
+          include: { brands: true },
+        }) as unknown as Promise<DrugRow[]>)
+      : Promise.resolve([] as DrugRow[]),
+    win.restTake > 0
+      ? (prisma.drug.findMany({
+          where: { ...where, AND: [...and, { NOT: strong }] },
+          orderBy: { nameRu: "asc" },
+          skip: win.restSkip,
+          take: win.restTake,
+          include: { brands: true },
+        }) as unknown as Promise<DrugRow[]>)
+      : Promise.resolve([] as DrugRow[]),
+  ]);
+  const byId = new Map(strongRows.map((r) => [r.id, r]));
+  return [
+    ...strongIds.map((id) => byId.get(id)).filter((r): r is DrugRow => !!r),
+    ...restRows,
+  ];
 }

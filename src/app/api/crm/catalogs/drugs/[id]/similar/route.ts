@@ -15,12 +15,31 @@
  *      the level at which drugs are genuinely interchangeable in practice;
  *      the full 7-character code would collapse to near-duplicates and a
  *      3-character one would suggest a laxative for a headache.
+ *
+ * The clinic's catalog overlay applies here like everywhere else a doctor
+ * picks a drug: a global row the clinic hid is never offered as a
+ * replacement, and its renames and photos show through.
  */
+import { Prisma } from "@/generated/prisma/client";
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
+import {
+  applyClinicOverlay,
+  loadClinicOverlays,
+} from "@/server/catalog/clinic-overlay";
 import { ok, err } from "@/server/http";
 
 const MAX_PER_TIER = 12;
+
+const ALT_SELECT = {
+  id: true,
+  nameRu: true,
+  atcCode: true,
+  rxOnly: true,
+  photoUrl: true,
+  clinicId: true,
+  brands: { select: { name: true }, take: 3 },
+} as const satisfies Prisma.DrugSelect;
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -58,28 +77,40 @@ export const GET = createApiListHandler(
 
     // Tier 2 — same therapeutic class, different molecule.
     const atc5 = drug.atcCode?.trim().toUpperCase().slice(0, 5) ?? null;
-    const alternatives =
-      atc5 && atc5.length >= 4
-        ? await prisma.drug.findMany({
-            where: {
-              ...visible,
-              active: true,
-              id: { not: drug.id },
-              atcCode: { startsWith: atc5, mode: "insensitive" },
-            },
-            select: {
-              id: true,
-              nameRu: true,
-              atcCode: true,
-              rxOnly: true,
-              photoUrl: true,
-              brands: { select: { name: true }, take: 3 },
-            },
-            // Curated rows first (they carry dosing text), then alphabetical.
-            orderBy: [{ nameRu: "asc" }],
-            take: MAX_PER_TIER,
-          })
-        : [];
+    let alternatives: Prisma.DrugGetPayload<{ select: typeof ALT_SELECT }>[] = [];
+    if (atc5 && atc5.length >= 4) {
+      const overlays = await loadClinicOverlays(clinicId, "DRUG");
+      const classWhere = {
+        ...visible,
+        active: true,
+        // Hidden globals are filtered in the query, so they cannot use up
+        // the tier's places either.
+        id: { notIn: [drug.id, ...overlays.hidden] },
+        atcCode: { startsWith: atc5, mode: "insensitive" as const },
+      };
+      // Curated rows first: they carry dosing text a doctor can prescribe
+      // from, the register rows only a name. Two queries, because Prisma
+      // cannot order by whether a JSON column is null, and a register class
+      // runs to a hundred rows (B05BB), so sorting a sample would miss them.
+      const curated = await prisma.drug.findMany({
+        where: { ...classWhere, defaultDosing: { not: Prisma.AnyNull } },
+        select: ALT_SELECT,
+        orderBy: [{ nameRu: "asc" }],
+        take: MAX_PER_TIER,
+      });
+      const register =
+        curated.length < MAX_PER_TIER
+          ? await prisma.drug.findMany({
+              where: { ...classWhere, defaultDosing: { equals: Prisma.AnyNull } },
+              select: ALT_SELECT,
+              orderBy: [{ nameRu: "asc" }],
+              take: MAX_PER_TIER - curated.length,
+            })
+          : [];
+      alternatives = [...curated, ...register].map((a) =>
+        a.clinicId === null ? applyClinicOverlay(a, a.id, overlays, "DRUG") : a,
+      );
+    }
 
     return ok({
       drugId: drug.id,

@@ -89,6 +89,24 @@ export function useDrugCatalog(query: DrugQuery) {
   });
 }
 
+/**
+ * One drug's full card by id, through the same endpoint (and so the same
+ * clinic overlay and visibility rules) as every list. `null` when the clinic
+ * cannot see it: hidden, retired or another clinic's row.
+ */
+export async function fetchDrugById(
+  id: string,
+  signal?: AbortSignal,
+): Promise<DrugDetail | null> {
+  const url = new URL("/api/crm/catalogs/drugs", window.location.origin);
+  url.searchParams.set("ids", id);
+  url.searchParams.set("limit", "1");
+  const res = await fetch(url.toString(), { credentials: "include", signal });
+  if (!res.ok) throw new Error(`drug ${id}: ${res.status}`);
+  const j = (await res.json()) as Response;
+  return j.rows.find((r) => r.id === id) ?? null;
+}
+
 export type DrugFacets = {
   total: number;
   byGroup: Record<string, number>;

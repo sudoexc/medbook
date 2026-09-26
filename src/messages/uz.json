@@ -7848,7 +7848,8 @@
         "similarTitle": "Nima bilan almashtirish mumkin",
         "sameSubstance": "Xuddi shu ta'sir etuvchi modda, dorixonadagi boshqa nomlar:",
         "sameClass": "Xuddi shu guruh, boshqa modda:",
-        "sameClassHint": "Guruh ichidagi almashtirish — shifokor qarori, teng qiymatli analog emas."
+        "sameClassHint": "Guruh ichidagi almashtirish — shifokor qarori, teng qiymatli analog emas.",
+        "similarOpenError": "Bu dorini ochib bo‘lmadi. Qaytadan urinib ko‘ring."
       }
     },
     "nav": {

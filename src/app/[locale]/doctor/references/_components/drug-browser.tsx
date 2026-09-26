@@ -399,16 +399,9 @@ export function DrugBrowser() {
               <DrugDetailView drug={selected} />
               {/* Substitutions sit right under the facts: «чем заменить» is
                   read many times a day, the photo upload once per drug. */}
-              <DrugSimilar
-                drugId={selected.id}
-                onOpenDrug={(id) => {
-                  // Hop to the analogue's own card: look it up among the
-                  // loaded rows, otherwise leave the current one open (the
-                  // row may be outside the current page/filter).
-                  const next = rows.find((r) => r.id === id);
-                  if (next) setSelected(next);
-                }}
-              />
+              {/* Hop to the analogue's own card. It arrives whole, since
+                  an analogue is rarely on the loaded page or filter. */}
+              <DrugSimilar drugId={selected.id} onOpenDrug={setSelected} />
               <DrugPhotoUpload
                 drugId={selected.id}
                 photoUrl={selected.photoUrl}

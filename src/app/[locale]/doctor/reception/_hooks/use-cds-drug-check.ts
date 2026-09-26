@@ -43,11 +43,17 @@ export type CdsResult = {
   noPregnancyData?: string[];
 };
 
+/**
+ * Ф2 — a catalog-picked structured row: checked by id, no text resolution.
+ * The label goes too: it tells the engine which name the drug was picked
+ * under, so «Ибупрофен» + «Нурофен (ибупрофен)» warn (audit G4-12).
+ */
+export type CdsDrugRow = { id: string; displayName: string };
+
 type Args = {
   patientId: string | null;
   prescriptions: string[];
-  /** Ф2 — ids from structured rows; checked by id, no text resolution. */
-  drugIds?: string[];
+  drugRows?: CdsDrugRow[];
   diagnosisCode: string | null;
 };
 
@@ -59,7 +65,7 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
     body: JSON.stringify({
       patientId: args.patientId,
       prescriptions: args.prescriptions,
-      drugIds: args.drugIds ?? [],
+      drugRows: args.drugRows ?? [],
       diagnosisCode: args.diagnosisCode ?? null,
     }),
   });
@@ -76,17 +82,18 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
 }
 
 export function useCdsDrugCheck(args: Args) {
-  const drugIds = args.drugIds ?? [];
+  const drugRows = args.drugRows ?? [];
   const enabled =
     !!args.patientId &&
-    (args.prescriptions.length > 0 || drugIds.length > 0);
+    (args.prescriptions.length > 0 || drugRows.length > 0);
   return useQuery({
     queryKey: [
       "cds-drug-check",
       args.patientId,
       args.diagnosisCode,
       args.prescriptions.join("|"),
-      drugIds.join("|"),
+      // A renamed row changes the check: key on the label as well as the id.
+      drugRows.map((r) => `${r.id}:${r.displayName}`).join("|"),
     ],
     queryFn: () => fetchCheck(args),
     enabled,

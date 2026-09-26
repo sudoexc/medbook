@@ -10,7 +10,9 @@
  *   2. Curated classes bridge ATC subgroups and ATC-less extension rows:
  *      two NSAIDs, two benzodiazepines, two triptans still warn.
  *   3. «Ибупрофен 400 мг» + «Нурофен 200 мг» warn «одно вещество дважды»;
- *      the same name on two lines (a split dose) does not.
+ *      the same name on two lines (a split dose) does not. This holds for
+ *      catalog-picked rows too, the usual way doctors prescribe: two rows of
+ *      one id under different labels warn, the same label twice does not.
  *   4. «Лозартан» + «Гидрохлоротиазид + лозартан» warn.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -100,6 +102,21 @@ async function check(ids: string[], lines: string[] = []) {
   });
 }
 
+/** Structured rows as the constructor sends them: id plus the row label. */
+async function checkRows(
+  rows: [id: string, displayName: string][],
+  lines: string[] = [],
+) {
+  const { runDrugCheck } = await import("@/server/cds/drug-check");
+  return runDrugCheck({
+    clinicId: "c1",
+    patientId: "p1",
+    prescriptionLines: lines,
+    drugRows: rows.map(([id, displayName]) => ({ id, displayName })),
+    diagnosisCode: null,
+  });
+}
+
 const dups = (r: Awaited<ReturnType<typeof check>>) =>
   r.warnings.filter((w) => w.kind === "DUPLICATE_CLASS");
 
@@ -172,11 +189,6 @@ describe("one substance twice", () => {
     expect(dups(r)).toHaveLength(1);
   });
 
-  it("the same name twice is a split dose, not a duplicate", async () => {
-    const r = await check([], ["Карбамазепин 200 мг утром", "Карбамазепин 400 мг вечером"]);
-    expect(dups(r)).toEqual([]);
-  });
-
   it("«Лозартан» + «Гидрохлоротиазид + лозартан»", async () => {
     const r = await check(["losartan"], ["Гидрохлоротиазид + лозартан 50/12,5 мг"]);
     const w = dups(r);
@@ -198,6 +210,72 @@ describe("one substance twice", () => {
   it("unrelated drugs share nothing", () => {
     expect(shareSubstance(CATALOG.mexidol!, CATALOG.citicoline!)).toBe(false);
     expect(shareSubstance(CATALOG.lamotrigine!, CATALOG.levetiracetam!)).toBe(false);
+  });
+});
+
+describe("one substance twice on catalog-picked rows", () => {
+  it("«Ибупрофен» + «Нурофен (ибупрофен)»: two rows of one id warn", async () => {
+    const r = await checkRows([
+      ["ibuprofen", "Ибупрофен"],
+      ["ibuprofen", "Нурофен (ибупрофен)"],
+    ]);
+    const w = dups(r);
+    expect(w).toHaveLength(1);
+    expect(w[0]!.severity).toBe("MAJOR");
+    expect(w[0]!.title).toBe("Одно вещество дважды: Ибупрофен");
+    expect(w[0]!.detail).toContain("«Ибупрофен»");
+    expect(w[0]!.detail).toContain("«Нурофен»");
+    expect(w[0]!.detail).not.toMatch(/[–—]/);
+    // Still one drug for every other check.
+    expect(r.resolvedDrugs.map((d) => d.id)).toEqual(["ibuprofen"]);
+  });
+
+  it("two brands of one id warn", async () => {
+    const r = await checkRows([
+      ["ibuprofen", "Нурофен (ибупрофен)"],
+      ["ibuprofen", "Ибуфен (ибупрофен)"],
+    ]);
+    expect(dups(r).map((w) => w.title)).toEqual(["Одно вещество дважды: Ибупрофен"]);
+  });
+
+  it("the same label twice is a split dose", async () => {
+    const generic = await checkRows([
+      ["carbamazepine", "Карбамазепин"],
+      ["carbamazepine", "Карбамазепин"],
+    ]);
+    expect(dups(generic)).toEqual([]);
+    const brand = await checkRows([
+      ["ibuprofen", "Нурофен (ибупрофен)"],
+      ["ibuprofen", "Нурофен (ибупрофен)"],
+    ]);
+    expect(dups(brand)).toEqual([]);
+  });
+
+  it("a row and a text line under different brands warn", async () => {
+    const r = await checkRows([["ibuprofen", "Нурофен (ибупрофен)"]], ["Ибуфен 100 мг"]);
+    const w = dups(r);
+    expect(w).toHaveLength(1);
+    expect(w[0]!.detail).toContain("«Нурофен»");
+    expect(w[0]!.detail).toContain("«Ибуфен»");
+  });
+
+  it("a row and a text line under the same brand stay silent", async () => {
+    const r = await checkRows([["ibuprofen", "Нурофен (ибупрофен)"]], ["Нурофен 200 мг вечером"]);
+    expect(dups(r)).toEqual([]);
+  });
+
+  it("a label naming none of the drug's names counts as its own name", async () => {
+    const r = await checkRows([
+      ["ibuprofen", "Ибупрофен"],
+      ["ibuprofen", "От головной боли"],
+    ]);
+    expect(dups(r)).toEqual([]);
+  });
+
+  it("bare ids from a page on the previous build still resolve once", async () => {
+    const r = await check(["ibuprofen", "ibuprofen"]);
+    expect(dups(r)).toEqual([]);
+    expect(r.resolvedDrugs.map((d) => d.id)).toEqual(["ibuprofen"]);
   });
 });
 

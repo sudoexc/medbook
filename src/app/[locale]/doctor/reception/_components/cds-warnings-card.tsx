@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 import {
   useCdsDrugCheck,
+  type CdsDrugRow,
   type CdsResolvedDrug,
   type CdsSeverity,
   type CdsWarning,
@@ -85,8 +86,8 @@ const KIND_ICONS: Record<CdsWarningKind, React.ComponentType<{ className?: strin
 type Props = {
   patientId: string | null;
   prescriptions: string[];
-  /** Ф2 — ids of catalog-picked structured rows. */
-  drugIds?: string[];
+  /** Ф2 — catalog-picked structured rows, by id with their labels. */
+  drugRows?: CdsDrugRow[];
   diagnosisCode: string | null;
   // G8 — contextual ids forwarded to the override mutation. Optional so the
   // card still renders in the future patient drawer (no active visit there).
@@ -106,7 +107,7 @@ function warningKey(w: CdsWarning): string {
 export function CdsWarningsCard({
   patientId,
   prescriptions,
-  drugIds = [],
+  drugRows = [],
   diagnosisCode,
   appointmentId,
   visitNoteId,
@@ -115,7 +116,7 @@ export function CdsWarningsCard({
   const query = useCdsDrugCheck({
     patientId,
     prescriptions,
-    drugIds,
+    drugRows,
     diagnosisCode,
   });
   const [acknowledged, setAcknowledged] = React.useState<Set<string>>(
@@ -130,7 +131,7 @@ export function CdsWarningsCard({
     });
   }, []);
 
-  if (!patientId || (prescriptions.length === 0 && drugIds.length === 0)) {
+  if (!patientId || (prescriptions.length === 0 && drugRows.length === 0)) {
     return null;
   }
 

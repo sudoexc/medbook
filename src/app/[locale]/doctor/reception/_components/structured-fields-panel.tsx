@@ -88,12 +88,16 @@ export function StructuredFieldsPanel() {
   // added to the clinic's base («clinic-…») has no substance or ATC on its
   // row, so it is checked by its name like a custom line — by id it would
   // count as «resolved» and pass every allergy/interaction check blind.
+  // Each row keeps its label: «Ибупрофен» and «Нурофен (ибупрофен)» are one
+  // id twice, and only the names show the doctor wrote a double dose.
   const rxStructured = note?.visitPrescriptions ?? [];
-  const cdsDrugIds = React.useMemo(
+  const cdsDrugRows = React.useMemo(
     () =>
-      rxStructured
-        .map((r) => r.drugId)
-        .filter((id): id is string => !!id && !isBareClinicDrug(id)),
+      rxStructured.flatMap((r) =>
+        r.drugId && !isBareClinicDrug(r.drugId)
+          ? [{ id: r.drugId, displayName: r.displayName }]
+          : [],
+      ),
     [rxStructured],
   );
   const legacyPrescriptions = note?.prescriptions;
@@ -324,7 +328,7 @@ export function StructuredFieldsPanel() {
           <CdsWarningsCard
             patientId={activeAppointment?.patient.id ?? null}
             prescriptions={cdsTextLines}
-            drugIds={cdsDrugIds}
+            drugRows={cdsDrugRows}
             diagnosisCode={note.diagnosisCode ?? null}
             appointmentId={activeAppointment?.id ?? null}
             visitNoteId={visitNoteId}

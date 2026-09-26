@@ -71,13 +71,24 @@ export type CdsCheckInput = {
   patientId: string;
   prescriptionLines: string[];
   /**
-   * Ф2 — drug ids from structured prescription rows. These skip text
+   * Ф2 — structured prescription rows, one entry per row. These skip text
    * resolution entirely: the row was picked from the catalog, so the id is
    * authoritative. Free-text/custom rows still go through prescriptionLines.
+   * The row's label comes along because it says which name the drug was
+   * picked under: «Нурофен (ибупрофен)» next to «Ибупрофен» is one
+   * substance twice (audit G4-12), and ids alone cannot tell.
+   */
+  drugRows?: PinnedDrugRow[];
+  /**
+   * Ф2 — bare ids of structured rows, as a client on the previous build
+   * sends them. Each counts as a row under the drug's own name.
    */
   drugIds?: string[];
   diagnosisCode: string | null;
 };
+
+/** A structured prescription row: the catalog drug and the row's label. */
+export type PinnedDrugRow = { id: string; displayName?: string | null };
 
 export type CdsCheckResult = {
   warnings: CdsWarning[];
@@ -183,14 +194,39 @@ async function resolveDrugs(
   return { hits, unresolved };
 }
 
+/**
+ * Which name a structured row names its drug by, in the text matcher's
+ * terms: `brand:<key>` for «Нурофен (ибупрофен)», `generic` for
+ * «Ибупрофен». The label is matched against that one drug's own names, so
+ * it can only pick among them; a label that names none of them (a doctor's
+ * own wording kept from his shortlist) counts as the drug's own name, as
+ * every pinned row did before.
+ */
+function pinnedRowName(
+  drug: DrugPick,
+  displayName: string | null | undefined,
+): { nameKey: string; label: string } {
+  const m = displayName
+    ? matchDrugLine(buildDrugTextIndex([drug]), displayName)
+    : null;
+  return m
+    ? { nameKey: m.nameKey, label: m.label }
+    : { nameKey: "generic", label: drug.nameRu };
+}
+
 export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult> {
   const { clinicId, patientId, prescriptionLines, diagnosisCode } = input;
 
   const { hits: textHits, unresolved } = await resolveDrugs(prescriptionLines);
 
   // Ф2 — id-pinned drugs from structured rows resolve directly, no text
-  // matching. They take precedence in the dedupe below.
-  const pinnedIds = [...new Set(input.drugIds ?? [])];
+  // matching. They take precedence in the dedupe below. Rows are kept one
+  // per row (not one per id) so their names can be compared.
+  const pinnedRows: PinnedDrugRow[] = [
+    ...(input.drugRows ?? []),
+    ...(input.drugIds ?? []).map((id) => ({ id })),
+  ];
+  const pinnedIds = [...new Set(pinnedRows.map((r) => r.id))];
   const pinnedDrugs =
     pinnedIds.length > 0
       ? await prisma.drug.findMany({
@@ -208,18 +244,23 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
 
   const seenIds = new Set<string>();
   const resolved: ResolvedDrug[] = [];
-  // Every name each drug appears under: a structured row counts as the
-  // drug's own name, a text line as the brand or name it was written with.
+  // Every name each drug appears under: a structured row or a text line
+  // counts as the brand or name it is labelled with.
   const namesById = new Map<string, Map<string, string>>();
   const noteName = (id: string, nameKey: string, label: string) => {
     const names = namesById.get(id) ?? new Map<string, string>();
     if (!names.has(nameKey)) names.set(nameKey, label);
     namesById.set(id, names);
   };
-  for (const d of pinnedDrugs) {
+  const pinnedById = new Map(pinnedDrugs.map((d) => [d.id, d]));
+  for (const row of pinnedRows) {
+    const d = pinnedById.get(row.id);
+    if (!d) continue;
+    const { nameKey, label } = pinnedRowName(d, row.displayName);
+    noteName(d.id, nameKey, label);
+    if (seenIds.has(d.id)) continue;
     seenIds.add(d.id);
     resolved.push(toResolved(d, -1));
-    noteName(d.id, "generic", d.nameRu);
   }
   for (const h of textHits) {
     noteName(h.drug.id, h.nameKey, h.label);
@@ -394,8 +435,8 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
     .map((d) => d.id);
 
   // ── One substance twice ──────────────────────────────────────────────
-  // Two lines under different names of one drug («Ибупрофен 400 мг» and
-  // «Нурофен 200 мг») are a double dose. The same name twice is left alone:
+  // Two rows or lines under different names of one drug («Ибупрофен 400 мг»
+  // and «Нурофен 200 мг») are a double dose. The same name twice is left alone:
   // a split dose («Карбамазепин 200 мг утром», «… 400 мг вечером») is
   // written that way on purpose and the doctor sees both lines.
   for (const drug of resolved) {

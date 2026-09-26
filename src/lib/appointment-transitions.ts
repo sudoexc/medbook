@@ -81,6 +81,28 @@ export function isOnClinicDay(
 }
 
 /**
+ * A late patient after the sweep's automatic no-show. The lifecycle sweep
+ * marks a booking NO_SHOW an hour past its end on a guess nobody made by
+ * hand: a phone booking for 10:00 who walks in at 11:45 is a late arrival.
+ * On the visit's own clinic day reception may still check her in with
+ * «Пришёл», instead of registering a second walk-in visit next to a false
+ * no-show that inflates her no-show count. A no-show a person marked stays
+ * final (the doctor's revert undoes it). `autoNoShow` is the server's
+ * verdict (`findStandingAutoNoShows`), and the queue-status route asks this
+ * same question, so the button and the write agree.
+ */
+export function canArriveAfterAutoNoShow(
+  status: AppointmentStatus,
+  appointmentDate: Date | string,
+  autoNoShow: boolean,
+  now: Date = new Date(),
+): boolean {
+  return (
+    status === "NO_SHOW" && autoNoShow && isOnClinicDay(appointmentDate, now)
+  );
+}
+
+/**
  * Time-aware extension of `canTransition`. NO_SHOW only makes sense once the
  * scheduled start time has passed — until then the patient is not yet "late".
  * `graceMinutes` lets the caller decide how soon after the start a no-show

@@ -15,6 +15,8 @@ import {
 } from "@/server/schemas/appointment";
 import { bookAppointment } from "@/server/appointments/book";
 import { newCorrelationId } from "@/server/realtime/outbox";
+import { isOnClinicDay } from "@/lib/appointment-transitions";
+import { findStandingAutoNoShows } from "@/server/appointments/auto-no-show";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -159,7 +161,23 @@ export const GET = createApiListHandler(
       tally.all += c;
     }
 
-    return ok({ rows, nextCursor, total, tally });
+    // «Пришёл» after the sweep's no-show (`canArriveAfterAutoNoShow`): the
+    // doctors panel offers it only on rows the server flags here. Only
+    // today's no-shows can use it, which keeps the audit lookup small.
+    const now = new Date();
+    const autoNoShows = await findStandingAutoNoShows(
+      rows
+        .filter((r) => r.status === "NO_SHOW" && isOnClinicDay(r.date, now))
+        .map((r) => r.id),
+    );
+    const out =
+      autoNoShows.size === 0
+        ? rows
+        : rows.map((r) =>
+            autoNoShows.has(r.id) ? { ...r, autoNoShow: true } : r,
+          );
+
+    return ok({ rows: out, nextCursor, total, tally });
   }
 );
 

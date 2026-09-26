@@ -56,6 +56,18 @@ export const AUDIT_ACTION = {
   //  forensic reconstruction even after the revert clears them.
   APPOINTMENT_STATUS_REVERTED: "APPOINTMENT_STATUS_REVERTED",
 
+  // The lifecycle sweep's automatic no-show: a booking an hour past its end
+  // that nobody marked. `actorLabel: "system"`, `meta` carries `{ from, to,
+  // graceMinutes, endDate }`. The string is load-bearing: it is how reception
+  // tells the sweep's guess from a person's decision when a late patient
+  // walks in (`server/appointments/auto-no-show.ts`). Historical lowercase.
+  APPOINTMENT_AUTO_NO_SHOW: "appointment.auto-no-show",
+
+  // Every move through PATCH .../queue-status. `meta` carries `{ before,
+  // after }` queue statuses. One of the two ways a row leaves NO_SHOW (the
+  // other is APPOINTMENT_STATUS_REVERTED). Historical lowercase.
+  APPOINTMENT_QUEUE_STATUS: "appointment.queue-status",
+
   // Phase 13 — Action Center lifecycle. `entityType: "Action"` for all of
   // these. `meta` carries `{ type, payload, oldStatus, newStatus, ... }` plus
   // any reason / preset / role-specific fields. `ACTION_CREATED` and

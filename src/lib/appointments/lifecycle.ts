@@ -17,6 +17,7 @@
  * truth.
  */
 import {
+  canArriveAfterAutoNoShow,
   canTransition,
   canTransitionAt,
   type AppointmentStatus,
@@ -274,6 +275,10 @@ export function getQuickActions(
   role: LifecycleRole,
   appointmentDate: Date,
   now: Date = new Date(),
+  opts?: {
+    /** Server flag: a NO_SHOW the sweep set that nobody has touched since. */
+    autoNoShow?: boolean;
+  },
 ): QuickAction[] {
   if (!canMutateStatus(role)) return [];
   const allowed = new Set(
@@ -282,6 +287,21 @@ export function getQuickActions(
 
   const isDoctor = role === "DOCTOR";
   const isReception = RECEPTION_ROLES.has(role);
+
+  // NO_SHOW is terminal, with one exception the queue-status route shares:
+  // the patient the sweep gave up on walks in the same day. «Пришёл» is
+  // then the desk's only action on the row.
+  if (current === "NO_SHOW") {
+    return isReception &&
+      canArriveAfterAutoNoShow(
+        current,
+        appointmentDate,
+        opts?.autoNoShow === true,
+        now,
+      )
+      ? [{ kind: "ARRIVED", to: "WAITING", confirm: false }]
+      : [];
+  }
 
   // Quick-action row is forward-only: we hide ARRIVED once the patient is
   // past WAITING, hide START once they're past IN_PROGRESS, etc. The state

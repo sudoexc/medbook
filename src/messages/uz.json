@@ -5930,7 +5930,8 @@
       "statusFailed": "Statusni o'zgartirishda xato",
       "reorderNotLive": "Yozuvlarni jonli navbat ichida siljitib bo'lmaydi — ro'yxat yangilandi",
       "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang",
-      "notToday": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin."
+      "notToday": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin.",
+      "noShowFinal": "Bemor «Kelmadi» deb belgilangan va bu belgini faqat shifokor olib tashlay oladi. Bemorni hozir qabul qilish uchun uni jonli navbatga qo'ying."
     },
     "case": {
       "saveFailed": "Saqlash imkonsiz",

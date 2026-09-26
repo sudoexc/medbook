@@ -13,6 +13,7 @@ import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { getTenant } from "@/lib/tenant-context";
 import {
+  canArriveAfterAutoNoShow,
   canTransition,
   isOnClinicDay,
   requiresVisitDay,
@@ -37,6 +38,8 @@ import { runCompletionEffects } from "@/server/appointments/completion-effects";
 import { initials } from "@/lib/format";
 import { sendCallNotice } from "@/server/telegram/call-notice";
 import { findUnsignedDraft } from "@/server/visit-notes/unsigned-draft";
+import { isStandingAutoNoShow } from "@/server/appointments/auto-no-show";
+import { recomputeCaseAppointments } from "@/server/pricing/recompute-appointment-price";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -67,12 +70,35 @@ export const PATCH = createApiHandler(
       before.status === "COMPLETED" ||
       before.status === "CANCELLED" ||
       before.status === "NO_SHOW";
+    const now = new Date();
+    // The one way back out of NO_SHOW on this endpoint: «Пришёл» for a late
+    // patient the sweep had given up on, on the visit's own clinic day (see
+    // `canArriveAfterAutoNoShow`). Since the sweep writes both columns, its
+    // no-show otherwise left reception no way to check her in. The audit
+    // lookup runs only for a NO_SHOW asked to arrive.
+    const arrivesAfterAutoNoShow =
+      target === "WAITING" &&
+      before.status === "NO_SHOW" &&
+      canArriveAfterAutoNoShow(
+        before.status,
+        before.date,
+        await isStandingAutoNoShow(id),
+        now,
+      );
     if (
-      !canTransition(fromStatus, target) ||
-      (statusIsTerminal &&
-        !canTransition(before.status as AppointmentStatus, target))
+      !arrivesAfterAutoNoShow &&
+      (!canTransition(fromStatus, target) ||
+        (statusIsTerminal &&
+          !canTransition(before.status as AppointmentStatus, target)))
     ) {
-      return conflict("invalid_transition", {
+      // A late patient at the desk whose no-show a person marked (or one
+      // from another day): name the case so the desk sees what to do
+      // instead of a bare «Ошибка изменения статуса».
+      const reason =
+        target === "WAITING" && before.status === "NO_SHOW"
+          ? "no_show_final"
+          : "invalid_transition";
+      return conflict(reason, {
         from: before.queueStatus,
         to: body.queueStatus,
       });
@@ -100,7 +126,6 @@ export const PATCH = createApiHandler(
     // day. The reception panel can browse any day; from tomorrow's list
     // «Пришёл» used to take today's ticket number and «Начать запись» sent
     // the patient at home a Telegram «Вас вызывают».
-    const now = new Date();
     if (requiresVisitDay(fromStatus, target) && !isOnClinicDay(before.date, now)) {
       return conflict("not_today", {
         from: before.queueStatus,
@@ -246,7 +271,18 @@ export const PATCH = createApiHandler(
       // hand out a duplicate order.
       const intake = await runQueueTx(async (tx) => {
         Object.assign(data, await applyWaitingIntake(tx, before, now));
-        return tx.appointment.update({ where: { id }, data, include: callInclude });
+        const row = await tx.appointment.update({
+          where: { id },
+          data,
+          include: callInclude,
+        });
+        // Un-killing a visit, like the doctor's NO_SHOW revert: the case
+        // timeline has an active sibling again, so free-repeat prices are
+        // recomputed with it counted.
+        if (arrivesAfterAutoNoShow && before.medicalCaseId) {
+          await recomputeCaseAppointments(tx, before.medicalCaseId);
+        }
+        return row;
       }).catch((e: unknown) => {
         if (e instanceof NotVisitDayError) return e;
         throw e;
@@ -276,10 +312,15 @@ export const PATCH = createApiHandler(
       after = await prisma.appointment.update({ where: { id }, data, include: callInclude });
     }
     await audit(request, {
-      action: "appointment.queue-status",
+      // This row is also what marks the auto no-show as left (auto-no-show.ts).
+      action: AUDIT_ACTION.APPOINTMENT_QUEUE_STATUS,
       entityType: "Appointment",
       entityId: id,
-      meta: { before: before.queueStatus, after: after.queueStatus },
+      meta: {
+        before: before.queueStatus,
+        after: after.queueStatus,
+        ...(arrivesAfterAutoNoShow ? { afterAutoNoShow: true } : {}),
+      },
     });
 
     const tenant = getTenant();

@@ -383,11 +383,15 @@ const QueuePanelRow = React.forwardRef<HTMLLIElement, QueuePanelRowProps>(
     const priorityMutation = useSetQueuePriority(row.id);
 
     // `getQuickActions` drops «Пришёл» / «Начать» for a row not on today's
-    // clinic day (Q-05); `clinicToday` re-runs it when the day turns.
+    // clinic day (Q-05); `clinicToday` re-runs it when the day turns. A
+    // no-show the sweep set keeps «Пришёл» for a patient who comes late.
     const actions = React.useMemo(
-      () => getQuickActions(row.queueStatus, role, apptDate, new Date()),
+      () =>
+        getQuickActions(row.queueStatus, role, apptDate, new Date(), {
+          autoNoShow: row.autoNoShow === true,
+        }),
       // eslint-disable-next-line react-hooks/exhaustive-deps -- clinicToday is the midnight trigger
-      [row.queueStatus, role, apptDate, clinicToday],
+      [row.queueStatus, row.autoNoShow, role, apptDate, clinicToday],
     );
 
     const primary = actions.find((a) => !a.confirm) ?? null;

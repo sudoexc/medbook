@@ -111,6 +111,12 @@ export type AppointmentRow = {
   primaryService: AppointmentServiceShort | null;
   services: AppointmentServiceLineShort[];
   payments: AppointmentPaymentShort[];
+  /**
+   * Set only on today's NO_SHOW rows the lifecycle sweep marked and nobody
+   * has touched since: reception may still check such a patient in
+   * (`canArriveAfterAutoNoShow`).
+   */
+  autoNoShow?: boolean;
 };
 
 

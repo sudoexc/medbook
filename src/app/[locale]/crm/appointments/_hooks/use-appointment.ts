@@ -144,7 +144,10 @@ export type AppointmentConflict = {
     | "invalid_transition"
     | "in_past"
     // Arrival or the call on a visit that is not today's (Q-05).
-    | "not_today";
+    | "not_today"
+    // «Пришёл» on a no-show a person marked: only the doctor's revert
+    // reopens it, the desk puts the patient in the live queue instead.
+    | "no_show_final";
   until?: string;
 };
 
@@ -319,7 +322,9 @@ export function useSetQueueStatus(id: string) {
         toast.error(
           err.conflict.reason === "not_today"
             ? t("notToday")
-            : t("statusFailed"),
+            : err.conflict.reason === "no_show_final"
+              ? t("noShowFinal")
+              : t("statusFailed"),
         );
         return;
       }

@@ -37,6 +37,10 @@
  *     so a row whose `status` drifted behind a WAITING `queueStatus` is
  *     left alone too.
  *
+ * The flip is a guess, not a verdict: a patient who walks in later the same
+ * clinic day can still be checked in with «Пришёл», which the audit row
+ * written below makes possible (`canArriveAfterAutoNoShow`).
+ *
  * Tenant context: cross-clinic scan in SYSTEM, then audit + outbox events
  * fanned out per-row with explicit clinicId.
  *
@@ -63,6 +67,7 @@ import {
   staleVisitCompletedAt,
 } from "@/server/appointments/stale-visit";
 import { refreshPatientVisitStats } from "@/server/patient/last-contacted";
+import { AUDIT_ACTION } from "@/lib/audit-actions";
 
 export const QUEUE_NAME = "appointment-lifecycle-sweep";
 export const JOB_NAME = "scan";
@@ -321,7 +326,9 @@ async function tick(): Promise<void> {
       await prisma.auditLog.create({
         data: {
           clinicId: row.clinicId,
-          action: "appointment.auto-no-show",
+          // Reception's same-day «Пришёл» keys on this action to tell the
+          // sweep's guess from a person's no-show (auto-no-show.ts).
+          action: AUDIT_ACTION.APPOINTMENT_AUTO_NO_SHOW,
           entityType: "Appointment",
           entityId: row.id,
           meta: {

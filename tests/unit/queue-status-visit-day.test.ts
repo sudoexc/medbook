@@ -13,7 +13,8 @@
  * answers 409 `not_today` and writes nothing; the generic PATCH, the doctor's
  * call and bulk-status refuse the same way; today's booking still arrives.
  * And (Q-14) a row whose `status` is terminal is not revived through a
- * drifted `queueStatus`.
+ * drifted `queueStatus`. (The one same-day exception, «Пришёл» after the
+ * sweep's own no-show, is pinned in queue-status-auto-no-show.test.ts.)
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -157,7 +158,11 @@ vi.mock("@/lib/prisma", () => {
   };
   const prisma = {
     appointment,
-    auditLog: { create: vi.fn(async () => ({ id: "al" })) },
+    // No audit trail: every NO_SHOW here reads as one a person marked.
+    auditLog: {
+      create: vi.fn(async () => ({ id: "al" })),
+      findMany: vi.fn(async () => []),
+    },
     $transaction: vi.fn(async <T,>(fn: (tx: unknown) => Promise<T>) => fn(prisma)),
   };
   return { prisma };
@@ -280,7 +285,7 @@ describe("Q-05: queue-status refuses arrival and the call on another day", () =>
 });
 
 describe("Q-14: queue-status does not revive a terminal status", () => {
-  it("an auto no-show still reading CONFIRMED in the queue column cannot arrive", async () => {
+  it("a staff no-show still reading CONFIRMED in the queue column cannot arrive", async () => {
     state.appts.set(
       "ns",
       appt("ns", { status: "NO_SHOW", queueStatus: "CONFIRMED" }),
@@ -289,7 +294,8 @@ describe("Q-14: queue-status does not revive a terminal status", () => {
     const res = await queueStatus("ns", "WAITING");
 
     expect(res.status).toBe(409);
-    expect(((await res.json()) as Row).reason).toBe("invalid_transition");
+    // Named, so the desk is told to use the live queue instead.
+    expect(((await res.json()) as Row).reason).toBe("no_show_final");
     expect(h.updates).toEqual([]);
   });
 

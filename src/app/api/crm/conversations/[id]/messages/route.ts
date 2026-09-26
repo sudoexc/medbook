@@ -241,9 +241,20 @@ export const POST = createApiHandler(
           `[crm:send] tg dispatch failed conv=${conversationId}: ${reason}`,
         );
         const failedReason = tgFailReason(reason);
+        // «Never pressed Start» on a thread with no bot chat yet is the
+        // Mini App in-app chat: the reply is stored and pushed to the Mini
+        // App over SSE, so the patient reads it there. That is delivered,
+        // not «не доставлено»; the missed DM is kept as the reason. A
+        // blocked bot or any other failure stays FAILED (audit TG-04).
+        const inAppOnly =
+          !conv.externalId &&
+          conv.channel === "TG" &&
+          failedReason === "tg_not_started";
         dispatched = await prisma.message.update({
           where: { id: msg.id },
-          data: { status: "FAILED", failedReason },
+          data: inAppOnly
+            ? { status: "DELIVERED", failedReason }
+            : { status: "FAILED", failedReason },
         });
         // Same fallback block signal as the notification worker: reachability
         // counters and broadcast audiences drop the patient.

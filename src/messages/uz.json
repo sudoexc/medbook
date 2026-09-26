@@ -449,7 +449,8 @@
       "errorRequired": "Majburiy maydon",
       "errorPhoneFormat": "Telefon kiriting (3–40 belgi)",
       "yearInNameParsed": "{year} yili tug'ilgan sanaga o'tadi, ism «{name}» bo'lib saqlanadi",
-      "yearInNameIgnored": "Ismdagi {year} yili kerak emas: tug'ilgan sana quyida ko'rsatilgan"
+      "yearInNameIgnored": "Ismdagi {year} yili kerak emas: tug'ilgan sana quyida ko'rsatilgan",
+      "existingToast": "Bu bemorning kartasi allaqachon bor, uni ochamiz"
     },
     "rowActions": {
       "open": "Kartochkani ochish",
@@ -5326,8 +5327,8 @@
       },
       "TELEGRAM_LINK_CONFLICT": {
         "label": "Telegram boshqa kartada",
-        "title": "{via, select, contactName {{clinicCardName}: raqamni boshqa ismli Telegram tasdiqladi} other {{clinicCardName}: Telegram boshqa kartaga bog'langan}}",
-        "body": "{via, select, invite {Bemor klinika taklifini ochdi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contact {Bemor Telegramda o'z raqamini tasdiqladi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contactName {Bu karta raqamini Telegramda «{telegramCardName}» bemor tasdiqladi, lekin kartadagi ism boshqa, shuning uchun Telegram bog'lanmadi. Agar bu o'sha odam bo'lsa, uni kartadan Telegramga taklif qiling. Agar raqam uniki, karta esa qarindoshiniki bo'lsa, raqamni uning o'z kartasiga yozing.} other {Bitta Telegram ikkita kartaga bog'langan edi, bog'lanish «{telegramCardName}» kartasida qoldirildi. Kartalarni solishtirib, qo'lda birlashtiring.}}"
+        "title": "{via, select, contactName {{clinicCardName}: raqamni boshqa ismli Telegram tasdiqladi} contactConfirm {{clinicCardName}: Telegram bog‘lanishini tasdiqlang} other {{clinicCardName}: Telegram boshqa kartaga bog'langan}}",
+        "body": "{via, select, invite {Bemor klinika taklifini ochdi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contact {Bemor Telegramda o'z raqamini tasdiqladi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contactName {Bu karta raqamini Telegramda «{telegramCardName}» bemor tasdiqladi, lekin kartadagi ism boshqa, shuning uchun Telegram bog'lanmadi. Agar bu o'sha odam bo'lsa, uni kartadan Telegramga taklif qiling. Agar raqam uniki, karta esa qarindoshiniki bo'lsa, raqamni uning o'z kartasiga yozing.} contactConfirm {«{telegramCardName}» bemor bu karta raqamini Telegramda tasdiqladi, ism mos keladi. Tarixi bor karta faqat tekshiruvdan keyin bog‘lanadi: agar bu o‘sha odam bo‘lsa, uni kartadan Telegramga taklif qiling.} other {Bitta Telegram ikkita kartaga bog'langan edi, bog'lanish «{telegramCardName}» kartasida qoldirildi. Kartalarni solishtirib, qo'lda birlashtiring.}}"
       },
       "NO_CONTACT_CALL": {
         "label": "Qo'ng'iroq: uzoq vaqt aloqa yo'q",

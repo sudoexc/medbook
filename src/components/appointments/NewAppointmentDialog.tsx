@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { probeFromTyped, sameNameLikely } from "@/lib/patients/identity-match";
 import {
   Dialog,
   DialogContent,
@@ -227,10 +228,23 @@ export function NewAppointmentDialog({
 
     phoneAppliedRef.current = initialPatientPhone;
     const hits = phoneLookup.data;
+    // A number alone never decides whose visit this is (PH-01 / Q-03): a
+    // site request for a son sent from his mother's phone must not land in
+    // her card. The single hit is taken only when the number is that card's
+    // proven identity and, when the request carries a name, the name fits.
+    // Anything else opens the new-patient form, where the server's
+    // phone-owner check asks staff.
+    const single = hits.length === 1 ? hits[0]! : null;
+    const takeSingle =
+      single !== null &&
+      Boolean(single.phoneVerifiedAt) &&
+      single.phoneNormalized.startsWith("+") &&
+      (!initialPatientName?.trim() ||
+        sameNameLikely(probeFromTyped(initialPatientName).fullName, single.fullName));
     setState((s) => {
       if (s.patient) return s;
-      if (hits.length === 1) {
-        return { ...s, patient: hits[0]!, newPatient: false };
+      if (takeSingle && single) {
+        return { ...s, patient: single, newPatient: false };
       }
       return {
         ...s,

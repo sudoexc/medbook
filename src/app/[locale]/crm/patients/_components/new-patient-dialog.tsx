@@ -154,18 +154,23 @@ export function NewPatientDialog({
         const err = (await res.json().catch(() => null)) as {
           error?: string;
           reason?: string;
+          patientId?: string;
         } | null;
         const owner = readPhoneOwnerMismatch(res.status, err);
         if (owner) throw new PhoneOwnerMismatchError(owner);
         if (res.status === 409 && err?.reason === "phone_already_exists") {
+          // Staff answered «this is the same person» (or the number's
+          // owner matched outright): the card exists, so open it instead of
+          // failing with «номер уже занят».
+          if (err.patientId) return { id: err.patientId, existing: true };
           throw new Error("PHONE_EXISTS");
         }
         throw new Error(err?.error ?? `HTTP ${res.status}`);
       }
-      return (await res.json()) as { id: string };
+      return (await res.json()) as { id: string; existing?: boolean };
     },
     onSuccess: (created) => {
-      toast.success(t("createdToast"));
+      toast.success(created.existing ? t("existingToast") : t("createdToast"));
       queryClient.invalidateQueries({ queryKey: ["patients"] });
       onOpenChange(false);
       if (onCreated) onCreated(created.id);

@@ -70,6 +70,8 @@ const RU: Dict = {
     "В вашей карте уже указан другой номер. Если он изменился, скажите об этом в регистратуре.",
   "contact.nameMismatch":
     "Номер получен, но в клинике он записан на пациента с другим именем. Регистратура проверит и свяжется с вами.",
+  "contact.pending":
+    "Спасибо, номер получен. Регистратура проверит и привяжет вашу карту, после этого история визитов появится в приложении.",
   "contact.notOwn":
     "Нужен ваш собственный номер. Нажмите «Подтвердить номер через Telegram» в приложении клиники.",
   "contact.noCard":
@@ -132,6 +134,8 @@ const UZ: Dict = {
     "Kartangizda boshqa raqam ko'rsatilgan. Agar u o'zgargan bo'lsa, registraturaga ayting.",
   "contact.nameMismatch":
     "Raqam qabul qilindi, lekin klinikada u boshqa ismli bemor nomiga yozilgan. Registratura tekshirib, siz bilan bog'lanadi.",
+  "contact.pending":
+    "Rahmat, raqam qabul qilindi. Registratura tekshirib, kartangizni bog'laydi, shundan so'ng tashriflar tarixi ilovada paydo bo'ladi.",
   "contact.notOwn":
     "O'z raqamingiz kerak. Klinika ilovasida «Raqamni Telegram orqali tasdiqlash» tugmasini bosing.",
   "contact.noCard":

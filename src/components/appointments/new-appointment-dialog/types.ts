@@ -31,6 +31,8 @@ export type PatientHit = {
   fullName: string;
   phone: string;
   phoneNormalized: string;
+  /** Set when the number is this card's proven identity (PH-01). */
+  phoneVerifiedAt?: string | null;
   photoUrl: string | null;
   segment: string;
 };

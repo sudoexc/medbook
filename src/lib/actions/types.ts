@@ -334,7 +334,7 @@ export type TelegramLinkConflictPayload = {
   telegramCardName: string;
   clinicCardId: string;
   clinicCardName: string;
-  via: "invite" | "contact" | "contactName" | "dedupe";
+  via: "invite" | "contact" | "contactName" | "contactConfirm" | "dedupe";
 };
 
 /**

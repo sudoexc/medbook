@@ -449,7 +449,8 @@
       "errorRequired": "Обязательное поле",
       "errorPhoneFormat": "Введите телефон (3–40 символов)",
       "yearInNameParsed": "Год {year} уйдёт в дату рождения, имя сохранится как «{name}»",
-      "yearInNameIgnored": "Год {year} в имени не нужен: дата рождения уже указана ниже"
+      "yearInNameIgnored": "Год {year} в имени не нужен: дата рождения уже указана ниже",
+      "existingToast": "Карта этого пациента уже есть, открываем её"
     },
     "rowActions": {
       "open": "Открыть карточку",
@@ -5326,8 +5327,8 @@
       },
       "TELEGRAM_LINK_CONFLICT": {
         "label": "Telegram на другой карте",
-        "title": "{via, select, contactName {{clinicCardName}: номер подтвердил Telegram с другим именем} other {{clinicCardName}: Telegram привязан к другой карте}}",
-        "body": "{via, select, invite {Пациент открыл приглашение клиники, но его Telegram уже связан с картой «{telegramCardName}», где есть записи. Сравните карты и объедините их вручную.} contact {Пациент подтвердил свой номер в Telegram, но его Telegram уже связан с картой «{telegramCardName}», где есть записи. Сравните карты и объедините их вручную.} contactName {Номер этой карты подтвердил в Telegram пациент «{telegramCardName}», а в карте другое имя, поэтому Telegram не привязан. Если это тот же человек, пригласите его в Telegram из карты. Если номер его, а карта родственника, запишите номер в его собственную карту.} other {Один Telegram был привязан к двум картам, связь оставлена у карты «{telegramCardName}». Сравните карты и объедините их вручную.}}"
+        "title": "{via, select, contactName {{clinicCardName}: номер подтвердил Telegram с другим именем} contactConfirm {{clinicCardName}: подтвердить привязку Telegram} other {{clinicCardName}: Telegram привязан к другой карте}}",
+        "body": "{via, select, invite {Пациент открыл приглашение клиники, но его Telegram уже связан с картой «{telegramCardName}», где есть записи. Сравните карты и объедините их вручную.} contact {Пациент подтвердил свой номер в Telegram, но его Telegram уже связан с картой «{telegramCardName}», где есть записи. Сравните карты и объедините их вручную.} contactName {Номер этой карты подтвердил в Telegram пациент «{telegramCardName}», а в карте другое имя, поэтому Telegram не привязан. Если это тот же человек, пригласите его в Telegram из карты. Если номер его, а карта родственника, запишите номер в его собственную карту.} contactConfirm {Пациент «{telegramCardName}» подтвердил номер этой карты в Telegram, имя совпадает. Карта с историей привязывается только после проверки: если это тот же человек, пригласите его в Telegram из карты.} other {Один Telegram был привязан к двум картам, связь оставлена у карты «{telegramCardName}». Сравните карты и объедините их вручную.}}"
       },
       "NO_CONTACT_CALL": {
         "label": "Звонок: давно не на связи",

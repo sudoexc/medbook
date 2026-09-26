@@ -198,6 +198,16 @@ describe("staff message in a thread opened from the patient card (audit TG-04)",
     expect(state.blocked).toHaveLength(1);
   });
 
+  it("final review: a Mini App user who never pressed Start reads it in the app → DELIVERED, reason kept", async () => {
+    state.sendError =
+      "Telegram sendMessage failed: 403 Forbidden: bot can't initiate conversation with a user";
+    const res = await post({ body: "Ваши анализы готовы" });
+    const row = await res.json();
+    expect(row.status).toBe("DELIVERED");
+    expect(row.failedReason).toBe("tg_not_started");
+    expect(state.blocked).toHaveLength(0);
+  });
+
   it("is FAILED (no_telegram) without any send when there is no chat to reach", async () => {
     state.conv = coldThread({ patient: { phone: "+998901112233", telegramId: null } });
     const res = await post({ body: "Ваши анализы готовы" });

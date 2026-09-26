@@ -113,7 +113,8 @@ type ConflictToRaise = {
   telegramCard: { id: string; fullName: string };
   clinicCard: { id: string; fullName: string };
   /** "contactName": the number matched, the name did not. */
-  via: "contact" | "contactName";
+  /** "contactConfirm": number and name match, but the card holds history. */
+  via: "contact" | "contactName" | "contactConfirm";
 };
 
 export async function applyVerifiedContact(input: {
@@ -185,6 +186,16 @@ export async function applyVerifiedContact(input: {
               patientId: sender?.id ?? null,
               clinicCardId: holder.id,
             };
+          }
+          // A card that already holds a person's medicine is never handed to
+          // a Telegram account on a number + name match alone: the name is
+          // whatever the sender typed into Telegram or the Mini App, and a
+          // family member with the SIM can type the right one. Reception
+          // confirms (and links through the card's invite) instead.
+          if (await cardHoldsHistory(tx, holder.id)) {
+            if (!sender) return { kind: "no-card" };
+            toRaise = { telegramCard: sender, clinicCard: holder, via: "contactConfirm" };
+            return { kind: "unconfirmed", patientId: sender.id, clinicCardId: holder.id };
           }
           if (!accountNameMatches(input.contact!, sender?.fullName ?? null, holder.fullName)) {
             // His own number on someone else's card (his mother's, his
@@ -297,6 +308,25 @@ export async function applyVerifiedContact(input: {
   });
 }
 
+/**
+ * Whether a clinic card already carries a person's record: any visit, note
+ * or document. Such a card is linked to a Telegram account only by the
+ * reception (invite link), never by a shared contact alone.
+ */
+async function cardHoldsHistory(
+  tx: { patient: { findFirst: (args: never) => Promise<unknown> } },
+  patientId: string,
+): Promise<boolean> {
+  const row = (await tx.patient.findFirst({
+    where: { id: patientId },
+    select: {
+      _count: { select: { appointments: true, visitNotes: true, documents: true } },
+    },
+  } as never)) as { _count?: Record<string, number | undefined> } | null;
+  if (!row) return true;
+  return Object.values(row._count ?? {}).some((n) => (n ?? 0) > 0);
+}
+
 /** Bot reply key (server/telegram/messages.ts) for each outcome. */
 export function contactReplyKey(result: ContactVerifyResult): string {
   switch (result.kind) {
@@ -304,10 +334,12 @@ export function contactReplyKey(result: ContactVerifyResult): string {
       return "contact.verified";
     case "linked":
       return "contact.linked";
+    // One neutral answer whatever the reason: telling the sender that the
+    // name differs, or that the card is bound elsewhere, reveals who the
+    // number belongs to.
     case "conflict":
-      return "contact.conflict";
     case "unconfirmed":
-      return "contact.nameMismatch";
+      return "contact.pending";
     case "kept-existing":
       return "contact.keptExisting";
     case "not-own-contact":

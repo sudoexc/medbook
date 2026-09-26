@@ -317,8 +317,8 @@ describe("applyVerifiedContact", () => {
 
   it("MA-04: the number belongs to the clinic's card and the account goes by its name → the account moves there and the empty auto card is retired", async () => {
     card({ id: "auto", telegramId: "111", fullName: "Dilnoza Karimova" });
+    // A card reception created (no visits yet): number + name are enough.
     clinicCard();
-    appt("visit_old", "clinic", "COMPLETED");
     const r = await share(111, 111, undefined, DILNOZA);
     expect(r).toEqual({ kind: "linked", patientId: "clinic", retiredPatientId: "auto" });
     expect(byId("clinic")).toMatchObject({
@@ -334,6 +334,26 @@ describe("applyVerifiedContact", () => {
     // Never two cards on one account.
     expect(state.cards.filter((c) => c.telegramId === "111")).toHaveLength(1);
     expect(state.conflicts).toHaveLength(0);
+  });
+
+  it("final review: a clinic card that already holds visits is NOT linked on a contact + name match; reception confirms", async () => {
+    // The name is whatever the sender typed into Telegram or the Mini App:
+    // a family member holding the SIM can type the right one.
+    card({ id: "auto", telegramId: "111", fullName: "Dilnoza Karimova" });
+    clinicCard();
+    appt("visit_old", "clinic", "COMPLETED");
+    const r = await share(111, 111, undefined, DILNOZA);
+    expect(r).toEqual({ kind: "unconfirmed", patientId: "auto", clinicCardId: "clinic" });
+    expect(byId("clinic").telegramId).toBeNull();
+    expect(byId("auto").telegramId).toBe("111");
+    expect(state.conflicts).toEqual([
+      expect.objectContaining({ clinicCard: expect.objectContaining({ id: "clinic" }), via: "contactConfirm" }),
+    ]);
+  });
+
+  it("final review: every not-linked outcome gets the same neutral reply", () => {
+    expect(contactReplyKey({ kind: "unconfirmed", patientId: "a", clinicCardId: "b" })).toBe("contact.pending");
+    expect(contactReplyKey({ kind: "conflict", patientId: "a", clinicCardId: "b" })).toBe("contact.pending");
   });
 
   it("review: the son's own number on his mother's card does NOT move his Telegram onto her card", async () => {
@@ -358,7 +378,7 @@ describe("applyVerifiedContact", () => {
         via: "contactName",
       }),
     ]);
-    expect(contactReplyKey(r)).toBe("contact.nameMismatch");
+    expect(contactReplyKey(r)).toBe("contact.pending");
   });
 
   it("an account with no card here is not bound to a clinic card of another name either", async () => {

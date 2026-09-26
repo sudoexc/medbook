@@ -1,13 +1,35 @@
 import QRCode from "qrcode";
+import { createTranslator } from "next-intl";
 
 import { prisma } from "@/lib/prisma";
 import { runUnscoped } from "@/lib/tenant-context";
 import { SITE_DOMAIN } from "@/lib/constants";
-import { initials } from "@/lib/format";
+import {
+  formatClinicDateTime,
+  formatDate,
+  formatPhone,
+  initials,
+  type Locale,
+} from "@/lib/format";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { isLiveLane } from "@/lib/queue-ordering";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
+import ru from "@/messages/ru.json";
+import uz from "@/messages/uz.json";
 import { AutoPrint } from "./_components/auto-print";
+
+/**
+ * This route lives outside the [locale] segment (the kiosk and the front
+ * desk open the bare /ticket/<id>), so no next-intl provider reaches it: the
+ * stub builds its own translator in the patient's language.
+ */
+function ticketTranslator(locale: Locale) {
+  return createTranslator({
+    locale,
+    messages: locale === "uz" ? uz : ru,
+    namespace: "ticketStub",
+  });
+}
 
 export default async function TicketPage({
   params,
@@ -35,29 +57,63 @@ export default async function TicketPage({
           time: true,
           channel: true,
           doctorId: true,
-          patient: { select: { fullName: true } },
+          patient: { select: { fullName: true, preferredLang: true } },
           doctor: {
             select: {
               id: true,
               nameRu: true,
+              nameUz: true,
+              ticketPrefix: true,
               cabinet: { select: { number: true } },
             },
           },
-          primaryService: { select: { nameRu: true } },
+          primaryService: { select: { nameRu: true, nameUz: true } },
+          // Header and footer come from the clinic's own settings (audit
+          // Q-11): the stub used to print «NEUROFAX-B» and a phone number
+          // that matched no clinic, for every clinic on the platform.
+          clinic: {
+            select: {
+              nameRu: true,
+              nameUz: true,
+              phone: true,
+              addressRu: true,
+              addressUz: true,
+            },
+          },
         },
       }),
   );
 
   if (!appointment) {
-    return <p style={{ padding: 40, textAlign: "center" }}>Талон не найден</p>;
+    return (
+      <p style={{ padding: 40, textAlign: "center" }}>
+        {ticketTranslator("ru")("notFound")}
+      </p>
+    );
   }
+
+  const locale: Locale = appointment.patient.preferredLang === "UZ" ? "uz" : "ru";
+  const t = ticketTranslator(locale);
+  const pick = (ruText: string | null, uzText: string | null) =>
+    (locale === "uz" ? uzText?.trim() || ruText : ruText?.trim() || uzText) ?? "";
+  const clinicName = pick(appointment.clinic.nameRu, appointment.clinic.nameUz);
+  const clinicAddress = pick(
+    appointment.clinic.addressRu,
+    appointment.clinic.addressUz,
+  );
+  const clinicPhone = formatPhone(appointment.clinic.phone);
+  const doctorName = pick(appointment.doctor.nameRu, appointment.doctor.nameUz);
+  const serviceName = appointment.primaryService
+    ? pick(appointment.primaryService.nameRu, appointment.primaryService.nameUz)
+    : "";
+  const cabinet = appointment.doctor.cabinet?.number ?? null;
 
   // Nullable under two-lanes: a booking printed before check-in has no queue
   // fields — the stub leads with its slot time instead of a fake "C-000".
   // ticketSeq is the printed number; queueOrder moves with drag-reorders and
   // with cancellations, so reprinting from it could show someone else's ticket.
   const ticketNumber = ticketNumberFor(
-    appointment.doctor.id,
+    appointment.doctor,
     appointment.ticketSeq ?? appointment.queueOrder,
   );
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
@@ -66,8 +122,10 @@ export default async function TicketPage({
   // no third-party `api.qrserver.com` round-trip, which both leaks the queue
   // URL and is unreliable from a VPS behind SNI/DPI filtering.
   const qrUrl = await QRCode.toDataURL(statusUrl, { width: 200, margin: 1 });
-  const dateStr = appointment.date.toLocaleDateString("ru-RU");
-  const timeStr = appointment.date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  // Clinic wall-clock (audit Q-11): this is a server component and the server
+  // runs UTC, so the bare toLocale*String printed a 09:15 walk-in as 04:15.
+  const issuedAt = formatClinicDateTime(appointment.date, locale);
+  const timeStr = formatDate(appointment.date, locale, "time");
 
   // Two-lanes (docs/TZ-two-lanes.md): only a walk-in has a queue position.
   // A booking's stub shows its slot time instead of «перед вами». Position
@@ -117,13 +175,15 @@ export default async function TicketPage({
 
       {/* Header */}
       <div style={{ textAlign: "center", borderBottom: "1px dashed #000", paddingBottom: "3mm", marginBottom: "3mm" }}>
-        <div style={{ fontSize: "16px", fontWeight: "bold", letterSpacing: "1px" }}>NEUROFAX-B</div>
-        <div style={{ fontSize: "9px", color: "#666", marginTop: "1mm" }}>Неврологический центр</div>
+        <div style={{ fontSize: "16px", fontWeight: "bold", letterSpacing: "1px" }}>{clinicName}</div>
+        {clinicAddress ? (
+          <div style={{ fontSize: "9px", color: "#666", marginTop: "1mm" }}>{clinicAddress}</div>
+        ) : null}
       </div>
 
       {/* Ticket number — BIG */}
       <div style={{ textAlign: "center", margin: "4mm 0" }}>
-        <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase", letterSpacing: "2px" }}>{ticketNumber ? "Ваш номер" : "Ваше время"}</div>
+        <div style={{ fontSize: "10px", color: "#666", textTransform: "uppercase", letterSpacing: "2px" }}>{ticketNumber ? t("yourNumber") : t("yourTime")}</div>
         <div style={{ fontSize: "48px", fontWeight: "bold", lineHeight: "1.1", letterSpacing: "2px" }}>{ticketNumber ?? appointment.time ?? timeStr}</div>
       </div>
 
@@ -134,35 +194,37 @@ export default async function TicketPage({
       <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
         <tbody>
           <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>Пациент:</td>
+            <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("patient")}</td>
             <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{initials(appointment.patient.fullName)}</td>
           </tr>
           <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>Врач:</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{appointment.doctor.nameRu}</td>
+            <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("doctor")}</td>
+            <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{doctorName}</td>
           </tr>
-          <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>Кабинет:</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>{appointment.doctor.cabinet?.number ?? "—"}</td>
-          </tr>
-          {appointment.primaryService && (
+          {cabinet ? (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>Услуга:</td>
-              <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{appointment.primaryService.nameRu}</td>
+              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("cabinet")}</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold", fontSize: "14px" }}>{cabinet}</td>
             </tr>
-          )}
+          ) : null}
+          {serviceName ? (
+            <tr>
+              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("service")}</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{serviceName}</td>
+            </tr>
+          ) : null}
           <tr>
-            <td style={{ padding: "1.5mm 0", color: "#666" }}>Дата:</td>
-            <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{dateStr} {timeStr}</td>
+            <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("date")}</td>
+            <td style={{ padding: "1.5mm 0", textAlign: "right" }}>{issuedAt}</td>
           </tr>
           {waitingAhead !== null ? (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>Перед вами:</td>
-              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{waitingAhead} чел.</td>
+              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("ahead")}</td>
+              <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{t("aheadCount", { count: waitingAhead })}</td>
             </tr>
           ) : (
             <tr>
-              <td style={{ padding: "1.5mm 0", color: "#666" }}>Приём по записи:</td>
+              <td style={{ padding: "1.5mm 0", color: "#666" }}>{t("booked")}</td>
               <td style={{ padding: "1.5mm 0", textAlign: "right", fontWeight: "bold" }}>{appointment.time ?? timeStr}</td>
             </tr>
           )}
@@ -182,14 +244,16 @@ export default async function TicketPage({
           style={{ display: "inline-block" }}
         />
         <div style={{ fontSize: "8px", color: "#999", marginTop: "1.5mm" }}>
-          Отсканируйте для отслеживания очереди
+          {t("scan")}
         </div>
       </div>
 
       {/* Footer */}
       <div style={{ textAlign: "center", borderTop: "1px dashed #000", paddingTop: "3mm", marginTop: "3mm" }}>
-        <div style={{ fontSize: "9px", color: "#666" }}>Спасибо за визит!</div>
-        <div style={{ fontSize: "8px", color: "#999", marginTop: "1mm" }}>+998 71 200 00 07 | neurofax.uz</div>
+        <div style={{ fontSize: "9px", color: "#666" }}>{t("thanks")}</div>
+        {clinicPhone ? (
+          <div style={{ fontSize: "8px", color: "#999", marginTop: "1mm" }}>{clinicPhone}</div>
+        ) : null}
       </div>
 
       <AutoPrint />

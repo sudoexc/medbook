@@ -24,6 +24,10 @@ import { ok, err, notFound, forbidden, diff } from "@/server/http";
 import { UpdateDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
 import {
+  isTicketPrefixConflict,
+  takenTicketPrefixes,
+} from "@/server/doctors/ticket-prefix";
+import {
   countDoctorDeleteBlockers,
   countStrandedAppointments,
   findServicesOrphanedByDeactivating,
@@ -79,6 +83,25 @@ export const PATCH = createApiHandler(
       delete data.userId;
       delete data.salaryPercent;
       delete data.pricePerVisit;
+      delete data.ticketPrefix;
+    }
+
+    // Ticket letter (audit Q-12): unique within the clinic. The unique index
+    // is the real guard; this pre-check answers with the doctor who holds the
+    // letter instead of a bare conflict.
+    if (
+      typeof data.ticketPrefix === "string" &&
+      data.ticketPrefix !== before.ticketPrefix
+    ) {
+      const holder = (
+        await takenTicketPrefixes(prisma, before.clinicId)
+      ).find((t) => t.ticketPrefix === data.ticketPrefix && t.id !== id);
+      if (holder) {
+        return err("conflict", 409, {
+          reason: "ticket_prefix_taken",
+          doctorId: holder.id,
+        });
+      }
     }
 
     // Resolve branch only when caller passed it.
@@ -190,6 +213,9 @@ export const PATCH = createApiHandler(
       const msg = (e as Error).message || "";
       if (msg.includes("Unique") && msg.includes("cabinetId")) {
         return err("CabinetTaken", 409, { reason: "cabinet_taken" });
+      }
+      if (isTicketPrefixConflict(e)) {
+        return err("conflict", 409, { reason: "ticket_prefix_taken" });
       }
       if (msg.includes("Unique")) {
         return err("conflict", 409, { reason: "slug_taken" });

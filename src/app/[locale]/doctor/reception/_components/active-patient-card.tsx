@@ -165,7 +165,7 @@ export function ActivePatientCard() {
             Pure derivation, same formula as every queue surface. */}
         {(() => {
           const ticket = ticketNumberFor(
-            activeAppointment.doctor.id,
+            activeAppointment.doctor,
             activeAppointment.ticketSeq ?? activeAppointment.queueOrder,
           );
           return ticket ? (

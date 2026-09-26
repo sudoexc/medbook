@@ -18,6 +18,7 @@
  *     The caller resolves which guide-language blocks to pass (Uz with Ru
  *     fallback), so the composer stays ignorant of the guide schema.
  */
+import { tashkentPartsOf } from "@/lib/tashkent-time";
 
 export type HandoutLocale = "ru" | "uz";
 
@@ -82,10 +83,14 @@ const UZ_MONTHS = [
 ];
 
 function formatDate(d: Date, locale: HandoutLocale): string {
+  // The clinic's calendar day (audit CD-03): the handout is composed on the
+  // server, which runs UTC, so `getDate()` put a visit or a follow-up that
+  // falls between 00:00 and 05:00 Tashkent time on the previous day.
+  const [year, month, day] = tashkentPartsOf(d).date.split("-").map(Number);
   if (locale === "uz") {
-    return `${d.getFullYear()}-yil ${d.getDate()}-${UZ_MONTHS[d.getMonth()]}`;
+    return `${year}-yil ${day}-${UZ_MONTHS[month - 1]}`;
   }
-  return `${d.getDate()} ${RU_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${day} ${RU_MONTHS[month - 1]} ${year}`;
 }
 
 const STRINGS = {

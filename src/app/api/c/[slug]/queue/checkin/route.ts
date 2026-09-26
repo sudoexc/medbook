@@ -77,6 +77,7 @@ export async function POST(request: Request) {
             nameRu: true,
             nameUz: true,
             color: true,
+            ticketPrefix: true,
             cabinet: { select: { number: true } },
           },
         },
@@ -168,7 +169,7 @@ export async function POST(request: Request) {
     return ok({
       appointmentId: appt.id,
       ticketCode: appt.ticketCode,
-      ticketNumber: ticketNumberFor(appt.doctorId, ticketSeq ?? queueOrder),
+      ticketNumber: ticketNumberFor(appt.doctor, ticketSeq ?? queueOrder),
       queueOrder,
       patient: {
         id: appt.patient.id,

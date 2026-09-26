@@ -42,6 +42,7 @@ type DoctorRow = {
   pricePerVisit: number | null;
   cabinetId: string | null;
   cabinet: { number: string } | null;
+  ticketPrefix: string | null;
 };
 
 type PatientRow = {
@@ -191,6 +192,7 @@ vi.mock("@/lib/prisma", () => ({
             pricePerVisit: d.pricePerVisit,
             cabinetId: d.cabinetId,
             cabinet: d.cabinet ? { number: d.cabinet.number } : null,
+            ticketPrefix: d.ticketPrefix,
           };
         },
       ),
@@ -351,6 +353,7 @@ function seedDoctor(overrides: Partial<DoctorRow> = {}): DoctorRow {
     pricePerVisit: 150000,
     cabinetId: "cab_1",
     cabinet: { number: "12" },
+    ticketPrefix: "A",
     ...overrides,
   };
   state.doctors.set(d.id, d);
@@ -425,8 +428,9 @@ describe("registerWalkin — existing patient happy path (W1)", () => {
     expect(result.appointmentId).toBe("apt_1");
     expect(result.queueOrder).toBe(1);
     expect(result.ticketCode).toBe(TICKET_CODE);
-    expect(result.ticketNumber).toBe("D-001"); // doc_alpha → prefix "D"
-    expect(result.ticketNumber).toBe(ticketNumberFor("doc_alpha", 1));
+    // The doctor's stored letter (Q-12), never a character of the id.
+    expect(result.ticketNumber).toBe("A-001");
+    expect(result.ticketNumber).toBe(ticketNumberFor({ ticketPrefix: "A" }, 1));
     expect(result.patient).toEqual({ id: "pat_existing", fullName: "Анна Сидорова" });
     expect(result.doctor).toEqual({
       id: "doc_alpha",
@@ -555,16 +559,16 @@ describe("registerWalkin — queueOrder allocation (real allocateQueueOrder) (W3
     if (!r1.ok || !r2.ok || !r3.ok) return;
     expect([r1.queueOrder, r2.queueOrder, r3.queueOrder]).toEqual([1, 2, 3]);
     expect([r1.ticketNumber, r2.ticketNumber, r3.ticketNumber]).toEqual([
-      "D-001",
-      "D-002",
-      "D-003",
+      "A-001",
+      "A-002",
+      "A-003",
     ]);
     expect(state.appointments.map((a) => a.ticketSeq)).toEqual([1, 2, 3]);
   });
 
   it("a different doctor gets an independent counter starting at 1", async () => {
     seedDoctor({ id: "doc_alpha" });
-    seedDoctor({ id: "beta_doc", cabinet: { number: "7" } });
+    seedDoctor({ id: "beta_doc", cabinet: { number: "7" }, ticketPrefix: "B" });
     seedPatient({ id: "p1" });
     seedPatient({ id: "p2" });
     const registerWalkin = await loadRegisterWalkin();
@@ -575,8 +579,45 @@ describe("registerWalkin — queueOrder allocation (real allocateQueueOrder) (W3
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
     expect(r2.queueOrder).toBe(1);
-    expect(r2.ticketNumber).toBe("B-001"); // beta_doc → prefix "B"
+    expect(r2.ticketNumber).toBe("B-001");
     expect(r2.cabinet).toBe("7");
+  });
+
+  it("two doctors whose ids both start with «c» still print different tickets (Q-12)", async () => {
+    // cuid ids all start with "c": the old id-derived letter made both
+    // neurologists hand out C-001 at the same time.
+    seedDoctor({ id: "cmf1aaaa", ticketPrefix: "A" });
+    seedDoctor({ id: "cmf2bbbb", ticketPrefix: "B", cabinet: { number: "7" } });
+    seedPatient({ id: "p1" });
+    seedPatient({ id: "p2" });
+    const registerWalkin = await loadRegisterWalkin();
+
+    const r1 = await registerWalkin({ clinicId: "c1", doctorId: "cmf1aaaa", patient: { id: "p1" } });
+    const r2 = await registerWalkin({ clinicId: "c1", doctorId: "cmf2bbbb", patient: { id: "p2" } });
+
+    if (!r1.ok || !r2.ok) throw new Error("walk-in refused");
+    expect(r1.ticketNumber).toBe("A-001");
+    expect(r2.ticketNumber).toBe("B-001");
+  });
+
+  it("the «already queued» answer names the slip with the same letter (Q-12)", async () => {
+    seedDoctor({ ticketPrefix: "K" });
+    seedPatient({ id: "p1" });
+    const { prisma } = await import("@/lib/prisma");
+    vi.mocked(prisma.appointment.findFirst).mockResolvedValueOnce({
+      id: "apt_existing",
+      queueOrder: 4,
+      ticketSeq: 4,
+      ticketCode: "EXIST1",
+    } as never);
+    const registerWalkin = await loadRegisterWalkin();
+
+    const r = await registerWalkin({ clinicId: "c1", doctorId: "doc_alpha", patient: { id: "p1" } });
+
+    if (!r.ok) throw new Error("walk-in refused");
+    expect(r.duplicate).toBe(true);
+    expect(r.ticketNumber).toBe("K-004");
+    expect(r.ticketNumber).toBe(ticketNumberFor({ ticketPrefix: "K" }, 4));
   });
 });
 

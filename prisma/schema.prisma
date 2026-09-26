@@ -886,6 +886,12 @@ model Doctor {
   // clinic. Minted on create, backfilled for existing rows by migration.
   tvToken String? @unique
 
+  // Letter printed in front of this doctor's queue tickets («A-005»), one or
+  // two Latin capitals, unique within the clinic (audit Q-12). Assigned on
+  // create, editable by the admin; existing rows get theirs from
+  // scripts/fix-q12-ticket-prefixes.ts. Null prints the bare number.
+  ticketPrefix String?
+
   services            ServiceOnDoctor[]
   schedules           DoctorSchedule[]
   timeOffs            DoctorTimeOff[]
@@ -900,6 +906,7 @@ model Doctor {
   presets             DoctorPreset[]
 
   @@unique([clinicId, slug])
+  @@unique([clinicId, ticketPrefix])
   @@index([clinicId, isActive])
   @@index([clinicId, specializationRu])
   @@index([clinicId, branchId])

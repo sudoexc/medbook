@@ -179,6 +179,7 @@ export const PATCH = createApiHandler(
       doctor: {
         select: {
           nameRu: true,
+          ticketPrefix: true,
           cabinet: { select: { number: true } },
         },
       },
@@ -198,7 +199,11 @@ export const PATCH = createApiHandler(
         telegramId: string | null;
         preferredLang: "RU" | "UZ";
       };
-      doctor?: { nameRu: string; cabinet: { number: string } | null };
+      doctor?: {
+        nameRu: string;
+        ticketPrefix: string | null;
+        cabinet: { number: string } | null;
+      };
       clinic?: {
         id: string;
         slug: string;
@@ -304,7 +309,7 @@ export const PATCH = createApiHandler(
             queueOrder: after.queueOrder,
             // Null for a booking started without check-in — no fake "X-000".
             ticketNumber: ticketNumberFor(
-              after.doctorId,
+              { ticketPrefix: after.doctor?.ticketPrefix ?? null },
               after.ticketSeq ?? after.queueOrder,
             ),
             patientName: initials(after.patient?.fullName) || undefined,

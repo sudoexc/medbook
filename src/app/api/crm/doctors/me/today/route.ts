@@ -180,7 +180,7 @@ export const GET = createApiListHandler(
 
     const doctor = await prisma.doctor.findFirst({
       where: { userId: ctx.userId },
-      select: { id: true },
+      select: { id: true, ticketPrefix: true },
     });
     if (!doctor) {
       return err("DoctorProfileMissing", 403, { reason: "no_doctor_row" });
@@ -333,7 +333,7 @@ export const GET = createApiListHandler(
               : [],
         },
         ticketNumber: ticketNumberFor(
-          doctor.id,
+          doctor,
           currentSource.ticketSeq ?? currentSource.queueOrder,
         ),
       };
@@ -377,7 +377,7 @@ export const GET = createApiListHandler(
       .map((a) => ({
         appointmentId: a.id,
         patientFullName: a.patient?.fullName ?? "",
-        ticketNumber: ticketNumberFor(doctor.id, a.ticketSeq ?? a.queueOrder),
+        ticketNumber: ticketNumberFor(doctor, a.ticketSeq ?? a.queueOrder),
         completedAt: a.completedAt ? a.completedAt.toISOString() : null,
       }));
 

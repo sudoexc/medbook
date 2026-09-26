@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
+import {
+  parseQueueCalledPayload,
+  type QueueCallFields,
+} from "@/lib/queue-call";
+
 /**
  * Public waiting-room board hook for the TV (`/tv`) and lobby surfaces.
  *
@@ -11,8 +16,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
  *
  * The SSE stream carries no PHI — it's a signal channel. On any board-mutating
  * event we debounce-refetch the snapshot; on `queue.called` we also surface a
- * `call` object so the TV can chime + announce. A slow poll stays as a safety
- * net in case the stream drops or a poke is missed.
+ * `call` object so the TV can chime + announce. The call carries the called
+ * patient's initials from the event itself (audit Q-10): the snapshot lags
+ * the event, see `resolveCallDisplay`. A slow poll stays as a safety net in
+ * case the stream drops or a poke is missed.
  */
 
 export interface BoardWaiting {
@@ -24,6 +31,8 @@ export interface BoardWaiting {
 }
 
 export interface BoardCurrent {
+  /** Appointment id: lets a call fall back to the right snapshot row. */
+  id: string;
   fullName: string;
   /** Null for a booking started without check-in (no queue fields). */
   ticketNumber: string | null;
@@ -57,13 +66,7 @@ export interface BoardData {
   doctors: BoardDoctor[];
 }
 
-export interface QueueCall {
-  appointmentId: string;
-  doctorId: string;
-  ticketNumber: string | null;
-  cabinetNumber: string | null;
-  calledAt: string | null;
-  queueOrder: number | null;
+export interface QueueCall extends QueueCallFields {
   /** Bumped on every call so consumers can react even to a re-call. */
   seq: number;
 }
@@ -140,15 +143,9 @@ export function useQueueBoard(slug: string) {
       const type = parsed?.type;
       if (!type || !BOARD_REFETCH_EVENTS.has(type)) return;
       if (type === "queue.called") {
-        const p = parsed.payload ?? {};
         callSeq.current += 1;
         setCall({
-          appointmentId: String(p.appointmentId ?? ""),
-          doctorId: String(p.doctorId ?? ""),
-          ticketNumber: (p.ticketNumber as string) ?? null,
-          cabinetNumber: (p.cabinetNumber as string) ?? null,
-          calledAt: (p.calledAt as string) ?? null,
-          queueOrder: typeof p.queueOrder === "number" ? p.queueOrder : null,
+          ...parseQueueCalledPayload(parsed.payload),
           seq: callSeq.current,
         });
       }

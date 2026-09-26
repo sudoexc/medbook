@@ -104,7 +104,12 @@ export async function GET(request: Request) {
         ticketSeq: true,
         queueStatus: true,
         doctor: {
-          select: { id: true, nameRu: true, cabinet: { select: { number: true } } },
+          select: {
+            id: true,
+            nameRu: true,
+            ticketPrefix: true,
+            cabinet: { select: { number: true } },
+          },
         },
       },
       orderBy: { date: "asc" },
@@ -139,10 +144,7 @@ export async function GET(request: Request) {
       time: formatTime(a.date),
       queueOrder: a.queueOrder,
       queueStatus: a.queueStatus,
-      ticketNumber:
-        (a.ticketSeq ?? a.queueOrder) != null
-          ? ticketNumberFor(a.doctor.id, a.ticketSeq ?? a.queueOrder)
-          : null,
+      ticketNumber: ticketNumberFor(a.doctor, a.ticketSeq ?? a.queueOrder),
     })),
     upcoming: upcoming.map((a) => {
       const c = tashkentComponents(a.date);

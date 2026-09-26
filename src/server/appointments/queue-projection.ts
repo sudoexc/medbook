@@ -20,7 +20,8 @@
  *   - ETA:       perVisitMin * (idx + (current ? 1 : 0))   — minutes until seen
  *   - perVisit:  doctor-wide historical median (predictPerVisitMinutes),
  *                falling back per doctor to the next-waiting booked duration
- *   - ticket:    ticketNumberFor(doctorId, ticketSeq ?? queueOrder)
+ *   - ticket:    ticketNumberFor(doctor, ticketSeq ?? queueOrder), with the
+ *                doctor's stored ticket letter (audit Q-12)
  *                (ticketSeq is immutable, so reorders never churn ticket codes;
  *                null for `current` when a booking was started without
  *                check-in — waiting rows are live-lane and always own a seq)
@@ -94,6 +95,7 @@ export async function getQueueProjection(opts: {
       startedAt: true,
       durationMin: true,
       patient: { select: { fullName: true } },
+      doctor: { select: { ticketPrefix: true } },
     },
   });
 
@@ -147,7 +149,7 @@ export async function getQueueProjection(opts: {
             queueOrder: inProgress.queueOrder,
             ticketSeq: inProgress.ticketSeq,
             ticketNumber: ticketNumberFor(
-              id,
+              inProgress.doctor,
               inProgress.ticketSeq ?? inProgress.queueOrder,
             ),
             startedAt: inProgress.startedAt,
@@ -160,7 +162,7 @@ export async function getQueueProjection(opts: {
         ticketSeq: w.ticketSeq,
         // Live-lane WAITING rows are minted with ticketSeq at creation
         // (registerWalkin), so the ticket is always printable here.
-        ticketNumber: ticketNumberFor(id, w.ticketSeq ?? w.queueOrder)!,
+        ticketNumber: ticketNumberFor(w.doctor, w.ticketSeq ?? w.queueOrder)!,
         durationMin: w.durationMin,
         position: idx + 1,
         etaMinutes: perVisitMin * (idx + (hasCurrent ? 1 : 0)),

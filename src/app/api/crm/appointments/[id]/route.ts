@@ -446,6 +446,7 @@ export const PATCH = createApiHandler(
               doctor: {
                 select: {
                   nameRu: true,
+                  ticketPrefix: true,
                   cabinet: { select: { number: true } },
                 },
               },
@@ -495,7 +496,7 @@ export const PATCH = createApiHandler(
           queueOrder: updatedRow.queueOrder,
           // Null for a booking started without check-in — no fake "X-000".
           ticketNumber: ticketNumberFor(
-            updatedRow.doctorId,
+            updatedRow.doctor,
             updatedRow.ticketSeq ?? updatedRow.queueOrder,
           ),
           // Initials only — same PHI-safe reduction the board route serves.

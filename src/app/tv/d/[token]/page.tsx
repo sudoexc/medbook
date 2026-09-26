@@ -24,6 +24,7 @@ import {
   useDoctorBoard,
   type DoctorBoardSlot,
 } from "@/hooks/use-doctor-board";
+import { resolveCallDisplay } from "@/lib/queue-call";
 import {
   CallTakeover,
   announce,
@@ -114,14 +115,19 @@ export default function DoctorTVPage() {
   }, []);
 
   // Side effects of a fresh `queue.called` for THIS doctor: chime + voice.
+  // The name comes from the event, not from `current` of the snapshot: at
+  // this instant the snapshot may still hold the patient who just left
+  // (audit Q-10, see resolveCallDisplay).
   useEffect(() => {
     if (!call || call.seq === lastCallSeq.current) return;
     lastCallSeq.current = call.seq;
-    const cabinet = call.cabinetNumber ?? data?.doctor.cabinet ?? "";
-    const ticketNumber =
-      call.ticketNumber ?? data?.queue.current?.ticketNumber ?? "";
+    const shown = resolveCallDisplay(
+      call,
+      [data?.queue.current, ...(data?.queue.waiting ?? [])],
+      data?.doctor.cabinet,
+    );
     playChime();
-    announce(data?.queue.current?.fullName ?? "", cabinet, ticketNumber);
+    announce(shown.patientName, shown.cabinet, shown.ticketNumber);
   }, [call, data]);
 
   // Auto-dismiss the call board after OVERLAY_MS (async setState — allowed).
@@ -133,12 +139,11 @@ export default function DoctorTVPage() {
 
   const overlay: Overlay | null =
     call && call.seq !== dismissedSeq
-      ? {
-          ticketNumber:
-            call.ticketNumber ?? data?.queue.current?.ticketNumber ?? "",
-          cabinet: call.cabinetNumber ?? data?.doctor.cabinet ?? "",
-          patientName: data?.queue.current?.fullName ?? "",
-        }
+      ? resolveCallDisplay(
+          call,
+          [data?.queue.current, ...(data?.queue.waiting ?? [])],
+          data?.doctor.cabinet,
+        )
       : null;
 
   const accent = data?.doctor.color || "#2353FF";

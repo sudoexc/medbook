@@ -8,6 +8,7 @@ import {
   DoorOpenIcon,
   StarIcon,
   StethoscopeIcon,
+  TicketIcon,
   Trash2Icon,
   UserCheckIcon,
   UserMinusIcon,
@@ -22,6 +23,7 @@ import { useCurrentRole } from "@/app/[locale]/crm/patients/[id]/_hooks/use-curr
 
 import { usePatchDoctor, type DoctorDetail } from "../_hooks/use-doctor";
 import { CabinetPickerDialog } from "./cabinet-picker-dialog";
+import { TicketPrefixDialog } from "./ticket-prefix-dialog";
 
 function parseRating(r: DoctorDetail["rating"]): number | null {
   if (r === null || r === undefined) return null;
@@ -48,6 +50,7 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
         null
       : null;
   const [cabinetOpen, setCabinetOpen] = React.useState(false);
+  const [prefixOpen, setPrefixOpen] = React.useState(false);
   const patch = usePatchDoctor(doctor.id);
 
   return (
@@ -87,6 +90,16 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
                 {cabinetName ? <span>· {cabinetName}</span> : null}
               </span>
             ) : null}
+            {/* The letter on this doctor's queue tickets (Q-12): reception
+                and the board tell the doctors' tickets apart by it. */}
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+              <TicketIcon className="size-3.5" />
+              <span className="font-medium text-foreground">
+                {doctor.ticketPrefix
+                  ? t("profile.ticketPrefixLabel", { prefix: doctor.ticketPrefix })
+                  : t("profile.ticketPrefixUnset")}
+              </span>
+            </span>
           </div>
           <div
             className={cn(
@@ -135,6 +148,14 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
                 {t("profile.cabinetChange")}
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPrefixOpen(true)}
+              >
+                <TicketIcon className="size-4" />
+                {t("profile.ticketPrefixChange")}
+              </Button>
+              <Button
                 variant={doctor.isActive ? "outline" : "default"}
                 size="sm"
                 disabled={patch.isPending}
@@ -177,12 +198,20 @@ export function DoctorHeader({ doctor, onNewAppointment }: DoctorHeaderProps) {
         </div>
       </div>
       {role === "ADMIN" || role === "SUPER_ADMIN" ? (
-        <CabinetPickerDialog
-          open={cabinetOpen}
-          onOpenChange={setCabinetOpen}
-          doctorId={doctor.id}
-          currentCabinetId={doctor.cabinetId}
-        />
+        <>
+          <CabinetPickerDialog
+            open={cabinetOpen}
+            onOpenChange={setCabinetOpen}
+            doctorId={doctor.id}
+            currentCabinetId={doctor.cabinetId}
+          />
+          <TicketPrefixDialog
+            open={prefixOpen}
+            onOpenChange={setPrefixOpen}
+            doctorId={doctor.id}
+            current={doctor.ticketPrefix}
+          />
+        </>
       ) : null}
     </section>
   );

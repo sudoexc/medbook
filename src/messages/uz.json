@@ -2605,7 +2605,16 @@
       "purgeSurnameMismatch": "Familiya mos kelmadi, o'chirish bekor qilindi",
       "purgeHasHistory": "O'chirib bo'lmaydi: shifokorda {appointments} ta qabul va {notes} ta xulosa bor. Bu tibbiy tarix, uni o'chirish mumkin emas. Shifokor faolsizlantirilgan holda qoladi.",
       "purgeFailed": "Shifokorni o'chirib bo'lmadi",
-      "purged": "Shifokor o'chirildi"
+      "purged": "Shifokor o'chirildi",
+      "ticketPrefixLabel": "Talonlar: {prefix}",
+      "ticketPrefixUnset": "Talon harfi belgilanmagan",
+      "ticketPrefixChange": "Talon harfi",
+      "ticketPrefixDialogTitle": "Shifokor talonlari harfi",
+      "ticketPrefixDialogHint": "Shifokorning jonli navbat talonlari shu harf bilan boshlanadi, masalan A-005. Tablodagi raqamlar mos kelmasligi uchun klinikadagi har bir shifokorning o‘z harfi bor.",
+      "ticketPrefixInputLabel": "Bitta yoki ikkita lotin harfi",
+      "ticketPrefixInvalid": "Bitta yoki ikkita lotin harfi kerak, masalan A yoki AB",
+      "ticketPrefixTaken": "Bu harf klinikaning boshqa shifokorida bor",
+      "ticketPrefixSaved": "Talon harfi saqlandi"
     },
     "finance": {
       "title": "Moliya",
@@ -8020,5 +8029,20 @@
     "emptyNew": "Barcha arizalar ko‘rib chiqilgan",
     "forbidden": "Arizalar registratura, call-markaz va administrator uchun ochiq.",
     "loadError": "Arizalarni yuklab bo‘lmadi"
+  },
+  "ticketStub": {
+    "notFound": "Talon topilmadi",
+    "yourNumber": "Sizning raqamingiz",
+    "yourTime": "Sizning vaqtingiz",
+    "patient": "Bemor:",
+    "doctor": "Shifokor:",
+    "cabinet": "Kabinet:",
+    "service": "Xizmat:",
+    "date": "Sana:",
+    "ahead": "Sizdan oldin:",
+    "aheadCount": "{count} kishi",
+    "booked": "Yozilgan qabul:",
+    "scan": "Navbatni kuzatish uchun skanerlang",
+    "thanks": "Tashrifingiz uchun rahmat!"
   }
 }

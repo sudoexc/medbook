@@ -130,6 +130,7 @@ vi.mock("@/lib/prisma", () => {
           },
           doctor: {
             nameRu: "Петрова А. С.",
+            ticketPrefix: "B",
             cabinet: state.cabinetNumber ? { number: state.cabinetNumber } : null,
           },
           clinic: {
@@ -268,6 +269,20 @@ describe("queue-status v1 events carry patientId", () => {
     // Public waiting-room TV signal — must not name the patient.
     expect(ev.payload.patientId).toBeUndefined();
     expect(ev.payload.patientName).not.toContain("Иванович");
+  });
+
+  it("QN5b — queue.called names the called patient and the doctor's ticket (Q-10, Q-12)", async () => {
+    const PATCH = await loadPATCH();
+    await PATCH(patchReq("appt_1", { queueStatus: "IN_PROGRESS" }));
+
+    const [ev] = published("queue.called");
+    // The TV announces these, not its (lagging) board snapshot.
+    expect(ev.payload).toMatchObject({
+      appointmentId: "appt_1",
+      patientName: "Иванов И. И.",
+      ticketNumber: "B-003",
+      cabinetNumber: "12",
+    });
   });
 });
 

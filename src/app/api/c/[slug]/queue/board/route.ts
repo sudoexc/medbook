@@ -12,7 +12,7 @@
  *     doctors: [{
  *       id, nameRu, nameUz, specializationRu, specializationUz,
  *       photoUrl, color, cabinet,
- *       current: { fullName, ticketNumber, startedAt } | null,
+ *       current: { id, fullName, ticketNumber, startedAt } | null,
  *       waiting: [{ id, fullName, ticketNumber, queueOrder, etaMinutes }],
  *     }],
  *   }
@@ -87,6 +87,9 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
       // the legacy /api/tv-queue this replaces.
       current: q?.current
         ? {
+            // Appointment id, like the waiting rows carry: the TV matches a
+            // `queue.called` to this row, never to whoever is current (Q-10).
+            id: q.current.appointmentId,
             fullName: initials(q.current.patientFullName),
             ticketNumber: q.current.ticketNumber,
             startedAt: q.current.startedAt?.toISOString() ?? null,

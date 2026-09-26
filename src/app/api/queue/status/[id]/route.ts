@@ -34,6 +34,7 @@ export async function GET(
           select: {
             id: true,
             nameRu: true,
+            ticketPrefix: true,
             cabinet: { select: { number: true } },
           },
         },
@@ -71,7 +72,7 @@ export async function GET(
           : -1;
     const etaMinutes = live ? (mine?.etaMinutes ?? 0) : null;
     const ticketNumber = ticketNumberFor(
-      appointment.doctor.id,
+      appointment.doctor,
       appointment.ticketSeq ?? appointment.queueOrder,
     );
 

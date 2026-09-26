@@ -14,7 +14,7 @@
  *               photoUrl, color, cabinet },
  *     now: ISO,
  *     queue: {                                 // left panel — live queue
- *       current: { fullName, ticketNumber, startedAt } | null,
+ *       current: { id, fullName, ticketNumber, startedAt } | null,
  *       waiting: [{ id, fullName, ticketNumber, queueOrder, etaMinutes }],
  *     },
  *     slots: [{                                // right panel — today's bookings
@@ -134,6 +134,9 @@ export async function GET(request: Request): Promise<Response> {
       queue: {
         current: q?.current
           ? {
+              // Appointment id, like the waiting rows carry: the TV matches
+              // a `queue.called` to this row, never to whoever is current.
+              id: q.current.appointmentId,
               fullName: initials(q.current.patientFullName),
               ticketNumber: q.current.ticketNumber,
             }

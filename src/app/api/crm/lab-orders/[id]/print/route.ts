@@ -15,6 +15,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { displayPhone } from "@/lib/phone";
+import { formatDate } from "@/lib/format";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import QRCode from "qrcode";
 
@@ -169,7 +170,7 @@ function renderHtml({
     timeZone: "Asia/Tashkent",
   });
   const dob = order.patient.birthDate
-    ? order.patient.birthDate.toLocaleDateString("ru-RU")
+    ? formatDate(order.patient.birthDate, "ru", "short")
     : "—";
   const age = order.patient.birthDate
     ? `${calcAge(order.patient.birthDate)} лет`

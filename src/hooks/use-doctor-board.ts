@@ -13,7 +13,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
  *     stream; events carrying a foreign `doctorId` are ignored, events with
  *     no doctor hint trigger a refetch anyway (cheap and safe).
  *   - `queue.called` for THIS doctor surfaces a `call` object so the screen
- *     can chime + announce; other doctors' calls never fire the overlay.
+ *     can chime + announce; other doctors' calls never fire the overlay. The
+ *     call carries the called patient's initials from the event itself
+ *     (audit Q-10), since the snapshot lags it (see `resolveCallDisplay`).
  */
 
 export interface DoctorBoardWaiting {
@@ -24,6 +26,8 @@ export interface DoctorBoardWaiting {
 }
 
 export interface DoctorBoardCurrent {
+  /** Appointment id: lets a call fall back to the right snapshot row. */
+  id: string;
   fullName: string;
   /** Null for a booking started without check-in (no queue fields). */
   ticketNumber: string | null;
@@ -55,9 +59,11 @@ export interface DoctorBoardData {
   slots: DoctorBoardSlot[];
 }
 
-export interface DoctorCall {
-  ticketNumber: string | null;
-  cabinetNumber: string | null;
+export interface DoctorCall
+  extends Pick<
+    QueueCallFields,
+    "appointmentId" | "ticketNumber" | "cabinetNumber" | "patientName"
+  > {
   /** Bumped on every call so consumers react even to a re-call. */
   seq: number;
 }
@@ -67,6 +73,10 @@ import {
   BOARD_REFETCH_DEBOUNCE_MS,
   BOARD_REFETCH_EVENTS,
 } from "@/hooks/use-queue-board";
+import {
+  parseQueueCalledPayload,
+  type QueueCallFields,
+} from "@/lib/queue-call";
 
 export function useDoctorBoard(token: string) {
   const [data, setData] = useState<DoctorBoardData | null>(null);
@@ -145,10 +155,13 @@ export function useDoctorBoard(token: string) {
       // Foreign doctor's signal — not ours, skip entirely.
       if (evDoctorId && evDoctorId !== doctorIdRef.current) return;
       if (type === "queue.called" && evDoctorId === doctorIdRef.current) {
+        const c = parseQueueCalledPayload(p);
         callSeq.current += 1;
         setCall({
-          ticketNumber: (p.ticketNumber as string) ?? null,
-          cabinetNumber: (p.cabinetNumber as string) ?? null,
+          appointmentId: c.appointmentId,
+          ticketNumber: c.ticketNumber,
+          cabinetNumber: c.cabinetNumber,
+          patientName: c.patientName,
           seq: callSeq.current,
         });
       }

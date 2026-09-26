@@ -219,6 +219,7 @@ export async function registerWalkin(
       color: true,
       pricePerVisit: true,
       cabinetId: true,
+      ticketPrefix: true,
       cabinet: { select: { number: true } },
     },
   });
@@ -365,8 +366,10 @@ export async function registerWalkin(
     ticketCode: issuedCode ?? ticketCode,
     // The printed number comes from ticketSeq, never queueOrder: the two part
     // ways once a cancelled ticket is skipped. Non-null for a fresh walk-in
-    // (just allocated); a duplicate falls back to its order.
-    ticketNumber: ticketNumberFor(doctor.id, ticketSeq ?? queueOrder)!,
+    // (just allocated); a duplicate falls back to its order. Same function
+    // and the same doctor letter as the board and the paper stub (Q-12), so
+    // «уже в очереди: A-004» names the slip the patient actually holds.
+    ticketNumber: ticketNumberFor(doctor, ticketSeq ?? queueOrder)!,
     queueOrder,
     patient: { id: patient.id, fullName: patient.fullName },
     doctor: {

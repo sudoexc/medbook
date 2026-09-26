@@ -100,7 +100,15 @@ export const GET = createApiListHandler(
           select: { id: true, fullName: true, phone: true, photoUrl: true },
         },
         doctor: {
-          select: { id: true, nameRu: true, nameUz: true, photoUrl: true, color: true },
+          select: {
+            id: true,
+            nameRu: true,
+            nameUz: true,
+            photoUrl: true,
+            color: true,
+            // The doctor's reception card prints the ticket (Q-12).
+            ticketPrefix: true,
+          },
         },
         cabinet: { select: { id: true, number: true } },
         primaryService: { select: { id: true, nameRu: true, nameUz: true } },

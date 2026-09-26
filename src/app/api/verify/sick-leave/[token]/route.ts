@@ -8,6 +8,10 @@
  */
 import { prisma } from "@/lib/prisma";
 import { runUnscoped } from "@/lib/tenant-context";
+import {
+  dateOnlyKey,
+  sickLeaveInEffectOn,
+} from "@/server/clinical-forms/sick-leave-effect";
 
 export async function GET(request: Request) {
   const m = /\/verify\/sick-leave\/([^/?]+)/.exec(request.url);
@@ -37,10 +41,8 @@ export async function GET(request: Request) {
       : html(notFoundHtml(), 404);
   }
 
-  const today = new Date();
-  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const inEffect =
-    sl.status === "ISSUED" && todayUtc >= sl.periodFrom && todayUtc <= sl.periodTo;
+  // Clinic calendar day, not the server's UTC day (audit CD-03).
+  const inEffect = sickLeaveInEffectOn(sl);
 
   const payload = {
     ok: true,
@@ -51,8 +53,8 @@ export async function GET(request: Request) {
     doctor: sl.doctor.name,
     patientMasked: maskName(sl.patient.fullName),
     regimen: sl.regimen,
-    periodFrom: dateOnly(sl.periodFrom),
-    periodTo: dateOnly(sl.periodTo),
+    periodFrom: dateOnlyKey(sl.periodFrom),
+    periodTo: dateOnlyKey(sl.periodTo),
     issuedAt: sl.issuedAt.toISOString(),
     status: sl.status,
     cancelReason: sl.cancelReason,
@@ -68,10 +70,6 @@ function maskName(fullName: string): string {
   if (parts.length === 0) return "—";
   if (parts.length === 1) return parts[0][0] + ".";
   return parts.map((p, i) => (i === 0 ? p : p[0] + ".")).join(" ");
-}
-
-function dateOnly(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 function html(body: string, status = 200): Response {

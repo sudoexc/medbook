@@ -41,6 +41,8 @@ export type QueueAppointment = {
     nameUz: string | null;
     photoUrl: string | null;
     color: string | null;
+    /** Letter in front of this doctor's tickets («A-005»), see ticketNumberFor. */
+    ticketPrefix: string | null;
   };
   primaryService: { id: string; nameRu: string | null; nameUz: string | null } | null;
   cabinet: { id: string; number: string | null } | null;

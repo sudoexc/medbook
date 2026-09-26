@@ -69,6 +69,8 @@ export type DoctorDetail = {
   isActive: boolean;
   cabinetId: string;
   cabinet: DoctorCabinet | null;
+  /** Letter in front of this doctor's queue tickets («A-005»). */
+  ticketPrefix: string | null;
   createdAt: string;
   updatedAt: string;
   services: DoctorServiceLink[];
@@ -95,6 +97,7 @@ export type DoctorUpdateInput = Partial<{
   salaryPercent: number;
   isActive: boolean;
   cabinetId: string;
+  ticketPrefix: string;
   services: DoctorServicePatch[];
 }>;
 

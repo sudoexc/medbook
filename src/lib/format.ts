@@ -102,8 +102,11 @@ export type DateStyle =
   | "relative"
   | "dayMonthTime";
 
+/** Clinic wall-clock. Asia/Tashkent is a fixed UTC+5 (no DST since 1992). */
+const CLINIC_TZ = "Asia/Tashkent";
+
 /**
- * Format a date/time value.
+ * Format a date/time value in the clinic's wall-clock (Asia/Tashkent).
  *
  *   short        → "22.04.2026" (ru) / "22.04.2026" (uz)
  *   long         → "22 апреля 2026 г." (ru) / "22-aprel, 2026" (uz-ish)
@@ -111,6 +114,14 @@ export type DateStyle =
  *   relative     → "вчера в 14:00" / "kecha soat 14:00 da"
  *   dayMonthTime → "6 июня, 15:45" / "6-iyun, 15:45" — for "uploaded on"
  *                  labels where the year would just be noise.
+ *
+ * Every style pins `timeZone` (audit CD-03). Without it Intl reads the
+ * runtime zone, and the production server runs UTC: the conclusion print,
+ * the PDF handout and the prescription blank all stamped «Дата финализации»
+ * and amendment times five hours early. Browsers in the clinic are in
+ * Tashkent anyway, so the client output is unchanged. Date-only columns
+ * (`@db.Date`, stored as UTC midnight) land on 05:00 the same day, so they
+ * keep their calendar date too.
  */
 export function formatDate(
   date: Date | string | number | null | undefined,
@@ -128,6 +139,7 @@ export function formatDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: CLINIC_TZ,
     }).format(d);
   }
 
@@ -136,6 +148,7 @@ export function formatDate(
       day: "numeric",
       month: "long",
       year: "numeric",
+      timeZone: CLINIC_TZ,
     }).format(d);
   }
 
@@ -144,6 +157,7 @@ export function formatDate(
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
+      timeZone: CLINIC_TZ,
     }).format(d);
   }
 
@@ -151,11 +165,13 @@ export function formatDate(
     const day = new Intl.DateTimeFormat(tag, {
       day: "numeric",
       month: "long",
+      timeZone: CLINIC_TZ,
     }).format(d);
     const time = new Intl.DateTimeFormat(tag, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
+      timeZone: CLINIC_TZ,
     }).format(d);
     return `${day}, ${time}`;
   }
@@ -184,12 +200,9 @@ export function formatClinicDateTime(
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "Asia/Tashkent",
+    timeZone: CLINIC_TZ,
   }).format(d);
 }
-
-/** Clinic wall-clock. Asia/Tashkent is a fixed UTC+5 (no DST since 1992). */
-const CLINIC_TZ = "Asia/Tashkent";
 
 /**
  * The clinic-local civil date (year/month/day) for an instant, as an ordinal

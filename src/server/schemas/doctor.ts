@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { TICKET_PREFIX_RE } from "@/server/services/ticket-number";
+
 /**
  * One ServiceOnDoctor row in the create/update doctor payload.
  * `priceOverride` and `durationMinOverride` are nullable: omitting them
@@ -73,6 +75,17 @@ export const CreateDoctorSchema = z.object({
    * one service exist).
    */
   services: z.array(DoctorServiceLinkSchema).optional(),
+  /**
+   * Letter in front of this doctor's queue tickets («A-005», audit Q-12).
+   * Omitted on create, the route takes the clinic's next free letter.
+   * Unique within the clinic; the route answers 409 `ticket_prefix_taken`.
+   */
+  ticketPrefix: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(TICKET_PREFIX_RE, "invalid_ticket_prefix")
+    .optional(),
 });
 
 export const UpdateDoctorSchema = CreateDoctorSchema.partial();

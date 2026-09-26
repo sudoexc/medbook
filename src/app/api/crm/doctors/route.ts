@@ -15,6 +15,10 @@ import { audit } from "@/lib/audit";
 import { ok, err, parseQuery } from "@/server/http";
 import { CreateDoctorSchema, QueryDoctorSchema } from "@/server/schemas/doctor";
 import { resolveEffectiveBranchId } from "@/server/branches/resolve-branch";
+import {
+  isTicketPrefixConflict,
+  nextFreeTicketPrefix,
+} from "@/server/doctors/ticket-prefix";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
@@ -87,6 +91,13 @@ export const POST = createApiHandler(
       }
 
       const created = await prisma.$transaction(async (tx) => {
+        // Ticket letter (audit Q-12): the admin's pick, else the clinic's
+        // next free one, so a new doctor never shares tickets with another.
+        const ticketPrefix =
+          body.ticketPrefix ??
+          (ctx.kind === "TENANT"
+            ? await nextFreeTicketPrefix(tx, ctx.clinicId)
+            : null);
         const doctor = await tx.doctor.create({
           data: {
             slug: body.slug,
@@ -107,6 +118,7 @@ export const POST = createApiHandler(
             // Personal waiting-room TV link (`/tv/d/<token>`) — minted here so
             // the copy button works the moment the doctor is created.
             tvToken: randomBytes(18).toString("base64url"),
+            ticketPrefix,
           } as never,
         });
         if (body.services && body.services.length > 0) {
@@ -135,6 +147,9 @@ export const POST = createApiHandler(
         // Race: another concurrent POST claimed the cabinet between our
         // pre-check and create. Surface the same 409 as the pre-check.
         return err("CabinetTaken", 409, { reason: "cabinet_taken" });
+      }
+      if (isTicketPrefixConflict(e)) {
+        return err("conflict", 409, { reason: "ticket_prefix_taken" });
       }
       if (msg.includes("Unique")) {
         return err("conflict", 409, { reason: "slug_taken" });

@@ -465,7 +465,9 @@ describe("buildPdfAmendments", () => {
     ];
     const ru = buildPdfAmendments(rows, "ru");
     expect(ru[0].doctorName).toBe("Иванов");
-    expect(ru[0].dateLabel.length).toBeGreaterThan(0);
+    // 09:58Z is 14:58 in Tashkent: the amendment line prints clinic time,
+    // not the UTC server's (audit CD-03).
+    expect(ru[0].dateLabel).toBe("20.08.2026 14:58");
     expect(ru[1].doctorName).toBeNull();
     const uz = buildPdfAmendments(rows, "uz");
     expect(uz[0].doctorName).toBe("Ivanov");

@@ -57,10 +57,12 @@ export async function TrialBanner({
       ? `/admin/clinics/${sessionClinicId}/billing`
       : null;
 
+  // Server component: pin the clinic zone, the server itself runs UTC.
   const dateFmt = new Intl.DateTimeFormat(locale === "uz" ? "uz-Latn-UZ" : "ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Tashkent",
   });
 
   let body: React.ReactNode;

@@ -25,6 +25,7 @@ import {
   type DoctorBoardSlot,
 } from "@/hooks/use-doctor-board";
 import { resolveCallDisplay } from "@/lib/queue-call";
+import { tashkentPartsOf } from "@/lib/tashkent-time";
 import {
   CallTakeover,
   announce,
@@ -147,7 +148,10 @@ export default function DoctorTVPage() {
       : null;
 
   const accent = data?.doctor.color || "#2353FF";
-  const nowMinutes = time.getHours() * 60 + time.getMinutes();
+  // The TV box's own time zone is whatever the installer left on it; the
+  // board and its now-line follow the clinic's wall clock (Asia/Tashkent).
+  const clock = tashkentPartsOf(time);
+  const nowMinutes = clock.hours * 60 + clock.minutes;
 
   // The route returns slots ordered by (date, time) — no client re-sort.
   const slots = data?.slots;
@@ -181,12 +185,17 @@ export default function DoctorTVPage() {
   const timeStr = time.toLocaleTimeString("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Tashkent",
   });
   const dateStr = time.toLocaleDateString("ru-RU", {
     day: "numeric",
     month: "long",
+    timeZone: "Asia/Tashkent",
   });
-  const weekday = time.toLocaleDateString("ru-RU", { weekday: "long" });
+  const weekday = time.toLocaleDateString("ru-RU", {
+    weekday: "long",
+    timeZone: "Asia/Tashkent",
+  });
 
   return (
     <Page>

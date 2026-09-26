@@ -76,15 +76,18 @@ export default function TVQueuePage() {
         }
       : null;
 
+  // Clinic wall clock, whatever time zone the TV box was set up with.
   const dateStr = time.toLocaleDateString("ru-RU", {
     weekday: "long",
     day: "numeric",
     month: "long",
+    timeZone: "Asia/Tashkent",
   });
   const timeStr = time.toLocaleTimeString("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "Asia/Tashkent",
   });
 
   const totalWaiting = doctors.reduce((s, d) => s + d.waiting.length, 0);

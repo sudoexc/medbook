@@ -37,9 +37,14 @@ const CLINIC_POINT = "41.289885,69.189624";
 export const YANDEX_ROUTE_URL =
   `https://yandex.uz/maps/?rtext=~${encodeURIComponent(CLINIC_POINT)}&rtt=auto`;
 
+// The landing sections the site menu points at (header, mobile sheet,
+// footer), by the id of their <section>. No href here on purpose: a bare
+// "#doctors" only works on the landing itself, and the menu is on every
+// site page (a doctor's page, the privacy policy), so the link is built per
+// page and locale by siteSectionHref (audit CM-14).
 export const NAV_LINKS = [
-  { href: "#doctors", labelKey: "nav.doctors" },
-  { href: "#services", labelKey: "nav.services" },
-  { href: "#visit", labelKey: "nav.visit" },
-  { href: "#faq", labelKey: "nav.faq" },
+  { section: "doctors", labelKey: "nav.doctors" },
+  { section: "services", labelKey: "nav.services" },
+  { section: "visit", labelKey: "nav.visit" },
+  { section: "faq", labelKey: "nav.faq" },
 ] as const;

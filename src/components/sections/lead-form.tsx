@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +15,7 @@ import {
 import { useDoctors } from "@/components/providers/doctors-provider";
 import { CheckCircle, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import { reachGoal } from "@/lib/site-analytics";
+import { isValidUzPhone } from "@/lib/phone";
 import { isLeadDayOpen } from "@/lib/doctor-working-windows";
 import type { PublicScheduleRow } from "@/lib/doctors";
 import type { Locale } from "@/types";
@@ -118,15 +120,44 @@ function MiniCalendar({ locale, selectedDate, onSelect, schedule }: { locale: Lo
   );
 }
 
-interface LeadFormTriggerProps {
-  children: React.ReactElement;
-  doctorId?: string;
+/**
+ * Opens a lead form from a button that cannot own it. The mobile menu's
+ * «Записаться» lives inside the menu sheet, which unmounts when it closes:
+ * a form owned by that button would vanish together with the sheet. The
+ * menu renders the form outside the sheet with a handle and opens it once
+ * the sheet has closed (audit CM-14).
+ */
+export type LeadFormHandle = DialogPrimitive.Handle<unknown>;
+
+export function createLeadFormHandle(): LeadFormHandle {
+  return DialogPrimitive.createHandle();
 }
 
-export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
+/**
+ * Whether a refused POST /api/leads refused the phone number. The API runs
+ * the same rule as the form (isValidUzPhone) and names the field; the form
+ * then shows the phone message under the field instead of the generic
+ * «Произошла ошибка», which reads as a broken site (audit LD-10).
+ */
+export function isPhoneRejection(status: number, body: unknown): boolean {
+  if (status !== 400 || !body || typeof body !== "object") return false;
+  const error = (body as { error?: unknown }).error;
+  return !!error && typeof error === "object" && "phone" in error;
+}
+
+interface LeadFormTriggerProps {
+  /** The button that opens the form. Optional with `handle`. */
+  children?: React.ReactElement;
+  doctorId?: string;
+  /** Lets a button outside this component open the form (see LeadFormHandle). */
+  handle?: LeadFormHandle;
+}
+
+export function LeadFormTrigger({ children, doctorId, handle }: LeadFormTriggerProps) {
   const [open, setOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(false);
+  const [phoneError, setPhoneError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedDoctorId, setSelectedDoctorId] = useState(doctorId || "");
   const [selectedDate, setSelectedDate] = useState("");
@@ -154,6 +185,7 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
       setSelectedDate("");
       setSubmitted(false);
       setError(false);
+      setPhoneError(false);
     }
   }
 
@@ -162,17 +194,15 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
     const form = e.currentTarget;
     const formData = new FormData(form);
     setError(false);
+    setPhoneError(false);
 
-    // Client-side phone validation: Uzbek mobile numbers. Matches with or
-    // without a leading "+998", grouping characters, and the 9-digit local
-    // part starting with 9. Final canonical form is produced server-side.
-    const phoneRaw = String(formData.get("phone") ?? "");
-    const phoneDigits = phoneRaw.replace(/\D/g, "");
-    const uzValid =
-      (phoneDigits.length === 9 && phoneDigits.startsWith("9")) ||
-      (phoneDigits.length === 12 && phoneDigits.startsWith("9989"));
-    if (!uzValid) {
-      setError(true);
+    // Any Uzbek number, with or without +998: the rule the API applies too.
+    // It used to demand a 9 after the country code, so everyone on 33, 88,
+    // 77, 50 or 20 got «Произошла ошибка» and left (audit LD-10). A wrong
+    // number now gets its own message under the field.
+    if (!isValidUzPhone(String(formData.get("phone") ?? ""))) {
+      setPhoneError(true);
+      (form.elements.namedItem("phone") as HTMLInputElement | null)?.focus();
       return;
     }
 
@@ -190,7 +220,14 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
           locale,
         }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body: unknown = await res.json().catch(() => null);
+        if (isPhoneRejection(res.status, body)) {
+          setPhoneError(true);
+          return;
+        }
+        throw new Error();
+      }
 
       reachGoal("booking-sent");
       setSubmitted(true);
@@ -203,8 +240,8 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogTrigger render={children} />
+    <Dialog open={open} onOpenChange={handleOpen} handle={handle}>
+      {children && <DialogTrigger render={children} />}
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold">{t("title")}</DialogTitle>
@@ -271,6 +308,8 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
               </div>
               <div>
                 <label htmlFor="lead-phone" className="text-sm font-medium">{t("phone")}</label>
+                {/* No `pattern`: the browser's own «match the requested
+                    format» bubble would pre-empt the message below. */}
                 <Input
                   id="lead-phone"
                   required
@@ -278,10 +317,17 @@ export function LeadFormTrigger({ children, doctorId }: LeadFormTriggerProps) {
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
-                  pattern="[+0-9 ()-]{9,20}"
+                  aria-invalid={phoneError || undefined}
+                  aria-describedby={phoneError ? "lead-phone-error" : undefined}
+                  onChange={() => setPhoneError(false)}
                   className="mt-1 h-10 rounded-lg"
                   placeholder={t("phoneFormat")}
                 />
+                {phoneError && (
+                  <p id="lead-phone-error" role="alert" className="mt-1 text-xs text-destructive">
+                    {t("phoneInvalid")}
+                  </p>
+                )}
               </div>
             </div>
 

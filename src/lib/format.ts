@@ -280,8 +280,10 @@ export function formatPhone(phone: string | null | undefined): string {
   let digits = phone.replace(/\D/g, "");
   if (!digits) return "";
 
-  // Normalise to 12 digits starting with 998 when possible.
-  if (digits.length === 9 && digits.startsWith("9")) digits = "998" + digits;
+  // Normalise to 12 digits starting with 998 when possible. Any 9 national
+  // digits, not only a leading 9: same rule as normalizePhone (audit LD-10),
+  // so «33 412 55 67» shows as +998 (33) 412-55-67, not «+334125567».
+  if (digits.length === 9) digits = "998" + digits;
   if (digits.length === 12 && digits.startsWith("998")) {
     const cc = digits.slice(0, 3);
     const op = digits.slice(3, 5);

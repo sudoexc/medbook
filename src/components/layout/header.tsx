@@ -6,6 +6,7 @@ import { Phone } from "lucide-react";
 import { CONTACT, NAV_LINKS } from "@/lib/constants";
 import { LanguageSwitcher } from "./language-switcher";
 import { MobileNav } from "./mobile-nav";
+import { SiteSectionLink } from "./site-section-link";
 import { LeadFormTrigger } from "@/components/sections/lead-form";
 import { Button } from "@/components/ui/button";
 
@@ -29,13 +30,13 @@ export function Header() {
         {/* Desktop Nav */}
         <nav className="hidden lg:flex items-center gap-1">
           {NAV_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
+            <SiteSectionLink
+              key={link.section}
+              section={link.section}
               className="px-3 py-2 text-[15px] text-muted-foreground transition-colors hover:text-foreground"
             >
               {t(link.labelKey.replace("nav.", "") as "doctors" | "services" | "visit" | "faq")}
-            </a>
+            </SiteSectionLink>
           ))}
         </nav>
 

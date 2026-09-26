@@ -7,18 +7,61 @@
  * "+998901234567" end up as two different patients.
  *
  * Uzbek-specific conveniences:
- *  - 9 local digits starting with "9" → assume +998 prefix (e.g. 901234567 → +998901234567)
- *  - 12 digits starting with "998"   → prepend +
+ *  - 9 local digits → assume +998 prefix (901234567 → +998901234567,
+ *    334125567 → +998334125567)
+ *  - 12 digits starting with "998" → prepend +
+ *
+ * The 9-digit rule used to require a leading "9", so a number on any other
+ * operator code (Humans 33, Mobiuz 88, Uzmobile 77 and 55, Ucell 50, OQ 20,
+ * a Tashkent landline 71) typed without the country code was stored as
+ * «+334125567»: a foreign-looking number nobody could call back and that no
+ * lookup by the full number matched (audit LD-10).
  */
 export function normalizePhone(input: string | null | undefined): string {
   if (!input) return "";
   const digits = input.replace(/\D/g, "");
   if (!digits) return "";
 
-  if (digits.length === 9 && digits.startsWith("9")) return "+998" + digits;
+  if (digits.length === 9) return "+998" + digits;
   if (digits.length === 12 && digits.startsWith("998")) return "+" + digits;
 
   return "+" + digits;
+}
+
+/** What a typed phone may contain besides digits: "+", spaces, ( ) - . */
+const PHONE_CHARS = /^[+\d\s().-]+$/;
+
+/**
+ * The Uzbek national number (9 digits, operator or area code first) in what
+ * a person typed, or null when it is not an Uzbek number.
+ *
+ * Accepted: the 9 national digits alone («33 412 55 67») or with the country
+ * code («+998 88 123-45-67», «998771234567»), grouped any usual way. Any
+ * operator or area code counts: the numbering plan has codes from 20 to 99
+ * (mobile 20, 33, 50, 55, 77, 88, 90 to 99; landlines 61 to 79), and a list
+ * of mobile codes would go stale with the next operator. Nothing starts with
+ * 0 or 1, so those are typos.
+ */
+export function uzNationalNumber(input: string | null | undefined): string | null {
+  const raw = (input ?? "").trim();
+  if (!raw || !PHONE_CHARS.test(raw)) return null;
+  const digits = raw.replace(/\D/g, "");
+  const national =
+    digits.length === 12 && digits.startsWith("998")
+      ? digits.slice(3)
+      : digits.length === 9
+        ? digits
+        : null;
+  return national && /^[2-9]/.test(national) ? national : null;
+}
+
+/**
+ * Whether the public booking form (and its API) takes this number. One rule
+ * for both sides, so the form never refuses what the server would store and
+ * the server never stores what the form would refuse (audit LD-10).
+ */
+export function isValidUzPhone(input: string | null | undefined): boolean {
+  return uzNationalNumber(input) !== null;
 }
 
 /**

@@ -2315,7 +2315,8 @@
     "success": "Rahmat! Tez orada qo'ng'iroq qilamiz.",
     "successConfirm": "Tasdiqlash uchun siz bilan bog'lanamiz",
     "total": "Jami",
-    "phoneFormat": "+998 XX XXX XX XX"
+    "phoneFormat": "+998 XX XXX XX XX",
+    "phoneInvalid": "Telefon raqamini tekshiring: O'zbekiston raqami kerak, masalan +998 33 412 55 67"
   },
   "notFound": {
     "title": "Sahifa topilmadi",

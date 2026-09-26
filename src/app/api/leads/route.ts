@@ -5,17 +5,20 @@ import { resolvePublicClinic } from "@/lib/public-clinic";
 import { rateLimit } from "@/lib/rate-limit";
 import { realClientIp } from "@/lib/client-ip";
 import { sendNewLeadEmail } from "@/lib/email";
-import { normalizePhone } from "@/lib/phone";
+import { isValidUzPhone, normalizePhone } from "@/lib/phone";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import { z } from "zod";
 
-// Phone accepts Uzbek numbers, with or without leading "+" and typical grouping
-// characters. normalizePhone() downstream enforces the canonical form.
+// An Uzbek number on any operator code, with or without the country code and
+// grouped any usual way. The same rule the form checks before sending
+// (isValidUzPhone), so the form and the API agree: the old form refused every
+// code but 9x while this schema took anything of 9 to 20 characters, and
+// «33 412 55 67» sent directly was stored as «+334125567» (audit LD-10). A
+// refusal names the `phone` field, which the form shows under that field.
 const PhoneInput = z
   .string()
-  .min(9)
-  .max(20)
-  .regex(/^[+\d\s()-]+$/, "Invalid phone");
+  .max(32)
+  .refine(isValidUzPhone, "Invalid phone");
 
 const LeadSchema = z.object({
   name: z.string().min(2).max(100),

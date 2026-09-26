@@ -2,7 +2,8 @@ import { useLocale, useTranslations } from "next-intl";
 import Image from "next/image";
 import Link from "next/link";
 import { Send, Camera, Clock } from "lucide-react";
-import { CONTACT, SITE_NAME } from "@/lib/constants";
+import { CONTACT, NAV_LINKS, SITE_NAME } from "@/lib/constants";
+import { SiteSectionLink } from "./site-section-link";
 
 export function Footer() {
   const t = useTranslations("footer");
@@ -58,10 +59,16 @@ export function Footer() {
               {t("navigation")}
             </h3>
             <ul className="mt-3 space-y-2 text-sm">
-              <li><a href="#doctors" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("doctors")}</a></li>
-              <li><a href="#services" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("services")}</a></li>
-              <li><a href="#visit" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("visit")}</a></li>
-              <li><a href="#faq" className="text-muted-foreground hover:text-foreground transition-colors">{tNav("faq")}</a></li>
+              {NAV_LINKS.map((link) => (
+                <li key={link.section}>
+                  <SiteSectionLink
+                    section={link.section}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {tNav(link.section)}
+                  </SiteSectionLink>
+                </li>
+              ))}
             </ul>
           </div>
 

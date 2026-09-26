@@ -10,7 +10,7 @@ export function Visit() {
   const t = useTranslations("visit");
 
   return (
-    <section id="visit" className="border-t border-border bg-[#f4f8fc] py-16 sm:py-24">
+    <section id="visit" className="scroll-mt-20 border-t border-border bg-[#f4f8fc] py-16 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {t("title")}

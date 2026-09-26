@@ -21,7 +21,7 @@ export function Doctors({ doctors }: { doctors: DoctorView[] }) {
   if (doctors.length === 0) return null;
 
   return (
-    <section id="doctors" className="border-t border-border bg-white py-16 sm:py-24">
+    <section id="doctors" className="scroll-mt-20 border-t border-border bg-white py-16 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
           {t("title")}

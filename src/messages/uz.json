@@ -2329,8 +2329,23 @@
     "name": "Ismingiz",
     "phone": "Telefon",
     "doctor": "Shifokor",
-    "selectDoctor": "Shifokorni tanlang",
+    "anyDoctor": "Istalgan shifokor",
     "service": "Xizmat",
+    "direction": "Yo'nalish",
+    "anyDirection": "Bilmayman, maslahat bering",
+    "directions": {
+      "neurologist": "Nevrolog konsultatsiyasi",
+      "childNeurologist": "Bolalar nevrologi va pediatr",
+      "cardiologist": "Kardiolog konsultatsiyasi",
+      "eeg": "EEG",
+      "eegSleep": "Uyqudagi EEG",
+      "reoeg": "ReoEG",
+      "echoeg": "ExoEG",
+      "ecg": "EKG",
+      "echocg": "ExoKG, yurak UZI",
+      "doppler": "Doppler BSA, bo'yin tomirlari UZI",
+      "ultrasound": "Organ UZI, neyrosonografiya"
+    },
     "date": "Qulay sana",
     "cabinet": "Xona",
     "sum": "so'm",
@@ -4727,13 +4742,17 @@
       "deltaPp": "{value} f.p."
     },
     "journey": {
-      "title": "Bemor yo‘li (tibbiy holatlar)",
+      "title": "Bemor yo‘li",
       "newPatients": "Yangi bemorlar",
-      "firstConsult": "Birlamchi konsultatsiyalar",
+      "visits": "Yakunlangan qabullar",
       "repeatVisits": "Takroriy tashriflar",
       "repeatPct": "Takroriy tashriflar ulushi",
       "avgCheck": "O‘rtacha chek",
-      "revenue": "Tushum"
+      "revenue": "Tushum",
+      "noPayments": "To‘lovlar CRMda yuritilmaydi",
+      "noPaidVisits": "To‘lovlar yo‘q",
+      "hint": "Yangi bemor: klinikadagi birinchi yakunlangan qabuli shu davrga to‘g‘ri kelgan. Takroriy tashrif: keyingi har qanday yakunlangan qabul.",
+      "hintDoctor": "Yangi bemor: sizdagi birinchi yakunlangan qabuli shu davrga to‘g‘ri kelgan. Takroriy tashrif: keyingi har qanday yakunlangan qabul."
     },
     "noShowTable": {
       "reason": "Sabab",
@@ -8058,7 +8077,7 @@
       "doctor": "Shifokor",
       "noDoctor": "tanlanmagan",
       "wantedDate": "Istalgan sana",
-      "service": "Xizmat",
+      "service": "Yo'nalish",
       "receivedAt": "Qabul qilindi: {when}",
       "bookedFor": "Yozildi: {when}",
       "openPatient": "Bemor kartasi"

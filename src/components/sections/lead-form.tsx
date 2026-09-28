@@ -17,6 +17,7 @@ import { CheckCircle, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import { reachGoal } from "@/lib/site-analytics";
 import { isValidUzPhone } from "@/lib/phone";
 import { isLeadDayOpen } from "@/lib/doctor-working-windows";
+import { LEAD_DIRECTIONS, directionTakesDoctor } from "@/lib/lead-directions";
 import type { PublicScheduleRow } from "@/lib/doctors";
 import type { Locale } from "@/types";
 
@@ -145,6 +146,33 @@ export function isPhoneRejection(status: number, body: unknown): boolean {
   return !!error && typeof error === "object" && "phone" in error;
 }
 
+/**
+ * The POST /api/leads body. The chosen direction always goes along (it is
+ * what reception needs to call back about); the doctor only when the form
+ * offered one, so a request for an EEG never rides on a doctor picked
+ * before the direction changed (audit LD-09).
+ */
+export function buildLeadRequest(input: {
+  name: string;
+  phone: string;
+  direction: string;
+  doctorId: string;
+  bookableDoctorCount: number;
+  date: string;
+  locale: Locale;
+}) {
+  const askDoctor =
+    input.bookableDoctorCount > 0 && directionTakesDoctor(input.direction);
+  return {
+    name: input.name,
+    phone: input.phone,
+    doctorId: (askDoctor && input.doctorId) || undefined,
+    service: input.direction || undefined,
+    date: input.date || undefined,
+    locale: input.locale,
+  };
+}
+
 interface LeadFormTriggerProps {
   /** The button that opens the form. Optional with `handle`. */
   children?: React.ReactElement;
@@ -160,13 +188,21 @@ export function LeadFormTrigger({ children, doctorId, handle }: LeadFormTriggerP
   const [phoneError, setPhoneError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedDoctorId, setSelectedDoctorId] = useState(doctorId || "");
+  const [selectedDirection, setSelectedDirection] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const t = useTranslations("leadForm");
+  const tServices = useTranslations("services");
   const locale = useLocale() as Locale;
   // The showcase lists the whole staff, but a request may only target a
   // doctor the CRM actually serves — a lead pinned to a deactivated doctor
   // is a request nobody processes.
   const doctors = useDoctors().filter((d) => d.bookable);
+  // The doctor is optional («Любой врач») and only offered where a choice
+  // means something: an EEG or an ultrasound is not asked of a doctor, and
+  // with no bookable doctor at all (a DB hiccup returns []) there is nothing
+  // to pick. It used to be a required select, so those requests went to the
+  // wrong doctor or could not be sent at all (audit LD-09).
+  const askDoctor = doctors.length > 0 && directionTakesDoctor(selectedDirection);
 
   const selectedDoctor = useMemo(
     () => doctors.find((d) => d.id === selectedDoctorId),
@@ -178,10 +214,11 @@ export function LeadFormTrigger({ children, doctorId, handle }: LeadFormTriggerP
     if (isOpen) {
       reachGoal("booking-open");
       // A trigger may carry the id of a non-bookable doctor (stale link) —
-      // fall back to «выберите врача» instead of a phantom preselection.
+      // fall back to «Любой врач» instead of a phantom preselection.
       setSelectedDoctorId(
         doctorId && doctors.some((d) => d.id === doctorId) ? doctorId : "",
       );
+      setSelectedDirection("");
       setSelectedDate("");
       setSubmitted(false);
       setError(false);
@@ -212,13 +249,17 @@ export function LeadFormTrigger({ children, doctorId, handle }: LeadFormTriggerP
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.get("name"),
-          phone: formData.get("phone"),
-          doctorId: selectedDoctorId || undefined,
-          date: selectedDate || undefined,
-          locale,
-        }),
+        body: JSON.stringify(
+          buildLeadRequest({
+            name: String(formData.get("name") ?? ""),
+            phone: String(formData.get("phone") ?? ""),
+            direction: selectedDirection,
+            doctorId: selectedDoctorId,
+            bookableDoctorCount: doctors.length,
+            date: selectedDate,
+            locale,
+          }),
+        ),
       });
       if (!res.ok) {
         const body: unknown = await res.json().catch(() => null);
@@ -263,24 +304,62 @@ export function LeadFormTrigger({ children, doctorId, handle }: LeadFormTriggerP
         ) : (
           <form onSubmit={handleSubmit} className="mt-2 space-y-4">
             <div>
-              <label htmlFor="lead-doctor" className="text-sm font-medium">{t("doctor")}</label>
+              <label htmlFor="lead-direction" className="text-sm font-medium">{t("direction")}</label>
               <select
-                id="lead-doctor"
-                required
-                value={selectedDoctorId}
-                onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedDate(""); }}
+                id="lead-direction"
+                value={selectedDirection}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setSelectedDirection(next);
+                  // A diagnostic drops the doctor, and the days greyed out
+                  // for that doctor with it.
+                  if (!directionTakesDoctor(next) && selectedDoctorId) {
+                    setSelectedDoctorId("");
+                    setSelectedDate("");
+                  }
+                }}
                 className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
-                <option value="">{t("selectDoctor")}</option>
-                {doctors.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.name[locale]} — {doc.specialty[locale]}
-                  </option>
+                <option value="">{t("anyDirection")}</option>
+                {(["consultation", "diagnostics"] as const).map((kind) => (
+                  <optgroup
+                    key={kind}
+                    label={tServices(
+                      kind === "consultation"
+                        ? "groups.consultations.title"
+                        : "groups.diagnostics.title",
+                    )}
+                  >
+                    {LEAD_DIRECTIONS.filter((d) => d.kind === kind).map((d) => (
+                      <option key={d.key} value={d.key}>
+                        {t(`directions.${d.key}`)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
 
-            {selectedDoctor && (
+            {askDoctor && (
+              <div>
+                <label htmlFor="lead-doctor" className="text-sm font-medium">{t("doctor")}</label>
+                <select
+                  id="lead-doctor"
+                  value={selectedDoctorId}
+                  onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedDate(""); }}
+                  className="mt-1 flex h-10 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                >
+                  <option value="">{t("anyDoctor")}</option>
+                  {doctors.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.name[locale]} — {doc.specialty[locale]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {askDoctor && selectedDoctor && (
               <div className="rounded-lg border border-border bg-muted/50 p-3">
                 <p className="text-sm font-medium">{selectedDoctor.name[locale]}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
@@ -296,7 +375,7 @@ export function LeadFormTrigger({ children, doctorId, handle }: LeadFormTriggerP
                   locale={locale}
                   selectedDate={selectedDate}
                   onSelect={(d) => setSelectedDate(d)}
-                  schedule={selectedDoctor?.schedule}
+                  schedule={askDoctor ? selectedDoctor?.schedule : undefined}
                 />
               </div>
             </div>

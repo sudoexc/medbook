@@ -9,7 +9,8 @@
  * A message is SENT only when Telegram accepted it, FAILED with a reason
  * code otherwise; it is never DELIVERED without a send (audit TG-04), and
  * never SENT through a clinic whose bot is disconnected.
- * Attachments must belong to this conversation (audit G6-01).
+ * Attachments must belong to this conversation (audit G6-01). A text with an
+ * unfilled template field (`{{patient.firstName}}`) is refused (audit G6-04).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +24,7 @@ import { publishEventSafe } from "@/server/realtime/publish";
 import { getTenant } from "@/lib/tenant-context";
 import { sendMessage, sendPhoto, sendDocumentUrl } from "@/server/telegram/send";
 import { tgFailReason } from "@/server/telegram/send-errors";
+import { extractPlaceholders } from "@/server/notifications/template";
 import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import {
   adoptTelegramChat,
@@ -97,6 +99,15 @@ export const POST = createApiHandler(
       },
     });
     if (!conv) return notFound();
+
+    // A template field never reaches the patient as braces (audit G6-04).
+    // The composer fills templates on the server; a text that still carries
+    // `{{...}}` (a template pasted by hand, a quick reply naming a field it
+    // could not fill) is refused with the fields, before anything is saved.
+    const unfilled = extractPlaceholders(body.body ?? "");
+    if (unfilled.length > 0) {
+      return err("UnfilledPlaceholders", 422, { fields: unfilled });
+    }
 
     const senderId = ctx.kind === "TENANT" ? ctx.userId : null;
 

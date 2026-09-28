@@ -3307,6 +3307,8 @@
       "createPatient": "Bemor yaratish",
       "patientCreated": "Bemor yaratildi va biriktirildi",
       "patientLinked": "Bu raqamga ega bemor allaqachon bor — chatga biriktirildi",
+      "telegramKeptOther": "Kartaga boshqa Telegram allaqachon bog'langan, u o'zgartirilmadi. Eslatmalar o'sha yerga boradi.",
+      "telegramOnOtherCard": "Chat biriktirildi, lekin bu Telegram «{name}» kartasiga bog'langan, shuning uchun kartaga yozilmadi. Kartalarni solishtirib, birlashtiring.",
       "years": "{age, plural, one {# yosh} other {# yosh}}",
       "segmentLabels": {
         "NEW": "Yangi",
@@ -3430,7 +3432,11 @@
       "template": {
         "label": "Shablonlar",
         "title": "Shablonni tanlang",
-        "empty": "Shablonlar yo'q"
+        "empty": "Shablonlar yo'q",
+        "noPatient": "Avval suhbatni bemor kartasiga bog'lang: shablon bemorga yoki uning yozuviga murojaat qiladi.",
+        "noAppointment": "Bemorda bu shablon haqida gapiradigan yozuv yo'q. Matnni qo'lda yozing.",
+        "unresolved": "Shablon maydonlari uchun ma'lumot yo'q: {fields}. Karta yoki klinika ma'lumotlarini to'ldiring yoki matnni qo'lda yozing.",
+        "failed": "Shablonni qo'yib bo'lmadi"
       },
       "canned": {
         "label": "Tezkor javoblar",
@@ -3479,6 +3485,7 @@
       "videoNote": "Video xabar",
       "audio": "Audio",
       "download": "Yuklab olish",
+      "unfilledPlaceholders": "Matnda ma'lumotsiz shablon maydonlari qoldi: {fields}. Ularni matn bilan almashtirib, qayta yuboring.",
       "failed": {
         "title": "Yetkazilmadi",
         "toast": "Xabar yetkazilmadi: {reason}",
@@ -5347,7 +5354,7 @@
       "TELEGRAM_LINK_CONFLICT": {
         "label": "Telegram boshqa kartada",
         "title": "{via, select, contactName {{clinicCardName}: raqamni boshqa ismli Telegram tasdiqladi} contactConfirm {{clinicCardName}: Telegram bog‘lanishini tasdiqlang} other {{clinicCardName}: Telegram boshqa kartaga bog'langan}}",
-        "body": "{via, select, invite {Bemor klinika taklifini ochdi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contact {Bemor Telegramda o'z raqamini tasdiqladi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contactName {Bu karta raqamini Telegramda «{telegramCardName}» bemor tasdiqladi, lekin kartadagi ism boshqa, shuning uchun Telegram bog'lanmadi. Agar bu o'sha odam bo'lsa, uni kartadan Telegramga taklif qiling. Agar raqam uniki, karta esa qarindoshiniki bo'lsa, raqamni uning o'z kartasiga yozing.} contactConfirm {«{telegramCardName}» bemor bu karta raqamini Telegramda tasdiqladi, ism mos keladi. Tarixi bor karta faqat tekshiruvdan keyin bog‘lanadi: agar bu o‘sha odam bo‘lsa, uni kartadan Telegramga taklif qiling.} other {Bitta Telegram ikkita kartaga bog'langan edi, bog'lanish «{telegramCardName}» kartasida qoldirildi. Kartalarni solishtirib, qo'lda birlashtiring.}}"
+        "body": "{via, select, invite {Bemor klinika taklifini ochdi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contact {Bemor Telegramda o'z raqamini tasdiqladi, lekin uning Telegrami yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} contactName {Bu karta raqamini Telegramda «{telegramCardName}» bemor tasdiqladi, lekin kartadagi ism boshqa, shuning uchun Telegram bog'lanmadi. Agar bu o'sha odam bo'lsa, uni kartadan Telegramga taklif qiling. Agar raqam uniki, karta esa qarindoshiniki bo'lsa, raqamni uning o'z kartasiga yozing.} contactConfirm {«{telegramCardName}» bemor bu karta raqamini Telegramda tasdiqladi, ism mos keladi. Tarixi bor karta faqat tekshiruvdan keyin bog‘lanadi: agar bu o‘sha odam bo‘lsa, uni kartadan Telegramga taklif qiling.} inbox {Registratura bu kartaga Telegram yozishmasini bog'ladi, lekin bu Telegram yozuvlari bor «{telegramCardName}» kartasiga bog'langan. Kartalarni solishtirib, qo'lda birlashtiring.} other {Bitta Telegram ikkita kartaga bog'langan edi, bog'lanish «{telegramCardName}» kartasida qoldirildi. Kartalarni solishtirib, qo'lda birlashtiring.}}"
       },
       "NO_CONTACT_CALL": {
         "label": "Qo'ng'iroq: uzoq vaqt aloqa yo'q",

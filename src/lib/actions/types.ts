@@ -347,7 +347,8 @@ export type VisitFollowUpDuePayload = {
  * (scripts/fix-patient-telegram-identity.ts). "contactName": the account
  * shared the clinic card's number, but its name is not the card's (a son's
  * number on his mother's card), so nothing was linked and reception checks
- * who the account belongs to.
+ * who the account belongs to. "inbox": reception tied the account's chat to
+ * the clinic card from the Telegram inbox (audit TG-11).
  */
 export type TelegramLinkConflictPayload = {
   type: "TELEGRAM_LINK_CONFLICT";
@@ -355,7 +356,13 @@ export type TelegramLinkConflictPayload = {
   telegramCardName: string;
   clinicCardId: string;
   clinicCardName: string;
-  via: "invite" | "contact" | "contactName" | "contactConfirm" | "dedupe";
+  via:
+    | "invite"
+    | "contact"
+    | "contactName"
+    | "contactConfirm"
+    | "dedupe"
+    | "inbox";
 };
 
 /**

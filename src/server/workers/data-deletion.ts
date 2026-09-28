@@ -77,7 +77,11 @@ async function logAudit(
  * update succeeded but a later step threw, job left APPROVED) re-runs
  * harmlessly.
  */
-async function scrubPatientPhiCarriers(patientId: string): Promise<void> {
+async function scrubPatientPhiCarriers(
+  clinicId: string,
+  patientId: string,
+  telegramId: string | null,
+): Promise<void> {
   await prisma.medicalCase.updateMany({
     where: { patientId },
     data: { soapDraft: null },
@@ -94,8 +98,19 @@ async function scrubPatientPhiCarriers(patientId: string): Promise<void> {
   // the patient's threads first, then null every message body. Also clear the
   // denormalized last-message text + Telegram contact identifiers on the
   // conversation so the scrubbed body can't re-leak through the inbox preview.
+  // His bot chat counts even when nobody linked it to the card: a private
+  // chat's id is his Telegram id (audit TG-11). The id is read before the
+  // anonymization clears it from the card.
+  const threadsOfPatient = {
+    OR: [
+      { patientId },
+      ...(telegramId
+        ? [{ clinicId, channel: "TG" as const, externalId: telegramId }]
+        : []),
+    ],
+  };
   const convs = await prisma.conversation.findMany({
-    where: { patientId },
+    where: threadsOfPatient,
     select: { id: true },
   });
   if (convs.length > 0) {
@@ -105,7 +120,7 @@ async function scrubPatientPhiCarriers(patientId: string): Promise<void> {
     });
   }
   await prisma.conversation.updateMany({
-    where: { patientId },
+    where: threadsOfPatient,
     data: {
       lastMessageText: null,
       contactFirstName: null,
@@ -178,7 +193,7 @@ export async function executeDeletionJob(jobId: string): Promise<void> {
     where: { id: job.patientId },
     data: payload,
   });
-  await scrubPatientPhiCarriers(job.patientId);
+  await scrubPatientPhiCarriers(job.clinicId, job.patientId, patient.telegramId);
   await prisma.dataDeletionJob.update({
     where: { id: job.id },
     data: { status: "ANONYMIZED", executedAt: now },

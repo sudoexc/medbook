@@ -8,8 +8,9 @@
  *   2. The patient taps the link in Telegram. The client sends
  *      `/start <token>` to the bot.
  *   3. The clinic-scoped webhook (`/api/telegram/webhook/[clinicSlug]`)
- *      parses the payload, calls `consumeInviteToken(...)`, then runs
- *      the regular FSM welcome.
+ *      parses the payload and calls `consumeInviteToken(...)` whatever the
+ *      bot's auto-reply flag or the thread's takeover mode (audit TG-07),
+ *      then runs the regular FSM welcome when the bot is answering.
  *
  * Responsibilities of `consumeInviteToken`:
  *   - Look up the row by `token` under the system context (no tenant
@@ -225,6 +226,33 @@ export async function consumeInviteToken(
       retiredPatientId,
     };
   });
+}
+
+/**
+ * Bot reply key (server/telegram/messages.ts) for an invite outcome, or null
+ * to stay silent. The patient scanned a QR in the cabinet or on his paper
+ * conclusion and pressed Start: with the bot's auto-reply off (the
+ * production default) nothing else answers him, and «did it work?» is the
+ * first question at the desk (audit TG-07).
+ */
+export function inviteReplyKey(result: InviteConsumeResult): string | null {
+  switch (result.kind) {
+    case "linked":
+      return "invite.linked";
+    case "expired":
+      return "invite.expired";
+    // Reception got a TELEGRAM_LINK_CONFLICT task: say that someone will
+    // look, never whose card the account already sits on.
+    case "telegram-has-other-card":
+      return "invite.pending";
+    // A re-scanned link, a card bound to another account (no task is raised
+    // for that), or a /start payload that is not ours: nothing useful to say.
+    case "already-consumed":
+    case "patient-already-linked":
+    case "wrong-clinic":
+    case "not-found":
+      return null;
+  }
 }
 
 /**

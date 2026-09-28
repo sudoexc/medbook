@@ -1,5 +1,5 @@
 /**
- * /api/crm/conversations/[id] — get + patch (status/mode/assignee/tags).
+ * /api/crm/conversations/[id] — get + patch (status/mode/assignee/tags/patient).
  * See docs/TZ.md §6.4.
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
@@ -8,6 +8,11 @@ import { audit } from "@/lib/audit";
 import { ok, notFound, diff } from "@/server/http";
 import { UpdateConversationSchema } from "@/server/schemas/conversation";
 import { publishEventSafe } from "@/server/realtime/publish";
+import {
+  bindThreadTelegramToCard,
+  threadTelegramId,
+  type ThreadTelegramLink,
+} from "@/server/conversations/link-patient";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -50,6 +55,18 @@ export const PATCH = createApiHandler(
     });
     if (!before) return notFound();
     const { markRead, ...rest } = body;
+    // A patient being linked must be one of this clinic's live cards.
+    const linkingPatientId =
+      typeof rest.patientId === "string" && rest.patientId !== before.patientId
+        ? rest.patientId
+        : null;
+    if (linkingPatientId) {
+      const card = await prisma.patient.findFirst({
+        where: { id: linkingPatientId, clinicId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!card) return notFound();
+    }
     const data: Record<string, unknown> = { ...rest };
     if (markRead) data.unreadCount = 0;
     // updateMany so an unscoped `update({ where: { id }})` can never write
@@ -72,6 +89,28 @@ export const PATCH = createApiHandler(
       meta: d,
     });
 
+    // Linking the thread identifies the patient's Telegram too (audit
+    // TG-11): the card learns the account so reminders and the next
+    // message reach it, within the one-card-per-account rules. The outcome
+    // travels back so the rail can say when the card kept another account
+    // or the account sits on another card. The thread link above is already
+    // saved; a failure here must not report the whole link as failed.
+    const tgId = linkingPatientId ? threadTelegramId(before) : null;
+    let telegramLink: ThreadTelegramLink | null = null;
+    if (linkingPatientId && tgId) {
+      try {
+        telegramLink = await bindThreadTelegramToCard({
+          clinicId,
+          patientId: linkingPatientId,
+          telegramId: tgId,
+          telegramUsername: before.contactUsername,
+          actorId: ctx.kind === "TENANT" ? ctx.userId : null,
+        });
+      } catch (e) {
+        console.error(`[conversation.update] telegram link failed conv=${id}`, e);
+      }
+    }
+
     publishEventSafe(clinicId, {
       type: "tg.conversation.updated",
       payload: {
@@ -85,6 +124,6 @@ export const PATCH = createApiHandler(
         patientId: after.patientId,
       },
     });
-    return ok(after);
+    return ok({ ...after, telegramLink });
   }
 );

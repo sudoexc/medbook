@@ -27,6 +27,17 @@ export type SendPayload = {
   attachments?: ChatAttachment[];
 };
 
+/** The fields of an `UnfilledPlaceholders` refusal, or null for any other error. */
+function unfilledFieldsOf(responseText: string): string[] | null {
+  try {
+    const j = JSON.parse(responseText) as { error?: unknown; fields?: unknown };
+    if (j?.error !== "UnfilledPlaceholders" || !Array.isArray(j.fields)) return null;
+    return j.fields.filter((f): f is string => typeof f === "string");
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Optimistic send. Adds a temp OUT row to the top page in cache; on
  * success, invalidates to re-fetch. On error, shows toast + rollback.
@@ -56,6 +67,16 @@ export function useSendMessage() {
       );
       if (!res.ok) {
         const text = await res.text().catch(() => "");
+        // The route refuses a text still carrying template fields (audit
+        // G6-04): say which, instead of a raw JSON error.
+        const unfilled = unfilledFieldsOf(text);
+        if (unfilled) {
+          throw new Error(
+            t("message.unfilledPlaceholders", {
+              fields: unfilled.map((f) => `{{${f}}}`).join(", "),
+            }),
+          );
+        }
         throw new Error(text || `Send failed: ${res.status}`);
       }
       return (await res.json()) as InboxMessage;

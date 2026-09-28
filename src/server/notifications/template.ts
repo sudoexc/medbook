@@ -94,6 +94,29 @@ export function renderWithReport(
 }
 
 /**
+ * Plain-text render for a message a person sends from the chat composer
+ * (audit G6-04). The chat send goes out without `parse_mode`, so an escaped
+ * «G&#39;ulom» would reach the patient as is. A placeholder whose value is
+ * missing OR blank is unresolved: it stays in `output` untouched and is
+ * listed, so a caller can refuse the text instead of sending «позвоните .».
+ */
+export function renderPlainWithReport(
+  template: string,
+  context: TemplateContext,
+): { output: string; unresolved: string[] } {
+  const unresolved = new Set<string>();
+  const output = template.replace(PLACEHOLDER_RE, (full, key: string) => {
+    const value = stringify(get(context, key)).trim();
+    if (!value) {
+      unresolved.add(key);
+      return full;
+    }
+    return value;
+  });
+  return { output, unresolved: [...unresolved] };
+}
+
+/**
  * Extract placeholder keys from a template (without rendering).
  */
 export function extractPlaceholders(template: string): string[] {

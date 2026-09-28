@@ -12,8 +12,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   patient: { id: "p1", telegramId: "777000" as string | null },
   existing: null as null | { id: string; channel: string },
-  chatOwner: null as null | { id: string },
+  chatOwner: null as null | { id: string; channel: string; patientId: string | null },
   creates: [] as Array<Record<string, unknown>>,
+  adopted: [] as Array<{ where: unknown; data: unknown }>,
   failFirstCreateWith: null as null | string,
 }));
 
@@ -36,14 +37,26 @@ vi.mock("@/lib/prisma", () => {
     prisma: {
       patient: { findFirst: vi.fn(async () => state.patient) },
       conversation: {
-        findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
-          "externalId" in where ? state.chatOwner : state.existing,
-        ),
+        findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+          if (!("externalId" in where)) return state.existing;
+          // The unlinked-bot-chat lookup asks for `patientId: null`.
+          if ("patientId" in where && where.patientId === null) {
+            return state.chatOwner && state.chatOwner.patientId === null
+              ? state.chatOwner
+              : null;
+          }
+          return state.chatOwner;
+        }),
+        updateMany: vi.fn(async (args: { where: unknown; data: unknown }) => {
+          state.adopted.push(args);
+          return { count: 1 };
+        }),
       },
       $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx),
     },
   };
 });
+vi.mock("@/server/realtime/publish", () => ({ publishEventSafe: vi.fn() }));
 vi.mock("@/server/realtime/outbox", () => ({
   newCorrelationId: () => "corr_1",
   publishViaOutbox: vi.fn(async () => ({ eventId: "ev_1" })),
@@ -63,6 +76,7 @@ beforeEach(() => {
   state.existing = null;
   state.chatOwner = null;
   state.creates = [];
+  state.adopted = [];
   state.failFirstCreateWith = null;
 });
 
@@ -74,9 +88,10 @@ describe("findOrCreateConversation — cold start binds the Telegram chat", () =
     expect(state.creates[0]).toMatchObject({ patientId: "p1", externalId: "777000" });
   });
 
-  it("leaves it unbound when another thread already owns that chat", async () => {
-    state.chatOwner = { id: "conv_bot" };
+  it("leaves it unbound when a thread linked to another card already owns that chat", async () => {
+    state.chatOwner = { id: "conv_bot", channel: "TG", patientId: "p_mother" };
     await findOrCreateConversation(input);
+    expect(state.adopted).toEqual([]);
     expect(state.creates[0]).toMatchObject({ externalId: null });
   });
 
@@ -94,5 +109,33 @@ describe("findOrCreateConversation — cold start binds the Telegram chat", () =
       reason: "no_channel",
     });
     expect(state.creates).toEqual([]);
+  });
+});
+
+/**
+ * Audit TG-11: the patient's own bot chat, which nobody linked to his card,
+ * is his thread. A second «cold» thread next to it split his history and
+ * his replies kept landing in the one staff never opened.
+ */
+describe("findOrCreateConversation — the patient's unlinked bot chat", () => {
+  it("is tied to the patient and returned instead of a new thread", async () => {
+    state.chatOwner = { id: "conv_bot", channel: "TG", patientId: null };
+    const res = await findOrCreateConversation(input);
+    expect(res).toMatchObject({ ok: true, created: false, conversation: { id: "conv_bot" } });
+    expect(state.adopted).toEqual([
+      {
+        where: { id: "conv_bot", clinicId: "clinic_A", patientId: null },
+        data: { patientId: "p1" },
+      },
+    ]);
+    expect(state.creates).toEqual([]);
+  });
+
+  it("a thread already linked to the patient still wins, untouched", async () => {
+    state.existing = { id: "conv_linked", channel: "TG" };
+    state.chatOwner = { id: "conv_bot", channel: "TG", patientId: null };
+    const res = await findOrCreateConversation(input);
+    expect(res).toMatchObject({ ok: true, created: false, conversation: { id: "conv_linked" } });
+    expect(state.adopted).toEqual([]);
   });
 });

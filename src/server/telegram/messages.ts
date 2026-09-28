@@ -76,6 +76,14 @@ const RU: Dict = {
     "Нужен ваш собственный номер. Нажмите «Подтвердить номер через Telegram» в приложении клиники.",
   "contact.noCard":
     "Сначала откройте приложение клиники, затем подтвердите номер.",
+  // Audit TG-07 — replies to the invite deep link (QR in the cabinet or on
+  // the printed conclusion), sent whatever the auto-reply mode.
+  "invite.linked":
+    "Готово, Telegram подключён к вашей карте в клинике. Сюда будут приходить напоминания о приёме и документы.",
+  "invite.expired":
+    "Ссылка устарела. Попросите в регистратуре новую, и мы подключим Telegram к вашей карте.",
+  "invite.pending":
+    "Спасибо. Регистратура проверит вашу карту и подключит Telegram, после этого сюда будут приходить напоминания.",
 
   "tgVoiceReply.received":
     "Получил, расшифровываю и структурирую SOAP-черновик. Откройте случай в CRM через минуту.",
@@ -142,6 +150,12 @@ const UZ: Dict = {
     "O'z raqamingiz kerak. Klinika ilovasida «Raqamni Telegram orqali tasdiqlash» tugmasini bosing.",
   "contact.noCard":
     "Avval klinika ilovasini oching, so'ng raqamni tasdiqlang.",
+  "invite.linked":
+    "Tayyor, Telegram klinikadagi kartangizga ulandi. Qabul eslatmalari va hujjatlar shu yerga keladi.",
+  "invite.expired":
+    "Havola eskirgan. Registraturadan yangisini so'rang, Telegramni kartangizga ulab beramiz.",
+  "invite.pending":
+    "Rahmat. Registratura kartangizni tekshirib, Telegramni ulaydi, shundan so'ng eslatmalar shu yerga keladi.",
 
   "tgVoiceReply.received":
     "Qabul qildim, ovozni matnga aylantirib SOAP-qoralama tayyorlayapman. Bir daqiqadan so'ng CRM'da hodisani oching.",

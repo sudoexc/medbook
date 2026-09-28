@@ -14,7 +14,11 @@
  *  - threads of patients he has ever seen (his caseload is patients, not
  *    appointment rows — TG threads usually predate the appointment link);
  *  - unlinked threads (`patientId: null`) — the clinic's front door; they
- *    carry no other doctor's clinical data;
+ *    carry no other doctor's clinical data. Since audit TG-11 a thread from
+ *    an account that already has a card is linked to it on arrival (and a
+ *    link made from the inbox teaches the card its account), so another
+ *    doctor's known patient no longer sits here: what stays unlinked is a
+ *    contact nobody has identified yet;
  *  - threads explicitly assigned to his user.
  */
 export function doctorConversationScope(

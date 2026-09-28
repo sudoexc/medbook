@@ -1189,6 +1189,11 @@ function TagsCard({ conversation }: { conversation: InboxConversation }) {
   );
 }
 
+/** `telegramLink` of the conversation PATCH (server/conversations/link-patient.ts). */
+type TelegramLinkOutcome =
+  | { kind: "already-linked" | "linked" | "card-has-other-telegram" }
+  | { kind: "telegram-on-other-card"; otherPatientName: string };
+
 function CreatePatientForm({
   conversation,
 }: {
@@ -1262,11 +1267,24 @@ function CreatePatientForm({
       if (!patchRes.ok) {
         throw new Error(`Link failed: ${patchRes.status}`);
       }
-      return { id: patientId, reused };
+      // What happened to the card's Telegram (audit TG-11): the thread's
+      // account is written onto the card unless that would take it from
+      // another card or overwrite the card's own account.
+      const linked = (await patchRes.json().catch(() => null)) as {
+        telegramLink?: TelegramLinkOutcome | null;
+      } | null;
+      return { id: patientId, reused, telegramLink: linked?.telegramLink ?? null };
     },
-    onSuccess: ({ reused }) => {
+    onSuccess: ({ reused, telegramLink }) => {
       setOwnerConflict(null);
       toast.success(reused ? t("patientLinked") : t("patientCreated"));
+      if (telegramLink?.kind === "card-has-other-telegram") {
+        toast.warning(t("telegramKeptOther"));
+      } else if (telegramLink?.kind === "telegram-on-other-card") {
+        toast.warning(
+          t("telegramOnOtherCard", { name: telegramLink.otherPatientName }),
+        );
+      }
       void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
       void qc.invalidateQueries({
         queryKey: conversationsKey({

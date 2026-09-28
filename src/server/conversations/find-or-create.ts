@@ -6,7 +6,9 @@
  * kernel:
  *
  *   1. Looks for an existing thread for `{ patientId, optional doctorId
- *      anti-leak filter }`. Returns it untouched when found.
+ *      anti-leak filter }`. Returns it untouched when found. Otherwise the
+ *      patient's own bot chat (`externalId` = his telegramId) that nobody
+ *      linked yet is tied to him and returned (audit TG-11).
  *   2. Cold-starts a new thread when none exists. TG only — SMS was removed
  *      in Wave 1 of the SMS-removal plan, so `telegramId` is the sole
  *      reachable channel here; 422-equivalent `no_channel` otherwise.
@@ -29,6 +31,7 @@ import {
   newCorrelationId,
   publishViaOutbox,
 } from "@/server/realtime/outbox";
+import { publishEventSafe } from "@/server/realtime/publish";
 import type {
   ActorRole,
   EventEnvelopeInput,
@@ -84,9 +87,8 @@ export async function findOrCreateConversation(
   //    OR explicitly assigned to me OR un-routed clinic-wide", same as the
   //    legacy doctor endpoint. Reception sees ANY clinic thread for this
   //    patient.
-  const where = input.doctorScopeId
+  const doctorScope = input.doctorScopeId
     ? {
-        patientId: patient.id,
         OR: [
           { appointment: { doctorId: input.doctorScopeId } },
           // Doctor-scope only applies when a staff initiator is set; the OR
@@ -97,7 +99,8 @@ export async function findOrCreateConversation(
           { AND: [{ appointmentId: null }, { assignedToId: null }] },
         ],
       }
-    : { patientId: patient.id };
+    : {};
+  const where = { patientId: patient.id, ...doctorScope };
 
   const existing = await prisma.conversation.findFirst({
     where,
@@ -110,6 +113,38 @@ export async function findOrCreateConversation(
       conversation: existing,
       created: false,
     };
+  }
+
+  // 1b) The patient's own bot chat, still unlinked: it predates the card's
+  //     Telegram link, or nobody tied it to the card (audit TG-11). A private
+  //     chat's id is the account's id, so it IS this patient's thread; a
+  //     second «cold» thread next to it split his history in two and his
+  //     replies kept landing in the one staff never opened. A chat already
+  //     tied to another card (reception's call) is left alone.
+  if (patient.telegramId) {
+    const botThread = await prisma.conversation.findFirst({
+      where: {
+        clinicId: input.clinicId,
+        channel: "TG",
+        externalId: patient.telegramId,
+        patientId: null,
+        ...doctorScope,
+      },
+      select: { id: true, channel: true },
+    });
+    if (botThread) {
+      const adopted = await prisma.conversation.updateMany({
+        where: { id: botThread.id, clinicId: input.clinicId, patientId: null },
+        data: { patientId: patient.id },
+      });
+      if (adopted.count > 0) {
+        publishEventSafe(input.clinicId, {
+          type: "tg.conversation.updated",
+          payload: { conversationId: botThread.id, patientId: patient.id },
+        });
+        return { ok: true, conversation: botThread, created: false };
+      }
+    }
   }
 
   // 2) Cold start. TG is the only outbound channel — patient must have DM'd

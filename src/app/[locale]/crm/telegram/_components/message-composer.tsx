@@ -85,6 +85,14 @@ type Template = {
   bodyUz: string;
 };
 
+/** POST /api/crm/conversations/[id]/templates: the filled text or the refusal. */
+type TemplateFillResponse = {
+  body?: string;
+  error?: string;
+  reason?: "no_patient" | "no_appointment" | "unresolved";
+  fields?: string[];
+};
+
 type LocalAttachment = {
   id: string;
   file: File;
@@ -363,8 +371,46 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
     [setText],
   );
 
-  const onPickTemplate = (tpl: Template) => {
-    appendText(locale === "uz" ? tpl.bodyUz : tpl.bodyRu);
+  // A template is filled on the server from the thread's patient card, the
+  // visit it talks about and the clinic, in the patient's language (audit
+  // G6-04). One with a field the server cannot fill is refused with the
+  // reason and never inserted: the patient used to get the braces.
+  const onPickTemplate = async (tpl: Template) => {
+    let j: TemplateFillResponse | null = null;
+    try {
+      const res = await fetch(
+        `/api/crm/conversations/${conversation.id}/templates`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            templateId: tpl.id,
+            lang: locale === "uz" ? "uz" : "ru",
+          }),
+        },
+      );
+      j = (await res.json().catch(() => null)) as TemplateFillResponse | null;
+      if (res.ok && typeof j?.body === "string") {
+        appendText(j.body);
+        return;
+      }
+    } catch {
+      // network error: falls through to the generic message
+    }
+    if (j?.error === "TemplateUnresolved" && j.reason === "no_patient") {
+      toast.error(t("template.noPatient"));
+    } else if (j?.error === "TemplateUnresolved" && j.reason === "no_appointment") {
+      toast.error(t("template.noAppointment"));
+    } else if (j?.error === "TemplateUnresolved") {
+      toast.error(
+        t("template.unresolved", {
+          fields: (j.fields ?? []).map((f) => `{{${f}}}`).join(", "),
+        }),
+      );
+    } else {
+      toast.error(t("template.failed"));
+    }
   };
 
   const insertEmoji = React.useCallback(
@@ -540,7 +586,10 @@ export function MessageComposer({ conversation }: MessageComposerProps) {
           <div className="flex items-center gap-0.5 px-2 pb-2">
             <QuickActions conversation={conversation} onInsert={appendText} />
             <CannedPicker conversation={conversation} onInsert={appendText} />
-            <TemplatePicker onPick={onPickTemplate} />
+            <TemplatePicker
+              conversationId={conversation.id}
+              onPick={(tpl) => void onPickTemplate(tpl)}
+            />
             <EmojiPicker onPick={insertEmoji} />
             <IconAction
               icon={<PaperclipIcon className="size-[18px]" />}
@@ -829,17 +878,25 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
   );
 }
 
-function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
+function TemplatePicker({
+  conversationId,
+  onPick,
+}: {
+  conversationId: string;
+  onPick: (tpl: Template) => void;
+}) {
   const t = useTranslations("tgInbox.composer");
   const locale = useLocale();
   const [open, setOpen] = React.useState(false);
 
+  // Listed through the thread, for every role that can write in it: the
+  // admin templates API answered a nurse with 403, read as «Нет шаблонов».
   const q = useQuery<{ rows: Template[] }>({
     queryKey: ["tg-templates-picker"],
     queryFn: async ({ signal }) => {
       const res = await fetch(
-        "/api/crm/notifications/templates?channel=TG&limit=50",
-        {  credentials: "include", signal },
+        `/api/crm/conversations/${conversationId}/templates`,
+        { credentials: "include", signal },
       );
       if (!res.ok) throw new Error("Load failed");
       return res.json();
@@ -882,6 +939,7 @@ function TemplatePicker({ onPick }: { onPick: (tpl: Template) => void }) {
                       type="button"
                       onClick={() => {
                         onPick(tpl);
+                        setOpen(false);
                       }}
                       className="block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted"
                     >

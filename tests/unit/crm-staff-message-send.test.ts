@@ -17,6 +17,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * A clinic whose bot was disconnected has no token; send.ts then returns a
  * made up message id, and the route marked the message SENT with it. It is
  * FAILED (bot_not_connected) now, with nothing sent and nothing adopted.
+ *
+ * Audit G6-04: a notification template pasted with its `{{...}}` fields went
+ * out as is. Such a text is refused with the field names.
  */
 
 type Conv = {
@@ -285,6 +288,27 @@ describe("attachments are bound to their conversation (audit G6-01)", () => {
     });
     expect(res.status).toBe(201);
     expect(state.sends.map((s) => s.method)).toEqual(["sendDocumentUrl"]);
+  });
+});
+
+describe("a template field never reaches the patient as braces (audit G6-04)", () => {
+  it("refuses a text still carrying {{...}} fields, names them, and saves or sends nothing", async () => {
+    const res = await post({
+      body: "{{patient.firstName}}, напоминаем: завтра в {{ appointment.time }} вы записаны",
+    });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({
+      error: "UnfilledPlaceholders",
+      fields: ["patient.firstName", "appointment.time"],
+    });
+    expect(state.messages).toEqual([]);
+    expect(state.sends).toEqual([]);
+  });
+
+  it("still sends ordinary text with braces that are not template fields", async () => {
+    const res = await post({ body: "Смайлик {} и {скобки} не поля шаблона" });
+    expect(res.status).toBe(201);
+    expect(state.sends).toHaveLength(1);
   });
 });
 

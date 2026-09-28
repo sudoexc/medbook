@@ -4,7 +4,9 @@
  *
  * DELETE also tries to remove the underlying storage object so the bucket
  * doesn't leak. Storage failures are swallowed — losing a row over a missing
- * blob would block legitimate deletes.
+ * blob would block legitimate deletes. Only an object in this clinic's
+ * documents folder that no other document still uses is ever removed
+ * (audit CD-08, see `@/server/documents/file-ref`).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -12,22 +14,16 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, diff } from "@/server/http";
 import { deleteObject } from "@/server/storage/minio";
 import { UpdateDocumentSchema } from "@/server/schemas/document";
-import { storageKeyFromUrl, withStaffFileUrl } from "@/lib/storage-ref";
+import { withStaffFileUrl } from "@/lib/storage-ref";
+import {
+  checkDocumentFileUrl,
+  deletableDocumentKey,
+  storageKeyInUse,
+} from "@/server/documents/file-ref";
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "";
-}
-
-/**
- * Recover the storage key from a Document.fileUrl (proxy, MinIO or stub
- * URL; one parser for the whole app, see storage-ref). Only a document's
- * own blob under `clinics/<id>/documents/` is ever deleted from here: an
- * external URL, a data: blob or a legacy orphan yields null.
- */
-function extractStorageKey(fileUrl: string): string | null {
-  const key = storageKeyFromUrl(fileUrl);
-  return key && /^clinics\/[^/]+\/documents\//.test(key) ? key : null;
 }
 
 export const GET = createApiListHandler(
@@ -85,6 +81,25 @@ export const PATCH = createApiHandler(
       });
     }
 
+    // A replaced file must be bytes this clinic just uploaded (receipt) and
+    // nobody else's object, or an https link (CD-08). Resending the current
+    // URL unchanged is not a replacement.
+    const clinicId = ctx.kind === "TENANT" ? ctx.clinicId : null;
+    const replacesFile =
+      body.fileUrl !== undefined && body.fileUrl !== before.fileUrl;
+    if (replacesFile) {
+      if (!clinicId) return err("Forbidden", 403);
+      const file = checkDocumentFileUrl({
+        clinicId,
+        fileUrl: body.fileUrl!,
+        uploadToken: body.uploadToken,
+      });
+      if (!file.ok) return err("InvalidFileUrl", 400, { reason: file.reason });
+      if (file.key && (await storageKeyInUse(prisma, file.key, id))) {
+        return err("InvalidFileUrl", 400, { reason: "file_in_use" });
+      }
+    }
+
     // Copy only the fields the caller actually sent — PATCH semantics.
     const data: Record<string, unknown> = {};
     if (body.title !== undefined) data.title = body.title.trim();
@@ -97,11 +112,12 @@ export const PATCH = createApiHandler(
 
     // File replaced → clean up the old blob so the bucket doesn't leak.
     // Runs after the DB update so a storage failure can't lose the new row;
-    // failures are swallowed for the same reason DELETE swallows them.
-    if (body.fileUrl !== undefined && body.fileUrl !== before.fileUrl) {
-      const oldKey = extractStorageKey(before.fileUrl);
-      const newKey = extractStorageKey(body.fileUrl);
-      if (oldKey && oldKey !== newKey) {
+    // failures are swallowed for the same reason DELETE swallows them. The
+    // row no longer points at the old object, so «still in use» now means
+    // some OTHER document or signature, whose file must survive.
+    if (replacesFile && clinicId) {
+      const oldKey = await deletableDocumentKey(prisma, clinicId, before.fileUrl);
+      if (oldKey) {
         try {
           await deleteObject(undefined, oldKey);
         } catch (e) {
@@ -142,7 +158,13 @@ export const DELETE = createApiHandler(
 
     await prisma.document.delete({ where: { id } });
 
-    const key = extractStorageKey(before.fileUrl);
+    // Only this clinic's own upload, and only when no other document or
+    // signature points at the same object (a copied fileUrl used to take the
+    // original's file with it).
+    const key =
+      ctx.kind === "TENANT"
+        ? await deletableDocumentKey(prisma, ctx.clinicId, before.fileUrl, id)
+        : null;
     if (key) {
       try {
         await deleteObject(undefined, key);

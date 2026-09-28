@@ -4,13 +4,15 @@
  * Phase M3 — Mini App realtime hook.
  *
  * Opens one EventSource per page (ref-counted across consumers) at
- * `/api/miniapp/events?clinicSlug=…&initData=…` and dispatches envelopes to
+ * `/api/miniapp/events?clinicSlug=…&t=…` and dispatches envelopes to
  * a TanStack-Query invalidation map. `useMiniAppLiveEvents()` is the side-
  * effect-only top-level subscriber; mount it once inside `MiniAppShell`.
  *
- * Why `?initData=` instead of a header: the browser's EventSource API
- * forbids custom headers, so we pass the same HMAC-signed initData blob via
- * a query parameter. The server verifies it identically.
+ * Why `?t=` instead of a header: the browser's EventSource API forbids
+ * custom headers. Each connect first mints a two-minute stream link with an
+ * ordinary authenticated POST (`/api/miniapp/links`), then opens the stream
+ * with it. initData itself used to ride this query string, straight into
+ * nginx's access log, and the server now refuses it there (audit MA-07).
  *
  * Last-Event-ID resilience:
  *   • The browser EventSource auto-sends `Last-Event-ID` on reconnect, so a
@@ -50,7 +52,10 @@ import {
 } from "@/server/realtime/events";
 import { EventEnvelopeSchema } from "@/server/realtime/envelope";
 
-import { useMiniAppAuth } from "../_components/miniapp-auth-provider";
+import {
+  miniAppFetchHeaders,
+  useMiniAppAuth,
+} from "../_components/miniapp-auth-provider";
 import {
   backoffDelayMs,
   shouldInvalidateOnForeground,
@@ -180,7 +185,7 @@ function isTestEnv(): boolean {
 
 export function useMiniAppLiveEvents(): MiniAppLiveStatus {
   const qc = useQueryClient();
-  const { state, initData, clinicSlug } = useMiniAppAuth();
+  const { state, initData, clinicSlug, isTelegramContext } = useMiniAppAuth();
   const ready = state.status === "ready";
   const [status, setStatus] = React.useState<MiniAppLiveStatus>("connecting");
 
@@ -197,6 +202,9 @@ export function useMiniAppLiveEvents(): MiniAppLiveStatus {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
     let disposed = false;
+    // Bumped by every connect: a stream link that arrives after a newer
+    // connect started (or after unmount) is dropped.
+    let connectSeq = 0;
 
     const closeSocket = () => {
       if (!es) return;
@@ -208,15 +216,58 @@ export function useMiniAppLiveEvents(): MiniAppLiveStatus {
       es = null;
     };
 
+    const retryLater = () => {
+      if (!shouldRetryAfterError(disposed)) return;
+      closeSocket();
+      setStatus("offline");
+      const delay = backoffDelayMs(attempt);
+      attempt += 1;
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        connect();
+      }, delay);
+    };
+
+    /** A two-minute link that opens the stream (initData stays in headers). */
+    const mintStreamLink = async (): Promise<string | null> => {
+      try {
+        const res = await fetch(
+          `/api/miniapp/links?clinicSlug=${encodeURIComponent(clinicSlug)}`,
+          {
+            method: "POST",
+            headers: miniAppFetchHeaders(initData, isTelegramContext),
+            body: JSON.stringify({ scope: "events" }),
+            cache: "no-store",
+          },
+        );
+        if (!res.ok) return null;
+        const body = (await res.json()) as { token?: unknown };
+        return typeof body.token === "string" ? body.token : null;
+      } catch {
+        return null;
+      }
+    };
+
     const connect = () => {
       if (disposed) return;
       closeSocket();
       setStatus("connecting");
+      const seq = ++connectSeq;
+      void mintStreamLink().then((link) => {
+        if (disposed || seq !== connectSeq) return;
+        if (!link) {
+          // 401 on an expired initData, 502 mid-deploy, no network: same
+          // backoff as a dropped stream.
+          retryLater();
+          return;
+        }
+        openStream(link);
+      });
+    };
 
-      // Build the connect URL. `initData` is signed and short-lived, so
-      // shipping it in the query string is fine for the SSE handshake.
-      const params = new URLSearchParams({ clinicSlug });
-      if (initData) params.set("initData", initData);
+    const openStream = (link: string) => {
+      const params = new URLSearchParams({ clinicSlug, t: link });
       const stash = readLastEventId();
       if (stash) params.set("since", stash);
       const source = new EventSource(
@@ -265,18 +316,11 @@ export function useMiniAppLiveEvents(): MiniAppLiveStatus {
 
       source.onerror = () => {
         // Don't trust the browser's built-in retry: on a fatal handshake
-        // failure (401 expired initData, 502 during deploy) it parks the
-        // socket in CLOSED forever. Close and re-open on our own backoff.
-        if (!shouldRetryAfterError(disposed)) return;
-        closeSocket();
-        setStatus("offline");
-        const delay = backoffDelayMs(attempt);
-        attempt += 1;
-        if (retryTimer) clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => {
-          retryTimer = null;
-          connect();
-        }, delay);
+        // failure (401 expired link, 502 during deploy) it parks the socket
+        // in CLOSED forever, and its automatic reconnect would reuse a link
+        // that has expired. Close and re-open (with a fresh link) on our own
+        // backoff.
+        retryLater();
       };
     };
 
@@ -330,7 +374,7 @@ export function useMiniAppLiveEvents(): MiniAppLiveStatus {
       if (retryTimer) clearTimeout(retryTimer);
       closeSocket();
     };
-  }, [ready, qc, initData, clinicSlug]);
+  }, [ready, qc, initData, clinicSlug, isTelegramContext]);
 
   return status;
 }

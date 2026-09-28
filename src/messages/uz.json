@@ -1732,6 +1732,8 @@
     }
   },
   "documents": {
+    "patientLinkTitle": "Havola eskirgan",
+    "patientLinkExpired": "Klinika ilovasiga qayting va havolani qayta oching.",
     "casePdf": {
       "title": "Davolanish kartasi",
       "patient": "Bemor",
@@ -5191,6 +5193,7 @@
     "errorRequired": "Majburiy maydon",
     "toastMissingFields": "Majburiy maydonlarni to'ldiring",
     "toastUploadError": "Yuklashda xatolik",
+    "toastUrlRejected": "Havola qabul qilinmadi: https:// bilan boshlanadigan tashqi manzilni kiriting yoki faylni yuklang",
     "toastSelectFile": "Avval faylni tanlang",
     "toastTooLarge": "Fayl juda katta, maksimum {max}",
     "toastStubMode": "Fayl ombori mavjud emas. Havolani qo'lda kiriting."
@@ -8086,6 +8089,12 @@
   },
   "ticketStub": {
     "notFound": "Talon topilmadi",
+    "linkExpired": "Havolaning amal qilish muddati tugagan",
+    "linkExpiredHint": "Navbat havolasi faqat qabul kuni amal qiladi.",
+    "linkNotToday": "Havola qabul kuni ishlaydi",
+    "linkNotTodayHint": "Uni yozilgan kuningizda qayta oching.",
+    "linkLegacy": "Bu havola eskirgan",
+    "linkLegacyHint": "Yangi talondagi kodni skanerlang yoki raqamni registraturadan so'rang.",
     "yourNumber": "Sizning raqamingiz",
     "yourTime": "Sizning vaqtingiz",
     "patient": "Bemor:",

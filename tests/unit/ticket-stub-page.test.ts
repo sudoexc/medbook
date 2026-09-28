@@ -49,6 +49,8 @@ vi.mock("@/server/appointments/queue-projection", () => ({
 const ORIGINAL_TZ = process.env.TZ;
 beforeAll(() => {
   process.env.TZ = "UTC";
+  // The QR carries a signed ticket token (audit INF-10).
+  process.env.APP_SECRET = "test-app-secret";
 });
 afterAll(() => {
   if (ORIGINAL_TZ === undefined) delete process.env.TZ;

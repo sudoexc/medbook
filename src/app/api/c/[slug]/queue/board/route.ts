@@ -16,6 +16,8 @@
  *       waiting: [{ id, fullName, ticketNumber, queueOrder, etaMinutes }],
  *     }],
  *   }
+ *
+ * Row `id`s are `boardRowKey`s, not appointment ids (audit INF-10).
  */
 import { prisma } from "@/lib/prisma";
 import { ok } from "@/server/http";
@@ -23,6 +25,7 @@ import { createPublicClinicHandler } from "@/server/clinic-public/resolve";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { tashkentComponents } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
+import { boardRowKey } from "@/server/appointments/public-ticket";
 
 export const dynamic = "force-dynamic";
 
@@ -87,16 +90,17 @@ export const GET = createPublicClinicHandler(async ({ ctx }) => {
       // the legacy /api/tv-queue this replaces.
       current: q?.current
         ? {
-            // Appointment id, like the waiting rows carry: the TV matches a
+            // Opaque row key, like the waiting rows carry: the TV matches a
             // `queue.called` to this row, never to whoever is current (Q-10).
-            id: q.current.appointmentId,
+            // Never the appointment id itself on this anonymous screen (INF-10).
+            id: boardRowKey(q.current.appointmentId),
             fullName: initials(q.current.patientFullName),
             ticketNumber: q.current.ticketNumber,
             startedAt: q.current.startedAt?.toISOString() ?? null,
           }
         : null,
       waiting: (q?.waiting ?? []).map((w) => ({
-        id: w.appointmentId,
+        id: boardRowKey(w.appointmentId),
         fullName: initials(w.patientFullName),
         ticketNumber: w.ticketNumber,
         queueOrder: w.queueOrder,

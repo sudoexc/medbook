@@ -2,8 +2,9 @@
  * /api/crm/documents — list + create document record.
  * See docs/TZ.md §6.5.
  *
- * Actual file-upload persistence is out-of-scope for Phase 1; POST stores
- * the metadata + `fileUrl` that the UI already uploaded somewhere.
+ * POST stores the metadata + the `fileUrl` of bytes the UI already sent to
+ * `/api/crm/documents/upload`, together with that upload's receipt, or an
+ * external `https:` link (audit CD-08, see `@/server/documents/file-ref`).
  */
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -20,6 +21,10 @@ import {
 } from "@/server/realtime/outbox";
 import type { ActorRole, Surface } from "@/server/realtime/envelope";
 import { withStaffFileUrl } from "@/lib/storage-ref";
+import {
+  checkDocumentFileUrl,
+  storageKeyInUse,
+} from "@/server/documents/file-ref";
 
 /**
  * Per-patient sequence number — `#1` is the patient's oldest document,
@@ -160,6 +165,41 @@ export const POST = createApiHandler(
             ? "ADMIN"
             : "SYSTEM"; // NURSE has no ActorRole; real role rides in `label`
     const surface: Surface = ctx.role === "DOCTOR" ? "DOCTOR_CABINET" : "CRM";
+
+    // CD-08: the file must be one this clinic just uploaded (receipt), and
+    // not already another document's; otherwise an https link.
+    const file = checkDocumentFileUrl({
+      clinicId: ctx.clinicId,
+      fileUrl: body.fileUrl,
+      uploadToken: body.uploadToken,
+    });
+    if (!file.ok) return err("InvalidFileUrl", 400, { reason: file.reason });
+    if (file.key && (await storageKeyInUse(prisma, file.key))) {
+      return err("InvalidFileUrl", 400, { reason: "file_in_use" });
+    }
+    // The patient and the visit must be this clinic's, and the visit this
+    // patient's: a document filed under someone else's appointment is sent
+    // to someone else by «send to Telegram».
+    const patient = await prisma.patient.findFirst({
+      where: { id: body.patientId, clinicId: ctx.clinicId },
+      select: { id: true },
+    });
+    if (!patient) return err("InvalidPatient", 400, { reason: "patient_not_found" });
+    if (body.appointmentId) {
+      const appointment = await prisma.appointment.findFirst({
+        where: {
+          id: body.appointmentId,
+          patientId: body.patientId,
+          clinicId: ctx.clinicId,
+        },
+        select: { id: true },
+      });
+      if (!appointment) {
+        return err("InvalidAppointment", 400, {
+          reason: "appointment_patient_mismatch",
+        });
+      }
+    }
 
     const created = await prisma.$transaction(async (tx) => {
       const row = await tx.document.create({

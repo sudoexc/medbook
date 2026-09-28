@@ -120,7 +120,7 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
   const t = useT();
   const lang = useLang();
   const router = useRouter();
-  const { clinicSlug, initData } = useMiniAppAuth();
+  const { clinicSlug } = useMiniAppAuth();
   const tg = useTelegramWebApp();
   const { onBehalfOf } = useActiveContext();
   const { setDraft } = useBookingDraft(clinicSlug);
@@ -172,11 +172,9 @@ export function VisitSummaryScreen({ appointmentId }: { appointmentId: string })
     lang === "UZ"
       ? summary.doctor.specializationUz
       : summary.doctor.specializationRu;
-  // `<a target="_blank">` opens without our custom headers, so the PDF link
-  // carries init-data via query — same pattern as the documents screen.
-  const conclusionHref = summary.conclusionUrl
-    ? `${summary.conclusionUrl}${initData ? `&initData=${encodeURIComponent(initData)}` : ""}`
-    : null;
+  // `<a target="_blank">` opens without our custom headers; the URL carries
+  // a short-lived link for this conclusion only, never initData (MA-07).
+  const conclusionHref = summary.conclusionUrl ?? null;
 
   return (
     <div>

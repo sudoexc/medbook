@@ -26,6 +26,11 @@ import { prisma } from "@/lib/prisma";
 import { runUnscoped, runWithTenant } from "@/lib/tenant-context";
 import { readTgBotToken } from "@/server/crypto/secret-fields";
 import { verifyMiniAppInitData } from "@/server/telegram/auth";
+import {
+  verifyMiniAppLink,
+  type MiniAppLinkClaims,
+  type MiniAppLinkScope,
+} from "@/server/miniapp/link-token";
 
 export type MiniAppContext = {
   clinicId: string;
@@ -89,12 +94,13 @@ export async function resolveMiniAppContext(
   request: Request,
   opts: { skipPatientUpsert?: boolean } = {},
 ): Promise<{ ok: true; ctx: MiniAppContext } | { ok: false; response: Response }> {
-  // Phase M3 — EventSource can't set custom headers, so the SSE endpoint
-  // passes init-data through `?initData=` query as a fallback. The HMAC
-  // verify guards both paths identically; nothing else changes.
-  const headerInit = request.headers.get("x-telegram-init-data") ?? "";
-  const queryInit = new URL(request.url).searchParams.get("initData") ?? "";
-  const initData = headerInit || queryInit;
+  // Header only (audit MA-07). initData is the whole account for 24 hours;
+  // a copy in the query string used to be accepted by every endpoint,
+  // cancel / delete ones included, and every such URL landed in nginx's
+  // access log and in links patients forwarded. The GET surfaces a browser
+  // opens without our headers (event stream, document, calendar file) take
+  // a short-lived one-resource link instead: `resolveMiniAppLink` below.
+  const initData = request.headers.get("x-telegram-init-data") ?? "";
   const bypassRequested =
     process.env.NODE_ENV !== "production" &&
     request.headers.get("x-miniapp-dev-bypass") === "1";
@@ -248,6 +254,65 @@ export async function resolveMiniAppContext(
       patientId: existing.id,
       patient: existing,
       tgUser,
+    },
+  };
+}
+
+export type MiniAppLinkContext = MiniAppLinkClaims & {
+  clinicSlug: string;
+  preferredLang: "RU" | "UZ";
+};
+
+/**
+ * Authorise a request by its `?t=` link (see `link-token.ts`): a browser
+ * navigation or an EventSource, which carry no headers. The link names the
+ * clinic, the patient and the one resource it opens; the clinic must still
+ * be active and the patient still on its books.
+ */
+export async function resolveMiniAppLink(
+  request: Request,
+  expect: { scope: MiniAppLinkScope; resourceId?: string },
+): Promise<
+  { ok: true; link: MiniAppLinkContext } | { ok: false; response: Response }
+> {
+  const token = new URL(request.url).searchParams.get("t");
+  const claims = verifyMiniAppLink(token, expect);
+  if (!claims) {
+    return {
+      ok: false,
+      response: json(
+        { error: "Unauthorized", reason: "link_invalid_or_expired" },
+        { status: 401 },
+      ),
+    };
+  }
+  const found = await runUnscoped(
+    "miniapp link: resolve the clinic and patient a signed link names",
+    async () => {
+      const clinic = await prisma.clinic.findUnique({
+        where: { id: claims.clinicId },
+        select: { id: true, slug: true, active: true },
+      });
+      if (!clinic || !clinic.active) return null;
+      const patient = await prisma.patient.findFirst({
+        where: { id: claims.patientId, clinicId: clinic.id, deletedAt: null },
+        select: { id: true, preferredLang: true },
+      });
+      return patient ? { clinic, patient } : null;
+    },
+  );
+  if (!found) {
+    return {
+      ok: false,
+      response: json({ error: "NotFound", reason: "link_target" }, { status: 404 }),
+    };
+  }
+  return {
+    ok: true,
+    link: {
+      ...claims,
+      clinicSlug: found.clinic.slug,
+      preferredLang: found.patient.preferredLang === "UZ" ? "UZ" : "RU",
     },
   };
 }

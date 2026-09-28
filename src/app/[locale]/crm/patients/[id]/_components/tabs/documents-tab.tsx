@@ -139,6 +139,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
   const uploadOne = React.useCallback(
     async (file: File): Promise<{
       fileUrl: string;
+      uploadToken: string | null;
       mimeType: string | null;
       sizeBytes: number | null;
     }> => {
@@ -162,11 +163,13 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
       }
       const data = (await res.json()) as {
         fileUrl: string;
+        uploadToken?: string | null;
         mimeType: string | null;
         sizeBytes: number | null;
       };
       return {
         fileUrl: data.fileUrl,
+        uploadToken: data.uploadToken ?? null,
         mimeType: data.mimeType,
         sizeBytes: data.sizeBytes,
       };
@@ -186,6 +189,7 @@ export function DocumentsTab({ patient }: DocumentsTabProps) {
             patientId: patient.id,
             title: file.name,
             fileUrl: uploaded.fileUrl,
+            uploadToken: uploaded.uploadToken,
             type: "OTHER",
             mimeType: uploaded.mimeType,
             sizeBytes: uploaded.sizeBytes,

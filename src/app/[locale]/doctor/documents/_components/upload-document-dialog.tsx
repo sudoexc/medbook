@@ -133,6 +133,7 @@ export function UploadDocumentDialog({
       }
       const uploaded = (await uploadRes.json()) as {
         fileUrl: string;
+        uploadToken?: string | null;
       };
       const fileUrl = uploaded.fileUrl;
 
@@ -146,6 +147,9 @@ export function UploadDocumentDialog({
           type,
           title: title.trim(),
           fileUrl,
+          // The upload's receipt: without it the server refuses a stored
+          // file (audit CD-08).
+          uploadToken: uploaded.uploadToken ?? null,
           mimeType: file.type || null,
           sizeBytes: file.size,
         }),

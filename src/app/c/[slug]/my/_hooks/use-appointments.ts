@@ -12,6 +12,8 @@ export type MiniAppAppointment = {
   date: string;
   time: string | null;
   ticketCode: string | null;
+  /** Signed key to `/api/queue/status/<token>` (the bare id opens nothing). */
+  queueToken?: string | null;
   durationMin: number;
   status: string;
   channel: string;

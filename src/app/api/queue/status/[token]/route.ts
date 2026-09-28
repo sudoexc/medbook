@@ -3,27 +3,50 @@ import { initials } from "@/lib/format";
 import { runUnscoped } from "@/lib/tenant-context";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
+import {
+  parseQueueTicketToken,
+  ticketDayState,
+} from "@/server/appointments/public-ticket";
 import { isLiveLane } from "@/lib/queue-ordering";
 
-// GET /api/queue/status/:id — public endpoint for patient queue status (QR code page)
+// GET /api/queue/status/:token — public queue status behind the QR on the
+// patient's ticket (and the Mini App's own queue card).
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ token: string }> }
 ) {
-  const { id } = await params;
+  const { token } = await params;
 
-  // Anonymous capability-URL endpoint (patients reach it via the QR link on
-  // their ticket). The clinic is unknown until the appointment row resolves,
-  // so the whole flow — id lookup + queue projection — runs with an explicit
-  // unscoped bypass. The unguessable CUID is the authorization; the response
-  // masks PII to initials.
-  return runUnscoped("public queue status: lookup appointment by QR id", async () => {
+  // Audit INF-10: the raw appointment id is no longer a capability. It used
+  // to be, while the anonymous board stream handed out every id of the clinic,
+  // so anybody could read who was waiting for which doctor. Only a server
+  // minted ticket token opens this endpoint; a bare id (the QR printed before
+  // the change) is a 404 without even a lookup, so the page can say the link
+  // is outdated.
+  const parsed = parseQueueTicketToken(token);
+  if (parsed.kind !== "token") {
+    return Response.json(
+      {
+        error: "Not found",
+        reason: parsed.kind === "legacy" ? "legacy_link" : "not_found",
+      },
+      { status: 404 },
+    );
+  }
+  const appointmentId = parsed.appointmentId;
+
+  // Anonymous capability-URL endpoint: the clinic is unknown until the
+  // appointment row resolves, so the lookup and the queue projection run with
+  // an explicit unscoped bypass. The signed token is the authorization; the
+  // response masks the patient to initials.
+  return runUnscoped("public queue status: lookup appointment by signed ticket token", async () => {
     const appointment = await prisma.appointment.findUnique({
-      where: { id },
+      where: { id: appointmentId },
       select: {
         id: true,
         clinicId: true,
         doctorId: true,
+        date: true,
         queueStatus: true,
         queueOrder: true,
         ticketSeq: true,
@@ -38,13 +61,22 @@ export async function GET(
             cabinet: { select: { number: true } },
           },
         },
-        primaryService: { select: { nameRu: true } },
         clinic: { select: { nameRu: true, slug: true } },
       },
     });
 
     if (!appointment) {
-      return Response.json({ error: "Not found" }, { status: 404 });
+      return Response.json({ error: "Not found", reason: "not_found" }, { status: 404 });
+    }
+
+    // A ticket is a same-day thing. Yesterday's paper found in the bin, or a
+    // stub printed for next week, shows nothing beyond «not today».
+    const day = ticketDayState(appointment.date);
+    if (day !== "today") {
+      return Response.json(
+        { error: "Gone", reason: day === "past" ? "expired" : "not_today" },
+        { status: 410 },
+      );
     }
 
     // Read the patient's own slot from the SAME projection the board and kiosk
@@ -76,10 +108,11 @@ export async function GET(
       appointment.ticketSeq ?? appointment.queueOrder,
     );
 
-    // Public endpoint (patients reach it via QR link). Strip PII — initials only,
-    // no phone / passport / notes / email. Doctor name and cabinet are public
-    // clinic info, safe to return. clinicSlug + doctorId let the page subscribe to
-    // the clinic SSE stream and react to its own doctor's queue.updated pushes.
+    // Public endpoint. Strip PII — initials only, no phone / passport / notes
+    // / email, and no service name (INF-10: «ЭЭГ» next to initials is a
+    // medical fact). Doctor name and cabinet are public clinic info.
+    // clinicSlug + doctorId let the page subscribe to the clinic SSE stream
+    // and react to its own doctor's queue.updated pushes.
     return Response.json({
       patientName: initials(appointment.patient.fullName),
       doctorName: appointment.doctor.nameRu,
@@ -87,7 +120,6 @@ export async function GET(
       clinicSlug: appointment.clinic?.slug ?? null,
       doctorId: appointment.doctorId,
       cabinet: appointment.doctor.cabinet?.number ?? null,
-      service: appointment.primaryService?.nameRu ?? null,
       status: appointment.queueStatus,
       /** "live" = walk-in with a queue position; "schedule" = booking (slot time). */
       lane: live ? "live" : "schedule",

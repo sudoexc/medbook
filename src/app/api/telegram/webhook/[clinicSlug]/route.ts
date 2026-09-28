@@ -43,7 +43,12 @@ import {
   handleDoctorVoice,
   resolveDictatingDoctor,
 } from "@/server/telegram/voice-handler";
-import { consumeInviteToken } from "@/server/telegram/invite-token";
+import {
+  claimInviteToken,
+  consumeInviteToken,
+  findPendingInviteClaim,
+  inviteReplyKey,
+} from "@/server/telegram/invite-token";
 import {
   applyVerifiedContact,
   contactReplyKey,
@@ -357,6 +362,38 @@ async function handleSharedContact(
   conversationId: string,
   msg: TgIncomingMessage,
 ): Promise<void> {
+  // An invite this account opened is waiting for exactly this: the account's
+  // own number, checked against the invited card (audit PT-04).
+  const pending = msg.from?.id
+    ? await findPendingInviteClaim({
+        clinicId: clinic.id,
+        telegramId: String(msg.from.id),
+      })
+    : null;
+  if (pending && msg.from?.id) {
+    const invite = await consumeInviteToken({
+      clinicId: clinic.id,
+      token: pending.token,
+      telegramId: String(msg.from.id),
+      telegramUsername: msg.from.username ?? null,
+      contact: msg.contact,
+    });
+    console.info(
+      `[tg:webhook clinic=${clinic.slug}] invite contact → ${invite.kind}`,
+    );
+    const inviteText = botT(pending.lang, inviteReplyKey(invite));
+    // Keep the «send my number» button up while the patient can still act on
+    // it (a forwarded contact, or a number reception is about to correct).
+    const retry = invite.kind === "phone-required" || invite.kind === "phone-mismatch";
+    const sentInvite = await sendMessage(clinic, chatId, inviteText, {
+      reply_markup: retry
+        ? sharePhoneKeyboard(pending.lang)
+        : { remove_keyboard: true },
+    });
+    await recordOutgoing(clinic.id, conversationId, inviteText, sentInvite.message_id);
+    return;
+  }
+
   const result = await applyVerifiedContact({
     clinicId: clinic.id,
     fromId: msg.from?.id,
@@ -380,6 +417,15 @@ async function handleSharedContact(
   const text = botT(lang, contactReplyKey(result));
   const sent = await sendMessage(clinic, chatId, text);
   await recordOutgoing(clinic.id, conversationId, text, sent.message_id);
+}
+
+/** One big «📱 send my number» button: Telegram asks, the patient confirms. */
+function sharePhoneKeyboard(lang: "ru" | "uz") {
+  return {
+    keyboard: [[{ text: botT(lang, "invite.shareButton"), request_contact: true }]],
+    resize_keyboard: true,
+    one_time_keyboard: true,
+  };
 }
 
 /** Mini App URL served by this deployment for a given clinic, or null if
@@ -563,21 +609,36 @@ export async function POST(
 
       if (startPayload && msg.from?.id) {
         try {
-          const result = await consumeInviteToken({
+          // Opening the invite links nothing yet (audit PT-04): the account
+          // is asked for its own number, and the card is bound when that
+          // contact arrives and matches (see handleSharedContact).
+          const claim = await claimInviteToken({
             clinicId: clinic.id,
             token: startPayload,
             telegramId: String(msg.from.id),
-            telegramUsername: msg.from.username ?? null,
           });
-          // Best-effort logging for support; the FSM still greets the
-          // patient regardless of outcome.
           console.info(
-            `[tg:webhook clinic=${clinic.slug}] invite consume → ${result.kind}`,
+            `[tg:webhook clinic=${clinic.slug}] invite claim → ${claim.kind}`,
           );
-        } catch (consumeErr) {
+          if (claim.kind === "claimed" || claim.kind === "already-yours") {
+            const text = botT(
+              claim.lang,
+              claim.kind === "claimed" ? "invite.confirmPhone" : "invite.alreadyYours",
+            );
+            const sent = await sendMessage(clinicMin, chatId, text, {
+              reply_markup:
+                claim.kind === "claimed"
+                  ? sharePhoneKeyboard(claim.lang)
+                  : undefined,
+            });
+            await recordOutgoing(clinic.id, recorded.conversationId, text, sent.message_id);
+            if (claim.kind === "claimed") return jsonResponse({ ok: true });
+          }
+          // Anything else (an old or foreign token): the FSM greets as usual.
+        } catch (claimErr) {
           console.warn(
-            `[tg:webhook clinic=${clinic.slug}] invite consume threw`,
-            consumeErr,
+            `[tg:webhook clinic=${clinic.slug}] invite claim threw`,
+            claimErr,
           );
         }
       }

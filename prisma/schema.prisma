@@ -3689,10 +3689,18 @@ model TelegramInviteToken {
   /// Telegram user id that consumed the token. Captured for support when
   /// a patient claims they linked the wrong account.
   consumedTelegramId String?
+  /// The Telegram account that last opened the token (`/start <token>`) and
+  /// was asked to prove it is the patient (audit PT-04). Opening links
+  /// nothing: the token is printed on paper that leaves the clinic, so the
+  /// card is bound only once THIS account shares its own phone number and
+  /// the number is the card's.
+  claimTelegramId    String?
+  claimedAt          DateTime?
 
   @@index([clinicId])
   @@index([patientId])
   @@index([expiresAt])
+  @@index([clinicId, claimTelegramId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ export interface BoardWaiting {
 }
 
 export interface BoardCurrent {
-  /** Appointment id: lets a call fall back to the right snapshot row. */
+  /** Opaque row key (not the appointment id): lets a call fall back to the right snapshot row. */
   id: string;
   fullName: string;
   /** Null for a booking started without check-in (no queue fields). */
@@ -75,6 +75,8 @@ export interface QueueCall extends QueueCallFields {
 // an event type added here must poke both screens.
 export const BOARD_REFETCH_DEBOUNCE_MS = 400;
 export const BOARD_POLL_FALLBACK_MS = 25_000;
+/** How long a refused stream waits before the lobby board tries again. */
+const SSE_REOPEN_MS = 30_000;
 
 export const BOARD_REFETCH_EVENTS = new Set<string>([
   "queue.updated",
@@ -128,12 +130,32 @@ export function useQueueBoard(slug: string) {
 
   // SSE — instant board pokes + `queue.called` announcements.
   useEffect(() => {
-    const es = new EventSource(
-      `/api/c/${encodeURIComponent(slug)}/queue/events`,
-    );
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false); // browser auto-reconnects
-    es.onmessage = (ev) => {
+    let es: EventSource | null = null;
+    let reopenTimer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+
+    const open = () => {
+      if (disposed) return;
+      const source = new EventSource(
+        `/api/c/${encodeURIComponent(slug)}/queue/events`,
+      );
+      es = source;
+      source.onopen = () => setConnected(true);
+      source.onerror = () => {
+        setConnected(false);
+        // A network blip is retried by the browser itself. A refused open
+        // (the per-address stream cap, INF-10, or a 502 mid-deploy) leaves
+        // the source CLOSED for good, and this lobby screen would never
+        // chime again; the snapshot poll keeps the board fresh meanwhile.
+        if (source.readyState === EventSource.CLOSED && !disposed) {
+          clearTimeout(reopenTimer);
+          reopenTimer = setTimeout(open, SSE_REOPEN_MS);
+        }
+      };
+      source.onmessage = onMessage;
+    };
+
+    const onMessage = (ev: MessageEvent) => {
       let parsed: { type?: string; payload?: Record<string, unknown> };
       try {
         parsed = JSON.parse(ev.data);
@@ -151,7 +173,13 @@ export function useQueueBoard(slug: string) {
       }
       scheduleRefetch();
     };
-    return () => es.close();
+
+    open();
+    return () => {
+      disposed = true;
+      clearTimeout(reopenTimer);
+      es?.close();
+    };
   }, [slug, scheduleRefetch]);
 
   const dismissCall = useCallback(() => setCall(null), []);

@@ -4,14 +4,21 @@
  * GET /api/miniapp/appointments/:id/ics
  *
  * Returns a single-VEVENT iCalendar file for the patient's appointment.
- * Opened via `tg.openLink` (external browser), so auth rides on the
- * `?initData=` query fallback — the global header path can't be used for
- * a plain link navigation.
+ * Opened via `tg.openLink` (external browser), so the URL carries `t`, a
+ * link for THIS appointment minted by `POST /api/miniapp/links` (audit
+ * MA-07: it used to carry the patient's initData, the key to the whole
+ * account, into the browser's history and nginx's log). A request with the
+ * initData header is still served.
  */
 import { prisma } from "@/lib/prisma";
+import { runWithTenant } from "@/lib/tenant-context";
 import { err, forbidden, notFound } from "@/server/http";
-import { createMiniAppListHandler } from "@/server/miniapp/handler";
+import {
+  createMiniAppListHandler,
+  resolveMiniAppLink,
+} from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
+import { expiredMiniAppLinkPage } from "@/server/miniapp/link-page";
 
 /** RFC 5545 §3.3.11 TEXT escaping. */
 function esc(value: string): string {
@@ -27,14 +34,17 @@ function icsDate(d: Date): string {
   return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
 
-export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
-  const url = new URL(request.url);
-  const segments = url.pathname.split("/").filter(Boolean);
+function appointmentIdOf(request: Request): string {
+  const segments = new URL(request.url).pathname.split("/").filter(Boolean);
   // .../appointments/<id>/ics
-  const appointmentId = segments[segments.length - 2] ?? "";
+  return segments[segments.length - 2] ?? "";
+}
+
+const byHeader = createMiniAppListHandler({}, async ({ request, ctx }) => {
+  const appointmentId = appointmentIdOf(request);
   if (!appointmentId) return err("missing_appointment_id", 400);
 
-  const onBehalfOf = url.searchParams.get("onBehalfOf");
+  const onBehalfOf = new URL(request.url).searchParams.get("onBehalfOf");
   const acting = await resolveActivePatient({
     ctx: {
       clinicId: ctx.clinicId,
@@ -44,9 +54,46 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
     onBehalfOf,
   });
   if (!acting.ok) return forbidden();
+  return renderIcs({
+    clinicId: ctx.clinicId,
+    appointmentId,
+    acting: { patientId: acting.patientId, preferredLang: acting.preferredLang },
+  });
+});
 
+export async function GET(request: Request): Promise<Response> {
+  if (!new URL(request.url).searchParams.has("t")) return byHeader(request);
+  const appointmentId = appointmentIdOf(request);
+  // The link names the acting patient (the owner or a linked relative) it
+  // was minted for, after the family check; see /api/miniapp/links.
+  const link = await resolveMiniAppLink(request, {
+    scope: "ics",
+    resourceId: appointmentId,
+  });
+  if (!link.ok) return expiredMiniAppLinkPage(link.response.status);
+  return runWithTenant({ kind: "SYSTEM" }, () =>
+    renderIcs({
+      clinicId: link.link.clinicId,
+      appointmentId,
+      acting: {
+        patientId: link.link.patientId,
+        preferredLang: link.link.preferredLang,
+      },
+    }),
+  );
+}
+
+async function renderIcs({
+  clinicId,
+  appointmentId,
+  acting,
+}: {
+  clinicId: string;
+  appointmentId: string;
+  acting: { patientId: string; preferredLang: "RU" | "UZ" };
+}): Promise<Response> {
   const appt = await prisma.appointment.findFirst({
-    where: { id: appointmentId, clinicId: ctx.clinicId },
+    where: { id: appointmentId, clinicId },
     select: {
       id: true,
       patientId: true,
@@ -71,7 +118,7 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   }
 
   const clinic = await prisma.clinic.findUnique({
-    where: { id: ctx.clinicId },
+    where: { id: clinicId },
     select: { nameRu: true, nameUz: true, addressRu: true, addressUz: true },
   });
   if (!clinic) return notFound();
@@ -122,4 +169,4 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
       "Cache-Control": "no-store",
     },
   });
-});
+}

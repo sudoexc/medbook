@@ -83,6 +83,9 @@ vi.mock("@/server/telegram/voice-handler", () => ({
 }));
 vi.mock("@/server/telegram/invite-token", () => ({
   consumeInviteToken: vi.fn(async () => ({ kind: "not-found" as const })),
+  claimInviteToken: vi.fn(async () => ({ kind: "not-found" as const })),
+  findPendingInviteClaim: vi.fn(async () => null),
+  inviteReplyKey: vi.fn(() => "invite.unavailable"),
 }));
 vi.mock("@/server/telegram/contact-verify", () => ({
   applyVerifiedContact: vi.fn(async () => ({ kind: "linked" })),

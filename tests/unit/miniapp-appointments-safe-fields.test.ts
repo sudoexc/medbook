@@ -210,6 +210,8 @@ function expectNoInternals(obj: Record<string, unknown>) {
 
 beforeEach(() => {
   state.findManyArgs.length = 0;
+  // Queue tokens and document links are HMACs over the app secret.
+  process.env.APP_SECRET = "test-app-secret";
 });
 
 describe("GET /api/miniapp/appointments", () => {
@@ -233,6 +235,8 @@ describe("GET /api/miniapp/appointments", () => {
         "followUpAt",
         "payments",
         "primaryService",
+        // The patient's own signed key to the live queue card (INF-10).
+        "queueToken",
         "services",
       ].sort(),
     );
@@ -241,7 +245,12 @@ describe("GET /api/miniapp/appointments", () => {
     expect(appt!.services).toEqual([
       { service: { id: "s1", nameRu: "Консультация", nameUz: "Konsultatsiya", priceBase: 100 } },
     ]);
-    expect(appt!.conclusionUrl).toBe("/api/miniapp/documents/doc1/file?clinicSlug=neurofax");
+    // A short-lived link for this one document, never initData (MA-07).
+    const conclusion = new URL(appt!.conclusionUrl as string, "http://x");
+    expect(conclusion.pathname).toBe("/api/miniapp/documents/doc1/file");
+    expect(conclusion.searchParams.get("clinicSlug")).toBe("neurofax");
+    expect(conclusion.searchParams.get("t")).toBeTruthy();
+    expect(conclusion.searchParams.has("initData")).toBe(false);
   });
 
   it("the select itself names no internal column", () => {

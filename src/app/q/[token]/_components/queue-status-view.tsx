@@ -11,7 +11,6 @@ interface QueueStatus {
   clinicSlug: string | null;
   doctorId: string;
   cabinet: string | null;
-  service: string | null;
   status: string;
   /** Two-lanes: walk-ins hold a queue position, bookings hold a slot time. */
   lane?: "live" | "schedule";
@@ -37,28 +36,61 @@ const QUEUE_EVENTS = new Set<string>([
   "appointment.moved",
 ]);
 
-export default function QueueStatusPage({ params }: { params: Promise<{ id: string }> }) {
+/** The page's own words for a link that shows nothing, in both languages. */
+export interface QueueLinkCopy {
+  notFound: string;
+  expired: string;
+  expiredHint: string;
+  notToday: string;
+  notTodayHint: string;
+  legacy: string;
+  legacyHint: string;
+}
+
+/**
+ * Why a ticket link shows no queue (audit INF-10): the link is a signed
+ * same-day token now, so the QR on a ticket printed before the change, or
+ * yesterday's ticket, answers with a reason instead of the queue.
+ */
+type LinkProblem = "notFound" | "expired" | "notToday" | "legacy";
+
+async function linkProblemOf(res: Response): Promise<LinkProblem> {
+  let reason: string | undefined;
+  try {
+    reason = ((await res.json()) as { reason?: string }).reason;
+  } catch {
+    /* non-JSON error body */
+  }
+  if (reason === "legacy_link") return "legacy";
+  if (reason === "expired") return "expired";
+  if (reason === "not_today") return "notToday";
+  return "notFound";
+}
+
+export function QueueStatusView({
+  token,
+  copy,
+}: {
+  token: string;
+  copy: { ru: QueueLinkCopy; uz: QueueLinkCopy };
+}) {
   const [data, setData] = useState<QueueStatus | null>(null);
-  const [id, setId] = useState<string>("");
-  const [error, setError] = useState(false);
+  const [problem, setProblem] = useState<LinkProblem | null>(null);
   const [countdown, setCountdown] = useState(0);
   const wasNotified = useRef(false);
   const lastStatus = useRef<string>("");
   const fetchedAt = useRef<number>(0);
   const refetchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => {
-    params.then((p) => setId(p.id));
-  }, [params]);
+  const id = token;
 
   const fetchStatus = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await fetch(`/api/queue/status/${id}`);
+      const res = await fetch(`/api/queue/status/${encodeURIComponent(id)}`);
       if (res.ok) {
         const d = (await res.json()) as QueueStatus;
         setData(d);
-        setError(false);
+        setProblem(null);
         fetchedAt.current = Date.now();
         setCountdown((d.etaMinutes ?? 0) * 60);
 
@@ -71,11 +103,16 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
           }
         }
         lastStatus.current = d.status;
-      } else {
-        setError(true);
+      } else if (res.status === 404 || res.status === 410) {
+        // A definitive answer about the link itself (unknown, outdated,
+        // another day). Anything else (a 5xx during a deploy) keeps the last
+        // good screen and lets the next poll retry.
+        const why = await linkProblemOf(res);
+        setData(null);
+        setProblem(why);
       }
     } catch {
-      setError(true);
+      // Network blip: keep what is on screen, the poll retries.
     }
   }, [id]);
 
@@ -130,15 +167,30 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
   const countdownMin = Math.floor(countdown / 60);
   const countdownSec = countdown % 60;
 
-  if (error) {
+  if (problem) {
+    // Bilingual: nothing on this screen tells us the patient's language.
+    const hintKey =
+      problem === "expired"
+        ? "expiredHint"
+        : problem === "notToday"
+          ? "notTodayHint"
+          : problem === "legacy"
+            ? "legacyHint"
+            : null;
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center">
+        <div className="text-center max-w-sm">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 mb-4">
             <span className="text-3xl">🎫</span>
           </div>
-          <p className="text-lg text-gray-500 font-medium">Талон не найден</p>
-          <p className="text-sm text-gray-400 mt-1">Ticket not found</p>
+          {(["ru", "uz"] as const).map((lang) => (
+            <div key={lang} className={lang === "uz" ? "mt-4" : undefined}>
+              <p className="text-lg text-gray-500 font-medium">{copy[lang][problem]}</p>
+              {hintKey ? (
+                <p className="text-sm text-gray-400 mt-1">{copy[lang][hintKey]}</p>
+              ) : null}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -300,13 +352,6 @@ export default function QueueStatusPage({ params }: { params: Promise<{ id: stri
                 <span className="text-xs text-gray-400 shrink-0 w-16">Кабинет</span>
                 <span className="text-sm font-bold text-gray-800 text-lg">{data.cabinet}</span>
               </div>
-              {data.service && (
-                <div className="flex items-center gap-3 px-5 py-3.5">
-                  <Clock className="h-4 w-4 text-gray-300 shrink-0" />
-                  <span className="text-xs text-gray-400 shrink-0 w-16">Услуга</span>
-                  <span className="text-sm font-medium text-gray-800">{data.service}</span>
-                </div>
-              )}
             </div>
           </div>
 

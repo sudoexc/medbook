@@ -616,10 +616,12 @@ export const GET = createApiListHandler(
 
     // Personal bot-invite QR on the printed page. Paper is the one artefact
     // every patient walks out holding, which makes it the highest-leverage
-    // surface for bot adoption: scan → /start → linked, and every next
-    // document arrives in Telegram by itself. Shown only while the patient
-    // is NOT linked; the token is minted-or-reused (24h window), so reprints
-    // do not churn rows. Failure here must never block printing.
+    // surface for bot adoption: scan → /start → share own number → linked,
+    // and every next document arrives in Telegram by itself. The number step
+    // is what keeps this paper from being a key to the medical record for
+    // whoever holds it (audit PT-04, see invite-token.ts). Shown only while
+    // the patient is NOT linked; the token is minted-or-reused (24h window),
+    // so reprints do not churn rows. Failure here must never block printing.
     let tgInviteBlock = "";
     if (!note.patient.telegramId) {
       try {

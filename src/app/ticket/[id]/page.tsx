@@ -14,6 +14,7 @@ import {
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { isLiveLane } from "@/lib/queue-ordering";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
+import { queueTicketToken } from "@/server/appointments/public-ticket";
 import ru from "@/messages/ru.json";
 import uz from "@/messages/uz.json";
 import { AutoPrint } from "./_components/auto-print";
@@ -117,7 +118,10 @@ export default async function TicketPage({
     appointment.ticketSeq ?? appointment.queueOrder,
   );
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
-  const statusUrl = `${baseUrl}/q/${id}`;
+  // The QR carries a signed ticket token, never the bare id (audit INF-10):
+  // the id is no longer a key to the queue status, the token is, and the
+  // status page answers it on the appointment's own day only.
+  const statusUrl = `${baseUrl}/q/${queueTicketToken(id)}`;
   // Self-hosted QR (the `qrcode` package, same one the PDFs/mini-app use) —
   // no third-party `api.qrserver.com` round-trip, which both leaks the queue
   // URL and is unreliable from a VPS behind SNI/DPI filtering.

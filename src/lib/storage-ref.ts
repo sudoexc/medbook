@@ -116,6 +116,34 @@ export function staffKeyHref(
   }`;
 }
 
+/** Raster images a document may carry inline (a consent signature pad). */
+const INLINE_IMAGE = /^data:image\/(?:png|jpeg|webp);base64,/i;
+
+/**
+ * The URL a staff page may OPEN for a document (`href`, `window.open`):
+ * our proxy for a stored object, our own relative `/api/` path, an external
+ * link only when it is `https:`, an inline raster image. Null for anything
+ * else: a `javascript:` or `data:text/html` value typed into the old «link»
+ * mode must never be navigated to (audit CD-08). React sanitises `href` but
+ * not `window.open`.
+ */
+export function documentHref(
+  url: string | null | undefined,
+  opts?: { download?: boolean },
+): string | null {
+  const raw = url?.trim();
+  if (!raw) return null;
+  const key = storageKeyFromUrl(raw);
+  if (key) return staffKeyHref(key, opts);
+  if (raw.startsWith("/api/")) return raw;
+  if (INLINE_IMAGE.test(raw)) return raw;
+  try {
+    return new URL(raw).protocol === "https:" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A row with a stored `fileUrl`, as a staff page may use it. */
 export function withStaffFileUrl<T extends { fileUrl: string }>(row: T): T {
   return { ...row, fileUrl: staffFileHref(row.fileUrl) };

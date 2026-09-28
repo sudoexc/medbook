@@ -696,7 +696,7 @@ export function HomeHero({
         isSameLocalDay(a.date, nowDate) &&
         (a.status === "WAITING" || a.status === "IN_PROGRESS"),
     ) ?? null;
-  const queue = useQueueStatus(queueAppt ? queueAppt.id : null);
+  const queue = useQueueStatus(queueAppt?.queueToken ?? null);
 
   const todayAppt =
     upcoming.data?.find(

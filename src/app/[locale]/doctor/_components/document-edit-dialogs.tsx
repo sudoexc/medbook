@@ -274,6 +274,7 @@ export function ReplaceDocumentFileDialog({
       }
       const uploaded = (await uploadRes.json()) as {
         fileUrl: string;
+        uploadToken?: string | null;
         mimeType: string | null;
         sizeBytes: number;
       };
@@ -282,6 +283,9 @@ export function ReplaceDocumentFileDialog({
       //    old blob after a successful update.
       const res = await patchDocument(doc.id, {
         fileUrl: uploaded.fileUrl,
+        // Receipt for the new bytes: the server refuses a stored file
+        // without it (audit CD-08).
+        uploadToken: uploaded.uploadToken ?? null,
         mimeType: uploaded.mimeType,
         sizeBytes: uploaded.sizeBytes,
       });

@@ -25,32 +25,10 @@ import { audit } from "@/lib/audit";
 import { ok, err, notFound, forbidden } from "@/server/http";
 import { fetchObject } from "@/server/storage/minio";
 import { sendDocument } from "@/server/telegram/send";
+import { clinicReadableKey } from "@/server/documents/file-ref";
 
 /** Telegram caps media groups; ten is plenty for one visit's paperwork. */
 const MAX_DOCS = 10;
-
-/**
- * `Document.fileUrl` is a public-shaped URL over the private bucket:
- *   https://<host>/files/<bucket>/<key…>
- * Returns bucket + key, or null for anything that doesn't match — a document
- * with a foreign/malformed URL must be skipped, not guessed at.
- */
-export function storageRefFromFileUrl(
-  fileUrl: string,
-): { bucket: string; key: string } | null {
-  let pathname: string;
-  try {
-    pathname = new URL(fileUrl).pathname;
-  } catch {
-    return null;
-  }
-  const m = pathname.match(/^\/files\/([^/]+)\/(.+)$/);
-  if (!m) return null;
-  const bucket = decodeURIComponent(m[1]!);
-  const key = decodeURIComponent(m[2]!);
-  if (!key || key.includes("..")) return null;
-  return { bucket, key };
-}
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -144,17 +122,21 @@ export const POST = createApiHandler(
     const failed: string[] = [];
 
     for (const doc of documents) {
-      const ref = storageRefFromFileUrl(doc.fileUrl);
-      if (!ref) {
+      // Only this clinic's own object in the main bucket (audit CD-08): the
+      // bucket and key used to come straight from the stored URL, so a row
+      // pointing at another patient's or another clinic's file was read and
+      // delivered to this patient. Anything else is skipped and counted.
+      const key = clinicReadableKey(doc.fileUrl, note.clinic.id, "document");
+      if (!key) {
         failed.push(doc.id);
         continue;
       }
       try {
-        const obj = await fetchObject(ref.bucket, ref.key);
+        const obj = await fetchObject(undefined, key);
         if (!obj.body) throw new Error("empty body");
         const bytes = Buffer.from(await new Response(obj.body).arrayBuffer());
         await sendDocument(note.clinic, note.patient.telegramId, bytes, {
-          filename: path.basename(ref.key),
+          filename: path.basename(key),
           contentType:
             doc.mimeType ?? obj.contentType ?? "application/octet-stream",
           caption: doc.title,
@@ -177,14 +159,14 @@ export const POST = createApiHandler(
     for (const rx of note.visitPrescriptions) {
       const photo = rx.drug?.photoUrl;
       if (!photo) continue;
-      const ref = storageRefFromFileUrl(photo);
-      if (!ref) continue;
+      const key = clinicReadableKey(photo, note.clinic.id, "packShot");
+      if (!key) continue;
       try {
-        const obj = await fetchObject(ref.bucket, ref.key);
+        const obj = await fetchObject(undefined, key);
         if (!obj.body) continue;
         const bytes = Buffer.from(await new Response(obj.body).arrayBuffer());
         await sendDocument(note.clinic, note.patient.telegramId, bytes, {
-          filename: path.basename(ref.key),
+          filename: path.basename(key),
           contentType: obj.contentType ?? "image/jpeg",
           caption: rx.displayName,
         });

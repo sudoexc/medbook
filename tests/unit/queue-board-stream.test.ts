@@ -7,12 +7,17 @@
  * These tests pin both halves so a future emitter that enriches an appointment
  * payload with a patient name can't silently leak it onto the wire.
  */
-import { describe, it, expect } from "vitest";
+import { beforeAll, describe, it, expect } from "vitest";
 
 import {
   isBoardEvent,
   projectBoardEvent,
 } from "@/server/realtime/board-stream";
+import { boardRowKey } from "@/server/appointments/public-ticket";
+
+beforeAll(() => {
+  process.env.APP_SECRET = "test-app-secret";
+});
 
 describe("isBoardEvent", () => {
   it("accepts whitelisted queue/appointment signals", () => {
@@ -38,54 +43,69 @@ describe("isBoardEvent", () => {
 });
 
 describe("projectBoardEvent", () => {
-  it("strips patientId but passes the whitelisted initials-only patientName", () => {
+  it("an appointment poke carries the doctor only: no appointment id, no patient, no status (INF-10)", () => {
     const projected = projectBoardEvent({
-      type: "appointment.statusChanged",
+      type: "appointment.created",
       clinicId: "c1",
       payload: {
         appointmentId: "a1",
         doctorId: "d1",
         patientId: "p1",
         patientName: "Иванов Иван", // hypothetical passthrough enrichment
-        status: "WAITING",
-        previousStatus: "BOOKED",
+        serviceName: "ЭЭГ",
+        status: "BOOKED",
+        previousStatus: null,
       },
     });
-    expect(projected).not.toBeNull();
-    expect(projected!.type).toBe("appointment.statusChanged");
-    expect(projected!.payload).toEqual({
-      appointmentId: "a1",
-      doctorId: "d1",
-      // patientName is whitelisted for the call overlay — emitters send
-      // initials only (see queue.called emit sites).
-      patientName: "Иванов Иван",
-      status: "WAITING",
-      previousStatus: "BOOKED",
+    expect(projected).toEqual({
+      type: "appointment.created",
+      payload: { doctorId: "d1" },
     });
-    expect("patientId" in projected!.payload).toBe(false);
-    expect("patientName" in projected!.payload).toBe(true);
   });
 
-  it("preserves the public call identifiers for the now-calling banner", () => {
+  it("every appointment.* and queue.updated poke drops the appointment id", () => {
+    for (const type of [
+      "appointment.created",
+      "appointment.statusChanged",
+      "appointment.cancelled",
+      "appointment.moved",
+      "queue.updated",
+    ]) {
+      const projected = projectBoardEvent({
+        type,
+        payload: { appointmentId: "a1", doctorId: "d1", queueOrder: 3 },
+      });
+      expect(projected!.payload).toEqual({ doctorId: "d1" });
+      expect(JSON.stringify(projected)).not.toContain("a1");
+    }
+  });
+
+  it("keeps the public call identifiers for the now-calling banner, with an opaque row key", () => {
     const projected = projectBoardEvent({
       type: "queue.called",
       payload: {
         appointmentId: "a1",
         doctorId: "d1",
+        patientId: "p1",
         queueOrder: 7,
         ticketNumber: "D-007",
+        // Emitters reduce the name to initials; it is on the whitelist.
+        patientName: "Иванов И.",
         cabinetNumber: "3",
         calledAt: "2026-06-25T09:00:00.000Z",
       },
     });
     expect(projected!.payload).toEqual({
-      appointmentId: "a1",
       doctorId: "d1",
       queueOrder: 7,
       ticketNumber: "D-007",
+      patientName: "Иванов И.",
       cabinetNumber: "3",
       calledAt: "2026-06-25T09:00:00.000Z",
+      rowKey: boardRowKey("a1"),
     });
+    expect("appointmentId" in projected!.payload).toBe(false);
+    expect("patientId" in projected!.payload).toBe(false);
   });
 
   it("returns null for non-board events", () => {

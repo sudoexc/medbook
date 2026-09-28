@@ -11,6 +11,10 @@
  *   - Stub mode → server-relative `/api/crm/documents/file?key=<key>` so the
  *     download button can stream bytes back through Next.js
  *
+ * Also returns `uploadToken`, the receipt POST / PATCH /api/crm/documents
+ * require to attach this object to a document (audit CD-08): only bytes
+ * this route stored for this clinic can become a document's file.
+ *
  * This endpoint exists to kill the `pending://` orphan: previously the
  * client wrote a fake URL into the Document row when the presign endpoint
  * couldn't issue a real one, leaving the bytes nowhere and the row
@@ -30,6 +34,7 @@ import {
 } from "@/server/storage/safe-file";
 import { ok, err } from "@/server/http";
 import { uploadObject, isStubMode } from "@/server/storage/minio";
+import { signDocumentUpload } from "@/server/documents/file-ref";
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25MB cap matches what the presign flow allowed.
 
@@ -101,6 +106,7 @@ export const POST = createApiHandler(
     return ok({
       key,
       fileUrl,
+      uploadToken: signDocumentUpload(clinicId, key),
       mimeType: contentType,
       sizeBytes: file.size,
     });

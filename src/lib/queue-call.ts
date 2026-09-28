@@ -15,11 +15,15 @@
  * a stale `current` of someone else is never read as the called patient.
  * With nothing to go on the voice says the ticket or «Следующий пациент».
  *
+ * The join key is the opaque `rowKey` (audit INF-10): the public stream and
+ * the board snapshots carry `boardRowKey(appointmentId)`, never the id.
+ *
  * Pure and client-safe: shared by both TV hooks and pages.
  */
 
 export interface QueueCallFields {
-  appointmentId: string;
+  /** Opaque board row key of the called appointment ("" when absent). */
+  rowKey: string;
   doctorId: string;
   ticketNumber: string | null;
   cabinetNumber: string | null;
@@ -39,7 +43,7 @@ export function parseQueueCalledPayload(
 ): QueueCallFields {
   const payload = p ?? {};
   return {
-    appointmentId: str(payload.appointmentId) ?? "",
+    rowKey: str(payload.rowKey) ?? "",
     doctorId: str(payload.doctorId) ?? "",
     ticketNumber: str(payload.ticketNumber),
     cabinetNumber: str(payload.cabinetNumber),
@@ -51,7 +55,7 @@ export function parseQueueCalledPayload(
 
 /** A board row that might be the called appointment. */
 export interface CallBoardRow {
-  /** Appointment id; rows without one never match. */
+  /** Board row key; rows without one never match. */
   id?: string | null;
   fullName: string;
   ticketNumber: string | null;
@@ -66,18 +70,18 @@ export interface CallDisplay {
 /**
  * Name, ticket and cabinet for the call takeover and the voice line. Board
  * rows are the called doctor's `current` and `waiting` entries; only the one
- * whose id is the called appointment counts.
+ * whose row key is the called appointment's counts.
  */
 export function resolveCallDisplay(
   call: Pick<
     QueueCallFields,
-    "appointmentId" | "patientName" | "ticketNumber" | "cabinetNumber"
+    "rowKey" | "patientName" | "ticketNumber" | "cabinetNumber"
   >,
   rows: ReadonlyArray<CallBoardRow | null | undefined>,
   boardCabinet: string | null | undefined,
 ): CallDisplay {
-  const same = call.appointmentId
-    ? rows.find((r) => r?.id && r.id === call.appointmentId)
+  const same = call.rowKey
+    ? rows.find((r) => r?.id && r.id === call.rowKey)
     : undefined;
   return {
     patientName: call.patientName ?? same?.fullName ?? "",

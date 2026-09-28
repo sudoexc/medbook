@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Audit Q-01: a patient with a booking (BOOKED / CONFIRMED) could not check in
@@ -150,6 +150,11 @@ function checkin() {
   });
 }
 
+beforeAll(() => {
+  // The check-in answer carries a signed ticket token (audit INF-10).
+  process.env.APP_SECRET = "test-app-secret";
+});
+
 beforeEach(() => {
   state.row = null;
   state.updates = [];
@@ -276,6 +281,9 @@ describe("POST /api/c/[slug]/queue/checkin — a booking joins the live queue", 
 
     const body = await res.json();
     expect(body.ticketNumber).toBeTruthy();
+    // The kiosk prints its stub with this, not with the bare id (INF-10).
+    const { queueTicketToken } = await import("@/server/appointments/public-ticket");
+    expect(body.ticketToken).toBe(queueTicketToken("a1"));
     expect(state.events.map((e) => e.type)).toEqual([
       "queue.updated",
       "appointment.statusChanged",

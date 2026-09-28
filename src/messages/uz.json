@@ -8095,6 +8095,8 @@
     "linkNotTodayHint": "Uni yozilgan kuningizda qayta oching.",
     "linkLegacy": "Bu havola eskirgan",
     "linkLegacyHint": "Yangi talondagi kodni skanerlang yoki raqamni registraturadan so'rang.",
+    "staffOnly": "Talon faqat klinika registraturasi yoki kioskida ochiladi",
+    "staffOnlyHint": "Klinika xodimi: CRM ga kiring va talonni qayta chop eting.",
     "yourNumber": "Sizning raqamingiz",
     "yourTime": "Sizning vaqtingiz",
     "patient": "Bemor:",

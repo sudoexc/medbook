@@ -10,12 +10,17 @@
  *     clinic day only (410 otherwise), with no service name in the answer;
  *   - the paper ticket's QR and the `/t/<code>` short link lead to the
  *     token, never the id;
+ *   - the print stub `/ticket/<ref>` opens a bare id only for a staff
+ *     session of the appointment's clinic; anyone else needs the signed
+ *     token (the kiosk's), gets today's stub only and never the service;
  *   - the anonymous stream refuses an address's 11th concurrent connection,
  *     while a doctor's own TV (`?screen=<tvToken>`) is never refused.
  *
  * The stream payload half (no appointment id) is in queue-board-stream and
  * queue-call-display tests.
  */
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -25,6 +30,15 @@ const h = vi.hoisted(() => ({
   unsubscribed: 0,
   qrUrls: [] as string[],
   ticketCodeHit: null as { id: string } | null,
+  session: null as { user: { id: string; clinicId: string | null } } | null,
+  authCalls: 0,
+}));
+
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(async () => {
+    h.authCalls++;
+    return h.session;
+  }),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -152,6 +166,8 @@ beforeEach(() => {
   h.unsubscribed = 0;
   h.qrUrls = [];
   h.ticketCodeHit = null;
+  h.session = null;
+  h.authCalls = 0;
   __resetConnectionCapsForTests();
   __resetRateLimitsForTests();
 });
@@ -228,6 +244,7 @@ describe("GET /api/queue/status/:token", () => {
 
 describe("links that lead to the status page", () => {
   it("the paper ticket's QR carries the signed token, not the id", async () => {
+    h.session = { user: { id: "u1", clinicId: "c1" } };
     const { default: TicketPage } = await import("@/app/ticket/[id]/page");
     await TicketPage({ params: Promise.resolve({ id: APPT_ID }) });
     expect(h.qrUrls).toHaveLength(1);
@@ -255,6 +272,99 @@ describe("links that lead to the status page", () => {
       TicketResolver({ params: Promise.resolve({ code: "ABC234" }) }),
     ).rejects.toThrow("NEXT_NOT_FOUND");
     expect(h.appointmentLookups).toBe(before);
+  });
+});
+
+describe("/ticket/<ref> print stub", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function stub(ref: string): Promise<string> {
+    const { default: TicketPage } = await import("@/app/ticket/[id]/page");
+    const el = await TicketPage({ params: Promise.resolve({ id: ref }) });
+    return renderToStaticMarkup(el as React.ReactElement);
+  }
+
+  function expectNothingRevealed(html: string) {
+    for (const leak of ["Турматов", "Султанов", "ЭЭГ", "A-003", "Neurofax", "/q/"]) {
+      expect(html).not.toContain(leak);
+    }
+    // No fresh queue token was minted for whoever asked.
+    expect(h.qrUrls).toHaveLength(0);
+  }
+
+  it("the id split off yesterday's QR opens nothing without a staff session, not even a lookup", async () => {
+    h.appointment = walkin(new Date(Date.now() - DAY));
+    const [idHalf] = queueTicketToken(APPT_ID).split(".");
+    expect(idHalf).toBe(APPT_ID);
+
+    const html = await stub(idHalf!);
+    expect(h.appointmentLookups).toBe(0);
+    expectNothingRevealed(html);
+    expect(html).toContain("Талон открывается только в регистратуре или киоске клиники");
+    expect(html).toContain("Talon faqat klinika registraturasi yoki kioskida ochiladi");
+  });
+
+  it("a staff session of another clinic sees a missing ticket", async () => {
+    h.session = { user: { id: "u9", clinicId: "c2" } };
+    const html = await stub(APPT_ID);
+    expectNothingRevealed(html);
+    expect(html).toContain("Талон не найден");
+  });
+
+  it("a signed-in user without a clinic is treated as anonymous", async () => {
+    h.session = { user: { id: "sa", clinicId: null } };
+    const html = await stub(APPT_ID);
+    expect(h.appointmentLookups).toBe(0);
+    expectNothingRevealed(html);
+  });
+
+  it("the front desk reprints any day by id, service line included", async () => {
+    h.session = { user: { id: "u1", clinicId: "c1" } };
+    h.appointment = walkin(new Date(Date.now() - DAY));
+    const html = await stub(APPT_ID);
+    expect(html).toContain("A-003");
+    expect(html).toContain("Турматов О. Б.");
+    expect(html).toContain("ЭЭГ");
+    expect(h.qrUrls[0]).toContain(`/q/${queueTicketToken(APPT_ID)}`);
+  });
+
+  it("the kiosk's signed token prints today's stub without the service line", async () => {
+    const html = await stub(queueTicketToken(APPT_ID));
+    // A token needs no session: the kiosk tab has none.
+    expect(h.authCalls).toBe(0);
+    expect(html).toContain("A-003");
+    expect(html).toContain("Турматов О. Б.");
+    expect(html).toContain("Султанов Азиз");
+    expect(html).not.toContain("ЭЭГ");
+    expect(html).not.toContain("Услуга:");
+    expect(html).not.toContain("Турматов Олим");
+  });
+
+  it("the signed token of another day shows only that the link is not open", async () => {
+    h.appointment = walkin(new Date(Date.now() - 2 * DAY));
+    let html = await stub(queueTicketToken(APPT_ID));
+    expectNothingRevealed(html);
+    expect(html).toContain("Срок действия ссылки истёк");
+
+    h.appointment = walkin(new Date(Date.now() + 7 * DAY));
+    html = await stub(queueTicketToken(APPT_ID));
+    expectNothingRevealed(html);
+    expect(html).toContain("Ссылка заработает в день приёма");
+  });
+
+  it("a staff session does not stretch a token past its day or add the service", async () => {
+    h.session = { user: { id: "u1", clinicId: "c1" } };
+    h.appointment = walkin(new Date(Date.now() - 2 * DAY));
+    expectNothingRevealed(await stub(queueTicketToken(APPT_ID)));
+  });
+
+  it("a forged token or a board row key is not found, without a lookup", async () => {
+    for (const ref of [`${APPT_ID}.AAAAAAAAAAAAAAAAAAAAAA`, `${APPT_ID}.${boardRowKey(APPT_ID)}`, "../etc"]) {
+      const html = await stub(ref);
+      expectNothingRevealed(html);
+      expect(html).toContain("Талон не найден");
+    }
+    expect(h.appointmentLookups).toBe(0);
   });
 });
 

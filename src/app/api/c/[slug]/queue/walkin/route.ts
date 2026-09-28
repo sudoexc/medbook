@@ -25,6 +25,7 @@ import { ok, err } from "@/server/http";
 import { resolvePublicClinic } from "@/server/clinic-public/resolve";
 import { runWithTenant } from "@/lib/tenant-context";
 import { registerWalkin } from "@/server/appointments/walkin";
+import { queueTicketToken } from "@/server/appointments/public-ticket";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   maskPatientName,
@@ -89,6 +90,10 @@ export async function POST(request: Request) {
     return ok(
       {
         appointmentId: result.appointmentId,
+        // The kiosk opens the print stub with this (audit INF-10): the tab
+        // it opens cannot send the device header, and a bare id prints
+        // nothing without a staff session.
+        ticketToken: queueTicketToken(result.appointmentId),
         duplicate: result.duplicate,
         ticketCode: result.ticketCode,
         ticketNumber: result.ticketNumber,

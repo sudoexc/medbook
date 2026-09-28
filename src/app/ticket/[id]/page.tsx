@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { createTranslator } from "next-intl";
 
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runUnscoped } from "@/lib/tenant-context";
 import { SITE_DOMAIN } from "@/lib/constants";
@@ -14,14 +15,18 @@ import {
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { isLiveLane } from "@/lib/queue-ordering";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
-import { queueTicketToken } from "@/server/appointments/public-ticket";
+import {
+  queueTicketToken,
+  resolveTicketStubRequest,
+  ticketStubVerdict,
+} from "@/server/appointments/public-ticket";
 import ru from "@/messages/ru.json";
 import uz from "@/messages/uz.json";
 import { AutoPrint } from "./_components/auto-print";
 
 /**
  * This route lives outside the [locale] segment (the kiosk and the front
- * desk open the bare /ticket/<id>), so no next-intl provider reaches it: the
+ * desk open the bare /ticket/<ref>), so no next-intl provider reaches it: the
  * stub builds its own translator in the patient's language.
  */
 function ticketTranslator(locale: Locale) {
@@ -32,24 +37,72 @@ function ticketTranslator(locale: Locale) {
   });
 }
 
+type RefusalReason = "not_found" | "staff_only" | "expired" | "not_today";
+
+/**
+ * A stub that shows nothing. Said in both languages: before the lookup the
+ * patient is unknown, and after a refused one her language is not ours to
+ * reveal either.
+ */
+function TicketRefusal({ reason }: { reason: RefusalReason }) {
+  const keys = {
+    not_found: ["notFound", null],
+    staff_only: ["staffOnly", "staffOnlyHint"],
+    expired: ["linkExpired", "linkExpiredHint"],
+    not_today: ["linkNotToday", "linkNotTodayHint"],
+  } as const;
+  const [title, hint] = keys[reason];
+  return (
+    <div style={{ padding: 40, textAlign: "center", fontFamily: "Arial, sans-serif" }}>
+      {(["ru", "uz"] as const).map((locale) => {
+        const t = ticketTranslator(locale);
+        return (
+          <div key={locale} style={{ marginBottom: 16 }}>
+            <p style={{ fontWeight: "bold", margin: 0 }}>{t(title)}</p>
+            {hint ? <p style={{ color: "#666", margin: "4px 0 0" }}>{t(hint)}</p> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The signed-in staff member's clinic, or null (no session, no clinic). */
+async function staffClinicId(): Promise<string | null> {
+  try {
+    const session = await auth();
+    return session?.user?.clinicId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function TicketPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const { id: ref } = await params;
 
-  // Public, unauthenticated page reachable by raw CUID — never expose full
-  // PHI. The patient name is masked to initials (mirrors /api/queue/status),
-  // and only the fields the printed stub actually needs are selected.
-  // The clinic is unknown until the row resolves, so the lookup runs with an
-  // explicit unscoped bypass (fail-closed Prisma extension); the unguessable
-  // CUID is the authorization.
+  // Audit INF-10: a bare appointment id is not a key to this page any more.
+  // The front desk prints with its staff session, the kiosk with the signed
+  // ticket token of its walk-in / check-in answer; anything else is refused
+  // before the lookup. See resolveTicketStubRequest.
+  const request = await resolveTicketStubRequest(ref, staffClinicId);
+  if (request.kind === "refuse") return <TicketRefusal reason={request.reason} />;
+  const appointmentId = request.appointmentId;
+
+  // Public page: the patient name is masked to initials (mirrors
+  // /api/queue/status), and only the fields the printed stub needs are
+  // selected. The clinic is unknown until the row resolves, so the lookup
+  // runs with an explicit unscoped bypass (fail-closed Prisma extension);
+  // the staff session's clinic or the signed token is the authorization,
+  // checked right after by ticketStubVerdict.
   const appointment = await runUnscoped(
-    "public ticket stub: lookup appointment by unguessable CUID",
+    "public ticket stub: lookup appointment by staff session or signed ticket token",
     () =>
       prisma.appointment.findUnique({
-        where: { id },
+        where: { id: appointmentId },
         select: {
           queueOrder: true,
           ticketSeq: true,
@@ -85,12 +138,9 @@ export default async function TicketPage({
       }),
   );
 
-  if (!appointment) {
-    return (
-      <p style={{ padding: 40, textAlign: "center" }}>
-        {ticketTranslator("ru")("notFound")}
-      </p>
-    );
+  const verdict = ticketStubVerdict(request, appointment);
+  if (!verdict.ok || !appointment) {
+    return <TicketRefusal reason={verdict.ok ? "not_found" : verdict.reason} />;
   }
 
   const locale: Locale = appointment.patient.preferredLang === "UZ" ? "uz" : "ru";
@@ -104,7 +154,7 @@ export default async function TicketPage({
   );
   const clinicPhone = formatPhone(appointment.clinic.phone);
   const doctorName = pick(appointment.doctor.nameRu, appointment.doctor.nameUz);
-  const serviceName = appointment.primaryService
+  const serviceName = verdict.showService && appointment.primaryService
     ? pick(appointment.primaryService.nameRu, appointment.primaryService.nameUz)
     : "";
   const cabinet = appointment.doctor.cabinet?.number ?? null;
@@ -121,7 +171,7 @@ export default async function TicketPage({
   // The QR carries a signed ticket token, never the bare id (audit INF-10):
   // the id is no longer a key to the queue status, the token is, and the
   // status page answers it on the appointment's own day only.
-  const statusUrl = `${baseUrl}/q/${queueTicketToken(id)}`;
+  const statusUrl = `${baseUrl}/q/${queueTicketToken(appointmentId)}`;
   // Self-hosted QR (the `qrcode` package, same one the PDFs/mini-app use) —
   // no third-party `api.qrserver.com` round-trip, which both leaks the queue
   // URL and is unreliable from a VPS behind SNI/DPI filtering.
@@ -150,7 +200,7 @@ export default async function TicketPage({
     );
     const mine = projection
       .get(appointment.doctorId)
-      ?.waiting.find((w) => w.appointmentId === id);
+      ?.waiting.find((w) => w.appointmentId === appointmentId);
     waitingAhead = mine ? mine.position - 1 : 0;
   }
 

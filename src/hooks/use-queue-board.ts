@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
+import { openBoardEventSource } from "@/lib/board-event-source";
 import {
   parseQueueCalledPayload,
   type QueueCallFields,
@@ -130,31 +131,6 @@ export function useQueueBoard(slug: string) {
 
   // SSE — instant board pokes + `queue.called` announcements.
   useEffect(() => {
-    let es: EventSource | null = null;
-    let reopenTimer: ReturnType<typeof setTimeout> | undefined;
-    let disposed = false;
-
-    const open = () => {
-      if (disposed) return;
-      const source = new EventSource(
-        `/api/c/${encodeURIComponent(slug)}/queue/events`,
-      );
-      es = source;
-      source.onopen = () => setConnected(true);
-      source.onerror = () => {
-        setConnected(false);
-        // A network blip is retried by the browser itself. A refused open
-        // (the per-address stream cap, INF-10, or a 502 mid-deploy) leaves
-        // the source CLOSED for good, and this lobby screen would never
-        // chime again; the snapshot poll keeps the board fresh meanwhile.
-        if (source.readyState === EventSource.CLOSED && !disposed) {
-          clearTimeout(reopenTimer);
-          reopenTimer = setTimeout(open, SSE_REOPEN_MS);
-        }
-      };
-      source.onmessage = onMessage;
-    };
-
     const onMessage = (ev: MessageEvent) => {
       let parsed: { type?: string; payload?: Record<string, unknown> };
       try {
@@ -174,12 +150,18 @@ export function useQueueBoard(slug: string) {
       scheduleRefetch();
     };
 
-    open();
-    return () => {
-      disposed = true;
-      clearTimeout(reopenTimer);
-      es?.close();
-    };
+    // A refused open (the per-address stream cap, INF-10, or a 502 mid-deploy)
+    // is reopened by the helper; the snapshot poll keeps the board fresh
+    // meanwhile.
+    return openBoardEventSource(
+      `/api/c/${encodeURIComponent(slug)}/queue/events`,
+      {
+        onOpen: () => setConnected(true),
+        onError: () => setConnected(false),
+        onMessage,
+      },
+      SSE_REOPEN_MS,
+    );
   }, [slug, scheduleRefetch]);
 
   const dismissCall = useCallback(() => setCall(null), []);

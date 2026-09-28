@@ -73,10 +73,23 @@ import {
   BOARD_REFETCH_DEBOUNCE_MS,
   BOARD_REFETCH_EVENTS,
 } from "@/hooks/use-queue-board";
+import { openBoardEventSource } from "@/lib/board-event-source";
 import {
   parseQueueCalledPayload,
   type QueueCallFields,
 } from "@/lib/queue-call";
+
+/**
+ * How long a refused stream waits before the doctor's TV tries again. Short:
+ * this is the screen that calls the doctor's patients, and every call missed
+ * while it is closed is a patient who never hears their number.
+ */
+export const DOCTOR_TV_SSE_REOPEN_MS = 5_000;
+
+/** The doctor TV's event stream URL, carrying its own token as `screen`. */
+export function doctorTvEventsUrl(slug: string, token: string): string {
+  return `/api/c/${encodeURIComponent(slug)}/queue/events?screen=${encodeURIComponent(token)}`;
+}
 
 export function useDoctorBoard(token: string) {
   const [data, setData] = useState<DoctorBoardData | null>(null);
@@ -136,16 +149,7 @@ export function useDoctorBoard(token: string) {
 
   useEffect(() => {
     if (!slug) return;
-    // `screen` marks this as the doctor's own TV, exempt from the per-address
-    // stream cap (INF-10): the clinic is one NAT address, and patients on its
-    // Wi-Fi following their ticket must not push this screen off the call
-    // signal.
-    const es = new EventSource(
-      `/api/c/${encodeURIComponent(slug)}/queue/events?screen=${encodeURIComponent(token)}`,
-    );
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false); // browser auto-reconnects
-    es.onmessage = (ev) => {
+    const onMessage = (ev: MessageEvent) => {
       let parsed: { type?: string; payload?: Record<string, unknown> };
       try {
         parsed = JSON.parse(ev.data);
@@ -156,7 +160,7 @@ export function useDoctorBoard(token: string) {
       if (!type || !BOARD_REFETCH_EVENTS.has(type)) return;
       const p = parsed.payload ?? {};
       const evDoctorId = typeof p.doctorId === "string" ? p.doctorId : null;
-      // Foreign doctor's signal — not ours, skip entirely.
+      // Foreign doctor's signal: not ours, skip entirely.
       if (evDoctorId && evDoctorId !== doctorIdRef.current) return;
       if (type === "queue.called" && evDoctorId === doctorIdRef.current) {
         const c = parseQueueCalledPayload(p);
@@ -172,7 +176,22 @@ export function useDoctorBoard(token: string) {
       }
       scheduleRefetch();
     };
-    return () => es.close();
+
+    // `screen` marks this as the doctor's own TV, exempt from the per-address
+    // stream cap (INF-10): the clinic is one NAT address, and patients on its
+    // Wi-Fi following their ticket must not push this screen off the call
+    // signal. A refused open (the nginx 502 while the app restarts on a
+    // deploy) leaves an EventSource closed for good; the helper reopens it so
+    // this screen keeps calling patients without a manual reload.
+    return openBoardEventSource(
+      doctorTvEventsUrl(slug, token),
+      {
+        onOpen: () => setConnected(true),
+        onError: () => setConnected(false),
+        onMessage,
+      },
+      DOCTOR_TV_SSE_REOPEN_MS,
+    );
   }, [slug, token, scheduleRefetch]);
 
   return { data, notFound, call, connected };

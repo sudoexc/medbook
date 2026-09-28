@@ -106,6 +106,65 @@ describe("ICD search for a brain tumour (CT-06)", () => {
   });
 });
 
+/**
+ * Review of CT-06: once the «.8» tumour rows were finished, their names carry
+ * the site AND the generic «поражение» («Злокачественное новообразование
+ * головного мозга: поражение, выходящее за пределы…»). A query that never
+ * called anything a tumour then matched them in full and opened with them:
+ * «поражение головного мозга» → C71.8, «поражение черепных нервов» → C72.8,
+ * and «головная боль» (the clinic's most common query) had C71.8 at #6
+ * through «боль» ≈ «более».
+ */
+describe("ICD search for a query that names no tumour (CT-06 review)", () => {
+  const codes = (q: string, n = 10) => searchIcd10(q, n).map((r) => r.code);
+  const TUMOUR = /^(C\d|D[0-4]\d)/;
+
+  it("opens with the neurology rubric, not a malignant one", () => {
+    expect(codes("поражение головного мозга")[0]).toBe("G93.9");
+    expect(codes("поражение черепных нервов")[0]).not.toMatch(TUMOUR);
+    expect(codes("лицевой нерв")[0]).toMatch(/^G51/);
+    expect(codes("зрительного нерва")[0]).toBe("H46");
+  });
+
+  it("keeps every tumour code out of the first page for «головная боль»", () => {
+    for (const c of codes("головная боль")) expect(c).not.toMatch(TUMOUR);
+    // «более» is not a form of «боль».
+    expect(codes("головная боль", 100)).not.toContain("C71.8");
+  });
+
+  it("lists a site's tumour rubrics after every other row, not instead of them", () => {
+    for (const q of [
+      "поражение головного мозга",
+      "поражение черепных нервов",
+      "спинного мозга",
+      "черепных нервов",
+      "головного мозга",
+    ]) {
+      const all = codes(q, 200);
+      const firstTumour = all.findIndex((c) => TUMOUR.test(c));
+      if (firstTumour < 0) continue;
+      expect(all.slice(firstTumour).every((c) => TUMOUR.test(c)), q).toBe(true);
+    }
+    // Still there for the doctor who scrolls: a full match is a match.
+    expect(codes("спинного мозга", 30)).toContain("C72.0");
+  });
+
+  it("does not let a tumour row crowd out the partial matches of the organ", () => {
+    // Its only full match was C72.8, and it used to be the only answer.
+    const first = codes("поражение спинного мозга", 12);
+    for (const c of first) expect(c).not.toMatch(TUMOUR);
+    expect(first).toContain("G95.9");
+  });
+
+  it("changes nothing for a query that names the tumour", () => {
+    expect(codes("опухоль головного мозга", 5).every((c) => TUMOUR.test(c))).toBe(true);
+    expect(codes("опухоль спинного мозга", 5)).toContain("C72.0");
+    expect(codes("рак пищевода", 1)).toEqual(["C15.9"]);
+    // An explicit code is never held back.
+    expect(codes("C71.8", 1)).toEqual(["C71.8"]);
+  });
+});
+
 describe("diagnosis shortlist and the old fragments (CT-06)", () => {
   const nameForCode = (code: string) => name(code) ?? null;
   const d = (iso: string) => new Date(iso);

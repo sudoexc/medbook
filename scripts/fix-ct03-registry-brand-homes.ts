@@ -28,7 +28,9 @@
  * Prescriptions already written keep their drug and their printed name
  * («Миоспан (толперизон)»): they are signed documents. The dry run counts
  * them so the doctor can be told; new prescriptions of the brand resolve to
- * the right row at once.
+ * the right row at once, from search and from his «мои частые» alike (the
+ * drug shortlist re-pins a history use whose label names a moved brand, see
+ * `repinDrugUses` in src/server/catalog/shortlist.ts).
  *
  * Dry run (default, writes nothing):
  *   docker compose exec -T worker npx tsx scripts/fix-ct03-registry-brand-homes.ts

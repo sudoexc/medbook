@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiagnosisShortlist,
   buildDrugShortlist,
+  hasStaleDrugUse,
+  repinDrugUses,
+  type StructuredDrugUse,
 } from "@/server/catalog/shortlist";
+import { buildDrugTextIndex } from "@/server/cds/drug-text-match";
+import { matchAllergy } from "@/server/cds/allergy-match";
 import {
   formularyBrands,
   formularySearchText,
@@ -169,6 +174,111 @@ describe("buildDrugShortlist", () => {
     ]);
     expect(rows[0].label).toBe("");
     expect(rows[1].label).toBe("Мидокалм");
+  });
+});
+
+/**
+ * Review of CT-03: fix-ct03 moves МИОСПАН (lidocaine + tolperisone) off the
+ * tolperisone row, but the doctor's history still has rows pinned to
+ * tolperisone under «МИОСПАН (толперизон)». The shortlist is built from that
+ * history by drugId, and a tap on it pinned the new row to tolperisone again:
+ * the CDS check reads pinned rows by id, so a lidocaine allergy stayed silent.
+ */
+describe("shortlist after a brand moved to its own row (CT-03 review)", () => {
+  // The live catalog after `fix-ct03-registry-brand-homes.ts` ran.
+  const tolperisone = {
+    id: "tolperisone",
+    inn: "Tolperisone",
+    nameRu: "Толперизон",
+    atcCode: "M03BX04",
+    brands: [{ name: "Мидокалм" }, { name: "Калмирекс" }, { name: "ТОЛКИМАДО" }],
+  };
+  const combo = {
+    id: "uzr-lidokain-tolperizon",
+    inn: "uzr:lidokain-tolperizon",
+    nameRu: "Лидокаин + толперизон",
+    atcCode: "M03BX54",
+    brands: [{ name: "МИОСПАН" }, { name: "МИОФЛЕКС" }, { name: "ТОЛКИМАДО" }],
+  };
+  const propranolol = {
+    id: "propranolol",
+    inn: "Propranolol",
+    nameRu: "Пропранолол",
+    atcCode: "C07AA05",
+    // «Анаприлин» only as the clinic's core-list name, added by the route.
+    brands: [{ name: "Анаприлин (пропранолол)" }],
+  };
+  const catalog = buildDrugTextIndex([tolperisone, combo, propranolol]);
+  const current = new Map([tolperisone, combo, propranolol].map((x) => [x.id, x]));
+  const use = (drugId: string | null, displayName: string, at: string): StructuredDrugUse => ({
+    drugId,
+    displayName,
+    dose: "1 амп",
+    at: d(at),
+  });
+
+  it("pins a «МИОСПАН (толперизон)» use to the combination row", () => {
+    const history = [use("tolperisone", "МИОСПАН (толперизон)", "2026-09-10")];
+    expect(hasStaleDrugUse(history, current)).toBe(true);
+    const [moved] = repinDrugUses({ uses: history, current, catalog });
+    expect(moved).toMatchObject({
+      drugId: "uzr-lidokain-tolperizon",
+      displayName: "МИОСПАН (лидокаин + толперизон)",
+      dose: "1 амп",
+    });
+  });
+
+  it("offers one row for old and new Миоспан uses, apart from plain tolperisone", () => {
+    const history = [
+      use("tolperisone", "Миоспан (толперизон)", "2026-09-01"),
+      use("tolperisone", "МИОСПАН (толперизон)", "2026-09-10"),
+      use("uzr-lidokain-tolperizon", "МИОСПАН (лидокаин + толперизон)", "2026-09-27"),
+      use("tolperisone", "Мидокалм (толперизон)", "2026-09-20"),
+    ];
+    const rows = buildDrugShortlist({
+      pinnedIds: [],
+      structured: repinDrugUses({ uses: history, current, catalog }),
+      freeText: [],
+      limit: 10,
+    });
+    expect(rows.map((r) => [r.drugId, r.count, r.label])).toEqual([
+      ["uzr-lidokain-tolperizon", 3, "МИОСПАН (лидокаин + толперизон)"],
+      ["tolperisone", 1, "Мидокалм (толперизон)"],
+    ]);
+    // What the tap pins is what the allergy check reads: the old pin could
+    // never warn about lidocaine, the new one does.
+    const asAllergyDrug = (x: typeof combo) => ({
+      ...x,
+      brandNames: x.brands.map((b) => b.name),
+    });
+    expect(matchAllergy("лидокаин", asAllergyDrug(tolperisone))).toBeNull();
+    expect(matchAllergy("лидокаин", asAllergyDrug(combo))).toEqual({ kind: "SUBSTANCE" });
+  });
+
+  it("leaves a label that still names its drug where it is", () => {
+    const history = [
+      use("tolperisone", "Толперизон", "2026-09-01"),
+      use("tolperisone", "Мидокалм (толперизон)", "2026-09-02"),
+      // Registered for both compositions: the doctor's pick stands.
+      use("tolperisone", "ТОЛКИМАДО (толперизон)", "2026-09-03"),
+      // The clinic's own name for the drug.
+      use("propranolol", "Анаприлин (пропранолол)", "2026-09-04"),
+      use(null, "Магне B6", "2026-09-05"),
+    ];
+    expect(hasStaleDrugUse(history, current)).toBe(false);
+    expect(repinDrugUses({ uses: history, current, catalog })).toEqual(history);
+  });
+
+  it("keeps the pin when the catalog cannot place the label anywhere", () => {
+    // His own wording of the drug he picked: nothing better to follow.
+    const history = [use("tolperisone", "Уколы от спины", "2026-09-01")];
+    expect(repinDrugUses({ uses: history, current, catalog })).toEqual(history);
+  });
+
+  it("leaves a use alone when its drug is gone from the catalog", () => {
+    const history = [use("retired-drug", "МИОСПАН (толперизон)", "2026-09-01")];
+    expect(hasStaleDrugUse(history, current)).toBe(false);
+    expect(repinDrugUses({ uses: history, current, catalog })).toEqual(history);
   });
 });
 

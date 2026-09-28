@@ -29,6 +29,8 @@ import {
   type CatalogDrug,
   type RegistryEntity,
 } from "../../scripts/_registry-plan";
+import { prescriptionLabel } from "@/lib/catalogs/brand-match";
+import { repinDrugUses } from "@/server/catalog/shortlist";
 import { matchAllergy } from "@/server/cds/allergy-match";
 import { buildDrugTextIndex, matchDrugLine } from "@/server/cds/drug-text-match";
 
@@ -280,5 +282,38 @@ describe("fix for the catalog the first import left (CT-03)", () => {
     ]);
     const reimport = planRegistryImport({ ...fixed, entities, curatedBrands });
     expect([reimport.newDrugs.length, reimport.brandRows.length]).toEqual([0, 0]);
+  });
+
+  it("moves the doctor's one-tap Миоспан onto the combination row (review)", () => {
+    const withBrands = (drugs: CatalogDrug[], brands: CatalogBrand[]) =>
+      drugs.map((d) => ({
+        ...d,
+        brands: brands.filter((b) => b.drugId === d.id).map((b) => ({ name: b.name })),
+      }));
+    // What his history holds: the label a search pick of «миоспан» got on
+    // the damaged catalog, pinned to tolperisone.
+    const before = withBrands(legacy.drugs, legacy.brands).find((d) => d.id === "tolperisone")!;
+    const label = prescriptionLabel(before, "миоспан");
+    expect(label).toBe("МИОСПАН (толперизон)");
+
+    const fixed = apply(legacy.drugs, legacy.brands, plan);
+    const drugs = withBrands(fixed.drugs, fixed.brands);
+    const [moved] = repinDrugUses({
+      uses: [{ drugId: "tolperisone", displayName: label, dose: null, at: new Date() }],
+      current: new Map(drugs.map((d) => [d.id, d])),
+      catalog: buildDrugTextIndex(drugs),
+    });
+    expect(moved!.drugId).toBe("uzr-lidokain-tolperizon");
+    expect(moved!.displayName).toBe("МИОСПАН (лидокаин + толперизон)");
+    const miospan = drugs.find((d) => d.id === moved!.drugId)!;
+    expect(
+      matchAllergy("лидокаин", {
+        id: miospan.id,
+        inn: miospan.inn,
+        nameRu: miospan.nameRu,
+        atcCode: miospan.atcCode ?? null,
+        brandNames: miospan.brands.map((b) => b.name),
+      }),
+    ).toEqual({ kind: "SUBSTANCE" });
   });
 });

@@ -9,16 +9,32 @@
  *                yet, and it is the same for every doctor of the clinic.
  *
  * Everything else in the catalog stays behind search. Ranking lives in
- * `buildDrugShortlist` (unit-tested).
+ * `buildDrugShortlist` (unit-tested). A structured use whose brand a catalog
+ * repair moved to another row («МИОСПАН» from tolperisone to lidocaine +
+ * tolperisone, audit CT-03) counts under the row its label names today, see
+ * `followMovedBrands`.
  */
 import { z } from "zod";
 
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { err, ok, parseQuery } from "@/server/http";
-import { loadFormulary } from "@/server/catalog/formulary";
+import {
+  formularyBrands,
+  loadFormulary,
+  type FormularyEntry,
+} from "@/server/catalog/formulary";
 import { loadDrugHits, type DrugHit } from "@/server/catalog/drug-hits";
-import { buildDrugShortlist } from "@/server/catalog/shortlist";
+import {
+  buildDrugShortlist,
+  hasStaleDrugUse,
+  repinDrugUses,
+  type StructuredDrugUse,
+} from "@/server/catalog/shortlist";
+import {
+  buildDrugTextIndex,
+  type TextMatchDrug,
+} from "@/server/cds/drug-text-match";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(30).default(12),
@@ -89,14 +105,20 @@ export const GET = createApiListHandler(
       loadFormulary(),
     ]);
 
-    const items = buildDrugShortlist({
-      pinnedIds: favorites.map((f) => f.entityCode),
-      structured: structured.map((s) => ({
+    const uses = await followMovedBrands(
+      structured.map((s) => ({
         drugId: s.drugId,
         displayName: s.displayName,
         dose: s.dose,
         at: s.visitNote.createdAt,
       })),
+      ctx.clinicId,
+      formulary,
+    );
+
+    const items = buildDrugShortlist({
+      pinnedIds: favorites.map((f) => f.entityCode),
+      structured: uses,
       freeText: notes.flatMap((n) =>
         n.prescriptions.map((line) => ({ line, at: n.createdAt })),
       ),
@@ -149,3 +171,57 @@ export const GET = createApiListHandler(
     return ok({ mine, clinic, windowDays: days });
   },
 );
+
+const NAME_SELECT = {
+  id: true,
+  inn: true,
+  nameRu: true,
+  atcCode: true,
+  brands: { select: { name: true } },
+} as const;
+
+/** A drug with the clinic's own names for it (core list) added as brands. */
+function withClinicNames(
+  d: TextMatchDrug,
+  byDrug: ReadonlyMap<string, FormularyEntry>,
+): TextMatchDrug {
+  const f = byDrug.get(d.id);
+  return f
+    ? { ...d, brands: [...formularyBrands(f).map((b) => ({ name: b.name })), ...d.brands] }
+    : d;
+}
+
+/**
+ * His structured history with every use whose label a catalog repair moved to
+ * another row re-pinned there (see `repinDrugUses`, audit CT-03 review). The
+ * whole catalog is read only when some label no longer names its own drug;
+ * it is the set the CDS check reads for text lines (active rows, not quick
+ * added «clinic:» ones), limited to what this clinic may see.
+ */
+async function followMovedBrands(
+  uses: StructuredDrugUse[],
+  clinicId: string,
+  formulary: FormularyEntry[],
+): Promise<StructuredDrugUse[]> {
+  const ids = [...new Set(uses.map((u) => u.drugId).filter((id): id is string => !!id))];
+  if (ids.length === 0) return uses;
+  const byDrug = new Map(formulary.map((f) => [f.drugId, f]));
+
+  const pinned = await prisma.drug.findMany({
+    where: { id: { in: ids } },
+    select: NAME_SELECT,
+  });
+  const current = new Map(pinned.map((d) => [d.id, withClinicNames(d, byDrug)]));
+  if (!hasStaleDrugUse(uses, current)) return uses;
+
+  const rows = await prisma.drug.findMany({
+    where: {
+      active: true,
+      OR: [{ clinicId: null }, { clinicId }],
+      NOT: { inn: { startsWith: "clinic:" } },
+    },
+    select: NAME_SELECT,
+  });
+  const catalog = buildDrugTextIndex(rows.map((d) => withClinicNames(d, byDrug)));
+  return repinDrugUses({ uses, current, catalog });
+}

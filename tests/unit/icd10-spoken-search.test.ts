@@ -269,8 +269,9 @@ describe("ICD search: region words qualify a diagnosis, they never make one", ()
     expect(top("опухоль спинного мозга")).toContain("C72.0");
     expect(top("аденома гипофиза")).toContain("D35.2");
     expect(top("рак пищевода")).toContain("C15.9");
-    // A full literal match on the site is still a match.
-    expect(top("спинного мозга")).toContain("C72.0");
+    // A full literal match on the site is still a match, listed after the
+    // rows that are not tumours (CT-06 review).
+    expect(top("спинного мозга", 30)).toContain("C72.0");
   });
 
   it("keeps the siblings of the named category over a homonym", () => {

@@ -16,6 +16,7 @@
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   DETECTOR_ACTION_TYPES,
+  RISK_ACTION_TYPES,
   actionSubjectOf,
   defaultAssigneeRole,
   defaultDeeplinkPath,
@@ -26,7 +27,10 @@ import {
 } from "@/lib/actions/types";
 import type { TenantScopedPrisma } from "@/lib/prisma";
 
-import { CLOSED_SIGNAL_LAPSE_HOURS } from "./config";
+import {
+  ABANDONED_RESCHEDULE_GRACE_MIN,
+  CLOSED_SIGNAL_LAPSE_HOURS,
+} from "./config";
 
 /**
  * Tenant-scoped client alias. Narrowed from the original union with
@@ -85,6 +89,65 @@ export type UpsertResult = {
 const CLOSED_BY_PERSON: ReadonlySet<string> = new Set(["DONE", "DISMISSED"]);
 
 const DETECTOR_TYPES: ReadonlySet<string> = new Set(DETECTOR_ACTION_TYPES);
+
+/** The visit-bound types a call outcome is recorded on. */
+const RISK_TYPES: ReadonlySet<string> = new Set(RISK_ACTION_TYPES);
+
+/**
+ * The call-outcome columns (TZ-risk-outcomes). A reopen clears them: they
+ * describe how the previous occurrence was handled, not the new one.
+ */
+const CLEARED_OUTCOME = {
+  outcome: null,
+  outcomeNote: null,
+  callbackAt: null,
+  resolvedById: null,
+} as const;
+
+/**
+ * Whether a closed row carries a «Перенести» that was never carried out
+ * (review of audit AC-08; the root fix is AC-10).
+ *
+ * The risk-today «Перенести» records outcome RESCHEDULED, closing the visit's
+ * risk rows, and only then opens the appointment drawer where the date is
+ * moved. Reception interrupted there closes the drawer: the visit stays at
+ * 15:00, still unconfirmed, while its rows say it was moved. The old
+ * unconditional reopen brought such a row back on the next pass. The AC-08
+ * rule cannot (the subject did not change and the detector never lapsed),
+ * and neither can the outcome lock on NO_SHOW_RISK_HIGH, so the visit was
+ * gone from the risk list, «К подтверждению», the KPIs and the briefing
+ * until its time, with «Перенести» in «Обработано сегодня».
+ *
+ * So a RESCHEDULED on a visit-bound row whose visit is still at the same
+ * time `ABANDONED_RESCHEDULE_GRACE_MIN` after the outcome did not happen, and
+ * the row reopens (lock or not: the outcome is not true). A saved move
+ * changes the subject and goes through the ordinary rule. A person's
+ * «Готово» on a reopened row does not trip this, because the reopen cleared
+ * the outcome (`CLEARED_OUTCOME`).
+ */
+export function rescheduleNeverHappened(
+  existing: {
+    type: string;
+    status: string;
+    payload: unknown;
+    outcome?: string | null;
+    doneAt?: Date | null;
+  },
+  next: ActionPayload,
+  now: Date,
+): boolean {
+  if (existing.status !== "DONE" || existing.outcome !== "RESCHEDULED") return false;
+  if (!RISK_TYPES.has(next.type) || !existing.doneAt) return false;
+  const sinceMs = now.getTime() - existing.doneAt.getTime();
+  if (sinceMs <= ABANDONED_RESCHEDULE_GRACE_MIN * 60 * 1000) return false;
+  const before = existing.payload as ActionPayload | null;
+  return (
+    !!before &&
+    typeof before === "object" &&
+    before.type === next.type &&
+    actionSubjectOf(before) === actionSubjectOf(next)
+  );
+}
 
 /**
  * Whether an upsert should reopen a row a person closed (audit AC-08).
@@ -162,9 +225,12 @@ const PAYLOAD_SIGNIFICANT_KEYS: readonly string[] = [
  *     refreshed, silently, so the lapse clock and an admin's «Вернуть» see
  *     current data. Before, every closed row was back in OPEN on the next
  *     15-minute pass and «Готово» / «Отклонить» did nothing.
+ *   - A row closed by a «Перенести» whose visit never moved reopens once the
+ *     grace has passed (`rescheduleNeverHappened`), outcome lock or not.
  *   - An EXPIRED row (closed by the system) is reopened to OPEN with its
  *     terminal stamps cleared, so the user sees the signal again. Emits
- *     ACTION_UPDATED, as does any reopen.
+ *     ACTION_UPDATED, as does any reopen. Every reopen clears the call
+ *     outcome columns with the other terminal stamps.
  *   - `surfacedAt` moves only when the row (re)appears: a reopen, or a
  *     re-schedule that hides it or brings a hidden row forward. A detector
  *     refresh of a visible row keeps its place in the list.
@@ -251,19 +317,28 @@ export async function upsertAction(
   // recompute below, so a callback before the visit and NO_ANSWER (which
   // snooze) are covered; this guards the DONE outcomes (CONFIRMED /
   // RESCHEDULED / REFUSED, and a call handed to a PATIENT_CALLBACK task).
+  // A «Перенести» whose visit never moved is the exception: it is not a
+  // handled outcome, so it neither locks nor keeps the row closed.
+  const rescheduleVoid = rescheduleNeverHappened(
+    existing as Parameters<typeof rescheduleNeverHappened>[0],
+    payload,
+    now,
+  );
   const outcomeLocked =
+    !rescheduleVoid &&
     existing.status === "DONE" &&
     (existing as { outcome?: string | null }).outcome != null &&
     existing.expiresAt != null &&
     nowMs < existing.expiresAt.getTime();
   const closedByPerson = CLOSED_BY_PERSON.has(existing.status);
   const reopened = closedByPerson
-    ? !outcomeLocked &&
-      closedRowReopens(
-        existing as { type: string; payload: unknown; updatedAt?: Date | null },
-        payload,
-        now,
-      )
+    ? rescheduleVoid ||
+      (!outcomeLocked &&
+        closedRowReopens(
+          existing as { type: string; payload: unknown; updatedAt?: Date | null },
+          payload,
+          now,
+        ))
     : existing.status === "EXPIRED";
   const keptClosed = closedByPerson && !reopened;
   let newStatus = reopened ? "OPEN" : existing.status;
@@ -310,9 +385,10 @@ export async function upsertAction(
       assigneeRole,
       deeplinkPath,
       expiresAt,
-      // Clear terminal stamps when reopening.
+      // Clear terminal stamps when reopening, the call outcome included.
       doneAt: reopened ? null : existing.doneAt,
       dismissedAt: reopened ? null : existing.dismissedAt,
+      ...(reopened ? CLEARED_OUTCOME : {}),
       ...(reschedule ? { snoozeUntil: scheduledUntil } : {}),
       ...(resurfaces ? { surfacedAt: surfaceMoment(now, snoozeAfter) } : {}),
     } as never,
@@ -339,6 +415,7 @@ export async function upsertAction(
         payloadChanged,
         severityChanged,
         resurrectedFromTerminal: reopened,
+        ...(rescheduleVoid ? { abandonedReschedule: true } : {}),
       },
     });
   }
@@ -354,35 +431,68 @@ export async function upsertAction(
 }
 
 /**
- * Close OPEN / SNOOZED rows as EXPIRED because their signal is gone, with one
- * ACTION_EXPIRED audit per row. Shared by the stale sweep's callers that know
- * better than a timer why a row is moot (a risk row of a patient who has
- * already arrived, audit AC-07). EXPIRED, not DONE: nobody handled it, and
- * the row may come back if the signal does. Caller MUST be inside
- * `runWithTenant(...)`.
+ * True when the row holds a call outcome that is still its own: the outcome
+ * snoozed it («Не дозвонился», «Перезвонить позже»). Outcomes leave a row
+ * DONE or SNOOZED, never OPEN, so an OPEN row's outcome is a leftover of an
+ * earlier occurrence (rows reopened before `CLEARED_OUTCOME` kept theirs).
+ */
+function carriesLiveOutcome(row: { status: string; outcome?: string | null }): boolean {
+  return row.status === "SNOOZED" && row.outcome != null;
+}
+
+/**
+ * Close OPEN / SNOOZED rows because their signal is gone, with one audit per
+ * row. Shared by the stale sweep's callers that know better than a timer why
+ * a row is moot (a risk row of a visit the patient has come to, or that is
+ * over, audit AC-07). A row nobody handled is EXPIRED and may come back if
+ * the signal does. A row with a call outcome of its own is DONE, the outcome
+ * kept and `doneAt` now: a person did work on it, and «Обработано сегодня»
+ * lists it. Caller MUST be inside `runWithTenant(...)`.
  */
 export async function retireActions(
   prisma: PrismaLike,
   clinicId: string,
-  rows: ReadonlyArray<{ id: string; type: string; severity: string; status: string }>,
+  rows: ReadonlyArray<{
+    id: string;
+    type: string;
+    severity: string;
+    status: string;
+    outcome?: string | null;
+    /** Why this row is moot, when it differs from the batch's `reason`. */
+    reason?: string;
+  }>,
   reason: string,
 ): Promise<number> {
   if (rows.length === 0) return 0;
-  await prisma.action.updateMany({
-    where: { id: { in: rows.map((r) => r.id) }, status: { in: ["OPEN", "SNOOZED"] } },
-    data: { status: "EXPIRED" },
-  });
+  const now = new Date();
+  const handled = rows.filter(carriesLiveOutcome);
+  const unhandled = rows.filter((r) => !carriesLiveOutcome(r));
+  const live = { in: ["OPEN", "SNOOZED"] };
+  if (handled.length > 0) {
+    await prisma.action.updateMany({
+      where: { id: { in: handled.map((r) => r.id) }, status: live },
+      data: { status: "DONE", doneAt: now },
+    });
+  }
+  if (unhandled.length > 0) {
+    await prisma.action.updateMany({
+      where: { id: { in: unhandled.map((r) => r.id) }, status: live },
+      data: { status: "EXPIRED" },
+    });
+  }
   for (const row of rows) {
+    const done = carriesLiveOutcome(row);
     await emitEngineAudit(prisma, {
       clinicId,
-      action: AUDIT_ACTION.ACTION_EXPIRED,
+      action: done ? AUDIT_ACTION.ACTION_DONE : AUDIT_ACTION.ACTION_EXPIRED,
       entityId: row.id,
       meta: {
         type: row.type,
         severity: row.severity,
         oldStatus: row.status,
-        newStatus: "EXPIRED",
-        reason,
+        newStatus: done ? "DONE" : "EXPIRED",
+        ...(done ? { outcome: row.outcome, doneAt: now.toISOString() } : {}),
+        reason: row.reason ?? reason,
       },
     });
   }

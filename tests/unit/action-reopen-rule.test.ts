@@ -20,8 +20,15 @@ import {
   type ActionPayload,
   type PaymentOverduePayload,
 } from "@/lib/actions/types";
-import { CLOSED_SIGNAL_LAPSE_HOURS } from "@/server/actions/config";
-import { closedRowReopens, upsertAction } from "@/server/actions/repository";
+import {
+  ABANDONED_RESCHEDULE_GRACE_MIN,
+  CLOSED_SIGNAL_LAPSE_HOURS,
+} from "@/server/actions/config";
+import {
+  closedRowReopens,
+  rescheduleNeverHappened,
+  upsertAction,
+} from "@/server/actions/repository";
 
 // ── in-memory Action store ───────────────────────────────────────────────────
 
@@ -273,6 +280,147 @@ describe("what does reopen a closed task", () => {
     vi.setSystemTime(T0.getTime() + 15 * MIN);
     await upsertAction(store.prisma, "c1", debt);
     expect(store.rows.get(id)!.status).toBe("OPEN");
+  });
+});
+
+/** Reception recorded a call outcome that closes the row, as the outcome
+ *  endpoints do (`outcomeStamp`). */
+function recordOutcome(
+  store: ReturnType<typeof makeStore>,
+  id: string,
+  outcome: "RESCHEDULED" | "CONFIRMED",
+) {
+  const row = store.rows.get(id)!;
+  store.rows.set(id, {
+    ...row,
+    status: "DONE",
+    doneAt: new Date(),
+    outcome,
+    outcomeNote: null,
+    callbackAt: null,
+    resolvedById: "u_reception",
+    updatedAt: new Date(),
+  });
+}
+
+describe("an abandoned «Перенести» (review of AC-08, until AC-10)", () => {
+  // Иванов, 15:00 today, not confirmed. At 10:00 reception presses
+  // «Перенести»: the outcome closes the rows, then the drawer opens; a call
+  // comes in and the drawer is closed without saving.
+  const VISIT = "2026-09-28T10:00:00.000Z"; // 15:00 Tashkent
+  const unconfirmed: ActionPayload = {
+    type: "UNCONFIRMED_24H",
+    appointmentId: "ap_ivanov",
+    patientId: "p_ivanov",
+    patientName: "Иванов Иван",
+    appointmentAt: VISIT,
+    doctorName: "Султанов А.",
+  };
+  const risk: ActionPayload = {
+    type: "NO_SHOW_RISK_HIGH",
+    appointmentId: "ap_ivanov",
+    patientId: "p_ivanov",
+    patientName: "Иванов Иван",
+    risk: 0.67,
+    appointmentAt: VISIT,
+  };
+  const graceMs = ABANDONED_RESCHEDULE_GRACE_MIN * MIN;
+
+  it("the unconfirmed visit comes back once the grace has passed, outcome cleared", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const { id } = await upsertAction(store.prisma, "c1", unconfirmed);
+    recordOutcome(store, id, "RESCHEDULED");
+
+    // Still inside the grace: reception may be picking the date right now.
+    vi.setSystemTime(T0.getTime() + 15 * MIN);
+    expect((await upsertAction(store.prisma, "c1", unconfirmed)).keptClosed).toBe(true);
+    expect(store.rows.get(id)!.status).toBe("DONE");
+
+    // The next passes: the visit is still at 15:00, so the move never happened.
+    await engineTicks(store, T0.getTime() + 30 * MIN, 0.5, () => unconfirmed);
+    const row = store.rows.get(id)!;
+    expect(row.status).toBe("OPEN");
+    expect(row.doneAt).toBeNull();
+    // «Обработано сегодня» must not keep showing «Перенести».
+    expect(row.outcome).toBeNull();
+    expect(row.resolvedById).toBeNull();
+    expect(store.audits.at(-1)).toMatchObject({
+      action: "ACTION_UPDATED",
+      meta: { resurrectedFromTerminal: true, abandonedReschedule: true },
+    });
+  });
+
+  it("NO_SHOW_RISK_HIGH comes back too: a reschedule that did not happen does not lock", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const expiresAt = new Date(VISIT);
+    const { id } = await upsertAction(store.prisma, "c1", risk, { expiresAt });
+    recordOutcome(store, id, "RESCHEDULED");
+
+    vi.setSystemTime(T0.getTime() + 15 * MIN);
+    await upsertAction(store.prisma, "c1", risk, { expiresAt });
+    expect(store.rows.get(id)!.status).toBe("DONE");
+
+    vi.setSystemTime(T0.getTime() + graceMs + 15 * MIN);
+    await upsertAction(store.prisma, "c1", { ...risk, risk: 0.7 }, { expiresAt });
+    expect(store.rows.get(id)!.status).toBe("OPEN");
+  });
+
+  it("any other outcome keeps its lock: «Подтвердил» is not undone by time", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const expiresAt = new Date(VISIT);
+    const { id } = await upsertAction(store.prisma, "c1", risk, { expiresAt });
+    recordOutcome(store, id, "CONFIRMED");
+    for (let t = T0.getTime(); t < expiresAt.getTime(); t += 15 * MIN) {
+      vi.setSystemTime(t);
+      await upsertAction(store.prisma, "c1", risk, { expiresAt });
+    }
+    expect(store.rows.get(id)!.status).toBe("DONE");
+  });
+
+  it("a saved move reopens through the ordinary rule, and «Готово» on the new row then sticks", async () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const { id } = await upsertAction(store.prisma, "c1", unconfirmed);
+    recordOutcome(store, id, "RESCHEDULED");
+
+    // Saved in the drawer within minutes: the visit is now tomorrow 11:00.
+    const moved = { ...unconfirmed, appointmentAt: "2026-09-29T06:00:00.000Z" };
+    vi.setSystemTime(T0.getTime() + 15 * MIN);
+    await upsertAction(store.prisma, "c1", moved);
+    expect(store.rows.get(id)!).toMatchObject({ status: "OPEN", outcome: null });
+
+    // Reception closes the new row by hand; the cleared outcome keeps this
+    // «Готово» from reading as another abandoned reschedule.
+    close(store, id, "DONE");
+    await engineTicks(store, T0.getTime() + 30 * MIN, 24, () => moved);
+    expect(store.rows.get(id)!.status).toBe("DONE");
+  });
+
+  it("is decided by the visit time alone, and only for visit-bound rows", () => {
+    const done = {
+      type: "UNCONFIRMED_24H",
+      status: "DONE",
+      payload: unconfirmed,
+      outcome: "RESCHEDULED",
+      doneAt: T0,
+    };
+    const later = new Date(T0.getTime() + graceMs + MIN);
+    expect(rescheduleNeverHappened(done, unconfirmed, later)).toBe(true);
+    // Inside the grace, or after a real move: not abandoned.
+    expect(rescheduleNeverHappened(done, unconfirmed, new Date(T0.getTime() + graceMs))).toBe(false);
+    expect(
+      rescheduleNeverHappened(done, { ...unconfirmed, appointmentAt: "2026-09-29T06:00:00.000Z" }, later),
+    ).toBe(false);
+    // A «Готово» without an outcome, or a DISMISSED row, is a person's decision.
+    expect(rescheduleNeverHappened({ ...done, outcome: null }, unconfirmed, later)).toBe(false);
+    expect(rescheduleNeverHappened({ ...done, status: "DISMISSED" }, unconfirmed, later)).toBe(false);
+    // Not a visit-bound type.
+    expect(
+      rescheduleNeverHappened({ ...done, type: debt.type, payload: debt }, debt, later),
+    ).toBe(false);
   });
 });
 

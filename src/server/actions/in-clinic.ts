@@ -1,22 +1,35 @@
 /**
- * Retire the no-show / confirmation rows of patients who have already arrived
- * (audit AC-07).
+ * Retire the pre-arrival rows of visits that are no longer ahead (audit
+ * AC-07).
  *
- * NO_SHOW_RISK_HIGH and UNCONFIRMED_24H are about a patient who might not
- * come. Once reception presses «Пришёл» (WAITING) or the doctor starts the
- * visit (IN_PROGRESS) the question is answered, yet the row stayed OPEN: the
- * detectors stop firing, but NO_SHOW_RISK_HIGH only expires at the visit time
- * and UNCONFIRMED_24H only through the 48h sweep. Until then the patient
- * sitting in the hall was a «Риск пропуска» card, a KPI count and a
- * suggested call.
+ * NO_SHOW_RISK_HIGH, UNCONFIRMED_24H and NO_CONTACT_CALL are about a patient
+ * who might not come. Once the visit leaves BOOKED / CONFIRMED the question
+ * is answered: reception pressed «Пришёл» (WAITING), the doctor started or
+ * finished the visit, it was cancelled or marked a no-show. The detectors
+ * stop firing then, but nothing closed the rows: NO_SHOW_RISK_HIGH lived to
+ * the visit time, NO_CONTACT_CALL to the end of its day and UNCONFIRMED_24H
+ * to the 48h sweep. Until then the patient sitting in the hall, or already
+ * seen by the doctor, was a «Риск пропуска» card, a KPI count, a briefing
+ * line and a row in «К подтверждению». A row a call outcome had snoozed («Не
+ * дозвонился» at 11:30, back at 13:30) resurfaced on its timer the same way,
+ * and only the WAITING / IN_PROGRESS seen by one 15-minute pass were caught,
+ * so a visit that went from BOOKED to COMPLETED between two passes kept its
+ * row for two days.
  *
- * Rows with a recorded call outcome are left alone: they are a person's
- * record of the call and feed «Обработано сегодня».
+ * A row nobody handled is closed EXPIRED; one with a call outcome of its own
+ * is closed DONE with the outcome kept, so «Обработано сегодня» still shows
+ * the call (`retireActions`).
+ *
+ * One exception: a callback promised before the visit («Перезвонить в
+ * 13:00») on a visit that was cancelled or missed. The patient never came,
+ * so the call is still owed to them; the row surfaces at its time as before
+ * and leaves through its own expiry.
  *
  * Caller MUST be inside `runWithTenant(...)` (the engine is).
  */
 import {
-  IN_CLINIC_APPOINTMENT_STATUSES,
+  RISK_ACTION_TYPES,
+  RISK_TODAY_APPOINTMENT_STATUSES,
   type ActionPayload,
 } from "@/lib/actions/types";
 import type { TenantScopedPrisma } from "@/lib/prisma";
@@ -25,26 +38,40 @@ import { retireActions } from "./repository";
 
 type PrismaLike = TenantScopedPrisma;
 
-/** The appointment-bound signals that only mean something before arrival. */
-const PRE_ARRIVAL_TYPES = ["NO_SHOW_RISK_HIGH", "UNCONFIRMED_24H"] as const;
+/**
+ * Visit statuses in which the patient is still expected: the visit is ahead
+ * and they have not come. The risk-today list shows exactly these, and the
+ * outcome endpoints accept exactly these.
+ */
+const EXPECTED: ReadonlySet<string> = new Set(RISK_TODAY_APPOINTMENT_STATUSES);
 
-export async function retireInClinicRiskActions(
+/** The visit is over and the patient did not come to it. */
+const NOT_ATTENDED: ReadonlySet<string> = new Set(["CANCELLED", "NO_SHOW"]);
+
+export async function retireMootRiskActions(
   prisma: PrismaLike,
   clinicId: string,
 ): Promise<number> {
   const live = (await prisma.action.findMany({
     where: {
       clinicId,
-      type: { in: [...PRE_ARRIVAL_TYPES] },
+      type: { in: [...RISK_ACTION_TYPES] },
       status: { in: ["OPEN", "SNOOZED"] },
-      outcome: null,
     },
-    select: { id: true, type: true, severity: true, status: true, payload: true },
+    select: {
+      id: true,
+      type: true,
+      severity: true,
+      status: true,
+      outcome: true,
+      payload: true,
+    },
   })) as Array<{
     id: string;
     type: string;
     severity: string;
     status: string;
+    outcome: string | null;
     payload: ActionPayload | null;
   }>;
   if (live.length === 0) return 0;
@@ -56,19 +83,24 @@ export async function retireInClinicRiskActions(
   const apptIds = [...new Set(live.map((a) => apptIdOf(a.payload)).filter(Boolean))] as string[];
   if (apptIds.length === 0) return 0;
 
-  const arrived = (await prisma.appointment.findMany({
-    where: {
-      id: { in: apptIds },
-      status: { in: [...IN_CLINIC_APPOINTMENT_STATUSES] },
-    },
-    select: { id: true },
-  })) as Array<{ id: string }>;
-  if (arrived.length === 0) return 0;
+  const appts = (await prisma.appointment.findMany({
+    where: { id: { in: apptIds } },
+    select: { id: true, status: true },
+  })) as Array<{ id: string; status: string }>;
+  const statusOf = new Map(appts.map((a) => [a.id, a.status]));
 
-  const arrivedIds = new Set(arrived.map((a) => a.id));
-  const moot = live.filter((a) => {
-    const id = apptIdOf(a.payload);
-    return id !== null && arrivedIds.has(id);
-  });
-  return retireActions(prisma, clinicId, moot, "patient_in_clinic");
+  const moot = [];
+  for (const row of live) {
+    const apptId = apptIdOf(row.payload);
+    // A visit the lookup did not return is left to the rows' own expiry: a
+    // missing read must never close a clinic's whole risk list.
+    const status = apptId ? statusOf.get(apptId) : undefined;
+    if (status === undefined || EXPECTED.has(status)) continue;
+    // Only a snoozed row still holds its promise; an OPEN row's outcome is a
+    // leftover of an earlier occurrence.
+    const promisedCall = row.status === "SNOOZED" && row.outcome === "CALLBACK";
+    if (promisedCall && NOT_ATTENDED.has(status)) continue;
+    moot.push({ ...row, reason: `visit_${status.toLowerCase()}` });
+  }
+  return retireActions(prisma, clinicId, moot, "visit_not_ahead");
 }

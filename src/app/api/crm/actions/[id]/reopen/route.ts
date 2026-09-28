@@ -33,6 +33,14 @@ export const POST = createApiHandler(
         snoozeUntil: null,
         // Back in the list now, at the top of its severity.
         surfacedAt: new Date(),
+        // The call outcome belonged to the handling being undone. Left on an
+        // OPEN row, a stale «Перенести» would make a later «Готово» look like
+        // an abandoned reschedule and bounce the row back
+        // (`rescheduleNeverHappened`).
+        outcome: null,
+        outcomeNote: null,
+        callbackAt: null,
+        resolvedById: null,
       },
     });
 

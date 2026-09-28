@@ -28,7 +28,7 @@ import type { TenantScopedPrisma } from "@/lib/prisma";
 import { publishEvent } from "@/server/realtime/publish";
 
 import { DEFAULT_CONFIG, type DetectorConfig } from "./config";
-import { retireInClinicRiskActions } from "./in-clinic";
+import { retireMootRiskActions } from "./in-clinic";
 import { expireStaleActions, upsertAction } from "./repository";
 import { detectCaseRepeatDue } from "./detectors/case-repeat-due";
 import { detectDoctorOverload } from "./detectors/doctor-overload";
@@ -241,13 +241,14 @@ export async function runActionEngine(
     }
   }
 
-  // A patient who has arrived is no longer a no-show or confirmation risk:
-  // retire the rows raised before they came in (audit AC-07).
+  // A visit the patient has come to, or that is over, is no longer a no-show
+  // or confirmation risk: retire the rows raised while it was ahead (audit
+  // AC-07).
   try {
-    result.expired += await retireInClinicRiskActions(prisma, clinicId);
+    result.expired += await retireMootRiskActions(prisma, clinicId);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    result.errors.push({ type: "NO_SHOW_RISK_HIGH", error: `retireInClinic: ${message}` });
+    result.errors.push({ type: "NO_SHOW_RISK_HIGH", error: `retireMoot: ${message}` });
   }
 
   // Sweep stale OPEN/SNOOZED actions: explicit expiresAt elapsed, or 48h

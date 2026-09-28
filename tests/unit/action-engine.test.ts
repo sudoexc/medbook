@@ -77,7 +77,7 @@ vi.mock("@/server/actions/repository", () => ({
 }));
 
 vi.mock("@/server/actions/in-clinic", () => ({
-  retireInClinicRiskActions: (...args: unknown[]) => retireMock(...args),
+  retireMootRiskActions: (...args: unknown[]) => retireMock(...args),
 }));
 
 vi.mock("@/server/realtime/publish", () => ({

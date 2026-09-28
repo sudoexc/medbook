@@ -76,7 +76,7 @@ export async function detectUnconfirmed24h(
       // because the patient walked in unannounced). Neither does a patient
       // who is already in the clinic (audit AC-07): reception would be told
       // to phone someone sitting in the hall. Their earlier row is retired
-      // by the engine (`retireInClinicRiskActions`).
+      // by the engine (`retireMootRiskActions`).
       status: {
         notIn: ["CANCELLED", "NO_SHOW", "COMPLETED", ...IN_CLINIC_APPOINTMENT_STATUSES],
       },

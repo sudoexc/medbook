@@ -39,6 +39,8 @@ type ActionRow = {
   createdAt: Date;
   updatedAt: Date;
   surfacedAt: Date;
+  outcome?: string | null;
+  resolvedById?: string | null;
 };
 
 const state = {
@@ -467,6 +469,27 @@ describe("POST /api/crm/actions/[id]/reopen", () => {
     expect(updated.doneAt).toBeNull();
 
     expect(state.audits.some((a) => a.action === "ACTION_REOPENED")).toBe(true);
+  });
+
+  it("clears the call outcome of the handling it undoes", async () => {
+    // Left on the OPEN row, a stale «Перенести» would make a later «Готово»
+    // read as an abandoned reschedule and bounce back (review of AC-08).
+    const row = makeRow({
+      status: "DONE",
+      doneAt: new Date(),
+      outcome: "RESCHEDULED",
+      resolvedById: "u_recept",
+    });
+    state.rows.push(row);
+    const mod = await loadRoute("@/app/api/crm/actions/[id]/reopen/route");
+    const res = await mod.POST(
+      postReq(`https://x/api/crm/actions/${row.id}/reopen`, {}),
+    );
+    expect(res.status).toBe(200);
+    const updated = state.rows.find((r) => r.id === row.id)!;
+    expect(updated.status).toBe("OPEN");
+    expect(updated.outcome).toBeNull();
+    expect(updated.resolvedById).toBeNull();
   });
 
   it("RECEPTIONIST gets 403 (admin-only)", async () => {

@@ -13,6 +13,11 @@
  * Acceptance: a first-time patient with no other factor gets no
  * NO_SHOW_RISK_HIGH; a WAITING / IN_PROGRESS visit is not in the risk list.
  * The risk-today list side is driven end to end in risk-today-outcome.test.ts.
+ *
+ * Review: the engine's retire pass skipped rows a call outcome had snoozed
+ * («Не дозвонился», «Перезвонить позже»), so they came back on their timer
+ * while the patient sat in the hall, and it only saw WAITING / IN_PROGRESS,
+ * so a visit that finished between two passes kept its row for two days.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,7 +28,7 @@ import {
 } from "@/lib/actions/types";
 import { DEFAULT_CONFIG } from "@/server/actions/config";
 import { detectNoShowRiskHigh } from "@/server/actions/detectors/no-show-risk-high";
-import { retireInClinicRiskActions } from "@/server/actions/in-clinic";
+import { retireMootRiskActions } from "@/server/actions/in-clinic";
 
 const NOW = new Date("2026-09-28T05:00:00.000Z"); // 10:00 Tashkent
 const HOUR = 60 * 60 * 1000;
@@ -153,55 +158,197 @@ describe("a patient in the clinic is not a no-show risk", () => {
   });
 });
 
-describe("retireInClinicRiskActions", () => {
-  function store() {
-    const actions = [
-      // Raised while the patient was BOOKED; they have since checked in.
-      { id: "risk_arrived", type: "NO_SHOW_RISK_HIGH", severity: "medium", status: "OPEN", outcome: null, payload: { type: "NO_SHOW_RISK_HIGH", appointmentId: "ap_waiting" } },
-      { id: "unconf_in_room", type: "UNCONFIRMED_24H", severity: "high", status: "SNOOZED", outcome: null, payload: { type: "UNCONFIRMED_24H", appointmentId: "ap_in_progress" } },
-      // Still expected: stays.
-      { id: "risk_booked", type: "NO_SHOW_RISK_HIGH", severity: "medium", status: "OPEN", outcome: null, payload: { type: "NO_SHOW_RISK_HIGH", appointmentId: "ap_booked" } },
-    ];
-    const appts = [
-      { id: "ap_waiting", status: "WAITING" },
-      { id: "ap_in_progress", status: "IN_PROGRESS" },
-      { id: "ap_booked", status: "BOOKED" },
-    ];
-    const updateMany = vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => {
-      for (const a of actions) if (where.id.in.includes(a.id)) a.status = "EXPIRED";
-      return { count: where.id.in.length };
-    });
-    const actionFindMany = vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-      expect(where.outcome).toBeNull();
-      return actions.filter((a) => ["OPEN", "SNOOZED"].includes(a.status));
-    });
+describe("retireMootRiskActions", () => {
+  type Row = {
+    id: string;
+    type: string;
+    severity: string;
+    status: string;
+    outcome: string | null;
+    doneAt?: Date;
+    payload: { type: string; appointmentId: string };
+  };
+  function row(
+    id: string,
+    type: string,
+    appointmentId: string,
+    status = "OPEN",
+    outcome: string | null = null,
+  ): Row {
+    return { id, type, severity: "medium", status, outcome, payload: { type, appointmentId } };
+  }
+
+  /** Evaluates the `where` clauses the retire sends, like Postgres would. */
+  function store(actions: Row[], appts: Array<{ id: string; status: string }>) {
+    const audits: Array<{ action: string; entityId: string; meta: Record<string, unknown> }> = [];
+    const updateMany = vi.fn(
+      async ({ where, data }: { where: { id: { in: string[] }; status: { in: string[] } }; data: Partial<Row> }) => {
+        let count = 0;
+        for (const a of actions) {
+          if (where.id.in.includes(a.id) && where.status.in.includes(a.status)) {
+            Object.assign(a, data);
+            count += 1;
+          }
+        }
+        return { count };
+      },
+    );
+    const actionFindMany = vi.fn(
+      async ({ where }: { where: { type: { in: string[] }; status: { in: string[] } } }) =>
+        actions.filter((a) => where.type.in.includes(a.type) && where.status.in.includes(a.status)),
+    );
     const prisma = {
       action: { findMany: actionFindMany, updateMany },
       appointment: {
-        findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; status: { in: string[] } } }) =>
-          appts.filter((a) => where.id.in.includes(a.id) && where.status.in.includes(a.status)),
+        findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+          appts.filter((a) => where.id.in.includes(a.id)),
         ),
       },
-      auditLog: { create: vi.fn(async () => ({})) },
+      auditLog: {
+        create: vi.fn(async ({ data }: { data: { action: string; entityId: string; meta: Record<string, unknown> } }) => {
+          audits.push(data);
+          return {};
+        }),
+      },
     };
-    return { actions, prisma: prisma as never, raw: prisma };
+    const statusOf = () => Object.fromEntries(actions.map((a) => [a.id, a.status]));
+    return { actions, audits, statusOf, prisma: prisma as never, raw: prisma };
   }
 
   it("expires the risk rows of arrived patients and keeps the rest", async () => {
-    const s = store();
-    expect(await retireInClinicRiskActions(s.prisma, "c1")).toBe(2);
-    expect(Object.fromEntries(s.actions.map((a) => [a.id, a.status]))).toEqual({
+    const s = store(
+      [
+        // Raised while the patient was BOOKED; they have since checked in.
+        row("risk_arrived", "NO_SHOW_RISK_HIGH", "ap_waiting"),
+        row("unconf_in_room", "UNCONFIRMED_24H", "ap_in_progress", "SNOOZED"),
+        // Still expected: stays.
+        row("risk_booked", "NO_SHOW_RISK_HIGH", "ap_booked"),
+        row("unconf_confirmed", "NO_SHOW_RISK_HIGH", "ap_confirmed"),
+      ],
+      [
+        { id: "ap_waiting", status: "WAITING" },
+        { id: "ap_in_progress", status: "IN_PROGRESS" },
+        { id: "ap_booked", status: "BOOKED" },
+        { id: "ap_confirmed", status: "CONFIRMED" },
+      ],
+    );
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(2);
+    expect(s.statusOf()).toEqual({
       risk_arrived: "EXPIRED",
       unconf_in_room: "EXPIRED",
       risk_booked: "OPEN",
+      unconf_confirmed: "OPEN",
     });
-    expect(s.raw.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(s.audits.map((a) => a.action)).toEqual(["ACTION_EXPIRED", "ACTION_EXPIRED"]);
   });
 
-  it("does nothing when no one has arrived", async () => {
-    const s = store();
-    s.actions.splice(0, 2);
-    expect(await retireInClinicRiskActions(s.prisma, "c1")).toBe(0);
+  it("does nothing while every visit is still ahead", async () => {
+    const s = store(
+      [row("risk_booked", "NO_SHOW_RISK_HIGH", "ap_booked")],
+      [{ id: "ap_booked", status: "BOOKED" }],
+    );
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(0);
     expect(s.raw.action.updateMany).not.toHaveBeenCalled();
+  });
+
+  // Review of AC-07: «Не дозвонился» at 11:30 snoozed both rows to 13:30; he
+  // walked in at 12:30. The rows came back at 13:30 in the Action Center, the
+  // KPIs, the briefing and «К подтверждению» while he sat in the hall, and
+  // UNCONFIRMED_24H stayed for two days after the visit.
+  it("closes a row a call outcome snoozed as DONE, keeping the outcome for «Обработано сегодня»", async () => {
+    const s = store(
+      [
+        row("risk_no_answer", "NO_SHOW_RISK_HIGH", "ap_ivanov", "SNOOZED", "NO_ANSWER"),
+        row("unconf_no_answer", "UNCONFIRMED_24H", "ap_ivanov", "SNOOZED", "NO_ANSWER"),
+        // «Перезвонить в 14:00», set before the visit, for another walk-in.
+        row("unconf_callback", "UNCONFIRMED_24H", "ap_early", "SNOOZED", "CALLBACK"),
+      ],
+      [
+        { id: "ap_ivanov", status: "WAITING" },
+        { id: "ap_early", status: "IN_PROGRESS" },
+      ],
+    );
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(3);
+    for (const a of s.actions) {
+      expect(a.status).toBe("DONE");
+      expect(a.doneAt).toBeInstanceOf(Date);
+    }
+    expect(s.actions.map((a) => a.outcome)).toEqual(["NO_ANSWER", "NO_ANSWER", "CALLBACK"]);
+    expect(s.audits[0]).toMatchObject({
+      action: "ACTION_DONE",
+      meta: { newStatus: "DONE", outcome: "NO_ANSWER", reason: "visit_waiting" },
+    });
+  });
+
+  it("an OPEN row's outcome is a leftover of an earlier occurrence: it expires", async () => {
+    const s = store(
+      [row("stale", "UNCONFIRMED_24H", "ap_done", "OPEN", "RESCHEDULED")],
+      [{ id: "ap_done", status: "COMPLETED" }],
+    );
+    await retireMootRiskActions(s.prisma, "c1");
+    expect(s.statusOf()).toEqual({ stale: "EXPIRED" });
+  });
+
+  it("retires the rows of a visit that finished, was cancelled or missed between two passes", async () => {
+    const s = store(
+      [
+        row("unconf_completed", "UNCONFIRMED_24H", "ap_completed"),
+        row("unconf_cancelled", "UNCONFIRMED_24H", "ap_cancelled"),
+        row("risk_no_show", "NO_SHOW_RISK_HIGH", "ap_no_show", "SNOOZED", "NO_ANSWER"),
+        row("call_skipped", "NO_CONTACT_CALL", "ap_skipped", "SNOOZED", "NO_ANSWER"),
+      ],
+      [
+        { id: "ap_completed", status: "COMPLETED" },
+        { id: "ap_cancelled", status: "CANCELLED" },
+        { id: "ap_no_show", status: "NO_SHOW" },
+        { id: "ap_skipped", status: "SKIPPED" },
+      ],
+    );
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(4);
+    expect(s.statusOf()).toEqual({
+      unconf_completed: "EXPIRED",
+      unconf_cancelled: "EXPIRED",
+      risk_no_show: "DONE",
+      call_skipped: "DONE",
+    });
+    expect(s.audits.map((a) => a.meta.reason)).toEqual([
+      "visit_completed",
+      "visit_cancelled",
+      "visit_no_show",
+      "visit_skipped",
+    ]);
+  });
+
+  it("keeps a callback promised before a visit the patient never came to", async () => {
+    const s = store(
+      [
+        row("callback_cancelled", "UNCONFIRMED_24H", "ap_cancelled", "SNOOZED", "CALLBACK"),
+        row("callback_no_show", "NO_CONTACT_CALL", "ap_no_show", "SNOOZED", "CALLBACK"),
+      ],
+      [
+        { id: "ap_cancelled", status: "CANCELLED" },
+        { id: "ap_no_show", status: "NO_SHOW" },
+      ],
+    );
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(0);
+    expect(s.statusOf()).toEqual({
+      callback_cancelled: "SNOOZED",
+      callback_no_show: "SNOOZED",
+    });
+  });
+
+  it("leaves rows alone when their visit is not found", async () => {
+    const s = store([row("risk_orphan", "NO_SHOW_RISK_HIGH", "ap_gone")], []);
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(0);
+    expect(s.statusOf()).toEqual({ risk_orphan: "OPEN" });
+  });
+
+  it("never touches a PATIENT_CALLBACK, which outlives its visit by design (AC-09)", async () => {
+    const s = store(
+      [row("promise", "PATIENT_CALLBACK", "ap_cancelled", "SNOOZED", null)],
+      [{ id: "ap_cancelled", status: "CANCELLED" }],
+    );
+    expect(await retireMootRiskActions(s.prisma, "c1")).toBe(0);
+    expect(s.statusOf()).toEqual({ promise: "SNOOZED" });
   });
 });

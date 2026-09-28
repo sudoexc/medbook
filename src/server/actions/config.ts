@@ -103,3 +103,13 @@ export const PATIENT_NO_CHANNEL_TTL_HOURS = 48;
  * enough that a worker restart or a deploy does not count as one.
  */
 export const CLOSED_SIGNAL_LAPSE_HOURS = 12;
+
+/**
+ * How long a «Перенести» may stay unsaved before it counts as abandoned. The
+ * risk-today «Перенести» records outcome RESCHEDULED first and only then
+ * opens the appointment drawer where the date is moved (audit AC-10). A row
+ * whose visit is still at the same time this long after the outcome goes back
+ * into the lists (`rescheduleNeverHappened` in repository.ts). Long enough to
+ * pick a new date without the row flickering back mid-edit.
+ */
+export const ABANDONED_RESCHEDULE_GRACE_MIN = 30;

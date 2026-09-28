@@ -14,6 +14,7 @@ import { ok, err, forbidden, notFound, conflict } from "@/server/http";
 import { UpdateVisitNoteSchema } from "@/server/schemas/visit-note";
 import { isEditWindowExpired } from "@/server/visit-notes/edit-window";
 import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
+import { syncPatientDiagnosisWithNote } from "@/server/visit-notes/patient-diagnosis-sync";
 import { didPrescriptionsChange } from "@/server/visit-notes/prescription-diff";
 import {
   composeNoteHandout,
@@ -54,8 +55,9 @@ export const GET = createApiListHandler(
           orderBy: { sortOrder: "asc" },
           // Carry the packaging photo so the prescription rows can show the
           // box: the doctor turns the screen to the patient, and the same
-          // image travels on to the handout.
-          include: { drug: { select: { photoUrl: true } } },
+          // image travels on to the handout. The forms feed the row's form
+          // picker (audit G4-07).
+          include: { drug: { select: { photoUrl: true, forms: true } } },
         },
       },
     });
@@ -252,6 +254,14 @@ export const PATCH = createApiHandler(
       data.medicationsBridgedAt = null;
     }
 
+    // VW-10 — a signed note's diagnosis corrected in the window must reach
+    // the patient's card too; it used to change only on the note.
+    const diagnosisChanged =
+      (body.diagnosisCode !== undefined &&
+        (body.diagnosisCode ?? null) !== (before.diagnosisCode ?? null)) ||
+      (body.diagnosisName !== undefined &&
+        (body.diagnosisName ?? null) !== (before.diagnosisName ?? null));
+
     const correlationId = newCorrelationId();
     const actorUserId = ctx.userId || null;
     let revisions: { before: number; after: number } | null = null;
@@ -292,7 +302,7 @@ export const PATCH = createApiHandler(
         include: {
           visitPrescriptions: {
             orderBy: { sortOrder: "asc" },
-            include: { drug: { select: { photoUrl: true } } },
+            include: { drug: { select: { photoUrl: true, forms: true } } },
           },
         },
       });
@@ -330,6 +340,22 @@ export const PATCH = createApiHandler(
           visitNoteId: id,
           content: revisionContentOf(before, beforeRows ?? []),
           issuedPdfKey,
+        });
+      }
+
+      // Only a signed note has put its diagnosis on the card. A reopened
+      // one (reverted visit) is a draft until it is signed again, and the
+      // next signature reconciles the card then.
+      if (isSigned && diagnosisChanged) {
+        await syncPatientDiagnosisWithNote(tx, {
+          clinicId: before.clinicId,
+          patientId: before.patientId,
+          visitNoteId: id,
+          diagnosisCode: row.diagnosisCode,
+          diagnosisName: row.diagnosisName,
+          now: new Date(),
+          signedBefore: true,
+          ctx,
         });
       }
 

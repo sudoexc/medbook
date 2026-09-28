@@ -543,6 +543,29 @@ export function findRuleInteractions<D extends RuleDrug>(
   return out;
 }
 
+/**
+ * The rules between two drugs seen through their substances (audit G4-08):
+ * a combination or a register twin is in a class when any of its
+ * substances is. One hit per rule, like `findRuleInteractions`; `xIsA`
+ * says which drug took the rule's `a` side.
+ */
+export function rulesBetween(
+  x: readonly RuleDrug[],
+  y: readonly RuleDrug[],
+): { rule: InteractionRule; xIsA: boolean }[] {
+  const out: { rule: InteractionRule; xIsA: boolean }[] = [];
+  const inClass = (drugs: readonly RuleDrug[], cls: DrugClass) =>
+    drugs.some((d) => drugInClass(d, cls));
+  for (const rule of INTERACTION_RULES) {
+    if (inClass(x, rule.a) && inClass(y, rule.b)) {
+      out.push({ rule, xIsA: true });
+    } else if (inClass(y, rule.a) && inClass(x, rule.b)) {
+      out.push({ rule, xIsA: false });
+    }
+  }
+  return out;
+}
+
 /** The drug takes part in at least one class rule. */
 export function isCoveredByRules(drug: RuleDrug): boolean {
   return INTERACTION_RULES.some(

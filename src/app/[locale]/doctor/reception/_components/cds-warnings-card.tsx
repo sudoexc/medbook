@@ -24,6 +24,7 @@ import {
   InfoIcon,
   LayersIcon,
   Loader2Icon,
+  PillIcon,
   PlusIcon,
   ShieldAlertIcon,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import { cn } from "@/lib/utils";
 
 import {
   useCdsDrugCheck,
+  type CdsCurrentTherapyDrug,
   type CdsDrugRow,
   type CdsResolvedDrug,
   type CdsSeverity,
@@ -118,6 +120,7 @@ export function CdsWarningsCard({
     prescriptions,
     drugRows,
     diagnosisCode,
+    visitNoteId,
   });
   const [acknowledged, setAcknowledged] = React.useState<Set<string>>(
     () => new Set(),
@@ -164,6 +167,13 @@ export function CdsWarningsCard({
   const noPregnancyNames = result.resolvedDrugs
     .filter((d) => (result.noPregnancyData ?? []).includes(d.id))
     .map((d) => d.nameRu);
+  // What the patient already takes and the new drugs were checked against
+  // (audit G4-03): said out loud, so a green bar is known to include it.
+  const currentTherapy = result.currentTherapy ?? [];
+  const therapyNote =
+    currentTherapy.length > 0 ? (
+      <CurrentTherapyNote drugs={currentTherapy} />
+    ) : null;
 
   if (
     result.warnings.length === 0 &&
@@ -175,6 +185,7 @@ export function CdsWarningsCard({
         {noPregnancyNames.length > 0 && (
           <NoPregnancyDataNote names={noPregnancyNames} />
         )}
+        {therapyNote}
         {result.unresolvedLines.length > 0 && (
           <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
             <InfoIcon className="size-2.5" />
@@ -206,6 +217,7 @@ export function CdsWarningsCard({
             </span>
           )}
         </div>
+        {therapyNote}
         <AllergyQuickRecord
           patientId={patientId}
           suggestions={result.resolvedDrugs}
@@ -244,6 +256,7 @@ export function CdsWarningsCard({
       {noPregnancyNames.length > 0 && (
         <NoPregnancyDataNote names={noPregnancyNames} />
       )}
+      {therapyNote}
       {result.unresolvedLines.length > 0 && (
         <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
           <InfoIcon className="size-2.5" />
@@ -255,6 +268,28 @@ export function CdsWarningsCard({
         suggestions={result.resolvedDrugs}
       />
     </div>
+  );
+}
+
+/**
+ * The patient's current therapy the check took into account: running
+ * courses and what the patient listed in the questionnaire. Neutral, like
+ * the «нет данных» lines: it informs, it does not warn.
+ */
+function CurrentTherapyNote({ drugs }: { drugs: CdsCurrentTherapyDrug[] }) {
+  const t = useTranslations("doctor.reception");
+  const names = drugs
+    .map((d) =>
+      d.source === "PATIENT_REPORTED"
+        ? t("cds.currentTherapyReported", { name: d.nameRu })
+        : d.nameRu,
+    )
+    .join(", ");
+  return (
+    <p className="inline-flex items-start gap-1 text-[10px] text-muted-foreground">
+      <PillIcon className="mt-0.5 size-2.5 shrink-0" />
+      <span>{t("cds.currentTherapy", { names })}</span>
+    </p>
   );
 }
 

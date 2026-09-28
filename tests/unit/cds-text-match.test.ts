@@ -185,6 +185,10 @@ vi.mock("@/lib/prisma", () => ({
         return ids.includes("enalapril") && ids.includes("losartan") ? [pair] : [];
       }),
     },
+    // Current therapy and diagnoses (G4-03): none unless a test says so.
+    prescription: { findMany: vi.fn(async () => []) },
+    patientDiagnosis: { findMany: vi.fn(async () => []) },
+    patientChronicCondition: { findMany: vi.fn(async () => []) },
     appointment: { findFirst: vi.fn(async () => null) },
   },
 }));

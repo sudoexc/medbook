@@ -88,6 +88,10 @@ vi.mock("@/lib/prisma", () => ({
     patient: { findFirst: vi.fn(async () => ({ birthDate: null, gender: "MALE" })) },
     // No curated pairs at all: everything below comes from the class rules.
     drugInteraction: { findMany: vi.fn(async () => []) },
+    // Current therapy and diagnoses (G4-03): none unless a test says so.
+    prescription: { findMany: vi.fn(async () => []) },
+    patientDiagnosis: { findMany: vi.fn(async () => []) },
+    patientChronicCondition: { findMany: vi.fn(async () => []) },
     appointment: {
       findFirst: vi.fn(async () =>
         state.preVisit ? { preVisitData: state.preVisit } : null,

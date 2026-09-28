@@ -12,6 +12,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
+import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 
 const SeveritySchema = z.enum(["MILD", "MODERATE", "SEVERE"]);
 
@@ -51,23 +52,33 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "DOCTOR", "NURSE"],
     bodySchema: CreateAllergySchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const patientId = patientIdFromUrl(request);
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
       select: { id: true, clinicId: true },
     });
     if (!patient) return notFound();
-    const row = await prisma.patientAllergy.create({
-      data: {
+    // Announced in the same transaction (audit G3-02): the doctor's open
+    // drug check must see a new allergy without a reload.
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.patientAllergy.create({
+        data: {
+          clinicId: patient.clinicId,
+          patientId,
+          substance: body.substance,
+          reaction: body.reaction ?? null,
+          severity: body.severity,
+          notes: body.notes ?? null,
+          recordedAt: body.recordedAt ?? null,
+        },
+      });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
         clinicId: patient.clinicId,
-        patientId,
-        substance: body.substance,
-        reaction: body.reaction ?? null,
-        severity: body.severity,
-        notes: body.notes ?? null,
-        recordedAt: body.recordedAt ?? null,
-      },
+        payload: { patientId, record: "allergy", action: "created", entityId: created.id },
+      });
+      return created;
     });
     await audit(request, {
       action: "patient.allergy.create",

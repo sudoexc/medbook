@@ -7,6 +7,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
+import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 
 export const CreateChronicSchema = z.object({
   name: z.string().min(1).max(240),
@@ -42,22 +43,32 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "DOCTOR", "NURSE"],
     bodySchema: CreateChronicSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const patientId = patientIdFromUrl(request);
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
       select: { id: true, clinicId: true },
     });
     if (!patient) return notFound();
-    const row = await prisma.patientChronicCondition.create({
-      data: {
+    // Announced in the same transaction (audit G3-02): chronic conditions
+    // feed the doctor's contraindication check.
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.patientChronicCondition.create({
+        data: {
+          clinicId: patient.clinicId,
+          patientId,
+          name: body.name,
+          sinceDate: body.sinceDate ?? null,
+          notes: body.notes ?? null,
+          isActive: body.isActive,
+        },
+      });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
         clinicId: patient.clinicId,
-        patientId,
-        name: body.name,
-        sinceDate: body.sinceDate ?? null,
-        notes: body.notes ?? null,
-        isActive: body.isActive,
-      },
+        payload: { patientId, record: "chronic", action: "created", entityId: created.id },
+      });
+      return created;
     });
     await audit(request, {
       action: "patient.chronic.create",

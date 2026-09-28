@@ -31,6 +31,8 @@ export type DrugShortlistEntry = {
   label: string;
   count: number;
   lastDose: string | null;
+  lastForm: string | null;
+  lastStrength: string | null;
   pinned: boolean;
   /** Strengths the clinic uses for this drug (core list), else empty. */
   strengths: string[];
@@ -70,6 +72,8 @@ export const GET = createApiListHandler(
         select: {
           displayName: true,
           dose: true,
+          form: true,
+          strength: true,
           drugId: true,
           visitNote: { select: { createdAt: true } },
         },
@@ -95,6 +99,8 @@ export const GET = createApiListHandler(
         drugId: s.drugId,
         displayName: s.displayName,
         dose: s.dose,
+        form: s.form,
+        strength: s.strength,
         at: s.visitNote.createdAt,
       })),
       freeText: notes.flatMap((n) =>
@@ -140,6 +146,8 @@ export const GET = createApiListHandler(
         label: f.label,
         count: 0,
         lastDose: null,
+        lastForm: null,
+        lastStrength: null,
         pinned: false,
         strengths: f.strengths,
         drug,

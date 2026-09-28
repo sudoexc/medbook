@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+
 export type AllergyRow = {
   id: string;
   patientId: string;
@@ -55,8 +57,31 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Audit G3-02 — the record is written from two places: this card and the
+ * doctor's visit screen (an allergy from the drug check, a diagnosis at
+ * signing). Refetch the list when the other place changes it, instead of
+ * showing it stale until a reload.
+ */
+function useMedicalRecordLive(
+  patientId: string,
+  record: "allergy" | "diagnosis" | "chronic",
+  queryKey: readonly unknown[],
+) {
+  useLiveQueryInvalidation({
+    events: ["patient.medicalRecordChanged"],
+    enabled: Boolean(patientId),
+    shouldInvalidate: (event) => {
+      const p = event.payload as { patientId?: unknown; record?: unknown };
+      return p.patientId === patientId && p.record === record;
+    },
+    queryKey,
+  });
+}
+
 // ── Allergies ────────────────────────────────────────────────────────────
 export function useAllergies(patientId: string) {
+  useMedicalRecordLive(patientId, "allergy", ["patient", patientId, "allergies"]);
   return useQuery<{ rows: AllergyRow[] }, Error>({
     queryKey: ["patient", patientId, "allergies"],
     queryFn: ({ signal }) =>
@@ -114,6 +139,7 @@ export function useDeleteAllergy(patientId: string) {
 
 // ── Chronic conditions ───────────────────────────────────────────────────
 export function useChronicConditions(patientId: string) {
+  useMedicalRecordLive(patientId, "chronic", ["patient", patientId, "chronic"]);
   return useQuery<{ rows: ChronicRow[] }, Error>({
     queryKey: ["patient", patientId, "chronic"],
     queryFn: ({ signal }) =>
@@ -171,6 +197,7 @@ export function useDeleteChronic(patientId: string) {
 
 // ── Diagnoses ────────────────────────────────────────────────────────────
 export function useDiagnoses(patientId: string) {
+  useMedicalRecordLive(patientId, "diagnosis", ["patient", patientId, "diagnoses"]);
   return useQuery<{ rows: DiagnosisRow[] }, Error>({
     queryKey: ["patient", patientId, "diagnoses"],
     queryFn: ({ signal }) =>

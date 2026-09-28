@@ -32,6 +32,9 @@ export async function findPreviousFinalizedVisit(note: {
       anamnesis: true,
       dynamics: true,
       bodyMap: true,
+      // Text lines too: the treatment diff reads a drug continued as a line
+      // as continued, not stopped (audit VW-05).
+      prescriptions: true,
       visitPrescriptions: { orderBy: { sortOrder: "asc" } },
     },
   });

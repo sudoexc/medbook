@@ -22,6 +22,13 @@ export type DrugShortItem = {
   label: string;
   count: number;
   lastDose: string | null;
+  /**
+   * The form and strength of the row his last dose was written for, so the
+   * pick comes back as he prescribed it (audit G4-07). Optional: a server
+   * on the previous build omits them.
+   */
+  lastForm?: string | null;
+  lastStrength?: string | null;
   pinned: boolean;
   strengths: string[];
   drug: DrugSearchHit | null;

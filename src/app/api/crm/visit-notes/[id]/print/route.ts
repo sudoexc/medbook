@@ -57,6 +57,7 @@ import {
   renderMedicationGridHtml,
 } from "@/server/visit-notes/render-handout";
 import { findPreviousFinalizedVisit } from "@/server/visit-notes/previous-visit";
+import { resolveLineDrugIds } from "@/server/visit-notes/legacy-line-drugs";
 import { inlineStorageImage } from "@/server/storage/inline-image";
 
 function idFromUrl(request: Request): string {
@@ -495,17 +496,25 @@ export const GET = createApiListHandler(
 
     // Дифф считается против прошлого FINALIZED визита того же врача; для
     // легаси-визитов без структурных строк не печатаем шум «всё добавлено».
+    // Text lines of both visits take part (audit VW-05): a drug continued
+    // by a template line is neither «отменено» nor «добавлено».
     const previousVisit = await findPreviousFinalizedVisit(note);
-    const diffLines =
-      previousVisit && previousVisit.visitPrescriptions.length > 0
-        ? formatTreatmentDiff(
-            diffTreatments(
-              previousVisit.visitPrescriptions,
-              note.visitPrescriptions,
-            ),
-            locale,
-          )
-        : [];
+    let diffLines: string[] = [];
+    if (previousVisit && previousVisit.visitPrescriptions.length > 0) {
+      const prevText = previousVisit.prescriptions ?? [];
+      const nextText = note.prescriptions ?? [];
+      const lineDrugs = await resolveLineDrugIds([...prevText, ...nextText]);
+      diffLines = formatTreatmentDiff(
+        diffTreatments(previousVisit.visitPrescriptions, note.visitPrescriptions, {
+          prev: prevText.map((text, i) => ({ text, drugId: lineDrugs[i] })),
+          next: nextText.map((text, i) => ({
+            text,
+            drugId: lineDrugs[prevText.length + i],
+          })),
+        }),
+        locale,
+      );
+    }
     const treatmentDiffSection =
       diffLines.length > 0
         ? `<section class="block">

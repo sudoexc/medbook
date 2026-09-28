@@ -3270,10 +3270,18 @@ model PatientDiagnosis {
   // 'ACTIVE' | 'RESOLVED'. Resolved diagnoses are still shown for history
   // but visually muted in the UI.
   status      String    @default("ACTIVE")
+  // Audit VW-10 — the signed visit note whose diagnosis created this row
+  // (null for rows entered by hand in the card, and for rows an existing
+  // diagnosis was merely re-activated into). When that note's diagnosis is
+  // corrected in the 24h window or re-signed with another code, this row is
+  // moved to the new code or resolved, instead of staying ACTIVE forever.
+  // No FK on purpose: the row is the patient's record and outlives notes.
+  sourceVisitNoteId String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([clinicId, patientId, status])
+  @@index([sourceVisitNoteId])
 }
 
 model ReferralCode {

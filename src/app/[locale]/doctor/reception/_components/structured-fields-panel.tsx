@@ -22,10 +22,7 @@ import type {
 import { useLoudVisitNotePatch } from "../_hooks/use-loud-patch";
 import { useQueryClient } from "@tanstack/react-query";
 import { visitNoteKey, type VisitNoteRow } from "../_hooks/use-visit-note";
-import {
-  draftFromDrug,
-  toPrescriptionDrafts,
-} from "../_hooks/prescription-rows";
+import { toPrescriptionDrafts } from "../_hooks/prescription-rows";
 // Diagnosis + follow-up cards are shared with the conclusions screen (the
 // 24h in-window correction flow) — see ../../_components.
 import {
@@ -37,7 +34,10 @@ import { CatalogDrawer } from "./catalog-drawer";
 import { IcdCatalogDrawer } from "./icd-catalog-drawer";
 import { CdsWarningsCard } from "./cds-warnings-card";
 import { ParsedFromTextCard } from "./parsed-from-text-card";
-import { PrescriptionConstructor } from "./prescription-constructor";
+import {
+  PrescriptionConstructor,
+  type CatalogPickDrug,
+} from "./prescription-constructor";
 
 type FieldDef = {
   key: "prescriptions";
@@ -132,18 +132,17 @@ export function StructuredFieldsPanel() {
     [note, qc],
   );
 
+  // A drawer pick goes through the constructor, like a search pick: a drug
+  // whose dose the catalog cannot give asks for it before it is saved
+  // (audit G4-07).
+  const catalogPickRef = React.useRef<
+    ((drug: CatalogPickDrug, term: string) => void) | null
+  >(null);
   const handleCatalogPick = React.useCallback(
-    (drug: Parameters<typeof draftFromDrug>[0], term: string) => {
-      const live = liveNote();
-      if (!live) return;
-      applyPatch({
-        visitPrescriptions: [
-          ...toPrescriptionDrafts(live.visitPrescriptions ?? []),
-          draftFromDrug(drug, term),
-        ],
-      });
+    (drug: CatalogPickDrug, term: string) => {
+      catalogPickRef.current?.(drug, term);
     },
-    [liveNote, applyPatch],
+    [],
   );
 
   /**
@@ -307,6 +306,7 @@ export function StructuredFieldsPanel() {
             }}
             onRemoveLegacyChip={(chip) => handleRemoveChip(RX_FIELD, chip)}
             onOpenCatalog={() => setCatalogOpen(true)}
+            catalogPickRef={catalogPickRef}
           />
           <ParsedFromTextCard
             key={note.id}

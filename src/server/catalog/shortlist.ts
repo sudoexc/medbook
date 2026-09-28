@@ -111,6 +111,9 @@ export type StructuredDrugUse = {
   drugId: string | null;
   displayName: string;
   dose: string | null;
+  /** The row's form and strength: the dose was written for them. */
+  form?: string | null;
+  strength?: string | null;
   at: Date;
 };
 
@@ -121,6 +124,13 @@ export type DrugShortItem = {
   label: string;
   count: number;
   lastDose: string | null;
+  /**
+   * Form and strength of the row his last dose belongs to (audit G4-07): a
+   * «мои частые» pick comes back as he wrote it, not as the catalog's
+   * first form (citicoline drops, not the injection listed first).
+   */
+  lastForm: string | null;
+  lastStrength: string | null;
   pinned: boolean;
 };
 
@@ -141,7 +151,15 @@ export function buildDrugShortlist(args: {
     label: string,
     dose: string | null,
     at: Date,
+    form: string | null = null,
+    strength: string | null = null,
   ) => {
+    // The form and strength travel with the dose they were written for.
+    const takeDose = (cur: Acc) => {
+      cur.lastDose = dose;
+      cur.lastForm = form;
+      cur.lastStrength = strength;
+    };
     const cur = acc.get(key);
     if (cur) {
       cur.count += 1;
@@ -149,9 +167,9 @@ export function buildDrugShortlist(args: {
         // The newest spelling and dose win.
         cur.lastAt = at.getTime();
         cur.label = label;
-        cur.lastDose = dose ?? cur.lastDose;
+        if (dose) takeDose(cur);
       } else if (!cur.lastDose && dose) {
-        cur.lastDose = dose;
+        takeDose(cur);
       }
       return;
     }
@@ -161,6 +179,8 @@ export function buildDrugShortlist(args: {
       label,
       count: 1,
       lastDose: dose,
+      lastForm: dose ? form : null,
+      lastStrength: dose ? strength : null,
       pinned: false,
       lastAt: at.getTime(),
     });
@@ -170,7 +190,15 @@ export function buildDrugShortlist(args: {
     const label = s.displayName.trim();
     if (label.length < 2) continue;
     const key = s.drugId ?? `text:${normalizeCatalogTerm(label)}`;
-    bump(key, s.drugId, label, s.dose?.trim() || null, s.at);
+    bump(
+      key,
+      s.drugId,
+      label,
+      s.dose?.trim() || null,
+      s.at,
+      s.form ?? null,
+      s.strength ?? null,
+    );
   }
   for (const f of args.freeText) {
     const label = f.line.trim();
@@ -192,6 +220,8 @@ export function buildDrugShortlist(args: {
         label: "",
         count: 0,
         lastDose: null,
+        lastForm: null,
+        lastStrength: null,
         pinned: true,
       });
     }
@@ -211,6 +241,8 @@ function toDrugItem(a: DrugShortItem): DrugShortItem {
     label: a.label,
     count: a.count,
     lastDose: a.lastDose,
+    lastForm: a.lastForm,
+    lastStrength: a.lastStrength,
     pinned: a.pinned,
   };
 }

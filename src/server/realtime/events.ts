@@ -140,6 +140,12 @@ export const EVENT_TYPES = [
   // Status changed (contacted / converted / cancelled) so every open
   // «Заявки» screen and badge stays in sync across operators.
   "lead.updated",
+  // Audit G3-02 — an allergy, diagnosis or chronic condition of a patient was
+  // written, changed or removed. The doctor's open visit re-runs its drug
+  // check (an allergy a nurse records mid-visit must turn the green «нет
+  // конфликтов» red), and every open patient card refreshes «Медицина».
+  // Audited by the routes themselves, so not by the pumper.
+  "patient.medicalRecordChanged",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -654,6 +660,25 @@ export const LeadEventPayload = z
   .passthrough();
 export type LeadEventPayloadT = z.infer<typeof LeadEventPayload>;
 
+/**
+ * Audit G3-02 — a patient's medical record changed. Ids and the kind of
+ * record only: listeners refetch what they show, no clinical text rides the
+ * bus. Staff-only: not in the Mini App's deliverable set.
+ */
+export const PatientMedicalRecordChangedPayload = z
+  .object({
+    patientId: z.string().min(1),
+    /** Which part of the record changed. */
+    record: z.enum(["allergy", "diagnosis", "chronic"]),
+    action: z.enum(["created", "updated", "deleted"]),
+    /** The row written, when there is one. */
+    entityId: z.string().min(1).optional(),
+  })
+  .passthrough();
+export type PatientMedicalRecordChangedEventPayload = z.infer<
+  typeof PatientMedicalRecordChangedPayload
+>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder: each event carries the base envelope plus its typed payload.
 
@@ -723,6 +748,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   makeEvent("patient.arrived", PatientArrivedPayload),
   makeEvent("lead.created", LeadEventPayload),
   makeEvent("lead.updated", LeadEventPayload),
+  makeEvent("patient.medicalRecordChanged", PatientMedicalRecordChangedPayload),
 ]);
 
 export type AppEvent = z.infer<typeof AppEventSchema>;

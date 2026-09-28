@@ -1,7 +1,8 @@
 /**
  * /api/crm/cds/drug-check — POST drug interaction + allergy guard.
  *
- * Body: { patientId, prescriptions[], drugRows[]?, drugIds[]?, diagnosisCode? }
+ * Body: { patientId, prescriptions[], drugRows[]?, drugIds[]?, diagnosisCode?,
+ *         visitNoteId? }
  *
  * The reception UI calls this on every prescription change (debounced) to
  * surface warnings inline. Doctors must still acknowledge/override —
@@ -32,6 +33,10 @@ const BodySchema = z.object({
   // Bare ids, as a page still on the previous build sends them.
   drugIds: z.array(z.string().min(1)).max(50).optional(),
   diagnosisCode: z.string().trim().nullish(),
+  // The visit on screen: once signed, its rows are mirrored into medication
+  // courses, which must not be checked against the rows themselves as the
+  // patient's current therapy (audit G4-03).
+  visitNoteId: z.string().min(1).nullish(),
 });
 
 export const POST = createApiHandler(
@@ -46,6 +51,7 @@ export const POST = createApiHandler(
       drugRows: body.drugRows ?? [],
       drugIds: body.drugIds ?? [],
       diagnosisCode: body.diagnosisCode ?? null,
+      visitNoteId: body.visitNoteId ?? null,
     });
 
     return ok(result);

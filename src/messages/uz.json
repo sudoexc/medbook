@@ -6328,7 +6328,9 @@
         "noInteractionData": "O‘zaro ta’sir haqida ma’lumot yo‘q: {names}.",
         "noInteractionDataHint": "Baza bu dorilarning mosligini tekshirmaydi, uni o‘zingiz baholang.",
         "noPregnancyData": "Homiladorlikda xavfsizligi haqida ma’lumot yo‘q: {names}.",
-        "noPregnancyDataHint": "Ular uchun homiladorlik tekshiruvi bajarilmadi, xavfni o‘zingiz baholang."
+        "noPregnancyDataHint": "Ular uchun homiladorlik tekshiruvi bajarilmadi, xavfni o‘zingiz baholang.",
+        "currentTherapy": "Joriy davolash bilan birga tekshirildi: {names}.",
+        "currentTherapyReported": "{name} (bemor so‘zidan)"
       },
       "rx": {
         "custom": "Qo‘lda kiritish",
@@ -6344,6 +6346,9 @@
         "remindOff": "Eslatmalarsiz",
         "deleteRow": "Tayinlovni o‘chirish",
         "dose": "Doza",
+        "form": "Shakli va dozasi",
+        "doseNeeded": "Dozani yozing: bu shakl uchun uni katalogdan olib bo‘lmaydi",
+        "dosePlaceholder": "Qancha qabul qilish: 10 birlik, 15 ml, 2 tomchi",
         "timesLabel": "Qabul vaqti",
         "times": {
           "MORNING": "Ertalab",
@@ -6543,7 +6548,12 @@
           "suppRect": "Shamlar",
           "gel": "Gel",
           "cream": "Krem",
-          "oint": "Malham"
+          "oint": "Malham",
+          "injSc": "t/o",
+          "spray": "Sprey",
+          "suppVag": "Vag. shamlar",
+          "patch": "Plastir",
+          "dropsNasal": "Burun tomchi"
         }
       },
       "dosageBuilder": {

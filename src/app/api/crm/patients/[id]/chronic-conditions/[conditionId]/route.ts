@@ -7,6 +7,7 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound, err } from "@/server/http";
+import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 
 export const UpdateChronicSchema = z.object({
   name: z.string().min(1).max(240).optional(),
@@ -28,7 +29,7 @@ export const PATCH = createApiHandler(
     roles: ["ADMIN", "DOCTOR", "NURSE"],
     bodySchema: UpdateChronicSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const { conditionId, patientId } = idsFromUrl(request);
     const before = await prisma.patientChronicCondition.findUnique({
       where: { id: conditionId },
@@ -42,9 +43,17 @@ export const PATCH = createApiHandler(
     if (body.isActive !== undefined) data.isActive = body.isActive;
     if (Object.keys(data).length === 0) return err("nothing_to_update", 400);
 
-    const after = await prisma.patientChronicCondition.update({
-      where: { id: conditionId },
-      data,
+    const after = await prisma.$transaction(async (tx) => {
+      const updated = await tx.patientChronicCondition.update({
+        where: { id: conditionId },
+        data,
+      });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
+        clinicId: before.clinicId,
+        payload: { patientId, record: "chronic", action: "updated", entityId: conditionId },
+      });
+      return updated;
     });
     await audit(request, {
       action: "patient.chronic.update",
@@ -58,13 +67,20 @@ export const PATCH = createApiHandler(
 
 export const DELETE = createApiHandler(
   { roles: ["ADMIN", "DOCTOR", "NURSE"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const { conditionId, patientId } = idsFromUrl(request);
     const row = await prisma.patientChronicCondition.findUnique({
       where: { id: conditionId },
     });
     if (!row || row.patientId !== patientId) return notFound();
-    await prisma.patientChronicCondition.delete({ where: { id: conditionId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.patientChronicCondition.delete({ where: { id: conditionId } });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
+        clinicId: row.clinicId,
+        payload: { patientId, record: "chronic", action: "deleted", entityId: conditionId },
+      });
+    });
     await audit(request, {
       action: "patient.chronic.delete",
       entityType: "PatientChronicCondition",

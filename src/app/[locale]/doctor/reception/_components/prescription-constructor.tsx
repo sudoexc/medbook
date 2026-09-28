@@ -10,6 +10,12 @@
  * is the doctor's own (see draftFromDrug). «Свой препарат» adds the drug to
  * the clinic's base (visible to every doctor from then on) and prescribes it.
  *
+ * A pick whose dose the catalog cannot give (insulin, syrups, drops,
+ * injections, creams: their «strength» is a concentration or a pack) is not
+ * added at once: a small form asks for the dose first, with the drug's forms
+ * and strengths to choose from (audit G4-07, see drug-forms.ts). A saved row
+ * can switch its form too.
+ *
  * Tapping the empty search field opens the doctor's shortlist — his own most
  * prescribed drugs, what is usual for the chosen diagnosis, the clinic's core
  * list and his templates. Nothing else is on the card: the rest of the
@@ -42,9 +48,18 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { matchedBrand } from "@/lib/catalogs/brand-match";
 import {
+  normalizeForms,
+  withForm,
+  withStrength,
+  type DrugFormOption,
+} from "@/lib/catalogs/drug-forms";
+import {
+  formatPrescriptionHead,
   formatPrescriptionLine,
   type PrescriptionLocale,
 } from "@/lib/catalogs/prescription-format";
+
+import { useFormLabel } from "../../_components/drug-detail";
 
 import type { DoctorPresetRow } from "../_hooks/use-doctor-presets";
 import { useDoctorFavorites } from "../_hooks/use-doctor-favorites";
@@ -69,10 +84,13 @@ import {
 } from "../_hooks/use-visit-note";
 import {
   draftFromDrug,
+  draftFromShortItem,
+  splitFreeLine,
   toggleTimeOfDay,
   toPrescriptionDrafts,
   withRowEdited,
   withRowRemoved,
+  type DraftPick,
   type RowEdit,
 } from "../_hooks/prescription-rows";
 
@@ -93,52 +111,8 @@ const MEALS: VisitPrescriptionMealRelation[] = [
 
 const DURATION_PICKS = [5, 7, 10, 14, 30];
 
-/**
- * A shortlist pick as a row draft. His own items keep the wording he used
- * last time and his last dose; the clinic's core-list items are labelled
- * with the clinic's name («Анаприлин (пропранолол)») and its usual strength.
- */
-function draftFromShortItem(
-  item: DrugShortItem,
-  kind: "mine" | "clinic",
-): VisitPrescriptionDraft {
-  if (item.drug) {
-    const base = draftFromDrug(item.drug, item.label);
-    const strength = item.strengths[0] ?? base.strength;
-    return {
-      ...base,
-      displayName:
-        kind === "mine" && item.label ? item.label : base.displayName,
-      strength,
-      dose: item.lastDose ?? strength ?? base.dose,
-    };
-  }
-  // A free-typed line from his history: «Магне B6 — по 2 таб 2 раза…».
-  // The part after the dash is the dose as he wrote it.
-  const { name, dose } = splitFreeLine(item.label);
-  return {
-    drugId: null,
-    displayName: name,
-    form: null,
-    strength: null,
-    dose: dose ?? item.lastDose ?? "1",
-    timesOfDay: [],
-    mealRelation: "NO_MATTER",
-    durationDays: null,
-    instructionRu: null,
-    instructionUz: null,
-    remindPatient: true,
-  };
-}
-
-/** «Магне B6 — по 2 таб…» → name + dose; a line without a dash has none. */
-function splitFreeLine(line: string): { name: string; dose: string | null } {
-  const [name, ...rest] = line.split(" — ");
-  return {
-    name: (name ?? line).trim(),
-    dose: rest.join(" — ").trim() || null,
-  };
-}
+/** What a catalog pick carries: enough to build a row draft. */
+export type CatalogPickDrug = Parameters<typeof draftFromDrug>[0];
 
 type Props = {
   note: VisitNoteRow;
@@ -159,6 +133,14 @@ type Props = {
   shortlist?: boolean;
   onRemoveLegacyChip: (chip: string) => void;
   onOpenCatalog: () => void;
+  /**
+   * Filled by the constructor: how a drug picked in the catalog drawer (which
+   * its host renders) becomes a row, through the same «dose first» step as
+   * a search pick.
+   */
+  catalogPickRef?: React.MutableRefObject<
+    ((drug: CatalogPickDrug, term: string) => void) | null
+  >;
   /** Render as a top-level panel card instead of an inset sub-card. */
   standalone?: boolean;
   /** Shared save-in-flight flag for the header spinner (standalone hosts). */
@@ -175,6 +157,7 @@ export function PrescriptionConstructor({
   shortlist = true,
   onRemoveLegacyChip,
   onOpenCatalog,
+  catalogPickRef,
   standalone,
   saving,
 }: Props) {
@@ -197,6 +180,11 @@ export function PrescriptionConstructor({
   const [query, setQuery] = React.useState("");
   const [focused, setFocused] = React.useState(false);
   const [customOpen, setCustomOpen] = React.useState(false);
+  // A pick waiting for its dose (audit G4-07): not saved until written.
+  // Tied to its note: switching to the next patient must not carry it over.
+  const [pending, setPending] = React.useState<
+    (DraftPick & { noteId: string }) | null
+  >(null);
 
   const searchQuery = useDrugSearch(query);
   const suggestQuery = useDrugSuggestions(note.diagnosisCode);
@@ -257,30 +245,46 @@ export function PrescriptionConstructor({
   );
 
   const addDraft = React.useCallback(
-    (draft: VisitPrescriptionDraft) => {
+    (draft: VisitPrescriptionDraft, forms: DrugFormOption[] = []) => {
+      // No dose the catalog can vouch for: the doctor writes it first. A
+      // row is never saved with a concentration or a pack in «Доза».
+      if (!draft.dose.trim()) {
+        setPending({ draft, forms, noteId });
+        return;
+      }
       const current = liveDrafts();
       onSaveRows([...current, draft]);
       setExpanded(current.length);
     },
-    [onSaveRows, liveDrafts],
+    [onSaveRows, liveDrafts, noteId],
   );
 
   const addFromDrug = React.useCallback(
     (d: DrugSearchHit) => {
       // Pass the live query so a brand search prescribes «Мидокалм
       // (толперизон)» — the name the patient will look for at the counter.
-      addDraft(draftFromDrug(d, query));
+      addDraft(draftFromDrug(d, query), normalizeForms(d.forms));
       setQuery("");
       setFocused(false);
     },
     [addDraft, query],
   );
 
+  React.useEffect(() => {
+    if (!catalogPickRef) return;
+    catalogPickRef.current = (drug, term) =>
+      addDraft(draftFromDrug(drug, term), normalizeForms(drug.forms));
+    return () => {
+      catalogPickRef.current = null;
+    };
+  }, [catalogPickRef, addDraft]);
+
   const addFromShort = (item: DrugShortItem, kind: "mine" | "clinic") => {
     if (!item.drug && !splitFreeLine(item.label).dose && onAddLegacyLine) {
       onAddLegacyLine(item.label);
     } else {
-      addDraft(draftFromShortItem(item, kind));
+      const { draft, forms } = draftFromShortItem(item, kind);
+      addDraft(draft, forms);
     }
     setQuery("");
     setFocused(false);
@@ -295,7 +299,10 @@ export function PrescriptionConstructor({
     try {
       const { drug, created } = await addClinicDrug.mutateAsync(name);
       const base = draftFromDrug(drug, name);
-      addDraft({ ...base, displayName: name, dose: dose?.trim() || base.dose });
+      addDraft(
+        { ...base, displayName: name, dose: dose?.trim() || base.dose },
+        normalizeForms(drug.forms),
+      );
       toast.success(
         created
           ? t("rx.addedToClinic", { name })
@@ -313,7 +320,7 @@ export function PrescriptionConstructor({
         displayName: name,
         form: null,
         strength: null,
-        dose: dose?.trim() || "1",
+        dose: dose?.trim() || "",
         timesOfDay: [],
         mealRelation: "NO_MATTER",
         durationDays: null,
@@ -466,7 +473,11 @@ export function PrescriptionConstructor({
                     <ShortRow
                       key={`sug-${d.id}`}
                       label={d.nameRu}
-                      sub={d.forms?.[0]?.strengths?.slice(0, 3).join(" / ") || null}
+                      sub={
+                        normalizeForms(d.forms)[0]
+                          ?.strengths.slice(0, 3)
+                          .join(" / ") || null
+                      }
                       onPick={() => addFromDrug(d)}
                     />
                   ))}
@@ -587,9 +598,9 @@ export function PrescriptionConstructor({
                             query,
                           ) ?? d.nameRu}
                         </span>
-                        {d.forms?.[0]?.strengths?.[0] && (
+                        {(normalizeForms(d.forms)[0]?.strengths.length ?? 0) > 0 && (
                           <span className="text-xs text-muted-foreground">
-                            {d.forms[0].strengths.join(" / ")}
+                            {normalizeForms(d.forms)[0]!.strengths.join(" / ")}
                           </span>
                         )}
                       </div>
@@ -644,6 +655,20 @@ export function PrescriptionConstructor({
             </ul>
           )}
         </div>
+      )}
+
+      {/* ── A pick waiting for its dose ── */}
+      {pending && pending.noteId === note.id && !disabled && (
+        <PendingDoseForm
+          pick={pending}
+          onChange={(draft) => setPending((p) => (p ? { ...p, draft } : p))}
+          onCancel={() => setPending(null)}
+          onAdd={() => {
+            const { draft, forms } = pending;
+            setPending(null);
+            addDraft({ ...draft, dose: draft.dose.trim() }, forms);
+          }}
+        />
       )}
 
       {/* ── Custom drug mini-form ── */}
@@ -916,6 +941,10 @@ function PrescriptionRowItem({
   // With the instruction: whatever reaches the patient's handout and print
   // must be readable without expanding the row (audit G4-06).
   const line = formatPrescriptionLine(row, locale, { withInstruction: true });
+  const rowForms = React.useMemo(
+    () => normalizeForms(row.drug?.forms),
+    [row.drug?.forms],
+  );
 
   return (
     <li
@@ -990,6 +1019,32 @@ function PrescriptionRowItem({
 
       {expanded && !disabled && (
         <div className="flex flex-col gap-2 border-t border-border/70 px-2 py-2">
+          {/* Form and strength (audit G4-07): citicoline may be drops, not
+              only the injection listed first. A saved row keeps a dose: when
+              the new form has no default, the doctor's current one stays. */}
+          {rowForms.length > 1 ||
+          (rowForms.find((f) => f.form === row.form)?.strengths.length ?? 0) > 1 ? (
+            <LabeledRow label={t("rx.form")}>
+              <FormStrengthPicker
+                forms={rowForms}
+                form={row.form}
+                strength={row.strength}
+                onForm={(form) =>
+                  onChange((cur) => {
+                    const next = withForm(cur, rowForms, form);
+                    return { ...next, dose: next.dose || cur.dose };
+                  })
+                }
+                onStrength={(strength) =>
+                  onChange((cur) => {
+                    const next = withStrength(cur, strength);
+                    return { ...next, dose: next.dose || cur.dose };
+                  })
+                }
+              />
+            </LabeledRow>
+          ) : null}
+
           {/* Dose */}
           <LabeledRow label={t("rx.dose")}>
             <CommitInput
@@ -1088,6 +1143,146 @@ function PrescriptionRowItem({
         </div>
       )}
     </li>
+  );
+}
+
+// ── A pick waiting for its dose ───────────────────────────────────────
+
+/**
+ * Audit G4-07 — a picked drug whose dose the catalog cannot give: its form
+ * is liquid, injected or applied, or its strength is a concentration or a
+ * pack. The row is added only once the doctor has written the dose, and he
+ * can choose another form or strength here first.
+ */
+function PendingDoseForm({
+  pick,
+  onChange,
+  onAdd,
+  onCancel,
+}: {
+  pick: DraftPick;
+  onChange: (draft: VisitPrescriptionDraft) => void;
+  onAdd: () => void;
+  onCancel: () => void;
+}) {
+  const t = useTranslations("doctor.reception");
+  const { draft, forms } = pick;
+  const canAdd = draft.dose.trim().length > 0;
+  const submit = () => {
+    if (canAdd) onAdd();
+  };
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/[0.03] p-1.5">
+      <div className="flex items-center gap-1.5 px-0.5 text-xs font-medium text-foreground">
+        <PillIcon className="size-3 shrink-0 text-muted-foreground" />
+        <span className="truncate">
+          {formatPrescriptionHead({ ...draft, dose: "" })}
+        </span>
+      </div>
+      {forms.length > 1 ||
+      (forms.find((f) => f.form === draft.form)?.strengths.length ?? 0) > 1 ? (
+        <FormStrengthPicker
+          forms={forms}
+          form={draft.form}
+          strength={draft.strength}
+          onForm={(form) => onChange({ ...draft, ...withForm(draft, forms, form) })}
+          onStrength={(strength) =>
+            onChange({ ...draft, ...withStrength(draft, strength) })
+          }
+        />
+      ) : null}
+      <div className="flex items-center gap-1.5">
+        <input
+          value={draft.dose}
+          autoFocus
+          onChange={(e) => onChange({ ...draft, dose: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            } else if (e.key === "Escape") {
+              onCancel();
+            }
+          }}
+          placeholder={t("rx.dosePlaceholder")}
+          aria-invalid={!canAdd}
+          aria-label={t("rx.dose")}
+          maxLength={160}
+          className={cn(
+            "h-7 flex-1 rounded-md border bg-background px-2 text-[11px] text-foreground outline-none focus:ring-2 focus:ring-primary/20",
+            canAdd ? "border-border" : "border-destructive/60",
+          )}
+        />
+        <button
+          type="button"
+          disabled={!canAdd}
+          onClick={submit}
+          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground transition-opacity disabled:opacity-50"
+        >
+          {t("rx.add")}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label={t("cds.cancel")}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <XIcon className="size-3.5" />
+        </button>
+      </div>
+      <p className="px-0.5 text-[10px] leading-snug text-muted-foreground">
+        {t("rx.doseNeeded")}
+      </p>
+    </div>
+  );
+}
+
+/** The drug's forms, then the strengths of the chosen form, as chips. */
+function FormStrengthPicker({
+  forms,
+  form,
+  strength,
+  onForm,
+  onStrength,
+}: {
+  forms: readonly DrugFormOption[];
+  form: string | null;
+  strength: string | null;
+  onForm: (form: string) => void;
+  onStrength: (strength: string) => void;
+}) {
+  const formLabel = useFormLabel();
+  const strengths = forms.find((f) => f.form === form)?.strengths ?? [];
+  return (
+    <div className="flex flex-col gap-1">
+      {forms.length > 1 && (
+        <div className="flex flex-wrap gap-1">
+          {forms.map((f) => (
+            <SegChip
+              key={f.form}
+              active={f.form === form}
+              onClick={() => onForm(f.form)}
+            >
+              {formLabel(f.form)}
+            </SegChip>
+          ))}
+        </div>
+      )}
+      {strengths.length > 1 && (
+        <div className="flex flex-wrap gap-1">
+          {strengths.map((s) => (
+            <SegChip
+              key={s}
+              active={s === strength}
+              onClick={() => onStrength(s)}
+            >
+              {s}
+            </SegChip>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

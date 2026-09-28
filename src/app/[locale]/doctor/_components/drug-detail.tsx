@@ -87,6 +87,11 @@ export const FORM_KEY: Record<string, string> = {
   GEL: "gel",
   CREAM: "cream",
   OINT: "oint",
+  INJ_SC: "injSc",
+  SPRAY: "spray",
+  SUPP_VAG: "suppVag",
+  PATCH: "patch",
+  DROPS_NASAL: "dropsNasal",
 };
 
 export function RxBadge({ rxOnly }: { rxOnly: boolean }) {

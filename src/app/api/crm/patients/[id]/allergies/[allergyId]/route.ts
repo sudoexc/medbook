@@ -7,6 +7,7 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound, err } from "@/server/http";
+import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 
 const SeveritySchema = z.enum(["MILD", "MODERATE", "SEVERE"]);
 
@@ -32,7 +33,7 @@ export const PATCH = createApiHandler(
     roles: ["ADMIN", "DOCTOR", "NURSE"],
     bodySchema: UpdateAllergySchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const { allergyId, patientId } = idsFromUrl(request);
     const before = await prisma.patientAllergy.findUnique({ where: { id: allergyId } });
     if (!before || before.patientId !== patientId) return notFound();
@@ -47,9 +48,17 @@ export const PATCH = createApiHandler(
       return err("nothing_to_update", 400);
     }
 
-    const after = await prisma.patientAllergy.update({
-      where: { id: allergyId },
-      data,
+    const after = await prisma.$transaction(async (tx) => {
+      const updated = await tx.patientAllergy.update({
+        where: { id: allergyId },
+        data,
+      });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
+        clinicId: before.clinicId,
+        payload: { patientId, record: "allergy", action: "updated", entityId: allergyId },
+      });
+      return updated;
     });
     await audit(request, {
       action: "patient.allergy.update",
@@ -63,11 +72,18 @@ export const PATCH = createApiHandler(
 
 export const DELETE = createApiHandler(
   { roles: ["ADMIN", "DOCTOR", "NURSE"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const { allergyId, patientId } = idsFromUrl(request);
     const row = await prisma.patientAllergy.findUnique({ where: { id: allergyId } });
     if (!row || row.patientId !== patientId) return notFound();
-    await prisma.patientAllergy.delete({ where: { id: allergyId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.patientAllergy.delete({ where: { id: allergyId } });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
+        clinicId: row.clinicId,
+        payload: { patientId, record: "allergy", action: "deleted", entityId: allergyId },
+      });
+    });
     await audit(request, {
       action: "patient.allergy.delete",
       entityType: "PatientAllergy",

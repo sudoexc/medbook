@@ -1,0 +1,251 @@
+/**
+ * Audit VW-10 — a signed diagnosis corrected inside the 24h window (G43.0 →
+ * G44.2 on the conclusion screen) left G43.0 ACTIVE on the patient's card
+ * and never added G44.2; re-signing after a revert with another code left
+ * both ACTIVE.
+ *
+ * Pinned (acceptance):
+ *   1. Sign G43.0, correct to G44.2 in the window: the card has G44.2
+ *      ACTIVE and no ACTIVE G43.0.
+ *   2. Revert and re-sign with another code: the old code is not ACTIVE.
+ *   3. What the note did not create is left alone: a diagnosis another
+ *      signed visit carries, or one typed in the card.
+ *   4. A diagnosis removed from the note is resolved with a line saying so,
+ *      never deleted.
+ *   5. The PATCH route syncs only a signed note whose diagnosis changed.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { syncPatientDiagnosisWithNote } from "@/server/visit-notes/patient-diagnosis-sync";
+
+type Dx = {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  icd10Code: string | null;
+  label: string;
+  status: string;
+  notes: string | null;
+  diagnosedAt: Date | null;
+  sourceVisitNoteId: string | null;
+};
+type SignedNote = {
+  id: string;
+  patientId: string;
+  status: string;
+  diagnosisCode: string | null;
+  diagnosisName: string | null;
+};
+
+const h = vi.hoisted(() => ({ published: [] as Array<Record<string, unknown>> }));
+vi.mock("@/server/realtime/outbox", () => ({
+  newCorrelationId: () => "corr_test",
+  publishViaOutbox: vi.fn(async (_tx: unknown, envelope: Record<string, unknown>) => {
+    h.published.push(envelope);
+    return { eventId: "ev", correlationId: "corr_test" };
+  }),
+}));
+
+const db = {
+  rows: [] as Dx[],
+  notes: [] as SignedNote[],
+  seq: 0,
+};
+
+function matches(row: Record<string, unknown>, where: Record<string, unknown>): boolean {
+  return Object.entries(where).every(([k, v]) => {
+    if (v && typeof v === "object" && "not" in (v as object)) {
+      return row[k] !== (v as { not: unknown }).not;
+    }
+    return row[k] === v;
+  });
+}
+
+const tx = {
+  patientDiagnosis: {
+    findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+      db.rows.filter((r) => matches(r, where)).map((r) => ({ ...r })),
+    ),
+    findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+      const r = db.rows.find((x) => matches(x, where));
+      return r ? { id: r.id } : null;
+    }),
+    create: vi.fn(async ({ data }: { data: Partial<Dx> }) => {
+      const row: Dx = {
+        id: `dx_${++db.seq}`,
+        clinicId: "c1",
+        patientId: "p1",
+        icd10Code: null,
+        label: "",
+        status: "ACTIVE",
+        notes: null,
+        diagnosedAt: null,
+        sourceVisitNoteId: null,
+        ...data,
+      };
+      db.rows.push(row);
+      return { id: row.id };
+    }),
+    update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<Dx> }) => {
+      const row = db.rows.find((r) => r.id === where.id)!;
+      Object.assign(row, data);
+      return { id: row.id };
+    }),
+  },
+  visitNote: {
+    count: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+      db.notes.filter((n) => matches(n, where)).length,
+    ),
+  },
+};
+
+const NOW = new Date("2026-09-28T09:00:00Z");
+
+async function sign(
+  code: string | null,
+  name: string | null,
+  signedBefore: boolean,
+  noteId = "vn_1",
+) {
+  return syncPatientDiagnosisWithNote(tx as never, {
+    clinicId: "c1",
+    patientId: "p1",
+    visitNoteId: noteId,
+    diagnosisCode: code,
+    diagnosisName: name,
+    now: NOW,
+    signedBefore,
+    ctx: { kind: "TENANT", clinicId: "c1", userId: "u_doc", role: "DOCTOR" },
+  });
+}
+
+const active = () =>
+  db.rows.filter((r) => r.status === "ACTIVE").map((r) => r.icd10Code ?? r.label).sort();
+
+beforeEach(() => {
+  db.rows = [];
+  db.notes = [];
+  db.seq = 0;
+  h.published = [];
+});
+
+describe("a corrected diagnosis follows onto the card (acceptance)", () => {
+  it("sign G43.0, correct to G44.2 in the window: only G44.2 is active", async () => {
+    await sign("G43.0", "Мигрень без ауры", false);
+    expect(active()).toEqual(["G43.0"]);
+    expect(db.rows[0]!.sourceVisitNoteId).toBe("vn_1");
+
+    await sign("G44.2", "Головная боль напряжённого типа", true);
+    expect(active()).toEqual(["G44.2"]);
+    // Moved, not duplicated: one row, with the trace of what it was.
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0]!.notes).toContain("было G43.0");
+    expect(h.published.at(-1)).toMatchObject({
+      type: "patient.medicalRecordChanged",
+      payload: { patientId: "p1", record: "diagnosis" },
+    });
+  });
+
+  it("revert and re-sign with another code: the old code is not left active", async () => {
+    await sign("G43.0", "Мигрень без ауры", false);
+    // …reverted, then signed again with G44.2 (firstFinalizedAt is set).
+    await sign("G44.2", "Головная боль напряжённого типа", true);
+    await sign("G43.1", "Мигрень с аурой", true);
+    expect(active()).toEqual(["G43.1"]);
+  });
+
+  it("the new code already on the card is re-activated; the note's old row is resolved", async () => {
+    db.rows.push({
+      id: "dx_old",
+      clinicId: "c1",
+      patientId: "p1",
+      icd10Code: "G44.2",
+      label: "Головная боль напряжённого типа",
+      status: "RESOLVED",
+      notes: null,
+      diagnosedAt: new Date("2025-01-10T00:00:00Z"),
+      sourceVisitNoteId: null,
+    });
+    await sign("G43.0", "Мигрень без ауры", false);
+    await sign("G44.2", "Головная боль напряжённого типа", true);
+    expect(active()).toEqual(["G44.2"]);
+    const old = db.rows.find((r) => r.icd10Code === "G43.0")!;
+    expect(old.status).toBe("RESOLVED");
+    expect(old.notes).toContain("исправлен на G44.2");
+  });
+});
+
+describe("what the note did not create stays", () => {
+  it("a diagnosis another signed visit carries stays active", async () => {
+    await sign("G43.0", "Мигрень без ауры", false);
+    db.notes.push({
+      id: "vn_other",
+      patientId: "p1",
+      status: "FINALIZED",
+      diagnosisCode: "G43.0",
+      diagnosisName: "Мигрень без ауры",
+    });
+    await sign("G44.2", "Головная боль напряжённого типа", true);
+    expect(active()).toEqual(["G43.0", "G44.2"]);
+  });
+
+  it("a diagnosis typed in the card is never moved or resolved", async () => {
+    db.rows.push({
+      id: "dx_manual",
+      clinicId: "c1",
+      patientId: "p1",
+      icd10Code: "G43.0",
+      label: "Мигрень",
+      status: "ACTIVE",
+      notes: null,
+      diagnosedAt: null,
+      sourceVisitNoteId: null,
+    });
+    await sign("G43.0", "Мигрень без ауры", false);
+    await sign("G44.2", "Головная боль напряжённого типа", true);
+    expect(active()).toEqual(["G43.0", "G44.2"]);
+    expect(db.rows.find((r) => r.id === "dx_manual")!.sourceVisitNoteId).toBeNull();
+  });
+});
+
+describe("a diagnosis removed from the signed note", () => {
+  it("is resolved with a line saying so, never deleted", async () => {
+    await sign("G43.0", "Мигрень без ауры", false);
+    await sign(null, null, true);
+    expect(active()).toEqual([]);
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0]!.status).toBe("RESOLVED");
+    expect(db.rows[0]!.notes).toContain("убран из заключения");
+  });
+
+  it("a free-text diagnosis is matched by its words", async () => {
+    await sign(null, "Последствия ЧМТ", false);
+    await sign(null, "Посттравматическая головная боль", true);
+    expect(active()).toEqual(["Посттравматическая головная боль"]);
+  });
+});
+
+describe("the first signature", () => {
+  it("does not look for rows it cannot own yet", async () => {
+    tx.patientDiagnosis.findMany.mockClear();
+    await sign("G43.0", "Мигрень без ауры", false);
+    expect(tx.patientDiagnosis.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("the PATCH route", () => {
+  it("syncs a signed note whose diagnosis changed, and only that", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const src = readFileSync(
+      path.join(process.cwd(), "src/app/api/crm/visit-notes/[id]/route.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/if \(isSigned && diagnosisChanged\) \{\s+await syncPatientDiagnosisWithNote\(tx,/);
+    const fin = readFileSync(
+      path.join(process.cwd(), "src/app/api/crm/visit-notes/[id]/finalize/route.ts"),
+      "utf8",
+    );
+    expect(fin).toContain("signedBefore: note.firstFinalizedAt != null");
+  });
+});

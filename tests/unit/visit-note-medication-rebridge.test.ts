@@ -224,6 +224,13 @@ vi.mock("@/lib/prisma", () => {
       })),
     },
     document: { findUnique: vi.fn(async () => null) },
+    // VW-10 — a corrected diagnosis of a signed note reaches the card.
+    patientDiagnosis: {
+      findMany: vi.fn(async () => []),
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: "pd_1" })),
+      update: vi.fn(async () => ({ id: "pd_1" })),
+    },
     $executeRaw: vi.fn(async () => 1),
   };
 

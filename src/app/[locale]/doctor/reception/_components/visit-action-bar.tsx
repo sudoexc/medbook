@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { useReceptionContext } from "../_hooks/reception-context";
+import { cdsDrugCheckPatientKey } from "../_hooks/use-cds-drug-check";
 import {
   isAppointmentNotActive,
   isVersionConflict,
@@ -99,6 +100,12 @@ export function VisitActionBar() {
     signingRef.current = true;
     setSigning(true);
     const appointment = activeAppointment;
+    // The drug check re-runs as the doctor signs (audit G3-02): the card left
+    // on screen after signing must judge the record as it is now, not as it
+    // was when the last prescription changed, even if an event was missed.
+    void qc.invalidateQueries({
+      queryKey: cdsDrugCheckPatientKey(appointment.patient.id),
+    });
     try {
       const step = await signVisitNoteWhenSaved({
         noteId: visitNoteId,

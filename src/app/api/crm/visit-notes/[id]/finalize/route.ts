@@ -23,6 +23,7 @@ import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-chang
 import { completionFields } from "@/server/appointments/completion";
 import { runCompletionEffects } from "@/server/appointments/completion-effects";
 import { learnClinicDiagnosis } from "@/server/icd10/clinic-catalog";
+import { syncPatientDiagnosisWithNote } from "@/server/visit-notes/patient-diagnosis-sync";
 import { allocateDocumentNumber } from "@/server/services/document-number";
 import { composeNoteHandout } from "@/server/visit-notes/handout";
 import {
@@ -275,50 +276,20 @@ export const POST = createApiHandler(
       }
 
       // Ф7 — карточка пациента наполняется сама: диагноз приёма становится
-      // (или снова становится) ACTIVE в PatientDiagnosis. diagnosedAt
-      // существующей записи не трогаем — дата первичной постановки ценнее.
-      // Match on the code when there is one; fall back to the label for
-      // free-text diagnoses. Matching a null code would collapse every
-      // uncoded diagnosis a patient ever had into one row.
-      //
-      // No diagnosis at all (now allowed) means nothing to record here.
-      const hasDiagnosis = Boolean(
-        note.diagnosisCode || note.diagnosisName?.trim(),
-      );
-      const existingDx = !hasDiagnosis
-        ? null
-        : await tx.patientDiagnosis.findFirst({
-        where: note.diagnosisCode
-          ? { patientId: note.patientId, icd10Code: note.diagnosisCode }
-          : {
-              patientId: note.patientId,
-              icd10Code: null,
-              label: note.diagnosisName!.trim(),
-            },
-        select: { id: true },
+      // (или снова становится) ACTIVE в PatientDiagnosis. No diagnosis at all
+      // (now allowed) records nothing. A re-signature after a revert also
+      // moves or resolves what this note put on the card for a diagnosis it
+      // no longer carries (audit VW-10), see patient-diagnosis-sync.ts.
+      const patientDiagnosis = await syncPatientDiagnosisWithNote(tx, {
+        clinicId: note.clinicId,
+        patientId: note.patientId,
+        visitNoteId: id,
+        diagnosisCode: note.diagnosisCode,
+        diagnosisName: note.diagnosisName,
+        now,
+        signedBefore: note.firstFinalizedAt != null,
+        ctx,
       });
-      const patientDiagnosis = !hasDiagnosis
-        ? null
-        : existingDx
-        ? await tx.patientDiagnosis.update({
-            where: { id: existingDx.id },
-            data: {
-              status: "ACTIVE",
-              ...(note.diagnosisName ? { label: note.diagnosisName } : {}),
-            },
-            select: { id: true },
-          })
-        : await tx.patientDiagnosis.create({
-            data: {
-              clinicId: note.clinicId,
-              patientId: note.patientId,
-              icd10Code: note.diagnosisCode,
-              label: note.diagnosisName?.trim() || note.diagnosisCode || "",
-              diagnosedAt: now,
-              status: "ACTIVE",
-            },
-            select: { id: true },
-          });
 
       const visitNoteEnvelope: EventEnvelopeInput = {
         type: "visit-note.finalized",
@@ -351,7 +322,7 @@ export const POST = createApiHandler(
       return {
         note: updatedNote,
         appointment: updatedAppt,
-        patientDiagnosisId: patientDiagnosis?.id ?? null,
+        patientDiagnosisId: patientDiagnosis.patientDiagnosisId,
         revision: signedRevision.revision,
       };
     }).catch((e: unknown) => {

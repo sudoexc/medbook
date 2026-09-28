@@ -81,6 +81,10 @@ vi.mock("@/lib/prisma", () => ({
     patientAllergy: { findMany: vi.fn(async () => []) },
     patient: { findFirst: vi.fn(async () => state.patient) },
     drugInteraction: { findMany: vi.fn(async () => []) },
+    // Current therapy and diagnoses (G4-03): none unless a test says so.
+    prescription: { findMany: vi.fn(async () => []) },
+    patientDiagnosis: { findMany: vi.fn(async () => []) },
+    patientChronicCondition: { findMany: vi.fn(async () => []) },
     appointment: { findFirst: vi.fn(async () => null) },
   },
 }));

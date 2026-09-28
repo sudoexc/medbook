@@ -208,6 +208,8 @@ vi.mock("@/lib/prisma", () => {
       })),
     },
     patientDiagnosis: {
+      // VW-10 — the rows a signed note put on the card follow its diagnosis.
+      findMany: vi.fn(async () => []),
       findFirst: vi.fn(async () => null),
       create: vi.fn(async () => ({ id: "pd_1" })),
       update: vi.fn(async () => ({ id: "pd_1" })),

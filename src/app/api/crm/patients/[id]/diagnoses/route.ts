@@ -7,6 +7,7 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { ok, notFound } from "@/server/http";
+import { publishMedicalRecordChanged } from "@/server/patient/medical-record-events";
 
 const StatusSchema = z.enum(["ACTIVE", "RESOLVED"]);
 
@@ -45,23 +46,33 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "DOCTOR", "NURSE"],
     bodySchema: CreateDiagnosisSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const patientId = patientIdFromUrl(request);
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
       select: { id: true, clinicId: true },
     });
     if (!patient) return notFound();
-    const row = await prisma.patientDiagnosis.create({
-      data: {
+    // Announced in the same transaction (audit G3-02): diagnoses feed the
+    // doctor's contraindication check.
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.patientDiagnosis.create({
+        data: {
+          clinicId: patient.clinicId,
+          patientId,
+          icd10Code: body.icd10Code ?? null,
+          label: body.label,
+          diagnosedAt: body.diagnosedAt ?? null,
+          notes: body.notes ?? null,
+          status: body.status,
+        },
+      });
+      await publishMedicalRecordChanged(tx, {
+        ctx: ctx.kind === "TENANT" ? ctx : null,
         clinicId: patient.clinicId,
-        patientId,
-        icd10Code: body.icd10Code ?? null,
-        label: body.label,
-        diagnosedAt: body.diagnosedAt ?? null,
-        notes: body.notes ?? null,
-        status: body.status,
-      },
+        payload: { patientId, record: "diagnosis", action: "created", entityId: created.id },
+      });
+      return created;
     });
     await audit(request, {
       action: "patient.diagnosis.create",

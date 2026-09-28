@@ -2,6 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
+
+import { patientDiagnosesKey } from "./use-patient-diagnoses";
+
 export type CdsSeverity = "MINOR" | "MODERATE" | "MAJOR" | "CONTRAINDICATED";
 
 export type CdsWarningKind =
@@ -41,6 +45,19 @@ export type CdsResult = {
    * build omits it.
    */
   noPregnancyData?: string[];
+  /**
+   * What the patient already takes and the new drugs were checked against
+   * (audit G4-03). Optional: a server on the previous build omits it.
+   */
+  currentTherapy?: CdsCurrentTherapyDrug[];
+};
+
+export type CdsCurrentTherapyDrug = {
+  id: string;
+  nameRu: string;
+  inn: string;
+  source: "COURSE" | "PATIENT_REPORTED";
+  since: string | null;
 };
 
 /**
@@ -55,7 +72,29 @@ type Args = {
   prescriptions: string[];
   drugRows?: CdsDrugRow[];
   diagnosisCode: string | null;
+  /** The visit on screen: its own signed rows are not current therapy. */
+  visitNoteId?: string | null;
 };
+
+/** Every drug check of one patient, whatever its prescriptions. */
+export function cdsDrugCheckPatientKey(patientId: string) {
+  return ["cds-drug-check", patientId] as const;
+}
+
+/**
+ * One check: the patient's prefix, then what is prescribed. Starts with
+ * `cdsDrugCheckPatientKey`, so a change of the patient's record reaches
+ * every check of the patient whatever its prescriptions.
+ */
+export function cdsDrugCheckKey(args: Args) {
+  return [
+    ...cdsDrugCheckPatientKey(args.patientId ?? ""),
+    args.diagnosisCode,
+    args.prescriptions.join("|"),
+    // A renamed row changes the check: key on the label as well as the id.
+    (args.drugRows ?? []).map((r) => `${r.id}:${r.displayName}`).join("|"),
+  ] as const;
+}
 
 async function fetchCheck(args: Args): Promise<CdsResult> {
   const res = await fetch("/api/crm/cds/drug-check", {
@@ -67,6 +106,7 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
       prescriptions: args.prescriptions,
       drugRows: args.drugRows ?? [],
       diagnosisCode: args.diagnosisCode ?? null,
+      visitNoteId: args.visitNoteId ?? null,
     }),
   });
   if (!res.ok) {
@@ -81,20 +121,42 @@ async function fetchCheck(args: Args): Promise<CdsResult> {
   return (await res.json()) as CdsResult;
 }
 
+/**
+ * Events after which a drug check of the patient is stale although the
+ * prescriptions on screen did not change (audit G3-02): an allergy,
+ * diagnosis or chronic condition written elsewhere (a nurse in the CRM
+ * card), a course started or stopped, a questionnaire sent. The check key
+ * only holds the prescriptions, so without these the green «Конфликтов не
+ * найдено» stayed up until the doctor touched the list.
+ */
+export const CDS_STALE_EVENTS = [
+  "patient.medicalRecordChanged",
+  "prescription.created",
+  "prescription.updated",
+  "previsit.submitted",
+] as const;
+
 export function useCdsDrugCheck(args: Args) {
   const drugRows = args.drugRows ?? [];
   const enabled =
     !!args.patientId &&
     (args.prescriptions.length > 0 || drugRows.length > 0);
+  const patientId = args.patientId;
+  useLiveQueryInvalidation({
+    events: CDS_STALE_EVENTS,
+    enabled: !!patientId,
+    shouldInvalidate: (event) =>
+      (event.payload as { patientId?: unknown }).patientId === patientId,
+    queryKeys: patientId
+      ? [
+          cdsDrugCheckPatientKey(patientId),
+          // The «История диагнозов» card of the same visit.
+          patientDiagnosesKey(patientId),
+        ]
+      : [],
+  });
   return useQuery({
-    queryKey: [
-      "cds-drug-check",
-      args.patientId,
-      args.diagnosisCode,
-      args.prescriptions.join("|"),
-      // A renamed row changes the check: key on the label as well as the id.
-      drugRows.map((r) => `${r.id}:${r.displayName}`).join("|"),
-    ],
+    queryKey: cdsDrugCheckKey(args),
     queryFn: () => fetchCheck(args),
     enabled,
     staleTime: 30_000,

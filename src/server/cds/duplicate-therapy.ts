@@ -126,7 +126,7 @@ export function sharedDuplicateClass(
 
 // Solutions, solvents, vitamins and minerals share components (sodium
 // chloride, pyridoxine) without that being a double dose worth a warning.
-const NO_COMPONENT_MATCH_ATC = ["B05", "V07", "A11", "A12"];
+export const NO_COMPONENT_MATCH_ATC = ["B05", "V07", "A11", "A12"];
 
 /** Active substances by name: «Гидрохлоротиазид + лозартан» → both. */
 function componentKeys(d: DuplicateDrug): string[] {

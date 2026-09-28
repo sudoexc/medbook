@@ -293,17 +293,17 @@ export const AUDIT_ACTION = {
 
   // Phase 17 Wave 3 — deletion job ran in HARD_DELETE mode and removed the
   // Patient row entirely. `entityType: "Patient"`, `entityId: <patientId>`.
-  // `meta` snapshots the pre-delete row so the audit trail is meaningful
-  // after the row is gone, plus `{ jobId }`. Rare in practice — the
-  // default mode is ANONYMIZE.
+  // `meta` is `{ jobId, erased: [field names] }`: the erased identity is
+  // named, never copied (audit SEC-09). Rare in practice — the default
+  // mode is ANONYMIZE.
   PATIENT_HARD_DELETED: "PATIENT_HARD_DELETED",
 
   // Phase 17 Wave 3 — deletion job ran in ANONYMIZE mode and scrubbed PII
   // off the Patient row while preserving aggregate analytics (visit
   // counts, revenue, etc.). `entityType: "Patient"`, `entityId:
-  // <patientId>`. `meta` carries `{ jobId, before: { fullName,
-  // phoneNormalized, telegramId, ... } }` so the pre-scrub identifiers
-  // are still recoverable for legal/forensic requests.
+  // <patientId>`. `meta` is `{ jobId, erased: [field names] }`. It used to
+  // keep `before: { fullName, phone, passport, ... }`, which left the
+  // person the request erased identifiable in the audit log (audit SEC-09).
   PATIENT_ANONYMIZED: "PATIENT_ANONYMIZED",
 
   // Phase 17 Wave 2 — TOTP enrolment finished. `entityType: "User"`,

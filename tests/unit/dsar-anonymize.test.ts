@@ -9,15 +9,15 @@
  *  - marketingOptOut is forced on (`source: data-deletion`).
  *  - The `now` timestamp is wired into the three time stamps that need
  *    it (deletedAt, deletionRequestedAt, marketingOptOutAt).
- *  - The forensic snapshot returns exactly the fields the audit row
- *    needs.
+ *  - The audit row names the erased fields instead of copying the
+ *    person's identity (audit SEC-09).
  */
 import { describe, it, expect } from "vitest";
 
 import {
   ANONYMIZED_FULL_NAME,
   buildAnonymizationPayload,
-  snapshotForensicFields,
+  erasedIdentityFields,
 } from "@/server/dsar/anonymize";
 
 describe("buildAnonymizationPayload", () => {
@@ -67,22 +67,23 @@ describe("buildAnonymizationPayload", () => {
     expect(out.deletionReason).toBe(`dsar:${jobId}`);
   });
 
-  it("snapshotForensicFields returns exactly the audit-meta shape", () => {
-    const snap = snapshotForensicFields({
+  it("the audit row names the erased identity fields, never their values (SEC-09)", () => {
+    const fields = erasedIdentityFields({
       fullName: "Иван Иванов",
       phone: "+998 90 000 00 00",
       phoneNormalized: "998900000000",
       telegramId: "tg_42",
-      telegramUsername: "ivanov",
+      telegramUsername: null,
       passport: "AB1234567",
     });
-    expect(snap).toEqual({
-      fullName: "Иван Иванов",
-      phone: "+998 90 000 00 00",
-      phoneNormalized: "998900000000",
-      telegramId: "tg_42",
-      telegramUsername: "ivanov",
-      passport: "AB1234567",
-    });
+    expect(fields).toEqual([
+      "fullName",
+      "phone",
+      "phoneNormalized",
+      "telegramId",
+      "passport",
+    ]);
+    expect(JSON.stringify(fields)).not.toContain("Иван");
+    expect(JSON.stringify(fields)).not.toContain("AB1234567");
   });
 });

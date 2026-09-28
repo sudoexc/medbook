@@ -33,7 +33,13 @@ import { MoneyText } from "@/components/atoms/money-text";
 import { SkeletonRow } from "@/components/atoms/skeleton-row";
 import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
 
+import { caseVisitOrdinals, caseVisitStats } from "@/lib/cases/case-visits";
+
 import { InlineField } from "../../../patients/[id]/_components/inline-field";
+import {
+  canViewMedical,
+  useCurrentRole,
+} from "../../../patients/[id]/_hooks/use-current-role";
 import {
   type CaseAppointmentRow,
   type CaseDetail,
@@ -144,6 +150,7 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
   const tStatus = tStatusRaw as unknown as (
     k:
       | "booked"
+      | "confirmed"
       | "waiting"
       | "inProgress"
       | "completed"
@@ -155,10 +162,15 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
 
   const q = useCase(id);
   const patch = usePatchCase(id);
+  // The clinical side of the case (diagnosis, SOAP draft, prescriptions)
+  // is for clinical roles only; the API leaves it out for the others
+  // (audit PT-11), and the page does not offer to edit what it lacks.
+  const role = useCurrentRole();
+  const showClinical = canViewMedical(role);
   // Phase 16 Wave 3 — doctors list for the PrescriptionsCard. Always loaded
   // (the card needs a populated dropdown on first render) but cached for
   // 5min so the page-level navigation back to this view is instant.
-  const prescriptionDoctors = useDoctorsForDropdown(true);
+  const prescriptionDoctors = useDoctorsForDropdown(showClinical);
 
   const [closeOpen, setCloseOpen] = React.useState(false);
   const [doctorMenuOpen, setDoctorMenuOpen] = React.useState(false);
@@ -335,7 +347,13 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
 
           {/* Meta + body grid: meta card on left, timeline on right */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-            <CaseMetaCard data={data} locale={locale} t={t} patch={patch} />
+            <CaseMetaCard
+              data={data}
+              locale={locale}
+              t={t}
+              patch={patch}
+              showClinical={showClinical}
+            />
             <CaseTimelineCard
               data={data}
               locale={locale}
@@ -348,20 +366,24 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
 
           {/* AI SOAP draft — Wave 5. Sits below the timeline on every screen
               size so doctors can scan visits then drop into the draft. */}
-          <SoapDraftCard caseId={data.id} initialDraft={data.soapDraft} />
+          {showClinical ? (
+            <SoapDraftCard caseId={data.id} initialDraft={data.soapDraft ?? null} />
+          ) : null}
 
           {/* Phase 16 Wave 3 — Prescriptions card. Doctors write meds here;
               ACTIVE rows with `remindersEnabled` flow into the hourly
               medication-reminder worker. The doctor dropdown reuses the
               same lazy-fetched list as the New Visit dialog so we don't
               double-load. */}
-          <PrescriptionsCard
-            caseId={data.id}
-            patientId={data.patient.id}
-            defaultDoctorId={data.primaryDoctorId}
-            prescriptions={data.prescriptions}
-            doctors={prescriptionDoctors.data ?? []}
-          />
+          {showClinical ? (
+            <PrescriptionsCard
+              caseId={data.id}
+              patientId={data.patient.id}
+              defaultDoctorId={data.primaryDoctorId}
+              prescriptions={data.prescriptions ?? []}
+              doctors={prescriptionDoctors.data ?? []}
+            />
+          ) : null}
         </PageContainer>
       </div>
 
@@ -376,6 +398,7 @@ export function CaseDetailClient({ id }: CaseDetailClientProps) {
       <CloseCaseDialog
         open={closeOpen}
         onOpenChange={setCloseOpen}
+        runningPrescriptions={data.runningPrescriptions ?? 0}
         onSubmit={async (status, reason) => {
           await patch.mutateAsync({
             status,
@@ -506,11 +529,13 @@ function CaseMetaCard({
   locale,
   t,
   patch,
+  showClinical,
 }: {
   data: CaseDetail;
   locale: Locale;
   t: (k: string) => string;
   patch: ReturnType<typeof usePatchCase>;
+  showClinical: boolean;
 }) {
   const doctor = data.primaryDoctor;
   const doctorName = doctor
@@ -586,6 +611,7 @@ function CaseMetaCard({
         />
       </div>
 
+      {showClinical ? (
       <div className="border-t border-border pt-3">
         <span className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
           {t("metaDiagnosis")}
@@ -626,6 +652,7 @@ function CaseMetaCard({
           />
         </div>
       </div>
+      ) : null}
 
       <div className="border-t border-border pt-3">
         <span className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
@@ -661,6 +688,7 @@ const VISIT_STATUS_VARIANT: Record<
   "default" | "info" | "success" | "warning" | "muted" | "destructive"
 > = {
   BOOKED: "info",
+  CONFIRMED: "info",
   WAITING: "warning",
   IN_PROGRESS: "default",
   COMPLETED: "success",
@@ -673,6 +701,7 @@ function statusI18nKey(
   s: CaseAppointmentRow["status"],
 ):
   | "booked"
+  | "confirmed"
   | "waiting"
   | "inProgress"
   | "completed"
@@ -682,6 +711,8 @@ function statusI18nKey(
   switch (s) {
     case "BOOKED":
       return "booked";
+    case "CONFIRMED":
+      return "confirmed";
     case "WAITING":
       return "waiting";
     case "IN_PROGRESS":
@@ -712,6 +743,7 @@ function CaseTimelineCard({
   tStatus: (
     k:
       | "booked"
+      | "confirmed"
       | "waiting"
       | "inProgress"
       | "completed"
@@ -724,11 +756,13 @@ function CaseTimelineCard({
   const detach = useDetachAppointment(data.id, data.patientId);
   // Appointments come from the API in date-asc order. We render that order
   // verbatim ("first visit" is at the top, repeats below) so the
-  // "N days after first" labels make intuitive sense to the doctor.
+  // "N days after first" labels make intuitive sense to the doctor. A
+  // cancelled visit or a no-show takes no number and is never the first
+  // (audit PT-16): the visit that really happened first is «Первичный».
   const rows = data.appointments;
-  const firstAtMs = rows[0]
-    ? new Date(rows[0].date).getTime()
-    : null;
+  const ordinals = caseVisitOrdinals(rows);
+  const firstHeld = rows.find((r) => ordinals.get(r.id) === 1);
+  const firstAtMs = firstHeld ? new Date(firstHeld.date).getTime() : null;
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
@@ -754,11 +788,11 @@ function CaseTimelineCard({
         />
       ) : (
         <ol className="flex flex-col gap-2">
-          {rows.map((row, i) => (
+          {rows.map((row) => (
             <VisitRow
               key={row.id}
               row={row}
-              index={i}
+              visitNumber={ordinals.get(row.id) ?? null}
               firstAtMs={firstAtMs}
               locale={locale}
               t={t}
@@ -787,7 +821,7 @@ function CaseTimelineCard({
 
 function VisitRow({
   row,
-  index,
+  visitNumber,
   firstAtMs,
   locale,
   t,
@@ -796,13 +830,15 @@ function VisitRow({
   detachDisabled,
 }: {
   row: CaseAppointmentRow;
-  index: number;
+  /** Null: the visit never happened (cancelled, no-show). */
+  visitNumber: number | null;
   firstAtMs: number | null;
   locale: Locale;
   t: (k: string, vars?: Record<string, string | number>) => string;
   tStatus: (
     k:
       | "booked"
+      | "confirmed"
       | "waiting"
       | "inProgress"
       | "completed"
@@ -813,7 +849,6 @@ function VisitRow({
   onDetach: () => Promise<void>;
   detachDisabled: boolean;
 }) {
-  const visitNumber = index + 1;
   const isFirst = visitNumber === 1;
   const doctorName = row.doctor
     ? locale === "uz"
@@ -827,17 +862,20 @@ function VisitRow({
     : null;
 
   const daysAfter = (() => {
-    if (isFirst || firstAtMs === null) return null;
+    if (isFirst || visitNumber === null || firstAtMs === null) return null;
     const ms = new Date(row.date).getTime() - firstAtMs;
     if (!Number.isFinite(ms)) return null;
     return Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
   })();
 
-  const subtitle = isFirst
-    ? t("firstVisit")
-    : daysAfter !== null && daysAfter > 0
-      ? `${t("repeatVisit")} (${t("daysAfterFirst", { n: daysAfter } as never)})`
-      : t("repeatVisit");
+  const subtitle =
+    visitNumber === null
+      ? t("visitNotHeld")
+      : isFirst
+        ? t("firstVisit")
+        : daysAfter !== null && daysAfter > 0
+          ? `${t("repeatVisit")} (${t("daysAfterFirst", { n: daysAfter } as never)})`
+          : t("repeatVisit");
 
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-card/40 p-3 sm:flex-row sm:items-start sm:gap-3">
@@ -851,7 +889,7 @@ function VisitRow({
           )}
           aria-hidden
         >
-          #{visitNumber}
+          {visitNumber === null ? null : `#${visitNumber}`}
         </span>
         <span className="text-xs text-muted-foreground">{subtitle}</span>
       </div>
@@ -912,6 +950,13 @@ function VisitRow({
 // Right rail: stats + patient mini card
 // ---------------------------------------------------------------------------
 
+/**
+ * «Сводка» (audit PT-16). The money comes from the server's formula for the
+ * patient card (`data.finance`): only COMPLETED visits cost, and «Оплачено»
+ * is shown only when the clinic records payments in the CRM. It used to
+ * sum `priceFinal` of every visit (cancelled and next week's included) and
+ * label it «Оплачено» in a clinic that records no payments at all.
+ */
 function CaseStatsCard({
   data,
   t,
@@ -919,21 +964,12 @@ function CaseStatsCard({
   data: CaseDetail;
   t: (k: string) => string;
 }) {
-  const stats = React.useMemo(() => {
-    let totalPaid = 0;
-    let freeRepeats = 0;
-    for (const a of data.appointments) {
-      if (a.priceFinal && a.priceFinal > 0) {
-        // Heuristic: visits with priceFinal > 0 contribute to "paid" total.
-        // Actual payment status lives on the appointment payments which the
-        // detail endpoint does not include — we present this as billed.
-        totalPaid += a.priceFinal;
-      } else if (a.priceFinal === 0) {
-        freeRepeats += 1;
-      }
-    }
-    return { totalPaid, freeRepeats, totalVisits: data.appointments.length };
-  }, [data.appointments]);
+  const stats = React.useMemo(
+    () => caseVisitStats(data.appointments),
+    [data.appointments],
+  );
+  const finance = data.finance;
+  const tracksPayments = finance?.tracksPayments === true;
 
   return (
     <section className="rounded-xl border border-border bg-card p-3">
@@ -944,15 +980,26 @@ function CaseStatsCard({
         <div className="flex items-center justify-between">
           <dt className="text-muted-foreground">{t("statsTotalVisits")}</dt>
           <dd className="font-semibold tabular-nums text-foreground">
-            {stats.totalVisits}
+            {stats.numberedVisits}
           </dd>
         </div>
         <div className="flex items-center justify-between">
-          <dt className="text-muted-foreground">{t("statsTotalPaid")}</dt>
+          <dt className="text-muted-foreground">{t("statsVisitsCost")}</dt>
           <dd className="font-semibold tabular-nums text-foreground">
-            <MoneyText amount={stats.totalPaid} currency="UZS" />
+            <MoneyText
+              amount={finance?.visitsTotal ?? stats.completedTotal}
+              currency="UZS"
+            />
           </dd>
         </div>
+        {tracksPayments ? (
+          <div className="flex items-center justify-between">
+            <dt className="text-muted-foreground">{t("statsTotalPaid")}</dt>
+            <dd className="font-semibold tabular-nums text-foreground">
+              <MoneyText amount={finance?.paid ?? 0} currency="UZS" />
+            </dd>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between">
           <dt className="text-muted-foreground">{t("statsFreeRepeats")}</dt>
           <dd className="font-semibold tabular-nums text-foreground">
@@ -960,6 +1007,11 @@ function CaseStatsCard({
           </dd>
         </div>
       </dl>
+      {finance && !tracksPayments ? (
+        <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+          {t("statsPaymentsNotTracked")}
+        </p>
+      ) : null}
     </section>
   );
 }

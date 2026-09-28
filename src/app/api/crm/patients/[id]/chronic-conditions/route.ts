@@ -20,8 +20,11 @@ function patientIdFromUrl(request: Request): string {
   return parts[parts.length - 2] ?? "";
 }
 
+// Clinical roles only (audit PT-11): the «Медицина» tab is hidden from the
+// front desk and the call center, and the API no longer answers them
+// either. Allergies stay readable by every role: a safety flag.
 export const GET = createApiListHandler(
-  { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
+  { roles: ["ADMIN", "DOCTOR", "NURSE"] },
   async ({ request }) => {
     const patientId = patientIdFromUrl(request);
     const patient = await prisma.patient.findUnique({

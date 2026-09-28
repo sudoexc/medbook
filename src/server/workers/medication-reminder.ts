@@ -1,8 +1,9 @@
 /**
  * Phase 16 Wave 3 — Medication-reminder worker.
  *
- * Hourly tick. For every ACTIVE prescription with `remindersEnabled: true`
- * whose schedule.times[] contains the current local hour:
+ * Hourly tick. For every ACTIVE prescription with `remindersEnabled: true`,
+ * not on a closed medical case, whose schedule.times[] contains the current
+ * local hour:
  *
  *   1. Compute the canonical UTC anchor (`scheduledFor`) for the tick via
  *      `isPrescriptionDueInWindow` (pure helper).
@@ -110,12 +111,18 @@ export async function runMedicationReminderTick(
     // even consider them. The marketing opt-out gate is enforced inline
     // below per-row (not in the WHERE) so the unit tests can observe the
     // skip path explicitly via mocks.
+    //
+    // A course of a closed case is never reminded (audit PT-10): closing
+    // the case ends its courses, and this filter also covers a course left
+    // ACTIVE on a case closed before that, or added to it afterwards.
+    // Courses bridged from a signed visit have no case and are unaffected.
     const rows = (await prisma.prescription.findMany({
       where: {
         status: "ACTIVE",
         remindersEnabled: true,
         clinic: { medicationRemindersEnabled: true },
         patient: { deletedAt: null },
+        OR: [{ caseId: null }, { case: { status: "OPEN" } }],
       },
       select: {
         id: true,

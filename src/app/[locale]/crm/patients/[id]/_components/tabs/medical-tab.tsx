@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   AlertCircleIcon,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatDate, type Locale } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,10 +25,11 @@ import { DateText } from "@/components/atoms/date-text";
 import { ConfirmDeleteDialog } from "@/components/molecules/confirm-delete-dialog";
 
 import type { Patient } from "../../_hooks/use-patient";
-import { usePatchPatient } from "../../_hooks/use-patient";
 import type { Role } from "../../_hooks/use-current-role";
 import {
   useAllergies,
+  useClinicalNote,
+  useSaveClinicalNote,
   useCreateAllergy,
   useDeleteAllergy,
   useUpdateAllergy,
@@ -73,6 +75,13 @@ export function MedicalTab({ patient, role }: MedicalTabProps) {
 
 type T = ReturnType<typeof useTranslations<"patientCard.medical">>;
 
+/**
+ * The doctor's clinical note (audit PT-11). It has its own storage now: it
+ * used to be `Patient.notes`, the staff note the front desk edits on the
+ * card overview, so a receptionist's «перезвонить после 18:00» replaced the
+ * treatment plan. That staff note is shown here read-only, since text
+ * written on this tab before the split lives there.
+ */
 function NotesCard({
   patient,
   canWrite,
@@ -82,29 +91,32 @@ function NotesCard({
   canWrite: boolean;
   t: T;
 }) {
-  const [draft, setDraft] = React.useState(patient.notes ?? "");
-  const [saving, setSaving] = React.useState(false);
-  const patch = usePatchPatient(patient.id);
+  const locale = useLocale() as Locale;
+  const note = useClinicalNote(patient.id);
+  const save = useSaveClinicalNote(patient.id);
+  const saved = note.data?.text ?? "";
+  const [draft, setDraft] = React.useState(saved);
 
   React.useEffect(() => {
-    setDraft(patient.notes ?? "");
-  }, [patient.notes]);
+    setDraft(saved);
+  }, [saved]);
 
-  const dirty = draft !== (patient.notes ?? "");
+  const dirty = draft !== saved;
+  const saving = save.isPending;
 
-  const save = async () => {
-    setSaving(true);
+  const onSave = async () => {
     try {
-      await patch.mutateAsync({ notes: draft || null });
+      await save.mutateAsync(draft);
       toast.success(t("notesSaved"));
     } catch (e) {
       toast.error(t("notesSaveFailed"), {
         description: e instanceof Error ? e.message : undefined,
       });
-    } finally {
-      setSaving(false);
     }
   };
+
+  const updatedBy = note.data?.updatedBy?.name ?? null;
+  const updatedAt = note.data?.updatedAt ?? null;
 
   return (
     <Section
@@ -117,13 +129,25 @@ function NotesCard({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         placeholder={t("placeholder")}
-        disabled={!canWrite || saving}
+        disabled={!canWrite || saving || note.isLoading}
       />
+      {updatedAt ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {updatedBy
+            ? t("notesUpdatedBy", {
+                date: formatDate(updatedAt, locale, "short"),
+                name: updatedBy,
+              })
+            : t("notesUpdatedAt", {
+                date: formatDate(updatedAt, locale, "short"),
+              })}
+        </p>
+      ) : null}
       <div className="mt-3 flex items-center justify-end gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setDraft(patient.notes ?? "")}
+          onClick={() => setDraft(saved)}
           disabled={!dirty || saving}
         >
           {t("reset")}
@@ -131,11 +155,21 @@ function NotesCard({
         <Button
           size="sm"
           disabled={!canWrite || !dirty || saving}
-          onClick={save}
+          onClick={onSave}
         >
           {saving ? t("saving") : t("save")}
         </Button>
       </div>
+      {patient.notes ? (
+        <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            {t("staffNoteLabel")}
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-foreground">
+            {patient.notes}
+          </p>
+        </div>
+      ) : null}
     </Section>
   );
 }

@@ -10,13 +10,23 @@ import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
-import { ok, notFound, conflict, diff } from "@/server/http";
+import { ok, notFound, conflict } from "@/server/http";
 import {
   hydratePatientForRead,
   serializePatientForWrite,
 } from "@/server/patient/cipher-fields";
 import { UpdatePatientSchema } from "@/server/schemas/patient";
 import { recordPatientView } from "@/server/audit/patient-view";
+import {
+  patientSnapshotAuditMeta,
+  patientUpdateAuditMeta,
+} from "@/server/audit/patient-audit-meta";
+import {
+  footprintFound,
+  isForeignKeyViolation,
+  lockPatientRow,
+  patientFootprint,
+} from "@/server/patient/footprint";
 import { loadPatientFinance } from "@/server/patient/finance";
 import { clientIpForAudit } from "@/lib/client-ip";
 import {
@@ -190,19 +200,15 @@ export const PATCH = createApiHandler(
       // account is bound to another card (one card per account, MA-04).
       return conflict("phone_or_telegram_taken");
     }
-    const beforeHydrated = hydratePatientForRead(
-      before as unknown as { passport?: string | null; notes?: string | null },
-    );
+    const beforeHydrated = hydratePatientForRead(before);
     const afterHydrated = hydratePatientForRead(after);
-    const d = diff(
-      { ...(before as unknown as Record<string, unknown>), ...beforeHydrated },
-      { ...(after as unknown as Record<string, unknown>), ...afterHydrated },
-    );
     await audit(request, {
       action: "patient.update",
       entityType: "Patient",
       entityId: id,
-      meta: d,
+      // Identity and note columns by name only (audit SEC-09): the diff of
+      // the decrypted rows put the passport and notes in plain text here.
+      meta: patientUpdateAuditMeta(beforeHydrated, afterHydrated),
     });
     return ok(afterHydrated);
   }
@@ -210,44 +216,65 @@ export const PATCH = createApiHandler(
 
 export const DELETE = createApiHandler(
   { roles: ["ADMIN"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const id = idFromUrl(request);
     const before = await prisma.patient.findUnique({ where: { id } });
     if (!before) return notFound();
 
-    // Medico-legal guard (D-5). A patient with any clinical or financial
-    // footprint must never be hard-deleted here: appointment / visit-note /
-    // document / payment FKs are ON DELETE RESTRICT, so prisma.delete() would
-    // throw a raw FK violation, and — more importantly — finalized conclusions
-    // and signed documents are legal records that must outlive the patient
-    // row. Send the admin to the DSAR deletion flow (POST /api/crm/dsar/
-    // deletions), which anonymizes or schedules a reviewed hard-delete with
-    // retention checks instead of destroying records. Hard-delete stays
-    // allowed only for a footprint-free patient (created by mistake).
-    const [appointments, visitNotes, documents, payments, cases] =
-      await Promise.all([
-        prisma.appointment.count({ where: { patientId: id } }),
-        prisma.visitNote.count({ where: { patientId: id } }),
-        prisma.document.count({ where: { patientId: id } }),
-        prisma.payment.count({ where: { patientId: id } }),
-        prisma.medicalCase.count({ where: { patientId: id } }),
-      ]);
-    if (appointments + visitNotes + documents + payments + cases > 0) {
+    // Medico-legal guard (D-5, audit G1-09). A card with anything attached
+    // (a visit, an allergy, a course of medication, a broadcast it received,
+    // a DSAR request, a family link...) is never hard-deleted here: those
+    // rows either cascade away with the card or restrict the delete (a raw
+    // 500). Only an empty card created by mistake goes; a patient's request
+    // to erase their data goes through the DSAR flow, which anonymizes with
+    // retention checks. The count, the delete and its audit row share one
+    // transaction under the card's row lock, so nothing lands in between.
+    let outcome:
+      | { deleted: true }
+      | { deleted: false; gone?: true; counts: Record<string, number> };
+    try {
+      outcome = await prisma.$transaction(async (tx) => {
+        await lockPatientRow(tx, id);
+        const footprint = await patientFootprint(tx, id);
+        // Deleted by someone else between the read and the lock.
+        if (!footprint) return { deleted: false as const, gone: true as const, counts: {} };
+        const counts = footprintFound(footprint);
+        if (Object.keys(counts).length > 0) {
+          return { deleted: false as const, counts };
+        }
+        await tx.patient.delete({ where: { id } });
+        await tx.auditLog.create({
+          data: {
+            clinicId: before.clinicId,
+            actorId: ctx.kind === "TENANT" || ctx.kind === "SUPER_ADMIN" ? ctx.userId : null,
+            actorRole: ctx.kind === "TENANT" ? ctx.role : null,
+            action: "patient.delete",
+            entityType: "Patient",
+            entityId: id,
+            // The card without its identity (audit SEC-09): the row is gone,
+            // and the audit log must not become the place it lives on.
+            meta: patientSnapshotAuditMeta(
+              hydratePatientForRead(before) as unknown as Record<string, unknown>,
+            ) as never,
+            ip: clientIpForAudit(request),
+            userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
+          },
+        });
+        return { deleted: true as const };
+      });
+    } catch (e) {
+      // A row the count cannot see yet (a concurrent write that committed
+      // first) still makes Postgres refuse: the same answer, not a 500.
+      if (!isForeignKeyViolation(e)) throw e;
+      outcome = { deleted: false, counts: {} };
+    }
+    if (!outcome.deleted) {
+      if (outcome.gone) return notFound();
       return conflict("has_clinical_records", {
         useDsar: true,
-        counts: { appointments, visitNotes, documents, payments, cases },
+        counts: outcome.counts,
       });
     }
-
-    await prisma.patient.delete({ where: { id } });
-    await audit(request, {
-      action: "patient.delete",
-      entityType: "Patient",
-      entityId: id,
-      // Hydrate before snapshotting — the audit row should carry plaintext so
-      // forensic reconstruction doesn't need the active key.
-      meta: { before: hydratePatientForRead(before) },
-    });
     return ok({ id, deleted: true });
   }
 );

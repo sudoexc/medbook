@@ -38,6 +38,8 @@ export type DsarPatientInput = {
   segment: string;
   tags: string[];
   notes: string | null;
+  /** The doctor's clinical note (its own row since audit PT-11). */
+  clinicalNote?: string | null;
   ltv: number;
   visitsCount: number;
   balance: number;

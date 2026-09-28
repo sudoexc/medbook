@@ -95,14 +95,19 @@ async function latestUsdRate(clinicId: string, db: Db): Promise<unknown> {
   return row?.rateUsd ?? null;
 }
 
-export async function loadPatientFinance(
+/**
+ * The one formula over a set of visits and the payments that belong to
+ * them: the patient's whole history, or one medical case.
+ */
+async function loadFinance(
+  db: Db,
   clinicId: string,
-  patientId: string,
-  db: Db = prisma,
+  visitWhere: Prisma.AppointmentWhereInput,
+  paymentWhere: Prisma.PaymentWhereInput,
 ): Promise<PatientFinance> {
   const [rows, since] = await Promise.all([
     db.appointment.findMany({
-      where: { clinicId, patientId, status: BILLABLE_VISIT_STATUS },
+      where: { clinicId, ...visitWhere, status: BILLABLE_VISIT_STATUS },
       select: {
         status: true,
         priceFinal: true,
@@ -126,15 +131,7 @@ export async function loadPatientFinance(
   }
   const [payments, rate] = await Promise.all([
     db.payment.findMany({
-      where: {
-        clinicId,
-        status: "PAID",
-        // A deposit taken on the «Оплаты» tab has no visit; a payment taken
-        // in the visit drawer may carry only the visit. Both are the
-        // patient's money. Demo payments count too: each one settles the
-        // seeded visit it is filed under, so it moves no balance.
-        OR: [{ patientId }, { appointment: { patientId } }],
-      },
+      where: { clinicId, status: "PAID", ...paymentWhere },
       select: {
         amount: true,
         refundedAmount: true,
@@ -149,6 +146,43 @@ export async function loadPatientFinance(
     paidTiyin: paidTiyinOf(payments, rate),
     billingSince: since,
   });
+}
+
+export async function loadPatientFinance(
+  clinicId: string,
+  patientId: string,
+  db: Db = prisma,
+): Promise<PatientFinance> {
+  return loadFinance(
+    db,
+    clinicId,
+    { patientId },
+    // A deposit taken on the «Оплаты» tab has no visit; a payment taken
+    // in the visit drawer may carry only the visit. Both are the
+    // patient's money. Demo payments count too: each one settles the
+    // seeded visit it is filed under, so it moves no balance.
+    { OR: [{ patientId }, { appointment: { patientId } }] },
+  );
+}
+
+/**
+ * A medical case's money on the same formula (audit PT-16): what its
+ * COMPLETED visits cost, and the PAID payments filed under its visits (a
+ * deposit on the card belongs to no case). The case page used to sum
+ * `priceFinal` of every visit, cancelled and next week's included, and
+ * print it as «Оплачено» in a clinic that records no payments at all.
+ */
+export async function loadCaseFinance(
+  clinicId: string,
+  caseId: string,
+  db: Db = prisma,
+): Promise<PatientFinance> {
+  return loadFinance(
+    db,
+    clinicId,
+    { medicalCaseId: caseId },
+    { appointment: { medicalCaseId: caseId } },
+  );
 }
 
 /**

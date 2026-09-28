@@ -16,14 +16,15 @@ import {
 import { ok, err, parseQuery } from "@/server/http";
 import {
   hydratePatientForRead,
-  hydratePatientListForRead,
   serializePatientForWrite,
 } from "@/server/patient/cipher-fields";
+import { toPatientListRow } from "@/server/patient/list-row";
 import {
   CreatePatientSchema,
   QueryPatientSchema,
 } from "@/server/schemas/patient";
 import { allocatePatientNumber } from "@/server/services/patient-number";
+import { patientSnapshotAuditMeta } from "@/server/audit/patient-audit-meta";
 import { birthYearOf } from "@/lib/patients/identity-match";
 import {
   contactPhoneStub,
@@ -133,7 +134,8 @@ export const GET = createApiListHandler(
     }
 
     return ok({
-      rows: hydratePatientListForRead(rows),
+      // No passport / notes in a list (audit PT-11): nothing decrypted here.
+      rows: rows.map(toPatientListRow),
       nextCursor,
       total,
       segmentCounts,
@@ -250,10 +252,10 @@ export const POST = createApiHandler(
       action: "patient.create",
       entityType: "Patient",
       entityId: created.id,
-      // Audit meta carries the plaintext snapshot for forensic reconstruction —
-      // the audit table is itself sensitive but is a single sink we already
-      // trust. The DB row stays encrypted regardless.
-      meta: { after: hydrated },
+      // The card without its identity (audit SEC-09): a decrypted snapshot
+      // here made the passport column encryption moot and outlived a DSAR
+      // anonymization of the card.
+      meta: patientSnapshotAuditMeta(hydrated as unknown as Record<string, unknown>),
     });
     return ok(hydrated, 201);
   }

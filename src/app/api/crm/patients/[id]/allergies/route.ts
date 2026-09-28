@@ -4,7 +4,9 @@
  * Allergies are clinic-scoped patient-attached records visible to every
  * tenant role (ADMIN/RECEPTIONIST/DOCTOR/NURSE/CALL_OPERATOR). Writes are
  * restricted to ADMIN, DOCTOR and NURSE — receptionists and call operators
- * do not amend medical history.
+ * do not amend medical history. Unlike diagnoses and chronic conditions
+ * (clinical roles only since audit PT-11), the list stays open to everyone:
+ * an allergy is a safety flag the front desk may need to see.
  */
 import { z } from "zod";
 

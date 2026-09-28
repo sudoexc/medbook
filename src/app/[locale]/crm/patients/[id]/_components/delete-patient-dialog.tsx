@@ -15,8 +15,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { groupFootprint } from "@/lib/patients/footprint-groups";
 
-import { useDeletePatient, type Patient } from "../_hooks/use-patient";
+import {
+  PatientDeleteBlockedError,
+  useDeletePatient,
+  type Patient,
+} from "../_hooks/use-patient";
 
 export interface DeletePatientDialogProps {
   open: boolean;
@@ -28,6 +33,10 @@ export interface DeletePatientDialogProps {
  * Confirm-dialog that requires retyping the patient's family name before
  * the delete can proceed — matches the charter's "confirm with вводом
  * фамилии" requirement.
+ *
+ * Only an empty card created by mistake can be deleted (audit G1-09). When
+ * the server refuses, the dialog stays open and says what the card holds,
+ * instead of a toast reading «HTTP 409».
  */
 export function DeletePatientDialog({
   open,
@@ -38,9 +47,15 @@ export function DeletePatientDialog({
   const router = useRouter();
   const locale = useLocale();
   const [confirm, setConfirm] = React.useState("");
+  const [blocked, setBlocked] = React.useState<Record<string, number> | null>(
+    null,
+  );
 
   React.useEffect(() => {
-    if (!open) setConfirm("");
+    if (!open) {
+      setConfirm("");
+      setBlocked(null);
+    }
   }, [open]);
 
   const mutation = useDeletePatient(patient.id);
@@ -74,6 +89,28 @@ export function DeletePatientDialog({
           />
         </div>
 
+        {blocked ? (
+          <div
+            role="alert"
+            className="grid gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
+          >
+            <p className="font-medium text-destructive">{t("blockedTitle")}</p>
+            {groupFootprint(blocked).length > 0 ? (
+              <ul className="list-inside list-disc text-foreground">
+                {groupFootprint(blocked).map(({ group, count }) => (
+                  <li key={group}>
+                    {t("blockedCount", {
+                      label: t(`blockedGroups.${group}`),
+                      count,
+                    })}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="text-muted-foreground">{t("blockedBody")}</p>
+          </div>
+        ) : null}
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -84,7 +121,7 @@ export function DeletePatientDialog({
           </Button>
           <Button
             variant="destructive"
-            disabled={!canDelete || mutation.isPending}
+            disabled={!canDelete || mutation.isPending || blocked !== null}
             onClick={() => {
               mutation.mutate(undefined, {
                 onSuccess: () => {
@@ -92,7 +129,13 @@ export function DeletePatientDialog({
                   onOpenChange(false);
                   router.push(`/${locale}/crm/patients`);
                 },
-                onError: (e) => toast.error(e.message || t("error")),
+                onError: (e) => {
+                  if (e instanceof PatientDeleteBlockedError) {
+                    setBlocked(e.counts);
+                    return;
+                  }
+                  toast.error(e.message || t("error"));
+                },
               });
             }}
           >

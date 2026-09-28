@@ -49,6 +49,7 @@ import {
 } from "@/server/dsar/bundle";
 import { generatePassphrase, packDsarBundle } from "@/server/dsar/zip";
 import { hydrateMedicalCaseForRead } from "@/server/medical-case/cipher-fields";
+import { readClinicalNoteBody } from "@/server/patient/clinical-note";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
 import { loadPatientFinance } from "@/server/patient/finance";
 import { hydratePrescriptionForRead } from "@/server/prescription/cipher-fields";
@@ -157,6 +158,9 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
             segment: true,
             tags: true,
             notes: true,
+            // The doctor's clinical note (audit PT-11) left `notes` for its
+            // own row; it is still the patient's data to receive.
+            clinicalNote: { select: { body: true } },
             ltv: true,
             visitsCount: true,
             consentMarketing: true,
@@ -272,6 +276,9 @@ export async function runExportJob(job: ExportRunJob): Promise<void> {
         segment: String(patientRow.segment),
         tags: patientRow.tags,
         notes: patientHydrated.notes ?? null,
+        clinicalNote: patientRow.clinicalNote
+          ? readClinicalNoteBody(patientRow.clinicalNote.body)
+          : null,
         ltv: patientRow.ltv,
         visitsCount: patientRow.visitsCount,
         balance: finance.balance,

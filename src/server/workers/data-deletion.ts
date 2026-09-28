@@ -9,12 +9,16 @@
  *        - HARD_DELETE — `prisma.patient.delete({ where: { id } })`. The
  *          schema FKs cascade Appointment/Payment/PatientReview/etc;
  *          PatientFamily rows are also cascaded. Audit
- *          PATIENT_HARD_DELETED with the full pre-delete snapshot.
+ *          PATIENT_HARD_DELETED naming the erased identity fields.
  *        - ANONYMIZE — apply `buildAnonymizationPayload(jobId, now)`
  *          via Prisma update, then `scrubPatientPhiCarriers` to erase the
  *          free-text PHI that lives off-row (medical-case SOAP drafts,
- *          appointment notes, chat message bodies, review comments). Audit
- *          PATIENT_ANONYMIZED with forensic snapshot in `meta.before`.
+ *          appointment notes, chat message bodies, review comments, the
+ *          clinical note). Audit PATIENT_ANONYMIZED naming the erased
+ *          identity fields.
+ *      Both modes then redact the person from the clinic's audit log
+ *      (`scrubPatientFromAuditLog`, audit SEC-09): the log keeps who did
+ *      what and when, but no longer who the patient was.
  *      Then mark the job EXECUTED (HARD) / ANONYMIZED (soft).
  *   3. Errors are logged + the job is left at APPROVED so a future tick
  *      retries it; the cron is therefore self-healing for transient
@@ -35,8 +39,9 @@ import { deleteObject } from "@/server/storage/minio";
 
 import {
   buildAnonymizationPayload,
-  snapshotForensicFields,
+  erasedIdentityFields,
 } from "@/server/dsar/anonymize";
+import { scrubPatientFromAuditLog } from "@/server/dsar/audit-scrub";
 import { hydratePatientForRead } from "@/server/patient/cipher-fields";
 
 const EXPORTS_BUCKET = process.env.MINIO_EXPORTS_BUCKET || "exports";
@@ -113,6 +118,8 @@ async function scrubPatientPhiCarriers(patientId: string): Promise<void> {
       contactUsername: null,
     },
   });
+  // The doctor's clinical note (audit PT-11) is free text about the person.
+  await prisma.patientClinicalNote.deleteMany({ where: { patientId } });
 }
 
 /**
@@ -148,14 +155,23 @@ export async function executeDeletionJob(jobId: string): Promise<void> {
     return;
   }
 
-  // Hydrate before snapshotting so forensic audit carries plaintext —
-  // otherwise PATIENT_HARD_DELETED / _ANONYMIZED rows would store ciphertext
-  // that becomes useless after key rotation.
-  const hydrated = hydratePatientForRead({ passport: patient.passport });
-  const patientForSnapshot = { ...patient, passport: hydrated.passport ?? null };
+  // The decrypted passport is only a search term for the audit-log scrub
+  // below; it is never written anywhere (audit SEC-09).
+  const identity = {
+    ...patient,
+    passport: hydratePatientForRead({ passport: patient.passport }).passport ?? null,
+  };
+  const erased = erasedIdentityFields(identity);
+
+  // First, while the row still says who the person is: a retried tick after
+  // the row was scrubbed would have nothing left to search the log for (and
+  // is skipped: its «identity» is the anonymization sentinel). Idempotent,
+  // so a retry after a later failure just finds nothing to do.
+  if (!patient.phoneNormalized.startsWith("deleted:")) {
+    await scrubPatientFromAuditLog(prisma, job.clinicId, identity);
+  }
 
   if (job.mode === "HARD_DELETE") {
-    const snapshot = snapshotForensicFields(patientForSnapshot);
     await prisma.patient.delete({ where: { id: job.patientId } });
     await prisma.dataDeletionJob.update({
       where: { id: job.id },
@@ -166,13 +182,12 @@ export async function executeDeletionJob(jobId: string): Promise<void> {
       AUDIT_ACTION.PATIENT_HARD_DELETED,
       "Patient",
       job.patientId,
-      { jobId: job.id, before: snapshot },
+      { jobId: job.id, erased },
     );
     return;
   }
 
   // ANONYMIZE.
-  const snapshot = snapshotForensicFields(patientForSnapshot);
   const payload = buildAnonymizationPayload(job.id, now);
   await prisma.patient.update({
     where: { id: job.patientId },
@@ -188,7 +203,7 @@ export async function executeDeletionJob(jobId: string): Promise<void> {
     AUDIT_ACTION.PATIENT_ANONYMIZED,
     "Patient",
     job.patientId,
-    { jobId: job.id, before: snapshot },
+    { jobId: job.id, erased },
   );
 }
 

@@ -36,7 +36,7 @@ ssh root@167.233.142.75 'cd /opt/neurofax && docker compose ps'
 | `medbook-worker-1` | локальный build, `Dockerfile.worker` | BullMQ-воркеры: notifications send/scheduler, outbox pumper (SSE-шина), TG polling, lifecycle sweep, trial expiry, exports, medication reminders и др. (`src/server/workers/start.ts`) |
 | `medbook-postgres-1` | `postgres:16-alpine` | БД `medbook`, user `medbook`, volume `pgdata` |
 | `medbook-redis-1` | `redis:7-alpine` | BullMQ-очереди + pub/sub для SSE fan-out; maxmemory 256mb allkeys-lru; volume `redisdata` |
-| `medbook-minio-1` | `minio/minio` | S3-хранилище файлов (bucket `medbook` — приватный, файлы отдаются через streaming-proxy приложения, не по presigned URL); volume `miniodata` |
+| `medbook-minio-1` | `minio/minio` | S3-хранилище файлов (bucket `medbook` — приватный, файлы отдаются через streaming-proxy приложения, не по presigned URL; наружу через nginx не проксируется, `location /files/` удалён, audit INF-07); volume `miniodata` |
 | `medbook-nginx-1` | `nginx:alpine` | **Общий reverse-proxy всего сервера**: 80/443, TLS, все vhost'ы из `nginx/conf.d/` |
 | `medbook-certbot-1` | `certbot/certbot` | Продление Let's Encrypt каждые 12ч, volume `letsencrypt` |
 
@@ -313,12 +313,13 @@ rm -f /tmp/wd.state
 ### 4.1 Что и куда бэкапится
 
 `ops/backup.sh` кладёт в **директорию на хосте** `/var/backups/medbook/<дата>/`
-два артефакта:
+три артефакта:
 
 | Файл | Что внутри |
 |---|---|
 | `pg-medbook-<ts>.sql.gz` | Полный логический дамп Postgres (~3 МБ сжатый) |
 | `files-<ts>.tar.gz` | Файлы клиники из бакета MinIO: документы, вложения чата, памятки (~11 МБ) |
+| `restore-kit-<ts>.tar.gz.gpg` | **Зашифрованный** набор для восстановления: `.env` (в нём `FIELD_ENCRYPTION_KEY`, `APP_SECRET`), прод-`docker-compose.yml`, `nginx/nginx.conf` + `nginx/conf.d/` (vhost'ы соседей), `_deploy.sh`. Только если настроено шифрование, см. §4.5 |
 
 Ретенция — 14 дней (`BACKUP_RETENTION_DAYS`), примерно 200 МБ на диске.
 
@@ -400,6 +401,74 @@ docker run --rm --network medbook_default \
 /root:/out alpine tar czf /out/miniodata.tgz /data` (при остановленном MinIO).
 ⚠️ обе процедуры на этом сервере не репетировались — проверить.
 
+
+### 4.5 Ключи и конфиги: restore kit (audit INF-08)
+
+Дамп сам по себе клинику не восстанавливает. Паспорта и заметки пациентов,
+SOAP-черновики, заметки к назначениям и TOTP-секреты зашифрованы ключом
+`FIELD_ENCRYPTION_KEY` (`_V<n>`), токены ботов клиник ключом из `APP_SECRET`.
+Оба живут только в `.env` на сервере. Потерян сервер без `.env`: эти поля не
+расшифровать никогда, врачам с 2FA не войти, боты не работают. Прод-версии
+`docker-compose.yml`, `nginx.conf` с vhost'ами соседей и `_deploy.sh` тоже есть
+только на сервере (skip-worktree / untracked, см. DEPLOY.md).
+
+Поэтому `ops/backup.sh` каждую ночь кладёт рядом с дампом
+`restore-kit-<ts>.tar.gz.gpg`. Архив идёт из `tar` сразу в `gpg`, открытый
+текст на диск не попадает. Режим задаётся в `/opt/neurofax/.env`:
+
+- `BACKUP_GPG_RECIPIENT=<id или email ключа>` (предпочтительно): шифрование
+  публичным ключом, приватный ключ на сервере не хранится. Один раз на
+  сервере: `gpg --import owner-backup.pub.asc`. Приватный ключ хранит владелец
+  (офлайн + копия в менеджере паролей).
+- `BACKUP_PASSPHRASE=<длинная случайная строка>`: симметричный AES256.
+  Сгенерировать без пробелов и кавычек (`.env` читают и bash, и compose):
+  `openssl rand -base64 32`. Фразу обязательно хранить **и вне сервера**
+  (менеджер паролей владельца): копия на сервере сгорит вместе с сервером.
+
+Ничего не задано: kit не пишется, в логе строка
+`RESTORE KIT NOT SAVED: …` (дамп и файлы при этом делаются как обычно).
+Ключи открытым текстом рядом с дампом не лежат никогда. Нужен пакет `gnupg`
+(`gpg --version`); без него тоже строка `RESTORE KIT NOT SAVED`.
+
+Проверить, что kit пишется:
+
+```bash
+ssh root@167.233.142.75 'ls -l /var/backups/medbook/$(date -u +%F)/; grep -E "restore kit|RESTORE KIT" /var/log/medbook-backup.log | tail -3'
+```
+
+Копия вне сервера по-прежнему через `BACKUP_REMOTE` (§4.1, rsync всей папки
+дня, kit уезжает вместе с дампом) или ручной `rsync` на ноутбук.
+
+#### Восстановление на новом сервере
+
+1. Поставить Docker, склонировать репозиторий в `/opt/neurofax`.
+2. Достать из копии вне сервера папку дня: дамп, файлы и kit.
+3. Расшифровать kit **на своей машине или на новом сервере** (нужен
+   приватный ключ или фраза из эскроу) и разложить по местам:
+   ```bash
+   mkdir -p /root/kit && cd /root/kit
+   gpg --decrypt restore-kit-<ts>.tar.gz.gpg | tar -xzf -
+   ls -la   # .env docker-compose.yml nginx/ _deploy.sh
+   cp .env docker-compose.yml _deploy.sh /opt/neurofax/
+   cp nginx/nginx.conf /opt/neurofax/nginx/nginx.conf
+   cp -r nginx/conf.d/. /opt/neurofax/nginx/conf.d/
+   cd /opt/neurofax && git update-index --skip-worktree docker-compose.yml nginx/nginx.conf \
+     nginx/conf.d/rtxshop.conf nginx/conf.d/orientatravel.conf
+   ```
+   Ключ `FIELD_ENCRYPTION_KEY` должен быть **тем же**, что в kit: с другим
+   ключом зашифрованные поля не читаются.
+4. Поднять postgres и залить дамп (`./ops/restore.sh <дамп>` или §4.3),
+   затем `docker compose run --rm worker npx prisma migrate deploy`.
+5. Вернуть файлы клиники в MinIO (§4.4, `mirror` в обратную сторону из
+   распакованного `files-<ts>.tar.gz`).
+6. Поднять стек, `docker exec medbook-nginx-1 nginx -t` и reload, смоук всех
+   доменов из `conf.d`.
+7. Проверка ключа: `/admin/encryption-health` показывает `Probe round-trip OK`
+   и строки под `v1`/`v<n>`; карточка пациента с паспортом открывается; вход
+   врача с 2FA проходит.
+
+После каждой смены `.env` (ротация ключа, новый секрет) проверить, что
+следующий ночной kit записан.
 ---
 
 ## 5. Демо-данные и сиды: на проде запрещены
@@ -418,10 +487,17 @@ docker run --rm --network medbook_default \
 - `seed-demo-data.ts`, `seed-prod-demo.ts`, `seed-clinical-life.ts`
   (добавляют демо-пациентов, визиты, оплаты, заключения от имени врачей);
 - `seed-labs-reminders-dev.ts`, `seed-doctor-qa.ts`, `seed-joe-two.ts`,
-  `total-stress-seed.ts`, `stress-*.ts` (тестовые, только локальная база).
+  `total-stress-seed.ts`, `stress-*.ts` (тестовые, только локальная база);
+- `prisma/seed.ts` (перезаписывает название, адрес и шаблоны клиники
+  `neurofax`, добавляет случайных пациентов, визиты и оплаты),
+  `fix-double-inprogress.ts` (закрывает визиты и пишет оплаты),
+  `guard-e2e.ts` (тестовый врач и пациенты), `cleanup-test-conversations.ts`
+  (удаляет переписки Telegram).
 
-В образ worker они не входят (`Dockerfile.worker` удаляет их при сборке).
-Кроме того, все они проходят через один предохранитель
+В образ worker попадают только скрипты из явного списка
+`scripts/worker-allowlist.txt` (исправления данных, шифрование, импорт
+каталогов, настройка ботов и учёток, отчёты); всё, чего в списке нет, в образ
+не входит. Кроме того, все скрипты выше проходят через один предохранитель
 `scripts/_destructive-guard.ts`:
 
 - тестовые скрипты, а также `seed-mega-neurofax.ts` и `wipe-neurofax-demo.ts`
@@ -429,14 +505,28 @@ docker run --rm --network medbook_default \
   worker) отказывают всегда, обхода нет;
 - удаляющие скрипты при `NODE_ENV=production` тоже отказывают всегда, ни
   `--force`, ни переменные окружения не помогают;
-- в остальных случаях удаляющие скрипты без `--force` ничего не делают;
-- в клинике с реальными данными (в журнале есть действия персонала: карточки
-  пациентов, талоны живой очереди, заключения) или при `NODE_ENV=production`
+- удаляющие скрипты отказывают на клинике, где есть подписанные в
+  приложении заключения (не считая демо-пациентов с тегом `demo-seed`), в
+  любой среде (ноутбук с `DATABASE_URL` прода тоже) и без всякого обхода:
+  признак берётся из самих подписанных версий заключений, а не из журнала,
+  так что ни тихая неделя, ни стёртый журнал его не обнулят;
+- в клинике с реальными данными (подписанные заключения; в журнале есть
+  действия персонала: карточки пациентов, талоны живой очереди, заключения;
+  люди работали в системе последние 72 ч) или при `NODE_ENV=production`
   отказ, пока `ALLOW_DEMO_SEED_ON_REAL_DATA` не назовёт клинику по slug.
   Готовую команду с именем клиники отказ не печатает: slug демо-клиники
   вписывают сами. **Для neurofax эту переменную не ставить никогда.**
   `seed-clinical-life.ts` на клинике с реальными данными не запускается даже
-  с ней: он подписывает документы от имени врачей.
+  с ней: он подписывает документы от имени врачей;
+- после всех этих проверок удаляющие скрипты без `--force` ничего не
+  делают (подсказку «добавь --force» клиника с реальными данными не видит);
+- `stress-payments-analytics-ai.ts` и `stress-settings-crud.ts` работают
+  через API и запускаются только против локального приложения
+  (`STRESS_BASE_URL` на localhost).
+
+`prisma/seed-presets.ts` и SQL из `prisma/seed-presets-sql.ts` больше не
+стирают шаблоны врачей: пакет получают только врачи, у которых шаблонов ещё
+нет.
 
 Предохранитель: последний рубеж, а не разрешение. Если команда из старой
 заметки, истории терминала или памяти предлагает «освежить демо» на проде,

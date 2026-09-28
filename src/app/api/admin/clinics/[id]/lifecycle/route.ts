@@ -15,11 +15,10 @@
  * `/extend-trial` sub-routes are kept untouched — they target the long-form
  * forms, while this route powers the new row context-menu.
  */
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err, notFound } from "@/server/http";
-import { platformAudit } from "@/server/platform/handler";
+import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 
 function clinicIdFromUrl(request: Request): string | null {
@@ -58,9 +57,8 @@ async function ensureSubscription(clinicId: string) {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const session = await auth();
-  if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "SUPER_ADMIN") return err("Forbidden", 403);
+  const gate = await requireSuperAdmin();
+  if (!gate.ok) return gate.response;
   const id = clinicIdFromUrl(request);
   if (!id) return err("BadRequest", 400);
 
@@ -85,7 +83,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   return runWithTenant(
-    { kind: "SUPER_ADMIN", userId: session.user.id },
+    { kind: "SUPER_ADMIN", userId: gate.userId },
     async () => {
       const clinic = await prisma.clinic.findUnique({ where: { id } });
       if (!clinic) return notFound();
@@ -101,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
         });
         await platformAudit({
           request,
-          userId: session.user.id,
+          userId: gate.userId,
           clinicId: id,
           action: AUDIT_ACTION.CLINIC_SUSPENDED,
           entityType: "Subscription",
@@ -123,7 +121,7 @@ export async function POST(request: Request): Promise<Response> {
         });
         await platformAudit({
           request,
-          userId: session.user.id,
+          userId: gate.userId,
           clinicId: id,
           action: AUDIT_ACTION.CLINIC_RESUMED,
           entityType: "Subscription",
@@ -153,7 +151,7 @@ export async function POST(request: Request): Promise<Response> {
       });
       await platformAudit({
         request,
-        userId: session.user.id,
+        userId: gate.userId,
         clinicId: id,
         action: AUDIT_ACTION.CLINIC_TRIAL_EXTENDED,
         entityType: "Subscription",

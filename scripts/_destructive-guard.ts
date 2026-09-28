@@ -1,6 +1,6 @@
 /**
  * The one safety interlock for every script that writes demo or test data
- * (audit G2-01, G2-02, G2-06, G2-07).
+ * (audit G2-01, G2-02, G2-05, G2-06, G2-07).
  *
  * Production is the real NeuroFax clinic: reception runs the live queue,
  * doctors sign conclusions, patients book through Telegram. A seed run
@@ -16,8 +16,8 @@
  *   2. Scripts that DELETE rows never run with NODE_ENV=production either,
  *      opt-in or not (audit G2-03 review): the only production database is
  *      the real clinic, and a wipe there takes signed conclusions with it.
- *   3. Elsewhere they need `--force`, so a command copied from a doc or the
- *      shell history does nothing by itself.
+ *   3. Scripts that DELETE rows never run on a clinic with signed
+ *      conclusions, in any environment and with no opt-in (audit G2-05).
  *   4. A clinic that holds real data, or any clinic with NODE_ENV=production,
  *      needs `ALLOW_DEMO_SEED_ON_REAL_DATA=<clinic slug>`. The value names the
  *      clinic: an opt-in exported for one clinic cannot carry over to another.
@@ -25,12 +25,27 @@
  *      ready-to-paste bypass for the real clinic): whoever opts in types the
  *      demo clinic's slug themselves. Scripts that sign documents as the
  *      clinic's doctors get no opt-in at all.
+ *   5. Scripts that DELETE rows need `--force`, so a command copied from a
+ *      doc or the shell history does nothing by itself.
  *
- * Real data is read from the audit trail, the one thing seeds do not write
- * for these actions: rows by a signed-in staff member for work only the
- * running app does (a patient card created at reception, a walk-in ticket, a
- * conclusion written or signed). The older whole-deployment probe (many audit
- * rows in the last 72 h) stays as a second signal.
+ * Real data is read from what only the running app writes (audit G2-05):
+ *   - signed conclusions: a `VisitNoteRevision` SIGNED row is written by the
+ *     finalize route and by nothing else, seeds included. It does not depend
+ *     on the audit trail (a wipe of AuditLog or a quiet holiday week changes
+ *     nothing) and it disappears only with the documents themselves. A script
+ *     that DELETES rows never runs on a clinic that has one: no opt-in, no
+ *     flag. Signed conclusions are medical records. (Those of demo patients,
+ *     tagged DEMO_SEED_MARK, are not counted.)
+ *   - staff work in the audit trail: rows by a signed-in staff member for
+ *     work only the app does (a patient card created at reception, a walk-in
+ *     ticket, a conclusion written or signed).
+ *   - people working in the deployment right now: audit rows with an actor
+ *     over the last 72 h. System rows (the outbox mirror of automatic events,
+ *     the no-show sweep) are not counted: they made a clean demo look «real»
+ *     and taught operators to reach for the bypass.
+ *
+ * A refusal names no ready bypass: the opt-in shows a placeholder slug, and a
+ * clinic with real data never sees an «add --force» hint first.
  *
  * Usage, first thing in main():
  *
@@ -40,6 +55,8 @@
  * Not for the production data fixes (backfills and fix-* scripts with DRY RUN
  * and APPLY=1): those are written for the real clinic on purpose.
  */
+
+import { DEMO_SEED_MARK } from "../src/lib/demo-seed";
 
 /** Env var that lets a demo seed touch a clinic with real data. Value: the clinic slug. */
 export const REAL_DATA_OPT_IN_ENV = "ALLOW_DEMO_SEED_ON_REAL_DATA";
@@ -73,6 +90,8 @@ export type SeedPolicy = {
   script: string;
   /** The clinic the script writes to. */
   clinicSlug: string;
+  /** How it is run, for the hints (default `npx tsx scripts/<script>.ts`). */
+  command?: string;
   /** Deletes rows: needs `--force`. */
   destructive?: boolean;
   /** Test or QA tooling: refused outright with NODE_ENV=production. */
@@ -88,8 +107,16 @@ export type SeedPolicy = {
 export type RealDataSignals = {
   /** Staff-authored audit rows for REAL_WORK_ACTIONS in this clinic, all time. */
   staffActions: number;
-  /** Audit rows in the whole database over the last ACTIVITY_WINDOW_HOURS. */
+  /**
+   * Audit rows with a person behind them, whole database, over the last
+   * ACTIVITY_WINDOW_HOURS.
+   */
   recentActivity: number;
+  /**
+   * Conclusions signed through the app in this clinic (VisitNoteRevision
+   * SIGNED rows). Audit-independent; blocks every destructive script.
+   */
+  signedConclusions: number;
 };
 
 export type SeedGuardInput = {
@@ -107,12 +134,14 @@ export type SeedGuardDecision =
         | "dev_only_in_production"
         | "destructive_in_production"
         | "needs_force"
+        | "signed_documents"
         | "real_data";
       message: string;
     };
 
 export function hasRealData(s: RealDataSignals): boolean {
   return (
+    s.signedConclusions > 0 ||
     s.staffActions >= REAL_WORK_THRESHOLD ||
     s.recentActivity >= ACTIVITY_ROW_THRESHOLD
   );
@@ -120,6 +149,11 @@ export function hasRealData(s: RealDataSignals): boolean {
 
 function describeSignals(s: RealDataSignals): string[] {
   const out: string[] = [];
+  if (s.signedConclusions > 0) {
+    out.push(
+      `   В клинике ${s.signedConclusions} подписанных в приложении заключений.`,
+    );
+  }
   if (s.staffActions >= REAL_WORK_THRESHOLD) {
     out.push(
       `   В журнале ${s.staffActions} действий персонала: карточки пациентов, талоны живой очереди, заключения.`,
@@ -138,7 +172,7 @@ export function decideSeedGuard(input: SeedGuardInput): SeedGuardDecision {
   const { policy, signals, env, argv } = input;
   const production = env.NODE_ENV === "production";
   const realData = hasRealData(signals);
-  const cmd = `npx tsx scripts/${policy.script}.ts`;
+  const cmd = policy.command ?? `npx tsx scripts/${policy.script}.ts`;
 
   if (policy.devOnly && production) {
     return {
@@ -170,15 +204,22 @@ export function decideSeedGuard(input: SeedGuardInput): SeedGuardDecision {
     };
   }
 
-  if (policy.destructive && !argv.includes("--force")) {
+  // Audit G2-05: signed conclusions are medical records, and a script that
+  // deletes rows takes them with it (wipe-neurofax-demo even deletes the
+  // audit trail the other signals read). Outside production too: a laptop
+  // with DATABASE_URL pointing at the live database is not production by
+  // NODE_ENV. No opt-in applies.
+  if (policy.destructive && signals.signedConclusions > 0) {
     return {
       ok: false,
-      reason: "needs_force",
+      reason: "signed_documents",
       message: [
         "",
-        `⛔ ${policy.script} УДАЛЯЕТ данные клиники «${policy.clinicSlug}».`,
-        "   Без флага --force он ничего не делает:",
-        `     ${cmd} --force`,
+        `⛔ Отказ: ${policy.script} УДАЛЯЕТ данные, а в клинике «${policy.clinicSlug}» есть подписанные заключения.`,
+        ...describeSignals(signals),
+        "   Это медицинские документы. Скрипт, который удаляет строки, на такой клинике",
+        "   не запускается никогда: ни --force, ни переменные окружения здесь не помогут.",
+        "   Демо-данные живут в отдельной демо-клинике или на новой локальной базе.",
         "",
       ].join("\n"),
     };
@@ -235,6 +276,23 @@ export function decideSeedGuard(input: SeedGuardInput): SeedGuardDecision {
     return { ok: false, reason: "real_data", message: lines.join("\n") };
   }
 
+  // After the real-data checks on purpose (audit G2-05): on a clinic with
+  // real data the first answer used to be «add --force», the first step of
+  // the walk to the bypass.
+  if (policy.destructive && !argv.includes("--force")) {
+    return {
+      ok: false,
+      reason: "needs_force",
+      message: [
+        "",
+        `⛔ ${policy.script} УДАЛЯЕТ данные клиники «${policy.clinicSlug}».`,
+        "   Без флага --force он ничего не делает:",
+        `     ${cmd} --force`,
+        "",
+      ].join("\n"),
+    };
+  }
+
   return {
     ok: true,
     realData,
@@ -256,6 +314,9 @@ export type SeedGuardDb = {
   auditLog: {
     count(args: { where: Record<string, unknown> }): Promise<number>;
   };
+  visitNoteRevision: {
+    count(args: { where: Record<string, unknown> }): Promise<number>;
+  };
 };
 
 export async function probeRealData(
@@ -264,7 +325,7 @@ export async function probeRealData(
   now: Date = new Date(),
 ): Promise<RealDataSignals> {
   const since = new Date(now.getTime() - ACTIVITY_WINDOW_HOURS * 3600_000);
-  const [staffActions, recentActivity] = await Promise.all([
+  const [staffActions, recentActivity, signedConclusions] = await Promise.all([
     db.auditLog.count({
       where: {
         clinicId,
@@ -274,9 +335,23 @@ export async function probeRealData(
     }),
     // Whole database on purpose: the question is «is anyone working in this
     // deployment», and a seed pointed at a sibling clinic is still a mistake.
-    db.auditLog.count({ where: { createdAt: { gte: since } } }),
+    // People only: workers write rows on their own around the clock.
+    db.auditLog.count({
+      where: { createdAt: { gte: since }, actorId: { not: null } },
+    }),
+    // Written by the finalize route only (src/server/visit-notes/revisions.ts),
+    // never by a seed, so it survives a wiped audit trail. Conclusions signed
+    // while showing the demo to demo patients (tag DEMO_SEED_MARK) are not
+    // medical records and do not lock a demo clinic's re-seed.
+    db.visitNoteRevision.count({
+      where: {
+        clinicId,
+        kind: "SIGNED",
+        visitNote: { patient: { NOT: { tags: { has: DEMO_SEED_MARK } } } },
+      },
+    }),
   ]);
-  return { staffActions, recentActivity };
+  return { staffActions, recentActivity, signedConclusions };
 }
 
 /**
@@ -289,6 +364,31 @@ export async function assertSeedAllowed(
   env: Record<string, string | undefined> = process.env,
   argv: string[] = process.argv.slice(2),
 ): Promise<{ clinicId: string; realData: boolean }> {
+  const r = await guardClinic(db, policy, env, argv, false);
+  return { clinicId: r.clinicId as string, realData: r.realData };
+}
+
+/**
+ * The same interlock for a seed that creates the clinic when it is missing
+ * (prisma/seed.ts on a fresh database): a clinic that does not exist yet has
+ * nothing to protect, so it passes with `clinicId: null`.
+ */
+export async function assertSeedAllowedOrNewClinic(
+  db: SeedGuardDb,
+  policy: SeedPolicy,
+  env: Record<string, string | undefined> = process.env,
+  argv: string[] = process.argv.slice(2),
+): Promise<{ clinicId: string | null; realData: boolean }> {
+  return guardClinic(db, policy, env, argv, true);
+}
+
+async function guardClinic(
+  db: SeedGuardDb,
+  policy: SeedPolicy,
+  env: Record<string, string | undefined>,
+  argv: string[],
+  allowMissing: boolean,
+): Promise<{ clinicId: string | null; realData: boolean }> {
   if (!policy.clinicSlug) {
     console.error(`⛔ ${policy.script}: не указана клиника (CLINIC_SLUG).`);
     process.exit(1);
@@ -297,7 +397,7 @@ export async function assertSeedAllowed(
   if ((policy.devOnly || policy.destructive) && env.NODE_ENV === "production") {
     const d = decideSeedGuard({
       policy,
-      signals: { staffActions: 0, recentActivity: 0 },
+      signals: { staffActions: 0, recentActivity: 0, signedConclusions: 0 },
       env,
       argv,
     });
@@ -309,6 +409,21 @@ export async function assertSeedAllowed(
     select: { id: true },
   });
   if (!clinic) {
+    if (allowMissing) {
+      // Nothing to protect yet; the dev-only/production refusals above
+      // already ran. Destructive seeds still need --force.
+      const d = decideSeedGuard({
+        policy,
+        signals: { staffActions: 0, recentActivity: 0, signedConclusions: 0 },
+        env,
+        argv,
+      });
+      if (!d.ok) {
+        console.error(d.message);
+        process.exit(1);
+      }
+      return { clinicId: null, realData: false };
+    }
     console.error(`⛔ ${policy.script}: клиника «${policy.clinicSlug}» не найдена.`);
     process.exit(1);
   }
@@ -337,6 +452,45 @@ export function requireClinicSlug(
       "",
       `⛔ ${script}: укажи клинику явно, умолчания больше нет.`,
       `     CLINIC_SLUG=<slug демо-клиники> npx tsx scripts/${script}.ts`,
+      "",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/** True for an http(s) URL on this machine; anything else is a live site. */
+export function isLocalHttpTarget(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return (
+      (u.protocol === "http:" || u.protocol === "https:") &&
+      LOCAL_HOSTS.has(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * For the stress scripts that drive the HTTP API instead of the database
+ * (audit G2-05): they create payments and delete settings rows through the
+ * real routes, so pointed at the live site they do to the clinic what the
+ * database seeds would. Local app only, never with NODE_ENV=production.
+ */
+export function assertLocalHttpTarget(
+  script: string,
+  baseUrl: string,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (env.NODE_ENV !== "production" && isLocalHttpTarget(baseUrl)) return;
+  console.error(
+    [
+      "",
+      `⛔ ${script} создаёт и удаляет данные через API и работает только с локальным приложением.`,
+      `   Адрес ${baseUrl} не локальный${env.NODE_ENV === "production" ? ", а NODE_ENV=production" : ""}. Обхода нет.`,
       "",
     ].join("\n"),
   );

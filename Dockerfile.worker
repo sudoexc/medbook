@@ -22,17 +22,17 @@ RUN npm ci
 COPY . .
 # Generate Prisma client in the same image so the worker can talk to Postgres.
 RUN npx prisma generate
-# Demo, test and QA seeds never run on production (audit G2-02, G2-03):
-# production is the real clinic, so keep them out of the image the runner
-# copies `scripts/` from. The guard refuses them there too, or demands an
-# explicit opt-in (scripts/_destructive-guard.ts), but a script that is not
-# in the image cannot be talked into running by a stale note.
-RUN rm -f scripts/seed-labs-reminders-dev.ts scripts/seed-doctor-qa.ts \
-      scripts/seed-joe-two.ts scripts/seed-clinical-life.ts \
-      scripts/total-stress-seed.ts scripts/stress-*.ts \
-      scripts/seed-mega-neurofax.ts scripts/wipe-neurofax-demo.ts \
-      scripts/seed-today-live.ts scripts/seed-demo-data.ts \
-      scripts/seed-prod-demo.ts
+# Demo, test and QA seeds never run on production (audit G2-02, G2-03,
+# G2-05): production is the real clinic. The runner gets ONLY the scripts
+# named in scripts/worker-allowlist.txt, so a new demo seed or test fixture is
+# left out by default instead of by remembering a denylist. The guard refuses
+# them there too (scripts/_destructive-guard.ts), but a script that is not in
+# the image cannot be talked into running by a stale note. `cp` fails the
+# build when a listed file is missing, so the list cannot rot silently.
+RUN mkdir -p /opt/ops-scripts \
+ && cd scripts \
+ && grep -vE '^[[:space:]]*(#|$)' worker-allowlist.txt \
+    | xargs cp --parents -t /opt/ops-scripts
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -47,11 +47,12 @@ RUN apt-get update \
  && useradd  --system --uid 1001 --gid nodejs worker
 
 # Copy the full tree from builder (workers need source files + tsx + full node_modules).
-# `scripts/` is included so one-shot maintenance scripts (backfills, audits)
-# can be run via `docker compose exec worker npx tsx scripts/foo.ts`.
+# `scripts/` carries the allowlisted operational scripts only (see above), so
+# production data fixes and backfills still run via
+# `docker compose exec worker npx tsx scripts/foo.ts`.
 COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=worker:nodejs /app/src          ./src
-COPY --from=builder --chown=worker:nodejs /app/scripts      ./scripts
+COPY --from=builder --chown=worker:nodejs /opt/ops-scripts  ./scripts
 COPY --from=builder --chown=worker:nodejs /app/prisma       ./prisma
 COPY --from=builder --chown=worker:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=worker:nodejs /app/package-lock.json ./package-lock.json

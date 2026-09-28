@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
 import { runWithTenant } from "@/lib/tenant-context";
+import { storageKeyFromUrl } from "@/lib/storage-ref";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -34,6 +35,12 @@ export async function GET(request: Request) {
       },
     });
     if (!clinic || !clinic.active) return err("not_found", 404);
-    return ok({ clinic });
+    // A logo uploaded in the CRM is stored as a bare bucket URL
+    // (`${MINIO_PUBLIC_URL}/<bucket>/branding/…`). The bucket is private and
+    // nginx no longer proxies MinIO at all (audit INF-07), so that URL is a
+    // broken image: the shell shows its letter avatar instead. External
+    // https logos pass through unchanged.
+    const logoUrl = storageKeyFromUrl(clinic.logoUrl) ? null : clinic.logoUrl;
+    return ok({ clinic: { ...clinic, logoUrl } });
   });
 }

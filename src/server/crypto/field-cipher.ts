@@ -38,6 +38,8 @@ import {
   randomBytes,
 } from "node:crypto";
 
+import { keyFingerprint } from "./key-fingerprint";
+
 const IV_LENGTH = 12;
 const KEY_LENGTH = 32;
 const TAG_LENGTH = 16;
@@ -147,6 +149,24 @@ function resolveKeySet(): KeySet {
 /** Active key version used for new writes. */
 export function getActiveKeyVersion(): KeyVersion {
   return resolveKeySet().active;
+}
+
+/**
+ * What the backfill scripts print and check before writing (audit G2-11):
+ * the active version, whether it is the public dev fallback, and a short
+ * fingerprint of the key (never the key itself).
+ */
+export function describeActiveKey(): {
+  version: KeyVersion;
+  isDevFallback: boolean;
+  fingerprint: string;
+} {
+  const set = resolveKeySet();
+  return {
+    version: set.active,
+    isDevFallback: set.isDevFallback,
+    fingerprint: keyFingerprint(set.byVersion.get(set.active)!),
+  };
 }
 
 /** All known key versions — used by the health-check route and rotation. */

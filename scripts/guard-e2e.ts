@@ -20,6 +20,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { generateTempPassword } from "../src/server/auth/password";
 import { assertAccountSeedAllowed } from "./_seed-passwords";
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -32,10 +33,20 @@ const LOGIN_PASSWORD =
   process.env.GUARD_E2E_PASSWORD || generateTempPassword(14);
 const PATIENT_TAG = "guard-e2e";
 
+/**
+ * Audit G2-05: a test fixture hard-wired to the real clinic's slug, so it goes
+ * through the destructive-seed guard as dev-only (never with
+ * NODE_ENV=production, not in the worker image; a clinic with real data needs
+ * the explicit opt-in). Not marked destructive: it deletes only the rows it
+ * created itself (its doctor, cabinet, login and tagged patients).
+ */
 async function getClinicId(): Promise<string> {
-  const clinic = await prisma.clinic.findUnique({ where: { slug: "neurofax" } });
-  if (!clinic) throw new Error("clinic 'neurofax' not found");
-  return clinic.id;
+  const { clinicId } = await assertSeedAllowed(prisma, {
+    script: "guard-e2e",
+    clinicSlug: "neurofax",
+    devOnly: true,
+  });
+  return clinicId;
 }
 
 async function cleanup(clinicId: string) {

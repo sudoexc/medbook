@@ -16,11 +16,11 @@
  * present) ends the previous grant first ("user_exit") so the audit trail
  * never has two overlapping live grants for the same actor.
  */
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err, notFound } from "@/server/http";
-import { platformAudit } from "@/server/platform/handler";
+import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
+import { mfaRequiredResponse, owesTotpEnrolment } from "@/server/auth/mfa-gate";
 import {
   OVERRIDE_COOKIE_NAME,
   signClinicOverride,
@@ -59,9 +59,11 @@ function cookieHeader(name: string, value: string, maxAgeSeconds: number): strin
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const session = await auth();
-  if (!session?.user) return err("Unauthorized", 401);
-  if (session.user.role !== "SUPER_ADMIN") return err("Forbidden", 403);
+  // Role first, second factor below: leaving a clinic only drops privilege,
+  // so it stays open to a SUPER_ADMIN caught mid-grant by the SEC-08 rollout.
+  const gate = await requireSuperAdmin({ mfa: false });
+  if (!gate.ok) return gate.response;
+  const userId = gate.userId;
 
   let raw: unknown;
   try {
@@ -77,8 +79,15 @@ export async function POST(request: Request): Promise<Response> {
   const clinicId = parsed.data.clinicId;
   const mode = parsed.data.mode ?? "WRITE";
 
+  // Entering a clinic is the step that opens its medical data (audit
+  // SEC-08): it needs the SUPER_ADMIN's own enrolled 2FA, and the API wrapper
+  // re-checks it on every impersonated request.
+  if (clinicId && (await owesTotpEnrolment(userId, "SUPER_ADMIN"))) {
+    return mfaRequiredResponse();
+  }
+
   return runWithTenant(
-    { kind: "SUPER_ADMIN", userId: session.user.id },
+    { kind: "SUPER_ADMIN", userId },
     async () => {
       if (clinicId) {
         const reason = parsed.data.reason?.trim();
@@ -100,7 +109,7 @@ export async function POST(request: Request): Promise<Response> {
         }
 
         const grant = await createGrant(
-          session.user.id,
+          userId,
           clinicId,
           reason,
           mode,
@@ -109,7 +118,7 @@ export async function POST(request: Request): Promise<Response> {
         const signed = signClinicOverride(clinicId);
         await platformAudit({
           request,
-          userId: session.user.id,
+          userId,
           clinicId,
           action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_STARTED,
           entityType: "ImpersonationGrant",
@@ -170,7 +179,7 @@ export async function POST(request: Request): Promise<Response> {
 
       await platformAudit({
         request,
-        userId: session.user.id,
+        userId,
         clinicId: endedClinicId,
         action: AUDIT_ACTION.SUPER_ADMIN_IMPERSONATE_ENDED,
         entityType: "ImpersonationGrant",

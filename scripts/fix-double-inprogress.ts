@@ -9,12 +9,17 @@
  *
  * Idempotent: doctors already at ≤1 IN_PROGRESS are untouched.
  *
- * Run from the worker container:
- *   docker compose exec -T worker npx tsx scripts/fix-double-inprogress.ts
+ * Demo tooling only (audit G2-05): on the real clinic it would close real
+ * patients' visits and record payments nobody made. It goes through the
+ * destructive-seed guard as dev-only (never with NODE_ENV=production, not in
+ * the worker image) and runs on a local database:
+ *   npx tsx scripts/fix-double-inprogress.ts
  */
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+import { assertSeedAllowed } from "./_destructive-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -24,9 +29,13 @@ const rand = (n: number) => Math.floor(Math.random() * n);
 const pick = <T>(arr: readonly T[]): T => arr[rand(arr.length)]!;
 
 async function main() {
-  const clinic = await prisma.clinic.findUnique({ where: { slug: "neurofax" } });
-  if (!clinic) throw new Error("clinic 'neurofax' not found");
-  const clinicId = clinic.id;
+  // Hard-wired to the real clinic's slug: its only possible production
+  // target is the real clinic, hence dev-only.
+  const { clinicId } = await assertSeedAllowed(prisma, {
+    script: "fix-double-inprogress",
+    clinicSlug: "neurofax",
+    devOnly: true,
+  });
 
   const now = new Date();
   const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);

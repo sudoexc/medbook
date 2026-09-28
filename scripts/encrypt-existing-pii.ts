@@ -19,22 +19,36 @@
  *   - Per-table progress counters: `total scanned`, `already encrypted`,
  *     `encrypted in this run`, `skipped (null/empty)`, `errors`.
  *
- * Run:
- *   FIELD_ENCRYPTION_KEY=$(openssl rand -base64 32) \
- *   DATABASE_URL=… \
- *   tsx scripts/encrypt-existing-pii.ts
+ * Run (production: inside the worker container, where the key is the app's
+ * own FIELD_ENCRYPTION_KEY from the server's .env):
+ *   docker compose exec worker npx tsx scripts/encrypt-existing-pii.ts --dry-run
+ *   docker compose exec worker npx tsx scripts/encrypt-existing-pii.ts
+ *
+ * Before the first write it proves the key is the app's (audit G2-11,
+ * scripts/_cipher-key-guard.ts): it decrypts the newest existing ciphertext
+ * of every column it writes and stops on any failure, and it refuses the
+ * public dev fallback key anywhere but a local development database. It used
+ * to print a WARNING and encrypt real passports under that public key.
  *
  * `--dry-run` prints what *would* be written without touching the DB.
  * `--table=patient` (or `medical_case`, `prescription`) limits to one table.
+ * `--first-run` is needed only on a non-local database with no ciphertext
+ * at all yet (nothing to check the key against).
  */
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import {
+  decryptField,
+  describeActiveKey,
   encryptField,
-  getActiveKeyVersion,
   isEncryptedField,
 } from "../src/server/crypto/field-cipher";
+import {
+  decideKeyCheck,
+  looksLikeCiphertext,
+  type CipherSample,
+} from "./_cipher-key-guard";
 
 const BATCH = 200;
 
@@ -235,6 +249,99 @@ async function backfillPrescription(
   return stats;
 }
 
+/** Newest ciphertext per encrypted column: what the app wrote most recently. */
+const SAMPLE_PER_COLUMN = 20;
+
+export const PII_COLUMNS = [
+  "Patient.passport",
+  "Patient.notes",
+  "MedicalCase.soapDraft",
+  "Prescription.notes",
+] as const;
+export type PiiColumn = (typeof PII_COLUMNS)[number];
+
+/** Reads the newest `take` values of one column that start with «v». */
+export type PiiColumnReader = (
+  column: PiiColumn,
+  take: number,
+) => Promise<Array<{ id: string; value: string | null }>>;
+
+export function prismaPiiReader(prisma: PrismaClient): PiiColumnReader {
+  return async (column, take) => {
+    const q = { orderBy: { id: "desc" as const }, take };
+    switch (column) {
+      case "Patient.passport":
+        return (
+          await prisma.patient.findMany({
+            ...q,
+            where: { passport: { startsWith: "v" } },
+            select: { id: true, passport: true },
+          })
+        ).map((r) => ({ id: r.id, value: r.passport }));
+      case "Patient.notes":
+        return (
+          await prisma.patient.findMany({
+            ...q,
+            where: { notes: { startsWith: "v" } },
+            select: { id: true, notes: true },
+          })
+        ).map((r) => ({ id: r.id, value: r.notes }));
+      case "MedicalCase.soapDraft":
+        return (
+          await prisma.medicalCase.findMany({
+            ...q,
+            where: { soapDraft: { startsWith: "v" } },
+            select: { id: true, soapDraft: true },
+          })
+        ).map((r) => ({ id: r.id, value: r.soapDraft }));
+      case "Prescription.notes":
+        return (
+          await prisma.prescription.findMany({
+            ...q,
+            where: { notes: { startsWith: "v" } },
+            select: { id: true, notes: true },
+          })
+        ).map((r) => ({ id: r.id, value: r.notes }));
+    }
+  };
+}
+
+export async function samplePiiCiphertext(
+  read: PiiColumnReader,
+): Promise<CipherSample[]> {
+  const out: CipherSample[] = [];
+  for (const column of PII_COLUMNS) {
+    for (const r of await read(column, SAMPLE_PER_COLUMN)) {
+      if (looksLikeCiphertext(r.value)) {
+        out.push({ where: `${column} ${r.id}`, value: r.value });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The pre-write check (audit G2-11). Runs on --dry-run too: a mismatch is
+ * worth knowing before anyone plans the real run.
+ */
+export async function checkPiiKey(
+  read: PiiColumnReader,
+  env: Record<string, string | undefined> = process.env,
+  argv: string[] = process.argv.slice(2),
+) {
+  const key = describeActiveKey();
+  const samples = await samplePiiCiphertext(read);
+  const decision = decideKeyCheck({
+    script: "encrypt-existing-pii",
+    isDevKey: key.isDevFallback,
+    samples,
+    decrypt: (v) => decryptField(v),
+    env,
+    argv,
+  });
+  return { key, decision };
+}
+
 function parseArgs(): { dryRun: boolean; only: TableKey | null } {
   const args = process.argv.slice(2);
   let dryRun = false;
@@ -260,15 +367,22 @@ async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString: dburl });
   const prisma = new PrismaClient({ adapter });
 
-  const active = getActiveKeyVersion();
+  const { key, decision } = await checkPiiKey(prismaPiiReader(prisma));
   console.info(
-    `[backfill] active key version=${active}, dryRun=${dryRun}, only=${only ?? "ALL"}`,
+    `[backfill] active key version=${key.version} fingerprint=${key.fingerprint}${
+      key.isDevFallback ? " (DEV FALLBACK)" : ""
+    }, dryRun=${dryRun}, only=${only ?? "ALL"}`,
   );
-  if (process.env.NODE_ENV !== "production" && !process.env.FIELD_ENCRYPTION_KEY) {
-    console.warn(
-      "[backfill] WARNING: no FIELD_ENCRYPTION_KEY set — running under the dev fallback. Production data backfill MUST set a real key.",
-    );
+  if (!decision.ok) {
+    console.error(decision.message);
+    await prisma.$disconnect();
+    process.exit(1);
   }
+  console.info(
+    decision.firstRun
+      ? "[backfill] no existing ciphertext to check the key against (--first-run)."
+      : `[backfill] key check OK: ${decision.checked} existing encrypted values decrypt with this key.`,
+  );
 
   const totals: Record<string, Stats> = {};
   if (!only || only === "patient") {

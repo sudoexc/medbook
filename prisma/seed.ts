@@ -7,6 +7,7 @@ import {
   printIssuedPasswords,
   upsertSeedUser,
 } from "../scripts/_seed-passwords";
+import { assertSeedAllowedOrNewClinic } from "../scripts/_destructive-guard";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -275,6 +276,21 @@ async function main() {
   // in your local .env for a convenient dev login) or a random password
   // printed once at the end; an existing account's password is never reset.
   assertAccountSeedAllowed("prisma/seed.ts");
+
+  // Audit G2-05: this seed overwrites the clinic's name, address, phone and
+  // notification templates and adds random patients, visits and PAID
+  // payments to slug "neurofax", the real clinic's. Dev-only through the
+  // shared guard (never with NODE_ENV=production; a clinic with real data
+  // needs the explicit opt-in), checked for every clinic before the first
+  // write. A clinic that does not exist yet is simply created.
+  for (const cs of clinicsToSeed) {
+    await assertSeedAllowedOrNewClinic(prisma, {
+      script: "prisma/seed",
+      command: "npx tsx prisma/seed.ts",
+      clinicSlug: cs.slug,
+      devOnly: true,
+    });
+  }
 
   // ── SUPER_ADMIN (no clinicId) ─────────────────────────────────────────
   await upsertStaff("super@neurofax.uz", {

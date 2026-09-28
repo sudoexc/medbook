@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import type * as React from "react";
 
-import { auth } from "@/lib/auth";
+import {
+  SUPER_ADMIN_ENROL_PATH,
+  adminPageAccess,
+} from "@/server/platform/admin-page-gate";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { SessionExpiryWatch } from "@/components/auth/session-expiry-watch";
 import { AdminSidebar } from "./_components/admin-sidebar";
@@ -17,18 +20,23 @@ import { AdminTopbar } from "./_components/admin-topbar";
  *     do not redirect other roles to `/crm` because that would leak the
  *     existence of `/admin` to a curious ADMIN. Instead we explain the
  *     restriction in-place.
+ *   - SUPER_ADMIN without enrolled 2FA → the enrolment page (audit SEC-08).
+ *     Not a lockout: they enrol there and come back. Pages that load data on
+ *     the server repeat the check (`adminPageAccess`).
  */
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session?.user) {
+  const access = await adminPageAccess();
+  if (access.kind === "anonymous") {
     redirect("/ru/login");
   }
-  const role = session.user.role;
-  if (role !== "SUPER_ADMIN") {
+  if (access.kind === "owes_mfa") {
+    redirect(SUPER_ADMIN_ENROL_PATH);
+  }
+  if (access.kind === "forbidden") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
         <div className="max-w-md space-y-3">
@@ -59,8 +67,8 @@ export default async function AdminLayout({
         <AdminSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <AdminTopbar
-            userName={session.user.name ?? null}
-            userEmail={session.user.email ?? null}
+            userName={access.name}
+            userEmail={access.email}
           />
           <main className="min-h-0 flex-1 overflow-y-auto bg-surface">
             {children}

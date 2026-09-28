@@ -9,11 +9,14 @@
  *
  * Layout/styling matches the existing `/admin/clinics/[id]/integrations` page.
  */
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
-import { auth } from "@/lib/auth";
+import {
+  SUPER_ADMIN_ENROL_PATH,
+  adminPageAccess,
+} from "@/server/platform/admin-page-gate";
 
 import { BillingPageClient } from "./_components/billing-page-client";
 
@@ -66,14 +69,16 @@ async function loadInitialState(clinicId: string) {
 
 export default async function BillingPage({ params }: PageProps) {
   const { id } = await params;
-  const session = await auth();
-  // Layout already gates SUPER_ADMIN, but the data-loading needs an explicit
-  // tenant context. Use the session userId if present, otherwise a stable
-  // placeholder so the SUPER_ADMIN context is still well-formed.
-  const userId = session?.user?.id ?? "anonymous";
+  // The page loads (and may create) tenant rows itself, so it checks access
+  // itself too (audit SEC-08): a soft navigation renders this segment
+  // without re-running the layout's gate.
+  const access = await adminPageAccess();
+  if (access.kind === "anonymous") redirect("/login");
+  if (access.kind === "owes_mfa") redirect(SUPER_ADMIN_ENROL_PATH);
+  if (access.kind === "forbidden") notFound();
 
   const data = await runWithTenant(
-    { kind: "SUPER_ADMIN", userId },
+    { kind: "SUPER_ADMIN", userId: access.userId },
     () => loadInitialState(id),
   );
   if (!data) notFound();

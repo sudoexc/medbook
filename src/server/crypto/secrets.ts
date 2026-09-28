@@ -28,6 +28,8 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 
+import { keyFingerprint } from "./key-fingerprint";
+
 const VERSION = "v1";
 const IV_LENGTH = 12; // 96-bit nonce — GCM recommended
 const KEY_LENGTH = 32; // 256-bit key
@@ -58,6 +60,26 @@ function deriveKey(): Buffer {
   const key = scryptSync(secret, SALT, KEY_LENGTH);
   cachedKey = { secret, key };
   return key;
+}
+
+/**
+ * Fingerprint of the derived key and which env var it came from, for the
+ * auth-secrets backfill (audit G2-11). Throws like `encrypt` when no secret
+ * is set.
+ */
+export function describeAppSecret(): {
+  source: "APP_SECRET" | "AUTH_SECRET";
+  fingerprint: string;
+  /** The value is a `.env.example` placeholder, not a real secret. */
+  isPlaceholder: boolean;
+} {
+  const secret = readAppSecret();
+  const source = process.env.APP_SECRET ? "APP_SECRET" : "AUTH_SECRET";
+  return {
+    source,
+    fingerprint: keyFingerprint(deriveKey()),
+    isPlaceholder: /^change-me/i.test(secret),
+  };
 }
 
 /** Testing only — drop the cached derived key so a fresh env var takes effect. */

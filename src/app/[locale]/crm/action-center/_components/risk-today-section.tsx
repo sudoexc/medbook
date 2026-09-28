@@ -20,7 +20,10 @@
  * outcome is POSTed once for the appointment; the server stamps every risk
  * Action attached to it (creating a call task when the row surfaced only as
  * «не на связи») and drives the right durable domain action, so the row
- * stops resurrecting on the engine recompute.
+ * stops resurrecting on the engine recompute. «Хочет прийти позже» cancels
+ * today's visit and schedules the call for the return day in the Action
+ * Center list, as does «Перезвонить позже» set after the visit time (audit
+ * AC-09).
  * Optimistic removal from cache so the row disappears immediately; the
  * server response then drives the authoritative refetch.
  *
@@ -66,6 +69,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Locale } from "@/lib/format";
+import { addTashkentDays, tashkentToday } from "@/lib/tashkent-time";
 
 import { useSnoozeAction } from "../_hooks/use-actions";
 import {
@@ -420,9 +424,13 @@ function RiskRow({ row, locale }: { row: RiskTodayRow; locale: Locale }) {
     } catch (e) {
       const reason = e instanceof Error ? e.message : "Error";
       toast.error(
-        STALE_APPOINTMENT_REASONS.includes(reason)
-          ? t("outcomeMenu.staleAppointment")
-          : t("outcomeMenu.error", { reason }),
+        reason === "patient_in_clinic"
+          ? t("outcomeMenu.patientInClinic")
+          : reason === "return_day_not_later"
+            ? t("outcomeMenu.returnDayNotLater")
+            : STALE_APPOINTMENT_REASONS.includes(reason)
+              ? t("outcomeMenu.staleAppointment")
+              : t("outcomeMenu.error", { reason }),
       );
       await qc.invalidateQueries({ queryKey: RISK_TODAY_KEY });
     } finally {
@@ -819,9 +827,21 @@ function OutcomeMenu({
                   id={`outcome-${rowKey}-at`}
                   type={form === "callback" ? "datetime-local" : "date"}
                   value={at}
+                  // «Хочет прийти позже» is another day: the server refuses
+                  // today, since the outcome cancels today's visit.
+                  min={
+                    form === "return"
+                      ? addTashkentDays(tashkentToday(), 1)
+                      : undefined
+                  }
                   onChange={(e) => setAt(e.target.value)}
                   className="h-8 text-xs"
                 />
+                {form === "return" ? (
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    {t("outcomeMenu.returnCancelsHint")}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <div className="space-y-1">

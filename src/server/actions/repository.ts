@@ -16,6 +16,7 @@
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import {
   DETECTOR_ACTION_TYPES,
+  actionSubjectOf,
   defaultAssigneeRole,
   defaultDeeplinkPath,
   defaultSeverity,
@@ -24,6 +25,8 @@ import {
   type ActionSeverity,
 } from "@/lib/actions/types";
 import type { TenantScopedPrisma } from "@/lib/prisma";
+
+import { CLOSED_SIGNAL_LAPSE_HOURS } from "./config";
 
 /**
  * Tenant-scoped client alias. Narrowed from the original union with
@@ -70,7 +73,59 @@ export type UpsertResult = {
   payloadChanged: boolean;
   /** True if severity changed (only when created=false). */
   severityChanged: boolean;
+  /**
+   * True when the row is closed by a person (DONE / DISMISSED) and this
+   * upsert left it closed (see `closedRowReopens`). The row is refreshed but
+   * invisible, so callers must not announce it.
+   */
+  keptClosed: boolean;
 };
+
+/** Statuses a person sets: «Готово», «Отклонить», or a recorded outcome. */
+const CLOSED_BY_PERSON: ReadonlySet<string> = new Set(["DONE", "DISMISSED"]);
+
+const DETECTOR_TYPES: ReadonlySet<string> = new Set(DETECTOR_ACTION_TYPES);
+
+/**
+ * Whether an upsert should reopen a row a person closed (audit AC-08).
+ *
+ * The rule: a closed task comes back only when something genuinely new
+ * happened.
+ *   1. Its subject changed (`actionSubjectOf`): the visit moved to another
+ *      time, the control date or the debt changed, a new rating, a callback
+ *      set for another time. Readings that drift on their own (risk %, days
+ *      overdue, a segment's size, a doctor's slot count) do not count, which
+ *      is what kept «Отклонить» on a debt paid in cash from lasting a day.
+ *   2. For detector types only: the signal lapsed and came back. The engine
+ *      re-upserts a live signal every 15 minutes and each pass touches the
+ *      closed row, so a gap over `CLOSED_SIGNAL_LAPSE_HOURS` since the last
+ *      touch means the detector had stopped firing: this is a new occurrence
+ *      (the same doctor overloaded again tomorrow). Event-driven rows are
+ *      written once per event, so their gaps say nothing: a doctor editing
+ *      a finalized note re-bridges VISIT_FOLLOW_UP_DUE days later, and that
+ *      must not reopen the control-visit call reception already made.
+ *
+ * Neither a repeated call (a second missed reminder in the same day bucket,
+ * «Пересчитать сейчас», the next engine pass) nor time alone reopens a
+ * closed row. An admin can always reopen it by hand («Вернуть в работу»).
+ * EXPIRED is not a person's decision: the system closed it because the
+ * signal went stale, so any upsert brings it back, as before.
+ */
+export function closedRowReopens(
+  existing: { type: string; payload: unknown; updatedAt?: Date | null },
+  next: ActionPayload,
+  now: Date,
+): boolean {
+  const before = existing.payload as ActionPayload | null;
+  const subjectBefore =
+    before && typeof before === "object" && before.type === next.type
+      ? actionSubjectOf(before)
+      : null;
+  if (subjectBefore !== actionSubjectOf(next)) return true;
+  if (!DETECTOR_TYPES.has(next.type) || !existing.updatedAt) return false;
+  const silentMs = now.getTime() - existing.updatedAt.getTime();
+  return silentMs > CLOSED_SIGNAL_LAPSE_HOURS * 60 * 60 * 1000;
+}
 
 /**
  * The instant a row written now becomes visible in the work lists: the end of
@@ -102,10 +157,15 @@ const PAYLOAD_SIGNIFICANT_KEYS: readonly string[] = [
  *   - If a row exists, UPDATE the payload + severity + meta fields and bump
  *     `updatedAt`. Emit ACTION_UPDATED **only** when severity OR
  *     payload-significant fields change.
- *   - If the existing row is in a terminal state (DONE/DISMISSED/EXPIRED),
- *     the upsert resurrects it back to OPEN and clears the terminal stamps
- *     so the user sees the signal again. Emits ACTION_UPDATED in that case.
- *   - `surfacedAt` moves only when the row (re)appears: a resurrection, or a
+ *   - A row a person closed (DONE / DISMISSED) stays closed unless something
+ *     genuinely new happened (`closedRowReopens`, audit AC-08): it is still
+ *     refreshed, silently, so the lapse clock and an admin's «Вернуть» see
+ *     current data. Before, every closed row was back in OPEN on the next
+ *     15-minute pass and «Готово» / «Отклонить» did nothing.
+ *   - An EXPIRED row (closed by the system) is reopened to OPEN with its
+ *     terminal stamps cleared, so the user sees the signal again. Emits
+ *     ACTION_UPDATED, as does any reopen.
+ *   - `surfacedAt` moves only when the row (re)appears: a reopen, or a
  *     re-schedule that hides it or brings a hidden row forward. A detector
  *     refresh of a visible row keeps its place in the list.
  *
@@ -178,6 +238,7 @@ export async function upsertAction(
       severity,
       payloadChanged: false,
       severityChanged: false,
+      keptClosed: false,
     };
   }
 
@@ -186,24 +247,31 @@ export async function upsertAction(
   // the row must NOT be auto-resurrected by the 15-min recompute — that churn
   // ("marked handled → back in 15 min") is exactly what the widget redesign
   // kills. The outcome stays authoritative until the appointment itself passes
-  // (`expiresAt`). SNOOZED already survives recompute below, so CALLBACK /
-  // RETURN_LATER / NO_ANSWER (which snooze) are covered; this guards the
-  // DONE outcomes (CONFIRMED / RESCHEDULED / REFUSED).
+  // (`expiresAt`), even over a change of subject. SNOOZED already survives
+  // recompute below, so a callback before the visit and NO_ANSWER (which
+  // snooze) are covered; this guards the DONE outcomes (CONFIRMED /
+  // RESCHEDULED / REFUSED, and a call handed to a PATIENT_CALLBACK task).
   const outcomeLocked =
     existing.status === "DONE" &&
     (existing as { outcome?: string | null }).outcome != null &&
     existing.expiresAt != null &&
     nowMs < existing.expiresAt.getTime();
-  const wasTerminal =
-    !outcomeLocked &&
-    (existing.status === "DONE" ||
-      existing.status === "DISMISSED" ||
-      existing.status === "EXPIRED");
-  let newStatus = wasTerminal ? "OPEN" : existing.status;
+  const closedByPerson = CLOSED_BY_PERSON.has(existing.status);
+  const reopened = closedByPerson
+    ? !outcomeLocked &&
+      closedRowReopens(
+        existing as { type: string; payload: unknown; updatedAt?: Date | null },
+        payload,
+        now,
+      )
+    : existing.status === "EXPIRED";
+  const keptClosed = closedByPerson && !reopened;
+  let newStatus = reopened ? "OPEN" : existing.status;
   // Snooze stays untouched by default: an explicit user-set timer survives
   // recompute, so the column is not even written. A caller-supplied surface
-  // time re-schedules the row (unless a recorded outcome locks it).
-  const reschedule = options.surfaceAt !== undefined && !outcomeLocked;
+  // time re-schedules the row, unless it stays closed: re-bridging a control
+  // visit after a note edit must not push a finished call back into SNOOZED.
+  const reschedule = options.surfaceAt !== undefined && !keptClosed;
   if (reschedule) {
     if (scheduledUntil) newStatus = "SNOOZED";
     else if (newStatus === "SNOOZED") newStatus = "OPEN";
@@ -218,7 +286,7 @@ export async function upsertAction(
     existing.snoozeUntil != null &&
     existing.snoozeUntil.getTime() > nowMs;
   const resurfaces =
-    wasTerminal || (reschedule && (scheduledUntil != null || wasHidden));
+    reopened || (reschedule && (scheduledUntil != null || wasHidden));
 
   const oldPayload = existing.payload as ActionPayload | null;
   const payloadChanged =
@@ -242,18 +310,19 @@ export async function upsertAction(
       assigneeRole,
       deeplinkPath,
       expiresAt,
-      // Clear terminal stamps when resurrecting.
-      doneAt: wasTerminal ? null : existing.doneAt,
-      dismissedAt: wasTerminal ? null : existing.dismissedAt,
+      // Clear terminal stamps when reopening.
+      doneAt: reopened ? null : existing.doneAt,
+      dismissedAt: reopened ? null : existing.dismissedAt,
       ...(reschedule ? { snoozeUntil: scheduledUntil } : {}),
       ...(resurfaces ? { surfacedAt: surfaceMoment(now, snoozeAfter) } : {}),
     } as never,
   });
 
-  // Emit ACTION_UPDATED only when something interesting changed (or we
-  // resurrected from a terminal state). No-op upserts stay silent so the
-  // 15-minute recompute job doesn't spam audit rows.
-  if (payloadChanged || severityChanged || wasTerminal) {
+  // Emit ACTION_UPDATED only when something interesting changed on a row
+  // somebody can see (or we reopened it). No-op upserts and refreshes of a
+  // row kept closed stay silent so the 15-minute recompute job doesn't spam
+  // audit rows.
+  if (reopened || (!keptClosed && (payloadChanged || severityChanged))) {
     await emitEngineAudit(prisma, {
       clinicId,
       action: AUDIT_ACTION.ACTION_UPDATED,
@@ -269,7 +338,7 @@ export async function upsertAction(
         dedupeKey,
         payloadChanged,
         severityChanged,
-        resurrectedFromTerminal: wasTerminal,
+        resurrectedFromTerminal: reopened,
       },
     });
   }
@@ -280,7 +349,44 @@ export async function upsertAction(
     severity,
     payloadChanged,
     severityChanged,
+    keptClosed,
   };
+}
+
+/**
+ * Close OPEN / SNOOZED rows as EXPIRED because their signal is gone, with one
+ * ACTION_EXPIRED audit per row. Shared by the stale sweep's callers that know
+ * better than a timer why a row is moot (a risk row of a patient who has
+ * already arrived, audit AC-07). EXPIRED, not DONE: nobody handled it, and
+ * the row may come back if the signal does. Caller MUST be inside
+ * `runWithTenant(...)`.
+ */
+export async function retireActions(
+  prisma: PrismaLike,
+  clinicId: string,
+  rows: ReadonlyArray<{ id: string; type: string; severity: string; status: string }>,
+  reason: string,
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  await prisma.action.updateMany({
+    where: { id: { in: rows.map((r) => r.id) }, status: { in: ["OPEN", "SNOOZED"] } },
+    data: { status: "EXPIRED" },
+  });
+  for (const row of rows) {
+    await emitEngineAudit(prisma, {
+      clinicId,
+      action: AUDIT_ACTION.ACTION_EXPIRED,
+      entityId: row.id,
+      meta: {
+        type: row.type,
+        severity: row.severity,
+        oldStatus: row.status,
+        newStatus: "EXPIRED",
+        reason,
+      },
+    });
+  }
+  return rows.length;
 }
 
 /**

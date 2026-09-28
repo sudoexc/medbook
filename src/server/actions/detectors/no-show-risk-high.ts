@@ -1,9 +1,19 @@
 /**
  * Detector: NO_SHOW_RISK_HIGH.
  *
- * Iterates BOOKED/WAITING appointments inside the next `noShowLookaheadHours`
- * hours, runs the pure `computeNoShowRisk()` heuristic on each, and emits
- * one action per appointment whose risk meets the configured threshold.
+ * Iterates BOOKED appointments inside the next `noShowLookaheadHours` hours,
+ * runs the pure `computeNoShowRisk()` heuristic on each, and emits one action
+ * per appointment whose risk meets the configured threshold.
+ *
+ * Two gates keep the list about real risk (audit AC-07):
+ *   - a patient already in the clinic (WAITING / IN_PROGRESS) is not a
+ *     no-show risk. WAITING used to be scanned, so a patient who came early
+ *     and sat in the hall was offered to reception as a call;
+ *   - the patient needs a history of their own (`noShowMinHistoryVisits`).
+ *     With none the score is the smoothing prior 0.5 plus the first-visit
+ *     bump 0.1, which is exactly the 0.6 threshold, so every new patient
+ *     read as «высокий риск 60%» and drowned the ones who really miss
+ *     visits. A new patient who has not confirmed is UNCONFIRMED_24H's job.
  *
  * Severity:
  *   - `high` when risk >= 0.8
@@ -52,7 +62,9 @@ export async function detectNoShowRiskHigh(
 
   const appts = (await prisma.appointment.findMany({
     where: {
-      status: { in: ["BOOKED", "WAITING"] },
+      // CONFIRMED stays out as before; WAITING / IN_PROGRESS are in the
+      // clinic already.
+      status: "BOOKED",
       date: { gte: now, lte: horizon },
     },
     select: {
@@ -106,6 +118,7 @@ export async function detectNoShowRiskHigh(
     // but the patient hasn't transitioned status to WAITING.
     const hasUnconfirmedReminder =
       remindedSet.has(a.id) && a.status === "BOOKED";
+    if (pc.total < config.noShowMinHistoryVisits) continue;
     const { risk } = computeNoShowRisk({
       totalVisits: pc.total,
       noShows: pc.noShows,

@@ -55,6 +55,13 @@ export const ACTION_TYPES = [
   // creates this row on demand (dedupe keyed off appointmentId) and records
   // the outcome on it exactly like on NO_SHOW_RISK_HIGH / UNCONFIRMED_24H.
   "NO_CONTACT_CALL",
+  // Audit AC-09 — «Перезвонить» / «Хочет прийти позже» promised the patient
+  // a call at a time the appointment's own risk rows cannot reach: they
+  // expire with the visit (or its clinic day), so a callback set for tomorrow
+  // never came back. The outcome hands the promise to this row, which
+  // surfaces at the chosen time and lives until a person closes it. Dedupe
+  // keyed off the appointment the call was about.
+  "PATIENT_CALLBACK",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -70,17 +77,31 @@ export const RISK_ACTION_TYPES = [
 ] as const satisfies readonly ActionType[];
 
 /**
+ * Appointment statuses that mean the patient is already in the clinic: in the
+ * live queue (reception pressed «Пришёл», or registered a walk-in) or in the
+ * doctor's room. Such a patient cannot fail to show up, so no no-show or
+ * confirmation signal applies to the visit any more (audit AC-07).
+ */
+export const IN_CLINIC_APPOINTMENT_STATUSES = [
+  "WAITING",
+  "IN_PROGRESS",
+] as const;
+
+/**
  * Appointment statuses a risk-today row can stand for: the visit is still
- * ahead or under way. The risk-today list and its outcome endpoint share the
- * list, so an outcome can only be recorded for a row the list could show
- * (audit review of AC-04: the endpoint used to cancel any visit by id). Every
- * one of them may still move to CANCELLED, which «Отказался» relies on.
+ * ahead and the patient has not arrived. The risk-today list and its outcome
+ * endpoint share the list, so an outcome can only be recorded for a row the
+ * list could show (audit review of AC-04: the endpoint used to cancel any
+ * visit by id). Every one of them may still move to CANCELLED, which
+ * «Отказался» and «Хочет прийти позже» rely on.
+ *
+ * WAITING / IN_PROGRESS are left out (audit AC-07): a patient sitting in the
+ * hall was offered to reception as a call «риск пропуска» / «не на связи»,
+ * and every returning walk-in joined the list the moment it was registered.
  */
 export const RISK_TODAY_APPOINTMENT_STATUSES = [
   "BOOKED",
   "CONFIRMED",
-  "WAITING",
-  "IN_PROGRESS",
 ] as const;
 
 /**
@@ -356,6 +377,30 @@ export type NoContactCallPayload = {
   daysSinceContact: number | null;
 };
 
+/**
+ * Audit AC-09 — a call reception promised the patient on the phone
+ * («Перезвонить позже» after the visit time, or «Хочет прийти позже», which
+ * also cancels the visit). Created by the call-outcome endpoints; surfaces at
+ * `callbackAt` and stays until a person closes it.
+ */
+export type PatientCallbackPayload = {
+  type: "PATIENT_CALLBACK";
+  /** The visit the call was about (cancelled for RETURN_LATER). */
+  appointmentId: string;
+  patientId: string;
+  patientName: string;
+  doctorName: string;
+  /** ISO-8601 datetime of that visit (UTC). */
+  appointmentAt: string;
+  /** Which outcome promised the call. */
+  reason: "CALLBACK" | "RETURN_LATER";
+  /** ISO-8601 instant the call is due: the chosen time, or 09:00 clinic time
+   *  on the day the patient wants to come back. */
+  callbackAt: string;
+  /** What the patient said; empty string when nothing was noted. */
+  note: string;
+};
+
 export type ActionPayload =
   | EmptySlotTomorrowPayload
   | DormantBatchPayload
@@ -371,7 +416,8 @@ export type ActionPayload =
   | PatientNoChannelPayload
   | VisitFollowUpDuePayload
   | TelegramLinkConflictPayload
-  | NoContactCallPayload;
+  | NoContactCallPayload
+  | PatientCallbackPayload;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -423,11 +469,62 @@ export function dedupeKeyFor(payload: ActionPayload): string {
       return `TELEGRAM_LINK_CONFLICT:clinicCardId=${payload.clinicCardId}:telegramCardId=${payload.telegramCardId}`;
     case "NO_CONTACT_CALL":
       return `NO_CONTACT_CALL:appointmentId=${payload.appointmentId}`;
+    case "PATIENT_CALLBACK":
+      return `PATIENT_CALLBACK:appointmentId=${payload.appointmentId}`;
     default: {
       // Compile-time exhaustiveness guard.
       const _exhaustive: never = payload;
       throw new Error(
         `dedupeKeyFor: unhandled payload type ${(_exhaustive as { type: string }).type}`,
+      );
+    }
+  }
+}
+
+/**
+ * The part of a payload, beyond its dedupe key, that says WHAT a person has
+ * to do (audit AC-08). A task somebody closed («Готово» / «Отклонить») stays
+ * closed while this stays the same, however often a detector or an event
+ * re-upserts it; see `upsertAction`.
+ *
+ * Everything else in a payload is a reading of the same situation that moves
+ * on its own: the no-show percentage, days overdue, the size of a dormant
+ * segment, a doctor's free-slot count, names. None of those is a new task.
+ * What is: the visit moved to another time (it needs confirming again), the
+ * control visit or case deadline moved, the debt amount changed, the patient
+ * left another rating, a callback was set for another time.
+ *
+ * Pure, deterministic; `null` when nothing beyond the key matters.
+ */
+export function actionSubjectOf(payload: ActionPayload): string | null {
+  switch (payload.type) {
+    case "UNCONFIRMED_24H":
+    case "NO_SHOW_RISK_HIGH":
+    case "NO_CONTACT_CALL":
+      return `appointmentAt=${payload.appointmentAt}`;
+    case "CASE_REPEAT_DUE":
+    case "VISIT_FOLLOW_UP_DUE":
+      return `dueDate=${payload.dueDate}`;
+    case "PAYMENT_OVERDUE":
+      return `amountUzs=${payload.amountUzs}`;
+    case "LOW_NPS_RECEIVED":
+      return `score=${payload.score}:comment=${payload.commentPreview}`;
+    case "PATIENT_NO_CHANNEL":
+      return `appointmentId=${payload.appointmentId ?? ""}`;
+    case "PATIENT_CALLBACK":
+      return `reason=${payload.reason}:callbackAt=${payload.callbackAt}`;
+    case "EMPTY_SLOT_TOMORROW":
+    case "DORMANT_BATCH":
+    case "OVERDUE_FOLLOW_UP":
+    case "DOCTOR_OVERLOAD":
+    case "IDLE_ROOM":
+    case "LOW_DOCTOR_SCHEDULE":
+    case "TELEGRAM_LINK_CONFLICT":
+      return null;
+    default: {
+      const _exhaustive: never = payload;
+      throw new Error(
+        `actionSubjectOf: unhandled payload type ${(_exhaustive as { type: string }).type}`,
       );
     }
   }
@@ -464,6 +561,10 @@ export function defaultSeverity(type: ActionType): ActionSeverity {
     case "VISIT_FOLLOW_UP_DUE":
     case "NO_CONTACT_CALL":
       return "medium";
+    // A promise made to the patient on the phone: it leads the call list on
+    // the day it falls due.
+    case "PATIENT_CALLBACK":
+      return "high";
     case "LOW_DOCTOR_SCHEDULE":
       return "low";
     default: {
@@ -520,6 +621,9 @@ export function defaultDeeplinkPath(type: ActionType): string {
     case "NO_CONTACT_CALL":
       // The outcome endpoint overrides with /crm/patients/<id>.
       return "/crm/action-center";
+    case "PATIENT_CALLBACK":
+      // The outcome endpoints override with /crm/patients/<id>.
+      return "/crm/patients";
     default: {
       const _exhaustive: never = type;
       throw new Error(
@@ -552,6 +656,7 @@ export function defaultAssigneeRole(type: ActionType): "ADMIN" | "RECEPTIONIST" 
     case "VISIT_FOLLOW_UP_DUE":
     case "TELEGRAM_LINK_CONFLICT":
     case "NO_CONTACT_CALL":
+    case "PATIENT_CALLBACK":
       return "RECEPTIONIST";
     default: {
       const _exhaustive: never = type;

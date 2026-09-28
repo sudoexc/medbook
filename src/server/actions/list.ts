@@ -45,6 +45,58 @@ function bucketWhere(bucket: string): Record<string, unknown> {
 
 export type ActionListPage = { rows: Action[]; nextCursor: string | null };
 
+/**
+ * The rows a work list can reach (`GET /api/crm/actions`), before paging.
+ * The KPI summary (`summarizeActions`) aggregates over exactly this set, so a
+ * tile's count equals what paging through the list would show (audit AC-18).
+ *
+ *   - status: OPEN + SNOOZED by default; a SNOOZED row counts only once its
+ *     timer has run out (a snoozed row "comes back" by the clock);
+ *   - hidden: EXPIRED rows, and rows whose `expiresAt` has passed;
+ *   - assigneeRole: the role's rows plus "any role" rows (null).
+ */
+export function visibleActionsWhere(
+  now: Date,
+  filters: {
+    statuses?: readonly string[] | null;
+    types?: readonly string[] | null;
+    assigneeRole?: "ADMIN" | "RECEPTIONIST" | null;
+  } = {},
+): Record<string, unknown> {
+  const where: Record<string, unknown> = {};
+
+  // Status filter — default to OPEN + SNOOZED when the caller omits it. We
+  // keep SNOOZED rows visible only when their snoozeUntil has elapsed
+  // (handled by the snoozeUntil clause below).
+  const statuses =
+    filters.statuses && filters.statuses.length > 0
+      ? filters.statuses
+      : ["OPEN", "SNOOZED"];
+  where.status = statuses.length === 1 ? statuses[0] : { in: [...statuses] };
+
+  if (filters.types && filters.types.length > 0) {
+    where.type =
+      filters.types.length === 1 ? filters.types[0] : { in: [...filters.types] };
+  }
+  if (filters.assigneeRole) {
+    // Show rows assigned to this role OR rows assigned to "any role"
+    // (assigneeRole IS NULL).
+    where.OR = [{ assigneeRole: filters.assigneeRole }, { assigneeRole: null }];
+  }
+
+  where.AND = [
+    // Hide expired rows: either marked status=EXPIRED (already excluded by
+    // the status filter unless the caller explicitly asked for it) OR
+    // expiresAt elapsed.
+    { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    // Hide actively snoozed rows; allow status=SNOOZED whose timer has
+    // already elapsed (those resurface as "snoozed-expired" which we
+    // surface as still actionable).
+    { OR: [{ snoozeUntil: null }, { snoozeUntil: { lte: now } }] },
+  ];
+  return where;
+}
+
 export async function listActionsPage(
   prisma: PrismaLike,
   where: Record<string, unknown>,

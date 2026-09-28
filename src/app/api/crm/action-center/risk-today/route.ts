@@ -20,14 +20,16 @@
  * Sort: by `appointmentAt ASC` (timeline order). Receptionists work the day
  * top-to-bottom; pure risk-DESC would jump them around chronologically.
  *
- * Status filter: only BOOKED|CONFIRMED|WAITING|IN_PROGRESS
- * (`RISK_TODAY_APPOINTMENT_STATUSES`, shared with the outcome endpoint so it
- * accepts exactly the rows listed here). Once an
- * appointment is COMPLETED / CANCELLED / NO_SHOW / SKIPPED it's no longer
- * actionable, so it drops off the triage even if its Action rows are still
- * hanging around for audit. CONFIRMED rows can still land here via high_risk
- * or no_contact reasons — confirmation lowers the unconfirmed signal but
- * doesn't eliminate every other risk.
+ * Status filter: only BOOKED|CONFIRMED (`RISK_TODAY_APPOINTMENT_STATUSES`,
+ * shared with the outcome endpoint so it accepts exactly the rows listed
+ * here). Once an appointment is COMPLETED / CANCELLED / NO_SHOW / SKIPPED it's
+ * no longer actionable, so it drops off the triage even if its Action rows
+ * are still hanging around for audit. WAITING / IN_PROGRESS drop off too
+ * (audit AC-07): the patient is in the clinic, so there is nobody to call.
+ * They used to stay, and every returning walk-in, registered straight into
+ * WAITING, joined the list with «не на связи N дней». CONFIRMED rows can
+ * still land here via high_risk or no_contact reasons — confirmation lowers
+ * the unconfirmed signal but doesn't eliminate every other risk.
  *
  * Tenant scoping: the Prisma extension already injects `clinicId` into every
  * relevant model. We only need an explicit clinic fetch to read `timezone`.
@@ -61,7 +63,7 @@ export type RiskTodayRow = {
   serviceId: string | null;
   serviceName: { ru: string; uz: string } | null;
   priceFinalTiins: number | null;
-  status: "BOOKED" | "CONFIRMED" | "WAITING" | "IN_PROGRESS";
+  status: (typeof RISK_TODAY_APPOINTMENT_STATUSES)[number];
   reasons: RiskReason[];
   riskScore: number;
   actionIds: string[];
@@ -354,7 +356,7 @@ export const GET = createApiListHandler(
           ? { ru: ap.primaryService.nameRu, uz: ap.primaryService.nameUz }
           : null,
         priceFinalTiins: ap.priceFinal ?? null,
-        status: ap.status as "BOOKED" | "WAITING" | "IN_PROGRESS",
+        status: ap.status as RiskTodayRow["status"],
         reasons,
         riskScore: Math.round(riskScore * 100) / 100,
         actionIds,

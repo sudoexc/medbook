@@ -33,6 +33,7 @@ const detectorMocks = {
 
 const upsertMock = vi.fn();
 const expireMock = vi.fn();
+const retireMock = vi.fn();
 const publishMock = vi.fn();
 
 vi.mock("@/server/actions/detectors/empty-slot-tomorrow", () => ({
@@ -75,6 +76,10 @@ vi.mock("@/server/actions/repository", () => ({
   expireStaleActions: (...args: unknown[]) => expireMock(...args),
 }));
 
+vi.mock("@/server/actions/in-clinic", () => ({
+  retireInClinicRiskActions: (...args: unknown[]) => retireMock(...args),
+}));
+
 vi.mock("@/server/realtime/publish", () => ({
   publishEvent: (...args: unknown[]) => publishMock(...args),
 }));
@@ -103,6 +108,7 @@ beforeEach(() => {
     severityChanged: false,
   });
   expireMock.mockResolvedValue(0);
+  retireMock.mockResolvedValue(0);
   publishMock.mockResolvedValue(undefined);
 });
 
@@ -232,6 +238,39 @@ describe("runActionEngine", () => {
     expect(expireMock).toHaveBeenCalledTimes(1);
     expect(expireMock).toHaveBeenCalledWith(fakePrisma, clinicId, 48);
     expect(res.expired).toBe(3);
+  });
+
+  // Audit AC-07: a patient who has arrived is no longer a no-show risk.
+  it("retires the risk rows of arrived patients on every pass and counts them as expired", async () => {
+    retireMock.mockResolvedValueOnce(2);
+    expireMock.mockResolvedValueOnce(1);
+    const res = await runActionEngine(fakePrisma, clinicId, now);
+    expect(retireMock).toHaveBeenCalledWith(fakePrisma, clinicId);
+    expect(res.expired).toBe(3);
+    expect(res.errors).toEqual([]);
+  });
+
+  // Audit AC-08: a refresh of a row somebody closed changes nothing visible.
+  it("does NOT announce a refresh of a row kept closed, even with a new payload", async () => {
+    const payload: ActionPayload = {
+      type: "DORMANT_BATCH",
+      segment: "90-180",
+      patientCount: 31,
+      lastCampaignAt: null,
+    };
+    detectorMocks.dormant.mockResolvedValueOnce([payload]);
+    upsertMock.mockResolvedValueOnce({
+      id: "act-1",
+      created: false,
+      severity: "medium",
+      payloadChanged: true,
+      severityChanged: false,
+      keptClosed: true,
+    });
+    const res = await runActionEngine(fakePrisma, clinicId, now);
+    expect(res.skipped).toBe(1);
+    expect(res.updated).toBe(0);
+    expect(publishMock).not.toHaveBeenCalled();
   });
 
   it("sets explicit expiresAt for NO_SHOW_RISK_HIGH (= appointmentAt)", async () => {

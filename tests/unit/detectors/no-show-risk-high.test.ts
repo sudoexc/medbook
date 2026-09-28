@@ -43,7 +43,7 @@ function makePrisma(state: {
         const status = where?.status as
           | { in?: string[] }
           | undefined;
-        // Upcoming uses status: { in: ["BOOKED", "WAITING"] }
+        // Upcoming uses status: "BOOKED"
         // History uses status: { in: ["COMPLETED", "NO_SHOW"] }
         if (status && Array.isArray(status.in) && status.in.includes("COMPLETED")) {
           return state.history;

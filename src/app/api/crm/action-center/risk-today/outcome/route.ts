@@ -9,9 +9,12 @@
  *
  * Responses: 200 with the stamped rows; 404 for an appointment outside the
  * clinic; 409 `not_risk_today` for an appointment the risk-today list cannot
- * show (another day, or a visit that is already over); 409 when the
- * appointment refused the side effect (e.g. «Подтвердил» on a visit someone
- * cancelled a moment ago). Nothing is recorded on any 409.
+ * show (another day, or a visit that is already over); 409
+ * `patient_in_clinic` when the patient has arrived meanwhile (audit AC-07);
+ * 409 `return_day_not_later` for «Хочет прийти позже» on the visit's own day
+ * (audit AC-09); 409 when the appointment refused the side effect (e.g.
+ * «Подтвердил» on a visit someone cancelled a moment ago). Nothing is
+ * recorded on any 409.
  *
  * RBAC: ADMIN, RECEPTIONIST, the roles of the canonical cancel
  * (DELETE /api/crm/appointments/[id]). «Отказался» cancels the visit, and the
@@ -47,8 +50,8 @@ export const POST = createApiHandler(
     });
     if (!result.ok) {
       if (result.reason === "not_found") return notFound();
-      if (result.reason === "not_risk_today") return conflict("not_risk_today");
-      return conflict(result.detail);
+      if (result.reason === "not_applied") return conflict(result.detail);
+      return conflict(result.reason);
     }
 
     for (const a of result.actions) {
@@ -66,6 +69,7 @@ export const POST = createApiHandler(
           newStatus: a.newStatus,
           callAttempts: a.callAttempts,
           createdForOutcome: a.id === result.createdActionId,
+          callbackActionId: result.callbackActionId,
         },
       });
     }

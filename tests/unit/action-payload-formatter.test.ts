@@ -142,6 +142,18 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     doctorName: "Алиев А.А.",
     daysSinceContact: 31,
   },
+  // Audit AC-09 — a call promised past the visit.
+  PATIENT_CALLBACK: {
+    type: "PATIENT_CALLBACK",
+    appointmentId: "apt_10",
+    patientId: "p_10",
+    patientName: "Юсупова Лола",
+    doctorName: "Султанов А.",
+    appointmentAt: "2026-05-07T11:00:00.000Z",
+    reason: "RETURN_LATER",
+    callbackAt: "2026-05-10T04:00:00.000Z",
+    note: "после командировки",
+  },
 };
 
 /**

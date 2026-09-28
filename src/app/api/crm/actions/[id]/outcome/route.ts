@@ -7,8 +7,10 @@
  *   CONFIRMED     → confirmAppointment(via INBOUND_CALL) + Action DONE(outcome)
  *   RESCHEDULED   → Action DONE(outcome)  (the reschedule itself happens in the
  *                   dialog; this just records + closes the row)
- *   CALLBACK      → Action SNOOZED until callbackAt (+ note) — resurfaces then
- *   RETURN_LATER  → Action SNOOZED until the return date (+ note)
+ *   CALLBACK      → Action SNOOZED until callbackAt (+ note), or, when that is
+ *                   at or after the visit, a PATIENT_CALLBACK task
+ *   RETURN_LATER  → cancelAppointment + a PATIENT_CALLBACK task on the
+ *                   return day (409 `return_day_not_later` otherwise)
  *   REFUSED       → cancelAppointment(reason=note) + Action DONE(outcome)
  *   NO_ANSWER     → callAttempts++, SNOOZED a short while; escalate at the cap
  *
@@ -22,13 +24,17 @@
 import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, err, notFound } from "@/server/http";
+import { conflict, ok, err, notFound } from "@/server/http";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
 import { OutcomeActionSchema } from "@/server/schemas/action";
 import { actionIdFromUrl } from "@/server/actions/handler-utils";
 import {
   applyOutcomeToAppointment,
+  callbackOutlivesVisit,
+  normalizeOutcomeInput,
   outcomeStamp,
+  returnDayIsLater,
+  scheduleCallbackTask,
 } from "@/server/actions/outcome";
 
 export const POST = createApiHandler(
@@ -46,11 +52,30 @@ export const POST = createApiHandler(
     const payload = before.payload as { appointmentId?: string } | null;
     const appointmentId = payload?.appointmentId ?? null;
     const now = new Date();
-    const input = {
+    const input = normalizeOutcomeInput({
       outcome: body.outcome,
       note: body.note?.trim() || null,
       callbackAt: body.callbackAt ? new Date(body.callbackAt) : null,
-    };
+    });
+
+    // The visit the call is about decides whether a promised call outlives
+    // it (audit AC-09, see `server/actions/outcome.ts`).
+    const appt = appointmentId
+      ? await prisma.appointment.findUnique({
+          where: { id: appointmentId },
+          select: {
+            id: true,
+            date: true,
+            patientId: true,
+            patient: { select: { fullName: true } },
+            doctor: { select: { nameRu: true } },
+          },
+        })
+      : null;
+    if (appt && !returnDayIsLater(input, appt.date)) {
+      return conflict("return_day_not_later");
+    }
+    const handedOff = appt ? callbackOutlivesVisit(input, appt.date) : false;
 
     // ── Domain side-effect per outcome (confirm / cancel) ───────────────────
     const domain = appointmentId
@@ -65,8 +90,22 @@ export const POST = createApiHandler(
 
     const after = await prisma.action.update({
       where: { id },
-      data: outcomeStamp(before, input, ctx.userId, now),
+      data: outcomeStamp(before, input, ctx.userId, now, { handedOff }),
     });
+    const callback =
+      appt && handedOff
+        ? await scheduleCallbackTask(prisma, {
+            clinicId: ctx.clinicId,
+            appointment: {
+              id: appt.id,
+              date: appt.date,
+              patientId: appt.patientId,
+              patientName: appt.patient.fullName,
+              doctorName: appt.doctor?.nameRu ?? "",
+            },
+            input,
+          })
+        : null;
 
     await audit(request, {
       action: AUDIT_ACTION.ACTION_OUTCOME,
@@ -81,6 +120,7 @@ export const POST = createApiHandler(
         oldStatus: before.status,
         newStatus: after.status,
         callAttempts: after.callAttempts,
+        callbackActionId: callback?.id ?? null,
       },
     });
 

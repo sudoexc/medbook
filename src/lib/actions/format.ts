@@ -193,6 +193,16 @@ function valuesFor(
         slotDate: formatDM(payload.appointmentAt, locale),
         slotDay: clinicDayOf(payload.appointmentAt, now),
       };
+    case "PATIENT_CALLBACK":
+      return {
+        patientName: payload.patientName,
+        doctorName: payload.doctorName,
+        reason: payload.reason,
+        slotTime: formatHM(payload.appointmentAt),
+        slotDate: formatDM(payload.appointmentAt, locale),
+        note: payload.note,
+        hasNote: payload.note?.trim() ? "yes" : "no",
+      };
     default: {
       const _exhaustive: never = payload;
       throw new Error(

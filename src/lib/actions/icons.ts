@@ -7,6 +7,7 @@
  * referenced from unit tests without a JSX runtime.
  */
 import {
+  AlarmClockIcon,
   AlertTriangleIcon,
   BanknoteIcon,
   CalendarCheckIcon,
@@ -44,6 +45,8 @@ export const ACTION_ICONS: Record<ActionType, LucideIcon> = {
   TELEGRAM_LINK_CONFLICT: Link2OffIcon,
   // Same glyph as the «не на связи» reason chip in the risk-today list.
   NO_CONTACT_CALL: MessageCircleOffIcon,
+  // Same glyph as «Перезвонить позже» in the risk-today outcome menu.
+  PATIENT_CALLBACK: AlarmClockIcon,
 };
 
 /** Tailwind colour-token classes for severity dots, borders, and badge tones. */

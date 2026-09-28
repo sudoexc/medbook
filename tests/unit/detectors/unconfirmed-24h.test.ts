@@ -104,9 +104,10 @@ describe("detectUnconfirmed24h — Stage 2.C (72h horizon)", () => {
     // IS NULL filter; any rewrite that wraps this would break index usage.
     expect(arg.where.confirmedAt).toBeNull();
 
-    // Closed-out statuses excluded via `notIn` — exact shape.
+    // Closed-out statuses excluded via `notIn` — exact shape. So is a
+    // patient already in the clinic (audit AC-07).
     expect(arg.where.status).toEqual({
-      notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"],
+      notIn: ["CANCELLED", "NO_SHOW", "COMPLETED", "WAITING", "IN_PROGRESS"],
     });
 
     // Date window: [now, now+72h]. Compare by epoch ms with 1s tolerance.

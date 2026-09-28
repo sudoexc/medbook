@@ -24,6 +24,16 @@ export function nextClinicMorning(now: Date): Date {
   return toTashkentDate(tomorrow, CLINIC_MORNING);
 }
 
+/** 09:00 clinic time on the clinic day that contains `at`. */
+export function clinicMorningOf(at: Date): Date {
+  return toTashkentDate(tashkentComponents(at).date, CLINIC_MORNING);
+}
+
+/** The clinic calendar day (`YYYY-MM-DD`) that contains `at`. */
+export function clinicDateKey(at: Date): string {
+  return tashkentComponents(at).date;
+}
+
 /**
  * 09:00 clinic time, `leadDays` clinic days before the `YYYY-MM-DD` date.
  * Used to surface a task ahead of its due date instead of the day it is

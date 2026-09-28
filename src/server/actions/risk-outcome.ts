@@ -11,22 +11,29 @@
  *
  * Here the server resolves the row itself:
  *   0. the appointment must be one the risk-today list can show: today's
- *      clinic day, still ahead or under way. Anything else is refused before
- *      a single write, because the endpoint takes a bare appointment id: it
- *      must not become a way to cancel next week's visit, or to open a call
- *      task and mark «на связи» for an arbitrary card;
+ *      clinic day, still ahead, patient not yet arrived. Anything else is
+ *      refused before a single write, because the endpoint takes a bare
+ *      appointment id: it must not become a way to cancel next week's visit,
+ *      or to open a call task and mark «на связи» for an arbitrary card. A
+ *      patient who has arrived meanwhile gets its own answer
+ *      (`patient_in_clinic`), so reception reads «он уже в клинике» rather
+ *      than «запись закрыта». «Хочет прийти позже» must name a later day;
  *   1. the appointment side effect runs once (confirm / cancel), before any
  *      Action is written, so a refused side effect leaves nothing behind;
  *   2. the outcome is stamped on every actionable risk Action of the
  *      appointment; when there is none, a NO_CONTACT_CALL row is created for
  *      it, which is what brings a «не дозвонился» row back two hours later
  *      and what the «Обработано сегодня» trail reads;
- *   3. `Patient.lastContactedAt` advances only when somebody actually spoke
+ *   3. a promised call the visit's risk rows cannot carry (after the visit
+ *      time, or on the return day) goes to a PATIENT_CALLBACK task, and those
+ *      rows are closed (audit AC-09, see `outcome.ts`);
+ *   4. `Patient.lastContactedAt` advances only when somebody actually spoke
  *      to the patient.
  *
  * Caller MUST be inside a TENANT context (the route wrapper provides it).
  */
 import {
+  IN_CLINIC_APPOINTMENT_STATUSES,
   RISK_TODAY_APPOINTMENT_STATUSES,
   dedupeKeyFor,
   type NoContactCallPayload,
@@ -37,8 +44,12 @@ import { bumpPatientLastContact } from "@/server/patient/last-contacted";
 import { clinicTodayBounds } from "./clinic-day";
 import {
   applyOutcomeToAppointment,
+  callbackOutlivesVisit,
+  normalizeOutcomeInput,
   outcomeReachedPatient,
   outcomeStamp,
+  returnDayIsLater,
+  scheduleCallbackTask,
   type OutcomeDomainResult,
   type OutcomeInput,
 } from "./outcome";
@@ -77,6 +88,12 @@ export type RiskOutcomeResult =
   /** Not a risk-today row: another day, or the visit is already over
    *  (cancelled, completed, no-show). Nothing was recorded. */
   | { ok: false; reason: "not_risk_today" }
+  /** Today's visit, but the patient has arrived (WAITING / IN_PROGRESS):
+   *  there is nobody to call. Nothing was recorded. */
+  | { ok: false; reason: "patient_in_clinic" }
+  /** «Хочет прийти позже» with a return day that is not after the visit's
+   *  day. Nothing was recorded. */
+  | { ok: false; reason: "return_day_not_later" }
   /** The appointment refused the side effect (already cancelled, completed…):
    *  nothing was recorded, the row is stale. */
   | { ok: false; reason: "not_applied"; detail: string }
@@ -87,6 +104,8 @@ export type RiskOutcomeResult =
       actions: StampedAction[];
       /** Set when the appointment had no risk Action and one was created. */
       createdActionId: string | null;
+      /** The PATIENT_CALLBACK task that carries the promised call, if any. */
+      callbackActionId: string | null;
       contactBumped: boolean;
       domain: OutcomeDomainResult;
     };
@@ -100,7 +119,8 @@ export async function recordRiskOutcome(params: {
   input: OutcomeInput;
   now?: Date;
 }): Promise<RiskOutcomeResult> {
-  const { clinicId, actorId, input } = params;
+  const { clinicId, actorId } = params;
+  const input = normalizeOutcomeInput(params.input);
   const now = params.now ?? new Date();
 
   const appt = await prisma.appointment.findUnique({
@@ -124,11 +144,21 @@ export async function recordRiskOutcome(params: {
     select: { timezone: true },
   });
   const today = clinicTodayBounds(now, clinic?.timezone || "Asia/Tashkent");
+  const isToday = appt.date >= today.start && appt.date < today.end;
+  if (
+    isToday &&
+    (IN_CLINIC_APPOINTMENT_STATUSES as readonly string[]).includes(appt.status)
+  ) {
+    return { ok: false, reason: "patient_in_clinic" };
+  }
   const listed =
-    appt.date >= today.start &&
-    appt.date < today.end &&
+    isToday &&
     (RISK_TODAY_APPOINTMENT_STATUSES as readonly string[]).includes(appt.status);
   if (!listed) return { ok: false, reason: "not_risk_today" };
+  if (!returnDayIsLater(input, appt.date)) {
+    return { ok: false, reason: "return_day_not_later" };
+  }
+  const handedOff = callbackOutlivesVisit(input, appt.date);
 
   // Actionable = what the risk-today row was built from: OPEN, or SNOOZED
   // with an elapsed timer (a live snooze keeps the row off the list).
@@ -184,7 +214,7 @@ export async function recordRiskOutcome(params: {
   for (const before of targets) {
     const after = await prisma.action.update({
       where: { id: before.id },
-      data: outcomeStamp(before, input, actorId, now),
+      data: outcomeStamp(before, input, actorId, now, { handedOff }),
     });
     actions.push({
       id: before.id,
@@ -195,6 +225,22 @@ export async function recordRiskOutcome(params: {
     });
   }
 
+  const callbackActionId = handedOff
+    ? (
+        await scheduleCallbackTask(prisma, {
+          clinicId,
+          appointment: {
+            id: appt.id,
+            date: appt.date,
+            patientId: appt.patientId,
+            patientName: appt.patient.fullName,
+            doctorName: appt.doctor?.nameRu ?? "",
+          },
+          input,
+        })
+      ).id
+    : null;
+
   const contactBumped = outcomeReachedPatient(input.outcome);
   if (contactBumped) await bumpPatientLastContact(appt.patientId, now);
 
@@ -204,6 +250,7 @@ export async function recordRiskOutcome(params: {
     patientId: appt.patientId,
     actions,
     createdActionId,
+    callbackActionId,
     contactBumped,
     domain,
   };

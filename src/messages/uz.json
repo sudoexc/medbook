@@ -5247,7 +5247,7 @@
     },
     "dismiss": {
       "title": "Vazifa rad etilsinmi?",
-      "description": "Vazifa ochiq ro'yxatdan yo'qoladi. Administrator kerak bo'lsa qaytarib oladi.",
+      "description": "Vazifa ochiq ro'yxatdan yo'qoladi va yangi holat yuzaga kelmaguncha o'zi qaytmaydi, masalan, yozuv boshqa vaqtga ko'chirilsa qaytadi. Administrator uni qo'lda qaytarishi mumkin.",
       "reasonLabel": "Sabab (ixtiyoriy)",
       "reasonPlaceholder": "Masalan: bemor telefon orqali tasdiqladi",
       "confirm": "Rad etish",
@@ -5353,6 +5353,11 @@
         "label": "Qo'ng'iroq: uzoq vaqt aloqa yo'q",
         "title": "{patientName}: {slotDay, select, today {bugun} tomorrow {ertaga} other {{slotDate}}} {slotTime} dagi yozuv bo'yicha qayta qo'ng'iroq qiling",
         "body": "Shifokor: {doctorName}. Bemor bilan uzoq vaqt aloqa bo'lmagan. Qo'ng'iroq qiling va natijasini belgilang."
+      },
+      "PATIENT_CALLBACK": {
+        "label": "Bemorga qayta qo'ng'iroq",
+        "title": "{reason, select, RETURN_LATER {{patientName}: qo'ng'iroq qiling, keyinroq kelmoqchi edi} other {{patientName}: kelishilganidek qayta qo'ng'iroq qiling}}",
+        "body": "{hasNote, select, yes {«{note}». } other {}}{reason, select, RETURN_LATER {{slotDate} {slotTime} dagi yozuv bemor iltimosi bilan bekor qilindi. Qo'ng'iroq qilib, qulay kunga yozing.} other {{slotDate} {slotTime} dagi yozuv bo'yicha qo'ng'iroq. Shifokor: {doctorName}.}}"
       }
     },
     "dashboard": {
@@ -5412,6 +5417,7 @@
           "opensDrawer": "yozuvni ochadi",
           "callbackAtLabel": "Qachon qo'ng'iroq qilish",
           "returnAtLabel": "Qaytish sanasi",
+          "returnCancelsHint": "Bugungi yozuv bekor qilinadi. Shu kuni Vazifalar markazida qayta qo'ng'iroq vazifasi paydo bo'ladi.",
           "noteLabel": "Izoh",
           "notePlaceholder": "Qisqacha: bemor nima dedi",
           "reasonLabel": "Rad etish sababi",
@@ -5420,7 +5426,9 @@
           "confirm": "Saqlash",
           "success": "Yakun yozildi: {outcome}",
           "error": "Yakunni yozib bo'lmadi: {reason}",
-          "staleAppointment": "Yozuv allaqachon bekor qilingan yoki yopilgan, yakun yozilmadi. Ro'yxat yangilandi."
+          "staleAppointment": "Yozuv allaqachon bekor qilingan yoki yopilgan, yakun yozilmadi. Ro'yxat yangilandi.",
+          "patientInClinic": "Bemor allaqachon klinikada, qo'ng'iroq kerak emas. Yakun yozilmadi, ro'yxat yangilandi.",
+          "returnDayNotLater": "Bugundan keyingi kunni tanlang. Bugun kechroq kelish uchun «Ko'chirish» dan foydalaning."
         },
         "remindersChip": {
           "confirmed": "{count, plural, one {# eslatma} other {# eslatma}} · tasdiqladi",
@@ -5476,6 +5484,7 @@
         "hideCompleted": "Bajarilganlarni yashirish",
         "showAllTasks": "Barcha vazifalar ({count})",
         "collapseList": "Yig'ish",
+        "loadMoreRemaining": "Yana ko'rsatish (qoldi {count})",
         "potentialRevenuePrefix": "+",
         "menuLabel": "Menyu",
         "ctaCall": "Qo'ng'iroqni boshlash",

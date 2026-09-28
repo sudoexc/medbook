@@ -12,14 +12,20 @@
  */
 import * as React from "react";
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
   type QueryKey,
 } from "@tanstack/react-query";
 
 import { useLiveQueryInvalidation } from "@/hooks/use-live-query";
 import type { ActionPayload, ActionSeverity, ActionStatus, ActionType } from "@/lib/actions/types";
+// Type-only: the wire shape of GET /api/crm/actions/summary.
+import type { ActionsSummary } from "@/server/actions/summary";
+
+export type { ActionsSummary };
 
 export type ActionRow = {
   id: string;
@@ -88,12 +94,9 @@ export function actionsListKey(filters: ListActionsFilters): QueryKey {
 }
 
 /**
- * Single page (cursor=null) fetch with live invalidation. Pagination — when we
- * need it — is handled by holding an array of pages in component state and
- * calling `fetchNextPage`. We deliberately don't use `useInfiniteQuery` here:
- * the optimistic-update logic for snooze/dismiss/done is already complex
- * enough on a flat list, and most clinics never breach the default 50-row
- * page size.
+ * Single page (cursor=null) fetch with live invalidation, for surfaces that
+ * only ever want the top N (the reception briefing). The Action Center pages
+ * through everything with `useActionsPaged`.
  */
 export function useActionsList(filters: ListActionsFilters) {
   const key = actionsListKey(filters);
@@ -125,21 +128,28 @@ export function useActionsList(filters: ListActionsFilters) {
 }
 
 /**
- * Cursor-style "load more" hook. Holds accumulated pages in local state so the
- * underlying tanstack key stays stable as the user pages.
+ * The Action Center's paged work list: the first page, then more on demand
+ * through the list's cursor (audit AC-18: the center used to hold one page of
+ * 50 and never asked for the next, so tasks past it were unreachable).
+ *
+ * An infinite query keeps every loaded page under one cache entry. A poll or
+ * an SSE invalidation refetches all loaded pages in order from the top, so a
+ * task that came back from a snooze shows up and a closed one drops out, and
+ * the optimistic removal below edits the same entry (the old hand-rolled
+ * accumulator kept closed rows on screen once a second page was loaded).
  */
 export function useActionsPaged(filters: ListActionsFilters) {
-  const [cursor, setCursor] = React.useState<string | null>(null);
-  const [accumulated, setAccumulated] = React.useState<ActionRow[]>([]);
-  const [hasMore, setHasMore] = React.useState(true);
-
-  const baseKey = actionsListKey(filters);
-  const pagedKey = [...baseKey, "page", cursor] as QueryKey;
-
-  const query = useQuery<ListActionsPage, Error>({
-    queryKey: pagedKey,
-    queryFn: async ({ signal }) => {
-      const qs = buildQueryString(filters, cursor);
+  const query = useInfiniteQuery<
+    ListActionsPage,
+    Error,
+    InfiniteData<ListActionsPage, string | null>,
+    QueryKey,
+    string | null
+  >({
+    queryKey: [...actionsListKey(filters), "paged"],
+    initialPageParam: null,
+    queryFn: async ({ pageParam, signal }) => {
+      const qs = buildQueryString(filters, pageParam);
       const res = await fetch(`/api/crm/actions${qs ? `?${qs}` : ""}`, {
         credentials: "include",
         signal,
@@ -147,55 +157,72 @@ export function useActionsPaged(filters: ListActionsFilters) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as ListActionsPage;
     },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 15_000,
-    // Only the first page polls: re-fetching it resets the accumulator (see
-    // the effect below), which is how a resurfaced snooze shows up.
-    refetchInterval: cursor === null ? ACTIONS_LIST_POLL_MS : false,
+    refetchInterval: ACTIONS_LIST_POLL_MS,
   });
 
-  React.useEffect(() => {
-    if (!query.data) return;
-    setAccumulated((prev) => {
-      if (cursor === null) return query.data!.rows;
-      // Avoid duplicate append on React strict-mode double effect.
-      const seen = new Set(prev.map((r) => r.id));
-      const next = query.data!.rows.filter((r) => !seen.has(r.id));
-      return [...prev, ...next];
-    });
-    setHasMore(Boolean(query.data.nextCursor));
-  }, [query.data, cursor]);
-
-  // Reset accumulated when filters change.
-  const filtersKey = JSON.stringify(baseKey);
-  const lastFiltersRef = React.useRef(filtersKey);
-  React.useEffect(() => {
-    if (lastFiltersRef.current === filtersKey) return;
-    lastFiltersRef.current = filtersKey;
-    setCursor(null);
-    setAccumulated([]);
-    setHasMore(true);
-  }, [filtersKey]);
-
-  // Live invalidation. On invalidation we drop the cursor so the list
-  // refetches from the start — otherwise newly-created rows wouldn't appear.
   useLiveQueryInvalidation({
     events: ["action.created", "action.updated"],
     queryKey: ["actions"],
   });
 
+  // A row that moved between two pages while they were refetched one after
+  // the other must not render twice.
+  const rows = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: ActionRow[] = [];
+    for (const page of query.data?.pages ?? []) {
+      for (const r of page.rows) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        out.push(r);
+      }
+    }
+    return out;
+  }, [query.data]);
+
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
   const loadMore = React.useCallback(() => {
-    if (query.data?.nextCursor) setCursor(query.data.nextCursor);
-  }, [query.data?.nextCursor]);
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   return {
-    rows: accumulated,
-    isLoading: query.isLoading && cursor === null,
+    rows,
+    isLoading: query.isLoading,
     isFetching: query.isFetching,
+    isLoadingMore: isFetchingNextPage,
     error: query.error,
-    hasMore,
+    hasMore: Boolean(hasNextPage),
     loadMore,
     refetch: query.refetch,
   };
+}
+
+/**
+ * Server-side aggregate of every visible open task (audit AC-18). The KPI
+ * tiles and counters read this, never the loaded pages, so they stay right
+ * however few pages the user has opened.
+ */
+export function useActionsSummary() {
+  const query = useQuery<ActionsSummary, Error>({
+    queryKey: ["actions", "summary"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/crm/actions/summary`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as ActionsSummary;
+    },
+    staleTime: 15_000,
+    refetchInterval: ACTIONS_LIST_POLL_MS,
+  });
+  useLiveQueryInvalidation({
+    events: ["action.created", "action.updated"],
+    queryKey: ["actions"],
+  });
+  return query;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -226,7 +253,8 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
  */
 function removeFromAllListCaches(qc: ReturnType<typeof useQueryClient>, id: string) {
   // Cache structure: tanstack stores entries keyed by JSON-serialised
-  // queryKey. We iterate matched queries and rewrite their data.
+  // queryKey. We iterate matched queries and rewrite their data: a single
+  // page (`{ rows }`) or the Action Center's paged list (`{ pages }`).
   const queries = qc.getQueriesData<unknown>({ queryKey: ["actions"] });
   for (const [key, data] of queries) {
     if (!data || typeof data !== "object") continue;
@@ -235,6 +263,15 @@ function removeFromAllListCaches(qc: ReturnType<typeof useQueryClient>, id: stri
       qc.setQueryData<ListActionsPage>(key, {
         ...page,
         rows: page.rows.filter((r) => r.id !== id),
+      });
+    } else if ("pages" in (data as Record<string, unknown>)) {
+      const paged = data as InfiniteData<ListActionsPage, string | null>;
+      qc.setQueryData<InfiniteData<ListActionsPage, string | null>>(key, {
+        ...paged,
+        pages: paged.pages.map((p) => ({
+          ...p,
+          rows: p.rows.filter((r) => r.id !== id),
+        })),
       });
     }
   }

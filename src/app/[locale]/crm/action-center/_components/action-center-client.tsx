@@ -47,12 +47,14 @@ import { formatClinicDateTime, type Locale } from "@/lib/format";
 
 import {
   useActionsPaged,
+  useActionsSummary,
   useDoneAction,
   useDismissAction,
   useRecomputeActions,
   useSnoozeAction,
   useActionsSla,
   type ActionRow,
+  type ActionsSummary,
 } from "../_hooks/use-actions";
 import { RiskTodaySection } from "./risk-today-section";
 import { AnimatedDuration } from "@/components/motion/animated-time";
@@ -98,11 +100,20 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
 
   // OPEN + SNOOZED: the list endpoint hides a snoozed row until its timer
   // elapses, then serves it again. Asking for OPEN alone made «Отложить» a
-  // silent delete (audit AC-01).
-  const { rows: actions, isLoading } = useActionsPaged({
+  // silent delete (audit AC-01). Paged with «Показать ещё» (audit AC-18).
+  const {
+    rows: actions,
+    isLoading,
+    hasMore,
+    loadMore,
+    isLoadingMore,
+  } = useActionsPaged({
     status: ACTIONABLE_STATUSES,
     limit: 50,
   });
+  // Every count and sum on the page comes from the server aggregate over all
+  // open tasks, not from the pages loaded so far (audit AC-18).
+  const { data: summary } = useActionsSummary();
   const { data: dashboard } = useReceptionDashboard();
   const { data: doctors = [] } = useActiveDoctors();
   const { data: todayApts = [] } = useTodayAppointments();
@@ -135,8 +146,8 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
       : FALLBACK_AVG_VISIT_TIINS;
 
   const buckets = React.useMemo(
-    () => bucketActions(actions, avgVisitTiins),
-    [actions, avgVisitTiins],
+    () => kpisFromSummary(summary, avgVisitTiins),
+    [summary, avgVisitTiins],
   );
 
   return (
@@ -175,7 +186,11 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
           <KpiStrip buckets={buckets} />
           <ActionsList
             actions={actions}
+            summary={summary}
             isLoading={isLoading}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={loadMore}
             localePath={localePath}
             avgVisitTiins={avgVisitTiins}
           />
@@ -200,84 +215,47 @@ export function ActionCenterClient({ role }: ActionCenterClientProps) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Bucketing actions for KPI math + AI recs.
+// KPI math + AI recs, from the server aggregate.
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Counts and money for the tiles, «Потери сегодня» and the AI hints. Built
+ * from `GET /api/crm/actions/summary`, which covers every open task: the old
+ * version bucketed the loaded page, so past 50 open tasks every tile
+ * undercounted (audit AC-18). Zeros until the summary arrives.
+ */
 type Buckets = {
-  unconfirmed: ActionRow[];
-  freeSlots: ActionRow[];
-  noShowRisk: ActionRow[];
-  payments: ActionRow[];
-  dormant: ActionRow[];
-  overload: ActionRow[];
+  unconfirmed: number;
+  freeSlots: number;
+  noShowRisk: number;
+  payments: number;
+  dormantPatients: number;
+  overloadDoctorName: string | null;
   unconfirmedRevTiins: number;
   freeSlotsRevTiins: number;
   noShowLossTiins: number;
   paymentsLossTiins: number;
 };
 
-function bucketActions(rows: ActionRow[], avgVisitTiins: number): Buckets {
-  const unconfirmed: ActionRow[] = [];
-  const noShowRisk: ActionRow[] = [];
-  const freeSlots: ActionRow[] = [];
-  const payments: ActionRow[] = [];
-  const dormant: ActionRow[] = [];
-  const overload: ActionRow[] = [];
-
-  let unconfirmedRevTiins = 0;
-  let freeSlotsRevTiins = 0;
-  let noShowLossTiins = 0;
-  let paymentsLossTiins = 0;
-
-  for (const r of rows) {
-    switch (r.type) {
-      case "UNCONFIRMED_24H":
-        unconfirmed.push(r);
-        unconfirmedRevTiins += avgVisitTiins;
-        break;
-      case "NO_SHOW_RISK_HIGH": {
-        noShowRisk.push(r);
-        const risk =
-          r.payload.type === "NO_SHOW_RISK_HIGH" ? r.payload.risk : 0.5;
-        noShowLossTiins += Math.round(
-          avgVisitTiins * risk * NO_SHOW_RISK_FACTOR,
-        );
-        break;
-      }
-      case "EMPTY_SLOT_TOMORROW":
-        freeSlots.push(r);
-        if (r.payload.type === "EMPTY_SLOT_TOMORROW") {
-          freeSlotsRevTiins += r.payload.estimatedRevenueLossUzs;
-        }
-        break;
-      case "PAYMENT_OVERDUE":
-        payments.push(r);
-        if (r.payload.type === "PAYMENT_OVERDUE") {
-          paymentsLossTiins += r.payload.amountUzs;
-        }
-        break;
-      case "DORMANT_BATCH":
-        dormant.push(r);
-        break;
-      case "DOCTOR_OVERLOAD":
-        overload.push(r);
-        break;
-      default:
-        break;
-    }
-  }
-
+function kpisFromSummary(
+  summary: ActionsSummary | undefined,
+  avgVisitTiins: number,
+): Buckets {
+  const count = (type: ActionType) => summary?.byType[type] ?? 0;
+  const unconfirmed = count("UNCONFIRMED_24H");
   return {
     unconfirmed,
-    freeSlots,
-    noShowRisk,
-    payments,
-    dormant,
-    overload,
-    unconfirmedRevTiins,
-    freeSlotsRevTiins,
-    noShowLossTiins,
-    paymentsLossTiins,
+    freeSlots: count("EMPTY_SLOT_TOMORROW"),
+    noShowRisk: count("NO_SHOW_RISK_HIGH"),
+    payments: count("PAYMENT_OVERDUE"),
+    dormantPatients: summary?.dormantPatients ?? 0,
+    overloadDoctorName: summary?.overloadDoctorName ?? null,
+    unconfirmedRevTiins: unconfirmed * avgVisitTiins,
+    freeSlotsRevTiins: summary?.freeSlotsRevenueTiins ?? 0,
+    noShowLossTiins: Math.round(
+      avgVisitTiins * (summary?.noShowRiskSum ?? 0) * NO_SHOW_RISK_FACTOR,
+    ),
+    paymentsLossTiins: summary?.paymentsAmountTiins ?? 0,
   };
 }
 
@@ -293,7 +271,7 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
     {
       key: "unconfirmed",
       label: td("unconfirmed"),
-      count: buckets.unconfirmed.length,
+      count: buckets.unconfirmed,
       unit: td("unconfirmedUnit"),
       moneyTiins: buckets.unconfirmedRevTiins,
       hint: td("potentialLoss"),
@@ -304,7 +282,7 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
     {
       key: "freeSlots",
       label: td("freeSlots"),
-      count: buckets.freeSlots.length,
+      count: buckets.freeSlots,
       unit: td("freeSlotsUnit"),
       moneyTiins: buckets.freeSlotsRevTiins,
       hint: td("potentialRevenue"),
@@ -315,7 +293,7 @@ function KpiStrip({ buckets }: { buckets: Buckets }) {
     {
       key: "noShow",
       label: td("noShowRisk"),
-      count: buckets.noShowRisk.length,
+      count: buckets.noShowRisk,
       unit: td("noShowRiskUnit"),
       moneyTiins: -buckets.noShowLossTiins,
       hint: td("potentialLoss"),
@@ -446,6 +424,7 @@ const ACTION_CTA: Record<
   VISIT_FOLLOW_UP_DUE: { cta: "ctaCall", tone: "info", Icon: CalendarCheck2Icon },
   TELEGRAM_LINK_CONFLICT: { cta: "ctaOpen", tone: "warning", Icon: UsersIcon },
   NO_CONTACT_CALL: { cta: "ctaCall", tone: "violet", Icon: PhoneIcon },
+  PATIENT_CALLBACK: { cta: "ctaCallback", tone: "primary", Icon: PhoneIcon },
 };
 
 // Type helper so TypeScript knows the keys are valid i18n paths.
@@ -482,6 +461,7 @@ const CATEGORY_MAP: Record<ActionType, CategoryKey> = {
   PATIENT_NO_CHANNEL: "calls",
   VISIT_FOLLOW_UP_DUE: "calls",
   NO_CONTACT_CALL: "calls",
+  PATIENT_CALLBACK: "calls",
   EMPTY_SLOT_TOMORROW: "slots",
   IDLE_ROOM: "slots",
   LOW_DOCTOR_SCHEDULE: "slots",
@@ -530,18 +510,35 @@ const SECTION_PREVIEW_LIMIT = 5;
 
 function ActionsList({
   actions,
+  summary,
   isLoading,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
   localePath,
   avgVisitTiins,
 }: {
   actions: ActionRow[];
+  summary: ActionsSummary | undefined;
   isLoading: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
   localePath: (path: string) => string;
   avgVisitTiins: number;
 }) {
   const td = useTranslations("actionCenter.dashboard.actionsList");
+  const tac = useTranslations("actionCenter");
 
   const grouped = React.useMemo(() => groupByCategory(actions), [actions]);
+  // Counters show every open task (server aggregate), the sections the rows
+  // loaded so far; «Показать ещё» brings the next page in.
+  const total = summary?.total ?? actions.length;
+  const categoryTotals = React.useMemo(
+    () => categoryTotalsOf(summary),
+    [summary],
+  );
+  const remaining = Math.max(0, total - actions.length);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -552,8 +549,8 @@ function ActionsList({
             {td("subtitle")}
           </p>
         </div>
-        <span className="inline-flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary tabular-nums">
-          {actions.length}
+        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-bold text-primary tabular-nums">
+          {total}
         </span>
       </header>
 
@@ -580,25 +577,65 @@ function ActionsList({
                 key={cat}
                 category={cat}
                 rows={rows}
+                total={Math.max(rows.length, categoryTotals.get(cat) ?? 0)}
                 localePath={localePath}
                 avgVisitTiins={avgVisitTiins}
               />
             );
           })}
+          {hasMore ? (
+            <div className="flex justify-center pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onLoadMore}
+                disabled={isLoadingMore}
+                className="gap-1.5"
+              >
+                {isLoadingMore ? (
+                  <RefreshCcwIcon className="size-3.5 animate-spin" />
+                ) : (
+                  <ChevronDownIcon className="size-3.5" />
+                )}
+                {remaining > 0
+                  ? td("loadMoreRemaining", { count: remaining })
+                  : tac("loadMore")}
+              </Button>
+            </div>
+          ) : null}
         </div>
       )}
     </section>
   );
 }
 
+/** Open tasks per category from the server aggregate (all pages). */
+function categoryTotalsOf(
+  summary: ActionsSummary | undefined,
+): Map<CategoryKey, number> {
+  const totals = new Map<CategoryKey, number>();
+  if (!summary) return totals;
+  for (const [type, n] of Object.entries(summary.byType)) {
+    const cat = CATEGORY_MAP[type as ActionType];
+    if (!cat || !n) continue;
+    totals.set(cat, (totals.get(cat) ?? 0) + n);
+  }
+  return totals;
+}
+
 function CategorySection({
   category,
   rows,
+  total,
   localePath,
   avgVisitTiins,
 }: {
   category: CategoryKey;
+  /** The rows of this category loaded so far. */
   rows: ActionRow[];
+  /** Every open task of this category, loaded or not. */
+  total: number;
   localePath: (path: string) => string;
   avgVisitTiins: number;
 }) {
@@ -648,8 +685,8 @@ function CategorySection({
             {td(`categories.${category}.subtitle`)}
           </p>
         </div>
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold tabular-nums text-foreground">
-          {rows.length}
+        <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-bold tabular-nums text-foreground">
+          {total}
         </span>
         {groupImpactTiins > 0 ? (
           <span className="hidden shrink-0 text-right md:block">
@@ -1033,14 +1070,10 @@ function AiRecs({
   const locale = useLocale() as Locale;
 
   const overloadDoctorName =
-    buckets.overload[0]?.payload.type === "DOCTOR_OVERLOAD"
-      ? buckets.overload[0].payload.doctorName
-      : (doctors[0]?.[locale === "uz" ? "nameUz" : "nameRu"] ?? "—");
-  const dormantCount = buckets.dormant.reduce(
-    (acc, r) =>
-      acc + (r.payload.type === "DORMANT_BATCH" ? r.payload.patientCount : 0),
-    0,
-  );
+    buckets.overloadDoctorName ??
+    doctors[0]?.[locale === "uz" ? "nameUz" : "nameRu"] ??
+    "—";
+  const dormantCount = buckets.dormantPatients;
 
   // Each rec routes to the surface that helps the operator act on it; hrefs
   // mirror the QuickActionsGrid so the same intent always lands in the same
@@ -1049,7 +1082,7 @@ function AiRecs({
     {
       title: td("rec1Title"),
       body: td("rec1Body", {
-        count: buckets.unconfirmed.length,
+        count: buckets.unconfirmed,
         revenue: formatTiins(buckets.unconfirmedRevTiins, locale),
       }),
       cta: tdal("ctaCall"),
@@ -1199,13 +1232,13 @@ function TodayLosses({
     {
       label: td("emptySlots"),
       tiins: buckets.freeSlotsRevTiins,
-      count: buckets.freeSlots.length,
+      count: buckets.freeSlots,
       href: `/${locale}/crm/calendar?from=losses&intent=fill-slots`,
     },
     {
       label: td("noShowRisk"),
       tiins: buckets.noShowLossTiins,
-      count: buckets.noShowRisk.length,
+      count: buckets.noShowRisk,
       href: `/${locale}/crm/appointments?dateMode=today&bucket=no_show&from=losses`,
     },
     {

@@ -25,6 +25,14 @@ export type DetectorConfig = {
   unconfirmedHoursAhead: number;
   /** Risk threshold (0..1) above which NO_SHOW_RISK_HIGH fires. */
   noShowRiskThreshold: number;
+  /**
+   * NO_SHOW_RISK_HIGH needs at least this many finished visits (COMPLETED or
+   * NO_SHOW) of the patient's own. With none, the score is the Laplace prior
+   * 0.5 plus the first-visit bump 0.1, exactly the 0.6 threshold: every new
+   * patient read as «высокий риск 60%» (audit AC-07). A prior is not
+   * evidence; an unconfirmed first booking is UNCONFIRMED_24H's job.
+   */
+  noShowMinHistoryVisits: number;
   /** Look-ahead window for no-show risk, in hours. */
   noShowLookaheadHours: number;
   /** CASE_REPEAT_DUE fires when the deadline is at or within this many days. */
@@ -49,6 +57,7 @@ export const DEFAULT_CONFIG: DetectorConfig = {
   dormantCampaignCooldownDays: 30,
   unconfirmedHoursAhead: 24,
   noShowRiskThreshold: 0.6,
+  noShowMinHistoryVisits: 1,
   noShowLookaheadHours: 4,
   caseRepeatLeadDays: 7,
   followUpStaleDays: 7,
@@ -80,4 +89,17 @@ export const LOW_NPS_ALERT_TTL_DAYS = 14;
 export const PATIENT_NO_CHANNEL_TTL_HOURS = 48;
 // TELEGRAM_LINK_CONFLICT deliberately has no window: a Telegram account bound
 // to the wrong card stays wrong until reception merges or dismisses, so the
-// task lives until a person closes it.
+// task lives until a person closes it. PATIENT_CALLBACK has none either: it is
+// a call promised to the patient, and a promise does not lapse on its own
+// (audit AC-09).
+
+/**
+ * A detector row somebody closed is kept closed while its signal holds (audit
+ * AC-08). The engine re-upserts a live signal every 15 minutes and every
+ * re-upsert touches the closed row too, so a silence longer than this since
+ * the last touch means the detector stopped firing in between: the signal
+ * went away and has now come back, a new occurrence (tomorrow's overload of
+ * the same doctor, a dormant segment after its campaign cooldown). Long
+ * enough that a worker restart or a deploy does not count as one.
+ */
+export const CLOSED_SIGNAL_LAPSE_HOURS = 12;

@@ -7,12 +7,13 @@
  * severity by proximity.
  *
  * Predicate switched from `status === 'BOOKED'` to `confirmedAt IS NULL`. That
- * is the new canonical definition of "still needs confirming" — a patient may
- * be flipped to WAITING by reception before any confirm path has fired
- * (corner case in the Stage 1 flow), and BOOKED also includes rows that have
- * already been confirmed via SMS_REPLY / TG_BUTTON. CANCELLED / NO_SHOW /
- * COMPLETED are still excluded — once a visit is closed out we don't ask the
- * receptionist to chase confirmation.
+ * is the new canonical definition of "still needs confirming" — BOOKED also
+ * includes rows that have already been confirmed via SMS_REPLY / TG_BUTTON.
+ * CANCELLED / NO_SHOW / COMPLETED are still excluded — once a visit is closed
+ * out we don't ask the receptionist to chase confirmation — and so are
+ * WAITING / IN_PROGRESS: a patient reception flipped to WAITING before any
+ * confirm path fired is standing at the desk, confirmed in person (audit
+ * AC-07).
  *
  * Severity tiers (computed via `severityForUnconfirmed24h`, fed into the
  * engine's per-detector severity helper so `upsertAction` updates a row's
@@ -31,7 +32,11 @@
  * exactly for this scan — keep the `date` range + `confirmedAt: null`
  * predicate intact so the planner can use it.
  */
-import type { ActionSeverity, Unconfirmed24hPayload } from "@/lib/actions/types";
+import {
+  IN_CLINIC_APPOINTMENT_STATUSES,
+  type ActionSeverity,
+  type Unconfirmed24hPayload,
+} from "@/lib/actions/types";
 
 import type { DetectorConfig } from "../config";
 import type { PrismaLike } from "./_shared";
@@ -68,8 +73,13 @@ export async function detectUnconfirmed24h(
       confirmedAt: null,
       // Closed-out visits never need chasing — exclude regardless of
       // confirmedAt (corner case: COMPLETED rows that were never confirmed
-      // because the patient walked in unannounced).
-      status: { notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
+      // because the patient walked in unannounced). Neither does a patient
+      // who is already in the clinic (audit AC-07): reception would be told
+      // to phone someone sitting in the hall. Their earlier row is retired
+      // by the engine (`retireInClinicRiskActions`).
+      status: {
+        notIn: ["CANCELLED", "NO_SHOW", "COMPLETED", ...IN_CLINIC_APPOINTMENT_STATUSES],
+      },
       date: { gte: now, lte: horizon },
     },
     select: {

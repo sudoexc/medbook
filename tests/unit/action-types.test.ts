@@ -157,12 +157,24 @@ const SAMPLE_PAYLOADS: { [K in ActionType]: Extract<ActionPayload, { type: K }> 
     doctorName: "Алиев А.А.",
     daysSinceContact: 31,
   },
+  // Audit AC-09 — a call promised past the visit.
+  PATIENT_CALLBACK: {
+    type: "PATIENT_CALLBACK",
+    appointmentId: "apt_10",
+    patientId: "p_10",
+    patientName: "Юсупова Лола",
+    doctorName: "Султанов А.",
+    appointmentAt: "2026-05-07T11:00:00.000Z",
+    reason: "RETURN_LATER",
+    callbackAt: "2026-05-10T04:00:00.000Z",
+    note: "после командировки",
+  },
 };
 
 describe("ACTION_TYPES surface", () => {
-  it("ACTION_TYPES has exactly 15 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04 + AC-04)", () => {
-    expect(ACTION_TYPES.length).toBe(15);
-    expect(new Set(ACTION_TYPES).size).toBe(15);
+  it("ACTION_TYPES has exactly 16 entries (Wave 1 + Phase 16 Wave 2 + sms-removal Wave 4 + Ф6 + MA-04 + AC-04 + AC-09)", () => {
+    expect(ACTION_TYPES.length).toBe(16);
+    expect(new Set(ACTION_TYPES).size).toBe(16);
   });
 
   it("ACTION_SEVERITIES + ACTION_STATUSES are non-empty and unique", () => {
@@ -264,6 +276,11 @@ describe("dedupeKeyFor", () => {
         "NO_CONTACT_CALL",
         SAMPLE_PAYLOADS.NO_CONTACT_CALL,
         { ...SAMPLE_PAYLOADS.NO_CONTACT_CALL, appointmentId: "apt_99" },
+      ],
+      [
+        "PATIENT_CALLBACK",
+        SAMPLE_PAYLOADS.PATIENT_CALLBACK,
+        { ...SAMPLE_PAYLOADS.PATIENT_CALLBACK, appointmentId: "apt_98" },
       ],
     ];
     for (const [, a, b] of variants) {
@@ -389,6 +406,8 @@ describe("compile-time discriminated-union narrowing", () => {
         case "TELEGRAM_LINK_CONFLICT":
           return p.clinicCardName;
         case "NO_CONTACT_CALL":
+          return p.patientName;
+        case "PATIENT_CALLBACK":
           return p.patientName;
         default: {
           const _exhaustive: never = p;

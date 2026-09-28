@@ -1,8 +1,11 @@
 /**
  * Resurrection guard (TZ-risk-outcomes §3): the 15-min engine recompute must
  * NOT reopen a DONE action once a human recorded a call outcome — until the
- * appointment itself passes (`expiresAt`). Without an outcome, the old
- * DONE→OPEN resurrection still applies. `upsertAction` takes `prisma` as a
+ * appointment itself passes (`expiresAt`), whatever the payload says. Past
+ * that, and for a DONE row without an outcome, the general rule of audit
+ * AC-08 applies: a closed row reopens only when something genuinely new
+ * happened (see action-reopen-rule.test.ts). The old unconditional
+ * DONE→OPEN resurrection is gone. `upsertAction` takes `prisma` as a
  * parameter, so we inject a capturing stub — no module mocks needed.
  */
 import { describe, expect, it } from "vitest";
@@ -75,26 +78,45 @@ describe("upsertAction — outcome lock", () => {
     expect(cap.updateData?.status).toBe("DONE"); // stayed handled
   });
 
-  it("DOES resurrect a DONE row with no outcome (legacy behaviour)", async () => {
+  it("keeps a DONE row with no outcome closed while nothing changed (AC-08)", async () => {
     const cap: Captured = { updateData: null };
     const prisma = stubPrisma(doneRow({ outcome: null }), cap);
     await upsertAction(prisma, "c1", payload, {
       severity: "high",
       expiresAt: FUTURE,
     });
-    expect(cap.updateData?.status).toBe("OPEN"); // reopened as before
+    expect(cap.updateData?.status).toBe("DONE"); // «Готово» sticks
   });
 
-  it("resurrects an outcome'd row once the appointment has passed (expiresAt)", async () => {
+  it("the lock holds even over a moved visit until expiresAt", async () => {
     const cap: Captured = { updateData: null };
-    const prisma = stubPrisma(
-      doneRow({ outcome: "CONFIRMED", expiresAt: PAST }),
-      cap,
+    const prisma = stubPrisma(doneRow({ outcome: "RESCHEDULED" }), cap);
+    await upsertAction(
+      prisma,
+      "c1",
+      { ...payload, appointmentAt: FUTURE.toISOString() },
+      { severity: "high", expiresAt: FUTURE },
     );
-    await upsertAction(prisma, "c1", payload, {
-      severity: "high",
-      expiresAt: PAST,
-    });
-    expect(cap.updateData?.status).toBe("OPEN");
+    expect(cap.updateData?.status).toBe("DONE");
+  });
+
+  it("past expiresAt, an outcome'd row reopens only for something new", async () => {
+    const same: Captured = { updateData: null };
+    await upsertAction(
+      stubPrisma(doneRow({ outcome: "CONFIRMED", expiresAt: PAST }), same),
+      "c1",
+      payload,
+      { severity: "high", expiresAt: PAST },
+    );
+    expect(same.updateData?.status).toBe("DONE");
+
+    const moved: Captured = { updateData: null };
+    await upsertAction(
+      stubPrisma(doneRow({ outcome: "CONFIRMED", expiresAt: PAST }), moved),
+      "c1",
+      { ...payload, appointmentAt: FUTURE.toISOString() },
+      { severity: "high", expiresAt: FUTURE },
+    );
+    expect(moved.updateData?.status).toBe("OPEN");
   });
 });

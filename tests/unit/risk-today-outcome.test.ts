@@ -514,6 +514,47 @@ describe("only a risk-today row takes an outcome", () => {
   });
 });
 
+// Audit AC-07: a patient who has arrived is not a call to make.
+describe("a patient already in the clinic", () => {
+  it("leaves the risk list once reception marks the arrival, and while with the doctor", async () => {
+    const { get } = await routes();
+    expect((await riskToday(get)).appointments).toHaveLength(1);
+    for (const status of ["WAITING", "IN_PROGRESS"]) {
+      db.appts.get("ap_1")!.status = status;
+      expect((await riskToday(get)).appointments, status).toHaveLength(0);
+    }
+  });
+
+  it("a returning walk-in, registered straight into WAITING, never joins the list", async () => {
+    // Last in touch a month ago: «не на связи» would have flagged them.
+    db.appts.set("ap_walkin", {
+      id: "ap_walkin",
+      clinicId: "c1",
+      date: NOW,
+      status: "WAITING",
+      priceFinal: null,
+      patientId: "p_1",
+      confirmedAt: null,
+      cancelReason: null,
+    });
+    db.appts.delete("ap_1");
+    const { get } = await routes();
+    expect((await riskToday(get)).appointments).toHaveLength(0);
+  });
+
+  it("an outcome recorded after the patient arrived is refused with its own reason", async () => {
+    db.appts.get("ap_1")!.status = "WAITING";
+    const { post } = await routes();
+    const res = await post(postOutcome({ outcome: "REFUSED", note: "x" }));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { reason: string }).reason).toBe("patient_in_clinic");
+    expect(db.cancelCalls).toHaveLength(0);
+    expect(db.actions.size).toBe(0);
+    expect(db.patients.get("p_1")!.lastContactedAt).toEqual(LAST_CONTACT);
+    expect(db.appts.get("ap_1")!.status).toBe("WAITING");
+  });
+});
+
 describe("a snoozing outcome brings the task back at the top of the list", () => {
   it("stamps surfacedAt with the moment the row returns", async () => {
     const { post } = await routes();
@@ -521,11 +562,21 @@ describe("a snoozing outcome brings the task back at the top of the list", () =>
     const [task] = [...db.actions.values()];
     expect(task!.surfacedAt).toEqual(new Date(NOW.getTime() + 2 * 60 * 60 * 1000));
 
-    const callbackAt = new Date(NOW.getTime() + 5 * 60 * 60 * 1000);
+    // 14:00, before the 15:00 visit: the call rides on the same row. A later
+    // time moves to a PATIENT_CALLBACK task (audit AC-09), which carries the
+    // same stamp: see action-center-worklist.test.ts.
+    const callbackAt = new Date(NOW.getTime() + 3 * 60 * 60 * 1000);
     await post(
       postOutcome({ outcome: "CALLBACK", callbackAt: callbackAt.toISOString() }),
     );
     expect(db.actions.get(task!.id)!.surfacedAt).toEqual(callbackAt);
+
+    const afterVisit = new Date(APPT_AT.getTime() + 60 * 60 * 1000);
+    await post(
+      postOutcome({ outcome: "CALLBACK", callbackAt: afterVisit.toISOString() }),
+    );
+    const callback = [...db.actions.values()].find((r) => r.type === "PATIENT_CALLBACK");
+    expect(callback!.surfacedAt).toEqual(afterVisit);
   });
 });
 

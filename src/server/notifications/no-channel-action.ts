@@ -94,7 +94,12 @@ export async function recordPatientNoChannel(params: {
           severity: result.severity,
         },
       });
-    } else if (result.payloadChanged || result.severityChanged) {
+    } else if (
+      // A second missed reminder of the same bucket leaves a task reception
+      // already closed closed (audit AC-08): nothing to announce.
+      !result.keptClosed &&
+      (result.payloadChanged || result.severityChanged)
+    ) {
       publishEventSafe(params.clinicId, {
         type: "action.updated",
         payload: {

@@ -685,7 +685,9 @@ async function bridgeNote(note: BridgeNote, now: Date): Promise<void> {
   });
 
   // Follow-up reception task — idempotent via the Action dedupeKey, so it
-  // lives outside the row transaction (a retry converges either way).
+  // lives outside the row transaction (a retry converges either way). A
+  // re-bridge after a note edit does not reopen a task reception already
+  // closed; only a moved due date does (upsertAction, audit AC-08).
   if (note.followUpDays != null && note.followUpDays > 0) {
     const due = new Date(
       startsAt.getTime() + note.followUpDays * 24 * 60 * 60 * 1000,

@@ -8,7 +8,7 @@
  * (`upsertAction`). User-driven mutations live under `/[id]/...`.
  *
  * Filters:
- *   - status: defaults to OPEN-only when omitted; accepts repeated values.
+ *   - status: defaults to OPEN + SNOOZED when omitted; accepts repeated values.
  *   - type: optional, accepts repeated values.
  *   - severity: optional, accepts repeated values.
  *   - assigneeRole: ADMIN | RECEPTIONIST (null assigneeRole is always
@@ -29,7 +29,7 @@ import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { ok, err, parseQuery } from "@/server/http";
 import { QueryActionSchema } from "@/server/schemas/action";
-import { listActionsPage } from "@/server/actions/list";
+import { listActionsPage, visibleActionsWhere } from "@/server/actions/list";
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"] },
@@ -44,50 +44,14 @@ export const GET = createApiListHandler(
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
 
-    const now = new Date();
-
-    const where: Record<string, unknown> = {};
-
-    // Status filter — default to OPEN when caller omits it. We keep
-    // SNOOZED rows visible only when their snoozeUntil has elapsed (handled
-    // by the snoozeUntil clause below).
-    const statuses = q.status ?? ["OPEN", "SNOOZED"];
-    where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
-
-    if (q.type && q.type.length > 0) {
-      where.type = q.type.length === 1 ? q.type[0] : { in: q.type };
-    }
-    // Severity is applied by `listActionsPage`, which reads one severity
-    // bucket at a time in rank order.
-    if (q.assigneeRole) {
-      // Show rows assigned to this role OR rows assigned to "any role"
-      // (assigneeRole IS NULL).
-      where.OR = [
-        { assigneeRole: q.assigneeRole },
-        { assigneeRole: null },
-      ];
-    }
-
-    // Hide expired rows: either marked status=EXPIRED (already excluded by
-    // the status filter unless the caller explicitly asked for it) OR
-    // expiresAt elapsed.
-    where.AND = [
-      {
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } },
-        ],
-      },
-      // Hide actively snoozed rows; allow status=SNOOZED whose timer has
-      // already elapsed (those resurface as "snoozed-expired" which we
-      // surface as still actionable).
-      {
-        OR: [
-          { snoozeUntil: null },
-          { snoozeUntil: { lte: now } },
-        ],
-      },
-    ];
+    // Visibility (status default, expiry, live snoozes) is shared with the
+    // KPI summary endpoint. Severity is applied by `listActionsPage`, which
+    // reads one severity bucket at a time in rank order.
+    const where = visibleActionsWhere(new Date(), {
+      statuses: q.status ?? null,
+      types: q.type ?? null,
+      assigneeRole: q.assigneeRole ?? null,
+    });
 
     const page = await listActionsPage(prisma, where, {
       limit: q.limit,

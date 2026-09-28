@@ -4346,7 +4346,8 @@
         "drugs": "Dorilar",
         "guides": "Tashxis yo'riqnomalari",
         "protocols": "Protokollar",
-        "handouts": "Eslatmalar"
+        "handouts": "Eslatmalar",
+        "diagnoses": "Klinika tashxislari"
       },
       "searchPlaceholder": "Qidirish…",
       "loading": "Yuklanmoqda…",
@@ -4462,6 +4463,24 @@
           "matchPrefixes": "Tashxislarga bog'lash (KXT-10)",
           "bodyMd": "Matn (RU, Markdown)",
           "bodyMdUz": "Matn (UZ, Markdown)"
+        }
+      },
+      "diagnoses": {
+        "hint": "Klinika shifokorlari o'z so'zlari bilan yozgan tashxislar. Ular barcha shifokorlarning tavsiyalarida chiqadi: KXT-10 kodini bog'lang yoki xatoni o'chiring.",
+        "empty": "Klinikaning o'z tashxislari hali yo'q",
+        "noCode": "kodsiz",
+        "editTitle": "Tashxis uchun KXT-10 kodi",
+        "deleteTitle": "Tashxisni o'chirish?",
+        "deleteHint": "U barcha shifokorlarning tavsiyalaridan yo'qoladi. Yozilgan xulosalar o'zgarmaydi.",
+        "deleted": "Tashxis o'chirildi",
+        "columns": {
+          "name": "Tashxis",
+          "code": "KXT-10",
+          "uses": "Imzolangan"
+        },
+        "fields": {
+          "code": "KXT-10 kodi",
+          "codeHint": "Masalan, G43.0. Kod bo'lmasa, bo'sh qoldiring."
         }
       },
       "protocols": {

@@ -568,6 +568,12 @@ export const AUDIT_ACTION = {
   KNOWLEDGE_HANDOUT_CREATED: "KNOWLEDGE_HANDOUT_CREATED",
   KNOWLEDGE_HANDOUT_UPDATED: "KNOWLEDGE_HANDOUT_UPDATED",
   KNOWLEDGE_HANDOUT_DELETED: "KNOWLEDGE_HANDOUT_DELETED",
+  // Audit CT-05: the admin corrected the code of a diagnosis wording the
+  // clinic learned from practice, or removed the wording from the picker.
+  // `entityType: "ClinicDiagnosis"`; meta `{ nameRu, code, previousCode? }`.
+  // DELETED is a real delete: the row holds nothing a note points at.
+  KNOWLEDGE_DIAGNOSIS_UPDATED: "KNOWLEDGE_DIAGNOSIS_UPDATED",
+  KNOWLEDGE_DIAGNOSIS_DELETED: "KNOWLEDGE_DIAGNOSIS_DELETED",
 
   // Phase G6 — Doctor pinned / unpinned a catalog entry as a favourite.
   // `entityType: "DoctorFavorite"`, `entityId: <favorite.id>`. `meta`

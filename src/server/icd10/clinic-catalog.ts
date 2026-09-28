@@ -15,7 +15,7 @@
  * list would only add noise.
  */
 import { prisma } from "@/lib/prisma";
-import { ICD10_ENTRIES } from "./data";
+import { ICD10_ENTRIES, type Icd10Entry } from "./data";
 import { normalizeIcdTerm } from "./search";
 
 /** Static codes, for the "don't relearn what we ship" check. */
@@ -25,11 +25,21 @@ function isStaticCode(code: string): boolean {
   return staticCodes.has(code.toLowerCase());
 }
 
+/**
+ * A wording compared without its punctuation: «Мигрень без ауры [простая
+ * мигрень]» and «Мигрень без ауры, простая мигрень» are the same words.
+ */
+function wordsOnly(normalized: string): string {
+  return normalized.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
 /** Static wordings, for the same check on free text. */
 let staticNames: Set<string> | null = null;
-function isStaticName(normalized: string): boolean {
-  staticNames ??= new Set(ICD10_ENTRIES.map((e) => normalizeIcdTerm(e.nameRu)));
-  return staticNames.has(normalized);
+export function isStaticName(normalized: string): boolean {
+  staticNames ??= new Set(
+    ICD10_ENTRIES.map((e) => wordsOnly(normalizeIcdTerm(e.nameRu))),
+  );
+  return staticNames.has(wordsOnly(normalized));
 }
 
 /** Loose ICD-shaped code: letter, two digits, optional dotted suffix. */
@@ -161,4 +171,57 @@ export async function searchClinicCatalog(
     custom: true as const,
     usageCount: r.usageCount,
   }));
+}
+
+/**
+ * The picker's list for a query: the clinic's learned wordings and the
+ * classifier's matches, in the order a doctor should meet them (audit CT-05).
+ *
+ * Learned wordings used to lead unconditionally. One doctor's «мигрень»
+ * picked through «Использовать как написано» then sat above G43.0 for every
+ * doctor of the clinic, they clicked it, and conclusions went out without a
+ * code. Now:
+ *   1. learned entries WITH a code (one the classifier lacks, «код знаю, в
+ *      базе нет»): the clinic's own coded rubric, first as before;
+ *   2. the classifier's matches;
+ *   3. learned entries WITHOUT a code, last. They stay in the list (the
+ *      caller caps them at a third of it), so a colleague's wording is still
+ *      one tap away, but never above a coded rubric of the same query.
+ * An uncoded entry whose wording IS a classifier name is dropped: the coded
+ * row says the same thing. Duplicates (same code and wording) collapse, so
+ * `code|name` is a unique key for the list.
+ */
+export function mergeDiagnosisHits(
+  custom: readonly ClinicCatalogHit[],
+  stat: readonly Icd10Entry[],
+  limit: number,
+): Array<ClinicCatalogHit | Icd10Entry> {
+  const coded = custom.filter((c) => c.code.trim());
+  const uncoded = custom.filter(
+    (c) => !c.code.trim() && !isStaticName(normalizeIcdTerm(c.nameRu)),
+  );
+  const seen = new Set<string>();
+  const out: Array<ClinicCatalogHit | Icd10Entry> = [];
+  const push = (row: ClinicCatalogHit | Icd10Entry): boolean => {
+    const key = diagnosisHitKey(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    out.push(row);
+    return true;
+  };
+
+  for (const c of coded) push(c);
+  const room = Math.max(0, limit - out.length - uncoded.length);
+  let taken = 0;
+  for (const s of stat) {
+    if (taken >= room) break;
+    if (push(s)) taken += 1;
+  }
+  for (const c of uncoded) push(c);
+  return out.slice(0, limit);
+}
+
+/** The identity of a picker row: an uncoded wording has no code to key on. */
+export function diagnosisHitKey(row: { code: string; nameRu: string }): string {
+  return `${row.code.trim().toUpperCase()}|${normalizeIcdTerm(row.nameRu)}`;
 }

@@ -51,11 +51,37 @@ function diagnosisKey(code: string | null, name: string): string {
   return c ? `code:${c}` : `text:${normalizeCatalogTerm(name)}`;
 }
 
+/**
+ * The wording to offer for a code. Until the catalog carried its parent's
+ * words (audit CT-06), a leaf was stored as the bare tail of its category
+ * («Головного мозга над мозговым наметом» for D33.0), and a shortlist built
+ * from those notes would keep putting it back into new conclusions. A stored
+ * wording that is exactly the end of the catalog's current name is that old
+ * fragment: the full name replaces it. Any other wording of his is left
+ * alone; the rare one that is also such a tail («мигрень» for G43.8 «Другая
+ * мигрень») becomes the name of the code he picked, which it stood for.
+ */
+function currentWording(
+  code: string | null,
+  stored: string,
+  nameForCode: (code: string) => string | null,
+): string {
+  if (!code) return stored;
+  const current = nameForCode(code.toUpperCase());
+  if (!current) return stored;
+  const full = normalizeCatalogTerm(current);
+  const own = normalizeCatalogTerm(stored);
+  return full.length > own.length && full.endsWith(` ${own}`) ? current : stored;
+}
+
 export function buildDiagnosisShortlist(args: {
   /** Starred ICD codes, in the doctor's order. */
   pinnedCodes: string[];
   uses: DiagnosisUse[];
-  /** Wording for a starred code he never used yet. */
+  /**
+   * The catalog's wording for a code: for a starred code he never used yet,
+   * and to replace a stored fragment of it (see `currentWording`).
+   */
   nameForCode: (code: string) => string | null;
   limit: number;
 }): DiagnosisShortItem[] {
@@ -76,7 +102,7 @@ export function buildDiagnosisShortlist(args: {
     }
     acc.set(key, {
       code: code ? code.toUpperCase() : null,
-      name,
+      name: currentWording(code, name, args.nameForCode),
       count: 1,
       pinned: false,
       lastAt: u.at.getTime(),

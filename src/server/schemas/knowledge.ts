@@ -139,3 +139,26 @@ export const UpdateClinicHandoutSchema =
 export type UpdateClinicHandoutInput = z.infer<
   typeof UpdateClinicHandoutSchema
 >;
+
+/**
+ * Audit CT-05 — correcting a learned clinic diagnosis. Only the code is
+ * editable: a wording with a typo is deleted (the next doctor who really
+ * writes it teaches it again), and `null` or "" clears the code.
+ */
+export const UpdateClinicDiagnosisSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .max(10)
+    .nullable()
+    .transform((v) => (v ? v.toUpperCase() : null))
+    .refine(
+      (v) => v === null || /^[A-Z][0-9]{2}(?:\.[0-9A-Z]{1,3})?$/.test(v),
+      { message: "code must look like an ICD-10 code (G43, G43.0)" },
+    ),
+});
+
+export type UpdateClinicDiagnosisInput = z.infer<
+  typeof UpdateClinicDiagnosisSchema
+>;
+

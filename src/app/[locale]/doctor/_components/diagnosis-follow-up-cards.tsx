@@ -369,7 +369,9 @@ export function DiagnosisCard({
           {focused && query.trim().length >= 2 && (
             <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-72 overflow-y-auto rounded-lg border border-border bg-popover py-1 shadow-md">
               {rows.map((r) => (
-                <li key={r.code}>
+                // A learned wording without a code has code "": several of
+                // them would share a key (audit CT-05).
+                <li key={`${r.code}|${r.nameRu}`}>
                   <button
                     type="button"
                     onMouseDown={(e) => {

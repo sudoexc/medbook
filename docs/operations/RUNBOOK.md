@@ -401,6 +401,52 @@ docker run --rm --network medbook_default \
 /root:/out alpine tar czf /out/miniodata.tgz /data` (при остановленном MinIO).
 ⚠️ обе процедуры на этом сервере не репетировались — проверить.
 
+#### MinIO наружу не открыт (audit INF-07)
+
+В репо `nginx/nginx.conf` больше нет `upstream medbook_minio` и
+`location /files/` (весь S3 и admin API MinIO торчали в интернет, приложение
+этот путь не использует: файлы идут через свои роуты `/api/*/file`). На сервере
+`nginx.conf` свой (skip-worktree), поэтому один раз руками, после
+`ops/pull-keep-prod-configs.sh` (DEPLOY.md §3, шаги 1 и 1b):
+
+```bash
+cd /opt/neurofax
+# 0. кто ещё смотрит в MinIO: ожидаются только два блока в nginx.conf.
+#    Vhost в conf.d с minio:9000 (files.<домен>) это та же дыра: выключить так же
+grep -rn "medbook_minio\|minio:900" nginx/nginx.conf nginx/conf.d/
+# 1. убрать оба блока из серверной копии
+cp -p nginx/nginx.conf /root/prod-conf-bak/nginx.conf.pre-inf07
+sed -i -e '/^[[:space:]]*upstream medbook_minio[[:space:]]*{/,/^[[:space:]]*}/d' \
+       -e '/^[[:space:]]*location \/files\/[[:space:]]*{/,/^[[:space:]]*}/d' nginx/nginx.conf
+diff /root/prod-conf-bak/nginx.conf.pre-inf07 nginx/nginx.conf
+#    diff: удалены ТОЛЬКО эти два блока. Иначе вернуть копию и править руками
+# 2. проверить новый файл, затем recreate (inode, см. DEPLOY.md §3 шаг 1b)
+docker cp nginx/nginx.conf medbook-nginx-1:/etc/nginx/nginx.candidate.conf
+docker exec medbook-nginx-1 nginx -t -c /etc/nginx/nginx.candidate.conf
+docker exec medbook-nginx-1 rm -f /etc/nginx/nginx.candidate.conf
+docker compose up -d --no-deps --force-recreate nginx
+docker exec medbook-nginx-1 nginx -t
+docker exec medbook-nginx-1 grep -c medbook_minio /etc/nginx/nginx.conf   # 0
+# 3. смоук
+curl -s -o /dev/null -w '%{http_code}\n' https://neurofax.uz/files/minio/health/live  # 404
+curl -fsS https://neurofax.uz/api/health | jq .checks.minio.status                    # "ok"
+for d in neurofax.uz rtxshop.uz orientatravel.uz termogrom.uz tizimagency.uz; do
+  printf '%s → ' "$d"; curl -sSo /dev/null -w '%{http_code}\n' "https://$d/" || echo FAIL
+done
+```
+
+Плюс глазами: в CRM открыть любой документ пациента и вложение чата (идут
+через приложение, должны открываться как раньше). Откат:
+`cp -p /root/prod-conf-bak/nginx.conf.pre-inf07 nginx/nginx.conf && docker
+compose up -d --no-deps --force-recreate nginx`.
+
+`docker-compose.yml` в репо больше не подставляет ключи MinIO по умолчанию
+(`${MINIO_ACCESS_KEY:?…}`). Серверную копию менять не обязательно. Если
+переносить: сначала `grep -cE '^MINIO_(ACCESS|SECRET)_KEY=.+' .env` должен
+дать `2`, после правки `docker compose config -q && echo OK`. Если в `.env`
+ключей нет, MinIO работает на ключах по умолчанию: правку не переносить, а
+завести ключи (это смена ключей MinIO, отдельная процедура).
+
 
 ### 4.5 Ключи и конфиги: restore kit (audit INF-08)
 
@@ -527,6 +573,14 @@ ssh root@167.233.142.75 'ls -l /var/backups/medbook/$(date -u +%F)/; grep -E "re
 `prisma/seed-presets.ts` и SQL из `prisma/seed-presets-sql.ts` больше не
 стирают шаблоны врачей: пакет получают только врачи, у которых шаблонов ещё
 нет.
+
+`prisma/seed-protocols.ts` пишет только глобальные протоколы (без клиники и
+врача): недостающие создаёт, существующие обновляет на месте (id не меняется,
+скрытие протокола клиникой сохраняется), ничего не удаляет. Личные протоколы
+врачей («сохранить как протокол») и протоколы клиники не читает и не трогает.
+По умолчанию DRY RUN: `docker compose exec -e APPLY=1 worker npx tsx
+prisma/seed-protocols.ts`. `prisma/seed-handouts.ts` выключает только
+глобальные памятки, памятки клиники не трогает.
 
 Предохранитель: последний рубеж, а не разрешение. Если команда из старой
 заметки, истории терминала или памяти предлагает «освежить демо» на проде,

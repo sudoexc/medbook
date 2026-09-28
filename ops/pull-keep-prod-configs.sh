@@ -35,8 +35,10 @@
 # Written for bash 3.2 as well (the unit test runs it on macOS).
 set -euo pipefail
 
-# The backups carry the neighbours' vhosts and the compose file.
-umask 077
+# The backups carry the neighbours' vhosts and the compose file, so their
+# folder is private (chmod 700 below). The checkout itself keeps the normal
+# umask: a process-wide 077 made every file the merge wrote 0600 root, and the
+# worker (uid 1001) could no longer read the scripts/ it mounts from here.
 
 BACKUP_ROOT="${BACKUP_ROOT:-/root/prod-conf-bak}"
 
@@ -89,6 +91,7 @@ EOF
 
 bak="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$bak"
+chmod 700 "$BACKUP_ROOT" "$bak"
 while IFS= read -r f; do
   [ -n "$f" ] && [ -f "$f" ] || continue
   mkdir -p "$bak/$(dirname "$f")"

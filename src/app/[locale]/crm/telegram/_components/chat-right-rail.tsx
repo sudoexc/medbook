@@ -28,6 +28,11 @@ import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { AI_ENABLED } from "@/lib/ai-enabled";
+import {
+  isPrivateChatId,
+  isUnconfirmedMiniAppCard,
+  threadProfileName,
+} from "@/lib/patients/telegram-card";
 import { InDevelopment } from "@/components/ui/in-development";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +80,10 @@ type PatientDetails = {
   ltv: number | bigint | null;
   lastVisitAt: string | null;
   isVerified?: boolean;
+  source?: string | null;
+  phoneNormalized?: string | null;
+  phoneVerifiedAt?: string | null;
+  telegramId?: string | null;
 };
 
 /** Server-side clinical KPIs from /api/crm/patients/[id]/stats. */
@@ -211,6 +220,19 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
   const phone = p?.phone ?? conversation.patient?.phone ?? null;
   const photo = p?.photoUrl ?? conversation.patient?.photoUrl ?? null;
   const patientId = conversation.patientId!;
+  // The bot tied the chat to the card the Mini App made on first open
+  // (audit TG-11 review): nobody has confirmed who it is, and the patient
+  // may well have a clinic card with his history. Reception can still move
+  // the chat there; the stub makes way once the account follows.
+  const miniAppCard = p ? isUnconfirmedMiniAppCard(p) : false;
+  // The chat's account is not the card's Telegram yet: either the link was
+  // never confirmed (a card with history, another name) or it predates
+  // TG-11. Binding it is an explicit, warned step.
+  const telegramUnbound =
+    !!p &&
+    !p.telegramId &&
+    conversation.channel === "TG" &&
+    isPrivateChatId(conversation.externalId);
 
   return (
     <div
@@ -228,6 +250,18 @@ function LinkedPatientRail({ conversation }: { conversation: InboxConversation }
         age={age}
         isLoading={detailsQuery.isLoading}
       />
+
+      {miniAppCard ? (
+        <CreatePatientForm conversation={conversation} relink />
+      ) : null}
+
+      {telegramUnbound ? (
+        <TelegramBindCard
+          conversation={conversation}
+          patientId={patientId}
+          patientName={displayName}
+        />
+      ) : null}
 
       <LtvBalanceCard
         balance={p?.balance ?? 0}
@@ -1192,12 +1226,145 @@ function TagsCard({ conversation }: { conversation: InboxConversation }) {
 /** `telegramLink` of the conversation PATCH (server/conversations/link-patient.ts). */
 type TelegramLinkOutcome =
   | { kind: "already-linked" | "linked" | "card-has-other-telegram" }
-  | { kind: "telegram-on-other-card"; otherPatientName: string };
+  | { kind: "telegram-on-other-card"; otherPatientName: string }
+  | { kind: "needs-confirm"; reason: "history" | "name" };
 
-function CreatePatientForm({
+/** Tell the operator what linking did to the card's Telegram. */
+function announceTelegramLink(
+  link: TelegramLinkOutcome | null,
+  t: ReturnType<typeof useTranslations<"tgInbox.rail">>,
+): void {
+  if (link?.kind === "card-has-other-telegram") {
+    toast.warning(t("telegramKeptOther"));
+  } else if (link?.kind === "telegram-on-other-card") {
+    toast.warning(t("telegramOnOtherCard", { name: link.otherPatientName }));
+  } else if (link?.kind === "needs-confirm") {
+    toast.info(t("telegramNeedsConfirm"));
+  }
+}
+
+/**
+ * The chat's Telegram account is not the linked card's (audit TG-11
+ * review). Binding it gives whoever writes in this chat the card in the
+ * Mini App and the doctor's conclusions, so it is never a side effect of
+ * typing a name and a number: the operator reads the warning and confirms.
+ */
+function TelegramBindCard({
   conversation,
+  patientId,
+  patientName,
 }: {
   conversation: InboxConversation;
+  patientId: string;
+  patientName: string;
+}) {
+  const t = useTranslations("tgInbox.rail.telegramBind");
+  const tRail = useTranslations("tgInbox.rail");
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = React.useState(false);
+  const account =
+    threadProfileName(conversation) ??
+    (conversation.contactUsername
+      ? `@${conversation.contactUsername}`
+      : conversation.externalId ?? "");
+
+  const bind = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/crm/conversations/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ linkTelegram: true }),
+      });
+      if (res.status === 403) throw new Error(t("forbidden"));
+      if (!res.ok) throw new Error(t("failed"));
+      const j = (await res.json().catch(() => null)) as {
+        telegramLink?: TelegramLinkOutcome | null;
+      } | null;
+      return j?.telegramLink ?? null;
+    },
+    onSuccess: (link) => {
+      setConfirming(false);
+      if (link?.kind === "linked" || link?.kind === "already-linked") {
+        toast.success(tRail("telegramLinked"));
+      } else if (!link) {
+        toast.error(t("failed"));
+      } else {
+        announceTelegramLink(link, tRail);
+      }
+      void qc.invalidateQueries({ queryKey: ["patient-mini", patientId] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : t("failed"));
+    },
+  });
+
+  return (
+    <section className="rounded-2xl border border-warning/40 bg-warning/5 p-3">
+      <header className="mb-1 flex items-center gap-1.5">
+        <SendIcon className="size-3.5 text-[color:var(--warning)]" aria-hidden />
+        <h3 className="text-[13px] font-bold text-foreground">{t("title")}</h3>
+      </header>
+      <p className="text-[11px] text-muted-foreground">{t("description")}</p>
+      {account ? (
+        <p className="mt-1 truncate text-[11px] text-foreground">
+          {t("account", { name: account })}
+        </p>
+      ) : null}
+      {confirming ? (
+        <div className="mt-2 space-y-2">
+          <p className="text-[12px] leading-snug text-foreground">
+            {t("warning", { name: patientName })}
+          </p>
+          <div className="flex gap-1.5">
+            <Button
+              type="button"
+              size="xs"
+              onClick={() => bind.mutate()}
+              disabled={bind.isPending}
+            >
+              {bind.isPending ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : null}
+              {t("confirm")}
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={bind.isPending}
+            >
+              {t("cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          className="mt-2"
+          onClick={() => setConfirming(true)}
+        >
+          {t("action")}
+        </Button>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Name + phone → the patient's card (found by the number, or created), and
+ * the chat is tied to it. `relink`: the chat already sits on an unconfirmed
+ * Mini App card and reception moves it to the clinic's card.
+ */
+function CreatePatientForm({
+  conversation,
+  relink = false,
+}: {
+  conversation: InboxConversation;
+  relink?: boolean;
 }) {
   const t = useTranslations("tgInbox.rail");
   const qc = useQueryClient();
@@ -1275,16 +1442,13 @@ function CreatePatientForm({
       } | null;
       return { id: patientId, reused, telegramLink: linked?.telegramLink ?? null };
     },
-    onSuccess: ({ reused, telegramLink }) => {
+    onSuccess: ({ id, reused, telegramLink }) => {
       setOwnerConflict(null);
       toast.success(reused ? t("patientLinked") : t("patientCreated"));
-      if (telegramLink?.kind === "card-has-other-telegram") {
-        toast.warning(t("telegramKeptOther"));
-      } else if (telegramLink?.kind === "telegram-on-other-card") {
-        toast.warning(
-          t("telegramOnOtherCard", { name: telegramLink.otherPatientName }),
-        );
-      }
+      announceTelegramLink(telegramLink, t);
+      // The card may have just learned the chat's Telegram: the rail must
+      // not keep offering to bind it from a cached copy.
+      void qc.invalidateQueries({ queryKey: ["patient-mini", id] });
       void qc.invalidateQueries({ queryKey: ["tg-conversations"] });
       void qc.invalidateQueries({
         queryKey: conversationsKey({
@@ -1307,11 +1471,22 @@ function CreatePatientForm({
 
   return (
     <div className="space-y-4">
-      <EmptyState
-        icon={<UserPlusIcon />}
-        title={t("noPatientTitle")}
-        description={t("noPatientDescription")}
-      />
+      {relink ? (
+        <div className="space-y-1 px-1">
+          <h3 className="text-[13px] font-bold text-foreground">
+            {t("miniAppCardTitle")}
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            {t("miniAppCardDescription")}
+          </p>
+        </div>
+      ) : (
+        <EmptyState
+          icon={<UserPlusIcon />}
+          title={t("noPatientTitle")}
+          description={t("noPatientDescription")}
+        />
+      )}
       <div className="space-y-3 rounded-lg border border-border bg-card p-3">
         <div className="space-y-1">
           <Label htmlFor="tg-new-patient-name" className="text-xs">
@@ -1370,7 +1545,7 @@ function CreatePatientForm({
           ) : (
             <UserPlusIcon className="size-3" />
           )}
-          {t("createPatient")}
+          {relink ? t("linkToClinicCard") : t("createPatient")}
         </Button>
       </div>
     </div>

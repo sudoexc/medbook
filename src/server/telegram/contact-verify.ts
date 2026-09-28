@@ -348,9 +348,10 @@ export async function applyVerifiedContact(input: {
 /**
  * Whether a clinic card already carries a person's record: any visit, note
  * or document. Such a card is linked to a Telegram account only by the
- * reception (invite link), never by a shared contact alone.
+ * reception (invite link, or a link from the inbox staff confirmed), never
+ * by a shared contact or a typed name and number alone.
  */
-async function cardHoldsHistory(
+export async function cardHoldsHistory(
   tx: { patient: { findFirst: (args: never) => Promise<unknown> } },
   patientId: string,
 ): Promise<boolean> {

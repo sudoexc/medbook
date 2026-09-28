@@ -8,13 +8,22 @@
  *
  *   1. An unlinked TG thread whose chat id is a live card's telegramId: the
  *      patient wrote from the account his card is bound to, and the inbox
- *      showed an «unknown contact». The thread is tied to that card.
+ *      showed an «unknown contact». The thread is tied to that card, as the
+ *      webhook does today. When that card is the Mini App's unconfirmed
+ *      stub, the inbox's right rail offers to move the chat to the clinic
+ *      card (audit TG-11 review).
  *   2. A TG thread reception linked to a card that has no telegramId: the
  *      card never learned the account, so reminders went to the Action
  *      Center as «нет канала». The card gets the account, under the same
  *      rules as a link made today: never when another card holds it (listed
  *      for reception, nothing moved), never when one card has two candidate
  *      accounts or one account two candidate cards (ambiguous, listed).
+ *      Those links were made when linking only grouped the inbox, often for
+ *      a relative writing about a patient, so the account is written only
+ *      onto a card with no history whose name the Telegram profile goes by.
+ *      Every other card is listed under CONFIRM and left without Telegram:
+ *      reception checks who writes and binds it from the chat's right rail
+ *      («Привязать этот Telegram»), which warns what the account will see.
  *
  * Nothing else changes: no card is retired or merged, no message is sent.
  *
@@ -30,6 +39,11 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
+import {
+  goesByCardName,
+  isPrivateChatId,
+  threadProfileName,
+} from "../src/lib/patients/telegram-card";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" }),
@@ -37,8 +51,20 @@ const prisma = new PrismaClient({
 
 const APPLY = process.env.APPLY === "1";
 
-/** Same rule as `threadTelegramId` in src/server/conversations/link-patient.ts. */
-const PRIVATE_CHAT_ID = /^[1-9]\d{0,19}$/;
+/**
+ * Same rule as `cardHoldsHistory` in src/server/telegram/contact-verify.ts:
+ * any visit, note or document.
+ */
+async function cardHoldsHistory(patientId: string): Promise<boolean> {
+  const row = await prisma.patient.findFirst({
+    where: { id: patientId },
+    select: {
+      _count: { select: { appointments: true, visitNotes: true, documents: true } },
+    },
+  });
+  if (!row) return true;
+  return Object.values(row._count).some((n) => n > 0);
+}
 
 async function linkUnlinkedThreads(): Promise<void> {
   const threads = await prisma.conversation.findMany({
@@ -48,7 +74,7 @@ async function linkUnlinkedThreads(): Promise<void> {
   let linked = 0;
   console.log(`┌─ 1. unlinked TG threads: ${threads.length}`);
   for (const th of threads) {
-    if (!th.externalId || !PRIVATE_CHAT_ID.test(th.externalId)) continue;
+    if (!th.externalId || !isPrivateChatId(th.externalId)) continue;
     const card = await prisma.patient.findFirst({
       where: { clinicId: th.clinicId, telegramId: th.externalId, deletedAt: null },
       select: { id: true, fullName: true },
@@ -80,6 +106,8 @@ async function teachCardsTheirAccount(): Promise<void> {
       clinicId: true,
       externalId: true,
       contactUsername: true,
+      contactFirstName: true,
+      contactLastName: true,
       patientId: true,
       patient: { select: { fullName: true, telegramLinkedAt: true } },
     },
@@ -92,12 +120,13 @@ async function teachCardsTheirAccount(): Promise<void> {
     telegramLinkedAt: Date | null;
     telegramId: string;
     username: string | null;
+    profileName: string | null;
   };
   const byCard = new Map<string, Candidate[]>();
   const cardsByAccount = new Map<string, Set<string>>();
   for (const th of threads) {
     if (!th.patientId || !th.patient || !th.externalId) continue;
-    if (!PRIVATE_CHAT_ID.test(th.externalId)) continue;
+    if (!isPrivateChatId(th.externalId)) continue;
     const c: Candidate = {
       clinicId: th.clinicId,
       patientId: th.patientId,
@@ -105,6 +134,7 @@ async function teachCardsTheirAccount(): Promise<void> {
       telegramLinkedAt: th.patient.telegramLinkedAt,
       telegramId: th.externalId,
       username: th.contactUsername,
+      profileName: threadProfileName(th),
     };
     byCard.set(c.patientId, [...(byCard.get(c.patientId) ?? []), c]);
     const accountKey = `${c.clinicId}:${c.telegramId}`;
@@ -115,6 +145,7 @@ async function teachCardsTheirAccount(): Promise<void> {
 
   console.log(`┌─ 2. cards linked to a bot thread but without telegramId: ${byCard.size}`);
   let written = 0;
+  const toConfirm: string[] = [];
   for (const [patientId, candidates] of byCard) {
     const accounts = new Set(candidates.map((c) => c.telegramId));
     const c = candidates[0]!;
@@ -134,6 +165,17 @@ async function teachCardsTheirAccount(): Promise<void> {
       console.log(
         `│  CONFLICT ${c.fullName} (${patientId}): account ${c.telegramId} sits on «${holder.fullName}» (${holder.id}); reception compares the cards`,
       );
+      continue;
+    }
+    // The link was reception's call about whose conversation it is, not
+    // proof whose Telegram it is: a card with history, or one the profile
+    // does not go by, is never handed to the account by this script.
+    if (await cardHoldsHistory(patientId)) {
+      toConfirm.push(`${c.fullName} (${patientId}): card has history; account ${c.telegramId} «${c.profileName ?? "?"}»`);
+      continue;
+    }
+    if (!goesByCardName(candidates.map((x) => x.profileName), c.fullName)) {
+      toConfirm.push(`${c.fullName} (${patientId}): Telegram profile «${c.profileName ?? "?"}» (${c.telegramId}) goes by another name`);
       continue;
     }
     console.log(`│  ${c.fullName} (${patientId}) ← telegram ${c.telegramId}`);
@@ -169,6 +211,9 @@ async function teachCardsTheirAccount(): Promise<void> {
     }
   }
   console.log(`└─ ${APPLY ? "written" : "would write"}: ${written}`);
+  console.log(`┌─ CONFIRM in the inbox (nothing written): ${toConfirm.length}`);
+  for (const line of toConfirm) console.log(`│  ${line}`);
+  console.log(`└─ reception opens each chat and uses «Привязать этот Telegram» if it is the patient`);
 }
 
 async function main() {

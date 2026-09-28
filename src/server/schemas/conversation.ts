@@ -18,6 +18,12 @@ export const UpdateConversationSchema = z.object({
   tags: z.array(z.string().max(64)).max(50).optional(),
   snoozedUntil: z.coerce.date().nullable().optional(),
   markRead: z.boolean().optional(),
+  /**
+   * Staff confirmed the chat's Telegram account is the linked card's own
+   * (audit TG-11 review): bind it even though the card holds history or
+   * the profile goes by another name.
+   */
+  linkTelegram: z.literal(true).optional(),
 });
 
 export const QueryConversationSchema = z.object({

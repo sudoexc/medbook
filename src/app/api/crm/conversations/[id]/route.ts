@@ -5,7 +5,7 @@
 import { createApiHandler, createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { ok, notFound, diff } from "@/server/http";
+import { ok, err, notFound, diff } from "@/server/http";
 import { UpdateConversationSchema } from "@/server/schemas/conversation";
 import { publishEventSafe } from "@/server/realtime/publish";
 import {
@@ -13,6 +13,14 @@ import {
   threadTelegramId,
   type ThreadTelegramLink,
 } from "@/server/conversations/link-patient";
+import { threadProfileName } from "@/lib/patients/telegram-card";
+
+/**
+ * Who may confirm that a chat's Telegram account is a card's own: the roles
+ * that can hand a patient the card's invite link (the same access to the
+ * card in the Mini App).
+ */
+const TELEGRAM_CONFIRM_ROLES = new Set(["ADMIN", "RECEPTIONIST", "DOCTOR"]);
 
 function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
@@ -54,7 +62,19 @@ export const PATCH = createApiHandler(
       where: { id, clinicId },
     });
     if (!before) return notFound();
-    const { markRead, ...rest } = body;
+    const { markRead, linkTelegram, ...rest } = body;
+    if (linkTelegram) {
+      if (ctx.kind !== "TENANT" || !TELEGRAM_CONFIRM_ROLES.has(ctx.role)) {
+        return err("forbidden", 403, { reason: "telegram_link_role" });
+      }
+      if (!threadTelegramId(before)) {
+        return err("ValidationError", 400, { reason: "no_telegram_account" });
+      }
+      const target = rest.patientId === undefined ? before.patientId : rest.patientId;
+      if (!target) {
+        return err("ValidationError", 400, { reason: "no_patient" });
+      }
+    }
     // A patient being linked must be one of this clinic's live cards.
     const linkingPatientId =
       typeof rest.patientId === "string" && rest.patientId !== before.patientId
@@ -71,10 +91,13 @@ export const PATCH = createApiHandler(
     if (markRead) data.unreadCount = 0;
     // updateMany so an unscoped `update({ where: { id }})` can never write
     // across tenants; we already verified the row exists in this clinic.
-    await prisma.conversation.updateMany({
-      where: { id, clinicId },
-      data: data as never,
-    });
+    // A bare Telegram confirmation changes nothing on the thread itself.
+    if (Object.keys(data).length > 0) {
+      await prisma.conversation.updateMany({
+        where: { id, clinicId },
+        data: data as never,
+      });
+    }
     const after = (await prisma.conversation.findFirst({
       where: { id, clinicId },
     }))!;
@@ -91,19 +114,26 @@ export const PATCH = createApiHandler(
 
     // Linking the thread identifies the patient's Telegram too (audit
     // TG-11): the card learns the account so reminders and the next
-    // message reach it, within the one-card-per-account rules. The outcome
-    // travels back so the rail can say when the card kept another account
-    // or the account sits on another card. The thread link above is already
-    // saved; a failure here must not report the whole link as failed.
-    const tgId = linkingPatientId ? threadTelegramId(before) : null;
+    // message reach it, within the one-card-per-account rules. On its own
+    // only onto an empty card the profile's name fits; a card with history
+    // or another name waits for staff to confirm (`linkTelegram`, the
+    // rail's «Привязать Telegram»), because the account then opens the card
+    // in the Mini App. The outcome travels back so the rail can say what
+    // happened. The thread link above is already saved; a failure here must
+    // not report the whole link as failed.
+    const bindPatientId =
+      linkingPatientId ?? (linkTelegram ? after.patientId : null);
+    const tgId = bindPatientId ? threadTelegramId(before) : null;
     let telegramLink: ThreadTelegramLink | null = null;
-    if (linkingPatientId && tgId) {
+    if (bindPatientId && tgId) {
       try {
         telegramLink = await bindThreadTelegramToCard({
           clinicId,
-          patientId: linkingPatientId,
+          patientId: bindPatientId,
           telegramId: tgId,
           telegramUsername: before.contactUsername,
+          telegramName: threadProfileName(before),
+          confirmed: linkTelegram === true,
           actorId: ctx.kind === "TENANT" ? ctx.userId : null,
         });
       } catch (e) {

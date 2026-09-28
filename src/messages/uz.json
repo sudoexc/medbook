@@ -3309,6 +3309,22 @@
       "patientLinked": "Bu raqamga ega bemor allaqachon bor — chatga biriktirildi",
       "telegramKeptOther": "Kartaga boshqa Telegram allaqachon bog'langan, u o'zgartirilmadi. Eslatmalar o'sha yerga boradi.",
       "telegramOnOtherCard": "Chat biriktirildi, lekin bu Telegram «{name}» kartasiga bog'langan, shuning uchun kartaga yozilmadi. Kartalarni solishtirib, birlashtiring.",
+      "telegramNeedsConfirm": "Chat biriktirildi. Telegram hali kartaga yozilmadi: kim yozayotganini tekshiring va o'ng panelda bog'lashni tasdiqlang.",
+      "telegramLinked": "Telegram kartaga bog'landi",
+      "miniAppCardTitle": "Ilovadan yaratilgan karta",
+      "miniAppCardDescription": "Bu kartani klinika ilovasi yaratgan, raqam tasdiqlanmagan. Agar bemor klinikada allaqachon bo'lsa, uning F.I.Sh. va telefonini kiriting: chat uning kartasiga o'tadi.",
+      "linkToClinicCard": "Klinika kartasiga biriktirish",
+      "telegramBind": {
+        "title": "Telegram kartaga bog'lanmagan",
+        "description": "Bu bemorga eslatmalar va xulosalar Telegramda bormaydi.",
+        "action": "Bu Telegramni bog'lash",
+        "account": "Telegram: {name}",
+        "warning": "Bu Telegram klinika ilovasida «{name}» kartasini ko'ra oladi: tashriflar, xulosalar, hujjatlar va tahlillar. Eslatmalar va shifokor xulosalari ham shu yerga keladi. Faqat bemorning o'zi yoki u ishongan yaqini yozayotgan bo'lsa bog'lang.",
+        "confirm": "Ha, bog'lash",
+        "cancel": "Bekor qilish",
+        "forbidden": "Telegramni kartaga registratura, shifokor yoki administrator bog'lay oladi.",
+        "failed": "Telegramni bog'lab bo'lmadi"
+      },
       "years": "{age, plural, one {# yosh} other {# yosh}}",
       "segmentLabels": {
         "NEW": "Yangi",

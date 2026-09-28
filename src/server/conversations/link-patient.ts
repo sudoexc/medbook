@@ -20,14 +20,27 @@
  *   - The account sits on a card with real history: nothing is relinked,
  *     reception gets a TELEGRAM_LINK_CONFLICT task to merge the two cards,
  *     and the operator is told which card holds it.
+ *
+ * Linking a thread is reception's decision about whose CONVERSATION it is;
+ * the card's Telegram is a different thing: whoever holds it opens the
+ * card in the Mini App (documents, labs, conclusions) and receives what
+ * the doctor sends. The name and number reception links by are typed from
+ * the chat, and often it is a relative writing about an elderly patient.
+ * So the account is written on its own only onto a card with no history
+ * whose name the Telegram profile goes by (the P1 shared-contact rule:
+ * a card holding a person's medicine is never handed over on a name and a
+ * number alone). Anything else needs staff to confirm it (`confirmed`);
+ * until then the thread stays linked and the card keeps no Telegram.
  */
 import { prisma } from "@/lib/prisma";
+import { goesByCardName, isPrivateChatId } from "@/lib/patients/telegram-card";
 import {
   isRetirableAutoCard,
   isUniqueViolation,
   retiredCardData,
 } from "@/server/patient/phone-identity";
 import { raiseTelegramLinkConflict } from "@/server/patient/telegram-link-conflict";
+import { cardHoldsHistory } from "@/server/telegram/contact-verify";
 
 export type ThreadTelegramLink =
   /** The card already holds this thread's account. */
@@ -41,7 +54,12 @@ export type ThreadTelegramLink =
       kind: "telegram-on-other-card";
       otherPatientId: string;
       otherPatientName: string;
-    };
+    }
+  /**
+   * Nothing written: the card holds history ("history") or the Telegram
+   * profile does not go by its name ("name"). Staff confirm to bind.
+   */
+  | { kind: "needs-confirm"; reason: "history" | "name" };
 
 /**
  * The Telegram account a thread talks to, or null. Only a private chat
@@ -52,8 +70,8 @@ export function threadTelegramId(conv: {
   channel: string;
   externalId: string | null;
 }): string | null {
-  if (conv.channel !== "TG" || !conv.externalId) return null;
-  return /^[1-9]\d{0,19}$/.test(conv.externalId) ? conv.externalId : null;
+  if (conv.channel !== "TG") return null;
+  return isPrivateChatId(conv.externalId) ? conv.externalId : null;
 }
 
 export async function bindThreadTelegramToCard(input: {
@@ -61,6 +79,10 @@ export async function bindThreadTelegramToCard(input: {
   patientId: string;
   telegramId: string;
   telegramUsername?: string | null;
+  /** The profile name the thread recorded for the account. */
+  telegramName?: string | null;
+  /** Staff confirmed this account is the card's (the rail's confirmation). */
+  confirmed?: boolean;
   actorId: string | null;
   now?: Date;
 }): Promise<ThreadTelegramLink | null> {
@@ -97,6 +119,17 @@ export async function bindThreadTelegramToCard(input: {
       otherPatientId: other.id,
       otherPatientName: other.fullName,
     };
+  }
+
+  if (!input.confirmed) {
+    if (await cardHoldsHistory(prisma, card.id)) {
+      return { kind: "needs-confirm", reason: "history" };
+    }
+    // The account's own Mini App card may carry the name the patient
+    // corrected there; the profile alone is often just «Dilnoza».
+    if (!goesByCardName([input.telegramName, other?.fullName], card.fullName)) {
+      return { kind: "needs-confirm", reason: "name" };
+    }
   }
 
   try {
@@ -152,7 +185,11 @@ export async function bindThreadTelegramToCard(input: {
         action: "patient.telegram.inbox_linked",
         entityType: "Patient",
         entityId: card.id,
-        meta: { telegramId, retiredPatientId: other?.id ?? null },
+        meta: {
+          telegramId,
+          retiredPatientId: other?.id ?? null,
+          confirmed: input.confirmed === true,
+        },
       },
     });
   } catch (auditErr) {

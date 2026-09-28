@@ -9,11 +9,10 @@
  * marks it cancelled — so the operation is meaningful even if a clinic somehow
  * never received its 9b backfill.
  */
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { ok, err, notFound } from "@/server/http";
-import { platformAudit } from "@/server/platform/handler";
+import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
 
 function clinicIdFromUrl(request: Request): string | null {
   try {
@@ -25,17 +24,6 @@ function clinicIdFromUrl(request: Request): string | null {
   } catch {
     return null;
   }
-}
-
-async function requireSuper(): Promise<
-  { ok: true; userId: string } | { ok: false; response: Response }
-> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, response: err("Unauthorized", 401) };
-  if (session.user.role !== "SUPER_ADMIN") {
-    return { ok: false, response: err("Forbidden", 403) };
-  }
-  return { ok: true, userId: session.user.id };
 }
 
 async function ensureSubscriptionId(clinicId: string): Promise<string> {
@@ -68,7 +56,7 @@ async function ensureSubscriptionId(clinicId: string): Promise<string> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const gate = await requireSuper();
+  const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
   return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
     const id = clinicIdFromUrl(request);

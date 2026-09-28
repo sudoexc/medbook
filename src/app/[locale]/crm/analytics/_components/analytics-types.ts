@@ -3,6 +3,7 @@
  * (which pulls in recharts) and the lightweight page client can both import
  * without forcing the heavy dep into the page client bundle.
  */
+import type { PatientJourney } from "@/server/analytics/patient-journey";
 
 export type Period = "week" | "month" | "quarter";
 
@@ -77,23 +78,15 @@ export interface WaitTimeRow {
   samples: number;
 }
 
-// ── MedicalCase analytics ────────────────────────────────────────────────────
+// ── Patient journey («Путь пациента») ───────────────────────────────────────
 
-export type CaseDurationBucket = "1-7" | "8-14" | "15-30" | ">30";
-
-export interface CasesAnalyticsResponse {
+/** /api/crm/analytics/journey (src/server/analytics/patient-journey.ts). */
+export interface JourneyAnalyticsResponse {
   period: Period | "custom";
   from: string;
   to: string;
   doctorOnly: boolean;
-  kpis: {
-    openCasesTotal: number;
-    repeatConvPct: number;
-    avgDurationDays: number;
-    avgRevenuePerCase: number;
-  };
-  topComplaints: Array<{ complaint: string; count: number }>;
-  durationBuckets: Array<{ bucket: CaseDurationBucket; count: number }>;
+  journey: PatientJourney;
 }
 
 export interface FunnelsResponse {

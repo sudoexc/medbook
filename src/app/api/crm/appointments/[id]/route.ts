@@ -35,6 +35,7 @@ import { isSlotOverlapViolation } from "@/server/appointments/overlap-violation"
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
+import { numberedSiblingsWhere } from "@/lib/cases/case-visits";
 import { recordPatientView } from "@/server/audit/patient-view";
 import {
   actionsFor,
@@ -125,12 +126,17 @@ export const GET = createApiListHandler(
     // appointment's slot in the case timeline doesn't shuffle when an unrelated
     // sibling moves around. Only one query regardless of case size, so the
     // overhead is constant; null-safe when the appointment isn't in any case.
+    // Cancelled siblings and no-shows never happened and take no number
+    // (audit PT-16, the pricing engine's rule): after a cancelled first
+    // booking, the visit that took place is «Первичный», not «2-й». The
+    // appointment itself always counts, so a cancelled one still reads
+    // where it stood.
     let visitNumberInCase: number | null = null;
     let totalVisitsInCase: number | null = null;
     if (row.medicalCaseId) {
       const siblings = await prisma.appointment.findMany({
-        where: { medicalCaseId: row.medicalCaseId },
-        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+        where: numberedSiblingsWhere(row.medicalCaseId, row.id),
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         select: { id: true },
       });
       totalVisitsInCase = siblings.length;

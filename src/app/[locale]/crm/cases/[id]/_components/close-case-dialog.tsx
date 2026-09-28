@@ -39,6 +39,8 @@ export interface CloseCaseDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSubmit: (status: CaseStatus, reason: string) => Promise<void>;
+  /** ACTIVE / PAUSED courses on the case: closing ends them (PT-10). */
+  runningPrescriptions?: number;
 }
 
 /**
@@ -51,11 +53,16 @@ export interface CloseCaseDialogProps {
  *
  * The free-text textarea is always editable (not just under "Other") so
  * staff can append context to any of the canned options before confirming.
+ *
+ * Closing ends the case's running prescriptions and their Telegram
+ * reminders (audit PT-10); when there are any, the dialog says so before
+ * the click, with the outcome for the picked reason.
  */
 export function CloseCaseDialog({
   open,
   onOpenChange,
   onSubmit,
+  runningPrescriptions = 0,
 }: CloseCaseDialogProps) {
   const t = useTranslations("cases.detail");
   const [reason, setReason] = React.useState<ReasonKey>("RESOLVED");
@@ -121,6 +128,20 @@ export function CloseCaseDialog({
               maxLength={500}
             />
           </div>
+
+          {runningPrescriptions > 0 ? (
+            <p
+              role="note"
+              className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground"
+            >
+              {t(
+                REASONS.find((r) => r.key === reason)?.status === "RESOLVED"
+                  ? "closeDialogPrescriptionsCompleted"
+                  : "closeDialogPrescriptionsCancelled",
+                { count: runningPrescriptions },
+              )}
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>

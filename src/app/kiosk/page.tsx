@@ -241,7 +241,10 @@ export default function KioskPage() {
   const [clinicName, setClinicName] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [selectedService, setSelectedService] = useState<string | null>(null);
-  const [ticketId, setTicketId] = useState<string | null>(null);
+  // The signed ticket token, not the appointment id: the print stub opens in
+  // a new tab that carries no kiosk header, and a bare id prints nothing
+  // there without a staff session (audit INF-10).
+  const [ticketToken, setTicketToken] = useState<string | null>(null);
   const [ticketNumber, setTicketNumber] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -316,7 +319,7 @@ export default function KioskPage() {
     setUpcomingBookings([]);
     setSelectedDoctor(null);
     setSelectedService(null);
-    setTicketId(null);
+    setTicketToken(null);
     setTicketNumber("");
     setError("");
   }
@@ -390,12 +393,12 @@ export default function KioskPage() {
         return;
       }
       const data: {
-        appointmentId: string;
+        ticketToken: string;
         ticketNumber: string;
         doctor: { id: string; nameRu: string; nameUz: string | null };
         cabinet: string | null;
       } = await res.json();
-      setTicketId(data.appointmentId);
+      setTicketToken(data.ticketToken);
       setTicketNumber(data.ticketNumber);
       setSelectedDoctor({
         id: data.doctor.id,
@@ -406,7 +409,7 @@ export default function KioskPage() {
         services: [],
       });
       setStep("done");
-      setTimeout(() => window.open(`/ticket/${data.appointmentId}?lang=${lang}`, "_blank"), 500);
+      setTimeout(() => window.open(`/ticket/${data.ticketToken}?lang=${lang}`, "_blank"), 500);
     } catch {
       setError(L.error);
     } finally {
@@ -453,11 +456,11 @@ export default function KioskPage() {
       });
 
       if (res.ok) {
-        const data: { appointmentId: string; ticketNumber: string } = await res.json();
-        setTicketId(data.appointmentId);
+        const data: { ticketToken: string; ticketNumber: string } = await res.json();
+        setTicketToken(data.ticketToken);
         setTicketNumber(data.ticketNumber);
         setStep("done");
-        setTimeout(() => window.open(`/ticket/${data.appointmentId}?lang=${lang}`, "_blank"), 500);
+        setTimeout(() => window.open(`/ticket/${data.ticketToken}?lang=${lang}`, "_blank"), 500);
       } else {
         setError(L.recordError);
       }
@@ -999,9 +1002,9 @@ export default function KioskPage() {
               </div>
 
               <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                {ticketId && (
+                {ticketToken && (
                   <button
-                    onClick={() => window.open(`/ticket/${ticketId}?lang=${lang}`, "_blank")}
+                    onClick={() => window.open(`/ticket/${ticketToken}?lang=${lang}`, "_blank")}
                     className="flex items-center justify-center gap-2 rounded-2xl bg-[var(--public-panel)] border border-[var(--public-border)] py-4 text-lg font-semibold hover:bg-[var(--public-panel-strong)] transition-colors"
                   >
                     <Printer className="h-5 w-5" />

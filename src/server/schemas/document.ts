@@ -10,12 +10,18 @@ export const DocumentTypeEnum = z.enum([
   "OTHER",
 ]);
 
+/**
+ * `uploadToken` is the receipt `POST /api/crm/documents/upload` returns with
+ * the `fileUrl` of the bytes it stored. A `fileUrl` into our storage is
+ * accepted only with it; anything else must be an `https:` link (audit CD-08).
+ */
 export const CreateDocumentSchema = z.object({
   patientId: z.string(),
   appointmentId: z.string().optional().nullable(),
   type: DocumentTypeEnum,
   title: z.string().min(1).max(300),
   fileUrl: z.string().min(1).max(1000),
+  uploadToken: z.string().max(200).optional().nullable(),
   mimeType: z.string().max(120).optional().nullable(),
   sizeBytes: z.number().int().min(0).optional().nullable(),
 });
@@ -28,15 +34,17 @@ export const CreateDocumentSchema = z.object({
  * VisitNote and must never be created or converted-to by hand. The same
  * guard exists server-side for documents that already ARE conclusions.
  *
- * `fileUrl`/`mimeType`/`sizeBytes` travel together when the doctor replaces
- * the underlying file (bytes go through POST /api/crm/documents/upload
- * first, then the resulting URL is persisted here).
+ * `fileUrl`/`uploadToken`/`mimeType`/`sizeBytes` travel together when the
+ * doctor replaces the underlying file (bytes go through POST
+ * /api/crm/documents/upload first, then the resulting URL is persisted here
+ * with the upload's receipt).
  */
 export const UpdateDocumentSchema = z
   .object({
     title: z.string().min(1).max(300).optional(),
     type: DocumentTypeEnum.optional(),
     fileUrl: z.string().min(1).max(1000).optional(),
+    uploadToken: z.string().max(200).optional().nullable(),
     mimeType: z.string().max(120).optional().nullable(),
     sizeBytes: z.number().int().min(0).optional().nullable(),
   })

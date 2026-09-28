@@ -208,6 +208,8 @@ export function WalkinTicketDialog({
                 variant="outline"
                 className="gap-2"
                 onClick={() =>
+                  // The staff session opens the stub by id (audit INF-10);
+                  // the same link prints nothing for a stranger.
                   window.open(`/ticket/${ticket.appointmentId}`, "_blank")
                 }
               >

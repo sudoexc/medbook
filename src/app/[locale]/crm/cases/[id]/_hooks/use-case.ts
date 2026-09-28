@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import type { PatientFinance } from "@/lib/patients/finance";
+
 import type {
   CaseStatus,
   PatchCaseInput,
@@ -28,6 +30,7 @@ export type CaseAppointmentRow = {
   durationMin: number;
   status:
     | "BOOKED"
+    | "CONFIRMED"
     | "WAITING"
     | "IN_PROGRESS"
     | "COMPLETED"
@@ -86,8 +89,12 @@ export type CaseDetail = {
   title: string;
   status: CaseStatus;
   primaryComplaint: string | null;
-  diagnosisText: string | null;
-  diagnosisCode: string | null;
+  /**
+   * The clinical side (diagnosis, SOAP draft, prescriptions) is absent for
+   * the front desk and the call center (audit PT-11).
+   */
+  diagnosisText?: string | null;
+  diagnosisCode?: string | null;
   notes: string | null;
   openedAt: string;
   closedAt: string | null;
@@ -107,9 +114,14 @@ export type CaseDetail = {
     phone: string;
   };
   appointments: CaseAppointmentRow[];
+  /** Visits that take a number: cancelled ones and no-shows do not. */
   visitCount: number;
-  soapDraft: string | null;
-  prescriptions: CasePrescriptionRow[];
+  soapDraft?: string | null;
+  prescriptions?: CasePrescriptionRow[];
+  /** The patient card's money formula over this case's visits (PT-16). */
+  finance?: PatientFinance;
+  /** ACTIVE / PAUSED courses that closing the case ends (PT-10). */
+  runningPrescriptions?: number;
 };
 
 export const caseKey = (id: string) => ["case", id] as const;

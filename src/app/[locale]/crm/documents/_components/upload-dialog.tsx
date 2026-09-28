@@ -64,7 +64,12 @@ function uploadFileWithProgress(
   patientId: string,
   file: File,
   onProgress: (pct: number) => void,
-): Promise<{ fileUrl: string; mimeType: string | null; sizeBytes: number | null }> {
+): Promise<{
+  fileUrl: string;
+  uploadToken: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+}> {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -82,10 +87,11 @@ function uploadFileWithProgress(
         try {
           const parsed = JSON.parse(xhr.responseText) as {
             fileUrl: string;
+            uploadToken?: string | null;
             mimeType: string | null;
             sizeBytes: number | null;
           };
-          resolve(parsed);
+          resolve({ ...parsed, uploadToken: parsed.uploadToken ?? null });
         } catch {
           reject(new Error("upload.parse"));
         }
@@ -164,6 +170,9 @@ export function UploadDialog({
     // Resolve fileUrl: either a fresh presigned upload, or the URL the
     // operator pasted in `url` mode (still validated by the same schema).
     let resolvedUrl = fileUrl.trim();
+    // The upload's receipt: the server attaches a stored file only with it
+    // (audit CD-08). A pasted link has none and must be https.
+    let uploadToken: string | null = null;
     let usedFile: File | null = null;
 
     if (mode === "file") {
@@ -193,6 +202,7 @@ export function UploadDialog({
           setProgress,
         );
         resolvedUrl = uploaded.fileUrl;
+        uploadToken = uploaded.uploadToken;
       }
 
       const parsed = CreateDocumentSchema.safeParse({
@@ -200,6 +210,7 @@ export function UploadDialog({
         title,
         type,
         fileUrl: resolvedUrl,
+        uploadToken,
       });
       if (!parsed.success) {
         const fieldErrors: FieldErrors = {};
@@ -221,7 +232,15 @@ export function UploadDialog({
         body: JSON.stringify(parsed.data),
       });
       if (!res.ok) {
-        toast.error(t("toastUploadError"));
+        const reason = ((await res.json().catch(() => null)) as {
+          reason?: string;
+        } | null)?.reason;
+        toast.error(
+          mode === "url" &&
+            (reason === "external_url_not_https" || reason === "file_not_issued")
+            ? t("toastUrlRejected")
+            : t("toastUploadError"),
+        );
         return;
       }
       reset();

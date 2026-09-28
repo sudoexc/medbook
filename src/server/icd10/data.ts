@@ -9,8 +9,11 @@
  *
  * Only leaf codes are included — chapter and block headings ("A00-B99
  * Некоторые инфекционные болезни") are not diagnoses a doctor writes down.
+ * A leaf whose own wording only continues its category («Головного мозга над
+ * мозговым наметом») carries the category's words, so every name is a
+ * diagnosis on its own and no two codes share one.
  *
- * 10414 codes across 25 chapters.
+ * 10413 codes across 25 chapters.
  */
 import entries from "./data.json";
 

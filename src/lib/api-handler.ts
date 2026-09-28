@@ -23,8 +23,8 @@ import { isViewOnlySafe, viewOnlyBlockResponse } from "./view-only";
 import {
   is2faDisabled,
   isTotpEnrollmentExemptPath,
-  requiresTotpEnrollment,
 } from "@/server/auth/security-policy";
+import { mfaRequiredResponse, owesTotpEnrolment } from "@/server/auth/mfa-gate";
 import { clientIpForAudit } from "./client-ip";
 
 // Re-export the pure helper so existing imports `from "@/lib/api-handler"`
@@ -213,50 +213,26 @@ async function parseBody<TBody>(
  * tab — and read or mutate patient data without a second factor. This mirrors
  * the proxy check on the shared API path so the bypass is closed.
  *
- * Out of scope: platform SUPER_ADMIN and grant-based impersonation. Their 2FA
- * is enforced at the platform-login / grant layer, and forcing enrolment onto a
- * synthesised impersonated identity is meaningless. Returns `null` to let the
+ * SUPER_ADMIN included (audit SEC-08): impersonation used to be skipped here
+ * on the promise of a 2FA check at a «platform-login / grant layer» that never
+ * existed, so a SUPER_ADMIN password alone read and changed any clinic's
+ * medical data. An impersonating SUPER_ADMIN (and one without a clinic, on the
+ * list handlers) now needs their OWN enrolment. Returns `null` to let the
  * request proceed, or a 403 Response to block it.
  */
 async function enforceTotpEnrollment(
   request: Request,
   ctx: TenantContext,
 ): Promise<Response | null> {
-  if (ctx.kind !== "TENANT" || ctx.impersonation) return null;
+  if (ctx.kind !== "TENANT" && ctx.kind !== "SUPER_ADMIN") return null;
   if (is2faDisabled()) return null;
 
   // Exempt the enrolment endpoints themselves — otherwise a user who still owes
   // enrolment could never reach the API that lets them enrol (chicken-and-egg).
   if (isTotpEnrollmentExemptPath(new URL(request.url).pathname)) return null;
 
-  // `User` is tenant-scoped by the Prisma extension; read the caller's own row
-  // under a SYSTEM context (same as the proxy) so the PK lookup isn't subject
-  // to clinic scoping while we're still outside `runWithTenant(ctx, …)`.
-  const { prisma } = await import("./prisma");
-  const me = await runWithTenant({ kind: "SYSTEM" }, () =>
-    prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: {
-        totpEnabledAt: true,
-        clinic: { select: { require2faForAll: true } },
-      },
-    }),
-  );
-
-  const mustEnroll = requiresTotpEnrollment({
-    role: ctx.role,
-    clinicRequire2faForAll: me?.clinic?.require2faForAll ?? false,
-  });
-  if (mustEnroll && !me?.totpEnabledAt) {
-    return json(
-      {
-        error: "MFA_REQUIRED",
-        message:
-          "Two-factor authentication must be enabled before accessing this resource.",
-      },
-      { status: 403 },
-    );
-  }
+  const role: Role = ctx.kind === "TENANT" ? ctx.role : "SUPER_ADMIN";
+  if (await owesTotpEnrolment(ctx.userId, role)) return mfaRequiredResponse();
   return null;
 }
 

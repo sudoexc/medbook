@@ -26,7 +26,7 @@ export interface DoctorBoardWaiting {
 }
 
 export interface DoctorBoardCurrent {
-  /** Appointment id: lets a call fall back to the right snapshot row. */
+  /** Opaque row key (not the appointment id): lets a call fall back to the right snapshot row. */
   id: string;
   fullName: string;
   /** Null for a booking started without check-in (no queue fields). */
@@ -62,7 +62,7 @@ export interface DoctorBoardData {
 export interface DoctorCall
   extends Pick<
     QueueCallFields,
-    "appointmentId" | "ticketNumber" | "cabinetNumber" | "patientName" | "lang"
+    "rowKey" | "ticketNumber" | "cabinetNumber" | "patientName" | "lang"
   > {
   /** Bumped on every call so consumers react even to a re-call. */
   seq: number;
@@ -136,8 +136,12 @@ export function useDoctorBoard(token: string) {
 
   useEffect(() => {
     if (!slug) return;
+    // `screen` marks this as the doctor's own TV, exempt from the per-address
+    // stream cap (INF-10): the clinic is one NAT address, and patients on its
+    // Wi-Fi following their ticket must not push this screen off the call
+    // signal.
     const es = new EventSource(
-      `/api/c/${encodeURIComponent(slug)}/queue/events`,
+      `/api/c/${encodeURIComponent(slug)}/queue/events?screen=${encodeURIComponent(token)}`,
     );
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false); // browser auto-reconnects
@@ -158,7 +162,7 @@ export function useDoctorBoard(token: string) {
         const c = parseQueueCalledPayload(p);
         callSeq.current += 1;
         setCall({
-          appointmentId: c.appointmentId,
+          rowKey: c.rowKey,
           ticketNumber: c.ticketNumber,
           cabinetNumber: c.cabinetNumber,
           patientName: c.patientName,
@@ -169,7 +173,7 @@ export function useDoctorBoard(token: string) {
       scheduleRefetch();
     };
     return () => es.close();
-  }, [slug, scheduleRefetch]);
+  }, [slug, token, scheduleRefetch]);
 
   return { data, notFound, call, connected };
 }

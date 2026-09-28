@@ -1,5 +1,5 @@
 /**
- * GET /api/miniapp/documents/<id>/file?clinicSlug=…&initData=… — stream the
+ * GET /api/miniapp/documents/<id>/file?clinicSlug=…&t=… — stream the
  * patient's document bytes.
  *
  * Why this exists: presigned MinIO URLs can't survive the `/files/` proxy
@@ -8,16 +8,22 @@
  * nginx, we proxy bytes through the app, using the docker-internal MinIO
  * endpoint where no rewriting happens.
  *
- * Auth: `<a href="...">` opens in a fresh tab without our custom headers,
- * so we fall back to the `?initData=…` URL parameter that
- * `resolveMiniAppContext` already supports (same path the SSE endpoint uses).
+ * Auth: `<a href="...">` opens in a fresh tab (often the external browser)
+ * without our custom headers. The URL carries `t`, a link for THIS document
+ * the documents / visits lists mint (audit MA-07: it used to carry the
+ * patient's initData, the key to the whole account). A request with the
+ * initData header is still served.
  */
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { err } from "@/server/http";
 import { safeFileHeaders } from "@/server/storage/safe-file";
-import { resolveMiniAppContext } from "@/server/miniapp/handler";
+import {
+  resolveMiniAppContext,
+  resolveMiniAppLink,
+} from "@/server/miniapp/handler";
 import { fetchObject } from "@/server/storage/minio";
+import { expiredMiniAppLinkPage } from "@/server/miniapp/link-page";
 import { isClinicOwnedKey, storageKeyFromUrl } from "@/lib/storage-ref";
 
 /**
@@ -38,17 +44,24 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const { id } = await context.params;
-  const resolved = await resolveMiniAppContext(request);
-  if (!resolved.ok) return resolved.response;
-  const { ctx } = resolved;
+  let owner: { clinicId: string; patientId: string };
+  if (new URL(request.url).searchParams.has("t")) {
+    const link = await resolveMiniAppLink(request, { scope: "doc", resourceId: id });
+    if (!link.ok) return expiredMiniAppLinkPage(link.response.status);
+    owner = { clinicId: link.link.clinicId, patientId: link.link.patientId };
+  } else {
+    const resolved = await resolveMiniAppContext(request);
+    if (!resolved.ok) return resolved.response;
+    owner = { clinicId: resolved.ctx.clinicId, patientId: resolved.ctx.patientId };
+  }
 
   return runWithTenant({ kind: "SYSTEM" }, async () => {
     const doc = await prisma.document.findFirst({
-      where: { id, clinicId: ctx.clinicId, patientId: ctx.patientId },
+      where: { id, clinicId: owner.clinicId, patientId: owner.patientId },
       select: { id: true, fileUrl: true, mimeType: true, title: true },
     });
     if (!doc) return err("NotFound", 404);
-    const key = extractKey(doc.fileUrl, ctx.clinicId);
+    const key = extractKey(doc.fileUrl, owner.clinicId);
     if (!key) return err("BadFileUrl", 422);
 
     let fetched: Awaited<ReturnType<typeof fetchObject>>;

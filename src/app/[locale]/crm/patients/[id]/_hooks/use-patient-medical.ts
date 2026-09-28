@@ -79,6 +79,39 @@ function useMedicalRecordLive(
   });
 }
 
+// ── Clinical note (audit PT-11) ─────────────────────────────────────────
+export type ClinicalNote = {
+  text: string;
+  updatedAt: string | null;
+  updatedBy: { id: string; name: string | null } | null;
+};
+
+const clinicalNoteKey = (patientId: string) =>
+  ["patient", patientId, "clinical-note"] as const;
+
+export function useClinicalNote(patientId: string) {
+  return useQuery<ClinicalNote, Error>({
+    queryKey: clinicalNoteKey(patientId),
+    queryFn: ({ signal }) =>
+      fetchJson<ClinicalNote>(`/api/crm/patients/${patientId}/clinical-note`, {
+        signal,
+      }),
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveClinicalNote(patientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) =>
+      fetchJson<ClinicalNote>(`/api/crm/patients/${patientId}/clinical-note`, {
+        method: "PUT",
+        body: JSON.stringify({ text }),
+      }),
+    onSuccess: (note) => qc.setQueryData(clinicalNoteKey(patientId), note),
+  });
+}
+
 // ── Allergies ────────────────────────────────────────────────────────────
 export function useAllergies(patientId: string) {
   useMedicalRecordLive(patientId, "allergy", ["patient", patientId, "allergies"]);

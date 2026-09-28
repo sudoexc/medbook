@@ -8,9 +8,18 @@
  * Contract:
  *   - ADD-ONLY. The curated catalog (hand-written dosing, indications,
  *     interactions) is never updated, only enriched with missing brand rows.
- *   - Idempotent: matching is by id / inn / normalised name+brand, so a
- *     re-run is a no-op.
- *   - DRY RUN by default; APPLY=1 writes.
+ *   - An entity joins an existing row only through its substance, never
+ *     through a shared brand (audit CT-03, see `_registry-plan.ts`): a brand
+ *     registered both as «толперизон» and «лидокаин + толперизон» used to
+ *     drag the combination's brands onto the tolperisone row. Clinic-owned
+ *     rows are never a home.
+ *   - Idempotent: matching is by id / name / composition, so a re-run is a
+ *     no-op.
+ *   - DRY RUN by default; APPLY=1 writes. The dry run lists every brand the
+ *     register gives to entities of different composition.
+ *
+ * Brands an earlier run put on the wrong row are moved by
+ * `fix-ct03-registry-brand-homes.ts`; this import only adds.
  *
  * Run (prod):
  *   docker compose run --rm -e APPLY=1 worker npx tsx scripts/import-uzpharm-registry.ts
@@ -23,29 +32,16 @@ import { join } from "node:path";
 import { PrismaClient, type DrugCategory } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import {
+  curatedBrandMap,
+  planRegistryImport,
+  type RegistryEntity,
+} from "./_registry-plan";
+
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-type RegistryEntity = {
-  id: string;
-  inn: string;
-  nameRu: string;
-  atcCode: string | null;
-  category: DrugCategory;
-  rxOnly: boolean;
-  isTradeEntity: boolean;
-  forms: { form: string; strengths: string[] }[];
-  brands: { name: string; manufacturer: string | null; country: string | null }[];
-};
-
 const APPLY = process.env.APPLY === "1";
-
-const norm = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[®™]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 
 const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
@@ -54,93 +50,42 @@ async function main() {
     readFileSync(join(process.cwd(), "prisma", "uzpharm-registry.json"), "utf8"),
   ) as { source: string; entities: RegistryEntity[] };
 
-  const existingDrugs = await prisma.drug.findMany({
-    select: { id: true, inn: true, nameRu: true },
+  const [drugs, brands] = await Promise.all([
+    prisma.drug.findMany({
+      select: { id: true, inn: true, nameRu: true, clinicId: true, atcCode: true },
+    }),
+    prisma.drugBrand.findMany({ select: { drugId: true, name: true } }),
+  ]);
+
+  const plan = planRegistryImport({
+    entities: payload.entities,
+    drugs,
+    brands,
+    curatedBrands: curatedBrandMap(),
   });
-  const existingBrands = await prisma.drugBrand.findMany({
-    select: { drugId: true, name: true },
-  });
-
-  // Any known handle → drugId. Brand names participate so «Мидокалм» in the
-  // registry lands on the curated tolperisone row instead of a duplicate.
-  const handleToDrug = new Map<string, string>();
-  for (const d of existingDrugs) {
-    handleToDrug.set(norm(d.nameRu), d.id);
-    handleToDrug.set(norm(d.inn), d.id);
-    handleToDrug.set(d.id, d.id);
-  }
-  for (const b of existingBrands) {
-    if (!handleToDrug.has(norm(b.name))) handleToDrug.set(norm(b.name), b.drugId);
-  }
-  const brandSetByDrug = new Map<string, Set<string>>();
-  for (const b of existingBrands) {
-    (brandSetByDrug.get(b.drugId) ?? brandSetByDrug.set(b.drugId, new Set()).get(b.drugId)!).add(
-      norm(b.name),
-    );
-  }
-
-  let createdDrugs = 0;
-  let enrichedBrands = 0;
-  let skippedExisting = 0;
-
-  const newDrugs: RegistryEntity[] = [];
-  const brandRows: { drugId: string; name: string; manufacturer: string | null }[] = [];
-
-  for (const e of payload.entities) {
-    // Find a home: the entity's own name, or any of its brand names.
-    let drugId =
-      handleToDrug.get(norm(e.nameRu)) ??
-      handleToDrug.get(e.id) ??
-      null;
-    if (!drugId) {
-      for (const b of e.brands) {
-        const hit = handleToDrug.get(norm(b.name));
-        if (hit) {
-          drugId = hit;
-          break;
-        }
-      }
-    }
-
-    if (drugId) {
-      skippedExisting += 1;
-      const set =
-        brandSetByDrug.get(drugId) ??
-        brandSetByDrug.set(drugId, new Set()).get(drugId)!;
-      for (const b of e.brands) {
-        const bn = norm(b.name);
-        // A brand equal to the drug's own name adds nothing to search.
-        if (set.has(bn) || bn === norm(e.nameRu)) continue;
-        set.add(bn);
-        handleToDrug.set(bn, drugId);
-        brandRows.push({ drugId, name: b.name, manufacturer: b.manufacturer });
-        enrichedBrands += 1;
-      }
-      continue;
-    }
-
-    // New entity. Register its handles first so later registry entities
-    // sharing a brand fold into it instead of duplicating.
-    createdDrugs += 1;
-    newDrugs.push(e);
-    handleToDrug.set(norm(e.nameRu), e.id);
-    const set = new Set<string>([norm(e.nameRu)]);
-    brandSetByDrug.set(e.id, set);
-    for (const b of e.brands) {
-      const bn = norm(b.name);
-      if (set.has(bn)) continue;
-      set.add(bn);
-      handleToDrug.set(bn, e.id);
-      brandRows.push({ drugId: e.id, name: b.name, manufacturer: b.manufacturer });
-      enrichedBrands += 1;
-    }
-  }
+  const { newDrugs, brandRows } = plan;
+  const byVia = new Map<string, number>();
+  for (const h of plan.homes.values()) byVia.set(h.via, (byVia.get(h.via) ?? 0) + 1);
 
   console.log(`[uzpharm] source: ${payload.source}`);
   console.log(`[uzpharm] entities: ${payload.entities.length}`);
-  console.log(`[uzpharm] matched existing drugs (brand-enriched only): ${skippedExisting}`);
-  console.log(`[uzpharm] new drugs to create: ${createdDrugs}`);
-  console.log(`[uzpharm] new brand rows to create: ${enrichedBrands}`);
+  console.log(
+    `[uzpharm] matched existing drugs (brand-enriched only): ${payload.entities.length - newDrugs.length}`,
+  );
+  console.log(
+    `[uzpharm] how entities found their row: ${[...byVia]
+      .map(([via, n]) => `${via} ${n}`)
+      .join(", ")}`,
+  );
+  console.log(`[uzpharm] new drugs to create: ${newDrugs.length}`);
+  console.log(`[uzpharm] new brand rows to create: ${brandRows.length}`);
+  console.log(
+    `[uzpharm] brands the register lists under different compositions: ${plan.conflicts.length}` +
+      " (kept on each row, the doctor picks the product)",
+  );
+  for (const c of plan.conflicts) {
+    console.log(`  ${c.brand}: ${c.entities.map((e) => e.nameRu).join(" | ")}`);
+  }
 
   if (!APPLY) {
     console.log("[uzpharm] DRY RUN — set APPLY=1 to write.");
@@ -156,7 +101,7 @@ async function main() {
         inn: e.inn,
         nameRu: cap(e.nameRu),
         atcCode: e.atcCode,
-        category: e.category,
+        category: e.category as DrugCategory,
         forms: e.forms,
         rxOnly: e.rxOnly,
       })),

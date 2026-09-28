@@ -1,9 +1,9 @@
 /**
  * Seeds HandoutTemplate rows from `_handout-data.ts`.
  *
- * Idempotent: upserts by `code`. Templates that disappeared from the seed
- * (renamed/removed) get deactivated (active=false) so existing references
- * don't 404 — clinic overrides will follow the same pattern in G6.
+ * Idempotent: upserts by `code`. Global templates that disappeared from the
+ * seed (renamed/removed) get deactivated (active=false) so existing references
+ * don't 404. Clinic-authored handouts are never touched.
  *
  * Local: `npx tsx prisma/seed-handouts.ts`
  */
@@ -47,8 +47,12 @@ async function main() {
     upserts += 1;
   }
 
+  // Global rows only (audit G2-05): a clinic's own handouts (code `c-<uuid>`,
+  // /api/crm/knowledge/handouts) are never in the curated list, so without
+  // the scope every refresh switched them all off and they vanished from the
+  // doctors' handout picker.
   const deactivated = await prisma.handoutTemplate.updateMany({
-    where: { code: { notIn: codes }, active: true },
+    where: { clinicId: null, code: { notIn: codes }, active: true },
     data: { active: false },
   });
 

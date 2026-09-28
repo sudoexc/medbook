@@ -37,7 +37,7 @@ import {
   type DocumentType,
 } from "../_hooks/use-documents";
 import { UploadDialog } from "./upload-dialog";
-import { staffFileHref } from "@/lib/storage-ref";
+import { documentHref } from "@/lib/storage-ref";
 
 const DOC_TYPES: DocumentType[] = [
   "REFERRAL",
@@ -279,7 +279,7 @@ export function DocumentsPageClient() {
                         )
                       ) : null}
                       <a
-                        href={staffFileHref(d.fileUrl)}
+                        href={documentHref(d.fileUrl) ?? "#"}
                         target="_blank"
                         rel="noreferrer"
                         className={cn(
@@ -291,7 +291,7 @@ export function DocumentsPageClient() {
                         <EyeIcon />
                       </a>
                       <a
-                        href={staffFileHref(d.fileUrl, { download: true })}
+                        href={documentHref(d.fileUrl, { download: true }) ?? "#"}
                         download
                         className={cn(
                           buttonVariants({ variant: "ghost", size: "icon-sm" }),

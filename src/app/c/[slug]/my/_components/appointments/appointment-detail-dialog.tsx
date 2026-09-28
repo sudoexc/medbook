@@ -20,6 +20,7 @@ import {
 import { useSlots } from "../../_hooks/use-slots";
 import { useBookingDraft } from "../../_hooks/use-booking-draft";
 import { useActiveContext } from "../../_hooks/use-active-context";
+import { useIcsLink } from "../../_hooks/use-ics-link";
 import { bookHref } from "../../_lib/booking-context";
 import { useClinic } from "../../_hooks/use-clinic";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
@@ -46,16 +47,21 @@ export function AppointmentDetailDialog({
 }) {
   const t = useT();
   const router = useRouter();
-  const { state, initData, clinicSlug } = useMiniAppAuth();
+  const { state, clinicSlug } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
-  // `<a target="_blank">` opens without our custom headers, so the conclusion
-  // link carries init-data via query — same pattern as the documents screen.
-  const conclusionLinkParam = initData
-    ? `&initData=${encodeURIComponent(initData)}`
-    : "";
+  // `<a target="_blank">` opens without our custom headers: the conclusion
+  // URL already carries a short-lived link for that one document, and the
+  // calendar file gets its own (never initData in a URL, audit MA-07).
   const tg = useTelegramWebApp();
   const { setDraft } = useBookingDraft(clinicSlug);
   const { onBehalfOf } = useActiveContext();
+  // Only an appointment that can still happen offers «add to calendar».
+  const icsLink = useIcsLink(
+    ["CANCELLED", "COMPLETED", "IN_PROGRESS"].includes(appointment.status)
+      ? null
+      : appointment.id,
+    onBehalfOf,
+  );
   const { data: clinic } = useClinic(clinicSlug);
   const [mode, setMode] = React.useState<"view" | "reschedule">(initialMode);
   const [date, setDate] = React.useState<string | null>(null);
@@ -136,12 +142,8 @@ export function AppointmentDetailDialog({
   };
 
   const onAddCalendar = () => {
-    const qs = `clinicSlug=${encodeURIComponent(clinicSlug)}${
-      initData ? `&initData=${encodeURIComponent(initData)}` : ""
-    }`;
-    openExternal(
-      `${window.location.origin}/api/miniapp/appointments/${appointment.id}/ics?${qs}`,
-    );
+    // Minted ahead so the tap opens it synchronously (see useIcsLink).
+    if (icsLink.data) openExternal(icsLink.data);
   };
 
   const clinicName = clinic
@@ -222,7 +224,7 @@ export function AppointmentDetailDialog({
                 </Link>
               ) : appointment.conclusionUrl ? (
                 <a
-                  href={`${appointment.conclusionUrl}${conclusionLinkParam}`}
+                  href={appointment.conclusionUrl}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -244,7 +246,11 @@ export function AppointmentDetailDialog({
                   <div
                     className={`grid gap-2 ${onRoute ? "grid-cols-2" : "grid-cols-1"}`}
                   >
-                    <MButton variant="secondary" onClick={onAddCalendar}>
+                    <MButton
+                      variant="secondary"
+                      onClick={onAddCalendar}
+                      disabled={!icsLink.data}
+                    >
                       <span className="inline-flex items-center gap-1.5">
                         <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden />
                         {t.appts.addCalendar}

@@ -6,6 +6,8 @@
  */
 import "dotenv/config";
 
+import { assertLocalHttpTarget } from "./_destructive-guard";
+
 const BASE = process.env.STRESS_BASE_URL ?? "http://localhost:3000";
 const ADMIN_EMAIL = "1@1.uz";
 const ADMIN_PASS = "1";
@@ -97,6 +99,9 @@ async function api<T = unknown>(
 }
 
 async function main() {
+  // Audit G2-05: it writes and deletes through the real API routes, so it
+  // must never be pointed at the live site.
+  assertLocalHttpTarget("stress-settings-crud", BASE);
   const jar = newJar();
   await login(jar);
   console.log("✓ admin logged in");

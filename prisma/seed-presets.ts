@@ -42,9 +42,17 @@ async function main() {
     });
 
     for (const d of doctors) {
-      await prisma.doctorPreset.deleteMany({
+      // Additive (audit G2-05): a doctor's chips are their own work, built in
+      // /doctor/settings. This used to delete them and reinsert the bundle,
+      // on every clinic, the live one included. A doctor who has any preset
+      // is left alone.
+      const own = await prisma.doctorPreset.count({
         where: { clinicId: d.clinicId, doctorId: d.id },
       });
+      if (own > 0) {
+        console.log(`  ${bundle} → ${d.slug}: already has ${own} presets, skipped`);
+        continue;
+      }
 
       const created = await prisma.doctorPreset.createMany({
         data: presets.map((p, i) => ({

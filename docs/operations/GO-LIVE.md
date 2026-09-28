@@ -66,10 +66,11 @@
 
 1. Бэкап: `ssh root@167.233.142.75 'cd /opt/neurofax && ./ops/backup.sh'`.
 2. `wipe-neurofax-demo.ts` вытирает пациентские данные, сохраняя каркас
-   (врачи/услуги/кабинеты/пользователи/шаблоны):
-   `docker compose exec -T worker npx tsx scripts/wipe-neurofax-demo.ts --force`
-   (предохранитель `scripts/_destructive-guard.ts` на клинике с реальными
-   данными потребует ещё `ALLOW_DEMO_SEED_ON_REAL_DATA=neurofax`).
+   (врачи/услуги/кабинеты/пользователи/шаблоны). ⚠️ Сейчас это уже
+   невозможно и так и задумано: скрипта нет в образе worker, при
+   `NODE_ENV=production` он отказывает всегда, а на клинике с подписанными
+   заключениями отказывает в любой среде (`scripts/_destructive-guard.ts`,
+   RUNBOOK §5.1). Клиника `neurofax` работает с реальными данными.
 3. Каркас поправить руками: недостающих врачей/кабинеты/услуги добавляет
    `scripts/seed-neurofax-real.ts` (DRY RUN, затем `APPLY=1`); демо-врачей
    он деактивирует только с флагом `--deactivate-others`.

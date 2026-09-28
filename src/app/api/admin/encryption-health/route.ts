@@ -19,11 +19,11 @@
  * Every successful response also writes an `ENCRYPTION_HEALTH_CHECKED` audit
  * row — peeking at posture is a privileged operation in its own right.
  */
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { ok, err } from "@/server/http";
+import { ok } from "@/server/http";
+import { requireSuperAdmin } from "@/server/platform/handler";
 import {
   decryptField,
   encryptField,
@@ -48,17 +48,6 @@ interface HealthResponse {
   probeError: string | null;
   counts: Record<string, ColumnCounts>;
   generatedAt: string;
-}
-
-async function requireSuper(): Promise<
-  { ok: true; userId: string } | { ok: false; response: Response }
-> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, response: err("Unauthorized", 401) };
-  if (session.user.role !== "SUPER_ADMIN") {
-    return { ok: false, response: err("Forbidden", 403) };
-  }
-  return { ok: true, userId: session.user.id };
 }
 
 /**
@@ -139,7 +128,7 @@ function probeRoundTrip(): { ok: boolean; error: string | null } {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const gate = await requireSuper();
+  const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
 
   return runWithTenant(

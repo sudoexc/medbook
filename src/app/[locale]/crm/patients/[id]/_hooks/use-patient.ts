@@ -175,6 +175,17 @@ export function usePatchPatient(id: string) {
   );
 }
 
+/**
+ * The server refused to delete the card because something is attached to it
+ * (audit G1-09); `counts` says what, per relation of the card.
+ */
+export class PatientDeleteBlockedError extends Error {
+  constructor(readonly counts: Record<string, number>) {
+    super("has_clinical_records");
+    this.name = "PatientDeleteBlockedError";
+  }
+}
+
 export function useDeletePatient(id: string) {
   const qc = useQueryClient();
   return useMutation<{ id: string; deleted: true }, Error, void>({
@@ -183,6 +194,15 @@ export function useDeletePatient(id: string) {
         method: "DELETE",
         credentials: "include",
       });
+      if (res.status === 409) {
+        const j = (await res.json().catch(() => null)) as {
+          reason?: string;
+          counts?: Record<string, number>;
+        } | null;
+        if (j?.reason === "has_clinical_records") {
+          throw new PatientDeleteBlockedError(j.counts ?? {});
+        }
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { id: string; deleted: true };
     },

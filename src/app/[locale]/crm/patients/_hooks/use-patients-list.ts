@@ -33,7 +33,6 @@ export type PatientRow = {
   lastVisitAt: string | null;
   nextVisitAt: string | null;
   telegramUsername: string | null;
-  passport: string | null;
   createdAt: string;
 };
 

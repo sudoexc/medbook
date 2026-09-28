@@ -29,14 +29,11 @@ import { formatDate } from "@/lib/format";
 export function DocumentsScreen() {
   const t = useT();
   const router = useRouter();
-  const { clinicSlug, state, initData } = useMiniAppAuth();
+  const { clinicSlug, state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
-  // `<a target="_blank">` opens in a fresh tab without our custom headers,
-  // so we attach init-data via query — the server's `resolveMiniAppContext`
-  // already accepts it that way (precedent: SSE endpoint).
-  const fileLinkParam = initData
-    ? `&initData=${encodeURIComponent(initData)}`
-    : "";
+  // `<a target="_blank">` opens in a fresh tab without our custom headers.
+  // Each `fileUrl` already carries a short-lived link for that one document
+  // (minted by the list); initData never goes into a URL (audit MA-07).
   const docs = useDocuments();
   const upload = useUploadDocument();
   const tg = useTelegramWebApp();
@@ -239,7 +236,7 @@ export function DocumentsScreen() {
                   {!isPending ? (
                     <>
                       <a
-                        href={`${d.fileUrl}${fileLinkParam}`}
+                        href={d.fileUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="flex-1"
@@ -250,7 +247,7 @@ export function DocumentsScreen() {
                         </MButton>
                       </a>
                       <a
-                        href={`${d.fileUrl}${fileLinkParam}&download=1`}
+                        href={`${d.fileUrl}&download=1`}
                         target="_blank"
                         rel="noreferrer"
                         className="flex-1"

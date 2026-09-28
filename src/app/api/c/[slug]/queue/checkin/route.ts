@@ -30,6 +30,7 @@ import { runWithTenant } from "@/lib/tenant-context";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { runQueueTx } from "@/server/appointments/queue-order";
+import { queueTicketToken } from "@/server/appointments/public-ticket";
 import { applyWaitingIntake } from "@/server/appointments/intake";
 import { kioskCheckinEntersQueue } from "@/server/kiosk/checkin-statuses";
 
@@ -168,6 +169,8 @@ export async function POST(request: Request) {
 
     return ok({
       appointmentId: appt.id,
+      // For the kiosk's print stub (audit INF-10), as in the walk-in answer.
+      ticketToken: queueTicketToken(appt.id),
       ticketCode: appt.ticketCode,
       ticketNumber: ticketNumberFor(appt.doctor, ticketSeq ?? queueOrder),
       queueOrder,

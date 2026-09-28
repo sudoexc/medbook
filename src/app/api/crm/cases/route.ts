@@ -20,6 +20,16 @@ import {
   CreateMedicalCaseSchema,
   QueryMedicalCaseSchema,
 } from "@/server/schemas/medical-case";
+import {
+  CASE_NAME_ONLY_FIELDS,
+  redactedSnapshot,
+} from "@/server/audit/patient-audit-meta";
+import {
+  canReadCaseClinical,
+  canWriteCaseClinical,
+  clinicalFieldsIn,
+  withoutCaseClinical,
+} from "@/server/medical-case/clinical-access";
 
 const LIST_INCLUDE = {
   _count: { select: { appointments: true } },
@@ -33,7 +43,7 @@ const LIST_INCLUDE = {
 
 export const GET = createApiListHandler(
   { roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE", "CALL_OPERATOR"] },
-  async ({ request }) => {
+  async ({ request, ctx }) => {
     const parsed = parseQuery(request, QueryMedicalCaseSchema);
     if (!parsed.ok) return parsed.response;
     const q = parsed.value;
@@ -71,7 +81,13 @@ export const GET = createApiListHandler(
 
     const total = await prisma.medicalCase.count({ where });
 
-    return ok({ rows, nextCursor, total });
+    // No list screen shows the SOAP draft (it went out as ciphertext), and
+    // the front desk / call center get no diagnosis (audit PT-11).
+    const clinical = canReadCaseClinical(ctx);
+    const out = rows.map(({ soapDraft: _soap, ...row }) =>
+      clinical ? row : withoutCaseClinical(row),
+    );
+    return ok({ rows: out, nextCursor, total });
   }
 );
 
@@ -80,7 +96,16 @@ export const POST = createApiHandler(
     roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
     bodySchema: CreateMedicalCaseSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
+    // Reception opens a case at booking with a title and the complaint; the
+    // diagnosis is the doctor's to write (audit PT-11).
+    const clinicalFields = clinicalFieldsIn(body as Record<string, unknown>);
+    if (clinicalFields.length > 0 && !canWriteCaseClinical(ctx)) {
+      return err("Forbidden", 403, {
+        reason: "clinical_fields_forbidden",
+        fields: clinicalFields,
+      });
+    }
     // Verify the patient belongs to this tenant. Auto-scoped by extension.
     const patient = await prisma.patient.findUnique({
       where: { id: body.patientId },
@@ -125,7 +150,12 @@ export const POST = createApiHandler(
       action: "medical_case.create",
       entityType: "MedicalCase",
       entityId: created.id,
-      meta: { after: hydrated },
+      // The case's columns only (audit SEC-09): not the `patient` include
+      // with the name and phone, not the decrypted SOAP draft.
+      meta: redactedSnapshot(
+        hydrated as unknown as Record<string, unknown>,
+        CASE_NAME_ONLY_FIELDS,
+      ),
     });
 
     return ok(hydrated, 201);

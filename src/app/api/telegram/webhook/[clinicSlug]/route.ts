@@ -46,9 +46,12 @@ import {
   resolveDictatingDoctor,
 } from "@/server/telegram/voice-handler";
 import {
+  claimInviteToken,
   consumeInviteToken,
+  findPendingInviteClaim,
+  inviteClaimReplyKey,
   inviteReplyKey,
-  type InviteConsumeResult,
+  type InviteClaimResult,
 } from "@/server/telegram/invite-token";
 import {
   applyVerifiedContact,
@@ -397,6 +400,33 @@ async function senderLang(
 }
 
 /**
+ * The sender's account was just bound to a card: move this chat (and the
+ * threads of a retired auto card) onto it. Best-effort: the patient still
+ * hears that his number was confirmed.
+ */
+async function attachThreadBestEffort(
+  clinic: TgClinicMinimal,
+  conversationId: string,
+  linked: { patientId: string; retiredPatientId?: string | null },
+): Promise<void> {
+  try {
+    await runWithTenant({ kind: "SYSTEM" }, () =>
+      attachThreadToLinkedCard(prisma, {
+        clinicId: clinic.id,
+        conversationId,
+        patientId: linked.patientId,
+        retiredPatientId: linked.retiredPatientId ?? null,
+      }),
+    );
+  } catch (attachErr) {
+    console.warn(
+      `[tg:webhook clinic=${clinic.slug}] thread relink failed`,
+      attachErr,
+    );
+  }
+}
+
+/**
  * A contact shared into the bot chat (the Mini App's «Подтвердить номер»
  * calls `requestContact`, which posts the account's own contact here).
  * Applies it as verified identity and tells the patient what happened, in
@@ -408,6 +438,44 @@ async function handleSharedContact(
   conversationId: string,
   msg: TgIncomingMessage,
 ): Promise<void> {
+  // An invite this account opened is waiting for exactly this: the account's
+  // own number, checked against the invited card (audit PT-04).
+  const pending = msg.from?.id
+    ? await findPendingInviteClaim({
+        clinicId: clinic.id,
+        telegramId: String(msg.from.id),
+      })
+    : null;
+  if (pending && msg.from?.id) {
+    const invite = await consumeInviteToken({
+      clinicId: clinic.id,
+      token: pending.token,
+      telegramId: String(msg.from.id),
+      telegramUsername: msg.from.username ?? null,
+      contact: msg.contact,
+    });
+    console.info(
+      `[tg:webhook clinic=${clinic.slug}] invite contact → ${invite.kind}`,
+    );
+    if (invite.kind === "linked") {
+      // The invite bound the account: this chat is the card's thread now,
+      // and so is every thread of the auto card it left behind (TG-11).
+      await attachThreadBestEffort(clinic, conversationId, invite);
+      await bumpPatientLastContact(invite.patientId);
+    }
+    const inviteText = botT(pending.lang, inviteReplyKey(invite));
+    // Keep the «send my number» button up while the patient can still act on
+    // it (a forwarded contact, or a number reception is about to correct).
+    const retry = invite.kind === "phone-required" || invite.kind === "phone-mismatch";
+    const sentInvite = await sendMessage(clinic, chatId, inviteText, {
+      reply_markup: retry
+        ? sharePhoneKeyboard(pending.lang)
+        : { remove_keyboard: true },
+    });
+    await recordOutgoing(clinic.id, conversationId, inviteText, sentInvite.message_id);
+    return;
+  }
+
   const result = await applyVerifiedContact({
     clinicId: clinic.id,
     fromId: msg.from?.id,
@@ -417,23 +485,8 @@ async function handleSharedContact(
   console.info(`[tg:webhook clinic=${clinic.slug}] contact → ${result.kind}`);
   if (result.kind === "linked") {
     // The account moved to the clinic's card: so does this chat, and every
-    // thread of the auto card it left behind (audit TG-11). Best-effort:
-    // the patient still hears that his number was confirmed.
-    try {
-      await runWithTenant({ kind: "SYSTEM" }, () =>
-        attachThreadToLinkedCard(prisma, {
-          clinicId: clinic.id,
-          conversationId,
-          patientId: result.patientId,
-          retiredPatientId: result.retiredPatientId,
-        }),
-      );
-    } catch (attachErr) {
-      console.warn(
-        `[tg:webhook clinic=${clinic.slug}] contact thread relink failed`,
-        attachErr,
-      );
-    }
+    // thread of the auto card it left behind (audit TG-11).
+    await attachThreadBestEffort(clinic, conversationId, result);
   }
   const lang = await senderLang(clinic.id, msg.from);
   const text = botT(lang, contactReplyKey(result));
@@ -450,16 +503,22 @@ function startPayloadOf(text: string | undefined): string | null {
 
 /**
  * `/start <token>` from the invite deep link: the QR in the doctor's
- * cabinet and the one printed on every conclusion (audit TG-07).
+ * cabinet and the one printed on every conclusion.
  *
- * Identity, not chat: it is consumed whatever the bot's auto-reply flag and
- * the thread's takeover mode. It used to sit behind that early exit, and
- * with the flag unset (the production default) no QR ever linked anyone:
- * the doctor's «Привязать Telegram» dialog polled forever and reminders
- * piled up as «нет канала». The flag only decides whether the FSM greets.
+ * Identity, not chat (audit TG-07): it is handled whatever the bot's
+ * auto-reply flag and the thread's takeover mode. It used to sit behind that
+ * early exit, and with the flag unset (the production default) no QR ever
+ * did anything: the doctor's «Привязать Telegram» dialog polled forever and
+ * reminders piled up as «нет канала». The flag only decides whether the FSM
+ * greets.
  *
- * Returns the card the chat now belongs to, when the link was made. Never
- * throws: a failure here must not cost the patient his message in the inbox.
+ * Opening the link binds nothing yet (audit PT-04): the account is noted as
+ * the one that opened it and asked for its own number, and the card is bound
+ * when that contact arrives and matches (see handleSharedContact).
+ *
+ * Returns true when the bot asked for the number, so the FSM welcome does
+ * not bury the share button. Never throws: a failure here must not cost the
+ * patient his message in the inbox.
  */
 async function handleInviteStart(
   clinic: TgClinicMinimal,
@@ -467,54 +526,59 @@ async function handleInviteStart(
   conversationId: string,
   msg: TgIncomingMessage,
   token: string,
-): Promise<string | null> {
-  if (!msg.from?.id) return null;
-  let result: InviteConsumeResult;
+): Promise<boolean> {
+  if (!msg.from?.id) return false;
+  let claim: InviteClaimResult;
   try {
-    result = await consumeInviteToken({
+    claim = await claimInviteToken({
       clinicId: clinic.id,
       token,
       telegramId: String(msg.from.id),
-      telegramUsername: msg.from.username ?? null,
     });
-  } catch (consumeErr) {
+  } catch (claimErr) {
     console.warn(
-      `[tg:webhook clinic=${clinic.slug}] invite consume threw`,
-      consumeErr,
+      `[tg:webhook clinic=${clinic.slug}] invite claim threw`,
+      claimErr,
     );
-    return null;
+    return false;
   }
   console.info(
-    `[tg:webhook clinic=${clinic.slug}] invite consume → ${result.kind}`,
+    `[tg:webhook clinic=${clinic.slug}] invite claim → ${claim.kind}`,
   );
 
-  let linkedPatientId: string | null = null;
+  const replyKey = inviteClaimReplyKey(claim);
+  if (!replyKey) return false;
   try {
-    if (result.kind === "linked") {
-      const attached = await runWithTenant({ kind: "SYSTEM" }, () =>
-        attachThreadToLinkedCard(prisma, {
-          clinicId: clinic.id,
-          conversationId,
-          patientId: result.patientId,
-          retiredPatientId: result.retiredPatientId ?? null,
-        }),
-      );
-      if (attached) linkedPatientId = result.patientId;
-    }
-    const replyKey = inviteReplyKey(result);
-    if (replyKey) {
-      const text = botT(await senderLang(clinic.id, msg.from), replyKey);
-      const sent = await sendMessage(clinic, chatId, text);
-      await recordOutgoing(clinic.id, conversationId, text, sent.message_id);
-    }
+    // The invited card's language when the token names one, else the
+    // sender's own (an expired link resolves no card).
+    const lang: BotLang =
+      "lang" in claim ? claim.lang : await senderLang(clinic.id, msg.from);
+    const text = botT(lang, replyKey);
+    const sent = await sendMessage(
+      clinic,
+      chatId,
+      text,
+      claim.kind === "claimed"
+        ? { reply_markup: sharePhoneKeyboard(lang) }
+        : undefined,
+    );
+    await recordOutgoing(clinic.id, conversationId, text, sent.message_id);
   } catch (replyErr) {
-    // The card is linked already; a thread or reply hiccup is cosmetic.
     console.warn(
-      `[tg:webhook clinic=${clinic.slug}] invite follow-up failed`,
+      `[tg:webhook clinic=${clinic.slug}] invite reply failed`,
       replyErr,
     );
   }
-  return linkedPatientId;
+  return claim.kind === "claimed";
+}
+
+/** One big «📱 send my number» button: Telegram asks, the patient confirms. */
+function sharePhoneKeyboard(lang: "ru" | "uz") {
+  return {
+    keyboard: [[{ text: botT(lang, "invite.shareButton"), request_contact: true }]],
+    resize_keyboard: true,
+    one_time_keyboard: true,
+  };
 }
 
 /** Mini App URL served by this deployment for a given clinic, or null if
@@ -624,22 +688,17 @@ export async function POST(
         return jsonResponse({ ok: true });
       }
 
-      // Invite deep link: before the realtime event (it then carries the
-      // freshly linked card) and before every early exit below (audit TG-07).
+      // Invite deep link: before every early exit below (audit TG-07).
       const startPayload = startPayloadOf(msg.text);
-      if (startPayload) {
-        const invitedPatientId = await handleInviteStart(
-          clinicMin,
-          chatId,
-          recorded.conversationId,
-          msg,
-          startPayload,
-        );
-        if (invitedPatientId) {
-          recorded.patientId = invitedPatientId;
-          await bumpPatientLastContact(invitedPatientId);
-        }
-      }
+      const askedForPhone = startPayload
+        ? await handleInviteStart(
+            clinicMin,
+            chatId,
+            recorded.conversationId,
+            msg,
+            startPayload,
+          )
+        : false;
 
       const contactDisplayName = (() => {
         const full = [msg.from?.first_name, msg.from?.last_name]
@@ -694,7 +753,7 @@ export async function POST(
 
       // BOT mode: dispatch to FSM. `/start <payload>` greets like a bare
       // `/start` (the FSM's `text === "/start"` check would miss it as
-      // plain text); the invite itself was consumed above.
+      // plain text); the invite itself was handled above.
       const trimmedText =
         typeof msg.text === "string" ? msg.text.trim() : null;
       let event: FsmEvent;
@@ -707,6 +766,10 @@ export async function POST(
       } else {
         event = { kind: "start" };
       }
+
+      // The bot just asked for the number (PT-04): a welcome on top of it
+      // would bury the share button.
+      if (askedForPhone) return jsonResponse({ ok: true });
 
       await handleFsmMessage(
         clinicMin,

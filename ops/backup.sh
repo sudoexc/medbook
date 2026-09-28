@@ -8,10 +8,18 @@
 # directory is trivial to pull off-box (rsync/scp) and survives any container
 # or MinIO failure.
 #
-# Two artefacts per run, in a dated folder:
+# Artefacts per run, in a dated folder:
 #   pg-<db>-<ts>.sql.gz    — full logical dump (restore: ops/restore.sh)
 #   files-<ts>.tar.gz      — clinic file objects from the MinIO bucket
 #                            (documents, chat attachments, handouts)
+#   restore-kit-<ts>.tar.gz.gpg
+#                          — what a restore needs besides the dump, ENCRYPTED
+#                            (audit INF-08): .env with FIELD_ENCRYPTION_KEY and
+#                            APP_SECRET, the production docker-compose.yml,
+#                            nginx.conf + conf.d (neighbours' vhosts) and
+#                            _deploy.sh. Written only when BACKUP_GPG_RECIPIENT
+#                            or BACKUP_PASSPHRASE is set; otherwise skipped with
+#                            a loud log line. Never stored in plain text.
 #
 # ⚠️ This is still SAME-BOX storage. It protects against DB corruption, a bad
 # migration, an accidental wipe or a botched deploy — NOT against losing the
@@ -21,6 +29,10 @@
 #   0 3 * * * cd /opt/neurofax && ./ops/backup.sh >> /var/log/medbook-backup.log 2>&1
 #
 set -euo pipefail
+
+# The dump holds every patient's record and the kit holds the keys: nothing
+# this script writes is for other local users.
+umask 077
 
 if [[ -f .env ]]; then
   # shellcheck disable=SC2046,SC1091
@@ -82,7 +94,65 @@ tar -czf "$FILES" -C "$STAGE" . || fail "tar clinic files"
 FILES_SIZE=$(stat -c %s "$FILES" 2>/dev/null || stat -f %z "$FILES")
 log "files OK ($(numfmt --to=iec "$FILES_SIZE" 2>/dev/null || echo "${FILES_SIZE}B"))"
 
-# ── 3. Off-box copy ────────────────────────────────────────────────────────
+# ── 3. Restore kit: keys + server config, encrypted ────────────────────────
+# Audit INF-08: a dump alone does not restore the clinic. Patient.passport /
+# notes, MedicalCase.soapDraft, Prescription.notes and the TOTP secrets are
+# encrypted with FIELD_ENCRYPTION_KEY(_V<n>), clinic bot tokens with
+# APP_SECRET; both live only in .env. Losing the server without them loses
+# those fields for good, and compose / nginx (neighbours' vhosts included) /
+# _deploy.sh exist only on this box (skip-worktree or untracked).
+#
+# The kit is streamed straight from tar into gpg: the plaintext never touches
+# the disk. Either
+#   BACKUP_GPG_RECIPIENT=<key id or email>  public-key encryption; the private
+#                                           key never lives on this server
+#                                           (preferred), or
+#   BACKUP_PASSPHRASE=<long random string>  symmetric AES256; the passphrase
+#                                           must ALSO be kept off this server
+#                                           (password manager), or the kit
+#                                           cannot be opened after losing it.
+# Restore: docs/operations/RUNBOOK.md §4.5.
+KIT="${DEST}/restore-kit-${TS}.tar.gz.gpg"
+KIT_FILES=()
+for f in .env docker-compose.yml nginx/nginx.conf nginx/conf.d _deploy.sh; do
+  [[ -e "$f" ]] && KIT_FILES+=("$f")
+done
+
+kit_skip() {
+  log "⚠️ RESTORE KIT NOT SAVED: $1. Without .env (FIELD_ENCRYPTION_KEY, APP_SECRET) a restored dump cannot decrypt passports, patient notes, SOAP drafts, 2FA secrets or clinic bot tokens. See docs/operations/RUNBOOK.md §4.5."
+}
+
+if [[ ${#KIT_FILES[@]} -eq 0 ]]; then
+  kit_skip "none of .env, docker-compose.yml, nginx/, _deploy.sh found in $(pwd)"
+elif [[ -z "${BACKUP_GPG_RECIPIENT:-}" && -z "${BACKUP_PASSPHRASE:-}" ]]; then
+  kit_skip "neither BACKUP_GPG_RECIPIENT nor BACKUP_PASSPHRASE is set"
+elif ! command -v gpg >/dev/null 2>&1; then
+  kit_skip "gpg is not installed (apt-get install gnupg)"
+else
+  if [[ -n "${BACKUP_GPG_RECIPIENT:-}" ]]; then
+    kit_mode="gpg recipient ${BACKUP_GPG_RECIPIENT}"
+    kit_encrypt() {
+      gpg --batch --yes --trust-model always \
+        --recipient "$BACKUP_GPG_RECIPIENT" --encrypt --output "$1"
+    }
+  else
+    kit_mode="passphrase"
+    # Passed on fd 3, never on the command line (visible in `ps`).
+    kit_encrypt() {
+      gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+        --symmetric --cipher-algo AES256 --output "$1" 3<<<"$BACKUP_PASSPHRASE"
+    }
+  fi
+  if tar -czf - "${KIT_FILES[@]}" | kit_encrypt "${KIT}.partial"; then
+    mv "${KIT}.partial" "$KIT"
+    log "restore kit OK (${kit_mode}: ${KIT_FILES[*]})"
+  else
+    rm -f "${KIT}.partial"
+    log "RESTORE KIT FAILED (${kit_mode}): dump and files are fine, the keys are NOT backed up"
+  fi
+fi
+
+# ── 4. Off-box copy ────────────────────────────────────────────────────────
 # Everything above still lives on the same disk as production: a dead disk or
 # a locked instance takes the database, the clinic's files AND every retained
 # backup at once. That is ~100 patients and hundreds of signed conclusions,
@@ -116,7 +186,7 @@ else
   log "BACKUP_REMOTE unset — backups exist only on this disk"
 fi
 
-# ── 4. Retention ───────────────────────────────────────────────────────────
+# ── 5. Retention ───────────────────────────────────────────────────────────
 # Pruned only after the artefacts of THIS run landed — a failing run must not
 # delete history while adding nothing.
 find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime "+${BACKUP_RETENTION_DAYS}" \

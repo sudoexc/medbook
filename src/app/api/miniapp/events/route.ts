@@ -33,7 +33,12 @@
  *   spec hides comment lines from JavaScript entirely.
  *
  * Auth:
- *   Reuses `resolveMiniAppContext` (init-data verify + patient resolution).
+ *   EventSource cannot send headers, so the client first mints a stream link
+ *   (`POST /api/miniapp/links { scope: "events" }`, initData header) and
+ *   connects with `?t=<link>` (audit MA-07: the query used to carry initData
+ *   itself, the key to the whole account, straight into nginx's access log).
+ *   The link only opens the stream, for two minutes. A request carrying the
+ *   initData header is still accepted via `resolveMiniAppContext`.
  *   PatientNotRegistered (428) and the other miniapp auth failures are
  *   re-surfaced as the same JSON shape the rest of the miniapp returns —
  *   the EventSource consumer treats those as "open failed" and stays
@@ -58,7 +63,10 @@ import {
   ensureRedisSubscriber,
   isRedisEnabled,
 } from "@/server/realtime/redis-adapter";
-import { resolveMiniAppContext } from "@/server/miniapp/handler";
+import {
+  resolveMiniAppContext,
+  resolveMiniAppLink,
+} from "@/server/miniapp/handler";
 import { getFamilyAllowedPatientIds } from "@/server/miniapp/active-patient";
 import { getMetrics } from "@/server/observability/metrics";
 
@@ -179,9 +187,17 @@ export async function GET(request: NextRequest): Promise<Response> {
   // Re-use the miniapp auth helper. The streaming Response runs *outside*
   // any tenant scope — we only need the resolved clinicId + patientId, and
   // we wrap the DB-touching replay step in SYSTEM context ourselves.
-  const resolved = await resolveMiniAppContext(request);
-  if (!resolved.ok) return resolved.response;
-  const { clinicId, patientId } = resolved.ctx;
+  let clinicId: string;
+  let patientId: string;
+  if (request.nextUrl.searchParams.has("t")) {
+    const link = await resolveMiniAppLink(request, { scope: "events" });
+    if (!link.ok) return link.response;
+    ({ clinicId, patientId } = link.link);
+  } else {
+    const resolved = await resolveMiniAppContext(request);
+    if (!resolved.ok) return resolved.response;
+    ({ clinicId, patientId } = resolved.ctx);
+  }
 
   const allowedIds = await runWithTenant({ kind: "SYSTEM" }, () =>
     getFamilyAllowedPatientIds(clinicId, patientId),

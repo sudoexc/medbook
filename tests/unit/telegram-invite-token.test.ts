@@ -4,6 +4,10 @@
  * Mocks `@/lib/prisma` and `@/lib/tenant-context` so the helper's decision
  * tree (not-found, expired, already-consumed, wrong-clinic, patient already
  * linked elsewhere, happy path) can be exercised without a real DB.
+ *
+ * Audit PT-04: the invite QR is printed on the conclusion, which leaves the
+ * clinic. Holding the token links nothing: the account must share its OWN
+ * contact and the number must be the card's.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +22,16 @@ type PatientRow = {
   id: string;
   fullName?: string;
   telegramId: string | null;
+  phoneNormalized?: string;
+  preferredLang?: "RU" | "UZ";
+};
+
+/** The card's number, and the account 111 sharing it as its own contact. */
+const CARD_PHONE = "+998901234567";
+const OWN_CONTACT = {
+  phone_number: "998901234567",
+  first_name: "Dilnoza",
+  user_id: 111,
 };
 
 /** Another card of the clinic, e.g. the one the Mini App auto-created. */
@@ -38,6 +52,8 @@ const state: {
   tokenUpdates: Array<{ id: string; data: unknown }>;
   audits: Array<{ action: string; meta: unknown }>;
   conflicts: unknown[];
+  pending: unknown;
+  pendingQueries: unknown[];
 } = {
   token: null,
   patient: null,
@@ -46,6 +62,8 @@ const state: {
   tokenUpdates: [],
   audits: [],
   conflicts: [],
+  pending: null,
+  pendingQueries: [],
 };
 
 type FindArgs = {
@@ -61,6 +79,10 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     telegramInviteToken: {
       findUnique: vi.fn(async () => state.token),
+      findFirst: vi.fn(async (args: unknown) => {
+        state.pendingQueries.push(args);
+        return state.pending;
+      }),
       update: vi.fn(async (args: { where: { id: string }; data: unknown }) => {
         state.tokenUpdates.push({ id: args.where.id, data: args.data });
         return { id: args.where.id };
@@ -111,7 +133,14 @@ vi.mock("@/server/patient/telegram-link-conflict", () => ({
   }),
 }));
 
-import { consumeInviteToken } from "@/server/telegram/invite-token";
+import {
+  claimInviteToken,
+  consumeInviteToken,
+  findPendingInviteClaim,
+  inviteCardPhoneMatches,
+  inviteReplyKey,
+} from "@/server/telegram/invite-token";
+import { _keys } from "@/server/telegram/messages";
 
 function reset() {
   state.token = null;
@@ -121,6 +150,8 @@ function reset() {
   state.tokenUpdates = [];
   state.audits = [];
   state.conflicts = [];
+  state.pending = null;
+  state.pendingQueries = [];
 }
 
 const NOW = new Date("2026-05-11T12:00:00Z");
@@ -221,12 +252,13 @@ describe("consumeInviteToken", () => {
       expiresAt: new Date(NOW.getTime() + 60_000),
       consumedAt: null,
     };
-    state.patient = { id: "p1", telegramId: null };
+    state.patient = { id: "p1", telegramId: null, phoneNormalized: CARD_PHONE };
     const result = await consumeInviteToken({
       clinicId: "c1",
       token: "tok",
       telegramId: "111",
       telegramUsername: "patient_handle",
+      contact: OWN_CONTACT,
       now: NOW,
     });
     expect(result.kind).toBe("linked");
@@ -252,11 +284,12 @@ describe("consumeInviteToken", () => {
       expiresAt: new Date(NOW.getTime() + 60_000),
       consumedAt: null,
     };
-    state.patient = { id: "p1", telegramId: "111" };
+    state.patient = { id: "p1", telegramId: "111", phoneNormalized: CARD_PHONE };
     const result = await consumeInviteToken({
       clinicId: "c1",
       token: "tok",
       telegramId: "111",
+      contact: OWN_CONTACT,
       now: NOW,
     });
     expect(result.kind).toBe("linked");
@@ -275,7 +308,12 @@ describe("consumeInviteToken — one card per Telegram account (audit MA-04)", (
       expiresAt: new Date(NOW.getTime() + 60_000),
       consumedAt: null,
     };
-    state.patient = { id: "p_clinic", fullName: "Каримова Дилноза", telegramId: null };
+    state.patient = {
+      id: "p_clinic",
+      fullName: "Каримова Дилноза",
+      telegramId: null,
+      phoneNormalized: CARD_PHONE,
+    };
   }
 
   it("a returning patient's empty auto-created card is retired, and the clinic card takes the account", async () => {
@@ -294,6 +332,7 @@ describe("consumeInviteToken — one card per Telegram account (audit MA-04)", (
       clinicId: "c1",
       token: "tok",
       telegramId: "111",
+      contact: OWN_CONTACT,
       now: NOW,
     });
     expect(result).toMatchObject({
@@ -335,6 +374,7 @@ describe("consumeInviteToken — one card per Telegram account (audit MA-04)", (
       clinicId: "c1",
       token: "tok",
       telegramId: "111",
+      contact: OWN_CONTACT,
       now: NOW,
     });
     expect(result).toEqual({
@@ -372,9 +412,205 @@ describe("consumeInviteToken — one card per Telegram account (audit MA-04)", (
       clinicId: "c1",
       token: "tok",
       telegramId: "111",
+      contact: OWN_CONTACT,
       now: NOW,
     });
     expect(result.kind).toBe("telegram-has-other-card");
     expect(state.patientUpdates).toHaveLength(0);
+  });
+});
+
+describe("consumeInviteToken — the phone is the second factor (audit PT-04)", () => {
+  beforeEach(reset);
+
+  function validToken(phoneNormalized = CARD_PHONE) {
+    state.token = {
+      id: "t1",
+      clinicId: "c1",
+      patientId: "p1",
+      expiresAt: new Date(NOW.getTime() + 60_000),
+      consumedAt: null,
+    };
+    state.patient = { id: "p1", telegramId: null, phoneNormalized };
+  }
+
+  it("scanning the QR from a stranger's Telegram, with no contact, links nothing", async () => {
+    validToken();
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "999",
+      now: NOW,
+    });
+    expect(result).toEqual({ kind: "phone-required", tokenId: "t1", patientId: "p1" });
+    expect(state.patientUpdates).toHaveLength(0);
+    expect(state.tokenUpdates).toHaveLength(0);
+  });
+
+  it("a forwarded contact card with the card's number (not the sender's own) links nothing", async () => {
+    validToken();
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "999",
+      // The number printed on the conclusion, typed or forwarded: Telegram
+      // does not vouch for it because user_id is not the sender.
+      contact: { phone_number: "+998901234567", user_id: 111 },
+      now: NOW,
+    });
+    expect(result.kind).toBe("phone-required");
+    expect(state.patientUpdates).toHaveLength(0);
+  });
+
+  it("the sender's own number that is not the card's links nothing", async () => {
+    validToken();
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "999",
+      contact: { phone_number: "+998935550011", user_id: 999 },
+      now: NOW,
+    });
+    expect(result).toEqual({ kind: "phone-mismatch", tokenId: "t1", patientId: "p1" });
+    expect(state.patientUpdates).toHaveLength(0);
+    expect(state.tokenUpdates).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it("a card with no real number (a Telegram stub) cannot be proven and links nothing", async () => {
+    validToken("tg:555");
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "111",
+      contact: OWN_CONTACT,
+      now: NOW,
+    });
+    expect(result.kind).toBe("phone-mismatch");
+  });
+
+  it("the patient's own Telegram with the card's number links, whatever the spelling", async () => {
+    validToken("+998901234567");
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "111",
+      contact: { phone_number: "+998 (90) 123-45-67", user_id: 111 },
+      now: NOW,
+    });
+    expect(result.kind).toBe("linked");
+    expect(state.patientUpdates[0]).toMatchObject({ id: "p1", data: { telegramId: "111" } });
+  });
+
+  it("an account already bound to patient A cannot take patient B through the invite, even with B's number", async () => {
+    validToken();
+    state.others = [
+      {
+        id: "p_a",
+        fullName: "Каримова Лола",
+        telegramId: "111",
+        source: "WALKIN",
+        phoneVerifiedAt: new Date("2026-01-01"),
+        appointments: 3,
+      },
+    ];
+    const result = await consumeInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "111",
+      contact: OWN_CONTACT,
+      now: NOW,
+    });
+    expect(result.kind).toBe("telegram-has-other-card");
+    expect(state.patientUpdates).toHaveLength(0);
+    expect(state.tokenUpdates).toHaveLength(0);
+  });
+
+  it("matches both historical shapes of a stored number", () => {
+    expect(inviteCardPhoneMatches("+998901234567", "+998901234567")).toBe(true);
+    // Pre-LD-10 cards dropped the country code of a landline-style number.
+    expect(inviteCardPhoneMatches("+334125567", "+998334125567")).toBe(true);
+    expect(inviteCardPhoneMatches("+998901234567", "+998901234568")).toBe(false);
+    expect(inviteCardPhoneMatches("family:abc", "+998901234567")).toBe(false);
+    expect(inviteCardPhoneMatches("+998901234567", "")).toBe(false);
+  });
+});
+
+describe("claimInviteToken — opening the link only asks for the phone", () => {
+  beforeEach(reset);
+
+  it("notes the account that opened the invite and links nothing", async () => {
+    state.token = {
+      id: "t1",
+      clinicId: "c1",
+      patientId: "p1",
+      expiresAt: new Date(NOW.getTime() + 60_000),
+      consumedAt: null,
+    };
+    state.patient = { id: "p1", telegramId: null, preferredLang: "UZ" };
+    const result = await claimInviteToken({
+      clinicId: "c1",
+      token: "tok",
+      telegramId: "999",
+      now: NOW,
+    });
+    expect(result).toEqual({ kind: "claimed", tokenId: "t1", patientId: "p1", lang: "uz" });
+    expect(state.tokenUpdates).toEqual([
+      { id: "t1", data: { claimTelegramId: "999", claimedAt: NOW } },
+    ]);
+    expect(state.patientUpdates).toHaveLength(0);
+  });
+
+  it("refuses a used, expired or foreign token and a card bound to someone else", async () => {
+    state.token = {
+      id: "t1",
+      clinicId: "c1",
+      patientId: "p1",
+      expiresAt: new Date(NOW.getTime() - 1),
+      consumedAt: null,
+    };
+    state.patient = { id: "p1", telegramId: null };
+    expect((await claimInviteToken({ clinicId: "c1", token: "tok", telegramId: "9", now: NOW })).kind).toBe("expired");
+    expect((await claimInviteToken({ clinicId: "c2", token: "tok", telegramId: "9", now: NOW })).kind).toBe("wrong-clinic");
+    state.token.expiresAt = new Date(NOW.getTime() + 60_000);
+    state.patient = { id: "p1", telegramId: "222" };
+    expect((await claimInviteToken({ clinicId: "c1", token: "tok", telegramId: "9", now: NOW })).kind).toBe("patient-already-linked");
+    expect(state.tokenUpdates).toHaveLength(0);
+  });
+
+  it("the pending claim is looked up for this account, unconsumed, unexpired and recent", async () => {
+    state.pending = { token: "tok", patient: { preferredLang: "RU" } };
+    const found = await findPendingInviteClaim({ clinicId: "c1", telegramId: "999", now: NOW });
+    expect(found).toEqual({ token: "tok", lang: "ru" });
+    expect(state.pendingQueries[0]).toMatchObject({
+      where: {
+        clinicId: "c1",
+        claimTelegramId: "999",
+        consumedAt: null,
+        expiresAt: { gt: NOW },
+        claimedAt: { gte: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) },
+      },
+    });
+  });
+
+  it("every reply the bot gives exists in both languages", () => {
+    const kinds = [
+      { kind: "linked", patientId: "p", tokenId: "t" },
+      { kind: "phone-required", tokenId: "t", patientId: "p" },
+      { kind: "phone-mismatch", tokenId: "t", patientId: "p" },
+      { kind: "telegram-has-other-card", tokenId: "t", patientId: "p", otherPatientId: "o" },
+      { kind: "expired", tokenId: "t" },
+    ] as const;
+    const ru = new Set(_keys("ru"));
+    const uz = new Set(_keys("uz"));
+    for (const k of [
+      ...kinds.map((r) => inviteReplyKey(r)),
+      "invite.confirmPhone",
+      "invite.shareButton",
+      "invite.alreadyYours",
+    ]) {
+      expect(ru.has(k), k).toBe(true);
+      expect(uz.has(k), k).toBe(true);
+    }
   });
 });

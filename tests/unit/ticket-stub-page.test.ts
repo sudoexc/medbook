@@ -8,7 +8,8 @@
  * «Неврологический центр», a phone that matched no clinic), so every clinic
  * on the platform printed somebody else's brand.
  *
- * The page is rendered to markup with the process forced to UTC.
+ * The page is rendered to markup with the process forced to UTC, opened by
+ * the front desk (a staff session of the clinic, audit INF-10).
  */
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -27,6 +28,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(async () => ({ user: { id: "u1", role: "RECEPTIONIST", clinicId: "c1" } })),
+}));
+
 vi.mock("@/lib/tenant-context", () => ({
   runUnscoped: <T,>(_reason: string, fn: () => T) => fn(),
 }));
@@ -38,7 +43,7 @@ vi.mock("@/server/appointments/queue-projection", () => ({
         "doc_1",
         {
           waiting: [
-            { appointmentId: "apt_1", position: state.position },
+            { appointmentId: "cmapt000000000000000001", position: state.position },
           ],
         },
       ],
@@ -46,9 +51,13 @@ vi.mock("@/server/appointments/queue-projection", () => ({
   ),
 }));
 
+const APPT_ID = "cmapt000000000000000001";
+
 const ORIGINAL_TZ = process.env.TZ;
 beforeAll(() => {
   process.env.TZ = "UTC";
+  // The QR carries a signed ticket token (audit INF-10).
+  process.env.APP_SECRET = "test-app-secret";
 });
 afterAll(() => {
   if (ORIGINAL_TZ === undefined) delete process.env.TZ;
@@ -87,7 +96,7 @@ function walkin(over: Record<string, unknown> = {}) {
 
 async function render(): Promise<string> {
   const { default: TicketPage } = await import("@/app/ticket/[id]/page");
-  const el = await TicketPage({ params: Promise.resolve({ id: "apt_1" }) });
+  const el = await TicketPage({ params: Promise.resolve({ id: APPT_ID }) });
   return renderToStaticMarkup(el as React.ReactElement);
 }
 

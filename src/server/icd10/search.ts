@@ -22,6 +22,8 @@
  *   - literal matches on some of the words, as long as they are not only
  *     region words («шейного отдела») and not a tumour site the query never
  *     called a tumour
+ *   - last, a tumour rubric that matched every word of a query that never
+ *     called it a tumour («поражение головного мозга» → C71.8)
  * Ties break on code so the order is stable between identical queries.
  *
  * Normalisation folds ё→е and case. Cyrillic ё is typed inconsistently and
@@ -174,6 +176,12 @@ export const SPOKEN_FORMS: Readonly<Record<string, SpokenForm>> = {
 
   // Other.
   ДЦП: { codes: ["G80.9"] },
+
+  // Tumours (audit CT-06). The classifier never says «опухоль» or names a
+  // histology for these rubrics: it says «новообразование» plus a site. A
+  // meningioma is coded by its site and behaviour, benign by default.
+  опухоль: { phrases: ["новообразование"] },
+  менингиома: { codes: ["D32.0", "D32.9", "D32.1", "D42.0"] },
 };
 
 /**
@@ -406,19 +414,51 @@ type Indexed = {
   tokens: Token[];
   /** Chapter II, neoplasms (C00–D48). See `namesTumour`. */
   neoplasm: boolean;
+  /**
+   * Position of the leaf's own first word when the catalog put its
+   * category's words in front of it, else 0. See `leafStart`.
+   */
+  leafStart: number;
 };
+
+/**
+ * Category words `scripts/build-icd10-catalog.mjs` puts in front of a leaf
+ * that is only the rest of its category's sentence (audit CT-06): «D33.0
+ * Головного мозга над мозговым наметом» is now «Доброкачественное
+ * новообразование головного мозга над мозговым наметом». Keep in step with
+ * the heads listed there. A name of the form «Язва желудка: острая с
+ * кровотечением» has its leaf after the colon.
+ */
+const CONTEXT_HEAD =
+  /^(вторичное и неуточненное злокачественное новообразование|вторичное злокачественное новообразование|другие злокачественные новообразования|злокачественное новообразование|карцинома in situ|другие доброкачественные новообразования|доброкачественное новообразование|другие новообразования неопределенного или неизвестного характера|новообразование неопределенного или неизвестного характера|отравление|токсическое действие|токсический эффект) /;
+
+/**
+ * Where the leaf's own words begin. The first-word bonus belongs there as
+ * much as at the very start: before the category words were added, «рак
+ * пищевода» found C15.9 «Пищевода неуточненное» by its first word ahead of
+ * the six other sites of the oesophagus, and it still should.
+ */
+function leafStart(name: string): number {
+  const colon = name.indexOf(": ");
+  const lead = colon >= 0 ? name.slice(0, colon) : CONTEXT_HEAD.exec(name)?.[1];
+  return lead ? tokenize(lead).length : 0;
+}
 
 let index: Indexed[] | null = null;
 let byCode: Map<string, Indexed> | null = null;
 
 function getIndex(): Indexed[] {
   if (index) return index;
-  index = ICD10_ENTRIES.map((entry) => ({
-    entry,
-    code: entry.code.toLowerCase(),
-    tokens: tokenize(normalizeIcdTerm(entry.nameRu)),
-    neoplasm: /^(c\d|d[0-4]\d)/i.test(entry.code),
-  }));
+  index = ICD10_ENTRIES.map((entry) => {
+    const name = normalizeIcdTerm(entry.nameRu);
+    return {
+      entry,
+      code: entry.code.toLowerCase(),
+      tokens: tokenize(name),
+      neoplasm: /^(c\d|d[0-4]\d)/i.test(entry.code),
+      leafStart: leafStart(name),
+    };
+  });
   byCode = new Map(index.map((r) => [r.code, r]));
   return index;
 }
@@ -468,6 +508,14 @@ function namesTumour(tokens: Token[]): boolean {
  */
 const MIN_PREFIX = 5;
 
+/**
+ * Name words that match only as themselves. «более» stems to «бол», the stem
+ * of «боль»: «головная боль» found C71.8 «…головного мозга: поражение,
+ * выходящее за пределы одной и более…» and every «двух и более пальцев»
+ * through a word that says nothing about the disease.
+ */
+const LITERAL_ONLY = new Set(["более", "менее"]);
+
 const WORD = {
   /**
    * Bonus for the name's first word, literal matches only: «Мигрень без
@@ -508,7 +556,8 @@ function wordScore(row: Indexed, q: QueryWord): number {
     // «без ауры» only matches a name that also says «без ауры», and
     // «аура» / «с аурой» never matches one that does.
     if ((q.pol === "neg") !== (w.pol === "neg")) return;
-    const first = i === 0 ? WORD.first : 0;
+    if (LITERAL_ONLY.has(w.text) && w.text !== q.text) return;
+    const first = i === 0 || i === row.leafStart ? WORD.first : 0;
     let s = 0;
     if (w.text === q.text) s = WORD.exact + first;
     else if (q.abbr) s = 0;
@@ -552,19 +601,40 @@ type Scored = {
   full: boolean;
   /** A partial match that found only region words (see `REGION_STEMS`). */
   regionOnly: boolean;
+  /**
+   * A tumour rubric the query matched in full without calling it a tumour:
+   * listed after every other row, whatever its score (see `searchIcd10`).
+   */
+  demoted: boolean;
 };
 
-type Literal = { score: number; full: boolean; regionOnly: boolean };
+type Literal = {
+  score: number;
+  full: boolean;
+  regionOnly: boolean;
+  /**
+   * Every word that matched did so only through a shared stem or inside a
+   * compound, never as itself or in another case («менингиома» reaching
+   * «менингит» through «менинг»).
+   */
+  loose: boolean;
+};
 
 /** Literal score of one row: a full match, a partial one, or nothing. */
 function literalScore(row: Indexed, words: QueryWord[]): Literal {
   const scores = words.map((w) => wordScore(row, w));
   const matched = scores.filter((s) => s > 0).length;
-  if (matched === 0) return { score: 0, full: false, regionOnly: false };
+  if (matched === 0) return { score: 0, full: false, regionOnly: false, loose: false };
   const head = scores[0]!;
   const sum = scores.reduce((a, b) => a + b, 0);
+  const loose = scores.every((s) => s < WORD.inflected);
   if (matched === words.length) {
-    return { score: BAND.full + head + (sum - head) / 10, full: true, regionOnly: false };
+    return {
+      score: BAND.full + head + (sum - head) / 10,
+      full: true,
+      regionOnly: false,
+      loose,
+    };
   }
   // Partial matching, but full matches always win. Requiring every word
   // meant «остеохондроз шейного отдела» returned NOTHING while
@@ -577,6 +647,7 @@ function literalScore(row: Indexed, words: QueryWord[]): Literal {
     score: sum / words.length + matched,
     full: false,
     regionOnly: scores.every((s, i) => s === 0 || words[i]!.region),
+    loose,
   };
 }
 
@@ -610,14 +681,27 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
     let score = 0;
     let full = false;
     let regionOnly = false;
+    let loose = false;
+    let demoted = false;
     if (row.code === term) score = BAND.exactCode;
     else if (row.code.startsWith(term)) score = BAND.codePrefix;
     else if (words.length > 0) {
-      ({ score, full, regionOnly } = literalScore(row, words));
+      ({ score, full, regionOnly, loose } = literalScore(row, words));
       // A tumour site reached by part of a query that names no tumour was
-      // reached on anatomy alone (see `TUMOUR_WORD`). A full match still
-      // counts: «спинного мозга» lists C72.0 among the others.
+      // reached on anatomy alone (see `TUMOUR_WORD`).
       if (row.neoplasm && !full && !tumourQuery) score = 0;
+      // A full match still counts («спинного мозга» lists C72.0), but only
+      // after every row that is not a tumour. Since the catalog finished
+      // the tumour names (CT-06), the «.8» rows carry the site AND the
+      // generic «поражение»: «поражение головного мозга» opened with C71.8
+      // and «поражение черепных нервов» with C72.8, one mis-tap away from a
+      // malignant brain tumour in a signed conclusion. Nor does such a row
+      // crowd out partial matches below: the doctor asked about the organ.
+      demoted = row.neoplasm && full && !tumourQuery;
+      // The other way round: a query that names a tumour and reaches a
+      // non-tumour row only through a shared stem found a different disease
+      // («менингиома» → менингит and менингококкемия through «менинг»).
+      if (!row.neoplasm && tumourQuery && loose) score = 0;
       if (
         score > 0 &&
         trailingMarker &&
@@ -627,13 +711,24 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
       }
     }
     if (score > 0) {
-      scored.set(row.code, { entry: row.entry, code: row.code, score, full, regionOnly });
+      scored.set(row.code, {
+        entry: row.entry,
+        code: row.code,
+        score,
+        full,
+        regionOnly,
+        demoted,
+      });
     }
   }
 
   // Literal full matches crowd out partial ones: «мигрень аура» narrows
   // instead of widening, which is how people expect search to behave.
-  if ([...scored.values()].some((s) => s.full || s.score >= BAND.codePrefix)) {
+  if (
+    [...scored.values()].some(
+      (s) => (s.full && !s.demoted) || s.score >= BAND.codePrefix,
+    )
+  ) {
     for (const [code, s] of scored) {
       if (!s.full && s.score < BAND.codePrefix) scored.delete(code);
     }
@@ -665,17 +760,24 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
   // score, region words included, orders a form's codes: «протрузия шейного
   // отдела» puts the cervical M50.2 above the lumbar M51.1.
   const literal = (row: Indexed): Literal =>
-    words.length > 0 ? literalScore(row, words) : { score: 0, full: false, regionOnly: false };
+    words.length > 0
+      ? literalScore(row, words)
+      : { score: 0, full: false, regionOnly: false, loose: false };
+  // A code the doctor's phrase stands for is what he meant, tumour or not:
+  // it is never held back with the demoted rows.
   const raise = (row: Indexed, score: number) => {
     const existing = scored.get(row.code);
-    if (existing) existing.score = Math.max(existing.score, score);
-    else {
+    if (existing) {
+      existing.score = Math.max(existing.score, score);
+      existing.demoted = false;
+    } else {
       scored.set(row.code, {
         entry: row.entry,
         code: row.code,
         score,
         full: false,
         regionOnly: false,
+        demoted: false,
       });
     }
   };
@@ -713,7 +815,12 @@ export function searchIcd10(rawQuery: string, limit: number): Icd10Entry[] {
   }
 
   return [...scored.values()]
-    .sort((a, b) => b.score - a.score || a.code.localeCompare(b.code))
+    .sort(
+      (a, b) =>
+        Number(a.demoted) - Number(b.demoted) ||
+        b.score - a.score ||
+        a.code.localeCompare(b.code),
+    )
     .slice(0, limit)
     .map((s) => s.entry);
 }

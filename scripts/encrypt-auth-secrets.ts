@@ -12,31 +12,43 @@
  * The app reads BOTH forms, so this backfill can run any time after deploy
  * with zero downtime; until it runs, legacy plaintext keeps working.
  *
- * Run (local/dev):
- *   npx tsx scripts/encrypt-auth-secrets.ts --dry-run
- *   npx tsx scripts/encrypt-auth-secrets.ts
- *
- * Run (production — inside the worker container; it ships `scripts/` + tsx
- * and reads the same `.env` as the app, so APP_SECRET/AUTH_SECRET and
+ * Run (production — inside the worker container; it ships the script + tsx
+ * and gets the app's own env via `env_file`, so APP_SECRET/AUTH_SECRET and
  * DATABASE_URL are already the right ones):
  *   docker compose exec worker npx tsx scripts/encrypt-auth-secrets.ts --dry-run
  *   docker compose exec worker npx tsx scripts/encrypt-auth-secrets.ts
  *
+ * Run (local/dev, the local .env named explicitly):
+ *   npx tsx scripts/encrypt-auth-secrets.ts --env-file=.env --dry-run
+ *
  * IMPORTANT: the key derives from APP_SECRET (fallback AUTH_SECRET). Running
  * with a secret that differs from the app's would lock every user out of 2FA
- * and break the whole patient surface — hence the fail-fast guard in main().
+ * and break the whole patient surface. Audit G2-11: the script used to load
+ * the local `.env` on its own (so a laptop run against a production
+ * DATABASE_URL encrypted under the laptop's secret) and checked only that
+ * SOME secret was set. Now a `.env` is read only when named with
+ * `--env-file=`, and before the first write the existing ciphertext has to
+ * decrypt with this secret (scripts/_cipher-key-guard.ts).
  *
  * `--dry-run`       prints what would change without writing.
  * `--table=user`    limits to User rows; `--table=clinic` to Clinic rows.
+ * `--env-file=PATH` loads that env file first (never implicitly).
+ * `--first-run`     only on a non-local database with no ciphertext yet.
  */
-// Load .env for local runs; in the worker container the env is already
-// injected via `env_file` and dotenv never overrides existing vars.
-import "dotenv/config";
-
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { encrypt, isEncryptedSecret } from "../src/server/crypto/secrets";
+import {
+  decrypt,
+  describeAppSecret,
+  encrypt,
+  isEncryptedSecret,
+} from "../src/server/crypto/secrets";
+import {
+  decideKeyCheck,
+  looksLikeCiphertext,
+  type CipherSample,
+} from "./_cipher-key-guard";
 
 const BATCH = 200;
 
@@ -217,23 +229,101 @@ async function backfillClinics(
   return stats;
 }
 
-function parseArgs(): { dryRun: boolean; only: TableKey | null } {
+/** Newest ciphertext per column: what the app wrote most recently. */
+const SAMPLE_PER_COLUMN = 20;
+
+export type AuthSecretSampleRows = {
+  users: Array<{ id: string; totpSecret: string | null }>;
+  clinics: Array<{ slug: string; tgBotToken: string | null }>;
+};
+
+export function authSecretSamples(rows: AuthSecretSampleRows): CipherSample[] {
+  const out: CipherSample[] = [];
+  for (const u of rows.users) {
+    if (looksLikeCiphertext(u.totpSecret)) {
+      out.push({ where: `User.totpSecret ${u.id}`, value: u.totpSecret });
+    }
+  }
+  for (const c of rows.clinics) {
+    if (looksLikeCiphertext(c.tgBotToken)) {
+      out.push({ where: `Clinic.tgBotToken ${c.slug}`, value: c.tgBotToken });
+    }
+  }
+  return out;
+}
+
+async function readAuthSecretSamples(
+  prisma: PrismaClient,
+): Promise<AuthSecretSampleRows> {
+  const [users, clinics] = await Promise.all([
+    prisma.user.findMany({
+      where: { totpSecret: { startsWith: "v" } },
+      select: { id: true, totpSecret: true },
+      orderBy: { id: "desc" },
+      take: SAMPLE_PER_COLUMN,
+    }),
+    prisma.clinic.findMany({
+      where: { tgBotToken: { startsWith: "v" } },
+      select: { slug: true, tgBotToken: true },
+      orderBy: { id: "desc" },
+      take: SAMPLE_PER_COLUMN,
+    }),
+  ]);
+  return { users, clinics };
+}
+
+/**
+ * The pre-write check (audit G2-11). Pure over the sampled rows so the unit
+ * test drives it without a database.
+ */
+export function checkAuthSecretKey(
+  rows: AuthSecretSampleRows,
+  env: Record<string, string | undefined> = process.env,
+  argv: string[] = process.argv.slice(2),
+) {
+  const secret = describeAppSecret();
+  const decision = decideKeyCheck({
+    script: "encrypt-auth-secrets",
+    isPlaceholderSecret: secret.isPlaceholder,
+    samples: authSecretSamples(rows),
+    decrypt: (v) => decrypt(v),
+    env,
+    argv,
+  });
+  return { secret, decision };
+}
+
+function parseArgs(): {
+  dryRun: boolean;
+  only: TableKey | null;
+  envFile: string | null;
+} {
   const args = process.argv.slice(2);
   let dryRun = false;
   let only: TableKey | null = null;
+  let envFile: string | null = null;
   for (const a of args) {
     if (a === "--dry-run") dryRun = true;
     else if (a.startsWith("--table=")) {
       const v = a.slice("--table=".length);
       if (v === "user" || v === "clinic") only = v;
       else throw new Error(`Unknown --table value: ${v}`);
+    } else if (a.startsWith("--env-file=")) {
+      envFile = a.slice("--env-file=".length) || null;
     }
   }
-  return { dryRun, only };
+  return { dryRun, only, envFile };
 }
 
 async function main(): Promise<void> {
-  const { dryRun, only } = parseArgs();
+  const { dryRun, only, envFile } = parseArgs();
+  if (envFile) {
+    // Explicit only: dotenv never overrides variables already exported, so
+    // an implicit load silently mixed a local secret with a remote database.
+    const dotenv = await import("dotenv");
+    const loaded = dotenv.config({ path: envFile });
+    if (loaded.error) throw loaded.error;
+  }
   const dburl = process.env.DATABASE_URL;
   if (!dburl) throw new Error("DATABASE_URL is required");
   // Fail fast on a missing key: encrypting under an accidental/absent secret
@@ -248,10 +338,23 @@ async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString: dburl });
   const prisma = new PrismaClient({ adapter });
 
+  const { secret, decision } = checkAuthSecretKey(
+    await readAuthSecretSamples(prisma),
+  );
   console.info(
     `[backfill] auth-secrets: dryRun=${dryRun}, only=${only ?? "ALL"}, key=${
-      process.env.APP_SECRET ? "APP_SECRET" : "AUTH_SECRET (fallback)"
-    }`,
+      secret.source === "APP_SECRET" ? "APP_SECRET" : "AUTH_SECRET (fallback)"
+    } fingerprint=${secret.fingerprint}`,
+  );
+  if (!decision.ok) {
+    console.error(decision.message);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+  console.info(
+    decision.firstRun
+      ? "[backfill] no existing ciphertext to check the key against (--first-run)."
+      : `[backfill] key check OK: ${decision.checked} existing encrypted values decrypt with this key.`,
   );
 
   const totals: Record<string, Stats> = {};

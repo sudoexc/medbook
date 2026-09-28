@@ -6,7 +6,6 @@
  * never returns the plaintext; `secretMasked` is derived server-side for
  * display (last 4 chars of plaintext) and `hasSecret` is a boolean flag.
  */
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import {
@@ -15,7 +14,7 @@ import {
   maskSecret,
 } from "@/server/crypto/secrets";
 import { ok, err, notFound } from "@/server/http";
-import { platformAudit } from "@/server/platform/handler";
+import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
 import {
   FAMILY_KINDS,
   UpsertPlatformIntegrationSchema,
@@ -31,17 +30,6 @@ function clinicIdFromUrl(request: Request): string | null {
   } catch {
     return null;
   }
-}
-
-async function requireSuper(): Promise<
-  { ok: true; userId: string } | { ok: false; response: Response }
-> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, response: err("Unauthorized", 401) };
-  if (session.user.role !== "SUPER_ADMIN") {
-    return { ok: false, response: err("Forbidden", 403) };
-  }
-  return { ok: true, userId: session.user.id };
 }
 
 /** Redact a ProviderConnection for the wire — never include plaintext. */
@@ -93,7 +81,7 @@ function redact(row: {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const gate = await requireSuper();
+  const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
   return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
     const id = clinicIdFromUrl(request);
@@ -115,7 +103,7 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const gate = await requireSuper();
+  const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
   return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
     const id = clinicIdFromUrl(request);

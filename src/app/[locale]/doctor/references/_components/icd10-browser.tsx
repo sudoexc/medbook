@@ -147,8 +147,10 @@ export function Icd10Browser() {
             </div>
           ) : (
             <ul className="space-y-0.5">
+              {/* Search mixes in the clinic's learned wordings, which may
+                  have no code: the code alone is not a unique key. */}
               {(data ?? []).map((e) => (
-                <li key={e.code}>
+                <li key={`${e.code}|${e.nameRu}`}>
                   <Row entry={e} term={debouncedQ.trim()} />
                 </li>
               ))}

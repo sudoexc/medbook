@@ -21,8 +21,6 @@ interface QueueStatus {
   clinicSlug: string | null;
   doctorId: string;
   cabinet: string | null;
-  service: string | null;
-  serviceUz?: string | null;
   status: string;
   /** Two-lanes: walk-ins hold a queue position, bookings hold a slot time. */
   lane?: "live" | "schedule";
@@ -48,6 +46,37 @@ const QUEUE_EVENTS = new Set<string>([
   "appointment.moved",
 ]);
 
+/** The page's own words for a link that shows nothing, in both languages. */
+export interface QueueLinkCopy {
+  notFound: string;
+  expired: string;
+  expiredHint: string;
+  notToday: string;
+  notTodayHint: string;
+  legacy: string;
+  legacyHint: string;
+}
+
+/**
+ * Why a ticket link shows no queue (audit INF-10): the link is a signed
+ * same-day token now, so the QR on a ticket printed before the change, or
+ * yesterday's ticket, answers with a reason instead of the queue.
+ */
+type LinkProblem = "notFound" | "expired" | "notToday" | "legacy";
+
+async function linkProblemOf(res: Response): Promise<LinkProblem> {
+  let reason: string | undefined;
+  try {
+    reason = ((await res.json()) as { reason?: string }).reason;
+  } catch {
+    /* non-JSON error body */
+  }
+  if (reason === "legacy_link") return "legacy";
+  if (reason === "expired") return "expired";
+  if (reason === "not_today") return "notToday";
+  return "notFound";
+}
+
 type Translator = (key: string, values?: Record<string, string | number>) => string;
 
 function translatorFor(locale: Lang, messages: QueueStatusMessages): Translator {
@@ -60,7 +89,7 @@ function translatorFor(locale: Lang, messages: QueueStatusMessages): Translator 
 }
 
 /**
- * The patient's live queue page behind the ticket's QR (`/q/<id>`).
+ * The patient's live queue page behind the ticket's QR (`/q/<ticket token>`).
  *
  * UX-06 — it used to be Russian only. It now opens in the language the
  * ticket was printed in (`?lang=` on the QR link) or, failing that, the
@@ -68,22 +97,25 @@ function translatorFor(locale: Lang, messages: QueueStatusMessages): Translator 
  * header flips RU/UZ for a patient whose card says otherwise.
  */
 export function QueueStatusView({
-  id,
+  token,
   forcedLang,
   messages,
+  copy,
 }: {
-  id: string;
+  token: string;
   forcedLang: Lang | null;
   messages: Record<Lang, QueueStatusMessages>;
+  copy: Record<Lang, QueueLinkCopy>;
 }) {
   const [data, setData] = useState<QueueStatus | null>(null);
-  const [error, setError] = useState(false);
+  const [problem, setProblem] = useState<LinkProblem | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [langOverride, setLangOverride] = useState<Lang | null>(forcedLang);
   const wasNotified = useRef(false);
   const lastStatus = useRef<string>("");
   const fetchedAt = useRef<number>(0);
   const refetchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const id = token;
 
   const translators = useMemo(
     () => ({
@@ -104,11 +136,11 @@ export function QueueStatusView({
   const fetchStatus = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await fetch(`/api/queue/status/${id}`);
+      const res = await fetch(`/api/queue/status/${encodeURIComponent(id)}`);
       if (res.ok) {
         const d = (await res.json()) as QueueStatus;
         setData(d);
-        setError(false);
+        setProblem(null);
         fetchedAt.current = Date.now();
         setCountdown((d.etaMinutes ?? 0) * 60);
 
@@ -127,11 +159,16 @@ export function QueueStatusView({
           }
         }
         lastStatus.current = d.status;
-      } else {
-        setError(true);
+      } else if (res.status === 404 || res.status === 410) {
+        // A definitive answer about the link itself (unknown, outdated,
+        // another day). Anything else (a 5xx during a deploy) keeps the last
+        // good screen and lets the next poll retry.
+        const why = await linkProblemOf(res);
+        setData(null);
+        setProblem(why);
       }
     } catch {
-      setError(true);
+      // Network blip: keep what is on screen, the poll retries.
     }
   }, [id]);
 
@@ -186,16 +223,30 @@ export function QueueStatusView({
   const countdownMin = Math.floor(countdown / 60);
   const countdownSec = countdown % 60;
 
-  if (error) {
+  if (problem) {
     // The patient's language is unknown without the ticket: say it in both.
+    const hintKey =
+      problem === "expired"
+        ? "expiredHint"
+        : problem === "notToday"
+          ? "notTodayHint"
+          : problem === "legacy"
+            ? "legacyHint"
+            : null;
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center">
+        <div className="text-center max-w-sm">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 mb-4">
             <span className="text-3xl">🎫</span>
           </div>
-          <p className="text-lg text-gray-500 font-medium">{translators.ru("notFound")}</p>
-          <p className="text-sm text-gray-400 mt-1">{translators.uz("notFound")}</p>
+          {(["ru", "uz"] as const).map((l) => (
+            <div key={l} className={l === "uz" ? "mt-4" : undefined}>
+              <p className="text-lg text-gray-500 font-medium">{copy[l][problem]}</p>
+              {hintKey ? (
+                <p className="text-sm text-gray-400 mt-1">{copy[l][hintKey]}</p>
+              ) : null}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -216,7 +267,6 @@ export function QueueStatusView({
     (lang === "uz" ? uzText || ruText : ruText || uzText) ?? null;
   const clinicName = pick(data.clinicName, data.clinicNameUz);
   const doctorName = pick(data.doctorName, data.doctorNameUz) ?? "";
-  const serviceName = pick(data.service, data.serviceUz);
 
   const isCompleted = data.status === "COMPLETED";
   const isInProgress = data.status === "IN_PROGRESS";
@@ -378,13 +428,6 @@ export function QueueStatusView({
                 <span className="text-xs text-gray-400 shrink-0 w-16">{t("cabinet")}</span>
                 <span className="text-sm font-bold text-gray-800 text-lg">{data.cabinet}</span>
               </div>
-              {serviceName && (
-                <div className="flex items-center gap-3 px-5 py-3.5">
-                  <Clock className="h-4 w-4 text-gray-300 shrink-0" />
-                  <span className="text-xs text-gray-400 shrink-0 w-16">{t("service")}</span>
-                  <span className="text-sm font-medium text-gray-800">{serviceName}</span>
-                </div>
-              )}
             </div>
           </div>
 

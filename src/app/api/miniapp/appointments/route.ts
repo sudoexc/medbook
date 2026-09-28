@@ -30,6 +30,8 @@ import { withIdempotency } from "@/server/miniapp/idempotency";
 import { bookAppointment } from "@/server/appointments/book";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
 import { MINIAPP_APPOINTMENT_SELECT } from "@/server/miniapp/appointment-view";
+import { queueTicketToken } from "@/server/appointments/public-ticket";
+import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 import { getMetrics } from "@/server/observability/metrics";
 
 const BookBody = z.object({
@@ -89,8 +91,17 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   });
   const appointments = rows.map(({ visitNote, ...row }) => ({
     ...row,
+    // The patient's own key to the live queue card (audit INF-10): the
+    // public status endpoint no longer takes the bare appointment id.
+    queueToken: queueTicketToken(row.id),
+    // A link for this one conclusion, never initData (MA-07).
     conclusionUrl: visitNote?.conclusionDocument
-      ? `/api/miniapp/documents/${visitNote.conclusionDocument.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`
+      ? miniAppDocumentUrl({
+          clinicId: ctx.clinicId,
+          clinicSlug: ctx.clinicSlug,
+          patientId: active.patientId,
+          documentId: visitNote.conclusionDocument.id,
+        })
       : null,
     followUpAt:
       visitNote?.followUpDays != null && visitNote.followUpDays > 0

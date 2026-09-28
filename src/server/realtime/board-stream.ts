@@ -11,17 +11,26 @@
  *      else on the clinic bus (tg.message, payment.paid, lab results, …) is
  *      dropped.
  *   2. `projectBoardEvent` — even whitelisted events are re-projected to a
- *      fixed set of non-PHI scalar fields. Appointment payloads are
+ *      fixed, per-type set of non-PHI scalar fields. Appointment payloads are
  *      `.passthrough()` and a future emitter could enrich them with a patient
  *      name; the projection guarantees a name can never reach the wire. The
  *      board route stays the single PHI-authoritative source — these events
  *      are just "something changed, refetch" pokes plus the public ticket /
  *      cabinet identifiers for the "now calling" banner.
  *
+ * No appointment id reaches this stream (audit INF-10). It used to ride every
+ * appointment.* event, the stream is anonymous, and the id was then the key
+ * to `/api/queue/status/<id>`: a day of listening logged every visit with
+ * initials, doctor and service. The screens only ever needed «refetch, and
+ * whose doctor»; the one join they do (matching a call to a snapshot row,
+ * Q-10) goes through `boardRowKey`, an HMAC the id cannot be recovered from.
+ *
  * Both envelope shapes (v1 `{type,clinicId,at,payload}` and v2 `EventEnvelope`)
  * expose top-level `type` + `payload`, so these helpers read from `unknown`
  * defensively and work for either.
  */
+
+import { boardRowKey } from "@/server/appointments/public-ticket";
 
 /** Events safe to surface on a public waiting-room screen. */
 export const BOARD_EVENT_TYPES = [
@@ -38,27 +47,33 @@ export type BoardEventType = (typeof BOARD_EVENT_TYPES)[number];
 const BOARD_EVENT_SET = new Set<string>(BOARD_EVENT_TYPES);
 
 /**
- * Scalar payload keys allowed onto the public stream. Deliberately excludes
- * `patientId` and full names — the board joins by `appointmentId`. The one
- * name-shaped exception is `patientName`: `queue.called` emitters populate it
- * via `initials()` only, the same PHI-safe reduction the board route itself
- * serves, so the "now calling" banner can greet without an extra fetch.
+ * Scalar payload keys each event type may carry onto the public stream.
+ *
+ * Appointment and queue-change pokes carry the doctor only: the TVs and the
+ * patient's `/q` page refetch their own snapshot and ignore other doctors'
+ * signals. `queue.called` additionally carries what the «now calling» banner
+ * shows: ticket, cabinet and `patientName`, which its emitters reduce to
+ * initials via `initials()` (the same PHI-safe reduction the board route
+ * serves), plus the opaque `rowKey` (see `boardRowKey`).
  */
-const SAFE_PAYLOAD_KEYS = [
-  "appointmentId",
-  "doctorId",
-  "queueStatus",
-  "previousStatus",
-  "status",
-  "queueOrder",
-  "ticketNumber",
-  "patientName",
-  "cabinetNumber",
-  "calledAt",
-  // `queue.called` only: "ru" | "uz", the language the board announces the
-  // call in (UX-06). The hall hears that language anyway.
-  "lang",
-] as const;
+const SAFE_PAYLOAD_KEYS: Record<BoardEventType, readonly string[]> = {
+  "queue.updated": ["doctorId"],
+  "queue.called": [
+    "doctorId",
+    "queueOrder",
+    "ticketNumber",
+    "patientName",
+    "cabinetNumber",
+    "calledAt",
+    // "ru" | "uz", the language the board announces the call in (UX-06).
+    // The hall hears that language anyway.
+    "lang",
+  ],
+  "appointment.created": ["doctorId"],
+  "appointment.statusChanged": ["doctorId"],
+  "appointment.cancelled": ["doctorId"],
+  "appointment.moved": ["doctorId"],
+};
 
 export type BoardEvent = {
   type: BoardEventType;
@@ -85,11 +100,13 @@ export function projectBoardEvent(value: unknown): BoardEvent | null {
   const type = typeOf(value);
   if (type === null || !BOARD_EVENT_SET.has(type)) return null;
 
+  const boardType = type as BoardEventType;
   const rawPayload = (value as { payload?: unknown }).payload;
   const payload: Record<string, string | number | boolean | null> = {};
   if (rawPayload && typeof rawPayload === "object") {
-    for (const key of SAFE_PAYLOAD_KEYS) {
-      const v = (rawPayload as Record<string, unknown>)[key];
+    const raw = rawPayload as Record<string, unknown>;
+    for (const key of SAFE_PAYLOAD_KEYS[boardType]) {
+      const v = raw[key];
       if (
         typeof v === "string" ||
         typeof v === "number" ||
@@ -99,6 +116,9 @@ export function projectBoardEvent(value: unknown): BoardEvent | null {
         payload[key] = v;
       }
     }
+    if (boardType === "queue.called" && typeof raw.appointmentId === "string") {
+      payload.rowKey = boardRowKey(raw.appointmentId);
+    }
   }
-  return { type: type as BoardEventType, payload };
+  return { type: boardType, payload };
 }

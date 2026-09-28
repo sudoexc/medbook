@@ -1458,11 +1458,14 @@
       }
     },
     "medical": {
-      "notes": "Izohlar (erkin shakl)",
-      "notesHint": "Shikoyatlar, kuzatuvlar, davolash rejasi — yagona matn bloki.",
+      "notes": "Klinik izoh",
+      "notesHint": "Shikoyatlar, kuzatuvlar, davolash rejasi. Faqat shifokorlar, hamshiralar va administratorlar ko'radi.",
       "notesShort": "Izoh",
       "notesSaved": "Izoh saqlandi",
       "notesSaveFailed": "Izohni saqlab bo'lmadi",
+      "notesUpdatedBy": "{date} o'zgartirildi, {name}",
+      "notesUpdatedAt": "{date} o'zgartirildi",
+      "staffNoteLabel": "Karta sharhidagi xodimlar izohi (uni registratura ham ko'radi)",
       "placeholder": "Shikoyatlar, kuzatuvlar, davolash rejasi…",
       "save": "Saqlash",
       "saving": "Saqlanmoqda…",
@@ -1555,14 +1558,28 @@
     },
     "delete": {
       "title": "Bemorni o'chirishmi?",
-      "warning": "Bu amalni ortga qaytarib bo'lmaydi. Bemorning tashriflari, to'lovlari va hujjatlari tarixi o'chiriladi.",
+      "warning": "Faqat xato bilan yaratilgan bo'sh kartani o'chirish mumkin. Bu amalni ortga qaytarib bo'lmaydi.",
       "confirmLabel": "Tasdiqlash uchun bemorning familiyasini ({surname}) kiriting",
       "confirmPlaceholder": "Familiya",
       "cancel": "Bekor qilish",
       "delete": "O'chirish",
       "deleting": "O'chirilmoqda…",
       "success": "Bemor o'chirildi",
-      "error": "O'chirib bo'lmadi"
+      "error": "O'chirib bo'lmadi",
+      "blockedTitle": "Kartani o'chirib bo'lmaydi: unda allaqachon ma'lumotlar bor",
+      "blockedBody": "Faqat xato bilan yaratilgan bo'sh kartani o'chirish mumkin. Agar bemor o'z ma'lumotlarini o'chirishni so'rasa, bu «DSAR so'rovlari» bo'limi orqali amalga oshiriladi.",
+      "blockedCount": "{label}: {count}",
+      "blockedGroups": {
+        "visits": "Tashriflar va xulosalar",
+        "medical": "Tibbiy ma'lumotlar",
+        "documents": "Hujjatlar",
+        "payments": "To'lovlar",
+        "messages": "Yozishmalar, qo'ng'iroqlar va xabarnomalar",
+        "requests": "Arizalar, lidlar va sharhlar",
+        "family": "Oila va do'stlarni taklif qilish",
+        "dsar": "DSAR so'rovlari",
+        "reminders": "Eslatmalar"
+      }
     },
     "referral": {
       "title": "Referal dasturi",
@@ -1643,6 +1660,8 @@
       "closeDialogReasonOther": "Boshqa sabab",
       "closeDialogReasonLabel": "Izoh",
       "closeDialogReasonPlaceholder": "Qo'shimcha tafsilotlar (ixtiyoriy)",
+      "closeDialogPrescriptionsCompleted": "{count} ta faol tayinlov yakunlanadi, bemorga dori eslatmalari to'xtaydi.",
+      "closeDialogPrescriptionsCancelled": "{count} ta faol tayinlov bekor qilinadi, bemorga dori eslatmalari to'xtaydi.",
       "closeSubmit": "Yopish",
       "closeCancel": "Bekor qilish",
       "metaPrimaryDoctor": "Davolovchi shifokor",
@@ -1663,10 +1682,13 @@
       "openVisit": "Yozuvni ochish",
       "firstVisit": "Birlamchi",
       "repeatVisit": "Takroriy",
+      "visitNotHeld": "Bo'lib o'tmadi",
       "daysAfterFirst": "{n, plural, one {birinchidan keyin # kun} other {birinchidan keyin # kun}}",
       "statsTitle": "Xulosa",
       "statsTotalVisits": "Jami tashriflar",
+      "statsVisitsCost": "O'tkazilgan tashriflar narxi",
       "statsTotalPaid": "To'langan",
+      "statsPaymentsNotTracked": "CRM'da to'lovlar hisobi o'chirilgan, shuning uchun to'langan summa ko'rsatilmaydi.",
       "statsFreeRepeats": "Bepul takrorlar",
       "openPatientCard": "Bemor kartasini ochish",
       "notFound": "Holat topilmadi",
@@ -1719,6 +1741,8 @@
     }
   },
   "documents": {
+    "patientLinkTitle": "Havola eskirgan",
+    "patientLinkExpired": "Klinika ilovasiga qayting va havolani qayta oching.",
     "casePdf": {
       "title": "Davolanish kartasi",
       "patient": "Bemor",
@@ -2314,8 +2338,23 @@
     "name": "Ismingiz",
     "phone": "Telefon",
     "doctor": "Shifokor",
-    "selectDoctor": "Shifokorni tanlang",
+    "anyDoctor": "Istalgan shifokor",
     "service": "Xizmat",
+    "direction": "Yo'nalish",
+    "anyDirection": "Bilmayman, maslahat bering",
+    "directions": {
+      "neurologist": "Nevrolog konsultatsiyasi",
+      "childNeurologist": "Bolalar nevrologi va pediatr",
+      "cardiologist": "Kardiolog konsultatsiyasi",
+      "eeg": "EEG",
+      "eegSleep": "Uyqudagi EEG",
+      "reoeg": "ReoEG",
+      "echoeg": "ExoEG",
+      "ecg": "EKG",
+      "echocg": "ExoKG, yurak UZI",
+      "doppler": "Doppler BSA, bo'yin tomirlari UZI",
+      "ultrasound": "Organ UZI, neyrosonografiya"
+    },
     "date": "Qulay sana",
     "cabinet": "Xona",
     "sum": "so'm",
@@ -4372,7 +4411,8 @@
         "drugs": "Dorilar",
         "guides": "Tashxis yo'riqnomalari",
         "protocols": "Protokollar",
-        "handouts": "Eslatmalar"
+        "handouts": "Eslatmalar",
+        "diagnoses": "Klinika tashxislari"
       },
       "searchPlaceholder": "Qidirish…",
       "loading": "Yuklanmoqda…",
@@ -4488,6 +4528,24 @@
           "matchPrefixes": "Tashxislarga bog'lash (KXT-10)",
           "bodyMd": "Matn (RU, Markdown)",
           "bodyMdUz": "Matn (UZ, Markdown)"
+        }
+      },
+      "diagnoses": {
+        "hint": "Klinika shifokorlari o'z so'zlari bilan yozgan tashxislar. Ular barcha shifokorlarning tavsiyalarida chiqadi: KXT-10 kodini bog'lang yoki xatoni o'chiring.",
+        "empty": "Klinikaning o'z tashxislari hali yo'q",
+        "noCode": "kodsiz",
+        "editTitle": "Tashxis uchun KXT-10 kodi",
+        "deleteTitle": "Tashxisni o'chirish?",
+        "deleteHint": "U barcha shifokorlarning tavsiyalaridan yo'qoladi. Yozilgan xulosalar o'zgarmaydi.",
+        "deleted": "Tashxis o'chirildi",
+        "columns": {
+          "name": "Tashxis",
+          "code": "KXT-10",
+          "uses": "Imzolangan"
+        },
+        "fields": {
+          "code": "KXT-10 kodi",
+          "codeHint": "Masalan, G43.0. Kod bo'lmasa, bo'sh qoldiring."
         }
       },
       "protocols": {
@@ -4710,13 +4768,17 @@
       "deltaPp": "{value} f.p."
     },
     "journey": {
-      "title": "Bemor yo‘li (tibbiy holatlar)",
+      "title": "Bemor yo‘li",
       "newPatients": "Yangi bemorlar",
-      "firstConsult": "Birlamchi konsultatsiyalar",
+      "visits": "Yakunlangan qabullar",
       "repeatVisits": "Takroriy tashriflar",
       "repeatPct": "Takroriy tashriflar ulushi",
       "avgCheck": "O‘rtacha chek",
-      "revenue": "Tushum"
+      "revenue": "Tushum",
+      "noPayments": "To‘lovlar CRMda yuritilmaydi",
+      "noPaidVisits": "To‘lovlar yo‘q",
+      "hint": "Yangi bemor: klinikadagi birinchi yakunlangan qabuli shu davrga to‘g‘ri kelgan. Takroriy tashrif: keyingi har qanday yakunlangan qabul.",
+      "hintDoctor": "Yangi bemor: sizdagi birinchi yakunlangan qabuli shu davrga to‘g‘ri kelgan. Takroriy tashrif: keyingi har qanday yakunlangan qabul."
     },
     "noShowTable": {
       "reason": "Sabab",
@@ -5176,6 +5238,7 @@
     "errorRequired": "Majburiy maydon",
     "toastMissingFields": "Majburiy maydonlarni to'ldiring",
     "toastUploadError": "Yuklashda xatolik",
+    "toastUrlRejected": "Havola qabul qilinmadi: https:// bilan boshlanadigan tashqi manzilni kiriting yoki faylni yuklang",
     "toastSelectFile": "Avval faylni tanlang",
     "toastTooLarge": "Fayl juda katta, maksimum {max}",
     "toastStubMode": "Fayl ombori mavjud emas. Havolani qo'lda kiriting."
@@ -8060,7 +8123,7 @@
       "doctor": "Shifokor",
       "noDoctor": "tanlanmagan",
       "wantedDate": "Istalgan sana",
-      "service": "Xizmat",
+      "service": "Yo'nalish",
       "receivedAt": "Qabul qilindi: {when}",
       "bookedFor": "Yozildi: {when}",
       "openPatient": "Bemor kartasi"
@@ -8167,6 +8230,14 @@
   },
   "ticketStub": {
     "notFound": "Talon topilmadi",
+    "linkExpired": "Havolaning amal qilish muddati tugagan",
+    "linkExpiredHint": "Navbat havolasi faqat qabul kuni amal qiladi.",
+    "linkNotToday": "Havola qabul kuni ishlaydi",
+    "linkNotTodayHint": "Uni yozilgan kuningizda qayta oching.",
+    "linkLegacy": "Bu havola eskirgan",
+    "linkLegacyHint": "Yangi talondagi kodni skanerlang yoki raqamni registraturadan so'rang.",
+    "staffOnly": "Talon faqat klinika registraturasi yoki kioskida ochiladi",
+    "staffOnlyHint": "Klinika xodimi: CRM ga kiring va talonni qayta chop eting.",
     "yourNumber": "Sizning raqamingiz",
     "yourTime": "Sizning vaqtingiz",
     "patient": "Bemor:",

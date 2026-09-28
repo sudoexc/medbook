@@ -3,7 +3,8 @@
 /**
  * Ф4 — /crm/settings/knowledge. ADMIN curates what doctors see in the
  * ordering drawers: hide globals, patch them per-clinic (overlay) or add
- * clinic-local rows. Four tabs = the four knowledge catalogs.
+ * clinic-local rows. Four tabs = the four knowledge catalogs, plus the
+ * diagnosis wordings the clinic learned from practice (audit CT-05).
  */
 import { useTranslations } from "next-intl";
 
@@ -11,6 +12,7 @@ import { PageContainer } from "@/components/molecules/page-container";
 import { SectionHeader } from "@/components/molecules/section-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { DiagnosesTab } from "./diagnoses-tab";
 import { DrugsTab } from "./drugs-tab";
 import { GuidesTab } from "./guides-tab";
 import { HandoutsTab } from "./handouts-tab";
@@ -29,6 +31,7 @@ export function KnowledgeClient() {
           <TabsTrigger value="guides">{t("tabs.guides")}</TabsTrigger>
           <TabsTrigger value="protocols">{t("tabs.protocols")}</TabsTrigger>
           <TabsTrigger value="handouts">{t("tabs.handouts")}</TabsTrigger>
+          <TabsTrigger value="diagnoses">{t("tabs.diagnoses")}</TabsTrigger>
         </TabsList>
         <TabsContent value="drugs" className="pt-3">
           <DrugsTab />
@@ -41,6 +44,9 @@ export function KnowledgeClient() {
         </TabsContent>
         <TabsContent value="handouts" className="pt-3">
           <HandoutsTab />
+        </TabsContent>
+        <TabsContent value="diagnoses" className="pt-3">
+          <DiagnosesTab />
         </TabsContent>
       </Tabs>
     </PageContainer>

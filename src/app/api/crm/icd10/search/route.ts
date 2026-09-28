@@ -1,7 +1,8 @@
 /**
  * /api/crm/icd10/search — type-ahead source for the diagnosis picker, plus
  * two catalog-drawer modes:
- *   ?q=...            ranked search (clinic-learned entries first)
+ *   ?q=...            ranked search (see `mergeDiagnosisHits` for how the
+ *                     clinic's learned wordings mix with the classifier)
  *   ?range=A00-B99    browse an ICD chapter, code order, offset/limit paging
  *   ?codes=G43.0,M54  resolve exact codes (favorites chips need names)
  *
@@ -16,7 +17,10 @@ import { z } from "zod";
 
 import { ICD10_ENTRIES } from "@/server/icd10/data";
 import { searchIcd10 } from "@/server/icd10/search";
-import { searchClinicCatalog } from "@/server/icd10/clinic-catalog";
+import {
+  mergeDiagnosisHits,
+  searchClinicCatalog,
+} from "@/server/icd10/clinic-catalog";
 
 const QuerySchema = z.object({
   q: z.string().optional(),
@@ -93,22 +97,16 @@ export const GET = createApiListHandler(
       });
     }
 
-    // Clinic-learned entries first: a doctor of THIS clinic chose that
-    // wording, which beats generic catalog relevance. The static list fills
-    // the remainder; exact static duplicates are dropped.
-    // The clinic's own wordings lead, but never take more than a third of
-    // the list: learning at pick time grows that list, and it must not crowd
-    // the classifier out of the typeahead.
+    // The clinic's own wordings never take more than a third of the list:
+    // learning at pick time grows that list, and it must not crowd the
+    // classifier out of the typeahead. Where they go is decided by
+    // `mergeDiagnosisHits`: coded ones first, uncoded ones after every coded
+    // rubric of the query (audit CT-05).
     const custom = await searchClinicCatalog(
       q ?? "",
       Math.max(1, Math.ceil(limit / 3)),
     );
-    const seen = new Set(
-      custom.map((c) => `${c.code.toLowerCase()}|${c.nameRu.toLowerCase()}`),
-    );
-    const stat = searchIcd10(q ?? "", limit).filter(
-      (r) => !seen.has(`${r.code.toLowerCase()}|${r.nameRu.toLowerCase()}`),
-    );
-    return ok({ rows: [...custom, ...stat].slice(0, limit) });
+    const stat = searchIcd10(q ?? "", limit);
+    return ok({ rows: mergeDiagnosisHits(custom, stat, limit) });
   },
 );

@@ -57,7 +57,6 @@ export const GET = createApiListHandler(
       ...(q.cursor ? { skip: 1, cursor: { id: q.cursor } } : {}),
       include: {
         viewer: { select: { id: true, name: true, email: true, role: true } },
-        patient: { select: { id: true, fullName: true, phone: true } },
       },
     });
     let nextCursor: string | null = null;
@@ -65,6 +64,22 @@ export const GET = createApiListHandler(
       const next = rows.pop();
       nextCursor = next?.id ?? null;
     }
+    // `patientId` is a plain id since audit G1-09: the view rows outlive a
+    // deleted card, so the patient is looked up, and a gone one reads null
+    // (the table shows the id tail instead of a name).
+    const patientIds = Array.from(new Set(rows.map((r) => r.patientId)));
+    const patients =
+      patientIds.length > 0
+        ? await prisma.patient.findMany({
+            where: { id: { in: patientIds } },
+            select: { id: true, fullName: true, phone: true },
+          })
+        : [];
+    const patientById = new Map(patients.map((p) => [p.id, p]));
+    const withPatients = rows.map((r) => ({
+      ...r,
+      patient: patientById.get(r.patientId) ?? null,
+    }));
 
     // Meta-audit: pulling the PHI-access log is itself sensitive.
     try {
@@ -87,6 +102,6 @@ export const GET = createApiListHandler(
       console.error("[audit:patient-views] meta-audit failed", e);
     }
 
-    return ok({ rows, nextCursor });
+    return ok({ rows: withPatients, nextCursor });
   },
 );

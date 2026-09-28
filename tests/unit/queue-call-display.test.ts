@@ -16,22 +16,31 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   parseQueueCalledPayload,
   resolveCallDisplay,
 } from "@/lib/queue-call";
 import { projectBoardEvent } from "@/server/realtime/board-stream";
+import { boardRowKey } from "@/server/appointments/public-ticket";
 
-/** The snapshot at the instant of the call: Иванов is still `current`. */
+beforeAll(() => {
+  // Board row keys are HMACs over the app secret (audit INF-10).
+  process.env.APP_SECRET = "test-app-secret";
+});
+
+/**
+ * The snapshot at the instant of the call: Иванов is still `current`. Row
+ * ids are opaque board row keys, never appointment ids (INF-10).
+ */
 const STALE_CURRENT = {
-  id: "apt_ivanov",
+  id: "rk_ivanov",
   fullName: "Иванов И.",
   ticketNumber: "A-006",
 };
 const WAITING_PETROVA = {
-  id: "apt_petrova",
+  id: "rk_petrova",
   fullName: "Петрова М.",
   ticketNumber: "A-007",
 };
@@ -39,7 +48,7 @@ const WAITING_PETROVA = {
 describe("parseQueueCalledPayload", () => {
   it("keeps the called patient's initials from the event", () => {
     const call = parseQueueCalledPayload({
-      appointmentId: "apt_petrova",
+      rowKey: "rk_petrova",
       doctorId: "doc_1",
       ticketNumber: "A-007",
       patientName: "Петрова М.",
@@ -48,7 +57,7 @@ describe("parseQueueCalledPayload", () => {
       queueOrder: 7,
     });
     expect(call).toEqual({
-      appointmentId: "apt_petrova",
+      rowKey: "rk_petrova",
       doctorId: "doc_1",
       ticketNumber: "A-007",
       patientName: "Петрова М.",
@@ -61,11 +70,11 @@ describe("parseQueueCalledPayload", () => {
   });
 
   it("reads a sparse payload as nulls, never as the string «undefined»", () => {
-    const call = parseQueueCalledPayload({ appointmentId: "a", doctorId: "d" });
+    const call = parseQueueCalledPayload({ rowKey: "a", doctorId: "d" });
     expect(call.patientName).toBeNull();
     expect(call.ticketNumber).toBeNull();
     expect(call.cabinetNumber).toBeNull();
-    expect(parseQueueCalledPayload(undefined).appointmentId).toBe("");
+    expect(parseQueueCalledPayload(undefined).rowKey).toBe("");
   });
 
   it("survives the public board stream projection (patientName is whitelisted)", () => {
@@ -82,6 +91,28 @@ describe("parseQueueCalledPayload", () => {
     const call = parseQueueCalledPayload(ev?.payload);
     expect(call.patientName).toBe("Петрова М.");
     expect(ev?.payload).not.toHaveProperty("patientId");
+    expect(ev?.payload).not.toHaveProperty("appointmentId");
+  });
+
+  it("the stream's row key joins the board snapshot row of the same appointment (INF-10)", () => {
+    // Board routes serve `id: boardRowKey(appointmentId)`; the stream
+    // projects the called appointment to the same key, never the id.
+    const ev = projectBoardEvent({
+      type: "queue.called",
+      payload: { appointmentId: "apt_petrova", doctorId: "doc_1" },
+    });
+    const call = parseQueueCalledPayload(ev?.payload);
+    expect(call.rowKey).toBe(boardRowKey("apt_petrova"));
+    expect(call.rowKey).not.toContain("apt_petrova");
+    const shown = resolveCallDisplay(
+      call,
+      [
+        { ...STALE_CURRENT, id: boardRowKey("apt_ivanov") },
+        { ...WAITING_PETROVA, id: boardRowKey("apt_petrova") },
+      ],
+      "3",
+    );
+    expect(shown.patientName).toBe("Петрова М.");
   });
 });
 
@@ -89,7 +120,7 @@ describe("resolveCallDisplay", () => {
   it("«завершить + вызвать следующего»: the event's name wins over the stale current", () => {
     const shown = resolveCallDisplay(
       {
-        appointmentId: "apt_petrova",
+        rowKey: "rk_petrova",
         patientName: "Петрова М.",
         ticketNumber: "A-007",
         cabinetNumber: "3",
@@ -107,7 +138,7 @@ describe("resolveCallDisplay", () => {
   it("without initials in the event, falls back to the snapshot row of the same appointment", () => {
     const shown = resolveCallDisplay(
       {
-        appointmentId: "apt_petrova",
+        rowKey: "rk_petrova",
         patientName: null,
         ticketNumber: null,
         cabinetNumber: null,
@@ -125,7 +156,7 @@ describe("resolveCallDisplay", () => {
   it("never reads someone else's `current` as the called patient", () => {
     const shown = resolveCallDisplay(
       {
-        appointmentId: "apt_petrova",
+        rowKey: "rk_petrova",
         patientName: null,
         ticketNumber: null,
         cabinetNumber: null,
@@ -142,7 +173,7 @@ describe("resolveCallDisplay", () => {
   it("handles an empty board (first seconds after the TV boots)", () => {
     const shown = resolveCallDisplay(
       {
-        appointmentId: "apt_petrova",
+        rowKey: "rk_petrova",
         patientName: "Петрова М.",
         ticketNumber: "A-007",
         cabinetNumber: "3",

@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { err, ok } from "@/server/http";
 import { createMiniAppListHandler } from "@/server/miniapp/handler";
 import { resolveActivePatient } from "@/server/miniapp/active-patient";
+import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 
 export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
   const url = new URL(request.url);
@@ -81,8 +82,14 @@ export const GET = createMiniAppListHandler({}, async ({ request, ctx }) => {
               anchor.getTime() + note.followUpDays * 24 * 60 * 60 * 1000,
             ).toISOString()
           : null,
+      // A link for this one conclusion, never initData (MA-07).
       conclusionUrl: note.conclusionDocument
-        ? `/api/miniapp/documents/${note.conclusionDocument.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`
+        ? miniAppDocumentUrl({
+            clinicId: ctx.clinicId,
+            clinicSlug: ctx.clinicSlug,
+            patientId: acting.patientId,
+            documentId: note.conclusionDocument.id,
+          })
         : null,
     },
   });

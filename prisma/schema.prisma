@@ -452,6 +452,7 @@ model Clinic {
   patientAllergies         PatientAllergy[]
   patientChronicConditions PatientChronicCondition[]
   patientDiagnoses         PatientDiagnosis[]
+  patientClinicalNotes     PatientClinicalNote[]
   telegramInviteTokens     TelegramInviteToken[]
   visitNotes               VisitNote[]
   visitNoteAmendments      VisitNoteAmendment[]
@@ -1891,12 +1892,12 @@ model Patient {
   referralRewardsAsReferrer ReferralReward[]          @relation("ReferralRewardReferrer")
   referralRewardsAsReferred ReferralReward[]          @relation("ReferralRewardReferred")
   medicationReminderSends   MedicationReminderSend[]
-  patientViews              PatientView[]
   dataExportJobs            DataExportJob[]
   dataDeletionJobs          DataDeletionJob[]
   allergies                 PatientAllergy[]
   chronicConditions         PatientChronicCondition[]
   diagnoses                 PatientDiagnosis[]
+  clinicalNote              PatientClinicalNote?
   telegramInviteTokens      TelegramInviteToken[]
   visitNotes                VisitNote[]
   reminders                 Reminder[]
@@ -2949,8 +2950,11 @@ model PatientView {
   // can change later (e.g. demotion); the audit row should reflect what
   // they were when they looked.
   viewerRole   String
+  // A plain id, no foreign key (like AuditLog.entityId): the access log is a
+  // compliance record and must outlive the card it points to. With the old
+  // ON DELETE CASCADE, deleting a patient wiped the record of who had read
+  // their chart (audit G1-09).
   patientId    String
-  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   // Where in the CRM the view originated. Free-form String (not enum) so
   // future surfaces can be added without a migration.
   context      String
@@ -3282,6 +3286,30 @@ model PatientDiagnosis {
 
   @@index([clinicId, patientId, status])
   @@index([sourceVisitNoteId])
+}
+
+// The doctor's free-text chart note («Медицина → Клиническая заметка»):
+// complaints, observations, treatment plan (audit PT-11). It used to be
+// `Patient.notes`, the same column the front desk edits on the card
+// overview, so «перезвонить после 18:00» typed at reception overwrote the
+// treatment plan, and every role read it. One row per patient, read and
+// written only through /api/crm/patients/[id]/clinical-note by clinical
+// roles. `Patient.notes` stays the staff note everyone sees.
+model PatientClinicalNote {
+  id          String   @id @default(cuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId   String   @unique
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // Field-cipher ciphertext, like `Patient.notes`.
+  body        String   @db.Text
+  // Who saved the current text. A plain id, no foreign key: a departed
+  // doctor's account must not take the note with it.
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clinicId])
 }
 
 model ReferralCode {
@@ -3669,10 +3697,18 @@ model TelegramInviteToken {
   /// Telegram user id that consumed the token. Captured for support when
   /// a patient claims they linked the wrong account.
   consumedTelegramId String?
+  /// The Telegram account that last opened the token (`/start <token>`) and
+  /// was asked to prove it is the patient (audit PT-04). Opening links
+  /// nothing: the token is printed on paper that leaves the clinic, so the
+  /// card is bound only once THIS account shares its own phone number and
+  /// the number is the card's.
+  claimTelegramId    String?
+  claimedAt          DateTime?
 
   @@index([clinicId])
   @@index([patientId])
   @@index([expiresAt])
+  @@index([clinicId, claimTelegramId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

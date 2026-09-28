@@ -76,14 +76,24 @@ const RU: Dict = {
     "Нужен ваш собственный номер. Нажмите «Подтвердить номер через Telegram» в приложении клиники.",
   "contact.noCard":
     "Сначала откройте приложение клиники, затем подтвердите номер.",
-  // Audit TG-07 — replies to the invite deep link (QR in the cabinet or on
-  // the printed conclusion), sent whatever the auto-reply mode.
+  // Audit PT-04 — an invite link opened in the bot links the card only
+  // after the account shares its own number and it is the card's. The
+  // replies go out whatever the auto-reply mode (audit TG-07): with it off
+  // (the production default) nothing else answers the patient.
+  "invite.confirmPhone":
+    "Чтобы подключить вашу медкарту, подтвердите номер телефона: нажмите кнопку «📱 Отправить мой номер» ниже. Номер должен совпадать с тем, что записан в клинике.",
+  "invite.shareButton": "📱 Отправить мой номер",
   "invite.linked":
-    "Готово, Telegram подключён к вашей карте в клинике. Сюда будут приходить напоминания о приёме и документы.",
+    "Готово, номер совпал. Ваша медкарта подключена: напоминания о приёме, заключения и документы теперь будут приходить сюда.",
+  "invite.phoneMismatch":
+    "Этот номер не совпадает с номером в вашей карте, поэтому карта не подключена. Попросите регистратуру записать в карту номер этого Telegram и нажмите кнопку ещё раз.",
+  "invite.notOwn":
+    "Нужен номер именно этого Telegram. Нажмите кнопку «📱 Отправить мой номер» ниже.",
   "invite.expired":
     "Ссылка устарела. Попросите в регистратуре новую, и мы подключим Telegram к вашей карте.",
-  "invite.pending":
-    "Спасибо. Регистратура проверит вашу карту и подключит Telegram, после этого сюда будут приходить напоминания.",
+  "invite.unavailable":
+    "Эта ссылка больше не действует. Попросите в регистратуре новую.",
+  "invite.alreadyYours": "Ваша медкарта уже подключена к этому Telegram.",
 
   "tgVoiceReply.received":
     "Получил, расшифровываю и структурирую SOAP-черновик. Откройте случай в CRM через минуту.",
@@ -150,12 +160,20 @@ const UZ: Dict = {
     "O'z raqamingiz kerak. Klinika ilovasida «Raqamni Telegram orqali tasdiqlash» tugmasini bosing.",
   "contact.noCard":
     "Avval klinika ilovasini oching, so'ng raqamni tasdiqlang.",
+  "invite.confirmPhone":
+    "Tibbiy kartangizni ulash uchun telefon raqamingizni tasdiqlang: pastdagi «📱 Raqamimni yuborish» tugmasini bosing. Raqam klinikada yozilgan raqam bilan bir xil bo'lishi kerak.",
+  "invite.shareButton": "📱 Raqamimni yuborish",
   "invite.linked":
-    "Tayyor, Telegram klinikadagi kartangizga ulandi. Qabul eslatmalari va hujjatlar shu yerga keladi.",
+    "Tayyor, raqam mos keldi. Tibbiy kartangiz ulandi: qabul eslatmalari, xulosalar va hujjatlar endi shu yerga keladi.",
+  "invite.phoneMismatch":
+    "Bu raqam kartangizdagi raqam bilan mos kelmadi, shuning uchun karta ulanmadi. Registraturadan kartaga shu Telegram raqamini yozishni so'rang va tugmani yana bosing.",
+  "invite.notOwn":
+    "Aynan shu Telegram raqami kerak. Pastdagi «📱 Raqamimni yuborish» tugmasini bosing.",
   "invite.expired":
     "Havola eskirgan. Registraturadan yangisini so'rang, Telegramni kartangizga ulab beramiz.",
-  "invite.pending":
-    "Rahmat. Registratura kartangizni tekshirib, Telegramni ulaydi, shundan so'ng eslatmalar shu yerga keladi.",
+  "invite.unavailable":
+    "Bu havola endi amal qilmaydi. Registraturadan yangisini so'rang.",
+  "invite.alreadyYours": "Tibbiy kartangiz allaqachon shu Telegramga ulangan.",
 
   "tgVoiceReply.received":
     "Qabul qildim, ovozni matnga aylantirib SOAP-qoralama tayyorlayapman. Bir daqiqadan so'ng CRM'da hodisani oching.",

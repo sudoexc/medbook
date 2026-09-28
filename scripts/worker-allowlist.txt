@@ -1,0 +1,68 @@
+# Scripts shipped in the worker image (Dockerfile.worker), relative to scripts/.
+#
+# Audit G2-05: the worker image is production, and production is the real
+# clinic. It used to carry the whole scripts/ folder minus a denylist, so every
+# new demo seed or test fixture landed on the server until someone remembered
+# to exclude it. Now only what is listed here is copied; anything else stays
+# out by default. The build fails if a listed file is missing.
+#
+# Only operational tools belong here: production data fixes (DRY RUN by
+# default, APPLY=1 writes), encryption backfills, catalog imports, bot and
+# account setup, read-only reports, and the helpers they import. Never a demo
+# or test seed, never a script that goes through scripts/_destructive-guard.ts.
+# tests/unit/seed-guard.test.ts checks both, and that every fix-*/backfill-*
+# script is either listed or explicitly dev-only.
+
+# Production data fixes and backfills
+backfill-birth-year-from-name.ts
+backfill-clinic-diagnoses.ts
+backfill-miniapp-free-repeat.ts
+backfill-new-templates.ts
+backfill-patient-visit-stats.ts
+close-stale-in-progress-visits.ts
+fix-ac03-event-task-lifetimes.ts
+fix-an01-fx-rate-convention.ts
+fix-an02-link-payments-to-visits.ts
+fix-cd02-drug-photo-urls.ts
+fix-ct03-registry-brand-homes.ts
+fix-g4-06-reference-dosing-instructions.ts
+fix-g4-12-phenazepam-atc.ts
+fix-ld10-local-phones.ts
+fix-patient-telegram-identity.ts
+fix-pt10-closed-case-prescriptions.ts
+fix-q12-ticket-prefixes.ts
+fix-q14-no-show-queue-status.ts
+fix-sec09-audit-pii.ts
+fix-tg02-reminder-texts.ts
+fix-tg04-phantom-delivered.ts
+fix-ux01-ai-mock-text.ts
+fix-vw02-stale-handouts.ts
+reminder-cadence-5d3d1d3h.ts
+
+# Encryption at rest
+encrypt-auth-secrets.ts
+encrypt-existing-pii.ts
+rotate-encryption-key.ts
+_cipher-key-guard.ts
+
+# Catalogs and clinic reference data
+enrich-drug-forms.ts
+import-clinic-formulary.ts
+data/formulary-neurofax.ts
+import-uzpharm-registry.ts
+_registry-plan.ts
+seed-knowledge.ts
+seed-notification-templates.ts
+seed-neurofax-real.ts
+_catalog-plan.ts
+
+# Accounts and bots
+bootstrap-super-admin.ts
+_seed-passwords.ts
+audit-known-passwords.ts
+connect-tg-bot.ts
+set-tg-webhook.ts
+check-tg-webhook.ts
+
+# Read-only reports
+report-day-off-bookings.ts

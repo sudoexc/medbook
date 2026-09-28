@@ -32,6 +32,7 @@ import { ok } from "@/server/http";
 import { getQueueProjection } from "@/server/appointments/queue-projection";
 import { tashkentDayBounds } from "@/lib/booking-validation";
 import { initials } from "@/lib/format";
+import { boardRowKey } from "@/server/appointments/public-ticket";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -134,22 +135,24 @@ export async function GET(request: Request): Promise<Response> {
       queue: {
         current: q?.current
           ? {
-              // Appointment id, like the waiting rows carry: the TV matches
+              // Opaque row key, like the waiting rows carry: the TV matches
               // a `queue.called` to this row, never to whoever is current.
-              id: q.current.appointmentId,
+              // Not the appointment id: the screen is in a public room and
+              // its URL is on the TV box (audit INF-10).
+              id: boardRowKey(q.current.appointmentId),
               fullName: initials(q.current.patientFullName),
               ticketNumber: q.current.ticketNumber,
             }
           : null,
         waiting: (q?.waiting ?? []).map((w) => ({
-          id: w.appointmentId,
+          id: boardRowKey(w.appointmentId),
           fullName: initials(w.patientFullName),
           ticketNumber: w.ticketNumber,
           etaMinutes: w.etaMinutes,
         })),
       },
       slots: slotRows.map((s) => ({
-        id: s.id,
+        id: boardRowKey(s.id),
         time: s.time,
         status: s.status,
         fullName: initials(s.patient?.fullName),

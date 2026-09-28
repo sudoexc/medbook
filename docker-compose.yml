@@ -7,7 +7,8 @@
 # Services:
 #   postgres  — primary Postgres database
 #   redis     — BullMQ queue + SSE fan-out pub/sub
-#   minio     — S3-compatible object storage (uploads + nightly backups)
+#   minio     — S3-compatible object storage (clinic files; internal only,
+#               never proxied to the internet, see nginx/nginx.conf)
 #   app       — Next.js standalone server
 #   worker    — background workers (notifications + scheduler + exports)
 #   nginx     — reverse proxy + TLS termination
@@ -55,9 +56,11 @@ services:
     image: minio/minio:latest
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
+    # No default credentials (audit INF-07): a forgotten .env must fail the
+    # start, not bring MinIO up under a key pair printed in this file.
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-medbook}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-medbook-secret-min-8}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
     volumes:
       - miniodata:/data
     healthcheck:

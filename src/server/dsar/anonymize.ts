@@ -89,31 +89,35 @@ export function buildAnonymizationPayload(
 }
 
 /**
- * Snapshot the pre-scrub identifiers so the audit log can later recover
- * "who was patient X" without exposing it to the live UI. Goes into the
- * `meta.before` of the PATIENT_ANONYMIZED audit row.
+ * The identity columns an anonymization or hard delete removed, by NAME,
+ * for the `meta` of the PATIENT_ANONYMIZED / PATIENT_HARD_DELETED audit row
+ * (audit SEC-09).
+ *
+ * It used to be a «forensic» copy of the values (full name, phone, Telegram
+ * id, decrypted passport), so the person a DSAR request erased stayed fully
+ * identifiable in «Настройки → Аудит» and in any database dump. The row id
+ * (the audit row's entityId) and the job id are what tie the event to the
+ * request; the identity itself is not kept anywhere.
  */
-export function snapshotForensicFields(patient: {
-  fullName: string;
-  phone: string;
-  phoneNormalized: string;
+export function erasedIdentityFields(patient: {
+  fullName: string | null;
+  phone: string | null;
+  phoneNormalized: string | null;
   telegramId: string | null;
   telegramUsername: string | null;
   passport: string | null;
-}): {
-  fullName: string;
-  phone: string;
-  phoneNormalized: string;
-  telegramId: string | null;
-  telegramUsername: string | null;
-  passport: string | null;
-} {
-  return {
-    fullName: patient.fullName,
-    phone: patient.phone,
-    phoneNormalized: patient.phoneNormalized,
-    telegramId: patient.telegramId,
-    telegramUsername: patient.telegramUsername,
-    passport: patient.passport,
-  };
+}): string[] {
+  return (
+    [
+      "fullName",
+      "phone",
+      "phoneNormalized",
+      "telegramId",
+      "telegramUsername",
+      "passport",
+    ] as const
+  ).filter((k) => {
+    const v = patient[k];
+    return v !== null && v !== undefined && v !== "";
+  });
 }

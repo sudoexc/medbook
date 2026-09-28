@@ -20,8 +20,8 @@ import { toast } from "sonner";
 
 import type {
   AnalyticsResponse,
-  CasesAnalyticsResponse,
   FunnelsResponse,
+  JourneyAnalyticsResponse,
   Period,
 } from "./analytics-types";
 
@@ -49,7 +49,7 @@ const AnalyticsTopRows = dynamic(
 );
 
 const PatientJourneyStrip = dynamic(
-  () => import("./cases-section").then((m) => m.PatientJourneyStrip),
+  () => import("./journey-strip").then((m) => m.PatientJourneyStrip),
   {
     ssr: false,
     loading: () => <Skeleton className="h-40 w-full rounded-2xl" />,
@@ -88,12 +88,12 @@ function fetchFunnels(period: Period): Promise<FunnelsResponse> {
   });
 }
 
-function fetchCases(period: Period): Promise<CasesAnalyticsResponse> {
-  return fetch(`/api/crm/analytics/cases?period=${period}`, {
+function fetchJourney(period: Period): Promise<JourneyAnalyticsResponse> {
+  return fetch(`/api/crm/analytics/journey?period=${period}`, {
     credentials: "include",
   }).then((r) => {
-    if (!r.ok) throw new Error(`cases ${r.status}`);
-    return r.json() as Promise<CasesAnalyticsResponse>;
+    if (!r.ok) throw new Error(`journey ${r.status}`);
+    return r.json() as Promise<JourneyAnalyticsResponse>;
   });
 }
 
@@ -133,15 +133,15 @@ export function AnalyticsPageClient() {
     staleTime: 60_000,
   });
 
-  const qCases = useQuery({
-    queryKey: ["analytics-cases", period],
-    queryFn: () => fetchCases(period),
+  const qJourney = useQuery({
+    queryKey: ["analytics-journey", period],
+    queryFn: () => fetchJourney(period),
     staleTime: 60_000,
   });
 
   const data = q.data;
   const funnels = qFunnels.data;
-  const cases = qCases.data;
+  const journey = qJourney.data;
 
   const reasonLabels = React.useMemo(
     () => REASON_KEYS.map((k) => tReasons(k)),
@@ -328,21 +328,26 @@ export function AnalyticsPageClient() {
             }}
           />
 
-          {qCases.isError ? null : !cases ? (
+          {qJourney.isError ? null : !journey ? (
             <Skeleton className="h-40 w-full rounded-2xl" />
           ) : (
             <PatientJourneyStrip
-              cases={cases}
+              journey={journey}
               analytics={data}
               locale={locale === "uz" ? "uz" : "ru"}
               labels={{
                 sectionTitle: tJourney("title"),
                 newPatients: tJourney("newPatients"),
-                firstConsult: tJourney("firstConsult"),
+                visits: tJourney("visits"),
                 repeatVisits: tJourney("repeatVisits"),
                 repeatPct: tJourney("repeatPct"),
                 avgCheck: tJourney("avgCheck"),
                 revenue: tJourney("revenue"),
+                noPayments: tJourney("noPayments"),
+                noPaidVisits: tJourney("noPaidVisits"),
+                hint: journey.doctorOnly
+                  ? tJourney("hintDoctor")
+                  : tJourney("hint"),
               }}
             />
           )}

@@ -293,17 +293,17 @@ export const AUDIT_ACTION = {
 
   // Phase 17 Wave 3 — deletion job ran in HARD_DELETE mode and removed the
   // Patient row entirely. `entityType: "Patient"`, `entityId: <patientId>`.
-  // `meta` snapshots the pre-delete row so the audit trail is meaningful
-  // after the row is gone, plus `{ jobId }`. Rare in practice — the
-  // default mode is ANONYMIZE.
+  // `meta` is `{ jobId, erased: [field names] }`: the erased identity is
+  // named, never copied (audit SEC-09). Rare in practice — the default
+  // mode is ANONYMIZE.
   PATIENT_HARD_DELETED: "PATIENT_HARD_DELETED",
 
   // Phase 17 Wave 3 — deletion job ran in ANONYMIZE mode and scrubbed PII
   // off the Patient row while preserving aggregate analytics (visit
   // counts, revenue, etc.). `entityType: "Patient"`, `entityId:
-  // <patientId>`. `meta` carries `{ jobId, before: { fullName,
-  // phoneNormalized, telegramId, ... } }` so the pre-scrub identifiers
-  // are still recoverable for legal/forensic requests.
+  // <patientId>`. `meta` is `{ jobId, erased: [field names] }`. It used to
+  // keep `before: { fullName, phone, passport, ... }`, which left the
+  // person the request erased identifiable in the audit log (audit SEC-09).
   PATIENT_ANONYMIZED: "PATIENT_ANONYMIZED",
 
   // Phase 17 Wave 2 — TOTP enrolment finished. `entityType: "User"`,
@@ -568,6 +568,12 @@ export const AUDIT_ACTION = {
   KNOWLEDGE_HANDOUT_CREATED: "KNOWLEDGE_HANDOUT_CREATED",
   KNOWLEDGE_HANDOUT_UPDATED: "KNOWLEDGE_HANDOUT_UPDATED",
   KNOWLEDGE_HANDOUT_DELETED: "KNOWLEDGE_HANDOUT_DELETED",
+  // Audit CT-05: the admin corrected the code of a diagnosis wording the
+  // clinic learned from practice, or removed the wording from the picker.
+  // `entityType: "ClinicDiagnosis"`; meta `{ nameRu, code, previousCode? }`.
+  // DELETED is a real delete: the row holds nothing a note points at.
+  KNOWLEDGE_DIAGNOSIS_UPDATED: "KNOWLEDGE_DIAGNOSIS_UPDATED",
+  KNOWLEDGE_DIAGNOSIS_DELETED: "KNOWLEDGE_DIAGNOSIS_DELETED",
 
   // Phase G6 — Doctor pinned / unpinned a catalog entry as a favourite.
   // `entityType: "DoctorFavorite"`, `entityId: <favorite.id>`. `meta`

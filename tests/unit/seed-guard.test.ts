@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,9 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   REAL_DATA_OPT_IN_ENV,
   REAL_WORK_ACTIONS,
+  assertLocalHttpTarget,
   assertSeedAllowed,
+  assertSeedAllowedOrNewClinic,
   decideSeedGuard,
   hasRealData,
+  isLocalHttpTarget,
   probeRealData,
   type SeedGuardDb,
   type SeedPolicy,
@@ -19,8 +22,10 @@ import {
  * every demo or test seed goes through ONE guard before its first write.
  */
 
-const CLEAN = { staffActions: 0, recentActivity: 0 };
-const REAL = { staffActions: 312, recentActivity: 0 };
+const CLEAN = { staffActions: 0, recentActivity: 0, signedConclusions: 0 };
+const REAL = { staffActions: 312, recentActivity: 0, signedConclusions: 0 };
+/** A copy of production: signed conclusions, audit trail gone or quiet. */
+const SIGNED = { staffActions: 0, recentActivity: 0, signedConclusions: 4821 };
 const demo: SeedPolicy = { script: "seed-demo-data", clinicSlug: "neurofax" };
 
 describe("decideSeedGuard", () => {
@@ -159,15 +164,86 @@ describe("decideSeedGuard", () => {
   });
 
   it("counts heavy recent activity as real data too", () => {
-    expect(hasRealData({ staffActions: 0, recentActivity: 19 })).toBe(false);
-    expect(hasRealData({ staffActions: 0, recentActivity: 20 })).toBe(true);
-    expect(hasRealData({ staffActions: 1, recentActivity: 0 })).toBe(true);
+    expect(hasRealData({ ...CLEAN, recentActivity: 19 })).toBe(false);
+    expect(hasRealData({ ...CLEAN, recentActivity: 20 })).toBe(true);
+    expect(hasRealData({ ...CLEAN, staffActions: 1 })).toBe(true);
+    expect(hasRealData({ ...CLEAN, signedConclusions: 1 })).toBe(true);
+  });
+
+  // Audit G2-05 acceptance: on a copy of the production database with signed
+  // conclusions every destructive script refuses, whatever the audit trail
+  // says, in any environment, with any opt-in.
+  it("refuses every destructive script on a clinic with signed conclusions, no bypass", () => {
+    for (const script of [
+      "wipe-neurofax-demo",
+      "seed-mega-neurofax",
+      "seed-today-live",
+      "cleanup-test-conversations",
+    ]) {
+      for (const env of [
+        {},
+        { NODE_ENV: "development" },
+        { [REAL_DATA_OPT_IN_ENV]: "neurofax" },
+      ]) {
+        const d = decideSeedGuard({
+          policy: { script, clinicSlug: "neurofax", destructive: true },
+          signals: SIGNED,
+          env,
+          argv: ["--force", "--i-know-there-is-real-data"],
+        });
+        expect(d).toMatchObject({ ok: false, reason: "signed_documents" });
+        if (!d.ok) {
+          expect(d.message).not.toContain("=neurofax");
+          expect(d.message).not.toContain(REAL_DATA_OPT_IN_ENV);
+        }
+      }
+    }
+  });
+
+  it("an additive seed on a clinic with signed conclusions still needs the named opt-in", () => {
+    const refused = decideSeedGuard({ policy: demo, signals: SIGNED, env: {}, argv: [] });
+    expect(refused).toMatchObject({ ok: false, reason: "real_data" });
+    const named = decideSeedGuard({
+      policy: demo,
+      signals: SIGNED,
+      env: { [REAL_DATA_OPT_IN_ENV]: "neurofax" },
+      argv: [],
+    });
+    expect(named.ok).toBe(true);
+  });
+
+  it("a clinic with real data never gets the «add --force» hint first", () => {
+    const d = decideSeedGuard({
+      policy: { ...demo, destructive: true },
+      signals: REAL,
+      env: {},
+      argv: [],
+    });
+    expect(d).toMatchObject({ ok: false, reason: "real_data" });
+    if (!d.ok) expect(d.message).not.toMatch(/Без флага --force/);
   });
 });
 
+function dbWith(opts: {
+  clinic?: { id: string } | null;
+  audit?: number;
+  signed?: number;
+  findUnique?: SeedGuardDb["clinic"]["findUnique"];
+}): SeedGuardDb {
+  return {
+    clinic: {
+      findUnique:
+        opts.findUnique ?? (async () => (opts.clinic === undefined ? { id: "c1" } : opts.clinic)),
+    },
+    auditLog: { count: async () => opts.audit ?? 0 },
+    visitNoteRevision: { count: async () => opts.signed ?? 0 },
+  };
+}
+
 describe("probeRealData", () => {
-  it("counts staff rows of this clinic for app-only actions, and recent rows overall", async () => {
+  it("counts staff rows of this clinic, people's recent rows overall, and signed conclusions", async () => {
     const calls: Array<Record<string, unknown>> = [];
+    const revisionCalls: Array<Record<string, unknown>> = [];
     const db: SeedGuardDb = {
       clinic: { findUnique: async () => ({ id: "c1" }) },
       auditLog: {
@@ -176,17 +252,33 @@ describe("probeRealData", () => {
           return 3;
         },
       },
+      visitNoteRevision: {
+        count: async ({ where }) => {
+          revisionCalls.push(where);
+          return 7;
+        },
+      },
     };
     const now = new Date("2026-09-26T08:00:00Z");
     const s = await probeRealData(db, "c1", now);
-    expect(s).toEqual({ staffActions: 3, recentActivity: 3 });
+    expect(s).toEqual({ staffActions: 3, recentActivity: 3, signedConclusions: 7 });
     expect(calls[0]).toEqual({
       clinicId: "c1",
       actorId: { not: null },
       action: { in: [...REAL_WORK_ACTIONS] },
     });
+    // People only: the outbox mirror and the no-show sweep write rows with no
+    // actor around the clock and made a clean demo look «real» (G2-05).
     expect(calls[1]).toEqual({
       createdAt: { gte: new Date("2026-09-23T08:00:00Z") },
+      actorId: { not: null },
+    });
+    // Audit-independent: only the finalize route writes SIGNED revisions.
+    // Demo patients' conclusions (signed while showing the demo) do not count.
+    expect(revisionCalls[0]).toEqual({
+      clinicId: "c1",
+      kind: "SIGNED",
+      visitNote: { patient: { NOT: { tags: { has: "demo-seed" } } } },
     });
   });
 
@@ -222,18 +314,28 @@ describe("assertSeedAllowed", () => {
 
   it("stops the process on a clinic with real data", async () => {
     const exit = exitSpy();
-    const db: SeedGuardDb = {
-      clinic: { findUnique: async () => ({ id: "c1" }) },
-      auditLog: { count: async () => 50 },
-    };
-    await expect(assertSeedAllowed(db, demo, {}, [])).rejects.toThrow("exit 1");
+    await expect(assertSeedAllowed(dbWith({ audit: 50 }), demo, {}, [])).rejects.toThrow(
+      "exit 1",
+    );
     expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("stops a destructive script on a clinic with signed conclusions and an empty audit log", async () => {
+    exitSpy();
+    await expect(
+      assertSeedAllowed(
+        dbWith({ audit: 0, signed: 12 }),
+        { ...demo, destructive: true },
+        { [REAL_DATA_OPT_IN_ENV]: "neurofax" },
+        ["--force"],
+      ),
+    ).rejects.toThrow("exit 1");
   });
 
   it("refuses a dev-only script in production without touching the database", async () => {
     exitSpy();
     const findUnique = vi.fn(async () => ({ id: "c1" }));
-    const db: SeedGuardDb = { clinic: { findUnique }, auditLog: { count: async () => 0 } };
+    const db = dbWith({ findUnique });
     await expect(
       assertSeedAllowed(db, { ...demo, devOnly: true }, { NODE_ENV: "production" }, []),
     ).rejects.toThrow("exit 1");
@@ -243,7 +345,7 @@ describe("assertSeedAllowed", () => {
   it("refuses a destructive seed in production without touching the database", async () => {
     exitSpy();
     const findUnique = vi.fn(async () => ({ id: "c1" }));
-    const db: SeedGuardDb = { clinic: { findUnique }, auditLog: { count: async () => 0 } };
+    const db = dbWith({ findUnique });
     await expect(
       assertSeedAllowed(
         db,
@@ -256,14 +358,47 @@ describe("assertSeedAllowed", () => {
   });
 
   it("returns the clinic id when the clinic is clean", async () => {
-    const db: SeedGuardDb = {
-      clinic: { findUnique: async () => ({ id: "c9" }) },
-      auditLog: { count: async () => 0 },
-    };
-    await expect(assertSeedAllowed(db, demo, {}, [])).resolves.toEqual({
+    await expect(assertSeedAllowed(dbWith({ clinic: { id: "c9" } }), demo, {}, [])).resolves.toEqual({
       clinicId: "c9",
       realData: false,
     });
+  });
+
+  it("lets prisma/seed.ts create a clinic that does not exist yet, and guards one that does", async () => {
+    exitSpy();
+    const policy = { script: "prisma/seed", clinicSlug: "neurofax", devOnly: true };
+    await expect(
+      assertSeedAllowedOrNewClinic(dbWith({ clinic: null }), policy, {}, []),
+    ).resolves.toEqual({ clinicId: null, realData: false });
+    await expect(
+      assertSeedAllowedOrNewClinic(dbWith({ signed: 3 }), policy, {}, []),
+    ).rejects.toThrow("exit 1");
+    await expect(
+      assertSeedAllowedOrNewClinic(dbWith({ clinic: null }), policy, { NODE_ENV: "production" }, []),
+    ).rejects.toThrow("exit 1");
+  });
+});
+
+describe("HTTP stress scripts", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("run only against the local app", () => {
+    expect(isLocalHttpTarget("http://localhost:3000")).toBe(true);
+    expect(isLocalHttpTarget("http://127.0.0.1:3000")).toBe(true);
+    expect(isLocalHttpTarget("https://neurofax.uz")).toBe(false);
+    expect(isLocalHttpTarget("http://localhost.neurofax.uz")).toBe(false);
+    expect(isLocalHttpTarget("not a url")).toBe(false);
+
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const exit = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+    expect(() => assertLocalHttpTarget("s", "http://localhost:3000", {})).not.toThrow();
+    expect(() => assertLocalHttpTarget("s", "https://neurofax.uz", {})).toThrow("exit 1");
+    expect(() =>
+      assertLocalHttpTarget("s", "http://localhost:3000", { NODE_ENV: "production" }),
+    ).toThrow("exit 1");
+    expect(exit).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -286,8 +421,42 @@ describe("the scripts use the guard", () => {
     "stress-cases-scenarios.ts",
     "stress-medical-cases.ts",
     "stress-reminders-scenarios.ts",
+    // Audit G2-05: the destructive and demo scripts P2 left unguarded.
+    "fix-double-inprogress.ts",
+    "guard-e2e.ts",
+    "cleanup-test-conversations.ts",
   ])("%s calls assertSeedAllowed", (f) => {
     expect(read(f)).toMatch(/assertSeedAllowed\(/);
+  });
+
+  it("prisma/seed.ts goes through the guard before its first write", () => {
+    const src = readFileSync(path.resolve(__dirname, "../../prisma/seed.ts"), "utf8");
+    const guard = src.indexOf("assertSeedAllowedOrNewClinic(prisma");
+    expect(guard).toBeGreaterThan(0);
+    expect(src.slice(guard, guard + 300)).toMatch(/devOnly: true/);
+    // Before the first upsert of main().
+    expect(guard).toBeLessThan(src.indexOf('await upsertStaff("super@neurofax.uz"'));
+  });
+
+  it("the HTTP stress scripts refuse a non-local target", () => {
+    for (const f of ["stress-payments-analytics-ai.ts", "stress-settings-crud.ts"]) {
+      expect(read(f)).toMatch(/assertLocalHttpTarget\(/);
+    }
+  });
+
+  it("cleanup-test-conversations is scoped to one named clinic and marked destructive", () => {
+    const src = read("cleanup-test-conversations.ts");
+    expect(src).toMatch(/requireClinicSlug\(/);
+    expect(src).toMatch(/destructive: true/);
+    expect(src).toMatch(/where: \{ clinicId: clinic\.id \}/);
+  });
+
+  it("the preset seeds no longer erase doctors' own presets", () => {
+    const presets = readFileSync(path.resolve(__dirname, "../../prisma/seed-presets.ts"), "utf8");
+    expect(presets).not.toMatch(/doctorPreset\.deleteMany/);
+    const sql = readFileSync(path.resolve(__dirname, "../../prisma/seed-presets-sql.ts"), "utf8");
+    expect(sql).not.toMatch(/DELETE FROM "DoctorPreset"/);
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM "DoctorPreset"/);
   });
 
   it("dev-only tooling declares devOnly", () => {
@@ -299,6 +468,8 @@ describe("the scripts use the guard", () => {
       // is the real clinic (review of 895cded).
       "seed-mega-neurofax.ts",
       "wipe-neurofax-demo.ts",
+      "fix-double-inprogress.ts",
+      "guard-e2e.ts",
     ]) {
       expect(read(f)).toMatch(/devOnly: true/);
     }
@@ -333,20 +504,68 @@ describe("the scripts use the guard", () => {
     expect(src).toMatch(/tags: \{ has: DEMO_SEED_MARK \}/);
   });
 
-  it("the worker image leaves the test and demo seeds out (G2-02, G2-03)", () => {
+  it("the worker image copies only the allowlisted scripts (G2-02, G2-03, G2-05)", () => {
     const docker = readFileSync(path.resolve(__dirname, "../../Dockerfile.worker"), "utf8");
-    expect(docker).toMatch(/rm -f scripts\/seed-labs-reminders-dev\.ts/);
-    expect(docker).toMatch(/scripts\/stress-\*\.ts/);
-    const rmStart = docker.indexOf("RUN rm -f scripts/");
-    const rm = docker.slice(rmStart, docker.indexOf("FROM", rmStart));
+    expect(docker).toMatch(/worker-allowlist\.txt/);
+    expect(docker).toMatch(/xargs cp --parents -t \/opt\/ops-scripts/);
+    expect(docker).toMatch(/COPY --from=builder --chown=worker:nodejs \/opt\/ops-scripts +\.\/scripts/);
+    expect(docker).not.toMatch(/\/app\/scripts/);
+  });
+});
+
+describe("the worker allowlist (G2-05)", () => {
+  const scriptsDir = path.resolve(__dirname, "../../scripts");
+  const read = (f: string) => readFileSync(path.join(scriptsDir, f), "utf8");
+  const listed = read("worker-allowlist.txt")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"));
+
+  it("names only files that exist", () => {
+    expect(listed.length).toBeGreaterThan(20);
+    for (const f of listed) expect(existsSync(path.join(scriptsDir, f)), f).toBe(true);
+  });
+
+  it("carries every script-local import of what it lists", () => {
+    const set = new Set(listed);
+    for (const f of listed) {
+      for (const m of read(f).matchAll(/from "(\.\/[^"]+)"/g)) {
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]!));
+        expect(set.has(`${target}.ts`), `${f} imports ${m[1]}`).toBe(true);
+      }
+    }
+  });
+
+  it("holds no demo, test or destructive tooling", () => {
+    for (const f of listed) {
+      const src = read(f);
+      expect(src, f).not.toMatch(/_destructive-guard/);
+      expect(src, f).not.toMatch(/assertSeedAllowed/);
+    }
     for (const f of [
       "seed-mega-neurofax.ts",
       "wipe-neurofax-demo.ts",
       "seed-today-live.ts",
       "seed-demo-data.ts",
       "seed-prod-demo.ts",
+      "seed-clinical-life.ts",
+      "seed-labs-reminders-dev.ts",
+      "fix-double-inprogress.ts",
+      "guard-e2e.ts",
+      "cleanup-test-conversations.ts",
+      "upsert-dev-admin.ts",
+      "_destructive-guard.ts",
     ]) {
-      expect(rm).toContain(`scripts/${f}`);
+      expect(listed, f).not.toContain(f);
     }
+    expect(listed.some((f) => f.startsWith("stress-"))).toBe(false);
+  });
+
+  it("lists every production data fix, so none is missing on the server", () => {
+    const fixes = readdirSync(scriptsDir).filter(
+      (f) => /^(fix|backfill)-.*\.ts$/.test(f) && !/devOnly: true/.test(read(f)),
+    );
+    expect(fixes.length).toBeGreaterThan(10);
+    for (const f of fixes) expect(listed, f).toContain(f);
   });
 });

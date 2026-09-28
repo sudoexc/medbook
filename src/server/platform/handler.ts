@@ -7,7 +7,9 @@
  * clinic (or omit it for cross-tenant reads).
  *
  * Kept separate from `src/lib/api-handler.ts` so we can gate on SUPER_ADMIN
- * by default (the CRM handler lets ADMIN pass too).
+ * by default (the CRM handler lets ADMIN pass too). Routes that do not use
+ * the wrappers call `requireSuperAdmin()` themselves: no local copies of the
+ * role check, so the 2FA requirement cannot be forgotten in one of them.
  */
 import type { ZodSchema } from "zod";
 
@@ -15,6 +17,7 @@ import { auth } from "@/lib/auth";
 import { runWithTenant } from "@/lib/tenant-context";
 import { err } from "@/server/http";
 import { clientIpForAudit } from "@/lib/client-ip";
+import { mfaRequiredResponse, owesTotpEnrolment } from "@/server/auth/mfa-gate";
 
 type PlatformArgs<TBody> = {
   request: Request;
@@ -56,14 +59,34 @@ async function parseBody<TBody>(
   }
 }
 
-async function requireSuperAdmin(): Promise<
+export type SuperAdminGate =
   | { ok: true; userId: string }
-  | { ok: false; response: Response }
-> {
+  | { ok: false; response: Response };
+
+/**
+ * The one gate of every /api/platform and /api/admin endpoint: a signed-in
+ * SUPER_ADMIN WITH an enrolled second factor (audit SEC-08). The role is
+ * mandatory-2FA in `security-policy.ts`, but until SEC-08 nothing on the
+ * control plane checked it: a leaked password alone could reset a clinic
+ * owner's password or enter a clinic.
+ *
+ * `{ mfa: false }` is for the one call that only DROPS privilege (leaving an
+ * impersonated clinic), so a SUPER_ADMIN caught mid-grant by the rollout can
+ * always get out. It is not for anything that reads or changes data.
+ */
+export async function requireSuperAdmin(
+  opts: { mfa?: boolean } = {},
+): Promise<SuperAdminGate> {
   const session = await auth();
   if (!session?.user) return { ok: false, response: err("Unauthorized", 401) };
   if (session.user.role !== "SUPER_ADMIN") {
     return { ok: false, response: err("Forbidden", 403) };
+  }
+  if (
+    opts.mfa !== false &&
+    (await owesTotpEnrolment(session.user.id, "SUPER_ADMIN"))
+  ) {
+    return { ok: false, response: mfaRequiredResponse() };
   }
   return { ok: true, userId: session.user.id };
 }

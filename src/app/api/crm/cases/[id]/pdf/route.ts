@@ -16,6 +16,11 @@
  *
  * Multi-tenant guard: the lookup is auto-scoped by the Prisma tenant
  * extension; a cross-tenant id surfaces as 404. Audit log fires on success.
+ *
+ * Reception prints the card too (visits, complaint, totals for the
+ * patient), but the diagnosis block is left out for roles that do not read
+ * the clinical side of a case (audit PT-11): the case page already hides
+ * it from them, and the print must not hand it back one click away.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +28,8 @@ import { audit } from "@/lib/audit";
 import { notFound } from "@/server/http";
 import { formatDate, formatPhone, formatMoney, type Locale } from "@/lib/format";
 import { inlineStorageImage } from "@/server/storage/inline-image";
+import { caseVisitOrdinals, caseVisitStats } from "@/lib/cases/case-visits";
+import { canReadCaseClinical } from "@/server/medical-case/clinical-access";
 
 function idFromUrl(request: Request): string {
   // /api/crm/cases/[id]/pdf — id is segment[-2].
@@ -64,6 +71,7 @@ const STATUS_LABEL_UZ: Record<string, string> = {
 
 const APPT_STATUS_RU: Record<string, string> = {
   BOOKED: "Записан",
+  CONFIRMED: "Подтверждён",
   WAITING: "В очереди",
   IN_PROGRESS: "На приёме",
   COMPLETED: "Завершён",
@@ -73,6 +81,7 @@ const APPT_STATUS_RU: Record<string, string> = {
 };
 const APPT_STATUS_UZ: Record<string, string> = {
   BOOKED: "Yozildi",
+  CONFIRMED: "Tasdiqlandi",
   WAITING: "Navbatda",
   IN_PROGRESS: "Qabulda",
   COMPLETED: "Tugadi",
@@ -115,7 +124,13 @@ export const GET = createApiListHandler(
           },
         },
         appointments: {
-          orderBy: { date: "asc" as const },
+          // Timeline order with stable ties, as on the case page: the
+          // «Первичный / Повторный» numbers are counted along it.
+          orderBy: [
+            { date: "asc" as const },
+            { createdAt: "asc" as const },
+            { id: "asc" as const },
+          ],
           include: {
             doctor: {
               select: { id: true, nameRu: true, nameUz: true },
@@ -135,6 +150,11 @@ export const GET = createApiListHandler(
       },
     });
     if (!mcase) return notFound();
+
+    // Same rule as GET /api/crm/cases/[id]: the diagnosis and its ICD code
+    // are printed for clinical roles only. The section is left out, not
+    // shown empty, so a printout cannot read as «no diagnosis».
+    const showClinical = canReadCaseClinical(ctx);
 
     // Clinic header is read separately — we need the logo + name in the
     // active clinic context. The auto-scope returns the clinic the user is
@@ -178,16 +198,13 @@ export const GET = createApiListHandler(
         : mcase.primaryDoctor.nameRu
       : null;
 
-    // Total billed: sum priceFinal for non-cancelled visits. Cancelled +
-    // no-show visits have their priceFinal already nullified by the booking
-    // side-effects, but we filter defensively in case of a stale row.
-    const billable = mcase.appointments.filter(
-      (a) => a.status !== "CANCELLED" && a.status !== "NO_SHOW",
-    );
-    const totalBilled = billable.reduce(
-      (acc, a) => acc + (a.priceFinal ?? 0),
-      0,
-    );
+    // «Итого начислено»: the visits that took place (COMPLETED), on the
+    // patient card's formula (audit PT-16). Next week's booking is not
+    // charged yet, and it used to be added in.
+    const totalBilled = caseVisitStats(mcase.appointments).completedTotal;
+    // A cancelled visit or a no-show takes no number: the first visit that
+    // happened is «Первичный», as the pricing engine charged it.
+    const ordinals = caseVisitOrdinals(mcase.appointments);
 
     const generatedAt = new Date();
     const labels =
@@ -220,6 +237,7 @@ export const GET = createApiListHandler(
             page: "sahifa",
             print: "Chop etish / PDF",
             noVisits: "Ushbu kartaga tegishli tashriflar yoʻq.",
+            notHeld: "Boʻlib oʻtmadi",
             genderM: "Erkak",
             genderF: "Ayol",
           }
@@ -251,6 +269,7 @@ export const GET = createApiListHandler(
             page: "стр.",
             print: "Печать / PDF",
             noVisits: "В этом случае пока нет визитов.",
+            notHeld: "Не состоялся",
             genderM: "Муж.",
             genderF: "Жен.",
           };
@@ -262,8 +281,8 @@ export const GET = createApiListHandler(
 
     // ---- HTML rendering ----------------------------------------------------
     const visitRows = mcase.appointments
-      .map((a, idx) => {
-        const visitN = idx + 1;
+      .map((a) => {
+        const visitN = ordinals.get(a.id) ?? null;
         const docName = a.doctor
           ? locale === "uz"
             ? a.doctor.nameUz
@@ -290,10 +309,10 @@ export const GET = createApiListHandler(
             ? formatMoney(a.priceFinal, "UZS", locale)
             : labels.empty;
         const statusCell = apptStatusLabels[a.status] ?? a.status;
-        const kindCell = visitOrdinal(visitN);
+        const kindCell = visitN === null ? labels.notHeld : visitOrdinal(visitN);
         return `
           <tr>
-            <td class="num">${visitN}</td>
+            <td class="num">${visitN ?? ""}</td>
             <td>${escapeHtml(date)}${time}</td>
             <td>${escapeHtml(kindCell)}</td>
             <td>${escapeHtml(docName)}</td>
@@ -555,10 +574,14 @@ export const GET = createApiListHandler(
       <div class="body">${mcase.primaryComplaint ? escapeHtml(mcase.primaryComplaint) : `<span class="empty">${labels.empty}</span>`}</div>
     </section>
 
-    <section class="block">
+    ${
+      showClinical
+        ? `<section class="block">
       <h3>${escapeHtml(labels.diagnosis)}${mcase.diagnosisCode ? ` <span style="color:#1a1f2e;font-weight:600">· ${escapeHtml(labels.diagnosisCode)}: ${escapeHtml(mcase.diagnosisCode)}</span>` : ""}</h3>
       <div class="body">${mcase.diagnosisText ? escapeHtml(mcase.diagnosisText) : `<span class="empty">${labels.empty}</span>`}</div>
-    </section>
+    </section>`
+        : ""
+    }
 
     ${
       mcase.notes
@@ -608,7 +631,12 @@ export const GET = createApiListHandler(
       action: "medical_case.export_pdf",
       entityType: "MedicalCase",
       entityId: id,
-      meta: { format: "html_print", locale, visits: mcase.appointments.length },
+      meta: {
+        format: "html_print",
+        locale,
+        visits: mcase.appointments.length,
+        clinical: showClinical,
+      },
     });
 
     const filename = `case-${mcase.id}.html`;

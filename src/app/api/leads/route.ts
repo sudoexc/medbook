@@ -6,6 +6,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { realClientIp } from "@/lib/client-ip";
 import { sendNewLeadEmail } from "@/lib/email";
 import { isValidUzPhone, normalizePhone } from "@/lib/phone";
+import { leadDirectionKey } from "@/lib/lead-directions";
+import ruMessages from "@/messages/ru.json";
 import { newCorrelationId, publishViaOutbox } from "@/server/realtime/outbox";
 import { z } from "zod";
 
@@ -24,6 +26,8 @@ const LeadSchema = z.object({
   name: z.string().min(2).max(100),
   phone: PhoneInput,
   doctorId: z.string().max(50).optional(),
+  // A direction key from the form («Направление», lead-directions.ts). An
+  // unknown value is dropped rather than refused: the request still lands.
   service: z.string().max(200).optional(),
   date: z.string().max(10).optional(),
   // Drives the notification email language only — NOT persisted on Lead.
@@ -149,6 +153,11 @@ export async function POST(request: Request) {
       : null;
 
   const doctorId = doctor ? (parsed.data.doctorId ?? null) : null;
+  // What the visitor asked for, so a request for an EEG or the pediatric
+  // neurologist reaches reception as such instead of riding on whichever
+  // doctor the form used to force (audit LD-09). Stored as the stable key;
+  // screens translate it.
+  const service = leadDirectionKey(parsed.data.service);
   // The row and its `lead.created` event commit together (outbox): a request
   // that reached the table always reaches reception too (audit LD-01). Before
   // this, the only reaction was an SMTP email that silently never went out,
@@ -160,7 +169,7 @@ export async function POST(request: Request) {
           clinicId: clinic.id,
           name: parsed.data.name,
           phone: normalizedPhone,
-          service: parsed.data.service ?? null,
+          service,
           date,
           doctorId,
           source: "WEBSITE",
@@ -202,7 +211,8 @@ export async function POST(request: Request) {
       doctorName: doctor.nameRu,
       patientName: lead.name,
       patientPhone: lead.phone,
-      service: lead.service || undefined,
+      // The email is Russian-only; name the direction, not its key.
+      service: service ? ruMessages.leadForm.directions[service] : undefined,
       date: parsed.data.date || undefined,
       cabinetUrl: `${appBaseUrl(request)}/doctor`,
     }).catch((err) => console.error("[email]", err));

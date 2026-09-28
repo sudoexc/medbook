@@ -92,7 +92,7 @@ export function TicketSheet({
   const t = useT();
   const lang = useLang();
   const tg = useTelegramWebApp();
-  const q = useQueueStatus(appt.id);
+  const q = useQueueStatus(appt.queueToken ?? null);
   const [qr, setQr] = React.useState<string | null>(null);
   const [closing, setClosing] = React.useState(false);
   const touchStart = React.useRef<{ x: number; y: number } | null>(null);

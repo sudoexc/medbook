@@ -71,14 +71,27 @@ helper `decodeKey` rejects anything that doesn't decode to exactly 32 bytes.
    ```
    (Legacy alias; `FIELD_ENCRYPTION_KEY_V1` works identically.)
 3. Deploy the new build. New writes immediately go out as `v1:…`.
-4. Backfill existing rows:
+4. Backfill existing rows **inside the worker container**, where the key is
+   the app's own (from the server's `.env`), never from a laptop with a key
+   typed on the command line:
    ```bash
-   FIELD_ENCRYPTION_KEY=<KEY> \
-   DATABASE_URL=… \
-   tsx scripts/encrypt-existing-pii.ts
+   docker compose exec worker npx tsx scripts/encrypt-existing-pii.ts --dry-run
+   docker compose exec worker npx tsx scripts/encrypt-existing-pii.ts
    ```
-   Use `--dry-run` first if you want to preview the per-table counts.
    Re-running is safe — already-encrypted rows are skipped.
+
+   Before the first write the script proves the key is the app's (audit
+   G2-11): it decrypts the newest existing ciphertext of every column it
+   writes and stops, writing nothing, on the first failure. It refuses the
+   deterministic dev fallback key (no `FIELD_ENCRYPTION_KEY` set) anywhere
+   but a local development database; it used to print a WARNING and encrypt
+   real data under that public key. On a non-local database with no
+   ciphertext at all yet there is nothing to compare against: after checking
+   the key by hand, add `--first-run`. The run prints a 12-character key
+   fingerprint; two runs with the same fingerprint used the same key.
+   `scripts/encrypt-auth-secrets.ts` (TOTP secrets, clinic bot tokens under
+   APP_SECRET) follows the same rules and reads a `.env` only when named
+   with `--env-file=`.
 5. Visit `/admin/encryption-health` and confirm:
    - `activeKeyVersion: v1`
    - All "rows-by-version" counts are under `v1` (no `null` / "plaintext"

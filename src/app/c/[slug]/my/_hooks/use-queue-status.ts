@@ -3,9 +3,11 @@
 /**
  * Wave 3a — live queue status for the home hero.
  *
- * `/api/queue/status/:id` is the public QR-ticket endpoint (no initData
+ * `/api/queue/status/:token` is the public QR-ticket endpoint (no initData
  * required — it returns initials only), so we hit it with a plain fetch
- * instead of the authed mini-app request wrapper. Freshness comes from two
+ * instead of the authed mini-app request wrapper. It takes the signed ticket
+ * token the appointments list hands out (`queueToken`), never the bare
+ * appointment id (audit INF-10). Freshness comes from two
  * directions: a 20s poll while the hero is mounted, plus the `queue.updated`
  * SSE event which invalidates the `["miniapp","queue"]` prefix.
  */
@@ -16,7 +18,6 @@ export type MiniAppQueueStatus = {
   doctorName: string;
   clinicName: string | null;
   cabinet: string | null;
-  service: string | null;
   /** queueStatus: WAITING | IN_PROGRESS | DONE | SKIPPED … */
   status: string;
   /** Two-lanes: walk-ins ("live") hold a position, bookings ("schedule") a slot time. */
@@ -31,13 +32,13 @@ export type MiniAppQueueStatus = {
   ticketNumber: string;
 };
 
-export function useQueueStatus(appointmentId: string | null) {
+export function useQueueStatus(queueToken: string | null | undefined) {
   return useQuery<MiniAppQueueStatus>({
-    queryKey: ["miniapp", "queue", appointmentId ?? "none"],
-    enabled: appointmentId !== null,
+    queryKey: ["miniapp", "queue", queueToken ?? "none"],
+    enabled: !!queueToken,
     queryFn: async () => {
       const res = await fetch(
-        `/api/queue/status/${encodeURIComponent(appointmentId!)}`,
+        `/api/queue/status/${encodeURIComponent(queueToken!)}`,
       );
       if (!res.ok) throw new Error(`queue status ${res.status}`);
       return (await res.json()) as MiniAppQueueStatus;

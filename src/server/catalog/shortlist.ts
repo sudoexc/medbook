@@ -15,7 +15,14 @@
  * Counted over drafts too: in this clinic most visits are never signed, and
  * a list built from signed notes alone would be empty for the busiest doctor.
  */
+import { prescriptionLabel } from "@/lib/catalogs/brand-match";
 import { normalizeCatalogTerm } from "@/server/catalog/formulary";
+import {
+  buildDrugTextIndex,
+  matchDrugLine,
+  type DrugTextIndex,
+  type TextMatchDrug,
+} from "@/server/cds/drug-text-match";
 
 /**
  * However many stars a doctor has, this much of his real history still
@@ -51,11 +58,37 @@ function diagnosisKey(code: string | null, name: string): string {
   return c ? `code:${c}` : `text:${normalizeCatalogTerm(name)}`;
 }
 
+/**
+ * The wording to offer for a code. Until the catalog carried its parent's
+ * words (audit CT-06), a leaf was stored as the bare tail of its category
+ * («Головного мозга над мозговым наметом» for D33.0), and a shortlist built
+ * from those notes would keep putting it back into new conclusions. A stored
+ * wording that is exactly the end of the catalog's current name is that old
+ * fragment: the full name replaces it. Any other wording of his is left
+ * alone; the rare one that is also such a tail («мигрень» for G43.8 «Другая
+ * мигрень») becomes the name of the code he picked, which it stood for.
+ */
+function currentWording(
+  code: string | null,
+  stored: string,
+  nameForCode: (code: string) => string | null,
+): string {
+  if (!code) return stored;
+  const current = nameForCode(code.toUpperCase());
+  if (!current) return stored;
+  const full = normalizeCatalogTerm(current);
+  const own = normalizeCatalogTerm(stored);
+  return full.length > own.length && full.endsWith(` ${own}`) ? current : stored;
+}
+
 export function buildDiagnosisShortlist(args: {
   /** Starred ICD codes, in the doctor's order. */
   pinnedCodes: string[];
   uses: DiagnosisUse[];
-  /** Wording for a starred code he never used yet. */
+  /**
+   * The catalog's wording for a code: for a starred code he never used yet,
+   * and to replace a stored fragment of it (see `currentWording`).
+   */
   nameForCode: (code: string) => string | null;
   limit: number;
 }): DiagnosisShortItem[] {
@@ -76,7 +109,7 @@ export function buildDiagnosisShortlist(args: {
     }
     acc.set(key, {
       code: code ? code.toUpperCase() : null,
-      name,
+      name: currentWording(code, name, args.nameForCode),
       count: 1,
       pinned: false,
       lastAt: u.at.getTime(),
@@ -232,6 +265,94 @@ export function buildDrugShortlist(args: {
     .map(toDrugItem);
 
   return withHistory(pinned, rest, args.limit);
+}
+
+// ─────────────── Drugs whose brand moved to another row ───────────────
+
+/**
+ * A structured row is pinned to its drug by id, and the CDS check trusts that
+ * id: it never reads the label to find the substance. When a catalog repair
+ * moves a brand to the row of its real composition (audit CT-03: the register
+ * import had put МИОСПАН, lidocaine + tolperisone, on the tolperisone row),
+ * the rows written before keep the old pin, and so does the shortlist built
+ * from them: one tap on «МИОСПАН (толперизон)» made a new row pinned to
+ * tolperisone, and a lidocaine allergy stayed silent on the doctor's
+ * everyday path. Those signed rows stay as they are; what the shortlist
+ * offers next follows the label to the row that carries that name today.
+ */
+
+const pairKey = (drugId: string, label: string) => `${drugId}\u0000${label}`;
+
+/**
+ * Whether a use's label does not name the drug it is pinned to by any name
+ * `current` knows for it (its name, INN, brands, the clinic's own names).
+ * Only a candidate: `repinDrugUses` moves it only when the catalog places
+ * the label on another row. A use whose drug is not in `current` is left
+ * alone (the route shows it without catalog data anyway).
+ */
+function makeStaleCheck<D extends TextMatchDrug>(current: ReadonlyMap<string, D>) {
+  const own = new Map<string, DrugTextIndex<D>>();
+  const memo = new Map<string, boolean>();
+  return (u: StructuredDrugUse): boolean => {
+    if (!u.drugId) return false;
+    const drug = current.get(u.drugId);
+    if (!drug) return false;
+    const key = pairKey(u.drugId, u.displayName);
+    const known = memo.get(key);
+    if (known !== undefined) return known;
+    let index = own.get(drug.id);
+    if (!index) {
+      index = buildDrugTextIndex([drug]);
+      own.set(drug.id, index);
+    }
+    const stale = matchDrugLine(index, u.displayName) === null;
+    memo.set(key, stale);
+    return stale;
+  };
+}
+
+/** Cheap test the route runs before loading the whole catalog. */
+export function hasStaleDrugUse<D extends TextMatchDrug>(
+  uses: readonly StructuredDrugUse[],
+  current: ReadonlyMap<string, D>,
+): boolean {
+  return uses.some(makeStaleCheck(current));
+}
+
+/**
+ * Re-pin each stale use (see `makeStaleCheck`) to the catalog row its label
+ * names now, labelled the way a search pick of that name is today
+ * («МИОСПАН (лидокаин + толперизон)»), so the shortlist groups it with the
+ * new row and a tap on it pins the right drug. A label the catalog cannot
+ * place keeps its pin. When the row it lands on is hidden from the clinic
+ * the route shows the item without catalog data, and the constructor adds it
+ * as a text line that the CDS check resolves by name, again to that row.
+ */
+export function repinDrugUses<D extends TextMatchDrug>(args: {
+  uses: readonly StructuredDrugUse[];
+  current: ReadonlyMap<string, D>;
+  /** The clinic's catalog with its own names as brands. */
+  catalog: DrugTextIndex<D>;
+}): StructuredDrugUse[] {
+  const isStale = makeStaleCheck(args.current);
+  const moved = new Map<string, { drugId: string; displayName: string } | null>();
+  return args.uses.map((u) => {
+    if (!u.drugId || !isStale(u)) return u;
+    const key = pairKey(u.drugId, u.displayName);
+    let to = moved.get(key);
+    if (to === undefined) {
+      const hit = matchDrugLine(args.catalog, u.displayName);
+      to =
+        hit && hit.drug.id !== u.drugId
+          ? {
+              drugId: hit.drug.id,
+              displayName: prescriptionLabel(hit.drug, hit.label),
+            }
+          : null;
+      moved.set(key, to);
+    }
+    return to ? { ...u, ...to } : u;
+  });
 }
 
 function toDrugItem(a: DrugShortItem): DrugShortItem {

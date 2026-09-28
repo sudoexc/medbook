@@ -27,6 +27,7 @@ import {
   createMiniAppListHandler,
   resolveMiniAppContext,
 } from "@/server/miniapp/handler";
+import { miniAppDocumentUrl } from "@/server/miniapp/link-token";
 import { uploadObject } from "@/server/storage/minio";
 
 // 10 MB cap — covers a high-res phone photo (typical 3-5 MB) with room for
@@ -92,11 +93,18 @@ export const GET = createMiniAppListHandler({}, async ({ ctx }) => {
   // Presigning doesn't help because nginx's `/files/` location strips the
   // prefix before forwarding to MinIO, breaking the canonical-path
   // signature. Instead, swap each fileUrl for our own server-side stream
-  // route — auth-checked + served with the right Content-Type.
+  // route — auth-checked + served with the right Content-Type. The URL is
+  // opened as a plain link, so it carries a short-lived link for this one
+  // document instead of the patient's initData (audit MA-07).
   const proxied = docs.map((d, i) => ({
     ...d,
     seq: total - i,
-    fileUrl: `/api/miniapp/documents/${d.id}/file?clinicSlug=${encodeURIComponent(ctx.clinicSlug)}`,
+    fileUrl: miniAppDocumentUrl({
+      clinicId: ctx.clinicId,
+      clinicSlug: ctx.clinicSlug,
+      patientId: ctx.patientId,
+      documentId: d.id,
+    }),
   }));
   return ok({ documents: proxied });
 });

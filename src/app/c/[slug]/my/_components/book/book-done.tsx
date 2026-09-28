@@ -13,6 +13,7 @@ import {
 } from "../../_hooks/use-appointments";
 import { useMiniAppAuth } from "../miniapp-auth-provider";
 import { useActiveContext } from "../../_hooks/use-active-context";
+import { useIcsLink } from "../../_hooks/use-ics-link";
 import { bookHref } from "../../_lib/booking-context";
 import { useT } from "../mini-i18n";
 import { MButton, MCard, MSpinner, formatDateISO } from "../mini-ui";
@@ -45,7 +46,7 @@ function clearCaseChoices(appointmentId: string) {
 export function BookDone() {
   const t = useT();
   const router = useRouter();
-  const { clinicSlug, state, initData } = useMiniAppAuth();
+  const { clinicSlug, state } = useMiniAppAuth();
   const lang = state.status === "ready" ? state.patient.preferredLang : "RU";
   const search = useSearchParams();
   const id = search.get("id");
@@ -56,6 +57,7 @@ export function BookDone() {
     ? `?onBehalfOf=${encodeURIComponent(onBehalfOf)}`
     : "";
   const tg = useTelegramWebApp();
+  const icsLink = useIcsLink(id, onBehalfOf);
 
   const appointment = upcoming.data?.find((a) => a.id === id) ?? null;
   const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
@@ -298,14 +300,14 @@ export function BookDone() {
           <MButton
             block
             variant="secondary"
+            disabled={!icsLink.data}
             onClick={() => {
               // Wave 3c — .ics download. tg.openLink routes through Telegram's
-              // browser shim; auth rides on `?initData=` since a link
-              // navigation can't carry our custom header.
-              const qs = `clinicSlug=${encodeURIComponent(clinicSlug)}${
-                initData ? `&initData=${encodeURIComponent(initData)}` : ""
-              }`;
-              const href = `${window.location.origin}/api/miniapp/appointments/${id}/ics?${qs}`;
+              // browser shim; a link navigation can't carry our custom header,
+              // so the URL holds a short-lived link for this appointment's
+              // calendar file, minted ahead (never initData, audit MA-07).
+              const href = icsLink.data;
+              if (!href) return;
               if (window.Telegram?.WebApp?.openLink) {
                 try {
                   window.Telegram.WebApp.openLink(href);

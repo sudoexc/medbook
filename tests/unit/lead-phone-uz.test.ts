@@ -194,8 +194,8 @@ describe("the lead form", () => {
   });
 
   it("has the field message in both languages, without dashes", async () => {
-    const ru = (await import("@/messages/ru.json")).default as { leadForm: Record<string, string> };
-    const uz = (await import("@/messages/uz.json")).default as { leadForm: Record<string, string> };
+    const ru = (await import("@/messages/ru.json")).default as unknown as { leadForm: Record<string, string> };
+    const uz = (await import("@/messages/uz.json")).default as unknown as { leadForm: Record<string, string> };
     for (const msgs of [ru, uz]) {
       expect(msgs.leadForm.phoneInvalid).toBeTruthy();
       expect(msgs.leadForm.phoneInvalid).not.toMatch(/[—–]/);

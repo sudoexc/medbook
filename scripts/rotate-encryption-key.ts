@@ -244,6 +244,56 @@ async function rotatePrescription(
   return stats;
 }
 
+/** The doctor's clinical note (its own row since audit PT-11). */
+async function rotatePatientClinicalNote(
+  prisma: PrismaClient,
+  active: string,
+  dryRun: boolean,
+): Promise<RotStats> {
+  const stats = blank();
+  let cursor: string | undefined = undefined;
+  for (;;) {
+    const rows: { id: string; body: string }[] =
+      await prisma.patientClinicalNote.findMany({
+        take: BATCH,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { id: "asc" },
+        select: { id: true, body: true },
+      });
+    if (rows.length === 0) break;
+    stats.scanned += rows.length;
+
+    const updates: { id: string; body: string }[] = [];
+    for (const r of rows) {
+      const v = maybeRotate(r.body, active, stats);
+      if (v.write && v.next !== null) updates.push({ id: r.id, body: v.next });
+    }
+
+    if (updates.length > 0 && !dryRun) {
+      try {
+        await prisma.$transaction(
+          updates.map((u) =>
+            prisma.patientClinicalNote.update({
+              where: { id: u.id },
+              data: { body: u.body },
+            }),
+          ),
+        );
+      } catch (e) {
+        stats.errors += updates.length;
+        console.error("[rotate:clinical_note] batch failed", e);
+      }
+    }
+
+    cursor = rows[rows.length - 1]!.id;
+    process.stdout.write(
+      `[clinical_note] scanned=${stats.scanned} rotated=${stats.rotated} alreadyActive=${stats.alreadyActive}\r`,
+    );
+  }
+  process.stdout.write("\n");
+  return stats;
+}
+
 function parseArgs(): { dryRun: boolean } {
   const args = process.argv.slice(2);
   return { dryRun: args.includes("--dry-run") };
@@ -262,11 +312,13 @@ async function main(): Promise<void> {
   const patientStats = await rotatePatient(prisma, active, dryRun);
   const caseStats = await rotateMedicalCase(prisma, active, dryRun);
   const rxStats = await rotatePrescription(prisma, active, dryRun);
+  const noteStats = await rotatePatientClinicalNote(prisma, active, dryRun);
 
   const lines = [
     ["patient", patientStats],
     ["medical_case", caseStats],
     ["prescription", rxStats],
+    ["clinical_note", noteStats],
   ] as const;
 
   console.info("");

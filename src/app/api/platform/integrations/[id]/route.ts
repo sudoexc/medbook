@@ -2,12 +2,11 @@
  * PATCH  /api/platform/integrations/[id] — update provider-connection fields.
  * DELETE /api/platform/integrations/[id] — hard delete.
  */
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { runWithTenant } from "@/lib/tenant-context";
 import { encrypt } from "@/server/crypto/secrets";
 import { ok, err, notFound } from "@/server/http";
-import { platformAudit } from "@/server/platform/handler";
+import { platformAudit, requireSuperAdmin } from "@/server/platform/handler";
 import { PatchPlatformIntegrationSchema } from "@/server/schemas/platform";
 
 function idFromUrl(request: Request): string | null {
@@ -22,19 +21,8 @@ function idFromUrl(request: Request): string | null {
   }
 }
 
-async function requireSuper(): Promise<
-  { ok: true; userId: string } | { ok: false; response: Response }
-> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, response: err("Unauthorized", 401) };
-  if (session.user.role !== "SUPER_ADMIN") {
-    return { ok: false, response: err("Forbidden", 403) };
-  }
-  return { ok: true, userId: session.user.id };
-}
-
 export async function PATCH(request: Request): Promise<Response> {
-  const gate = await requireSuper();
+  const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
   return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
     const id = idFromUrl(request);
@@ -83,7 +71,7 @@ export async function PATCH(request: Request): Promise<Response> {
 }
 
 export async function DELETE(request: Request): Promise<Response> {
-  const gate = await requireSuper();
+  const gate = await requireSuperAdmin();
   if (!gate.ok) return gate.response;
   return runWithTenant({ kind: "SUPER_ADMIN", userId: gate.userId }, async () => {
     const id = idFromUrl(request);

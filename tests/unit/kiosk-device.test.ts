@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Audit SEC-01: the kiosk APIs trusted «the slug is the bearer», but the
@@ -59,6 +59,7 @@ import {
   maskPatientName,
   realClientIp,
 } from "@/server/kiosk/device";
+import { queueTicketToken } from "@/server/appointments/public-ticket";
 
 const TOKEN = "kiosk-token-of-neurofax-000000";
 
@@ -69,6 +70,11 @@ function walkinRequest(slug: string, headers: Record<string, string> = {}) {
     body: JSON.stringify({ fullName: "Иван Иванов", phone: "+998901234567", doctorId: "d1" }),
   });
 }
+
+beforeAll(() => {
+  // The walk-in answer carries a signed ticket token (audit INF-10).
+  process.env.APP_SECRET = "test-app-secret";
+});
 
 beforeEach(() => {
   state.walkinCalls = 0;
@@ -147,6 +153,9 @@ describe("POST /api/c/[slug]/queue/walkin", () => {
     const body = await res.json();
     expect(body.patient.fullName).toBe("Юсупова Л.А.");
     expect(JSON.stringify(body)).not.toContain("Лола");
+    // The print tab it opens has no kiosk header: the stub opens with the
+    // signed ticket token, a bare id prints nothing (audit INF-10).
+    expect(body.ticketToken).toBe(queueTicketToken("a1"));
   });
 });
 

@@ -10,12 +10,20 @@
  *   - schema: CONCLUSION can never be assigned via `type`, empty patch → 400;
  *   - happy path: rename persists and emits a `document.update` audit row
  *     with before/after snapshots of the changed fields;
- *   - file replacement: old storage blob is deleted after the DB update.
+ *   - file replacement: old storage blob is deleted after the DB update;
+ *   - audit CD-08: a replacement is accepted only with the upload's receipt,
+ *     and the old blob survives while another document still uses it.
  *
  * Strategy mirrors appointment-reschedule-audit.test.ts: mock every
  * collaborator the route imports and capture prisma/audit/storage calls.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+
+import { signDocumentUpload } from "@/server/documents/file-ref";
+
+beforeAll(() => {
+  process.env.APP_SECRET = "test-app-secret";
+});
 
 // ----- shared in-memory state ----------------------------------------------
 
@@ -56,6 +64,8 @@ const state = {
   audits: [] as Array<{ action: string; entityId: string | null; meta: unknown }>,
   deletedKeys: [] as string[],
   updateCalls: 0,
+  /** Another document row that still points at a stored key (CD-08). */
+  otherDocUsingKey: null as string | null,
 };
 
 function makeDoc(overrides: Partial<Doc> = {}): Doc {
@@ -155,7 +165,22 @@ vi.mock("@/lib/prisma", () => ({
       delete: vi.fn(async () => {
         throw new Error("delete should not be called by PATCH");
       }),
+      // storageKeyInUse(): «does any other row still point at this key?»
+      findFirst: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { OR: Array<{ fileUrl: { contains: string } }> };
+        }) => {
+          const key = state.otherDocUsingKey;
+          if (!key) return null;
+          return where.OR.some((c) => c.fileUrl.contains === key)
+            ? { id: "d_other" }
+            : null;
+        },
+      ),
     },
+    doctor: { findFirst: vi.fn(async () => null) },
     auditLog: {
       create: vi.fn(
         async ({
@@ -197,7 +222,10 @@ beforeEach(() => {
   state.audits = [];
   state.deletedKeys = [];
   state.updateCalls = 0;
+  state.otherDocUsingKey = null;
 });
+
+const NEW_KEY = "clinics/c1/documents/new-key-scan.pdf";
 
 // ----- tests ---------------------------------------------------------------
 
@@ -287,6 +315,7 @@ describe("PATCH /api/crm/documents/[id]", () => {
     const res = await PATCH(
       patchReq({
         fileUrl: NEW_FILE_URL,
+        uploadToken: signDocumentUpload("c1", NEW_KEY),
         mimeType: "image/png",
         sizeBytes: 2048,
       }),
@@ -312,6 +341,41 @@ describe("PATCH /api/crm/documents/[id]", () => {
     const PATCH = await loadPatch();
     const res = await PATCH(
       patchReq({ title: "Новое имя", fileUrl: OLD_FILE_URL }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.deletedKeys).toHaveLength(0);
+  });
+
+  it("CD-08: a replacement without the upload's receipt is refused, nothing written or deleted", async () => {
+    const PATCH = await loadPatch();
+    const res = await PATCH(patchReq({ fileUrl: NEW_FILE_URL }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ reason: "file_not_issued" });
+    expect(state.updateCalls).toBe(0);
+    expect(state.deletedKeys).toHaveLength(0);
+  });
+
+  it("CD-08: another clinic's object cannot be attached, even with a receipt of ours", async () => {
+    const PATCH = await loadPatch();
+    const foreign = "https://minio.example/medbook/clinics/c2/documents/their-scan.pdf";
+    const res = await PATCH(
+      patchReq({
+        fileUrl: foreign,
+        uploadToken: signDocumentUpload("c1", "clinics/c2/documents/their-scan.pdf"),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(state.updateCalls).toBe(0);
+  });
+
+  it("CD-08: the old blob survives while another document still points at it", async () => {
+    state.otherDocUsingKey = "clinics/c1/documents/old-key-scan.pdf";
+    const PATCH = await loadPatch();
+    const res = await PATCH(
+      patchReq({
+        fileUrl: NEW_FILE_URL,
+        uploadToken: signDocumentUpload("c1", NEW_KEY),
+      }),
     );
     expect(res.status).toBe(200);
     expect(state.deletedKeys).toHaveLength(0);

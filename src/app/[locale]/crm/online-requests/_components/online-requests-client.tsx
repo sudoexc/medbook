@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { formatClinicDateTime, formatPhone, type Locale } from "@/lib/format";
+import { leadDirectionKey } from "@/lib/lead-directions";
 import { cn } from "@/lib/utils";
 
 import {
@@ -219,6 +220,7 @@ function RequestRow({
   onStatus: (s: LeadStatus) => void;
 }) {
   const t = useTranslations("onlineRequests");
+  const tLead = useTranslations("leadForm");
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [note, setNote] = React.useState(row.comment ?? "");
   const update = useUpdateOnlineRequest();
@@ -229,6 +231,12 @@ function RequestRow({
       : row.doctor.nameRu
     : null;
   const open = row.status === "NEW" || row.status === "CONTACTED";
+  // The site form stores the direction key (EEG, cardiologist…) so the
+  // desk reads it in its own language; anything else is shown as written.
+  const direction = leadDirectionKey(row.service);
+  const serviceLabel = direction
+    ? tLead(`directions.${direction}`)
+    : row.service;
 
   return (
     <li
@@ -279,10 +287,10 @@ function RequestRow({
                 </dd>
               </div>
             ) : null}
-            {row.service ? (
+            {serviceLabel ? (
               <div>
                 <dt className="inline">{t("fields.service")}: </dt>
-                <dd className="inline text-foreground">{row.service}</dd>
+                <dd className="inline text-foreground">{serviceLabel}</dd>
               </div>
             ) : null}
           </dl>

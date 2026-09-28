@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { staffFileHref } from "@/lib/storage-ref";
+import { documentHref } from "@/lib/storage-ref";
 
 export type PatientDocument = {
   id: string;
@@ -41,7 +41,8 @@ export type PatientDocument = {
  * parsing is shared with the server (CD-02), so the two cannot disagree.
  */
 export function documentDownloadHref(fileUrl: string): string {
-  return staffFileHref(fileUrl);
+  // Anything not safe to navigate to (CD-08) opens a blank page instead.
+  return documentHref(fileUrl) ?? "about:blank";
 }
 
 export type DocumentsListResponse = {
@@ -146,6 +147,8 @@ export type CreateDocumentInput = {
   type: PatientDocument["type"];
   title: string;
   fileUrl: string;
+  /** Receipt from the upload route; required for a stored file (CD-08). */
+  uploadToken?: string | null;
   mimeType?: string | null;
   sizeBytes?: number | null;
   appointmentId?: string | null;

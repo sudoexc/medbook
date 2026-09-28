@@ -86,6 +86,7 @@ vi.mock("@/server/telegram/invite-token", () => ({
   claimInviteToken: vi.fn(async () => ({ kind: "not-found" as const })),
   findPendingInviteClaim: vi.fn(async () => null),
   inviteReplyKey: vi.fn(() => "invite.unavailable"),
+  inviteClaimReplyKey: vi.fn(() => null),
 }));
 vi.mock("@/server/telegram/contact-verify", () => ({
   applyVerifiedContact: vi.fn(async () => ({ kind: "linked" })),

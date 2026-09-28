@@ -93,6 +93,7 @@ vi.mock("@/server/telegram/invite-token", async (orig) => {
   const real = await orig<typeof import("@/server/telegram/invite-token")>();
   return {
     inviteReplyKey: real.inviteReplyKey,
+    inviteClaimReplyKey: real.inviteClaimReplyKey,
     consumeInviteToken: vi.fn(async (input: unknown) => {
       state.consumed.push(input);
       return state.consumeResult;

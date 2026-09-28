@@ -18,9 +18,11 @@ backfill-birth-year-from-name.ts
 backfill-clinic-diagnoses.ts
 backfill-miniapp-free-repeat.ts
 backfill-new-templates.ts
+backfill-patient-diagnosis-source.ts
 backfill-patient-visit-stats.ts
 close-stale-in-progress-visits.ts
 fix-ac03-event-task-lifetimes.ts
+fix-ac09-lost-callbacks.ts
 fix-an01-fx-rate-convention.ts
 fix-an02-link-payments-to-visits.ts
 fix-cd02-drug-photo-urls.ts
@@ -35,6 +37,7 @@ fix-q14-no-show-queue-status.ts
 fix-sec09-audit-pii.ts
 fix-tg02-reminder-texts.ts
 fix-tg04-phantom-delivered.ts
+fix-tg11-thread-patient-links.ts
 fix-ux01-ai-mock-text.ts
 fix-vw02-stale-handouts.ts
 reminder-cadence-5d3d1d3h.ts

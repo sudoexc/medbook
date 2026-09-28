@@ -248,8 +248,11 @@ describe("links that lead to the status page", () => {
     const { default: TicketPage } = await import("@/app/ticket/[id]/page");
     await TicketPage({ params: Promise.resolve({ id: APPT_ID }) });
     expect(h.qrUrls).toHaveLength(1);
-    expect(h.qrUrls[0]).toMatch(new RegExp(`/q/${queueTicketToken(APPT_ID).replace(/[.]/g, "\\.")}$`));
-    expect(h.qrUrls[0]).not.toMatch(new RegExp(`/q/${APPT_ID}$`));
+    // The stub's language rides along (UX-06); the path is the token.
+    expect(h.qrUrls[0]).toMatch(
+      new RegExp(`/q/${queueTicketToken(APPT_ID).replace(/[.]/g, "\\.")}\\?lang=ru$`),
+    );
+    expect(h.qrUrls[0]).not.toMatch(new RegExp(`/q/${APPT_ID}(\\?|$)`));
   });
 
   it("/t/<code> redirects to the signed token, not the id", async () => {

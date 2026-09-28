@@ -17,6 +17,10 @@ vi.mock("@/lib/tenant-context", () => ({
 }));
 vi.mock("@/server/queue", () => ({ getQueue: vi.fn() }));
 vi.mock("@/server/storage/minio", () => ({ deleteObject: vi.fn() }));
+// The audit-log redaction (SEC-09) is pinned in its own tests.
+vi.mock("@/server/dsar/audit-scrub", () => ({
+  scrubPatientFromAuditLog: vi.fn(async () => undefined),
+}));
 vi.mock("@/server/patient/cipher-fields", () => ({
   hydratePatientForRead: (p: { passport: string | null }) => p,
 }));
@@ -59,6 +63,7 @@ vi.mock("@/lib/prisma", () => ({
       }),
     },
     message: { updateMany: vi.fn(async () => ({ count: 3 })) },
+    patientClinicalNote: { deleteMany: vi.fn(async () => ({ count: 0 })) },
     auditLog: { create: vi.fn(async () => ({})) },
   },
 }));

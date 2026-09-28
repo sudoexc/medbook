@@ -70,6 +70,13 @@ export const POST = createApiHandler(
       });
     }
 
+    // AP-06 — a live-queue ticket is served by queue order, never by a slot,
+    // so the batch refuses it like the single PATCH does and names the row.
+    const walkin = rows.find((r) => r.channel === "WALKIN");
+    if (walkin) {
+      return conflict("walkin_locked", { id: walkin.id, field: "slot" });
+    }
+
     const deltaMs = body.deltaMinutes * 60_000;
     const planned = rows.map((r) => ({
       id: r.id,
@@ -79,6 +86,7 @@ export const POST = createApiHandler(
       patientId: r.patientId,
       status: r.status,
       queueStatus: r.queueStatus,
+      oldStart: r.date,
       newStart: new Date(r.date.getTime() + deltaMs),
       newEnd: new Date(r.endDate.getTime() + deltaMs),
     }));
@@ -99,6 +107,9 @@ export const POST = createApiHandler(
         startAt: cur.newStart,
         endAt: cur.newEnd,
         excludeId: cur.id,
+        // Every row moves (delta is never 0), so a shift that lands a row
+        // in the past is refused like any other move (AP-09).
+        currentStartAt: cur.oldStart,
       });
       if (!persistedConflict.ok) {
         // detectConflicts excludes a single id — if the conflict it found is

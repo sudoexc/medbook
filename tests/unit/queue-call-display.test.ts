@@ -55,6 +55,8 @@ describe("parseQueueCalledPayload", () => {
       cabinetNumber: "3",
       calledAt: "2026-09-23T05:00:00.000Z",
       queueOrder: 7,
+      // No language on the wire: the board announces in Russian (UX-06).
+      lang: null,
     });
   });
 

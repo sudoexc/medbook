@@ -147,7 +147,11 @@ export type AppointmentConflict = {
     | "not_today"
     // «Пришёл» on a no-show a person marked: only the doctor's revert
     // reopens it, the desk puts the patient in the live queue instead.
-    | "no_show_final";
+    | "no_show_final"
+    // «Не пришёл» before the visit's slot has started (Q-04).
+    | "too_early_for_no_show"
+    // A live-queue ticket keeps its channel and time (AP-06).
+    | "walkin_locked";
   until?: string;
 };
 
@@ -324,7 +328,9 @@ export function useSetQueueStatus(id: string) {
             ? t("notToday")
             : err.conflict.reason === "no_show_final"
               ? t("noShowFinal")
-              : t("statusFailed"),
+              : err.conflict.reason === "too_early_for_no_show"
+                ? t("tooEarlyNoShow")
+                : t("statusFailed"),
         );
         return;
       }

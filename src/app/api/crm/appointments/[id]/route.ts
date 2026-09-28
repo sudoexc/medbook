@@ -31,11 +31,13 @@ import {
   type TxClient,
 } from "@/server/appointments/active-visit";
 import { emitAppointmentChangeViaOutbox } from "@/server/appointments/emit-change";
+import { isSlotOverlapViolation } from "@/server/appointments/overlap-violation";
 import { newCorrelationId } from "@/server/realtime/outbox";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
 import { recordPatientView } from "@/server/audit/patient-view";
 import {
+  actionsFor,
   canTransitionAt,
   isOnClinicDay,
   requiresVisitDay,
@@ -60,6 +62,9 @@ function idFromUrl(request: Request): string {
   const parts = new URL(request.url).pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "";
 }
+
+/** The PATCH write lost the slot to a concurrent booking (23P01). */
+const SLOT_TAKEN = Symbol("slot_taken");
 
 /**
  * The 409 every start path answers when the doctor already has a visit on
@@ -446,7 +451,9 @@ export const PATCH = createApiHandler(
               doctorId: true,
               patientId: true,
               cabinetId: true,
-              patient: { select: { fullName: true, telegramId: true } },
+              patient: {
+                select: { fullName: true, telegramId: true, preferredLang: true },
+              },
               doctor: {
                 select: {
                   nameRu: true,
@@ -507,6 +514,8 @@ export const PATCH = createApiHandler(
           patientName: initials(updatedRow.patient.fullName) || undefined,
           cabinetNumber: updatedRow.doctor.cabinet?.number ?? null,
           calledAt: updatedRow.calledAt?.toISOString(),
+          // The board announces the call in the patient's language (UX-06).
+          lang: updatedRow.patient.preferredLang === "UZ" ? "uz" : "ru",
         },
       });
 
@@ -541,6 +550,15 @@ export const PATCH = createApiHandler(
       });
 
       return ok(updatedRow);
+    }
+
+    // AP-06 — a live-queue ticket (WALKIN) keeps its channel. The schema only
+    // refused a flip INTO WALKIN; a flip out of it moved the row onto the
+    // schedule axis: the patient vanished from the doctor's queue and the TV,
+    // or the row met a booking of the same doctor under the EXCLUDE
+    // constraint (`channel <> 'WALKIN'`) and the desk got a 500.
+    if (before.channel === "WALKIN" && body.channel !== undefined) {
+      return conflict("walkin_locked", { field: "channel" });
     }
 
     if (body.status !== undefined) {
@@ -623,18 +641,42 @@ export const PATCH = createApiHandler(
       const dur = body.durationMin ?? before.durationMin;
       startAt = applyTime(date, time);
       endAt = computeEndDate(startAt, dur);
-      // Two-lanes (TZ I4): a walk-in is served by queue order, not by slot —
-      // its date window is a technical field, so a time nudge can never
-      // "clash" with the schedule grid. Skip conflict detection entirely for
-      // WALKIN rows; bookings keep the full check.
+      const doctorId = body.doctorId ?? before.doctorId;
+      // Only an actual change of the slot counts: a stale client resending
+      // the same values is not a move.
+      const slotMoves =
+        startAt.getTime() !== before.date.getTime() ||
+        endAt.getTime() !== before.endDate.getTime() ||
+        doctorId !== before.doctorId;
+      if (slotMoves) {
+        // AP-06 — a walk-in is served by queue order, not by a slot, and
+        // its ticket is the doctor's. Moving it to another day un-arrived it
+        // into a CONFIRMED walk-in no reception lane shows.
+        if (before.channel === "WALKIN") {
+          return conflict("walkin_locked", { field: "slot" });
+        }
+        // AP-10 — only a visit that can still be rescheduled moves. The
+        // calendar used to drag a completed visit to another doctor (its
+        // revenue and commission went with it, the conclusion stayed) and a
+        // cancelled one told the patient «приём перенесён».
+        if (!actionsFor(before.status as AppointmentStatus).canReschedule) {
+          return conflict("invalid_transition", {
+            from: before.status,
+            action: "reschedule",
+          });
+        }
+      }
+      // Two-lanes (TZ I4): a walk-in never reaches here with a move (refused
+      // above), and its date window is technical, so it skips conflict
+      // detection; bookings keep the full check.
       if (before.channel !== "WALKIN") {
-        const doctorId = body.doctorId ?? before.doctorId;
         const c = await detectConflicts({
           doctorId,
           cabinetId: nextCabinetId,
           startAt,
           endAt,
           excludeId: id,
+          currentStartAt: before.date,
         });
         if (!c.ok) {
           return conflict(c.reason, c.until ? { until: c.until } : undefined);
@@ -903,7 +945,16 @@ export const PATCH = createApiHandler(
         });
       }
       return { after: fresh, recomputed };
-    }));
+    })).catch((e: unknown): typeof SLOT_TAKEN => {
+      // AP-06 — the EXCLUDE constraints are the last word on overlaps: a
+      // booking that took the slot between `detectConflicts` and this write
+      // is a busy doctor, not an internal error.
+      if (isSlotOverlapViolation(e)) return SLOT_TAKEN;
+      throw e;
+    });
+    if (patchOutcome === SLOT_TAKEN) {
+      return conflict("doctor_busy");
+    }
     if (patchOutcome instanceof AnotherVisitInProgressError) {
       return anotherVisitConflict(patchOutcome);
     }

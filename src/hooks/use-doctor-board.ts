@@ -62,7 +62,7 @@ export interface DoctorBoardData {
 export interface DoctorCall
   extends Pick<
     QueueCallFields,
-    "appointmentId" | "ticketNumber" | "cabinetNumber" | "patientName"
+    "appointmentId" | "ticketNumber" | "cabinetNumber" | "patientName" | "lang"
   > {
   /** Bumped on every call so consumers react even to a re-call. */
   seq: number;
@@ -162,6 +162,7 @@ export function useDoctorBoard(token: string) {
           ticketNumber: c.ticketNumber,
           cabinetNumber: c.cabinetNumber,
           patientName: c.patientName,
+          lang: c.lang,
           seq: callSeq.current,
         });
       }

@@ -406,7 +406,7 @@ export default function KioskPage() {
         services: [],
       });
       setStep("done");
-      setTimeout(() => window.open(`/ticket/${data.appointmentId}`, "_blank"), 500);
+      setTimeout(() => window.open(`/ticket/${data.appointmentId}?lang=${lang}`, "_blank"), 500);
     } catch {
       setError(L.error);
     } finally {
@@ -457,7 +457,7 @@ export default function KioskPage() {
         setTicketId(data.appointmentId);
         setTicketNumber(data.ticketNumber);
         setStep("done");
-        setTimeout(() => window.open(`/ticket/${data.appointmentId}`, "_blank"), 500);
+        setTimeout(() => window.open(`/ticket/${data.appointmentId}?lang=${lang}`, "_blank"), 500);
       } else {
         setError(L.recordError);
       }
@@ -1001,7 +1001,7 @@ export default function KioskPage() {
               <div className="flex flex-col gap-3 max-w-xs mx-auto">
                 {ticketId && (
                   <button
-                    onClick={() => window.open(`/ticket/${ticketId}`, "_blank")}
+                    onClick={() => window.open(`/ticket/${ticketId}?lang=${lang}`, "_blank")}
                     className="flex items-center justify-center gap-2 rounded-2xl bg-[var(--public-panel)] border border-[var(--public-border)] py-4 text-lg font-semibold hover:bg-[var(--public-panel-strong)] transition-colors"
                   >
                     <Printer className="h-5 w-5" />

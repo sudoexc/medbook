@@ -9,6 +9,14 @@
 
 import { useEffect } from "react";
 
+import {
+  announcementText,
+  planAnnouncement,
+  type BoardLang,
+} from "@/lib/tv-announce";
+
+import { Bi, type TvTranslators } from "./_i18n";
+
 /**
  * One AudioContext for the whole screen, created lazily.
  *
@@ -51,6 +59,13 @@ export function unlockAudio() {
 export function useAudioUnlock() {
   useEffect(() => {
     unlockAudio(); // kiosk browsers with autoplay enabled need nothing more
+    // The voice list loads asynchronously; asking once now means it is ready
+    // by the first call, when the board picks an Uzbek voice (UX-06).
+    try {
+      window.speechSynthesis?.getVoices();
+    } catch {
+      // No speech synthesis on this box; calls stay visual.
+    }
     const arm = () => {
       unlockAudio();
       for (const evt of ["pointerdown", "keydown", "touchstart"] as const) {
@@ -99,24 +114,34 @@ export function playChime() {
   }
 }
 
-/** RU voice announcement, delayed so the chime lands first. */
+/**
+ * Voice announcement, delayed so the chime lands first. Spoken in the called
+ * patient's language when the box has a voice for it, in Russian otherwise
+ * (UX-06, see `planAnnouncement`).
+ */
 export function announce(
   patientName: string,
   cabinet: string,
   ticketNumber: string,
-  delayMs = 1200,
+  opts: {
+    translators: TvTranslators;
+    /** The called patient's language, from the `queue.called` signal. */
+    lang: BoardLang | null;
+    delayMs?: number;
+  },
 ) {
+  const call = { patientName, cabinet, ticketNumber };
+  const texts = {
+    ru: announcementText(opts.translators.ru, call),
+    uz: announcementText(opts.translators.uz, call),
+  };
   setTimeout(() => {
     try {
-      const who = patientName
-        ? patientName
-        : ticketNumber
-          ? `Талон ${ticketNumber}`
-          : "Следующий пациент";
-      const u = new SpeechSynthesisUtterance(
-        cabinet ? `${who}, пройдите в кабинет ${cabinet}` : `${who}, проходите`,
-      );
-      u.lang = "ru-RU";
+      const voices = speechSynthesis.getVoices();
+      const plan = planAnnouncement(texts, opts.lang, voices);
+      const u = new SpeechSynthesisUtterance(plan.text);
+      u.lang = plan.lang;
+      if (plan.voice) u.voice = plan.voice as SpeechSynthesisVoice;
       u.rate = 0.85;
       u.volume = 1;
       u.pitch = 1.1;
@@ -124,7 +149,7 @@ export function announce(
     } catch {
       // Speech synthesis unavailable — the visual takeover still shows.
     }
-  }, delayMs);
+  }, opts.delayMs ?? 1200);
 }
 
 export const CALL_GREEN = "#16C784";
@@ -153,8 +178,13 @@ export function CallTakeover({
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center px-10 text-center ${className}`}
       style={{ background: CALL_GREEN, color: "#FFFFFF" }}
     >
+      {/* Both languages: the whole hall reads this board (UX-06). */}
       <p className="text-4xl font-bold uppercase tracking-widest">
-        Пройдите{cabinet ? " в кабинет" : ""}
+        <Bi
+          k={cabinet ? "call.goToCabinet" : "call.goIn"}
+          stacked
+          uzClassName="mt-1 text-3xl opacity-90"
+        />
       </p>
       {cabinet && (
         <p className="mt-2 font-mono text-[11rem] font-bold leading-none tabular-nums">
@@ -167,7 +197,10 @@ export function CallTakeover({
       <div className="mt-6 flex items-center justify-center gap-6 text-3xl font-semibold opacity-85">
         {doctorName && <span>{doctorName}</span>}
         {ticketNumber && patientName && (
-          <span className="font-mono tabular-nums">Талон {ticketNumber}</span>
+          <span className="tabular-nums">
+            <Bi k="call.ticket" uzStyle={{ opacity: 1 }} />{" "}
+            <span className="font-mono">{ticketNumber}</span>
+          </span>
         )}
       </div>
     </div>

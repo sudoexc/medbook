@@ -765,6 +765,7 @@
       "cancelConfirmDesc": "Yozilish bekor qilingan deb belgilanadi. Jadvaldagi slot bo'shatiladi.",
       "cancelKeep": "Bekor qilmaslik",
       "cancelled": "Yozilish bekor qilindi",
+      "walkinLocked": "Jonli navbat taloni: kanal va vaqt o'zgarmaydi, bemor navbat bo'yicha qabul qilinadi.",
       "conflict": {
         "doctor_busy": "Shifokor band{hasUntil, select, yes { {until} gacha} other {}}",
         "cabinet_busy": "Kabinet band{hasUntil, select, yes { {until} gacha} other {}}",
@@ -772,7 +773,9 @@
         "outside_schedule": "Ish vaqtidan tashqari",
         "in_past": "Bu vaqt allaqachon o'tib ketgan",
         "invalid_transition": "Bunday status o'zgarishi mumkin emas",
-        "not_today": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin."
+        "not_today": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin.",
+        "too_early_for_no_show": "«Kelmadi» belgisini faqat yozuv vaqtidan keyin qo'yish mumkin",
+        "walkin_locked": "Jonli navbat taloni: kanal va vaqt o'zgarmaydi"
       },
       "preVisit": {
         "title": "Tashrifdan oldin anketa",
@@ -964,7 +967,9 @@
       "cabinet_busy": "Kabinet band{hasUntil, select, yes { {until} gacha} other {}}",
       "doctor_time_off": "Bu vaqtda shifokor ta'tilda",
       "outside_schedule": "Ish vaqtidan tashqarida",
-      "in_past": "Bu vaqt allaqachon o'tib ketgan"
+      "in_past": "Bu vaqt allaqachon o'tib ketgan",
+      "invalid_transition": "Yakunlangan, bekor qilingan yoki davom etayotgan qabulni ko'chirib bo'lmaydi",
+      "walkin_locked": "Jonli navbat taloni ko'chirilmaydi: bemor navbat bo'yicha qabul qilinadi"
     },
     "toast": {
       "moved": "Yozilish ko'chirildi",
@@ -977,7 +982,10 @@
       "confirm": "Ko'chirish",
       "success": "Yozilish ko'chirildi",
       "errorPast": "Yozilishni o'tmishga ko'chirib bo'lmaydi",
-      "errorConflict": "Bu vaqt allaqachon band"
+      "errorConflict": "Bu vaqt allaqachon band",
+      "resizeTitle": "Qabul davomiyligi o'zgartirilsinmi?",
+      "resizeBody": "{patient} bemorining qabuli {minutes} daqiqa davom etadi, {time} gacha.",
+      "resizeConfirm": "O'zgartirish"
     },
     "emptyRange": {
       "title": "Bu davrda hali yozilishlar yo'q.",
@@ -2527,16 +2535,9 @@
       "doctor": "Shifokor",
       "doctorPlaceholder": "Shifokorni tanlang",
       "doctorEmpty": "Shifokorlar yo'q",
-      "service": "Xizmat",
-      "servicePlaceholder": "Xizmatni tanlang",
       "date": "Sana",
-      "time": "Vaqt",
-      "timePlaceholder": "Vaqtni tanlang",
       "submit": "Yozilish yaratish",
-      "serviceConsult": "Birlamchi konsultatsiya",
-      "serviceFollow": "Takroriy qabul",
-      "serviceProcedure": "Muolaja",
-      "serviceDiagnostic": "Diagnostika"
+      "hint": "Bemor, xizmat va bo'sh vaqtni yozilish oynasida tanlaysiz"
     },
     "topRevenue": {
       "title": "Tushum bo'yicha TOP shifokorlar",
@@ -5963,7 +5964,8 @@
       "reorderNotLive": "Yozuvlarni jonli navbat ichida siljitib bo'lmaydi — ro'yxat yangilandi",
       "startConflict": "Shifokorda qabul davom etmoqda — avval uni yakunlang",
       "notToday": "Yozuv bugunga emas. Kelganini belgilash va bemorni chaqirish faqat qabul kunida mumkin.",
-      "noShowFinal": "Bemor «Kelmadi» deb belgilangan va bu belgini faqat shifokor olib tashlay oladi. Bemorni hozir qabul qilish uchun uni jonli navbatga qo'ying."
+      "noShowFinal": "Bemor «Kelmadi» deb belgilangan va bu belgini faqat shifokor olib tashlay oladi. Bemorni hozir qabul qilish uchun uni jonli navbatga qo'ying.",
+      "tooEarlyNoShow": "«Kelmadi» belgisini faqat yozuv vaqtidan keyin qo'yish mumkin."
     },
     "case": {
       "saveFailed": "Saqlash imkonsiz",
@@ -8074,6 +8076,82 @@
     "emptyNew": "Barcha arizalar ko‘rib chiqilgan",
     "forbidden": "Arizalar registratura, call-markaz va administrator uchun ochiq.",
     "loadError": "Arizalarni yuklab bo‘lmadi"
+  },
+  "queueStatusPage": {
+    "title": "Elektron navbat",
+    "loading": "Yuklanmoqda…",
+    "notFound": "Talon topilmadi",
+    "yourTicket": "Sizning taloningiz",
+    "yourBooking": "Sizning yozuvingiz",
+    "yourTurn": "Navbatingiz keldi!",
+    "goToCabinet": "{cabinet}-kabinetga kiring",
+    "goIn": "Kiring",
+    "byBooking": "Yozuv bo'yicha qabul",
+    "yourTime": "Sizning vaqtingiz:",
+    "markedArrived": "kelganingiz belgilandi",
+    "waiting": "Kutish",
+    "ahead": "Sizdan oldin: {count} kishi",
+    "approx": "taxminan",
+    "positionOf": "{total} tadan {position}",
+    "etaMinutes": "~{minutes} daq",
+    "completed": "Qabul yakunlandi",
+    "thanks": "Tashrifingiz uchun rahmat!",
+    "patient": "Bemor",
+    "doctor": "Shifokor",
+    "cabinet": "Kabinet",
+    "service": "Xizmat",
+    "autoUpdate": "Avtomatik yangilanadi",
+    "notifyTurn": "Navbatingiz keldi! {cabinet}-kabinet",
+    "notifyTurnNoCabinet": "Navbatingiz keldi!",
+    "switchTo": "Русский"
+  },
+  "tvBoard": {
+    "queueTitle": "Elektron navbat",
+    "waiting": "Kutmoqda",
+    "inReception": "Qabulda",
+    "online": "Tarmoqda",
+    "reconnecting": "Qayta ulanmoqda…",
+    "doctor": "Shifokor",
+    "nowServing": "Hozir qabulda",
+    "free": "Bo'sh",
+    "noneWaiting": "Kutayotganlar yo'q",
+    "etaMinutes": "~{minutes} daq",
+    "moreCount": "yana {count}",
+    "noVisitsToday": "Bugun qabul yo'q",
+    "loadingData": "Ma'lumotlar yuklanmoqda…",
+    "call": {
+      "goToCabinet": "Kabinetga kiring",
+      "goIn": "Kiring",
+      "ticket": "Talon"
+    },
+    "doctorBoard": {
+      "notFound": "Ekran topilmadi",
+      "notFoundHint": "Havola yaroqsiz yoki shifokor faolsizlantirilgan",
+      "cabinet": "kabinet",
+      "nowReceiving": "Hozir qabul qilinmoqda",
+      "cabinetFree": "Kabinet bo'sh",
+      "liveQueue": "Jonli navbat",
+      "queueEmpty": "Navbat bo'sh",
+      "loading": "Yuklanmoqda…",
+      "etaShort": "~{minutes}d",
+      "more": "yana {count}",
+      "bookings": "Yozuvlar",
+      "noBookings": "Bugunga yozuvlar yo'q",
+      "earlier": "avvalroq: {count}",
+      "slot": {
+        "BOOKED": "yozuv",
+        "CONFIRMED": "tasdiqlangan",
+        "WAITING": "keldi",
+        "IN_PROGRESS": "qabulda",
+        "COMPLETED": "yakunlandi"
+      }
+    },
+    "announce": {
+      "ticket": "Talon {number}",
+      "next": "Navbatdagi bemor",
+      "toCabinet": "{who}, {cabinet}-kabinetga kiring",
+      "come": "{who}, kiring"
+    }
   },
   "ticketStub": {
     "notFound": "Talon topilmadi",

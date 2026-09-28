@@ -30,7 +30,11 @@ import ruLocale from "@fullcalendar/core/locales/ru";
 import uzLocale from "@fullcalendar/core/locales/uz";
 
 import { cn } from "@/lib/utils";
-import { computeRescheduledSlot } from "@/lib/calendar/reschedule-math";
+import {
+  computeRescheduledSlot,
+  computeResizedSlot,
+  isCalendarMovable,
+} from "@/lib/calendar/reschedule-math";
 import { conflictMessageValues } from "@/lib/appointments/conflict-message";
 import type { AppointmentRow } from "../../appointments/_hooks/use-appointments-list";
 import type {
@@ -56,6 +60,8 @@ import {
  * if the user cancels — keeping the UI honest without forcing a refetch.
  */
 export type PendingReschedule = {
+  /** A drag to a new start (default) or a resize of the block's length. */
+  kind?: "move" | "resize";
   appointmentId: string;
   patientName: string;
   doctorName: string;
@@ -219,12 +225,19 @@ export function CalendarViewInner({
         : (a.doctor.color ?? palette.border);
       const bg = byCabinet ? `${color}22` : palette.bg;
       const border = byCabinet ? color : palette.border;
+      // AP-10 — only a visit that can still be rescheduled is draggable or
+      // resizable; finished, cancelled and missed blocks stay put (a click
+      // still opens the drawer).
+      const movable = isCalendarMovable(a);
 
       out.push({
         id: a.id,
         resourceId: a.doctor.id,
         start,
         end,
+        editable: movable,
+        startEditable: movable,
+        durationEditable: movable,
         title: a.patient?.fullName ?? t("event.untitled"),
         backgroundColor: bg,
         borderColor: border,
@@ -256,6 +269,15 @@ export function CalendarViewInner({
     const newResourceId = info.event.getResources()[0]?.id;
     if (!newStart || !oldStart || !oldEnd) {
       info.revert();
+      return;
+    }
+    // Belt and braces for AP-10: the block is not draggable, but a stale
+    // render must not slip a move of a closed visit through either.
+    const dragged = (info.event.extendedProps as { appointment?: AppointmentRow })
+      .appointment;
+    if (dragged && !isCalendarMovable(dragged)) {
+      info.revert();
+      toast.error(tConflictSafe(tConflict, "invalid_transition", ""));
       return;
     }
 
@@ -343,7 +365,12 @@ export function CalendarViewInner({
   };
 
   const handleEventResize = async (info: {
-    event: { id: string; start: Date | null; end: Date | null };
+    event: {
+      id: string;
+      start: Date | null;
+      end: Date | null;
+      extendedProps: Record<string, unknown>;
+    };
     revert: () => void;
   }) => {
     if (conflicts.isPending) {
@@ -355,20 +382,59 @@ export function CalendarViewInner({
       info.revert();
       return;
     }
-    const duration = Math.max(
-      5,
-      Math.round(
-        (info.event.end.getTime() - info.event.start.getTime()) / 60_000,
-      ),
-    );
-    conflicts.mutate({
-      id,
-      patch: { durationMin: duration },
-      onConflict: (c) => {
-        info.revert();
-        toast.error(tConflictSafe(tConflict, c.reason, c.until ?? ""));
-      },
-      onSuccess: () => toast.success(t("toast.moved")),
+    const appt = (info.event.extendedProps as { appointment?: AppointmentRow })
+      .appointment;
+    if (appt && !isCalendarMovable(appt)) {
+      info.revert();
+      toast.error(tConflictSafe(tConflict, "invalid_transition", ""));
+      return;
+    }
+    // AP-09 — the same «not in the past» rule as a drag: a visit whose slot
+    // has begun keeps its length.
+    const sized = computeResizedSlot({
+      start: info.event.start,
+      newEnd: info.event.end,
+    });
+    if (!sized.ok) {
+      info.revert();
+      if (sized.reason === "in_past") toast.error(tReschedule("errorPast"));
+      return;
+    }
+    const newStart = info.event.start;
+    const newEnd = info.event.end;
+
+    const performResize = () => {
+      conflicts.mutate({
+        id,
+        patch: { durationMin: sized.durationMin },
+        onConflict: (c) => {
+          info.revert();
+          toast.error(tConflictSafe(tConflict, c.reason, c.until ?? ""));
+        },
+        onSuccess: () => toast.success(t("toast.moved")),
+      });
+    };
+
+    if (!onConfirmReschedule) {
+      performResize();
+      return;
+    }
+    // A stretched block changes the visit like a drag does, so it asks first
+    // too (AP-10); cancelling rolls FullCalendar's resize back.
+    onConfirmReschedule({
+      kind: "resize",
+      appointmentId: id,
+      patientName: appt?.patient?.fullName ?? t("event.untitled"),
+      doctorName: appt?.doctor
+        ? locale === "uz"
+          ? appt.doctor.nameUz
+          : appt.doctor.nameRu
+        : "",
+      newStart,
+      newEnd,
+      durationMin: sized.durationMin,
+      revert: () => info.revert(),
+      confirm: performResize,
     });
   };
 

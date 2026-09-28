@@ -21,8 +21,9 @@
  *
  *   3. Otherwise, walk every Service involved in the visit (primaryService
  *      via Appointment.serviceId AND every row in AppointmentService). For
- *      each one with `freeRepeatDays != null` whose
- *      `(thisAppt.date - firstAppt.date) <= freeRepeatDays * 24h`, that
+ *      each one with `freeRepeatDays != null` whose visit falls at most
+ *      `freeRepeatDays` Tashkent calendar days after the first visit's day
+ *      (see `withinFreeRepeatWindow`), that
  *      service's contribution is zero. Otherwise it contributes its snapshot
  *      price (priceSnap on the join row, or the service's priceBase on the
  *      primary path).
@@ -50,6 +51,7 @@
  * shows as owed (see RecomputeOptions).
  */
 import type { prisma } from "@/lib/prisma";
+import { tashkentComponents } from "@/lib/booking-validation";
 
 /**
  * Either the tenant-scoped client or an in-flight $transaction client. Mirrors
@@ -99,16 +101,35 @@ export interface RecomputeOptions {
   servicesEdited?: boolean;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Inclusive day-window check: `(b - a) / 1d <= window`.
- * Uses calendar-day diff (floor on milliseconds) so a visit exactly N*24h
- * after the first counts as in-window.
+ * Whole Asia/Tashkent calendar days from `first`'s day to `current`'s day.
+ * Both days are read on the clinic's wall clock and compared as dates, so
+ * the hour of either visit plays no part (Tashkent has no DST, every day is
+ * exactly 24h).
  */
-function withinDayWindow(first: Date, current: Date, days: number): boolean {
-  const ms = current.getTime() - first.getTime();
-  if (ms < 0) return false;
-  const dayMs = 24 * 60 * 60 * 1000;
-  return ms <= days * dayMs;
+export function tashkentCalendarDaysBetween(first: Date, current: Date): number {
+  const a = Date.parse(`${tashkentComponents(first).date}T00:00:00Z`);
+  const b = Date.parse(`${tashkentComponents(current).date}T00:00:00Z`);
+  return Math.round((b - a) / DAY_MS);
+}
+
+/**
+ * Free-repeat window (audit AP-05). The clinic's rule is «if the patient
+ * comes back within N days, the repeat visit is free», counted in calendar
+ * days: first visit Monday 10:00 with N = 7, the next Monday is day 7 and
+ * free at any hour. Comparing milliseconds made that Monday 15:00 visit
+ * 7 days 5 hours late and billed it in full, while the audit meta called
+ * it day 7.
+ */
+export function withinFreeRepeatWindow(
+  first: Date,
+  current: Date,
+  days: number,
+): boolean {
+  if (current.getTime() < first.getTime()) return false;
+  return tashkentCalendarDaysBetween(first, current) <= days;
 }
 
 export async function recomputeAppointmentPrice(
@@ -251,8 +272,12 @@ export async function recomputeAppointmentPrice(
     if (first) {
       firstDate = first.date;
       isFirstInCase = first.id === appt.id;
-      const ms = appt.date.getTime() - first.date.getTime();
-      daysFromFirst = ms < 0 ? 0 : Math.floor(ms / (24 * 60 * 60 * 1000));
+      // Same calendar-day count the window uses, so the audit meta names
+      // the day the price was decided on.
+      daysFromFirst =
+        appt.date.getTime() < first.date.getTime()
+          ? 0
+          : tashkentCalendarDaysBetween(first.date, appt.date);
     }
   }
 
@@ -269,7 +294,7 @@ export async function recomputeAppointmentPrice(
       firstDate !== null &&
       line.freeRepeatDays !== null &&
       line.freeRepeatDays > 0 &&
-      withinDayWindow(firstDate, appt.date, line.freeRepeatDays);
+      withinFreeRepeatWindow(firstDate, appt.date, line.freeRepeatDays);
     const lineTotal = line.priceSnap * line.quantity;
     if (eligible) {
       anyFree = true;

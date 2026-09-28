@@ -122,6 +122,7 @@ const TEMPLATES: Template[] = [
 const state = {
   sends: [] as Send[],
   apptStart: OLD_START,
+  apptStatus: "BOOKED",
   seq: 0,
 };
 
@@ -173,7 +174,7 @@ vi.mock("@/lib/prisma", () => ({
         patientId: PATIENT,
         date: state.apptStart,
         time: null,
-        status: "BOOKED",
+        status: state.apptStatus,
         confirmedAt: null,
         patient: {
           id: PATIENT,
@@ -288,6 +289,7 @@ function seedOldCascade(): void {
 beforeEach(() => {
   state.sends = [];
   state.apptStart = OLD_START;
+  state.apptStatus = "BOOKED";
   state.seq = 0;
   vi.setSystemTime(NOW);
 });
@@ -384,6 +386,24 @@ describe("onAppointmentRescheduled", () => {
     // `formatDate` renders long-form Russian in the clinic TZ.
     expect(notice!.body).toContain("12 сентября 2026");
     expect(notice!.body).toContain("11:00");
+  });
+
+  it("a cancelled, missed or finished visit is never announced as moved (AP-10)", async () => {
+    const { onAppointmentRescheduled } = await import(
+      "@/server/notifications/triggers"
+    );
+
+    for (const status of ["CANCELLED", "NO_SHOW", "COMPLETED"]) {
+      state.sends = [];
+      state.apptStatus = status;
+      state.apptStart = NEW_START;
+      await onAppointmentRescheduled(APPT);
+      expect(
+        state.sends.filter((s) => s.templateId === "tpl_resched"),
+        status,
+      ).toEqual([]);
+      expect(state.sends, status).toEqual([]);
+    }
   });
 
   it("never touches reminders that were already SENT", async () => {

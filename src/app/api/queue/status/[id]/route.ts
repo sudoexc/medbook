@@ -29,17 +29,18 @@ export async function GET(
         ticketSeq: true,
         channel: true,
         time: true,
-        patient: { select: { fullName: true } },
+        patient: { select: { fullName: true, preferredLang: true } },
         doctor: {
           select: {
             id: true,
             nameRu: true,
+            nameUz: true,
             ticketPrefix: true,
             cabinet: { select: { number: true } },
           },
         },
-        primaryService: { select: { nameRu: true } },
-        clinic: { select: { nameRu: true, slug: true } },
+        primaryService: { select: { nameRu: true, nameUz: true } },
+        clinic: { select: { nameRu: true, nameUz: true, slug: true } },
       },
     });
 
@@ -82,12 +83,18 @@ export async function GET(
     // the clinic SSE stream and react to its own doctor's queue.updated pushes.
     return Response.json({
       patientName: initials(appointment.patient.fullName),
+      // UX-06 — the page speaks the patient's language; the Uzbek names ride
+      // along so its RU/UZ switch needs no second request.
+      lang: appointment.patient.preferredLang === "UZ" ? "uz" : "ru",
       doctorName: appointment.doctor.nameRu,
+      doctorNameUz: appointment.doctor.nameUz || null,
       clinicName: appointment.clinic?.nameRu ?? null,
+      clinicNameUz: appointment.clinic?.nameUz || null,
       clinicSlug: appointment.clinic?.slug ?? null,
       doctorId: appointment.doctorId,
       cabinet: appointment.doctor.cabinet?.number ?? null,
       service: appointment.primaryService?.nameRu ?? null,
+      serviceUz: appointment.primaryService?.nameUz || null,
       status: appointment.queueStatus,
       /** "live" = walk-in with a queue position; "schedule" = booking (slot time). */
       lane: live ? "live" : "schedule",

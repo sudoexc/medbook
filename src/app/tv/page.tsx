@@ -13,6 +13,7 @@ import {
   playChime,
   useAudioUnlock,
 } from "./_shared";
+import { Bi, useTvTranslators } from "./_i18n";
 
 interface Overlay {
   ticketNumber: string;
@@ -24,6 +25,7 @@ interface Overlay {
 export default function TVQueuePage() {
   const slug = usePublicClinicSlug();
   const { board, call, connected } = useQueueBoard(slug);
+  const tv = useTvTranslators();
 
   // Board renders immediately; sound arms itself on the first stray
   // interaction instead of gating the queue behind a splash screen.
@@ -34,7 +36,7 @@ export default function TVQueuePage() {
   const lastCallSeq = useRef(0);
 
   const doctors = useMemo(() => board?.doctors ?? [], [board]);
-  const clinicName = board?.clinic.nameRu ?? "Электронная очередь";
+  const clinicName = board?.clinic.nameRu ?? tv.ru("queueTitle");
 
   // Live clock.
   useEffect(() => {
@@ -57,8 +59,11 @@ export default function TVQueuePage() {
       doc?.cabinet,
     );
     playChime();
-    announce(shown.patientName, shown.cabinet, shown.ticketNumber);
-  }, [call, doctors]);
+    announce(shown.patientName, shown.cabinet, shown.ticketNumber, {
+      translators: tv,
+      lang: call.lang,
+    });
+  }, [call, doctors, tv]);
 
   // The takeover is derived from the call, and its auto-dismiss timer is
   // keyed on the call's seq alone (see useCallOverlayOpen, audit Q-02).
@@ -119,13 +124,13 @@ export default function TVQueuePage() {
           <div className="h-8 w-px bg-[var(--public-border-strong)]" />
           <div className="flex items-center gap-4 text-sm">
             <Stat
-              label="Ожидают"
+              label={<Bi k="waiting" />}
               value={totalWaiting}
               color="var(--public-waiting)"
             />
             <div className="h-5 w-px bg-[var(--public-border-strong)]" />
             <Stat
-              label="На приёме"
+              label={<Bi k="inReception" />}
               value={totalCurrent}
               color="var(--public-active)"
             />
@@ -170,7 +175,7 @@ function Stat({
   value,
   color,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: number;
   color: string;
 }) {
@@ -200,7 +205,7 @@ function ConnectionPill({ connected }: { connected: boolean }) {
         }}
       />
       <span className="text-[var(--public-fg-muted)]">
-        {connected ? "В сети" : "Переподключение…"}
+        <Bi k={connected ? "online" : "reconnecting"} />
       </span>
     </div>
   );
@@ -215,7 +220,7 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
         <div className="min-w-0">
           <p className="text-lg font-bold truncate">{doc.nameRu}</p>
           <p className="text-xs text-[var(--public-fg-muted)] truncate">
-            {doc.specializationRu || "Врач"}
+            {doc.specializationRu || <Bi k="doctor" />}
           </p>
         </div>
         <div
@@ -239,7 +244,7 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
             </span>
             <div className="min-w-0">
               <p className="text-[10px] text-[var(--public-active)] font-semibold uppercase tracking-wider">
-                Сейчас на приёме
+                <Bi k="nowServing" />
               </p>
               <p className="text-xl font-bold text-[var(--public-active)] truncate">
                 {doc.current.fullName}
@@ -254,9 +259,11 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
             <span className="h-3 w-3 rounded-full bg-[var(--public-border-strong)]" />
             <div>
               <p className="text-[10px] text-[var(--public-fg-faint)] uppercase tracking-wider">
-                Сейчас на приёме
+                <Bi k="nowServing" />
               </p>
-              <p className="text-base text-[var(--public-fg-faint)]">Свободен</p>
+              <p className="text-base text-[var(--public-fg-faint)]">
+                <Bi k="free" />
+              </p>
             </div>
           </div>
         )}
@@ -265,11 +272,11 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
       {/* Waiting list */}
       <div className="flex-1 px-5 py-3">
         <p className="text-[10px] text-[var(--public-fg-faint)] uppercase tracking-wider mb-2">
-          Ожидают ({doc.waiting.length})
+          <Bi k="waiting" /> ({doc.waiting.length})
         </p>
         {doc.waiting.length === 0 ? (
           <p className="text-[var(--public-fg-faint)] text-sm py-3 text-center">
-            Нет ожидающих
+            <Bi k="noneWaiting" />
           </p>
         ) : (
           <div className="space-y-1.5">
@@ -316,13 +323,16 @@ function DoctorCard({ doc }: { doc: BoardDoctor }) {
                   </p>
                 </div>
                 <span className="text-[10px] text-[var(--public-fg-faint)] tabular-nums shrink-0">
-                  ~{w.etaMinutes} мин
+                  <Bi k="etaMinutes" values={{ minutes: String(w.etaMinutes) }} />
                 </span>
               </div>
             ))}
             {doc.waiting.length > 6 && (
               <p className="text-xs text-[var(--public-fg-faint)] text-center py-1">
-                +{doc.waiting.length - 6} ещё
+                <Bi
+                  k="moreCount"
+                  values={{ count: String(doc.waiting.length - 6) }}
+                />
               </p>
             )}
           </div>
@@ -340,7 +350,7 @@ function EmptyBoard({ hasBoard }: { hasBoard: boolean }) {
           <div className="h-6 w-6 rounded-full border-2 border-[var(--public-border-strong)] border-t-[var(--public-fg-muted)] animate-spin" />
         </div>
         <p className="text-xl text-[var(--public-fg-faint)]">
-          {hasBoard ? "Сегодня приёма нет" : "Загрузка данных…"}
+          <Bi k={hasBoard ? "noVisitsToday" : "loadingData"} stacked />
         </p>
       </div>
     </div>

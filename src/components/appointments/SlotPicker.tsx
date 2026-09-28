@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
+import { tashkentToday } from "@/lib/tashkent-time";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -47,6 +48,16 @@ export function SlotPicker({
 }: SlotPickerProps) {
   const t = useTranslations("appointments.slotPicker");
 
+  // AP-09 — nothing is booked or moved into the past: the calendar starts at
+  // the clinic's today. A picker opened on a past day (a past slot clicked in
+  // the calendar, the drawer of yesterday's booking) jumps to today, so a
+  // month typed wrong can no longer land the visit behind «now».
+  const minDate = tashkentToday();
+  const shownDate = formatDateInput(date);
+  React.useEffect(() => {
+    if (shownDate < minDate) onDateChange?.(parseDateInput(minDate));
+  }, [shownDate, minDate, onDateChange]);
+
   const query = useQuery<SlotsResponse, Error>({
     queryKey: [
       "appointments",
@@ -86,9 +97,11 @@ export function SlotPicker({
         <Input
           id="slot-date"
           type="date"
-          value={formatDateInput(date)}
+          min={minDate}
+          value={shownDate}
           onChange={(e) => {
-            if (!e.target.value) return;
+            // `min` only greys the calendar; a typed date can still be past.
+            if (!e.target.value || e.target.value < minDate) return;
             const next = parseDateInput(e.target.value);
             onDateChange?.(next);
           }}

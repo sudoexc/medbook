@@ -33,10 +33,17 @@ function ticketTranslator(locale: Locale) {
 
 export default async function TicketPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
+  // The kiosk passes the language the patient chose on its screen (UX-06):
+  // a booked patient checking in in Uzbek gets an Uzbek stub even when the
+  // card still says Russian.
+  const rawLang = (await searchParams)?.lang;
+  const chosenLang = Array.isArray(rawLang) ? rawLang[0] : rawLang;
 
   // Public, unauthenticated page reachable by raw CUID — never expose full
   // PHI. The patient name is masked to initials (mirrors /api/queue/status),
@@ -92,7 +99,12 @@ export default async function TicketPage({
     );
   }
 
-  const locale: Locale = appointment.patient.preferredLang === "UZ" ? "uz" : "ru";
+  const locale: Locale =
+    chosenLang === "uz" || chosenLang === "ru"
+      ? chosenLang
+      : appointment.patient.preferredLang === "UZ"
+        ? "uz"
+        : "ru";
   const t = ticketTranslator(locale);
   const pick = (ruText: string | null, uzText: string | null) =>
     (locale === "uz" ? uzText?.trim() || ruText : ruText?.trim() || uzText) ?? "";
@@ -117,7 +129,8 @@ export default async function TicketPage({
     appointment.ticketSeq ?? appointment.queueOrder,
   );
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? `https://${SITE_DOMAIN}`;
-  const statusUrl = `${baseUrl}/q/${id}`;
+  // The QR page opens in the stub's language (UX-06).
+  const statusUrl = `${baseUrl}/q/${id}?lang=${locale}`;
   // Self-hosted QR (the `qrcode` package, same one the PDFs/mini-app use) —
   // no third-party `api.qrserver.com` round-trip, which both leaks the queue
   // URL and is unreliable from a VPS behind SNI/DPI filtering.

@@ -12,90 +12,68 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { NewAppointmentDialog } from "@/components/appointments/NewAppointmentDialog";
+import { tashkentToday } from "@/lib/tashkent-time";
 
 import type { DoctorRow } from "../_hooks/use-doctors-list";
 
 export interface DoctorsQuickBookProps {
   doctors: DoctorRow[];
-  onCreate?: (payload: {
-    doctorId: string;
-    service?: string;
-    date: string;
-    time?: string;
-  }) => void;
   className?: string;
 }
 
-const SERVICE_KEYS = ["consult", "follow", "procedure", "diagnostic"] as const;
-type ServiceKey = (typeof SERVICE_KEYS)[number];
-const SERVICE_LABEL: Record<ServiceKey, string> = {
-  consult: "serviceConsult",
-  follow: "serviceFollow",
-  procedure: "serviceProcedure",
-  diagnostic: "serviceDiagnostic",
-};
-
-const TIMES = [
-  "09:00",
-  "09:30",
-  "10:00",
-  "10:30",
-  "11:00",
-  "11:30",
-  "12:00",
-  "14:00",
-  "14:30",
-  "15:00",
-  "15:30",
-  "16:00",
-  "16:30",
-  "17:00",
-  "17:30",
-];
-
-function isoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/**
+ * What the booking dialog opens with: the chosen doctor and day. A past day
+ * is never seeded (AP-09); the dialog's slot picker starts at today anyway.
+ * The picker's local-midnight Date matches how `SlotPicker` builds its days.
+ */
+export function quickBookSeed(
+  doctorId: string,
+  date: string,
+  today: string = tashkentToday(),
+): { initialDoctorId: string; initialDate: Date } {
+  const day = date < today ? today : date;
+  const [y, m, d] = day.split("-").map((x) => parseInt(x, 10));
+  return {
+    initialDoctorId: doctorId,
+    initialDate: new Date(y!, (m ?? 1) - 1, d ?? 1),
+  };
 }
 
 /**
- * Inline "Быстрая запись к врачу" widget — docs/6 - Врачи.png.
- * Four lightweight fields (doctor, service, date, time) + a CTA.
+ * «Быстрая запись к врачу» on the Doctors page (audit DR-05).
+ *
+ * The widget used to be a mock: hard-coded services and times, and
+ * «Создать запись» called an `onCreate` the page never passed, so nothing
+ * happened and the desk could believe the patient was booked. It is now a
+ * shortcut into the one booking path: pick the doctor and the day, and the
+ * button opens `NewAppointmentDialog` with them filled in, where the patient,
+ * the doctor's real services and the free slots are chosen and the booking
+ * is created like everywhere else.
  */
-export function DoctorsQuickBook({
-  doctors: allDoctors,
-  onCreate,
-}: DoctorsQuickBookProps) {
+export function DoctorsQuickBook({ doctors: allDoctors }: DoctorsQuickBookProps) {
   const locale = useLocale();
   const t = useTranslations("crmDoctors.quickBook");
   // Quick booking is NEW work — deactivated doctors are not offered, even
   // though the page grid deliberately lists everyone.
   const doctors = allDoctors.filter((d) => d.isActive);
+  const today = tashkentToday();
   const [doctorId, setDoctorId] = React.useState<string>("");
-  const [service, setService] = React.useState<string>("");
-  const [date, setDate] = React.useState<string>(() => isoDate(new Date()));
-  const [time, setTime] = React.useState<string>("");
+  const [date, setDate] = React.useState<string>(today);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
 
   const canSubmit = Boolean(doctorId && date);
-
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    onCreate?.({
-      doctorId,
-      service: service || undefined,
-      date,
-      time: time || undefined,
-    });
-  };
+  const seed = React.useMemo(
+    () => (doctorId ? quickBookSeed(doctorId, date, today) : null),
+    [doctorId, date, today],
+  );
 
   return (
     <div className="rounded-2xl border border-border bg-card px-4 py-3">
       <h3 className="text-[13px] font-semibold text-foreground">
         {t("title")}
       </h3>
-      <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1.2fr_140px_140px_auto]">
+      <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_160px_auto]">
         <Field label={t("doctor")}>
           <Select value={doctorId} onValueChange={setDoctorId}>
             <SelectTrigger>
@@ -117,53 +95,37 @@ export function DoctorsQuickBook({
           </Select>
         </Field>
 
-        <Field label={t("service")}>
-          <Select value={service} onValueChange={setService}>
-            <SelectTrigger>
-              <SelectValue placeholder={t("servicePlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {SERVICE_KEYS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {t(SERVICE_LABEL[s] as never)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-
         <Field label={t("date")}>
           <Input
             type="date"
+            min={today}
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              // `min` only greys the calendar; a typed past day is ignored.
+              if (e.target.value && e.target.value >= today) {
+                setDate(e.target.value);
+              }
+            }}
           />
-        </Field>
-
-        <Field label={t("time")}>
-          <Select value={time} onValueChange={setTime}>
-            <SelectTrigger>
-              <SelectValue placeholder={t("timePlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              {TIMES.map((slot) => (
-                <SelectItem key={slot} value={slot}>
-                  {slot}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </Field>
 
         <Button
           type="button"
-          onClick={handleSubmit}
+          onClick={() => setDialogOpen(true)}
           disabled={!canSubmit}
           className="h-9"
         >
           {t("submit")}
         </Button>
       </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">{t("hint")}</p>
+
+      <NewAppointmentDialog
+        open={dialogOpen && seed !== null}
+        onOpenChange={setDialogOpen}
+        initialDoctorId={seed?.initialDoctorId ?? null}
+        initialDate={seed?.initialDate ?? null}
+      />
     </div>
   );
 }

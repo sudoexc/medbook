@@ -48,6 +48,15 @@ export function RescheduleConfirmDialog({
     });
     return fmt.format(pending.newStart);
   }, [pending, locale]);
+  // A resize keeps the start; the prompt names the new end instead.
+  const isResize = pending?.kind === "resize";
+  const newEndLabel = React.useMemo(() => {
+    if (!pending) return "";
+    return new Intl.DateTimeFormat(locale === "uz" ? "uz-Latn-UZ" : "ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(pending.newEnd);
+  }, [pending, locale]);
 
   const handleConfirm = () => {
     pending?.confirm();
@@ -70,14 +79,22 @@ export function RescheduleConfirmDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("confirmTitle")}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {isResize ? t("resizeTitle") : t("confirmTitle")}
+          </AlertDialogTitle>
           <AlertDialogDescription>
             {pending
-              ? t("confirmBody", {
-                  patient: pending.patientName,
-                  time: newSlotLabel,
-                  doctor: pending.doctorName || "—",
-                })
+              ? isResize
+                ? t("resizeBody", {
+                    patient: pending.patientName,
+                    minutes: pending.durationMin,
+                    time: newEndLabel,
+                  })
+                : t("confirmBody", {
+                    patient: pending.patientName,
+                    time: newSlotLabel,
+                    doctor: pending.doctorName || "—",
+                  })
               : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -86,7 +103,7 @@ export function RescheduleConfirmDialog({
             {t("cancel")}
           </AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirm}>
-            {t("confirm")}
+            {isResize ? t("resizeConfirm") : t("confirm")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

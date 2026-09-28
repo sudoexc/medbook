@@ -27,6 +27,11 @@ export interface QueueCallFields {
   patientName: string | null;
   calledAt: string | null;
   queueOrder: number | null;
+  /**
+   * The called patient's language (UX-06), so the board can speak it; null
+   * from an emitter that predates the field.
+   */
+  lang: "ru" | "uz" | null;
 }
 
 function str(v: unknown): string | null {
@@ -46,6 +51,7 @@ export function parseQueueCalledPayload(
     patientName: str(payload.patientName),
     calledAt: str(payload.calledAt),
     queueOrder: typeof payload.queueOrder === "number" ? payload.queueOrder : null,
+    lang: payload.lang === "uz" || payload.lang === "ru" ? payload.lang : null,
   };
 }
 

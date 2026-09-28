@@ -131,6 +131,7 @@ export const PATCH = createMiniAppHandler(
       startAt,
       endAt,
       excludeId: id,
+      currentStartAt: before.date,
     });
     if (!c.ok) {
       return conflict(c.reason, c.until ? { until: c.until } : undefined);

@@ -193,9 +193,18 @@ export function AppointmentDrawer({
       { channel: next },
       {
         onError: (err) => {
-          if (!(err instanceof AppointmentConflictError)) {
-            toast.error(err.message);
-          }
+          // A refused change says why (e.g. a live-queue ticket keeps its
+          // channel, AP-06) instead of silently snapping back. Other errors
+          // are toasted by the mutation hook itself.
+          if (!(err instanceof AppointmentConflictError)) return;
+          toast.error(
+            (
+              t as unknown as (k: string, v?: Record<string, string>) => string
+            )(
+              `conflict.${err.conflict.reason}`,
+              conflictMessageValues(err.conflict.until),
+            ),
+          );
         },
       },
     );
@@ -695,7 +704,11 @@ function ScheduleSection(props: {
   const { appt, locale, t, tChannel, onChannelChange, onSlotChange } = props;
 
   const status = appt.status as AppointmentStatus;
-  const canEditTime = actionsFor(status).canReschedule;
+  // AP-06 — a live-queue ticket is served by queue order: its time and
+  // channel are not the desk's to change (the PATCH refuses both).
+  const isWalkin = appt.channel === "WALKIN";
+  const canEditTime = actionsFor(status).canReschedule && !isWalkin;
+  const canEditChannel = !isWalkin;
 
   const startStr = appt.time ?? formatHHMM(new Date(appt.date));
   const endStr = formatHHMM(new Date(appt.endDate));
@@ -746,7 +759,10 @@ function ScheduleSection(props: {
             </PopoverContent>
           </Popover>
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-sm tabular-nums">
+          <span
+            className="inline-flex items-center gap-1.5 text-sm tabular-nums"
+            title={isWalkin ? t("walkinLocked") : undefined}
+          >
             <ClockIcon className="size-3.5 text-muted-foreground" />
             {startStr}
             <span className="text-muted-foreground">→</span>
@@ -774,21 +790,30 @@ function ScheduleSection(props: {
       </DrawerRow>
 
       <DrawerRow label={t("fields.channel")} last>
-        <Select
-          value={appt.channel}
-          onValueChange={(v) => onChannelChange(v as (typeof CHANNELS)[number])}
-        >
-          <SelectTrigger className="h-8 w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CHANNELS.map((c) => (
-              <SelectItem key={c} value={c}>
-                {tChannel(c.toLowerCase() as never)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {canEditChannel ? (
+          <Select
+            value={appt.channel}
+            onValueChange={(v) => onChannelChange(v as (typeof CHANNELS)[number])}
+          >
+            <SelectTrigger className="h-8 w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CHANNELS.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {tChannel(c.toLowerCase() as never)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span
+            className="text-right text-sm"
+            title={isWalkin ? t("walkinLocked") : undefined}
+          >
+            {tChannel(appt.channel.toLowerCase() as never)}
+          </span>
+        )}
       </DrawerRow>
     </section>
   );

@@ -192,6 +192,8 @@ export const QueueCalledPayload = z
     patientName: z.string().optional(),
     cabinetNumber: z.string().nullable().optional(),
     calledAt: z.string().optional(),
+    /** Patient's language: the TV announces the call in it (UX-06). */
+    lang: z.enum(["ru", "uz"]).optional(),
   })
   .passthrough();
 export type QueueCalledEventPayload = z.infer<typeof QueueCalledPayload>;

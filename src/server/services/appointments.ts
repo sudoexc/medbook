@@ -1,7 +1,7 @@
 /**
  * Appointment scheduling helpers:
  *  - computeEndDate(date, durationMin)
- *  - detectConflicts({ doctorId, cabinetId, startAt, endAt, excludeId? })
+ *  - detectConflicts({ doctorId, cabinetId, startAt, endAt, excludeId?, currentStartAt? })
  *  - findAvailableSlots({ doctorId, date, slotMin })
  *
  * See docs/TZ.md §6.2 (bookings), §6.3 (calendar), §7.8 (NewAppointmentDialog).
@@ -87,14 +87,26 @@ export async function detectConflicts(
     startAt: Date;
     endAt: Date;
     excludeId?: string;
+    /**
+     * The row's start before this move (reschedules only). A move that keeps
+     * the start where it is may sit in the past; see the in-past rule below.
+     */
+    currentStartAt?: Date;
   },
   client: PrismaLike = prisma,
 ): Promise<ConflictResult> {
-  // Reject bookings whose start has already passed — guards against stale
-  // slot lists on the client (Mini App or CRM dialog) submitting a past
-  // time. Only blocks new bookings; reschedules pass `excludeId` and may
-  // legitimately touch past appointments (e.g. mark NO_SHOW).
-  if (!args.excludeId && args.startAt.getTime() <= Date.now()) {
+  // Nothing is booked or moved into the past (audit AP-09). The rule used to
+  // skip every reschedule (they pass `excludeId`), so a wrong month picked in
+  // the drawer or a bulk shift backwards put the visit in the past: the
+  // patient got «перенесён на 23.08» and the sweep marked a no-show at once.
+  // Only a move that keeps the start (a doctor swap or a longer slot on a
+  // visit already under way) may touch a slot that has begun; status flips
+  // never come here.
+  const keepsStart =
+    args.excludeId !== undefined &&
+    args.currentStartAt !== undefined &&
+    args.currentStartAt.getTime() === args.startAt.getTime();
+  if (!keepsStart && args.startAt.getTime() <= Date.now()) {
     return { ok: false, reason: "in_past" };
   }
 
@@ -235,6 +247,14 @@ export async function findAvailableSlots(args: {
   const dateComp = tashkentComponents(args.date);
   const { dayStart, dayEnd } = tashkentDayBounds(args.date);
 
+  const now = new Date();
+  const today = tashkentComponents(now).date;
+  // A past day has no bookable slot (audit AP-09). Only today's passed
+  // slots were dropped, so a date picked a month back offered its whole
+  // grid and the booking landed in the past.
+  if (dateComp.date < today) return [];
+  const isToday = today === dateComp.date;
+
   // A weekday without rows is a day off (no slots); only a doctor with no
   // schedule at all keeps the 09:00-19:00 fallback (audit AP-01).
   const windows = workingWindowsFor(
@@ -242,9 +262,6 @@ export async function findAvailableSlots(args: {
     dateComp.date,
   );
   if (windows.length === 0) return [];
-
-  const now = new Date();
-  const isToday = tashkentComponents(now).date === dateComp.date;
 
   const [appts, timeOffs] = await Promise.all([
     prisma.appointment.findMany({

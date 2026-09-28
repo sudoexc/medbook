@@ -7,7 +7,7 @@ import { createApiHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { AUDIT_ACTION } from "@/lib/audit-actions";
-import { ok, notFound, conflict, err } from "@/server/http";
+import { ok, notFound, conflict, err, forbidden } from "@/server/http";
 import { QueueStatusUpdateSchema } from "@/server/schemas/appointment";
 import { publishEventSafe } from "@/server/realtime/publish";
 import { ticketNumberFor } from "@/server/services/ticket-number";
@@ -15,14 +15,17 @@ import { getTenant } from "@/lib/tenant-context";
 import {
   canArriveAfterAutoNoShow,
   canTransition,
+  canTransitionAt,
   isOnClinicDay,
   requiresVisitDay,
   type AppointmentStatus,
 } from "@/lib/appointment-transitions";
 import {
+  canMutateStatus,
   canRoleAdvanceTo,
   type LifecycleRole,
 } from "@/lib/appointments/lifecycle";
+import { fireTrigger } from "@/server/notifications/triggers";
 import { confirmAppointment } from "@/server/appointments/confirm";
 import {
   AnotherVisitInProgressError,
@@ -49,13 +52,35 @@ function idFromUrl(request: Request): string {
 
 export const PATCH = createApiHandler(
   {
-    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR", "NURSE"],
+    // Q-04 — NURSE reads today's appointments and never moves them (the
+    // permission matrix); the route used to let her flip any visit to
+    // «Не пришёл» or «Пропущен» from devtools.
+    roles: ["ADMIN", "RECEPTIONIST", "DOCTOR"],
     bodySchema: QueueStatusUpdateSchema,
   },
-  async ({ request, body }) => {
+  async ({ request, body, ctx }) => {
     const id = idFromUrl(request);
-    const before = await prisma.appointment.findUnique({ where: { id } });
+    if (
+      ctx.kind === "TENANT" &&
+      !canMutateStatus(ctx.role as LifecycleRole)
+    ) {
+      return forbidden();
+    }
+    const before = await prisma.appointment.findUnique({
+      where: { id },
+      include: { doctor: { select: { userId: true } } },
+    });
     if (!before) return notFound();
+    // Q-04 — a doctor drives his own queue only, like the generic PATCH: a
+    // call into IN_PROGRESS rings the other doctor's TV and sends that
+    // patient «Вас вызывают».
+    if (
+      ctx.kind === "TENANT" &&
+      ctx.role === "DOCTOR" &&
+      before.doctor?.userId !== ctx.userId
+    ) {
+      return forbidden();
+    }
 
     // This endpoint is the queue lifecycle: BOOKED → WAITING → IN_PROGRESS
     // → COMPLETED. Source of truth is `queueStatus`, not `status` — they
@@ -85,6 +110,12 @@ export const PATCH = createApiHandler(
         await isStandingAutoNoShow(id),
         now,
       );
+    // The time rules of the move, judged on the visit's own slot. Only
+    // `too_early_for_no_show` is taken from here; a refused transition keeps
+    // its own naming below, and `not_today` is answered after the role gate.
+    const timed = arrivesAfterAutoNoShow
+      ? ({ ok: true } as const)
+      : canTransitionAt(fromStatus, target, before.date, now);
     if (
       !arrivesAfterAutoNoShow &&
       (!canTransition(fromStatus, target) ||
@@ -104,10 +135,19 @@ export const PATCH = createApiHandler(
       });
     }
 
+    // Q-04 — «Не пришёл» only once the slot has started, like the generic
+    // PATCH: a booking two hours ahead was marked a no-show on the spot.
+    if (!timed.ok && timed.reason === "too_early_for_no_show") {
+      return conflict("too_early_for_no_show", {
+        from: before.queueStatus,
+        to: body.queueStatus,
+      });
+    }
+
     // Role-ownership: doctors drive IN_PROGRESS / COMPLETED, reception drives
     // the rest. Mirrors `STATE_OWNERS` in `lib/appointments/lifecycle.ts` so a
-    // stale tab or scripted call can't bypass the UI gate. NURSE is already
-    // excluded by `canMutateStatus` (read-only), so we only need to gate the
+    // stale tab or scripted call can't bypass the UI gate. NURSE never gets
+    // here (`canMutateStatus` above), so we only need to gate the
     // intersection where the role is otherwise permitted but the target is
     // not theirs to drive.
     const tenantPreCheck = getTenant();
@@ -393,9 +433,17 @@ export const PATCH = createApiHandler(
             patientName: initials(after.patient?.fullName) || undefined,
             cabinetNumber: after.doctor?.cabinet?.number ?? null,
             calledAt: now.toISOString(),
+            // The board announces the call in the patient's language (UX-06).
+            lang: after.patient?.preferredLang === "UZ" ? "uz" : "ru",
           },
         });
       }
+    }
+
+    // Q-04 — a no-show marked here tells the patient the same as one marked
+    // through the generic PATCH (template-driven, best-effort).
+    if (body.queueStatus === "NO_SHOW" && before.status !== "NO_SHOW") {
+      fireTrigger({ kind: "appointment.noshow", appointmentId: id });
     }
 
     // AP-07 / PT-06 — reception closing the current patient («Вызвать из

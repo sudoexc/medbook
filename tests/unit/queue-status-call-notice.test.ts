@@ -40,6 +40,7 @@ const state = {
   /** Patient join data returned by the mocked `update({ include })`. */
   telegramId: "tg_owner" as string | null,
   cabinetNumber: "12" as string | null,
+  preferredLang: "RU" as "RU" | "UZ",
 };
 
 // ----- mocks ---------------------------------------------------------------
@@ -131,7 +132,7 @@ vi.mock("@/lib/prisma", () => {
           patient: {
             fullName: "Иванов Иван Иванович",
             telegramId: state.telegramId,
-            preferredLang: "RU",
+            preferredLang: state.preferredLang,
           },
           doctor: {
             nameRu: "Петрова А. С.",
@@ -209,6 +210,7 @@ beforeEach(() => {
   state.noticeResult = true;
   state.telegramId = "tg_owner";
   state.cabinetNumber = "12";
+  state.preferredLang = "RU";
 });
 
 // ----- 1. patientId on the v1 payloads -------------------------------------
@@ -289,6 +291,21 @@ describe("queue-status v1 events carry patientId", () => {
       ticketNumber: "B-003",
       cabinetNumber: "12",
     });
+  });
+});
+
+describe("the TV announces the call in the patient's language (UX-06)", () => {
+  it("QN5c — queue.called carries the patient's language", async () => {
+    let PATCH = await loadPATCH();
+    await PATCH(patchReq("appt_1", { queueStatus: "IN_PROGRESS" }));
+    expect(published("queue.called")[0].payload.lang).toBe("ru");
+
+    state.publishes = [];
+    state.appt = makeAppt();
+    state.preferredLang = "UZ";
+    PATCH = await loadPATCH();
+    await PATCH(patchReq("appt_1", { queueStatus: "IN_PROGRESS" }));
+    expect(published("queue.called")[0].payload.lang).toBe("uz");
   });
 });
 

@@ -20,6 +20,54 @@
  * Next.js / React ambient. Do NOT import from `@/lib/prisma` or any
  * server-only module here.
  */
+import {
+  actionsFor,
+  type AppointmentStatus,
+} from "@/lib/appointment-transitions";
+
+/**
+ * Which calendar blocks may be dragged or resized (audit AP-10): only a
+ * visit that can still be rescheduled (BOOKED / CONFIRMED / WAITING /
+ * SKIPPED), and never a live-queue ticket, which is served by queue order,
+ * not by its slot (AP-06). A completed visit dragged to another doctor took
+ * its revenue and commission with it; a cancelled block moved told the
+ * patient «приём перенесён». The PATCH refuses the same moves.
+ */
+export function isCalendarMovable(a: {
+  status: string;
+  channel: string;
+}): boolean {
+  if (a.channel === "WALKIN") return false;
+  return actionsFor(a.status as AppointmentStatus).canReschedule === true;
+}
+
+export type ResizeResult =
+  | { ok: true; durationMin: number }
+  | { ok: false; reason: "in_past" | "invalid_input" };
+
+/**
+ * New length for a resized block. A visit whose start has already passed is
+ * not resized (AP-09): its slot is history, and stretching it would rewrite
+ * how long a past visit took.
+ */
+export function computeResizedSlot(input: {
+  start: Date;
+  newEnd: Date;
+  now?: Date;
+}): ResizeResult {
+  const startMs = input.start.getTime();
+  const endMs = input.newEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return { ok: false, reason: "invalid_input" };
+  }
+  if (startMs <= (input.now ?? new Date()).getTime()) {
+    return { ok: false, reason: "in_past" };
+  }
+  return {
+    ok: true,
+    durationMin: Math.max(5, Math.round((endMs - startMs) / 60_000)),
+  };
+}
 
 export type RescheduleInput = {
   /** Original appointment start. */

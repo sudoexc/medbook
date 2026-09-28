@@ -136,7 +136,9 @@ vi.mock("@/server/services/appointments", () => ({
 }));
 vi.mock("@/server/notifications/triggers", () => ({ fireTrigger: vi.fn() }));
 vi.mock("@/server/realtime/publish", () => ({ publishEventSafe: vi.fn() }));
-vi.mock("@/lib/appointment-transitions", () => ({
+vi.mock("@/lib/appointment-transitions", async (importOriginal) => ({
+  // The real reschedule rule (AP-10): a CONFIRMED visit may move.
+  ...(await importOriginal<typeof import("@/lib/appointment-transitions")>()),
   canTransitionAt: () => ({ ok: true }),
 }));
 

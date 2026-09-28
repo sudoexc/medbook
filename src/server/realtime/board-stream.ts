@@ -55,6 +55,9 @@ const SAFE_PAYLOAD_KEYS = [
   "patientName",
   "cabinetNumber",
   "calledAt",
+  // `queue.called` only: "ru" | "uz", the language the board announces the
+  // call in (UX-06). The hall hears that language anyway.
+  "lang",
 ] as const;
 
 export type BoardEvent = {

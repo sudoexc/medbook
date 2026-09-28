@@ -32,6 +32,7 @@ import {
   playChime,
   useAudioUnlock,
 } from "../../_shared";
+import { Bi, useTvTranslators } from "../../_i18n";
 
 // ─── Tunables (visual iteration knobs) ──────────────────────────────────────
 const OVERLAY_MS = 15_000; // call takeover auto-dismiss
@@ -62,17 +63,15 @@ interface Overlay {
   patientName: string;
 }
 
-const SLOT_META: Record<
-  DoctorBoardSlot["status"],
-  { label: string; color: string }
-> = {
-  BOOKED: { label: "запись", color: C.muted },
-  CONFIRMED: { label: "подтверждена", color: C.muted },
+// Labels live in `tvBoard.doctorBoard.slot.<STATUS>` (both languages).
+const SLOT_META: Record<DoctorBoardSlot["status"], { color: string }> = {
+  BOOKED: { color: C.muted },
+  CONFIRMED: { color: C.muted },
   // Two-lanes: an arrived booking waits on the schedule axis, not in the
   // live queue — the label says so.
-  WAITING: { label: "пришёл", color: AMBER },
-  IN_PROGRESS: { label: "на приёме", color: GREEN },
-  COMPLETED: { label: "завершён", color: FAINT },
+  WAITING: { color: AMBER },
+  IN_PROGRESS: { color: GREEN },
+  COMPLETED: { color: FAINT },
 };
 
 /** "HH:mm" → minutes since midnight; unparseable → +∞ (sorts last). */
@@ -87,6 +86,7 @@ export default function DoctorTVPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
   const { data, notFound, call, connected } = useDoctorBoard(token);
+  const tv = useTvTranslators();
 
   // Board renders immediately; sound arms itself on the first stray
   // interaction (one remote press on a TV box) instead of gating the queue
@@ -128,8 +128,11 @@ export default function DoctorTVPage() {
       data?.doctor.cabinet,
     );
     playChime();
-    announce(shown.patientName, shown.cabinet, shown.ticketNumber);
-  }, [call, data]);
+    announce(shown.patientName, shown.cabinet, shown.ticketNumber, {
+      translators: tv,
+      lang: call.lang,
+    });
+  }, [call, data, tv]);
 
   // Auto-dismiss the call board after OVERLAY_MS (async setState — allowed).
   useEffect(() => {
@@ -173,9 +176,11 @@ export default function DoctorTVPage() {
     return (
       <Page>
         <div className="flex h-full flex-col items-center justify-center gap-3 px-10 text-center">
-          <p className="text-5xl font-bold">Экран не найден</p>
+          <p className="text-5xl font-bold">
+            <Bi k="doctorBoard.notFound" stacked uzClassName="mt-2 text-4xl" />
+          </p>
           <p className="text-2xl" style={{ color: C.muted }}>
-            Ссылка недействительна или врач деактивирован
+            <Bi k="doctorBoard.notFoundHint" stacked uzClassName="mt-1" />
           </p>
         </div>
       </Page>
@@ -221,8 +226,8 @@ export default function DoctorTVPage() {
                   borderRadius: TILE_RADIUS - 8,
                 }}
               >
-                <span className="text-[11px] font-semibold uppercase tracking-wider opacity-80">
-                  кабинет
+                <span className="text-center text-[11px] font-semibold uppercase leading-tight tracking-wider opacity-80">
+                  <Bi k="doctorBoard.cabinet" stacked />
                 </span>
                 <span className="text-5xl font-bold leading-none">
                   {data.doctor.cabinet}
@@ -234,7 +239,7 @@ export default function DoctorTVPage() {
                 {data?.doctor.nameRu ?? "…"}
               </p>
               <p className="mt-1.5 truncate text-2xl" style={{ color: C.muted }}>
-                {data?.doctor.specializationRu || "Врач"}
+                {data?.doctor.specializationRu || <Bi k="doctor" />}
               </p>
             </div>
             <div className="shrink-0 text-right">
@@ -263,15 +268,21 @@ export default function DoctorTVPage() {
                 className="text-xl font-semibold uppercase tracking-wide"
                 style={{ color: data?.queue.current ? GREEN : FAINT }}
               >
-                Сейчас принимается
+                <Bi k="doctorBoard.nowReceiving" />
               </p>
               <p
                 className="mt-1 truncate text-6xl font-bold leading-tight"
                 style={{ color: data?.queue.current ? C.fg : FAINT }}
               >
-                {data?.queue.current
-                  ? data.queue.current.fullName
-                  : "Кабинет свободен"}
+                {data?.queue.current ? (
+                  data.queue.current.fullName
+                ) : (
+                  <Bi
+                    k="doctorBoard.cabinetFree"
+                    stacked
+                    uzClassName="mt-1 text-4xl"
+                  />
+                )}
               </p>
             </div>
             {data?.queue.current?.ticketNumber && (
@@ -298,14 +309,18 @@ export default function DoctorTVPage() {
           {/* LEFT — live queue */}
           <Tile className="flex min-h-0 flex-col">
             <TileHead
-              title="Живая очередь"
+              title={<Bi k="doctorBoard.liveQueue" stacked uzClassName="text-base" />}
               value={data ? String(data.queue.waiting.length) : "…"}
               color={AMBER}
             />
             <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
               {!data || data.queue.waiting.length === 0 ? (
                 <p className="py-8 text-2xl" style={{ color: FAINT }}>
-                  {data ? "Очередь пуста" : "Загрузка…"}
+                  <Bi
+                    k={data ? "doctorBoard.queueEmpty" : "doctorBoard.loading"}
+                    stacked
+                    uzClassName="mt-1 text-xl"
+                  />
                 </p>
               ) : (
                 <div className="flex flex-col gap-2.5">
@@ -334,13 +349,23 @@ export default function DoctorTVPage() {
                         className="shrink-0 text-xl tabular-nums"
                         style={{ color: FAINT }}
                       >
-                        ~{w.etaMinutes}м
+                        <Bi
+                          k="doctorBoard.etaShort"
+                          values={{ minutes: String(w.etaMinutes) }}
+                        />
                       </span>
                     </div>
                   ))}
                   {data.queue.waiting.length > MAX_WAITING_ROWS && (
                     <p className="px-4 py-1 text-xl" style={{ color: FAINT }}>
-                      ещё {data.queue.waiting.length - MAX_WAITING_ROWS}
+                      <Bi
+                        k="doctorBoard.more"
+                        values={{
+                          count: String(
+                            data.queue.waiting.length - MAX_WAITING_ROWS,
+                          ),
+                        }}
+                      />
                     </p>
                   )}
                 </div>
@@ -351,20 +376,29 @@ export default function DoctorTVPage() {
           {/* RIGHT — today's bookings */}
           <Tile className="flex min-h-0 flex-col">
             <TileHead
-              title="Записи"
+              title={<Bi k="doctorBoard.bookings" stacked uzClassName="text-base" />}
               value={data ? `${doneCount}/${slotCount}` : "…"}
               color={C.muted}
             />
             <div className="min-h-0 flex-1 overflow-hidden px-6 pb-4">
               {!data || slotCount === 0 ? (
                 <p className="py-8 text-2xl" style={{ color: FAINT }}>
-                  {data ? "На сегодня записей нет" : "Загрузка…"}
+                  <Bi
+                    k={data ? "doctorBoard.noBookings" : "doctorBoard.loading"}
+                    stacked
+                    uzClassName="mt-1 text-xl"
+                  />
                 </p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {pastSlots.length > MAX_PAST_COMPACT && (
                     <p className="px-4 py-1 text-lg" style={{ color: FAINT }}>
-                      раньше: {pastSlots.length - MAX_PAST_COMPACT}
+                      <Bi
+                        k="doctorBoard.earlier"
+                        values={{
+                          count: String(pastSlots.length - MAX_PAST_COMPACT),
+                        }}
+                      />
                     </p>
                   )}
                   {pastSlots.slice(-MAX_PAST_COMPACT).map((s) => (
@@ -390,7 +424,14 @@ export default function DoctorTVPage() {
                   ))}
                   {upcomingSlots.length > MAX_UPCOMING_ROWS && (
                     <p className="px-4 py-1 text-xl" style={{ color: FAINT }}>
-                      ещё {upcomingSlots.length - MAX_UPCOMING_ROWS}
+                      <Bi
+                        k="doctorBoard.more"
+                        values={{
+                          count: String(
+                            upcomingSlots.length - MAX_UPCOMING_ROWS,
+                          ),
+                        }}
+                      />
                     </p>
                   )}
                 </div>
@@ -455,7 +496,7 @@ function TileHead({
   value,
   color,
 }: {
-  title: string;
+  title: React.ReactNode;
   value: string;
   color: string;
 }) {
@@ -495,7 +536,11 @@ function SlotRow({
         </span>
         <span className="min-w-0 flex-1 truncate text-xl">{slot.fullName}</span>
         <span className="shrink-0 text-lg" style={{ color: meta.color }}>
-          {slot.status === "COMPLETED" ? "✓" : meta.label}
+          {slot.status === "COMPLETED" ? (
+            "✓"
+          ) : (
+            <Bi k={`doctorBoard.slot.${slot.status}`} />
+          )}
         </span>
       </div>
     );
@@ -513,10 +558,14 @@ function SlotRow({
       </span>
       <span className="min-w-0 flex-1 truncate text-2xl">{slot.fullName}</span>
       <span
-        className="shrink-0 text-xl font-semibold"
+        className="shrink-0 text-right text-xl font-semibold leading-tight"
         style={{ color: meta.color }}
       >
-        {meta.label}
+        <Bi
+          k={`doctorBoard.slot.${slot.status}`}
+          stacked
+          uzClassName="text-base font-normal"
+        />
       </span>
     </div>
   );

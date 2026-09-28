@@ -1181,6 +1181,13 @@ export async function cancelPendingAppointmentReminders(
   return { cancelled: res.count };
 }
 
+/** Statuses that never tell the patient «приём перенесён». */
+const RESCHEDULE_SILENT_STATUSES: ReadonlySet<string> = new Set([
+  "CANCELLED",
+  "NO_SHOW",
+  "COMPLETED",
+]);
+
 /**
  * Full reschedule fan-out: tell the patient the new time, then rebuild the
  * reminder cascade around it.
@@ -1193,6 +1200,17 @@ export async function cancelPendingAppointmentReminders(
 export async function onAppointmentRescheduled(
   appointmentId: string,
 ): Promise<void> {
+  // AP-10 — a visit that is over, cancelled or missed has no time to move to.
+  // A cancelled block dragged on the calendar used to send «Ваш приём
+  // перенесён на 15:00» for a visit the patient had cancelled. The PATCH now
+  // refuses such moves; this keeps every other caller honest too.
+  const current = await runWithTenant({ kind: "SYSTEM" }, () =>
+    prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { status: true },
+    }),
+  );
+  if (!current || RESCHEDULE_SILENT_STATUSES.has(current.status)) return;
   await cancelPendingAppointmentReminders(appointmentId);
   // Immediate "your appointment moved" notice, rendered against the already
   // persisted (new) row — so the body names the new date/time.

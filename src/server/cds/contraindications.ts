@@ -550,18 +550,62 @@ function normCode(code: string): string {
   return code.trim().toUpperCase();
 }
 
+/**
+ * The record's code when it has the shape of one. The card's code field is
+ * free text: a stray word typed there must not silence the record's words.
+ */
+function codeOf(record: PatientCondition): string | null {
+  const code = record.code ? normCode(record.code) : "";
+  return /^[A-TV-Z]\d{2}/.test(code) ? code : null;
+}
+
+/**
+ * A word that denies what follows it within two words: «без ХСН», «без
+ * (застойной) сердечной недостаточности», «при отсутствии диагноза
+ * гипертензии», «исключена эпилепсия». «Не исключена …» means it may well
+ * be there, so it is not a denial. Tested on the part of the clause before
+ * the match; a comma, semicolon or full stop starts a new clause.
+ */
+const DENIED =
+  /(?<![а-я])(?:без|нет|при отсутствии|отсутствует|(?<!не )исключен[а-я]*)(?:\s+\S+){0,2}\s*$/;
+
+/** The words of the clause `text` is in, up to `index`. */
+function clauseBefore(text: string, index: number): string {
+  const before = text.slice(0, index);
+  const start = Math.max(...[",", ";", ".", "\n"].map((p) => before.lastIndexOf(p)));
+  return before.slice(start + 1);
+}
+
+/** Does `words` name the condition somewhere in `text` without a denial? */
+function namesAffirmed(text: string, words: RegExp): boolean {
+  const all = new RegExp(words.source, words.flags.replace("g", "") + "g");
+  for (let m = all.exec(text); m; m = all.exec(text)) {
+    if (!DENIED.test(clauseBefore(text, m.index))) return true;
+    // Every start is tried: «без ХСН. ХСН IIА» names it after the denial.
+    all.lastIndex = m.index + 1;
+  }
+  return false;
+}
+
 /** Does this record show the condition, by its code or by its words? */
 function recordShows(record: PatientCondition, c: Condition): boolean {
-  if (record.code) {
-    const code = normCode(record.code);
-    if (c.icd.some((p) => code.startsWith(p))) return true;
-  }
-  // A record can name the condition without its code («Эпилепсия» typed at
-  // the desk). The same table decides, with the stricter record wording.
+  // A coded record is decided by its code alone. Its words are mostly the
+  // ICD-10 name of that code, and those name what the patient does NOT have
+  // as often as what he has: I11.9 «… без (застойной) сердечной
+  // недостаточности», R03.0 «… при отсутствии диагноза гипертензии», I63.3
+  // «Инфаркт мозга, вызванный тромбозом …» (a stroke, which the thrombosis
+  // row leaves out on purpose), I25.2 «Перенесенный в прошлом инфаркт
+  // миокарда» (not an acute one). The code already says which it is.
+  const code = codeOf(record);
+  if (code) return c.icd.some((p) => code.startsWith(p));
+  // An uncoded record names the condition in words («Эпилепсия» typed at
+  // the desk). The same table decides, with the stricter record wording,
+  // and a denied mention («Гипертоническая болезнь II ст., без ХСН») does
+  // not count.
   const words = c.recordPattern === undefined ? c.pattern : c.recordPattern;
   if (!record.label || !words) return false;
   const text = fold(record.label);
-  return words.test(text) && !c.exclude?.test(text);
+  return !c.exclude?.test(text) && namesAffirmed(text, words);
 }
 
 export type ContraindicationHit = {

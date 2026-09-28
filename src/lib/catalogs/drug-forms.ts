@@ -104,6 +104,18 @@ export function isUnitDose(strength: string | null | undefined): boolean {
 }
 
 /**
+ * A concentration or a whole pack: «500 мг/4 мл», «100 ЕД/мл», «20 мг/доза»,
+ * «5%», «1 флакон», «1 туба 40 г», «для небулайзера». Never a dose to take.
+ * A plain volume or count («2 мл», «10 мл», «1 таб.») is: an ampoule of
+ * Мильгамма is given whole.
+ */
+const NOT_A_DOSE = /[/%]|флакон|туб[аы](?![а-я])|небулайзер/iu;
+
+export function isConcentrationOrPack(strength: string | null | undefined): boolean {
+  return !!strength && NOT_A_DOSE.test(strength);
+}
+
+/**
  * The dose a new row starts with: the unit strength of a solid unit form,
  * else empty (the doctor writes it: «10 ЕД», «15 мл», «2 капли»).
  */

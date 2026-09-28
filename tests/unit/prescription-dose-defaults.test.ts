@@ -15,6 +15,10 @@
  *      normalised («200 мг»/«200мг», «24.0 мг/мл»/«24 мг/мл»).
  *   5. «Мои частые» keep his last form, strength and dose; the clinic's
  *      usual strength brings its own form.
+ *   6. (review) A dose equal to a strength that is one ampoule or one
+ *      tablet («2 мл» of Мильгамма, «10 мл» of Церебролизин, «1 таб.» of
+ *      Панангин) is his dose, kept on every pick; only a concentration or a
+ *      pack copied by the old constructor is asked for again.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -27,6 +31,7 @@ import {
 import type { DrugShortItem } from "@/app/[locale]/doctor/reception/_hooks/use-shortlists";
 import {
   defaultDose,
+  isConcentrationOrPack,
   isUnitDose,
   normalizeForms,
   normalizeStrength,
@@ -186,6 +191,44 @@ describe("«Мои частые» and the clinic's core list", () => {
     );
     // His form, but the dose is asked for.
     expect(draft).toMatchObject({ form: "INJ_IV", strength: "500 мг/4 мл", dose: "" });
+  });
+
+  it.each([
+    ["milgamma", "INJ_IM", "2 мл"],
+    ["cerebrolysin", "INJ_IM", "10 мл"],
+    ["potassium_mg_asparaginate", "INJ_IV", "10 мл"],
+    ["potassium_mg_asparaginate", "TAB", "1 таб."],
+  ])("%s %s «%s»: a dose equal to the ampoule or tablet is his and is kept", (id, form, dose) => {
+    const { brands: _brands, ...own } = catalogDrug(id);
+    const drug = { ...citicoline, ...own };
+    const { draft } = draftFromShortItem(
+      item({
+        key: id,
+        drugId: id,
+        label: drug.nameRu,
+        drug,
+        // What the dose prompt saved: the strength of one ampoule or tablet.
+        lastDose: dose,
+        lastForm: form,
+        lastStrength: dose,
+      }),
+      "mine",
+    );
+    // Not empty: the constructor does not ask for the dose again.
+    expect(draft).toMatchObject({ form, strength: dose, dose });
+  });
+
+  it("only a concentration or a pack is not a dose", () => {
+    const notDoses = [
+      "500 мг/4 мл", "100 ЕД/мл", "20 мг/доза", "5%", "1 флакон", "1 туба 40 г",
+      "для небулайзера",
+    ];
+    for (const s of notDoses) expect(isConcentrationOrPack(s), s).toBe(true);
+    const doses = [
+      "2 мл", "10 мл", "1 таб.", "500 мг", "5 мл (200 мг)", "400 мг (ретард)",
+      "3 г (1 пакет)",
+    ];
+    for (const s of doses) expect(isConcentrationOrPack(s), s).toBe(false);
   });
 
   it("the clinic's usual strength brings the form it belongs to", () => {

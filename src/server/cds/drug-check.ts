@@ -49,7 +49,9 @@ import {
 import {
   courseStart,
   isCourseCurrent,
+  isLongTermTherapy,
   isQuestionnaireFresh,
+  type CourseLike,
 } from "./current-therapy";
 import {
   buildDrugTextIndex,
@@ -469,11 +471,22 @@ function contextDetail(ctx: ContextDrug): string {
   return `${ctx.drug.nameRu}: пациент указал в анкете перед визитом, уточните. `;
 }
 
+/** A course the patient may still be on, or a medicine he listed. */
+type TherapyCandidate = {
+  drug: DrugPick;
+  source: ContextDrug["source"];
+  since: Date | null;
+  /** The course, whose open end depends on its drug's class. */
+  course: CourseLike | null;
+};
+
 /**
- * The patient's current therapy as catalog drugs: running courses (linked
- * through the visit row they mirror when there is one, else by the name
- * they were written under) and, from a recent questionnaire, the medicines
- * the patient listed. One entry per drug, courses first.
+ * The patient's possible current therapy as catalog drugs: running courses
+ * (linked through the visit row they mirror when there is one, else by the
+ * name they were written under) and, from a recent questionnaire, the
+ * medicines the patient listed. Courses first, one entry per course: an
+ * open-ended course is kept here while it could still run (a year) and
+ * cut to its drug's horizon by `currentOnly` once its class is known.
  */
 async function loadCurrentTherapy(args: {
   clinicId: string;
@@ -482,7 +495,7 @@ async function loadCurrentTherapy(args: {
   now: Date;
   questionnaire: { medications: string[]; submittedAt: Date | null } | null;
   catalog: Catalog;
-}): Promise<{ drug: DrugPick; source: ContextDrug["source"]; since: Date | null }[]> {
+}): Promise<TherapyCandidate[]> {
   const courses = await prisma.prescription.findMany({
     where: {
       clinicId: args.clinicId,
@@ -502,7 +515,7 @@ async function loadCurrentTherapy(args: {
   });
   const live = courses.filter(
     (c) =>
-      isCourseCurrent(c, args.now) &&
+      isCourseCurrent(c, args.now, true) &&
       !(args.visitNoteId && c.visitNoteId === args.visitNoteId),
   );
 
@@ -545,14 +558,7 @@ async function loadCurrentTherapy(args: {
       : [];
   const linkedById = new Map(linked.map((d) => [d.id, d]));
 
-  const out: { drug: DrugPick; source: ContextDrug["source"]; since: Date | null }[] = [];
-  const seen = new Set<string>();
-  const add = (drug: DrugPick, source: ContextDrug["source"], since: Date | null) => {
-    if (seen.has(drug.id)) return;
-    seen.add(drug.id);
-    out.push({ drug, source, since });
-  };
-
+  const out: TherapyCandidate[] = [];
   for (const c of live) {
     const id = c.visitNoteId
       ? drugIdOf.get(`${c.visitNoteId}:${c.visitNoteSortOrder}`)
@@ -561,7 +567,9 @@ async function loadCurrentTherapy(args: {
     if (!drug) {
       drug = matchDrugLine(await args.catalog.textIndex(), c.drugName)?.drug;
     }
-    if (drug) add(drug, "COURSE", courseStart(c));
+    if (drug) {
+      out.push({ drug, source: "COURSE", since: courseStart(c), course: c });
+    }
   }
 
   const q = args.questionnaire;
@@ -569,10 +577,40 @@ async function loadCurrentTherapy(args: {
     const index = await args.catalog.textIndex();
     for (const med of q.medications) {
       const m = matchDrugLine(index, med);
-      if (m) add(m.drug, "PATIENT_REPORTED", q.submittedAt);
+      if (m) {
+        out.push({
+          drug: m.drug,
+          source: "PATIENT_REPORTED",
+          since: q.submittedAt,
+          course: null,
+        });
+      }
     }
   }
   return out;
+}
+
+/**
+ * The candidates the patient is still on, one entry per drug (courses
+ * first). A course without a duration counts for a year only when its drug
+ * is taken long term, read from every row it stands for (current-therapy.ts):
+ * the ketorolac of a visit three months ago is not today's therapy.
+ */
+function currentOnly(
+  candidates: readonly TherapyCandidate[],
+  views: ReadonlyMap<string, CheckDrug>,
+  now: Date,
+): TherapyCandidate[] {
+  const seen = new Set<string>();
+  return candidates.filter((t) => {
+    if (seen.has(t.drug.id)) return false;
+    if (t.course) {
+      const rows = views.get(t.drug.id)?.profiles ?? [t.drug];
+      if (!isCourseCurrent(t.course, now, isLongTermTherapy(rows))) return false;
+    }
+    seen.add(t.drug.id);
+    return true;
+  });
 }
 
 export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult> {
@@ -673,7 +711,7 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
   ]);
   const questionnaire = parsePreVisitData(preVisit?.preVisitData);
 
-  const therapy = await loadCurrentTherapy({
+  const candidates = await loadCurrentTherapy({
     clinicId,
     patientId,
     visitNoteId: input.visitNoteId ?? null,
@@ -688,9 +726,10 @@ export async function runDrugCheck(input: CdsCheckInput): Promise<CdsCheckResult
   });
 
   const views = await substanceViews(
-    dedupeById([...basketRows, ...therapy.map((t) => t.drug)]),
+    dedupeById([...basketRows, ...candidates.map((t) => t.drug)]),
     catalog,
   );
+  const therapy = currentOnly(candidates, views, now);
   const basket: CheckDrug[] = basketRows.map((d) => views.get(d.id)!);
   const resolvedById = new Map(resolved.map((r) => [r.id, r]));
 

@@ -16,6 +16,17 @@
  *      chronic condition; unrelated diagnoses stay quiet.
  *   5. The condition table cites a source for every mapping and no
  *      doctor-facing text of the new checks carries a dash.
+ *
+ * Review fixes:
+ *   6. A coded record is decided by its code, not by the words of its ICD
+ *      name: I11.9 «… без (застойной) сердечной недостаточности», R03.0
+ *      «… при отсутствии диагноза гипертензии», I63.3 «Инфаркт мозга,
+ *      вызванный тромбозом …» and I25.2 «Перенесенный в прошлом инфаркт
+ *      миокарда» stay quiet on the drugs Aziz prescribes daily. An uncoded
+ *      record does not count a denied mention («без ХСН»).
+ *   7. An open-ended course counts for a year only for a drug taken long
+ *      term: a ketorolac course from 90 days ago is not today's therapy,
+ *      a warfarin one is.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -29,8 +40,15 @@ import {
 } from "@/server/cds/contraindications";
 import {
   isCourseCurrent,
+  isLongTermTherapy,
+  LONG_TERM_THERAPY,
   OPEN_COURSE_MAX_DAYS,
+  OPEN_SHORT_COURSE_DAYS,
 } from "@/server/cds/current-therapy";
+import { ICD10_ENTRIES } from "@/server/icd10/data";
+
+import { DRUGS } from "../../prisma/_drug-catalog";
+import { DRUGS_EXTRA } from "../../prisma/_drug-catalog-extra";
 
 import { cdsState, check, daysAgo, NOW, resetCdsState } from "./cds-fixture";
 
@@ -225,6 +243,69 @@ describe("contraindications against the patient's diagnoses (acceptance)", () =>
   });
 });
 
+describe("coded diagnoses and denied mentions (review)", () => {
+  const icdName = (code: string) => ICD10_ENTRIES.find((e) => e.code === code)!.nameRu;
+  const risks = (r: Awaited<ReturnType<typeof check>>) =>
+    r.warnings.filter((w) => w.kind === "DIAGNOSIS_RISK");
+
+  it("I11.9 «без (застойной) сердечной недостаточности» is not heart failure", async () => {
+    expect(icdName("I11.9")).toContain("без (застойной) сердечной недостаточности");
+    cdsState.diagnoses = [{ icd10Code: "I11.9", label: icdName("I11.9") }];
+    const r = await check(["milgamma", "diclofenac", "meloxicam", "drotaverine"]);
+    expect(risks(r), JSON.stringify(risks(r))).toEqual([]);
+  });
+
+  it("R03.0 «при отсутствии диагноза гипертензии» is not hypertension", async () => {
+    cdsState.diagnoses = [{ icd10Code: "R03.0", label: icdName("R03.0") }];
+    expect(risks(await check(["sumatriptan", "venlafaxine"]))).toEqual([]);
+  });
+
+  it("I63.3, a stroke caused by thrombosis, does not ban cyanocobalamin", async () => {
+    cdsState.diagnoses = [{ icd10Code: "I63.3", label: icdName("I63.3") }];
+    expect(risks(await check(["cyanocobalamin"]))).toEqual([]);
+    // Nor a B1 + B6 + B12 combination.
+    expect(risks(await check(["milgamma"]))).toEqual([]);
+    // It is still a stroke for the triptan label.
+    const [w] = risks(await check(["sumatriptan"]));
+    expect(w?.title).toContain("I63.3");
+  });
+
+  it("I25.2, an old myocardial infarction, is not an acute one", async () => {
+    cdsState.diagnoses = [{ icd10Code: "I25.2", label: icdName("I25.2") }];
+    expect(risks(await check(["amitriptyline", "pentoxifylline"]))).toEqual([]);
+    // It still is ischaemic heart disease for the triptan label.
+    expect(risks(await check(["sumatriptan"]))).toHaveLength(1);
+  });
+
+  it("an uncoded «Гипертоническая болезнь II ст., без ХСН» is not heart failure", async () => {
+    cdsState.chronic = [{ name: "Гипертоническая болезнь II ст., без ХСН", notes: null }];
+    expect(risks(await check(["milgamma", "diclofenac"]))).toEqual([]);
+
+    resetCdsState();
+    cdsState.chronic = [{ name: "Гипертоническая болезнь II ст., ХСН IIА", notes: null }];
+    const hf = risks(await check(["milgamma"]));
+    expect(hf.map((w) => w.detail).join(" ")).toContain("сердечная недостаточность");
+  });
+
+  it("a denial only reaches its own clause, and «не исключена» is not one", () => {
+    const hits = (label: string, line = "Эпилепсия") =>
+      findContraindicationHits([line], [{ code: null, label, origin: "CHRONIC" }]).length;
+    expect(hits("Исключена эпилепсия")).toBe(0);
+    expect(hits("Не исключена эпилепсия")).toBe(1);
+    expect(hits("ХЦВН без эпилепсии")).toBe(0);
+    expect(hits("Без судорог. Эпилепсия")).toBe(1);
+    expect(hits("ГБ без поражения органов-мишеней с ХСН", "Хроническая сердечная недостаточность")).toBe(1);
+  });
+
+  it("a code field that is not a code leaves the record to its words", () => {
+    const hits = findContraindicationHits(
+      ["Эпилепсия"],
+      [{ code: "нет", label: "Эпилепсия", origin: "DIAGNOSIS" }],
+    );
+    expect(hits).toHaveLength(1);
+  });
+});
+
 describe("the condition table", () => {
   it("every condition cites where its codes come from", () => {
     for (const c of CONTRAINDICATION_CONDITIONS) {
@@ -270,10 +351,98 @@ describe("course clock", () => {
       schedule: { days, startsAt: daysAgo(startedDaysAgo).toISOString() },
       createdAt: daysAgo(startedDaysAgo),
     });
-    expect(isCourseCurrent(c(10, 9), NOW)).toBe(true);
-    expect(isCourseCurrent(c(10, 11), NOW)).toBe(false);
-    expect(isCourseCurrent(c(null, 200), NOW)).toBe(true);
-    expect(isCourseCurrent(c(10, -3), NOW)).toBe(true);
+    expect(isCourseCurrent(c(10, 9), NOW, false)).toBe(true);
+    expect(isCourseCurrent(c(10, 11), NOW, false)).toBe(false);
+    expect(isCourseCurrent(c(10, 11), NOW, true)).toBe(false);
+    expect(isCourseCurrent(c(null, 200), NOW, true)).toBe(true);
+    expect(isCourseCurrent(c(10, -3), NOW, false)).toBe(true);
+  });
+
+  it("an open-ended course counts for a year only when its drug is taken long term", () => {
+    const c = (startedDaysAgo: number) => ({
+      status: "ACTIVE",
+      schedule: { days: null, startsAt: daysAgo(startedDaysAgo).toISOString() },
+      createdAt: daysAgo(startedDaysAgo),
+    });
+    expect(isCourseCurrent(c(OPEN_SHORT_COURSE_DAYS - 1), NOW, false)).toBe(true);
+    expect(isCourseCurrent(c(OPEN_SHORT_COURSE_DAYS + 1), NOW, false)).toBe(false);
+    expect(isCourseCurrent(c(90), NOW, false)).toBe(false);
+    expect(isCourseCurrent(c(90), NOW, true)).toBe(true);
+  });
+
+  it("knows which drugs are taken long term", () => {
+    const atc = (atcCode: string) => [{ id: "x", atcCode }];
+    // Anticoagulant, antiepileptic, antihypertensive, antidepressant.
+    for (const code of ["B01AA03", "N03AG01", "C09CA01", "N06AA09", "N03AX16"]) {
+      expect(isLongTermTherapy(atc(code)), code).toBe(true);
+    }
+    // NSAIDs, B vitamins, nootropics, muscle relaxants, benzodiazepines.
+    for (const code of ["M01AB15", "M01AX17", "A11DBN", "N06BX06", "M03BX02", "N05BA01"]) {
+      expect(isLongTermTherapy(atc(code)), code).toBe(false);
+    }
+    // A catalog row without an ATC code, by its id.
+    expect(isLongTermTherapy([{ id: "oxcarbazepine", atcCode: null }])).toBe(true);
+    // A combination counts through its components.
+    expect(
+      isLongTermTherapy([
+        { id: "combo", atcCode: null },
+        { id: "amlodipine", atcCode: "C08CA01" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("every id of the long-term class is a catalog row", () => {
+    const ids = new Set([...DRUGS, ...DRUGS_EXTRA].map((d) => d.id));
+    for (const id of LONG_TERM_THERAPY.ids) expect(ids.has(id), id).toBe(true);
+  });
+});
+
+describe("open-ended short courses (review)", () => {
+  it("a ketorolac course from 90 days ago is not today's therapy for nimesulide", async () => {
+    // Signed in July without a duration, bridged into an ACTIVE course.
+    cdsState.courses = [
+      course("Кеторолак", { days: null, startedDaysAgo: 90, visitNoteId: "vn_jul", sortOrder: 0 }),
+    ];
+    cdsState.visitRows = [{ visitNoteId: "vn_jul", sortOrder: 0, drugId: "ketorolac" }];
+    const r = await check(["nimesulide"]);
+    expect(r.currentTherapy).toEqual([]);
+    expect(
+      r.warnings.filter((w) => w.kind === "INTERACTION" || w.kind === "DUPLICATE_CLASS"),
+    ).toEqual([]);
+  });
+
+  it("switching diclofenac for meloxicam months later is not a duplicate", async () => {
+    cdsState.courses = [course("Диклофенак", { days: null, startedDaysAgo: 60 })];
+    const r = await check(["meloxicam"]);
+    expect(r.warnings.filter((w) => w.kind === "DUPLICATE_CLASS")).toEqual([]);
+  });
+
+  it("the same ketorolac from last week still counts", async () => {
+    cdsState.courses = [course("Кеторолак", { days: null, startedDaysAgo: 7 })];
+    const r = await check(["nimesulide"]);
+    expect(r.currentTherapy.map((d) => d.id)).toEqual(["ketorolac"]);
+  });
+
+  it("an open-ended warfarin course from 90 days ago still counts", async () => {
+    cdsState.courses = [course("Варфарин", { days: null, startedDaysAgo: 90 })];
+    const r = await check(["ketorolac"]);
+    expect(r.currentTherapy.map((d) => d.id)).toEqual(["warfarin"]);
+    expect(r.warnings.some((w) => w.drugB?.id === "warfarin")).toBe(true);
+  });
+
+  it("an explicit duration still decides, whatever the class", async () => {
+    cdsState.courses = [course("Кеторолак", { days: 120, startedDaysAgo: 90 })];
+    const r = await check(["nimesulide"]);
+    expect(r.currentTherapy.map((d) => d.id)).toEqual(["ketorolac"]);
+  });
+
+  it("an old open-ended course does not hide a newer running one of the same drug", async () => {
+    cdsState.courses = [
+      course("Кеторолак", { days: null, startedDaysAgo: 40 }),
+      course("Кеторолак", { days: 60, startedDaysAgo: 45 }),
+    ];
+    const r = await check(["nimesulide"]);
+    expect(r.currentTherapy.map((d) => d.id)).toEqual(["ketorolac"]);
   });
 });
 

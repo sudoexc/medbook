@@ -14,7 +14,7 @@ import { prescriptionLabel } from "@/lib/catalogs/brand-match";
 import {
   defaultDose,
   formOfStrength,
-  isUnitDose,
+  isConcentrationOrPack,
   normalizeForms,
   normalizeStrength,
   pickDefaultForm,
@@ -113,10 +113,15 @@ export function draftFromShortItem(
       const strength = lastForm ? (item.lastStrength ?? null) : base.strength;
       // The old constructor copied the strength into the dose untouched
       // («500 мг/4 мл»): that concentration was never his dose, so it is not
-      // repeated. A dose he wrote («1000 мг», «2 мл») is.
+      // repeated. A dose he wrote («1000 мг») is, and so is a dose equal to
+      // a strength that is one ampoule or one tablet: «2 мл» of Мильгамма or
+      // «1 таб.» of Панангин is exactly what he types into the dose prompt,
+      // and reading it as untouched asked him for it on every pick.
       const last = item.lastDose?.trim() ?? "";
       const untouchedDefault =
-        !!last && last === (item.lastStrength ?? "").trim() && !isUnitDose(last);
+        !!last &&
+        last === (item.lastStrength ?? "").trim() &&
+        isConcentrationOrPack(last);
       return {
         forms,
         draft: {

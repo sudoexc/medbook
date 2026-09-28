@@ -89,6 +89,17 @@ function render() {
   return DoctorsQuickBook({ doctors });
 }
 
+/** What the date input reports as the desk types into it. */
+function type(value: string, tree: unknown) {
+  (find(tree, "Input")[0].props.onChange as (e: unknown) => void)({
+    target: { value },
+  });
+}
+
+function textOf(tree: unknown): string {
+  return JSON.stringify(tree, (_k, v) => (typeof v === "function" ? undefined : v));
+}
+
 beforeEach(() => {
   runtime.states = [];
 });
@@ -139,14 +150,64 @@ describe("DR-05 — quick booking opens the real booking dialog", () => {
     expect(text).not.toContain("onCreate");
   });
 
-  it("the day starts at today and a typed past day is ignored (AP-09)", () => {
-    let tree = render();
+  it("the day starts at today, with the calendar greyed before it (AP-09)", () => {
+    const tree = render();
     const input = find(tree, "Input")[0];
     expect(input.props.min).toBe("2026-09-28");
     expect(input.props.value).toBe("2026-09-28");
-    (input.props.onChange as (e: unknown) => void)({ target: { value: "2026-08-23" } });
+    expect(textOf(tree)).not.toContain("pastDate");
+  });
+
+  it("05.10 typed over 28.09 lands on 05.10, through the 05.09 Chrome passes on the way", () => {
+    let tree = render();
+    (find(tree, "Select")[0].props.onValueChange as (v: string) => void)("doc_aziz");
     tree = render();
-    expect(find(tree, "Input")[0].props.value).toBe("2026-09-28");
+    // Day segment «05»: the input commits 2026-09-05, behind today. The step
+    // must stay, or the controlled value snaps back to 28.09 and the month
+    // then lands on 28.10.
+    type("2026-09-05", tree);
+    tree = render();
+    expect(find(tree, "Input")[0].props.value).toBe("2026-09-05");
+    expect(textOf(tree)).toContain("pastDate");
+    // Month segment «10».
+    type("2026-10-05", tree);
+    tree = render();
+    expect(find(tree, "Input")[0].props.value).toBe("2026-10-05");
+    expect(textOf(tree)).not.toContain("pastDate");
+
+    (find(tree, "Button")[0].props.onClick as () => void)();
+    tree = render();
+    const day = find(tree, "NewAppointmentDialog")[0].props.initialDate as Date;
+    expect([day.getFullYear(), day.getMonth() + 1, day.getDate()]).toEqual([2026, 10, 5]);
+  });
+
+  it("a past day left in the field is flagged and the dialog opens on today", () => {
+    let tree = render();
+    (find(tree, "Select")[0].props.onValueChange as (v: string) => void)("doc_aziz");
+    tree = render();
+    type("2026-08-23", tree);
+    tree = render();
+    const input = find(tree, "Input")[0];
+    expect(input.props.value).toBe("2026-08-23");
+    expect(input.props["aria-invalid"]).toBe(true);
+    expect(textOf(tree)).toContain("pastDate");
+    // Not a hard refusal: the button still opens the booking, on today.
+    expect(find(tree, "Button")[0].props.disabled).toBe(false);
+    (find(tree, "Button")[0].props.onClick as () => void)();
+    tree = render();
+    const day = find(tree, "NewAppointmentDialog")[0].props.initialDate as Date;
+    expect([day.getFullYear(), day.getMonth() + 1, day.getDate()]).toEqual([2026, 9, 28]);
+  });
+
+  it("a cleared segment empties the day and holds the button until it is complete", () => {
+    let tree = render();
+    (find(tree, "Select")[0].props.onValueChange as (v: string) => void)("doc_aziz");
+    tree = render();
+    type("", tree);
+    tree = render();
+    expect(find(tree, "Input")[0].props.value).toBe("");
+    expect(find(tree, "Button")[0].props.disabled).toBe(true);
+    expect(textOf(tree)).not.toContain("pastDate");
   });
 
   it("the seed never carries a past day into the dialog", () => {

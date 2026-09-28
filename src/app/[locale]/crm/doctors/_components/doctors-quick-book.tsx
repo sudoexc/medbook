@@ -63,6 +63,9 @@ export function DoctorsQuickBook({ doctors: allDoctors }: DoctorsQuickBookProps)
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
   const canSubmit = Boolean(doctorId && date);
+  // A past day is flagged, not refused: the seed opens the dialog on today.
+  // This also covers a page left open overnight, whose day is yesterday.
+  const isPast = Boolean(date) && date < today;
   const seed = React.useMemo(
     () => (doctorId ? quickBookSeed(doctorId, date, today) : null),
     [doctorId, date, today],
@@ -100,11 +103,15 @@ export function DoctorsQuickBook({ doctors: allDoctors }: DoctorsQuickBookProps)
             type="date"
             min={today}
             value={date}
+            aria-invalid={isPast || undefined}
             onChange={(e) => {
-              // `min` only greys the calendar; a typed past day is ignored.
-              if (e.target.value && e.target.value >= today) {
-                setDate(e.target.value);
-              }
+              // Every value goes into state, a past or empty one included.
+              // Chrome commits a typed date segment by segment: 05.10 typed
+              // over 28.09 passes through 05.09, and a controlled input that
+              // refuses that step snaps back to 28.09, so the month then
+              // lands on 28.10, the wrong day with no message. `min` only
+              // greys the calendar popup.
+              setDate(e.target.value);
             }}
           />
         </Field>
@@ -118,6 +125,9 @@ export function DoctorsQuickBook({ doctors: allDoctors }: DoctorsQuickBookProps)
           {t("submit")}
         </Button>
       </div>
+      {isPast ? (
+        <p className="mt-1.5 text-[11px] text-destructive">{t("pastDate")}</p>
+      ) : null}
       <p className="mt-1.5 text-[11px] text-muted-foreground">{t("hint")}</p>
 
       <NewAppointmentDialog

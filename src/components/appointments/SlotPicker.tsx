@@ -49,13 +49,27 @@ export function SlotPicker({
   const t = useTranslations("appointments.slotPicker");
 
   // AP-09 — nothing is booked or moved into the past: the calendar starts at
-  // the clinic's today. A picker opened on a past day (a past slot clicked in
-  // the calendar, the drawer of yesterday's booking) jumps to today, so a
-  // month typed wrong can no longer land the visit behind «now».
+  // the clinic's today (`min`), a past day offers no slots (the server has
+  // none for it either) and detectConflicts answers in_past on submit.
   const minDate = tashkentToday();
   const shownDate = formatDateInput(date);
+  const isPast = shownDate < minDate;
+
+  // The last date the desk typed. Chrome commits a typed date segment by
+  // segment, so 05.10 typed over 28.09 passes through 05.09, a day behind
+  // today. That step has to reach the parent and come back unchanged: a
+  // controlled input whose change is refused snaps back to 28.09 and the
+  // month then lands on 28.10, the wrong day with no message. A typed past
+  // day is therefore kept and flagged below, never rejected or moved.
+  const typedRef = React.useRef<string | null>(null);
+
+  // A past day handed in from outside (a past slot clicked in the calendar,
+  // the drawer of yesterday's missed booking) opens on today instead, where
+  // the desk rebooks it. Only a date the desk did not type is moved.
   React.useEffect(() => {
-    if (shownDate < minDate) onDateChange?.(parseDateInput(minDate));
+    if (shownDate < minDate && shownDate !== typedRef.current) {
+      onDateChange?.(parseDateInput(minDate));
+    }
   }, [shownDate, minDate, onDateChange]);
 
   const query = useQuery<SlotsResponse, Error>({
@@ -66,7 +80,8 @@ export function SlotPicker({
       date.toISOString().slice(0, 10),
       serviceIds.slice().sort().join(","),
     ],
-    enabled: Boolean(doctorId),
+    // A past day has no slots; no request per intermediate typed value.
+    enabled: Boolean(doctorId) && !isPast,
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       params.set("doctorId", doctorId!);
@@ -99,20 +114,29 @@ export function SlotPicker({
           type="date"
           min={minDate}
           value={shownDate}
+          aria-invalid={isPast || undefined}
+          aria-describedby={isPast ? "slot-date-past" : undefined}
           onChange={(e) => {
-            // `min` only greys the calendar; a typed date can still be past.
-            if (!e.target.value || e.target.value < minDate) return;
-            const next = parseDateInput(e.target.value);
-            onDateChange?.(next);
+            // Every complete value goes to the parent, a past one included
+            // (see typedRef). `min` only greys the calendar popup.
+            if (!e.target.value) return;
+            typedRef.current = e.target.value;
+            onDateChange?.(parseDateInput(e.target.value));
           }}
           className="h-9 w-full"
           disabled={disabled}
         />
       </div>
 
+      {isPast ? (
+        <p id="slot-date-past" className="text-xs text-destructive">
+          {t("pastDate")}
+        </p>
+      ) : null}
+
       {!doctorId ? (
         <p className="text-xs text-muted-foreground">{t("pickDoctorFirst")}</p>
-      ) : query.isLoading ? (
+      ) : isPast ? null : query.isLoading ? (
         <p className="text-xs text-muted-foreground">{t("loading")}</p>
       ) : query.isError ? (
         <p className="text-xs text-destructive" role="alert">
@@ -156,8 +180,11 @@ export function SlotPicker({
   );
 }
 
+// A year typed digit by digit passes through 0002, 0020, 0202: the value must
+// survive the round trip through the parent (4-digit year, and setFullYear
+// because `new Date(2, …)` means 1902).
 function formatDateInput(d: Date): string {
-  const yyyy = d.getFullYear();
+  const yyyy = String(d.getFullYear()).padStart(4, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
@@ -165,5 +192,7 @@ function formatDateInput(d: Date): string {
 
 function parseDateInput(s: string): Date {
   const [y, m, d] = s.split("-").map((x) => parseInt(x, 10));
-  return new Date(y!, (m ?? 1) - 1, d ?? 1);
+  const out = new Date(2000, 0, 1);
+  out.setFullYear(y!, (m ?? 1) - 1, d ?? 1);
+  return out;
 }

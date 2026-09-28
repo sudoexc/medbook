@@ -842,6 +842,7 @@
       "loading": "Slotlar yuklanmoqda…",
       "loadError": "Slotlarni yuklab bo'lmadi. Qayta urinib ko'ring.",
       "noSlots": "Bo'sh slotlar yo'q",
+      "pastDate": "Bu sana o'tib ketgan. Bugun yoki keyingi kunni tanlang.",
       "pickDoctorFirst": "Shifokorni tanlang",
       "slotMin": "Qadam: {min} daq."
     },
@@ -2537,7 +2538,8 @@
       "doctorEmpty": "Shifokorlar yo'q",
       "date": "Sana",
       "submit": "Yozilish yaratish",
-      "hint": "Bemor, xizmat va bo'sh vaqtni yozilish oynasida tanlaysiz"
+      "hint": "Bemor, xizmat va bo'sh vaqtni yozilish oynasida tanlaysiz",
+      "pastDate": "Bu sana o'tib ketgan: yozilish oynasi bugungi kun bilan ochiladi"
     },
     "topRevenue": {
       "title": "Tushum bo'yicha TOP shifokorlar",

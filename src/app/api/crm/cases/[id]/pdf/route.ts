@@ -16,6 +16,11 @@
  *
  * Multi-tenant guard: the lookup is auto-scoped by the Prisma tenant
  * extension; a cross-tenant id surfaces as 404. Audit log fires on success.
+ *
+ * Reception prints the card too (visits, complaint, totals for the
+ * patient), but the diagnosis block is left out for roles that do not read
+ * the clinical side of a case (audit PT-11): the case page already hides
+ * it from them, and the print must not hand it back one click away.
  */
 import { createApiListHandler } from "@/lib/api-handler";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +29,7 @@ import { notFound } from "@/server/http";
 import { formatDate, formatPhone, formatMoney, type Locale } from "@/lib/format";
 import { inlineStorageImage } from "@/server/storage/inline-image";
 import { caseVisitOrdinals, caseVisitStats } from "@/lib/cases/case-visits";
+import { canReadCaseClinical } from "@/server/medical-case/clinical-access";
 
 function idFromUrl(request: Request): string {
   // /api/crm/cases/[id]/pdf — id is segment[-2].
@@ -144,6 +150,11 @@ export const GET = createApiListHandler(
       },
     });
     if (!mcase) return notFound();
+
+    // Same rule as GET /api/crm/cases/[id]: the diagnosis and its ICD code
+    // are printed for clinical roles only. The section is left out, not
+    // shown empty, so a printout cannot read as «no diagnosis».
+    const showClinical = canReadCaseClinical(ctx);
 
     // Clinic header is read separately — we need the logo + name in the
     // active clinic context. The auto-scope returns the clinic the user is
@@ -563,10 +574,14 @@ export const GET = createApiListHandler(
       <div class="body">${mcase.primaryComplaint ? escapeHtml(mcase.primaryComplaint) : `<span class="empty">${labels.empty}</span>`}</div>
     </section>
 
-    <section class="block">
+    ${
+      showClinical
+        ? `<section class="block">
       <h3>${escapeHtml(labels.diagnosis)}${mcase.diagnosisCode ? ` <span style="color:#1a1f2e;font-weight:600">· ${escapeHtml(labels.diagnosisCode)}: ${escapeHtml(mcase.diagnosisCode)}</span>` : ""}</h3>
       <div class="body">${mcase.diagnosisText ? escapeHtml(mcase.diagnosisText) : `<span class="empty">${labels.empty}</span>`}</div>
-    </section>
+    </section>`
+        : ""
+    }
 
     ${
       mcase.notes
@@ -616,7 +631,12 @@ export const GET = createApiListHandler(
       action: "medical_case.export_pdf",
       entityType: "MedicalCase",
       entityId: id,
-      meta: { format: "html_print", locale, visits: mcase.appointments.length },
+      meta: {
+        format: "html_print",
+        locale,
+        visits: mcase.appointments.length,
+        clinical: showClinical,
+      },
     });
 
     const filename = `case-${mcase.id}.html`;

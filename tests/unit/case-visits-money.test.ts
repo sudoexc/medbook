@@ -216,4 +216,32 @@ describe("the printed «Карта случая»", () => {
     expect(cells[1]).not.toContain("Повторный");
     expect(cells[2]).toContain("Повторный (2-я)");
   });
+
+  // Audit PT-11: the case page hides the diagnosis from reception, so the
+  // «Скачать PDF» button on that page must not print it for them either.
+  it("reception prints the card without the diagnosis or its ICD code", async () => {
+    state.role = "RECEPTIONIST";
+    const { GET } = await import("@/app/api/crm/cases/[id]/pdf/route");
+    for (const lang of ["ru", "uz"] as const) {
+      const html = await (await GET(new Request(`https://x/api/crm/cases/case1/pdf?lang=${lang}`))).text();
+      expect(html).not.toContain("Мигрень без ауры");
+      expect(html).not.toContain("G43.0");
+      expect(html).not.toContain(lang === "ru" ? "Диагноз" : "Tashxis");
+      // The rest of the card is still there for the patient.
+      const total = html.slice(html.indexOf(lang === "ru" ? "Итого начислено" : "Jami hisoblangan"));
+      expect(total).toMatch(/300\s000/);
+      expect(html).toContain("Головная боль");
+    }
+  });
+
+  it("the doctor and the nurse still get the diagnosis on the print", async () => {
+    const { GET } = await import("@/app/api/crm/cases/[id]/pdf/route");
+    for (const role of ["DOCTOR", "NURSE", "ADMIN"]) {
+      state.role = role;
+      const html = await (await GET(new Request("https://x/api/crm/cases/case1/pdf?lang=ru"))).text();
+      expect(html).toContain("Диагноз");
+      expect(html).toContain("G43.0 Мигрень без ауры");
+      expect(html).toContain("Код по МКБ-10: G43.0");
+    }
+  });
 });
